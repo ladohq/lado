@@ -124,14 +124,16 @@ def test_files_not_used_are_named_with_their_reason(outdir):
     found = agent_env.outside()
     assert found.values == {}
     folder = str(outdir)
-    assert sorted(found.unused) == sorted([
-        f"variable file BIG in {folder} not used: larger than 64 KiB",
-        f"variable file BIN in {folder} not used: not UTF-8 text",
-        f"variable file LADO_HOME in {folder} not used: a reserved name",
-        f"variable file PATH in {folder} not used: a reserved name",
-        f"variable file gh-token.txt in {folder} not used: not a variable name",
-        f"variable file sub/ in {folder} not used: in a subfolder",
-    ])
+    assert sorted(found.unused) == sorted(
+        [
+            f"variable file BIG in {folder} not used: larger than 64 KiB",
+            f"variable file BIN in {folder} not used: not UTF-8 text",
+            f"variable file LADO_HOME in {folder} not used: a reserved name",
+            f"variable file PATH in {folder} not used: a reserved name",
+            f"variable file gh-token.txt in {folder} not used: not a variable name",
+            f"variable file sub/ in {folder} not used: in a subfolder",
+        ]
+    )
 
 
 def test_no_folder_variable_no_layer(monkeypatch):
@@ -155,7 +157,9 @@ def test_folder_cannot_be_listed(outdir):
     outdir.chmod(0)
     try:
         [line] = agent_env.outside().unused
-        assert line.startswith(f"variable folder {outdir} (LADO_ENV_DIR) not used: cannot be listed")
+        assert line.startswith(
+            f"variable folder {outdir} (LADO_ENV_DIR) not used: cannot be listed"
+        )
     finally:
         outdir.chmod(0o700)
 
@@ -192,8 +196,21 @@ def test_no_value_in_a_line(outdir):
 ENV_DIR_VAR = "LADO_ENV_DIR"
 MAX_VALUE = 65536
 VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-RESERVED = frozenset({*SHELL_OWN, "HOME", "USER", "LOGNAME", "SHELL", "PATH", "TERM",
-                      "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TMUX", "TMUX_PANE"})
+RESERVED = frozenset(
+    {
+        *SHELL_OWN,
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "PATH",
+        "TERM",
+        "TERM_PROGRAM",
+        "TERM_PROGRAM_VERSION",
+        "TMUX",
+        "TMUX_PANE",
+    }
+)
 
 
 class Outside(NamedTuple):
@@ -340,9 +357,7 @@ def test_a_spawn_names_only_provider_set_names(...):
 - [ ] **Step 3: Implement** in `runtime.py`:
 
 ```python
-def _outside_warnings(
-    agent: state.Agent, launch: providers.Launch, *, files: bool
-) -> list[str]:
+def _outside_warnings(agent: state.Agent, launch: providers.Launch, *, files: bool) -> list[str]:
     """The outside folder's lines for one launch: its files not used (`files`: a
     session's start or resume only, as the folder is the container's), and each of its
     names LADO or the provider sets for this launch, which keep LADO's value."""
@@ -400,9 +415,15 @@ def test_outside_lists_names_and_files_not_used(tmp_path, monkeypatch):
 
 def test_outside_ok_none_and_no_folder(tmp_path, monkeypatch):
     monkeypatch.setenv("LADO_ENV_DIR", str(tmp_path))
-    assert (doctor.check_outside().level, doctor.check_outside().detail) == (doctor.OK, f"{tmp_path}: none")
+    assert (doctor.check_outside().level, doctor.check_outside().detail) == (
+        doctor.OK,
+        f"{tmp_path}: none",
+    )
     monkeypatch.setenv("LADO_ENV_DIR", str(tmp_path / "x"))
-    assert (doctor.check_outside().level, doctor.check_outside().detail) == (doctor.INFO, f"{tmp_path / 'x'}: no folder")
+    assert (doctor.check_outside().level, doctor.check_outside().detail) == (
+        doctor.INFO,
+        f"{tmp_path / 'x'}: no folder",
+    )
     monkeypatch.delenv("LADO_ENV_DIR")
     assert doctor.check_outside() is None
 
@@ -438,7 +459,7 @@ def check_outside() -> Check | None:
     detail = f"{found.folder}: {names}"
     if found.unused:
         prefix = f"variable file "
-        short = [line[len(prefix):].replace(f" in {found.folder} ", " ") for line in found.unused]
+        short = [line[len(prefix) :].replace(f" in {found.folder} ", " ") for line in found.unused]
         return Check(name, WARN, f"{detail}; " + "; ".join(short))
     return Check(name, OK, detail)
 ```
@@ -496,8 +517,11 @@ def test_the_image_reads_the_secrets_folder():
 
 
 def test_compose_binds_the_secrets_folder_read_only(compose):
-    [mount] = [v for v in compose["services"]["lado"]["volumes"]
-               if isinstance(v, dict) and v.get("target") == "/run/secrets"]
+    [mount] = [
+        v
+        for v in compose["services"]["lado"]["volumes"]
+        if isinstance(v, dict) and v.get("target") == "/run/secrets"
+    ]
     assert mount["source"] == "${LADO_SECRETS:-./secrets}"
     assert mount["read_only"] is True
     assert mount["bind"]["create_host_path"] is False
@@ -519,10 +543,13 @@ def test_gh_is_gits_credential_helper_for_github():
 
 def test_the_entrypoint_writes_git_identity_every_start():
     text = (DOCKER / "entrypoint.sh").read_text()
-    after_root = text[text.index('if [ -e "$MARK" ]'):]
+    after_root = text[text.index('if [ -e "$MARK" ]') :]
     assert 'git config --global user.name "$LADO_GIT_NAME"' in after_root
     assert 'git config --global user.email "$LADO_GIT_EMAIL"' in after_root
-    assert "lado: warning: git has no user.name or user.email: agents cannot commit; set LADO_GIT_NAME and LADO_GIT_EMAIL" in text
+    assert (
+        "lado: warning: git has no user.name or user.email: agents cannot commit; set LADO_GIT_NAME and LADO_GIT_EMAIL"
+        in text
+    )
 ```
 
 - [ ] **Step 2: Run** `uv run pytest tests/test_docker.py -n0 -v`; the new ones FAIL.
@@ -592,16 +619,19 @@ def test_the_ssh_rule_names_one_program_without_setenv():
 
 def test_the_ssh_program_takes_no_argument_and_checks_the_socket():
     text = (DOCKER / "ssh-agent-socket.sh").read_text()
-    assert 'SOCKET=/run/lado/ssh-agent.sock' in text
+    assert "SOCKET=/run/lado/ssh-agent.sock" in text
     assert '[ "$#" -eq 0 ]' in text
     assert "PATH=/usr/bin:/bin" in text
-    assert "-L \"$SOCKET\"" in text and "-S \"$SOCKET\"" in text
+    assert '-L "$SOCKET"' in text and '-S "$SOCKET"' in text
     assert "chown --no-dereference" in text
 
 
 def test_compose_binds_the_ssh_agent_or_dev_null(compose):
-    [mount] = [v for v in compose["services"]["lado"]["volumes"]
-               if isinstance(v, dict) and v.get("target") == "/run/lado/ssh-agent.sock"]
+    [mount] = [
+        v
+        for v in compose["services"]["lado"]["volumes"]
+        if isinstance(v, dict) and v.get("target") == "/run/lado/ssh-agent.sock"
+    ]
     assert mount["source"] == "${LADO_SSH_AGENT:-/dev/null}"
     assert mount["bind"]["create_host_path"] is False
     assert "group_add" not in compose["services"]["lado"]
@@ -609,8 +639,10 @@ def test_compose_binds_the_ssh_agent_or_dev_null(compose):
 
 def test_the_profile_points_ssh_auth_sock_only_at_a_socket():
     profile = (DOCKER / "profile.sh").read_text()
-    assert ('[ -S /run/lado/ssh-agent.sock ] && export SSH_AUTH_SOCK=/run/lado/ssh-agent.sock'
-            in profile)
+    assert (
+        "[ -S /run/lado/ssh-agent.sock ] && export SSH_AUTH_SOCK=/run/lado/ssh-agent.sock"
+        in profile
+    )
 ```
 
   and change `test_profile_sets_what_env_sets_for_the_agents` to leave that conditional
@@ -753,10 +785,20 @@ names from `new_name()`.
 @pytest.mark.parametrize("path", ["compose.yaml", "Dockerfile"])
 def test_the_headers_say_how_agents_log_in_and_get_access(path):
     head = header_of(DOCKER / path)  # the leading comment block
-    for needle in ("secrets", "LADO_GIT_NAME", "LADO_GIT_EMAIL", "GH_TOKEN", "gh auth login",
-                   "LADO_SSH_AGENT", "/run/host-services/ssh-auth.sock", "SSH_AUTH_SOCK",
-                   "CLAUDE_CODE_OAUTH_TOKEN", "opencode auth login", "kilo auth login",
-                   "mkdir -m 700 secrets"):
+    for needle in (
+        "secrets",
+        "LADO_GIT_NAME",
+        "LADO_GIT_EMAIL",
+        "GH_TOKEN",
+        "gh auth login",
+        "LADO_SSH_AGENT",
+        "/run/host-services/ssh-auth.sock",
+        "SSH_AUTH_SOCK",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "opencode auth login",
+        "kilo auth login",
+        "mkdir -m 700 secrets",
+    ):
         assert needle in head, (path, needle)
 ```
 

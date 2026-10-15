@@ -70,6 +70,12 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      # The host's ssh agent for the agents' git over ssh (LADO_SSH_AGENT; /dev/null: none).
+      - type: bind
+        source: ${LADO_SSH_AGENT:-/dev/null}
+        target: /run/lado/ssh-agent.sock
+        bind:
+          create_host_path: false
     extra_hosts:
       # A local model on the host: Docker Desktop has it already, a Linux host needs it.
       - "host.docker.internal:host-gateway"

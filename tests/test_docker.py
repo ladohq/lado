@@ -171,7 +171,94 @@ def test_the_server_listens_on_all_addresses_at_lado_port_under_tini():
 
 def test_the_build_context_is_an_allowlist():
     ignore = (DOCKER / "Dockerfile.dockerignore").read_text().split()
-    assert ignore == ["*", "!dist/lado-*.whl", "!docker/profile.sh", "!docker/entrypoint.sh"]
+    assert ignore == [
+        "*",
+        "!dist/lado-*.whl",
+        "!docker/profile.sh",
+        "!docker/entrypoint.sh",
+        "!docker/ssh-agent-socket.sh",
+    ]
+
+
+SSH_RULE = "lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socket"
+SSH_PROGRAM = DOCKER / "ssh-agent-socket.sh"
+SOCKET = "/run/lado/ssh-agent.sock"
+
+
+def test_the_ssh_rule_names_one_program_and_keeps_no_variable():
+    """Its own file, which the first start's root phase leaves; no SETENV, so sudo's
+    env_reset gives the program a clean environment."""
+    [run] = [line for line in lines() if "/etc/sudoers.d/lado-ssh-agent" in line]
+    assert f"printf '%s\\n' '{SSH_RULE}' > /etc/sudoers.d/lado-ssh-agent" in run
+    assert "chmod 0440 /etc/sudoers.d/lado-ssh-agent" in run
+    assert "visudo -cf /etc/sudoers.d/lado-ssh-agent" in run
+    assert "SETENV" not in run
+    assert "COPY --chmod=755 docker/ssh-agent-socket.sh /usr/local/bin/lado-ssh-agent-socket" in (
+        lines()
+    )
+    # /run/lado is root's, so no agent can plant a file at the socket's path.
+    assert "mkdir -p /run/lado" in run and "chmod 755 /run/lado" in run
+
+
+def test_the_ssh_program_checks_its_one_socket():
+    text = SSH_PROGRAM.read_text()
+    assert text.startswith("#!/bin/sh\n") and "\nset -eu\n" in text
+    assert "\nPATH=/usr/bin:/bin\n" in text
+    assert f"\nSOCKET={SOCKET}\n" in text
+    assert '[ -L "$SOCKET" ] || [ ! -S "$SOCKET" ]' in text
+    assert '[ "$(stat -c %u "$SOCKET")" = 0 ] || exit 0' in text
+    assert 'chown --no-dereference "$(id -u lado)" "$SOCKET"' in text
+    assert text.index("stat -c %u") < text.index("chown")
+
+
+def test_the_ssh_program_takes_no_argument():
+    done = subprocess.run(["sh", str(SSH_PROGRAM), SOCKET], capture_output=True, text=True)
+    assert (done.returncode, done.stderr) == (2, "lado-ssh-agent-socket: takes no argument\n")
+
+
+@pytest.mark.skipif(Path(SOCKET).exists(), reason="the image's own socket")
+def test_the_ssh_program_refuses_what_is_no_socket():
+    done = subprocess.run(["sh", str(SSH_PROGRAM)], capture_output=True, text=True)
+    assert (done.returncode, done.stderr) == (
+        1,
+        f"lado-ssh-agent-socket: {SOCKET} is not a socket\n",
+    )
+
+
+def test_compose_binds_the_ssh_agent_or_dev_null(compose):
+    """/dev/null: no ssh agent, and a path every host has."""
+    [mount] = [
+        v
+        for v in compose["services"]["lado"]["volumes"]
+        if isinstance(v, dict) and v.get("target") == SOCKET
+    ]
+    assert mount == {
+        "type": "bind",
+        "source": "${LADO_SSH_AGENT:-/dev/null}",
+        "target": SOCKET,
+        "bind": {"create_host_path": False},
+    }
+    assert "group_add" not in compose["services"]["lado"]
+
+
+def test_the_profile_points_ssh_auth_sock_only_at_a_socket():
+    """The profile's alone: the server needs no ssh agent (so outside the ENV parity)."""
+    profile = (DOCKER / "profile.sh").read_text()
+    assert f"[ -S {SOCKET} ] && export SSH_AUTH_SOCK={SOCKET} || true" in profile.splitlines()
+    assert "SSH_AUTH_SOCK" not in env()
+
+
+SSH_WARNING = "lado: warning: lado (uid $(id -u)) cannot use the ssh agent socket of uid $owner:"
+
+
+def test_the_entrypoint_gives_a_root_owned_socket_to_lado_at_every_start():
+    every = ENTRYPOINT.split('if [ -e "$MARK" ]', 1)[1].split("\nfi\n", 1)[1]
+    assert f"SOCK={SOCKET}" in every
+    assert "sudo -n /usr/local/bin/lado-ssh-agent-socket" in every
+    assert every.index("may_become_root") < every.index("sudo -n /usr/local/bin/lado-ssh-agent")
+    assert SSH_WARNING in every
+    assert "ssh-add cannot connect" in every
+    assert "no root to give it to lado (no-new-privileges or dropped capabilities)" in every
 
 
 RULE = "lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoint"

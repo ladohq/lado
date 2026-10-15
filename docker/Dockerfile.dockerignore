@@ -2,3 +2,4 @@
 !dist/lado-*.whl
 !docker/profile.sh
 !docker/entrypoint.sh
+!docker/ssh-agent-socket.sh

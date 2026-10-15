@@ -69,6 +69,15 @@ RUN printf '%s\n' 'lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoi
  && visudo -cf /etc/sudoers.d/lado-entrypoint \
  && mkdir -p /etc/lado && touch /etc/lado/first-start \
  && printf "export LADO_REPOS='/projects'\n" > /etc/profile.d/lado-repos.sh
+# The host's ssh agent: compose binds its socket at /run/lado/ssh-agent.sock, in a folder
+# root's so no agent plants a file there. Docker Desktop's socket is root's in the
+# container; at every start the entrypoint gives it to lado by this program, through a rule
+# of its own that the first start leaves (no SETENV: the program gets a clean environment).
+COPY --chmod=755 docker/ssh-agent-socket.sh /usr/local/bin/lado-ssh-agent-socket
+RUN printf '%s\n' 'lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socket' > /etc/sudoers.d/lado-ssh-agent \
+ && chmod 0440 /etc/sudoers.d/lado-ssh-agent \
+ && visudo -cf /etc/sudoers.d/lado-ssh-agent \
+ && mkdir -p /run/lado && chmod 755 /run/lado
 # git trusts every repository: the projects' owner may seem another user (git 2.39 has no
 # `<path>/*` form, and the container has one user). It gets github.com's https credentials
 # from gh: GH_TOKEN, or gh's own login on the home volume (what `gh auth setup-git` writes;

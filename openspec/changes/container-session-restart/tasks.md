@@ -50,7 +50,7 @@ Tests first in each section; each task is one commit. The plan with the code is
 ## 6. Documents and regression
 
 - [x] 6.1 AGENTS.md (Layout, Commands) and CHANGELOG.md under the version open in main.
-- [ ] 6.2 Regression: `make lint`, `make test`, the changed integration files with `-m
+- [x] 6.2 Regression: `make lint`, `make test`, the changed integration files with `-m
   integration`, `openspec validate --specs --strict`, `make docker && make
   test-container`; CI's `ci-ok` on the pull request.
-- [ ] 6.3 The pull request's description has the design doc's manual check verbatim.
+- [x] 6.3 The pull request's description has the design doc's manual check verbatim.

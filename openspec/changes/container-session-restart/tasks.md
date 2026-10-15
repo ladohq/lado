@@ -39,7 +39,7 @@ Tests first in each section; each task is one commit. The plan with the code is
 
 ## 5. The headers and the container tests (layer 7)
 
-- [ ] 5.1 `tests/test_docker.py`, then the headers of `docker/compose.yaml` and
+- [x] 5.1 `tests/test_docker.py`, then the headers of `docker/compose.yaml` and
   `docker/Dockerfile` (sessions follow the container, the model turn). `uv run pytest
   tests/test_docker.py -n0`.
 - [ ] 5.2 `tests/container/test_sessions.py`: compose down/up with a hand-stopped session

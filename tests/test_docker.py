@@ -323,6 +323,28 @@ def test_the_dockerfiles_header_names_the_published_image_and_its_update():
         assert words in header, words
 
 
+def test_the_compose_header_says_the_sessions_follow_the_container():
+    text = header_text()
+    for words in (
+        "docker compose down",
+        "stops its sessions",
+        "docker compose up -d",
+        "resumes them",
+        "stopped by hand",
+        "one model turn",
+    ):
+        assert words in text.split("The container's sessions")[1], words
+
+
+def test_the_dockerfiles_header_says_the_sessions_follow_the_container():
+    header = " ".join(
+        line.lstrip("#").strip() for line in DOCKERFILE.splitlines() if line.startswith("#")
+    )
+    sessions = header.split("Sessions:")[1]
+    for words in ("docker stop", "docker start", "stopped by hand", "one model turn"):
+        assert words in sessions, words
+
+
 def test_nothing_in_docker_names_lado_previous():
     """One name per machine, which a second LADO overwrote (LAD-71's G2): a version's tag
     names the image before an update instead."""

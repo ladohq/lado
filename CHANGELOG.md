@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.39.0 (unreleased)
+## 0.39.0 (2026-10-15)
 
 - Every release publishes LADO's Docker image, `docker pull ghcr.io/ladohq/lado:<version>`
   (linux/amd64 and linux/arm64; `latest` is the newest final release, a release candidate

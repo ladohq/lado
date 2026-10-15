@@ -1,10 +1,10 @@
 ## 1. The button
 
-- [ ] 1.1 `web/src/icons.tsx`: `BetweenIcon`, two speech bubbles facing each other (the
+- [x] 1.1 `web/src/icons.tsx`: `BetweenIcon`, two speech bubbles facing each other (the
   mockup's paths: `M3 4.5h10.5v7.5H8.25L5.25 14.5V12H3z` and `M16.5 9H21v7.5h-2.25V19l-3-2.5H10.5V15`,
   or the developer's equal), with its one-line comment as the others have. Check: it
   renders in the button (1.2).
-- [ ] 1.2 `web/src/Sessions.tsx`, `Activity`: the `<label className="switch">` with its
+- [x] 1.2 `web/src/Sessions.tsx`, `Activity`: the `<label className="switch">` with its
   checkbox becomes `<Tooltip tip={…}>` around `<button type="button"
   className="icon-button between-toggle" aria-label="Messages between agents"
   aria-pressed={agentMessages}>` with `BetweenIcon`; a click flips and stores the

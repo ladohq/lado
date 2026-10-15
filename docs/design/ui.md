@@ -89,7 +89,7 @@ later desktop app and a later cloud setup; the UI is its client.
 - A newer LADO: `GET /api/update` (`UpdateInfo`: `current`, `latest`, `available`,
   `released`, `checked_at`, `error`; `running`, an update holds `update.lock`;
   `can_update` and `why_not`, from `self_update.refusal`, the CLI's too; `by_hand`, the
-  commands without an installer, in a container `update.CONTAINER_UPDATE`; `container`,
+  commands without an installer, empty in a container; `container`,
   `update.in_container`; `last`, the latest `update-result.json`) gives what the
   daily update check found (`lado.update.check`, the rule `lado ls` and `lado doctor`
   share; a plain `def`, so its look at PyPI holds up no other request). Asked each time the
@@ -1480,9 +1480,9 @@ M2, P1–P3 of round 3, F3 and U1–U3).
   why (`why_not`) and shows the commands by hand with Copy, and no button; with
   `can_update` false for another reason (an update runs) it says that reason. In a
   container (LAD-59, mockup `task/lad-59/mockup-container.html`, option A) it says why
-  (a new image updates LADO) and shows `update.CONTAINER_UPDATE` (`docker tag "$(docker
-  compose images -q lado)" lado:previous && docker compose pull && docker compose up -d`,
-  the image you ran kept for the way back; LAD-71) under `On the host:` instead of `By hand:`, with Copy and no button.
+  (a new image updates LADO) and shows no command and no button (LAD-73, mockup
+  `task/lad-73/mockup-container-update.html`, option 1): how to update a container is the
+  documentation's.
 - **In a container** (`UpdateInfo.container`, `LADO_CONTAINER`): a grey `container` pill
   beside `LADO X.Y.Z` in the header, its tooltip saying a new image updates it; from
   `UpdateInfo`, which the header has first, not the slower `/api/system`.

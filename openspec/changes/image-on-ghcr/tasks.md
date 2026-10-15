@@ -3,13 +3,13 @@ Tests first in each section; each task is one commit. The plan with the code is
 
 ## 1. LADO's words in a container name no commands
 
-- [ ] 1.1 Unit and UI tests (layers 1 and 4): the hint names `ghcr.io/ladohq/lado:<v>`
+- [x] 1.1 Unit and UI tests (layers 1 and 4): the hint names `ghcr.io/ladohq/lado:<v>`
   (`test_update.py`, `test_doctor.py`), `lado update`'s refusal is the reason alone
   (`test_self_update.py`), `GET /api/update` has `by_hand` empty in a container
   (`test_server_system.py`), the migration's way back names the image of the version
   before (`test_cli.py`); `SystemPanel.test.tsx`'s container case has no `.system-by-hand`
   (H2); `tests/ui/test_system_panel.py`'s container case shows no command (D6).
-- [ ] 1.2 `update.IMAGE`, `available_line`, `CONTAINER_UPDATE` removed; `cli.cmd_update`,
+- [x] 1.2 `update.IMAGE`, `available_line`, `CONTAINER_UPDATE` removed; `cli.cmd_update`,
   `app.update_state`, `runtime._migrate`, `SystemPanel.tsx`; `docs/design/ui.md`. `make
   test`, `make web`, `uv run pytest -m ui tests/ui/test_system_panel.py`.
 

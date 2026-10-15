@@ -13,7 +13,7 @@
 - [x] 2.2 `runtime._check_summary` (summary, question) and `ask_human`'s choices; tests per
   text. Check: `uv run pytest tests/test_runtime.py tests/test_mcp_server.py -n auto -k
   "summary or question or choice"`.
-- [ ] 2.3 `runs.advance`'s `note_summary` and `artifacts._line` (title, summary); tests.
+- [x] 2.3 `runs.advance`'s `note_summary` and `artifacts._line` (title, summary); tests.
   Check: `uv run pytest tests/test_runs.py tests/test_artifacts.py -n auto`.
 
 ## 3. Cleaned: the human's texts (D2, D3, D5)
@@ -25,7 +25,7 @@
 - [x] 3.2 `runs._answer_note`, `runs.force` (note and body), the loop limit's cancel
   reason; tests. Check: `uv run pytest tests/test_runs.py -n auto -k "answer or force or
   limit"`.
-- [ ] 3.3 `artifacts.upload`'s title through `text.one_line` (an ESC and U+202E in a file
+- [x] 3.3 `artifacts.upload`'s title through `text.one_line` (an ESC and U+202E in a file
   name); test. Check: `uv run pytest tests/test_artifacts.py -n auto -k upload`.
 
 ## 4. No copy left, docs

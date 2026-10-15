@@ -48,6 +48,20 @@ def test_an_upload_is_the_sessions_by_the_human_named_by_its_stem_hash_and_exten
 
 
 @pytest.mark.parametrize(
+    "given, title",
+    [
+        ("report\x1b[31m\N{RIGHT-TO-LEFT OVERRIDE}fdp.pdf", "report [31mfdp.pdf"),
+        ("a\N{LINE SEPARATOR}b\tc.txt", "a b c.txt"),
+        ("\N{ZERO WIDTH SPACE}notes.txt", "notes.txt"),
+        ("Семья 👨\N{ZERO WIDTH JOINER}👩.png", "Семья 👨\N{ZERO WIDTH JOINER}👩.png"),
+    ],
+)
+def test_an_uploads_title_is_its_name_cleaned_of_hidden_characters(session, given, title):
+    written = artifacts.upload(session, given, b"abc")
+    assert written.artifact.title == title
+
+
+@pytest.mark.parametrize(
     "given, name",
     [
         ("notes.txt", f"notes-{ABC}.txt"),

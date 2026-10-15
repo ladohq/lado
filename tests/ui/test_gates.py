@@ -139,6 +139,120 @@ def test_a_gates_long_comment_grows_to_8_lines_and_stays_above_the_send_row(
     shot(page, full_page=False)
 
 
+# The ring an item of the waiting card draws around itself (a field's focus outline or
+# box-shadow ring, a marked question's ring), against what the card shows of it: how far
+# the ring stays inside the visible area of the card's list and its panel on each side (a
+# negative number is the part cut), and the ring's width, read from the computed style.
+MEASURE_RING = """item => {
+  const style = getComputedStyle(item);
+  const outline = style.outlineStyle === 'none' ? 0
+    : parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+  const shadow = style.boxShadow === 'none' ? '' : style.boxShadow.replace(/rgba?\\([^)]*\\)/g, '');
+  const lengths = (shadow.match(/-?[\\d.]+px/g) || []).map(parseFloat);
+  const [x = 0, y = 0, blur = 0, spread = 0] = lengths;
+  const ring = Math.max(outline, spread + blur + Math.max(Math.abs(x), Math.abs(y)));
+  const visible = el => {
+    const r = el.getBoundingClientRect();
+    const left = r.left + el.clientLeft, top = r.top + el.clientTop;
+    return {left, top, right: left + el.clientWidth, bottom: top + el.clientHeight};
+  };
+  const list = visible(item.closest('.waiting-list'));
+  const panel = visible(item.closest('.waiting-panel'));
+  const box = item.getBoundingClientRect();
+  return {
+    ring,
+    left: box.left - ring - Math.max(list.left, panel.left),
+    top: box.top - ring - Math.max(list.top, panel.top),
+    right: Math.min(list.right, panel.right) - box.right - ring,
+    bottom: Math.min(list.bottom, panel.bottom) - box.bottom - ring,
+  };
+}"""
+
+
+def assert_ring_whole(item, ring: float) -> None:
+    """The item draws a ring of `ring` px, and the card shows it whole on all four sides."""
+    got = item.evaluate(MEASURE_RING)
+    assert got["ring"] == ring, got
+    cut = {side: got[side] for side in ("left", "top", "right", "bottom") if got[side] < -0.5}
+    assert not cut, got
+
+
+def comment_field(page: Page, session: str):
+    panel = waiting_card(page, session).get_by_role("tabpanel")
+    return panel.get_by_role("textbox", name="Comment for the next step (optional)")
+
+
+def test_a_gates_comment_with_the_focus_shows_its_ring_whole(page: Page, server, repo, shot):
+    """LAD-78: the comment's focus ring (the UI's outline, 4 px out) is whole on the left,
+    the top, the right and the bottom, within the card's list."""
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    field = comment_field(page, session)
+    field.click()
+    expect(field).to_be_focused()
+    assert_ring_whole(field, 4)
+    shot(page, full_page=False)
+
+
+def test_a_gates_long_comment_shows_its_ring_whole(page: Page, server, repo, shot):
+    """LAD-78: a comment of 12 lines, 8 lines high and scrolled into view, keeps its ring
+    whole on all four sides."""
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    field = comment_field(page, session)
+    field.fill(TWELVE_LINES)
+    expect(field).to_be_focused()
+    assert_long_field_fits(field)
+    assert_ring_whole(field, 4)
+    shot(page, full_page=False)
+
+
+def test_a_gates_comment_in_a_narrow_window_shows_its_ring_whole(page: Page, server, repo, shot):
+    """LAD-78: in a window 600 px wide the comment's focus ring is whole too."""
+    page.set_viewport_size({"width": 600, "height": 900})
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    field = comment_field(page, session)
+    field.click()
+    expect(field).to_be_focused()
+    assert_ring_whole(field, 4)
+    shot(page, full_page=False)
+
+
+# Where a gate's tab puts its question, its comment field and its Send row: their left
+# edges from the panel's, and the Send row's top from the panel's.
+MEASURE_PLACES = """panel => {
+  const frame = panel.getBoundingClientRect();
+  const at = el => el.getBoundingClientRect();
+  return {
+    question: at(panel.querySelector('.waiting-gate').firstElementChild).left - frame.left,
+    field: at(panel.querySelector('.answer textarea')).left - frame.left,
+    send: at(panel.querySelector('.waiting-send')).top - frame.top,
+  };
+}"""
+
+# The list's room as it was before LAD-78, for the comparison.
+BEFORE_RING_ROOM = ".waiting-list { padding: 0 6px 4px 0 !important; margin: 0 !important; }"
+
+
+def test_the_room_for_the_ring_moves_nothing_on_a_gates_tab(page: Page, server, repo, shot):
+    """LAD-78: the question and the comment field start as far from the panel's left edge
+    as before the list kept room for the ring, and the Send row stands where it stood."""
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    panel = waiting_card(page, session).locator(".waiting-panel")
+    expect(comment_field(page, session)).to_be_visible()
+    now = panel.evaluate(MEASURE_PLACES)
+    shot(page, full_page=False)
+    page.add_style_tag(content=BEFORE_RING_ROOM)
+    before = panel.evaluate(MEASURE_PLACES)
+    assert now == before
+
+
 def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
     session = gated_session(repo)
     log_in(page, server)

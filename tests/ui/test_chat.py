@@ -10,7 +10,13 @@ import pytest
 from playwright.sync_api import Page, expect
 from test_artifacts_tab import MANY, MEASURE_TABLES
 from test_flows_tab import BACK, FORWARD, STAY, read_out, reviewed_session, tone, tooltip_lines
-from test_gates import TWELVE_LINES, assert_long_field_fits, gated_session, measured
+from test_gates import (
+    TWELVE_LINES,
+    assert_long_field_fits,
+    assert_ring_whole,
+    gated_session,
+    measured,
+)
 from test_images import png
 from test_main_screen import log_in, running_session
 
@@ -122,6 +128,39 @@ def test_an_own_answer_field_grows_to_8_lines_within_the_card_and_the_expanded_c
     field.fill(TWELVE_LINES)
     assert_long_field_fits(field)
     shot(page, "expanded", full_page=False)
+
+
+def test_an_own_answer_with_the_focus_shows_its_ring_whole(page: Page, server, repo, shot):
+    """LAD-78: Other…'s field, focused, has its 3 px ring whole on all four sides."""
+    session = running_session(repo)
+    runtime.ask_human(session, "supervisor", "Ship it?", None, ["yes", "no"])
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Other…").click()
+    field = card.get_by_role("textbox", name="Your own answer")
+    field.focus()
+    expect(field).to_be_focused()
+    assert_ring_whole(field, 3)
+    shot(page, full_page=False)
+
+
+def test_the_first_question_marked_from_the_feed_shows_its_ring_whole(
+    page: Page, server, repo, shot
+):
+    """LAD-78: the card's first question, come to from its line in the feed, has its ring
+    whole on all four sides, its top too."""
+    session = running_session(repo)
+    runtime.ask_human(session, "supervisor", "Ship it?", None, ["yes", "no"])
+    asked = [m.id for m in state.list_messages(session) if m.kind == state.QUESTION][0]
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/activity#message-{asked}")
+    item = waiting_card(page, session).locator(f'[data-item="{asked}"]')
+    expect(item).to_have_class(re.compile(r"\bmarked\b"))
+    # Its ring grows in for 0.3 s: measured once it is whole.
+    expect(item).to_have_css("box-shadow", re.compile(r" 3px$"))
+    assert_ring_whole(item, 3)
+    shot(page, full_page=False)
 
 
 def test_a_workers_question_with_the_supervisors_recommendation_open_and_closed(

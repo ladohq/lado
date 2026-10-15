@@ -3356,6 +3356,10 @@ h3 {
    colour (--who) on its top edge, dashed for a gate; the panel on the "waits for you"
    ground, its list scrolling, its Send row always shown. */
 .waiting-card {
+  /* Room the list keeps on every side for a ring an item draws outside its box, as the
+     list scrolls and so cuts what is outside: the :focus-visible outline (2 px at a 2 px
+     offset) of a gate's comment, the 3 px ring of .waiting-field:focus and of .marked. */
+  --ring-room: 4px;
   display: flex;
   flex: 0 1 auto;
   flex-direction: column;
@@ -3571,8 +3575,10 @@ h3 {
   flex-direction: column;
   gap: 14px;
   min-height: 0;
-  margin: 0;
-  padding: 0 6px 4px 0; /* room below for a field's focus ring */
+  /* The room for a ring (--ring-room), pulled back at the top and the left, so the items
+     stand where they would without it; the bottom keeps it, above the Send row. */
+  margin: calc(-1 * var(--ring-room)) 0 0 calc(-1 * var(--ring-room));
+  padding: var(--ring-room) 6px var(--ring-room) var(--ring-room);
   overflow: auto;
   list-style: none;
 }
@@ -3656,7 +3662,7 @@ h3 {
   font-size: 14px;
   line-height: 1.5;
   resize: none;
-  scroll-margin-bottom: 4px; /* its focus ring in view as it grows (fieldHeight.ts) */
+  scroll-margin: var(--ring-room, 0px); /* its focus ring in view as it grows (fieldHeight.ts) */
 }
 
 .waiting-field:focus {
@@ -4029,7 +4035,7 @@ h3 {
   font-size: 14px;
   line-height: 1.5;
   resize: none;
-  scroll-margin-bottom: 4px; /* its focus ring in view as it grows (fieldHeight.ts) */
+  scroll-margin: var(--ring-room, 0px); /* its focus ring in view as it grows (fieldHeight.ts) */
 }
 
 /* The composer (Composer.tsx): one frame with the paperclip, the field, as tall as its text,

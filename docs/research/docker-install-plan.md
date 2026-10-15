@@ -14,7 +14,7 @@ Every task merges straight into `main`, with no epic.
 | Question | Decision |
 |---|---|
 | Platforms of the first version | Mac and Linux. Windows is a manual check with a speed measurement (T11); until then it is not called supported |
-| Image | One image with Claude Code only (~1 GB instead of 2.5). The other CLIs later, as tasks of their own. Changed 2026-10-15 (the human): one image with all four CLIs (~2.5 GB), from T7 on; mixed sessions (a worker on another CLI than the supervisor) work in one container |
+| Image | One image with Claude Code only (~1 GB instead of 2.5). The other CLIs later, as tasks of their own. Changed 2026-10-15 (the human): one image with all four CLIs, from T7 on (615 MB as built in LAD-73, not the prototype's 2.5 GB); mixed sessions (a worker on another CLI than the supervisor) work in one container |
 | Project path | The host's path |
 | Codex | Not in the first version (follows from an image with Claude only). Changed 2026-10-15: in the image from T7, as a CLI installed; its ChatGPT login reaching the agents is T15, later (the human: no Codex debugging now) |
 | Epic | None; each task goes straight into `main` |
@@ -94,7 +94,9 @@ is done.
 **T1. The "LADO in a container" sign, and no `lado update` there** (S; LAD-59, done:
 pull request #40)
 The variable `LADO_CONTAINER` (the image sets it). `lado update` and the UI's update
-button refuse and name the way: `docker compose pull && docker compose up -d`.
+button refuse and name the way: `docker compose pull && docker compose up -d` (since
+T7 LADO names only the new version's image and no command; the documentation gives the
+commands, T8).
 `lado doctor` and the System panel show "in a container". The same task puts this plan
 into the repository beside the research.
 Check: unit tests; in the prototype `lado update` no longer kills the container.
@@ -191,7 +193,7 @@ same, and the compose file's header has the steps back. Left for T7: `lado:previ
 one name per machine, so a second compose project overwrites it (G2); a stale hint in a
 fixture of `web/src/SystemPanel.test.tsx` (H2).
 
-**T6b. Stopping and resuming the container's sessions** (M)
+**T6b. Stopping and resuming the container's sessions** (M; LAD-74)
 On `docker stop` LADO records the sessions that ran and stops them properly (the agents'
 config folders removed, `lado doctor` without warnings); when the container starts it
 resumes them. Today a restart shows them as "tmux session is gone", resumed by hand from
@@ -202,8 +204,8 @@ runs again".
 
 ### Stage 2. A programmer can use it (from the documentation)
 
-**T7. Publishing the image to GHCR in the release workflow** (S/M; LAD-73; done before
-T6b)
+**T7. Publishing the image to GHCR in the release workflow** (S/M; LAD-73, done: pull
+request #61; done before T6b)
 `ghcr.io/ladohq/lado:<version>` and `latest`, two architectures, through `GITHUB_TOKEN`,
 no new secrets. The tags leave room for images with other agents. Built from the wheel
 the release puts on PyPI and run through the container tests before it is pushed; a
@@ -223,6 +225,24 @@ branch.
 Check: `docker pull` on a Mac and on Linux after a release candidate; an update to another
 version and back by the compose header keeps the sessions; two containers on one host
 update apart.
+Result: the Release workflow builds the image from the release's wheel, runs the container
+tests on amd64 and arm64, pushes by digest, then tags `:<version>` (and `latest` for a
+final) before the GitHub release. All four CLIs stayed in T7: the image grew from 314 to
+615 MB, a cold build from 48 to 99 s, CI's container job from about 2 to 2.5-3.5 minutes.
+`lado:previous` is gone: compose runs `ghcr.io/ladohq/lado:${LADO_VERSION}` from `.env`,
+an update is a new version and `up -d`, the way back the version before; a test checks
+that a second LADO is left alone. In a container LADO names only the new version's image,
+no command (the human's decision: the documentation gives them, T8). The human's check
+by hand passed. Open until the first release candidate (0.39.0rc1), the workflow's first
+run:
+- the run green, the image built on both architectures (if buildx's two outputs fail on
+  the runner, `--provenance=false` is the RC's fix, the review's E1);
+- an org admin makes the package `ghcr.io/ladohq/lado` public once (GitHub makes it
+  private, `GITHUB_TOKEN` cannot change that);
+- `docker pull ghcr.io/ladohq/lado:<rc>` with no login on a Mac and on Linux, the UI
+  answers, `lado doctor` sees the four CLIs.
+Learned: the check by hand tripped again over `LADO_PORT` and `LADO_PROJECTS` left in the
+shell from an earlier test, which beat `.env` (as in LAD-69): T8 and T14.
 
 **T8. Section "Install with Docker" in docs/install.md and a ready compose file** (S)
 Decided here, with T7: which way the documentation leads with, `docker run` or compose
@@ -233,6 +253,10 @@ From LAD-69's check by hand: one command to start, with no "go to this folder an
 variable in this terminal" (an `.env` file beside the compose file, or the launcher); the
 UI in a container warns when a session's folder is outside `LADO_REPOS` (the host does
 not see it); F12 and F13 described.
+From LAD-73: the update, the way back and a second LADO by version tags (`LADO_VERSION` in
+`.env`); how users get `compose.yaml` (a release asset or a link); that variables of the
+shell beat `.env`; that an older Compose v2 (GitHub's runners) asks for `LADO_VERSION`
+also beside `LADO_IMAGE`.
 Check: the human follows the instructions from scratch on a clean volume.
 
 **T9. Project toolchains through mise** (S)
@@ -274,6 +298,8 @@ Check: unit and e2e; by hand, changing the model without editing files.
 
 **T14. A launcher** (M)
 A script or shortcut per OS: checks Docker, starts compose, waits, opens the UI.
+No setting typed into a terminal: twice (LAD-69, LAD-73) the human's check by hand ran
+with variables left in the shell from an earlier test.
 Check: on a Mac a double click opens the UI.
 
 ### Stage 4. Later

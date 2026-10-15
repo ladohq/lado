@@ -166,6 +166,7 @@ def compose(request, tmp_path) -> Compose:
     project = Compose(new_name(), port, override, env)
     # Compose names the service's one container <project>-lado-1.
     keep(request.node, Container(f"{project.project}-lado-1", port))
+
     def down():
         project.run("down", "-v", check=False)
         # A home volume a test made before `up` (old_home): compose removes only its own.

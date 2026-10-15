@@ -28,8 +28,8 @@ Tests first in each section; each task is one commit.
 
 ## 4. Container tests
 
-- [ ] 4.1 Helper: a home volume seeded with a `lado.db` made on the host (D6).
-- [ ] 4.2 `tests/container/test_migration.py` (layer 7): the migration on start (health,
+- [x] 4.1 Helper: a home volume seeded with a `lado.db` made on the host (D6).
+- [x] 4.2 `tests/container/test_migration.py` (layer 7): the migration on start (health,
   schema, backup, `docker logs` line, `lado ls` lists the session); a migration that
   fails (the message in `docker logs`, no traceback, schema kept); the compose header's
   steps put the backup back. `make docker && make test-container`; CI's `container
@@ -37,5 +37,5 @@ Tests first in each section; each task is one commit.
 
 ## 5. Documents
 
-- [ ] 5.1 AGENTS.md (Layout: `state.py`'s migration and backup, `docker/`; Commands: the
+- [x] 5.1 AGENTS.md (Layout: `state.py`'s migration and backup, `docker/`; Commands: the
   container tests' list), CHANGELOG.md under 0.39.0. `make lint`.

@@ -2,6 +2,14 @@
 
 ## 0.39.0 (unreleased)
 
+- Before LADO upgrades `lado.db` to a newer schema, by any command and wherever it runs (a
+  new Docker image on an old home volume, a LADO upgraded by hand), it copies it to
+  `LADO_HOME/backups/lado.db.schema-<N>` and says so on stderr (in a container: `docker
+  logs`). When the copy cannot be written, nothing is upgraded. A migration that fails is
+  one message, without a traceback: `lado.db` is unchanged, where its backup is, and how
+  to go back (in a container `LADO_IMAGE=<that image> docker compose up -d`).
+  `docker/compose.yaml`'s header gives the steps back to the image before after a
+  migration that succeeded.
 - A session can have a title, shown in the UI over its name (the list, the head, the
   browser tab, Needs you and notifications), the name small beside it: set it with the
   pencil in the session's head, Rename… in the session list's ⋯, or `lado title <session>

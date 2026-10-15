@@ -54,7 +54,9 @@ container). It SHALL NOT resume a session stopped without the mark. Each resume 
 `lado start`'s resume of that session with its stored repository and settings, its
 `session_resume` event's detail starting with `at the container's start`, and SHALL clear
 `resume_at_start` in the transaction that takes the session. `docker logs` SHALL get
-`lado: resumed session "<name>" at the container's start` for each one resumed, and
+`lado: resumed session "<name>" at the container's start` for each one resumed, followed
+by `lado: session "<name>": <line>` for each problem and warning `lado start` prints for
+that resume (an open run that cannot go on, a kit's or the provider's warning), and
 `lado: could not resume session "<name>" at the container's start: <error>; it stays
 stopped` for one that fails, which stays stopped without the mark and is not tried at the
 next start; the others SHALL go on. Workers SHALL NOT be restarted by LADO: the

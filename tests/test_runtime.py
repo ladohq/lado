@@ -2531,10 +2531,17 @@ def test_the_containers_stop_without_lado_db_makes_nothing(lado_home):
     assert not lado_home.exists()
 
 
+def _started(name: str) -> runtime.Started:
+    """What a resume with nothing to say returns."""
+    return runtime.Started(state.get_session(name), resumed=True)
+
+
 def _resumed(monkeypatch) -> list[tuple]:
     """start_session replaced: the calls it got, as (repo, name, permission mode, kwargs)."""
     calls = []
-    monkeypatch.setattr(runtime, "start_session", lambda *a, **k: calls.append((*a, k)) or None)
+    monkeypatch.setattr(
+        runtime, "start_session", lambda *a, **k: calls.append((*a, k)) or _started(a[1])
+    )
     return calls
 
 
@@ -2557,6 +2564,28 @@ def test_the_containers_start_resumes_the_marked_and_the_gone(repo, fake_tmux, m
     ]
 
 
+def test_a_resumes_problems_and_warnings_are_reported(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "a", None, provider="claude")
+    state.stop_for_container()
+
+    def start(path, name, mode, **kwargs):
+        return runtime.Started(
+            state.get_session(name),
+            resumed=True,
+            problems=["run x: role reviewer is not in the session's kits"],
+            warnings=["kit k: its supervisor does not lead"],
+        )
+
+    monkeypatch.setattr(runtime, "start_session", start)
+    lines = []
+    runtime.resume_at_start(lines.append)
+    assert lines == [
+        'lado: resumed session "a" at the container\'s start',
+        'lado: session "a": run x: role reviewer is not in the session\'s kits',
+        'lado: session "a": kit k: its supervisor does not lead',
+    ]
+
+
 def test_a_resume_that_fails_gives_up_and_goes_on(repo, fake_tmux, monkeypatch):
     for name in ("a", "b"):
         runtime.start_session(str(repo), name, None, provider="claude")
@@ -2567,6 +2596,7 @@ def test_a_resume_that_fails_gives_up_and_goes_on(repo, fake_tmux, monkeypatch):
         if name == "a":
             raise runtime.LadoError(f"{path} is not there\nmore")
         resumed.append(name)
+        return _started(name)
 
     monkeypatch.setattr(runtime, "start_session", start)
     lines = []
@@ -2654,6 +2684,7 @@ def test_the_containers_start_resumes_nothing_more_once_it_stops(repo, fake_tmux
     def start(path, name, mode, **kwargs):
         calls.append(name)
         stopping.set()
+        return _started(name)
 
     monkeypatch.setattr(runtime, "start_session", start)
     runtime.resume_at_start(lambda line: None, stopping)

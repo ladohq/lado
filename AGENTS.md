@@ -1127,7 +1127,8 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `serve`, once the socket listens, starts `run.resume_sessions`, a thread that runs
     `runtime.resume_at_start`: the marked sessions and those not stopped whose tmux is
     gone, one at a time, by `start_session(resume=True, reason=runtime.AT_START)`, a line
-    each on stderr, a failure given up (`state.give_up_resume`), nothing more once
+    each on stderr (and one per `Started.problems` and `warnings`, as `lado start` prints
+    them), a failure given up (`state.give_up_resume`), nothing more once
     `stopping` is set; each session is read again just before its resume (`_to_resume`),
     so one the human resumed from the UI meanwhile is left running. Outside a container
     neither runs. `static/`:

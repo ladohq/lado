@@ -2405,7 +2405,7 @@ def resume_at_start(
         if not _to_resume(sess):
             continue
         try:
-            start_session(sess.repo, sess.name, None, resume=True, reason=AT_START)
+            started = start_session(sess.repo, sess.name, None, resume=True, reason=AT_START)
         except Exception as error:
             now = state.get_session(sess.name)
             if now and not now.stopped_at and not _to_resume(now):
@@ -2423,6 +2423,9 @@ def resume_at_start(
             )
             continue
         report(f'lado: resumed session "{sess.name}" {AT_START}')
+        # What `lado start` prints for a resume: open runs that cannot go on, and warnings.
+        for line in [*started.problems, *started.warnings]:
+            report(f'lado: session "{sess.name}": {line}')
 
 
 def _to_resume(sess: state.Session | None) -> bool:

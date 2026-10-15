@@ -1270,11 +1270,13 @@ def _back_up(live: Path, version: int) -> Path:
         written.unlink(missing_ok=True)
         copy_db(live, written)
         written.replace(backup)
-        for other in backup.parent.glob("lado.db.schema-*"):
-            if other != backup:
-                other.unlink()
     except (OSError, sqlite3.Error) as exc:
         raise BackupFailed(version, SCHEMA_VERSION, backup, str(exc)) from exc
+    # The backup is written: an earlier one that stays is no reason not to migrate.
+    for other in backup.parent.glob("lado.db.schema-*"):
+        if other != backup:
+            with suppress(OSError):
+                other.unlink()
     return backup
 
 

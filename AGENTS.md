@@ -840,7 +840,8 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `runtime._migrate`. Before its first step, inside its write lock, `migrate` copies
     lado.db by SQLite's backup API (`state.copy_db`, also `self_update.restore`'s; a
     connection of its own reads it) to `backups/lado.db.schema-<N>` (N the schema before;
-    `.tmp`, then a rename), then removes every other `lado.db.schema-*` and leaves `lado
+    `.tmp`, then a rename), then removes every other `lado.db.schema-*` (one it cannot
+    stays, no failure) and leaves `lado
     update`'s `lado.db.<version>`; it returns a `Migrated` (before, after, backup), which
     `_migrate` says on stderr (`lado: upgraded lado.db from schema N to M; its backup is
     <path>`, a container's `docker logs`). A backup it cannot write is `BackupFailed`,

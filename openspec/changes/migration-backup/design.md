@@ -19,7 +19,8 @@ copy: `lado.db` runs in WAL mode.
 
 **D2. Name and kept files.** `backups/lado.db.schema-<N>`, N the version before. Written
 to `<name>.tmp` and renamed, as `_back_up` does. After the rename every other
-`lado.db.schema-*` is removed; `lado.db.<version>` files of `lado update` are left alone
+`lado.db.schema-*` is removed (one that cannot be removed stays: the backup is written, so
+it does not stop the migration); `lado.db.<version>` files of `lado update` are left alone
 (its rollback and `scripts/rc_check.py` read them). `self_update._back_up` keeps deleting
 every other file, as today.
 

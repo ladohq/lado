@@ -582,6 +582,18 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
+def test_an_earlier_backup_that_cannot_be_removed_does_not_stop_the_migration(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    agent_helpers.previous_schema()
+    old = state.SCHEMA_VERSION - 1
+    stuck = lado_home / "backups" / f"lado.db.schema-{old - 1}"
+    stuck.mkdir(parents=True)  # unlink fails on a folder
+    migrated = state.migrate()
+    assert migrated == state.Migrated(old, state.SCHEMA_VERSION, migrated.backup)
+    assert _schema(migrated.backup) == old
+    assert stuck.is_dir()
+
+
 def test_nothing_to_migrate_writes_no_backup(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
     assert state.migrate() is None

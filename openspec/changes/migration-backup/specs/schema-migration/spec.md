@@ -5,7 +5,7 @@
 Before LADO upgrades `lado.db` to a newer schema, by any command that migrates it, it SHALL
 copy `lado.db` by SQLite's backup API to `LADO_HOME/backups/lado.db.schema-<N>`, N the
 schema version before the migration, and then remove every other `lado.db.schema-*` file
-of that folder, leaving files of other names (`lado update`'s `lado.db.<version>`) as they
+of that folder (one it cannot remove stays, and the migration goes on), leaving files of other names (`lado update`'s `lado.db.<version>`) as they
 are. Once the migration is done the command SHALL print on stderr `lado: upgraded lado.db
 from schema <N> to <M>; its backup is <path>`. A `lado.db` at the current schema, or no
 `lado.db`, SHALL make no backup and no line.

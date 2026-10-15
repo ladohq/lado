@@ -38,7 +38,8 @@
 #
 # The container's sessions go with it: `docker compose down` (or stop, or Docker's own end)
 # stops its sessions, as `lado stop` would, and `docker compose up -d` (or start) resumes
-# them, after an upgrade too; so does a start after the container was killed. Sessions
+# them, after an upgrade too; so does a start after the container was killed. `lado server
+# stop` inside the container ends it the same way. Sessions
 # stopped by hand stay stopped. Each resumed session's supervisor takes one model turn at
 # the start, and starts the workers of its open flow runs.
 name: lado

@@ -130,6 +130,9 @@ def test_stopping_one_lado_leaves_the_others_sessions(folder):
     other = containers[1]
     pid = agent_pid(other, "app", "supervisor")
     first.run("down")
+    assert (
+        other.exec("tmux", "-L", "lado", "has-session", "-t", "=app", check=False).returncode == 0
+    )
     assert agent_pid(other, "app", "supervisor") == pid  # the same process
     assert other.agent_status("app", "supervisor") == "idle"
     stopped = other.python(

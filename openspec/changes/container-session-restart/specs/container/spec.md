@@ -91,6 +91,13 @@ resume no further session.
   `resume_at_start` 0, the other sessions are resumed, and at the container's next start
   it is not named
 
+#### Scenario: The human resumes a session meanwhile
+- **WHEN** while the start resumes sessions one by one, the human resumes from the UI a
+  session it has not reached yet
+- **THEN** that session keeps running, is not stopped or resumed again by the start, and
+  `docker logs` says `lado: session "<name>" runs already at the container's start` when
+  its resume was under way
+
 #### Scenario: An open run's worker
 - **WHEN** a session with an open run whose step is a worker's is resumed at the start
 - **THEN** only its supervisor runs, and its first message from `lado` is `session

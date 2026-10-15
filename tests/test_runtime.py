@@ -2583,6 +2583,46 @@ def test_a_resume_that_fails_unexpectedly_is_recorded(repo, fake_tmux, monkeypat
     assert recorded == ["server:resume"]
 
 
+def test_a_session_the_human_resumed_meanwhile_is_left_running(repo, fake_tmux, monkeypatch):
+    for name in ("a", "b"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    state.stop_for_container()
+    fake_tmux += [("kill_session", "a"), ("kill_session", "b")]
+    real = runtime.start_session
+    calls = []
+
+    def start(path, name, mode, **kwargs):
+        calls.append(name)
+        if name == "a":  # the human resumes b from the UI while a starts
+            real(path, "b", None)
+        return real(path, name, mode, **kwargs)
+
+    monkeypatch.setattr(runtime, "start_session", start)
+    lines = []
+    runtime.resume_at_start(lines.append)
+    assert calls == ["a"]  # b runs already: not tried
+    assert lines == ['lado: resumed session "a" at the container\'s start']
+    assert not state.get_session("b").stopped_at
+
+
+def test_a_failed_resume_of_a_session_that_runs_does_not_stop_it(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "a", None, provider="claude")
+    state.stop_for_container()
+    fake_tmux.append(("kill_session", "a"))
+    real = runtime.start_session
+
+    def start(path, name, mode, **kwargs):
+        real(path, name, None)  # the human's resume wins the race
+        return real(path, name, mode, **kwargs)  # already running
+
+    monkeypatch.setattr(runtime, "start_session", start)
+    lines = []
+    runtime.resume_at_start(lines.append)
+    sess = state.get_session("a")
+    assert not sess.stopped_at and not sess.resume_at_start
+    assert lines == ['lado: session "a" runs already at the container\'s start']
+
+
 def test_the_containers_start_resumes_nothing_more_once_it_stops(repo, fake_tmux, monkeypatch):
     for name in ("a", "b"):
         runtime.start_session(str(repo), name, None, provider="claude")

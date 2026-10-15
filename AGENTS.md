@@ -1128,7 +1128,9 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `runtime.resume_at_start`: the marked sessions and those not stopped whose tmux is
     gone, one at a time, by `start_session(resume=True, reason=runtime.AT_START)`, a line
     each on stderr, a failure given up (`state.give_up_resume`), nothing more once
-    `stopping` is set. Outside a container neither runs. `static/`:
+    `stopping` is set; each session is read again just before its resume (`_to_resume`),
+    so one the human resumed from the UI meanwhile is left running. Outside a container
+    neither runs. `static/`:
     the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
     `runtime.session_status`, how long it ran from `runtime.session_time`: spans from its
     `created_at` or a `session_resume` to the next `session_gone` or `session_stop` (an end

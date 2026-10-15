@@ -2390,16 +2390,24 @@ def resume_at_start(
     """The container's start: resume, one at a time, each session its stop marked and each
     one not stopped whose tmux session is gone (the container ended without its stop), in
     creation order, and `report` a line for each. One that fails gives up its mark (and is
-    stopped), so the next start does not try it again; the others go on. Nothing more once
-    `stopping` is set."""
-    for sess in state.resumable():
+    stopped while its tmux is gone), so the next start does not try it again; the others go
+    on. Nothing more once `stopping` is set. Each session is read again just before its
+    resume, as the human may resume one from the UI meanwhile: one that runs then is left
+    as it is."""
+    for listed in state.resumable():
         if stopping is not None and stopping.is_set():
             return
-        if not sess.stopped_at and session_status(sess) != SessionStatus.TMUX_GONE:
+        sess = state.get_session(listed.name)
+        if not _to_resume(sess):
             continue
         try:
             start_session(sess.repo, sess.name, None, resume=True, reason=AT_START)
         except Exception as error:
+            now = state.get_session(sess.name)
+            if now and not now.stopped_at and not _to_resume(now):
+                # The human's resume won: it runs, and its resume cleared the mark.
+                report(f'lado: session "{sess.name}" runs already {AT_START}')
+                continue
             state.give_up_resume(sess.name)
             if isinstance(error, LadoError):
                 why = str(error).splitlines()[0] if str(error) else type(error).__name__
@@ -2411,6 +2419,16 @@ def resume_at_start(
             )
             continue
         report(f'lado: resumed session "{sess.name}" {AT_START}')
+
+
+def _to_resume(sess: state.Session | None) -> bool:
+    """Whether the container's start resumes the session as it is now: stopped with the
+    mark, or not stopped with its tmux session gone."""
+    if sess is None:
+        return False
+    if sess.stopped_at:
+        return sess.resume_at_start
+    return session_status(sess) == SessionStatus.TMUX_GONE
 
 
 def _kill_for_migration(sessions: list[str]) -> dict[str, bool]:

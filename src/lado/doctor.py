@@ -7,6 +7,7 @@ import shlex
 import shutil
 import stat
 import subprocess
+import tempfile
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -546,6 +547,22 @@ def check_repos_folder() -> Check | None:
         return Check(name, WARN, f"cannot look at LADO_REPOS {folder}: {error.strerror or error}")
     if not stat.S_ISDIR(info.st_mode):
         return Check(name, WARN, f"LADO_REPOS is not a folder: {folder}")
+    # A file made and removed, not os.access: a bind mount of Docker Desktop shows its root
+    # as 0:0 to any user while it lets that user write.
+    try:
+        handle, probe = tempfile.mkstemp(prefix=".lado-doctor-", dir=folder)
+    except OSError as error:
+        return Check(
+            name,
+            WARN,
+            f"LADO may not write in LADO_REPOS {folder}: {error.strerror or error}",
+            "give your user write access to it; in LADO's image on Linux, the folder's "
+            "owner gives the container's user its uid",
+        )
+    try:
+        os.close(handle)
+    finally:
+        os.unlink(probe)
     return Check(name, OK, f"{folder} (LADO_REPOS)")
 
 

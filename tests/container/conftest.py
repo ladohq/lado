@@ -52,18 +52,39 @@ def keep(item, started: Container) -> None:
 
 
 @pytest.fixture
-def start(request):
-    """Start the image as one `docker run` does: `start(port, *args)`, the server on the
-    host's `port` by `args`; removed after the test."""
+def start(request, projects_volume):
+    """Start the image as one `docker run` does: `start(port, *args, home=None)`, the server
+    on the host's `port` by `args`, its home volume `home` (by default one of its own, a
+    name of this run's prefix for another container of the test to take); the container
+    and the volume removed after the test. It takes `projects_volume` so that fixture's
+    teardown, which removes the volumes a container mounts, runs after this one's."""
 
-    def start(port: int, *args: str) -> Container:
+    def start(port: int, *args: str, home: str | None = None, command=()) -> Container:
         started = Container(new_name(), port)
         keep(request.node, started)
-        request.addfinalizer(lambda: remove_container(started.name))
-        run_container(started.name, *args)
+        request.addfinalizer(lambda: remove_container(started.name, home))
+        run_container(started.name, *args, home=home, command=command)
         return started
 
     return start
+
+
+@pytest.fixture
+def projects_volume(request):
+    """`projects_volume(uid, gid, mode="755")`: a named volume whose root belongs to
+    `uid:gid` with `mode`, as a Linux host's projects folder of that user looks in the
+    container; removed after the test. Its path in a container is the test's choice."""
+
+    def make(uid: int, gid: int, mode: str = "755") -> str:
+        name = f"{new_name()}-proj"
+        request.addfinalizer(lambda: docker("volume", "rm", "-f", name, check=False))
+        docker(
+            "run", "--rm", "-u", "0", "--entrypoint", "sh", "-v", f"{name}:/p", IMAGE,
+            "-c", f"chown {uid}:{gid} /p && chmod {mode} /p",
+        )  # fmt: skip
+        return name
+
+    return make
 
 
 @pytest.fixture

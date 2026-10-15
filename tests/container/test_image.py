@@ -3,17 +3,12 @@ LADO_PORT, `lado doctor` is clean and says `in a container`, Node 22 and npx are
 agents' PATH, a Claude Code agent gets to idle and knows it runs in a container, and the
 compose file publishes one port number."""
 
-import json
-import time
 import urllib.request
 
 import pytest
-from container_helpers import PYTHON, ROOT, docker, free_port, health
+from container_helpers import ROOT, agent_pid, claude_session, free_port, health
 
 pytestmark = pytest.mark.container
-
-ENDPOINT_PORT = 8399  # the fake model API, on the container's own loopback
-KEY = "container-fake-key-0123456789abcdef"  # no account's key: the endpoint takes none
 
 
 def wheel_version() -> str | None:
@@ -63,67 +58,12 @@ def test_node_and_npx_are_on_the_login_shells_path(container):
     assert npx[0].isdigit(), npx
 
 
-def agent_pid(container, session: str, window: str) -> int:
-    """The agent CLI's own process: the window's pane process, as lado.agent_env execs the
-    CLI in place and Claude Code 2.x is a native binary. Checked, never guessed: its
-    executable must be the file the `claude` command names."""
-    pane = container.exec(
-        "tmux", "-L", "lado", "display-message", "-p", "-t", f"{session}:{window}", "#{pane_pid}"
-    ).stdout.strip()
-    running = container.exec("readlink", f"/proc/{pane}/exe").stdout.strip()
-    claude = container.sh('readlink -f "$(command -v claude)"').stdout.strip()
-    assert running == claude, f"pane process {pane} runs {running}, not claude ({claude})"
-    return int(pane)
-
-
 def test_a_claude_session_gets_to_idle_and_knows_the_container(container):
-    # The fake model API inside the container, on its own loopback.
-    endpoint = str(ROOT / "tests" / "fake_endpoint.py")
-    docker("cp", endpoint, f"{container.name}:/tmp/fake_endpoint.py")
-    docker(
-        "exec", "-d", container.name, PYTHON, "-I", "/tmp/fake_endpoint.py",
-        str(ENDPOINT_PORT), "/tmp/endpoint.jsonl",
-    )  # fmt: skip
-    # Claude Code pointed at it through the login shell, as a human gives a token; its
-    # first-run screens, the bypass mode's disclaimer and the repository's trust done.
-    container.sh(
-        "cat >> ~/.profile <<'EOF'\n"
-        f"export ANTHROPIC_BASE_URL=http://127.0.0.1:{ENDPOINT_PORT}\n"
-        f"export ANTHROPIC_AUTH_TOKEN={KEY}\n"
-        "export CLAUDE_CODE_MAX_RETRIES=0\n"
-        "export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1\n"
-        "EOF"
-    )
-    container.write(
-        "/home/lado/.claude/.claude.json",
-        json.dumps(
-            {
-                "hasCompletedOnboarding": True,
-                "bypassPermissionsModeAccepted": True,
-                "projects": {"/home/lado/repo": {"hasTrustDialogAccepted": True}},
-            }
-        ),
-    )
     container.sh(
         "git init -q -b main ~/repo && git -C ~/repo -c user.name=lado "
         "-c user.email=lado@example.com commit -q --allow-empty -m first"
     )
-    started = container.exec(
-        "lado", "start", "/home/lado/repo", "--name", "smoke", "--provider", "claude",
-        "--permission-mode", "bypassPermissions", "--no-attach", check=False,
-    )  # fmt: skip
-    assert started.returncode == 0, started.stdout + started.stderr
-
-    status, deadline = "", time.monotonic() + 120
-    while time.monotonic() < deadline:
-        status = container.python(
-            "from lado import state; a = state.get_agent('smoke', 'supervisor'); "
-            "print(a.status if a else 'gone')"
-        )
-        if status == "idle":
-            break
-        time.sleep(0.5)
-    assert status == "idle", f"the supervisor is {status}"
+    claude_session(container, "/home/lado/repo")
 
     # The agent's own environment, as its login shell made it (profile.d), not the image's ENV.
     pid = agent_pid(container, "smoke", "supervisor")
@@ -144,6 +84,10 @@ def test_compose_serves_on_lado_port(compose):
     assert health(compose.port)["ok"] is True
     link = compose.run("exec", "-T", "lado", "lado", "ui", "--no-open")
     assert link.stdout.strip().startswith(f"http://127.0.0.1:{compose.port}/?token="), link.stdout
+    # The projects folder at the host's own path, and LADO's repositories folder.
+    projects = compose.env["LADO_PROJECTS"]
+    doctor = compose.run("exec", "-T", "lado", "lado", "doctor", check=False).stdout
+    assert f"[ok  ] Repositories folder: {projects} (LADO_REPOS)" in doctor.splitlines(), doctor
 
 
 def test_compose_refuses_without_the_projects_folder(compose):

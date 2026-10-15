@@ -109,6 +109,28 @@ def test_a_repositories_folder_lado_may_not_look_at_warns_with_the_reason(tmp_pa
     assert "Permission denied" in check.detail
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes in any folder")
+def test_a_repositories_folder_lado_may_not_write_in_warns(tmp_path, monkeypatch):
+    folder = tmp_path / "repos"
+    folder.mkdir(mode=0o555)
+    monkeypatch.setenv("LADO_REPOS", str(folder))
+    try:
+        check = doctor.check_repos_folder()
+    finally:
+        folder.chmod(0o755)
+    assert (check.name, check.level) == ("Repositories folder", doctor.WARN)
+    assert check.detail.startswith(f"LADO may not write in LADO_REPOS {folder}: ")
+    assert "Permission denied" in check.detail
+    assert check.hint.startswith("give your user write access to it")
+    assert list(folder.iterdir()) == []
+
+
+def test_the_write_check_leaves_no_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path))
+    assert doctor.check_repos_folder().level == doctor.OK
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_the_checks_hold_the_repositories_folder_only_when_it_is_set(tmp_path, monkeypatch):
     _versions(monkeypatch)
     monkeypatch.setattr(gui_session.sys, "platform", "linux")

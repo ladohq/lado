@@ -98,7 +98,6 @@ def test_profile_sets_what_env_sets_for_the_agents():
     assert set(exported) == {
         "PATH",
         "LADO_CONTAINER",
-        "LADO_REPOS",
         "CLAUDE_CONFIG_DIR",
         "DISABLE_AUTOUPDATER",
         "LANG",
@@ -111,12 +110,15 @@ def test_profile_sets_what_env_sets_for_the_agents():
         else:
             assert image[key] == value, key
     assert image["LADO_CONTAINER"] == "1"
+    # The container's own LADO_REPOS (-e) reaches the agents through the entrypoint's
+    # lado-repos.sh, so profile.sh does not set the image's default.
+    assert image["LADO_REPOS"] == "/projects"
     assert image["LADO_PORT"] == "8765"
     assert image["SHELL"] == "/bin/bash"
 
 
 def test_the_server_listens_on_all_addresses_at_lado_port_under_tini():
-    assert 'ENTRYPOINT ["/usr/bin/tini", "--"]' in lines()
+    assert 'ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/lado-entrypoint"]' in lines()
     [cmd] = [line for line in lines() if line.startswith("CMD ")]
     assert cmd == 'CMD ["sh", "-c", "exec lado server --host 0.0.0.0 --port \\"$LADO_PORT\\""]'
     assert "USER lado" in lines()
@@ -124,7 +126,75 @@ def test_the_server_listens_on_all_addresses_at_lado_port_under_tini():
 
 def test_the_build_context_is_an_allowlist():
     ignore = (DOCKER / "Dockerfile.dockerignore").read_text().split()
-    assert ignore == ["*", "!dist/lado-*.whl", "!docker/profile.sh"]
+    assert ignore == ["*", "!dist/lado-*.whl", "!docker/profile.sh", "!docker/entrypoint.sh"]
+
+
+RULE = "lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoint"
+ENTRYPOINT = (DOCKER / "entrypoint.sh").read_text()
+
+
+def test_the_entrypoint_is_copied_in_place():
+    assert "COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/lado-entrypoint" in lines()
+    assert ENTRYPOINT.startswith("#!/bin/sh\n")
+    assert "\nset -eu\n" in ENTRYPOINT
+
+
+def test_the_sudo_rule_names_the_entrypoint_alone():
+    [run] = [line for line in lines() if "/etc/sudoers.d/lado-entrypoint" in line]
+    assert f"printf '%s\\n' '{RULE}' > /etc/sudoers.d/lado-entrypoint" in run
+    assert "chmod 0440 /etc/sudoers.d/lado-entrypoint" in run
+    assert "visudo -cf /etc/sudoers.d/lado-entrypoint" in run
+    assert "touch /etc/lado/first-start" in run
+    [install] = [line for line in lines() if "apt-get install" in line]
+    assert " sudo " in install
+
+
+def test_git_trusts_every_repository():
+    assert any("git config --system --add safe.directory '*'" in line for line in lines())
+
+
+def test_the_entrypoint_removes_its_way_to_root_first():
+    """The root branch deletes the sudo rule and the marker before any step that can fail,
+    so no later process, an agent included, can become root through them."""
+    body = ENTRYPOINT.split('if [ "$(id -u)" = 0 ]; then\n', 1)[1]
+    first, second = (line.strip() for line in body.splitlines()[:2])
+    assert first == f"PATH={ROOT_PATH}"
+    assert second == 'if ! rm -f "$RULE" "$MARK"; then'
+    assert "RULE=/etc/sudoers.d/lado-entrypoint" in ENTRYPOINT
+    assert "MARK=/etc/lado/first-start" in ENTRYPOINT
+
+
+ROOT_PATH = "/usr/sbin:/usr/bin:/sbin:/bin"
+
+
+def test_the_root_phase_takes_no_command_from_the_callers_path():
+    """The sudo rule stays where the entrypoint was skipped, and SETENV lets its caller set
+    any variable: the root phase runs on a fixed PATH and gives the caller's back only
+    after the drop to lado."""
+    root = ENTRYPOINT.split('if [ "$(id -u)" = 0 ]; then\n', 1)[1].split("\nfi\n", 1)[0]
+    assert re.findall(r"^\s*(?:export\s+)?PATH\b.*$", root, re.M) == [f"    PATH={ROOT_PATH}"]
+    [drop] = [line.strip() for line in root.splitlines() if "setpriv" in line]
+    assert drop.startswith("exec /usr/bin/setpriv --reuid=lado --regid=lado --init-groups --")
+    assert '/usr/bin/env PATH="$saved" "$SELF" "$@"' in drop
+
+
+def test_the_entrypoint_writes_lado_repos_for_the_agents():
+    assert "/etc/profile.d/lado-repos.sh" in ENTRYPOINT
+    assert "export LADO_REPOS=" in ENTRYPOINT
+    # The image's own, for a container that may not become root.
+    assert any(
+        """printf "export LADO_REPOS='/projects'\\n" > /etc/profile.d/lado-repos.sh""" in line
+        for line in lines()
+    )
+
+
+def test_the_entrypoint_goes_on_without_root():
+    """A container that may not become root (no-new-privileges, `--cap-drop`) does not try
+    sudo: the first start checks first, so the server starts as uid 1000."""
+    phase1 = ENTRYPOINT.split('if [ -e "$MARK" ]', 1)[1].split("\nfi\n", 1)[0]
+    assert phase1.index("if ! may_become_root; then") < phase1.index("exec sudo -E -n")
+    assert phase1.index("elif read_only_root; then") < phase1.index("exec sudo -E -n")
+    assert "NoNewPrivs:\t1" in ENTRYPOINT
 
 
 @pytest.fixture(scope="module")
@@ -143,9 +213,16 @@ def test_compose_names_no_container_and_needs_the_projects_folder(compose):
     assert "container_name" not in lado
     assert "build" not in lado
     assert lado["image"] == "${LADO_IMAGE:-lado:local}"
-    assert "home:/home/lado" in lado["volumes"]
-    [projects] = [v for v in lado["volumes"] if v.endswith(":/projects")]
-    assert projects.startswith("${LADO_PROJECTS:?")
+    assert lado["volumes"][0] == "home:/home/lado"
+
+
+def test_compose_mounts_the_projects_at_the_hosts_own_path(compose):
+    """The same path inside as on the host, named by LADO_REPOS: git's worktree links and
+    LADO's stored paths are then right on both sides."""
+    lado = compose["services"]["lado"]
+    projects = "${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}"
+    assert lado["volumes"] == ["home:/home/lado", f"{projects}:{projects}"]
+    assert lado["environment"]["LADO_REPOS"] == projects
 
 
 def test_the_compose_headers_commands_all_have_the_projects_folder():

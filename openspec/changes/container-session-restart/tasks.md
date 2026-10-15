@@ -30,9 +30,9 @@ Tests first in each section; each task is one commit. The plan with the code is
 
 ## 4. Integration (layer 2)
 
-- [ ] 4.1 `tests/integration/test_container_sessions.py`: a real `lado server` with
+- [x] 4.1 `tests/integration/test_container_sessions.py`: a real `lado server` with
   `LADO_CONTAINER=1` and the fake agent: SIGTERM stops with the mark, no messages, folders
-  gone; a new server resumes (supervisor idle, `session resumed: 1 open runs`); the crash
+  gone; a new server resumes (supervisor idle, `session resumed: 1 open run`); the crash
   path; a hand-stopped session stays; a failure is not retried; without `LADO_CONTAINER`
   nothing changes. `uv run pytest -m integration -n auto
   tests/integration/test_container_sessions.py`.

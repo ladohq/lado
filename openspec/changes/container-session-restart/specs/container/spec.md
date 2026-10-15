@@ -94,7 +94,7 @@ resume no further session.
 #### Scenario: An open run's worker
 - **WHEN** a session with an open run whose step is a worker's is resumed at the start
 - **THEN** only its supervisor runs, and its first message from `lado` is `session
-  resumed: 1 open runs` naming the worker to start with `spawn_worker`
+  resumed: 1 open run` naming the worker to start with `spawn_worker`
 
 ### Requirement: Outside a container the server's stop and start leave the sessions
 

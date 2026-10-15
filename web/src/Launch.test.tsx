@@ -1691,7 +1691,8 @@ test("a window whose page goes away during a clone cancels it at once with a bea
       window.dispatchEvent(new Event("pagehide"));
       atRunning = beacon.mock.calls.length;
     }
-    if (atEnd === null && screen.queryByRole("region", { name: "Session marketplace" })) {
+    // The clone's end shows first as Cancel clone gone, before the session is started.
+    if (atRunning !== null && atEnd === null && !screen.queryByRole("button", { name: "Cancel clone" })) {
       window.dispatchEvent(new Event("pagehide"));
       atEnd = beacon.mock.calls.length;
     }

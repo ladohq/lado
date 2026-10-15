@@ -67,8 +67,8 @@ The `pagehide` listener's effect in `web/src/Launch.tsx`, the vitest case in
 - AC-1: In the New session window, a `pagehide` dispatched at the DOM change that first
   shows the clone running (Cancel clone) sends exactly one beacon to
   `/api/clones/<id>/cancel`.
-- AC-2: A `pagehide` dispatched at the DOM change that shows the clone's end (the new
-  session's page) sends no further beacon; a `pagehide` before any clone sends none.
+- AC-2: A `pagehide` dispatched at the DOM change that shows the clone's end (Cancel
+  clone gone, before the session is started) sends no further beacon; a `pagehide` before any clone sends none.
 - AC-3: The vitest case fails on the code before the fix (shown in the build report) and
   passes after it; run 200 times locally, eight runs at a time, it passes every time.
 - AC-4: `make web` passes, and the pull request's CI (`ci-ok`) is green.

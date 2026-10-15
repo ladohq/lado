@@ -3,9 +3,10 @@
 - [x] 1.1 `web/src/Launch.test.tsx`, the case "a window whose page goes away during a
   clone cancels it at once with a beacon": besides its present checks, a
   `MutationObserver` on `document.body` dispatches `pagehide` once at the first DOM change
-  that shows the button Cancel clone, and once at the first change that shows the session
-  region "Session marketplace"; the case then expects the beacon called with
-  `/api/clones/j1/cancel` once from the first and no new call from the second (the
+  that shows the button Cancel clone, and once at the first change after it that shows the
+  clone's end (Cancel clone gone, before the session is started); the case then expects
+  the beacon called with `/api/clones/j1/cancel` once from the first and no new call from
+  the second (the
   present `pagehide` after `findByRole` and the final `toHaveBeenCalledTimes` adjusted to
   the count). No `waitFor` around a beacon check. Check: on the code before 1.2 the case
   fails (the beacon not called at the Cancel clone change); its output goes to the build

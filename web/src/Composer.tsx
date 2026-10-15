@@ -18,26 +18,11 @@ import {
 import { ApiError, getLimits, uploadFile, writeMessage, type Limits } from "./api";
 import { kindOf, size } from "./artifacts";
 import { KindIcon } from "./ArtifactView";
+import { MOST_LINES, useGrow } from "./fieldHeight";
 import { ClipIcon, UnseenIcon } from "./icons";
 import { withQuote } from "./quote";
 import { registerComposer, takePending } from "./quotes";
 import { Tooltip } from "./Tooltip";
-
-// The lines the composer's field grows to before it scrolls.
-const COMPOSER_LINES = 8;
-
-// The field as tall as its text, from 1 line to COMPOSER_LINES, then it scrolls.
-function grow(field: HTMLTextAreaElement | null) {
-  if (!field) return;
-  const style = getComputedStyle(field);
-  const line = parseFloat(style.lineHeight) || 20;
-  const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
-  const most = line * COMPOSER_LINES + padding;
-  field.style.height = "auto";
-  const height = field.scrollHeight;
-  field.style.height = `${Math.min(height, most)}px`;
-  field.style.overflowY = height > most ? "auto" : "hidden";
-}
 
 // A file the human attached, until the message is sent: its upload's state, and once
 // uploaded its artifact's full name.
@@ -89,7 +74,7 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null);
   const field = inputRef ?? own;
   const thumbs = useRef(new Set<string>());
-  useLayoutEffect(() => grow(field.current), [text, field]);
+  useGrow(field, text, 1, MOST_LINES);
 
   // A quote (the selection bar's Quote in reply, quotes.ts) is appended to the text; the
   // field takes the focus with the cursor at the end once it shows. One kept for the

@@ -13,11 +13,11 @@ Tests first in each section; each task is one commit. The plan with the code is
 
 ## 2. runtime: stop for the container, resume at start
 
-- [ ] 2.1 Unit tests, `tests/test_runtime.py`: kills after the mark, viewers and config
+- [x] 2.1 Unit tests, `tests/test_runtime.py`: kills after the mark, viewers and config
   folders, a failing kill does not stop the rest, no `lado.db` makes nothing; which
   sessions resume, the lines, a failure gives up and goes on, `stopping`; the resume's
   event detail with `reason`. Plan, Task 2.
-- [ ] 2.2 `runtime.stop_for_container`, `runtime.resume_at_start`, `start_session(reason=)`
+- [x] 2.2 `runtime.stop_for_container`, `runtime.resume_at_start`, `start_session(reason=)`
   (D3-D7, D10). `uv run pytest tests/test_runtime.py -n auto`.
 
 ## 3. The UI server, only in a container

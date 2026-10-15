@@ -26,6 +26,7 @@ from lado import (
     runs,
     runtime,
     state,
+    telemetry,
     tmux,
 )
 from lado.providers import base
@@ -2455,6 +2456,157 @@ def test_stop_all_removes_the_config_folders_of_each_session(repo, fake_tmux, la
     runtime.start_session(str(repo), "other", None, provider="claude")
     runtime.stop_all(lambda name, stopped: None)
     assert _config_folders(lado_home) == []
+
+
+def test_the_containers_stop_marks_first_then_kills_each_session(
+    repo, fake_tmux, lado_home, monkeypatch
+):
+    _session_with_worker(repo)
+    runtime.start_session(str(repo), "other", None, provider="claude")
+    runtime.start_session(str(repo), "mine", None, provider="claude")
+    runtime.stop_session("mine")  # the human's
+    record = tmux.kill_session
+    stopped_at_kill = {}
+
+    def kill(session):
+        stopped_at_kill[session] = state.get_session(session).stopped_at
+        record(session)
+
+    monkeypatch.setattr(tmux, "kill_session", kill)
+    assert runtime.stop_for_container() == ["s", "other"]
+    assert all(stopped_at_kill[s] for s in ("s", "other"))  # marked before the kill
+    assert ("close_viewers", "s") in fake_tmux and ("close_viewers", "other") in fake_tmux
+    assert _config_folders(lado_home) == []
+    assert state.get_session("s").resume_at_start
+    assert not state.get_session("mine").resume_at_start
+    agents = [m for m in state.list_messages("s") if m.sender == state.LADO]
+    assert agents == []  # nothing told about the agents' end
+
+
+def test_a_kill_that_fails_does_not_keep_the_containers_stop_from_the_rest(
+    repo, fake_tmux, lado_home, monkeypatch, capsys
+):
+    for name in ("a", "b"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    record = tmux.kill_session
+
+    def kill(session):
+        if session == "a":
+            raise tmux.TmuxError("server exited unexpectedly")
+        record(session)
+
+    monkeypatch.setattr(tmux, "kill_session", kill)
+    assert runtime.stop_for_container() == ["a", "b"]
+    assert ("kill_session", "b") in fake_tmux
+    assert ("close_viewers", "b") in fake_tmux
+    assert capsys.readouterr().err == (
+        'lado: could not kill the tmux session of "a": server exited unexpectedly\n'
+    )
+    assert state.get_session("a").stopped_at and state.get_session("a").resume_at_start
+
+
+def test_the_containers_stop_without_lado_db_makes_nothing(lado_home):
+    assert runtime.stop_for_container() == []
+    assert not lado_home.exists()
+
+
+def _resumed(monkeypatch) -> list[tuple]:
+    """start_session replaced: the calls it got, as (repo, name, permission mode, kwargs)."""
+    calls = []
+    monkeypatch.setattr(runtime, "start_session", lambda *a, **k: calls.append((*a, k)) or None)
+    return calls
+
+
+def test_the_containers_start_resumes_the_marked_and_the_gone(repo, fake_tmux, monkeypatch):
+    for name in ("marked", "gone", "running", "mine"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    runtime.stop_session("mine")  # the human's: stays stopped
+    state.stop_for_container()  # marked, gone and running, as the stop would
+    state.resume_session(state.get_session("gone"), "")  # not stopped, its tmux gone
+    state.resume_session(state.get_session("running"), "")  # its tmux is there
+    fake_tmux.append(("kill_session", "gone"))
+    calls = _resumed(monkeypatch)
+    lines = []
+    runtime.resume_at_start(lines.append)
+    reason = {"resume": True, "reason": "at the container's start"}
+    assert calls == [(str(repo), "marked", None, reason), (str(repo), "gone", None, reason)]
+    assert lines == [
+        'lado: resumed session "marked" at the container\'s start',
+        'lado: resumed session "gone" at the container\'s start',
+    ]
+
+
+def test_a_resume_that_fails_gives_up_and_goes_on(repo, fake_tmux, monkeypatch):
+    for name in ("a", "b"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    state.stop_for_container()
+    resumed = []
+
+    def start(path, name, mode, **kwargs):
+        if name == "a":
+            raise runtime.LadoError(f"{path} is not there\nmore")
+        resumed.append(name)
+
+    monkeypatch.setattr(runtime, "start_session", start)
+    lines = []
+    runtime.resume_at_start(lines.append)
+    assert resumed == ["b"]
+    assert lines == [
+        f'lado: could not resume session "a" at the container\'s start: {repo} is not there; '
+        "it stays stopped",
+        'lado: resumed session "b" at the container\'s start',
+    ]
+    assert state.get_session("a").stopped_at and not state.get_session("a").resume_at_start
+    lines.clear()
+    resumed.clear()
+    runtime.resume_at_start(lines.append)  # the next start: b is still marked (start_session
+    assert resumed == ["b"]  # was replaced), a is not tried again
+    assert lines == ['lado: resumed session "b" at the container\'s start']
+
+
+def test_a_resume_that_fails_unexpectedly_is_recorded(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "a", None, provider="claude")
+    state.stop_for_container()
+    recorded = []
+    monkeypatch.setattr(telemetry, "record", lambda where, exc, **k: recorded.append(where))
+
+    def start(*a, **k):
+        raise KeyError("x")
+
+    monkeypatch.setattr(runtime, "start_session", start)
+    lines = []
+    runtime.resume_at_start(lines.append)
+    assert lines == [
+        "lado: could not resume session \"a\" at the container's start: KeyError: 'x'; "
+        "it stays stopped"
+    ]
+    assert recorded == ["server:resume"]
+
+
+def test_the_containers_start_resumes_nothing_more_once_it_stops(repo, fake_tmux, monkeypatch):
+    for name in ("a", "b"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    state.stop_for_container()
+    stopping = threading.Event()
+    calls = []
+
+    def start(path, name, mode, **kwargs):
+        calls.append(name)
+        stopping.set()
+
+    monkeypatch.setattr(runtime, "start_session", start)
+    runtime.resume_at_start(lambda line: None, stopping)
+    assert calls == ["a"]
+    assert state.get_session("b").resume_at_start  # left for the next start
+
+
+def test_a_resume_with_a_reason_says_it_in_its_event(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    state.stop_for_container()
+    runtime.start_session(str(repo), "s", None, resume=True, reason="at the container's start")
+    [resume] = [e for e in state.list_events("s") if e.kind == state.SESSION_RESUME]
+    assert resume.detail == "at the container's start; same settings"
+    assert not state.get_session("s").resume_at_start
 
 
 def test_start_resumes_a_stopped_session(repo, fake_tmux):

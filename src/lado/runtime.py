@@ -32,6 +32,7 @@ from lado import (
     loop,
     providers,
     state,
+    telemetry,
     terminal,
     tmux,
 )
@@ -577,11 +578,13 @@ def start_session(
     resume: bool | None = None,
     first: FirstInput | None = None,
     prompt: str | None = None,
+    reason: str | None = None,
 ) -> Started:
     """Start a session whose agents come from `kit_names` (default: the "default" kit), minus
     the `without` items ("agent:x", "skill:y", "mcp:z"). A new session's supervisor may get
     `first` as its first input. `prompt` is the human's first message, for a new session and
-    a resume alike (check_prompt): queued from `human` after LADO's own messages.
+    a resume alike (check_prompt): queued from `human` after LADO's own messages. `reason`
+    begins a resume's event detail (why it was resumed: resume_at_start).
 
     A stopped session of that name, or one whose tmux server is gone, is resumed: it keeps
     its history, open runs and gates, and the settings given replace its stored ones. The
@@ -641,7 +644,8 @@ def start_session(
     # other changes nothing.
     if old:
         started.resumed, started.changes = True, _changes(old, sess)
-        taken_over = state.resume_session(sess, "; ".join(started.changes) or "same settings")
+        detail = "; ".join(started.changes) or "same settings"
+        taken_over = state.resume_session(sess, f"{reason}; {detail}" if reason else detail)
     else:
         taken_over = state.add_session(sess)
     if not taken_over:
@@ -2349,6 +2353,61 @@ def stop_all(report: Callable[[str, Stopped], object]) -> None:
             failed.append(f'could not stop session "{name}": {type(error).__name__}: {error}')
     if failed:
         raise LadoError("; ".join([*failed, f"stopped: {', '.join(stopped) or 'none'}"]))
+
+
+AT_START = "at the container's start"
+
+
+def stop_for_container() -> list[str]:
+    """The container's stop (the UI server's end in a container): mark every running session
+    stopped, to be resumed at the container's start, all in one transaction; only then kill
+    each one's tmux session, close its viewers and remove its agents' config folders. Marked
+    first, so the dying agents' session-end hooks find no agent and tell no one. A kill that
+    fails is one line on stderr, and the others go on. The names, in creation order; none
+    without lado.db, whose LADO_HOME is not made again (an uninstall deleted it)."""
+    if not (state.home_path() / "lado.db").exists():
+        return []
+    names = state.stop_for_container()
+    for name in names:
+        try:
+            if tmux.has_session(name):
+                tmux.kill_session(name)
+        except tmux.TmuxError as error:
+            print(
+                f'lado: could not kill the tmux session of "{name}": {error}',
+                file=sys.stderr,
+                flush=True,
+            )
+        terminal.close_viewers(name)
+        providers.base.remove_session_config_dirs(name)
+    return names
+
+
+def resume_at_start(report: Callable[[str], object], stopping=None) -> None:
+    """The container's start: resume, one at a time, each session its stop marked and each
+    one not stopped whose tmux session is gone (the container ended without its stop), in
+    creation order, and `report` a line for each. One that fails gives up its mark (and is
+    stopped), so the next start does not try it again; the others go on. Nothing more once
+    `stopping` (a threading.Event) is set."""
+    for sess in state.resumable():
+        if stopping is not None and stopping.is_set():
+            return
+        if not sess.stopped_at and session_status(sess) != SessionStatus.TMUX_GONE:
+            continue
+        try:
+            start_session(sess.repo, sess.name, None, resume=True, reason=AT_START)
+        except Exception as error:
+            state.give_up_resume(sess.name)
+            if isinstance(error, LadoError):
+                why = str(error).splitlines()[0] if str(error) else type(error).__name__
+            else:
+                telemetry.record("server:resume", error)
+                why = f"{type(error).__name__}: {error}"
+            report(
+                f'lado: could not resume session "{sess.name}" {AT_START}: {why}; it stays stopped'
+            )
+            continue
+        report(f'lado: resumed session "{sess.name}" {AT_START}')
 
 
 def _kill_for_migration(sessions: list[str]) -> dict[str, bool]:

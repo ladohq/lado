@@ -191,6 +191,14 @@ export const LinkIcon = () => (
 
 export const FolderIcon = ProjectsIcon;
 
+// A pencil: rename the session (its title) in its head.
+export const PencilIcon = () => (
+  <Icon>
+    <path d="M15.5 5.5 18.5 8.5" />
+    <path d="M4.5 19.5 5.5 15 16.5 4a1.4 1.4 0 0 1 2 0l1.5 1.5a1.4 1.4 0 0 1 0 2L9 18.5z" />
+  </Icon>
+);
+
 // Two commits and a branch: a session's git repository.
 export const GitIcon = () => (
   <Icon>
@@ -357,5 +365,29 @@ export const UnseenIcon = () => (
     <path d="m4 4 16 16" />
     <path d="M9.9 5.3A9.6 9.6 0 0 1 12 5c4.6 0 8 4 9 7a11 11 0 0 1-2.5 3.8M6.4 6.5C4.4 7.8 3.2 9.9 3 12c1 3 4.4 7 9 7a9 9 0 0 0 4.6-1.3" />
     <path d="M10 10.2a2.6 2.6 0 0 0 3.7 3.7" />
+  </Icon>
+);
+
+// Two overlapping sheets: Copy (the selection bar, Copy code, Copy message).
+export const CopyIcon = () => (
+  <Icon>
+    <rect x="8" y="8" width="12" height="12" rx="2" />
+    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+  </Icon>
+);
+
+// A speech bubble with two quote marks: Quote in reply (the selection bar).
+export const QuoteIcon = () => (
+  <Icon>
+    <path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />
+    <path d="M8.5 13v-2.2c0-1 .5-1.6 1.6-1.8M13.5 13v-2.2c0-1 .5-1.6 1.6-1.8" />
+  </Icon>
+);
+
+// An arrow that turns back: a flow step that sends the work back (flowSteps.tsx).
+export const BackIcon = () => (
+  <Icon>
+    <path d="M9 14 4 9l5-5" />
+    <path d="M4 9h10a6 6 0 0 1 0 12h-3" />
   </Icon>
 );

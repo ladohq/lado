@@ -13,67 +13,17 @@ A failed test keeps its evidence as a failed live test does (real_clis.EVIDENCE)
 
 import json
 import shutil
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 import real_clis
 from agent_helpers import init_repo
+from fake_endpoint import Endpoint
 from real_clis import CLASSES, isolated, with_model  # noqa: F401 (a fixture)
 
 from lado import providers
 
 KEY = "smoke-fake-key-0123456789abcdefghij"  # no account's key: the endpoint takes none
 MODEL = "smoke-model"  # the model the endpoint "serves" to OpenCode, Kilo and Codex
-
-# The error each API gives a request with a wrong key; the CLIs end the turn on it and do not
-# retry (a closed port would give them a transient error to retry with their own backoff).
-ANTHROPIC_401 = {
-    "type": "error",
-    "error": {"type": "authentication_error", "message": "invalid x-api-key"},
-}
-OPENAI_401 = {
-    "error": {
-        "message": "Incorrect API key provided",
-        "type": "invalid_request_error",
-        "code": "invalid_api_key",
-    }
-}
-
-
-class Endpoint:
-    """A model API on 127.0.0.1 that answers every request at once with 401, and keeps the
-    method and path of each."""
-
-    def __init__(self):
-        self.requests: list[tuple[str, str]] = []
-        endpoint = self
-
-        class Handler(BaseHTTPRequestHandler):
-            def answer(self):
-                length = int(self.headers.get("Content-Length") or 0)
-                self.rfile.read(length)
-                endpoint.requests.append((self.command, self.path))
-                body = ANTHROPIC_401 if "/messages" in self.path else OPENAI_401
-                data = json.dumps(body).encode()
-                self.send_response(401)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-
-            do_GET = do_POST = do_PUT = do_DELETE = do_HEAD = answer
-
-            def log_message(self, *args):
-                pass
-
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
-
-    def close(self):
-        self.server.shutdown()
-        self.server.server_close()
 
 
 @pytest.fixture

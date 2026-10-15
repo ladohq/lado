@@ -4,8 +4,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { GateInfo, MessageInfo, MessagePage, RunEventInfo, SessionInfo, WaitingItem } from "./api";
+import type { GateInfo, MessageInfo, MessagePage, RunEventInfo, RunInfo, SessionInfo, WaitingItem } from "./api";
 import { App } from "./App";
+import { messageText } from "./Chat";
 import { clock, day, dayName } from "./ChatText";
 import { FakeEventSource, FakeIntersectionObserver, FakeSocket, stream } from "./fakes";
 import { storeAgentMessages } from "./prefs";
@@ -14,7 +15,7 @@ vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeX
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
 
 const NO_WAITS = { gates: 0, questions: 0, agents: 0 };
-const SETTINGS = { kits: ["default"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0 };
+const SETTINGS = { kits: ["default"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, title: null };
 const SESSIONS: SessionInfo[] = [
   { name: "lado", repo: "/src/lado", status: "running", agents: 2, waiting: NO_WAITS, ...SETTINGS },
   { name: "old", repo: "/src/old", status: "stopped", agents: 0, waiting: NO_WAITS, ...SETTINGS },
@@ -109,6 +110,7 @@ function serve(
   answer: { status: number; body: unknown } = { status: 200, body: { result: "sent" } },
   events: RunEventInfo[] = [],
   gates: GateInfo[] = [],
+  runs: RunInfo[] = [],
 ) {
   const posted: Posted[] = [];
   const queries: Record<string, string>[] = [];
@@ -130,7 +132,8 @@ function serve(
       return new Response(JSON.stringify(gates));
     }
     if (path === "/api/waiting") return new Response(JSON.stringify(waitingOf(chat, gates)));
-    if (path.endsWith("/agents") || path.endsWith("/runs")) return new Response("[]");
+    if (path.endsWith("/runs")) return new Response(JSON.stringify(runs));
+    if (path.endsWith("/agents")) return new Response("[]");
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fetch);
@@ -606,7 +609,7 @@ test("an agent's message to the human shows its summary in bold and its whole bo
   const summary = within(card).getByRole("heading");
   expect([summary.textContent, summary.className]).toEqual(["report", expect.stringContaining("lead")]);
   expect(within(card).getByText("line 30")).toBeTruthy();
-  expect(within(card).queryByRole("button")).toBeNull();
+  expect(within(card).queryByRole("button", { name: /Show/ })).toBeNull();
   expect(card.querySelector("details")).toBeNull();
 });
 
@@ -625,6 +628,29 @@ test("a longer text shows its first 12 lines and Show more, which shows it all i
     expect(within(card).getByText("line 31")).toBeTruthy();
     expect(within(card).getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
   }
+});
+
+test.each([
+  ["the human's, its whole text", message(1, "human", "supervisor", "Раунд 1", { body: "Раунд 1\nи ещё" }), "Раунд 1\nи ещё"],
+  ["the human's of one line", message(1, "human", "supervisor", "go"), "go"],
+  ["an agent's, summary and body", message(1, "analyst", "human", "Раунд 1", { body: "1. Какие действия?" }), "Раунд 1\n\n1. Какие действия?"],
+  ["an agent's whose body repeats its summary", message(1, "analyst", "human", "Раунд 1", { body: "Раунд 1\n\nдалее" }), "Раунд 1\n\nдалее"],
+  ["an agent's without a body", message(1, "analyst", "human", "Раунд 1"), "Раунд 1"],
+])("a message's copied text: %s", (_, one, text) => {
+  expect(messageText(one)).toBe(text);
+});
+
+test("each message's head has Copy message, also a row that continues its group", async () => {
+  serve([
+    message(1, "supervisor", "human", "merged w1", { body: "All checks pass." }),
+    message(2, "supervisor", "human", "next"),
+  ]);
+  open();
+  const log = await chat();
+  const [first, second] = await within(log).findAllByRole("article");
+  expect(within(first).getByRole("button", { name: "Copy message" }).closest(".feed-head")).toBeTruthy();
+  expect(second.classList.contains("continued")).toBe(true);
+  expect(within(second).getByRole("button", { name: "Copy message" })).toBeTruthy();
 });
 
 test("an agent's summary that its body's first line repeats is not drawn", async () => {
@@ -698,6 +724,49 @@ test("the agents' messages to each other show behind a switch that loads the win
 const runGroups = (log: HTMLElement) => within(log).getAllByRole("list", { name: /^Flow run / });
 const kept = (line: HTMLElement, name: string) => line.querySelector(`.${name}`)?.textContent;
 
+// A run of a flow that declares these states, each with its outcomes.
+function flowRun(name: string, states: [string, Record<string, string>][], more: Partial<RunInfo> = {}): RunInfo {
+  return {
+    name,
+    flow: "feature",
+    kit: { name: "lado-dev", version: "0.11.1", source: "project" },
+    task: "show messages once",
+    state: states[0][0],
+    status: "active",
+    reason: "",
+    acting: "w1",
+    visits: {},
+    gate: null,
+    worktree: "/w",
+    branch: `lado/lado/${name.replace("/", "-")}`,
+    language: "",
+    created_at: "2026-10-03T11:59:00Z",
+    since: "2026-10-03T11:59:00Z",
+    ended_at: null,
+    states: states.map(([state, outcomes]) => ({
+      name: state,
+      kind: Object.keys(outcomes).length ? "work" : "end",
+      agent: null,
+      gate: null,
+      ask: null,
+      outcomes,
+      max_visits: null,
+      reads: [],
+      produces: [],
+    })),
+    problem: null,
+    ...more,
+  };
+}
+
+const FEATURE: [string, Record<string, string>][] = [
+  ["design", { ready: "architecture" }],
+  ["architecture", { changes: "design", approved: "build" }],
+  ["build", { ready: "review" }],
+  ["review", { approved: "done", changes: "build", again: "review" }],
+  ["done", {}],
+];
+
 test("a run's events in a row are one group under the run's name, which links to the run; each line says who and what", async () => {
   serve(
     [message(1, "human", "supervisor", "start it", { created_at: "2026-10-03T12:00:00Z" })],
@@ -713,6 +782,8 @@ test("a run's events in a row are one group under the run's name, which links to
       event(12, "flow_set", "at review: by hand", "2026-10-03T12:00:03Z", { actor: "human" }),
       event(13, "flow_cancel", "no longer needed", "2026-10-03T12:00:04Z", { actor: "supervisor" }),
     ],
+    [],
+    [flowRun("feature/x", FEATURE)],
   );
   open();
   const log = await chat();
@@ -735,7 +806,7 @@ test("a run's events in a row are one group under the run's name, which links to
     "ready",
     expect.stringContaining("forward"),
   ]);
-  expect(changes.querySelector(".run-outcome")?.className).toContain("back"); // design was left before
+  expect(changes.querySelector(".run-outcome")?.className).toContain("back"); // the flow declares design first
   expect(kept(changes, "run-actor")).toBe("architect");
   expect([odd.querySelector(".run-state"), kept(odd, "run-detail")]).toEqual([null, "moved somehow"]);
   expect([kept(waits, "run-chip"), kept(waits, "run-detail"), kept(waits, "run-actor")]).toEqual([
@@ -757,6 +828,97 @@ test("a run's events in a row are one group under the run's name, which links to
   const end = within(log).getAllByRole("listitem").at(-1)!;
   expect([kept(end, "run-chip"), kept(end, "run-detail")]).toEqual(["ended", "at done"]);
   expect(runGroups(log)).toHaveLength(2); // it joins the group above
+});
+
+// A step's direction by its run's flow (flowSteps.tsx): the same as the Flows tab's.
+
+const outcome = (line: HTMLElement) => line.querySelector<HTMLElement>(".run-outcome")!;
+
+test("ready, changes and ready again: both ready forward and green, changes back with the icon, by the flow's order", async () => {
+  serve(
+    [],
+    undefined,
+    [
+      event(6, "flow", "build -ready-> review", "2026-10-03T11:59:30Z"),
+      event(7, "flow", "review -changes-> build", "2026-10-03T11:59:40Z", { actor: "reviewer" }),
+      event(8, "flow", "build -ready-> review", "2026-10-03T11:59:50Z"),
+      event(9, "flow", "review -again-> review", "2026-10-03T11:59:55Z", { actor: "reviewer" }),
+    ],
+    [],
+    [flowRun("feature/x", FEATURE)],
+  );
+  open();
+  const log = await chat();
+  await waitFor(() => expect(log.querySelectorAll(".run-outcome.forward")).toHaveLength(2));
+  const lines = within(log).getAllByRole("listitem");
+  const [ready, changes, again, stays] = lines.map(outcome);
+  expect([ready, changes, again, stays].map((one) => one.className)).toEqual([
+    "run-outcome forward",
+    "run-outcome back",
+    "run-outcome forward",
+    "run-outcome back",
+  ]);
+  // The direction is read out with the line's text (a name on a plain span is dropped), and
+  // shown by the colour and the icon only.
+  expect(lines.map((line) => line.textContent)).toEqual(
+    ["ready, a step forward", "changes, a step back", "ready, a step forward", "again, a step back"].map((said) =>
+      expect.stringContaining(said),
+    ),
+  );
+  expect(lines.map((line) => line.querySelector(".visually-hidden")?.textContent)).toEqual(
+    Array(4).fill(expect.stringMatching(/^, a step /)),
+  );
+  expect([ready, changes, again, stays].map((one) => one.querySelector("svg") !== null)).toEqual([false, true, false, true]);
+  expect(changes.textContent).toBe("changes");
+});
+
+test("hovering a step's outcome says where it goes, and for a step back what runs again", async () => {
+  serve(
+    [],
+    undefined,
+    [event(6, "flow", "build -ready-> review", "2026-10-03T11:59:30Z"), event(7, "flow", "review -changes-> build", "2026-10-03T11:59:40Z")],
+    [],
+    [flowRun("feature/x", FEATURE)],
+  );
+  open();
+  const log = await chat();
+  await waitFor(() => expect(log.querySelectorAll(".run-outcome.back")).toHaveLength(1));
+  const [ready, changes] = within(log).getAllByRole("listitem").map(outcome);
+  const lines = async () =>
+    [...(await screen.findByRole("tooltip")).querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+  fireEvent.mouseEnter(ready);
+  expect(await lines()).toEqual(["Forward in the flow, to review"]);
+  fireEvent.mouseLeave(ready);
+  fireEvent.mouseEnter(changes);
+  expect(await lines()).toEqual(["Back: the work returns to build", "Runs again: build › review"]);
+  fireEvent.mouseLeave(changes);
+});
+
+test("a step of a run whose flow cannot be read, or that is not loaded, is neutral: no colour, icon, name or tooltip", async () => {
+  serve(
+    [],
+    undefined,
+    [
+      event(6, "flow", "review -changes-> build", "2026-10-03T11:59:30Z"),
+      event(7, "flow", "review -changes-> build", "2026-10-03T11:59:40Z", { run: "fix/y" }),
+    ],
+    [],
+    [flowRun("feature/x", FEATURE, { states: [], problem: "not JSON" })],
+  );
+  open();
+  const log = await chat();
+  await waitFor(() => expect(log.querySelectorAll(".run-outcome")).toHaveLength(2));
+  for (const line of within(log).getAllByRole("listitem")) {
+    const one = outcome(line);
+    expect([one.className, one.querySelector("svg"), line.textContent]).toEqual([
+      "run-outcome",
+      null,
+      expect.not.stringContaining("a step"),
+    ]);
+    fireEvent.mouseEnter(one);
+  }
+  await new Promise((done) => setTimeout(done, 400)); // past the tooltip's delay
+  expect(screen.queryByRole("tooltip")).toBeNull();
 });
 
 test("events of two runs in a row are two groups, each under its run's name", async () => {
@@ -1281,13 +1443,15 @@ test("at the top the chat loads the earlier page and keeps what the human sees i
     return plain(path, init);
   });
   FakeIntersectionObserver.show();
-  expect(within(log).getByRole("status").textContent).toBe("Loading earlier messages…");
+  // The feed's own status, not a Copy message's.
+  const loading = () => within(log).queryAllByRole("status").filter((one) => !one.closest(".copy-button"));
+  expect(loading().map((one) => one.textContent)).toEqual(["Loading earlier messages…"]);
   FakeIntersectionObserver.show(); // one load at a time
   release();
   await within(log).findByText("note 1");
   expect(queries.slice(1)).toEqual([{ with: "human", limit: "50", before: "21" }]);
   expect(log.scrollTop).toBe(2000); // 20 messages above the one that was at the top
-  expect(within(log).queryByRole("status")).toBeNull();
+  expect(loading()).toEqual([]);
   expect(within(log).getByText(historyStart())).toBeTruthy();
 });
 
@@ -1389,4 +1553,29 @@ test("a link to a message that is not in the chat loads once and scrolls nowhere
   await waitFor(() => expect(queries).toHaveLength(2));
   // Only the terminal panel scrolls its tab into view.
   expect(scrolled.mock.contexts.filter((one) => log.contains(one as Node))).toEqual([]);
+});
+
+// The selection bar's areas (docs/design/ui.md, Selected text and copy buttons).
+const area = (element: Element | null | undefined) => {
+  const found = element?.closest<HTMLElement>("[data-quote]");
+  return found && [found.dataset.quote, found.dataset.quoteSession];
+};
+
+test("each message, run event, closed gate and open gate's text is a text area of its session", async () => {
+  serve(
+    [message(1, "supervisor", "human", "merged w1", { body: "All checks pass." })],
+    undefined,
+    [event(5, "flow_start", "a", "2026-10-03T12:00:00Z")],
+    [closed(1, "approve", { comment: "ship it" }), gate(2)],
+  );
+  open();
+  const log = await chat();
+  const said = await within(log).findByText("All checks pass.");
+  expect(area(said)).toEqual(["text", "lado"]);
+  expect(said.closest("[data-quote]")?.classList.contains("feed-main")).toBe(true);
+  expect(area(await within(log).findByText("a"))).toEqual(["text", "lado"]);
+  expect(area(within(await gateCard()).getByText("ship it"))).toEqual(["text", "lado"]);
+  expect(area(within(await gateTab()).getByText("Ship it?"))).toEqual(["text", "lado"]);
+  expect(area(within(await gateTab()).getByRole("textbox"))).toBeNull(); // the comment is no area
+  expect(area(screen.getByRole("textbox", { name: "Write to the supervisor…" }))).toBeFalsy();
 });

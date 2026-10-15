@@ -35,11 +35,13 @@ import {
   GitIcon,
   KitsIcon,
   LinkIcon,
+  PencilIcon,
   ProblemIcon,
 } from "./icons";
 import { useLaunch, type StartedState } from "./Launch";
 import { isLive, useLive, useLiveStore, type Loaded } from "./live";
 import { SessionActions } from "./SessionControl";
+import { label } from "./sessionLabel";
 import { SessionRowMenu } from "./SessionRowMenu";
 import { MAIN_MIN, TerminalPanel } from "./Terminals";
 import { NotFound } from "./pages";
@@ -60,6 +62,7 @@ import { shortRemote } from "./remote";
 import { useTitle, useTopBar } from "./Shell";
 import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
 import { Team } from "./Team";
+import { TitleEdit } from "./TitleEdit";
 import { Tooltip } from "./Tooltip";
 
 // What each status means to the human, in the words of `lado ls`.
@@ -80,7 +83,10 @@ export function Sessions() {
   const current = useParams().name;
 
   const wanted = query.trim().toLowerCase();
-  const found = loaded && "sessions" in loaded ? loaded.sessions.filter((one) => one.name.toLowerCase().includes(wanted)) : [];
+  const found =
+    loaded && "sessions" in loaded
+      ? loaded.sessions.filter((one) => [one.name, one.title ?? ""].some((text) => text.toLowerCase().includes(wanted)))
+      : [];
   const groups = grouped(found);
   const toggle = (group: SessionGroup) => {
     const next = { ...folds, [group]: folds[group] === "open" ? "folded" : "open" } as const;
@@ -231,24 +237,27 @@ function SessionStrip({
 }
 
 // A session's two letters: the first of its first two words, else its first two letters.
-// Two sessions may share them: the tooltip and the label tell them apart.
+// Two sessions may share them: the tooltip and the label tell them apart. Letters are whole
+// characters (code points), as a title may start with an emoji.
 const initials = (name: string) => {
   const words = name.split(/[-_./\s]+/).filter(Boolean);
-  return (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2)).toUpperCase();
+  const first = (text: string) => [...text][0];
+  return (words.length > 1 ? first(words[0]) + first(words[1]) : [...name].slice(0, 2).join("")).toUpperCase();
 };
 
 function StripIcon({ session }: { session: SessionInfo }) {
   const needsYou = waits(session);
   const work = tracked(session) && workWord(session);
+  const called = label(session);
   return (
     <li>
       <Tooltip tip={<SessionTip session={session} />}>
         <NavLink
           to={sessionPath(session.name)}
           className={`strip-session${needsYou ? " waits" : ""}`}
-          aria-label={needsYou ? `${session.name}, needs you` : work ? `${session.name}, ${work}` : session.name}
+          aria-label={needsYou ? `${called}, needs you` : work ? `${called}, ${work}` : called}
         >
-          {initials(session.name)}
+          {initials(called)}
           {work && <span className={`dot dot-small activity-${work}`} aria-hidden="true" />}
         </NavLink>
       </Tooltip>
@@ -256,9 +265,9 @@ function StripIcon({ session }: { session: SessionInfo }) {
   );
 }
 
-// Who a session is, the card of its row and of its icon: its name, status and agents, how
-// long it ran (the icons have no row line), what waits for the human, its folder, its kits,
-// provider and permission mode; a stopped one, how to bring it back (Resume is in the
+// Who a session is, the card of its row and of its icon: its title and name (or its name),
+// status and agents, how long it ran (the icons have no row line), what waits for the
+// human, its folder, its kits, provider and permission mode; a stopped one, how to bring it back (Resume is in the
 // session's head). Its status word explains the colours of the row and the icon: in its
 // group's tone, a session in trouble (tmux gone, loop down) in the danger colour.
 function SessionTip({ session }: { session: SessionInfo }) {
@@ -274,7 +283,8 @@ function SessionTip({ session }: { session: SessionInfo }) {
   return (
     <div className={`session-tip tone-${TONES[groupOf(session)]}`}>
       <div className="tooltip-line">
-        <b>{session.name}</b> · <span className={trouble ? "danger-text" : "tip-status"}>{STATUS[session.status]}</span> ·{" "}
+        <b>{label(session)}</b> · {session.title !== null && `${session.name} · `}
+        <span className={trouble ? "danger-text" : "tip-status"}>{STATUS[session.status]}</span> ·{" "}
         {work}
       </div>
       <div className="tooltip-line">{session.running_since ? `ran ${ran}` : ran}</div>
@@ -321,8 +331,11 @@ const workWord = (session: SessionInfo) => (session.busy > 0 ? "working" : "idle
 // when it stopped and how long it ran: the head's run time, counted on by the minute.
 function RanAbout({ session }: { session: SessionInfo }) {
   const ran = useRan(session);
-  return <span className="session-about">{tracked(session) ? `${count(session.agents, "agent")} · ${ran}` : ran}</span>;
+  return <span className="session-about">{named(session, tracked(session) ? `${count(session.agents, "agent")} · ${ran}` : ran)}</span>;
 }
+
+// A row's line under a title starts with the session's name: the row shows the title.
+const named = (session: SessionInfo, line: string) => (session.title === null ? line : `${session.name} · ${line}`);
 
 // The line under the name of another row (Needs you, tmux gone, loop down): what waits for
 // the human, or its agents.
@@ -369,33 +382,74 @@ function Group({
       />
       <ul id={`group-${id}`} hidden={rows.length === 0}>
         {rows.map((session) => (
-          <li key={session.name} className="session-row">
-            <Tooltip tip={<SessionTip session={session} />}>
-              <NavLink to={sessionPath(session.name)} className="session-link">
-                <span className="session-name">
-                  <span>{session.name}</span>
-                  {tracked(session) && (
-                    <span
-                      className={`dot activity-${workWord(session)}`}
-                      role="img"
-                      aria-label={workWord(session)}
-                    />
-                  )}
-                </span>
-                {tracked(session) || !isLive(session) ? (
-                  <RanAbout session={session} />
-                ) : (
-                  <span className="session-about">{about(session)}</span>
-                )}
-                {session.status !== "running" && session.status !== "stopped" && <Status status={session.status} />}
-              </NavLink>
-            </Tooltip>
-            <SessionRowMenu name={session.name} />
-          </li>
+          <SessionRow key={session.name} session={session} />
         ))}
       </ul>
     </section>
   );
+}
+
+// A row: the session's title (or name) and its line, a link to it, and its ⋯. Rename… in ⋯
+// turns the title into a field in the row (TitleEdit), the row no link while it edits; the
+// focus goes back to ⋯ when it closes.
+function SessionRow({ session }: { session: SessionInfo }) {
+  const item = useRef<HTMLLIElement>(null);
+  const { editing, edit, closed } = useTitleEdit(() =>
+    item.current?.querySelector<HTMLButtonElement>(".row-menu button")?.focus(),
+  );
+  if (editing) {
+    return (
+      <li ref={item} className="session-row">
+        <div className="session-link session-row-edit">
+          <TitleEdit session={session} hint={`${session.name} · Enter to save · Esc to cancel`} onClose={closed} />
+        </div>
+      </li>
+    );
+  }
+  return (
+    <li ref={item} className="session-row">
+      <Tooltip tip={<SessionTip session={session} />}>
+        <NavLink to={sessionPath(session.name)} className="session-link">
+          <span className="session-name">
+            <span>{label(session)}</span>
+            {tracked(session) && (
+              <span className={`dot activity-${workWord(session)}`} role="img" aria-label={workWord(session)} />
+            )}
+          </span>
+          {tracked(session) || !isLive(session) ? (
+            <RanAbout session={session} />
+          ) : (
+            <span className="session-about">{named(session, about(session))}</span>
+          )}
+          {session.status !== "running" && session.status !== "stopped" && <Status status={session.status} />}
+        </NavLink>
+      </Tooltip>
+      <SessionRowMenu name={session.name} onRename={edit} />
+    </li>
+  );
+}
+
+// Whether a session's title is edited in place (TitleEdit), in its head or its row: `closed`
+// shows a saved session at once (Live.sessionChanged) and, once the field is gone, gives the
+// focus back to its opener (`refocus`).
+function useTitleEdit(refocus: () => void) {
+  const live = useLiveStore();
+  const [editing, setEditing] = useState(false);
+  const back = useRef(false);
+  useEffect(() => {
+    if (editing || !back.current) return;
+    back.current = false;
+    refocus();
+  });
+  return {
+    editing,
+    edit: () => setEditing(true),
+    closed: (saved?: SessionInfo) => {
+      if (saved) live.sessionChanged(saved);
+      back.current = true;
+      setEditing(false);
+    },
+  };
 }
 
 function Status({ status }: { status: SessionStatus }) {
@@ -456,8 +510,9 @@ function SessionTab({ name, tab, item, loaded }: { name: string; tab: Tab; item?
     loaded === null || "error" in loaded
       ? undefined
       : (loaded.sessions.find((one) => one.name === name) ?? (started?.session.name === name ? started.session : undefined));
-  // The session names the page; while it loads or when there is none, the page is Sessions.
-  useTitle(session ? name : "Sessions");
+  // The session names the page, by its title if it has one; while it loads or when there is
+  // none, the page is Sessions.
+  useTitle(session ? label(session) : "Sessions");
   if (loaded === null || "error" in loaded) return null; // the list, or its strip, says what is wrong
   if (session === undefined) {
     return (
@@ -626,10 +681,38 @@ function HeadLine({ session }: { session: SessionInfo }) {
   const repository = about?.repos[0];
   const cli = about?.provider;
   const trouble = status === "tmux_gone" || status === "loop_down";
+  // The title edited in place (Session title): the pencil or a double click opens the field,
+  // which gives the focus back to the pencil when it closes.
+  const pencil = useRef<HTMLButtonElement>(null);
+  const { editing, edit, closed } = useTitleEdit(() => pencil.current?.focus());
   return (
     <div className="session-head">
       <StatusDot status={status} />
-      <h1 title={name}>{name}</h1>
+      {editing ? (
+        <TitleEdit session={session} hint="Enter to save · Esc to cancel · empty shows the name" onClose={closed} />
+      ) : (
+        <h1 title={label(session)} onDoubleClick={edit}>
+          {label(session)}
+        </h1>
+      )}
+      {session.title !== null && (
+        <span className="session-name-id" title={`Session ${name}`}>
+          {name}
+        </span>
+      )}
+      {!editing && (
+        <Tooltip tip="Rename session">
+          <button
+            ref={pencil}
+            type="button"
+            className="icon-button session-rename"
+            aria-label="Rename session"
+            onClick={edit}
+          >
+            <PencilIcon />
+          </button>
+        </Tooltip>
+      )}
       {trouble && <span className="session-state danger-text">{STATUS[status]}</span>}
       <Ran session={session} />
       <span className="topbar-sep meta-sep" aria-hidden="true" />

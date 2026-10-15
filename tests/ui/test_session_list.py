@@ -7,7 +7,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from test_main_screen import log_in, running_session
 
-from lado import runtime
+from lado import runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -130,3 +130,51 @@ def test_a_running_row_says_whether_its_agents_work_and_follows_their_hooks(
     icon = page.locator("nav.sessions-strip").get_by_role("link", name=f"{session}, idle")
     expect(icon.locator(".dot")).to_be_visible()
     shot(page, "strip")
+
+
+def test_rename_from_the_row_menu_and_esc(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    titled = running_session(repo)
+    plain = running_session(repo)
+    runtime.set_title(titled, "Ревью kit-sdlc")
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{plain}")
+    sessions = page.get_by_role("navigation", name="Sessions")
+    row = sessions.locator(".session-row").filter(has_text="Ревью kit-sdlc")
+    expect(row.locator(".session-about")).to_contain_text(f"{titled} · ")
+    expect(
+        sessions.locator(".session-row").filter(has_text=plain).locator(".session-name")
+    ).to_have_text(plain)
+    page.get_by_role("searchbox", name="Find a session").fill("ревью")
+    expect(sessions.locator(".session-row")).to_have_count(1)
+    page.get_by_role("searchbox", name="Find a session").fill(titled)
+    expect(sessions.locator(".session-row")).to_have_count(1)
+    shot(page, "found-by-name")
+    page.get_by_role("searchbox", name="Find a session").fill("")
+
+    more = row.get_by_role("button", name=f"Actions for {titled}")
+    row.hover()
+    more.click()
+    menu = page.get_by_role("menu", name=titled)
+    expect(menu.get_by_role("menuitem")).to_have_text(["Rename…", "Copy link", "Open in new tab"])
+    shot(page, "menu")
+    menu.get_by_role("menuitem", name="Rename…").click()
+    field = sessions.get_by_role("textbox", name="Session title")
+    expect(field).to_be_focused()
+    expect(field).to_have_value("Ревью kit-sdlc")
+    field.fill("x")
+    shot(page, "editing")
+    field.press("Escape")
+    expect(row.locator(".session-name")).to_have_text("Ревью kit-sdlc")
+    expect(more).to_be_focused()
+    assert state.get_session(titled).title == "Ревью kit-sdlc"
+
+    more.click()
+    page.get_by_role("menu", name=titled).get_by_role("menuitem", name="Rename…").click()
+    field.fill("")
+    field.press("Enter")
+    cleared = sessions.locator(".session-row").filter(has_text=titled).first
+    expect(cleared.locator(".session-name")).to_have_text(titled)
+    expect(cleared.locator(".session-about")).not_to_contain_text(f"{titled} · ")
+    assert state.get_session(titled).title is None
+    shot(page, "cleared")

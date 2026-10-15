@@ -8,6 +8,7 @@ import { Link, useNavigate } from "react-router";
 
 import { useLive, useLiveStore } from "./live";
 import { storedNotifications, storeNotifications } from "./prefs";
+import { labelOf } from "./sessionLabel";
 import { waitingTarget, waitingText } from "./waiting";
 
 const UNSUPPORTED = "This browser cannot show notifications.";
@@ -157,7 +158,7 @@ function Notify() {
       seen.current.add(item.key);
       if (document.visibilityState === "visible") continue;
       try {
-        const notification = new Notification(`LADO · ${item.session}`, {
+        const notification = new Notification(`LADO · ${labelOf(item.session, live.get().sessions)}`, {
           body: waitingText(item),
           tag: item.key,
           silent: true,
@@ -172,7 +173,7 @@ function Notify() {
         choose({ ...chosen, failure: failed(`The browser did not show a notification: ${String(error)}`) });
       }
     }
-  }, [loaded, navigate]);
+  }, [live, loaded, navigate]);
 
   return null;
 }

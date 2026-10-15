@@ -123,8 +123,12 @@ def test_a_change_after_the_start_comes_with_its_item_in_the_form_of_the_rest_ap
             "ran_seconds": 0,
             "running_since": None,
             "stopped_at": None,
+            "title": None,
         },
     }
+    runtime.set_title("s", "Review")
+    titled = stream.until(is_change("sessions", "s"))[-1]
+    assert (titled.data["op"], titled.data["item"]["title"]) == ("update", "Review")
     state.delete_session("s")
     deleted = stream.until(is_change("sessions", "s"))[-1]
     assert (deleted.data["op"], deleted.data["item"]) == ("delete", None)
@@ -564,6 +568,7 @@ def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo,
         "without": [],
         "running_since": None,
         "stopped_at": None,
+        "title": None,
     }
     assert stream.quiet(0.3) == []  # a stopped session has nothing derived
 

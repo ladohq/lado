@@ -62,12 +62,14 @@ def server(tmp_path):
 
 @pytest.fixture
 def shot(request):
-    """Save a screenshot of the page as <temp dir>/lado-ui-shots/<test>[-<name>].png."""
+    """Save a screenshot of the page as <temp dir>/lado-ui-shots/<test>[-<name>].png. A full
+    page's capture resizes the viewport for a moment, which a touch emulation does not
+    survive: `full_page=False` keeps the window as it is."""
 
-    def save(page, name: str = "") -> Path:
+    def save(page, name: str = "", full_page: bool = True) -> Path:
         SHOTS.mkdir(exist_ok=True)
         path = SHOTS / f"{request.node.name}{'-' + name if name else ''}.png"
-        page.screenshot(path=str(path), full_page=True)
+        page.screenshot(path=str(path), full_page=full_page)
         print(f"screenshot: {path}")
         return path
 

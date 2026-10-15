@@ -3,7 +3,7 @@
 import { expect, test } from "vitest";
 
 import type { GateInfo, MessageInfo, RunEventInfo } from "./api";
-import { feedRows, gateOf, goesBack, type Entry } from "./Chat";
+import { feedRows, gateOf, type Entry } from "./Chat";
 
 function message(id: number, from: string, to: string, at: Date, more: Partial<MessageInfo> = {}): Entry {
   const item: MessageInfo = {
@@ -168,7 +168,7 @@ test("no divider stands before the first entry", () => {
   expect(shape([message(1, "supervisor", "human", at(10, 0))])).toEqual(["1"]);
 });
 
-// A flow event's line: whether its move goes back, and the gate answer it stands for.
+// A flow event's line: the gate answer it stands for (its direction: flowSteps.test.ts).
 
 function moved(id: number, from: string, outcome: string, to: string, more: Partial<RunEventInfo> = {}): RunEventInfo {
   return {
@@ -182,19 +182,6 @@ function moved(id: number, from: string, outcome: string, to: string, more: Part
     ...more,
   };
 }
-
-test("a move goes back when its run left the state it enters earlier in the window, or stays in its state", () => {
-  const events = [
-    moved(1, "design", "ready", "architecture"),
-    moved(2, "architecture", "changes", "design"),
-    moved(3, "design", "ready", "architecture"),
-    moved(4, "architecture", "approved", "implement"),
-    moved(5, "review", "changes", "review"),
-    moved(6, "build", "done", "design", { run: "fix/y" }), // another run's history
-    { ...moved(7, "x", "y", "z"), kind: "flow_end", transition: null },
-  ];
-  expect([...goesBack(events)]).toEqual([2, 3, 5]);
-});
 
 function answered(id: number, state: string, when: Date, more: Partial<GateInfo> = {}): GateInfo {
   return {

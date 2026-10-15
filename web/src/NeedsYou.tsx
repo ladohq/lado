@@ -13,6 +13,7 @@ import { FeedRow } from "./FeedRow";
 import { useLive, useLiveStore } from "./live";
 import { NotificationsOffer } from "./Notifications";
 import { chatPath, terminalPath, VIEW_PARAM, VIEW_SESSION_PARAM } from "./paths";
+import { labelOf } from "./sessionLabel";
 import { useTitle } from "./Shell";
 import { agentWaits } from "./waiting";
 import { WaitingCard } from "./WaitingCard";
@@ -54,11 +55,14 @@ export function NeedsYou() {
   );
 }
 
-// A session's name, "In the chat", its waiting card, then its agents waiting in their
-// terminal. Its runs are watched for their colours on the card's tabs.
+// A session's title (from the live list, its name in grey after it) or name, "In the
+// chat", its waiting card, then its agents waiting in their terminal. Its runs are watched
+// for their colours on the card's tabs.
 function SessionWaits({ session, items }: { session: string; items: WaitingItem[] }) {
   const live = useLiveStore();
-  const runs = useLive().runs[session];
+  const { runs: allRuns, sessions } = useLive();
+  const runs = allRuns[session];
+  const called = labelOf(session, sessions);
   useEffect(() => live.watch("runs", session), [live, session]);
   const questions = items.flatMap((item) => (item.question ? [item.question] : []));
   const gates = items.flatMap((item) => (item.gate ? [item.gate] : []));
@@ -66,7 +70,8 @@ function SessionWaits({ session, items }: { session: string; items: WaitingItem[
   return (
     <section className="waits-session" aria-label={`Session ${session}`}>
       <h2>
-        <Link to={chatPath(session)}>{session}</Link>
+        <Link to={chatPath(session)}>{called}</Link>
+        {called !== session && <span className="session-name-id">{session}</span>}
         <Link className="waits-chat" to={chatPath(session)} aria-label={`${session}'s chat`}>
           In the chat
         </Link>
@@ -91,7 +96,7 @@ function SessionWaits({ session, items }: { session: string; items: WaitingItem[
 function WaitingAgent({ session, agent, since }: { session: string; agent: AgentInfo; since: string }) {
   const navigate = useNavigate();
   return (
-    <FeedRow kind="agent" who={agent.name} aside={`${agent.role} · ${SINCE}`} at={since} label={`${agent.name} waits`}>
+    <FeedRow kind="agent" who={agent.name} aside={`${agent.role} · ${SINCE}`} at={since} label={`${agent.name} waits`} session={session}>
       <div className="waits-agent">
         <p className="waits-reason">{agentWaits(agent)}</p>
         <div className="answer-actions">

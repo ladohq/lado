@@ -145,6 +145,37 @@ test("text and code show with their line numbers", async () => {
   ]);
 });
 
+test("a Markdown record is a Markdown area of the selection bar, named by its artifact", async () => {
+  serve("# Design");
+  show(artifact({}, {}));
+  const article = (await screen.findByRole("heading", { name: "Design" })).closest("article")!;
+  expect(article.dataset.quote).toBe("markdown");
+  expect(article.dataset.quoteSession).toBe("lado");
+  expect(article.dataset.quoteArtifact).toBe("feature/x/design");
+  expect(article.hasAttribute("data-quote-earlier")).toBe(false);
+});
+
+test("a text record is a code area whose rows carry their line numbers; an older one says so", async () => {
+  serve("a\nb\n");
+  const shown = artifact({ name: "tool.py", full_name: "feature/x/tool.py" }, { media_type: "text/x-python" });
+  render(
+    <MemoryRouter>
+      <ArtifactView session="lado" artifact={{ ...shown, latest: { ...shown.latest, id: "r2" } }} record={shown.latest} latest={() => {}} />
+    </MemoryRouter>,
+  );
+  const table = await screen.findByRole("table", { name: "feature/x/tool.py" });
+  expect(table.dataset.quote).toBe("code");
+  expect(table.dataset.quoteArtifact).toBe("feature/x/tool.py");
+  expect(table.hasAttribute("data-quote-earlier")).toBe(true);
+  expect(within(table).getAllByRole("row").map((row) => row.dataset.line)).toEqual(["1", "2"]);
+});
+
+test("an HTML record is no area", () => {
+  serve(null);
+  show(artifact({ name: "mockup.html", full_name: "feature/x/mockup.html" }, { media_type: "text/html" }));
+  expect(document.querySelector("[data-quote]")).toBeNull();
+});
+
 test("an image shows from its content and opens at full size on a click", async () => {
   const fetch = serve(null);
   show(artifact({ name: "shot.png", full_name: "feature/x/shot.png", title: "The screen" }, { media_type: "image/png" }));

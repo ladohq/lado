@@ -217,6 +217,72 @@ def test_an_unknown_provider_is_refused(tmp_path):
     assert ran == ""
 
 
+# The container cell (ci.yml's job `container`): the image's own CLI, nothing installed.
+
+
+def run_container(tmp_path, *args, **env):
+    """Run `smoke_ci.py container <out>` with the uv stub: its process, out and what it ran."""
+    stubs = tmp_path / "stubs"
+    stubs.mkdir(exist_ok=True)
+    (stubs / "uv").write_text(UV)
+    (stubs / "uv").chmod(0o755)
+    temp = tmp_path / "tmp"
+    temp.mkdir(exist_ok=True)
+    out = tmp_path / "out"
+    full = {
+        "PATH": f"{stubs}{os.pathsep}/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "TMPDIR": str(temp),
+        "CELL_RAN": str(tmp_path / "ran"),
+        "SUMMARY": PASSED,
+        **env,
+    }
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), "container", *(args or (str(out),))],
+        env=full,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    ran = tmp_path / "ran"
+    return done, out, ran.read_text() if ran.exists() else ""
+
+
+def test_the_container_cell_runs_the_container_tests_and_installs_nothing(tmp_path):
+    done, out, ran = run_container(tmp_path)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert ran.splitlines()[0] == "uv run pytest -m container -n0 -v"
+    assert "npm" not in ran
+    assert PASSED in (out / "container.log").read_text()
+
+
+@pytest.mark.parametrize(
+    "summary, code", [("====== 3 passed, 2 skipped in 3.00s ======", "0"), (PASSED, "1")]
+)
+def test_the_container_cell_is_red_unless_the_pass_rule_holds(tmp_path, summary, code):
+    done, _, _ = run_container(tmp_path, SUMMARY=summary, CODE=code)
+    assert done.returncode != 0
+    assert "container: not passed" in done.stderr
+
+
+def test_a_failing_container_cell_keeps_its_evidence(tmp_path):
+    done, out, _ = run_container(
+        tmp_path, SUMMARY="=== 1 failed in 3.00s ===", CODE="1", EVIDENCE_WRITES="1"
+    )
+    assert done.returncode != 0
+    kept = out / "evidence" / "20261010-test_w" / "lado-log.txt"
+    assert kept.read_text() == "w1 never reported\n"
+
+
+@pytest.mark.parametrize("args", [[], ["a", "b"]])
+def test_container_with_wrong_arguments_is_a_usage_error(tmp_path, args):
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), "container", *args], capture_output=True, text=True
+    )
+    assert done.returncode == 2
+    assert "container <out>" in done.stderr
+
+
 # Whether a run needs the smoke (`needed`, ci.yml's job `changes`).
 
 SKIP = "web/\ndocs/\ntests/ui/\nREADME.md\n"

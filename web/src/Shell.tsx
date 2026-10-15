@@ -33,6 +33,7 @@ import { isLive, Live, LiveContext, useLive } from "./live";
 import { Notifier } from "./Notifications";
 import { NEEDS_YOU_PATH } from "./paths";
 import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
+import { SelectionBar } from "./SelectionBar";
 import { LiveButton, UpdateProvider, UpdateStatus } from "./SystemPanel";
 import { StatisticsBanner } from "./Telemetry";
 import { BUNDLE_VERSION } from "./version";
@@ -104,6 +105,7 @@ export function Shell() {
     <div className={`app${collapsed ? " collapsed" : ""}`}>
       <TabTitle title={title} />
       <Notifier />
+      <SelectionBar />
       <nav className="rail" aria-label="Sections">
         <div className="rail-head">
           <span className="mark">LADO</span>

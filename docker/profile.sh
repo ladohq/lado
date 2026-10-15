@@ -1,0 +1,9 @@
+# LADO's image: what every login shell gets, so every agent (agent_env.resolve takes an
+# agent's environment from `$SHELL -ilc`, not from the image's ENV). The Dockerfile's ENV
+# sets the same for the server and `docker exec`; tests/test_docker.py keeps them the same.
+export PATH="/opt/uv/bin:/opt/agents/bin:$PATH"
+export LADO_CONTAINER=1
+export LADO_REPOS=/projects
+export CLAUDE_CONFIG_DIR="$HOME/.claude"
+export DISABLE_AUTOUPDATER=1
+export LANG=en_US.UTF-8

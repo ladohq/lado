@@ -211,7 +211,7 @@ def test_the_session_list_row_has_only_the_entrys_menu(page: Page, server, repo,
     expect(row.get_by_role("button")).to_have_count(1)
     row.get_by_role("button", name=f"Actions for {session}").click()
     menu = page.get_by_role("menu", name=session)
-    expect(menu.get_by_role("menuitem")).to_have_text(["Copy link", "Open in new tab"])
+    expect(menu.get_by_role("menuitem")).to_have_text(["Rename…", "Copy link", "Open in new tab"])
     expect(menu.get_by_role("menuitem", name="Open in new tab")).to_have_attribute(
         "href", f"/sessions/{session}"
     )

@@ -41,6 +41,7 @@ SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 LEAD_SKILLS = "lead-skills"
 LEAD_FILES = "lead-files"
 MAX_MESSAGE = 8000
+MAX_TITLE = 80  # characters of a session's title, after trimming (set_title)
 # Seconds after the 1st, 2nd, ... time a message was typed into an agent's window before
 # sweep deals with it again: types it again, or gives up after the last. LADO_RETRY_DELAYS
 # ("0.5,0.5,0.5") replaces them for the processes started with it: the integration tests'.
@@ -547,6 +548,22 @@ def check_prompt(text: str) -> str:
     if len(text) > MAX_MESSAGE:
         raise LadoError(f"the first message is {len(text)} characters, the limit is {MAX_MESSAGE}")
     return text
+
+
+def set_title(name: str, text: str | None) -> str | None:
+    """Set or clear the session's title, a label for the human over its name (which stays
+    its identifier), whatever its status: the one rule of what a title is. Trimmed; empty or
+    equal to the name is no title; a control character or more than MAX_TITLE characters is
+    refused with nothing changed. Returns what is stored."""
+    title = (text or "").strip()
+    if any(unicodedata.category(char) == "Cc" for char in title):
+        raise LadoError("a title is one line")
+    if len(title) > MAX_TITLE:
+        raise LadoError(f"a title is at most {MAX_TITLE} characters")
+    stored = title if title and title != name else None
+    if not state.set_title(name, stored):
+        raise NoSuchSession(f'unknown session "{name}"')
+    return stored
 
 
 def start_session(

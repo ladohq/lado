@@ -258,3 +258,66 @@ def test_a_session_says_how_many_agents_work_only_while_it_runs(
         assert sess["busy"] == 1
     else:  # the agents of a dead session may keep their last statuses
         assert sess["busy"] == 0
+
+
+OWN = "http://testserver"  # the test client's Host
+TITLE = "/api/sessions/s/title"
+
+
+@pytest.fixture
+def changes(client):
+    client.headers["origin"] = OWN
+    return client
+
+
+def test_sessions_carry_their_title(client, session):
+    [sess] = client.get("/api/sessions").json()
+    assert sess["title"] is None
+    runtime.set_title("s", "Review")
+    [sess] = client.get("/api/sessions").json()
+    assert (sess["name"], sess["title"]) == ("s", "Review")
+
+
+def test_put_title_sets_it_and_answers_the_session(changes, session):
+    answer = changes.put(TITLE, json={"title": "  Ревью kit-sdlc "})
+    assert answer.status_code == 200
+    assert (answer.json()["name"], answer.json()["title"]) == ("s", "Ревью kit-sdlc")
+    assert state.get_session("s").title == "Ревью kit-sdlc"
+
+
+def test_put_title_null_or_the_name_clears_it(changes, session):
+    for cleared in (None, "", "s"):
+        runtime.set_title("s", "Review")
+        answer = changes.put(TITLE, json={"title": cleared})
+        assert (answer.status_code, answer.json()["title"]) == (200, None)
+        assert state.get_session("s").title is None
+
+
+def test_put_title_refused_is_400_with_the_reason(changes, session):
+    runtime.set_title("s", "Old")
+    for text, reason in (
+        ("x" * 81, "a title is at most 80 characters"),
+        ("a\nb", "a title is one line"),
+    ):
+        answer = changes.put(TITLE, json={"title": text})
+        assert (answer.status_code, answer.json()["detail"]) == (400, reason)
+    assert state.get_session("s").title == "Old"
+
+
+def test_put_title_of_an_unknown_session_is_404(changes, session):
+    answer = changes.put("/api/sessions/nope/title", json={"title": "x"})
+    assert (answer.status_code, answer.json()["detail"]) == (404, 'unknown session "nope"')
+
+
+def test_put_title_needs_the_token_and_the_servers_own_origin(client, session):
+    assert client.put(TITLE, json={"title": "x"}).status_code == 403
+    client.headers["origin"] = "http://evil.example"
+    assert client.put(TITLE, json={"title": "x"}).status_code == 403
+    client.headers["origin"] = OWN
+    client.cookies.clear()
+    assert client.put(TITLE, json={"title": "x"}).status_code == 401
+    assert state.get_session("s").title is None
+
+
+def test_limits_name_the_title_limit(client):
+    assert client.get("/api/limits").json()["max_title"] == runtime.MAX_TITLE == 80

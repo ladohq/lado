@@ -101,7 +101,7 @@ jobs:
   # Whether this run needs the smoke (scripts/smoke_ci.py needed): always but on a pull
   # request whose every changed file is on this skip list. No path here may be or hold one
   # the smoke runs (tests/test_ci_workflow.py refuses src/, scripts/, tests/ but tests/ui/
-  # and tests/js/, pyproject.toml, uv.lock and .github/workflows/).
+  # and tests/js/, docker/, pyproject.toml, uv.lock and .github/workflows/).
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -177,12 +177,50 @@ jobs:
           path: ${{ runner.temp }}/smoke
           retention-days: 5
 
+  # LADO's image (docker/Dockerfile) built from this run's wheel on each architecture's own
+  # runner, then the container tests (tests/container/) against it, red unless they passed
+  # with no skip (scripts/smoke_ci.py container). Every run, whatever it changes; nothing is
+  # pushed anywhere.
+  container:
+    name: container (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: uv sync --locked
+      - name: Image
+        run: make docker
+      - name: Container tests
+        run: uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: container-${{ matrix.arch }}
+          path: ${{ runner.temp }}/container
+          retention-days: 5
+
   # The one check the ruleset of main requires: red unless every other job succeeded, the
   # smoke skipped only when changes said it is not needed (scripts/ci_ok.py). It runs
   # whatever their results: a skipped required check counts as passed.
   ci-ok:
     if: always()
-    needs: [unit, integration, ui, js, changes, smoke]
+    needs: [unit, integration, ui, js, changes, smoke, container]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

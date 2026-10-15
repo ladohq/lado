@@ -1,7 +1,8 @@
 """.github/workflows/ci.yml: the pytest commands of jobs `unit`, `integration` and `ui` and
 their shards; job `smoke`, the smoke tests on Linux and macOS for every provider, where job
 `changes` says a run needs it (every push to main, the daily schedule, a manual dispatch, a
-pull request beyond the skip list); job `ci-ok`, the one check `main` requires, over every
+pull request beyond the skip list); job `container`, LADO's image built and tested on amd64
+and arm64 on every run; job `ci-ok`, the one check `main` requires, over every
 other job; the triggers; and the concurrency rule that cancels only a pull request's older
 run."""
 
@@ -148,7 +149,15 @@ SKIP_LIST = [
     ".github/dependabot.yml",
 ]
 # What the smoke runs: no path of the skip list may be one of these or hold one.
-SMOKE_RUNS = ["src/", "scripts/", "tests/", "pyproject.toml", "uv.lock", ".github/workflows/"]
+SMOKE_RUNS = [
+    "src/",
+    "scripts/",
+    "tests/",
+    "docker/",
+    "pyproject.toml",
+    "uv.lock",
+    ".github/workflows/",
+]
 ALLOWED_UNDER_TESTS = ["tests/ui/", "tests/js/"]
 
 
@@ -184,10 +193,56 @@ def test_no_path_of_the_skip_list_is_one_the_smoke_runs(path):
 @pytest.mark.parametrize(
     "path",
     ["scripts/", "tests/integration/", "tests/", "src/lado/", "pyproject.toml", "uv.lock"]
-    + [".github/", ".github/workflows/ci.yml", "tests/smoke/"],
+    + [".github/", ".github/workflows/ci.yml", "tests/smoke/", "docker/", "docker/Dockerfile"],
 )
 def test_the_guard_refuses_a_path_the_smoke_runs(path):
     assert concerns_the_smoke(path)
+
+
+# The job `container`: LADO's image built and tested on each architecture.
+
+
+@pytest.fixture(scope="module")
+def container(workflow) -> dict:
+    return workflow["jobs"]["container"]
+
+
+def test_the_image_is_built_and_tested_on_each_architectures_own_runner(container):
+    assert container["name"] == "container (${{ matrix.arch }})"
+    assert container["runs-on"] == "${{ matrix.runner }}"
+    assert container["strategy"] == {
+        "fail-fast": False,
+        "matrix": {
+            "include": [
+                {"arch": "amd64", "runner": "ubuntu-24.04"},
+                {"arch": "arm64", "runner": "ubuntu-24.04-arm"},
+            ]
+        },
+    }
+    assert container["timeout-minutes"] == 30
+
+
+def test_the_container_job_runs_on_every_run(container):
+    assert "if" not in container and "needs" not in container
+
+
+def test_the_container_job_builds_then_tests_and_keeps_its_out(container):
+    steps = container["steps"]
+    assert step_named(steps, "Image")["run"] == "make docker"
+    run = step_named(steps, "Container tests")["run"]
+    assert run == 'uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container"'
+    names = [s.get("name") for s in steps]
+    assert names.index("Image") < names.index("Container tests")
+    upload = step_using(steps, "actions/upload-artifact")
+    assert upload["if"] == "always()"
+    assert upload["with"]["name"] == "container-${{ matrix.arch }}"
+    assert upload["with"]["path"] == "${{ runner.temp }}/container"
+
+
+def test_the_container_job_pushes_nothing(container):
+    job = yaml.safe_dump(container)
+    for word in ("docker login", "docker push", "--push", "login-action", "build-push-action"):
+        assert word not in job
 
 
 def test_changes_answers_from_the_pull_requests_diff(changes):

@@ -1022,15 +1022,32 @@ Built in the chat task (2026-10-03):
   13 px, at the text's column): a small avatar of the actor (an agent's colour, "Y" for
   `human`, a grey "L" for `lado`), its name muted ("You" for the human), then by kind: a
   `flow` move as chips, the state it left (mono, muted) → the state it entered (mono) and
-  the outcome, green (`--done`) forward and orange (`--human`) back; `flow_start`
+  the outcome, green (`--done`) forward and orange (`--human`) with a return icon back
+  (below); `flow_start`
   "started", `gate_open` "waits for you" (orange; the gate's line is under it),
   `flow_end` "ended" (green), `flow_cancel` "cancelled", `flow_set` "set by you", each with
   the core's `detail` as it is, cut by CSS on one line (the UI parses no detail); a
   `flow` event whose detail is no move shows its detail. The time on the right, always
-  seen. `gate_answer` is no line: the human's answer is their move. A move goes back when
-  it stays in its state or enters a state its run left earlier **in the loaded window**
-  (`goesBack`): when earlier pages load, a move's colour may turn from green to orange;
-  its outcome is always written. The **human's answer to a gate** is one line: their
+  seen. `gate_answer` is no line: the human's answer is their move. A **move's direction**
+  (LAD-62, 2026-10-14, mockup `mockup-outcome-colour.html`) is one rule for the chat and
+  Flows (`flowSteps.direction`), by the run's flow alone (`RunInfo.states`, of the
+  session's runs the chat watches), never by which other events are loaded: a move goes
+  back when it leads to a state the flow declares no later than the state it left (a stay
+  in its state too), else forward. A step back's outcome has a return icon before its
+  word; a screen reader hears `<outcome>, a step back` / `a step forward`, from hidden
+  text (`.visually-hidden`) right after the chip, as the icon is decorative and the chips
+  are no tab stops (an `aria-label` on a plain span is not allowed, and Chromium drops
+  it); the chip's own text stays its outcome. Hovering a forward or back
+  outcome shows the UI's tooltip (`Tooltip.tsx`; `OutcomeChip` and its text are shared
+  with Flows): `Forward in the flow, to <to>`, or `Back: the work returns to <to>` and,
+  muted in the mono face, `Runs again: <to> › … › <from>`, the shortest way through the
+  flow's outcomes from the state returned to to the state left (`flowSteps.runsAgain`,
+  breadth-first, ties by the declared order; no way, no line). Never the whole flow: a
+  branched flow does not fit one line. Without the flow (the runs not loaded, the run's
+  `problem`, a state not in it) the outcome is neutral: the `--raised` ground, no icon, no
+  tooltip. Kit authors: declare a flow's states in the order its work goes, branches
+  before the state they join, as the UI reads that order as forward. Its outcome is
+  always written. The **human's answer to a gate** is one line: their
   `flow` move (only the human's answers write a `flow` event as `human`; `lado flow-set`
   writes `flow_set`), with the answer's comment under it (Markdown with `breaks`), from the
   `GateInfo` of its run answered by `human` in the state the run left or entered (a loop
@@ -1325,7 +1342,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   shows, and always on a device without hover (`@media (hover: none)`), one CSS rule for
   every `RowMenu`. It holds
   actions on the entry only, and only ones that work now; no placeholders for features
-  that do not exist (no Rename, Pin or colour until they do). **Copy link** copies the
+  that do not exist (no Pin or colour until they do). **Rename…** comes first: it edits
+  the session's title in the row (Session title, below). **Copy link** copies the
   session page's address (`location.origin` + its path), says "Link copied" in the row
   (`role="status"`, outside the menu, which closes; the focus goes back to ⋯) and goes
   after 2 s; only when neither the Clipboard API nor the legacy copy works (above) a
@@ -1358,6 +1376,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   higher. The Shell knows nothing of sessions: `SessionHead` draws itself into the top
   bar's slot (`useTopBar`); while the sessions load or a session is not found nothing
   claims the bar and it keeps the title "Sessions".
+- The head's first items: the status dot, the title (or the name), the name when there is
+  a title, the pencil **Rename session**, the run time (Session title, below).
 - The head's facts, left to right: where (the folder, then its git: the origin
   remote short, `github.com/ladohq/lado`, without scheme, user and `.git`, and `· <branch>`),
   the kits, the CLI (its permission mode is in its tooltip, below; decided 2026-10-08,
@@ -1390,6 +1410,51 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 - Known limit: the server finds the CLI on its own PATH (`shutil.which`), as
   `/api/providers` and the folder check do; agents get their login shell's PATH, so the
   version shown may differ from theirs.
+
+### Session title (decided 2026-10-15, LAD-66)
+
+A session's name is its identifier (the address, the CLI, its tmux session, its branches
+and worktrees), so "renaming" a session gives it a **title**, a label over the name
+(mockup `task/lad-66/mockup-rename.html`, variant A, both entry points; renaming the
+identifier itself was turned down for its cost). The title is `SessionInfo.title`, set by
+`PUT /api/sessions/{name}/title` or `lado title`, through the core's one rule
+(`runtime.set_title`: one line, at most `Limits.max_title`, 80, characters after the trim;
+empty or equal to the name is no title; a bad one is refused, never cut). It comes through
+the change feed, so a title set anywhere shows without a reload. The UI names a session
+through one function (`sessionLabel.ts`: the title, else the name).
+
+Where it shows:
+
+| Place | With a title | Without |
+|---|---|---|
+| list row | the title in bold; the grey line starts with the name, `lado-2 · 3 agents · 1h 12m` (every kind of grey line) | as before |
+| collapsed list's icon | its letters from the title, its accessible name the title | as before |
+| row's and icon's card | first line `<b>title</b> · lado-2 · <status> · …` | as before |
+| session head | `<h1>` the title, then the name small and grey (`.session-name-id`), then the pencil | `<h1>` the name, then the pencil |
+| browser tab | `<title> · LADO` (`(n)` before it when something waits) | the name |
+| Needs you | the session's line: the title, then the name in grey | the name |
+| notification | `LADO · <title>` | `LADO · <name>` |
+
+The list's search keeps a session whose title or name holds the text (case ignored). The
+session region's accessible name (`Session <name>`), the address and Copy link keep the
+name.
+
+Where it is set (`TitleEdit.tsx`, one field for both):
+
+- **Head**: the pencil **Rename session** after the title (and the name), shown on the
+  title's hover, its own focus, and always on a device without hover; a double click on
+  the title does the same. The title becomes a field of its room (a third of the bar),
+  holding the title (empty without one, the name as placeholder), selected; under it
+  `Enter to save · Esc to cancel · empty shows the name`.
+- **List**: **Rename…**, first in the row's ⋯, turns the row into the same field (no link
+  while it edits), with `lado-2 · Enter to save · Esc to cancel` under it.
+- Enter or leaving the field saves, Esc cancels and sends nothing (nor does the blur after
+  it); the same text as stored sends nothing. While it saves the field is read-only. Over
+  the limit (counted in characters, as the server does): `<n> characters, the limit is 80`
+  under the field, nothing sent. A refusal: the server's text under the field
+  (`role="alert"`), the field kept open with the text. The answer, the session as stored,
+  is shown at once, before the feed's item. After it closes the focus goes back to the
+  pencil or the ⋯.
 
 ### System panel (decided 2026-10-09, feature/system-panel)
 
@@ -1436,10 +1501,12 @@ M2, P1–P3 of round 3, F3 and U1–U3).
 - **The wait** (U2), under the top bar: "Updating to X · The server is restarting · m:ss".
   The page polls `/api/health` and `/api/update` every 2 s and ends on both: a server whose
   `started_at` is newer than the one before, and `UpdateInfo.last` with the id the 202
-  answered and an outcome other than `running`. So it ends after a rollback too, where the
-  version is the same; when the version changed, the version banner offers the reload. An
-  update that ended before it started (a failed result of that id with no log) ends the
-  wait on the same server. After 5 minutes it says "The server did not come back. See <update.log>; start it with
+  answered and an outcome other than `running`, and in either case `running` false: the
+  result is written while the update still holds its lock, and the `UpdateInfo` that ends
+  the wait is the one the System panel keeps (LAD-57: before, it could say an update runs,
+  without Update…). So it ends after a rollback too, where the version is the same; when
+  the version changed, the version banner offers the reload. An update that ended before
+  it started (a failed result of that id with no log) ends the wait on the same server. After 5 minutes it says "The server did not come back. See <update.log>; start it with
   `lado ui`" and goes on polling. The page cannot learn the steps while the server is gone.
 - **The result** (U3), under the top bar, from `UpdateInfo.last`, also after a reload:
   ok; partial with the sessions that did not resume and their `lado start`; failed, rolled
@@ -1495,6 +1562,52 @@ GitHub ↗** (the report's link to GitHub's new issue form, in a new tab; the ol
 errors may be left out of it, counted in its last line, never on the page) and **Copy
 text** ("Report copied"). Loading shows "Loading…", a failed load its reason. Nothing goes
 to GitHub before the human's click. The system panel keeps its own copy button.
+
+### Selected text and copy buttons (decided 2026-10-15, LAD-67)
+
+What the human can do with text they read (the mockup `task/lad-67/mockup-selection.html`,
+the quote icon of variant 1; openspec change `selection-actions`).
+
+- **Readable areas.** A component that renders text to read marks its root as an area
+  (`quoteArea` in `quote.ts`: `data-quote` `text`, `markdown` or `code`, the session, and
+  for an artifact its full name and whether the record is older than the latest; a text
+  artifact's rows carry `data-line`): each message of the chat (`.feed-main`), its run
+  events, closed gates and skipped questions; the waiting card's questions and a gate's
+  question, note and recommendation; the agent page's task and messages; an open note of
+  the Flows tab; the cards of Needs you; a Markdown artifact's body and a text artifact's
+  table, in the panel and in the Artifacts tab. Not areas: inputs, the composer, terminals,
+  HTML artifacts (their frame), images, and the UI's chrome (rail, tabs, heads, buttons).
+- **The selection bar** (`SelectionBar.tsx`, mounted once in the shell): when a selection
+  that is not blank lies in one area (none that takes text of two, nor in a field, an
+  editable element or a terminal; one that ends at the next block's start without taking
+  its text, as a triple click on an area's last line does, is still that area's), a small
+  bar of two icon buttons, their names in the
+  UI's tooltips: **Copy** (two sheets) and **Quote in reply** (a speech bubble with quote
+  marks). It stands over the selection's middle, 8 px above it; below it on a touch screen
+  (`(hover: none)`, where the system's own menu stands above) or with no room above; never
+  past the window's edge. Esc, a press outside it, a scroll or an empty selection hide it;
+  a resize places it again. Its buttons never take the selection away.
+- **Copy** copies the live selection as Ctrl+C does (`execCommand("copy")`), else the
+  selection's text by the Clipboard API, and says "Copied" in the bar's place for 2 s; the
+  selection stays. When both fail, it says "Press ⌘C / Ctrl+C to copy".
+- **Quote in reply** builds a Markdown quote (`quote.ts`): each line `> `, an empty one
+  `>`; from a Markdown artifact under `In <full name>:`; from a text artifact its selected
+  lines, cut at the selection's ends and without their numbers, as a fenced block (a fence
+  longer than any backticks in them) under `In <full name> (lines a–b):` or `(line a)`; a
+  record older than the latest says `, an earlier record`. The quote goes to the page's
+  composer (the chat's, to the supervisor, or an agent page's, to that agent; also under
+  an artifact panel), after one blank line when it holds text, then a new line with the
+  cursor, focused; the recipient never changes. On a page with no composer (Artifacts,
+  Flows, Needs you) the session's chat opens with the quote in its composer
+  (`quotes.ts`). An expanded waiting card of the session folds.
+- **Copy code and Copy message.** Each fenced code block of Markdown the UI renders has an
+  icon button **Copy code** at its top right (its code exactly); each message of the chat
+  has **Copy message** at the end of its head, or at a continued row's top right, and so
+  has each message on an agent's page: the human's text, an agent's summary (unless its
+  body's first line says it) and body after a blank line, by the chat's own rule. Both say
+  "Copied" for 2 s, and fall back to the text to copy by hand as Copy link does. With a
+  pointer that can hover they show only over their block or message, or with the focus;
+  on a touch screen always.
 
 ### Notifications (decided 2026-10-03, task Needs you and notifications)
 
@@ -1751,7 +1864,9 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
     time), turned by the switch. A step's line: time, a dot (green; orange for a way back,
     a step whose `target` the flow declares no later than its state, or the human's
     answer; none is a way back without the flow), who (a link while it lives; the human
-    is "you"), `<from> [outcome] → <to>` (a way back's outcome orange), "flow-set" or
+    is "you"), `<from> [outcome] → <to>` (a way back's outcome orange with the return
+    icon, and the outcome's tooltip and the direction read out, by the chat's one rule: Flow
+    events in Look of the feed), "flow-set" or
     "loop limit" for an override, and the summary on one line. It opens to its facts
     (Who, From, Outcome, To, Step took: the time since the run's previous event) and the
     note's whole body as Markdown, as in the chat ("No comment." for the human's answer

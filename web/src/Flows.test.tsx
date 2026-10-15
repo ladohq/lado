@@ -14,7 +14,7 @@ vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeX
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
 
 const NO_WAITS = { gates: 0, questions: 0, agents: 0 };
-const SETTINGS = { kits: ["team"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0 };
+const SETTINGS = { kits: ["team"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, title: null };
 const SESSIONS: SessionInfo[] = [
   { name: "lado", repo: "/src/lado", status: "running", agents: 2, waiting: NO_WAITS, ...SETTINGS },
   { name: "old", repo: "/src/old", status: "stopped", agents: 0, waiting: NO_WAITS, ...SETTINGS },
@@ -667,9 +667,9 @@ test("the history is newest first; its switch turns it and is remembered", async
   const region = await page("fix/gate-bubble");
   expect(within(region).getByRole("heading", { name: "History · 4 events" })).toBeTruthy();
   const newest = [
-    "developer implement done → review",
-    "reviewer review changes → implement",
-    "developer implement done → review",
+    "developer implement done, a step forward → review",
+    "reviewer review changes, a step back → implement",
+    "developer implement done, a step forward → review",
     "supervisor started the run",
   ];
   expect(lines(list)).toEqual(newest);
@@ -709,6 +709,30 @@ test("a row has the time, who, from, outcome, to and the summary; a way back is 
   open(runPath("lado", ACTIVE.name));
   const unread = await feed("fix/gate-bubble");
   expect(unread.querySelectorAll(".back")).toHaveLength(0);
+});
+
+test("a step back has the return icon and says so in its name; hovering a step says where it goes, as in the chat", async () => {
+  serve(STEPS);
+  open(runPath("lado", ACTIVE.name));
+  const list = await feed("fix/gate-bubble");
+  const moves = steps(list)
+    .slice(0, 2)
+    .map((one) => one.querySelector<HTMLElement>(".feed-move")!);
+  const [fixed, findings] = moves.map((one) => one.querySelector<HTMLElement>(".feed-chip")!);
+  // The direction is read out with the move's text; the chip's own text is the outcome.
+  expect(moves.map((one) => one.textContent)).toEqual([
+    "implement done, a step forward → review",
+    "review changes, a step back → implement",
+  ]);
+  expect([fixed.textContent, fixed.querySelector("svg")]).toEqual(["done", null]);
+  expect([findings.textContent, findings.querySelector("svg") !== null]).toEqual(["changes", true]);
+  const lines = async () =>
+    [...(await screen.findByRole("tooltip")).querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+  fireEvent.mouseEnter(findings);
+  expect(await lines()).toEqual(["Back: the work returns to implement", "Runs again: implement › review"]);
+  fireEvent.mouseLeave(findings);
+  fireEvent.mouseEnter(fixed);
+  expect(await lines()).toEqual(["Forward in the flow, to review"]);
 });
 
 test("the latest event with a body is open at first: its facts and its body as Markdown; Open all opens all", async () => {
@@ -789,7 +813,7 @@ test("a flow-set, a loop limit's answer and a note from before steps were kept s
   open(runPath("lado", ACTIVE.name));
   const list = await feed("fix/gate-bubble");
   expect(lines(list)).toEqual([
-    "you review continue → review loop limit",
+    "you review continue, a step back → review loop limit",
     "you review → implement flow-set",
     "implement",
   ]);

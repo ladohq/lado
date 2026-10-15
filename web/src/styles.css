@@ -1298,9 +1298,82 @@ h3 {
   white-space: nowrap;
 }
 
-.session-head-actions .copy-button .row-note {
+.session-head-actions .copy-button .row-note,
+.copy-icon-button .row-note {
   right: 0;
   left: auto;
+}
+
+/* Copy code and Copy message (docs/design/ui.md, Selected text and copy buttons): small,
+   borderless; with a pointer that can hover, shown only over their block or message, or
+   with the focus (opacity, so Tab still reaches them); on a touch screen always. */
+.copy-icon-button .icon-button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.copy-icon-button .icon-button:hover {
+  background: var(--raised);
+  color: var(--ink);
+}
+
+.copy-icon-button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.code-block {
+  position: relative;
+  margin: 0 0 0.8em;
+}
+
+.code-block > pre {
+  margin: 0;
+}
+
+.code-block > .copy-icon-button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+.code-block > .copy-icon-button .icon-button {
+  background: var(--ground);
+}
+
+.feed-head > .copy-icon-button {
+  align-self: center;
+  margin: -4px 0;
+}
+
+.feed-copy {
+  position: absolute;
+  top: 4px;
+  right: var(--row-pad);
+}
+
+/* A continued row's text keeps clear of its Copy message. */
+.feed-main:has(> .feed-copy) {
+  padding-right: 26px;
+}
+
+@media (hover: hover) {
+  .code-block > .copy-icon-button,
+  .feed-row .copy-icon-button,
+  .agent-messages .copy-icon-button {
+    opacity: 0;
+  }
+
+  /* A message's own button: never the Copy code of a block in it. */
+  .code-block:hover > .copy-icon-button,
+  .feed-row:hover :is(.feed-head, .feed-copy) > .copy-icon-button,
+  .agent-messages li:hover > .copy-icon-button,
+  .copy-icon-button:focus-within {
+    opacity: 1;
+  }
 }
 
 /* One line; a name longer than its room ends in "…", whole in its title. It does not shrink
@@ -1311,6 +1384,98 @@ h3 {
   max-width: 33%;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The session title (docs/design/ui.md, Session title): the name, small and grey, after a
+   title, in the head and in Needs you; the pencil after them, on the title's hover, its own
+   focus, and always on a device without hover. */
+.session-name-id {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font: 400 13px var(--mono);
+  line-height: 32px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waits-session h2 .session-name-id {
+  flex: none;
+  line-height: inherit;
+}
+
+.session-rename {
+  flex: none;
+  margin-top: 2px;
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+  opacity: 0;
+}
+
+.session-rename:hover {
+  color: var(--ink);
+}
+
+.session-head h1:hover ~ .session-rename,
+.session-head .session-name-id:hover ~ .session-rename,
+.session-rename:hover,
+.session-rename:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .session-rename {
+    opacity: 1;
+  }
+}
+
+/* The title's field, in the head in the place of the title (a third of the bar), and in a
+   list row in the place of its link; the hint or the problem under it. */
+.title-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.session-head .title-edit {
+  flex: none;
+  width: 33%;
+}
+
+.title-edit input {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--action);
+  border-radius: 6px;
+  outline: 2px solid color-mix(in srgb, var(--action) 30%, transparent);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.title-edit input[aria-invalid] {
+  border-color: var(--danger);
+  outline-color: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.title-edit-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.title-edit .field-problem {
+  font-size: 12px;
+}
+
+.session-row-edit input {
+  height: 28px;
+  font-size: 15px;
 }
 
 /* A window too narrow for the head on one line: the facts go to a second line of the top
@@ -1331,6 +1496,21 @@ h3 {
   /* The dot, the run time, the icons and the link's dot, with their gaps. */
   .session-head h1 {
     max-width: calc(100% - 190px);
+  }
+
+  /* With a title, its name and the pencil stay beside it too. */
+  .session-head:has(.session-name-id) h1,
+  .session-head .title-edit {
+    max-width: calc(100% - 320px);
+  }
+
+  .session-head .title-edit {
+    width: auto;
+    flex: 1 1 auto;
+  }
+
+  .session-head .session-name-id {
+    max-width: 12ch;
   }
 
   .session-head > .meta-sep {
@@ -1752,6 +1932,40 @@ h3 {
   place-items: center;
   width: 16px;
   height: 16px;
+}
+
+/* Over text the human selected (SelectionBar.tsx): Copy and Quote in reply, or a note in
+   their place; under the tooltips. */
+.selection-bar {
+  position: fixed;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px var(--shadow);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.selection-bar .icon-button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+}
+
+.selection-bar .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.selection-note {
+  padding: 5px 8px;
+  color: var(--ink);
+  font-size: 12.5px;
 }
 
 /* The UI's own tooltip (Tooltip.tsx): compact, over everything, never in the pointer's way. */
@@ -2432,6 +2646,7 @@ h3 {
 }
 
 .feed-row {
+  position: relative; /* a continued row's Copy message, .feed-copy */
   display: flex;
   gap: var(--row-gap);
   margin-top: 6px;
@@ -2703,7 +2918,9 @@ h3 {
   font-weight: 600;
 }
 
-/* A move forward and a run's end went well; a move back and a gate's wait are orange. */
+/* A move forward and a run's end went well; a move back (with the return icon, below) and a
+   gate's wait are orange. An outcome whose direction is not known keeps the --raised
+   ground. */
 .run-outcome.forward,
 .run-flow_end .run-chip {
   background: var(--done-ground);
@@ -2976,6 +3193,11 @@ h3 {
   color: var(--human);
   font: 600 13px var(--mono);
   overflow-wrap: anywhere;
+}
+
+/* The gate's readable texts, one area of the selection bar; its children lay out as before. */
+.gate-about {
+  display: contents;
 }
 
 .gate-question {
@@ -4739,7 +4961,8 @@ h3 {
   width: min(360px, calc(100vw - 32px));
 }
 
-.link-popover input {
+.link-popover input,
+.link-popover textarea {
   width: 100%;
   box-sizing: border-box;
   font-family: var(--mono);
@@ -5237,6 +5460,11 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.agent-messages li .copy-icon-button {
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
 .agent-composer .hint {
   margin: 4px 0 0;
   font-size: 12px;
@@ -5568,9 +5796,31 @@ h3 {
   white-space: nowrap;
 }
 
+/* A step back (flowSteps.tsx): orange, with the return icon. */
 .feed-chip.back {
   background: var(--human-ground);
   color: var(--human);
+}
+
+/* A flow step's outcome, in the chat and the Flows tab: a step back's return icon before the
+   word (flowSteps.tsx), and the tooltip's way that runs again in the mono face. */
+.run-outcome,
+.feed-chip {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.run-outcome .icon,
+.feed-chip .icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.2;
+}
+
+.step-way {
+  font: 11.5px/1.6 var(--mono);
 }
 
 /* The Kits page (docs/design/ui.md, Kits; mockup C1): the tabs, search and source chips over

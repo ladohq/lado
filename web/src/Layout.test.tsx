@@ -19,7 +19,7 @@ vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).F
 const NONE = { gates: 0, questions: 0, agents: 0 };
 
 function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
-  const settings = { kits: ["default"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null };
+  const settings = { kits: ["default"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, title: null };
   return { name, repo: `/src/${name}`, status: "running", agents: 1, waiting: NONE, busy: 0, ...settings, ...more };
 }
 
@@ -897,3 +897,224 @@ function Plain() {
   useTitle("Plain");
   return null;
 }
+
+// The session title (docs/design/ui.md, Session title): the label over the name.
+
+const TITLE = "Rename sessions (LAD-66)";
+type Put = { path: string; body: unknown };
+
+// The server's PUT of a title: the answer is the session with the title as stored.
+function titles(): Put[] {
+  const puts: Put[] = [];
+  const base = fetch;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === "/api/limits") return new Response(JSON.stringify({ max_title: 80 }));
+      if (init?.method === "PUT") {
+        const body = JSON.parse(String(init.body));
+        puts.push({ path, body });
+        const name = decodeURIComponent(path.split("/")[3]);
+        const one = sessions.find((s) => s.name === name)!;
+        return new Response(JSON.stringify({ ...one, title: body.title }));
+      }
+      return base(path, init);
+    }),
+  );
+  return puts;
+}
+
+test("a titled row shows its title, its grey line starting with its name; an untitled row is as before", async () => {
+  sessions = [session("lado-2", { title: TITLE, agents: 3 }), session("lado-3")];
+  open("/sessions");
+  const titled = await within(list()).findByRole("link", { name: new RegExp(`^${TITLE.replace(/[()]/g, "\\$&")}`) });
+  expect(titled.querySelector(".session-name")!.textContent).toBe(TITLE);
+  expect(about(titled)).toMatch(/^lado-2 · 3 agents · /);
+  expect(titled.getAttribute("href")).toBe("/sessions/lado-2");
+  const plain = row("lado-3");
+  expect(plain.querySelector(".session-name")!.textContent).toBe("lado-3");
+  expect(about(plain)).toMatch(/^1 agent · /);
+});
+
+test("the grey line of a titled row that needs the human starts with its name too", async () => {
+  sessions = [session("lado-2", { title: TITLE, waiting: { gates: 1, questions: 0, agents: 0 } })];
+  open("/sessions");
+  const titled = await within(await within(list()).findByRole("region", { name: "Needs you" })).findByRole("link", { name: /^Rename/ });
+  expect(about(titled)).toBe("lado-2 · 1 gate");
+});
+
+test("the search finds a session by its title or its name", async () => {
+  sessions = [session("lado-2", { title: TITLE }), session("crm")];
+  open("/sessions");
+  await within(list()).findByRole("link", { name: /^crm/ });
+  const search = screen.getByRole("searchbox", { name: "Find a session" });
+  for (const typed of ["rename", "LADO-2", "lad-66"]) {
+    fireEvent.change(search, { target: { value: typed } });
+    expect(names(group("Running"))).toEqual([TITLE]);
+  }
+  fireEvent.change(search, { target: { value: "crm" } });
+  expect(names(group("Running"))).toEqual(["crm"]);
+});
+
+test("a titled row's card leads with its title, then its name", async () => {
+  sessions = [session("lado-2", { title: TITLE })];
+  open("/sessions");
+  const link = await within(list()).findByRole("link", { name: /^Rename/ });
+  fireEvent.focus(link);
+  const shown = screen.getByRole("tooltip");
+  expect(shown.querySelector(".tooltip-line")!.textContent).toBe(`${TITLE} · lado-2 · running · idle · 1 agent`);
+  expect(nameFirst(shown)).toBe(TITLE);
+});
+
+test("a titled session's icon in the strip takes its letters and its name from the title, its card too", async () => {
+  collapsed();
+  sessions = [session("lado-2", { title: TITLE }), session("lado")];
+  open("/sessions");
+  await within(strip()!).findByRole("link", { name: "lado, idle" });
+  expect(icons().map((icon) => icon.getAttribute("aria-label"))).toEqual([`${TITLE}, idle`, "lado, idle"]);
+  expect(icons().map((icon) => icon.textContent)).toEqual(["RS", "LA"]);
+  fireEvent.focus(icons()[0]);
+  expect(screen.getByRole("tooltip").querySelector(".tooltip-line")!.textContent).toMatch(new RegExp(`^${TITLE.replace(/[()]/g, "\\$&")} · lado-2 · `));
+});
+
+test("a titled session's head: the title, the name small after it, the pencil; the tab's title is the title", async () => {
+  sessions = [session("lado-2", { title: TITLE })];
+  open("/sessions/lado-2");
+  await screen.findByRole("region", { name: "Session lado-2" });
+  expect(barHeadings()).toEqual([TITLE]);
+  expect(bar().querySelector(".session-name-id")!.textContent).toBe("lado-2");
+  expect(within(bar()).getByRole("button", { name: "Rename session" })).toBeTruthy();
+  expect(document.title).toBe(`${TITLE} · LADO`);
+});
+
+test("an untitled session's head has no name beside its name, and the pencil", async () => {
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  expect(barHeadings()).toEqual(["lado"]);
+  expect(bar().querySelector(".session-name-id")).toBeNull();
+  expect(within(bar()).getByRole("button", { name: "Rename session" })).toBeTruthy();
+});
+
+test("the pencil edits the title in place: Enter saves, the head and the row show it, the focus is back on the pencil", async () => {
+  const puts = titles();
+  sessions = [session("lado")];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(bar()).getByRole("button", { name: "Rename session" }));
+  const field = within(bar()).getByRole("textbox", { name: "Session title" }) as HTMLInputElement;
+  expect(field.value).toBe("");
+  expect(field.placeholder).toBe("lado");
+  expect(within(bar()).getByText("Enter to save · Esc to cancel · empty shows the name")).toBeTruthy();
+  fireEvent.change(field, { target: { value: "Review" } });
+  fireEvent.keyDown(field, { key: "Enter" });
+  await waitFor(() => expect(barHeadings()).toEqual(["Review"]));
+  expect(puts).toEqual([{ path: "/api/sessions/lado/title", body: { title: "Review" } }]);
+  expect(document.activeElement).toBe(within(bar()).getByRole("button", { name: "Rename session" }));
+  expect(within(list()).getByRole("link", { name: /^Review/ })).toBeTruthy();
+  expect(document.title).toBe("Review · LADO");
+});
+
+test("a double click on the title edits it too; Esc sends nothing", async () => {
+  const puts = titles();
+  sessions = [session("lado", { title: "Old" })];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.doubleClick(bar().querySelector("h1")!);
+  const field = within(bar()).getByRole("textbox", { name: "Session title" });
+  fireEvent.change(field, { target: { value: "x" } });
+  fireEvent.keyDown(field, { key: "Escape" });
+  expect(barHeadings()).toEqual(["Old"]);
+  expect(document.activeElement).toBe(within(bar()).getByRole("button", { name: "Rename session" }));
+  await act(async () => {});
+  expect(puts).toEqual([]);
+});
+
+const rowMenu = async (name: string) => {
+  const item = (await within(list()).findByRole("button", { name: `Actions for ${name}` })).closest("li") as HTMLElement;
+  fireEvent.click(within(item).getByRole("button", { name: `Actions for ${name}` }));
+  return { item, menu: await screen.findByRole("menu", { name }) };
+};
+
+test("Rename… is the row menu's first item and edits the title in the row; Esc returns the focus to ⋯", async () => {
+  const puts = titles();
+  sessions = [session("lado-2", { title: TITLE })];
+  open("/sessions");
+  const { item, menu } = await rowMenu("lado-2");
+  expect(within(menu).getAllByRole("menuitem").map((one) => one.textContent)).toEqual(["Rename…", "Copy link", "Open in new tab"]);
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Rename…" }));
+  expect(screen.queryByRole("menu")).toBeNull();
+  const field = within(item).getByRole("textbox", { name: "Session title" }) as HTMLInputElement;
+  expect(field.value).toBe(TITLE);
+  expect(within(item).queryByRole("link")).toBeNull(); // no link while it edits
+  expect(within(item).getByText("lado-2 · Enter to save · Esc to cancel")).toBeTruthy();
+  fireEvent.change(field, { target: { value: "x" } });
+  fireEvent.keyDown(field, { key: "Escape" });
+  expect(item.querySelector(".session-name")!.textContent).toBe(TITLE);
+  expect(document.activeElement).toBe(within(item).getByRole("button", { name: "Actions for lado-2" }));
+  await act(async () => {});
+  expect(puts).toEqual([]);
+});
+
+test("Rename… with an empty field clears the title: the name shows again", async () => {
+  const puts = titles();
+  sessions = [session("lado-2", { title: TITLE })];
+  open("/sessions");
+  const { item, menu } = await rowMenu("lado-2");
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Rename…" }));
+  const field = within(item).getByRole("textbox", { name: "Session title" });
+  fireEvent.change(field, { target: { value: "" } });
+  fireEvent.keyDown(field, { key: "Enter" });
+  await waitFor(() => expect(item.querySelector(".session-name")?.textContent).toBe("lado-2"));
+  expect(puts).toEqual([{ path: "/api/sessions/lado-2/title", body: { title: null } }]);
+  expect(document.activeElement).toBe(within(item).getByRole("button", { name: "Actions for lado-2" }));
+});
+
+test("a title from the feed while the field is open keeps the typed text; after Esc the row shows the stored title", async () => {
+  titles();
+  sessions = [session("lado-2")];
+  open("/sessions");
+  const { item, menu } = await rowMenu("lado-2");
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Rename…" }));
+  const field = within(item).getByRole("textbox", { name: "Session title" }) as HTMLInputElement;
+  fireEvent.change(field, { target: { value: "Mine" } });
+  const elsewhere = session("lado-2", { title: "Theirs" });
+  stream().send("change", { kind: "sessions", session: "lado-2", key: "", op: "update", item: elsewhere }, "11");
+  expect(field.value).toBe("Mine");
+  fireEvent.keyDown(field, { key: "Escape" });
+  expect(item.querySelector(".session-name")!.textContent).toBe("Theirs");
+});
+
+test("a title set elsewhere shows in the open page from the feed", async () => {
+  sessions = [session("lado")];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  stream().send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: session("lado", { title: "Review" }) }, "11");
+  expect(barHeadings()).toEqual(["Review"]);
+  expect(within(list()).getByRole("link", { name: /^Review/ })).toBeTruthy();
+});
+
+test("the head's field closes when the page goes to another session: its text is never saved there", async () => {
+  const puts = titles();
+  sessions = [session("lado"), session("other")];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(bar()).getByRole("button", { name: "Rename session" }));
+  const field = within(bar()).getByRole("textbox", { name: "Session title" });
+  fireEvent.change(field, { target: { value: "Mine" } });
+  fireEvent.click(within(list()).getByRole("link", { name: /^other/ })); // no blur, as "Back" goes
+  await screen.findByRole("region", { name: "Session other" });
+  expect(within(bar()).queryByRole("textbox", { name: "Session title" })).toBeNull();
+  expect(barHeadings()).toEqual(["other"]);
+  fireEvent.blur(field);
+  fireEvent.keyDown(field, { key: "Enter" });
+  await act(async () => {});
+  expect(puts).toEqual([]);
+});
+
+test("an icon's letters from a title that starts with an emoji are whole characters", async () => {
+  collapsed();
+  sessions = [session("lado", { title: "🚀 Релиз" }), session("x", { title: "𝒜𝒷" })];
+  open("/sessions");
+  await within(strip()!).findByRole("link", { name: "🚀 Релиз, idle" });
+  expect(icons().map((icon) => icon.textContent)).toEqual(["🚀Р", "𝒜𝒷"]);
+});

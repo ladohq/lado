@@ -15,7 +15,7 @@ Tests first in each section; each task is one commit. The plan with the code is
 
 ## 2. The GitHub release names the image
 
-- [ ] 2.1 `tests/test_release_notes.py`: the footer's `Docker: \`docker pull
+- [x] 2.1 `tests/test_release_notes.py`: the footer's `Docker: \`docker pull
   ghcr.io/ladohq/lado:<version>\`.` for a final and an RC; `release_notes.IMAGE ==
   update.IMAGE`; then `scripts/release_notes.py` (D6). `uv run pytest
   tests/test_release_notes.py -n0`.

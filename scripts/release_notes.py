@@ -9,7 +9,7 @@ release after PyPI. A final `vX.Y.Z` takes the section `## X.Y.Z (<date>)`; a re
 candidate `vX.Y.ZrcN` takes `## X.Y.Z (unreleased)`, as its changes are not dated until
 the final. A section runs to the next `## ` heading or the file's end. The notes are the
 section's lines, each wrapped list item joined into one line, then a footer: how to
-install or update, and the release on PyPI. A tag that is no release, a missing section
+install or update, the release's Docker image, and the release on PyPI. A tag that is no release, a missing section
 or an empty one is one line on stderr, exit 1.
 
 Standard library only.
@@ -27,6 +27,7 @@ DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 UNRELEASED = "unreleased"
 ITEM = re.compile(r"([-*+]|\d+\.) ")  # a list item's start
 PYPI = "https://pypi.org/project/lado/{version}/"
+IMAGE = "ghcr.io/ladohq/lado"  # update.IMAGE (a test keeps them the same); no lado import
 
 
 class NotesError(Exception):
@@ -57,6 +58,7 @@ def _footer(version: str, candidate: bool) -> str:
         update = "Update with `lado update`"
     return (
         f"{update}, or install it with `uv tool install lado=={version}`.\n\n"
+        f"Docker: `docker pull {IMAGE}:{version}`.\n\n"
         f"PyPI: {PYPI.format(version=version)}\n"
     )
 

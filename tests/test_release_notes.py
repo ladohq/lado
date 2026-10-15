@@ -61,6 +61,19 @@ def test_a_release_candidate_gets_the_unreleased_section_and_names_its_version()
     assert "pre-release" in footer
 
 
+def test_the_footer_names_the_image_of_the_version():
+    final = notes.notes("v0.37.0", CHANGELOG).split("\n---\n")[1]
+    assert "Docker: `docker pull ghcr.io/ladohq/lado:0.37.0`." in final
+    candidate = notes.notes("v0.38.0rc2", CHANGELOG).split("\n---\n")[1]
+    assert "Docker: `docker pull ghcr.io/ladohq/lado:0.38.0rc2`." in candidate
+
+
+def test_the_notes_name_lados_image():
+    from lado import update
+
+    assert notes.IMAGE == update.IMAGE
+
+
 def test_the_section_is_the_notes_without_their_footer():
     """scripts/rc_check.py reads a release candidate's items by the notes' own rules."""
     for tag in ("v0.37.0", "v0.38.0rc1"):

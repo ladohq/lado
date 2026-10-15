@@ -2397,7 +2397,10 @@ def resume_at_start(
     stopped while its tmux is gone), so the next start does not try it again; the others go
     on. Nothing more once `stopping` is set. Each session is read again just before its
     resume, as the human may resume one from the UI meanwhile: one that runs then is left
-    as it is."""
+    as it is. Without lado.db there is nothing to resume, and none is made: the server's
+    other first look makes it, and two makers at once could leave it half made."""
+    if not (state.home_path() / "lado.db").exists():
+        return
     for listed in state.resumable():
         if stopping is not None and stopping.is_set():
             return

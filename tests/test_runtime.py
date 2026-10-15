@@ -2531,6 +2531,15 @@ def test_the_containers_stop_without_lado_db_makes_nothing(lado_home):
     assert not lado_home.exists()
 
 
+def test_the_containers_first_start_makes_no_lado_db(lado_home):
+    """A new container's server makes lado.db elsewhere; a second maker at the same moment
+    could leave it half made (schema version 0 with tables)."""
+    lado_home.mkdir()
+    lines = []
+    runtime.resume_at_start(lines.append)
+    assert lines == [] and not (lado_home / "lado.db").exists()
+
+
 def _started(name: str) -> runtime.Started:
     """What a resume with nothing to say returns."""
     return runtime.Started(state.get_session(name), resumed=True)

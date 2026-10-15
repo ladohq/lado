@@ -94,7 +94,8 @@ MEASURE_FIELD = """field => {
   const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
   const box = field.getBoundingClientRect();
   const list = field.closest('.waiting-list').getBoundingClientRect();
-  const send = field.closest('[role=tabpanel]').querySelector('.waiting-send').getBoundingClientRect();
+  const panel = field.closest('[role=tabpanel]');
+  const send = panel.querySelector('.waiting-send').getBoundingClientRect();
   return {
     lines: Math.round(((field.clientHeight - padding) / line) * 10) / 10,
     scrolls: field.scrollHeight > field.clientHeight + 1,

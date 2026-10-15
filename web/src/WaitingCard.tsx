@@ -20,6 +20,7 @@ import { answerQuestions, ApiError, type GateInfo, type MessageInfo, type Reply,
 import { Attachments } from "./Attachments";
 import { Body } from "./ChatText";
 import { avatar } from "./FeedRow";
+import { CARD_LINES, MOST_LINES, useGrow } from "./fieldHeight";
 import { GatePanel } from "./GateCard";
 import { Recommendation } from "./Recommendation";
 import { ExpandIcon, FlowsIcon, MinimizeIcon, RestoreIcon } from "./icons";
@@ -462,6 +463,36 @@ export function WaitingCard({
 // An agent's tab: its questions, numbered when more than one, each with the supervisor's
 // recommendation (Recommendation.tsx), its choices, Other… (a question with a free answer)
 // and Skip; then Send, on once each has an answer.
+// An own answer or a skip's comment: it grows with its text from CARD_LINES to MOST_LINES,
+// then scrolls, its lower edge kept in view while the human types.
+function AnswerField({
+  label,
+  text,
+  off,
+  change,
+}: {
+  label: string;
+  text: string;
+  off: boolean;
+  change: (value: string) => void;
+}) {
+  const field = useRef<HTMLTextAreaElement>(null);
+  useGrow(field, text, CARD_LINES, MOST_LINES);
+  return (
+    <textarea
+      ref={field}
+      className="waiting-field"
+      rows={CARD_LINES}
+      autoFocus
+      aria-label={label}
+      placeholder={label}
+      value={text}
+      disabled={off}
+      onChange={(event) => change(event.target.value)}
+    />
+  );
+}
+
 function AgentPanel({
   session,
   tab,
@@ -543,18 +574,12 @@ function AgentPanel({
                 </button>
               </div>
               {now !== undefined && !("choice" in now) && (
-                <textarea
+                <AnswerField
                   key={"own" in now ? "own" : "skip"}
-                  className="waiting-field"
-                  rows={1}
-                  autoFocus
-                  aria-label={"own" in now ? "Your own answer" : "Why you skip it (optional)"}
-                  placeholder={"own" in now ? "Your own answer" : "Why you skip it (optional)"}
-                  value={text}
-                  disabled={off}
-                  onChange={(event) =>
-                    pick(question.id, "own" in now ? { own: event.target.value } : { skip: event.target.value })
-                  }
+                  label={"own" in now ? "Your own answer" : "Why you skip it (optional)"}
+                  text={text}
+                  off={off}
+                  change={(value) => pick(question.id, "own" in now ? { own: value } : { skip: value })}
                 />
               )}
             </li>

@@ -6,6 +6,9 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 // scrolls.
 export const MOST_LINES = 8;
 
+// The lines the waiting card's fields and a gate's comment open with.
+export const CARD_LINES = 3;
+
 // The field as tall as its text, from `least` lines to `most`, then it scrolls inside. Lines
 // count by the field's computed line height; its padding and border come on top.
 export function grow(field: HTMLTextAreaElement | null, least: number, most: number) {
@@ -32,7 +35,7 @@ export function useGrow(field: RefObject<HTMLTextAreaElement | null>, text: stri
     grow(box, least, most);
     const height = parseFloat(box.style.height) || 0;
     if (height > before.current && before.current > 0 && document.activeElement === box) {
-      box.scrollIntoView({ block: "nearest" });
+      box.scrollIntoView?.({ block: "nearest" });
     }
     before.current = height;
   }, [field, text, least, most]);

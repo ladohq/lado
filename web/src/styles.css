@@ -3624,7 +3624,8 @@ h3 {
   color: var(--ink);
   font: inherit;
   font-size: 14px;
-  resize: vertical;
+  line-height: 1.5;
+  resize: none;
 }
 
 .waiting-field:focus {
@@ -3995,7 +3996,8 @@ h3 {
   color: var(--ink);
   font: inherit;
   font-size: 14px;
-  resize: vertical;
+  line-height: 1.5;
+  resize: none;
 }
 
 /* The composer (Composer.tsx): one frame with the paperclip, the field, as tall as its text,

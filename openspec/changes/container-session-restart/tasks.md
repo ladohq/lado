@@ -22,10 +22,10 @@ Tests first in each section; each task is one commit. The plan with the code is
 
 ## 3. The UI server, only in a container
 
-- [ ] 3.1 Unit tests, `tests/test_server*.py`: in a container `Server.shutdown` stops the
+- [x] 3.1 Unit tests, `tests/test_server*.py`: in a container `Server.shutdown` stops the
   sessions before `Hub.close` and prints the stop's line; outside one it calls nothing;
   `serve` starts the resume thread only in a container. Plan, Task 3.
-- [ ] 3.2 `server/app.py`, `server/run.py` (D1, D8, D9). `uv run pytest
+- [x] 3.2 `server/app.py`, `server/run.py` (D1, D8, D9). `uv run pytest
   tests/test_server*.py -n auto`.
 
 ## 4. Integration (layer 2)

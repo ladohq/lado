@@ -8,6 +8,8 @@ never migrates the database: another schema version answers 503.
 import datetime
 import ipaddress
 import re
+import sys
+import threading
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -1034,6 +1036,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
 
     app.state.hub = hub
     app.state.clones = jobs
+    app.state.stopping = threading.Event()  # set as the server shuts down
     return app
 
 
@@ -1043,8 +1046,32 @@ class Server(uvicorn.Server):
     would come too late."""
 
     async def shutdown(self, sockets=None) -> None:
-        self.config.app.state.hub.close()
-        await run_in_threadpool(self.config.app.state.clones.close)  # its clones cancelled
+        app = self.config.app
+        app.state.stopping.set()  # the resume at the container's start goes no further
+        if update.in_container():
+            # The container's stop: before anything waits, so open streams cannot eat
+            # Docker's grace period.
+            try:
+                names = await run_in_threadpool(runtime.stop_for_container)
+            except Exception as error:  # the server still shuts down
+                telemetry.record("server:stop", error)
+                print(
+                    "lado: could not stop the sessions at the container's stop: "
+                    f"{type(error).__name__}: {error}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                names = []
+            if names:
+                listed = ", ".join(f'"{name}"' for name in names)
+                print(
+                    f"lado: the container stops: stopped sessions {listed}; they resume at "
+                    "its start",
+                    file=sys.stderr,
+                    flush=True,
+                )
+        app.state.hub.close()
+        await run_in_threadpool(app.state.clones.close)  # its clones cancelled
         await super().shutdown(sockets)
 
 

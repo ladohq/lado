@@ -16,6 +16,7 @@ import re
 import shutil
 import time
 
+import agent_helpers
 import pytest
 import real_clis
 from container_helpers import (
@@ -29,7 +30,10 @@ from container_helpers import (
     new_name,
     remove_container,
     run_container,
+    seed_home,
 )
+
+from lado import state
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -88,6 +92,33 @@ def projects_volume(request):
 
 
 @pytest.fixture
+def old_home(request, tmp_path, monkeypatch):
+    """`old_home(volume=None, broken=False)`: a home volume (by default a new name of this
+    run's prefix) whose lado.db has the schema before this LADO's and a stopped session
+    "old", made on the host by this checkout's own lado.state, as the image's LADO is; with
+    `broken` the schema's number is set back but the last step's change is there, so the
+    migration fails. Its schema before, and the volume, removed after the test."""
+
+    def make(volume: str | None = None, broken: bool = False) -> tuple[str, int]:
+        volume = volume or f"{new_name()}-home"
+        request.addfinalizer(lambda: docker("volume", "rm", "-f", volume, check=False))
+        monkeypatch.setenv("LADO_HOME", str(tmp_path / f"host-{volume}"))
+        state.add_session(state.Session("old", "/home/lado/repo", None, "claude"))
+        state.stop_session("old")
+        before = state.SCHEMA_VERSION - 1
+        if broken:
+            with state.connect() as db:
+                db.execute(f"PRAGMA user_version = {before}")
+        else:
+            agent_helpers.previous_schema()
+        seed_home(volume, agent_helpers.database())
+        monkeypatch.delenv("LADO_HOME")
+        return volume, before
+
+    return make
+
+
+@pytest.fixture
 def container(start):
     """The image on a free port other than 8765, its server answering."""
     port = free_port()
@@ -135,7 +166,12 @@ def compose(request, tmp_path) -> Compose:
     project = Compose(new_name(), port, override, env)
     # Compose names the service's one container <project>-lado-1.
     keep(request.node, Container(f"{project.project}-lado-1", port))
-    request.addfinalizer(lambda: project.run("down", "-v", check=False))
+    def down():
+        project.run("down", "-v", check=False)
+        # A home volume a test made before `up` (old_home): compose removes only its own.
+        docker("volume", "rm", "-f", f"{project.project}_home", check=False)
+
+    request.addfinalizer(down)
     return project
 
 

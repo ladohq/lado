@@ -62,6 +62,32 @@ def run_container(
     )  # fmt: skip
 
 
+def seed_home(volume: str, lado_db: bytes) -> None:
+    """A new home volume `volume` whose ~/.lado/lado.db is `lado_db` (made on the host), as
+    an older image left it: the image's home in it as a first mount copies it, then the
+    file, all of it lado's (uid 1000)."""
+    subprocess.run(
+        [
+            "docker", "run", "--rm", "-i", "-u", "0", "--entrypoint", "sh",
+            "-v", f"{volume}:/home/lado", IMAGE, "-c",
+            "mkdir -p /home/lado/.lado && cat > /home/lado/.lado/lado.db "
+            "&& chown -R 1000:1000 /home/lado/.lado",
+        ],
+        input=lado_db, capture_output=True, check=True, timeout=120,
+    )  # fmt: skip
+
+
+def schema(volume: str) -> int:
+    """The schema of lado.db in the home volume `volume`, read by a container of its own
+    that runs no LADO command, so nothing migrates it."""
+    done = docker(
+        "run", "--rm", "--entrypoint", PYTHON, "-v", f"{volume}:/home/lado", IMAGE, "-c",
+        "import sqlite3; db = sqlite3.connect('/home/lado/.lado/lado.db'); "
+        "print(db.execute('PRAGMA user_version').fetchone()[0])",
+    )  # fmt: skip
+    return int(done.stdout.strip())
+
+
 def remove_container(name: str, home: str | None = None) -> None:
     docker("rm", "-f", name, check=False)
     docker("volume", "rm", home or f"{name}-home", check=False)

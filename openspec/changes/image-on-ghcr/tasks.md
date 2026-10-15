@@ -44,13 +44,13 @@ Tests first in each section; each task is one commit. The plan with the code is
 
 ## 5. The Release workflow
 
-- [ ] 5.1 `tests/test_release_workflow.py`: jobs `build`, `image` (matrix amd64/arm64 on
+- [x] 5.1 `tests/test_release_workflow.py`: jobs `build`, `image` (matrix amd64/arm64 on
   their runners, `uv sync --locked`, one buildx build loaded and pushed by digest before the
   container tests), `pypi` after `build` and `image`, `image-tags` after `pypi` and `image`
   (`imagetools create`, `latest` only by `release_notes.py --flag`, both platforms
   inspected), `github-release` after `image-tags`; only the job token, `packages: write`
   where it pushes; the image's name is `update.IMAGE` (D1, D2).
-- [ ] 5.2 `.github/workflows/release.yml`; `docs/release.md`'s section "The image" and
+- [x] 5.2 `.github/workflows/release.yml`; `docs/release.md`'s section "The image" and
   its lines in sections 2 and 5 (D8). `uv run pytest tests/test_release_workflow.py
   tests/test_workflow_security.py -n0`.
 

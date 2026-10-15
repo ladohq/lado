@@ -4,12 +4,14 @@ on:
   push:
     tags: ["v*"]
 
+# build -> image (amd64, arm64) -> pypi -> image-tags -> github-release: nothing is
+# published, PyPI included, before LADO's image passed its tests on both architectures
+# (docs/release.md, The image).
 jobs:
-  pypi:
+  build:
     runs-on: ubuntu-latest
-    environment: pypi
     permissions:
-      id-token: write  # PyPI trusted publishing
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,18 +39,137 @@ jobs:
           node-version: lts/*
       # Builds the web UI and checks that the sdist and the wheel ship it.
       - run: make dist
-      # The GitHub release attaches these very files, built once.
+      # PyPI, the image and the GitHub release take these very files, built once.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist
           path: dist/
           if-no-files-found: error
+
+  # LADO's image from the release's wheel, on each architecture's own runner: one buildx
+  # build, loaded for the container tests and pushed by digest with no tag, so the bytes
+  # tested are the bytes published. An untagged digest is no release: only image-tags
+  # names the two digests, once both cells passed.
+  image:
+    needs: build
+    name: image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write  # push the digest to ghcr.io
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.13"
+      # The container tests make an old home's lado.db with this checkout's lado.state.
+      - run: uv sync --locked
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Build the image, load it for the tests and push it by digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx create --use --driver docker-container
+          version="${GITHUB_REF_NAME#v}"
+          docker buildx build -f docker/Dockerfile \
+            --label org.opencontainers.image.source=https://github.com/ladohq/lado \
+            --label "org.opencontainers.image.version=$version" \
+            --output "type=docker,name=lado:release" \
+            --output "type=image,name=ghcr.io/ladohq/lado,push-by-digest=true,name-canonical=true,push=true" \
+            --metadata-file "$RUNNER_TEMP/metadata.json" .
+          mkdir -p "$RUNNER_TEMP/digest"
+          jq -er '."containerimage.digest"' "$RUNNER_TEMP/metadata.json" \
+            > "$RUNNER_TEMP/digest/$ARCH"
+          cat "$RUNNER_TEMP/digest/$ARCH"
+      - name: Container tests
+        env:
+          LADO_TEST_IMAGE: lado:release
+        run: uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: container-${{ matrix.arch }}
+          path: ${{ runner.temp }}/container
+          retention-days: 30
+      # The digest of a cell that passed, for image-tags.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digest/${{ matrix.arch }}
+          if-no-files-found: error
+
+  pypi:
+    needs: [build, image]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # PyPI trusted publishing
+    steps:
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
       - run: uv publish
 
-  # Only after PyPI accepted the release: a GitHub release never names a version pip
-  # cannot install.
+  # The two tested digests as one image of both platforms, tagged with the version, and
+  # `latest` only for a final (a release candidate never moves it). After PyPI: a version's
+  # tag never names a LADO pip cannot install. A failure here is rerun alone
+  # (`gh run rerun <id> --failed`): the digests are this run's artifacts.
+  image-tags:
+    needs: [pypi, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # tag the image on ghcr.io
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/digests
+      - name: Tag the image of both platforms
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          version="${GITHUB_REF_NAME#v}"
+          tags=(-t "ghcr.io/ladohq/lado:$version")
+          if [ "$(python3 scripts/release_notes.py --flag "$GITHUB_REF_NAME")" = "--latest" ]; then
+            tags+=(-t ghcr.io/ladohq/lado:latest)
+          fi
+          docker buildx imagetools create "${tags[@]}" \
+            "ghcr.io/ladohq/lado@$(cat "$RUNNER_TEMP/digests/amd64")" \
+            "ghcr.io/ladohq/lado@$(cat "$RUNNER_TEMP/digests/arm64")"
+          docker buildx imagetools inspect "ghcr.io/ladohq/lado:$version" \
+            | tee "$RUNNER_TEMP/inspect.txt"
+          grep -q "linux/amd64" "$RUNNER_TEMP/inspect.txt"
+          grep -q "linux/arm64" "$RUNNER_TEMP/inspect.txt"
+
+  # Only after PyPI accepted the release and the image has its tag: a GitHub release never
+  # names a version pip or docker cannot install.
   github-release:
-    needs: pypi
+    needs: image-tags
     runs-on: ubuntu-latest
     permissions:
       contents: write  # gh release create

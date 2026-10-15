@@ -1,6 +1,6 @@
 ## 1. The rule (D1, D5)
 
-- [ ] 1.1 `src/lado/text.py`: `hidden`, `first_hidden`, `named`, `one_line`;
+- [x] 1.1 `src/lado/text.py`: `hidden`, `first_hidden`, `named`, `one_line`;
   `tests/test_text.py`: each category (a tab, `\n`, U+2028, U+2029, U+202E, U+2066,
   U+200B, U+FEFF), U+200D kept (a family emoji), Cyrillic and CJK kept, `named` of a Cc
   and of U+202E, `one_line` of each. Check: `uv run pytest tests/test_text.py -n0`.

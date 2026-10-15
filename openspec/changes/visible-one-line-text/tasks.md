@@ -22,7 +22,7 @@
   answer), the body kept when the line was cleaned; tests: U+2028 and U+202E in the first
   line, the body holds the text as written.
   Check: `uv run pytest tests/test_runtime.py -n auto -k "human or answer"`.
-- [ ] 3.2 `runs._answer_note`, `runs.force` (note and body), the loop limit's cancel
+- [x] 3.2 `runs._answer_note`, `runs.force` (note and body), the loop limit's cancel
   reason; tests. Check: `uv run pytest tests/test_runs.py -n auto -k "answer or force or
   limit"`.
 - [ ] 3.3 `artifacts.upload`'s title through `text.one_line` (an ESC and U+202E in a file

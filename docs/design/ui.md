@@ -747,9 +747,11 @@ Built in the chat task (2026-10-03):
   and typed into no window (`runtime.post`). It is sent only by the server's API
   (`runtime.write_as_human`): an agent's MCP tools always send as the agent, and `human`
   and `lado` are names no agent may take (`state.RESERVED`, checked by `spawn_worker`).
-  The human's text: its first line, tabs and control characters made spaces, is the
-  summary, cut to 200 characters with "…"; the whole text is the body when it has more
-  lines or the line was cut; over 8000 characters it is refused. It goes through the queue,
+  The human's text: its first line, cleaned of hidden characters (`lado.text`: control
+  characters, tabs and line or paragraph separators made spaces, format characters such
+  as bidi controls and zero-width spaces removed, but the zero width joiner), is the
+  summary, cut to 200 characters with "…"; the whole text is the body when the summary is
+  not exactly it (more lines, cleaned or cut); over 8000 characters it is refused. It goes through the queue,
   confirmation and retries like an agent's; if it fails, `lado` tells the human in one line.
   Messages to `human` are never dropped: stop, finish and `drop_undelivered` leave them as
   they are and do not count them (`state.UNRECEIVED`).

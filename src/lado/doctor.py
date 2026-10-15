@@ -566,15 +566,39 @@ def check_repos_folder() -> Check | None:
     return Check(name, OK, f"{folder} (LADO_REPOS)")
 
 
+def check_outside() -> Check | None:
+    """The outside folder (LADO_ENV_DIR) when it is set: the names it gives the agents,
+    never a value, and each file it does not use with why."""
+    if not os.environ.get(agent_env.ENV_DIR_VAR):
+        return None
+    name = "Variables from outside"
+    found = agent_env.outside()
+    if found.unused and found.unused[0].startswith("variable folder "):
+        return Check(name, WARN, found.unused[0])  # the folder itself is not used
+    if not os.path.isdir(found.folder):
+        return Check(name, INFO, f"{found.folder}: no folder")
+    detail = f"{found.folder}: {', '.join(sorted(found.values)) or 'none'}"
+    if not found.unused:
+        return Check(name, OK, detail)
+    # "variable file <name> in <folder> not used: ..." -> "<name> not used: ..."
+    files = [
+        line.removeprefix("variable file ").replace(f" in {found.folder} not used: ", " not used: ")
+        for line in found.unused
+    ]
+    return Check(name, WARN, "; ".join([detail, *files]))
+
+
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
     graphical = check_graphical_session(which)
     repos = check_repos_folder()
+    outside = check_outside()
     return [
         check_lado(),
         Check("Python", OK, platform.python_version()),
         check_tmux(which),
         check_git(),
         *([repos] if repos else []),
+        *([outside] if outside else []),
         *([graphical] if graphical else []),
         *check_agent_env(),
         check_config_folders(),

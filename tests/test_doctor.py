@@ -63,6 +63,61 @@ def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
     assert all(c.level == doctor.OK for c in checks)
 
 
+def test_outside_lists_names_and_files_not_used(tmp_path, monkeypatch):
+    folder = tmp_path / "s"
+    folder.mkdir()
+    (folder / "YOUGILE_API_KEY").write_text("canary-1")
+    (folder / "GH_TOKEN").write_text("canary-2")
+    (folder / "a-b").write_text("canary-3")
+    monkeypatch.setenv("LADO_ENV_DIR", str(folder))
+    check = doctor.check_outside()
+    assert check == doctor.Check(
+        "Variables from outside",
+        doctor.WARN,
+        f"{folder}: GH_TOKEN, YOUGILE_API_KEY; a-b not used: not a variable name",
+    )
+    assert "Variables from outside" in [c.name for c in doctor.run_checks(which=lambda c: c)]
+
+
+def test_outside_ok_none_and_no_folder(tmp_path, monkeypatch):
+    name = "Variables from outside"
+    monkeypatch.setenv("LADO_ENV_DIR", str(tmp_path))
+    assert doctor.check_outside() == doctor.Check(name, doctor.OK, f"{tmp_path}: none")
+    (tmp_path / "KEY").write_text("v")
+    assert doctor.check_outside() == doctor.Check(name, doctor.OK, f"{tmp_path}: KEY")
+    monkeypatch.setenv("LADO_ENV_DIR", str(tmp_path / "x"))
+    assert doctor.check_outside() == doctor.Check(name, doctor.INFO, f"{tmp_path / 'x'}: no folder")
+    monkeypatch.setenv("LADO_ENV_DIR", str(tmp_path))
+    if os.geteuid() != 0:  # root lists any folder
+        tmp_path.chmod(0)
+        try:
+            check = doctor.check_outside()
+        finally:
+            tmp_path.chmod(0o700)
+        assert (check.level, check.detail.split(": cannot")[0]) == (
+            doctor.WARN,
+            f"variable folder {tmp_path} (LADO_ENV_DIR) not used",
+        )
+    monkeypatch.setenv("LADO_ENV_DIR", "rel")
+    assert doctor.check_outside() == doctor.Check(
+        name, doctor.WARN, "variable folder rel (LADO_ENV_DIR) not used: not an absolute path"
+    )
+    monkeypatch.setenv("LADO_ENV_DIR", "")
+    assert doctor.check_outside() is None
+    monkeypatch.delenv("LADO_ENV_DIR")
+    assert doctor.check_outside() is None
+    assert "Variables from outside" not in [c.name for c in doctor.run_checks(which=lambda c: c)]
+
+
+def test_the_report_has_no_variable_name_or_value(tmp_path, monkeypatch):
+    folder = tmp_path / "s"
+    folder.mkdir()
+    (folder / "SECRET_NAME_X").write_text("canary-3")
+    monkeypatch.setenv("LADO_ENV_DIR", str(folder))
+    text = doctor.report(doctor.system_info(which=lambda cmd: cmd), doctor.ServerState(False, 0))
+    assert "SECRET_NAME_X" not in text and "canary-3" not in text
+
+
 def test_no_repositories_folder_line_without_the_variable(monkeypatch):
     monkeypatch.delenv("LADO_REPOS", raising=False)
     assert doctor.check_repos_folder() is None

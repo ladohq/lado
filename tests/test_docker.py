@@ -1,7 +1,8 @@
-"""docker/: LADO's image (openspec capability container): Claude Code at its pin and no other
-CLI, Node 22 from the official image, bases pinned by digest, no piped install script, the
-environment the same for the server (ENV) and the agents' login shells (profile.sh), the
-build context an allowlist, and compose's one port number."""
+"""docker/: LADO's image (openspec capability container): the four agent CLIs at their pins
+and no other npm package, Node 22 from the official image, bases pinned by digest, no piped
+install script, the environment the same for the server (ENV) and the agents' login shells
+(profile.sh), the build context an allowlist, compose's one port number and its image by
+LADO_VERSION, and the headers' update by version."""
 
 import importlib.util
 import re
@@ -34,15 +35,33 @@ def lines(text: str = DOCKERFILE) -> list[str]:
     ]
 
 
-def test_claude_codes_default_is_its_pin():
-    [arg] = [line for line in lines() if line.startswith("ARG CLAUDE_VERSION=")]
-    pinned = _pins()["claude"][1]
-    assert arg == f"ARG CLAUDE_VERSION={pinned}", f"Dockerfile {arg}, PINS {pinned}"
+# Each provider's build argument: its version in the image, its default the pin.
+ARGS = {
+    "claude": "CLAUDE_VERSION",
+    "codex": "CODEX_VERSION",
+    "opencode": "OPENCODE_VERSION",
+    "kilo": "KILO_VERSION",
+}
 
 
-def test_claude_code_is_installed_at_that_version():
-    [install] = [line for line in lines() if "npm install -g" in line]
-    assert '"@anthropic-ai/claude-code@${CLAUDE_VERSION}"' in install
+def test_every_provider_of_pins_has_its_build_argument():
+    assert set(ARGS) == set(_pins()), f"PINS {sorted(_pins())}, Dockerfile {sorted(ARGS)}"
+
+
+@pytest.mark.parametrize("provider", sorted(ARGS))
+def test_each_clis_default_is_its_pin(provider):
+    name = ARGS[provider]
+    [arg] = [line for line in lines() if line.startswith(f"ARG {name}=")]
+    pinned = _pins()[provider][1]
+    assert arg == f"ARG {name}={pinned}", f"Dockerfile {arg}, PINS {pinned}"
+
+
+@pytest.mark.parametrize("provider", sorted(ARGS))
+def test_each_cli_is_installed_at_that_version_in_a_layer_of_its_own(provider):
+    package = _pins()[provider][0]
+    [install] = [line for line in lines() if f'"{package}@${{{ARGS[provider]}}}"' in line]
+    assert install.startswith("RUN npm install -g --prefix /opt/agents ")
+    assert install.count("@${") == 1, install
 
 
 def test_node_22_comes_from_the_official_image():
@@ -51,11 +70,13 @@ def test_node_22_comes_from_the_official_image():
     assert stage.endswith(" AS node")
 
 
-def test_no_other_agent_cli():
-    for package, _, command in _pins().values():
-        if package != "@anthropic-ai/claude-code":
-            assert package not in DOCKERFILE
-            assert not re.search(rf"\b{command}\b", DOCKERFILE), command
+def test_no_other_npm_package_is_installed():
+    packages = {pin[0] for pin in _pins().values()}
+    installs = [line for line in lines() if "npm install" in line]
+    assert len(installs) == len(packages), installs
+    for line in installs:
+        named = re.findall(r'"(@?[^"@]+)@[^"]*"', line)
+        assert named and set(named) <= packages, line
 
 
 def unpinned(text: str) -> list[str]:
@@ -217,8 +238,16 @@ def test_compose_names_no_container_and_needs_the_projects_folder(compose):
     lado = compose["services"]["lado"]
     assert "container_name" not in lado
     assert "build" not in lado
-    assert lado["image"] == "${LADO_IMAGE:-lado:local}"
     assert lado["volumes"][0] == "home:/home/lado"
+
+
+def test_compose_runs_the_published_image_of_lado_version(compose):
+    """No default version: a compose file that took `latest` would leave the image before
+    an update without a name. LADO_IMAGE wins (lado:local, the tests)."""
+    assert compose["services"]["lado"]["image"] == (
+        f"${{LADO_IMAGE:-{update.IMAGE}:${{LADO_VERSION:?set LADO_VERSION to the LADO "
+        "version to run, e.g. in .env next to this file}}"
+    )
 
 
 def test_compose_mounts_the_projects_at_the_hosts_own_path(compose):
@@ -230,26 +259,15 @@ def test_compose_mounts_the_projects_at_the_hosts_own_path(compose):
     assert lado["environment"]["LADO_REPOS"] == projects
 
 
-def test_the_compose_headers_commands_all_have_the_projects_folder():
-    """Compose reads `${LADO_PROJECTS:?}` for every command (exec, logs, down too), so each
-    `docker compose` line the header shows must have it: set on that line, or exported
-    before it."""
-    header = [
-        line.lstrip("# ").strip()
-        for line in (DOCKER / "compose.yaml").read_text().splitlines()
-        if line.startswith("#")
-    ]
-    exported = False
-    commands = 0
-    for line in header:
-        exported = exported or line.startswith("export LADO_PROJECTS=")
-        if "docker compose" in line:
-            commands += 1
-            assert exported or "LADO_PROJECTS=" in line, line
-    assert commands >= 4
-
-
-PREVIOUS = "lado:previous"  # the name the header keeps the image before an update by
+def test_the_compose_headers_commands_all_have_the_projects_folder_and_the_version():
+    """Compose reads `${LADO_PROJECTS:?}` and `${LADO_VERSION:?}` for every command (exec,
+    logs, down too), so the header sets both in .env, which compose reads, before its
+    first `docker compose` line."""
+    header = [line.lstrip("# ").strip() for line in COMPOSE_TEXT.splitlines()]
+    first = next(i for i, line in enumerate(header) if line.startswith("docker compose"))
+    env = [line.split("=")[0] for line in header[:first] if re.match(r"[A-Z_]+=\S", line)]
+    assert {"LADO_PROJECTS", "LADO_VERSION"} <= set(env), env
+    assert "in .env next to this file" in " ".join(header[:first])
 
 
 def header_steps(heading: str) -> list[str]:
@@ -262,43 +280,55 @@ def header_steps(heading: str) -> list[str]:
     return lines[first : lines.index("", first)]
 
 
-def keep_previous() -> str:
-    """The header's command that names the image a running container uses, before an update
-    moves its tag: Docker may remove an image no tag names (its containerd store does)."""
-    keep, update = header_steps("Before you update, keep a name")
-    assert update == "docker compose pull && docker compose up -d"
-    return keep
-
-
 def way_back() -> list[str]:
-    """The commands of compose.yaml's header that go back to the image before."""
-    return header_steps("Back to the image you had before")
+    """The commands of compose.yaml's header that go back to the version before, once it
+    is in .env again."""
+    return header_steps("Back to the version you had before")
 
 
-def test_the_compose_header_keeps_a_name_for_the_image_before_an_update():
-    assert keep_previous() == f'docker tag "$(docker compose images -q lado)" {PREVIOUS}'
+def header_text() -> str:
+    return " ".join(line.lstrip("#").strip() for line in COMPOSE_TEXT.splitlines())
 
 
-def test_lados_own_update_hint_is_the_compose_headers_update():
-    """`lado ls`, `lado doctor`, `lado update`'s refusal and the System panel name the same
-    commands as the header, the image kept as lado:previous first."""
-    keep, update_step = header_steps("Before you update, keep a name")
-    assert update.CONTAINER_UPDATE == f"{keep} && {update_step}"
-
-
-def test_the_compose_header_says_to_keep_lado_image_after_going_back():
-    """A later `up -d` without it would start the newer image, which migrates again."""
-    header = " ".join(line.lstrip("#").strip() for line in COMPOSE_TEXT.splitlines())
-    assert "keep LADO_IMAGE=lado:previous set (in .env next to this file)" in header
+def test_an_update_is_a_new_version_in_env_and_up():
+    """Compose pulls an image it does not have: the version's tag never moves, so the image
+    before keeps its name and nothing needs keeping by hand."""
+    assert header_steps("To update, set the new LADO_VERSION in .env") == ["docker compose up -d"]
 
 
 def test_the_compose_header_says_how_to_go_back_to_the_backup():
+    assert "put it back in .env" in header_text()
     down, restore, up = way_back()
     assert down == "docker compose down"
-    assert restore.startswith(f"LADO_IMAGE={PREVIOUS} docker compose run --rm lado sh -c '")
+    assert restore.startswith("docker compose run --rm lado sh -c '")
     assert "rm -f lado.db-wal lado.db-shm" in restore
     assert "cp backups/lado.db.schema-<N> lado.db" in restore
-    assert up == f"LADO_IMAGE={PREVIOUS} docker compose up -d"
+    assert up == "docker compose up -d"
+
+
+def test_a_second_lado_is_a_folder_with_its_own_env():
+    """`-p` on each command is easy to forget; a folder's .env names the project once."""
+    second = header_text().split("A second LADO beside the first")[1]
+    for name in ("COMPOSE_PROJECT_NAME", "LADO_PORT", "LADO_VERSION", "LADO_PROJECTS"):
+        assert name in second, name
+    assert " -p " not in header_text()
+
+
+def test_the_dockerfiles_header_names_the_published_image_and_its_update():
+    header = " ".join(
+        line.lstrip("#").strip() for line in DOCKERFILE.splitlines() if line.startswith("#")
+    )
+    assert f"{update.IMAGE}:<version>" in header
+    for words in ("Update:", "Back:", "A second LADO:"):
+        assert words in header, words
+
+
+def test_nothing_in_docker_names_lado_previous():
+    """One name per machine, which a second LADO overwrote (LAD-71's G2): a version's tag
+    names the image before an update instead."""
+    for path in DOCKER.iterdir():
+        if path.is_file():
+            assert "lado:previous" not in path.read_text(), path
 
 
 def test_compose_mounts_nothing_only_docker_desktop_has(compose):

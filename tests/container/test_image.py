@@ -1,12 +1,15 @@
 """LADO's image (openspec capability container): one `docker run` serves the UI on its
-LADO_PORT, `lado doctor` is clean and says `in a container`, Node 22 and npx are on the
-agents' PATH, a Claude Code agent gets to idle and knows it runs in a container, and the
-compose file publishes one port number."""
+LADO_PORT, `lado doctor` is clean, says `in a container` and finds the four agent CLIs,
+Node 22 and npx are on the agents' PATH, a Claude Code agent gets to idle and knows it runs
+in a container, and the compose file publishes one port number and runs the image of
+LADO_VERSION."""
 
 import urllib.request
 
 import pytest
-from container_helpers import ROOT, agent_pid, claude_session, free_port, health
+from container_helpers import IMAGE, ROOT, agent_pid, claude_session, free_port, health
+
+from lado import update
 
 pytestmark = pytest.mark.container
 
@@ -45,10 +48,10 @@ def test_lado_doctor_is_clean_in_the_container(container):
     assert not [line for line in printed if line.startswith("[FAIL]")], doctor.stdout
     [lado] = [line for line in printed if line.startswith("[ok  ] LADO:")]
     assert lado.endswith("in a container")
-    # Claude Code at its pin (an untested version would be a warn), the other CLIs absent.
-    assert any(line.startswith("[ok  ] Claude Code:") for line in printed), doctor.stdout
-    for other in ("Codex CLI", "Kilo CLI", "OpenCode"):
-        assert any(line.startswith(f"[info] {other}:") for line in printed), doctor.stdout
+    # The four agent CLIs at their pins (an untested version would be a warn, a missing one
+    # an info).
+    for cli in ("Claude Code", "Codex CLI", "Kilo CLI", "OpenCode"):
+        assert any(line.startswith(f"[ok  ] {cli}:") for line in printed), doctor.stdout
 
 
 def test_node_and_npx_are_on_the_login_shells_path(container):
@@ -95,3 +98,16 @@ def test_compose_refuses_without_the_projects_folder(compose):
     done = compose.run("config", check=False)
     assert done.returncode != 0
     assert "LADO_PROJECTS" in done.stderr
+
+
+def test_compose_runs_the_image_of_lado_version_and_lado_image_wins(compose):
+    del compose.env["LADO_IMAGE"]
+    compose.env.pop("LADO_VERSION", None)
+    done = compose.run("config", check=False)
+    assert done.returncode != 0
+    assert "LADO_VERSION" in done.stderr, done.stderr
+    compose.env["LADO_VERSION"] = "0.39.0"
+    image = compose.run("config", "--images").stdout.split()
+    assert image == [f"{update.IMAGE}:0.39.0"]
+    compose.env["LADO_IMAGE"] = IMAGE
+    assert compose.run("config", "--images").stdout.split() == [IMAGE]

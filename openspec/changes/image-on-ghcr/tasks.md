@@ -22,22 +22,22 @@ Tests first in each section; each task is one commit. The plan with the code is
 
 ## 3. The four agent CLIs in the image
 
-- [ ] 3.1 Measure the image's size and a cold `make docker` before (D4).
-- [ ] 3.2 `tests/test_docker.py`: an ARG per `PINS` provider equal to its pin, each
+- [x] 3.1 Measure the image's size and a cold `make docker` before (D4).
+- [x] 3.2 `tests/test_docker.py`: an ARG per `PINS` provider equal to its pin, each
   installed by its package, no other npm package; `tests/container/test_image.py`: the
   four CLIs `[ok  ]` in `lado doctor` (D3).
-- [ ] 3.3 `docker/Dockerfile`: the three installs and the header. `uv run pytest
+- [x] 3.3 `docker/Dockerfile`: the three installs and the header. `uv run pytest
   tests/test_docker.py -n0`, `make docker && make test-container`; measure after and
   compare (D4; over the threshold: stop and tell the supervisor).
 
 ## 4. Compose by version, the headers, two LADOs
 
-- [ ] 4.1 `tests/test_docker.py`: compose's image line, the update, way back and second
+- [x] 4.1 `tests/test_docker.py`: compose's image line, the update, way back and second
   LADO steps of the header, no `lado:previous` in `docker/`; `docker compose config`
   without a version refuses naming `LADO_VERSION`, with it names the published image,
   `LADO_IMAGE` wins (D5).
-- [ ] 4.2 `docker/compose.yaml` and the Dockerfile's header (D5).
-- [ ] 4.3 `tests/container/test_migration.py`: the header's way back by version and the
+- [x] 4.2 `docker/compose.yaml` and the Dockerfile's header (D5).
+- [x] 4.3 `tests/container/test_migration.py`: the header's way back by version and the
   failed migration's message, no `lado:previous`; new `tests/container/test_two_lados.py`:
   updating one of two compose projects leaves the other's container, start time and image
   reference (D7). `make docker && make test-container`.

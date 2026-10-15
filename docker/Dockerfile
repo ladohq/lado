@@ -1,10 +1,17 @@
-# LADO's image: LADO from the one wheel of its build, Claude Code at its pin, the UI server
-# on 0.0.0.0:$LADO_PORT. Built from a checkout with `make docker` (lado:local); nothing
-# publishes it yet. One command starts it:
+# LADO's image: LADO from the one wheel of its build, the four agent CLIs at their pins,
+# the UI server on 0.0.0.0:$LADO_PORT. The Release workflow publishes it for each release
+# as ghcr.io/ladohq/lado:<version> (amd64, arm64); `make docker` builds it from a checkout
+# (lado:local). One command starts it:
 #
 #   docker run -d --name lado -p 127.0.0.1:8765:8765 -v lado-home:/home/lado \
-#     -v "$HOME/projects:$HOME/projects" -e LADO_REPOS="$HOME/projects" lado:local
+#     -v "$HOME/projects:$HOME/projects" -e LADO_REPOS="$HOME/projects" \
+#     ghcr.io/ladohq/lado:<version>
 #   docker exec lado lado ui --no-open            # the UI's link with its token
+#
+# Update: `docker rm -f lado`, then the same `docker run` with the new version; the home
+# volume keeps LADO's state, and the new version upgrades its lado.db after a backup. Back:
+# the same with the version before (putting lado.db's backup back: compose.yaml's header).
+# A second LADO: another --name, home volume and port; updating one leaves the other.
 #
 # The projects are mounted at the host's own path and named by LADO_REPOS, so a worker's
 # worktree made here is one on the host too; on Linux the container's user takes the
@@ -31,7 +38,7 @@ RUN apt-get update \
  && apt-get update && apt-get install -y --no-install-recommends gh \
  && rm -rf /var/lib/apt/lists/*
 
-# Node 22 and npm from the official image, no NodeSource script: npm installs Claude Code,
+# Node 22 and npm from the official image, no NodeSource script: npm installs the agent CLIs,
 # and the agents and kits' MCP servers run node and npx.
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
@@ -75,12 +82,22 @@ COPY --chown=lado:lado dist/lado-*.whl /tmp/wheel/
 RUN uv tool install --python 3.13 /tmp/wheel/lado-*.whl \
  && rm -rf /tmp/wheel /home/lado/.cache
 
-# Claude Code only, at the version LADO is tested with (scripts/smoke_ci.py's PINS;
-# tests/test_docker.py keeps them the same): a native binary that the package's
-# postinstall puts in place of its `claude` command. Its update check is off
-# (DISABLE_AUTOUPDATER).
+# The four agent CLIs at the versions LADO is tested with (scripts/smoke_ci.py's PINS;
+# tests/test_docker.py keeps them the same), one layer each, so a moved pin rebuilds one.
+# Each package puts its native binary in place for its architecture. Claude Code's update
+# check is off (DISABLE_AUTOUPDATER); LADO switches the others' off per agent. Codex CLI
+# is only installed: carrying its login into the agents is a later step.
 ARG CLAUDE_VERSION=2.1.295
 RUN npm install -g --prefix /opt/agents "@anthropic-ai/claude-code@${CLAUDE_VERSION}" \
+ && npm cache clean --force
+ARG CODEX_VERSION=0.162.0
+RUN npm install -g --prefix /opt/agents "@openai/codex@${CODEX_VERSION}" \
+ && npm cache clean --force
+ARG OPENCODE_VERSION=1.18.35
+RUN npm install -g --prefix /opt/agents "opencode-ai@${OPENCODE_VERSION}" \
+ && npm cache clean --force
+ARG KILO_VERSION=7.8.8
+RUN npm install -g --prefix /opt/agents "@kilocode/cli@${KILO_VERSION}" \
  && npm cache clean --force
 
 ENV PATH=/opt/uv/bin:/opt/agents/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \

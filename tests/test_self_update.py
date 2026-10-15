@@ -165,11 +165,7 @@ def test_the_refusals_name_an_agent_and_another_install(install, tmp_path, monke
     assert refused.why == 'lado update is for the human; agent "w1" cannot use it'
 
 
-CONTAINER_LINE = (
-    "lado: LADO runs in a container: a new image updates it, not lado update; "
-    'on the host: docker tag "$(docker compose images -q lado)" lado:previous && '
-    "docker compose pull && docker compose up -d\n"
-)
+CONTAINER_LINE = "lado: LADO runs in a container: a new image updates it, not lado update\n"
 
 
 def test_the_refusal_in_a_container_comes_after_an_agent_and_before_the_rest(install, monkeypatch):

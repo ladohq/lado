@@ -360,14 +360,14 @@ test("without an installer the panel shows the commands by hand and no Update bu
   expect(within(block).getByRole("button", { name: "Copy commands" })).toBeTruthy();
 });
 
-test("in a container the head says so and the Update block names the host's command, no Update button", async () => {
+test("in a container the head says so and the Update block says why, with no command and no Update button", async () => {
   update = info({
     container: true,
     latest: "99.0.0",
     available: "99.0.0",
     can_update: false,
     why_not: "LADO runs in a container: a new image updates it, not lado update",
-    by_hand: ["docker compose pull && docker compose up -d"],
+    by_hand: [],
   });
   serve();
   open();
@@ -383,9 +383,9 @@ test("in a container the head says so and the Update block names the host's comm
   const block = within(box).getByRole("region", { name: "Update" });
   expect(within(block).queryByRole("button", { name: "Update…" })).toBeNull();
   expect(block.textContent).toContain("LADO runs in a container: a new image updates it, not lado update.");
-  expect(block.querySelector(".system-by-hand > span")!.textContent).toBe("On the host:");
-  expect(block.querySelector("pre")!.textContent).toBe("docker compose pull && docker compose up -d");
-  expect(within(block).getByRole("button", { name: "Copy commands" })).toBeTruthy();
+  expect(block.textContent).toContain("99.0.0 is out");
+  expect(block.querySelector(".system-by-hand")).toBeNull();
+  expect(within(block).queryByRole("button", { name: "Copy commands" })).toBeNull();
 });
 
 test("in a container on the latest version the head has the pill and there is no Update block", async () => {

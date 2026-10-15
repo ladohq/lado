@@ -56,8 +56,9 @@ them into one. Past sections stay as they were written.
    no code changed for it).
 5. Push the tag `vX.Y.ZrcN`. Its spelling is PEP 440's, no dash (`v0.37.0rc1`, never
    `v0.37.0-rc1`): the workflow compares the tag with `uv version --short`. The Release
-   workflow publishes `X.Y.ZrcN` to PyPI as a pre-release, then a GitHub pre-release
-   with the `(unreleased)` section as its notes (section 7); then section 4.
+   workflow tests LADO's image on both architectures, publishes `X.Y.ZrcN` to PyPI as a
+   pre-release, tags the image `ghcr.io/ladohq/lado:X.Y.ZrcN` (section 8), then a GitHub
+   pre-release with the `(unreleased)` section as its notes (section 7); then section 4.
 
 ## 3. The freeze
 
@@ -139,8 +140,9 @@ starts your sessions and the UI again on the final.
 1. `uv version X.Y.Z`, the date in place of `(unreleased)` in CHANGELOG.md's heading,
    commit `Release X.Y.Z` on main, push. CI is green on that commit.
 2. Push the tag `vX.Y.Z`. The Release workflow checks it, LADO's telemetry token and
-   its release notes (section 6), then builds with `make dist`, publishes to PyPI, and
-   then the GitHub release, marked the latest (section 7).
+   its release notes (section 6), then builds with `make dist`, tests LADO's image,
+   publishes to PyPI, tags the image with the version and `latest` (section 8), and then
+   the GitHub release, marked the latest (section 7).
 
 The Windows probe and the live tests are not run again: the code is the last RC's, which
 they ran on. A patch released without an RC gets all of section 2's checks (CI, the
@@ -200,13 +202,47 @@ GitHub release with `gh release create` (the runner's own `gh`, the job's token 
 - its title is `LADO <version>`, its notes the tag's CHANGELOG.md section (a final's
   `## X.Y.Z (<date>)`, an RC's `## X.Y.Z (unreleased)`), each wrapped item on one line,
   then how to install or update (`lado update`, for an RC `lado update X.Y.ZrcN`, and `uv
-  tool install lado==<version>`) and the version's page on PyPI;
+  tool install lado==<version>`), the image (`docker pull ghcr.io/ladohq/lado:<version>`)
+  and the version's page on PyPI;
 - an RC is a pre-release, never the latest; a final is the latest release;
-- it attaches the wheel and the sdist that `make dist` built in the PyPI job and that job
-  published: the same files, passed on as the workflow artifact `dist`.
+- it attaches the wheel and the sdist that `make dist` built in the job `build` and the
+  job `pypi` published: the same files, passed on as the workflow artifact `dist`.
 
 Run `python3 scripts/release_notes.py <tag>` in the repository's root to see the notes
 before tagging. When the job fails after PyPI took the release (GitHub down), rerun the
 failed job only (`gh run rerun <id> --failed`); the PyPI job is not run again. A release
 the failed job left half made is deleted first, `gh release delete <tag>` (the tag stays).
 The tags before 0.37.1 have no GitHub release.
+
+## 8. The image
+
+Every tag, an RC too, publishes LADO's image `ghcr.io/ladohq/lado` for linux/amd64 and
+linux/arm64, with the job's own token (`packages: write`, no secret). The workflow's jobs,
+in order:
+
+1. `build`: the checks of section 6 and `make dist`, the artifact `dist`; it publishes
+   nothing.
+2. `image`, one cell per architecture on its own runner (`ubuntu-24.04`,
+   `ubuntu-24.04-arm`): one `docker buildx build` of `docker/Dockerfile` from `dist`'s
+   wheel, loaded as `lado:release` for the container tests and pushed to ghcr.io by its
+   digest with no tag, then the container tests (`scripts/smoke_ci.py container`, a skip
+   is red; their evidence the artifact `container-<arch>`). The bytes tested are the bytes
+   pushed. An untagged digest is no release: nobody pulls it by a name.
+3. `pypi`, only when both cells passed: `uv publish`.
+4. `image-tags`: the two digests as one image of both platforms (`docker buildx imagetools
+   create`), tagged with the version (`0.39.0rc1`, `0.39.0`) and, for a final only,
+   `latest`; then `imagetools inspect` checks both platforms are there. An RC never moves
+   `latest`.
+5. `github-release` (section 7).
+
+A red `image` cell stops the release: nothing is published, on PyPI, ghcr.io or GitHub.
+Fix the cause on main, delete the tag (section 6) and tag again. The untagged digests a
+failed run pushed stay in the package; they name no version. A failure after PyPI
+(`image-tags`, `github-release`) is rerun alone, `gh run rerun <id> --failed`: the
+digests are the run's artifacts `digest-<arch>`, and nothing is built again.
+
+Once, after the first RC that publishes the image: GitHub makes a new package private, and
+the job's token cannot change that. An admin of ladohq opens the package `lado` in the
+organisation's packages, sets its visibility to public (Package settings, Danger Zone),
+and checks on a machine logged out of ghcr.io that `docker pull
+ghcr.io/ladohq/lado:<that RC>` works.

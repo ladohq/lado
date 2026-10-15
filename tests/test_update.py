@@ -191,8 +191,8 @@ def test_the_line_of_a_newer_version_names_the_image_in_a_container(published, m
     published(**{"99.0.0": "2026-10-04"})
     monkeypatch.setenv("LADO_CONTAINER", "1")
     assert update.available_line(update.check()) == (
-        'LADO 99.0.0 is available: docker tag "$(docker compose images -q lado)" lado:previous'
-        " && docker compose pull && docker compose up -d"
+        "LADO 99.0.0 is available: a new image updates LADO in a container "
+        "(ghcr.io/ladohq/lado:99.0.0)"
     )
 
 

@@ -568,8 +568,6 @@ def _update(args: argparse.Namespace) -> int:
     refused = self_update.refusal(installer)
     if refused and refused.kind == self_update.RUNNING:
         raise self_update.UpdateRefused(refused.why)
-    if refused and refused.kind == self_update.CONTAINER:
-        raise runtime.LadoError(f"{refused.why}; on the host: {update.CONTAINER_UPDATE}")
     if refused and refused.kind != self_update.NO_INSTALLER:
         raise runtime.LadoError(refused.why)
     _unfinished_update()

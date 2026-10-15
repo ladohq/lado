@@ -481,7 +481,7 @@ function UpdateBlock({ info, onAsk }: { info: UpdateInfo; onAsk: () => void }) {
       {!info.can_update && info.why_not && <p className="system-why">{info.why_not}.</p>}
       {!info.can_update && info.by_hand.length > 0 && (
         <div className="system-by-hand">
-          <span>{info.container ? "On the host:" : "By hand:"}</span>
+          <span>By hand:</span>
           <CopyButton
             label="Copy commands"
             copied="Commands copied"

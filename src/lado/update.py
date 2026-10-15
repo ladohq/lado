@@ -485,12 +485,10 @@ def read_result() -> Result | None:
     )
 
 
-# What updates it there, as docker/compose.yaml's header says: the image it runs kept as
-# lado:previous first, the way back a failed migration names (runtime._migrate).
-CONTAINER_UPDATE = (
-    'docker tag "$(docker compose images -q lado)" lado:previous'
-    " && docker compose pull && docker compose up -d"
-)
+# LADO's published image (the Release workflow pushes it, docker/compose.yaml runs it), one
+# tag per version: a container is updated by running the image of a newer version. LADO
+# names no update command there; the documentation has them.
+IMAGE = "ghcr.io/ladohq/lado"
 
 
 def in_container() -> bool:
@@ -501,9 +499,13 @@ def in_container() -> bool:
 
 
 def available_line(checked: Check | None) -> str | None:
-    """`LADO X is available: lado update` when the check found a newer release, with the
-    container's command in a container."""
+    """`LADO X is available: lado update` when the check found a newer release; in a
+    container the image of that version, no command."""
     if checked is None or checked.available is None:
         return None
-    how = CONTAINER_UPDATE if in_container() else "lado update"
-    return f"LADO {checked.available} is available: {how}"
+    if in_container():
+        return (
+            f"LADO {checked.available} is available: a new image updates LADO in a "
+            f"container ({IMAGE}:{checked.available})"
+        )
+    return f"LADO {checked.available} is available: lado update"

@@ -288,10 +288,8 @@ def update_state(checked: update.Check | None) -> UpdateInfo:
     installer = update.installer()
     refused = self_update.refusal(installer)
     available = checked.available if checked else None
-    by_hand = []
-    if available and refused and refused.kind == self_update.CONTAINER:
-        by_hand = [update.CONTAINER_UPDATE]
-    elif available and refused and refused.kind == self_update.NO_INSTALLER:
+    by_hand = []  # none in a container: LADO names no update command there
+    if available and refused and refused.kind == self_update.NO_INSTALLER:
         release = update.Release(available, checked.released or "")
         by_hand = self_update.plan(release).by_hand()
     return UpdateInfo(

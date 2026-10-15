@@ -136,9 +136,7 @@ def container_server(monkeypatch, published, request):
     return request.getfixturevalue("server")
 
 
-def test_in_a_container_the_panel_says_so_and_names_the_hosts_command(
-    page: Page, container_server, shot
-):
+def test_in_a_container_the_panel_says_so_and_names_no_command(page: Page, container_server, shot):
     page.set_viewport_size({"width": 1280, "height": 720})
     log_in(page, container_server)
     page.get_by_role("button", name="System: LADO 99.0.0 is available").click()
@@ -152,11 +150,8 @@ def test_in_a_container_the_panel_says_so_and_names_the_hosts_command(
     expect(update).to_contain_text("99.0.0 is out")
     expect(update).to_contain_text("LADO runs in a container: a new image updates it")
     expect(update.get_by_role("button", name="Update…")).to_have_count(0)
-    expect(update.get_by_text("On the host:")).to_be_visible()
-    expect(update.locator("pre")).to_have_text(
-        'docker tag "$(docker compose images -q lado)" lado:previous && '
-        "docker compose pull && docker compose up -d"
-    )
-    expect(update.get_by_role("button", name="Copy commands")).to_be_visible()
+    expect(update.get_by_text("On the host:")).to_have_count(0)
+    expect(update.locator(".system-by-hand")).to_have_count(0)
+    expect(update.get_by_role("button", name="Copy commands")).to_have_count(0)
     expect(panel.get_by_text("Running")).to_be_visible()
     shot(page)

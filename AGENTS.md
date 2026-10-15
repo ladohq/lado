@@ -172,14 +172,20 @@ a run beside it is never taken for one left behind; it runs with `LADO_TELEMETRY
 (the session's teardown fails when a container or volume of the run is left). They
 check: one `docker run` serves `/api/health` (the wheel's version) and the UI on its
 `LADO_PORT` (8765 without it), with the container note in `docker logs` and `lado ui
---no-open`'s link on that port; `lado doctor` has no `[FAIL]`, says `in a container`, Claude
-Code `ok` and the other CLIs `info`; Node 22 and `npx` in a login shell; a Claude Code
+--no-open`'s link on that port; `lado doctor` has no `[FAIL]`, says `in a container` and
+each of the four agent CLIs `ok`; Node 22 and `npx` in a login shell; a Claude Code
 session against the fake endpoint, run inside the container on its own loopback and given
 through `~/.profile`, gets its supervisor to idle, the window's process is the `claude`
 binary itself (`/proc/<pid>/exe`), and `lado doctor` run with exactly that process's
 environment (`/proc/<pid>/environ`) says `in a container`; `docker/compose.yaml` serves on
 its `LADO_PORT`, its `lado doctor` names the projects at the host's path as `LADO_REPOS`,
-and it refuses without `LADO_PROJECTS`. The projects (`test_projects.py`): with the test's
+it refuses without `LADO_PROJECTS`, and its `config` refuses without `LADO_VERSION` (naming
+it), runs `ghcr.io/ladohq/lado:<LADO_VERSION>` with it and `LADO_IMAGE` when that is set.
+Two LADOs (`test_two_lados.py`): two compose projects, each a folder of its own with a copy
+of compose.yaml and its own `.env` (`COMPOSE_PROJECT_NAME`, `LADO_PORT`, `LADO_IMAGE` a tag
+of the run's prefix, `LADO_PROJECTS`), no `-f` or `-p`; a new image reference in the first's
+`.env` and its `up -d` leave the second's container id, start time and image as they were.
+The projects (`test_projects.py`): with the test's
 folder mounted at its own path, a worker spawned in the container commits in its worktree,
 and on the host `git status` works there, `git worktree list` has no `prunable`, the file
 and the commit's object belong to the host's user (uid 1001 on GitHub's runner), and the
@@ -196,9 +202,10 @@ A new image on an old home volume (`test_migration.py`; `old_home` seeds a volum
 schema before by `previous_schema`): the server migrates it, `/api/health` answers,
 `backups/lado.db.schema-<N>` is there, `docker logs` has the upgrade line and `lado ls`
 lists the session; a lado.db whose last step fails (its column there already) exits the
-container with the message and no traceback in `docker logs`, its schema kept; compose's
-header steps, run as written (`lado:previous` a tag of the run's prefix, kept of the image
-under test), name the running image, put the backup's schema back and start that tag. A
+container with the message (the way back: the image of the version before) and no
+traceback in `docker logs`, its schema kept; compose's header steps back, run as written
+with the version before as `LADO_IMAGE` (a tag of the run's prefix on the image under
+test), put the backup's schema back and start that image. A
 test that fails in its setup or its
 call keeps, for each container it started (a compose project's too), `docker logs` and
 LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before
@@ -348,11 +355,11 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `CHECK_TIMEOUT` seconds, a failure kept there too, for `lado ls`, `lado doctor` and the
     UI's `GET /api/update` alike; the file keeps the kind it looked for, `pre`, and one of
     the other kind, or without the key for a pre-release, is stale;
-    `LADO_NO_UPDATE_CHECK=1`: no look and no line; in a container it names
-    `CONTAINER_UPDATE`, `docker tag "$(docker compose images -q lado)" lado:previous &&
-    docker compose pull && docker compose up -d`, the two update commands of
-    docker/compose.yaml's header (`tests/test_docker.py`), instead of `lado update`:
-    `available_line`), whether LADO runs in its container (`in_container`:
+    `LADO_NO_UPDATE_CHECK=1`: no look and no line; in a container it names the new
+    version's image, `IMAGE:<version>`, and no command instead of `lado update`:
+    `available_line`), the published image's name (`IMAGE`, `ghcr.io/ladohq/lado`, the one
+    in code: the Release workflow, docker/compose.yaml and `scripts/release_notes.py` are
+    tested against it), whether LADO runs in its container (`in_container`:
     `LADO_CONTAINER` set, not empty, not `0`, which only the image sets; never guessed from
     `/.dockerenv`; the one answer for the CLI, `lado doctor`'s LADO line and report (its
     `Server:` line says `in a container` instead of loopback or open to the network), and
@@ -434,7 +441,8 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     (inside an agent, in a container, an update running, no installer, in that order), the
     CLI's and the API's `can_update`; the CLI and `POST /api/update` refuse a container's at
     once, stopping nothing and before PyPI (the container's main process is the UI server,
-    whose stop would end it), naming `update.CONTAINER_UPDATE`.
+    whose stop would end it), with the reason alone: no command (the API's `by_hand` is
+    empty there).
     `plan` is what an update would do (the sessions `runtime.session_status` says run, also
     with the loop down, those whose tmux is gone, the UI server; `print_plan`,
     `print_by_hand`, the API's `UpdatePlan`). `run` holds an exclusive flock on
@@ -849,9 +857,9 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     <path>`, a container's `docker logs`). A backup it cannot write is `BackupFailed`,
     nothing migrated, a `LadoError`; a step that fails is `MigrationFailed`, the
     transaction rolled back, `runtime.MigrationFailed`: one message with the backup and the
-    way back (`LADO_IMAGE=lado:previous docker compose up -d` in a container, the name
-    compose.yaml's header has the human keep, else the LADO
-    you had before) and `lado bug-report`, its cause journaled by `cli.main`, no traceback
+    way back (in a container the image of the version run before,
+    `ghcr.io/ladohq/lado:<that version>`, on the same home volume, else the LADO you had
+    before) and `lado bug-report`, its cause journaled by `cli.main`, no traceback
     (openspec capability schema-migration). A LADO upgraded in
     place under a running session: that session's hooks write the SchemaError's text
     (`lado stop --all`, then `lado start`) to `hooks.log`, its tools return it as their
@@ -1118,7 +1126,9 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   `telemetry.ENDPOINT` accepts `telemetry.PROJECT_TOKEN` (one `POST /flags/?v=2` of its
   host, no event; docs/release.md); standard library and `lado.telemetry` only.
   `scripts/release_notes.py`: a release tag's notes from CHANGELOG.md for its GitHub
-  release, checked before PyPI too (docs/release.md); standard library only.
+  release, checked before PyPI too, with the release's `docker pull` (docs/release.md);
+  standard library only, so it holds the image's name as its own `IMAGE`, kept equal to
+  `update.IMAGE` by a test.
   `scripts/rc_check.py`: the human's checks of a release candidate (docs/release.md,
   section 4): `sandbox` (a clean install in a temporary folder, statistics off, removed
   after), `upgrade` (the human's `lado update X.Y.ZrcN`, keeping the final's database in
@@ -1128,12 +1138,16 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   the trust dialogs, the agents' processes, the evidence of a failed test).
   `tests/fake_endpoint.py`: the 401 model API of the smoke and container tests.
   `tests/container/`: the container tests (Commands).
-- `docker/`: LADO's image, built from a checkout by `make docker` (`lado:local`; nothing
-  publishes it yet). `Dockerfile`: Debian 12 (tmux 3.3a, git 2.39), Node 22 and npm from
-  the official `node` image, uv from its own, every base pinned by digest; LADO from the one
-  wheel of the build context (`Dockerfile.dockerignore`, an allowlist: `dist/lado-*.whl`,
-  `profile.sh` and `entrypoint.sh`), Claude Code alone at `smoke_ci.py`'s
-  `PINS["claude"]` (`ARG CLAUDE_VERSION`), programs under `/opt`, the user `lado` (uid
+- `docker/`: LADO's image, built from a checkout by `make docker` (`lado:local`) and
+  published by the Release workflow for each release as `ghcr.io/ladohq/lado:<version>`
+  (`update.IMAGE`; amd64 and arm64, tested before anything is published; `latest` only for
+  a final; docs/release.md, The image). `Dockerfile`: Debian 12 (tmux 3.3a, git 2.39),
+  Node 22 and npm from the official `node` image, uv from its own, every base pinned by
+  digest; LADO from the one wheel of the build context (`Dockerfile.dockerignore`, an
+  allowlist: `dist/lado-*.whl`, `profile.sh` and `entrypoint.sh`), the four agent CLIs at
+  `smoke_ci.py`'s `PINS`, one `ARG <NAME>_VERSION` and one layer each (`CLAUDE_VERSION`,
+  `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet),
+  programs under `/opt`, the user `lado` (uid
   1000 in the image) with its home a volume; `lado server --host 0.0.0.0 --port
   $LADO_PORT` (8765) under tini and `entrypoint.sh` (`/usr/local/bin/lado-entrypoint`).
   The human's projects are mounted at the host's own path and named by `LADO_REPOS`
@@ -1161,15 +1175,18 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
   comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
   `DISABLE_AUTOUPDATER`, `LANG`; `LADO_REPOS` is the entrypoint's `lado-repos.sh`).
-  `compose.yaml`: the same image (`LADO_IMAGE`), one `LADO_PORT` both inside and published
-  as `127.0.0.1:${LADO_PORT}:${LADO_PORT}`, `LADO_PROJECTS` (required) at that same path
-  and as `LADO_REPOS`, no container name (a second one: `-p lado-2`); its header keeps the
-  running image as `lado:previous` before an update (`docker tag "$(docker compose images
-  -q lado)" lado:previous`: a pull moves the name, and Docker's containerd store then
-  removes the old image) and gives the steps back to it with a migration's backup
-  (`docker compose down`, the backup copied over lado.db by `lado:previous`'s `docker
-  compose run`, `up -d`); `tests/test_docker.py`'s `keep_previous` and `way_back` read
-  them, the container tests run them. The research
+  `compose.yaml`: the same image, `ghcr.io/ladohq/lado:${LADO_VERSION}` (required, no
+  default: the tag of a version never moves, so the image before an update keeps its name;
+  `LADO_IMAGE` replaces it, `lado:local` and the tests), one `LADO_PORT` both inside and
+  published as `127.0.0.1:${LADO_PORT}:${LADO_PORT}`, `LADO_PROJECTS` (required) at that
+  same path and as `LADO_REPOS`, no container name; its header keeps the settings in
+  `.env` next to the file, updates by a new `LADO_VERSION` and `up -d`, goes back by the
+  version before with a migration's backup (`docker compose down`, the backup copied over
+  lado.db by `docker compose run`, `up -d`), and runs a second LADO from a folder of its
+  own with its own `.env` (`COMPOSE_PROJECT_NAME`, `LADO_PORT`, `LADO_VERSION`,
+  `LADO_PROJECTS`); the Dockerfile's header gives the same for `docker run`.
+  `tests/test_docker.py`'s `header_steps` and `way_back` read them, the container tests
+  run them. The research
   prototype in
   `docs/research/docker-install/` is evidence only.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

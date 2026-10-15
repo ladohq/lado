@@ -176,16 +176,13 @@ def test_update_says_whether_this_lado_can_update_itself(client, installed, monk
     assert info["by_hand"][-1] == f"{update.prefix() / 'bin' / 'pip'} install lado=={NEW}"
 
 
-def test_update_in_a_container_names_the_image_and_cannot_update(client, installed, monkeypatch):
+def test_update_in_a_container_says_why_and_names_no_command(client, installed, monkeypatch):
     assert ok(client.get("/api/update"))["container"] is False
     monkeypatch.setenv("LADO_CONTAINER", "1")
     info = ok(client.get("/api/update"))
     assert (info["container"], info["can_update"], info["available"]) == (True, False, NEW)
     assert info["why_not"] == "LADO runs in a container: a new image updates it, not lado update"
-    assert info["by_hand"] == [
-        'docker tag "$(docker compose images -q lado)" lado:previous && '
-        "docker compose pull && docker compose up -d"
-    ]
+    assert info["by_hand"] == []  # LADO names no update command in a container
 
 
 def test_the_update_is_refused_in_a_container_before_pypi(

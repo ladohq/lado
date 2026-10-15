@@ -533,6 +533,45 @@ def test_the_dockerfiles_header_says_the_sessions_follow_the_container():
         assert words in sessions, words
 
 
+def leading_comment(path: Path) -> str:
+    """A file's header: its comment lines before the first other line."""
+    head = []
+    for line in path.read_text().splitlines():
+        if not line.startswith("#"):
+            break
+        head.append(line.lstrip("#").strip())
+    return " ".join(head)
+
+
+@pytest.mark.parametrize("name", ["compose.yaml", "Dockerfile"])
+def test_the_headers_say_how_agents_get_variables_access_and_logins(name):
+    head = leading_comment(DOCKER / name)
+    for needle in (
+        "mkdir -m 700 secrets",
+        "LADO_GIT_NAME",
+        "LADO_GIT_EMAIL",
+        "GH_TOKEN",
+        "gh auth login",
+        "LADO_SSH_AGENT" if name == "compose.yaml" else "/run/lado/ssh-agent.sock",
+        "/run/host-services/ssh-auth.sock",
+        "$SSH_AUTH_SOCK",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "claude setup-token",
+        "opencode auth login",
+        "kilo auth login",
+        "Every agent of the container can read every variable given to it",
+    ):
+        assert needle in head, (name, needle)
+
+
+def test_the_compose_header_sets_the_new_settings_in_env():
+    header = [line.lstrip("# ").strip() for line in COMPOSE_TEXT.splitlines()]
+    first = next(i for i, line in enumerate(header) if line.startswith("docker compose"))
+    settings = " ".join(header[:first])
+    for key in ("LADO_GIT_NAME=", "LADO_GIT_EMAIL=", "LADO_SSH_AGENT="):
+        assert key in settings, key
+
+
 def test_nothing_in_docker_names_lado_previous():
     """One name per machine, which a second LADO overwrote (LAD-71's G2): a version's tag
     names the image before an update instead."""

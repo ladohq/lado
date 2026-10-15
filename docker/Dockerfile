@@ -3,10 +3,27 @@
 # as ghcr.io/ladohq/lado:<version> (amd64, arm64); `make docker` builds it from a checkout
 # (lado:local). One command starts it:
 #
+#   mkdir -m 700 secrets
 #   docker run -d --name lado -p 127.0.0.1:8765:8765 -v lado-home:/home/lado \
 #     -v "$HOME/projects:$HOME/projects" -e LADO_REPOS="$HOME/projects" \
+#     -v "$PWD/secrets:/run/secrets:ro" \
+#     -e LADO_GIT_NAME="Ann Lee" -e LADO_GIT_EMAIL=ann@example.com \
 #     ghcr.io/ladohq/lado:<version>
 #   docker exec lado lado ui --no-open            # the UI's link with its token
+#
+# The agents' variables are files in secrets/, one per variable (its name the file's, its
+# value the content), read at each agent's start and never in `docker inspect`: GH_TOKEN
+# (git over https to github.com and gh; or `docker exec -it lado gh auth login`),
+# CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`; or log in once with `docker exec -it
+# lado claude`), a kit's key, a model provider's key for OpenCode and Kilo (or `opencode
+# auth login` / `kilo auth login` inside). Logins made inside stay on the home volume;
+# Codex's is not covered yet. Every agent of the container can read every variable given
+# to it; another LADO keeps its own folder. LADO_GIT_NAME and LADO_GIT_EMAIL are git's
+# identity for the agents' commits, written at every start (without them `docker logs`
+# warns). The host's ssh agent, for git over ssh: on a Mac add
+# `-v /run/host-services/ssh-auth.sock:/run/lado/ssh-agent.sock` (Docker Desktop's), on
+# Linux `-v "$SSH_AUTH_SOCK:/run/lado/ssh-agent.sock"`; every agent may then use the
+# host's keys. compose.yaml names it LADO_SSH_AGENT.
 #
 # Update: `docker rm -f lado`, then the same `docker run` with the new version; the home
 # volume keeps LADO's state, and the new version upgrades its lado.db after a backup. Back:

@@ -13,7 +13,7 @@
 - [x] 2.2 `runtime._check_summary` (summary, question) and `ask_human`'s choices; tests per
   text. Check: `uv run pytest tests/test_runtime.py tests/test_mcp_server.py -n auto -k
   "summary or question or choice"`.
-- [x] 2.3 `runs.advance`'s `note_summary` and `artifacts._line` (title, summary); tests.
+- [x] 2.3 `runs.start`'s `human_language` (review F1), `runs.advance`'s `note_summary` and `artifacts._line` (title, summary); tests.
   Check: `uv run pytest tests/test_runs.py tests/test_artifacts.py -n auto`.
 
 ## 3. Cleaned: the human's texts (D2, D3, D5)

@@ -709,7 +709,8 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     WIDTH JOINER (`hidden`, `first_hidden`). A one-line field its writer gives is refused
     naming the first one (`named`: `U+XXXX NAME`; `refusal`, the words after `... one
     line`): the session's title, `send_message`'s summary, `ask_human`'s question and
-    choices, `flow_advance`'s `note_summary`, `write_artifact`'s title and summary. A line
+    choices, `flow_advance`'s `note_summary`, `flow_start`'s `human_language`,
+    `write_artifact`'s title and summary. A line
     LADO takes from the human's longer text is cleaned (`one_line`: Cf removed, the others
     a space), the whole text kept in the body whenever the line is not exactly it: the
     human's chat message and own answer (`runtime._human_text`), a gate's comment and a
@@ -992,10 +993,11 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     From schema 28 a session keeps an optional title, `sessions.title` (`SESSIONS_TITLE`;
     NULL for none; `state.set_title` stores it as given): a label for the human over its
     name, which stays its identifier. `runtime.set_title` is the one rule of what a title
-    is (trimmed, one line with no hidden character, `text.py`, at most `runtime.MAX_TITLE`, 80,
-    characters; empty or equal to the name is none; a bad one is refused, never cut), for
-    `lado title` and `PUT /api/sessions/{name}/title` alike; `SessionInfo.title` carries
-    it, through the existing journal of `sessions`, and `Limits.max_title` the limit.
+    is (trimmed, one line with no hidden character, `text.py`, at most
+    `runtime.MAX_TITLE`, 80, characters; empty or equal to the name is none; a bad one is
+    refused, never cut), for `lado title` and `PUT /api/sessions/{name}/title` alike;
+    `SessionInfo.title` carries it, through the existing journal of `sessions`, and
+    `Limits.max_title` the limit.
     From schema 29 a session keeps whether the container's stop stopped it,
     `sessions.resume_at_start` (`SESSIONS_RESUME_AT_START`; not in the API):
     `state.stop_for_container` marks every session not stopped as `stop_session` does, with

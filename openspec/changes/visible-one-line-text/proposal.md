@@ -41,7 +41,8 @@ Options weighed:
   The UI shows the core's text as today.
 - **Agents' one-line texts** are refused the same way, with the character named and where
   the details go: `send_message`'s `summary`, `ask_human`'s `question` and each choice,
-  `flow_advance`'s `note_summary`, `write_artifact`'s `title` and `summary`.
+  `flow_advance`'s `note_summary`, `flow_start`'s `human_language`, `write_artifact`'s
+  `title` and `summary`.
 - **The human's longer texts** are cleaned, never refused, for their one-line form: the
   summary of the human's chat message and of an own answer to a question, the next step's
   note made from a gate's comment, the note made from a `lado flow-set` reason (and the
@@ -73,7 +74,7 @@ CHANGELOG.md).
 ## Impact
 
 - `src/lado/text.py` (new), `runtime.py` (`set_title`, `_check_summary`, `ask_human`'s
-  choices, `_human_text`), `runs.py` (`advance`'s note, `_answer_note`, `force`, the loop
+  choices, `_human_text`), `runs.py` (`start`'s language, `advance`'s note, `_answer_note`, `force`, the loop
   limit's cancel), `artifacts.py` (`_line`, `upload`'s title).
 - No API model, CLI option, MCP tool signature or schema change; the error texts change.
 - AGENTS.md (Layout: `text.py`; the title's rule in `lado title`), `docs/design/ui.md`

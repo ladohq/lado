@@ -24,9 +24,9 @@ character as `U+XXXX` followed by its Unicode name when it has one.
 
 LADO SHALL refuse, with nothing written and the first hidden character named, an agent's
 one-line text that holds a hidden character: `send_message`'s `summary`, `ask_human`'s
-`question` and each of its choices, `flow_advance`'s `note_summary`, and
-`write_artifact`'s `title` and `summary`. The error SHALL keep its first words and its
-pointer to where the details go (`summary must be one line of visible text: U+2028 LINE
+`question` and each of its choices, `flow_advance`'s `note_summary`, `flow_start`'s
+`human_language`, and `write_artifact`'s `title` and `summary`. The error SHALL keep its
+first words and, where it has one, its pointer to where the details go (`summary must be one line of visible text: U+2028 LINE
 SEPARATOR is not allowed; put the details in body`).
 
 #### Scenario: A summary with a line separator

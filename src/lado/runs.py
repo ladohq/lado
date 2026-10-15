@@ -57,7 +57,9 @@ def start(
     if not task:
         raise LadoError("task is empty; say what the run is for")
     language = (language or "").strip()
-    if "\n" in language or len(language) > LANGUAGE_LIMIT:
+    if (char := visible.first_hidden(language)) is not None:
+        raise LadoError(f"human_language is one line {visible.refusal(char)}")
+    if len(language) > LANGUAGE_LIMIT:
         raise LadoError(
             f'human_language is a language name or code such as "ru", at most '
             f"{LANGUAGE_LIMIT} characters"

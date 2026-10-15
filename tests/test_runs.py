@@ -194,7 +194,22 @@ def test_every_step_asks_for_notes_in_the_humans_language(session):
 
 def test_a_language_is_one_short_line(session):
     with pytest.raises(runtime.LadoError, match="human_language is a language name or code"):
-        runs.start(session, "feature", "x", language="ru\nen")
+        runs.start(session, "feature", "x", language="r" * (runs.LANGUAGE_LIMIT + 1))
+    assert state.list_runs(session) == []
+
+
+@pytest.mark.parametrize(
+    ("language", "named"),
+    [
+        ("ru\nen", "U+000A"),
+        ("ru\N{RIGHT-TO-LEFT OVERRIDE}", "U+202E RIGHT-TO-LEFT OVERRIDE"),
+        ("r\N{ZERO WIDTH SPACE}u", "U+200B ZERO WIDTH SPACE"),
+    ],
+)
+def test_a_language_with_a_hidden_character_is_refused(session, language, named):
+    reason = f"human_language is one line of visible text: {named} is not allowed"
+    with pytest.raises(runtime.LadoError, match=f"^{re.escape(reason)}$"):
+        runs.start(session, "feature", "x", language=language)
     assert state.list_runs(session) == []
 
 

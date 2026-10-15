@@ -79,8 +79,7 @@ React (vitest), Playwright.
 ```python
 # tests/test_update.py (the in-container hint test, today line ~194)
 assert update.available_line(checked) == (
-    "LADO 99.0.0 is available: a new image updates LADO in a container "
-    "(ghcr.io/ladohq/lado:99.0.0)"
+    "LADO 99.0.0 is available: a new image updates LADO in a container (ghcr.io/ladohq/lado:99.0.0)"
 )
 
 # tests/test_self_update.py (~170): the CLI's refusal is the reason alone
@@ -121,6 +120,7 @@ and `cd web && npx vitest run src/SystemPanel.test.tsx`: FAIL on the old texts.
 # LADO's published image (the Release workflow pushes it, docker/compose.yaml pulls it):
 # a container is updated by running the image of a newer version.
 IMAGE = "ghcr.io/ladohq/lado"
+
 
 def available_line(checked: Check | None) -> str | None:
     """`LADO X is available: lado update` when the check found a newer release; in a
@@ -168,8 +168,10 @@ def test_the_footer_names_the_image_of_the_version():
     rc = release_notes.notes("v0.38.0rc2", CHANGELOG)
     assert "Docker: `docker pull ghcr.io/ladohq/lado:0.38.0rc2`." in rc
 
+
 def test_the_notes_name_lados_image():
     from lado import update
+
     assert release_notes.IMAGE == update.IMAGE
 ```
 
@@ -197,11 +199,17 @@ def test_the_notes_name_lados_image():
   `test_claude_code_is_installed_at_that_version`, `test_no_other_agent_cli`):
 
 ```python
-ARGS = {"claude": "CLAUDE_VERSION", "codex": "CODEX_VERSION",
-        "opencode": "OPENCODE_VERSION", "kilo": "KILO_VERSION"}
+ARGS = {
+    "claude": "CLAUDE_VERSION",
+    "codex": "CODEX_VERSION",
+    "opencode": "OPENCODE_VERSION",
+    "kilo": "KILO_VERSION",
+}
+
 
 def test_every_provider_of_pins_has_its_build_argument():
     assert set(ARGS) == set(_pins()), f"PINS {sorted(_pins())}, Dockerfile {sorted(ARGS)}"
+
 
 @pytest.mark.parametrize("provider", sorted(ARGS))
 def test_each_clis_default_is_its_pin(provider):
@@ -210,11 +218,13 @@ def test_each_clis_default_is_its_pin(provider):
     pinned = _pins()[provider][1]
     assert arg == f"ARG {name}={pinned}", f"Dockerfile {arg}, PINS {pinned}"
 
+
 @pytest.mark.parametrize("provider", sorted(ARGS))
 def test_each_cli_is_installed_at_that_version(provider):
     package = _pins()[provider][0]
     installs = [line for line in lines() if "npm install -g" in line]
     assert any(f'"{package}@${{{ARGS[provider]}}}"' in line for line in installs), installs
+
 
 def test_no_other_npm_package_is_installed():
     packages = {pin[0] for pin in _pins().values()}
@@ -290,23 +300,27 @@ def test_compose_runs_the_published_image_of_lado_version(compose):
         "version to run, e.g. in .env next to this file}}}"
     )
 
+
 def test_an_update_is_a_new_version_and_up():
     assert header_steps("To update") == ["docker compose up -d"]
     header = " ".join(l.lstrip("#").strip() for l in COMPOSE_TEXT.splitlines())
     assert "LADO_VERSION" in header and "lado:previous" not in header
 
+
 def test_the_compose_header_says_how_to_go_back_to_the_backup():
-    down, restore, up = way_back()   # header_steps("Back to the version you had before")
+    down, restore, up = way_back()  # header_steps("Back to the version you had before")
     assert down == "docker compose down"
     assert restore.startswith("docker compose run --rm lado sh -c '")
     assert "rm -f lado.db-wal lado.db-shm" in restore
     assert "cp backups/lado.db.schema-<N> lado.db" in restore
     assert up == "docker compose up -d"
 
+
 def test_a_second_lado_is_a_folder_with_its_own_env():
     header = " ".join(l.lstrip("#").strip() for l in COMPOSE_TEXT.splitlines())
     for name in ("COMPOSE_PROJECT_NAME", "LADO_PORT", "LADO_VERSION", "LADO_PROJECTS"):
         assert name in header
+
 
 def test_nothing_names_lado_previous():
     for path in (DOCKER / "compose.yaml", DOCKER / "Dockerfile"):
@@ -378,18 +392,22 @@ the message names `ghcr.io/ladohq/lado:<that version>` and the same home volume,
 """Two LADO containers on one machine update independently (openspec capability
 container): each a compose project in its own folder with its own .env."""
 
+
 def test_updating_one_lado_leaves_the_other_as_it_is(request, tmp_path):
-    a, b = (two_folder(request, tmp_path / n) for n in ("a", "b"))   # helper below
+    a, b = (two_folder(request, tmp_path / n) for n in ("a", "b"))  # helper below
     for p in (a, b):
         p.up()
-    before = b.inspect()                     # container id, StartedAt, Config.Image
-    newer = tag_of_run(request, IMAGE)       # docker tag IMAGE <run prefix>-newer, removed after
+    before = b.inspect()  # container id, StartedAt, Config.Image
+    newer = tag_of_run(request, IMAGE)  # docker tag IMAGE <run prefix>-newer, removed after
     a.set_env(LADO_IMAGE=newer)
     a.up()
     assert a.inspect()["Config"]["Image"] == newer
     after = b.inspect()
     assert (after["Id"], after["State"]["StartedAt"], after["Config"]["Image"]) == (
-        before["Id"], before["State"]["StartedAt"], before["Config"]["Image"])
+        before["Id"],
+        before["State"]["StartedAt"],
+        before["Config"]["Image"],
+    )
     assert health(a.port)["ok"] and health(b.port)["ok"]
 ```
 
@@ -425,10 +443,14 @@ def test_jobs_run_in_order_and_nothing_is_published_before_the_image_passed():
     assert j["github-release"]["needs"] == "image-tags"
     assert not any("uv publish" in s.get("run", "") for s in j["build"]["steps"])
 
+
 def test_the_image_is_built_on_each_architectures_runner():
     m = jobs()["image"]["strategy"]["matrix"]["include"]
     assert {(c["arch"], c["runner"]) for c in m} == {
-        ("amd64", "ubuntu-24.04"), ("arm64", "ubuntu-24.04-arm")}
+        ("amd64", "ubuntu-24.04"),
+        ("arm64", "ubuntu-24.04-arm"),
+    }
+
 
 def test_the_image_job_tests_the_image_it_pushes():
     s = jobs()["image"]["steps"]
@@ -440,16 +462,19 @@ def test_the_image_job_tests_the_image_it_pushes():
     assert any("uv sync --locked" in r for r in runs[:tests])
     assert any(x.get("uses", "").startswith("actions/download-artifact@") for x in s[:build])
 
+
 def test_the_image_name_is_lados():
     text = WORKFLOW.read_text()
     assert f"{update.IMAGE}" in text
     assert text.count("ghcr.io/") == text.count(update.IMAGE)
+
 
 def test_latest_only_for_a_final():
     run = "\n".join(s.get("run", "") for s in jobs()["image-tags"]["steps"])
     assert 'scripts/release_notes.py --flag "$GITHUB_REF_NAME"' in run
     assert "--latest" in run and ":latest" in run
     assert "imagetools create" in run and "imagetools inspect" in run
+
 
 def test_only_the_job_token():
     assert "secrets." not in WORKFLOW.read_text()

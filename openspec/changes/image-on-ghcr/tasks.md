@@ -56,7 +56,7 @@ Tests first in each section; each task is one commit. The plan with the code is
 
 ## 6. Docs and regression
 
-- [ ] 6.1 AGENTS.md (Commands, container tests, Layout: `update.py`, `self_update.py`,
+- [x] 6.1 AGENTS.md (Commands, container tests, Layout: `update.py`, `self_update.py`,
   `state.py`'s way back, `docker/`, the Release workflow) and CHANGELOG.md (0.39.0: the
   LAD-71 item without `lado:previous`; the image on GHCR with four CLIs; compose by
   `LADO_VERSION`; the container hint). `grep -rn "lado:previous\|CONTAINER_UPDATE" src

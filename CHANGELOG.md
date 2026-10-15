@@ -2,15 +2,25 @@
 
 ## 0.39.0 (unreleased)
 
+- Every release publishes LADO's Docker image, `docker pull ghcr.io/ladohq/lado:<version>`
+  (linux/amd64 and linux/arm64; `latest` is the newest final release, a release candidate
+  only its own tag), tested on each architecture before anything is published. It carries
+  all four agent CLIs at the versions LADO is tested with: Claude Code, Codex CLI (only
+  installed: its login does not reach the agents yet), OpenCode and Kilo CLI. The GitHub
+  release names the image.
+- `docker/compose.yaml` runs `ghcr.io/ladohq/lado:${LADO_VERSION}`: set `LADO_VERSION` (in
+  `.env` next to the file), update by changing it and `docker compose up -d`, go back by
+  putting the version before back. The image before an update keeps its version's tag, so
+  nothing is kept by hand, and a second LADO, a folder of its own with its own `.env`,
+  updates without touching the first.
 - Before LADO upgrades `lado.db` to a newer schema, by any command and wherever it runs (a
   new Docker image on an old home volume, a LADO upgraded by hand), it copies it to
   `LADO_HOME/backups/lado.db.schema-<N>` and says so on stderr (in a container: `docker
   logs`). When the copy cannot be written, nothing is upgraded. A migration that fails is
   one message, without a traceback: `lado.db` is unchanged, where its backup is, and how
-  to go back (in a container `LADO_IMAGE=lado:previous docker compose up -d`).
-  `docker/compose.yaml`'s header says to keep the image you run as `lado:previous` before
-  `docker compose pull`, which moves its name and after which Docker may remove it, and
-  gives the steps back to it after a migration that succeeded.
+  to go back (in a container: the image of the version you ran before on the same home
+  volume). `docker/compose.yaml`'s header gives the steps back after a migration that
+  succeeded.
 - A session can have a title, shown in the UI over its name (the list, the head, the
   browser tab, Needs you and notifications), the name small beside it: set it with the
   pencil in the session's head, Rename… in the session list's ⋯, or `lado title <session>
@@ -19,13 +29,12 @@
   session by either. lado.db goes to schema 28.
 - After an update from the UI, the System panel no longer says an update is running and
   keeps its Update… button: the page's wait ends once the update has released its lock.
-- In a container (`LADO_CONTAINER`, which LADO's Docker image will set), `lado update` and
-  the UI's update refuse at once, stopping nothing, and name the way to update there:
-  `docker tag "$(docker compose images -q lado)" lado:previous && docker compose pull &&
-  docker compose up -d` on the host, which keeps the image you ran as `lado:previous` for
-  the way back. `lado doctor`, the System
-  panel (a `container` mark beside the version) and the system info for an issue say that
-  LADO runs in a container.
+- In a container (`LADO_CONTAINER`, which LADO's Docker image sets), `lado update` and the
+  UI's update refuse at once, stopping nothing: a new image updates LADO there. When a
+  newer LADO is out, `lado ls`, `lado doctor` and the System panel name its image
+  (`ghcr.io/ladohq/lado:<version>`) and no command. `lado doctor`, the System panel (a
+  `container` mark beside the version) and the system info for an issue say that LADO
+  runs in a container.
 - In a container the UI server no longer warns that it is open to other machines: it notes
   that how the container publishes its port decides who reaches it. `lado ui` there prints
   only the link for the host's browser and opens none, and the system info for an issue
@@ -37,9 +46,9 @@
   longer turns orange. A step back has a return icon, and hovering an outcome says where
   the step goes and, for a step back, which states run again.
 - LADO's Docker image is in the repository (`docker/`): LADO from the build's wheel and
-  Claude Code, started with one `docker run` (or `docker/compose.yaml`, whose `LADO_PORT`
+  the agent CLIs, started with one `docker run` (or `docker/compose.yaml`, whose `LADO_PORT`
   sets the port inside and on the host alike). `make docker` builds it from a checkout; CI
-  builds and tests it on amd64 and arm64. It is not published yet. Your projects folder is
+  builds and tests it on amd64 and arm64. Your projects folder is
   mounted at its own path (`-v "$P:$P" -e LADO_REPOS="$P"`; compose does it for
   `LADO_PROJECTS`), so a worker's worktree made in the container works on the host too,
   and on Linux the container's user takes the folder owner's uid, so the files the agents

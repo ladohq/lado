@@ -5,7 +5,9 @@ install script, the environment the same for the server (ENV) and the agents' lo
 LADO_VERSION, and the headers' update by version."""
 
 import importlib.util
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -124,6 +126,7 @@ def test_profile_sets_what_env_sets_for_the_agents():
         "CLAUDE_CONFIG_DIR",
         "DISABLE_AUTOUPDATER",
         "LANG",
+        "LADO_ENV_DIR",
     }
     for key, value in exported.items():
         value = value.replace("$HOME", "/home/lado")
@@ -138,6 +141,25 @@ def test_profile_sets_what_env_sets_for_the_agents():
     assert image["LADO_REPOS"] == "/projects"
     assert image["LADO_PORT"] == "8765"
     assert image["SHELL"] == "/bin/bash"
+
+
+def test_the_image_reads_the_agents_variables_from_the_secrets_folder():
+    """Set for the server and `docker exec` (ENV) and for every login shell (profile.sh),
+    whose `lado mcp` spawns workers too; never `inherit`, which would give the agents the
+    container's whole environment."""
+    assert env()["LADO_ENV_DIR"] == "/run/secrets"
+    assert "LADO_AGENT_ENV" not in DOCKERFILE + (DOCKER / "profile.sh").read_text()
+
+
+def test_gh_is_gits_credential_helper_for_github():
+    """What `gh auth setup-git` writes: an empty helper first drops any inherited one."""
+    [run] = [line for line in lines() if "credential.https://github.com.helper" in line]
+    assert "git config --system credential.https://github.com.helper ''" in run
+    assert (
+        "git config --system --add credential.https://github.com.helper "
+        "'!/usr/bin/gh auth git-credential'"
+    ) in run
+    assert run.index("helper ''") < run.index("gh auth git-credential")
 
 
 def test_the_server_listens_on_all_addresses_at_lado_port_under_tini():
@@ -220,12 +242,90 @@ def test_the_entrypoint_goes_on_without_root():
     assert "NoNewPrivs:\t1" in ENTRYPOINT
 
 
+GIT_WARNING = (
+    "lado: warning: git has no user.name or user.email: agents cannot commit; set "
+    "LADO_GIT_NAME and LADO_GIT_EMAIL"
+)
+
+
+def every_start(tmp_path, **given: str) -> subprocess.CompletedProcess:
+    """The entrypoint's every-start phase run here (no marker, not root), with a home of
+    its own and `given` in a clean environment; its command prints git's identity."""
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
+    environ = {"PATH": os.environ["PATH"], "HOME": str(home), "LADO_REPOS": str(tmp_path)}
+    return subprocess.run(
+        [
+            "sh",
+            str(DOCKER / "entrypoint.sh"),
+            "sh",
+            "-c",
+            "git config user.name; git config user.email; true",
+        ],
+        env={**environ, **given},
+        cwd=home,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
+@pytest.mark.skipif(
+    os.geteuid() == 0 or Path("/etc/lado/first-start").exists(), reason="the image's own phases"
+)
+def test_the_entrypoint_writes_gits_identity_at_every_start(tmp_path):
+    """As one argument each, never split or evaluated; a later start takes a new value."""
+    done = every_start(tmp_path, LADO_GIT_NAME="Ann O'Lee $(x)", LADO_GIT_EMAIL="ann@example.com")
+    assert done.stdout == "Ann O'Lee $(x)\nann@example.com\n"
+    assert GIT_WARNING not in done.stderr
+    done = every_start(tmp_path, LADO_GIT_EMAIL="ann@other.example")
+    assert done.stdout == "Ann O'Lee $(x)\nann@other.example\n"
+    assert done.stderr == ""
+
+
+@pytest.mark.skipif(
+    os.geteuid() == 0 or Path("/etc/lado/first-start").exists(), reason="the image's own phases"
+)
+def test_without_gits_identity_the_entrypoint_warns_and_goes_on(tmp_path):
+    done = every_start(tmp_path)
+    assert GIT_WARNING in done.stderr.splitlines()
+    done = every_start(tmp_path, LADO_GIT_NAME="Ann", LADO_GIT_EMAIL="")
+    assert GIT_WARNING in done.stderr.splitlines()
+    assert done.stdout == "Ann\n"
+
+
 COMPOSE_TEXT = (DOCKER / "compose.yaml").read_text()
 
 
 @pytest.fixture(scope="module")
 def compose() -> dict:
     return yaml.safe_load(COMPOSE_TEXT)
+
+
+def test_compose_binds_the_secrets_folder_read_only_and_never_makes_it(compose):
+    """Docker on Linux would make a missing folder as root, where the human could not add
+    a file without sudo: compose refuses instead."""
+    [mount] = [
+        v
+        for v in compose["services"]["lado"]["volumes"]
+        if isinstance(v, dict) and v.get("target") == "/run/secrets"
+    ]
+    assert mount == {
+        "type": "bind",
+        "source": "${LADO_SECRETS:-./secrets}",
+        "target": "/run/secrets",
+        "read_only": True,
+        "bind": {"create_host_path": False},
+    }
+
+
+def test_compose_passes_the_git_identity_and_no_secret(compose):
+    """No value for the agents goes through `environment:`, which docker inspect shows."""
+    environment = compose["services"]["lado"]["environment"]
+    assert environment["LADO_GIT_NAME"] == "${LADO_GIT_NAME:-}"
+    assert environment["LADO_GIT_EMAIL"] == "${LADO_GIT_EMAIL:-}"
+    assert set(environment) == {"LADO_PORT", "LADO_REPOS", "LADO_GIT_NAME", "LADO_GIT_EMAIL"}
+    assert "env_file" not in compose["services"]["lado"]
 
 
 def test_compose_publishes_one_port_number_on_loopback(compose):
@@ -255,7 +355,8 @@ def test_compose_mounts_the_projects_at_the_hosts_own_path(compose):
     LADO's stored paths are then right on both sides."""
     lado = compose["services"]["lado"]
     projects = "${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}"
-    assert lado["volumes"] == ["home:/home/lado", f"{projects}:{projects}"]
+    assert lado["volumes"][:2] == ["home:/home/lado", f"{projects}:{projects}"]
+    assert all(isinstance(v, dict) for v in lado["volumes"][2:])  # the binds below
     assert lado["environment"]["LADO_REPOS"] == projects
 
 

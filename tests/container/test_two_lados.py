@@ -27,7 +27,14 @@ from container_helpers import (
 pytestmark = pytest.mark.container
 
 # What the human's shell would not set: the folder's .env decides each of them.
-FROM_ENV = ("COMPOSE_PROJECT_NAME", "COMPOSE_FILE", "LADO_IMAGE", "LADO_VERSION", "LADO_PORT")
+FROM_ENV = (
+    "COMPOSE_PROJECT_NAME",
+    "COMPOSE_FILE",
+    "LADO_IMAGE",
+    "LADO_VERSION",
+    "LADO_PORT",
+    "LADO_SECRETS",
+)
 
 
 class Folder:
@@ -41,6 +48,7 @@ class Folder:
         path.mkdir()
         shutil.copy(ROOT / "docker" / "compose.yaml", path / "compose.yaml")
         (path / "compose.override.yaml").write_text(QUIET_OVERRIDE)
+        (path / "secrets").mkdir(mode=0o700)  # as the header says: compose never makes it
         self.write_env()
 
     def write_env(self) -> None:

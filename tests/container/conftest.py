@@ -155,11 +155,14 @@ class Compose:
 
 
 @pytest.fixture
-def compose(request, tmp_path) -> Compose:
-    """A compose project on a free LADO_PORT, its projects folder a temporary one; taken
-    down after the test, its container's logs kept when the test fails."""
+def compose(request, tmp_path, tmp_path_factory) -> Compose:
+    """A compose project on a free LADO_PORT, its projects folder a temporary one and its
+    secrets folder (LADO_SECRETS) an empty one of its own; taken down after the test, its
+    container's logs kept when the test fails."""
     override = tmp_path / "quiet.yaml"
     override.write_text(QUIET_OVERRIDE)
+    secrets = tmp_path_factory.mktemp("secrets")
+    secrets.chmod(0o700)
     port = free_port()
     env = {
         **os.environ,
@@ -168,6 +171,7 @@ def compose(request, tmp_path) -> Compose:
         "LADO_VERSION": "test",
         "LADO_PORT": str(port),
         "LADO_PROJECTS": str(tmp_path),
+        "LADO_SECRETS": str(secrets),
     }
     project = Compose(new_name(), port, override, env)
     # Compose names the service's one container <project>-lado-1.

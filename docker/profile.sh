@@ -7,3 +7,5 @@ export LADO_CONTAINER=1
 export CLAUDE_CONFIG_DIR="$HOME/.claude"
 export DISABLE_AUTOUPDATER=1
 export LANG=en_US.UTF-8
+# The agents' variables, one file each (a worker the supervisor's `lado mcp` spawns too).
+export LADO_ENV_DIR=/run/secrets

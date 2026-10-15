@@ -70,8 +70,12 @@ RUN printf '%s\n' 'lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoi
  && mkdir -p /etc/lado && touch /etc/lado/first-start \
  && printf "export LADO_REPOS='/projects'\n" > /etc/profile.d/lado-repos.sh
 # git trusts every repository: the projects' owner may seem another user (git 2.39 has no
-# `<path>/*` form, and the container has one user).
-RUN git config --system --add safe.directory '*'
+# `<path>/*` form, and the container has one user). It gets github.com's https credentials
+# from gh: GH_TOKEN, or gh's own login on the home volume (what `gh auth setup-git` writes;
+# the empty helper drops any helper set before it).
+RUN git config --system --add safe.directory '*' \
+ && git config --system credential.https://github.com.helper '' \
+ && git config --system --add credential.https://github.com.helper '!/usr/bin/gh auth git-credential'
 
 USER lado
 WORKDIR /home/lado
@@ -108,6 +112,7 @@ ENV PATH=/opt/uv/bin:/opt/agents/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/u
     LANG=en_US.UTF-8 \
     LADO_CONTAINER=1 \
     LADO_REPOS=/projects \
+    LADO_ENV_DIR=/run/secrets \
     CLAUDE_CONFIG_DIR=/home/lado/.claude \
     DISABLE_AUTOUPDATER=1 \
     LADO_PORT=8765

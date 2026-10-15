@@ -101,6 +101,20 @@ if [ -e "$MARK" ] && [ "$(id -un 2>/dev/null)" = lado ]; then
     fi
 fi
 
+# git's identity for the agents' commits (LADO_GIT_NAME, LADO_GIT_EMAIL), in lado's global
+# config on the home volume at every start: a container made again with a new .env takes
+# the new values. Each value is one argument, never evaluated.
+for key in name email; do
+    if [ "$key" = name ]; then value=${LADO_GIT_NAME:-}; else value=${LADO_GIT_EMAIL:-}; fi
+    if [ -n "$value" ] && ! git config --global "user.$key" "$value"; then
+        echo "lado: warning: could not write git's user.$key" >&2
+    fi
+done
+# Outside any repository, so only the global and system configs answer.
+if [ -z "$(cd / && git config user.name)" ] || [ -z "$(cd / && git config user.email)" ]; then
+    echo "lado: warning: git has no user.name or user.email: agents cannot commit; set LADO_GIT_NAME and LADO_GIT_EMAIL" >&2
+fi
+
 repos=${LADO_REPOS:-/projects}
 case $repos in
 /*)

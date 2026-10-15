@@ -61,6 +61,12 @@
   the room while you talk a gate over with the supervisor; it comes back by itself when
   something new waits. Its top edge can be dragged to give it another height. Both are
   remembered in the browser.
+- Upgrade: schema 28, restart running sessions after the update (lado update does it).
+- API: `PUT /api/sessions/{name}/title` (`TitleChange`), `SessionInfo.title`,
+  `Limits.max_title`.
+- API: `GET /api/repos-folder` (`ReposFolder`).
+- API: `UpdateInfo.container`; in a container `POST /api/update` is refused with 409 and
+  `UpdateInfo.by_hand` is empty.
 
 ## 0.38.0 (2026-10-14)
 

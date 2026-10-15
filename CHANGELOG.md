@@ -11,6 +11,11 @@
   resumed stays stopped with the reason in `docker logs` and is not tried again. Each
   resumed supervisor takes one model turn at the start and starts the workers its open
   flow runs need. Outside a container nothing changes. lado.db goes to schema 29.
+- The fields of the web UI's waiting card where the human writes, an own answer, a
+  skip's comment and a gate's comment for the next step, open 3 lines high and grow with
+  the text up to 8 lines, then scroll inside, like the composer. They have no resize
+  handle any more, which grew a field under the Send button and off the screen; while
+  the human types, the field's lower edge stays in view.
 - Upgrade: schema 29, restart running sessions after the update (lado update does it).
 
 ## 0.39.0 (2026-10-15)

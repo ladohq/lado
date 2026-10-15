@@ -12,6 +12,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import time
 import unicodedata
 from collections.abc import Callable, Iterator, Sequence
@@ -886,7 +887,43 @@ def migrate_if_safe() -> None:
             f"Their agents may run an older LADO, which cannot use the upgraded database. "
             "Stop them first (`lado stop --all`), then run this again; nothing was changed"
         )
-    state.migrate()
+    _migrate()
+
+
+class MigrationFailed(LadoError):
+    """A step of lado.db's migration failed and lado.db is unchanged; its __cause__, the
+    step's error, is LADO's own bug, which the CLI journals."""
+
+
+def _migrate() -> None:
+    """state.migrate, the upgrade and its backup said in one line on stderr, a failure as a
+    LadoError: a container's `docker logs` gets the line, never a traceback."""
+    try:
+        done = state.migrate()
+    except state.BackupFailed as e:
+        raise LadoError(
+            f"could not back up lado.db to {e.backup} before upgrading it from schema "
+            f"{e.before} to {e.after}: {e.reason}; nothing was changed"
+        ) from e
+    except state.MigrationFailed as e:
+        from lado import update  # only here: the CLI's commands do not import it (cli.py)
+
+        way_back = (
+            "run the image you had before: LADO_IMAGE=<that image> docker compose up -d"
+            if update.in_container()
+            else "install the LADO you had before"
+        )
+        raise MigrationFailed(
+            f"could not upgrade lado.db from schema {e.before} to {e.after}: {e.reason}. "
+            f"lado.db is unchanged; its backup is {e.backup}. To go back, {way_back}. "
+            "Report it with lado bug-report."
+        ) from e.__cause__
+    if done:
+        print(
+            f"lado: upgraded lado.db from schema {done.before} to {done.after}; its backup "
+            f"is {done.backup}",
+            file=sys.stderr,
+        )
 
 
 def running_session(session: str) -> state.Session:
@@ -2273,9 +2310,9 @@ def stop_session(session: str) -> Stopped:
             )
         if session in sessions:
             alive = _kill_for_migration([session])[session]
-            state.migrate()
+            _migrate()
             return _mark_stopped(session, gone=not alive)
-        state.migrate()  # no session runs; then refused as below
+        _migrate()  # no session runs; then refused as below
     stop_preview(session)  # refuses an unknown or stopped session
     alive = tmux.has_session(session)
     # Marked stopped first, then killed: the session-end hooks of the dying agents find no
@@ -2297,7 +2334,7 @@ def stop_all(report: Callable[[str, Stopped], object]) -> None:
     else:
         names = pending[1]
         alive = _kill_for_migration(names)
-        state.migrate()
+        _migrate()
 
         def stop(name: str) -> Stopped:
             return _mark_stopped(name, gone=not alive[name])

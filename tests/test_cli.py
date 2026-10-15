@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import shutil
 import sqlite3
@@ -1835,6 +1836,100 @@ def test_a_newer_database_is_a_message_not_a_traceback(lado_home, capsys):
     sqlite3.connect(lado_home / "lado.db").execute("PRAGMA user_version = 99")
     assert main(["ls"]) == 1
     assert "lado: " in capsys.readouterr().err
+
+
+def _stopped_session_on_schema(old: int) -> None:
+    """A stopped session in lado.db, whose schema is set back to `old` with the newer one's
+    changes still there when `old` is the one before (the last step then fails)."""
+    state.add_session(state.Session("s", "/r", None, "claude", ["default"], []))
+    state.stop_session("s")
+    with state.connect() as db:
+        db.execute(f"PRAGMA user_version = {old}")
+
+
+def _journal(lado_home) -> list[dict]:
+    path = lado_home / "errors.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def test_a_command_on_an_older_schema_says_it_upgraded_and_where_the_backup_is(
+    lado_home, fake_tmux, capsys
+):
+    state.add_session(state.Session("s", "/r", None, "claude", ["default"], []))
+    state.stop_session("s")
+    agent_helpers.previous_schema()
+    old, backup = state.SCHEMA_VERSION - 1, lado_home / "backups"
+    assert main(["ls"]) == 0
+    captured = capsys.readouterr()
+    assert captured.err == (
+        f"lado: upgraded lado.db from schema {old} to {state.SCHEMA_VERSION}; "
+        f"its backup is {backup / f'lado.db.schema-{old}'}\n"
+    )
+    assert "s  /r  (stopped)" in captured.out
+    assert main(["ls"]) == 0
+    assert capsys.readouterr().err == ""  # nothing more to migrate
+
+
+@pytest.mark.parametrize(
+    ("container", "way_back"),
+    [
+        (False, "To go back, install the LADO you had before."),
+        (
+            True,
+            "To go back, run the image you had before: "
+            "LADO_IMAGE=<that image> docker compose up -d.",
+        ),
+    ],
+)
+def test_a_failed_migration_is_one_message_with_the_way_back(
+    lado_home, fake_tmux, monkeypatch, capsys, container, way_back
+):
+    if container:
+        monkeypatch.setenv("LADO_CONTAINER", "1")
+    old = state.SCHEMA_VERSION - 1
+    _stopped_session_on_schema(old)
+    assert main(["ls"]) == 1
+    backup = lado_home / "backups" / f"lado.db.schema-{old}"
+    assert capsys.readouterr().err == (
+        f"lado: could not upgrade lado.db from schema {old} to {state.SCHEMA_VERSION}: "
+        "OperationalError: duplicate column name: title. lado.db is unchanged; its backup is "
+        f"{backup}. {way_back} Report it with lado bug-report.\n"
+    )
+    assert state.schema_version() == old
+    assert backup.exists()
+    [line] = _journal(lado_home)  # LADO's own bug: journaled, without a traceback shown
+    assert (line["where"], line["type"]) == ("cli:ls", "sqlite3.OperationalError")
+
+
+def test_a_backup_that_cannot_be_written_is_a_message_and_no_migration(
+    lado_home, fake_tmux, capsys
+):
+    old = state.SCHEMA_VERSION - 1
+    state.add_session(state.Session("s", "/r", None, "claude", ["default"], []))
+    agent_helpers.previous_schema()
+    (lado_home / "backups").write_text("a file where the folder goes")
+    assert main(["ls"]) == 1
+    err = capsys.readouterr().err
+    backup = lado_home / "backups" / f"lado.db.schema-{old}"
+    assert err.startswith(
+        f"lado: could not back up lado.db to {backup} before upgrading it from schema {old} "
+        f"to {state.SCHEMA_VERSION}: "
+    )
+    assert err.endswith("; nothing was changed\n") and err.count("\n") == 1
+    assert state.schema_version() == old
+    assert _journal(lado_home) == []  # the machine's problem, not LADO's bug
+
+
+def test_stop_all_on_an_older_schema_says_it_upgraded(repo, fake_tmux, lado_home, capsys):
+    main(["start", str(repo), "--provider", "claude", "--name", "a", "--no-attach"])
+    agent_helpers.previous_schema()
+    capsys.readouterr()
+    assert main(["stop", "--all"]) == 0
+    old = state.SCHEMA_VERSION - 1
+    assert capsys.readouterr().err == (
+        f"lado: upgraded lado.db from schema {old} to {state.SCHEMA_VERSION}; "
+        f"its backup is {lado_home / 'backups' / f'lado.db.schema-{old}'}\n"
+    )
 
 
 def test_without_tmux_a_command_says_so_without_a_traceback(

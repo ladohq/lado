@@ -2,24 +2,24 @@ Tests first in each section; each task is one commit.
 
 ## 1. The backup and the result of `state.migrate`
 
-- [ ] 1.1 Unit tests (layer 1, `tests/test_state.py` or the file that tests `migrate`): a
+- [x] 1.1 Unit tests (layer 1, `tests/test_state.py` or the file that tests `migrate`): a
   migration writes `backups/lado.db.schema-<N>` with the old schema's content, removes an
   earlier `lado.db.schema-*` and keeps `lado.db.<version>`; nothing to migrate writes
   nothing; a backup that cannot be written raises and leaves the schema; a failing step
   leaves the schema and keeps the backup; the result names both versions and the path
   (D1-D4).
-- [ ] 1.2 `state.migrate`: the backup by SQLite's backup API (the copy shared with
+- [x] 1.2 `state.migrate`: the backup by SQLite's backup API (the copy shared with
   `self_update.restore`), the kept files, the result and the errors. `uv run pytest
   tests/test_state.py tests/test_self_update.py -n auto`.
 
 ## 2. The line and the message
 
-- [ ] 2.1 Unit tests (`tests/test_runtime.py` / `tests/test_cli.py`): `lado ls` on an
+- [x] 2.1 Unit tests (`tests/test_runtime.py` / `tests/test_cli.py`): `lado ls` on an
   older schema prints the upgrade line; a failing step exits 1 with the message, no
   traceback, `install the LADO you had before`, and an `errors.jsonl` line; with
   `LADO_CONTAINER=1` the `LADO_IMAGE` way back; a backup failure's message; `lado stop
   --all`'s migration prints the line too.
-- [ ] 2.2 `runtime.migrate_if_safe` and `stop_all`'s migration path (D4). `make test`.
+- [x] 2.2 `runtime.migrate_if_safe` and `stop_all`'s migration path (D4). `make test`.
 
 ## 3. Compose's way back
 

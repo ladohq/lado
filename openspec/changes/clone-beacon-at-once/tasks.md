@@ -26,6 +26,6 @@
 
 ## 3. Regression
 
-- [ ] 3.1 `make web` (typecheck, the whole vitest suite, build; no API change),
+- [x] 3.1 `make web` (typecheck, the whole vitest suite, build; no API change),
   `openspec validate clone-beacon-at-once --strict`; the pull request's CI `ci-ok` green
   (AC-4).

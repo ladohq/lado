@@ -82,12 +82,12 @@ def test_stop_for_container_marks_every_running_session_in_one_go(home):
     assert stop.detail.endswith("; the container stopped")
 
 
-def test_any_resume_clears_the_mark(home): ...          # resume_session -> False after
+def test_any_resume_clears_the_mark(home): ...  # resume_session -> False after
 def test_give_up_clears_the_mark_and_stops_a_running_one(home): ...
 #   a marked stopped session: mark 0, still stopped, no new event
 #   a not-stopped one: session_gone + session_stop written, stopped, mark 0
 def test_resumable_lists_marked_and_not_stopped_only(home): ...
-def test_migration_28_to_29_adds_the_column(home): ...   # previous_schema(), migrate()
+def test_migration_28_to_29_adds_the_column(home): ...  # previous_schema(), migrate()
 ```
 
 - [ ] **Step 2: Run them, expect failures.** `uv run pytest tests/test_state.py -n auto`.
@@ -106,8 +106,12 @@ def stop_for_container() -> list[str]:
     container's start; one transaction for all (design D3). The names, creation order."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        names = [r[0] for r in db.execute(
-            "SELECT name FROM sessions WHERE stopped_at IS NULL ORDER BY created_at, rowid")]
+        names = [
+            r[0]
+            for r in db.execute(
+                "SELECT name FROM sessions WHERE stopped_at IS NULL ORDER BY created_at, rowid"
+            )
+        ]
         for name in names:
             _stop_session(db, name, "; the container stopped")
             db.execute("UPDATE sessions SET resume_at_start = 1 WHERE name = ?", (name,))
@@ -193,8 +197,11 @@ async def shutdown(self, sockets=None) -> None:
         names = await run_in_threadpool(runtime.stop_for_container)
         if names:
             listed = ", ".join(f'"{n}"' for n in names)
-            print(f"lado: the container stops: stopped sessions {listed}; they resume at "
-                  "its start", file=sys.stderr, flush=True)
+            print(
+                f"lado: the container stops: stopped sessions {listed}; they resume at its start",
+                file=sys.stderr,
+                flush=True,
+            )
     app.state.hub.close()
     await run_in_threadpool(app.state.clones.close)
     await super().shutdown(sockets)

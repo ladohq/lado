@@ -28,6 +28,7 @@ import {
   AgentCliIcon,
   AgentsIcon,
   ArtifactsIcon,
+  BetweenIcon,
   CollapsePanelIcon,
   FindIcon,
   FlowsIcon,
@@ -976,25 +977,38 @@ function StartedNotice({ name }: { name: string }) {
   );
 }
 
-// The Activity tab: the team, the switch for the agents' messages to each other (it changes
-// only what the feed shows, and is remembered), and the feed with the composer.
+// The Activity tab: the team, ended by the icon toggle Messages between agents (pressed, the
+// feed also shows what agents write to each other; it changes only what the feed shows, and
+// is remembered; decided 2026-10-15, LAD-77, mockup-placement.html variant Б), and the feed
+// with the composer.
 function Activity({ session, stopped }: { session: string; stopped: boolean }) {
   const [agentMessages, setAgentMessages] = useState(storedAgentMessages);
+  const tip = (
+    <>
+      <div className="tooltip-line">Messages between agents: {agentMessages ? "shown" : "hidden"}</div>
+      <div className="tooltip-line">
+        {agentMessages ? "Click to show only your conversation with the agents." : "Click to also show what agents write to each other."}
+      </div>
+    </>
+  );
   return (
     <div className="activity">
       <div className="team-row">
         <Team session={session} />
-        <label className="switch">
-          <input
-            type="checkbox"
-            checked={agentMessages}
-            onChange={(event) => {
-              setAgentMessages(event.target.checked);
-              storeAgentMessages(event.target.checked);
+        <Tooltip tip={tip}>
+          <button
+            type="button"
+            className="icon-button between-toggle"
+            aria-label="Messages between agents"
+            aria-pressed={agentMessages}
+            onClick={() => {
+              setAgentMessages(!agentMessages);
+              storeAgentMessages(!agentMessages);
             }}
-          />
-          Show agent messages
-        </label>
+          >
+            <BetweenIcon />
+          </button>
+        </Tooltip>
       </div>
       <Chat session={session} stopped={stopped} agentMessages={agentMessages} />
     </div>

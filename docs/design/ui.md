@@ -1161,10 +1161,19 @@ Built in the layout task (2026-10-03, schema 14):
   gates as cards or lines (Flow gates above); their events as quiet lines grouped by run
   (Flow events in Look of the feed), the kinds shown as lines named in one list in the UI
   (`Chat.tsx`, `RUN_EVENT_LINES`; `gate_answer` is not in it, the human's move stands for
-  it); and behind the switch **Show agent
-  messages** (off by default, remembered in the browser) the agents' messages to each
-  other. The chat shows a window of messages (Message windows above): the latest 50 with
-  the human, with the switch on the latest 50 of all; the switch changes the window.
+  it); and behind the toggle **Messages between agents** (not pressed by default,
+  remembered in the browser) the agents' messages to each other. The toggle is an icon
+  button at the end of the team's row (two speech bubbles, `BetweenIcon`; 26 px, quiet and
+  muted unpressed, the pressed team chip's border with the icon in the action colour when
+  `aria-pressed`), its name the same in both states; the UI's tooltip says the state and
+  what a click does: "Messages between agents: hidden" / "Click to also show what agents
+  write to each other.", pressed "Messages between agents: shown" / "Click to show only
+  your conversation with the agents." (decided 2026-10-15, LAD-77: the checkbox "Show
+  agent messages" did not say what it adds and its label made the chips wrap in a narrow
+  column; mockups `task/lad-77/mockup-placement.html` variant Б and
+  `task/lad-77/mockup-agent-messages.html` for the texts). The chat shows a window of
+  messages (Message windows above): the latest 50 with the human, with the toggle pressed
+  the latest 50 of all; the toggle changes the window.
   A message's text shows as Message text in Look of the feed says. The feed takes the
   page's height and scrolls by itself, the composer under it.
 - **Pages of the chat** (feature/chat-paging, the human's choice 2026-10-04: loaded by
@@ -1715,7 +1724,8 @@ checks.
 ### Activity
 
 A session's tab: the chat with the human (The human in the session, above), flow
-transitions as they happen, agent-to-agent messages behind a switch; the team as chips;
+transitions as they happen, agent-to-agent messages behind the toggle Messages between
+agents; the team as chips;
 the selected agent's terminal on the right. Built (Layout task); the notes of each step
 are in Flows.
 
@@ -1760,7 +1770,7 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   from and to it, only in its lifetime (a name is used again: one request,
   `agent=<name>&since=<spawned_at>&limit=10`; the server and the feed's rule filter, the
   page does not), and
-  **All in Activity**, which turns Show agent messages on.
+  **All in Activity**, which presses Messages between agents.
 - **Finish…** asks in a dialog with what the preview says: the branch and worktree go,
   or, for a worker of a run that keeps its worktree, only its window closes. A refusal
   shows its reason and **Discard work…**, which asks again with what is lost (commits not

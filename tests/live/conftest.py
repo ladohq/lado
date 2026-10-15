@@ -134,11 +134,10 @@ def live_provider(request, monkeypatch, codex_home, tmp_path) -> str:
         config = local_models.codex_config(MODELS[name], base_url, key)
         (codex_home / "config.toml").write_text(config)
     else:
-        config = tmp_path / f"{name}-config.json"
-        config.write_text(
-            json.dumps(local_models.opencode_config(MODELS[name], local_models.lmstudio_url()))
-        )
-        monkeypatch.setenv(CONFIG_VARIABLES[name], str(config))
+        for variable, value in local_models.write_lmstudio_config(
+            name, MODELS[name], tmp_path
+        ).items():
+            monkeypatch.setenv(variable, value)
     if name in CONFIG_VARIABLES:
         # Their TUI takes the model an agent used last (<state>/<cli>/model.json) over the
         # config's (Kilo 7.8.8: the user's kilo-auto/free won): a state of the test's own,

@@ -1892,7 +1892,8 @@ def test_a_failed_migration_is_one_message_with_the_way_back(
     backup = lado_home / "backups" / f"lado.db.schema-{old}"
     assert capsys.readouterr().err == (
         f"lado: could not upgrade lado.db from schema {old} to {state.SCHEMA_VERSION}: "
-        "OperationalError: duplicate column name: title. lado.db is unchanged; its backup is "
+        "OperationalError: duplicate column name: resume_at_start. lado.db is unchanged; "
+        "its backup is "
         f"{backup}. {way_back} Report it with lado bug-report.\n"
     )
     assert state.schema_version() == old

@@ -368,7 +368,7 @@ def test_schema_28_gives_sessions_a_title(lado_home):
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     assert "title" not in _columns(db, "sessions")
     db.close()
-    assert state.migrate().after == state.SCHEMA_VERSION == 28
+    assert state.migrate().after == state.SCHEMA_VERSION
     with state.connect() as db:
         assert (
             db.execute("SELECT sql FROM sqlite_master WHERE name = 'sessions'").fetchone()[0]
@@ -376,6 +376,79 @@ def test_schema_28_gives_sessions_a_title(lado_home):
         )
     assert state.get_session("s").title is None
     assert state.set_title("s", "Review")
+
+
+def _kinds(name: str) -> list[str]:
+    return [e.kind for e in state.list_events(name)]
+
+
+def test_the_containers_stop_marks_every_running_session_in_one_go(lado_home):
+    for name in ("a", "b", "c"):
+        state.add_session(state.Session(name, "/r", None, "claude"))
+    state.add_agent(state.Agent("a", "supervisor", "supervisor", "/r", None, None, "idle", "x"))
+    state.stop_session("c")  # the human's
+    assert state.stop_for_container() == ["a", "b"]
+    by = {s.name: s for s in state.list_sessions()}
+    assert by["a"].stopped_at and by["a"].resume_at_start
+    assert by["b"].stopped_at and by["b"].resume_at_start
+    assert by["c"].stopped_at and not by["c"].resume_at_start
+    assert state.list_agents("a") == []
+    [stop] = [e for e in state.list_events("a") if e.kind == state.SESSION_STOP]
+    assert stop.detail == "0 messages dropped; the container stopped"
+    assert state.stop_for_container() == []
+
+
+def test_any_resume_clears_the_mark(lado_home):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    state.stop_for_container()
+    assert state.resume_session(state.get_session("s"), "same settings")
+    assert not state.get_session("s").resume_at_start
+
+
+def test_giving_up_clears_the_mark_of_a_stopped_session(lado_home):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    state.stop_for_container()
+    before = _kinds("s")
+    state.give_up_resume("s")
+    sess = state.get_session("s")
+    assert sess.stopped_at and not sess.resume_at_start
+    assert _kinds("s") == before
+
+
+def test_giving_up_stops_a_session_not_stopped(lado_home):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    state.give_up_resume("s")
+    sess = state.get_session("s")
+    assert sess.stopped_at and not sess.resume_at_start
+    assert _kinds("s")[-2:] == [state.SESSION_GONE, state.SESSION_STOP]
+
+
+def test_resumable_lists_the_marked_and_the_not_stopped(lado_home):
+    for name in ("a", "b", "c", "d"):
+        state.add_session(state.Session(name, "/r", None, "claude"))
+    state.stop_session("a")  # the human's: never resumed
+    state.stop_for_container()  # b, c, d marked
+    state.give_up_resume("c")
+    state.resume_session(state.get_session("d"), "")  # running again, not marked
+    assert [s.name for s in state.resumable()] == ["b", "d"]
+
+
+def test_schema_29_gives_sessions_the_resume_mark(lado_home):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    with state.connect() as db:
+        fresh = db.execute("SELECT sql FROM sqlite_master WHERE name = 'sessions'").fetchone()[0]
+    agent_helpers.schema_before(29)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert "resume_at_start" not in _columns(db, "sessions")
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 28
+    db.close()
+    assert state.migrate().after == state.SCHEMA_VERSION == 29
+    with state.connect() as db:
+        assert (
+            db.execute("SELECT sql FROM sqlite_master WHERE name = 'sessions'").fetchone()[0]
+            == fresh
+        )
+    assert not state.get_session("s").resume_at_start
 
 
 RECOMMENDATION_COLUMNS = {
@@ -578,7 +651,7 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
         columns = {row[1] for row in db.execute("PRAGMA table_info(sessions)")}
-    assert "title" not in columns  # the content before the migration
+    assert "resume_at_start" not in columns  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 

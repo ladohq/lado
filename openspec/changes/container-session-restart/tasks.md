@@ -3,12 +3,12 @@ Tests first in each section; each task is one commit. The plan with the code is
 
 ## 1. Schema 29 and the container's stop in lado.db
 
-- [ ] 1.1 Unit tests (layer 1), `tests/test_state.py`: `stop_for_container` marks every
+- [x] 1.1 Unit tests (layer 1), `tests/test_state.py`: `stop_for_container` marks every
   running session stopped with `resume_at_start` in one transaction, the human's stopped
   one untouched, the stop's detail ends with `; the container stopped`; any resume clears
   the mark; `give_up_resume` clears it and stops a not-stopped session with `session_gone`;
   `resumable`; the migration 28 → 29. Plan, Task 1.
-- [ ] 1.2 `state.py` (D2, D3, D6, D7) and `agent_helpers.schema_before`. `uv run pytest
+- [x] 1.2 `state.py` (D2, D3, D6, D7) and `agent_helpers.schema_before`. `uv run pytest
   tests/test_state.py tests/test_usage.py -n auto`, `make lint`.
 
 ## 2. runtime: stop for the container, resume at start

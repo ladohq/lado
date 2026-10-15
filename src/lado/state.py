@@ -19,7 +19,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -874,6 +874,15 @@ SESSIONS_TITLE = "ALTER TABLE sessions ADD COLUMN title TEXT"
 SCHEMA += SESSIONS_TITLE + ";\n"
 MIGRATIONS[27] = [SESSIONS_TITLE]
 
+# From version 29: the session was stopped by its container's stop and is to be resumed at
+# the container's start (lado.runtime.stop_for_container, resume_at_start). Any resume
+# clears it, and so does giving up a resume (give_up_resume).
+SESSIONS_RESUME_AT_START = (
+    "ALTER TABLE sessions ADD COLUMN resume_at_start INTEGER NOT NULL DEFAULT 0"
+)
+SCHEMA += SESSIONS_RESUME_AT_START + ";\n"
+MIGRATIONS[28] = [SESSIONS_RESUME_AT_START]
+
 # Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
 # approval or choice gate. An override is the human's past the flow (flow-set's reason, an
 # answer at a loop limit): kept, but never taken for the state's report.
@@ -912,6 +921,7 @@ class Session:
     stopped_at: str | None = None  # UTC; None while it runs
     created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS", when it was added; set by the database
     title: str | None = None  # the human's label over the name; None for none
+    resume_at_start: bool = False  # stopped by its container's stop, to resume at its start
 
 
 @dataclass(frozen=True)
@@ -1411,7 +1421,8 @@ def resume_session(session: Session, detail: str) -> bool:
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         taken = db.execute(
-            "UPDATE sessions SET stopped_at = NULL WHERE name = ? AND stopped_at IS NOT NULL",
+            "UPDATE sessions SET stopped_at = NULL, resume_at_start = 0"
+            " WHERE name = ? AND stopped_at IS NOT NULL",
             (session.name,),
         ).rowcount
         if not taken:
@@ -1421,6 +1432,49 @@ def resume_session(session: Session, detail: str) -> bool:
         _add_event(db, session.name, LADO, SESSION_RESUME, detail)
         db.execute("COMMIT")
     return True
+
+
+def stop_for_container() -> list[str]:
+    """Mark every session not stopped as stopped, as stop_session does, to be resumed at
+    the container's start: one transaction for all. The names, in creation order."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        names = [
+            row[0]
+            for row in db.execute(
+                "SELECT name FROM sessions WHERE stopped_at IS NULL ORDER BY created_at, rowid"
+            )
+        ]
+        for name in names:
+            _stop_session(db, name, "; the container stopped")
+            db.execute("UPDATE sessions SET resume_at_start = 1 WHERE name = ?", (name,))
+        db.execute("COMMIT")
+    return names
+
+
+def resumable() -> list[Session]:
+    """The sessions the container's start may resume, in creation order: those its stop
+    marked, and those not stopped (the caller keeps the ones whose tmux is gone)."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM sessions WHERE resume_at_start = 1 OR stopped_at IS NULL"
+            " ORDER BY created_at, rowid"
+        ).fetchall()
+    return [_session(r) for r in rows]
+
+
+def give_up_resume(name: str) -> None:
+    """A resume at the container's start failed: drop the mark, and stop the session when it
+    is not stopped (as a stop that found it gone does), in one go, so it is not tried again."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        if db.execute(
+            "SELECT 1 FROM sessions WHERE name = ? AND stopped_at IS NULL", (name,)
+        ).fetchone():
+            _session_gone(db, name)
+            _stop_session(db, name, "")
+        db.execute("UPDATE sessions SET resume_at_start = 0 WHERE name = ?", (name,))
+        db.execute("COMMIT")
 
 
 def fail_resume(old: Session, restored: str) -> None:
@@ -3243,4 +3297,5 @@ def _session(row: sqlite3.Row) -> Session:
         row["stopped_at"],
         row["created_at"],
         row["title"],
+        bool(row["resume_at_start"]),
     )

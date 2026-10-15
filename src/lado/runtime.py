@@ -909,7 +909,8 @@ def _migrate() -> None:
         from lado import update  # only here: the CLI's commands do not import it (cli.py)
 
         way_back = (
-            "run the image you had before: LADO_IMAGE=<that image> docker compose up -d"
+            "run the image you had before, which the header of docker/compose.yaml has you "
+            "keep as lado:previous: LADO_IMAGE=lado:previous docker compose up -d"
             if update.in_container()
             else "install the LADO you had before"
         )

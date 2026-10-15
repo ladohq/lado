@@ -30,11 +30,14 @@ applies `MIGRATIONS` (`state.migrate`) neither keeps a copy nor says how to go b
 - **A failed migration is named.** The migration is one transaction, so `lado.db` stays as
   it was. The command exits 1 with one message: what failed, that `lado.db` is unchanged,
   where its backup is, and the way back: in a container the image you had before
-  (`LADO_IMAGE=<that image> docker compose up -d`), elsewhere the LADO you had before; and
+  (`LADO_IMAGE=lado:previous docker compose up -d`, the name the compose header has you
+  keep), elsewhere the LADO you had before; and
   `lado bug-report` to report it. No traceback on the terminal or in `docker logs`; the
   error is kept in the error journal as before.
-- **The way back after a migration that succeeded.** `docker/compose.yaml`'s header gives
-  the steps that put the backup in place with the older image and start it.
+- **The way back after a migration that succeeded.** `docker/compose.yaml`'s header says
+  to keep the running image as `lado:previous` before an update (`docker compose pull`
+  moves its name, and Docker may then remove it), and gives the steps that put the backup
+  in place with `lado:previous` and start it.
 - **Container tests** (layer 7): a home volume with a database of the schema before starts
   on the new image, which migrates it, keeps the backup, serves `/api/health` and lists the
   old session in `lado ls`; a database whose migration fails leaves the message in

@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 from container_helpers import IMAGE, docker, free_port, health, schema
-from test_docker import way_back
+from test_docker import PREVIOUS, keep_previous, way_back
 
 from lado import state
 
@@ -48,32 +48,48 @@ def test_a_migration_that_fails_is_one_message_in_docker_logs(start, old_home):
     assert (
         f"lado: could not upgrade lado.db from schema {before} to {state.SCHEMA_VERSION}: "
         "OperationalError: duplicate column name: title. lado.db is unchanged; its backup is "
-        f"{BACKUPS}/lado.db.schema-{before}. To go back, run the image you had before: "
-        "LADO_IMAGE=<that image> docker compose up -d. Report it with lado bug-report."
+        f"{BACKUPS}/lado.db.schema-{before}. To go back, run the image you had before, which "
+        "the header of docker/compose.yaml has you keep as lado:previous: "
+        "LADO_IMAGE=lado:previous docker compose up -d. Report it with lado bug-report."
     ) in logs, logs
     assert "Traceback" not in logs, logs
     assert schema(home) == before
 
 
-def test_the_compose_headers_steps_put_the_backup_back(compose, old_home):
+def test_the_compose_headers_steps_put_the_backup_back(request, compose, old_home):
     _, before = old_home(volume=f"{compose.project}_home")
     compose.run("up", "-d")
     assert health(compose.port)["ok"] is True
     assert upgraded(before) in compose.run("logs", "lado").stdout
     # The header's commands as a human runs them, the project and its files by compose's
-    # own variables; the image under test stands in for the older one.
+    # own variables. The image under test stands in for the one before the update, kept by
+    # the header's name, of this run's prefix here (Docker's names are the machine's).
     env = {
         **compose.env,
         "COMPOSE_FILE": os.pathsep.join(compose.files[1::2]),
         "COMPOSE_PROJECT_NAME": compose.project,
     }
-    down, restore, up = (
-        step.replace("<older>", IMAGE).replace("<N>", str(before)) for step in way_back()
-    )
-    for step in (down, restore):
+    previous = f"{compose.project}:previous"
+    request.addfinalizer(lambda: docker("image", "rm", previous, check=False))
+
+    def run(step: str) -> None:
+        step = step.replace(PREVIOUS, previous).replace("<N>", str(before))
         done = subprocess.run(["sh", "-c", step], env=env, capture_output=True, text=True)
         assert done.returncode == 0, f"{step}\n{done.stdout}{done.stderr}"
+
+    run(keep_previous())
+    image_id = "{{.Id}}"
+    assert (
+        docker("image", "inspect", previous, "-f", image_id).stdout
+        == docker("image", "inspect", IMAGE, "-f", image_id).stdout
+    )
+    down, restore, up = way_back()
+    run(down)
+    run(restore)
     assert schema(f"{compose.project}_home") == before
-    done = subprocess.run(["sh", "-c", up], env=env, capture_output=True, text=True)
-    assert done.returncode == 0, f"{up}\n{done.stdout}{done.stderr}"
+    run(up)
     assert health(compose.port)["ok"] is True  # this image upgrades it again
+    assert (
+        compose.run("images", "-q", "lado").stdout.strip()
+        in docker("image", "inspect", previous, "-f", image_id).stdout
+    )

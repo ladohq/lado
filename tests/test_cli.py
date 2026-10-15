@@ -1876,8 +1876,9 @@ def test_a_command_on_an_older_schema_says_it_upgraded_and_where_the_backup_is(
         (False, "To go back, install the LADO you had before."),
         (
             True,
-            "To go back, run the image you had before: "
-            "LADO_IMAGE=<that image> docker compose up -d.",
+            "To go back, run the image you had before, which the header of "
+            "docker/compose.yaml has you keep as lado:previous: "
+            "LADO_IMAGE=lado:previous docker compose up -d.",
         ),
     ],
 )

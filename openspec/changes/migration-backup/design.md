@@ -31,17 +31,23 @@ raises an error that names the backup's path and the reason; the caller turns it
 backup's path) instead of the new version alone; `runtime` prints the line on stderr. A
 migration that fails (any exception of a step; the transaction rolls back) is raised as an
 error carrying both versions and the backup; `runtime` gives the message, with the way
-back chosen by `update.in_container()` (`LADO_IMAGE=<the image you had before> docker
-compose up -d` there; `install the LADO you had before` elsewhere), and `lado
-bug-report`. Before raising it, the underlying exception is kept in the error journal
-(`telemetry.record`, `where` the command's, as `cli.main` would), since it is LADO's own
-bug; the terminal gets no traceback.
+back chosen by `update.in_container()` (`LADO_IMAGE=lado:previous docker compose up -d`
+there, naming the compose header that keeps that name, D5; `install the LADO you had
+before` elsewhere), and `lado bug-report`. The underlying exception is kept in the error
+journal (`telemetry.record`, `where` the command's) by `cli.main`, which knows the command,
+since it is LADO's own bug; the terminal gets no traceback.
 
-**D5. The way back in the compose header.** The header of `docker/compose.yaml` gets a
-short block: `docker compose down`; `LADO_IMAGE=<older> docker compose run --rm lado sh -c
-'cd ~/.lado && rm -f lado.db-wal lado.db-shm && cp backups/lado.db.schema-<N> lado.db'`;
-`LADO_IMAGE=<older> docker compose up -d`. The container test runs these commands (with
-the image under test) and checks the schema of `lado.db` after them.
+**D5. The way back in the compose header.** `docker compose pull` gives the image's name to
+the new image, and Docker's containerd image store (Docker Desktop's default) then removes
+the old one: no `docker image ls` finds it afterwards (checked with a local registry, a
+pulled image as well as a built one). So the header first says to keep a name before the
+update: `docker tag "$(docker compose images -q lado)" lado:previous`, then `docker compose
+pull && docker compose up -d`. The way back uses that name: `docker compose down`;
+`LADO_IMAGE=lado:previous docker compose run --rm lado sh -c 'cd ~/.lado && rm -f
+lado.db-wal lado.db-shm && cp backups/lado.db.schema-<N> lado.db'`; `LADO_IMAGE=lado:previous
+docker compose up -d` (after a failed migration the last alone). The container test runs
+these commands, the tag of this run's prefix in place of `lado:previous` and the image
+under test as the one kept, and checks the schema of `lado.db` and the image that runs.
 
 **D6. Container tests prepare the old database on the host.** The test makes a `lado.db`
 with a stopped session in a temporary `LADO_HOME` by the host's own `lado.state`, takes it

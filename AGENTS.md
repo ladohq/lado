@@ -197,8 +197,8 @@ schema before by `previous_schema`): the server migrates it, `/api/health` answe
 `backups/lado.db.schema-<N>` is there, `docker logs` has the upgrade line and `lado ls`
 lists the session; a lado.db whose last step fails (its column there already) exits the
 container with the message and no traceback in `docker logs`, its schema kept; compose's
-header steps, run as written with the image under test as the older one, put the backup's
-schema back. A
+header steps, run as written (`lado:previous` a tag of the run's prefix, kept of the image
+under test), name the running image, put the backup's schema back and start that tag. A
 test that fails in its setup or its
 call keeps, for each container it started (a compose project's too), `docker logs` and
 LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before
@@ -846,7 +846,8 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     <path>`, a container's `docker logs`). A backup it cannot write is `BackupFailed`,
     nothing migrated, a `LadoError`; a step that fails is `MigrationFailed`, the
     transaction rolled back, `runtime.MigrationFailed`: one message with the backup and the
-    way back (`LADO_IMAGE=<that image> docker compose up -d` in a container, else the LADO
+    way back (`LADO_IMAGE=lado:previous docker compose up -d` in a container, the name
+    compose.yaml's header has the human keep, else the LADO
     you had before) and `lado bug-report`, its cause journaled by `cli.main`, no traceback
     (openspec capability schema-migration). A LADO upgraded in
     place under a running session: that session's hooks write the SchemaError's text
@@ -1159,10 +1160,13 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   `DISABLE_AUTOUPDATER`, `LANG`; `LADO_REPOS` is the entrypoint's `lado-repos.sh`).
   `compose.yaml`: the same image (`LADO_IMAGE`), one `LADO_PORT` both inside and published
   as `127.0.0.1:${LADO_PORT}:${LADO_PORT}`, `LADO_PROJECTS` (required) at that same path
-  and as `LADO_REPOS`, no container name (a second one: `-p lado-2`); its header's steps
-  go back to the image before a migration with its backup (`docker compose down`, the
-  backup copied over lado.db by the older image's `docker compose run`, `up -d`;
-  `tests/test_docker.py`'s `way_back` reads them, the container tests run them). The research
+  and as `LADO_REPOS`, no container name (a second one: `-p lado-2`); its header keeps the
+  running image as `lado:previous` before an update (`docker tag "$(docker compose images
+  -q lado)" lado:previous`: a pull moves the name, and Docker's containerd store then
+  removes the old image) and gives the steps back to it with a migration's backup
+  (`docker compose down`, the backup copied over lado.db by `lado:previous`'s `docker
+  compose run`, `up -d`); `tests/test_docker.py`'s `keep_previous` and `way_back` read
+  them, the container tests run them. The research
   prototype in
   `docs/research/docker-install/` is evidence only.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

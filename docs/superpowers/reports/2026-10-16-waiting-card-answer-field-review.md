@@ -2,8 +2,8 @@
 
 Pull request #71 `fix/lad-70-answer-field-height` → `main`. Scale: tweak, reviewed for
 precision (not widened: only the web UI changed, the fields' height, CSS and a rule taken
-out of the composer). Head reviewed last: `afb463b` (= the remote head): the archive
-commit `c391ead` and a merge of `main`. `providers/`, `hooks.py`, `mcp_server.py`, `runtime.py`,
+out of the composer). Head reviewed last: `ab911fd` (= the remote head): the archive
+commit `c391ead`, this report and two merges of `main`. `providers/`, `hooks.py`, `mcp_server.py`, `runtime.py`,
 `agent_env.py` and `tests/live/` did not change, so live tests are not needed before the
 merge.
 
@@ -24,6 +24,10 @@ merge.
   `openspec/specs/chat-question-card/spec.md`; the merge of `main` in `afb463b` keeps
   both CHANGELOG lines (LAD-70's and main's "One-line texts…", "Upgrade: schema 29"
   last), and `docs/design/ui.md` merged by itself. No new findings.
+- **Round 4, local** (over `afb463b..ab911fd`, back from `conflicts` again): the merge of
+  `main` with LAD-77 keeps both CHANGELOG lines (LAD-70's and LAD-77's, "Upgrade:
+  schema 29" last); `styles.css`, `test_chat.py` and `ui.md` merged by themselves, and
+  the pull request's diff against `main` is as before. No new findings.
 
 External rounds used: 1 of 1.
 
@@ -38,7 +42,7 @@ External rounds used: 1 of 1.
 | E4 | ext 1 | external | the composer would grow by 2 px from the added border | refuted | — | `.composer textarea` has `border: 0` and the page has `box-sizing: border-box` |
 | F2 | 2 | local (project rules) | commit `aecc899`'s message lacks the task key `(LAD-70)` at its end | confirmed | minor | declined: fixing it would rewrite pushed history |
 
-Metrics: 3 local rounds, 1 external, 0 substitutes. Local confirmed 2 (F1, F2), refuted
+Metrics: 4 local rounds, 1 external, 0 substitutes. Local confirmed 2 (F1, F2), refuted
 0; external confirmed 1 new (E2) and 1 duplicate (E3), refuted 2 (E1, E4). Findings in
 code changed by the developer's cleanup: 0.
 
@@ -58,7 +62,8 @@ CI run 38796682385 on `aecc899`: `ui (1)` failed once on the vitest
 `src/Launch.test.tsx > a window whose page goes away during a clone cancels it at once
 with a beacon` (no beacon sent), outside the diff; `gh run rerun --failed` passed it, and
 `ci-ok` passed. A flake, handed to the supervisor for the tracker. No code changed for it.
-CI on `afb463b` (after the archive and the merge of `main`): `ci-ok` passed at once.
+CI on `afb463b` (after the archive and the merge of `main`) and on `ab911fd` (after the
+second merge of `main`): `ci-ok` passed at once.
 
 ## Residual risk (not checked)
 

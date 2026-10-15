@@ -297,7 +297,11 @@ def test_put_title_refused_is_400_with_the_reason(changes, session):
     runtime.set_title("s", "Old")
     for text, reason in (
         ("x" * 81, "a title is at most 80 characters"),
-        ("a\nb", "a title is one line"),
+        ("a\nb", "a title is one line of visible text: U+000A is not allowed"),
+        (
+            "a\N{RIGHT-TO-LEFT OVERRIDE}b",
+            "a title is one line of visible text: U+202E RIGHT-TO-LEFT OVERRIDE is not allowed",
+        ),
     ):
         answer = changes.put(TITLE, json={"title": text})
         assert (answer.status_code, answer.json()["detail"]) == (400, reason)

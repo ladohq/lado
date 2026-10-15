@@ -210,6 +210,17 @@ def test_finish_worker_reports_what_was_already_gone(repo, fake_tmux):
         ("finish_worker", {"name": "supervisor"}, "end the whole session with `lado stop s`"),
         ("send_message", {"to": "nobody", "summary": "hi"}, 'no running agent "nobody"'),
         ("send_message", {"to": "w1", "summary": "a\nb"}, "summary must be one line"),
+        (
+            "send_message",
+            {"to": "w1", "summary": "done\N{LINE SEPARATOR}tests pass"},
+            "summary must be one line of visible text: U+2028 LINE SEPARATOR is not allowed; "
+            "put the details in body",
+        ),
+        (
+            "ask_human",
+            {"question": "Merge?", "choices": ["yes\N{RIGHT-TO-LEFT OVERRIDE}"]},
+            "U+202E RIGHT-TO-LEFT OVERRIDE is not allowed",
+        ),
         ("spawn_worker", {"task": "t", "role": "boss"}, 'no worker role "boss"'),
     ],
 )

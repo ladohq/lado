@@ -1420,7 +1420,7 @@ and worktrees), so "renaming" a session gives it a **title**, a label over the n
 (mockup `task/lad-66/mockup-rename.html`, variant A, both entry points; renaming the
 identifier itself was turned down for its cost). The title is `SessionInfo.title`, set by
 `PUT /api/sessions/{name}/title` or `lado title`, through the core's one rule
-(`runtime.set_title`: one line, at most `Limits.max_title`, 80, characters after the trim;
+(`runtime.set_title`: one line of visible text, `lado.text`, at most `Limits.max_title`, 80, characters after the trim;
 empty or equal to the name is no title; a bad one is refused, never cut). It comes through
 the change feed, so a title set anywhere shows without a reload. The UI names a session
 through one function (`sessionLabel.ts`: the title, else the name).

@@ -916,7 +916,14 @@ Built in the chat task (2026-10-03):
   then scroll inside, with no resize handle, in every view of the card and on the Flows
   tab's gate card alike; while the human types and the field grows, its lower edge comes
   into view (`scrollIntoView({block: "nearest"})`: the card's list scrolls, else the
-  page), the list keeping room below it for the field's focus ring. The
+  page). A ring around an item of the card shows whole (decided 2026-10-16, LAD-78,
+  mockup `task/lad-78/mockup-focus-ring.html`; before, the list kept room only below and
+  on the right, and cut the left side of a field's focus ring and the top of a question
+  marked at its top): the list keeps `--ring-room` (4 px, the largest ring: the
+  `:focus-visible` outline of a gate's comment; the 3 px ring of a focused own answer or
+  skip's comment and of a marked question) on every side and pulls itself back by as much
+  at the top and the left, so the items and the Send row stand where they would without
+  it, and a field scrolled into view keeps that room at whichever edge (`scroll-margin`). The
   Send row, always shown: **Send answer to <agent>** / **Send <n> answers to <agent>**, on
   once each question has a choice, own words that are not blank, or Skip, with "<k> of <n>
   answered" beside it until then; it posts the tab in one request (`POST …/answers`), and

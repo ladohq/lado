@@ -16,6 +16,9 @@
   the text up to 8 lines, then scroll inside, like the composer. They have no resize
   handle any more, which grew a field under the Send button and off the screen; while
   the human types, the field's lower edge stays in view.
+- The web UI's waiting card no longer cuts the focus ring of a gate's comment field on
+  its left side, nor the ring of an own answer or of a question the human came to from
+  the feed: the ring shows whole on every side, and nothing in the card moves.
 - The UI's Activity tab: the checkbox "Show agent messages" is now a small icon at the end
   of the team's row, "Messages between agents", whose tooltip says whether the messages
   agents write to each other are shown and what a click does; the agents' chips no longer

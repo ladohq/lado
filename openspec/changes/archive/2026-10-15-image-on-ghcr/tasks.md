@@ -73,7 +73,7 @@ Tests first in each section; each task is one commit. The plan with the code is
 
 ## 7. At archive (integrator)
 
-- [ ] 7.1 After `openspec archive image-on-ghcr`, the Purpose of
+- [x] 7.1 After `openspec archive image-on-ghcr`, the Purpose of
   `openspec/specs/container/spec.md` names the update by version tag instead of
   `lado:previous` and `docker compose pull`, and the new `image-release` spec has a
   Purpose (archive leaves a placeholder).

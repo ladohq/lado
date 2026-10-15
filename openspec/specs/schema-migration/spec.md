@@ -54,9 +54,8 @@ one transaction), keep the error in its error journal, and exit 1 with one messa
 stderr and no traceback: `lado: could not upgrade lado.db from schema <N> to <M>: <error>.
 lado.db is unchanged; its backup is <path>.`, then the way back, and `Report it with lado
 bug-report.` The way back SHALL be, in a container (`update.in_container`), `To go back,
-run the image you had before, which the header of docker/compose.yaml has you keep as
-lado:previous: LADO_IMAGE=lado:previous docker compose up -d`, and elsewhere `To go back,
-install the LADO you had before.`
+run the image of the LADO version you ran before (ghcr.io/ladohq/lado:<that version>) on
+the same home volume.`, and elsewhere `To go back, install the LADO you had before.`
 
 #### Scenario: Outside a container
 - **WHEN** a migration step fails while `lado ls` migrates `lado.db` from schema 27
@@ -66,5 +65,5 @@ install the LADO you had before.`
 
 #### Scenario: In a container
 - **WHEN** the same happens with `LADO_CONTAINER=1`
-- **THEN** the message names the header of `docker/compose.yaml` and `LADO_IMAGE=lado:previous
-  docker compose up -d`
+- **THEN** the message names `ghcr.io/ladohq/lado:<that version>` and the same home
+  volume, and no `lado:previous`

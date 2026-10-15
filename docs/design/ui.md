@@ -747,10 +747,13 @@ Built in the chat task (2026-10-03):
   and typed into no window (`runtime.post`). It is sent only by the server's API
   (`runtime.write_as_human`): an agent's MCP tools always send as the agent, and `human`
   and `lado` are names no agent may take (`state.RESERVED`, checked by `spawn_worker`).
-  The human's text: its first line, tabs and control characters made spaces, is the
-  summary, cut to 200 characters with "…"; the whole text is the body when it has more
-  lines or the line was cut; over 8000 characters it is refused. It goes through the queue,
-  confirmation and retries like an agent's; if it fails, `lado` tells the human in one line.
+  The human's text: its first line, cleaned of hidden characters (`lado.text`: control
+  characters, tabs and line or paragraph separators made spaces, format characters such
+  as bidi controls and zero-width spaces removed, but the zero width joiner), is the
+  summary, cut to 200 characters with "…"; the whole text is the body when the summary is
+  not exactly it (more lines, cleaned or cut); over 8000 characters it is refused. It goes
+  through the queue, confirmation and retries like an agent's; if it fails, `lado` tells
+  the human in one line.
   Messages to `human` are never dropped: stop, finish and `drop_undelivered` leave them as
   they are and do not count them (`state.UNRECEIVED`).
 - **Questions**: `ask_human(question, details, choices, free_answer)`, for every agent; at
@@ -1427,10 +1430,11 @@ and worktrees), so "renaming" a session gives it a **title**, a label over the n
 (mockup `task/lad-66/mockup-rename.html`, variant A, both entry points; renaming the
 identifier itself was turned down for its cost). The title is `SessionInfo.title`, set by
 `PUT /api/sessions/{name}/title` or `lado title`, through the core's one rule
-(`runtime.set_title`: one line, at most `Limits.max_title`, 80, characters after the trim;
-empty or equal to the name is no title; a bad one is refused, never cut). It comes through
-the change feed, so a title set anywhere shows without a reload. The UI names a session
-through one function (`sessionLabel.ts`: the title, else the name).
+(`runtime.set_title`: one line of visible text, `lado.text`, at most `Limits.max_title`,
+80, characters after the trim; empty or equal to the name is no title; a bad one is
+refused, never cut). It comes through the change feed, so a title set anywhere shows
+without a reload. The UI names a session through one function (`sessionLabel.ts`: the
+title, else the name).
 
 Where it shows:
 

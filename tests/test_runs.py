@@ -194,7 +194,22 @@ def test_every_step_asks_for_notes_in_the_humans_language(session):
 
 def test_a_language_is_one_short_line(session):
     with pytest.raises(runtime.LadoError, match="human_language is a language name or code"):
-        runs.start(session, "feature", "x", language="ru\nen")
+        runs.start(session, "feature", "x", language="r" * (runs.LANGUAGE_LIMIT + 1))
+    assert state.list_runs(session) == []
+
+
+@pytest.mark.parametrize(
+    ("language", "named"),
+    [
+        ("ru\nen", "U+000A"),
+        ("ru\N{RIGHT-TO-LEFT OVERRIDE}", "U+202E RIGHT-TO-LEFT OVERRIDE"),
+        ("r\N{ZERO WIDTH SPACE}u", "U+200B ZERO WIDTH SPACE"),
+    ],
+)
+def test_a_language_with_a_hidden_character_is_refused(session, language, named):
+    reason = f"human_language is one line of visible text: {named} is not allowed"
+    with pytest.raises(runtime.LadoError, match=f"^{re.escape(reason)}$"):
+        runs.start(session, "feature", "x", language=language)
     assert state.list_runs(session) == []
 
 
@@ -1624,3 +1639,62 @@ def test_a_resume_asks_again_for_gates_without_a_given_recommendation(session, r
     assert asked[0].state == state.PENDING
     assert state.get_gate(missed.id).recommendation_state == state.REC_ASKED
     assert state.get_gate(given.id).recommendation_state == state.REC_GIVEN
+
+
+@pytest.mark.parametrize(
+    ("note", "named"),
+    [
+        ("built\N{ZERO WIDTH SPACE}", "U+200B ZERO WIDTH SPACE"),
+        ("built\nand tested", "U+000A"),
+        ("built\N{RIGHT-TO-LEFT OVERRIDE}", "U+202E RIGHT-TO-LEFT OVERRIDE"),
+    ],
+)
+def test_a_note_summary_with_a_hidden_character_is_refused(session, note, named):
+    to_implement(session)
+    runs.spawn_worker(session, "feature/login")
+    before = state.get_run(session, "feature/login")
+    reason = (
+        f"note_summary must be one line of visible text: {named} is not allowed; "
+        "put the details in note_body"
+    )
+    with pytest.raises(runtime.LadoError, match=f"^{re.escape(reason)}$"):
+        runs.advance(session, "developer", "feature/login", "done", note)
+    assert state.get_run(session, "feature/login") == before
+
+
+def test_a_gate_comment_is_cleaned_for_the_note_and_kept_in_its_body(session):
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    comment = "too\N{LINE SEPARATOR}big \N{RIGHT-TO-LEFT OVERRIDE}form"
+    run = runs.answer(session, str(gate.id), "reject", comment)
+    assert run.note == "rejected: too big form"
+    assert run.note_body == f"{comment}\n\nNote before the gate: ready to ship\na\nb"
+
+
+def test_a_flow_set_reason_is_cleaned_for_the_note_and_kept_in_its_body(session):
+    advance_to_review(session)
+    reason = "rework\N{ZERO WIDTH SPACE} the form"
+    run = runs.force(session, "feature/login", "implement", reason)
+    assert (run.note, run.note_body) == ("set by the human: rework the form", reason)
+    long = "x" * 300
+    run = runs.force(session, "feature/login", "review", long)
+    assert (run.note, run.note_body) == (f"set by the human: {long}"[: runs.NOTE_LIMIT], long)
+    run = runs.force(session, "feature/login", "implement", "plain")
+    assert (run.note, run.note_body) == ("set by the human: plain", "")
+
+
+def test_a_loop_limit_cancel_keeps_a_cleaned_reason(session):
+    to_loop_limit(session)
+    [gate] = state.open_gates(session)
+    runs.answer(
+        session,
+        str(gate.id),
+        "cancel",
+        "not\N{PARAGRAPH SEPARATOR}worth\N{LEFT-TO-RIGHT ISOLATE} it",
+    )
+    run = state.get_run(session, "feature/login")
+    assert run.reason == "loop limit: not worth it"
+    assert (
+        state.get_gate(gate.id).comment
+        == "not\N{PARAGRAPH SEPARATOR}worth\N{LEFT-TO-RIGHT ISOLATE} it"
+    )

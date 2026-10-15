@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Protocol
 
 from lado import flows, images, state
+from lado import text as visible
 
 SESSION_SCOPE = ""
 SUPERVISOR = "supervisor"  # the lead's agent name (lado.runtime.SUPERVISOR)
@@ -310,7 +311,7 @@ def upload(session: str, file_name: str, data: bytes) -> Written:
     found = store().latest(session, SESSION_SCOPE, name)
     if found and found[1].hash == digest:
         return Written(*found, unchanged=True)
-    title = " ".join(file_name.split())[:SUMMARY_LIMIT]
+    title = " ".join(visible.one_line(file_name).split())[:SUMMARY_LIMIT]
     return store().write(
         session,
         SESSION_SCOPE,
@@ -647,9 +648,12 @@ def find(session: str, name: str, agent: state.Agent | None = None) -> tuple[Art
 
 
 def _line(field: str, text: str | None) -> str | None:
-    """A title or a summary: one line of at most SUMMARY_LIMIT characters; None for none."""
+    """A title or a summary: one line of visible text (`lado.text`) of at most SUMMARY_LIMIT
+    characters; None for none."""
     text = (text or "").strip()
-    if "\n" in text or len(text) > SUMMARY_LIMIT:
+    if (char := visible.first_hidden(text)) is not None:
+        raise ArtifactError(f"{field} must be one line {visible.refusal(char)}")
+    if len(text) > SUMMARY_LIMIT:
         raise ArtifactError(f"{field} must be one line of at most {SUMMARY_LIMIT} characters")
     return text or None
 

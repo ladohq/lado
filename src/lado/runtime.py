@@ -15,7 +15,6 @@ import subprocess
 import sys
 import threading
 import time
-import unicodedata
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -37,6 +36,7 @@ from lado import (
     terminal,
     tmux,
 )
+from lado import text as visible
 
 SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 # In the lead's config folder: its lead skills (kits.LeadSkill), and the copies of the
@@ -556,11 +556,11 @@ def check_prompt(text: str) -> str:
 def set_title(name: str, text: str | None) -> str | None:
     """Set or clear the session's title, a label for the human over its name (which stays
     its identifier), whatever its status: the one rule of what a title is. Trimmed; empty or
-    equal to the name is no title; a control character or more than MAX_TITLE characters is
-    refused with nothing changed. Returns what is stored."""
+    equal to the name is no title; a hidden character (`lado.text`) or more than MAX_TITLE
+    characters is refused with nothing changed. Returns what is stored."""
     title = (text or "").strip()
-    if any(unicodedata.category(char) == "Cc" for char in title):
-        raise LadoError("a title is one line")
+    if (char := visible.first_hidden(title)) is not None:
+        raise LadoError(f"a title is one line {visible.refusal(char)}")
     if len(title) > MAX_TITLE:
         raise LadoError(f"a title is at most {MAX_TITLE} characters")
     stored = title if title and title != name else None
@@ -1342,9 +1342,9 @@ def write_as_human(
     session: str, text: str, to: str = SUPERVISOR, attached: list[str] | None = None
 ) -> str:
     """Send the human's text (the UI's composer) to agent `to` as a message from `human`,
-    through the same queue, confirmation and retries as an agent's. Its first line, without
-    tabs and control characters, is the summary, cut to the limit; the whole text is the
-    body when it has more lines or the line was cut. `attached` are the full names of the
+    through the same queue, confirmation and retries as an agent's. Its first line, cleaned
+    of hidden characters (`lado.text`), is the summary, cut to the limit; the whole text is
+    the body when the summary is not exactly it. `attached` are the full names of the
     files the human uploaded (lado.artifacts.upload), attached as send_message attaches;
     with them the text may be empty, and the summary names the files.
 
@@ -1403,18 +1403,17 @@ def _files_line(names: list[str]) -> str:
 
 def _human_text(text: str, prefix: str = "") -> tuple[str, str]:
     """The human's stripped text as a summary and a body: `prefix` and its first line,
-    without tabs and control characters and cut to the limit; and the whole text when it
-    has more lines or the line was cut, else ''."""
+    cleaned of hidden characters (`lado.text`) and cut to the limit; and the whole text
+    whenever the summary is not exactly it (more lines, cleaned or cut), else ''."""
     if len(text) > MAX_MESSAGE:
         raise LadoError(f"the message is {len(text)} characters, the limit is {MAX_MESSAGE}")
-    first = text.split("\n", 1)[0]
-    first = "".join(" " if unicodedata.category(c) == "Cc" else c for c in first).strip()
+    first = visible.one_line(text.split("\n", 1)[0])
     if not first:
         raise LadoError("the first line of the message has no text")
     summary = prefix + first
     if len(summary) > state.SUMMARY_LIMIT:
         summary = summary[: state.SUMMARY_LIMIT - 1] + "…"
-    body = text if "\n" in text or summary != prefix + first else ""
+    body = text if summary != prefix + text else ""
     return summary, body
 
 
@@ -1543,8 +1542,8 @@ def ask_human(
     for choice in choices:
         if not choice:
             raise LadoError("a choice is empty")
-        if any(unicodedata.category(c) == "Cc" for c in choice):
-            raise LadoError("a choice must be one line without control characters")
+        if (char := visible.first_hidden(choice)) is not None:
+            raise LadoError(f"a choice must be one line {visible.refusal(char)}")
         if len(choice) > CHOICE_LIMIT:
             raise LadoError(f"a choice is {len(choice)} characters, the limit is {CHOICE_LIMIT}")
         if choices.count(choice) > 1:
@@ -2180,11 +2179,9 @@ def _check_summary(summary: str, what: str = "summary", details: str = "body") -
     `what` names it in the errors, `details` the argument for the rest."""
     if not summary:
         raise LadoError(f"{what} is empty; say in one line what the message is about")
-    if len(summary.splitlines()) > 1:
-        raise LadoError(f"{what} must be one line; put the details in {details}")
-    if any(unicodedata.category(c) == "Cc" for c in summary):
+    if (char := visible.first_hidden(summary)) is not None:
         raise LadoError(
-            f"{what} must be one line without control characters; put the details in {details}"
+            f"{what} must be one line {visible.refusal(char)}; put the details in {details}"
         )
     if len(summary) > state.SUMMARY_LIMIT:
         raise LadoError(

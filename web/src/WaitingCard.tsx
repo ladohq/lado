@@ -460,9 +460,6 @@ export function WaitingCard({
   );
 }
 
-// An agent's tab: its questions, numbered when more than one, each with the supervisor's
-// recommendation (Recommendation.tsx), its choices, Other… (a question with a free answer)
-// and Skip; then Send, on once each has an answer.
 // An own answer or a skip's comment: it grows with its text from CARD_LINES to MOST_LINES,
 // then scrolls, its lower edge kept in view while the human types.
 function AnswerField({
@@ -493,6 +490,9 @@ function AnswerField({
   );
 }
 
+// An agent's tab: its questions, numbered when more than one, each with the supervisor's
+// recommendation (Recommendation.tsx), its choices, Other… (a question with a free answer)
+// and Skip; then Send, on once each has an answer.
 function AgentPanel({
   session,
   tab,

@@ -36,18 +36,22 @@ the Send row stays where it is.
 
 ### D2. One value for the room: `--ring-room`
 
-The 4 px is written once, as a custom property `--ring-room: 4px` on `.waiting-card`,
-with a comment naming the rings it holds (the `:focus-visible` outline, 2 px at a 2 px
-offset; the 3 px ring of `.waiting-field:focus` and `.marked`). The list's padding and
-margin and the fields' scroll margin (D3) use it. A field outside a card (the Flows tab's
-gate card) falls back to `0px`: nothing clips it there.
+The 4 px is written once, as a custom property `--ring-room: 4px` on `:root`, with a
+comment naming the rings it holds (the `:focus-visible` outline, 2 px at a 2 px offset;
+the 3 px ring of `.waiting-field:focus` and `.marked`). The list's padding and margin and
+the fields' scroll margin (D3) use it. On `:root`, not on `.waiting-card`: the Flows tab's
+gate card has the same `.answer textarea` outside any waiting card, and its run page
+(`.list-main`) scrolls the growing field into view as the card's list does, so it needs
+the same room (the review's F1: with the value on the card it fell back to 0 there and
+the ring's bottom was cut, where LAD-70's 4 px had kept it).
 
 ### D3. A field scrolls into view with its ring
 
 `.waiting-field` and `.answer textarea` replace `scroll-margin-bottom: 4px` (LAD-70) with
-`scroll-margin: var(--ring-room, 0px)`: the browser's own scroll on focus and LAD-70's
+`scroll-margin: var(--ring-room)`: the browser's own scroll on focus and LAD-70's
 `scrollIntoView({block: "nearest"})` (`fieldHeight.ts`) leave room for the ring at
-whichever edge they bring the field to. No change to `fieldHeight.ts`.
+whichever edge they bring the field to, in the card's list and on the Flows tab's run
+page alike. No change to `fieldHeight.ts`.
 
 ### D4. Tested in the browser, by geometry
 

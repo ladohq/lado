@@ -53,8 +53,10 @@ its screenshot shows the same cut.
   the list's, not the field's.
 - **Dropping the list's scrolling**: LAD-70 needs it (the fields grow inside the list
   under the fixed Send row).
-- **The Flows tab's gate card**: checked, its frame has 14 px of padding and no scrolling
-  box around the field; its ring shows whole already.
+- **The Flows tab's gate card**, but its field's scroll margin: its frame has 14 px of
+  padding, so its ring shows whole at rest; only its run page (`.list-main`), scrolling a
+  growing field into view, needs the same room, which the field rule gives it (design
+  D2, D3).
 - **Other scrolling boxes of the UI**: not in the task; none was reported cut.
 
 ## Impact

@@ -1,9 +1,9 @@
 ## 1. Room for the ring (D1, D2, D3)
 
-- [x] 1.1 `web/src/styles.css`: `--ring-room: 4px` on `.waiting-card` with its comment;
+- [x] 1.1 `web/src/styles.css`: `--ring-room: 4px` on `:root` with its comment;
   `.waiting-list` `padding: var(--ring-room) 6px var(--ring-room) var(--ring-room)` and
   `margin: calc(-1 * var(--ring-room)) 0 0 calc(-1 * var(--ring-room))`;
-  `.waiting-field` and `.answer textarea` `scroll-margin: var(--ring-room, 0px)` in place
+  `.waiting-field` and `.answer textarea` `scroll-margin: var(--ring-room)` in place
   of `scroll-margin-bottom: 4px`. Check: `make web`; the UI e2e of section 2.
 
 ## 2. UI e2e (the requirement's scenarios, D4)
@@ -24,6 +24,11 @@
 - [x] 2.3 The tests catch the bug: 2.1's focused-comment test, run on main's
   `styles.css` (a temporary checkout of that one file, restored after), fails on the
   left side; name the run in the build report.
+- [x] 2.4 `tests/ui/test_gates.py`: on the Flows tab's run page, a gate's comment of 12
+  lines grown to the page's lower edge and scrolled into view by `.list-main` keeps its
+  ring whole within it (review F1: the room must hold outside the waiting card too); seen
+  red with the room on `.waiting-card` (the bottom cut by 3.5 px). Check: `uv run pytest
+  -m ui tests/ui/test_gates.py -k flows_tab`.
 
 ## 3. Docs
 

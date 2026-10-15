@@ -139,11 +139,11 @@ def test_a_gates_long_comment_grows_to_8_lines_and_stays_above_the_send_row(
     shot(page, full_page=False)
 
 
-# The ring an item of the waiting card draws around itself (a field's focus outline or
-# box-shadow ring, a marked question's ring), against what the card shows of it: how far
-# the ring stays inside the visible area of the card's list and its panel on each side (a
-# negative number is the part cut), and the ring's width, read from the computed style.
-MEASURE_RING = """item => {
+# The ring an item draws around itself (a field's focus outline or box-shadow ring, a
+# marked question's ring), against what its clipping boxes (`clips`, selectors of its
+# ancestors) show of it: how far the ring stays inside the visible area of each on each side
+# (a negative number is the part cut), and the ring's width, read from the computed style.
+MEASURE_RING = """(item, clips) => {
   const style = getComputedStyle(item);
   const outline = style.outlineStyle === 'none' ? 0
     : parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
@@ -151,27 +151,30 @@ MEASURE_RING = """item => {
   const lengths = (shadow.match(/-?[\\d.]+px/g) || []).map(parseFloat);
   const [x = 0, y = 0, blur = 0, spread = 0] = lengths;
   const ring = Math.max(outline, spread + blur + Math.max(Math.abs(x), Math.abs(y)));
-  const visible = el => {
+  const shown = clips.map(selector => {
+    const el = item.closest(selector);
     const r = el.getBoundingClientRect();
     const left = r.left + el.clientLeft, top = r.top + el.clientTop;
     return {left, top, right: left + el.clientWidth, bottom: top + el.clientHeight};
-  };
-  const list = visible(item.closest('.waiting-list'));
-  const panel = visible(item.closest('.waiting-panel'));
+  });
   const box = item.getBoundingClientRect();
   return {
     ring,
-    left: box.left - ring - Math.max(list.left, panel.left),
-    top: box.top - ring - Math.max(list.top, panel.top),
-    right: Math.min(list.right, panel.right) - box.right - ring,
-    bottom: Math.min(list.bottom, panel.bottom) - box.bottom - ring,
+    left: box.left - ring - Math.max(...shown.map(s => s.left)),
+    top: box.top - ring - Math.max(...shown.map(s => s.top)),
+    right: Math.min(...shown.map(s => s.right)) - box.right - ring,
+    bottom: Math.min(...shown.map(s => s.bottom)) - box.bottom - ring,
   };
 }"""
 
+# What clips an item of the waiting card: its scrolling list and the panel around it.
+IN_WAITING_CARD = (".waiting-list", ".waiting-panel")
 
-def assert_ring_whole(item, ring: float) -> None:
-    """The item draws a ring of `ring` px, and the card shows it whole on all four sides."""
-    got = item.evaluate(MEASURE_RING)
+
+def assert_ring_whole(item, ring: float, clips=IN_WAITING_CARD) -> None:
+    """The item draws a ring of `ring` px, and its clipping boxes show it whole on all four
+    sides."""
+    got = item.evaluate(MEASURE_RING, list(clips))
     assert got["ring"] == ring, got
     cut = {side: got[side] for side in ("left", "top", "right", "bottom") if got[side] < -0.5}
     assert not cut, got
@@ -219,6 +222,24 @@ def test_a_gates_comment_in_a_narrow_window_shows_its_ring_whole(page: Page, ser
     field.click()
     expect(field).to_be_focused()
     assert_ring_whole(field, 4)
+    shot(page, full_page=False)
+
+
+def test_a_gates_long_comment_on_the_flows_tab_shows_its_ring_whole(page: Page, server, repo, shot):
+    """LAD-78: on the Flows tab's gate card, a comment of 12 lines grows to the page's lower
+    edge and is scrolled into view with its focus ring whole: the run's page (`.list-main`)
+    scrolls there, not the waiting card's list."""
+    page.set_viewport_size({"width": 1280, "height": 640})
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
+    card = page.get_by_role("region", name="Now").get_by_role("article", name="Gate #1", exact=True)
+    field = card.get_by_role("textbox", name="Comment for the next step (optional)")
+    field.fill(TWELVE_LINES)
+    expect(field).to_be_focused()
+    # Grown past the window's lower edge, so the page scrolled to bring it into view.
+    assert page.locator(".list-main").evaluate("main => main.scrollTop") > 0
+    assert_ring_whole(field, 4, clips=(".list-main",))
     shot(page, full_page=False)
 
 

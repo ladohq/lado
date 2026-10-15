@@ -923,7 +923,8 @@ Built in the chat task (2026-10-03):
   `:focus-visible` outline of a gate's comment; the 3 px ring of a focused own answer or
   skip's comment and of a marked question) on every side and pulls itself back by as much
   at the top and the left, so the items and the Send row stand where they would without
-  it, and a field scrolled into view keeps that room at whichever edge (`scroll-margin`). The
+  it, and a field scrolled into view keeps that room at whichever edge (`scroll-margin`;
+  also the Flows tab's gate card, whose run page scrolls it into view). The
   Send row, always shown: **Send answer to <agent>** / **Send <n> answers to <agent>**, on
   once each question has a choice, own words that are not blank, or Skip, with "<k> of <n>
   answered" beside it until then; it posts the tab in one request (`POST …/answers`), and

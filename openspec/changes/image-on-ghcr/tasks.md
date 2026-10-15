@@ -62,11 +62,11 @@ Tests first in each section; each task is one commit. The plan with the code is
   `LADO_VERSION`; the container hint). `grep -rn "lado:previous\|CONTAINER_UPDATE" src
   docker tests web/src AGENTS.md docs/release.md docs/design/ui.md CHANGELOG.md` prints
   nothing.
-- [ ] 6.2 Regression: `make lint`, `make test`, `make web`, `uv run pytest -m ui
+- [x] 6.2 Regression: `make lint`, `make test`, `make web`, `uv run pytest -m ui
   tests/ui/test_system_panel.py`, `make docker && make test-container`, `openspec validate
   image-on-ghcr --strict`, `openspec validate --specs --strict`; CI green (`ci-ok`, both
   `container` cells).
-- [ ] 6.3 The pull request's description has the manual check of
+- [x] 6.3 The pull request's description has the manual check of
   `docs/superpowers/specs/2026-10-15-image-on-ghcr-design.md` (branch, folder, commands,
   expected results) and the after-merge check at the next RC (package made public,
   `docker pull` on Mac and Linux).

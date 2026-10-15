@@ -39,6 +39,38 @@ def _module():
 
 
 rc = _module()
+MISSING_TOOLS = rc.missing_tools
+
+
+@pytest.fixture(autouse=True)
+def tools_on_path(monkeypatch):
+    """uv, tmux and git are on PATH for every test but those that say otherwise."""
+    monkeypatch.setattr(rc, "missing_tools", lambda: [])
+
+
+def test_a_sandbox_without_tmux_or_git_stops_before_anything(
+    monkeypatch, capsys, tmp_path, recorder
+):
+    """0.39.0rc1: a Mac without tmux installed the RC and failed only at `lado doctor`."""
+    monkeypatch.setattr(rc, "missing_tools", MISSING_TOOLS)
+    found = {"uv": "/opt/bin/uv"}
+    monkeypatch.setattr(rc.shutil, "which", lambda name: found.get(name))
+    monkeypatch.setattr(rc, "fetch_index", lambda: pytest.fail("no PyPI before the tools"))
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    assert rc.main(["sandbox", "0.38.0rc1"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    (line,) = captured.err.splitlines()
+    assert line.startswith("rc_check: not on PATH: tmux, git; install first (")
+    assert "tmux: brew install tmux, or sudo apt install tmux" in line
+    assert "git: xcode-select --install, or sudo apt install git" in line
+    assert "uv:" not in line
+    assert recorder.calls == [] and list(tmp_path.iterdir()) == []
+
+
+def test_with_every_tool_on_path_nothing_is_missing(monkeypatch):
+    monkeypatch.setattr(rc.shutil, "which", lambda name: f"/opt/bin/{name}")
+    assert MISSING_TOOLS() == []
 
 
 def test_versions_sort_release_candidates_before_their_final():
@@ -213,6 +245,39 @@ def recorder(monkeypatch):
     recorder = Recorder()
     monkeypatch.setattr(rc, "run", recorder)
     return recorder
+
+
+DOCTOR_FAILED = (
+    "[ok  ] LADO: 0.38.0rc1 (pre-release)\n"
+    "[FAIL] tmux: `tmux` not found on PATH\n"
+    "       install it: `brew install tmux` or `sudo apt install tmux`\n"
+    "[ok  ] git: 2.50.1\n"
+    + "".join(f"[ok  ] check {n}: fine\n" for n in range(12))
+    + "[FAIL] Agent CLI: no agent CLI installed\n"
+    + "       Claude Code: npm install -g @anthropic-ai/claude-code\n"
+    + "[info] LADO_HOME: /tmp/home\n"
+)
+
+
+def test_a_failed_doctor_shows_its_fail_lines_with_their_hints(recorder, temp, capsys):
+    """0.39.0rc1: the last lines of a long `lado doctor` cut off its [FAIL] line."""
+    recorder.answer("doctor", 1, DOCTOR_FAILED)
+    assert rc.sandbox(rc.parse("0.38.0rc1"), "claude", ui=False) == 1
+    out = capsys.readouterr().out.splitlines()
+    at = out.index("[FAIL] doctor: lado doctor exited 1")
+    assert out[at + 1 : at + 6] == [
+        "         [FAIL] tmux: `tmux` not found on PATH",
+        "                install it: `brew install tmux` or `sudo apt install tmux`",
+        "         [FAIL] Agent CLI: no agent CLI installed",
+        "                Claude Code: npm install -g @anthropic-ai/claude-code",
+        "",
+    ]
+
+
+def test_output_without_fail_lines_shows_its_last_lines():
+    output = "".join(f"line {n}\n" for n in range(rc.OUTPUT_LINES + 5))
+    assert rc.shown(output) == [f"line {n}" for n in range(5, rc.OUTPUT_LINES + 5)]
+    assert rc.shown("") == []
 
 
 @pytest.fixture

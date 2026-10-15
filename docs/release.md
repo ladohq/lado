@@ -71,8 +71,10 @@ in section 6 catches a mistake before it is published.
 ## 4. The manual checklist
 
 Each RC is checked with `scripts/rc_check.py`, run with `python3` from the repository's
-root on the RC's commit (it needs `uv`, `tmux` and `git`). It does every step a machine
-can and ends with a list of what is left to the human.
+root on the RC's commit (it needs `uv`, `tmux` and `git`, and stops at once, naming what
+is missing and how to install it, when one is not on PATH). It does every step a machine
+can and ends with a list of what is left to the human. The RC's image (4.5, 4.6) is
+checked by hand: `rc_check.py` does not do it yet.
 
 ### 4.1 A clean install (every RC)
 
@@ -97,7 +99,9 @@ stops the session, removes everything with the RC's own `lado uninstall`, and pr
 the list of what is left to check by hand. Your own `~/.lado` is never touched.
 
 A check that fails stops the script and keeps the folder for a look, with its path and
-the one command that removes it. Ctrl-C stops and removes everything.
+the one command that removes it, and shows the failed command's output under its line
+(for `lado doctor`, its `[FAIL]` lines with their hints). Ctrl-C stops and removes
+everything.
 
 ### 4.2 Your own LADO on the RC (the first RC of a cycle)
 
@@ -134,6 +138,120 @@ It says what it will do and asks first: stop your sessions and the UI, install t
 final the copy in `~/.lado-rc/` was taken from, and, when the RC moved the database's
 schema, put that copy back (what was done on the RC is then lost: it says so). Then it
 starts your sessions and the UI again on the final.
+
+### 4.5 The image (every RC)
+
+On a Mac and on Linux, each in a fresh terminal with no `LADO_*` variable in its
+environment: compose takes a shell variable over `.env`, so an old `LADO_PORT` or
+`LADO_VERSION` there runs another port or version than the file says. `env | grep
+'^LADO_'` prints nothing.
+
+The image is public: a machine logged out of ghcr.io pulls it without a question, and
+gets its own architecture (arm64 on Apple silicon and Linux arm64, amd64 on x86):
+
+```
+docker logout ghcr.io
+docker pull ghcr.io/ladohq/lado:X.Y.ZrcN
+```
+
+Run it with compose from a temporary folder, with a test folder of projects (one small
+git repository in it) and a port of its own, so it meets nothing of your own LADO:
+
+```
+mkdir -p /tmp/lado-rc-image && cd /tmp/lado-rc-image
+cp <repository>/docker/compose.yaml .
+cat > .env <<'EOF'
+LADO_VERSION=X.Y.ZrcN
+LADO_PROJECTS=/absolute/path/to/a/test/folder
+LADO_PORT=8799
+EOF
+docker compose up -d
+docker compose logs lado
+docker compose exec lado lado ui --no-open
+```
+
+`docker compose logs lado` has no warning about `LADO_REPOS` (not mounted, not
+writable); the last command prints the UI's link with its token. Then:
+
+- Log in to Claude Code once: `docker compose exec -it lado claude`, log in, exit. The
+  login stays in the home volume.
+- `docker compose exec lado lado doctor` has no `[FAIL]`, finds the four agent CLIs,
+  says LADO runs in a container and names `LADO_REPOS`.
+- The UI: the System panel shows the `pre-release` and `container` pills, and no warning
+  about a server open to the network (a note about the container's published port
+  instead).
+- A session: the New session window with an empty Where offers the folders of
+  `LADO_PROJECTS`; the session starts and its supervisor answers. A worker's worktree, if
+  you start one, is on the host at the same path, its files yours (on Linux).
+- `docker compose exec lado lado update` refuses at once, stops nothing and says a new
+  image updates LADO in a container; the UI's Update does not start one either.
+
+Then remove it all, the home volume with Claude Code's login too:
+
+```
+docker compose down -v
+cd / && rm -rf /tmp/lado-rc-image
+```
+
+### 4.6 The image's update (the first RC of a cycle)
+
+On one machine, as in 4.5 (a fresh terminal, a test folder of projects), from the last
+final before the RC, `X.Y.Z` below. Two LADOs, each in a folder of its own with a copy
+of `docker/compose.yaml`; the second only stands beside the first:
+
+```
+mkdir -p /tmp/lado-rc-update /tmp/lado-rc-beside
+cp <repository>/docker/compose.yaml /tmp/lado-rc-update/
+cp <repository>/docker/compose.yaml /tmp/lado-rc-beside/
+cat > /tmp/lado-rc-update/.env <<'EOF'
+COMPOSE_PROJECT_NAME=lado-rc-update
+LADO_VERSION=X.Y.Z
+LADO_PROJECTS=/absolute/path/to/a/test/folder
+LADO_PORT=8799
+EOF
+cat > /tmp/lado-rc-beside/.env <<'EOF'
+COMPOSE_PROJECT_NAME=lado-rc-beside
+LADO_VERSION=X.Y.Z
+LADO_PROJECTS=/absolute/path/to/a/test/folder
+LADO_PORT=8800
+EOF
+(cd /tmp/lado-rc-beside && docker compose up -d && docker compose ps -q)
+cd /tmp/lado-rc-update && docker compose up -d
+```
+
+In the first, log in to Claude Code and start a session as in 4.5, then stop it (`docker
+compose exec lado lado stop <session>`, or the UI). Then the update: put
+`LADO_VERSION=X.Y.ZrcN` in its `.env`, and
+
+```
+docker compose up -d
+docker compose logs lado
+docker compose exec lado lado ls
+```
+
+When the RC moved the schema, the log has `lado: upgraded lado.db from schema N to M;
+its backup is /home/lado/.lado/backups/lado.db.schema-N`. `lado ls` lists the session,
+and the UI shows the RC's version. The second LADO is as it was: `docker compose ps -q` in
+its folder prints the same container id, and its UI still shows `X.Y.Z`.
+
+Then back by the version's tag, as compose.yaml's header says: `LADO_VERSION=X.Y.Z` in
+the first's `.env` again, and, when the schema moved (N from the log above):
+
+```
+docker compose down
+docker compose run --rm lado sh -c 'cd ~/.lado && rm -f lado.db-wal lado.db-shm && cp backups/lado.db.schema-N lado.db'
+docker compose up -d
+docker compose exec lado lado ls
+```
+
+`X.Y.Z` starts on the restored lado.db and lists the session; without a schema change,
+`docker compose up -d` alone goes back. Remove both:
+
+```
+(cd /tmp/lado-rc-update && docker compose down -v)
+(cd /tmp/lado-rc-beside && docker compose down -v)
+cd / && rm -rf /tmp/lado-rc-update /tmp/lado-rc-beside
+```
 
 ## 5. The final
 

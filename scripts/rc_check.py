@@ -8,13 +8,16 @@ Run with `python3` from the repository's root on the RC's commit, never with `uv
 that puts the working copy's `.venv/bin/lado` first on PATH, and `upgrade` and
 `rollback` run the human's own installed `lado` (they refuse one inside this repository).
 
-`sandbox` installs the RC (by default the newest release on PyPI, refused when that is a
+`sandbox` first refuses, naming what to install, when `uv`, `tmux` or `git` is not on
+PATH. It installs the RC (by default the newest release on PyPI, refused when that is a
 final) with `uv tool install` into a temporary folder, with a LADO home, a tmux socket and
 uv tool folders of its own and statistics off, checks it one line each, shows its UI until
 Enter, then removes everything with the RC's own `lado uninstall`. A failed check keeps
-the folder and prints the command that removes it; Ctrl-C removes it. `upgrade` runs the
-human's `lado update X.Y.ZrcN` and, coming from a final, keeps a copy of that final's
-database backup in `~/.lado-rc/`, as `lado update` keeps only one backup. `rollback` goes
+the folder and prints the command that removes it, with the failed command's `[FAIL]`
+lines (`lado doctor`'s form) or else its last lines; Ctrl-C removes it. The RC's image is
+not checked here (docs/release.md, 4.5 and 4.6). `upgrade` runs the human's `lado update
+X.Y.ZrcN` and, coming from a final, keeps a copy of that final's database backup in
+`~/.lado-rc/`, as `lado update` keeps only one backup. `rollback` goes
 back to the final of that copy: it asks first, stops the sessions and the UI server, runs
 `lado update <final>`, puts the copy back when the RC moved the schema, and starts the
 sessions and the UI again. `sandbox` and `upgrade` end with what is left by hand, the items
@@ -49,6 +52,12 @@ PYPI_TIMEOUT = 10  # seconds
 VERSION = re.compile(r"(\d+)\.(\d+)\.(\d+)(?:rc(\d+))?")  # the only forms LADO publishes
 PYPROJECT_VERSION = re.compile(r'^version = "([^"]*)"', re.MULTILINE)
 OUTPUT_LINES = 10  # of a failed command's output, under its [FAIL] line
+# What the sandbox runs itself, each with how to install it (docs/install.md's ways).
+NEEDED = {
+    "uv": "brew install uv, or curl -LsSf https://astral.sh/uv/install.sh | sh",
+    "tmux": "brew install tmux, or sudo apt install tmux",
+    "git": "xcode-select --install, or sudo apt install git",
+}
 SESSION = "rc-check"  # the sandbox's session
 # A calling agent's identity, the working copy's venv and the human's own tmux client
 # never reach the sandbox's LADO.
@@ -148,8 +157,28 @@ class Report:
     def fail(self, what: str, reason: str, output: str = "") -> None:
         self.failed = True
         print(f"[FAIL] {what}: {reason}", flush=True)
-        for line in output.rstrip().splitlines()[-OUTPUT_LINES:]:
+        for line in shown(output):
             print(f"         {line}")
+
+
+def shown(output: str) -> list[str]:
+    """The lines of a failed command's output under its [FAIL] line: the `[FAIL]` lines
+    of `lado doctor`'s form with their indented hints, wherever they are, else the last
+    OUTPUT_LINES."""
+    lines = output.rstrip().splitlines()
+    failures: list[str] = []
+    in_block = False
+    for line in lines:
+        hint = line[:1].isspace() and bool(line.strip())
+        in_block = line.startswith("[FAIL]") or (in_block and hint)
+        if in_block:
+            failures.append(line)
+    return failures or lines[-OUTPUT_LINES:]
+
+
+def missing_tools() -> list[str]:
+    """The programs of NEEDED that are not on PATH."""
+    return [name for name in NEEDED if shutil.which(name) is None]
 
 
 def _release_notes():
@@ -716,6 +745,12 @@ def main(argv: list[str]) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "sandbox":
+            lacking = missing_tools()
+            if lacking:
+                hints = "; ".join(f"{name}: {NEEDED[name]}" for name in lacking)
+                raise RcError(
+                    f"not on PATH: {', '.join(lacking)}; install first ({hints}; docs/install.md)"
+                )
             version = args.version
             if version is None:
                 try:

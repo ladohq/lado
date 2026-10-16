@@ -73,12 +73,12 @@ LADO_GIT_EMAIL=you@example.com
 without `v`. Then start it and open the link it prints:
 
 ```bash
-mkdir -m 700 secrets
 docker compose up -d
 docker compose exec lado lado ui --no-open   # the UI's link with its token
 ```
 
-Logins, ssh, update and the rest: [docs/install.md#docker](docs/install.md#docker).
+Logins, the agents' tokens (an optional `secrets/`), ssh, update and the rest:
+[docs/install.md#docker](docs/install.md#docker).
 
 ### PyPI
 
@@ -142,12 +142,17 @@ shows `↑ X.Y.Z` next to `live` in its top bar.
 
 ### Docker
 
-A new version is a new image. In the folder of your `compose.yaml`, set the new version in
-`.env` (`LADO_VERSION=<the new version>`), then:
+A new version is a new image and its own `compose.yaml`. In the folder of your
+`compose.yaml`, download the new version's in place of yours, set the new version in
+`.env` (`LADO_VERSION=<version>`), then start:
 
 ```bash
+curl -fLO https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml
 docker compose up -d     # pulls that version's image and replaces the container
 ```
+
+`.env`, `secrets/` and the home volume stay; a change you made to `compose.yaml` by hand
+must be carried over to the new one.
 
 Your sessions stop with the old container and resume in the new one (each agent starts a
 new conversation and a busy one loses its current turn, so update while your agents are

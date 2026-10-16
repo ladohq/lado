@@ -19,23 +19,23 @@ Tests first in each section; each task is one commit.
 
 ## 3. compose, the headers
 
-- [ ] 3.1 Unit tests, `tests/test_docker.py`: the secrets bind's source is
+- [x] 3.1 Unit tests, `tests/test_docker.py`: the secrets bind's source is
   `${LADO_SECRETS:-/dev/null}`, read-only, `create_host_path: false`; neither header's
   first start has `mkdir`; both headers name `LADO_SECRETS=./secrets` (compose) or the
   `-v …:/run/secrets:ro` (Dockerfile); the header's update is the `curl -fLO` of
   `releases/download/v<version>/compose.yaml`, then `docker compose up -d`; the address
   matches the release workflow's tag and asset.
-- [ ] 3.2 `docker/compose.yaml` (default and header: optional secrets, the update's
+- [x] 3.2 `docker/compose.yaml` (default and header: optional secrets, the update's
   download, `.env`/`secrets/`/volume stay) and `docker/Dockerfile`'s header (D2, D4, D5).
 
 ## 4. README, the guide, CHANGELOG, design docs
 
-- [ ] 4.1 Unit tests, `tests/test_docker.py`: the guide's and README's start have no
+- [x] 4.1 Unit tests, `tests/test_docker.py`: the guide's and README's start have no
   `mkdir`; "The agents' variables" has `LADO_SECRETS=./secrets` and `mkdir -m 700
   secrets`; the guide's and README's update download the version's `compose.yaml` before
   `docker compose up -d`; the guide's update equals the header's; the guide says to carry
   over a change made by hand.
-- [ ] 4.2 README.md (Docker install, Update › Docker), docs/install.md (opening, Start,
+- [x] 4.2 README.md (Docker install, Update › Docker), docs/install.md (opening, Start,
   The agents' variables, Update the container, A second LADO: "a `secrets/` of its own or
   none", Docker run, pitfalls). `make test`.
 - [ ] 4.3 CHANGELOG.md: amend the 0.40.0 lines of LAD-76 and LAD-83 (D6).

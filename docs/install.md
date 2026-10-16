@@ -50,8 +50,9 @@ and the four agent CLIs at the versions LADO is tested with: nothing to install 
 Docker. It runs the web UI on this computer's loopback; the agents work in your projects
 folder, which the container sees at the same path as your computer, so their commits and
 worktrees are yours too. The image holds no one's keys or logins: you give your own at run
-time (a secrets folder, a login inside, your ssh agent). Compose keeps every setting in one
-file, so an update is one line; [`docker run`](#with-docker-run) works too.
+time (a login inside, your ssh agent, a secrets folder if you want one). Compose keeps
+every setting in `.env`, so an update is a new `compose.yaml` and one line;
+[`docker run`](#with-docker-run) works too.
 
 The headers of [docker/compose.yaml](../docker/compose.yaml) and
 [docker/Dockerfile](../docker/Dockerfile) are the reference; this guide repeats the steps
@@ -114,22 +115,37 @@ a new login.
 ### Start
 
 ```bash
-mkdir -m 700 secrets
 docker compose up -d
 docker compose exec lado lado ui --no-open   # the UI's link with its token
 ```
 
-Open the link in your browser. `secrets/` must be there before the first `up` (compose
-refuses to start without it). `docker compose logs lado` shows what the container says,
+Open the link in your browser. `docker compose logs lado` shows what the container says,
 its warnings too.
 
 ### The agents' variables
 
-Tokens and keys for the agents are files in `secrets/`, one per variable: the file's name
-is the variable's, its content the value. LADO reads them at each agent's start, so a new
-file reaches the next agent with no restart; they never show in `docker inspect`, and
-`docker compose exec lado lado doctor` lists the names it uses. For example, git over https
-and `gh` with your GitHub token:
+Optional: many agents need none, since Claude Code, gh, OpenCode and Kilo can log in inside
+the container (below). Tokens and keys for the agents are files in a folder `secrets/`,
+one per variable: the file's name is the variable's, its content the value. To give them,
+add a line to `.env`:
+
+```ini
+LADO_SECRETS=./secrets
+```
+
+then make the folder, readable only by you, and start again:
+
+```bash
+mkdir -m 700 secrets
+docker compose up -d
+```
+
+With `LADO_SECRETS` set, compose refuses to start while the folder is missing rather than
+make it; without it the container has none and says nothing about it
+(`docker compose exec lado lado doctor` says how to give them). LADO reads the files at
+each agent's start, so a new file reaches the next agent with no restart; they never show
+in `docker inspect`, and `lado doctor` lists the names it uses. For example, git over
+https and `gh` with your GitHub token:
 
 ```bash
 printf %s "$(gh auth token)" > secrets/GH_TOKEN
@@ -152,7 +168,7 @@ Logins made inside the container stay on its home volume, through updates.
 
   Then `/exit`. Or, instead, a long-lived token: run `claude setup-token` on your computer
   and put what it prints in `secrets/CLAUDE_CODE_OAUTH_TOKEN` (`printf %s '<token>' >
-  secrets/CLAUDE_CODE_OAUTH_TOKEN`).
+  secrets/CLAUDE_CODE_OAUTH_TOKEN`, with [the folder](#the-agents-variables) given).
 - **OpenCode and Kilo**: `docker compose exec -it lado opencode auth login` or
   `docker compose exec -it lado kilo auth login`, or the model provider's key in `secrets/`.
 - **Codex**: not covered in the container yet.
@@ -188,12 +204,20 @@ do not update a container, and say so. LADO still tells you when one is out:
 LADO in a container (ghcr.io/ladohq/lado:X.Y.Z)`, and the web UI shows `↑ X.Y.Z` next to
 `live`. The versions are on the [releases page](https://github.com/ladohq/lado/releases).
 
-In the folder of your `compose.yaml`, set the new `LADO_VERSION` in `.env` (the number
-without `v`), then (compose pulls that version's image):
+In the folder of your `compose.yaml`: download the new version's `compose.yaml` in place
+of yours (`<version>` is the new number as `.env` has it; the address puts a `v` before
+it), set the new `LADO_VERSION` in `.env`, then start (compose pulls that version's image):
 
 ```bash
+curl -fLO https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml
 docker compose up -d
 ```
+
+Every update takes its version's `compose.yaml`, since a release may add a mount or a
+setting to it: 0.40.0 added git's identity, the ssh agent and the secrets folder, which an
+older file does not give the container. `.env`, `secrets/` and the home volume stay. A
+change you made to `compose.yaml` by hand is replaced: carry it over to the new file (your
+settings belong in `.env`, which stays).
 
 What happens:
 
@@ -214,8 +238,9 @@ another `.env` (a second LADO) run in its own folder and leave this one as it is
 
 ### Go back to the version before
 
-Put the version you had before back in `.env`, then, with `<N>` from the backup's name
-(what LADO did since the upgrade is lost):
+Put the version you had before back in `.env`; the way back keeps the `compose.yaml` you
+have (an older LADO ignores the mounts and settings it does not know). Then, with `<N>`
+from the backup's name (what LADO did since the upgrade is lost):
 
 ```bash
 docker compose down
@@ -228,8 +253,8 @@ command do it.
 
 ### A second LADO
 
-Another folder with a copy of `compose.yaml`, a `secrets/` of its own and an `.env` that
-adds its own `COMPOSE_PROJECT_NAME` and port:
+Another folder with a copy of `compose.yaml`, a `secrets/` of its own or none, and an
+`.env` that adds its own `COMPOSE_PROJECT_NAME` and port:
 
 ```ini
 COMPOSE_PROJECT_NAME=lado-2
@@ -270,14 +295,15 @@ The same image with one command; an update is that command again with the new ve
 (the [Dockerfile's header](../docker/Dockerfile) has the rest):
 
 ```bash
-mkdir -m 700 secrets
 docker run -d --name lado -p 127.0.0.1:8765:8765 -v lado-home:/home/lado \
   -v "$HOME/projects:$HOME/projects" -e LADO_REPOS="$HOME/projects" \
-  -v "$PWD/secrets:/run/secrets:ro" \
   -e LADO_GIT_NAME="Ann Lee" -e LADO_GIT_EMAIL=ann@example.com \
   ghcr.io/ladohq/lado:<version>
 docker exec lado lado ui --no-open   # the UI's link with its token
 ```
+
+The agents' variables: `mkdir -m 700 secrets` and `-v "$PWD/secrets:/run/secrets:ro"` added
+to the `docker run`.
 
 ### If something goes wrong in Docker
 
@@ -298,6 +324,11 @@ identity, the ssh agent, the projects folder).
   `user.email`).
 - **An agent has a token it should not**: every agent of one LADO reads every file of its
   `secrets/`. Values for some agents only need another LADO with its own folder.
+- **A file in `secrets/` does not reach the agents**: `LADO_SECRETS=./secrets` is missing
+  from `.env` (`lado doctor` says `/run/secrets: none`). Add it, then `docker compose up -d`.
+- **No git identity, no ssh agent or no secrets after an update from 0.39.0**: the
+  `compose.yaml` is still 0.39.0's. Take the new version's, as
+  [Update the container](#update-the-container) says.
 - **Two LADOs on a Mac and ssh works only in one**: Docker Desktop's ssh agent socket is
   one for all containers, and each LADO's start gives it to its own user. With projects
   folders of two owners the LADO started last has it; `docker compose restart` takes it

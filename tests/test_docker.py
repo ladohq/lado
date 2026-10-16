@@ -429,8 +429,9 @@ def compose() -> dict:
 
 
 def test_compose_binds_the_secrets_folder_read_only_and_never_makes_it(compose):
-    """Docker on Linux would make a missing folder as root, where the human could not add
-    a file without sudo: compose refuses instead."""
+    """No secrets by default, as no ssh agent (/dev/null, which LADO takes as none). A
+    folder LADO_SECRETS names but that is missing: Docker on Linux would make it as root,
+    where the human could not add a file without sudo, so compose refuses instead."""
     [mount] = [
         v
         for v in compose["services"]["lado"]["volumes"]
@@ -438,7 +439,7 @@ def test_compose_binds_the_secrets_folder_read_only_and_never_makes_it(compose):
     ]
     assert mount == {
         "type": "bind",
-        "source": "${LADO_SECRETS:-./secrets}",
+        "source": "${LADO_SECRETS:-/dev/null}",
         "target": "/run/secrets",
         "read_only": True,
         "bind": {"create_host_path": False},
@@ -517,10 +518,37 @@ def header_text() -> str:
     return " ".join(line.lstrip("#").strip() for line in COMPOSE_TEXT.splitlines())
 
 
-def test_an_update_is_a_new_version_in_env_and_up():
-    """Compose pulls an image it does not have: the version's tag never moves, so the image
-    before keeps its name and nothing needs keeping by hand."""
-    assert header_steps("To update, set the new LADO_VERSION in .env") == ["docker compose up -d"]
+UPDATE = "To update, in this folder"
+VERSION_COMPOSE = "https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml"
+
+
+def test_an_update_is_the_versions_compose_file_a_new_version_in_env_and_up():
+    """A release may change compose.yaml (0.40.0 added git's identity, the ssh agent and
+    the secrets folder): every update takes that version's. Compose pulls an image it does
+    not have: the version's tag never moves, so the image before keeps its name and nothing
+    needs keeping by hand."""
+    assert header_steps(UPDATE) == [f"curl -fLO {VERSION_COMPOSE}", "docker compose up -d"]
+    update_text = header_text().split(UPDATE)[1].split("Back to the version")[0]
+    assert "new LADO_VERSION in .env" in update_text
+    assert ".env, secrets/ and the home volume stay" in update_text
+    assert "carry it over" in update_text
+
+
+def test_the_updates_address_is_the_release_asset_of_the_versions_tag():
+    """The release workflow runs for the tag v<version> (it checks the tag against
+    pyproject's version) and uploads docker/compose.yaml under its base name."""
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    assert '"v$version" != "$GITHUB_REF_NAME"' in workflow
+    assert re.search(
+        r'gh release create "\$GITHUB_REF_NAME" [^\n]*\bdocker/compose\.yaml\b', workflow
+    )
+    tag, asset = VERSION_COMPOSE.split("/releases/download/")[1].split("/")
+    assert (tag, asset) == ("v<version>", "compose.yaml")
+
+
+def test_the_way_back_keeps_the_newer_compose_file():
+    """An older LADO ignores the mounts and variables it does not know."""
+    assert "keep this compose.yaml" in header_text().split("Back to the version")[1]
 
 
 def test_the_compose_header_says_how_to_go_back_to_the_backup():
@@ -599,8 +627,25 @@ def test_the_headers_say_how_agents_get_variables_access_and_logins(name):
         "opencode auth login",
         "kilo auth login",
         "Every agent of the container can read every variable given to it",
+        "LADO_SECRETS=./secrets" if name == "compose.yaml" else '-v "$PWD/secrets:/run/secrets:ro"',
     ):
         assert needle in head, (name, needle)
+
+
+def dockerfile_run() -> list[str]:
+    """The commands of the Dockerfile header's `docker run`."""
+    header = [line[1:].strip() for line in DOCKERFILE.splitlines() if line.startswith("#")]
+    start = next(i for i, line in enumerate(header) if line.endswith("One command starts it:")) + 2
+    return commands("\n".join(header[start : header.index("", start)]))
+
+
+def test_the_minimal_start_makes_no_folder():
+    """The secrets folder is optional: neither header's first start has a mkdir."""
+    first = [without_comment(line) for line in header_steps("Then, from this folder")]
+    run = dockerfile_run()
+    assert first and run
+    assert not [step for step in [*first, *run] if step.startswith("mkdir")]
+    assert "/run/secrets" not in " ".join(run)
 
 
 def test_the_compose_header_sets_the_new_settings_in_env():
@@ -677,7 +722,6 @@ def without_comment(line: str) -> str:
 def test_the_guides_first_start_is_the_headers():
     first = [without_comment(line) for line in header_steps("Then, from this folder")]
     assert first == [
-        "mkdir -m 700 secrets",
         "docker compose up -d",
         "docker compose exec lado lado ui --no-open",
     ]
@@ -685,10 +729,47 @@ def test_the_guides_first_start_is_the_headers():
 
 
 def test_the_guides_update_and_way_back_are_the_headers():
-    assert guide_steps("Update the container") == header_steps(
-        "To update, set the new LADO_VERSION in .env"
-    )
+    assert guide_steps("Update the container") == header_steps(UPDATE)
     assert guide_steps("Go back to the version before") == way_back()
+
+
+def test_the_guide_enables_secrets_as_a_step_of_its_own():
+    variables = guide_part("The agents' variables")
+    assert "LADO_SECRETS=./secrets" in variables
+    assert "mkdir -m 700 secrets" in guide_steps("The agents' variables")
+    assert "mkdir" not in " ".join(guide_steps("Start"))
+
+
+def test_the_guides_update_says_what_stays_and_what_to_carry_over():
+    text = " ".join(guide_part("Update the container").split())
+    assert f"curl -fLO {VERSION_COMPOSE}" in guide_steps("Update the container")
+    assert "`.env`, `secrets/` and the home volume stay" in text
+    assert "carry it over" in text
+    assert "keeps the `compose.yaml` you have" in " ".join(
+        guide_part("Go back to the version before").split()
+    )
+
+
+def readme_part(heading: str, sub: str) -> str:
+    """README's `### <sub>` under `## <heading>`."""
+    text = (ROOT / "README.md").read_text()
+    part = text[text.index(f"\n## {heading}\n") :]
+    part = part[: part.index("\n## ", 3)]
+    part = part[part.index(f"\n### {sub}\n") :]
+    return part[: part.find("\n### ", 3) if "\n### " in part[3:] else len(part)]
+
+
+def test_readmes_docker_install_starts_without_mkdir():
+    steps = [line for block in blocks(readme_part("Install", "Docker")) for line in commands(block)]
+    assert "docker compose up -d" in steps
+    assert [s for s in steps if s.startswith("mkdir")] == [
+        "mkdir ~/lado-docker && cd ~/lado-docker"
+    ]
+
+
+def test_readmes_update_downloads_the_versions_compose_file_first():
+    steps = [line for block in blocks(readme_part("Update", "Docker")) for line in commands(block)]
+    assert steps == [f"curl -fLO {VERSION_COMPOSE}", "docker compose up -d"]
 
 
 def test_the_guide_downloads_the_release_asset():
@@ -735,10 +816,7 @@ def test_the_guide_says_to_check_the_shells_variables_first():
 
 
 def test_the_guides_docker_run_is_the_dockerfiles():
-    header = [line[1:].strip() for line in DOCKERFILE.splitlines() if line.startswith("#")]
-    start = next(i for i, line in enumerate(header) if line.endswith("One command starts it:")) + 2
-    run = "\n".join(header[start : header.index("", start)])
-    assert guide_steps("With docker run") == commands(run)
+    assert guide_steps("With docker run") == dockerfile_run()
 
 
 def test_readme_and_the_headers_point_to_the_guide():

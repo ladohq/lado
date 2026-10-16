@@ -39,7 +39,7 @@ test_agent_terminal::test_a_viewer_has_only_the_agents_window_and_no_tmux_keys f
 `make check` and passed together on a serial rerun.
 Partly done (2026-10-06, fix/check-lock): concurrent runs from separate sessions or
 worktrees no longer add up, since `make check`, `make test`, `make test-integration` and
-`make test-ui` take one lock per machine (`scripts/check_lock.py`, AGENTS.md). Still open:
+`make test-ui` take one lock per machine (`scripts/check_lock.py`, docs/testing.md). Still open:
 one run on a machine other agents keep busy, with `-n` not chosen by the load.
 Also (2026-10-07, merge of feature/turn-resume, load average rising to 60-70 during the run
 itself, nothing else running): two of four `make check` runs on one commit failed, each on
@@ -1338,7 +1338,7 @@ Found: 2026-10-02, review of run fix/live-test-keeps-logs.
 
 Size: L. Why here: one architecture task of delivery; before stage 8 (ACP) adds a channel.
 
-The delivery rule (How agents talk) lives in `runtime.py` (post, _deliver, hand_over, sweep,
+The delivery rule (docs/design/agents.md) lives in `runtime.py` (post, _deliver, hand_over, sweep,
 _plan), `state.py` (take_pending, sweep, seen, confirm_sent, confirm_channel) and
 `hooks.py` (at a turn's end: confirm the hook-output batch, idle, hand over, sweep). Since
 feature/delivery the channels are named (`messages.channel`: `typed`, `hook_output`), every
@@ -1626,7 +1626,7 @@ Found: 2026-10-08, review of feature/argv-prompt (Minor, not fixed on the branch
 ## Docs disagree on who takes an agent's queue
 
 Size: S. Why here: docs only; left open by the review of feature/argv-prompt.
-AGENTS.md (How agents talk: "A queue is taken only so, also an agent's first input", and the
+docs/design/agents.md ("A queue is taken only so, also an agent's first input", and the
 paragraph on the first input) and the docstring of `state.take_pending` say different things
 about whether the first input is taken through `runtime.hand_over`.
 Wanted: one wording, matching the code, in both places.
@@ -1759,10 +1759,10 @@ Found: 2026-10-11, review of feature/live-cloud-matrix.
 Size: S. Why here: the human decided live tests run only locally at release; the supervisor overrides the kit each time.
 The kit-lado-dev checker role (section 3) has `verify` run `make test-live` when a change touches
 providers, hooks, mcp_server, runtime or agent_env, and its lado-checks skill ("Live tests", "Releasing
-LADO") says the same; AGENTS.md "Testing" still says "run it locally after changing a provider".
+LADO") says the same; docs/testing.md "Test layers" still says "run it locally after changing a provider".
 Wanted: in the kit repository, no live tests in `verify`; the release order is CI green (smoke on
 Linux and macOS), the Windows probe green, `make test-live` for every provider locally (Claude with
-the human's yes), then the tag. AGENTS.md to match.
+the human's yes), then the tag. docs/testing.md to match.
 Found: 2026-10-11, verify of fix/run-end-pushed-branch (checker-3).
 
 ## LADO's messages to the lead read as orders
@@ -2205,7 +2205,7 @@ popup` times out waiting for the popup (the worker's `flow_advance` fails with
 `Error executing tool flow_advance`); with the usual HOME it passes. Not the git identity:
 with `GIT_CONFIG_GLOBAL=/dev/null` and `user.useConfigOnly=true` it passes too.
 Wanted: find what the gate's popup reads from HOME, and either isolate it in the tests or
-say so in AGENTS.md.
+say so in docs/testing.md.
 Found: 2026-10-06, fix/ci-git-identity, checking the tests without a global git identity.
 
 ## A start or resume from the UI that tmux fails is a 500 without its cause

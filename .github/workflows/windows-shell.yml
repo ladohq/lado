@@ -1,7 +1,7 @@
 # A Windows runner, with WSL2 Ubuntu by default, that runs LADO's checks there, the smoke
 # tests of every provider among them (tests/smoke/: real CLIs, no model), and uploads the
 # logs. Not in the per-push CI (a run takes 20-25 minutes): weekly on main, and by hand,
-# also before each release (AGENTS.md, Commands).
+# also before each release (docs/testing.md, Test infrastructure).
 name: Windows probe
 
 on:

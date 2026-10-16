@@ -301,7 +301,12 @@ def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
     card.get_by_role("textbox", name="Comment for the next step (optional)").fill(
         "split the form first"
     )
-    card.get_by_role("button", name="Reject").click()
+    # The feed shows the closed gate before the answer's request has queued the next step:
+    # lado.db is read only once the server answered.
+    answer = f"{server['url']}/api/sessions/{session}/gates/1/answer"
+    with page.expect_response(answer) as answered:
+        card.get_by_role("button", name="Reject").click()
+    assert answered.value.ok
     line = page.get_by_role("article", name="Gate #1", exact=True)
     expect(line).to_contain_text("Gate #1 · ship/x · check: reject by human")
     expect(line).to_contain_text("split the form first")

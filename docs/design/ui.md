@@ -501,8 +501,7 @@ Sessions for now. The UI's texts are in English.
   (BACKLOG.md), so its session shows working; an agent's planned resume after a temporary
   API error shows idle until it fires; a background task Claude Code still lists after it
   ended (killed in `/tasks`) keeps its agent `background`, and the session working, until
-  the agent's next turn's end, which any message to it brings (no timer: AGENTS.md, How
-  agents talk). The **session**
+  the agent's next turn's end, which any message to it brings (no timer: docs/design/agents.md). The **session**
   in the middle: its head is the top bar's line (task feature/session-head, 2026-10-05; in
   the top bar since feature/session-head-topbar, 2026-10-08), then the
   tabs **Activity | Agents | Flows |
@@ -994,8 +993,7 @@ Built in the chat task (2026-10-03):
   nowhere.
 - **The supervisor's recommendation** (decided 2026-10-12, LAD-27, mockup
   `task/lad-27/mockup-recommendation.html` v3; `Recommendation.tsx`): LADO asks the
-  supervisor for its view on each gate and each other agent's question (AGENTS.md, How
-  agents talk), and it is part of that card, never an entry of its own: `recommendation`
+  supervisor for its view on each gate and each other agent's question (docs/design/agents.md), and it is part of that card, never an entry of its own: `recommendation`
   of `GateInfo` and of a question's `MessageInfo` (`RecommendationInfo`: state, text,
   choice, disagrees, by, at; none when never asked), brought by the feed with the item.
   Open, a block between the question's text (the gate's note and what it reads) and the
@@ -1784,8 +1782,7 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
 - **An agent's page**: the head (name, role, provider, status and for how long, when it
   was spawned, for which run and step with the visit, from the run in the store), Open
   terminal, **Write to <agent>** (the Activity composer with `to` fixed; the supervisor
-  gets a one-line copy from LADO of what the human writes to another agent, How agents
-  talk in AGENTS.md) and **Finish…** (not for the supervisor); why it waits, or why it
+  gets a one-line copy from LADO of what the human writes to another agent, docs/design/agents.md) and **Finish…** (not for the supervisor); why it waits, or why it
   stopped ("Stopped: <reason>", its way out is Finish…); Branch,
   Work (asked when the page opens, when the agent leaves busy, to any status, the moment a
   turn's commits exist, and with Refresh; no comparison with `idle` alone, which would miss

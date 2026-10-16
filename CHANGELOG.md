@@ -28,13 +28,12 @@
   chevron); opened, it shows the question and the answer on your ground, and folds the
   note (6 lines, then Show more) and the supervisor's recommendation ("you agreed" or
   "you answered otherwise") into a line each. Your own moves in a run's group stand on
-  your ground, as your messages do. Each closed gate keeps the run's event that closed it
-  (`closed_by_event` in the UI server's gates); lado.db goes to schema 30.
+  your ground, as your messages do. lado.db goes to schema 30.
 - Renaming a session in the UI takes its name on Tab: while the title field is empty, or
   holds a start of the name, the rest of the name shows grey, and Tab (or → at the end)
   makes the name the field's text with the caret at its end, to type on and save with
-  Enter (`lad-84 (rename)`). The hint under the field says so; with any other text Tab
-  leaves the field and saves it, as before.
+  Enter. The hint under the field says so; with any other text Tab leaves the field and
+  saves it, as before.
 - LADO's container takes its sessions with it: `docker compose down` or `stop`, `docker
   stop`, or Docker's own end stops every running session as `lado stop` would (`docker
   logs`: `lado: the container stops: stopped sessions "app"; they resume at its start`),
@@ -43,7 +42,7 @@
   container's start`). Sessions stopped by hand stay stopped; a session that cannot be
   resumed stays stopped with the reason in `docker logs` and is not tried again. Each
   resumed supervisor takes one model turn at the start and starts the workers its open
-  flow runs need. Outside a container nothing changes. lado.db goes to schema 29.
+  flow runs need. Outside a container nothing changes.
 - Agents get variables from a folder of files: with `LADO_ENV_DIR` set to an absolute
   path, each file directly in it is a variable (its name the file's, its value the
   content), laid over the login shell's environment at every agent's start, so a new file
@@ -84,7 +83,9 @@
   chat message, gate comment, `lado flow-set` reason and uploaded file name are cleaned of
   them for their one-line form, and the whole text stays in the body (a `lado flow-set`
   note now keeps the whole reason too).
-- Upgrade: schema 29, restart running sessions after the update (lado update does it).
+- Upgrade: schema 30, restart running sessions after the update (lado update does it).
+- API: each closed gate in the UI server's gates keeps the run's event that closed it
+  (`closed_by_event`).
 
 ## 0.39.0 (2026-10-15)
 

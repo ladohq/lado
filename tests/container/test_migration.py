@@ -47,7 +47,7 @@ def test_a_migration_that_fails_is_one_message_in_docker_logs(start, old_home):
     assert exited == "1", logs
     assert (
         f"lado: could not upgrade lado.db from schema {before} to {state.SCHEMA_VERSION}: "
-        "OperationalError: duplicate column name: resume_at_start. lado.db is unchanged; "
+        "OperationalError: duplicate column name: closed_event. lado.db is unchanged; "
         "its backup is "
         f"{BACKUPS}/lado.db.schema-{before}. To go back, run the image of the LADO version "
         f"you ran before ({update.IMAGE}:<that version>) on the same home volume. Report it "

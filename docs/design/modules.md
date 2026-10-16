@@ -884,8 +884,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   a final; docs/release.md, The image). `Dockerfile`: Debian 12 (tmux 3.3a, git 2.39),
   Node 22 and npm from the official `node` image, uv from its own, every base pinned by
   digest; LADO from the one wheel of the build context (`Dockerfile.dockerignore`, an
-  allowlist: `dist/lado-*.whl`, `profile.sh`, `entrypoint.sh`, `ssh-agent-socket.sh` and
-  `ssh_known_hosts`; the image holds no one's key or login, only public host keys), the
+  allowlist: `dist/lado-*.whl`, `profile.sh`, `entrypoint.sh`, `ssh-agent-socket.sh`,
+  `ssh-agent-env.sh` and `ssh_known_hosts`; the image holds no one's key or login, only public host keys), the
   four agent CLIs at
   `smoke_ci.py`'s `PINS`, one `ARG <NAME>_VERSION` and one layer each (`CLAUDE_VERSION`,
   `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet),
@@ -922,7 +922,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
   comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
   `DISABLE_AUTOUPDATER`, `LANG`, `LADO_ENV_DIR=/run/secrets`; `LADO_REPOS` is the
-  entrypoint's `lado-repos.sh`; `SSH_AUTH_SOCK` the profile's alone, below). The agents'
+  entrypoint's `lado-repos.sh`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The agents'
   variables are files at `/run/secrets` (`LADO_ENV_DIR`, docs/design/agents.md), never compose's
   `environment:` or `LADO_AGENT_ENV=inherit`, so no value is in `docker inspect`; compose
   binds `${LADO_SECRETS:-./secrets}` there read-only with `create_host_path: false` (it
@@ -930,8 +930,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   writes `LADO_GIT_NAME` and `LADO_GIT_EMAIL` (compose passes both from `.env`) to git's
   global config on the home volume and warns in `docker logs` when git still has no
   identity. The host's ssh agent: compose binds `${LADO_SSH_AGENT:-/dev/null}` at
-  `/run/lado/ssh-agent.sock` (`/run/lado` root's, 755; `/dev/null`: none), and the profile
-  sets `SSH_AUTH_SOCK` there only when it is a socket. Docker Desktop's socket is root's in
+  `/run/lado/ssh-agent.sock` (`/run/lado` root's, 755; `/dev/null`: none), and
+  `ssh-agent-env.sh` (`/etc/profile.d/lado-ssh-agent.sh`, the one rule) sets
+  `SSH_AUTH_SOCK` there only when it is a socket: every login shell reads it, and the
+  entrypoint sources it before the command, once the socket is `lado`'s, so the UI server's
+  Clone from URL and branch listing use the agent too (a container test reads the
+  server's `/proc/<pid>/environ`). Docker Desktop's socket is root's in
   a container: every start that finds a socket `lado` cannot use (`ssh-add -l` exit 2) and
   root's runs `sudo -n /usr/local/bin/lado-ssh-agent-socket` (`ssh-agent-socket.sh`; the
   rule `/etc/sudoers.d/lado-ssh-agent`, no SETENV, which the first start leaves), which

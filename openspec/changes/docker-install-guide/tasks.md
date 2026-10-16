@@ -97,6 +97,13 @@ Tests first in each section; each task is one commit.
   examples say `<version>` and where to find it, never a number that goes stale (a test);
   the volume's look is exact, `--filter name='^lado_home$'` (Docker's filter matches a
   part of the name, checked).
+- [x] 4.8 The human's check by hand, finding 1 (the human: fix it in this PR): the UI
+  server had no `SSH_AUTH_SOCK`, so Clone from URL over ssh failed while an agent's ssh
+  worked. The rule moves from `profile.sh` to `docker/ssh-agent-env.sh`
+  (`/etc/profile.d/lado-ssh-agent.sh`), which the entrypoint sources once the socket is
+  `lado`'s; unit tests (one file, the order) and container tests (the server's
+  `/proc/<pid>/environ` with a socket, at the first start and after a restart, and
+  none with compose's `/dev/null`), seen red without the entrypoint's line.
 
 ## 5. Records
 

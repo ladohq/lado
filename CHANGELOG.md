@@ -10,6 +10,10 @@
   PyPI, and say how to update each. Every GitHub release now carries its `compose.yaml`.
 - LADO's image knows GitHub's ssh host keys: an agent's first `git push` over ssh from a
   new home volume no longer fails with `Host key verification failed`.
+- In LADO's container the web UI's Clone from URL works with an ssh address
+  (`git@github.com:...`): the UI server now uses the host's ssh agent (`LADO_SSH_AGENT`)
+  as the agents do. Before, the branch list failed with `github.com refused this machine's
+  ssh key` while `ssh -T git@github.com` worked.
 - In LADO's container, a session folder outside the projects folder (`LADO_REPOS`), which
   your computer does not see, gets a warning in the New session window (under Where and
   Clone into) and at `lado start`; the session still starts. Outside a container nothing

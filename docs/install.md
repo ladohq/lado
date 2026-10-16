@@ -159,7 +159,8 @@ Logins made inside the container stay on its home volume, through updates.
 
 ### git over ssh
 
-The agents push over ssh with your computer's ssh agent (`LADO_SSH_AGENT`): every agent of
+The agents push over ssh with your computer's ssh agent (`LADO_SSH_AGENT`), and the web
+UI's **Clone from URL** clones an ssh address (`git@github.com:...`) with it: every agent of
 this LADO may use the keys it holds. The key GitHub knows must be in that agent:
 
 ```bash

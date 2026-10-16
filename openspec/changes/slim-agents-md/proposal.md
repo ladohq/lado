@@ -29,7 +29,8 @@ request add its behaviour to AGENTS.md, and nothing bounds the file.
   section) and each file gets a title and a line saying what it holds.
 - References to AGENTS.md's sections elsewhere point at the new files: `docs/design/ui.md`,
   `docs/design/macos-gui-session.md`, `BACKLOG.md`, `.github/workflows/windows-shell.yml`,
-  `tests/local_models.py`, `tests/live/conftest.py`.
+  `tests/local_models.py`, `tests/live/conftest.py`, and the Purpose line of the living spec
+  `turn-end-hand-over` (not a requirement, so it needs no delta).
 - A unit test keeps AGENTS.md at most 200 lines and every relative link in it pointing at
   a file of the repository.
 - `.lado/sdlc.md`'s developer rule becomes: AGENTS.md is the project's map, and gets only

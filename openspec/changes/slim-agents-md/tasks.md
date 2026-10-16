@@ -32,7 +32,8 @@
 - [ ] 3.1 Point the references at the new files: `docs/design/ui.md` (lines naming How
   agents talk and AGENTS.md's principles), `docs/design/macos-gui-session.md`,
   `BACKLOG.md`, `.github/workflows/windows-shell.yml`'s header, `tests/local_models.py`,
-  `tests/live/conftest.py`. Check: `git grep -n -e 'AGENTS.md' -e 'How agents talk' -e
+  `tests/live/conftest.py`, and the Purpose line of
+  `openspec/specs/turn-end-hand-over/spec.md` (not a requirement, so no delta). Check: `git grep -n -e 'AGENTS.md' -e 'How agents talk' -e
   'Try it locally' -- ':!openspec/changes/archive' ':!docs/superpowers'` names only
   references that are still true.
 - [ ] 3.2 `.lado/sdlc.md`, Developer: the rule "Keep AGENTS.md (Layout, How agents talk,

@@ -24,11 +24,11 @@ Tests first in each section; each task is one commit.
 
 ## 3. The warning for a folder outside LADO_REPOS
 
-- [ ] 3.1 Unit tests, `tests/test_runtime.py`: `runtime.outside_repos` gives the warning
+- [x] 3.1 Unit tests, `tests/test_runtime.py`: `runtime.outside_repos` gives the warning
   in a container for a folder outside, None for the folder itself, one below it, a link
   whose real path is below it, outside a container, and without `LADO_REPOS`;
   `start_session` (new and resume) carries it in `Started.warnings` (D5).
-- [ ] 3.2 `runtime.OUTSIDE_REPOS`, `runtime.outside_repos`, the warning in
+- [x] 3.2 `runtime.OUTSIDE_REPOS`, `runtime.outside_repos`, the warning in
   `start_session`. `uv run pytest tests/test_runtime.py -n auto`.
 - [ ] 3.3 Unit tests, the server's (`tests/test_server_launch.py` for the folder
   check, `tests/test_server_clones.py` for the clone target): `GET /api/folders` and `GET /api/clone-target`

@@ -33,7 +33,14 @@ afterEach(() => {
 
 function edit(title: string | null = "Old") {
   const onClose = vi.fn();
-  render(<TitleEdit session={session(title)} hint="Enter to save · Esc to cancel" onClose={onClose} />);
+  render(
+    <TitleEdit
+      session={session(title)}
+      hint="Enter to save · Esc to cancel"
+      suggestionHint="Tab takes the name · Enter to save · Esc to cancel"
+      onClose={onClose}
+    />,
+  );
   return { field: screen.getByRole("textbox", { name: "Session title" }) as HTMLInputElement, onClose };
 }
 
@@ -156,4 +163,103 @@ test("while it saves the field is read-only and a second Enter sends nothing", a
   expect(calls).toHaveLength(1);
   await act(async () => answer(new Response(JSON.stringify(session("Review")))));
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+});
+
+// Tab takes the session's name into the title field (LAD-84).
+const suggest = (title: string | null = null) => edit(title);
+const rest = () => document.querySelector(".title-edit-rest");
+const type = (field: HTMLInputElement, value: string) => fireEvent.change(field, { target: { value } });
+// A key the browser would act on unless the field prevents it.
+const press = (field: HTMLInputElement, init: KeyboardEventInit) => fireEvent.keyDown(field, init) === false;
+
+test("Tab on an empty field takes the name: the caret at its end, nothing sent, the field open", async () => {
+  const { field, onClose } = suggest();
+  expect(screen.getByText("Tab takes the name · Enter to save · Esc to cancel")).toBeTruthy();
+  expect(press(field, { key: "Tab" })).toBe(true);
+  expect(field.value).toBe("lado-2");
+  expect([field.selectionStart, field.selectionEnd]).toEqual([6, 6]);
+  expect(document.activeElement).toBe(field);
+  expect(screen.getByText("Enter to save · Esc to cancel")).toBeTruthy(); // the name whole: nothing left to take
+  await act(async () => {});
+  expect(calls).toEqual([]);
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+test("Esc after Tab took the name cancels: nothing is sent, also by the blur after it", async () => {
+  const { field, onClose } = suggest();
+  fireEvent.keyDown(field, { key: "Tab" });
+  expect(field.value).toBe("lado-2");
+  fireEvent.keyDown(field, { key: "Escape" });
+  fireEvent.blur(field);
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(onClose).toHaveBeenCalledWith(undefined);
+  await act(async () => {});
+  expect(calls).toEqual([]);
+});
+
+test.each([["Tab"], ["ArrowRight"]])("a start of the name shows its rest grey, and %s takes it", (key) => {
+  const { field } = suggest();
+  type(field, "la");
+  expect(rest()?.textContent).toBe("lado-2");
+  expect(rest()?.querySelector(".title-edit-typed")?.textContent).toBe("la");
+  expect(rest()?.getAttribute("aria-hidden")).toBe("true");
+  expect(press(field, { key })).toBe(true);
+  expect(field.value).toBe("lado-2");
+  expect([field.selectionStart, field.selectionEnd]).toEqual([6, 6]);
+  expect(rest()).toBeNull();
+});
+
+test("→ with the caret inside the text only moves the caret", () => {
+  const { field } = suggest();
+  type(field, "la");
+  field.setSelectionRange(1, 1);
+  fireEvent.keyUp(field, { key: "ArrowLeft" });
+  expect(rest()).toBeNull();
+  expect(screen.getByText("Enter to save · Esc to cancel")).toBeTruthy();
+  expect(press(field, { key: "ArrowRight" })).toBe(false);
+  expect(press(field, { key: "Tab" })).toBe(false);
+  expect(field.value).toBe("la");
+});
+
+test.each([["x"], ["LA"], ["lado-2"]])("%s is no proper start of the name: no rest, Tab not taken", (typed) => {
+  const { field } = suggest();
+  type(field, typed);
+  expect(rest()).toBeNull();
+  expect(screen.getByText("Enter to save · Esc to cancel")).toBeTruthy();
+  expect(press(field, { key: "Tab" })).toBe(false);
+  expect(press(field, { key: "ArrowRight" })).toBe(false);
+  expect(field.value).toBe(typed);
+});
+
+test.each([
+  ["Shift+Tab", { key: "Tab", shiftKey: true }],
+  ["Ctrl+Tab", { key: "Tab", ctrlKey: true }],
+  ["Alt+→", { key: "ArrowRight", altKey: true }],
+  ["Shift+→", { key: "ArrowRight", shiftKey: true }],
+  ["Meta+→", { key: "ArrowRight", metaKey: true }],
+  ["a key during composition", { key: "Tab", isComposing: true }],
+])("%s is not taken", (_, init) => {
+  const { field } = suggest();
+  type(field, "la");
+  expect(press(field, init)).toBe(false);
+  expect(field.value).toBe("la");
+});
+
+test("while an input method composes, no rest shows and Tab is not taken", () => {
+  const { field } = suggest();
+  type(field, "la");
+  fireEvent.compositionStart(field);
+  expect(rest()).toBeNull();
+  expect(press(field, { key: "Tab" })).toBe(false);
+  fireEvent.compositionEnd(field);
+  expect(rest()).not.toBeNull();
+});
+
+test("a session with a title: the title selected, no suggestion, Tab not taken", () => {
+  const { field } = suggest("la");
+  expect([field.selectionStart, field.selectionEnd]).toEqual([0, 2]);
+  expect(rest()).toBeNull();
+  expect(screen.getByText("Enter to save · Esc to cancel")).toBeTruthy();
+  expect(press(field, { key: "Tab" })).toBe(false);
+  expect(field.value).toBe("la");
 });

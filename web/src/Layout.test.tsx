@@ -1004,8 +1004,9 @@ test("the pencil edits the title in place: Enter saves, the head and the row sho
   const field = within(bar()).getByRole("textbox", { name: "Session title" }) as HTMLInputElement;
   expect(field.value).toBe("");
   expect(field.placeholder).toBe("lado");
-  expect(within(bar()).getByText("Enter to save · Esc to cancel · empty shows the name")).toBeTruthy();
+  expect(within(bar()).getByText("Tab takes the name · Enter to save · Esc to cancel")).toBeTruthy();
   fireEvent.change(field, { target: { value: "Review" } });
+  expect(within(bar()).getByText("Enter to save · Esc to cancel · empty shows the name")).toBeTruthy();
   fireEvent.keyDown(field, { key: "Enter" });
   await waitFor(() => expect(barHeadings()).toEqual(["Review"]));
   expect(puts).toEqual([{ path: "/api/sessions/lado/title", body: { title: "Review" } }]);

@@ -39,7 +39,8 @@ missing. The short version of this guide is in [README.md](../README.md#install)
 
 - [Docker](#docker) (recommended)
 - PyPI: [macOS](#macos), [Linux](#linux), [Windows](#windows), [Agent CLIs](#agent-clis),
-  [Your first session](#your-first-session), [Update](#update), [Uninstall](#uninstall)
+  [Your first session](#your-first-session), [Uninstall](#uninstall)
+- [Update](#update): Docker and PyPI
 - [Common problems](#common-problems)
 
 ## Docker
@@ -178,15 +179,35 @@ CLI and press **Start session**.
 
 ### Update the container
 
-Set the new `LADO_VERSION` in `.env`, then (compose pulls that version's image):
+A new version of LADO in Docker is a new image: `lado update` and the web UI's **Update…**
+do not update a container, and say so. LADO still tells you when one is out:
+`docker compose exec lado lado ls` prints `LADO X.Y.Z is available: a new image updates
+LADO in a container (ghcr.io/ladohq/lado:X.Y.Z)`, and the web UI shows `↑ X.Y.Z` next to
+`live`. The versions are on the [releases page](https://github.com/ladohq/lado/releases).
+
+In the folder of your `compose.yaml`, set the new `LADO_VERSION` in `.env` (the number
+without `v`, e.g. `0.41.0`), then (compose pulls that version's image):
 
 ```bash
 docker compose up -d
 ```
 
-A new version upgrades LADO's database at its start, after a backup
-(`~/.lado/backups/lado.db.schema-<N>` on the home volume; `docker compose logs lado` names
-it). The running sessions stop with the old container and resume in the new one.
+What happens:
+
+- Compose pulls `ghcr.io/ladohq/lado:<new version>`, stops the old container and starts a
+  new one on the same home volume.
+- The running sessions stop with the old container, as `lado stop` would, and resume in
+  the new one. Each agent starts a new conversation, a busy one loses its current turn,
+  and each resumed supervisor takes one model turn: update while your agents are idle.
+- The new LADO upgrades its database at its start, after a backup
+  (`~/.lado/backups/lado.db.schema-<N>` on the home volume; `docker compose logs lado`
+  names it).
+- Logins made inside, kits, sessions and their history, git's identity and the files of
+  `secrets/` stay; your projects folder is not touched.
+- The old image keeps its tag, so going back is the version before in `.env` (below).
+
+`docker compose exec lado lado --version` shows the version that runs. The commands of
+another `.env` (a second LADO) run in its own folder and leave this one as it is.
 
 ### Go back to the version before
 
@@ -470,8 +491,17 @@ A new folder needs `git init` and a first commit before `lado start`.
 
 ## Update
 
-`lado update` installs the latest LADO, `lado update X.Y.Z` another version. The web UI
-does the same: click `live` in the top bar, then **Update…** and **Restart and update**.
+How you update depends on how you installed LADO:
+
+- **Docker**: a new `LADO_VERSION` in `.env`, then `docker compose up -d`, in the folder
+  of your `compose.yaml`: [Update the container](#update-the-container), and back to the
+  version before: [Go back to the version before](#go-back-to-the-version-before).
+  `lado update` does not update a container.
+- **PyPI**: `lado update`, in the terminal or the web UI, as follows.
+
+From PyPI, `lado update` installs the latest LADO, `lado update X.Y.Z` another version.
+The web UI does the same: click `live` in the top bar, then **Update…** and **Restart and
+update**.
 
 ### What it does
 

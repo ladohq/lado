@@ -739,3 +739,17 @@ def test_docker_is_the_first_and_recommended_way_to_install():
     opening = text[: text.index("\n## ")]
     assert "**Docker**, the recommended one, and **PyPI**" in opening
     assert text.index("\n## Docker\n") < text.index("\n## macOS\n")
+
+
+def test_update_says_both_ways_docker_first():
+    """The human's comment (2026-10-16): how to update is clear for Docker and for PyPI."""
+    readme = (ROOT / "README.md").read_text()
+    update_part = readme[readme.index("\n## Update\n") :]
+    update_part = update_part[: update_part.index("\n## ", 3)]
+    assert update_part.index("### Docker") < update_part.index("### PyPI")
+    assert "docker compose up -d" in update_part and "lado update" in update_part
+    text = INSTALL.read_text()
+    update_part = text[text.index("\n## Update\n") :]
+    update_part = update_part[: update_part.index("\n## ", 3)]
+    assert "[Update the container](#update-the-container)" in update_part
+    assert "- **PyPI**: `lado update`" in update_part

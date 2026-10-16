@@ -135,12 +135,27 @@ shows the sessions and their agents, `lado attach <session>` their tmux windows,
 
 ## Update
 
-LADO tells you when a newer version is out: `lado ls` and `lado doctor` print
-`LADO X.Y.Z is available: lado update`, and the web UI shows `↑ X.Y.Z` next to `live`
-in its top bar.
+How you update depends on how you installed LADO. Either way LADO tells you when a newer
+version is out: `lado ls` and `lado doctor` print `LADO X.Y.Z is available`, and the web UI
+shows `↑ X.Y.Z` next to `live` in its top bar.
 
-In Docker, set the new `LADO_VERSION` in `.env` and run `docker compose up -d`
-([docs/install.md#update-the-container](docs/install.md#update-the-container)). From PyPI:
+### Docker
+
+A new version is a new image. In the folder of your `compose.yaml`, set the new version in
+`.env` (e.g. `LADO_VERSION=0.41.0`), then:
+
+```bash
+docker compose up -d     # pulls that version's image and replaces the container
+```
+
+Your sessions stop with the old container and resume in the new one (each agent starts a
+new conversation and a busy one loses its current turn, so update while your agents are
+idle); LADO upgrades its database after a backup; logins, kits and history stay on the
+home volume, and your projects are not touched. `lado update` and the web UI's **Update…** do not update a
+container: they say a new image does. Back to the version before:
+[docs/install.md](docs/install.md#go-back-to-the-version-before).
+
+### PyPI
 
 **In the terminal**
 
@@ -169,8 +184,10 @@ itself: `lado update` and the web UI show the commands to run by hand.
 More (going back to an older version, an update that stops half way, the log):
 [docs/install.md](docs/install.md#update).
 
-To remove LADO, `lado uninstall` stops everything, cleans up after it and removes the
-program: [docs/install.md](docs/install.md#uninstall).
+To remove LADO: in Docker, `docker compose down` and its home volume by name
+([docs/install.md](docs/install.md#remove-it)); from PyPI, `lado uninstall` stops
+everything, cleans up after it and removes the program
+([docs/install.md](docs/install.md#uninstall)).
 
 ## Kits
 

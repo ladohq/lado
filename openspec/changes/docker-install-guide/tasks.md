@@ -84,6 +84,13 @@ Tests first in each section; each task is one commit.
   the container tests require a `lado doctor` with no `[FAIL]`), but the first look in If
   something goes wrong in Docker: what it says there (the projects folder, the secrets'
   names, the agent CLIs) and `docker compose logs lado`.
+- [x] 4.6 The human's comment at merge_ok (2026-10-16): the update must be clear for Docker
+  and for PyPI. README's Update has `### Docker` (a new `LADO_VERSION`, `docker compose
+  up -d`, what happens to the sessions, the database and the home volume, `lado update`
+  refused in a container, the way back) before `### PyPI`; docs/install.md's `## Update`
+  opens with both ways, and Update the container says how LADO tells of a new version in a
+  container and what an update does. README's removal names both ways too. A unit test
+  keeps both ways in both files.
 
 ## 5. Records
 

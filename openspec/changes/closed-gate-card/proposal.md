@@ -99,3 +99,6 @@ and the human's move on the human's ground.
   server's API (`GET /api/sessions/{name}/gates`, the live feed's gate items, the
   waiting items); one column of `gates` with its migration; no CLI, MCP or provider
   change.
+- The living spec `lead-recommendation` said a closed card shows the recommendation as
+  "Supervisor recommended: <option>"; its requirement is modified so that stays true of a
+  closed question's card, and a closed gate's card shows its folded line "Supervisor".

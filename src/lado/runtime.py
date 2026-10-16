@@ -559,7 +559,9 @@ def outside_repos(path: str) -> str | None:
     folder = clone.repos_folder()
     if not update.in_container() or folder is None:
         return None
-    if Path(path).expanduser().resolve().is_relative_to(folder.resolve()):
+    # realpath, not Path.resolve: a loop of links raises there, and is no folder anyway.
+    real = Path(os.path.realpath(os.path.expanduser(path)))
+    if real.is_relative_to(os.path.realpath(folder)):
         return None
     return OUTSIDE_REPOS.format(folder=folder)
 

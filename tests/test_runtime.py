@@ -1712,6 +1712,20 @@ def test_the_repositories_folder_and_what_is_in_it_get_no_warning(projects, tmp_
     assert runtime.outside_repos(str(projects / "away")) is not None
 
 
+def test_a_link_loop_is_judged_without_an_error(projects, tmp_path, monkeypatch):
+    """A loop of links (a -> b -> a) is no folder: the folder check says so, and the
+    warning's rule must not raise on it (a 500 of the UI's checks)."""
+    (tmp_path / "a").symlink_to(tmp_path / "b")
+    (tmp_path / "b").symlink_to(tmp_path / "a")
+    assert runtime.outside_repos(str(tmp_path / "a")) is not None
+    assert runtime.outside_repos(str(tmp_path / "a" / "sub")) is not None
+    (projects / "c").symlink_to(projects / "d")
+    (projects / "d").symlink_to(projects / "c")
+    assert runtime.outside_repos(str(projects / "c")) is None
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "a"))
+    assert runtime.outside_repos(str(tmp_path / "a")) is None
+
+
 def test_a_repositories_folder_given_through_a_link_holds_its_folders(tmp_path, monkeypatch):
     real = tmp_path / "real"
     (real / "app").mkdir(parents=True)

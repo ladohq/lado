@@ -378,6 +378,58 @@ def test_schema_28_gives_sessions_a_title(lado_home):
     assert state.set_title("s", "Review")
 
 
+def test_schema_30_gives_each_gate_closed_before_the_event_of_its_closing(lado_home):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    with state.connect() as db:
+        fresh = db.execute(GATES_TABLE).fetchone()[0]
+        for run, answer in [("a", "reject"), ("a", "overridden"), ("b", "cancelled")]:
+            db.execute(
+                "INSERT INTO gates (session, run, state, kind, question, options, answer)"
+                " VALUES ('s', ?, 'ok', 'approval', 'Ship?', '[]', ?)",
+                (run, answer),
+            )
+        db.execute(  # gate 4: open
+            "INSERT INTO gates (session, run, state, kind, question, options)"
+            " VALUES ('s', 'b', 'ok', 'approval', 'Ship?', '[]')"
+        )
+        db.execute(  # gate 5: closed, its events gone
+            "INSERT INTO gates (session, run, state, kind, question, options, answer)"
+            " VALUES ('s', 'c', 'ok', 'approval', 'Ship?', '[]', 'approve')"
+        )
+
+    def event(run, kind, detail):
+        with state.connect() as db:
+            return db.execute(
+                "INSERT INTO events (session, agent, kind, detail, run)"
+                " VALUES ('s', 'human', ?, ?, ?)",
+                (kind, detail, run),
+            ).lastrowid
+
+    event("a", state.GATE_OPEN, "#1 approval at ok: Ship?")
+    event("a", state.GATE_ANSWER, "#1 reject: too big")
+    event("b", state.FLOW, "build -done-> ok")  # another run's, written in between
+    rejected = event("a", state.FLOW, "ok -rejected-> build")
+    event("a", state.GATE_ANSWER, "#2 overridden: hold")
+    forced = event("a", state.FLOW_SET, "ok -> build: hold")
+    event("b", state.GATE_ANSWER, "#3 cancelled: dropped")
+    cancelled = event("b", state.FLOW_CANCEL, "dropped")
+    event("b", state.GATE_OPEN, "#4 approval at ok: Ship?")
+    agent_helpers.schema_before(30)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert "closed_event" not in _columns(db, "gates")
+    db.close()
+    assert state.migrate().after == state.SCHEMA_VERSION
+    with state.connect() as db:
+        assert db.execute(GATES_TABLE).fetchone()[0] == fresh
+    assert [g.closed_event for g in state.session_gates("s")] == [
+        rejected,
+        forced,
+        cancelled,
+        None,
+        None,
+    ]
+
+
 def _kinds(name: str) -> list[str]:
     return [e.kind for e in state.list_events(name)]
 

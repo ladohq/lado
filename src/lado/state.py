@@ -19,7 +19,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 29
+SCHEMA_VERSION = 30
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -883,6 +883,28 @@ SESSIONS_RESUME_AT_START = (
 SCHEMA += SESSIONS_RESUME_AT_START + ";\n"
 MIGRATIONS[28] = [SESSIONS_RESUME_AT_START]
 
+# From version 30: the run's event that a gate's closing wrote (a flow move, a flow_set or
+# a flow_cancel), stored by update_run in the transaction that closes the gate. NULL while
+# the gate is open, and for an older gate whose event was not found (gates_closed_events).
+GATES_CLOSED_EVENT = "ALTER TABLE gates ADD COLUMN closed_event INTEGER REFERENCES events(id)"
+
+
+def gates_closed_events(db: sqlite3.Connection) -> None:
+    """Version 30: each gate closed before gets the event of its closing, by the order its
+    transaction kept (update_run): the run's first event after the gate's gate_answer."""
+    db.execute(
+        "UPDATE gates SET closed_event = (SELECT min(e.id) FROM events AS e"
+        " WHERE e.session = gates.session AND e.run = gates.run AND e.id > ("
+        "  SELECT min(a.id) FROM events AS a WHERE a.session = gates.session"
+        f"  AND a.run = gates.run AND a.kind = '{GATE_ANSWER}'"
+        "  AND a.detail LIKE '#' || gates.id || ' %'))"
+        " WHERE answer IS NOT NULL"
+    )
+
+
+SCHEMA += GATES_CLOSED_EVENT + ";\n"
+MIGRATIONS[29] = [GATES_CLOSED_EVENT, gates_closed_events]
+
 # Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
 # approval or choice gate. An override is the human's past the flow (flow-set's reason, an
 # answer at a loop limit): kept, but never taken for the state's report.
@@ -1041,6 +1063,7 @@ class Gate:
     answered_at: str | None = None
     note_id: int | None = None  # the note that led here (GATES_NOTE); None for none kept
     attachments: int = 0  # how many artifacts that note carries
+    closed_event: int | None = None  # the event its closing wrote (GATES_CLOSED_EVENT)
     # The lead's recommendation on it (RECOMMENDATION).
     recommendation_state: str | None = None
     recommendation: str = ""
@@ -1879,18 +1902,20 @@ def _add_event(
     detail: str,
     run: str | None = None,
     at: str | None = None,
-) -> None:
+) -> int:
+    """Insert an event; returns its id."""
     if at is None:
-        db.execute(
+        cur = db.execute(
             "INSERT INTO events (session, agent, kind, detail, run) VALUES (?, ?, ?, ?, ?)",
             (session, agent, kind, detail, run),
         )
     else:  # the time of a row written with it (_open_gate)
-        db.execute(
+        cur = db.execute(
             "INSERT INTO events (session, agent, kind, detail, run, created_at)"
             " VALUES (?, ?, ?, ?, ?, ?)",
             (session, agent, kind, detail, run, at),
         )
+    return cur.lastrowid or 0
 
 
 def end_reasons(session: str) -> dict[str, str]:
@@ -2044,7 +2069,8 @@ def update_run(
     the run still has the state, status and visits of `before`: entering a state counts a
     visit, so even a self-loop changes what the next writer compares. Returns whether it
     was written. In the same transaction `closes` closes the run's open gate (nothing is
-    written if it names a gate that is not open), `after`'s note is kept as `noted` says,
+    written if it names a gate that is not open) and keeps the first of `events` as the
+    event of its closing (GATES_CLOSED_EVENT), `after`'s note is kept as `noted` says,
     if given, with the artifacts attached, and the gate `opens` is stored after it (its id
     set), keeping that note's id."""
     with connect() as db:
@@ -2067,12 +2093,20 @@ def update_run(
                 json.dumps(before.visits),
             ),
         )
-        if cur.rowcount and closes and not _close_gate(db, before.session, before.name, *closes):
-            db.execute("ROLLBACK")
-            return False
+        closed = None
+        if cur.rowcount and closes:
+            closed = _close_gate(db, before.session, before.name, *closes)
+            if closed is False:
+                db.execute("ROLLBACK")
+                return False
         if cur.rowcount:
-            for actor, kind, detail in events:
+            ids = [
                 _add_event(db, before.session, actor, kind, detail, before.name)
+                for actor, kind, detail in events
+            ]
+            # The closing's own event comes first (GATES_CLOSED_EVENT).
+            if closed and ids:
+                db.execute("UPDATE gates SET closed_event = ? WHERE id = ?", (ids[0], closed))
             # The note before the gate, so the gate keeps its id (GATES_NOTE).
             if noted is not None:
                 note = db.execute(
@@ -2150,13 +2184,14 @@ def _close_gate(
     answer: str,
     comment: str,
     gate_id: int | None,
-) -> bool:
-    """Close the run's open gate. Returns False if `gate_id` is given and is not it."""
+) -> int | None:
+    """Close the run's open gate and return its id; None when there is none to close, or
+    False if `gate_id` is given and is not it."""
     row = db.execute(
         "SELECT id FROM gates WHERE session = ? AND run = ? AND answer IS NULL", (session, run)
     ).fetchone()
     if row is None or (gate_id is not None and row["id"] != gate_id):
-        return gate_id is None
+        return None if gate_id is None else False
     _drop_requests(db, "gates", "id = ?", (row["id"],))
     db.execute(
         "UPDATE gates SET answer = ?, comment = ?, answered_by = ?,"
@@ -2165,7 +2200,7 @@ def _close_gate(
     )
     detail = f"#{row['id']} {answer}" + (f": {comment}" if comment else "")
     _add_event(db, session, actor, GATE_ANSWER, detail, run)
-    return True
+    return row["id"]
 
 
 def get_gate(gate_id: int) -> Gate | None:
@@ -3063,6 +3098,7 @@ def _gate(row: sqlite3.Row) -> Gate:
         answered_at=row["answered_at"],
         note_id=row["note_id"],
         attachments=row["attachments"],
+        closed_event=row["closed_event"],
         **_recommendation(row),
     )
 

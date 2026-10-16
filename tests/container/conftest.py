@@ -11,9 +11,11 @@ a container is registered on the test before anything can fail and removed by a 
 which runs after the failure's report.
 """
 
+import json
 import os
 import re
 import shutil
+import subprocess
 import time
 
 import agent_helpers
@@ -155,14 +157,12 @@ class Compose:
 
 
 @pytest.fixture
-def compose(request, tmp_path, tmp_path_factory) -> Compose:
-    """A compose project on a free LADO_PORT, its projects folder a temporary one and its
-    secrets folder (LADO_SECRETS) an empty one of its own; taken down after the test, its
+def compose(request, tmp_path) -> Compose:
+    """A compose project on a free LADO_PORT, its projects folder a temporary one, with no
+    LADO_SECRETS (compose's default, no secrets); taken down after the test, its
     container's logs kept when the test fails."""
     override = tmp_path / "quiet.yaml"
     override.write_text(QUIET_OVERRIDE)
-    secrets = tmp_path_factory.mktemp("secrets")
-    secrets.chmod(0o700)
     port = free_port()
     env = {
         **os.environ,
@@ -171,8 +171,8 @@ def compose(request, tmp_path, tmp_path_factory) -> Compose:
         "LADO_VERSION": "test",
         "LADO_PORT": str(port),
         "LADO_PROJECTS": str(tmp_path),
-        "LADO_SECRETS": str(secrets),
     }
+    env.pop("LADO_SECRETS", None)
     project = Compose(new_name(), port, override, env)
     # Compose names the service's one container <project>-lado-1.
     keep(request.node, Container(f"{project.project}-lado-1", port))
@@ -184,6 +184,81 @@ def compose(request, tmp_path, tmp_path_factory) -> Compose:
 
     request.addfinalizer(down)
     return project
+
+
+# What the human's shell would not set: the folder's .env decides each of them.
+FROM_ENV = (
+    "COMPOSE_PROJECT_NAME",
+    "COMPOSE_FILE",
+    "LADO_IMAGE",
+    "LADO_VERSION",
+    "LADO_PORT",
+    "LADO_SECRETS",
+)
+
+
+class Folder:
+    """A compose project as a human keeps one: a folder with compose.yaml, the tests' quiet
+    settings as compose.override.yaml (compose reads it beside the file) and an .env; each
+    command runs there with no -f and no -p."""
+
+    def __init__(self, path, settings: dict):
+        self.path, self.settings = path, settings
+        self.project, self.port = settings["COMPOSE_PROJECT_NAME"], int(settings["LADO_PORT"])
+        path.mkdir()
+        shutil.copy(ROOT / "docker" / "compose.yaml", path / "compose.yaml")
+        (path / "compose.override.yaml").write_text(QUIET_OVERRIDE)
+        self.write_env()
+
+    def write_env(self) -> None:
+        text = "".join(f"{k}={v}\n" for k, v in self.settings.items())
+        (self.path / ".env").write_text(text)
+
+    def run(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+        env = {k: v for k, v in os.environ.items() if k not in FROM_ENV}
+        return docker("compose", *args, check=check, cwd=self.path, env=env, timeout=180)
+
+    def inspect(self) -> dict:
+        found = docker("inspect", f"{self.project}-lado-1").stdout
+        return json.loads(found)[0]
+
+
+@pytest.fixture
+def folder(request, tmp_path):
+    """`folder(name, **settings)`: a compose project in `tmp_path/name` on a free port, the
+    image under test by a tag of this run's prefix, `settings` added to its .env; taken
+    down after the test with its home volume and its tags, its container's logs kept when
+    the test fails."""
+
+    def make(name: str, **settings: str) -> Folder:
+        project = new_name()
+        tag = f"{project}:one"
+        docker("tag", IMAGE, tag)
+        projects = tmp_path / f"{name}-projects"
+        projects.mkdir()
+        made = Folder(
+            tmp_path / name,
+            {
+                "COMPOSE_PROJECT_NAME": project,
+                "LADO_PORT": str(free_port()),
+                "LADO_IMAGE": tag,
+                "LADO_VERSION": "test",  # asked for by Compose v2 also beside LADO_IMAGE
+                "LADO_PROJECTS": str(projects),
+                **settings,
+            },
+        )
+        keep(request.node, Container(f"{project}-lado-1", made.port))
+
+        def down():
+            made.run("down", "-v", check=False)
+            docker("volume", "rm", "-f", f"{project}_home", check=False)
+            for own in (tag, f"{project}:two"):
+                docker("image", "rm", own, check=False)  # the tag only: IMAGE keeps it
+
+        request.addfinalizer(down)
+        return made
+
+    return make
 
 
 # What a failed test keeps of each container it started, besides `docker logs`.

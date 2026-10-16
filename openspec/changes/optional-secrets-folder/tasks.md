@@ -44,13 +44,13 @@ Tests first in each section; each task is one commit.
 
 ## 5. Container tests
 
-- [ ] 5.1 `tests/container/conftest.py`: the `compose` fixture's `LADO_SECRETS` becomes
+- [x] 5.1 `tests/container/conftest.py`: the `compose` fixture's `LADO_SECRETS` becomes
   optional (a test without it gets compose's default).
-- [ ] 5.2 Layer 7: a project with no `LADO_SECRETS` and no `secrets/` starts; `lado
+- [x] 5.2 Layer 7: a project with no `LADO_SECRETS` and no `secrets/` starts; `lado
   doctor` exits 0 with `[info] Variables from outside: /run/secrets: none`; `docker compose
   logs lado` has no line about `/run/secrets` or `LADO_ENV_DIR`; a session with the fake
   endpoint reaches idle.
-- [ ] 5.3 Layer 7: a project in a folder of its own, a copy of `compose.yaml`, `.env` with
+- [x] 5.3 Layer 7: a project in a folder of its own, a copy of `compose.yaml`, `.env` with
   `LADO_SECRETS=./secrets`, `secrets/` (700) with a fake `GH_TOKEN`: an agent's shell has
   it; doctor `[ok  ] … GH_TOKEN`. `uv run pytest -m container -n0 tests/container/<file>`
   after `make docker`; else CI.

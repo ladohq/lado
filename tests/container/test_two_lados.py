@@ -4,104 +4,30 @@ each a compose project in a folder of its own, with a copy of docker/compose.yam
 .env and `docker compose up -d`, leaves the other's container, start and image as they
 were."""
 
-import json
-import os
-import shutil
-import subprocess
-
 import pytest
-from conftest import QUIET_OVERRIDE, keep
 from container_helpers import (
     IMAGE,
-    ROOT,
     Container,
     agent_pid,
     claude_session,
     docker,
-    free_port,
     git_repo,
     health,
-    new_name,
 )
 
 pytestmark = pytest.mark.container
 
-# What the human's shell would not set: the folder's .env decides each of them.
-FROM_ENV = (
-    "COMPOSE_PROJECT_NAME",
-    "COMPOSE_FILE",
-    "LADO_IMAGE",
-    "LADO_VERSION",
-    "LADO_PORT",
-    "LADO_SECRETS",
-)
 
-
-class Folder:
-    """A compose project as a human keeps one: a folder with compose.yaml, the tests' quiet
-    settings as compose.override.yaml (compose reads it beside the file) and an .env; each
-    command runs there with no -f and no -p."""
-
-    def __init__(self, path, settings: dict):
-        self.path, self.settings = path, settings
-        self.project, self.port = settings["COMPOSE_PROJECT_NAME"], int(settings["LADO_PORT"])
-        path.mkdir()
-        shutil.copy(ROOT / "docker" / "compose.yaml", path / "compose.yaml")
-        (path / "compose.override.yaml").write_text(QUIET_OVERRIDE)
-        (path / "secrets").mkdir(mode=0o700)  # as the header says: compose never makes it
-        self.write_env()
-
-    def write_env(self) -> None:
-        text = "".join(f"{k}={v}\n" for k, v in self.settings.items())
-        (self.path / ".env").write_text(text)
-
-    def run(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-        env = {k: v for k, v in os.environ.items() if k not in FROM_ENV}
-        return docker("compose", *args, check=check, cwd=self.path, env=env, timeout=180)
-
-    def inspect(self) -> dict:
-        found = docker("inspect", f"{self.project}-lado-1").stdout
-        return json.loads(found)[0]
-
-
-@pytest.fixture
-def folder(request, tmp_path):
-    """`folder(name)`: a compose project in `tmp_path/name` on a free port, the image under
-    test by a tag of this run's prefix; taken down after the test with its home volume and
-    its tags, its container's logs kept when the test fails."""
-
-    def make(name: str) -> Folder:
-        project = new_name()
-        tag = f"{project}:one"
-        docker("tag", IMAGE, tag)
-        projects = tmp_path / f"{name}-projects"
-        projects.mkdir()
-        made = Folder(
-            tmp_path / name,
-            {
-                "COMPOSE_PROJECT_NAME": project,
-                "LADO_PORT": str(free_port()),
-                "LADO_IMAGE": tag,
-                "LADO_VERSION": "test",  # asked for by Compose v2 also beside LADO_IMAGE
-                "LADO_PROJECTS": str(projects),
-            },
-        )
-        keep(request.node, Container(f"{project}-lado-1", made.port))
-
-        def down():
-            made.run("down", "-v", check=False)
-            docker("volume", "rm", "-f", f"{project}_home", check=False)
-            for own in (tag, f"{project}:two"):
-                docker("image", "rm", own, check=False)  # the tag only: IMAGE keeps it
-
-        request.addfinalizer(down)
-        return made
-
-    return make
+def own_secrets(folder, name: str):
+    """A project with a secrets folder of its own (LADO_SECRETS=./secrets, 700), as the
+    header enables one: two LADOs never share it."""
+    made = folder(name, LADO_SECRETS="./secrets")
+    (made.path / "secrets").mkdir(mode=0o700)
+    return made
 
 
 def test_updating_one_lado_leaves_the_other_as_it_is(folder):
-    first, second = folder("first"), folder("second")
+    first, second = own_secrets(folder, "first"), own_secrets(folder, "second")
     for each in (first, second):
         each.run("up", "-d")
     for each in (first, second):

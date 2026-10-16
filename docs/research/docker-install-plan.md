@@ -258,7 +258,8 @@ What was open until then:
 Learned: the check by hand tripped again over `LADO_PORT` and `LADO_PROJECTS` left in the
 shell from an earlier test, which beat `.env` (as in LAD-69): T8 and T14.
 
-**T8. Section "Install with Docker" in docs/install.md and a ready compose file** (S)
+**T8. Section "Install with Docker" in docs/install.md and a ready compose file** (S/M;
+LAD-83)
 Decided here, with T7: which way the documentation leads with, `docker run` or compose
 (the image needs no file since LAD-64), and so which update line LADO prints in a
 container (now `docker compose pull && docker compose up -d`, from T1).
@@ -278,6 +279,11 @@ doctor`'s check of it; `LADO_GIT_NAME`, `LADO_GIT_EMAIL` and `LADO_SSH_AGENT` in
 the headers stay the reference); that a name or email removed from `.env` stays on the
 volume; that all agents of one LADO share its secrets, and sessions that need other
 values run in another LADO until profiles (LAD-80).
+From LAD-76's check by hand: a fresh home volume has no host key of github.com, so an
+agent's first ssh to GitHub fails with "Host key verification failed": the image gets it
+(known keys in `/etc/ssh/ssh_known_hosts`, or `accept-new` for github.com), with a
+container test; the page says the host's agent must hold a key GitHub knows (`ssh-add
+-l`).
 Check: the human follows the instructions from scratch on a clean volume.
 
 **T9. Project toolchains through mise** (S)
@@ -328,15 +334,18 @@ compose.yaml and the Dockerfile say how Claude Code, OpenCode and Kilo log in. R
 E1-E3 declined (minor; E3: a name removed from `.env` stays on the volume, by design).
 The design went far past Docker (variable levels, a UI, then profiles); the human brought
 it back to the step, and profiles became a task of their own outside this plan, LAD-80
-(Stage 4). Left: the check by hand on a Mac, steps 4, 9 and 11 of the pull request (the
-real Docker Desktop ssh socket through compose, its `chown` with a second LADO: U1, not
-testable in CI), and the live tests go with 0.40.0's release candidate; the flaky
+(Stage 4). The check by hand on a Mac, steps 4, 9 and 11 of the pull request (the real
+Docker Desktop ssh socket through compose, its `chown` with a second LADO: U1, not
+testable in CI), passed on 2026-10-16, also after a restart and with a second LADO on the
+same socket. Left: the other steps by hand and the live tests go with 0.40.0's release
+candidate; the flaky
 `test_agent_env.py::test_a_slow_shell_times_out` is LAD-81.
 
 **T11. A check on Windows and on a real Linux** (S, manual)
 Docker Desktop with WSL2, the whole scenario of T8, a speed measurement (section 5). On a
 real Linux host: Docker Engine, rootless Docker, and Podman where possible, with SELinux
-or AppArmor on (LAD-69's "Not checked").
+or AppArmor on (LAD-69's "Not checked"); two LADOs of different uids on one host's ssh
+agent socket (T10).
 Check: a report with figures and screenshots; what is found goes into tasks of its own.
 
 > After stage 2 the Docker install works for someone not afraid of a terminal. A good
@@ -384,7 +393,10 @@ Check: on a Mac a double click opens the UI.
 - **A one-command install script without Docker** (M).
 - **A container per session**: an item of ROADMAP, with its own research.
 - **A container manager**: several LADO containers on one host (the human's plan). Each
-  has its own `LADO_PORT` and volume from T3. If the manager puts one address in front of
+  has its own `LADO_PORT` and volume from T3, and its own `secrets/` from T10. Docker
+  Desktop's ssh agent socket is one for all containers: each start gives it to its own
+  `lado` uid, so a container of another uid takes it from the others until their next
+  start (seen in LAD-76's check by hand, not tried with two uids). If the manager puts one address in front of
   them (a proxy), LADO's link needs that outer address: decided with the manager.
 
 ### Dependencies

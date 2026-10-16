@@ -41,6 +41,46 @@ In Russian, *лад* (lad) means harmony or being in tune, the way a well-run te
 
 ## Install
 
+Two ways, Docker first:
+
+- **Docker** (recommended): LADO, tmux, git and the four agent CLIs at the versions LADO is
+  tested with, in one container. The agents see only your projects folder and the keys you
+  give them, not the rest of your computer; you install nothing but Docker, and an update
+  is one line. You work in the web UI. macOS and Linux; Codex's login is not carried yet.
+- **PyPI** (`uv tool install lado`): LADO on your computer, with the agent CLIs and logins
+  you already have; the agents run as you and reach what you can. You work in the terminal
+  (tmux) and the web UI. macOS, Linux, and Windows inside WSL2.
+
+What each one needs and how they differ: [docs/install.md](docs/install.md).
+
+### Docker
+
+```bash
+mkdir ~/lado-docker && cd ~/lado-docker
+curl -fLO https://github.com/ladohq/lado/releases/latest/download/compose.yaml
+```
+
+Next to it, a file `.env`:
+
+```ini
+LADO_VERSION=0.40.0                 # the latest release
+LADO_PROJECTS=/Users/you/projects   # your projects folder, the only one the agents see
+LADO_GIT_NAME="Your Name"           # git's identity for the agents' commits
+LADO_GIT_EMAIL=you@example.com
+```
+
+Then start it and open the link it prints:
+
+```bash
+mkdir -m 700 secrets
+docker compose up -d
+docker compose exec lado lado ui --no-open   # the UI's link with its token
+```
+
+Logins, ssh, update and the rest: [docs/install.md#docker](docs/install.md#docker).
+
+### PyPI
+
 LADO needs tmux, git, [uv](https://docs.astral.sh/uv/) and one agent CLI: Claude Code,
 Codex, Kilo or OpenCode.
 
@@ -76,11 +116,10 @@ lado doctor             # says what is missing, with the command to install it
 Step by step for each system, agent CLIs included, and what to do when something fails:
 [docs/install.md](docs/install.md). Without uv, `pip install lado` works too.
 
-**Docker**: LADO's image has tmux, git and the four agent CLIs; you need only Docker. Get
-`compose.yaml` from the latest release, write `.env`, then `docker compose up -d`:
-[docs/install.md#docker](docs/install.md#docker).
-
 ## Quick start
+
+In Docker, open the UI's link and press **Launch**; the commands below run there as
+`docker compose exec lado lado ...`. From PyPI:
 
 ```bash
 lado start <repo>       # a supervisor for a git repository (with at least one commit), in tmux
@@ -99,6 +138,9 @@ shows the sessions and their agents, `lado attach <session>` their tmux windows,
 LADO tells you when a newer version is out: `lado ls` and `lado doctor` print
 `LADO X.Y.Z is available: lado update`, and the web UI shows `↑ X.Y.Z` next to `live`
 in its top bar.
+
+In Docker, set the new `LADO_VERSION` in `.env` and run `docker compose up -d`
+([docs/install.md#update-the-container](docs/install.md#update-the-container)). From PyPI:
 
 **In the terminal**
 

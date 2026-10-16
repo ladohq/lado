@@ -72,6 +72,13 @@ Tests first in each section; each task is one commit.
   `uv run pytest tests/test_docker.py -n auto`.
 - [x] 4.3 Check F13's fix (D9) against `docker/entrypoint.sh`. When a new container does
   not retry the owner change, write what does.
+- [x] 4.4 The human's comment at merge_ok (2026-10-16): Docker is the preferred way to
+  install. README's Install and docs/install.md's opening present two ways, Docker
+  (recommended) first and PyPI, with what each is for, what it needs and how they differ
+  (a table in docs/install.md), PyPI's differences by system; docs/install.md's Docker
+  section goes first, its update and pitfalls headings named so that the PyPI anchors stay
+  (`Update the container`, `If something goes wrong in Docker`); README's Quick start and
+  Update say the Docker way in one line each. A unit test keeps the order.
 
 ## 5. Records
 

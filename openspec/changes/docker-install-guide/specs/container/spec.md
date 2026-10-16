@@ -44,6 +44,15 @@ container and volume, by name, and nothing in the guide or the headers SHALL run
 `docker ... prune`. The guide SHALL say to check `env | grep LADO` and `unset` what the
 shell sets, since a shell's variable beats `.env`.
 
+README's Install and docs/install.md's opening SHALL present the two ways to install,
+Docker first and recommended, then PyPI, each with what it is for and what it needs; PyPI's
+differences by system (macOS, Linux, Windows inside WSL2) SHALL be named there too.
+
+#### Scenario: Two ways, Docker first
+- **WHEN** `tests/test_docker.py` reads README's Install and docs/install.md's opening
+- **THEN** each names Docker as recommended before PyPI, and docs/install.md's `## Docker`
+  comes before its systems' sections
+
 #### Scenario: The commands agree
 - **WHEN** `tests/test_docker.py` reads the guide's code blocks and the header
 - **THEN** the guide's start commands, its update (`docker compose up -d`) and its way

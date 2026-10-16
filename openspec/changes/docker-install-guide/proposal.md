@@ -26,8 +26,11 @@ headers, and no step wrote the user's path from zero to a working session.
 
 ## What Changes
 
-- **A Docker section in docs/install.md, and a link from README's Install.** It leads
-  with compose:
+- **Two ways to install, Docker first (the human's comment at merge_ok).** README's
+  Install and docs/install.md's opening present Docker as the recommended way and PyPI as
+  the other, with what each is for and needs, and PyPI's differences by system.
+- **A Docker section in docs/install.md, first of its systems, and a link from README's
+  Install.** It leads with compose:
   - get `compose.yaml` from the latest release;
   - write `.env` (`LADO_VERSION`, `LADO_PROJECTS`, `LADO_PORT`, `LADO_GIT_NAME`,
     `LADO_GIT_EMAIL`, `LADO_SSH_AGENT`, with the values for a Mac and for Linux);

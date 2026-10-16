@@ -667,7 +667,9 @@ def test_the_guides_first_start_is_the_headers():
 
 
 def test_the_guides_update_and_way_back_are_the_headers():
-    assert guide_steps("Update") == header_steps("To update, set the new LADO_VERSION in .env")
+    assert guide_steps("Update the container") == header_steps(
+        "To update, set the new LADO_VERSION in .env"
+    )
     assert guide_steps("Go back to the version before") == way_back()
 
 
@@ -724,3 +726,16 @@ def test_readme_and_the_headers_point_to_the_guide():
     assert "- [Docker](#docker)" in INSTALL.read_text()
     for name in ("compose.yaml", "Dockerfile"):
         assert "docs/install.md#docker" in leading_comment(DOCKER / name), name
+
+
+def test_docker_is_the_first_and_recommended_way_to_install():
+    """The human's choice (2026-10-16): Docker first, PyPI the other way."""
+    readme = (ROOT / "README.md").read_text()
+    install = readme[readme.index("## Install") :]
+    install = install[: install.index("\n## ", 3)]
+    assert "**Docker** (recommended)" in install
+    assert install.index("### Docker") < install.index("### PyPI")
+    text = INSTALL.read_text()
+    opening = text[: text.index("\n## ")]
+    assert "**Docker**, the recommended one, and **PyPI**" in opening
+    assert text.index("\n## Docker\n") < text.index("\n## macOS\n")

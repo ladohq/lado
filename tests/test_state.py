@@ -494,7 +494,7 @@ def test_schema_29_gives_sessions_the_resume_mark(lado_home):
     assert "resume_at_start" not in _columns(db, "sessions")
     assert db.execute("PRAGMA user_version").fetchone()[0] == 28
     db.close()
-    assert state.migrate().after == state.SCHEMA_VERSION == 29
+    assert state.migrate().after == state.SCHEMA_VERSION
     with state.connect() as db:
         assert (
             db.execute("SELECT sql FROM sqlite_master WHERE name = 'sessions'").fetchone()[0]
@@ -702,8 +702,8 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
-        columns = {row[1] for row in db.execute("PRAGMA table_info(sessions)")}
-    assert "resume_at_start" not in columns  # the content before the migration
+        columns = {row[1] for row in db.execute("PRAGMA table_info(gates)")}
+    assert "closed_event" not in columns  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 

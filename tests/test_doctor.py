@@ -109,6 +109,50 @@ def test_outside_ok_none_and_no_folder(tmp_path, monkeypatch):
     assert "Variables from outside" not in [c.name for c in doctor.run_checks(which=lambda c: c)]
 
 
+SECRETS_HINT = (
+    "to give the agents variables: LADO_SECRETS=./secrets in compose's .env and "
+    "mkdir -m 700 secrets (docker run: -v <folder>:/run/secrets:ro); "
+    "docs/install.md#the-agents-variables"
+)
+
+
+def test_no_secrets_in_a_container_says_how_to_give_them(tmp_path, monkeypatch, capsys):
+    name = "Variables from outside"
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    for folder in (os.devnull, str(tmp_path / "x")):  # compose's default, docker run's none
+        monkeypatch.setenv("LADO_ENV_DIR", folder)
+        assert doctor.check_outside() == doctor.Check(
+            name, doctor.INFO, f"{folder}: none", SECRETS_HINT
+        )
+    monkeypatch.setattr(doctor, "run_checks", lambda: [doctor.check_outside()])
+    assert doctor.main() == 0
+    assert (
+        f"[info] {name}: {tmp_path / 'x'}: none\n       {SECRETS_HINT}" in capsys.readouterr().out
+    )
+
+
+def test_the_null_device_outside_a_container_is_no_folder(monkeypatch):
+    monkeypatch.delenv("LADO_CONTAINER", raising=False)
+    monkeypatch.setenv("LADO_ENV_DIR", os.devnull)
+    assert doctor.check_outside() == doctor.Check(
+        "Variables from outside", doctor.INFO, f"{os.devnull}: no folder"
+    )
+
+
+@pytest.mark.parametrize("container", ["1", ""])
+def test_a_file_in_place_of_the_folder_warns_in_a_container_or_out(
+    tmp_path, monkeypatch, container
+):
+    (tmp_path / "f").write_text("x")
+    monkeypatch.setenv("LADO_CONTAINER", container)
+    monkeypatch.setenv("LADO_ENV_DIR", str(tmp_path / "f"))
+    assert doctor.check_outside() == doctor.Check(
+        "Variables from outside",
+        doctor.WARN,
+        f"variable folder {tmp_path / 'f'} (LADO_ENV_DIR) not used: not a folder",
+    )
+
+
 def test_the_report_has_no_variable_name_or_value(tmp_path, monkeypatch):
     folder = tmp_path / "s"
     folder.mkdir()

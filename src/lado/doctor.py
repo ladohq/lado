@@ -566,16 +566,26 @@ def check_repos_folder() -> Check | None:
     return Check(name, OK, f"{folder} (LADO_REPOS)")
 
 
+SECRETS_HINT = (
+    "to give the agents variables: LADO_SECRETS=./secrets in compose's .env and "
+    "mkdir -m 700 secrets (docker run: -v <folder>:/run/secrets:ro); "
+    "docs/install.md#the-agents-variables"
+)
+
+
 def check_outside() -> Check | None:
     """The outside folder (LADO_ENV_DIR) when it is set: the names it gives the agents,
-    never a value, and each file it does not use with why."""
+    never a value, and each file it does not use with why. In LADO's container no secrets
+    is the usual start, so the line says how to give them."""
     if not os.environ.get(agent_env.ENV_DIR_VAR):
         return None
     name = "Variables from outside"
     found = agent_env.outside()
     if found.unused and found.unused[0].startswith("variable folder "):
         return Check(name, WARN, found.unused[0])  # the folder itself is not used
-    if not os.path.isdir(found.folder):
+    if not os.path.isdir(found.folder):  # none there, or the null device (compose's default)
+        if update.in_container():
+            return Check(name, INFO, f"{found.folder}: none", SECRETS_HINT)
         return Check(name, INFO, f"{found.folder}: no folder")
     detail = f"{found.folder}: {', '.join(sorted(found.values)) or 'none'}"
     if not found.unused:

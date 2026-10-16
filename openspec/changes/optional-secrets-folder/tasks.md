@@ -11,11 +11,11 @@ Tests first in each section; each task is one commit.
 
 ## 2. lado doctor
 
-- [ ] 2.1 Unit tests, `tests/test_doctor.py`: in a container (`LADO_CONTAINER=1`) the
+- [x] 2.1 Unit tests, `tests/test_doctor.py`: in a container (`LADO_CONTAINER=1`) the
   null device and no folder give `[info] … /run/secrets: none` with the hint naming
   `LADO_SECRETS=./secrets`; outside a container `/dev/null` gives `no folder` with no
   hint; a regular file warns in both; exit code 0.
-- [ ] 2.2 `doctor.check_outside` (D3). `uv run pytest tests/test_doctor.py -n auto`.
+- [x] 2.2 `doctor.check_outside` (D3). `uv run pytest tests/test_doctor.py -n auto`.
 
 ## 3. compose, the headers
 

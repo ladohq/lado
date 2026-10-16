@@ -4,15 +4,25 @@ A closed gate is drawn by `GateLine` (`web/src/GateCard.tsx`) where the gate ope
 from `GateInfo` (question, note, note body, the note's attachments, answer, comment,
 answered_by, answered_at, recommendation). The human's answer is also the run's move, a
 `flow` event of `human` drawn by `RunEvents` (`web/src/Chat.tsx`), which finds its gate
-with `gateOf` and draws the comment under it. Every way to close a gate writes an event
+with `gateOf` and draws the comment under it. `gateOf` guesses today: the run, a human
+answer, the gate's state as the move's from or to state, and of those gates the one
+answered nearest in time. Nothing in lado.db or the API links a gate to the event of its
+closing. Every way to close a gate writes an event
 that carries the answer: an option is a `flow` move of its answerer; `lado flow-set`
 writes `flow_set` with the reason; a cancel writes `flow_cancel` with the reason. Events
 and gates come whole to the chat (no window), so the move is always in the feed.
 
-Held against AGENTS.md and ROADMAP: UI only, no provider, the neutral core untouched;
-one source of truth: the comment has one place in the feed (the move), the opened card
-reads the same `GateInfo`; only what is used: no new API field (the move is found among
-the events the chat holds already).
+Every closing goes through `state.update_run` in one `BEGIN IMMEDIATE` transaction:
+`_close_gate` writes the `gate_answer` event (`#<id> <answer>[: <comment>]`), then the
+closing's own event follows (`runs.answer`: the `flow` move; `runs.force`: `flow_set`;
+`_cancel`: `flow_cancel`). No other writer can come between them, so the closing's event
+is the run's first event after the gate's `gate_answer`. Gates and `gate_answer` were
+born together (5f0e932), so every closed gate has one.
+
+Held against AGENTS.md and ROADMAP: no provider, the neutral core untouched; one source of
+truth: the core that writes the closing also names its event, the UI no longer infers it,
+and the comment has one place in the feed (the move); only what is used: one API field,
+read by the chat in two places (the comment under the move, the card's plaque).
 
 ## Decisions
 
@@ -50,19 +60,45 @@ labels in small capitals muted, a fixed column (as the mockup), the head cut wit
 ellipsis on one line. Nothing of it is opened when the card opens. `RecommendationLine`
 stays for the closed question's card.
 
-### D3. The answer's move comes from the chat's events
+### D3. The server names the event that closed a gate (the human, at design_ok: B)
 
-`Rows` gives `GateLine` the human's or agent's move that closed it: the inverse of
-`gateOf` (the first `flow` event whose `gateOf` is this gate), a new exported helper
-`moveOf(gate, events)` in `Chat.tsx` next to `gateOf`. With it, the plaque's chip is
-`OutcomeChip` (direction by the run's flow states, as on the move's line) and "→
-<to_state>"; without it (an override, a cancel, a run whose flow is not known), the chip
-is the answer word, neutral (`.run-outcome`), and no target.
+`GateInfo` gets `closed_by_event: int | None`: the id of the run's event that the gate's
+closing wrote (a `flow` move, a `flow_set` or a `flow_cancel`); None while the gate is
+open, or when no such event is found. `state.py` derives it, next to `_close_gate`, which
+writes the events it reads: the run's first event after the gate's `gate_answer` event
+(found by its `#<id>` prefix, which `_close_gate` writes). No schema change, no migration:
+old gates get it from their events as new ones do. `session_gates` and `get_gate` read it
+in the same query as the gate (a subquery), not one query per gate.
+
+The chat links by id, without a guess:
+- `gateOf(event, gates)`: the gate whose `closed_by_event` is the event's id, for a
+  `flow` event of the human (the comment under the move); the time and state rules go.
+- `moveOf(gate, events)`, next to it: the `flow` event whose id is the gate's
+  `closed_by_event`. With it, the plaque's chip is `OutcomeChip` (direction by the run's
+  flow states, as on the move's line) and "→ <to_state>"; without it (an override, a
+  cancel, or the event not in the feed yet: the gate and its events come over the live
+  feed one by one), the chip is the answer word, neutral (`.run-outcome`), and no target.
+
+Options weighed (the human chose B): A, keep the guess and memoise it per render: no API
+change, but it repeats the core's write order in the browser and, after D1, a miss hides
+the only copy of the comment in the folded feed; C, no "→ <state>" in the plaque: the
+guess stays for the comment under the move. A stored column `gates.closed_event` would be
+exact without reading the `gate_answer` prefix, but needs a migration and a backfill by
+the same derivation: not worth it while the transaction holds the order.
 
 ### D4. Tests at the lowest layer
 
-Rendering only, no process crossed: vitest in `web/src/Chat.test.tsx` covers each
-requirement's scenarios (the line without the comment, the move with it, the card's
-order, the folded lines, 6 lines and Show more, agreed / otherwise, a cancel by the
-supervisor). One UI e2e in `tests/ui/test_gates.py` checks it in Chromium after a real
-answer, with screenshots of the line and the opened card (the developer's UI rule).
+- Python unit (`tests/test_state.py` or the gates' test module, and the server's model
+  test): `closed_by_event` is the `flow` move's id after `runs.answer` (approve, reject,
+  a choice, a loop limit's continue), the `flow_set`'s after `runs.force`, the
+  `flow_cancel`'s after a run's cancel and a loop limit's cancel; None for an open gate;
+  a run that answers the same gate state twice gets each gate its own move; another
+  run's events written between two closings never count. `GET …/gates` carries it.
+- vitest (`web/src/feedRows.test.ts`, `web/src/Chat.test.tsx`): `gateOf` and `moveOf` by
+  id (a gate visited twice; an event of the same time and state but another id not
+  taken); each scenario of the delta.
+- UI e2e (`tests/ui/test_gates.py`): one test in Chromium after a real answer, with
+  screenshots of the line and the opened card (the developer's UI rule).
+
+No integration test: nothing crosses processes that the unit tests of `state` and the
+server do not reach (the UI e2e runs the real server and lado.db).

@@ -13,10 +13,36 @@ opened, SHALL show its title and time without the comment, whoever closed the ga
   rejected", and the line "Gate #<id> · <run> · <state>: reject by human" has no comment
   under it
 
+#### Scenario: The same gate answered twice
+- **WHEN** the human rejects a run's design_ok gate with one comment, and later approves
+  its next design_ok gate with another
+- **THEN** each move shows the comment of its own gate, and each opened gate's card
+  names its own move's target state
+
 #### Scenario: A gate closed otherwise
 - **WHEN** the supervisor cancels a run whose gate is open, with a reason
 - **THEN** the closed gate's line says "cancelled by supervisor" without the reason
   under it, and the reason shows on the cancel's line of the run
+
+### Requirement: The server names the event that closed a gate
+
+The UI server SHALL give each closed gate the id of the run's event its closing wrote:
+the human's move for an answer, the `flow_set` event for `lado flow-set`, the
+`flow_cancel` event for a run's or a loop limit's cancel; an open gate SHALL have none.
+The chat SHALL link a gate's comment and its card to the move by that id alone.
+
+#### Scenario: An answer's move
+- **WHEN** the human approves a gate and the run moves on
+- **THEN** the gate's `closed_by_event` is the id of the `flow` event of `human` that
+  moved the run from the gate's state
+
+#### Scenario: A cancel
+- **WHEN** the supervisor cancels a run whose gate is open
+- **THEN** the gate's `closed_by_event` is the id of the run's `flow_cancel` event
+
+#### Scenario: Another run writes in between
+- **WHEN** two runs of a session close their gates one after the other
+- **THEN** each gate's `closed_by_event` is an event of its own run
 
 ### Requirement: An opened closed gate shows its question and answer first
 

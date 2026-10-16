@@ -2184,7 +2184,7 @@ def _close_gate(
     answer: str,
     comment: str,
     gate_id: int | None,
-) -> int | None:
+) -> int | bool | None:
     """Close the run's open gate and return its id; None when there is none to close, or
     False if `gate_id` is given and is not it."""
     row = db.execute(

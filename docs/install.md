@@ -259,7 +259,7 @@ docker exec lado lado ui --no-open   # the UI's link with its token
 
 The image brings tmux, git and the agent CLIs at their tested versions, so there is no
 `lado doctor` step to install anything. When something is off, it is the first look:
-`docker compose exec lado lado doctor` says whether the projects folder is mounted and
+`docker compose exec lado lado doctor` says whether the projects folder is there and
 writable, which files of `secrets/` the agents get (names only) and which are not used, and
 which agent CLIs run. `docker compose logs lado` has the container's own warnings (git's
 identity, the ssh agent, the projects folder).

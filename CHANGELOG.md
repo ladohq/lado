@@ -13,6 +13,11 @@
   your computer does not see, gets a warning in the New session window (under Where and
   Clone into) and at `lado start`; the session still starts. Outside a container nothing
   changes.
+- Renaming a session in the UI takes its name on Tab: while the title field is empty, or
+  holds a start of the name, the rest of the name shows grey, and Tab (or → at the end)
+  makes the name the field's text with the caret at its end, to type on and save with
+  Enter (`lad-84 (rename)`). The hint under the field says so; with any other text Tab
+  leaves the field and saves it, as before.
 - LADO's container takes its sessions with it: `docker compose down` or `stop`, `docker
   stop`, or Docker's own end stops every running session as `lado stop` would (`docker
   logs`: `lado: the container stops: stopped sessions "app"; they resume at its start`),

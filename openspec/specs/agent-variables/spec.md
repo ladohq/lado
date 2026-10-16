@@ -22,8 +22,10 @@ run's worker), read that folder anew and lay its variables over the environment 
   sets keeps LADO's value").
 - The kits' checks of an agent's environment (an MCP server's `${NAME}`, `expects`) SHALL
   see the folder's variables as the agent gets them.
-- With `LADO_ENV_DIR` unset or empty, or with no folder at its path, an agent's
-  environment SHALL be what it is without this requirement.
+- With `LADO_ENV_DIR` unset or empty, with no folder at its path, or with the null device
+  at its path (the character device `/dev/null` is, which compose's default binds there),
+  an agent's environment SHALL be what it is without this requirement, and no line SHALL
+  name the folder.
 
 #### Scenario: A variable from the folder
 - **WHEN** `LADO_ENV_DIR` names a folder holding a file `YOUGILE_API_KEY` with the content
@@ -50,6 +52,12 @@ run's worker), read that folder anew and lay its variables over the environment 
 - **THEN** an agent's environment is the login shell's with LADO's and its provider's
   variables, as before
 
+#### Scenario: The null device
+- **WHEN** `LADO_ENV_DIR` names `/dev/null` (or a path where the null device is mounted)
+  and a session starts
+- **THEN** the agents' environment is the login shell's with LADO's and its provider's
+  variables, and the start's warnings have no line about the folder
+
 ### Requirement: A file the outside folder cannot give is named, never applied
 
 LADO SHALL NOT apply a file of the `LADO_ENV_DIR` folder in any of these cases:
@@ -65,9 +73,10 @@ LADO SHALL NOT apply a file of the `LADO_ENV_DIR` folder in any of these cases:
 
 Each such file SHALL be named with its reason, never with its content, in the warnings of
 a session's start and resume (`lado start` on stderr, the UI's `Started.warnings`), as
-`variable file <name> in <folder> not used: <reason>`, and by `lado doctor`. A folder that
-LADO_ENV_DIR names but that is not a folder or cannot be listed SHALL be named the same
-way, and the launch SHALL go on with the login shell's environment.
+`variable file <name> in <folder> not used: <reason>`, and by `lado doctor`. A path that
+LADO_ENV_DIR names that is neither a folder nor the null device (a regular file, another
+device), or a folder that cannot be listed, SHALL be named the same way, inside a
+container or out, and the launch SHALL go on with the login shell's environment.
 
 #### Scenario: A reserved name
 - **WHEN** the folder holds a file `PATH`
@@ -82,6 +91,11 @@ way, and the launch SHALL go on with the login shell's environment.
 #### Scenario: Too large or not text
 - **WHEN** the folder holds `BIG` of 70 000 bytes and `BIN` with a NUL byte
 - **THEN** neither is applied, and each is named with its reason
+
+#### Scenario: A regular file instead of a folder
+- **WHEN** `LADO_ENV_DIR` names a regular file and a session starts
+- **THEN** `lado start` prints `variable folder <path> (LADO_ENV_DIR) not used: not a
+  folder`, and `lado doctor` warns with the same words
 
 ### Requirement: A name LADO sets keeps LADO's value
 
@@ -103,9 +117,12 @@ While `LADO_ENV_DIR` is set and not empty, `lado doctor` SHALL print one check `
 from outside`:
 - `[ok  ]` with the folder and the names it gives (never a value), or `none` for an empty
   folder;
-- `[info]` for a path with no folder;
-- `[warn]` naming each file that is not applied and why, a path that is not absolute, or
-  a folder that cannot be listed.
+- `[info]` for a path with no folder or with the null device: outside a container
+  `<folder>: no folder`; in a container (`LADO_CONTAINER`) `<folder>: none` with the hint
+  `to give the agents variables: LADO_SECRETS=./secrets in compose's .env and mkdir -m 700
+  secrets (docker run: -v <folder>:/run/secrets:ro); docs/install.md#the-agents-variables`;
+- `[warn]` naming each file that is not applied and why, a path that is not absolute, a
+  path that is neither a folder nor the null device, or a folder that cannot be listed.
 
 The bug report (`doctor.report`) SHALL hold at most the number of variables, never a name
 or a value.
@@ -114,6 +131,17 @@ or a value.
 - **WHEN** the folder holds `GH_TOKEN`, `YOUGILE_API_KEY` and `a-b`
 - **THEN** `lado doctor` prints `[warn] Variables from outside: <folder>: GH_TOKEN,
   YOUGILE_API_KEY; a-b not used: not a variable name`, and its exit code stays 0
+
+#### Scenario: No secrets in a container
+- **WHEN** `LADO_CONTAINER=1` and `LADO_ENV_DIR` names the null device, or a path with
+  nothing at it
+- **THEN** `lado doctor` prints `[info] Variables from outside: <folder>: none` with the
+  hint naming `LADO_SECRETS=./secrets`, and its exit code stays 0
+
+#### Scenario: The null device outside a container
+- **WHEN** `LADO_CONTAINER` is unset and `LADO_ENV_DIR` names `/dev/null`
+- **THEN** `lado doctor` prints `[info] Variables from outside: /dev/null: no folder` with
+  no hint
 
 ### Requirement: The outside folder's values stay out of LADO's records
 

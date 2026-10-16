@@ -399,7 +399,9 @@ def test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment(
     expect(move).to_be_in_viewport()
     shot(page, "move")
     line = feed.get_by_role("article", name="Gate #1", exact=True)
-    expect(line.get_by_role("button", name="Gate #1 · ship/x · check: approve by human")).to_be_visible()
+    expect(
+        line.get_by_role("button", name="Gate #1 · ship/x · check: approve by human")
+    ).to_be_visible()
     link = feed.locator(":scope > .run-group").last.get_by_role("link", name="ship/x")
     expect(link).to_have_attribute("href", f"/sessions/{session}/flows/ship%2Fx")
 
@@ -421,7 +423,9 @@ def test_a_gate_answered_with_lado_answer_leaves_the_card_on_the_open_page(
     assert answer.returncode == 0, answer.stderr
     expect(waiting_card(page, session)).to_have_count(0)
     line = page.get_by_role("article", name="Gate #1", exact=True)
-    expect(line.get_by_role("button", name="Gate #1 · ship/x · check: approve by human")).to_be_visible()
+    expect(
+        line.get_by_role("button", name="Gate #1 · ship/x · check: approve by human")
+    ).to_be_visible()
     # The comment under the move it made, not on the gate's card.
     expect(line).not_to_contain_text("ship it")
     expect(page.locator("li.run-event.mine .run-comment")).to_have_text("ship it")

@@ -259,7 +259,7 @@ Learned: the check by hand tripped again over `LADO_PORT` and `LADO_PROJECTS` le
 shell from an earlier test, which beat `.env` (as in LAD-69): T8 and T14.
 
 **T8. Section "Install with Docker" in docs/install.md and a ready compose file** (S/M;
-LAD-83)
+LAD-83, done: pull request #82, in 0.40.0)
 Decided here, with T7: which way the documentation leads with, `docker run` or compose
 (the image needs no file since LAD-64), and so which update line LADO prints in a
 container (now `docker compose pull && docker compose up -d`, from T1).
@@ -285,6 +285,40 @@ agent's first ssh to GitHub fails with "Host key verification failed": the image
 container test; the page says the host's agent must hold a key GitHub knows (`ssh-add
 -l`).
 Check: the human follows the instructions from scratch on a clean volume.
+Result: docs/install.md has a Docker section, compose first, and README shows two ways to
+install, Docker first and recommended, then PyPI. Every GitHub release carries its
+`compose.yaml` (`releases/latest/download/compose.yaml`, working from the final 0.40.0).
+The image holds GitHub's ssh host keys in `/etc/ssh/ssh_known_hosts`; the UI server gets
+the host's ssh agent as the agents do, so Clone from URL over ssh works (H1 of the human's
+first check). In a container a session folder outside `LADO_REPOS` gets a warning in the
+New session window and at `lado start`; the session still starts. Review: F1-F3, M2,
+H1-H5 fixed; M1 (no `env | grep` in README's short start) and M3 (Claude Code asks to trust
+each new folder outside bypass mode) declined, M3 became LAD-87. The human's second check
+by hand on a Mac passed all ten steps, with Claude Code's login by a token in `secrets/`.
+Not checked by hand: `.env` for Linux, OpenCode's and Kilo's logins, `docker run`, an
+update and a way back on a real new version, a second LADO (T11 and 0.40.0's RC).
+Found in the review of LAD-83 before the release (the human's decisions, 2026-10-16):
+
+**T8b. `secrets/` optional, and the update names a new `compose.yaml`** (S; LAD-89, before
+0.40.0rc1)
+compose refuses to start without `secrets/` (D6 of LAD-76), though logins made inside need
+no secrets: the folder becomes optional as the ssh agent is (`LADO_SECRETS` defaults to
+`/dev/null`, LADO says nothing then; `LADO_SECRETS=./secrets` in `.env` turns it on). The
+update step changes only `LADO_VERSION`, so a user of 0.39.0 keeps the old `compose.yaml`
+and silently lacks `secrets/`, git's identity and the ssh agent: the guide and the header
+say to download the new `compose.yaml` when CHANGELOG says it changed, and 0.40.0's line
+says so for 0.39.0. LADO noticing an old `compose.yaml` by itself is a task of its own if
+it does not fit.
+Check: a container test without `secrets/` starts and an agent runs; by hand, the short
+start without secrets, then secrets turned on, then an update from 0.39.0's files.
+
+**The release 0.40.0** (after T8b): the first point where a programmer on a Mac works
+in Docker from the documentation. Docker is for Mac and Linux; Windows is not supported
+until T11. Projects in languages other than Python and JavaScript wait for T9. From the
+first RC main is frozen, so T9 and LAD-87 merge after the final; T11 needs no code and runs
+on the RC's image. The RC's checks by hand: LAD-74's (sessions stop and resume over an
+image update), LAD-76's other steps (secrets, the tracker, https, gh), the live tests and
+an image update 0.39.0 -> 0.40.0rc1 on a live volume.
 
 **T9. Project toolchains through mise** (S)
 mise in the image, its shims on the login shell's PATH, its data on the home volume; in
@@ -403,7 +437,7 @@ Check: on a Mac a double click opens the UI.
 
 ```
 T1, T2 ──┐
-         ├─> T3 ─> T4 (with T5) ─> T6a ─> T7 ─> T6b ─> T10 ─> T8 ─> T11
+         ├─> T3 ─> T4 (with T5) ─> T6a ─> T7 ─> T6b ─> T10 ─> T8 ─> T8b ─> 0.40.0 ─> T11
          │          └─> T9 (after T3)
 T12, T13: independent of the image (useful for the usual install too)
 T14: after T7

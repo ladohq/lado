@@ -84,7 +84,7 @@
   chat message, gate comment, `lado flow-set` reason and uploaded file name are cleaned of
   them for their one-line form, and the whole text stays in the body (a `lado flow-set`
   note now keeps the whole reason too).
-- Upgrade: schema 29, restart running sessions after the update (lado update does it).
+- Upgrade: schema 30, restart running sessions after the update (lado update does it).
 
 ## 0.39.0 (2026-10-15)
 

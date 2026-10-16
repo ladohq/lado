@@ -69,7 +69,7 @@ earlier try runs that version, whatever `.env` says. Look first, and unset what 
 
 ```bash
 env | grep -E '^(LADO|COMPOSE)_'
-unset LADO_VERSION LADO_PROJECTS LADO_PORT LADO_IMAGE   # each name the line above printed
+unset LADO_VERSION LADO_PROJECTS LADO_PORT LADO_IMAGE COMPOSE_PROJECT_NAME   # each name printed
 ```
 
 ### Get compose.yaml and write .env
@@ -85,7 +85,7 @@ Next to it, a file `.env` with your settings; compose reads it for every command
 this folder. On a Mac:
 
 ```ini
-LADO_VERSION=0.40.0                 # the LADO version to run: the latest release's
+LADO_VERSION=<version>              # the LADO version to run, e.g. the latest release's
 LADO_PROJECTS=/Users/ann/projects   # your projects folder, a full path
 LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
@@ -96,7 +96,7 @@ LADO_SSH_AGENT=/run/host-services/ssh-auth.sock   # Docker Desktop's ssh agent
 On Linux:
 
 ```ini
-LADO_VERSION=0.40.0                 # the LADO version to run: the latest release's
+LADO_VERSION=<version>              # the LADO version to run, e.g. the latest release's
 LADO_PROJECTS=/home/ann/projects    # your projects folder, a full path
 LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
@@ -104,7 +104,9 @@ LADO_GIT_EMAIL=ann@example.com
 LADO_SSH_AGENT=/run/user/1000/ssh-agent.socket    # your ssh agent: echo $SSH_AUTH_SOCK
 ```
 
-`LADO_PROJECTS` is the only folder of your computer the agents see. `LADO_SSH_AGENT` is
+`<version>` is a LADO version without `v`, e.g. the newest on the
+[releases page](https://github.com/ladohq/lado/releases). `LADO_PROJECTS` is the only
+folder of your computer the agents see. `LADO_SSH_AGENT` is
 optional: without it there is no ssh in the container. On Linux the socket's path may
 change with each login: point it at a stable one, or run `docker compose up -d` again after
 a new login.
@@ -186,7 +188,7 @@ LADO in a container (ghcr.io/ladohq/lado:X.Y.Z)`, and the web UI shows `↑ X.Y.
 `live`. The versions are on the [releases page](https://github.com/ladohq/lado/releases).
 
 In the folder of your `compose.yaml`, set the new `LADO_VERSION` in `.env` (the number
-without `v`, e.g. `0.41.0`), then (compose pulls that version's image):
+without `v`), then (compose pulls that version's image):
 
 ```bash
 docker compose up -d
@@ -231,7 +233,7 @@ adds its own `COMPOSE_PROJECT_NAME` and port:
 ```ini
 COMPOSE_PROJECT_NAME=lado-2
 LADO_PORT=8766
-LADO_VERSION=0.40.0
+LADO_VERSION=<version>
 LADO_PROJECTS=/Users/ann/work
 ```
 
@@ -253,7 +255,7 @@ before you remove:
 
 ```bash
 docker compose down
-docker volume ls --filter name=lado_home
+docker volume ls --filter name='^lado_home$'   # exactly this name
 docker volume rm lado_home
 ```
 

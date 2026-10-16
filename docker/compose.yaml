@@ -2,7 +2,7 @@
 # `docker run`, kept in a file. The guide, step by step: docs/install.md#docker. Keep the
 # settings in .env next to this file, where compose reads them for every command:
 #
-#   LADO_VERSION=0.39.0                 # the LADO version to run
+#   LADO_VERSION=<version>              # the LADO version to run, e.g. the latest release's
 #   LADO_PROJECTS=/Users/me/projects    # absolute: the container sees it at this path
 #   LADO_PORT=8765                      # optional
 #   LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits

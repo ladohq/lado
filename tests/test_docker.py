@@ -694,6 +694,8 @@ def test_the_guide_removes_only_its_own_container_and_volume():
     steps = guide_steps("Remove it")
     assert steps[0] == "docker compose down"
     assert any(re.fullmatch(r"docker volume rm [\w.-]+_home", step) for step in steps), steps
+    # Docker's name filter matches a part of the name unless anchored.
+    assert any(re.fullmatch(r"docker volume ls --filter name='\^[\w.-]+_home\$'", s) for s in steps)
     assert not [s for s in steps if "--volumes" in s or re.search(r"down .*-v\b", s)]
 
 
@@ -709,7 +711,9 @@ def test_nothing_written_for_users_prunes():
 def test_the_guide_says_to_check_the_shells_variables_first():
     steps = guide_steps("Check the shell")
     assert "env | grep -E '^(LADO|COMPOSE)_'" in steps
-    assert any(step.startswith("unset ") for step in steps)
+    [unset] = [step for step in steps if step.startswith("unset ")]
+    # The same kinds the grep finds: a COMPOSE_ variable beats .env as a LADO_ one does.
+    assert "COMPOSE_PROJECT_NAME" in unset.split() and "LADO_VERSION" in unset.split()
 
 
 def test_the_guides_docker_run_is_the_dockerfiles():
@@ -753,3 +757,12 @@ def test_update_says_both_ways_docker_first():
     update_part = update_part[: update_part.index("\n## ", 3)]
     assert "[Update the container](#update-the-container)" in update_part
     assert "- **PyPI**: `lado update`" in update_part
+
+
+def test_no_example_names_a_version_that_goes_stale():
+    """A version written in an example is out of date at the next release: the examples
+    say <version>, and the text where to find it."""
+    paths = [ROOT / "README.md", INSTALL, DOCKER / "compose.yaml", DOCKER / "Dockerfile"]
+    for path in paths:
+        assert not re.search(r"LADO_VERSION=\d", path.read_text()), path
+        assert not re.search(r"ghcr\.io/ladohq/lado:\d", path.read_text()), path

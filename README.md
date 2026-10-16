@@ -63,13 +63,14 @@ curl -fLO https://github.com/ladohq/lado/releases/latest/download/compose.yaml
 Next to it, a file `.env`:
 
 ```ini
-LADO_VERSION=0.40.0                 # the latest release
+LADO_VERSION=<version>              # the latest release's number, from the releases page
 LADO_PROJECTS=/Users/you/projects   # your projects folder, the only one the agents see
 LADO_GIT_NAME="Your Name"           # git's identity for the agents' commits
 LADO_GIT_EMAIL=you@example.com
 ```
 
-Then start it and open the link it prints:
+`<version>` is the newest on the [releases page](https://github.com/ladohq/lado/releases),
+without `v`. Then start it and open the link it prints:
 
 ```bash
 mkdir -m 700 secrets
@@ -142,7 +143,7 @@ shows `↑ X.Y.Z` next to `live` in its top bar.
 ### Docker
 
 A new version is a new image. In the folder of your `compose.yaml`, set the new version in
-`.env` (e.g. `LADO_VERSION=0.41.0`), then:
+`.env` (`LADO_VERSION=<the new version>`), then:
 
 ```bash
 docker compose up -d     # pulls that version's image and replaces the container

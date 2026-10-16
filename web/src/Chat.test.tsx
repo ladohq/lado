@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { GateInfo, MessageInfo, MessagePage, RunEventInfo, RunInfo, SessionInfo, WaitingItem } from "./api";
+import type { AttachmentInfo, GateInfo, MessageInfo, MessagePage, RunEventInfo, RunInfo, SessionInfo, WaitingItem } from "./api";
 import { App } from "./App";
 import { messageText } from "./Chat";
 import { clock, day, dayName } from "./ChatText";
@@ -983,6 +983,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     answered_by: null,
     created_at: "2026-10-03T12:00:00.250Z",
     answered_at: null,
+    closed_by_event: null,
     problem: null,
     recommendation: null,
     ...more,
@@ -1109,7 +1110,7 @@ test("a gate is answered with an option and the comment; the card waits for the 
   stream().send("change", gateChanged(gates[0]), "11");
   const line = await gateCard();
   expect(within(line).queryByRole("button", { name: "Approve" })).toBeNull();
-  expect(line.textContent).toContain("Gate #1 · feature/x · check: reject by human");
+  expect(within(line).getByRole("button", { name: "Gate #1 · feature/x · check: reject by human" })).toBeTruthy();
   expect(screen.queryByRole("region", { name: "What waits for you in lado" })).toBeNull();
 });
 
@@ -1122,28 +1123,237 @@ test("an answer the server refuses says why on the gate's tab", async () => {
   expect(within(card).getByRole("button", { name: "Approve" })).toBeTruthy();
 });
 
-test("a closed gate is a line with its answer and comment; it opens read only, without reads", async () => {
-  serve([], undefined, [], [closed(1, "approve", { comment: "ship it" })]);
+// A flow whose gate "check" goes forward to ship and back to build.
+const GATED: [string, Record<string, string>][] = [
+  ["build", { ready: "check" }],
+  ["check", { approved: "ship", rejected: "build" }],
+  ["ship", {}],
+];
+
+// The folded card's head: the one button of a closed gate's card, named by its title.
+const gateHead = (card: HTMLElement) => within(card).getByRole("button", { name: /^Gate #\d+ · / });
+
+// A run that reached gate #1 and the human's rejection of it with a comment of two lines.
+function rejected(more: Partial<GateInfo> = {}) {
+  const at = "2026-10-03T12:05:00.123Z";
+  serve(
+    [],
+    undefined,
+    [
+      event(4, "flow", "build -ready-> check", "2026-10-03T12:00:00.100Z"),
+      event(5, "gate_open", "#1 approval at check: Ship it?", "2026-10-03T12:00:00.250Z", { actor: "lado" }),
+      event(6, "gate_answer", "#1 reject: split the form", at, { actor: "human" }),
+      event(7, "flow", "check -rejected-> build", at, { actor: "human" }),
+    ],
+    [closed(1, "reject", { comment: "split the form first\nthen ship", answered_at: at, closed_by_event: 7, ...more })],
+    [flowRun("feature/x", GATED)],
+  );
   open();
-  const line = await gateCard();
-  const toggle = within(line).getByRole("button", { name: /Gate #1 · feature\/x · check: approve by human/ });
-  expect(line.textContent).toContain("ship it");
-  expect(within(line).queryByText("Ship it?")).toBeNull();
-  fireEvent.click(toggle);
-  expect(within(line).getByText("Ship it?")).toBeTruthy();
-  expect(within(line).getByText("built it")).toBeTruthy();
-  expect(within(line).queryByRole("list", { name: "Artifacts it reads" })).toBeNull();
-  expect(within(line).queryByRole("textbox")).toBeNull();
-  expect(within(line).getAllByRole("button")).toHaveLength(1);
+}
+
+test("the human rejects with a comment: the chat shows it once, under the move; the gate's card has none", async () => {
+  rejected();
+  const log = await chat();
+  const card = await gateCard();
+  await waitFor(() => expect(log.querySelector(".run-comment")).toBeTruthy());
+  expect(log.textContent?.split("split the form first")).toHaveLength(2); // one copy
+  expect(card.textContent).not.toContain("split the form first");
+  expect(gateHead(card).getAttribute("aria-label")).toBe("Gate #1 · feature/x · check: reject by human");
+  const move = (await moves()).find((one) => kept(one, "run-actor") === "You")!;
+  expect(move.querySelector(".run-comment")?.textContent).toContain("split the form first");
+});
+
+test("the human's move and its comment stand on the human's ground, the agents' lines do not", async () => {
+  rejected();
+  await gateCard();
+  await waitFor(async () => expect((await moves()).map((one) => one.classList.contains("mine"))).toEqual([false, false, true]));
+});
+
+test("a rejected gate, folded: a card with the flag, its title, the answer's chip by the move's direction, by you, the time and a chevron", async () => {
+  rejected();
+  const card = await gateCard();
+  const head = gateHead(card);
+  await waitFor(() => expect(head.querySelector(".run-outcome.back")).toBeTruthy());
+  expect(head.getAttribute("aria-expanded")).toBe("false");
+  expect(head.querySelector(".avatar-gate svg")).toBeTruthy();
+  expect([kept(head, "gate-head-title"), kept(head, "gate-head-where"), kept(head, "gate-head-by")]).toEqual([
+    "Gate #1",
+    "feature/x · check",
+    "by you",
+  ]);
+  const chip = head.querySelector(".run-outcome.back")!;
+  expect([chip.textContent, chip.querySelector("svg") !== null]).toEqual(["reject", true]);
+  expect(head.querySelector("time")?.getAttribute("dateTime")).toBe("2026-10-03T12:05:00.123Z");
+  expect(head.querySelector(".gate-chevron svg")).toBeTruthy();
+  fireEvent.click(head);
+  expect(head.getAttribute("aria-expanded")).toBe("true");
+  expect(card.classList.contains("expanded")).toBe(true);
+  fireEvent.click(head);
+  expect(within(card).queryByText("Ship it?")).toBeNull();
+});
+
+test("an opened closed gate shows the question and the answer on the human's ground, read only, without reads", async () => {
+  rejected();
+  const card = await gateCard();
+  await waitFor(() => expect(card.querySelector(".run-outcome.back")).toBeTruthy());
+  fireEvent.click(gateHead(card));
+  const body = card.querySelector(".gate-closed-card") as HTMLElement;
+  expect(within(body).getByText("Ship it?")).toBeTruthy();
+  const plaque = body.querySelector(".question-answer") as HTMLElement;
+  expect(plaque.className).not.toContain("dismissed");
+  expect([kept(plaque, "answer-who"), kept(plaque, "run-outcome"), kept(plaque, "answer-target")]).toEqual(["You", "reject", "→ build"]);
+  expect(plaque.querySelector(".chat-body br")).toBeTruthy(); // the human's line breaks, as typed
+  expect(plaque.textContent).toContain("split the form first");
+  expect(within(card).queryByRole("list", { name: "Artifacts it reads" })).toBeNull();
+  expect(within(card).queryByRole("textbox")).toBeNull();
+  expect(within(card).queryByRole("button", { name: "Approve" })).toBeNull();
+  expect(within(card).queryByRole("button", { name: "Reject" })).toBeNull();
+});
+
+test("the same gate answered twice: each move shows its own gate's comment, each card its own move's target", async () => {
+  const at = "2026-10-03T12:05:00Z";
+  serve(
+    [],
+    undefined,
+    [
+      event(6, "flow", "check -rejected-> build", at, { actor: "human" }),
+      event(7, "flow", "build -ready-> check", "2026-10-03T12:05:00.300Z"),
+      event(9, "flow", "check -approved-> ship", "2026-10-03T12:05:00.600Z", { actor: "human" }),
+    ],
+    [
+      // Both answered at the same moment, as far as the times tell.
+      closed(1, "reject", { comment: "first try", created_at: "2026-10-03T12:00:00Z", answered_at: at, closed_by_event: 6 }),
+      closed(2, "approve", { comment: "second try", created_at: "2026-10-03T12:05:00.300Z", answered_at: at, closed_by_event: 9 }),
+    ],
+    [flowRun("feature/x", GATED)],
+  );
+  open();
+  const log = await chat();
+  await waitFor(() => expect(log.querySelectorAll(".run-comment")).toHaveLength(2));
+  const said = (await moves()).filter((one) => one.querySelector(".run-comment")).map((one) => kept(one, "run-comment"));
+  expect(said).toEqual(["first try", "second try"]);
+  const targets = [];
+  for (const id of [1, 2]) {
+    const card = await gateCard(id);
+    fireEvent.click(gateHead(card));
+    targets.push(kept(card, "answer-target"));
+  }
+  expect(targets).toEqual(["→ build", "→ ship"]);
+});
+
+test("a gate closed by a cancel: its card says cancelled by supervisor without the reason; the reason is on the cancel's line", async () => {
+  serve(
+    [],
+    undefined,
+    [event(6, "flow_cancel", "dropped for now", "2026-10-03T12:05:00Z", { actor: "supervisor" })],
+    [closed(1, "cancelled", { answered_by: "supervisor", comment: "dropped for now", closed_by_event: 6 })],
+    [flowRun("feature/x", GATED)],
+  );
+  open();
+  const card = await gateCard();
+  const head = gateHead(card);
+  expect(head.getAttribute("aria-label")).toBe("Gate #1 · feature/x · check: cancelled by supervisor");
+  expect(card.textContent).not.toContain("dropped for now");
+  expect([kept(head, "gate-head-by"), head.querySelector(".run-outcome")?.className]).toEqual(["by supervisor", "run-outcome"]);
+  const [cancel] = await moves();
+  expect(cancel.textContent).toContain("dropped for now");
+  expect(cancel.classList.contains("mine")).toBe(false);
+  // Closed by an agent: the plaque names it, quieter, with the reason.
+  fireEvent.click(head);
+  const plaque = card.querySelector(".question-answer") as HTMLElement;
+  expect(plaque.className).toContain("dismissed");
+  expect([kept(plaque, "answer-who"), kept(plaque, "run-outcome"), kept(plaque, "answer-target")]).toEqual([
+    "supervisor",
+    "cancelled",
+    undefined,
+  ]);
+  expect(plaque.textContent).toContain("dropped for now");
+});
+
+test("a gate closed by flow-set: overridden by you, neutral, the reason on the human's line on their ground", async () => {
+  serve(
+    [],
+    undefined,
+    [event(6, "flow_set", "check -> build: built by hand", "2026-10-03T12:05:00Z", { actor: "human" })],
+    [closed(1, "overridden", { comment: "built by hand", closed_by_event: 6 })],
+    [flowRun("feature/x", GATED)],
+  );
+  open();
+  const card = await gateCard();
+  expect(gateHead(card).getAttribute("aria-label")).toBe("Gate #1 · feature/x · check: overridden by human");
+  expect(card.textContent).not.toContain("built by hand");
+  const [forced] = await moves();
+  expect(forced.textContent).toContain("built by hand");
+  expect(forced.classList.contains("mine")).toBe(true);
+});
+
+const files = (...names: string[]): AttachmentInfo[] =>
+  names.map((name) => ({
+    artifact: `a-${name}`,
+    record: `r-${name}`,
+    full_name: `feature/x/${name}`,
+    name,
+    scope: "feature/x",
+    title: null,
+    media_type: "text/markdown",
+    size: 1200,
+    hash: "h",
+  }));
+
+test("a long note is one folded line with its summary and artifacts; opened, 6 lines, Show more and the artifacts", async () => {
+  const body = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n\n");
+  serve([], undefined, [], [closed(1, "reject", { note: "review converged", note_body: body, attachments: files("ledger", "report") })]);
+  open();
+  const card = await gateCard();
+  fireEvent.click(gateHead(card));
+  expect(within(card).getByText("Ship it?")).toBeTruthy();
+  const [note] = Array.from(card.querySelectorAll<HTMLDetailsElement>("details.gate-row"));
+  expect(note.open).toBe(false);
+  expect(note.querySelector("summary")?.textContent).toBe("Notereview converged · 2 artifacts");
+  fireEvent.click(note.querySelector("summary")!);
+  expect(note.open).toBe(true);
+  expect(within(note).getByText("line 6")).toBeTruthy();
+  expect(within(note).queryByText("line 7")).toBeNull();
+  expect(within(note).getByRole("button", { name: "Show more" })).toBeTruthy();
+  expect(within(note).getAllByRole("button", { name: /^Open artifact / })).toHaveLength(2);
 });
 
 test.each([
-  [closed(1, "overridden", { comment: "built by hand" }), "check: overridden by human"],
-  [closed(1, "cancelled", { answered_by: "supervisor", comment: "dropped" }), "check: cancelled by supervisor"],
-])("a gate closed otherwise says how", async (one, text) => {
-  serve([], undefined, [], [one]);
+  ["reject", "recommended Approve · you answered otherwise"],
+  ["approve", "recommended Approve · you agreed"],
+])("the recommendation is one folded line that says whether the answer agreed (%s)", async (answer, said) => {
+  serve([], undefined, [], [closed(1, answer, { note: "", note_body: "", recommendation: given("approve") })]);
   open();
-  expect((await gateCard()).textContent).toContain(text);
+  const card = await gateCard();
+  fireEvent.click(gateHead(card));
+  const [rec] = Array.from(card.querySelectorAll<HTMLDetailsElement>("details.gate-row"));
+  expect(rec.open).toBe(false);
+  expect(rec.querySelector("summary")?.textContent).toBe(`Supervisor${said}`);
+  expect(card.querySelector(".rec")).toBeNull();
+  fireEvent.click(rec.querySelector("summary")!);
+  expect(within(rec).getByText("not").tagName).toBe("STRONG");
+});
+
+test("the lead's disagreement with the agent stays orange on the recommendation's line", async () => {
+  serve([], undefined, [], [closed(1, "reject", { note: "", note_body: "", recommendation: given("reject", true, "w1") })]);
+  open();
+  const card = await gateCard();
+  fireEvent.click(gateHead(card));
+  const summary = card.querySelector("details.gate-row summary")!;
+  expect(summary.textContent).toBe("Supervisorrecommended Reject · you agreed · disagreed with w1");
+  expect(summary.querySelector(".rec-closed-differs")?.textContent).toBe(" · disagreed with w1");
+});
+
+test("a gate with no note and no recommendation opens to its question and answer only", async () => {
+  serve([], undefined, [], [closed(1, "approve", { note: "", note_body: "", comment: "" })]);
+  open();
+  const card = await gateCard();
+  fireEvent.click(gateHead(card));
+  expect(within(card).getByText("Ship it?")).toBeTruthy();
+  expect(card.querySelector(".question-answer")).toBeTruthy();
+  expect(card.querySelectorAll("details")).toHaveLength(0);
+  // Without its move in the feed: the answer's word, neutral, and no target.
+  expect([card.querySelector(".gate-head .run-outcome")?.className, kept(card, "answer-target")]).toEqual(["run-outcome", undefined]);
 });
 
 test("gates are in time order among messages and run events; its waiting is a line of the run, the gate's line under it", async () => {
@@ -1181,7 +1391,7 @@ test("the human's answer to a gate is one line, the run's move from You with the
     ],
     undefined,
     [event(5, "flow", "check -approved-> ship", at, { actor: "human" }), event(6, "gate_answer", "#1 approve: ship it", at, { actor: "human" })],
-    [closed(1, "approve", { comment: "ship **it**\nnow", created_at: "2026-10-03T12:01:00Z", answered_at: at })],
+    [closed(1, "approve", { comment: "ship **it**\nnow", created_at: "2026-10-03T12:01:00Z", answered_at: at, closed_by_event: 5 })],
   );
   open();
   const log = await chat();
@@ -1312,16 +1522,6 @@ test("a stopped session's gate keeps its buttons off and shows the recommendatio
   expect(within(card).getByRole("region", { name: "Supervisor's recommendation" })).toBeTruthy();
   const reject = within(card).getByRole("button", { name: "Reject" }) as HTMLButtonElement;
   expect([reject.disabled, reject.className]).toEqual([true, "primary"]);
-});
-
-test("a closed gate opened shows the recommendation as one quiet line, its text on a click", async () => {
-  serve([], undefined, [], [closed(1, "reject", { recommendation: given("reject", true, "w1") })]);
-  open();
-  const line = await gateCard();
-  fireEvent.click(within(line).getByRole("button", { name: /Gate #1/ }));
-  const quiet = line.querySelector("details.rec-closed") as HTMLDetailsElement;
-  expect(quiet.querySelector("summary")?.textContent).toBe("SSupervisor recommended: Reject · disagreed with w1");
-  expect(line.querySelector(".rec")).toBeNull();
 });
 
 test("a question's recommended choice is picked ahead in its tab; closed, its quiet line names it and the choice stays marked once", async () => {
@@ -1605,7 +1805,9 @@ test("each message, run event, closed gate and open gate's text is a text area o
   expect(area(said)).toEqual(["text", "lado"]);
   expect(said.closest("[data-quote]")?.classList.contains("feed-main")).toBe(true);
   expect(area(await within(log).findByText("a"))).toEqual(["text", "lado"]);
-  expect(area(within(await gateCard()).getByText("ship it"))).toEqual(["text", "lado"]);
+  const card = await gateCard();
+  fireEvent.click(within(card).getByRole("button", { name: /^Gate #1 · / }));
+  expect(area(within(card).getByText("ship it"))).toEqual(["text", "lado"]);
   expect(area(within(await gateTab()).getByText("Ship it?"))).toEqual(["text", "lado"]);
   expect(area(within(await gateTab()).getByRole("textbox"))).toBeNull(); // the comment is no area
   expect(area(screen.getByRole("textbox", { name: "Write to the supervisor…" }))).toBeFalsy();

@@ -3761,6 +3761,17 @@
             ],
             "title": "Answered At"
           },
+          "closed_by_event": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed By Event"
+          },
           "problem": {
             "anyOf": [
               {
@@ -3800,6 +3811,7 @@
           "answered_by",
           "created_at",
           "answered_at",
+          "closed_by_event",
           "problem",
           "recommendation"
         ],

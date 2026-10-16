@@ -110,6 +110,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     answered_by: null,
     created_at: "2026-10-04T11:00:00.000Z",
     answered_at: null,
+    closed_by_event: null,
     problem: null,
     recommendation: null,
     ...more,

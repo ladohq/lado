@@ -18,6 +18,14 @@
   your computer does not see, gets a warning in the New session window (under Where and
   Clone into) and at `lado start`; the session still starts. Outside a container nothing
   changes.
+- The comment of a gate's answer shows once in the chat, under the run's move it made,
+  no longer also under the closed gate. A closed gate is a folded card that says it opens
+  (its flag, run and state, the answer's chip coloured by where the run went, by whom, a
+  chevron); opened, it shows the question and the answer on your ground, and folds the
+  note (6 lines, then Show more) and the supervisor's recommendation ("you agreed" or
+  "you answered otherwise") into a line each. Your own moves in a run's group stand on
+  your ground, as your messages do. Each closed gate keeps the run's event that closed it
+  (`closed_by_event` in the UI server's gates); lado.db goes to schema 30.
 - Renaming a session in the UI takes its name on Tab: while the title field is empty, or
   holds a start of the name, the rest of the name shows grey, and Tab (or → at the end)
   makes the name the field's text with the caret at its end, to type on and save with

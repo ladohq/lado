@@ -701,6 +701,14 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     stopped`), `resume_session` clears it in the update that takes the session, and
     `give_up_resume` clears it, stopping a session not stopped (`session_gone` first);
     `resumable` lists the marked and the not stopped ones.
+    From schema 30 a closed gate keeps the run's event its closing wrote,
+    `gates.closed_event` (`GATES_CLOSED_EVENT`; NULL while open): `update_run` stores the
+    first of its events (a `flow` move, a `flow_set`, a `flow_cancel`) in the transaction
+    that closes the gate (`_close_gate` returns the gate's id, `_add_event` the event's).
+    The migration fills it once for gates closed before (`gates_closed_events`: the run's
+    first event after the gate's `gate_answer`); one not found stays NULL.
+    `GateInfo.closed_by_event` gives it to the UI, which links the answer's comment to the
+    move by it.
   - `fingerprint.py`: a read-only agent's git fingerprint (docs/design/agents.md, Read-only roles): `take`
     (HEAD and checked-out branch of its worktree, the session repo's current branch, tags,
     stash, each changed or new file not ignored and not under `.lado/` with its content's

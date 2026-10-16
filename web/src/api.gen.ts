@@ -1512,6 +1512,8 @@ export interface components {
             created_at: string;
             /** Answered At */
             answered_at: string | null;
+            /** Closed By Event */
+            closed_by_event: number | null;
             /** Problem */
             problem: string | null;
             recommendation: components["schemas"]["RecommendationInfo"] | null;

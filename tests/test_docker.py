@@ -756,7 +756,8 @@ def readme_part(heading: str, sub: str) -> str:
     part = text[text.index(f"\n## {heading}\n") :]
     part = part[: part.index("\n## ", 3)]
     part = part[part.index(f"\n### {sub}\n") :]
-    return part[: part.find("\n### ", 3) if "\n### " in part[3:] else len(part)]
+    end = part.find("\n### ", 3)
+    return part if end == -1 else part[:end]
 
 
 def test_readmes_docker_install_starts_without_mkdir():

@@ -57,7 +57,7 @@ Tests first in each section; each task is one commit.
 
 ## 6. Checks and the pull request
 
-- [ ] 6.1 `make lint`, `make test`, `openspec validate optional-secrets-folder --strict`,
+- [x] 6.1 `make lint`, `make test`, `openspec validate optional-secrets-folder --strict`,
   `openspec validate --specs --strict`; grep `openspec/specs/` for `./secrets` and `refuses
   to start` and resolve every hit in the delta.
 - [ ] 6.2 The pull request's description holds the check by hand on a Mac, with a

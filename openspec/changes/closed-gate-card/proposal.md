@@ -44,16 +44,21 @@ recommendation into a line each.
   carries) and **Supervisor** (what the supervisor recommended and whether the answer
   agreed). A folded line opens on a click; the note opened shows 6 lines with Show more,
   and its artifacts.
-- The server names, for each closed gate, the run's event its closing wrote
-  (`GateInfo.closed_by_event`); the chat links the comment and the card's "→ <state>" to
-  the move by that id instead of guessing by time and state (risk of D3, the human: B).
+- Each closed gate keeps the id of the run's event its closing wrote (a new column of
+  `gates`, stored in the closing's transaction; gates closed before get it from a
+  one-time migration), and the server gives it (`GateInfo.closed_by_event`); the chat
+  links the comment and the card's "→ <state>" to the move by that id instead of
+  guessing by time and state (risk of D3, the human: B; stored, not derived, by the
+  supervisor's recommendation at design_ok, which the human took).
 - Docs: `docs/design/ui.md` (Flow gates: a closed gate), CHANGELOG.md.
-- A patch-level fix (one field of the UI server's API; no CLI, MCP or schema change); its CHANGELOG line goes
-  under the open heading `## 0.40.0 (unreleased)`.
+- A schema migration (minor): one field of the UI server's API and one column of
+  `gates`; no CLI or MCP change. The open heading `## 0.40.0 (unreleased)` is that minor
+  already; the CHANGELOG line goes there.
 
 ## Scope
 
-- `src/lado/state.py` (the closing's event of a gate, read with the gate),
+- `src/lado/state.py` (`gates.closed_event`, stored by `update_run`, the migration
+  `MIGRATIONS[29]`), `tests/agent_helpers.py` (`previous_schema`),
   `src/lado/server/models.py` (`GateInfo.closed_by_event`), `web/openapi.json` and
   `web/src/api.gen.ts` (`make web-types`).
 - `web/src/GateCard.tsx` (`GateLine`, its note and recommendation lines),
@@ -72,8 +77,8 @@ recommendation into a line each.
   `GateLine`; nothing repeats there.
 - **The artifacts the gate read**: not kept as they were when it was answered (as
   today, docs/design/ui.md).
-- **A stored column for the closing's event** (`gates.closed_event`): exact too, but a
-  schema migration and a backfill for what one transaction already orders (design D3).
+- **The link on the event** (`events.gate`): the same fact, but the gate's info would
+  need a join to give it (design D3).
 - **Remembering which closed gates are opened** across reloads: not asked; the line
   opens closed, as today.
 
@@ -81,4 +86,5 @@ recommendation into a line each.
 
 - The UI's closed gate line and its opened view; one new field of `GateInfo` in the UI
   server's API (`GET /api/sessions/{name}/gates`, the live feed's gate items, the
-  waiting items); no CLI, MCP, schema or provider change.
+  waiting items); one column of `gates` with its migration; no CLI, MCP or provider
+  change.

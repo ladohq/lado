@@ -6,16 +6,21 @@
 
 ## 2. The closing's event from the server (D3)
 
-- [ ] 2.1 `src/lado/state.py`: `Gate.closed_by_event`, read with the gate in
-  `session_gates` and `get_gate` (one subquery: the run's first event after the gate's
-  `gate_answer`, found by its `#<id>` prefix), with a comment next to `_close_gate` that
-  the order it writes is what the read relies on. Check: Python unit tests of D4 (an
-  answer, a loop limit's continue and cancel, `flow-set`, a run's cancel, a gate state
-  answered twice, two runs closing in turn, an open gate).
-- [ ] 2.2 `src/lado/server/models.py`: `GateInfo.closed_by_event` with its comment;
+- [ ] 2.1 `src/lado/state.py`: `gates.closed_event` in the schema; `_add_event` returns
+  its id; `update_run` stores the first event written after `_close_gate` as the closed
+  gate's `closed_event` in the same transaction; `Gate.closed_event` read with the gate.
+  Check: Python unit tests of D4 (an answer, a loop limit's continue and cancel,
+  `flow-set`, a run's cancel, a gate state answered twice, two runs closing in turn, an
+  open gate).
+- [ ] 2.2 The migration: `SCHEMA_VERSION = 30`, `MIGRATIONS[29]` (the column, then the
+  backfill: the run's first event after the gate's `gate_answer`, `#<id>` prefix);
+  `tests/agent_helpers.previous_schema` / `schema_before` undo it. Check: a migration
+  test from version 29 with gates closed each way, one open, one whose events are gone
+  (NULL); the existing migration tests.
+- [ ] 2.3 `src/lado/server/models.py`: `GateInfo.closed_by_event` with its comment;
   `make web-types` (commit `web/openapi.json` and `web/src/api.gen.ts`). Check: the
   server's gates test reads it from `GET /api/sessions/{name}/gates`; `make web`.
-- [ ] 2.3 `web/src/Chat.tsx`: `gateOf` by `closed_by_event` (the time and state rules
+- [ ] 2.4 `web/src/Chat.tsx`: `gateOf` by `closed_by_event` (the time and state rules
   go), `moveOf(gate, events)` next to it; `Rows` passes the gate's move and the run's
   flow states to `GateLine`; fakes in tests get the field. Check: vitest in
   `web/src/feedRows.test.ts` (a gate visited twice; an event of the same time and state

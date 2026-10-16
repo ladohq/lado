@@ -24,9 +24,10 @@ opened, SHALL show its title and time without the comment, whoever closed the ga
 - **THEN** the closed gate's line says "cancelled by supervisor" without the reason
   under it, and the reason shows on the cancel's line of the run
 
-### Requirement: The server names the event that closed a gate
+### Requirement: A closed gate keeps the event that closed it
 
-The UI server SHALL give each closed gate the id of the run's event its closing wrote:
+LADO SHALL keep with each closed gate, in the transaction that closes it, the id of the
+run's event its closing wrote, and the UI server SHALL give it with the gate:
 the human's move for an answer, the `flow_set` event for `lado flow-set`, the
 `flow_cancel` event for a run's or a loop limit's cancel; an open gate SHALL have none.
 The chat SHALL link a gate's comment and its card to the move by that id alone.
@@ -43,6 +44,12 @@ The chat SHALL link a gate's comment and its card to the move by that id alone.
 #### Scenario: Another run writes in between
 - **WHEN** two runs of a session close their gates one after the other
 - **THEN** each gate's `closed_by_event` is an event of its own run
+
+#### Scenario: A gate closed before the upgrade
+- **WHEN** a lado.db of the version before this change, with gates closed by an answer,
+  by `lado flow-set` and by a cancel, is migrated
+- **THEN** each of those gates has the id of its closing's event, and an open gate has
+  none
 
 ### Requirement: An opened closed gate shows its question and answer first
 

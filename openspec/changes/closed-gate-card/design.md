@@ -20,7 +20,7 @@ is the run's first event after the gate's `gate_answer`. Gates and `gate_answer`
 born together (5f0e932), so every closed gate has one.
 
 Held against AGENTS.md and ROADMAP: no provider, the neutral core untouched; one source of
-truth: the core that writes the closing also names its event, the UI no longer infers it,
+truth: the core that writes the closing also stores its event, the UI no longer infers it,
 and the comment has one place in the feed (the move); only what is used: one API field,
 read by the chat in two places (the comment under the move, the card's plaque).
 
@@ -60,15 +60,24 @@ labels in small capitals muted, a fixed column (as the mockup), the head cut wit
 ellipsis on one line. Nothing of it is opened when the card opens. `RecommendationLine`
 stays for the closed question's card.
 
-### D3. The server names the event that closed a gate (the human, at design_ok: B)
+### D3. The gate keeps the event that closed it (the human, at design_ok: B, then the supervisor's "what I would still want")
 
-`GateInfo` gets `closed_by_event: int | None`: the id of the run's event that the gate's
-closing wrote (a `flow` move, a `flow_set` or a `flow_cancel`); None while the gate is
-open, or when no such event is found. `state.py` derives it, next to `_close_gate`, which
-writes the events it reads: the run's first event after the gate's `gate_answer` event
-(found by its `#<id>` prefix, which `_close_gate` writes). No schema change, no migration:
-old gates get it from their events as new ones do. `session_gates` and `get_gate` read it
-in the same query as the gate (a subquery), not one query per gate.
+`gates` gets a column `closed_event INTEGER` (NULL while open): the id of the run's event
+that the gate's closing wrote, a `flow` move, a `flow_set` or a `flow_cancel`.
+`state.update_run` stores it in the same transaction that closes the gate: the first of
+the `events` it writes after `_close_gate` (`runs.answer`'s transition, `runs.force`'s
+`flow_set`, `_cancel`'s `flow_cancel`); `_add_event` returns the id it inserted. The link
+is written where both rows are written, not inferred later from their order.
+
+Schema migration `MIGRATIONS[29]` (`SCHEMA_VERSION` 30): add the column, then fill it
+once for gates closed before, by the order the transaction kept: the run's first event
+after the gate's `gate_answer` event (`#<id>` prefix, written by `_close_gate` since the
+gates were born, 5f0e932); a gate for which none is found stays NULL. The backup before a
+migration (LAD-71) runs as for any other step; `tests/agent_helpers.previous_schema`
+undoes this step.
+
+`Gate.closed_event` is read with the gate's other columns; `GateInfo.closed_by_event:
+int | None` gives it to the UI (no subquery, no extra query per gate).
 
 The chat links by id, without a guess:
 - `gateOf(event, gates)`: the gate whose `closed_by_event` is the event's id, for a
@@ -76,24 +85,38 @@ The chat links by id, without a guess:
 - `moveOf(gate, events)`, next to it: the `flow` event whose id is the gate's
   `closed_by_event`. With it, the plaque's chip is `OutcomeChip` (direction by the run's
   flow states, as on the move's line) and "→ <to_state>"; without it (an override, a
-  cancel, or the event not in the feed yet: the gate and its events come over the live
-  feed one by one), the chip is the answer word, neutral (`.run-outcome`), and no target.
+  cancel, an old gate left NULL, or the event not in the feed yet: the gate and its
+  events come over the live feed one by one), the chip is the answer word, neutral
+  (`.run-outcome`), and no target; a move without its gate shows no comment under it,
+  and the comment stays in the gate's card.
 
-Options weighed (the human chose B): A, keep the guess and memoise it per render: no API
-change, but it repeats the core's write order in the browser and, after D1, a miss hides
-the only copy of the comment in the folded feed; C, no "→ <state>" in the plaque: the
-guess stays for the comment under the move. A stored column `gates.closed_event` would be
-exact without reading the `gate_answer` prefix, but needs a migration and a backfill by
-the same derivation: not worth it while the transaction holds the order.
+Options weighed:
+- A, keep the guess and memoise it per render: no API change, but it repeats the core's
+  write order in the browser and, after D1, a miss hides the only copy of the comment in
+  the folded feed. C, no "→ <state>" in the plaque: the guess stays for the comment.
+  (The human chose B over both.)
+- B as first designed, derived on read by "the run's first event after `gate_answer`":
+  exact while every closing keeps that order, but a rule in a query to keep true; the
+  supervisor's recommendation at design_ok asked for the link itself, and the human
+  agreed: it is now stored at write time and the rule lives only in the one-time
+  backfill.
+- The link on the event instead (`events.gate`): the same fact, but `GateInfo` would
+  need a join on `events` to give it; the gate's row is what the chat reads per gate.
+
+Version: a schema migration bumps the minor; 0.40.0 (unreleased) is already that minor
+(LAD-74's migration), so its CHANGELOG line goes there.
 
 ### D4. Tests at the lowest layer
 
 - Python unit (`tests/test_state.py` or the gates' test module, and the server's model
-  test): `closed_by_event` is the `flow` move's id after `runs.answer` (approve, reject,
+  test): `closed_event` is the `flow` move's id after `runs.answer` (approve, reject,
   a choice, a loop limit's continue), the `flow_set`'s after `runs.force`, the
   `flow_cancel`'s after a run's cancel and a loop limit's cancel; None for an open gate;
   a run that answers the same gate state twice gets each gate its own move; another
-  run's events written between two closings never count. `GET …/gates` carries it.
+  run's events written between two closings never count. The migration: a database of
+  version 29 (`previous_schema`) with closed gates of each kind gets each one's event,
+  an open gate and a gate whose events are gone stay NULL; `GET …/gates` carries it as
+  `closed_by_event`.
 - vitest (`web/src/feedRows.test.ts`, `web/src/Chat.test.tsx`): `gateOf` and `moveOf` by
   id (a gate visited twice; an event of the same time and state but another id not
   taken); each scenario of the delta.

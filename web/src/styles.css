@@ -3008,6 +3008,20 @@ h3 {
   margin-top: 0;
 }
 
+/* The human's own lines in a run's group (an answer's move, a flow-set), with the comment
+   under the move, on the human's ground as their messages (.feed-row.mine), 8px left of the
+   line (LAD-85, mockup-gate-line.html). */
+.run-event.mine {
+  margin: 2px 0 2px -8px;
+  padding: 4px 8px 6px;
+  border-radius: 8px;
+  background: var(--action-ground);
+}
+
+.run-event.mine .run-comment {
+  margin-bottom: 0;
+}
+
 .late-text .run-actor {
   color: var(--ink);
   font-weight: 600;
@@ -3294,52 +3308,144 @@ h3 {
   min-width: 0;
 }
 
-/* A closed gate: a quiet line at the text's column that opens read only. */
+/* A closed gate (GateCard.tsx, GateLine; LAD-85, mockup-gate-line.html option 2): a folded
+   card whose head is one button, 8px left of the text's column; opened, the same frame
+   grows down. A narrow chat wraps the head's parts rather than scroll sideways. */
 .chat-gate.closed {
-  padding: 2px var(--row-pad) 2px var(--text-start);
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.gate-line {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.gate-toggle {
-  padding: 0;
-  border: 0;
-  background: transparent;
+  padding: 2px var(--row-pad) 2px calc(var(--text-start) - 8px);
   color: var(--ink);
-  font: 600 13px var(--mono);
+  font-size: 14px;
+}
+
+.gate-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: center;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 14px var(--sans);
   text-align: left;
-  overflow-wrap: anywhere;
   cursor: pointer;
 }
 
-.gate-toggle::before {
-  content: "▸ ";
+.gate-head:hover {
+  background: var(--raised);
+}
+
+.chat-gate.closed.expanded .gate-head {
+  border-bottom-color: transparent;
+  border-radius: 8px 8px 0 0;
+}
+
+.gate-head .avatar-gate .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.gate-head-title {
+  flex: none;
+  font-weight: 600;
+}
+
+.gate-head-where,
+.gate-head-by {
+  min-width: 0;
   color: var(--muted);
-}
-
-.gate-toggle[aria-expanded="true"]::before {
-  content: "▾ ";
-}
-
-.gate-line time {
-  margin-left: auto;
-}
-
-.gate-comment {
-  margin: 2px 0 0 14px;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.gate-closed-text {
-  margin: 4px 0 6px 14px;
+.gate-head time {
+  flex: none;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gate-chevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+.gate-head[aria-expanded="true"] .gate-chevron {
+  transform: rotate(180deg);
+}
+
+.gate-closed-card {
+  padding: 4px 14px 12px;
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: var(--panel);
+}
+
+.gate-closed-card .gate-question {
+  margin: 8px 0 0;
+}
+
+.answer-who {
   color: var(--ink);
+}
+
+/* An opened closed gate's folded lines (Note, Supervisor): the label in a fixed column, the
+   head cut on one line; opened, the body under the head. */
+.gate-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.gate-row summary {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  list-style: none;
+  cursor: pointer;
+}
+
+.gate-row summary::-webkit-details-marker {
+  display: none;
+}
+
+.gate-row summary::before {
+  content: "▸";
+  color: var(--muted);
+}
+
+.gate-row[open] summary::before {
+  content: "▾";
+}
+
+.gate-row-label {
+  flex: none;
+  width: 84px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.gate-row-head {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gate-row-body {
+  margin: 6px 0 0 100px;
+}
+
+.gate-row-body .gate-note {
+  margin-top: 0;
 }
 
 /* An open question or gate in the feed (Chat.tsx, OpenLine): a quiet line, its arrow leading

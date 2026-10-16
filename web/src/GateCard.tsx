@@ -1,23 +1,27 @@
 // A flow gate (docs/design/ui.md, The human in the session): open, its panel (GatePanel),
 // answered with one of its options and a comment for the next step, in its tab of the
-// waiting card or as a card on a run's page; closed, a quiet line in the feed with its
-// answer that opens read only. The panel has no head of its own: the tab or the run's page
+// waiting card or as a card on a run's page; closed, a folded card in the feed with its
+// answer that opens read only (GateLine). The panel has no head of its own: the tab or the run's page
 // names the gate (gateTitle). The answer goes through the server to runs.answer, as
 // `lado answer` and the popup do; the panel changes only when the feed brings the closed
 // gate, whoever answered it.
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
-import { answerGate, ApiError, type GateInfo } from "./api";
+import { answerGate, ApiError, HUMAN, type GateInfo, type RunEventInfo, type RunInfo } from "./api";
 import { size } from "./artifacts";
 import { KindIcon } from "./ArtifactView";
 import { Attachments, useView } from "./Attachments";
-import { clock, Preview } from "./ChatText";
+import { Body, clock, Preview } from "./ChatText";
+import { MiniAvatar } from "./FeedRow";
 import { CARD_LINES, MOST_LINES, useGrow } from "./fieldHeight";
+import { OutcomeChip } from "./flowSteps";
+import { ChevronIcon, GateIcon } from "./icons";
 import { useLive } from "./live";
 import { quoteArea } from "./quote";
-import { primaryOf, Recommendation, RecommendationLine } from "./Recommendation";
+import { disagreed, primaryOf, Recommendation } from "./Recommendation";
 
 const NOTE_LINES = 20; // the lines of the note before the gate shown before Show more
+const CLOSED_NOTE_LINES = 6; // the same in a closed gate's card, its Note line opened
 
 // How a button names an option, by the gate's kind; a choice gate's options are its own.
 const LABELS: Record<string, Record<string, string>> = {
@@ -231,27 +235,149 @@ function Reads({ session, names }: { session: string; names: string[] }) {
   );
 }
 
-// A closed gate: who answered what, the comment; the question, the note and the
-// supervisor's recommendation's line on a click.
-export function GateLine({ session, gate }: { session: string; gate: GateInfo }) {
+// A closed gate (docs/design/ui.md, Flow gates): a folded card, its head one button that
+// opens it down in the same frame. The head: the gate's flag, "Gate #<id>", run and state,
+// the answer's chip, who answered, the time and a chevron; no comment, whoever closed it:
+// the comment stands under the move it made, and an override's or a cancel's reason on its
+// event's line. Opened: the question, the answer on the human's ground (an agent's quieter),
+// and the note and the recommendation folded into a line each. `move`: the run's move that
+// closed it (moveOf), which gives the chip its direction by the run's flow `states` and the
+// answer its target; without one, the answer's word, neutral.
+export function GateLine({
+  session,
+  gate,
+  move,
+  states,
+}: {
+  session: string;
+  gate: GateInfo;
+  move?: RunEventInfo;
+  states: RunInfo["states"] | null;
+}) {
   const [shown, setShown] = useState(false);
   const when = gate.answered_at ?? gate.created_at;
+  const by = gate.answered_by ?? "";
+  const chip =
+    move?.transition && gate.answer ? (
+      <OutcomeChip states={states} from={move.transition.from_state} to={move.transition.to_state} outcome={gate.answer} base="run-outcome" />
+    ) : (
+      <span className="run-outcome">{gate.answer}</span>
+    );
+  const time = <time dateTime={when}>{clock(when)}</time>;
   return (
-    <article className="chat-gate closed" id={gateAnchor(gate.id)} aria-label={`Gate #${gate.id}`} {...quoteArea(session)}>
-      <div className="gate-line">
-        <button type="button" className="gate-toggle" aria-expanded={shown} onClick={() => setShown(!shown)}>
-          {gateTitle(gate)}: {gate.answer} by {gate.answered_by}
-        </button>
-        <time dateTime={when}>{clock(when)}</time>
-      </div>
-      {gate.comment && <p className="gate-comment">{gate.comment}</p>}
+    <article
+      className={`chat-gate closed${shown ? " expanded" : ""}`}
+      id={gateAnchor(gate.id)}
+      aria-label={`Gate #${gate.id}`}
+      {...quoteArea(session)}
+    >
+      <button
+        type="button"
+        className="gate-head"
+        aria-label={`${gateTitle(gate)}: ${gate.answer} by ${by}`}
+        aria-expanded={shown}
+        onClick={() => setShown(!shown)}
+      >
+        <span className="avatar mini avatar-gate" aria-hidden="true">
+          <GateIcon />
+        </span>
+        <span className="gate-head-title">Gate #{gate.id}</span>
+        <span className="gate-head-where">
+          {gate.run} · {gate.state}
+        </span>
+        {chip}
+        <span className="gate-head-by">by {by === HUMAN ? "you" : by}</span>
+        {time}
+        <span className="gate-chevron" aria-hidden="true">
+          <ChevronIcon />
+        </span>
+      </button>
       {shown && (
-        <div className="gate-closed-text">
+        <div className="gate-closed-card">
           <p className="gate-question">{gate.question}</p>
-          <Note session={session} gate={gate} />
-          <RecommendationLine rec={gate.recommendation} label={label(gate)} />
+          <div className={`question-answer${by === HUMAN ? "" : " dismissed"}`}>
+            <div className="answer-top">
+              <MiniAvatar who={by} />
+              <b className="answer-who">{by === HUMAN ? "You" : by}</b>
+              {chip}
+              {move?.transition && <span className="answer-target">→ {move.transition.to_state}</span>}
+              {time}
+            </div>
+            {gate.comment && <Body text={gate.comment} breaks />}
+          </div>
+          <NoteLine session={session} gate={gate} />
+          <SupervisorLine gate={gate} />
         </div>
       )}
     </article>
+  );
+}
+
+// A folded line of an opened closed gate: its label in a fixed column, its head cut on one
+// line; the rest on a click.
+function FoldedLine({ name, head, children }: { name: string; head: ReactNode; children: ReactNode }) {
+  return (
+    <details className="gate-row">
+      <summary>
+        <span className="gate-row-label">{name}</span>
+        <span className="gate-row-head">{head}</span>
+      </summary>
+      <div className="gate-row-body">{children}</div>
+    </details>
+  );
+}
+
+// The note that led to a closed gate: its summary and how many artifacts it carries; opened,
+// its body's first CLOSED_NOTE_LINES lines with Show more, and its artifacts.
+function NoteLine({ session, gate }: { session: string; gate: GateInfo }) {
+  const count = gate.attachments.length;
+  if (!gate.note && !gate.note_body && count === 0) return null;
+  const artifacts = count > 0 && `${count} artifact${count === 1 ? "" : "s"}`;
+  return (
+    <FoldedLine
+      name="Note"
+      head={
+        <>
+          {gate.note && <b>{gate.note}</b>}
+          {gate.note && artifacts && " · "}
+          {artifacts}
+        </>
+      }
+    >
+      <div className="gate-note">
+        {gate.note_body && <Preview text={gate.note_body} lines={CLOSED_NOTE_LINES} />}
+        <Attachments session={session} attachments={gate.attachments} short />
+      </div>
+    </FoldedLine>
+  );
+}
+
+// The supervisor's recommendation on a closed gate: the option it recommended (named as the
+// card's buttons) and whether the human's answer agreed; the lead's disagreement with the
+// agent in orange; opened, its text. Only a recommendation that was given.
+function SupervisorLine({ gate }: { gate: GateInfo }) {
+  const rec = gate.recommendation;
+  if (rec?.state !== "given") return null;
+  const agreed =
+    rec.choice && gate.answered_by === HUMAN ? (gate.answer === rec.choice ? " · you agreed" : " · you answered otherwise") : "";
+  return (
+    <FoldedLine
+      name="Supervisor"
+      head={
+        <>
+          {rec.choice ? (
+            <>
+              recommended <b>{label(gate)(rec.choice)}</b>
+            </>
+          ) : (
+            "Supervisor's recommendation"
+          )}
+          {agreed}
+          {rec.disagrees && <span className="rec-closed-differs"> · {disagreed(rec, "disagreed")}</span>}
+        </>
+      }
+    >
+      <Body text={rec.text} />
+    </FoldedLine>
   );
 }

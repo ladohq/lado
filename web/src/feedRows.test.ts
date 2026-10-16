@@ -3,7 +3,7 @@
 import { expect, test } from "vitest";
 
 import type { GateInfo, MessageInfo, RunEventInfo } from "./api";
-import { feedRows, gateOf, type Entry } from "./Chat";
+import { feedRows, gateOf, moveOf, type Entry } from "./Chat";
 
 function message(id: number, from: string, to: string, at: Date, more: Partial<MessageInfo> = {}): Entry {
   const item: MessageInfo = {
@@ -196,19 +196,38 @@ function answered(id: number, state: string, when: Date, more: Partial<GateInfo>
   } as GateInfo;
 }
 
-test("the human's move is the answer to the gate of its run it left or entered, closed nearest to it", () => {
-  const move = moved(1, "check", "approved", "ship", { actor: "human", created_at: at(10, 5).toISOString() });
+test("the human's move answers the gate that keeps its id as its closing event, and no other", () => {
+  const move = moved(7, "check", "approved", "ship", { actor: "human", created_at: at(10, 5).toISOString() });
   const gates = [
-    answered(1, "check", at(9, 0)),
-    answered(2, "check", at(10, 5)),
-    answered(3, "check", at(10, 5), { run: "fix/y" }),
-    answered(4, "check", at(10, 5), { answered_by: "supervisor" }),
-    answered(5, "other", at(10, 5)),
+    // The same run, state and time, but closed by another event: not this move's.
+    answered(1, "check", at(10, 5), { closed_by_event: 3 }),
+    answered(2, "check", at(9, 0), { closed_by_event: 7 }),
+    answered(3, "check", at(10, 5), { closed_by_event: null }),
   ];
   expect(gateOf(move, gates)?.id).toBe(2);
-  // A loop limit's continue enters the gate's state: the run left another one.
-  const loop = moved(2, "review", "continue", "build", { actor: "human", created_at: at(10, 7).toISOString() });
-  expect(gateOf(loop, [answered(6, "build", at(10, 7)), answered(1, "check", at(10, 7))])?.id).toBe(6);
   expect(gateOf(move, [])).toBeUndefined();
   expect(gateOf({ ...move, actor: "w1" }, gates)).toBeUndefined();
+});
+
+test("a gate visited twice: each move gets its own gate, each gate its own move", () => {
+  const first = moved(4, "design_ok", "rejected", "design", { actor: "human" });
+  const again = moved(9, "design_ok", "approved", "build", { actor: "human" });
+  const events = [first, moved(5, "design", "ready", "design_ok"), again];
+  const gates = [
+    answered(1, "design_ok", at(10, 4), { answer: "reject", closed_by_event: 4 }),
+    answered(2, "design_ok", at(10, 9), { closed_by_event: 9 }),
+  ];
+  expect([gateOf(first, gates)?.id, gateOf(again, gates)?.id]).toEqual([1, 2]);
+  expect([moveOf(gates[0], events)?.id, moveOf(gates[1], events)?.id]).toEqual([4, 9]);
+});
+
+test("a gate closed by an override, a cancel, or not linked has no move", () => {
+  const forced = moved(4, "check", "", "build", { actor: "human", kind: "flow_set", transition: null });
+  const cancel = moved(5, "check", "", "check", { actor: "supervisor", kind: "flow_cancel", transition: null });
+  const events = [forced, cancel, moved(6, "check", "approved", "ship", { actor: "human" })];
+  expect(moveOf(answered(1, "check", at(10, 4), { answer: "overridden", closed_by_event: 4 }), events)).toBeUndefined();
+  expect(moveOf(answered(2, "check", at(10, 5), { answer: "cancelled", closed_by_event: 5 }), events)).toBeUndefined();
+  expect(moveOf(answered(3, "check", at(10, 6), { closed_by_event: null }), events)).toBeUndefined();
+  // The move not in the feed yet: the gate and its events come one by one.
+  expect(moveOf(answered(4, "check", at(10, 6), { closed_by_event: 99 }), events)).toBeUndefined();
 });

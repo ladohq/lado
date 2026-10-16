@@ -20,7 +20,7 @@ export function primaryOf(options: string[], rec?: RecommendationInfo | null): s
   return chosen && options.includes(chosen) ? chosen : options[0];
 }
 
-const disagreed = (rec: RecommendationInfo, verb: string) => `${verb}${rec.by ? ` with ${rec.by}` : ""}`;
+export const disagreed = (rec: RecommendationInfo, verb: string) => `${verb}${rec.by ? ` with ${rec.by}` : ""}`;
 
 // An open card's block: the supervisor's avatar and the title, "disagrees with <agent>" in
 // orange when the lead disagrees, the time, the whole text. While it is asked, or when the

@@ -17,9 +17,9 @@ Tests first in each section; each task is one commit.
 
 ## 2. compose.yaml as a release asset
 
-- [ ] 2.1 Unit test, `tests/test_release_workflow.py`: the `github-release` job's `gh
+- [x] 2.1 Unit test, `tests/test_release_workflow.py`: the `github-release` job's `gh
   release create` uploads `docker/compose.yaml#compose.yaml` beside `dist/*` (D2).
-- [ ] 2.2 `.github/workflows/release.yml`; docs/release.md names the asset where it lists
+- [x] 2.2 `.github/workflows/release.yml`; docs/release.md names the asset where it lists
   what a release publishes. `uv run pytest tests/test_release_workflow.py -n auto`.
 
 ## 3. The warning for a folder outside LADO_REPOS

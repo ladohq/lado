@@ -186,3 +186,15 @@ def test_the_github_release_comes_only_after_pypi_accepted_the_release():
     assert 'scripts/release_notes.py --flag "$GITHUB_REF_NAME"' in run
     assert "--verify-tag" in run and "--notes-file" in run and "dist/*" in run
     assert create["env"]["GH_TOKEN"] == "${{ github.token }}"
+
+
+def test_the_github_release_carries_the_tags_compose_file():
+    """The install guide downloads releases/latest/download/compose.yaml: the asset's name
+    is the file's base name, compose.yaml (gh's `#` would set only a display label), the
+    file the tag's (the job checks the tag out)."""
+    job = jobs()["github-release"]
+    (create,) = [s for s in job["steps"] if "gh release create" in s.get("run", "")]
+    words = create["run"].split()
+    assert "docker/compose.yaml" in words, words
+    assert words.index("dist/*") < words.index("docker/compose.yaml")
+    assert job["steps"][0]["uses"].startswith("actions/checkout@")

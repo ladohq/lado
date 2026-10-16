@@ -122,7 +122,7 @@ export function TitleEdit({
           onKeyDown={(event) => {
             if (takesName(event)) {
               event.preventDefault();
-                setText(session.name);
+              setText(session.name);
               setProblem(null);
             } else if (event.key === "Enter") {
               event.preventDefault();

@@ -185,6 +185,18 @@ test("Tab on an empty field takes the name: the caret at its end, nothing sent, 
   expect(onClose).not.toHaveBeenCalled();
 });
 
+test("Esc after Tab took the name cancels: nothing is sent, also by the blur after it", async () => {
+  const { field, onClose } = suggest();
+  fireEvent.keyDown(field, { key: "Tab" });
+  expect(field.value).toBe("lado-2");
+  fireEvent.keyDown(field, { key: "Escape" });
+  fireEvent.blur(field);
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(onClose).toHaveBeenCalledWith(undefined);
+  await act(async () => {});
+  expect(calls).toEqual([]);
+});
+
 test.each([["Tab"], ["ArrowRight"]])("a start of the name shows its rest grey, and %s takes it", (key) => {
   const { field } = suggest();
   type(field, "la");

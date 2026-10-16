@@ -4,7 +4,7 @@
 run `feature/macos-gui-session`. Итоговые решения — в его артефакте `design` (подход A:
 `src/lado/gui_session.py`, хук `before_attempt` у `tmux.new_session`, его передаёт
 `runtime.start_session`; `Provider.keychain_login`; предупреждения по факту после создания
-окна; тексты нейтральные, `gui_session.fill`) и в AGENTS.md (Layout, How agents talk). Где
+окна; тексты нейтральные, `gui_session.fill`) и в docs/design/modules.md и docs/design/agents.md (до LAD-82 — AGENTS.md, Layout и How agents talk). Где
 этот документ расходится с ними (сигнатура `keychain_login`, предсказание места до запуска
 сервера, CHANGELOG 0.32.1), правы они.
 

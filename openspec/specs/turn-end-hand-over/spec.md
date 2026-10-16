@@ -1,7 +1,7 @@
 # turn-end-hand-over Specification
 
 ## Purpose
-How an agent's queue is handed over at the end of its turn (AGENTS.md, How agents talk):
+How an agent's queue is handed over at the end of its turn (docs/design/agents.md):
 the hook makes the agent idle and takes its queue in one transaction, so the session loop's
 sweep never sees the agent idle with that queue and never types the hook's batch in.
 

@@ -1,4 +1,4 @@
-"""The local models of the live tests (AGENTS.md, Testing): LM Studio's check, the config
+"""The local models of the live tests (docs/testing.md): LM Studio's check, the config
 that gives each CLI its model, and the bridge Codex reaches LM Studio through.
 
 Codex, OpenCode and Kilo run on one model LM Studio serves, MODEL. OpenCode and Kilo reach

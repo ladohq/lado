@@ -166,8 +166,10 @@ Developer:
 - Edit files with your edit tools, not shell heredocs or `sed -i`. No sub-agents.
 - Each change users see adds a line to CHANGELOG.md under `## X.Y.Z (unreleased)` (add
   that heading on top when it is missing; X.Y.Z is the next version by AGENTS.md's
-  Versions rule). Keep AGENTS.md (Layout, How agents talk, the CLI sections) true to the
-  code in the same pull request.
+  Versions rule). AGENTS.md is the project's map: add to it only what an agent needs in
+  any task. Behaviour goes to `docs/design/agents.md`, `docs/design/modules.md`,
+  `docs/testing.md`, `docs/cli.md` or the module's docstring; keep them true to the code
+  in the same pull request.
 - A schema change: bump `SCHEMA_VERSION`, add a step to `MIGRATIONS` and update
   `tests/agent_helpers.previous_schema`.
 - UI work: build to the approved mockup, add a UI e2e test, and attach a screenshot of

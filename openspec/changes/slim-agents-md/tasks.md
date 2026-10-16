@@ -1,6 +1,6 @@
 ## 1. Move the sections out
 
-- [ ] 1.1 `docs/design/agents.md` holds How agents talk, `docs/design/modules.md` Layout,
+- [x] 1.1 `docs/design/agents.md` holds How agents talk, `docs/design/modules.md` Layout,
   `docs/cli.md` Try it locally, `docs/testing.md` Commands' test infrastructure (from
   "Unit and integration tests run in parallel" to the Windows probe's end) and Testing,
   each nearly word for word, with a title and one line of what it holds; a reference to a
@@ -11,7 +11,7 @@
 
 ## 2. The new AGENTS.md
 
-- [ ] 2.1 AGENTS.md, at most 200 lines: what LADO is and ROADMAP.md; Commands (the uv and
+- [x] 2.1 AGENTS.md, at most 200 lines: what LADO is and ROADMAP.md; Commands (the uv and
   make targets, `make browser`, parallel tests with no shared path, port or file, the
   test-run lock in one line); Layout, one line per module or folder of `src/lado/`,
   `web/`, `tests/`, `scripts/`, `docker/`, `npm/`; Testing, the seven layers in short with
@@ -21,7 +21,7 @@
   naming `docs/design/agents.md`, `docs/design/modules.md`, `docs/testing.md`,
   `docs/cli.md`, `docs/design/ui.md`, `docs/design/artifacts.md`, `docs/release.md`,
   `openspec/specs/`. Check: `wc -l AGENTS.md`.
-- [ ] 2.2 `tests/test_agents_md.py`: AGENTS.md at most 200 lines, and each relative link
+- [x] 2.2 `tests/test_agents_md.py`: AGENTS.md at most 200 lines, and each relative link
   (`[...](path)`, anchor and query dropped) names a path of the repository; failures name
   the count or the link. Check: red once with a 201-line copy and with a link to a missing
   file (the test reads a path it is given), then green with `uv run pytest -n0
@@ -29,14 +29,14 @@
 
 ## 3. References and the rule
 
-- [ ] 3.1 Point the references at the new files: `docs/design/ui.md` (lines naming How
+- [x] 3.1 Point the references at the new files: `docs/design/ui.md` (lines naming How
   agents talk and AGENTS.md's principles), `docs/design/macos-gui-session.md`,
   `BACKLOG.md`, `.github/workflows/windows-shell.yml`'s header, `tests/local_models.py`,
   `tests/live/conftest.py`, and the Purpose line of
   `openspec/specs/turn-end-hand-over/spec.md` (not a requirement, so no delta). Check: `git grep -n -e 'AGENTS.md' -e 'How agents talk' -e
   'Try it locally' -- ':!openspec/changes/archive' ':!docs/superpowers'` names only
   references that are still true.
-- [ ] 3.2 `.lado/sdlc.md`, Developer: the rule "Keep AGENTS.md (Layout, How agents talk,
+- [x] 3.2 `.lado/sdlc.md`, Developer: the rule "Keep AGENTS.md (Layout, How agents talk,
   the CLI sections) true to the code in the same pull request" becomes "AGENTS.md is the
   project's map: add to it only what an agent needs in any task. Behaviour goes to
   `docs/design/agents.md`, `docs/design/modules.md`, `docs/testing.md`, `docs/cli.md` or

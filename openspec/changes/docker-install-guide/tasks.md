@@ -35,9 +35,9 @@ Tests first in each section; each task is one commit.
   carry `warning` in a container, null outside (D5, D6).
 - [x] 3.4 `models.FolderInfo.warning`, `models.CloneTarget.warning`, `launch.folder_info`,
   `clones.py`; `make web-types`, both files committed.
-- [ ] 3.5 vitest, `web/src/Launch.test.tsx`: the warning shows under Where after the check
+- [x] 3.5 vitest, `web/src/Launch.test.tsx`: the warning shows under Where after the check
   mark and under Clone into, Start stays enabled; none without the field (D6).
-- [ ] 3.6 `web/src/Launch.tsx` as on mockup `task/lad-83/mockup-outside-repos.html`
+- [x] 3.6 `web/src/Launch.tsx` as on mockup `task/lad-83/mockup-outside-repos.html`
   variant 2. `make web`.
 - [ ] 3.7 UI e2e (layer 4), `tests/ui/`: a server with `LADO_CONTAINER=1` and
   `LADO_REPOS` shows the warning for a folder outside and none for one inside; a

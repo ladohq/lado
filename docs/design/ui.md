@@ -1483,6 +1483,18 @@ Where it is set (`TitleEdit.tsx`, one field for both):
   (`role="alert"`), the field kept open with the text. The answer, the session as stored,
   is shown at once, before the feed's item. After it closes the focus goes back to the
   pencil or the ⋯.
+- **Tab takes the name** (decided 2026-10-16, LAD-84; mockup
+  `task/lad-84/mockup-title-tab.html`, variant A): the name is the field's one suggestion
+  while its text is a proper start of the name (case and all, the empty text included),
+  the caret at the end with nothing selected, nothing saving and no input method
+  composing. Empty, it is the placeholder; a start typed (`la` of `lad-84`) shows the
+  rest of the name grey after it (`.title-edit-rest`, a layer over the input in
+  `--muted`, hidden while the input is scrolled). Tab or → without modifiers then make the
+  name the text, the caret at its end, the focus in the field, nothing sent; the human
+  types on and saves with Enter. The hint meanwhile reads `Tab takes the name · Enter to
+  save · Esc to cancel` in the head, `lado-2 · Tab takes the name · Enter to save · Esc to
+  cancel` in a row. With other text, the name whole or a title opened selected, Tab,
+  Shift+Tab and → do what they do in any field (Tab leaves it, which saves it).
 
 ### System panel (decided 2026-10-09, feature/system-panel)
 

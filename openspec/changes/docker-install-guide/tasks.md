@@ -79,6 +79,11 @@ Tests first in each section; each task is one commit.
   section goes first, its update and pitfalls headings named so that the PyPI anchors stay
   (`Update the container`, `If something goes wrong in Docker`); README's Quick start and
   Update say the Docker way in one line each. A unit test keeps the order.
+- [x] 4.5 The human's question at merge_ok (2026-10-16), whether the Docker section needs
+  `lado doctor`: no install step (the image brings every tool at its tested version, and
+  the container tests require a `lado doctor` with no `[FAIL]`), but the first look in If
+  something goes wrong in Docker: what it says there (the projects folder, the secrets'
+  names, the agent CLIs) and `docker compose logs lado`.
 
 ## 5. Records
 

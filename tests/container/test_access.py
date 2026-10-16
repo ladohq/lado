@@ -180,6 +180,22 @@ def keys(c) -> str:
     return c.exec("bash", "-lc", "ssh-add -l", check=False).stdout
 
 
+def test_the_first_ssh_to_github_knows_its_host_key(container):
+    """A new home volume and no ssh agent: ssh to github.com fails on the missing key of
+    the user, never on the host's key, and writes no known_hosts. A real ssh to GitHub: when
+    GitHub rotates its keys this turns red, and the image needs the new ones
+    (docker/ssh_known_hosts)."""
+    done = container.exec(
+        "bash", "-lc", "ssh -T -o BatchMode=yes -o ConnectTimeout=20 git@github.com",
+        check=False,
+    )  # fmt: skip
+    assert "Permission denied (publickey)" in done.stderr, done.stderr
+    assert "Host key verification failed" not in done.stderr
+    assert container.sh("test -e ~/.ssh/known_hosts && echo made || echo none").stdout.strip() == (
+        "none"
+    )
+
+
 def test_ssh_agent_through_a_root_owned_socket(start, ssh_agent):
     volume, agent = ssh_agent(1000, 0)
     c = served(start, "-v", f"{volume}:/run/lado")

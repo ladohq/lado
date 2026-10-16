@@ -2,14 +2,14 @@ Tests first in each section; each task is one commit.
 
 ## 1. GitHub's host keys in the image
 
-- [ ] 1.1 Unit tests (layer 1), `tests/test_docker.py`: `docker/ssh_known_hosts` has only
+- [x] 1.1 Unit tests (layer 1), `tests/test_docker.py`: `docker/ssh_known_hosts` has only
   `github.com` lines with the key types ed25519, ecdsa-sha2-nistp256 and rsa; the
   Dockerfile copies it to `/etc/ssh/ssh_known_hosts` (mode 644, root's); the build
   context's allowlist gains `!docker/ssh_known_hosts` and nothing else (D3, D4).
-- [ ] 1.2 `docker/ssh_known_hosts` from `api.github.com/meta`, its fingerprints checked
+- [x] 1.2 `docker/ssh_known_hosts` from `api.github.com/meta`, its fingerprints checked
   against docs.github.com; Dockerfile `COPY`; `Dockerfile.dockerignore`.
   `uv run pytest tests/test_docker.py -n auto`, `make lint`.
-- [ ] 1.3 Container test (layer 7), `tests/container/test_access.py`: on a new home
+- [x] 1.3 Container test (layer 7), `tests/container/test_access.py`: on a new home
   volume with no ssh agent, `ssh -T -o BatchMode=yes git@github.com` in lado's login
   shell fails with `Permission denied (publickey)`, not `Host key verification failed`,
   and `~/.ssh/known_hosts` is not made (D4). `make docker`, then `uv run pytest -m

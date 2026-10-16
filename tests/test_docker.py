@@ -177,7 +177,28 @@ def test_the_build_context_is_an_allowlist():
         "!docker/profile.sh",
         "!docker/entrypoint.sh",
         "!docker/ssh-agent-socket.sh",
+        "!docker/ssh_known_hosts",
     ]
+
+
+def test_the_host_keys_are_githubs_public_keys_alone():
+    """GitHub's published keys (api.github.com/meta, `ssh_keys`), one per type; no other
+    host, no private key: the image holds no one's secrets."""
+    text = (DOCKER / "ssh_known_hosts").read_text()
+    entries = [line.split() for line in text.splitlines() if line and not line.startswith("#")]
+    assert [host for host, *_ in entries] == ["github.com"] * 3
+    assert sorted(kind for _, kind, *_ in entries) == [
+        "ecdsa-sha2-nistp256",
+        "ssh-ed25519",
+        "ssh-rsa",
+    ]
+    assert all(len(entry) == 3 for entry in entries), entries
+    assert "PRIVATE KEY" not in text
+
+
+def test_the_image_knows_the_host_keys_system_wide():
+    """root's, mode 644: no agent changes them, every user's ssh reads them."""
+    assert "COPY --chmod=644 docker/ssh_known_hosts /etc/ssh/ssh_known_hosts" in lines()
 
 
 SSH_RULE = "lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socket"

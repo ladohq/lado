@@ -38,8 +38,9 @@
 # folder owner's uid. The command runs as lado also with `docker run --user root`; root in
 # a running container: `docker exec -u 0`. Another port: -e LADO_PORT=8766 -p
 # 127.0.0.1:8766:8766. compose.yaml runs the same image. The build context is the
-# repository through Dockerfile.dockerignore's allowlist: one wheel (dist/), profile.sh and
-# entrypoint.sh.
+# repository through Dockerfile.dockerignore's allowlist: one wheel (dist/), profile.sh,
+# entrypoint.sh, ssh-agent-socket.sh and ssh_known_hosts (GitHub's public host keys, the
+# only keys in the image).
 
 FROM ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 AS uv
 FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS node
@@ -95,6 +96,10 @@ RUN printf '%s\n' 'lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socke
  && chmod 0440 /etc/sudoers.d/lado-ssh-agent \
  && visudo -cf /etc/sudoers.d/lado-ssh-agent \
  && mkdir -p /run/lado && chmod 755 /run/lado
+# GitHub's public host keys, so an agent's first ssh to github.com asks nothing (its shell
+# cannot answer) and ssh still refuses a key that is not GitHub's. The only keys in the
+# image: the human's own come at run time.
+COPY --chmod=644 docker/ssh_known_hosts /etc/ssh/ssh_known_hosts
 # git trusts every repository: the projects' owner may seem another user (git 2.39 has no
 # `<path>/*` form, and the container has one user). It gets github.com's https credentials
 # from gh: GH_TOKEN, or gh's own login on the home volume (what `gh auth setup-git` writes;

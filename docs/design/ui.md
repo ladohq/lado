@@ -1246,6 +1246,13 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   check runs only on what is typed or picked, never on the empty field nor on the
   repositories folder itself (with or without its last `/`): it holds the repositories,
   and its "not inside a git repository" would offer a `git init` over them all.
+  In LADO's container only (`LADO_CONTAINER`), a folder whose real path is outside the
+  repositories folder gets a warning after the check mark, `⚠ Outside the repositories
+  folder (<folder>): this folder is only in the container, your computer does not see it
+  or the agents' work in it` (a `field-note warn` line; `FolderInfo.warning`, the core's
+  `runtime.outside_repos`, which a start also gives among its warnings); the check mark and
+  Start stay. **Clone into** shows the same under the target's note (`CloneTarget.warning`).
+  Decided 2026-10-16, LAD-83, mockup `task/lad-83/mockup-outside-repos.html` variant 2.
   **Name** is the folder's default (`default_name`, the core's `slug`) with what the server
   says of it (`name_state`): taken by a running session, by a session of another folder,
   or a stopped session of this folder with **Resume it**, which turns the window to Resume.

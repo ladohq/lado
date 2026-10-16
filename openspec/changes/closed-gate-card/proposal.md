@@ -16,7 +16,10 @@ the gate opened, the move where it was answered; when nothing came between, the 
 copies stand one under the other. A gate closed by `lado flow-set` or by a run's cancel
 repeats its reason the same way: the event's line says it already.
 
-When the human opens the closed gate's line, what it shows (the question, the note that
+The line of a closed gate is pale monospaced text with a small "▸", so it does not look
+like something that opens, and the human's move with the comment reads as one more
+agent's event (the human, at design_ok). When the human opens the closed gate's line,
+what it shows (the question, the note that
 led to the gate up to 20 lines at once, the recommendation's line) is one grey flow with
 no parts to find by eye, and a long note fills the screen (the human, at design).
 
@@ -32,18 +35,26 @@ Options weighed (mockup `task/lad-85/mockup-gate-comment.html`):
 
 The opened view (mockup `task/lad-85/mockup-gate-expanded.html`, the human: option 2):
 a card that shows the question and the answer, and folds the note and the
-recommendation into a line each.
+recommendation into a line each. The folded line and the move (mockup
+`task/lad-85/mockup-gate-line.html`, the human: option 2): a folded card with a chevron,
+and the human's move on the human's ground.
 
 ## What Changes
 
-- A closed gate's line in the chat shows its title and time, no comment; the human's
-  move keeps the answer's comment under it as today.
-- A click on the line opens a card: the question; the answer as a plaque in the "waits
-  for you" colours (who answered, the answer, where the run went and when, the comment
-  in full); then two folded lines: **Note** (the note's summary and how many artifacts it
-  carries) and **Supervisor** (what the supervisor recommended and whether the answer
-  agreed). A folded line opens on a click; the note opened shows 6 lines with Show more,
-  and its artifacts.
+- A closed gate in the chat is a folded card, no comment under it (mockup
+  `task/lad-85/mockup-gate-line.html`, the human: option 2): the gate's flag, "Gate
+  #<id>", run and state, a coloured chip of the answer, "by you", the time and a chevron
+  that says it opens. The human's move keeps the answer's comment under it as today.
+- A click opens the card down in the same frame: the question; the answer in the look
+  of the human's reply in a question's card (blue, the human's ground: who answered,
+  the answer, where the run went and when, the comment in full); then two folded
+  lines: **Note** (the note's summary and how many artifacts it carries) and
+  **Supervisor** (what the supervisor recommended and whether the answer agreed). A
+  folded line opens on a click; the note opened shows 6 lines with Show more, and its
+  artifacts.
+- The human's move in a run's group, with its comment, stands on the human's ground
+  (blue), as the human's messages do: the chat tells the human's answer from the
+  agents' moves at a glance.
 - Each closed gate keeps the id of the run's event its closing wrote (a new column of
   `gates`, stored in the closing's transaction; gates closed before get it from a
   one-time migration), and the server gives it (`GateInfo.closed_by_event`); the chat

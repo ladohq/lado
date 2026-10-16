@@ -51,11 +51,40 @@ The chat SHALL link a gate's comment and its card to the move by that id alone.
 - **THEN** each of those gates has the id of its closing's event, and an open gate has
   none
 
+### Requirement: A closed gate is a folded card that says it opens
+
+The chat SHALL show a closed gate as one folded card: the gate's flag, "Gate #<id>",
+its run and state, the answer as a chip coloured by the run's direction when the move
+is known, who answered ("by you" for the human), the time and a chevron that turns when
+it opens. The whole card SHALL open and close on a click and on Enter or Space, and
+SHALL keep the accessible name "Gate #<id> · <run> · <state>: <answer> by <who>".
+
+#### Scenario: A rejected gate, folded
+- **WHEN** the human rejected gate #387 of task/lad-83 at merge_ok and the run went back
+  to build
+- **THEN** the chat shows a card "Gate #387 task/lad-83 · merge_ok", an orange chip
+  "reject" with the return mark, "by you", the time and a chevron pointing down
+
+#### Scenario: Opened from the keyboard
+- **WHEN** the human focuses the folded card and presses Enter
+- **THEN** the card opens down in the same frame and its chevron points up
+
+### Requirement: The human's move stands on the human's ground
+
+In a run's group, the chat SHALL show each line of the human's own (an answer's move, a
+`lado flow-set`), with the answer's comment under it, on the ground of the human's own
+messages, and the agents' lines without it.
+
+#### Scenario: The move after an answer
+- **WHEN** the human rejects a gate with a comment
+- **THEN** the line "You <state> → <state> rejected" and the comment under it stand on
+  the human's ground, and the agents' lines of the same group do not
+
 ### Requirement: An opened closed gate shows its question and answer first
 
-A click on a closed gate's line SHALL open a card that shows the gate's question and its
-answer (who answered, the answer, where the run went when the chat knows the move, the
-time, and the comment in full), and SHALL fold the note that led to the gate and the
+A click on a closed gate's card SHALL open it to show the gate's question and its
+answer on the human's ground (who answered, the answer, where the run went when the chat
+knows the move, the time, and the comment in full), and SHALL fold the note that led to the gate and the
 supervisor's recommendation into one line each, which open on a click. The note opened
 SHALL show at most 6 lines of its body with Show more, and its artifacts.
 

@@ -22,28 +22,51 @@ born together (5f0e932), so every closed gate has one.
 Held against AGENTS.md and ROADMAP: no provider, the neutral core untouched; one source of
 truth: the core that writes the closing also stores its event, the UI no longer infers it,
 and the comment has one place in the feed (the move); only what is used: one API field,
-read by the chat in two places (the comment under the move, the card's plaque).
+read by the chat in three places (the comment under the move, the card's head and its plaque).
 
 ## Decisions
 
-### D1. The comment leaves the gate's line
+### D1. The comment leaves the gate's line; the line is a folded card
 
-`GateLine` drops `.gate-comment` (and its CSS rule). The line is its title
-(`gateTitle(gate): <answer> by <who>`) and the time, for every closed gate, whoever
-closed it: the reason of an override or a cancel is on its event's line already.
+`GateLine` drops `.gate-comment` (and its CSS rule): no comment under a closed gate,
+whoever closed it (the reason of an override or a cancel is on its event's line already).
 
-### D2. The opened view is a card: the question and the answer shown, the rest folded
+Folded, a closed gate is one line in a card's frame (mockup
+`task/lad-85/mockup-gate-line.html`, the human: option 2), so it reads as something that
+opens: a `<button>` the card's whole width (`.gate-head`: the panel's background, a 1 px
+border of `--line`, radius 8 px, 6 px by 8 px padding, sans 14 px ink; `--raised` on
+hover; the focus ring of the UI), starting 8 px left of the text's column, holding:
 
-Opened, the line shows a card under it (`.gate-closed-card`: the panel's background,
-the line colour's border, radius 10 px, 12 px by 14 px padding, ink text at 14 px,
-margin-left 14 px as `.gate-closed-text` today), in this order:
+- the gate's mini avatar with the flag (`avatar mini avatar-gate`, `GateIcon`), as the
+  open gate's line;
+- "Gate #<id>" in 600, then "<run> · <state>" muted;
+- the answer chip: `OutcomeChip` by the closing's move (D3), direction coloured as on
+  the move's line, the option's word (`reject`, `approve`, a choice); without a move
+  (an override, a cancel, an old gate without its event) the word neutral
+  (`.run-outcome`): `overridden`, `cancelled`, the option;
+- "by you" for the human, else "by <agent>", muted;
+- the time of the answer, muted, at the right; then a chevron (`▾`, an icon) turned up
+  while open.
+
+Its accessible name stays the sentence `gateTitle(gate): <answer> by <who>` (an
+`aria-label`), with `aria-expanded`: what tests, links (`#gate-<id>`) and screen readers
+know keeps its words. `gateTitle` stays the title of a run's page in Flows.
+
+### D2. Opened, the card shows the question and the answer, the rest folded
+
+Opened, the same frame grows down (`.gate-closed-card`: the head's bottom corners square
+and its bottom border gone, the body under it with the frame's border, radius 0 0 8 px
+8 px, 4 px 14 px 12 px padding, ink text at 14 px), in this order:
 
 1. the question (`.gate-question`);
-2. the answer plaque (`.gate-answer`: a 4 px left border of `--human` on
-   `--human-ground`, as the open gate's card): the closer's mini avatar, who ("You" for
-   the human, else the agent's name), the answer chip, "→ <state> · <time>" when the move
-   is known (D3), else the time of `answered_at`; under it the comment as `Body` with
-   the human's line breaks (`breaks`), when there is one;
+2. the answer plaque in the look of the human's reply in a question's card
+   (`.question-answer`, `.answer-top`: `--action-ground`, the human's ground of the
+   chat, not the orange of what waits; the first mockup's orange is dropped): the
+   closer's mini avatar, who ("You" for the human, else the agent's name), the answer
+   chip as the head's, "→ <state>" when the move is known (D3), the time at the right;
+   under it the comment as `Body` with the human's line breaks (`breaks`), when there
+   is one. A gate closed by an agent: the same plaque on `--raised` (as a dismissed
+   reply, `.question-answer.dismissed`);
 3. a folded line **Note** when the gate has a note, a note body or attachments: its head
    is the note's summary in bold and "· N artifacts" (1 artifact) when it has any; opened,
    the note's body as a `Preview` of 6 lines (`CLOSED_NOTE_LINES`; the open card keeps its
@@ -121,7 +144,17 @@ Version: a schema migration bumps the minor; 0.40.0 (unreleased) is already that
   id (a gate visited twice; an event of the same time and state but another id not
   taken); each scenario of the delta.
 - UI e2e (`tests/ui/test_gates.py`): one test in Chromium after a real answer, with
-  screenshots of the line and the opened card (the developer's UI rule).
+  screenshots of the folded card, the opened card and the human's move (the developer's
+  UI rule), light and dark.
 
 No integration test: nothing crosses processes that the unit tests of `state` and the
 server do not reach (the UI e2e runs the real server and lado.db).
+
+### D5. The human's move on the human's ground
+
+In a run's group, every line of an event whose actor is the human (`RunEvents`: a `flow`
+move answering a gate, a `flow_set`) stands on `--action-ground`, with its comment
+under it, radius 8 px, reaching 8 px left of the line (`.run-event.mine`; mockup
+`task/lad-85/mockup-gate-line.html`): the ground of the human's own messages
+(`.feed-row.mine`) and of their replies in a question's card. An agent's lines keep no
+ground. The comment's text stays ink at 14 px (`.run-comment`).

@@ -1677,6 +1677,15 @@ def test_a_start_and_a_resume_name_the_files_not_used(repo, fake_tmux, outside):
     assert runtime.start_session(str(repo), "s", None).warnings == [line]
 
 
+def test_a_start_with_the_null_device_warns_nothing(repo, fake_tmux, monkeypatch):
+    # compose's default without secrets: /dev/null at /run/secrets.
+    monkeypatch.setenv("LADO_ENV_DIR", os.devnull)
+    started = runtime.start_session(str(repo), "s", None, provider="kilo")
+    assert started.warnings == []
+    runtime.stop_session("s")
+    assert runtime.start_session(str(repo), "s", None).warnings == []
+
+
 @pytest.fixture
 def projects(tmp_path, monkeypatch):
     """A container (LADO_CONTAINER) whose repositories folder (LADO_REPOS) is a new one."""

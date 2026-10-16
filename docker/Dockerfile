@@ -3,16 +3,17 @@
 # as ghcr.io/ladohq/lado:<version> (amd64, arm64); `make docker` builds it from a checkout
 # (lado:local). The guide, step by step: docs/install.md#docker. One command starts it:
 #
-#   mkdir -m 700 secrets
 #   docker run -d --name lado -p 127.0.0.1:8765:8765 -v lado-home:/home/lado \
 #     -v "$HOME/projects:$HOME/projects" -e LADO_REPOS="$HOME/projects" \
-#     -v "$PWD/secrets:/run/secrets:ro" \
 #     -e LADO_GIT_NAME="Ann Lee" -e LADO_GIT_EMAIL=ann@example.com \
 #     ghcr.io/ladohq/lado:<version>
 #   docker exec lado lado ui --no-open            # the UI's link with its token
 #
-# The agents' variables are files in secrets/, one per variable (its name the file's, its
-# value the content), read at each agent's start and never in `docker inspect`: GH_TOKEN
+# The agents' variables, optional, are files in a folder, one per variable (its name the
+# file's, its value the content): `mkdir -m 700 secrets`, then add
+# `-v "$PWD/secrets:/run/secrets:ro"` to the `docker run`. Without it there are none and
+# LADO says nothing about it. They are read at each agent's start and never in `docker
+# inspect`: GH_TOKEN
 # (git over https to github.com and gh; or `docker exec -it lado gh auth login`),
 # CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`; or log in once with `docker exec -it
 # lado claude`), a kit's key, a model provider's key for OpenCode and Kilo (or `opencode

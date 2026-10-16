@@ -402,6 +402,27 @@ def test_a_missing_folder_is_no_layer_and_no_warning(tmp_path, monkeypatch):
     assert (found.values, found.unused) == ({}, [])
 
 
+def test_the_null_device_is_no_layer_and_no_warning(monkeypatch):
+    # compose's default binds /dev/null at /run/secrets: no secrets, said nowhere.
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, os.devnull)
+    assert agent_env.outside() == agent_env.Outside(os.devnull, {}, [])
+
+
+def test_a_link_to_the_null_device_is_no_layer(tmp_path, monkeypatch):
+    # A path where the null device is, not its name: as a bind of /dev/null is.
+    (tmp_path / "secrets").symlink_to(os.devnull)
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(tmp_path / "secrets"))
+    assert agent_env.outside() == agent_env.Outside(str(tmp_path / "secrets"), {}, [])
+
+
+def test_another_device_is_named(monkeypatch):
+    # Only the null device means "no secrets"; another one there is a mistake.
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, "/dev/zero")
+    assert agent_env.outside().unused == [
+        "variable folder /dev/zero (LADO_ENV_DIR) not used: not a folder"
+    ]
+
+
 def test_a_relative_folder_is_named(monkeypatch):
     monkeypatch.setenv(agent_env.ENV_DIR_VAR, "secrets")
     assert agent_env.outside().unused == [

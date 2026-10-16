@@ -9,17 +9,23 @@
 #   LADO_GIT_EMAIL=ann@example.com
 #   LADO_SSH_AGENT=/run/host-services/ssh-auth.sock   # optional: the host's ssh agent
 #
-# Then, from this folder (compose refuses to start without the secrets folder):
+# Then, from this folder:
 #
-#   mkdir -m 700 secrets
 #   docker compose up -d
 #   docker compose exec lado lado ui --no-open               # the UI's link with its token
 #
-# The agents' variables (tokens, keys) are files in secrets/, one per variable: its name is
-# the file's, its value the file's content (one trailing newline dropped). LADO reads them
-# at each agent's start, so a new file reaches the agents started after it, with no
-# restart; they never show in `docker inspect`, and `lado doctor` lists the names it uses.
-# E.g. `printf %s "$TOKEN" > secrets/GH_TOKEN`:
+# The agents' variables (tokens, keys), optional: files in a folder secrets/ next to this
+# file, one per variable. To give them, add LADO_SECRETS=./secrets to .env, then:
+#
+#   mkdir -m 700 secrets
+#   docker compose up -d
+#
+# Without LADO_SECRETS there are none, and LADO says nothing about it (`lado doctor` says
+# how to give them); with it, compose refuses to start while the folder is missing rather
+# than make it. A file's name is the variable's, its content the value (one trailing
+# newline dropped). LADO reads them at each agent's start, so a new file reaches the agents
+# started after it, with no restart; they never show in `docker inspect`, and `lado doctor`
+# lists the names it uses. E.g. `printf %s "$TOKEN" > secrets/GH_TOKEN`:
 #   GH_TOKEN                  git over https to github.com and gh (or `gh auth login`
 #                             inside: docker compose exec -it lado gh auth login)
 #   CLAUDE_CODE_OAUTH_TOKEN   Claude Code's login, from `claude setup-token` (or log in once
@@ -29,7 +35,7 @@
 #                             auth login` / `kilo auth login` inside)
 # Logins made inside stay on the home volume. Codex's login is not covered yet. Every agent
 # of the container can read every variable given to it: another LADO, with its own folder
-# and home volume, keeps another set apart. LADO_SECRETS in .env names another folder.
+# (or none) and home volume, keeps another set apart. LADO_SECRETS may name any folder.
 #
 # git: LADO_GIT_NAME and LADO_GIT_EMAIL are written to git's global config at every start;
 # without them `docker compose logs lado` warns that agents cannot commit. ssh: set
@@ -43,14 +49,25 @@
 # instead of the version's (lado:local, which `make docker` builds); an older Compose
 # still asks for LADO_VERSION beside it.
 #
-# To update, set the new LADO_VERSION in .env, then (compose pulls that version's image):
+# To update, in this folder: keep a copy of this file, download the new version's
+# compose.yaml in place of it, set the new LADO_VERSION in .env, then start (compose pulls
+# that version's image):
 #
+#   cp compose.yaml compose.yaml.bak
+#   curl -fLO https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml
 #   docker compose up -d
+#
+# A release may change this file (new mounts and settings), so each update takes its own.
+# .env, secrets/ and the home volume stay; a change you made to this file by hand is
+# replaced: `diff compose.yaml.bak compose.yaml` shows it, carry it over to the new one.
+# Several LADOs on one machine: update each LADO in its own folder, with its own .env;
+# nothing here touches another one's container or volume.
 #
 # A new version upgrades the home volume's lado.db at its start, after a copy of it in
 # ~/.lado/backups/lado.db.schema-<N>, N its schema before (`docker compose logs lado`
 # names it); an older one refuses the upgraded lado.db. The version before keeps its
-# image and its tag. Back to the version you had before: put it back in .env, then (what
+# image and its tag. Back to the version you had before: put it back in .env and keep this
+# compose.yaml (an older LADO ignores what it does not know), then (what
 # LADO did since the upgrade is lost; when a migration failed, lado.db is as it was, and
 # the first and the last command do it):
 #
@@ -60,8 +77,8 @@
 #
 # A second LADO beside the first: a folder of its own with a copy of this file and an .env
 # with its own COMPOSE_PROJECT_NAME (e.g. lado-2), LADO_PORT (8766), LADO_VERSION and
-# LADO_PROJECTS. It has its own container, home volume and version: updating one leaves
-# the other as it is.
+# LADO_PROJECTS, and a secrets/ of its own or none. It has its own container, home volume
+# and version: updating one leaves the other as it is.
 #
 # The container's sessions go with it: `docker compose down` (or stop, or Docker's own end)
 # stops its sessions, as `lado stop` would, and `docker compose up -d` (or start) resumes
@@ -90,9 +107,10 @@ services:
       # The human's projects at the host's own path (LADO_REPOS above), so a worker's
       # worktree made in the container is one on the host too.
       - ${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}:${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}
-      # The agents' variables, one file each (LADO_ENV_DIR): never in docker inspect.
+      # The agents' variables, one file each (LADO_ENV_DIR): never in docker inspect
+      # (LADO_SECRETS; /dev/null: none).
       - type: bind
-        source: ${LADO_SECRETS:-./secrets}
+        source: ${LADO_SECRETS:-/dev/null}
         target: /run/secrets
         read_only: true
         bind:

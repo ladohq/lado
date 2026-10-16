@@ -157,7 +157,16 @@ of compose.yaml and its own `.env` (`COMPOSE_PROJECT_NAME`, `LADO_PORT`, `LADO_I
 of the run's prefix, `LADO_PROJECTS`), no `-f` or `-p`; a new image reference in the first's
 `.env` and its `up -d` leave the second's container id, start time and image as they were;
 `docker compose down` of the first leaves the second's session running, its supervisor the
-same process, and its `lado.db` with no session stopped.
+same process, and its `lado.db` with no session stopped; the update's two have each a
+`secrets/` of its own (`LADO_SECRETS=./secrets`), the stop's two none. Such a folder is
+conftest's `folder(name, **settings)`, the `compose` fixture a project with no
+`LADO_SECRETS`.
+The secrets folder (`test_secrets.py`; only fake values): compose with no `LADO_SECRETS`
+and no folder starts, `lado doctor` exits 0 with `[info] … /run/secrets: none` and the hint
+naming `LADO_SECRETS=./secrets`, a Claude Code session reaches idle, and `docker compose
+logs` names neither `/run/secrets` nor `LADO_ENV_DIR`; `LADO_SECRETS=./secrets` and a
+fake `GH_TOKEN` in `secrets/` reach the supervisor's process and doctor's `[ok  ]` line;
+with the line but no folder `up -d` fails naming the path and makes no folder.
 The sessions (`test_sessions.py`): `docker compose stop` with a Claude Code session and one
 stopped by hand exits 0 with the stop's line naming only the first, both stopped in
 `lado.db` and only the first marked; `start` (and `down`, then `up -d`) resumes it with the

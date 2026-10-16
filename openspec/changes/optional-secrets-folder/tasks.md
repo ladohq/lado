@@ -60,7 +60,7 @@ Tests first in each section; each task is one commit.
 - [x] 6.1 `make lint`, `make test`, `openspec validate optional-secrets-folder --strict`,
   `openspec validate --specs --strict`; grep `openspec/specs/` for `./secrets` and `refuses
   to start` and resolve every hit in the delta.
-- [ ] 6.2 The pull request's description holds the check by hand on a Mac, with a
+- [x] 6.2 The pull request's description holds the check by hand on a Mac, with a
   `git worktree add` of the branch so the human's checkout stays where it is: a fresh
   terminal, `env | grep -E '^(LADO|COMPOSE)_'` and `unset` each name printed; `make
   docker` in the worktree; then

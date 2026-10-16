@@ -741,6 +741,89 @@ def test_cancelling_a_waiting_run_closes_its_gate(session):
     assert state.get_gate(1).answer == "cancelled"
 
 
+def closing_event(session, gate_id):
+    """The run's event the gate keeps as the one that closed it."""
+    gate = state.get_gate(gate_id)
+    [event] = [e for e in state.list_events(session) if e.id == gate.closed_event]
+    assert event.run == gate.run
+    return event.agent, event.kind, event.detail
+
+
+@pytest.mark.parametrize(
+    ("option", "detail"),
+    [("approve", "gated -approved-> done"), ("reject", "gated -rejected-> implement")],
+)
+def test_a_gate_keeps_the_move_its_answer_made(session, option, detail):
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    assert gate.closed_event is None
+    runs.answer(session, str(gate.id), option, "a comment")
+    assert closing_event(session, gate.id) == ("human", state.FLOW, detail)
+
+
+def test_a_choice_gate_keeps_the_move_of_its_choice(session, team):
+    flow = FEATURE.replace(
+        "gate: approval\n    ask: Ship it?\n    outcomes: {approved: done, rejected: implement}",
+        "gate: choice\n    ask: Where to?\n    outcomes: {ship: done, rework: implement}",
+    ).replace("{merged: done}", "{merged: done, hold: gated}")
+    write(team / "flows" / "feature.yaml", flow)
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    runs.answer(session, str(gate.id), "rework")
+    assert closing_event(session, gate.id) == ("human", state.FLOW, "gated -rework-> implement")
+
+
+@pytest.mark.parametrize(
+    ("option", "kind", "detail"),
+    [
+        ("continue", state.FLOW, "review -continue-> review"),
+        ("cancel", state.FLOW_CANCEL, "loop limit: enough"),
+    ],
+)
+def test_a_loop_limit_keeps_the_event_of_its_answer(session, option, kind, detail):
+    to_loop_limit(session)
+    [gate] = state.open_gates(session)
+    runs.answer(session, str(gate.id), option, "enough")
+    assert closing_event(session, gate.id) == ("human", kind, detail)
+
+
+def test_a_gate_closed_by_flow_set_or_a_cancel_keeps_that_event(session):
+    to_gate(session)
+    runs.force(session, "feature/login", "implement", "rework the form")
+    assert closing_event(session, 1) == (
+        "human",
+        state.FLOW_SET,
+        "gated -> implement: rework the form",
+    )
+    runs.force(session, "feature/login", "gated", "hold it")
+    [gate] = state.open_gates(session)
+    runs.cancel(session, "feature/login", "dropped")
+    assert closing_event(session, gate.id) == ("supervisor", state.FLOW_CANCEL, "dropped")
+
+
+def test_a_gate_state_answered_twice_keeps_each_gates_own_move(session):
+    to_gate(session)
+    runs.answer(session, "1", "reject", "first")
+    runs.force(session, "feature/login", "gated", "again")
+    [second] = state.open_gates(session)
+    runs.answer(session, str(second.id), "approve", "second")
+    first, again = state.session_gates(session)
+    assert closing_event(session, first.id)[2] == "gated -rejected-> implement"
+    assert closing_event(session, again.id)[2] == "gated -approved-> done"
+    assert first.closed_event < again.closed_event
+
+
+def test_two_runs_closing_their_gates_in_turn_keep_their_own_events(session):
+    to_gate(session)
+    runs.start(session, "feature", "Add y", name="y")
+    runs.force(session, "feature/y", "gated", "hold y")
+    login, y = state.open_gates(session)
+    runs.answer(session, str(y.id), "reject")
+    runs.answer(session, str(login.id), "approve")
+    assert closing_event(session, y.id)[2] == "gated -rejected-> implement"
+    assert closing_event(session, login.id)[2] == "gated -approved-> done"
+
+
 def to_merge(session):
     advance_to_review(session)
     return runs.advance(session, "reviewer", "feature/login", "approved")

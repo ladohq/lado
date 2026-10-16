@@ -140,23 +140,18 @@ export function feedRows(list: Entry[]): FeedItem[] {
   return out;
 }
 
-// The gate the human's flow event answered: of its run, answered by the human, in the state
-// the run left (an approval or a choice) or entered (a loop limit's continue), the one closed
-// nearest to the event (the answer and the move are one transaction).
+// The gate the human's flow event answered: the one that keeps the event's id as the event
+// of its closing (closed_by_event, stored by the core in the closing's transaction).
 export function gateOf(event: RunEventInfo, gates: GateInfo[]): GateInfo | undefined {
-  const { transition } = event;
-  if (event.kind !== "flow" || event.actor !== HUMAN || transition === null) return undefined;
-  const at = Date.parse(event.created_at);
-  const off = (gate: GateInfo) => Math.abs(Date.parse(gate.answered_at ?? "") - at);
-  return gates
-    .filter(
-      (gate) =>
-        gate.run === event.run &&
-        gate.answered_by === HUMAN &&
-        gate.answered_at !== null &&
-        (gate.state === transition.from_state || gate.state === transition.to_state),
-    )
-    .reduce<GateInfo | undefined>((best, gate) => (best === undefined || off(gate) < off(best) ? gate : best), undefined);
+  if (event.kind !== "flow" || event.actor !== HUMAN) return undefined;
+  return gates.find((gate) => gate.closed_by_event === event.id);
+}
+
+// The run's move that closed the gate, by the same id; none for a gate closed by flow-set or
+// a cancel, one whose event is not known, or while the move is not in the feed yet.
+export function moveOf(gate: GateInfo, events: RunEventInfo[]): RunEventInfo | undefined {
+  if (gate.closed_by_event === null) return undefined;
+  return events.find((event) => event.id === gate.closed_by_event && event.kind === "flow" && event.transition !== null);
 }
 
 // The three lists once all are loaded; the first one that failed; or null while loading.
@@ -317,6 +312,7 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
             entries={shown}
             messages={loaded.window.items}
             gates={loaded.gates}
+            events={loaded.events}
             runs={runs && "items" in runs ? runs.items : null}
             go={go}
           />
@@ -381,7 +377,8 @@ function Top({
 // the run, then a line per event: who, what (a move from state to state and its outcome,
 // green forward and orange with a return icon back by the run's flow, neutral while the
 // flow is not known; else its word and the core's detail as it is) and when.
-// The human's move answered a gate: the answer's comment stands under it.
+// The human's move answered a gate: the answer's comment stands under it. The human's own
+// lines (an answer's move, a flow-set) stand on the human's ground, as their messages do.
 function RunEvents({
   session,
   run,
@@ -405,7 +402,7 @@ function RunEvents({
         {events.map((event) => {
           const comment = gateOf(event, gates)?.comment;
           return (
-            <li key={event.id} className={`run-event run-${event.kind}`} {...quoteArea(session)}>
+            <li key={event.id} className={`run-event run-${event.kind}${event.actor === HUMAN ? " mine" : ""}`} {...quoteArea(session)}>
               <div className="run-line">
                 <MiniAvatar who={event.actor} />
                 <span className="run-actor">{event.actor === HUMAN ? "You" : event.actor}</span>
@@ -462,6 +459,7 @@ function Rows({
   entries,
   messages,
   gates,
+  events,
   runs,
   go,
 }: {
@@ -469,6 +467,7 @@ function Rows({
   entries: Entry[];
   messages: MessageInfo[];
   gates: GateInfo[];
+  events: RunEventInfo[];
   runs: RunInfo[] | null;
   go: (anchor: string) => void;
 }) {
@@ -486,7 +485,10 @@ function Rows({
     }
     if ("gate" in row) {
       const { gate } = row;
-      if (gate.answer !== null) return <GateLine key={`gate-${gate.id}`} session={session} gate={gate} />;
+      if (gate.answer !== null) {
+        const states = flows.get(gate.run) ?? null;
+        return <GateLine key={`gate-${gate.id}`} session={session} gate={gate} move={moveOf(gate, events)} states={states} />;
+      }
       return (
         <OpenLine
           key={`gate-${gate.id}`}

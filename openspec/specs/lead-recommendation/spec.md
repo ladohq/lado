@@ -139,11 +139,13 @@ pick; the human's own pick, also unpicking it, SHALL win, and a recommendation g
 SHALL pick its choice only in a question the human has not touched. While it is `asked`
 the card SHALL say "Supervisor is preparing a recommendation…", when `missing` "The
 supervisor gave no recommendation", and with none nothing. The human SHALL be able to
-answer in every state. A closed card SHALL show it as one quiet line, "Supervisor
-recommended: <option>" or "Supervisor's recommendation" without an option, whose text
-opens on a click. The API SHALL give it as `recommendation` of `GateInfo` and of a
-question's `MessageInfo` (state, text, choice, disagrees, time; none when not asked), and
-the change feed SHALL bring each change of it.
+answer in every state. A closed question's card SHALL show it as one quiet line,
+"Supervisor recommended: <option>" or "Supervisor's recommendation" without an option,
+whose text opens on a click; a closed gate's card SHALL show it as its folded line
+"Supervisor", "recommended <option>" and whether the human's answer agreed, whose text
+opens on a click (capability closed-gate-card). The API SHALL give it as
+`recommendation` of `GateInfo` and of a question's `MessageInfo` (state, text, choice,
+disagrees, time; none when not asked), and the change feed SHALL bring each change of it.
 
 #### Scenario: A recommendation that disagrees
 - **WHEN** gate #7's note says "ready to merge" and the lead recommends `reject` with
@@ -179,6 +181,12 @@ the change feed SHALL bring each change of it.
 - **WHEN** the human answered question #12, for which the lead recommended "later"
 - **THEN** the closed card shows "Supervisor recommended: later", and a click shows the
   text
+
+#### Scenario: A closed gate
+- **WHEN** the human rejected gate #7, for which the lead recommended `reject`, and opens
+  its card
+- **THEN** the card shows the folded line "Supervisor" with "recommended Reject · you
+  agreed", and a click on it shows the text
 
 ### Requirement: lado answer shows the recommendation
 

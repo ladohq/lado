@@ -987,6 +987,10 @@ class GateInfo(BaseModel):
     answered_by: str | None
     created_at: str  # UTC, ISO 8601
     answered_at: str | None
+    # The id of the run's event its closing wrote (a flow move, a flow_set or a
+    # flow_cancel; state.GATES_CLOSED_EVENT): the chat links the answer's comment to that
+    # move. None while open, and for an older gate whose event was not found.
+    closed_by_event: int | None
     problem: str | None  # why its run's flow snapshot cannot be read; None when it can
     recommendation: RecommendationInfo | None  # the lead's; None when never asked
 
@@ -1380,6 +1384,7 @@ def gate_info(gate: state.Gate) -> GateInfo:
         answered_by=gate.answered_by or None,
         created_at=_utc(gate.created_at),
         answered_at=_utc(gate.answered_at) if gate.answered_at else None,
+        closed_by_event=gate.closed_event,
         problem=problem,
         recommendation=recommendation_info(gate, runs.recommendation_by(gate))
         if gate.recommendation_state

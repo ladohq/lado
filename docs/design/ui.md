@@ -696,8 +696,10 @@ reaches the feed. LADO takes the model and builds it on what it has:
   opens them, an agent cannot forget to). Built (Gates task, gates in the chat): the server
   lists a session's gates (`GET /api/sessions/{name}/gates`, `GateInfo`: the question, the
   options, the note that led to the gate with its attachments and, only while it is open,
-  the full names of the artifacts its state reads but those the note carries, `reads`) and
-  takes the human's answer
+  the full names of the artifacts its state reads but those the note carries, `reads`;
+  closed, `closed_by_event`, the id of the run's event its closing wrote, a `flow` move, a
+  `flow_set` or a `flow_cancel`, which the core stores in the closing's transaction,
+  `gates.closed_event`, since LAD-85) and takes the human's answer
   (`POST …/gates/{id}/answer {option, comment}`, guarded like the composer, through
   `runs.answer_text`, the one text `lado answer` prints too; what the core refuses is 400
   with its reason). An **open gate** is a quiet line of the feed where it opened (the flag
@@ -716,12 +718,31 @@ reaches the feed. LADO takes the model and builds it on what it has:
   else the first; on the tab, in its Send row). The buttons are off while the answer is
   sent and in a stopped session (it says to resume it); a refusal shows on the panel. The
   tab goes only when the feed brings the closed gate, wherever it was answered
-  (the popup, `lado answer`, another tab). A **closed gate** is a quiet line at the text's
-  column, as the run events: "Gate #id · run · state: <answer> by <who>" (one title,
-  `gateTitle`, also on a run's page in Flows; also `overridden` by `lado flow-set`,
-  `cancelled`), its comment and time; a click shows its question, note and the
-  supervisor's recommendation's quiet line, read only, without the artifacts it read, which are not kept as they were when it was answered. The
-  line stays where the gate opened, often far above the bottom; the **human's answer** is
+  (the popup, `lado answer`, another tab). A **closed gate** (LAD-85, 2026-10-16, mockups
+  `task/lad-85/mockup-gate-comment.html` A, `mockup-gate-expanded.html` 2 and
+  `mockup-gate-line.html` 2) is a folded card, 8 px left of the text's column, whose head
+  is one button the card's width (`GateLine`, `.gate-head`: the panel's ground and a
+  frame, `--raised` on hover): the flag avatar, "Gate #id" in 600, "run · state" muted,
+  the answer's chip (by the move that closed it: its direction's colour and icon, as on
+  the move's line; without that move, `overridden` by `lado flow-set`, `cancelled`, or an
+  older gate, the word on the neutral ground), "by you" or "by <agent>", the time and a
+  chevron that turns up while it is open. Its accessible name is the title sentence
+  "Gate #id · run · state: <answer> by <who>" (`gateTitle`, also the title on a run's page
+  in Flows), with `aria-expanded`; Enter and Space open and fold it. No comment under it,
+  whoever closed it: the comment stands once, under the move it made, and an override's
+  or a cancel's reason is on its event's line (before LAD-85 the comment showed under both).
+  A click opens it down in the same frame (`.gate-closed-card`), read only, without the
+  artifacts it read, which are not kept as they were when it was answered: the question;
+  the answer in the look of the human's reply in a question's card (`.question-answer` on
+  the human's ground; a gate closed by an agent `.dismissed`, on `--raised`): the small
+  avatar, "You" or the agent, the chip, "→ <state>" when the move is in the feed, the time
+  and the comment in full (`breaks`); then a folded line each (`<details>`, its label in
+  small capitals in a fixed column, its head cut on one line), none opened with the card:
+  **Note** (the note's summary in bold, "· N artifacts"; opened, its body's first 6 lines,
+  `CLOSED_NOTE_LINES`, with Show more, and its chips) and **Supervisor** ("recommended
+  <option>", named as the buttons, "· you agreed" or "· you answered otherwise", the lead's
+  "· disagreed with <agent>" in orange; opened, its text; without an option "Supervisor's
+  recommendation"). The card stays where the gate opened, often far above the bottom; the **human's answer** is
   where it was given as one line, the run's move it made (a `flow` event of `human`), with
   the answer's comment under it (Flow events in Look of the feed; since
   feature/chat-message-text, 2026-10-07: no row of its own besides). On the open page it
@@ -1068,10 +1089,12 @@ Built in the chat task (2026-10-03):
   always written. The **human's answer to a gate** is one line: their
   `flow` move (only the human's answers write a `flow` event as `human`; `lado flow-set`
   writes `flow_set`), with the answer's comment under it (Markdown with `breaks`), from the
-  `GateInfo` of its run answered by `human` in the state the run left or entered (a loop
-  limit's `continue` enters the gate's state), closed nearest to the event (`gateOf`; the
-  answer and the move are one transaction). Without that gate loaded, the move alone. The
-  closed gate's line stays where it opened.
+  `GateInfo` whose `closed_by_event` is the move's id (`gateOf`; the closed gate's card
+  finds its move the same way, `moveOf`; before LAD-85 a guess by run, state and time).
+  Without that gate loaded, the move alone. The closed gate's card stays where it opened.
+  The human's own lines of a group (an answer's move with its comment, a `flow_set`)
+  stand on the human's ground (`.run-event.mine`, `--action-ground`, 8 px left of the
+  line), as their messages do; the agents' lines have none (LAD-85).
 - **Quiet lines** (run events, an open question or gate, a closed gate, a late reply, a
   dismissal) start at the text's column.
 - **The composer** (shared with an agent's page in Agents): one frame, the field without a

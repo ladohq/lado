@@ -49,15 +49,19 @@
 # instead of the version's (lado:local, which `make docker` builds); an older Compose
 # still asks for LADO_VERSION beside it.
 #
-# To update, in this folder: download the new version's compose.yaml in place of this
-# file, set the new LADO_VERSION in .env, then start (compose pulls that version's image):
+# To update, in this folder: keep a copy of this file, download the new version's
+# compose.yaml in place of it, set the new LADO_VERSION in .env, then start (compose pulls
+# that version's image):
 #
+#   cp compose.yaml compose.yaml.bak
 #   curl -fLO https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml
 #   docker compose up -d
 #
 # A release may change this file (new mounts and settings), so each update takes its own.
 # .env, secrets/ and the home volume stay; a change you made to this file by hand is
-# replaced: carry it over to the new one.
+# replaced: `diff compose.yaml.bak compose.yaml` shows it, carry it over to the new one.
+# Several LADOs on one machine: update each LADO in its own folder, with its own .env;
+# nothing here touches another one's container or volume.
 #
 # A new version upgrades the home volume's lado.db at its start, after a copy of it in
 # ~/.lado/backups/lado.db.schema-<N>, N its schema before (`docker compose logs lado`

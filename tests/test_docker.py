@@ -520,6 +520,12 @@ def header_text() -> str:
 
 UPDATE = "To update, in this folder"
 VERSION_COMPOSE = "https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml"
+# A change made to compose.yaml by hand is kept beside it, never lost silently.
+UPDATE_STEPS = [
+    "cp compose.yaml compose.yaml.bak",
+    f"curl -fLO {VERSION_COMPOSE}",
+    "docker compose up -d",
+]
 
 
 def test_an_update_is_the_versions_compose_file_a_new_version_in_env_and_up():
@@ -527,11 +533,13 @@ def test_an_update_is_the_versions_compose_file_a_new_version_in_env_and_up():
     the secrets folder): every update takes that version's. Compose pulls an image it does
     not have: the version's tag never moves, so the image before keeps its name and nothing
     needs keeping by hand."""
-    assert header_steps(UPDATE) == [f"curl -fLO {VERSION_COMPOSE}", "docker compose up -d"]
+    assert header_steps(UPDATE) == UPDATE_STEPS
     update_text = header_text().split(UPDATE)[1].split("Back to the version")[0]
     assert "new LADO_VERSION in .env" in update_text
     assert ".env, secrets/ and the home volume stay" in update_text
     assert "carry it over" in update_text
+    assert "diff compose.yaml.bak compose.yaml" in update_text
+    assert "each LADO in its own folder" in update_text
 
 
 def test_the_updates_address_is_the_release_asset_of_the_versions_tag():
@@ -742,9 +750,11 @@ def test_the_guide_enables_secrets_as_a_step_of_its_own():
 
 def test_the_guides_update_says_what_stays_and_what_to_carry_over():
     text = " ".join(guide_part("Update the container").split())
-    assert f"curl -fLO {VERSION_COMPOSE}" in guide_steps("Update the container")
+    assert guide_steps("Update the container") == UPDATE_STEPS
     assert "`.env`, `secrets/` and the home volume stay" in text
     assert "carry it over" in text
+    assert "diff compose.yaml.bak compose.yaml" in text
+    assert "in its own folder, with its own `.env`" in text
     assert "keeps the `compose.yaml` you have" in " ".join(
         guide_part("Go back to the version before").split()
     )
@@ -770,7 +780,7 @@ def test_readmes_docker_install_starts_without_mkdir():
 
 def test_readmes_update_downloads_the_versions_compose_file_first():
     steps = [line for block in blocks(readme_part("Update", "Docker")) for line in commands(block)]
-    assert steps == [f"curl -fLO {VERSION_COMPOSE}", "docker compose up -d"]
+    assert steps == UPDATE_STEPS
 
 
 def test_the_guide_downloads_the_release_asset():

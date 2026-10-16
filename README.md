@@ -143,16 +143,18 @@ shows `↑ X.Y.Z` next to `live` in its top bar.
 ### Docker
 
 A new version is a new image and its own `compose.yaml`. In the folder of your
-`compose.yaml`, download the new version's in place of yours, set the new version in
-`.env` (`LADO_VERSION=<version>`), then start:
+`compose.yaml`, keep a copy of yours, download the new version's in place of it, set the
+new version in `.env` (`LADO_VERSION=<version>`), then start:
 
 ```bash
+cp compose.yaml compose.yaml.bak
 curl -fLO https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml
 docker compose up -d     # pulls that version's image and replaces the container
 ```
 
 `.env`, `secrets/` and the home volume stay; a change you made to `compose.yaml` by hand
-must be carried over to the new one.
+must be carried over to the new one (`diff compose.yaml.bak compose.yaml`). Several LADOs:
+update each in its own folder.
 
 Your sessions stop with the old container and resume in the new one (each agent starts a
 new conversation and a busy one loses its current turn, so update while your agents are

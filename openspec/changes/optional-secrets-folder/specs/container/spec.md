@@ -163,20 +163,23 @@ README's Docker install SHALL start without `mkdir`.
 ### Requirement: An update takes the version's compose.yaml
 
 `docker/compose.yaml`'s header, docs/install.md's "Update the container" and README's
-Docker update SHALL update in this order, in the folder of `compose.yaml`: download that
-version's `compose.yaml` next to `.env` (`curl -fLO
+Docker update SHALL update in this order, in the folder of `compose.yaml`: keep a copy of
+the file (`cp compose.yaml compose.yaml.bak`), download that version's `compose.yaml` next
+to `.env` (`curl -fLO
 https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml`), set the new
 `LADO_VERSION` in `.env`, then `docker compose up -d`. They SHALL say that `.env`,
-`secrets/` and the home volume stay, and the guide that a change made to `compose.yaml`
-by hand must be carried over to the new file. Going back to the version before SHALL keep
-the current `compose.yaml`. No step SHALL touch another LADO's folder, container or
-volume.
+`secrets/` and the home volume stay, that a change made to `compose.yaml` by hand must be
+carried over to the new file (`diff compose.yaml.bak compose.yaml` shows it), and that
+with several LADOs each is updated in its own folder with its own `.env`. Going back to
+the version before SHALL keep the current `compose.yaml`. No step SHALL touch another
+LADO's folder, container or volume.
 
 #### Scenario: The header's update
 - **WHEN** `tests/test_docker.py` reads the header's update
-- **THEN** its commands are the `curl -fLO` of
+- **THEN** its commands are `cp compose.yaml compose.yaml.bak`, the `curl -fLO` of
   `releases/download/v<version>/compose.yaml`, then `docker compose up -d`, and its text
-  names `LADO_VERSION` in `.env`
+  names `LADO_VERSION` in `.env`, `diff compose.yaml.bak compose.yaml` and each LADO in
+  its own folder
 
 #### Scenario: The address is the release's asset
 - **WHEN** `tests/test_docker.py` reads the update's address and the release workflow's

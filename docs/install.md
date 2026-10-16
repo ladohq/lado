@@ -204,11 +204,12 @@ do not update a container, and say so. LADO still tells you when one is out:
 LADO in a container (ghcr.io/ladohq/lado:X.Y.Z)`, and the web UI shows `↑ X.Y.Z` next to
 `live`. The versions are on the [releases page](https://github.com/ladohq/lado/releases).
 
-In the folder of your `compose.yaml`: download the new version's `compose.yaml` in place
-of yours (`<version>` is the new number as `.env` has it; the address puts a `v` before
+In the folder of your `compose.yaml`: keep a copy of yours, download the new version's in
+place of it (`<version>` is the new number as `.env` has it; the address puts a `v` before
 it), set the new `LADO_VERSION` in `.env`, then start (compose pulls that version's image):
 
 ```bash
+cp compose.yaml compose.yaml.bak
 curl -fLO https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml
 docker compose up -d
 ```
@@ -216,8 +217,10 @@ docker compose up -d
 Every update takes its version's `compose.yaml`, since a release may add a mount or a
 setting to it: 0.40.0 added git's identity, the ssh agent and the secrets folder, which an
 older file does not give the container. `.env`, `secrets/` and the home volume stay. A
-change you made to `compose.yaml` by hand is replaced: carry it over to the new file (your
-settings belong in `.env`, which stays).
+change you made to `compose.yaml` by hand is replaced: `diff compose.yaml.bak
+compose.yaml` shows it, carry it over to the new file (your settings belong in `.env`,
+which stays). With several LADOs on this computer, update each in its own folder, with its
+own `.env`; nothing here touches another one's container or volume.
 
 What happens:
 

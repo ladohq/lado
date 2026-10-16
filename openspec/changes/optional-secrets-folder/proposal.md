@@ -64,7 +64,7 @@ steps of the check by hand in the pull request.
 ## Out of scope
 
 - **LADO noticing an old compose.yaml by itself** (a version mark in compose's
-  `environment:`, a line in `docker logs` and System): a task of its own, created on the
+  `environment:`, a line in `docker logs` and System): task LAD-90, created on the
   human's yes (2026-10-16). Inside the container an old `compose.yaml` cannot be told from
   `docker run` (neither has a mark), so it would not help the step from 0.39.0 at all, and
   is not small.

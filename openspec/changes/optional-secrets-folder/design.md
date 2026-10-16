@@ -14,7 +14,7 @@ The human's decision (2026-10-16): option A, the same as the ssh agent; the null
 "no secrets", silently; secrets are enabled by `LADO_SECRETS=./secrets` in `.env` and
 `mkdir -m 700 secrets`. Answers to the design round (2026-10-16): doctor gives an `[info]`
 line with the way to enable them; every update downloads the version's `compose.yaml`;
-LADO noticing an old `compose.yaml` is a task of its own.
+LADO noticing an old `compose.yaml` is a task of its own (LAD-90).
 
 ## Decisions
 

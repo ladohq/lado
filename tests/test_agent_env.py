@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -98,9 +99,24 @@ def test_a_shell_that_prints_no_environment_is_an_error(shell):
     assert path in str(error.value) and "no dump here" in str(error.value)
 
 
-def test_a_slow_shell_times_out(shell, monkeypatch):
+def test_a_slow_shell_times_out(shell, monkeypatch, tmp_path):
     monkeypatch.setattr(agent_env, "TIMEOUT", 0.5)
-    shell(rc="echo stuck >&2; sleep 30 & wait")
+    printed = tmp_path / "printed"
+    shell(rc=f"echo stuck >&2; : > {printed}; sleep 30 & wait")
+    # The deadline runs from the shell's start, and under load the shell may not print
+    # its line within 0.5 s: the deadline's check waits until it has, the deadline itself
+    # stays as it was.
+    read_until = agent_env._read_until
+
+    def after_the_line(fd, end, deadline):
+        waited = time.monotonic() + 30
+        while not printed.exists():
+            if time.monotonic() > waited:
+                pytest.fail(f"the shell did not write {printed}")
+            time.sleep(0.01)
+        return read_until(fd, end, deadline)
+
+    monkeypatch.setattr(agent_env, "_read_until", after_the_line)
     with pytest.raises(agent_env.AgentEnvError, match=r"did not finish in 0.5 s") as error:
         agent_env.resolve()
     assert "stuck" in str(error.value)

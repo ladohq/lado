@@ -77,7 +77,7 @@ Tests first in each section; each task is one commit.
 
 - [x] 5.1 AGENTS.md: Layout's `docker/` (the host keys file, the asset, the guide), the
   release paragraph if it lists the assets; CHANGELOG.md under the open version (D10).
-- [ ] 5.2 The pull request carries the human's check by hand:
+- [x] 5.2 The pull request carries the human's check by hand:
   - the branch, through `git worktree add`;
   - a clean folder, with its own `COMPOSE_PROJECT_NAME` and volume;
   - `env | grep LADO` and `unset`;
@@ -88,5 +88,5 @@ Tests first in each section; each task is one commit.
   - the warning for `/home/lado/app`;
   - removal by name.
   Only fake secrets appear in it.
-- [ ] 5.3 `openspec validate docker-install-guide --strict`, `openspec validate --specs
+- [x] 5.3 `openspec validate docker-install-guide --strict`, `openspec validate --specs
   --strict`, `make lint`, `make test`.

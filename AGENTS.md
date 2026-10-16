@@ -207,6 +207,19 @@ an owner of 0 keeps 1000 and warns in `docker logs`, as does a `LADO_REPOS` not 
 gid of 0 is not taken; with the entrypoint replaced (the sudo rule left), a `setpriv`
 first on the PATH its caller hands over does not run as root; with no-new-privileges,
 `--cap-drop ALL` or `--read-only` the server starts as uid 1000 and `docker logs` says why.
+The agents' access (`test_access.py`; only fake values): a secrets folder of the host at
+`/run/secrets` gives a kit role's MCP server its `${TEST_KIT_KEY}` and the supervisor the
+variable, `lado doctor` names it, and neither `docker inspect` nor `docker logs` holds the
+value; `LADO_GIT_NAME` with an apostrophe and `LADO_GIT_EMAIL` are a commit's author and
+committer, a new email on the same home volume replaces the old, and without them
+`docker logs` warns; `GH_TOKEN` of the folder is `git credential fill`'s password for
+github.com and `gh auth token`; an ssh agent of a sidecar container (OpenSSH's agent
+serves only its own uid, so it runs as lado's) on a shared volume, its socket given to
+root as Docker Desktop's is, lists its key in an agent's login shell, also after a
+restart that found it root's again, with no 0 in `id -G`; one of the projects' owner
+(2001) works as it is and stays 2001's; under no-new-privileges a root socket is the
+warning; compose's default (`/dev/null`) gives no `SSH_AUTH_SOCK` and no line; and the
+ssh rule refuses an argument and a variable, `sudo -n true` fails.
 A new image on an old home volume (`test_migration.py`; `old_home` seeds a volume with a
 `lado.db` this checkout's `lado.state` made on the host, a stopped session in it, at the
 schema before by `previous_schema`): the server migrates it, `/api/health` answers,
@@ -676,8 +689,9 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `remote` with no server; a failure is `LAUNCHD_FAILED`, a warning, and the server starts
     here instead. The texts (`OUTSIDE_GUI`, `NO_GUI`, `PLAN_REMOTE`) name no provider:
     `fill` puts in the titles and hints of `Provider.keychain_login`.
-  - `agent_env.py`: where an agent's environment comes from (How agents talk): `resolve`,
-    and `command`, the window's command that runs the agent with exactly that environment.
+  - `agent_env.py`: where an agent's environment comes from (How agents talk): `resolve`
+    (the login shell's, then the outside folder's, `outside`), and `command`, the window's
+    command that runs the agent with exactly that environment.
   - `interpreter.py`: `run_module`, the one way LADO starts a process of its own with its
     own Python (`providers.lado_command`: hooks, `lado mcp`, `lado loop`, the popup, the
     UI server; the window command; the MCP secrets wrapper). LADO's own processes never
@@ -1214,11 +1228,28 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   `LADO_REPOS` the image's default `lado-repos.sh` (`/projects`). `docker run --user root`
   runs its command as `lado` too. Every start then warns in `docker logs` about a `LADO_REPOS` that is no
   folder or not writable (a probe file), and execs the command. `/opt` stays uid 1000's.
-  git's system config has `safe.directory = *`. The environment is set twice with the same
+  git's system config has `safe.directory = *` and `gh auth git-credential` as the one
+  credential helper of `https://github.com` (`GH_TOKEN`, or `gh auth login` inside, its
+  token on the home volume). The environment is set twice with the same
   values (`tests/test_docker.py`): in `ENV` for the server and `docker exec`, and in
   `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
   comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
-  `DISABLE_AUTOUPDATER`, `LANG`; `LADO_REPOS` is the entrypoint's `lado-repos.sh`).
+  `DISABLE_AUTOUPDATER`, `LANG`, `LADO_ENV_DIR=/run/secrets`; `LADO_REPOS` is the
+  entrypoint's `lado-repos.sh`; `SSH_AUTH_SOCK` the profile's alone, below). The agents'
+  variables are files at `/run/secrets` (`LADO_ENV_DIR`, How agents talk), never compose's
+  `environment:` or `LADO_AGENT_ENV=inherit`, so no value is in `docker inspect`; compose
+  binds `${LADO_SECRETS:-./secrets}` there read-only with `create_host_path: false` (it
+  refuses a missing folder rather than Docker making it root's). Every start, as `lado`,
+  writes `LADO_GIT_NAME` and `LADO_GIT_EMAIL` (compose passes both from `.env`) to git's
+  global config on the home volume and warns in `docker logs` when git still has no
+  identity. The host's ssh agent: compose binds `${LADO_SSH_AGENT:-/dev/null}` at
+  `/run/lado/ssh-agent.sock` (`/run/lado` root's, 755; `/dev/null`: none), and the profile
+  sets `SSH_AUTH_SOCK` there only when it is a socket. Docker Desktop's socket is root's in
+  a container: every start that finds a socket `lado` cannot use (`ssh-add -l` exit 2) and
+  root's runs `sudo -n /usr/local/bin/lado-ssh-agent-socket` (`ssh-agent-socket.sh`; the
+  rule `/etc/sudoers.d/lado-ssh-agent`, no SETENV, which the first start leaves), which
+  takes no argument and gives that one socket, no symbolic link, to `lado`, keeping its
+  group; a socket still unusable is one warning line. No `group_add`.
   The sessions go with the container (`server/`, above): its stop stops them with a mark,
   and its start resumes them after the migration; tini sends the stop's SIGTERM to `lado
   server`, its one child, and the default grace period is kept (no `stop_grace_period`).
@@ -1262,8 +1293,24 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   not on the resolved `PATH`.
   `LADO_AGENT_ENV=inherit` takes the environment of the process that starts the agent instead
   (the tests set it). From either, `TMUX`, `TMUX_PANE`, the shell's own `PWD`, `OLDPWD`,
-  `SHLVL` and `_`, and a parent Claude Code's variables are dropped; LADO's variables, then
-  the provider's go on top. A tmux window starts with its server's environment, so the
+  `SHLVL` and `_`, and a parent Claude Code's variables are dropped; the variables of the
+  outside folder go over them, then LADO's variables, then the provider's. The outside
+  folder (`agent_env.outside`) is the one `LADO_ENV_DIR` names, an absolute path (LADO's
+  image: `/run/secrets`), read anew at each launch, so the kits' checks (`${NAME}` of an MCP
+  server, `_check_commands`) see it too: each regular file directly in it is a variable,
+  its name the file's, its value the content with one trailing `\n` or `\r\n` dropped. A
+  dotfile is passed over; a file in a subfolder, not regular, not a variable name, reserved
+  (`agent_env.RESERVED`: the shell's identity, `PATH`, tmux's, and every `LADO_*`),
+  unreadable, over `MAX_VALUE` (64 KiB) or not UTF-8 text without NUL is not applied and
+  named with why, never with its content (`variable file <name> in <folder> not used:
+  <reason>`), in a start's and resume's warnings (`runtime._outside_warnings`) and by `lado
+  doctor` (`Variables from outside`: the names, never a value; the bug report has none). A
+  name LADO or the provider sets for the launch keeps their value and is named in that
+  launch's warnings, `spawn_worker`'s too (`LADO sets <name> for <provider>`). Unset,
+  empty or missing, there is no layer. A launching process with `LADO_ENV_DIR` set gives
+  it to the agent and its `lado mcp` among LADO's variables (`providers.agent_env`), so a
+  supervisor's `spawn_worker` and `start_session` read the same folder, also when the login
+  shell does not name it. A tmux window starts with its server's environment, so the
   window runs `lado.agent_env <file> <argv>` (`interpreter.run_module`): it reads that environment from a file
   in the agent's config folder (`env.json`, mode 600 also when it was there before, removed
   once read; the one file under `LADO_HOME/agents/` that holds the values of a kit's MCP

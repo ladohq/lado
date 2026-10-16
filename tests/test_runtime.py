@@ -1645,6 +1645,71 @@ def test_providers_that_never_hold_an_agent_start_it_as_before(repo, fake_tmux, 
     assert state.get_agent("s", "supervisor").status == state.STARTING
 
 
+@pytest.fixture
+def outside(tmp_path, monkeypatch):
+    """The outside folder (LADO_ENV_DIR), empty."""
+    folder = tmp_path / "secrets"
+    folder.mkdir()
+    monkeypatch.setenv("LADO_ENV_DIR", str(folder))
+    return folder
+
+
+def test_agents_get_the_outside_folders_variables(repo, fake_tmux, outside):
+    (outside / "OUT_KEY").write_text("v-1\n")
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    env, _ = agent_helpers.launched(fake_tmux[0])
+    assert env["OUT_KEY"] == "v-1"
+    # A file added while the session runs reaches the next agent.
+    (outside / "OUT_KEY2").write_text("v-2")
+    runtime.spawn_worker("s", "task", name="w1")
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert (env["OUT_KEY"], env["OUT_KEY2"]) == ("v-1", "v-2")
+
+
+def test_a_start_and_a_resume_name_the_files_not_used(repo, fake_tmux, outside):
+    (outside / "PATH").write_text("/x")
+    line = f"variable file PATH in {outside} not used: a reserved name"
+    started = runtime.start_session(str(repo), "s", None, provider="kilo")
+    assert started.warnings == [line]
+    env, _ = agent_helpers.launched(fake_tmux[0])
+    assert env["PATH"] == os.environ["PATH"]
+    runtime.stop_session("s")
+    assert runtime.start_session(str(repo), "s", None).warnings == [line]
+
+
+def test_a_name_the_provider_sets_keeps_its_value_and_is_named(repo, fake_tmux, outside):
+    (outside / "KILO_DISABLE_AUTOUPDATE").write_text("0")
+    (outside / "PATH").write_text("/x")
+    started = runtime.start_session(str(repo), "s", None, provider="kilo")
+    provider_set = (
+        f"variable file KILO_DISABLE_AUTOUPDATE in {outside} not used: "
+        "LADO sets KILO_DISABLE_AUTOUPDATE for kilo"
+    )
+    assert provider_set in started.warnings
+    env, _ = agent_helpers.launched(fake_tmux[0])
+    assert env["KILO_DISABLE_AUTOUPDATE"] == "1"
+    # A spawn names only what depends on its provider: the folder is the session's.
+    warnings = []
+    runtime.spawn_worker("s", "task", name="w1", warnings=warnings)
+    assert warnings == [provider_set]
+    warnings = []
+    runtime.spawn_worker("s", "task", name="w2", provider="claude", warnings=warnings)
+    assert warnings == []
+
+
+def test_a_kits_mcp_server_sees_the_outside_folders_variable(
+    repo, fake_tmux, outside, team_kit, monkeypatch
+):
+    monkeypatch.delenv("DB_TOKEN", raising=False)
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
+    with pytest.raises(kits.KitError, match="DB_TOKEN"):
+        runtime.spawn_worker("s", "review it", role="reviewer")
+    (outside / "DB_TOKEN").write_text("from-folder\n")
+    runtime.spawn_worker("s", "review it", role="reviewer")
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert env["DB_TOKEN"] == "from-folder"
+
+
 def test_stop_drops_failed_messages(repo, fake_tmux):
     _retry_until_failed(_swallowed_report(repo, fake_tmux))
     assert runtime.stop_session("s").dropped == 2  # the report and the notice to w1

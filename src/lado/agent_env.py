@@ -5,6 +5,10 @@ resolved anew for each launch: the same whichever process starts the agent (`lad
 the UI server) and whichever started LADO's tmux server. `LADO_AGENT_ENV=inherit` gives it
 the environment of the process that starts it instead.
 
+Over either go the variables of the outside folder `LADO_ENV_DIR` names (LADO's image sets
+it to /run/secrets): one file per variable, read anew at each launch (`outside`). A file
+it cannot take is named with why, never with its content, and not applied.
+
 A tmux window starts with its server's environment, so the launch does not rely on it: the
 window runs the module `lado.agent_env <file> <argv>` (`interpreter.run_module`), which
 replaces its environment with the one in the file and runs the agent's command.
@@ -13,6 +17,7 @@ replaces its environment with the one in the file and runs the agent's command.
 import contextlib
 import json
 import os
+import re
 import select
 import shlex
 import shutil
@@ -55,6 +60,16 @@ SHELL_OWN = ("PWD", "OLDPWD", "SHLVL", "_")
 # Set by tmux in the agent's window: kept over the resolved environment.
 PANE_VARS = ("TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TMUX", "TMUX_PANE")
 
+# The outside folder: one file per variable (Docker's /run/secrets form), laid over the
+# source's environment at each launch; LADO's image sets it. A name the login shell must
+# keep (its identity, PATH, tmux's) is reserved, and so is LADO's own namespace.
+ENV_DIR_VAR = "LADO_ENV_DIR"
+MAX_VALUE = 65536  # bytes of one file
+VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+RESERVED = frozenset({"HOME", "USER", "LOGNAME", "SHELL", "PATH", *SHELL_OWN, *PANE_VARS})
+RESERVED_PREFIX = "LADO_"
+SUBFOLDER = "in a subfolder"
+
 INHERIT_HINT = (
     f"set {SOURCE_VAR}={INHERIT} to give agents the environment of the process that starts them"
 )
@@ -78,10 +93,87 @@ def source() -> str:
 
 
 def resolve() -> dict[str, str]:
-    """The environment for an agent, before LADO's and its provider's variables."""
+    """The environment for an agent, before LADO's and its provider's variables: the
+    login shell's (or the starting process's), then the outside folder's."""
     env = from_shell() if source() == SHELL else dict(os.environ)
     dropped = (*EXCLUDED, *SHELL_OWN)
-    return {k: v for k, v in tmux.without_agent_vars(env).items() if k not in dropped}
+    base = {k: v for k, v in tmux.without_agent_vars(env).items() if k not in dropped}
+    return {**base, **outside().values}
+
+
+class Outside(NamedTuple):
+    """The variables of the outside folder, and one line per file (or the folder) not
+    used, with why. No line holds a value."""
+
+    folder: str
+    values: dict[str, str]
+    unused: list[str]
+
+
+def outside(environ: Mapping[str, str] | None = None) -> Outside:
+    """The folder `LADO_ENV_DIR` names, read now: a new file reaches the next launch.
+    Unset, empty or missing: no layer and no line."""
+    folder = (os.environ if environ is None else environ).get(ENV_DIR_VAR, "")
+    if not folder:
+        return Outside("", {}, [])
+    where = f"variable folder {folder} ({ENV_DIR_VAR}) not used"
+    if not os.path.isabs(folder):
+        return Outside(folder, {}, [f"{where}: not an absolute path"])
+    try:
+        with os.scandir(folder) as found:
+            entries = sorted(found, key=lambda entry: entry.name)
+    except FileNotFoundError:
+        return Outside(folder, {}, [])
+    except NotADirectoryError:
+        return Outside(folder, {}, [f"{where}: not a folder"])
+    except OSError as exc:
+        return Outside(folder, {}, [f"{where}: cannot be listed: {exc.strerror}"])
+    values: dict[str, str] = {}
+    unused: list[str] = []
+    for entry in entries:
+        if entry.name.startswith("."):
+            continue  # Docker's and editors' own files
+        reason, value = _take(entry)
+        if reason:
+            name = f"{entry.name}/" if reason == SUBFOLDER else entry.name
+            unused.append(f"variable file {name} in {folder} not used: {reason}")
+        else:
+            values[entry.name] = value
+    return Outside(folder, values, unused)
+
+
+def _take(entry: os.DirEntry) -> tuple[str, str]:
+    """("", value) for a file used, (why, "") for one not. Symbolic links are followed:
+    Docker's and Kubernetes' secrets are such links."""
+    try:
+        if entry.is_dir():
+            return SUBFOLDER, ""
+        regular = entry.is_file()
+    except OSError as exc:
+        return f"cannot be read: {exc.strerror}", ""
+    if not regular:
+        return "not a regular file", ""
+    if not VARIABLE_NAME.fullmatch(entry.name):
+        return "not a variable name", ""
+    if entry.name in RESERVED or entry.name.startswith(RESERVED_PREFIX):
+        return "a reserved name", ""
+    try:
+        with open(entry.path, "rb") as file:
+            data = file.read(MAX_VALUE + 1)
+    except OSError as exc:
+        return f"cannot be read: {exc.strerror}", ""
+    if len(data) > MAX_VALUE:
+        return "larger than 64 KiB", ""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return "not UTF-8 text", ""
+    if "\0" in text:
+        return "not UTF-8 text", ""
+    for end in ("\r\n", "\n"):
+        if text.endswith(end):
+            return "", text[: -len(end)]
+    return "", text
 
 
 def timed() -> tuple[dict[str, str], float]:

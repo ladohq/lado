@@ -11,6 +11,21 @@
   resumed stays stopped with the reason in `docker logs` and is not tried again. Each
   resumed supervisor takes one model turn at the start and starts the workers its open
   flow runs need. Outside a container nothing changes. lado.db goes to schema 29.
+- Agents get variables from a folder of files: with `LADO_ENV_DIR` set to an absolute
+  path, each file directly in it is a variable (its name the file's, its value the
+  content), laid over the login shell's environment at every agent's start, so a new file
+  reaches the next agent and a kit's MCP server that needs it starts. A file LADO cannot
+  use (a reserved name such as `PATH` or `LADO_*`, not a variable name, over 64 KiB, not
+  text) is named in `lado start`'s warnings and by `lado doctor` (`Variables from
+  outside`, names only), never applied. Without `LADO_ENV_DIR` nothing changes.
+- LADO's container gives the agents real access: variables from `secrets/` next to
+  compose.yaml, mounted read-only at `/run/secrets` (`GH_TOKEN`,
+  `CLAUDE_CODE_OAUTH_TOKEN`, a kit's key), never in `docker inspect`; git's identity from
+  `LADO_GIT_NAME` and `LADO_GIT_EMAIL` in `.env`; git over https to github.com through
+  gh (`GH_TOKEN` or `gh auth login` inside); and the host's ssh agent through
+  `LADO_SSH_AGENT` without root's group. compose now refuses to start without the
+  `secrets` folder: `mkdir -m 700 secrets` next to compose.yaml. The headers say how
+  Claude Code, OpenCode and Kilo log in.
 - A tab of the web UI closed or reloaded the very moment its clone shows running now
   cancels the clone at once too; before, the server cancelled it only after 150 s.
 - The fields of the web UI's waiting card where the human writes, an own answer, a

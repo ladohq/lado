@@ -101,6 +101,41 @@ if [ -e "$MARK" ] && [ "$(id -un 2>/dev/null)" = lado ]; then
     fi
 fi
 
+# git's identity for the agents' commits (LADO_GIT_NAME, LADO_GIT_EMAIL), in lado's global
+# config on the home volume at every start: a container made again with a new .env takes
+# the new values. Each value is one argument, never evaluated.
+if [ -n "${LADO_GIT_NAME:-}" ] && ! git config --global user.name "$LADO_GIT_NAME"; then
+    echo "lado: warning: could not write git's user.name" >&2
+fi
+if [ -n "${LADO_GIT_EMAIL:-}" ] && ! git config --global user.email "$LADO_GIT_EMAIL"; then
+    echo "lado: warning: could not write git's user.email" >&2
+fi
+# Outside any repository, so only the global and system configs answer.
+if [ -z "$(cd / && git config user.name)" ] || [ -z "$(cd / && git config user.email)" ]; then
+    echo "lado: warning: git has no user.name or user.email: agents cannot commit; set LADO_GIT_NAME and LADO_GIT_EMAIL" >&2
+fi
+
+# The host's ssh agent (compose's LADO_SSH_AGENT): a socket of the projects' owner works as
+# it is; Docker Desktop's is root's in the container, and its own sudo rule gives it to lado
+# at every start, as Docker Desktop's restart makes it root's again. ssh-add exits 2 when it
+# cannot connect (0 or 1: keys or none).
+SOCK=/run/lado/ssh-agent.sock
+ssh_status() { SSH_AUTH_SOCK=$SOCK ssh-add -l >/dev/null 2>&1 && echo 0 || echo $?; }
+if [ -S "$SOCK" ] && [ "$(ssh_status)" = 2 ]; then
+    owner=$(stat -c %u "$SOCK")
+    reason="ssh-add cannot connect"
+    if [ "$owner" = 0 ]; then
+        if ! may_become_root; then
+            reason="no root to give it to lado (no-new-privileges or dropped capabilities)"
+        elif ! sudo -n /usr/local/bin/lado-ssh-agent-socket; then
+            reason="lado-ssh-agent-socket failed"
+        fi
+    fi
+    if [ "$(ssh_status)" = 2 ]; then
+        echo "lado: warning: lado (uid $(id -u)) cannot use the ssh agent socket of uid $owner: $reason" >&2
+    fi
+fi
+
 repos=${LADO_REPOS:-/projects}
 case $repos in
 /*)

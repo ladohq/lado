@@ -189,10 +189,17 @@ def git_repo(container: Container, path: str) -> None:
     )
 
 
-def claude_session(container: Container, repo: str, session: str = "smoke", *more: str) -> None:
+def claude_session(
+    container: Container,
+    repo: str,
+    session: str = "smoke",
+    *more: str,
+    start_args: tuple[str, ...] = (),
+) -> None:
     """A Claude Code session of LADO on `repo` in `container`, against the fake model API on
     the container's own loopback; returns once its supervisor is idle. Claude Code trusts
-    the `more` repositories too, for the sessions start_claude starts there after."""
+    the `more` repositories too, for the sessions start_claude starts there after;
+    `start_args` go to `lado start` (e.g. `--kit`)."""
     fake_endpoint(container)
     # Claude Code pointed at it through the login shell, as a human gives a token; its
     # first-run screens, the bypass mode's disclaimer and the repository's trust done.
@@ -214,15 +221,15 @@ def claude_session(container: Container, repo: str, session: str = "smoke", *mor
             }
         ),
     )
-    start_claude(container, repo, session)
+    start_claude(container, repo, session, *start_args)
 
 
-def start_claude(container: Container, repo: str, session: str) -> None:
-    """Another Claude Code session in a container claude_session set up; returns once its
-    supervisor is idle."""
+def start_claude(container: Container, repo: str, session: str, *args: str) -> None:
+    """Another Claude Code session in a container claude_session set up, `args` given to
+    `lado start`; returns once its supervisor is idle."""
     started = container.exec(
         "lado", "start", repo, "--name", session, "--provider", "claude",
-        "--permission-mode", "bypassPermissions", "--no-attach", check=False,
+        "--permission-mode", "bypassPermissions", "--no-attach", *args, check=False,
     )  # fmt: skip
     assert started.returncode == 0, started.stdout + started.stderr
     wait_status(container, session, "supervisor", "idle")

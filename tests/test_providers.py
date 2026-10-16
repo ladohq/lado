@@ -407,6 +407,18 @@ def test_turn_end_types_messages_when_provider_cannot_deliver_them(repo, fake_tm
     assert state.get_agent("s", "supervisor").status == state.BUSY
 
 
+def test_lado_passes_its_outside_folder_on_to_each_agent(repo, lado_home, monkeypatch):
+    # An agent's environment is its login shell's: without LADO_ENV_DIR there, a supervisor's
+    # `lado mcp` would launch its workers without the folder's variables.
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "kilo")
+    assert "LADO_ENV_DIR" not in base.agent_env(agent)
+    monkeypatch.setenv("LADO_ENV_DIR", "/run/secrets")
+    assert base.agent_env(agent)["LADO_ENV_DIR"] == "/run/secrets"
+    assert base.mcp_server(agent).env["LADO_ENV_DIR"] == "/run/secrets"
+    monkeypatch.setenv("LADO_ENV_DIR", "")
+    assert "LADO_ENV_DIR" not in base.agent_env(agent)
+
+
 def _kilo_launch(repo, permission_mode=None):
     sess = state.Session("s", str(repo), permission_mode, "kilo")
     agent = state.Agent(

@@ -5,7 +5,9 @@ install script, the environment the same for the server (ENV) and the agents' lo
 LADO_VERSION, and the headers' update by version."""
 
 import importlib.util
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -124,6 +126,7 @@ def test_profile_sets_what_env_sets_for_the_agents():
         "CLAUDE_CONFIG_DIR",
         "DISABLE_AUTOUPDATER",
         "LANG",
+        "LADO_ENV_DIR",
     }
     for key, value in exported.items():
         value = value.replace("$HOME", "/home/lado")
@@ -140,6 +143,25 @@ def test_profile_sets_what_env_sets_for_the_agents():
     assert image["SHELL"] == "/bin/bash"
 
 
+def test_the_image_reads_the_agents_variables_from_the_secrets_folder():
+    """Set for the server and `docker exec` (ENV) and for every login shell (profile.sh),
+    whose `lado mcp` spawns workers too; never `inherit`, which would give the agents the
+    container's whole environment."""
+    assert env()["LADO_ENV_DIR"] == "/run/secrets"
+    assert "LADO_AGENT_ENV" not in DOCKERFILE + (DOCKER / "profile.sh").read_text()
+
+
+def test_gh_is_gits_credential_helper_for_github():
+    """What `gh auth setup-git` writes: an empty helper first drops any inherited one."""
+    [run] = [line for line in lines() if "credential.https://github.com.helper" in line]
+    assert "git config --system credential.https://github.com.helper ''" in run
+    assert (
+        "git config --system --add credential.https://github.com.helper "
+        "'!/usr/bin/gh auth git-credential'"
+    ) in run
+    assert run.index("helper ''") < run.index("gh auth git-credential")
+
+
 def test_the_server_listens_on_all_addresses_at_lado_port_under_tini():
     assert 'ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/lado-entrypoint"]' in lines()
     [cmd] = [line for line in lines() if line.startswith("CMD ")]
@@ -149,7 +171,94 @@ def test_the_server_listens_on_all_addresses_at_lado_port_under_tini():
 
 def test_the_build_context_is_an_allowlist():
     ignore = (DOCKER / "Dockerfile.dockerignore").read_text().split()
-    assert ignore == ["*", "!dist/lado-*.whl", "!docker/profile.sh", "!docker/entrypoint.sh"]
+    assert ignore == [
+        "*",
+        "!dist/lado-*.whl",
+        "!docker/profile.sh",
+        "!docker/entrypoint.sh",
+        "!docker/ssh-agent-socket.sh",
+    ]
+
+
+SSH_RULE = "lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socket"
+SSH_PROGRAM = DOCKER / "ssh-agent-socket.sh"
+SOCKET = "/run/lado/ssh-agent.sock"
+
+
+def test_the_ssh_rule_names_one_program_and_keeps_no_variable():
+    """Its own file, which the first start's root phase leaves; no SETENV, so sudo's
+    env_reset gives the program a clean environment."""
+    [run] = [line for line in lines() if "/etc/sudoers.d/lado-ssh-agent" in line]
+    assert f"printf '%s\\n' '{SSH_RULE}' > /etc/sudoers.d/lado-ssh-agent" in run
+    assert "chmod 0440 /etc/sudoers.d/lado-ssh-agent" in run
+    assert "visudo -cf /etc/sudoers.d/lado-ssh-agent" in run
+    assert "SETENV" not in run
+    assert "COPY --chmod=755 docker/ssh-agent-socket.sh /usr/local/bin/lado-ssh-agent-socket" in (
+        lines()
+    )
+    # /run/lado is root's, so no agent can plant a file at the socket's path.
+    assert "mkdir -p /run/lado" in run and "chmod 755 /run/lado" in run
+
+
+def test_the_ssh_program_checks_its_one_socket():
+    text = SSH_PROGRAM.read_text()
+    assert text.startswith("#!/bin/sh\n") and "\nset -eu\n" in text
+    assert "\nPATH=/usr/bin:/bin\n" in text
+    assert f"\nSOCKET={SOCKET}\n" in text
+    assert '[ -L "$SOCKET" ] || [ ! -S "$SOCKET" ]' in text
+    assert '[ "$(stat -c %u "$SOCKET")" = 0 ] || exit 0' in text
+    assert 'chown --no-dereference "$(id -u lado)" "$SOCKET"' in text
+    assert text.index("stat -c %u") < text.index("chown")
+
+
+def test_the_ssh_program_takes_no_argument():
+    done = subprocess.run(["sh", str(SSH_PROGRAM), SOCKET], capture_output=True, text=True)
+    assert (done.returncode, done.stderr) == (2, "lado-ssh-agent-socket: takes no argument\n")
+
+
+@pytest.mark.skipif(Path(SOCKET).exists(), reason="the image's own socket")
+def test_the_ssh_program_refuses_what_is_no_socket():
+    done = subprocess.run(["sh", str(SSH_PROGRAM)], capture_output=True, text=True)
+    assert (done.returncode, done.stderr) == (
+        1,
+        f"lado-ssh-agent-socket: {SOCKET} is not a socket\n",
+    )
+
+
+def test_compose_binds_the_ssh_agent_or_dev_null(compose):
+    """/dev/null: no ssh agent, and a path every host has."""
+    [mount] = [
+        v
+        for v in compose["services"]["lado"]["volumes"]
+        if isinstance(v, dict) and v.get("target") == SOCKET
+    ]
+    assert mount == {
+        "type": "bind",
+        "source": "${LADO_SSH_AGENT:-/dev/null}",
+        "target": SOCKET,
+        "bind": {"create_host_path": False},
+    }
+    assert "group_add" not in compose["services"]["lado"]
+
+
+def test_the_profile_points_ssh_auth_sock_only_at_a_socket():
+    """The profile's alone: the server needs no ssh agent (so outside the ENV parity)."""
+    profile = (DOCKER / "profile.sh").read_text()
+    assert f"[ -S {SOCKET} ] && export SSH_AUTH_SOCK={SOCKET} || true" in profile.splitlines()
+    assert "SSH_AUTH_SOCK" not in env()
+
+
+SSH_WARNING = "lado: warning: lado (uid $(id -u)) cannot use the ssh agent socket of uid $owner:"
+
+
+def test_the_entrypoint_gives_a_root_owned_socket_to_lado_at_every_start():
+    every = ENTRYPOINT.split('if [ -e "$MARK" ]', 1)[1].split("\nfi\n", 1)[1]
+    assert f"SOCK={SOCKET}" in every
+    assert "sudo -n /usr/local/bin/lado-ssh-agent-socket" in every
+    assert every.index("may_become_root") < every.index("sudo -n /usr/local/bin/lado-ssh-agent")
+    assert SSH_WARNING in every
+    assert "ssh-add cannot connect" in every
+    assert "no root to give it to lado (no-new-privileges or dropped capabilities)" in every
 
 
 RULE = "lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoint"
@@ -220,12 +329,90 @@ def test_the_entrypoint_goes_on_without_root():
     assert "NoNewPrivs:\t1" in ENTRYPOINT
 
 
+GIT_WARNING = (
+    "lado: warning: git has no user.name or user.email: agents cannot commit; set "
+    "LADO_GIT_NAME and LADO_GIT_EMAIL"
+)
+
+
+def every_start(tmp_path, **given: str) -> subprocess.CompletedProcess:
+    """The entrypoint's every-start phase run here (no marker, not root), with a home of
+    its own and `given` in a clean environment; its command prints git's identity."""
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
+    environ = {"PATH": os.environ["PATH"], "HOME": str(home), "LADO_REPOS": str(tmp_path)}
+    return subprocess.run(
+        [
+            "sh",
+            str(DOCKER / "entrypoint.sh"),
+            "sh",
+            "-c",
+            "git config user.name; git config user.email; true",
+        ],
+        env={**environ, **given},
+        cwd=home,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
+@pytest.mark.skipif(
+    os.geteuid() == 0 or Path("/etc/lado/first-start").exists(), reason="the image's own phases"
+)
+def test_the_entrypoint_writes_gits_identity_at_every_start(tmp_path):
+    """As one argument each, never split or evaluated; a later start takes a new value."""
+    done = every_start(tmp_path, LADO_GIT_NAME="Ann O'Lee $(x)", LADO_GIT_EMAIL="ann@example.com")
+    assert done.stdout == "Ann O'Lee $(x)\nann@example.com\n"
+    assert GIT_WARNING not in done.stderr
+    done = every_start(tmp_path, LADO_GIT_EMAIL="ann@other.example")
+    assert done.stdout == "Ann O'Lee $(x)\nann@other.example\n"
+    assert done.stderr == ""
+
+
+@pytest.mark.skipif(
+    os.geteuid() == 0 or Path("/etc/lado/first-start").exists(), reason="the image's own phases"
+)
+def test_without_gits_identity_the_entrypoint_warns_and_goes_on(tmp_path):
+    done = every_start(tmp_path)
+    assert GIT_WARNING in done.stderr.splitlines()
+    done = every_start(tmp_path, LADO_GIT_NAME="Ann", LADO_GIT_EMAIL="")
+    assert GIT_WARNING in done.stderr.splitlines()
+    assert done.stdout == "Ann\n"
+
+
 COMPOSE_TEXT = (DOCKER / "compose.yaml").read_text()
 
 
 @pytest.fixture(scope="module")
 def compose() -> dict:
     return yaml.safe_load(COMPOSE_TEXT)
+
+
+def test_compose_binds_the_secrets_folder_read_only_and_never_makes_it(compose):
+    """Docker on Linux would make a missing folder as root, where the human could not add
+    a file without sudo: compose refuses instead."""
+    [mount] = [
+        v
+        for v in compose["services"]["lado"]["volumes"]
+        if isinstance(v, dict) and v.get("target") == "/run/secrets"
+    ]
+    assert mount == {
+        "type": "bind",
+        "source": "${LADO_SECRETS:-./secrets}",
+        "target": "/run/secrets",
+        "read_only": True,
+        "bind": {"create_host_path": False},
+    }
+
+
+def test_compose_passes_the_git_identity_and_no_secret(compose):
+    """No value for the agents goes through `environment:`, which docker inspect shows."""
+    environment = compose["services"]["lado"]["environment"]
+    assert environment["LADO_GIT_NAME"] == "${LADO_GIT_NAME:-}"
+    assert environment["LADO_GIT_EMAIL"] == "${LADO_GIT_EMAIL:-}"
+    assert set(environment) == {"LADO_PORT", "LADO_REPOS", "LADO_GIT_NAME", "LADO_GIT_EMAIL"}
+    assert "env_file" not in compose["services"]["lado"]
 
 
 def test_compose_publishes_one_port_number_on_loopback(compose):
@@ -255,7 +442,8 @@ def test_compose_mounts_the_projects_at_the_hosts_own_path(compose):
     LADO's stored paths are then right on both sides."""
     lado = compose["services"]["lado"]
     projects = "${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}"
-    assert lado["volumes"] == ["home:/home/lado", f"{projects}:{projects}"]
+    assert lado["volumes"][:2] == ["home:/home/lado", f"{projects}:{projects}"]
+    assert all(isinstance(v, dict) for v in lado["volumes"][2:])  # the binds below
     assert lado["environment"]["LADO_REPOS"] == projects
 
 
@@ -343,6 +531,45 @@ def test_the_dockerfiles_header_says_the_sessions_follow_the_container():
     sessions = header.split("Sessions:")[1]
     for words in ("docker stop", "docker start", "stopped by hand", "one model turn"):
         assert words in sessions, words
+
+
+def leading_comment(path: Path) -> str:
+    """A file's header: its comment lines before the first other line."""
+    head = []
+    for line in path.read_text().splitlines():
+        if not line.startswith("#"):
+            break
+        head.append(line.lstrip("#").strip())
+    return " ".join(head)
+
+
+@pytest.mark.parametrize("name", ["compose.yaml", "Dockerfile"])
+def test_the_headers_say_how_agents_get_variables_access_and_logins(name):
+    head = leading_comment(DOCKER / name)
+    for needle in (
+        "mkdir -m 700 secrets",
+        "LADO_GIT_NAME",
+        "LADO_GIT_EMAIL",
+        "GH_TOKEN",
+        "gh auth login",
+        "LADO_SSH_AGENT" if name == "compose.yaml" else "/run/lado/ssh-agent.sock",
+        "/run/host-services/ssh-auth.sock",
+        "$SSH_AUTH_SOCK",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "claude setup-token",
+        "opencode auth login",
+        "kilo auth login",
+        "Every agent of the container can read every variable given to it",
+    ):
+        assert needle in head, (name, needle)
+
+
+def test_the_compose_header_sets_the_new_settings_in_env():
+    header = [line.lstrip("# ").strip() for line in COMPOSE_TEXT.splitlines()]
+    first = next(i for i, line in enumerate(header) if line.startswith("docker compose"))
+    settings = " ".join(header[:first])
+    for key in ("LADO_GIT_NAME=", "LADO_GIT_EMAIL=", "LADO_SSH_AGENT="):
+        assert key in settings, key
 
 
 def test_nothing_in_docker_names_lado_previous():

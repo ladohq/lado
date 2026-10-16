@@ -291,3 +291,157 @@ def test_the_shell_starts_from_the_base_path(shell, linux, monkeypatch):
     linux.write_text("PATH=/opt/from-etc:/usr/bin:/bin\n")
     shell()
     assert agent_env.resolve()["PATH"] == "/opt/from-etc:/usr/bin:/bin"
+
+
+# The outside folder (LADO_ENV_DIR): one file per variable, laid over the login shell's.
+
+
+def write(folder, name, data: bytes):
+    (folder / name).write_bytes(data)
+
+
+@pytest.fixture
+def outdir(tmp_path, monkeypatch):
+    folder = tmp_path / "secrets"
+    folder.mkdir()
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(folder))
+    return folder
+
+
+def test_a_file_is_a_variable(outdir):
+    write(outdir, "YOUGILE_API_KEY", b"k-123\n")
+    assert agent_env.outside().values == {"YOUGILE_API_KEY": "k-123"}
+
+
+def test_one_trailing_newline_dropped(outdir):
+    write(outdir, "A", b"x\r\n")
+    write(outdir, "B", b"y\n\n")
+    write(outdir, "C", b" z ")
+    write(outdir, "lower_case", b"v")
+    assert agent_env.outside().values == {"A": "x", "B": "y\n", "C": " z ", "lower_case": "v"}
+
+
+def test_files_not_used_are_named_with_their_reason(outdir):
+    write(outdir, "gh-token.txt", b"x")
+    write(outdir, "GH_TOKEN~", b"x")
+    write(outdir, "PATH", b"/evil")
+    write(outdir, "HOME", b"/evil")
+    write(outdir, "LADO_HOME", b"/x")
+    write(outdir, "BIG", b"a" * 65537)
+    write(outdir, "BIN", b"a\0b")
+    write(outdir, "LATIN", b"\xff\xfe")
+    write(outdir, ".hidden", b"x")
+    write(outdir, ".GH_TOKEN.swp", b"x")
+    (outdir / "sub").mkdir()
+    os.mkfifo(outdir / "FIFO")
+    found = agent_env.outside()
+    assert found.values == {}
+    folder = str(outdir)
+    assert sorted(found.unused) == sorted(
+        [
+            f"variable file BIG in {folder} not used: larger than 64 KiB",
+            f"variable file BIN in {folder} not used: not UTF-8 text",
+            f"variable file LATIN in {folder} not used: not UTF-8 text",
+            f"variable file FIFO in {folder} not used: not a regular file",
+            f"variable file HOME in {folder} not used: a reserved name",
+            f"variable file LADO_HOME in {folder} not used: a reserved name",
+            f"variable file PATH in {folder} not used: a reserved name",
+            f"variable file gh-token.txt in {folder} not used: not a variable name",
+            f"variable file GH_TOKEN~ in {folder} not used: not a variable name",
+            f"variable file sub/ in {folder} not used: in a subfolder",
+        ]
+    )
+
+
+def test_a_file_of_exactly_the_limit_is_taken(outdir):
+    write(outdir, "EDGE", b"a" * agent_env.MAX_VALUE)
+    assert len(agent_env.outside().values["EDGE"]) == agent_env.MAX_VALUE
+
+
+def test_a_symbolic_link_to_a_file_is_followed(outdir, tmp_path):
+    # Docker's and Kubernetes' secrets are such links.
+    (tmp_path / "real").write_text("v\n")
+    (outdir / "LINKED").symlink_to(tmp_path / "real")
+    assert agent_env.outside().values == {"LINKED": "v"}
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any file")
+def test_an_unreadable_file_is_named(outdir):
+    write(outdir, "SHUT", b"x")
+    (outdir / "SHUT").chmod(0)
+    [line] = agent_env.outside().unused
+    assert line.startswith(f"variable file SHUT in {outdir} not used: cannot be read: ")
+
+
+def test_no_folder_variable_no_layer(monkeypatch):
+    monkeypatch.delenv(agent_env.ENV_DIR_VAR, raising=False)
+    assert agent_env.outside() == agent_env.Outside("", {}, [])
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, "")
+    assert agent_env.outside() == agent_env.Outside("", {}, [])
+
+
+def test_a_missing_folder_is_no_layer_and_no_warning(tmp_path, monkeypatch):
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(tmp_path / "none"))
+    found = agent_env.outside()
+    assert (found.values, found.unused) == ({}, [])
+
+
+def test_a_relative_folder_is_named(monkeypatch):
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, "secrets")
+    assert agent_env.outside().unused == [
+        "variable folder secrets (LADO_ENV_DIR) not used: not an absolute path"
+    ]
+
+
+def test_a_file_in_place_of_the_folder_is_named(tmp_path, monkeypatch):
+    (tmp_path / "f").write_text("x")
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(tmp_path / "f"))
+    assert agent_env.outside().unused == [
+        f"variable folder {tmp_path / 'f'} (LADO_ENV_DIR) not used: not a folder"
+    ]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root lists any folder")
+def test_folder_cannot_be_listed(outdir):
+    write(outdir, "KEY", b"v")
+    outdir.chmod(0)
+    try:
+        found = agent_env.outside()
+        [line] = found.unused
+        assert line.startswith(
+            f"variable folder {outdir} (LADO_ENV_DIR) not used: cannot be listed"
+        )
+        assert found.values == {}
+    finally:
+        outdir.chmod(0o700)
+
+
+def test_the_folder_wins_over_the_login_shell(shell, outdir):
+    shell(rc="export GH_TOKEN=old KEEP=1")
+    write(outdir, "GH_TOKEN", b"new\n")
+    env = agent_env.resolve()
+    assert (env["GH_TOKEN"], env["KEEP"]) == ("new", "1")
+
+
+def test_the_folder_wins_over_the_inherited_environment(outdir, monkeypatch):
+    monkeypatch.setenv(agent_env.SOURCE_VAR, "inherit")
+    monkeypatch.setenv("GH_TOKEN", "old")
+    write(outdir, "GH_TOKEN", b"new\n")
+    write(outdir, "PATH", b"/evil")
+    env = agent_env.resolve()
+    assert env["GH_TOKEN"] == "new"
+    assert env["PATH"] == os.environ["PATH"]
+
+
+def test_read_anew_at_each_call(outdir):
+    assert "NEW_KEY" not in agent_env.outside().values
+    write(outdir, "NEW_KEY", b"v")
+    assert agent_env.outside().values["NEW_KEY"] == "v"
+
+
+def test_no_value_in_a_line(outdir):
+    write(outdir, "BIN", b"canary-7f3e\0")
+    write(outdir, "bad-name", b"canary-7f3e")
+    write(outdir, "BIG", b"canary-7f3e" * 7000)
+    write(outdir, "PATH", b"canary-7f3e")
+    assert "canary-7f3e" not in "\n".join(agent_env.outside().unused)

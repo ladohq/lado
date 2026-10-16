@@ -16,3 +16,4 @@ src/lado/server/static/
 .lado/*
 !.lado/sdlc.md
 !.lado/tracker.yaml
+docker/secrets/

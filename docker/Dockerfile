@@ -3,10 +3,27 @@
 # as ghcr.io/ladohq/lado:<version> (amd64, arm64); `make docker` builds it from a checkout
 # (lado:local). One command starts it:
 #
+#   mkdir -m 700 secrets
 #   docker run -d --name lado -p 127.0.0.1:8765:8765 -v lado-home:/home/lado \
 #     -v "$HOME/projects:$HOME/projects" -e LADO_REPOS="$HOME/projects" \
+#     -v "$PWD/secrets:/run/secrets:ro" \
+#     -e LADO_GIT_NAME="Ann Lee" -e LADO_GIT_EMAIL=ann@example.com \
 #     ghcr.io/ladohq/lado:<version>
 #   docker exec lado lado ui --no-open            # the UI's link with its token
+#
+# The agents' variables are files in secrets/, one per variable (its name the file's, its
+# value the content), read at each agent's start and never in `docker inspect`: GH_TOKEN
+# (git over https to github.com and gh; or `docker exec -it lado gh auth login`),
+# CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`; or log in once with `docker exec -it
+# lado claude`), a kit's key, a model provider's key for OpenCode and Kilo (or `opencode
+# auth login` / `kilo auth login` inside). Logins made inside stay on the home volume;
+# Codex's is not covered yet. Every agent of the container can read every variable given
+# to it; another LADO keeps its own folder. LADO_GIT_NAME and LADO_GIT_EMAIL are git's
+# identity for the agents' commits, written at every start (without them `docker logs`
+# warns). The host's ssh agent, for git over ssh: on a Mac add
+# `-v /run/host-services/ssh-auth.sock:/run/lado/ssh-agent.sock` (Docker Desktop's), on
+# Linux `-v "$SSH_AUTH_SOCK:/run/lado/ssh-agent.sock"`; every agent may then use the
+# host's keys. compose.yaml names it LADO_SSH_AGENT.
 #
 # Update: `docker rm -f lado`, then the same `docker run` with the new version; the home
 # volume keeps LADO's state, and the new version upgrades its lado.db after a backup. Back:
@@ -69,9 +86,22 @@ RUN printf '%s\n' 'lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoi
  && visudo -cf /etc/sudoers.d/lado-entrypoint \
  && mkdir -p /etc/lado && touch /etc/lado/first-start \
  && printf "export LADO_REPOS='/projects'\n" > /etc/profile.d/lado-repos.sh
+# The host's ssh agent: compose binds its socket at /run/lado/ssh-agent.sock, in a folder
+# root's so no agent plants a file there. Docker Desktop's socket is root's in the
+# container; at every start the entrypoint gives it to lado by this program, through a rule
+# of its own that the first start leaves (no SETENV: the program gets a clean environment).
+COPY --chmod=755 docker/ssh-agent-socket.sh /usr/local/bin/lado-ssh-agent-socket
+RUN printf '%s\n' 'lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socket' > /etc/sudoers.d/lado-ssh-agent \
+ && chmod 0440 /etc/sudoers.d/lado-ssh-agent \
+ && visudo -cf /etc/sudoers.d/lado-ssh-agent \
+ && mkdir -p /run/lado && chmod 755 /run/lado
 # git trusts every repository: the projects' owner may seem another user (git 2.39 has no
-# `<path>/*` form, and the container has one user).
-RUN git config --system --add safe.directory '*'
+# `<path>/*` form, and the container has one user). It gets github.com's https credentials
+# from gh: GH_TOKEN, or gh's own login on the home volume (what `gh auth setup-git` writes;
+# the empty helper drops any helper set before it).
+RUN git config --system --add safe.directory '*' \
+ && git config --system credential.https://github.com.helper '' \
+ && git config --system --add credential.https://github.com.helper '!/usr/bin/gh auth git-credential'
 
 USER lado
 WORKDIR /home/lado
@@ -108,6 +138,7 @@ ENV PATH=/opt/uv/bin:/opt/agents/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/u
     LANG=en_US.UTF-8 \
     LADO_CONTAINER=1 \
     LADO_REPOS=/projects \
+    LADO_ENV_DIR=/run/secrets \
     CLAUDE_CONFIG_DIR=/home/lado/.claude \
     DISABLE_AUTOUPDATER=1 \
     LADO_PORT=8765

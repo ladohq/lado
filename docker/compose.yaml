@@ -5,11 +5,38 @@
 #   LADO_VERSION=0.39.0                 # the LADO version to run
 #   LADO_PROJECTS=/Users/me/projects    # absolute: the container sees it at this path
 #   LADO_PORT=8765                      # optional
+#   LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
+#   LADO_GIT_EMAIL=ann@example.com
+#   LADO_SSH_AGENT=/run/host-services/ssh-auth.sock   # optional: the host's ssh agent
 #
-# Then, from this folder:
+# Then, from this folder (compose refuses to start without the secrets folder):
 #
+#   mkdir -m 700 secrets
 #   docker compose up -d
 #   docker compose exec lado lado ui --no-open               # the UI's link with its token
+#
+# The agents' variables (tokens, keys) are files in secrets/, one per variable: its name is
+# the file's, its value the file's content (one trailing newline dropped). LADO reads them
+# at each agent's start, so a new file reaches the agents started after it, with no
+# restart; they never show in `docker inspect`, and `lado doctor` lists the names it uses.
+# E.g. `printf %s "$TOKEN" > secrets/GH_TOKEN`:
+#   GH_TOKEN                  git over https to github.com and gh (or `gh auth login`
+#                             inside: docker compose exec -it lado gh auth login)
+#   CLAUDE_CODE_OAUTH_TOKEN   Claude Code's login, from `claude setup-token` (or log in once
+#                             inside: docker compose exec -it lado claude)
+#   YOUGILE_API_KEY           a kit's key, as its MCP server names it
+#   OPENAI_API_KEY, ...       a model provider's key, for OpenCode and Kilo (or `opencode
+#                             auth login` / `kilo auth login` inside)
+# Logins made inside stay on the home volume. Codex's login is not covered yet. Every agent
+# of the container can read every variable given to it: another LADO, with its own folder
+# and home volume, keeps another set apart. LADO_SECRETS in .env names another folder.
+#
+# git: LADO_GIT_NAME and LADO_GIT_EMAIL are written to git's global config at every start;
+# without them `docker compose logs lado` warns that agents cannot commit. ssh: set
+# LADO_SSH_AGENT to the host's ssh agent socket, on a Mac Docker Desktop's
+# /run/host-services/ssh-auth.sock, on Linux the host's $SSH_AUTH_SOCK (its path changes per
+# login: point it at a stable socket, or `up -d` again after a new login); every agent of
+# the container may then use the host's keys. Unset, there is none.
 #
 # LADO_PORT (8765) is the server's port in the container and the one published on this
 # computer's loopback, always the same number. LADO_IMAGE, when set, runs another image
@@ -51,6 +78,9 @@ services:
     environment:
       LADO_PORT: ${LADO_PORT:-8765}
       LADO_REPOS: ${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}
+      # git's identity for the agents' commits, written at every start.
+      LADO_GIT_NAME: ${LADO_GIT_NAME:-}
+      LADO_GIT_EMAIL: ${LADO_GIT_EMAIL:-}
     ports:
       # This computer only: the UI's token is the one guard.
       - "127.0.0.1:${LADO_PORT:-8765}:${LADO_PORT:-8765}"
@@ -60,6 +90,19 @@ services:
       # The human's projects at the host's own path (LADO_REPOS above), so a worker's
       # worktree made in the container is one on the host too.
       - ${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}:${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}
+      # The agents' variables, one file each (LADO_ENV_DIR): never in docker inspect.
+      - type: bind
+        source: ${LADO_SECRETS:-./secrets}
+        target: /run/secrets
+        read_only: true
+        bind:
+          create_host_path: false
+      # The host's ssh agent for the agents' git over ssh (LADO_SSH_AGENT; /dev/null: none).
+      - type: bind
+        source: ${LADO_SSH_AGENT:-/dev/null}
+        target: /run/lado/ssh-agent.sock
+        bind:
+          create_host_path: false
     extra_hosts:
       # A local model on the host: Docker Desktop has it already, a Linux host needs it.
       - "host.docker.internal:host-gateway"

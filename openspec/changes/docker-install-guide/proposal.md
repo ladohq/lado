@@ -48,7 +48,7 @@ headers, and no step wrote the user's path from zero to a working session.
   A short part gives `docker run` and points to the Dockerfile's header. The headers stay
   the reference: the guide links to them and repeats only the steps a user runs.
 - **The pitfalls, in the guide.**
-  - Shell variables beat `.env`: check `env | grep LADO` and `unset`.
+  - Shell variables beat `.env`: check `env | grep -E '^(LADO|COMPOSE)_'` and `unset`.
   - An older Compose v2 asks for `LADO_VERSION` also beside `LADO_IMAGE`.
   - A git name or email removed from `.env` stays on the volume.
   - Every agent of one LADO sees all its secrets. Other values need another LADO, until

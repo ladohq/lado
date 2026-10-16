@@ -41,7 +41,7 @@ link to it. Its start, update and way-back commands SHALL be exactly those of
 `docker/compose.yaml`'s header, which the container tests run. Its `.env` SHALL name every
 variable compose reads but `LADO_IMAGE` and `LADO_SECRETS`. It SHALL remove only its own
 container and volume, by name, and nothing in the guide or the headers SHALL run a
-`docker ... prune`. The guide SHALL say to check `env | grep LADO` and `unset` what the
+`docker ... prune`. The guide SHALL say to check `env | grep -E '^(LADO|COMPOSE)_'` and `unset` what the
 shell sets, since a shell's variable beats `.env`.
 
 README's Install and docs/install.md's opening SHALL present the two ways to install,

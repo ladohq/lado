@@ -91,6 +91,12 @@ Tests first in each section; each task is one commit.
   opens with both ways, and Update the container says how LADO tells of a new version in a
   container and what an update does. README's removal names both ways too. A unit test
   keeps both ways in both files.
+- [x] 4.7 The human's check by hand of PR #82 (2026-10-16), findings 2-5: the PR's
+  known_hosts check runs in the container's shell (`sh -c 'ls ~/.ssh/known_hosts'`); the
+  guide's `unset` names the kinds its `grep` finds (`COMPOSE_PROJECT_NAME` too); the
+  examples say `<version>` and where to find it, never a number that goes stale (a test);
+  the volume's look is exact, `--filter name='^lado_home$'` (Docker's filter matches a
+  part of the name, checked).
 
 ## 5. Records
 
@@ -99,7 +105,7 @@ Tests first in each section; each task is one commit.
 - [x] 5.2 The pull request carries the human's check by hand:
   - the branch, through `git worktree add`;
   - a clean folder, with its own `COMPOSE_PROJECT_NAME` and volume;
-  - `env | grep LADO` and `unset`;
+  - `env | grep -E '^(LADO|COMPOSE)_'` and `unset`;
   - `make docker` and `LADO_IMAGE=lado:local`, or the file from the worktree in place of
     the asset;
   - the guide from scratch, to a session where an agent commits and pushes over ssh with

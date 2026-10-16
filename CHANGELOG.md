@@ -2,6 +2,14 @@
 
 ## 0.40.0 (unreleased)
 
+- The comment of a gate's answer shows once in the chat, under the run's move it made,
+  no longer also under the closed gate. A closed gate is a folded card that says it opens
+  (its flag, run and state, the answer's chip coloured by where the run went, by whom, a
+  chevron); opened, it shows the question and the answer on your ground, and folds the
+  note (6 lines, then Show more) and the supervisor's recommendation ("you agreed" or
+  "you answered otherwise") into a line each. Your own moves in a run's group stand on
+  your ground, as your messages do. Each closed gate keeps the run's event that closed it
+  (`closed_by_event` in the UI server's gates); lado.db goes to schema 30.
 - LADO's container takes its sessions with it: `docker compose down` or `stop`, `docker
   stop`, or Docker's own end stops every running session as `lado stop` would (`docker
   logs`: `lado: the container stops: stopped sessions "app"; they resume at its start`),

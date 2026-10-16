@@ -3440,8 +3440,10 @@ h3 {
   white-space: nowrap;
 }
 
+/* Under the head, past the label's column; less in a narrow chat, where it would squeeze
+   the text. */
 .gate-row-body {
-  margin: 6px 0 0 100px;
+  margin: 6px 0 0 clamp(16px, 15%, 100px);
 }
 
 .gate-row-body .gate-note {

@@ -308,8 +308,8 @@ def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
         card.get_by_role("button", name="Reject").click()
     assert answered.value.ok
     line = page.get_by_role("article", name="Gate #1", exact=True)
-    expect(line).to_contain_text("Gate #1 · ship/x · check: reject by human")
-    expect(line).to_contain_text("split the form first")
+    head = line.get_by_role("button", name="Gate #1 · ship/x · check: reject by human")
+    expect(head).to_be_visible()
     expect(line.get_by_role("button", name="Approve", exact=True)).to_have_count(0)
     expect(waiting_card(page, session)).to_have_count(0)
     expect(waits).to_have_count(0)
@@ -317,9 +317,62 @@ def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
     assert (run.state, run.note) == ("plan", "rejected: split the form first")
     step = [m for m in state.list_messages(session) if m.recipient == "supervisor"][-1]
     assert "Note from the previous step: rejected: split the form first" in step.body
-    line.get_by_role("button", name="Gate #1 · ship/x · check: reject by human").click()
-    expect(line).to_contain_text("Build it as planned?")
-    shot(page, "answered")
+    # The comment once: under the human's move, on the human's ground; the folded card has
+    # its chip by the move's direction, "by you" and a chevron.
+    feed = page.get_by_role("log", name="Chat with the session")
+    move = feed.locator("li.run-event.mine")
+    expect(move.locator(".run-comment")).to_have_text("split the form first")
+    expect(feed.get_by_text("split the form first")).to_have_count(1)
+    expect(move).to_have_css("background-color", line_ground(page))
+    expect(head.locator(".run-outcome.back")).to_have_text("reject")
+    expect(head.locator(".gate-head-by")).to_have_text("by you")
+    expect(head.locator(".gate-chevron svg")).to_be_visible()
+    expect(head).to_have_attribute("aria-expanded", "false")
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        line.scroll_into_view_if_needed()
+        shot(page, f"folded-{theme}", full_page=False)
+    # Opened from the keyboard: down in the same frame, the question and the answer.
+    head.focus()
+    page.keyboard.press("Enter")
+    expect(head).to_have_attribute("aria-expanded", "true")
+    opened = line.locator(".gate-closed-card")
+    expect(opened.locator(".gate-question")).to_have_text("Build it as planned?")
+    plaque = opened.locator(".question-answer")
+    expect(plaque.locator(".answer-who")).to_have_text("You")
+    expect(plaque.locator(".answer-target")).to_have_text("→ plan")
+    expect(plaque.locator(".chat-body")).to_have_text("split the form first")
+    note = opened.locator("details.gate-row").first
+    expect(note.locator("summary")).to_have_text("Notethe plan is reviewed · 1 artifact")
+    expect(note.locator(".gate-note")).not_to_be_visible()
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"opened-{theme}", full_page=False)
+    note.locator("summary").click()
+    expect(note.get_by_role("button", name="Open artifact ship/x/review")).to_be_visible()
+    expect(note).to_contain_text("Split it in two, then ship.")
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"note-{theme}", full_page=False)
+    page.emulate_media(color_scheme="light")
+    head.focus()
+    page.keyboard.press("Space")
+    expect(head).to_have_attribute("aria-expanded", "false")
+    expect(opened).to_have_count(0)
+
+
+def line_ground(page: Page) -> str:
+    """The human's ground (--action-ground) as the browser computes a background colour."""
+    return page.evaluate(
+        """() => {
+          const probe = document.createElement('div');
+          probe.style.background = 'var(--action-ground)';
+          document.body.append(probe);
+          const colour = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return colour;
+        }"""
+    )
 
 
 def test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment(
@@ -346,7 +399,7 @@ def test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment(
     expect(move).to_be_in_viewport()
     shot(page, "move")
     line = feed.get_by_role("article", name="Gate #1", exact=True)
-    expect(line).to_contain_text("Gate #1 · ship/x · check: approve by human")
+    expect(line.get_by_role("button", name="Gate #1 · ship/x · check: approve by human")).to_be_visible()
     link = feed.locator(":scope > .run-group").last.get_by_role("link", name="ship/x")
     expect(link).to_have_attribute("href", f"/sessions/{session}/flows/ship%2Fx")
 
@@ -368,8 +421,10 @@ def test_a_gate_answered_with_lado_answer_leaves_the_card_on_the_open_page(
     assert answer.returncode == 0, answer.stderr
     expect(waiting_card(page, session)).to_have_count(0)
     line = page.get_by_role("article", name="Gate #1", exact=True)
-    expect(line).to_contain_text("Gate #1 · ship/x · check: approve by human")
-    expect(line).to_contain_text("ship it")
+    expect(line.get_by_role("button", name="Gate #1 · ship/x · check: approve by human")).to_be_visible()
+    # The comment under the move it made, not on the gate's card.
+    expect(line).not_to_contain_text("ship it")
+    expect(page.locator("li.run-event.mine .run-comment")).to_have_text("ship it")
     shot(page)
 
 
@@ -427,11 +482,10 @@ def test_a_gate_with_a_recommendation_that_disagrees(page: Page, server, repo, s
     page.emulate_media(color_scheme="light")
     card.get_by_role("button", name="Reject", exact=True).click()
     line = page.get_by_role("article", name="Gate #1", exact=True)
-    expect(line).to_contain_text("Gate #1 · ship/x · check: reject by human")
     line.get_by_role("button", name="Gate #1 · ship/x · check: reject by human").click()
-    quiet = line.locator("details.rec-closed")
+    quiet = line.locator("details.gate-row", has_text="Supervisor")
     expect(quiet.locator("summary")).to_have_text(
-        "SSupervisor recommended: Reject · disagreed with supervisor"
+        "Supervisorrecommended Reject · you agreed · disagreed with supervisor"
     )
     expect(quiet.locator(".chat-body")).not_to_be_visible()
     quiet.locator("summary").click()

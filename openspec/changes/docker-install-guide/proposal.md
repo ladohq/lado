@@ -75,7 +75,7 @@ headers, and no step wrote the user's path from zero to a working session.
   - Outside a container nothing changes.
 - **Tests.**
   - Unit: the guide's commands equal the headers' (start, update, way back), the guide's
-    `.env` names every variable compose reads, no `prune` anywhere, the release attaches
+    `.env` names every variable compose reads, no `prune` in what users read, the release attaches
     `compose.yaml`, the host keys file holds only github.com's public keys, the warning's
     rule, its fields in the API.
   - Web (vitest): the notes under Where and Clone into.

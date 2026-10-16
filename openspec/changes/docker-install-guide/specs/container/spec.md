@@ -52,4 +52,5 @@ shell sets, since a shell's variable beats `.env`.
 #### Scenario: Removal by name
 - **WHEN** the test reads the guide's removal
 - **THEN** it runs `docker compose down` and `docker volume rm` of the project's own
-  `home` volume, and no file of docs/ or docker/ holds `prune`
+  `home` volume, and README.md, docs/*.md and docker/ hold no `prune` (docs/research/ and
+  docs/superpowers/ are records, not read as instructions)

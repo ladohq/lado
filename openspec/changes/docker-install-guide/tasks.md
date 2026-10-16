@@ -52,7 +52,7 @@ Tests first in each section; each task is one commit.
   header's. The download is `releases/latest/download/compose.yaml`. The `.env` block
   names every `${VAR}` of compose.yaml but `LADO_IMAGE` and `LADO_SECRETS`. The removal
   is `docker compose down` and `docker volume rm` of `<project>_home`. No `prune` in
-  docs/, docker/ or README.md. README's Install links to `docs/install.md#docker`. The
+  docs/*.md, docker/ or README.md. README's Install links to `docs/install.md#docker`. The
   guide says `env | grep` and `unset`. Each header names the guide (D7, D8).
 - [x] 4.2 docs/install.md `## Docker` (contents list too), after Windows. It covers the
   prerequisites (Docker Desktop on a Mac, Docker Engine with the compose plugin on Linux),

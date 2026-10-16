@@ -77,8 +77,8 @@ blocks of docs/install.md's `## Docker` section under a heading. Tests compare:
 - the way back with `way_back()`.
 The container tests already run the header's steps, so the guide runs what is tested. The
 guide's `.env` block must name every `${VAR}` compose.yaml reads, but `LADO_IMAGE` and
-`LADO_SECRETS` (advanced, named in the header). A test asserts that no file of `docs/`,
-`docker/` or README.md holds `prune`. The headers get one line each pointing to the
+`LADO_SECRETS` (advanced, named in the header). A test asserts that no file of `docs/*.md`,
+`docker/` or README.md holds `prune` (docs/research/ and docs/superpowers/ are records). The headers get one line each pointing to the
 guide.
 
 **D8. Removal is by name.** The guide removes with these commands:

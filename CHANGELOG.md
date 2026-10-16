@@ -2,6 +2,17 @@
 
 ## 0.40.0 (unreleased)
 
+- Install with Docker: docs/install.md has a Docker section, from nothing to an agent that
+  pushes over ssh, with compose first (`compose.yaml` of the latest release, `.env`,
+  `docker compose up -d`), the logins, update, going back, a second LADO, removal of only
+  its own container and volume, and what to do when something goes wrong; README's
+  Install links to it. Every GitHub release now carries its `compose.yaml`.
+- LADO's image knows GitHub's ssh host keys: an agent's first `git push` over ssh from a
+  new home volume no longer fails with `Host key verification failed`.
+- In LADO's container, a session folder outside the projects folder (`LADO_REPOS`), which
+  your computer does not see, gets a warning in the New session window (under Where and
+  Clone into) and at `lado start`; the session still starts. Outside a container nothing
+  changes.
 - LADO's container takes its sessions with it: `docker compose down` or `stop`, `docker
   stop`, or Docker's own end stops every running session as `lado stop` would (`docker
   logs`: `lado: the container stops: stopped sessions "app"; they resume at its start`),

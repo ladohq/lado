@@ -75,7 +75,7 @@ Tests first in each section; each task is one commit.
 
 ## 5. Records
 
-- [ ] 5.1 AGENTS.md: Layout's `docker/` (the host keys file, the asset, the guide), the
+- [x] 5.1 AGENTS.md: Layout's `docker/` (the host keys file, the asset, the guide), the
   release paragraph if it lists the assets; CHANGELOG.md under the open version (D10).
 - [ ] 5.2 The pull request carries the human's check by hand:
   - the branch, through `git worktree add`;

@@ -529,7 +529,11 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     the line after the reason, the UI's folder check gives both), asked by `start_session`
     and the UI's folder check. `not_repo` is only git's own "not a git repository" (its
     `rev-parse` runs with `LC_ALL=C`); another failure is `git_refused` with git's line.
-    `git_version` (`git --version` on this process's PATH, no cache) is the one look at
+    `outside_repos` (`OUTSIDE_REPOS`) is the one rule of the warning for a session folder
+    outside `LADO_REPOS` in LADO's container (`update.in_container`; the host sees only
+    that folder), by real paths, never a refusal and none outside a container: the UI's
+    folder check (`FolderInfo.warning`), the clone's target (`CloneTarget.warning`) and
+    `start_session`'s warnings, new and resumed. `git_version` (`git --version` on this process's PATH, no cache) is the one look at
     whether git runs, also `lado doctor`'s and the System panel's; `git` and
     `gitcache._git` turn a git that cannot run into their usual errors (the text of a
     missing one is `gitcache.not_found`), and `providers/gitpaths` reads it as outside
@@ -1202,7 +1206,9 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   a final; docs/release.md, The image). `Dockerfile`: Debian 12 (tmux 3.3a, git 2.39),
   Node 22 and npm from the official `node` image, uv from its own, every base pinned by
   digest; LADO from the one wheel of the build context (`Dockerfile.dockerignore`, an
-  allowlist: `dist/lado-*.whl`, `profile.sh` and `entrypoint.sh`), the four agent CLIs at
+  allowlist: `dist/lado-*.whl`, `profile.sh`, `entrypoint.sh`, `ssh-agent-socket.sh` and
+  `ssh_known_hosts`; the image holds no one's key or login, only public host keys), the
+  four agent CLIs at
   `smoke_ci.py`'s `PINS`, one `ARG <NAME>_VERSION` and one layer each (`CLAUDE_VERSION`,
   `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet),
   programs under `/opt`, the user `lado` (uid
@@ -1230,7 +1236,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   folder or not writable (a probe file), and execs the command. `/opt` stays uid 1000's.
   git's system config has `safe.directory = *` and `gh auth git-credential` as the one
   credential helper of `https://github.com` (`GH_TOKEN`, or `gh auth login` inside, its
-  token on the home volume). The environment is set twice with the same
+  token on the home volume). `/etc/ssh/ssh_known_hosts` is `docker/ssh_known_hosts`,
+  GitHub's published public host keys (api.github.com/meta), so an agent's first ssh to
+  github.com asks nothing; a container test does a real ssh to GitHub, which turns red when
+  GitHub rotates them. The environment is set twice with the same
   values (`tests/test_docker.py`): in `ENV` for the server and `docker exec`, and in
   `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
   comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
@@ -1265,7 +1274,13 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   own with its own `.env` (`COMPOSE_PROJECT_NAME`, `LADO_PORT`, `LADO_VERSION`,
   `LADO_PROJECTS`); the Dockerfile's header gives the same for `docker run`.
   `tests/test_docker.py`'s `header_steps` and `way_back` read them, the container tests
-  run them. The research
+  run them. The users' guide is docs/install.md's `## Docker` (compose first, `docker run`
+  short; both headers link to it): `guide_steps` keeps its start, update, way back and
+  `docker run` the headers', its `.env` naming every variable compose reads but
+  `LADO_IMAGE` and `LADO_SECRETS`; it removes only its own container and `<project>_home`
+  volume by name, and no `prune` is in README.md, docs/*.md or docker/. The Release
+  workflow attaches the tag's `compose.yaml` to each GitHub release, which the guide
+  downloads from `releases/latest/download/compose.yaml`. The research
   prototype in
   `docs/research/docker-install/` is evidence only.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

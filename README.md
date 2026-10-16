@@ -41,6 +41,47 @@ In Russian, *лад* (lad) means harmony or being in tune, the way a well-run te
 
 ## Install
 
+Two ways, Docker first:
+
+- **Docker** (recommended): LADO, tmux, git and the four agent CLIs at the versions LADO is
+  tested with, in one container. The agents see only your projects folder and the keys you
+  give them, not the rest of your computer; you install nothing but Docker, and an update
+  is one line. You work in the web UI. macOS and Linux; Codex's login is not carried yet.
+- **PyPI** (`uv tool install lado`): LADO on your computer, with the agent CLIs and logins
+  you already have; the agents run as you and reach what you can. You work in the terminal
+  (tmux) and the web UI. macOS, Linux, and Windows inside WSL2.
+
+What each one needs and how they differ: [docs/install.md](docs/install.md).
+
+### Docker
+
+```bash
+mkdir ~/lado-docker && cd ~/lado-docker
+curl -fLO https://github.com/ladohq/lado/releases/latest/download/compose.yaml
+```
+
+Next to it, a file `.env`:
+
+```ini
+LADO_VERSION=<version>              # the latest release's number, from the releases page
+LADO_PROJECTS=/Users/you/projects   # your projects folder, the only one the agents see
+LADO_GIT_NAME="Your Name"           # git's identity for the agents' commits
+LADO_GIT_EMAIL=you@example.com
+```
+
+`<version>` is the newest on the [releases page](https://github.com/ladohq/lado/releases),
+without `v`. Then start it and open the link it prints:
+
+```bash
+mkdir -m 700 secrets
+docker compose up -d
+docker compose exec lado lado ui --no-open   # the UI's link with its token
+```
+
+Logins, ssh, update and the rest: [docs/install.md#docker](docs/install.md#docker).
+
+### PyPI
+
 LADO needs tmux, git, [uv](https://docs.astral.sh/uv/) and one agent CLI: Claude Code,
 Codex, Kilo or OpenCode.
 
@@ -78,6 +119,9 @@ Step by step for each system, agent CLIs included, and what to do when something
 
 ## Quick start
 
+In Docker, open the UI's link and press **Launch**; the commands below run there as
+`docker compose exec lado lado ...`. From PyPI:
+
 ```bash
 lado start <repo>       # a supervisor for a git repository (with at least one commit), in tmux
 lado start <git-url>    # or clone one first, into ~/lado/<repo> (--branch NAME, or give a folder)
@@ -92,9 +136,27 @@ shows the sessions and their agents, `lado attach <session>` their tmux windows,
 
 ## Update
 
-LADO tells you when a newer version is out: `lado ls` and `lado doctor` print
-`LADO X.Y.Z is available: lado update`, and the web UI shows `↑ X.Y.Z` next to `live`
-in its top bar.
+How you update depends on how you installed LADO. Either way LADO tells you when a newer
+version is out: `lado ls` and `lado doctor` print `LADO X.Y.Z is available`, and the web UI
+shows `↑ X.Y.Z` next to `live` in its top bar.
+
+### Docker
+
+A new version is a new image. In the folder of your `compose.yaml`, set the new version in
+`.env` (`LADO_VERSION=<the new version>`), then:
+
+```bash
+docker compose up -d     # pulls that version's image and replaces the container
+```
+
+Your sessions stop with the old container and resume in the new one (each agent starts a
+new conversation and a busy one loses its current turn, so update while your agents are
+idle); LADO upgrades its database after a backup; logins, kits and history stay on the
+home volume, and your projects are not touched. `lado update` and the web UI's **Update…** do not update a
+container: they say a new image does. Back to the version before:
+[docs/install.md](docs/install.md#go-back-to-the-version-before).
+
+### PyPI
 
 **In the terminal**
 
@@ -123,8 +185,10 @@ itself: `lado update` and the web UI show the commands to run by hand.
 More (going back to an older version, an update that stops half way, the log):
 [docs/install.md](docs/install.md#update).
 
-To remove LADO, `lado uninstall` stops everything, cleans up after it and removes the
-program: [docs/install.md](docs/install.md#uninstall).
+To remove LADO: in Docker, `docker compose down` and its home volume by name
+([docs/install.md](docs/install.md#remove-it)); from PyPI, `lado uninstall` stops
+everything, cleans up after it and removes the program
+([docs/install.md](docs/install.md#uninstall)).
 
 ## Kits
 

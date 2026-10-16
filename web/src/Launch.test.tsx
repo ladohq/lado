@@ -213,6 +213,25 @@ test("Launch is on the rail right after Home, not in the top bar, and + opens th
 
 // Where
 
+const OUTSIDE =
+  "Outside the repositories folder (/Users/ann/projects): this folder is only in the container, your computer does not see it or the agents' work in it";
+
+test("a folder outside the repositories folder in a container: a warning after the check mark, Start stays", async () => {
+  await openLaunch();
+  await ready("/home/lado/app", { warning: OUTSIDE });
+  const ok = screen.getByText(/✓ git repository · branch main/);
+  const warned = screen.getByText(`⚠ ${OUTSIDE}`);
+  expect(warned.className).toBe("field-note warn");
+  expect(ok.compareDocumentPosition(warned) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(startButton().disabled).toBe(false);
+});
+
+test("a folder with no warning shows none", async () => {
+  await openLaunch();
+  await ready("/Users/ann/projects/app");
+  expect(screen.queryByText(/Outside the repositories folder/)).toBeNull();
+});
+
 test("the folder is checked by the server and its reason shown; Start stays off until it will do", async () => {
   await openLaunch();
   expect(startButton().disabled).toBe(true);
@@ -1331,6 +1350,24 @@ async function cloneReady() {
   await waitFor(() => expect(cloneButton().disabled).toBe(false));
   return dialog;
 }
+
+test("a clone target outside the repositories folder in a container: a warning under Clone into", async () => {
+  answers["GET /api/clone-target"] = () => json(target({ path: "/home/lado/marketplace", warning: OUTSIDE }));
+  answers["POST /api/remote-branches"] = remote();
+  await cloneSource();
+  const warned = await screen.findByText(`⚠ ${OUTSIDE}`);
+  expect(warned.className).toBe("field-note warn");
+  const into = screen.getByRole("textbox", { name: "Clone into" });
+  expect(into.closest(".field")!.contains(warned)).toBe(true);
+  expect(screen.getByText("✓ a new folder").compareDocumentPosition(warned) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await screen.findByText("✓ repository found · 3 branches");
+  await waitFor(() => expect(cloneButton().disabled).toBe(false));
+});
+
+test("a clone target with no warning shows none", async () => {
+  await cloneReady();
+  expect(screen.queryByText(/Outside the repositories folder/)).toBeNull();
+});
 
 test("branches come by themselves, the default one chosen and marked; Clone and start waits for them", async () => {
   let listed: () => void = () => {};

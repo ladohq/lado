@@ -2,6 +2,22 @@
 
 ## 0.40.0 (unreleased)
 
+- Install with Docker: docs/install.md has a Docker section, from nothing to an agent that
+  pushes over ssh, with compose first (`compose.yaml` of the latest release, `.env`,
+  `docker compose up -d`), the logins, update, going back, a second LADO, removal of only
+  its own container and volume, and what to do when something goes wrong. README and
+  docs/install.md now present two ways to install, Docker first and recommended, then
+  PyPI, and say how to update each. Every GitHub release now carries its `compose.yaml`.
+- LADO's image knows GitHub's ssh host keys: an agent's first `git push` over ssh from a
+  new home volume no longer fails with `Host key verification failed`.
+- In LADO's container the web UI's Clone from URL works with an ssh address
+  (`git@github.com:...`): the UI server now uses the host's ssh agent (`LADO_SSH_AGENT`)
+  as the agents do. Before, the branch list failed with `github.com refused this machine's
+  ssh key` while `ssh -T git@github.com` worked.
+- In LADO's container, a session folder outside the projects folder (`LADO_REPOS`), which
+  your computer does not see, gets a warning in the New session window (under Where and
+  Clone into) and at `lado start`; the session still starts. Outside a container nothing
+  changes.
 - The comment of a gate's answer shows once in the chat, under the run's move it made,
   no longer also under the closed gate. A closed gate is a folded card that says it opens
   (its flag, run and state, the answer's chip coloured by where the run went, by whom, a

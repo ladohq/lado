@@ -207,7 +207,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     the line after the reason, the UI's folder check gives both), asked by `start_session`
     and the UI's folder check. `not_repo` is only git's own "not a git repository" (its
     `rev-parse` runs with `LC_ALL=C`); another failure is `git_refused` with git's line.
-    `git_version` (`git --version` on this process's PATH, no cache) is the one look at
+    `outside_repos` (`OUTSIDE_REPOS`) is the one rule of the warning for a session folder
+    outside `LADO_REPOS` in LADO's container (`update.in_container`; the host sees only
+    that folder), by real paths, never a refusal and none outside a container: the UI's
+    folder check (`FolderInfo.warning`), the clone's target (`CloneTarget.warning`) and
+    `start_session`'s warnings, new and resumed. `git_version` (`git --version` on this process's PATH, no cache) is the one look at
     whether git runs, also `lado doctor`'s and the System panel's; `git` and
     `gitcache._git` turn a git that cannot run into their usual errors (the text of a
     missing one is `gitcache.not_found`), and `providers/gitpaths` reads it as outside
@@ -888,7 +892,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   a final; docs/release.md, The image). `Dockerfile`: Debian 12 (tmux 3.3a, git 2.39),
   Node 22 and npm from the official `node` image, uv from its own, every base pinned by
   digest; LADO from the one wheel of the build context (`Dockerfile.dockerignore`, an
-  allowlist: `dist/lado-*.whl`, `profile.sh` and `entrypoint.sh`), the four agent CLIs at
+  allowlist: `dist/lado-*.whl`, `profile.sh`, `entrypoint.sh`, `ssh-agent-socket.sh`,
+  `ssh-agent-env.sh` and `ssh_known_hosts`; the image holds no one's key or login, only public host keys), the
+  four agent CLIs at
   `smoke_ci.py`'s `PINS`, one `ARG <NAME>_VERSION` and one layer each (`CLAUDE_VERSION`,
   `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet),
   programs under `/opt`, the user `lado` (uid
@@ -916,12 +922,15 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   folder or not writable (a probe file), and execs the command. `/opt` stays uid 1000's.
   git's system config has `safe.directory = *` and `gh auth git-credential` as the one
   credential helper of `https://github.com` (`GH_TOKEN`, or `gh auth login` inside, its
-  token on the home volume). The environment is set twice with the same
+  token on the home volume). `/etc/ssh/ssh_known_hosts` is `docker/ssh_known_hosts`,
+  GitHub's published public host keys (api.github.com/meta), so an agent's first ssh to
+  github.com asks nothing; a container test does a real ssh to GitHub, which turns red when
+  GitHub rotates them. The environment is set twice with the same
   values (`tests/test_docker.py`): in `ENV` for the server and `docker exec`, and in
   `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
   comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
   `DISABLE_AUTOUPDATER`, `LANG`, `LADO_ENV_DIR=/run/secrets`; `LADO_REPOS` is the
-  entrypoint's `lado-repos.sh`; `SSH_AUTH_SOCK` the profile's alone, below). The agents'
+  entrypoint's `lado-repos.sh`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The agents'
   variables are files at `/run/secrets` (`LADO_ENV_DIR`, docs/design/agents.md), never compose's
   `environment:` or `LADO_AGENT_ENV=inherit`, so no value is in `docker inspect`; compose
   binds `${LADO_SECRETS:-./secrets}` there read-only with `create_host_path: false` (it
@@ -929,8 +938,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   writes `LADO_GIT_NAME` and `LADO_GIT_EMAIL` (compose passes both from `.env`) to git's
   global config on the home volume and warns in `docker logs` when git still has no
   identity. The host's ssh agent: compose binds `${LADO_SSH_AGENT:-/dev/null}` at
-  `/run/lado/ssh-agent.sock` (`/run/lado` root's, 755; `/dev/null`: none), and the profile
-  sets `SSH_AUTH_SOCK` there only when it is a socket. Docker Desktop's socket is root's in
+  `/run/lado/ssh-agent.sock` (`/run/lado` root's, 755; `/dev/null`: none), and
+  `ssh-agent-env.sh` (`/etc/profile.d/lado-ssh-agent.sh`, the one rule) sets
+  `SSH_AUTH_SOCK` there only when it is a socket: every login shell reads it, and the
+  entrypoint sources it before the command, once the socket is `lado`'s, so the UI server's
+  Clone from URL and branch listing use the agent too (a container test reads the
+  server's `/proc/<pid>/environ`). Docker Desktop's socket is root's in
   a container: every start that finds a socket `lado` cannot use (`ssh-add -l` exit 2) and
   root's runs `sudo -n /usr/local/bin/lado-ssh-agent-socket` (`ssh-agent-socket.sh`; the
   rule `/etc/sudoers.d/lado-ssh-agent`, no SETENV, which the first start leaves), which
@@ -951,7 +964,13 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   own with its own `.env` (`COMPOSE_PROJECT_NAME`, `LADO_PORT`, `LADO_VERSION`,
   `LADO_PROJECTS`); the Dockerfile's header gives the same for `docker run`.
   `tests/test_docker.py`'s `header_steps` and `way_back` read them, the container tests
-  run them. The research
+  run them. The users' guide is docs/install.md's `## Docker` (compose first, `docker run`
+  short; both headers link to it): `guide_steps` keeps its start, update, way back and
+  `docker run` the headers', its `.env` naming every variable compose reads but
+  `LADO_IMAGE` and `LADO_SECRETS`; it removes only its own container and `<project>_home`
+  volume by name, and no `prune` is in README.md, docs/*.md or docker/. The Release
+  workflow attaches the tag's `compose.yaml` to each GitHub release, which the guide
+  downloads from `releases/latest/download/compose.yaml`. The research
   prototype in
   `docs/research/docker-install/` is evidence only.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

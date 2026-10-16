@@ -1677,6 +1677,98 @@ def test_a_start_and_a_resume_name_the_files_not_used(repo, fake_tmux, outside):
     assert runtime.start_session(str(repo), "s", None).warnings == [line]
 
 
+@pytest.fixture
+def projects(tmp_path, monkeypatch):
+    """A container (LADO_CONTAINER) whose repositories folder (LADO_REPOS) is a new one."""
+    folder = tmp_path / "projects"
+    folder.mkdir()
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    monkeypatch.setenv("LADO_REPOS", str(folder))
+    return folder
+
+
+def test_a_folder_outside_the_repositories_folder_is_named_in_a_container(projects, tmp_path):
+    (tmp_path / "app").mkdir()
+    assert runtime.outside_repos(str(tmp_path / "app")) == runtime.OUTSIDE_REPOS.format(
+        folder=projects
+    )
+    # One not made yet is judged by where it would be.
+    assert runtime.outside_repos(str(tmp_path / "new" / "app")) is not None
+    # A sibling whose name starts with the folder's is outside too.
+    (tmp_path / "projects-old").mkdir()
+    assert runtime.outside_repos(str(tmp_path / "projects-old")) is not None
+
+
+def test_the_repositories_folder_and_what_is_in_it_get_no_warning(projects, tmp_path):
+    (projects / "app").mkdir()
+    assert runtime.outside_repos(str(projects)) is None
+    assert runtime.outside_repos(str(projects / "app")) is None
+    assert runtime.outside_repos(str(projects / "new" / "app")) is None
+    # By real path: a link to a folder inside is inside, a link inside to outside is not.
+    (tmp_path / "link").symlink_to(projects / "app")
+    assert runtime.outside_repos(str(tmp_path / "link")) is None
+    (tmp_path / "out").mkdir()
+    (projects / "away").symlink_to(tmp_path / "out")
+    assert runtime.outside_repos(str(projects / "away")) is not None
+
+
+def test_a_link_loop_is_judged_without_an_error(projects, tmp_path, monkeypatch):
+    """A loop of links (a -> b -> a) is no folder: the folder check says so, and the
+    warning's rule must not raise on it (a 500 of the UI's checks)."""
+    (tmp_path / "a").symlink_to(tmp_path / "b")
+    (tmp_path / "b").symlink_to(tmp_path / "a")
+    assert runtime.outside_repos(str(tmp_path / "a")) is not None
+    assert runtime.outside_repos(str(tmp_path / "a" / "sub")) is not None
+    (projects / "c").symlink_to(projects / "d")
+    (projects / "d").symlink_to(projects / "c")
+    assert runtime.outside_repos(str(projects / "c")) is None
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "a"))
+    assert runtime.outside_repos(str(tmp_path / "a")) is None
+
+
+def test_a_repositories_folder_given_through_a_link_holds_its_folders(tmp_path, monkeypatch):
+    real = tmp_path / "real"
+    (real / "app").mkdir(parents=True)
+    (tmp_path / "projects").symlink_to(real)
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "projects"))
+    assert runtime.outside_repos(str(real / "app")) is None
+
+
+def test_no_warning_outside_a_container_or_without_a_repositories_folder(
+    projects, tmp_path, monkeypatch
+):
+    (tmp_path / "app").mkdir()
+    monkeypatch.setenv("LADO_CONTAINER", "0")
+    assert runtime.outside_repos(str(tmp_path / "app")) is None
+    monkeypatch.delenv("LADO_CONTAINER")
+    assert runtime.outside_repos(str(tmp_path / "app")) is None
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    monkeypatch.delenv("LADO_REPOS")
+    assert runtime.outside_repos(str(tmp_path / "app")) is None
+    monkeypatch.setenv("LADO_REPOS", "relative/projects")
+    assert runtime.outside_repos(str(tmp_path / "app")) is None
+
+
+def test_a_start_and_a_resume_outside_the_repositories_folder_warn(repo, fake_tmux, projects):
+    """A warning, never a refusal: the session runs."""
+    line = runtime.OUTSIDE_REPOS.format(folder=projects)
+    started = runtime.start_session(str(repo), "s", None, provider="kilo")
+    assert line in started.warnings
+    assert state.get_session("s") is not None
+    runtime.stop_session("s")
+    assert line in runtime.start_session(str(repo), "s", None).warnings
+
+
+def test_a_start_inside_the_repositories_folder_has_no_warning(
+    repo, fake_tmux, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    monkeypatch.setenv("LADO_REPOS", str(repo.parent))
+    started = runtime.start_session(str(repo), "s", None, provider="kilo")
+    assert not [w for w in started.warnings if "repositories folder" in w]
+
+
 def test_a_name_the_provider_sets_keeps_its_value_and_is_named(repo, fake_tmux, outside):
     (outside / "KILO_DISABLE_AUTOUPDATE").write_text("0")
     (outside / "PATH").write_text("/x")

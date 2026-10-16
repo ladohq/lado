@@ -3,3 +3,5 @@
 !docker/profile.sh
 !docker/entrypoint.sh
 !docker/ssh-agent-socket.sh
+!docker/ssh_known_hosts
+!docker/ssh-agent-env.sh

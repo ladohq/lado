@@ -94,6 +94,9 @@ class FolderInfo(BaseModel):
     name_state: NameState | None
     # the provider a new session here takes (runtime.suggested_provider); none: the human picks
     provider: "ProviderSuggestion | None"
+    # in LADO's container, a folder outside LADO_REPOS: the host does not see it
+    # (runtime.outside_repos); a warning, never a refusal
+    warning: str | None = None
 
 
 class HintInfo(BaseModel):
@@ -130,6 +133,7 @@ class CloneTarget(BaseModel):
     default_name: str  # the name a session started there gets
     name_state: NameState  # as FolderInfo's, before anything is cloned
     provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions
+    warning: str | None = None  # as FolderInfo's, for the folder the clone goes to
 
 
 class CloneRefused(BaseModel):

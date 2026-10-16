@@ -1,7 +1,7 @@
 # LADO's image: LADO from the one wheel of its build, the four agent CLIs at their pins,
 # the UI server on 0.0.0.0:$LADO_PORT. The Release workflow publishes it for each release
 # as ghcr.io/ladohq/lado:<version> (amd64, arm64); `make docker` builds it from a checkout
-# (lado:local). One command starts it:
+# (lado:local). The guide, step by step: docs/install.md#docker. One command starts it:
 #
 #   mkdir -m 700 secrets
 #   docker run -d --name lado -p 127.0.0.1:8765:8765 -v lado-home:/home/lado \
@@ -38,8 +38,9 @@
 # folder owner's uid. The command runs as lado also with `docker run --user root`; root in
 # a running container: `docker exec -u 0`. Another port: -e LADO_PORT=8766 -p
 # 127.0.0.1:8766:8766. compose.yaml runs the same image. The build context is the
-# repository through Dockerfile.dockerignore's allowlist: one wheel (dist/), profile.sh and
-# entrypoint.sh.
+# repository through Dockerfile.dockerignore's allowlist: one wheel (dist/), profile.sh,
+# entrypoint.sh, ssh-agent-socket.sh, ssh-agent-env.sh and ssh_known_hosts (GitHub's
+# public host keys, the only keys in the image).
 
 FROM ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 AS uv
 FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS node
@@ -91,10 +92,17 @@ RUN printf '%s\n' 'lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoi
 # container; at every start the entrypoint gives it to lado by this program, through a rule
 # of its own that the first start leaves (no SETENV: the program gets a clean environment).
 COPY --chmod=755 docker/ssh-agent-socket.sh /usr/local/bin/lado-ssh-agent-socket
+# SSH_AUTH_SOCK when that is a socket: every login shell reads it, the entrypoint sources it
+# for the server (Clone from URL over ssh).
+COPY docker/ssh-agent-env.sh /etc/profile.d/lado-ssh-agent.sh
 RUN printf '%s\n' 'lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socket' > /etc/sudoers.d/lado-ssh-agent \
  && chmod 0440 /etc/sudoers.d/lado-ssh-agent \
  && visudo -cf /etc/sudoers.d/lado-ssh-agent \
  && mkdir -p /run/lado && chmod 755 /run/lado
+# GitHub's public host keys, so an agent's first ssh to github.com asks nothing (its shell
+# cannot answer) and ssh still refuses a key that is not GitHub's. The only keys in the
+# image: the human's own come at run time.
+COPY --chmod=644 docker/ssh_known_hosts /etc/ssh/ssh_known_hosts
 # git trusts every repository: the projects' owner may seem another user (git 2.39 has no
 # `<path>/*` form, and the container has one user). It gets github.com's https credentials
 # from gh: GH_TOKEN, or gh's own login on the home volume (what `gh auth setup-git` writes;

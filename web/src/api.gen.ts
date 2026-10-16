@@ -1362,6 +1362,8 @@ export interface components {
              */
             name_state: "free" | "running" | "stopped_here" | "taken_elsewhere";
             provider: components["schemas"]["ProviderSuggestion"] | null;
+            /** Warning */
+            warning?: string | null;
         };
         /** CommitInfo */
         CommitInfo: {
@@ -1445,6 +1447,8 @@ export interface components {
             /** Name State */
             name_state: ("free" | "running" | "stopped_here" | "taken_elsewhere") | null;
             provider: components["schemas"]["ProviderSuggestion"] | null;
+            /** Warning */
+            warning?: string | null;
         };
         /** ForgetPreview */
         ForgetPreview: {

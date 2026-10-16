@@ -109,7 +109,21 @@ def test_the_clone_target_by_default(client, tmp_path, monkeypatch):
         "default_name": "lado",
         "name_state": "free",
         "provider": None,
+        "warning": None,
     }
+
+
+def test_in_a_container_a_clone_target_outside_the_repositories_folder_warns(
+    client, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(launch, "_installed", lambda provider: False)
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "repos"))
+    url = "git@github.com:acme/app.git"
+    inside = client.get("/api/clone-target", params={"url": url}).json()
+    assert (inside["path"], inside["warning"]) == (str(tmp_path / "repos" / "app"), None)
+    away = client.get("/api/clone-target", params={"url": url, "path": str(tmp_path / "app")})
+    assert away.json()["warning"] == runtime.OUTSIDE_REPOS.format(folder=tmp_path / "repos")
 
 
 def test_the_clone_targets_other_states(client, tmp_path, repo, fake_tmux):

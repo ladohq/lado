@@ -324,7 +324,10 @@ GitHub release with `gh release create` (the runner's own `gh`, the job's token 
   and the version's page on PyPI;
 - an RC is a pre-release, never the latest; a final is the latest release;
 - it attaches the wheel and the sdist that `make dist` built in the job `build` and the
-  job `pypi` published: the same files, passed on as the workflow artifact `dist`.
+  job `pypi` published: the same files, passed on as the workflow artifact `dist`;
+- it attaches the tag's `docker/compose.yaml` as the asset `compose.yaml`, which the
+  install guide downloads from `releases/latest/download/compose.yaml` (docs/install.md,
+  Docker): the newest final's file. An RC's is on its own release page.
 
 Run `python3 scripts/release_notes.py <tag>` in the repository's root to see the notes
 before tagging. When the job fails after PyPI took the release (GitHub down), rerun the

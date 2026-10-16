@@ -180,10 +180,39 @@ def keys(c) -> str:
     return c.exec("bash", "-lc", "ssh-add -l", check=False).stdout
 
 
+def server_ssh_sock(run) -> str:
+    """The UI server's own SSH_AUTH_SOCK (its clone and branch listing run git with the
+    server's environment), or "none"; `run(script)` runs a shell script in the container,
+    failing when no server runs, so "none" is never an absent process."""
+    script = (
+        # [l]: the pattern never matches this shell's own command line.
+        "pid=$(pgrep -n -f '[l]ado server --host') || exit 3; "
+        "tr '\\0' '\\n' < /proc/$pid/environ | sed -n 's/^SSH_AUTH_SOCK=//p'"
+    )
+    return run(script).stdout.strip() or "none"
+
+
+def test_the_first_ssh_to_github_knows_its_host_key(container):
+    """A new home volume and no ssh agent: ssh to github.com fails on the missing key of
+    the user, never on the host's key, and writes no known_hosts. A real ssh to GitHub: when
+    GitHub rotates its keys this turns red, and the image needs the new ones
+    (docker/ssh_known_hosts)."""
+    done = container.exec(
+        "bash", "-lc", "ssh -T -o BatchMode=yes -o ConnectTimeout=20 git@github.com",
+        check=False,
+    )  # fmt: skip
+    assert "Permission denied (publickey)" in done.stderr, done.stderr
+    assert "Host key verification failed" not in done.stderr
+    assert container.sh("test -e ~/.ssh/known_hosts && echo made || echo none").stdout.strip() == (
+        "none"
+    )
+
+
 def test_ssh_agent_through_a_root_owned_socket(start, ssh_agent):
     volume, agent = ssh_agent(1000, 0)
     c = served(start, "-v", f"{volume}:/run/lado")
     assert "lado-test (ED25519)" in keys(c), c.logs()
+    assert server_ssh_sock(c.sh) == SOCKET
     assert "0" not in c.exec("id", "-G").stdout.split()
     assert "ssh agent" not in c.logs()
     # Docker Desktop's restart makes the socket root's again; the next start gives it back.
@@ -191,6 +220,7 @@ def test_ssh_agent_through_a_root_owned_socket(start, ssh_agent):
     docker("restart", c.name)
     health(c.port)
     assert "lado-test (ED25519)" in keys(c), c.logs()
+    assert server_ssh_sock(c.sh) == SOCKET
 
 
 def test_ssh_agent_of_the_projects_owner_stays_its(start, ssh_agent, projects_volume):
@@ -219,6 +249,11 @@ def test_no_ssh_agent_no_line(compose):
     health(compose.port)
     shell = compose.run("exec", "-T", "lado", "bash", "-lc", "echo ${SSH_AUTH_SOCK:-none}")
     assert shell.stdout.strip() == "none"
+
+    def in_lado(script: str):
+        return compose.run("exec", "-T", "lado", "sh", "-c", script)
+
+    assert server_ssh_sock(in_lado) == "none"
     assert "ssh agent" not in compose.run("logs", "lado").stdout
 
 

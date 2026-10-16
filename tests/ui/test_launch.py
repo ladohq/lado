@@ -80,6 +80,50 @@ def test_where_starts_in_the_repositories_folder(page: Page, repos, server, shot
     shot(page, "clone")
 
 
+OUTSIDE = "⚠ Outside the repositories folder ({}): this folder is only in the container"
+
+
+def test_in_a_container_a_folder_outside_the_repositories_folder_is_warned_about(
+    page: Page, repos, repo, server_in_container, shot
+):
+    server = server_in_container
+    log_in(page, server)
+    page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
+    dialog = page.get_by_role("dialog", name="New session")
+    where = dialog.get_by_role("combobox", name=re.compile("Where"))
+    where.fill(f"{repos}/app")
+    expect(dialog).to_contain_text("✓ git repository · branch main")
+    expect(dialog.locator(".field-note.warn")).to_have_count(0)
+    where.blur()
+    shot(page, "inside")
+
+    where.fill(str(repo))
+    expect(dialog).to_contain_text("✓ git repository · branch main")
+    expect(dialog.locator(".field-note.warn")).to_contain_text(OUTSIDE.format(repos))
+    dialog.get_by_label("Provider").select_option("fake")
+    expect(dialog.get_by_role("button", name="Start session")).to_be_enabled()
+    where.blur()
+    shot(page, "outside")
+
+    dialog.get_by_role("button", name="Clone from URL").click()
+    dialog.get_by_role("textbox", name=re.compile("Where")).fill(
+        "https://example.invalid/a/site.git"
+    )
+    into = dialog.get_by_role("textbox", name="Clone into")
+    expect(into).to_have_value(f"{repos}/site")
+    expect(dialog.locator(".field-note.warn")).to_have_count(0)
+    into.fill(str(repo.parent / "site"))
+    expect(dialog.locator(".field-note.warn")).to_contain_text(OUTSIDE.format(repos))
+    shot(page, "clone-outside")
+
+
+@pytest.fixture
+def server_in_container(monkeypatch, request):
+    """The UI server as LADO's image runs it (LADO_CONTAINER), started after `repos`."""
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    return request.getfixturevalue("server")
+
+
 def test_a_session_starts_from_the_new_session_window(page: Page, server, repo, shot):
     log_in(page, server)
     page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()

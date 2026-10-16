@@ -177,7 +177,29 @@ def test_the_build_context_is_an_allowlist():
         "!docker/profile.sh",
         "!docker/entrypoint.sh",
         "!docker/ssh-agent-socket.sh",
+        "!docker/ssh_known_hosts",
+        "!docker/ssh-agent-env.sh",
     ]
+
+
+def test_the_host_keys_are_githubs_public_keys_alone():
+    """GitHub's published keys (api.github.com/meta, `ssh_keys`), one per type; no other
+    host, no private key: the image holds no one's secrets."""
+    text = (DOCKER / "ssh_known_hosts").read_text()
+    entries = [line.split() for line in text.splitlines() if line and not line.startswith("#")]
+    assert [host for host, *_ in entries] == ["github.com"] * 3
+    assert sorted(kind for _, kind, *_ in entries) == [
+        "ecdsa-sha2-nistp256",
+        "ssh-ed25519",
+        "ssh-rsa",
+    ]
+    assert all(len(entry) == 3 for entry in entries), entries
+    assert "PRIVATE KEY" not in text
+
+
+def test_the_image_knows_the_host_keys_system_wide():
+    """root's, mode 644: no agent changes them, every user's ssh reads them."""
+    assert "COPY --chmod=644 docker/ssh_known_hosts /etc/ssh/ssh_known_hosts" in lines()
 
 
 SSH_RULE = "lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socket"
@@ -241,11 +263,28 @@ def test_compose_binds_the_ssh_agent_or_dev_null(compose):
     assert "group_add" not in compose["services"]["lado"]
 
 
-def test_the_profile_points_ssh_auth_sock_only_at_a_socket():
-    """The profile's alone: the server needs no ssh agent (so outside the ENV parity)."""
-    profile = (DOCKER / "profile.sh").read_text()
-    assert f"[ -S {SOCKET} ] && export SSH_AUTH_SOCK={SOCKET} || true" in profile.splitlines()
+SSH_ENV = DOCKER / "ssh-agent-env.sh"
+SSH_PROFILE = "/etc/profile.d/lado-ssh-agent.sh"
+
+
+def test_ssh_auth_sock_points_only_at_a_socket_in_one_file():
+    """One rule: ssh-agent-env.sh, which every login shell reads (the agents) and the
+    entrypoint sources (the server, whose clone and branch listing use git over ssh). Not
+    in the ENV: an image cannot say whether compose bound a socket."""
+    rule = f"[ -S {SOCKET} ] && export SSH_AUTH_SOCK={SOCKET} || true"
+    assert rule in SSH_ENV.read_text().splitlines()
+    assert "SSH_AUTH_SOCK" not in (DOCKER / "profile.sh").read_text()
     assert "SSH_AUTH_SOCK" not in env()
+    assert f"COPY docker/ssh-agent-env.sh {SSH_PROFILE}" in lines()
+
+
+def test_the_server_gets_ssh_auth_sock_after_the_socket_is_lados():
+    """Sourced after the socket's owner is fixed, right before the command."""
+    body = ENTRYPOINT.splitlines()
+    # Read only when there: the unit tests run the entrypoint outside the image.
+    sourced = body.index(f"if [ -r {SSH_PROFILE} ]; then . {SSH_PROFILE}; fi")
+    assert sourced > max(i for i, line in enumerate(body) if "lado-ssh-agent-socket" in line)
+    assert body[sourced + 1 :].count('exec "$@"') == 1
 
 
 SSH_WARNING = "lado: warning: lado (uid $(id -u)) cannot use the ssh agent socket of uid $owner:"
@@ -590,3 +629,158 @@ def test_dependabot_updates_the_images_bases():
     [docker] = [u for u in updates if u["package-ecosystem"] == "docker"]
     assert docker["directory"] == "/docker"
     assert docker["cooldown"] == {"default-days": 7}
+
+
+# The install guide's Docker section (openspec change docker-install-guide): it repeats only
+# the steps a user runs, and these tests keep them the headers' (which the container tests
+# run).
+
+INSTALL = ROOT / "docs" / "install.md"
+
+
+def guide() -> str:
+    """docs/install.md's `## Docker` section, up to the next `## `."""
+    text = INSTALL.read_text()
+    start = text.index("\n## Docker\n")
+    end = text.find("\n## ", start + 1)
+    return text[start : end if end != -1 else len(text)]
+
+
+def blocks(text: str, lang: str = "bash") -> list[str]:
+    return re.findall(rf"^ *```{lang}\n(.*?)^ *```", text, flags=re.S | re.M)
+
+
+def commands(block: str) -> list[str]:
+    """A block's commands: continuation lines joined, a trailing `# comment` left out."""
+    joined = re.sub(r"\\\n\s*", "", block)
+    lines = (re.sub(r"\s+#\s.*$", "", line).strip() for line in joined.splitlines())
+    return [line for line in lines if line and not line.startswith("#")]
+
+
+def guide_part(heading: str) -> str:
+    """The guide's text under `### <heading>`, up to the next heading of that level."""
+    text = guide()
+    start = text.index(f"\n### {heading}\n")
+    end = text.find("\n### ", start + 1)
+    return text[start : end if end != -1 else len(text)]
+
+
+def guide_steps(heading: str) -> list[str]:
+    """The commands of the bash blocks under `### <heading>`, in order."""
+    return [line for block in blocks(guide_part(heading)) for line in commands(block)]
+
+
+def without_comment(line: str) -> str:
+    return re.sub(r"\s+#\s.*$", "", line).strip()
+
+
+def test_the_guides_first_start_is_the_headers():
+    first = [without_comment(line) for line in header_steps("Then, from this folder")]
+    assert first == [
+        "mkdir -m 700 secrets",
+        "docker compose up -d",
+        "docker compose exec lado lado ui --no-open",
+    ]
+    assert guide_steps("Start") == first
+
+
+def test_the_guides_update_and_way_back_are_the_headers():
+    assert guide_steps("Update the container") == header_steps(
+        "To update, set the new LADO_VERSION in .env"
+    )
+    assert guide_steps("Go back to the version before") == way_back()
+
+
+def test_the_guide_downloads_the_release_asset():
+    assert (
+        "curl -fLO https://github.com/ladohq/lado/releases/latest/download/compose.yaml"
+        in guide_steps("Get compose.yaml and write .env")
+    )
+
+
+def test_the_guides_env_names_every_variable_compose_reads():
+    read = set(re.findall(r"\$\{([A-Z_]+)", COMPOSE_TEXT)) - {"LADO_IMAGE", "LADO_SECRETS"}
+    assert {"LADO_VERSION", "LADO_PROJECTS", "LADO_SSH_AGENT"} <= read
+    envs = blocks(guide_part("Get compose.yaml and write .env"), "ini")
+    assert len(envs) == 2  # a Mac's and Linux's
+    for env_file in envs:
+        named = {line.split("=")[0] for line in env_file.splitlines() if "=" in line}
+        assert named == read, env_file
+
+
+def test_the_guide_removes_only_its_own_container_and_volume():
+    steps = guide_steps("Remove it")
+    assert steps[0] == "docker compose down"
+    assert any(re.fullmatch(r"docker volume rm [\w.-]+_home", step) for step in steps), steps
+    # Docker's name filter matches a part of the name unless anchored.
+    assert any(re.fullmatch(r"docker volume ls --filter name='\^[\w.-]+_home\$'", s) for s in steps)
+    assert not [s for s in steps if "--volumes" in s or re.search(r"down .*-v\b", s)]
+
+
+def test_nothing_written_for_users_prunes():
+    """Docker's prune takes other containers' and volumes' too: a second LADO's, anyone's.
+    What users read: README.md, the guides in docs/ and docker/ (docs/research/ and
+    docs/superpowers/ are records, whose plans only forbid it)."""
+    paths = [ROOT / "README.md", *(ROOT / "docs").glob("*.md"), *DOCKER.iterdir()]
+    found = [p for p in paths if p.is_file() and "prune" in p.read_text()]
+    assert found == []
+
+
+def test_the_guide_says_to_check_the_shells_variables_first():
+    steps = guide_steps("Check the shell")
+    assert "env | grep -E '^(LADO|COMPOSE)_'" in steps
+    [unset] = [step for step in steps if step.startswith("unset ")]
+    # The same kinds the grep finds: a COMPOSE_ variable beats .env as a LADO_ one does.
+    assert "COMPOSE_PROJECT_NAME" in unset.split() and "LADO_VERSION" in unset.split()
+
+
+def test_the_guides_docker_run_is_the_dockerfiles():
+    header = [line[1:].strip() for line in DOCKERFILE.splitlines() if line.startswith("#")]
+    start = next(i for i, line in enumerate(header) if line.endswith("One command starts it:")) + 2
+    run = "\n".join(header[start : header.index("", start)])
+    assert guide_steps("With docker run") == commands(run)
+
+
+def test_readme_and_the_headers_point_to_the_guide():
+    readme = (ROOT / "README.md").read_text()
+    install = readme[readme.index("## Install") :]
+    assert "docs/install.md#docker" in install[: install.index("\n## ", 3)]
+    assert "- [Docker](#docker)" in INSTALL.read_text()
+    for name in ("compose.yaml", "Dockerfile"):
+        assert "docs/install.md#docker" in leading_comment(DOCKER / name), name
+
+
+def test_docker_is_the_first_and_recommended_way_to_install():
+    """The human's choice (2026-10-16): Docker first, PyPI the other way."""
+    readme = (ROOT / "README.md").read_text()
+    install = readme[readme.index("## Install") :]
+    install = install[: install.index("\n## ", 3)]
+    assert "**Docker** (recommended)" in install
+    assert install.index("### Docker") < install.index("### PyPI")
+    text = INSTALL.read_text()
+    opening = text[: text.index("\n## ")]
+    assert "**Docker**, the recommended one, and **PyPI**" in opening
+    assert text.index("\n## Docker\n") < text.index("\n## macOS\n")
+
+
+def test_update_says_both_ways_docker_first():
+    """The human's comment (2026-10-16): how to update is clear for Docker and for PyPI."""
+    readme = (ROOT / "README.md").read_text()
+    update_part = readme[readme.index("\n## Update\n") :]
+    update_part = update_part[: update_part.index("\n## ", 3)]
+    assert update_part.index("### Docker") < update_part.index("### PyPI")
+    assert "docker compose up -d" in update_part and "lado update" in update_part
+    text = INSTALL.read_text()
+    update_part = text[text.index("\n## Update\n") :]
+    update_part = update_part[: update_part.index("\n## ", 3)]
+    assert "[Update the container](#update-the-container)" in update_part
+    assert "- **PyPI**: `lado update`" in update_part
+
+
+def test_no_example_names_a_version_that_goes_stale():
+    """A version written in an example is out of date at the next release: the examples
+    say <version>, and the text where to find it."""
+    paths = [ROOT / "README.md", INSTALL, DOCKER / "compose.yaml", DOCKER / "Dockerfile"]
+    for path in paths:
+        assert not re.search(r"LADO_VERSION=\d", path.read_text()), path
+        assert not re.search(r"ghcr\.io/ladohq/lado:\d", path.read_text()), path

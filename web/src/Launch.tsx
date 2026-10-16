@@ -558,6 +558,7 @@ function LaunchDialog({
                   target={target}
                   problem={targetAsked !== null && "error" in targetAsked ? targetAsked.error : null}
                 />
+                {target?.warning && <span className="field-note warn">⚠ {target.warning}</span>}
               </div>
               <BranchField
                 remote={remote}
@@ -961,6 +962,7 @@ function WhereField({
           ✓ git repository{folder.branch ? ` · branch ${folder.branch}` : ""}
         </span>
       )}
+      {folder?.ok && folder.warning && <span className="field-note warn">⚠ {folder.warning}</span>}
       {folder && !folder.ok && (
         <div className="field-note bad">
           <div>{folder.problem}</div>

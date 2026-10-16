@@ -299,8 +299,8 @@ Not checked by hand: `.env` for Linux, OpenCode's and Kilo's logins, `docker run
 update and a way back on a real new version, a second LADO (T11 and 0.40.0's RC).
 Found in the review of LAD-83 before the release (the human's decisions, 2026-10-16):
 
-**T8b. `secrets/` optional, and the update names a new `compose.yaml`** (S; LAD-89, before
-0.40.0rc1)
+**T8b. `secrets/` optional, and the update names a new `compose.yaml`** (S; LAD-89, done:
+pull request #86, in 0.40.0)
 compose refuses to start without `secrets/` (D6 of LAD-76), though logins made inside need
 no secrets: the folder becomes optional as the ssh agent is (`LADO_SECRETS` defaults to
 `/dev/null`, LADO says nothing then; `LADO_SECRETS=./secrets` in `.env` turns it on). The
@@ -311,6 +311,19 @@ says so for 0.39.0. LADO noticing an old `compose.yaml` by itself is a task of i
 it does not fit.
 Check: a container test without `secrets/` starts and an agent runs; by hand, the short
 start without secrets, then secrets turned on, then an update from 0.39.0's files.
+Result: `LADO_SECRETS` defaults to `/dev/null`; LADO takes a null device at
+`LADO_ENV_DIR` for no variables, and `lado doctor` says how to turn them on
+(`LADO_SECRETS=./secrets` in `.env`, `mkdir -m 700 secrets`); a folder named but missing
+still stops compose. Every update takes its version's `compose.yaml` (a copy kept as
+`compose.yaml.bak`, the release's asset by version, `diff`), in each LADO's own folder.
+LADO noticing an old `compose.yaml` by itself became LAD-90 (Backlog). Review: L1, L2
+fixed; L3, E4 (an empty `LADO_SECRETS=` means no secrets), E5 (a second update overwrites
+`.bak`) declined, minor. The human's check by hand on a Mac passed: the start without
+`secrets/`, secrets by one line (`gh api user` by an agent), and an update from 0.39.0's
+files that migrated lado.db 28 -> 30 with its backup and resumed the running session.
+Before the RC, docs/release.md's image checks (4.5, 4.6) follow the guide: the
+`compose.yaml` asset by `curl`, the update from the old version's own file with a session
+running.
 
 **The release 0.40.0** (after T8b): the first point where a programmer on a Mac works
 in Docker from the documentation. Docker is for Mac and Linux; Windows is not supported

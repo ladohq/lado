@@ -229,6 +229,9 @@ What happens:
 - The running sessions stop with the old container, as `lado stop` would, and resume in
   the new one. Each agent starts a new conversation, a busy one loses its current turn,
   and each resumed supervisor takes one model turn: update while your agents are idle.
+  For a few seconds after the start `lado ls` may still show a session as `tmux session
+  is gone`: the sessions resume one by one, and `docker compose logs lado` says
+  `resumed session "<name>"` for each.
 - The new LADO upgrades its database at its start, after a backup
   (`~/.lado/backups/lado.db.schema-<N>` on the home volume; `docker compose logs lado`
   names it).

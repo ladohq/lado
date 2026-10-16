@@ -155,11 +155,14 @@ docker pull ghcr.io/ladohq/lado:X.Y.ZrcN
 ```
 
 Run it with compose from a temporary folder, with a test folder of projects (one small
-git repository in it) and a port of its own, so it meets nothing of your own LADO:
+git repository in it) and a port of its own, so it meets nothing of your own LADO. The
+`compose.yaml` comes as a user gets it, the release's asset, which the guide's update
+downloads too; `cmp` checks it is the repository's file at the tag:
 
 ```
 mkdir -p /tmp/lado-rc-image && cd /tmp/lado-rc-image
-cp <repository>/docker/compose.yaml .
+curl -fLO https://github.com/ladohq/lado/releases/download/vX.Y.ZrcN/compose.yaml
+git -C <repository> show vX.Y.ZrcN:docker/compose.yaml | cmp - compose.yaml
 cat > .env <<'EOF'
 LADO_VERSION=X.Y.ZrcN
 LADO_PROJECTS=/absolute/path/to/a/test/folder
@@ -196,13 +199,15 @@ cd / && rm -rf /tmp/lado-rc-image
 ### 4.6 The image's update (the first RC of a cycle)
 
 On one machine, as in 4.5 (a fresh terminal, a test folder of projects), from the last
-final before the RC, `X.Y.Z` below. Two LADOs, each in a folder of its own with a copy
-of `docker/compose.yaml`; the second only stands beside the first:
+final before the RC, `X.Y.Z` below, the way a user of `X.Y.Z` updates: with that
+version's own `compose.yaml` and a session running. Two LADOs, each in a folder of its
+own; the second only stands beside the first. The old files come from the tag (a release
+before 0.40.0 has no `compose.yaml` asset):
 
 ```
 mkdir -p /tmp/lado-rc-update /tmp/lado-rc-beside
-cp <repository>/docker/compose.yaml /tmp/lado-rc-update/
-cp <repository>/docker/compose.yaml /tmp/lado-rc-beside/
+git -C <repository> show vX.Y.Z:docker/compose.yaml > /tmp/lado-rc-update/compose.yaml
+git -C <repository> show vX.Y.Z:docker/compose.yaml > /tmp/lado-rc-beside/compose.yaml
 cat > /tmp/lado-rc-update/.env <<'EOF'
 COMPOSE_PROJECT_NAME=lado-rc-update
 LADO_VERSION=X.Y.Z
@@ -219,23 +224,32 @@ EOF
 cd /tmp/lado-rc-update && docker compose up -d
 ```
 
-In the first, log in to Claude Code and start a session as in 4.5, then stop it (`docker
-compose exec lado lado stop <session>`, or the UI). Then the update: put
-`LADO_VERSION=X.Y.ZrcN` in its `.env`, and
+In the first, log in to Claude Code and start a session as in 4.5, and a second one you
+stop (`docker compose exec lado lado stop <session>`, or the UI); leave the first
+running, idle. Then the update, by the guide's steps (docs/install.md, "Update the
+container"): put `LADO_VERSION=X.Y.ZrcN` in its `.env`, and
 
 ```
+cp compose.yaml compose.yaml.bak
+curl -fLO https://github.com/ladohq/lado/releases/download/vX.Y.ZrcN/compose.yaml
+diff compose.yaml.bak compose.yaml
 docker compose up -d
 docker compose logs lado
 docker compose exec lado lado ls
 ```
 
-When the RC moved the schema, the log has `lado: upgraded lado.db from schema N to M;
-its backup is /home/lado/.lado/backups/lado.db.schema-N`. `lado ls` lists the session,
-and the UI shows the RC's version. The second LADO is as it was: `docker compose ps -q` in
-its folder prints the same container id, and its UI still shows `X.Y.Z`.
+`diff` shows what the release changed in the file (mounts, settings, the header's text),
+no setting of yours. When the RC moved the schema, the log has `lado: upgraded lado.db
+from schema N to M; its backup is /home/lado/.lado/backups/lado.db.schema-N`. The running
+session resumes: the log has `lado: resumed session "<session>" at the container's start`
+and, a few seconds after the start, `lado ls` shows it running (before, it may still say
+`tmux session is gone`); the stopped one stays stopped. The UI shows the RC's version.
+The second LADO is as it was: `docker compose ps -q` in its folder prints the same
+container id, and its UI still shows `X.Y.Z`.
 
-Then back by the version's tag, as compose.yaml's header says: `LADO_VERSION=X.Y.Z` in
-the first's `.env` again, and, when the schema moved (N from the log above):
+Then back by the version's tag, as the guide's "Go back to the version before" says:
+`LADO_VERSION=X.Y.Z` in the first's `.env` again, keeping the new `compose.yaml`, and,
+when the schema moved (N from the log above):
 
 ```
 docker compose down
@@ -244,7 +258,7 @@ docker compose up -d
 docker compose exec lado lado ls
 ```
 
-`X.Y.Z` starts on the restored lado.db and lists the session; without a schema change,
+`X.Y.Z` starts on the restored lado.db and lists the sessions; without a schema change,
 `docker compose up -d` alone goes back. Remove both:
 
 ```

@@ -1,6 +1,6 @@
 # LADO's image (Dockerfile), ghcr.io/ladohq/lado:<version>, with compose: the same as one
-# `docker run`, kept in a file. Keep the settings in .env next to this file, where compose
-# reads them for every command:
+# `docker run`, kept in a file. The guide, step by step: docs/install.md#docker. Keep the
+# settings in .env next to this file, where compose reads them for every command:
 #
 #   LADO_VERSION=0.39.0                 # the LADO version to run
 #   LADO_PROJECTS=/Users/me/projects    # absolute: the container sees it at this path

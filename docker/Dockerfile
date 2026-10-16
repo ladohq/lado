@@ -1,7 +1,7 @@
 # LADO's image: LADO from the one wheel of its build, the four agent CLIs at their pins,
 # the UI server on 0.0.0.0:$LADO_PORT. The Release workflow publishes it for each release
 # as ghcr.io/ladohq/lado:<version> (amd64, arm64); `make docker` builds it from a checkout
-# (lado:local). One command starts it:
+# (lado:local). The guide, step by step: docs/install.md#docker. One command starts it:
 #
 #   mkdir -m 700 secrets
 #   docker run -d --name lado -p 127.0.0.1:8765:8765 -v lado-home:/home/lado \

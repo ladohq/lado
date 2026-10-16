@@ -47,14 +47,14 @@ Tests first in each section; each task is one commit.
 
 ## 4. The guide
 
-- [ ] 4.1 Unit tests, `tests/test_docker.py`: `guide_steps` reads docs/install.md's
+- [x] 4.1 Unit tests, `tests/test_docker.py`: `guide_steps` reads docs/install.md's
   `## Docker` code blocks. The first start, the update and the way back equal the
   header's. The download is `releases/latest/download/compose.yaml`. The `.env` block
   names every `${VAR}` of compose.yaml but `LADO_IMAGE` and `LADO_SECRETS`. The removal
   is `docker compose down` and `docker volume rm` of `<project>_home`. No `prune` in
   docs/, docker/ or README.md. README's Install links to `docs/install.md#docker`. The
   guide says `env | grep` and `unset`. Each header names the guide (D7, D8).
-- [ ] 4.2 docs/install.md `## Docker` (contents list too), after Windows. It covers the
+- [x] 4.2 docs/install.md `## Docker` (contents list too), after Windows. It covers the
   prerequisites (Docker Desktop on a Mac, Docker Engine with the compose plugin on Linux),
   then these steps:
   - check the shell (`env | grep -E '^(LADO|COMPOSE)_'`, `unset`);
@@ -70,7 +70,7 @@ Tests first in each section; each task is one commit.
   Each part links to the header for the reference. README.md's Install gets a Docker
   block (three lines and the link). One line in each header points to the guide.
   `uv run pytest tests/test_docker.py -n auto`.
-- [ ] 4.3 Check F13's fix (D9) against `docker/entrypoint.sh`. When a new container does
+- [x] 4.3 Check F13's fix (D9) against `docker/entrypoint.sh`. When a new container does
   not retry the owner change, write what does.
 
 ## 5. Records

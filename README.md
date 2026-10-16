@@ -76,6 +76,10 @@ lado doctor             # says what is missing, with the command to install it
 Step by step for each system, agent CLIs included, and what to do when something fails:
 [docs/install.md](docs/install.md). Without uv, `pip install lado` works too.
 
+**Docker**: LADO's image has tmux, git and the four agent CLIs; you need only Docker. Get
+`compose.yaml` from the latest release, write `.env`, then `docker compose up -d`:
+[docs/install.md#docker](docs/install.md#docker).
+
 ## Quick start
 
 ```bash

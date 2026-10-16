@@ -611,3 +611,116 @@ def test_dependabot_updates_the_images_bases():
     [docker] = [u for u in updates if u["package-ecosystem"] == "docker"]
     assert docker["directory"] == "/docker"
     assert docker["cooldown"] == {"default-days": 7}
+
+
+# The install guide's Docker section (openspec change docker-install-guide): it repeats only
+# the steps a user runs, and these tests keep them the headers' (which the container tests
+# run).
+
+INSTALL = ROOT / "docs" / "install.md"
+
+
+def guide() -> str:
+    """docs/install.md's `## Docker` section, up to the next `## `."""
+    text = INSTALL.read_text()
+    start = text.index("\n## Docker\n")
+    end = text.find("\n## ", start + 1)
+    return text[start : end if end != -1 else len(text)]
+
+
+def blocks(text: str, lang: str = "bash") -> list[str]:
+    return re.findall(rf"^ *```{lang}\n(.*?)^ *```", text, flags=re.S | re.M)
+
+
+def commands(block: str) -> list[str]:
+    """A block's commands: continuation lines joined, a trailing `# comment` left out."""
+    joined = re.sub(r"\\\n\s*", "", block)
+    lines = (re.sub(r"\s+#\s.*$", "", line).strip() for line in joined.splitlines())
+    return [line for line in lines if line and not line.startswith("#")]
+
+
+def guide_part(heading: str) -> str:
+    """The guide's text under `### <heading>`, up to the next heading of that level."""
+    text = guide()
+    start = text.index(f"\n### {heading}\n")
+    end = text.find("\n### ", start + 1)
+    return text[start : end if end != -1 else len(text)]
+
+
+def guide_steps(heading: str) -> list[str]:
+    """The commands of the bash blocks under `### <heading>`, in order."""
+    return [line for block in blocks(guide_part(heading)) for line in commands(block)]
+
+
+def without_comment(line: str) -> str:
+    return re.sub(r"\s+#\s.*$", "", line).strip()
+
+
+def test_the_guides_first_start_is_the_headers():
+    first = [without_comment(line) for line in header_steps("Then, from this folder")]
+    assert first == [
+        "mkdir -m 700 secrets",
+        "docker compose up -d",
+        "docker compose exec lado lado ui --no-open",
+    ]
+    assert guide_steps("Start") == first
+
+
+def test_the_guides_update_and_way_back_are_the_headers():
+    assert guide_steps("Update") == header_steps("To update, set the new LADO_VERSION in .env")
+    assert guide_steps("Go back to the version before") == way_back()
+
+
+def test_the_guide_downloads_the_release_asset():
+    assert (
+        "curl -fLO https://github.com/ladohq/lado/releases/latest/download/compose.yaml"
+        in guide_steps("Get compose.yaml and write .env")
+    )
+
+
+def test_the_guides_env_names_every_variable_compose_reads():
+    read = set(re.findall(r"\$\{([A-Z_]+)", COMPOSE_TEXT)) - {"LADO_IMAGE", "LADO_SECRETS"}
+    assert {"LADO_VERSION", "LADO_PROJECTS", "LADO_SSH_AGENT"} <= read
+    envs = blocks(guide_part("Get compose.yaml and write .env"), "ini")
+    assert len(envs) == 2  # a Mac's and Linux's
+    for env_file in envs:
+        named = {line.split("=")[0] for line in env_file.splitlines() if "=" in line}
+        assert named == read, env_file
+
+
+def test_the_guide_removes_only_its_own_container_and_volume():
+    steps = guide_steps("Remove it")
+    assert steps[0] == "docker compose down"
+    assert any(re.fullmatch(r"docker volume rm [\w.-]+_home", step) for step in steps), steps
+    assert not [s for s in steps if "--volumes" in s or re.search(r"down .*-v\b", s)]
+
+
+def test_nothing_written_for_users_prunes():
+    """Docker's prune takes other containers' and volumes' too: a second LADO's, anyone's.
+    What users read: README.md, the guides in docs/ and docker/ (docs/research/ and
+    docs/superpowers/ are records, whose plans only forbid it)."""
+    paths = [ROOT / "README.md", *(ROOT / "docs").glob("*.md"), *DOCKER.iterdir()]
+    found = [p for p in paths if p.is_file() and "prune" in p.read_text()]
+    assert found == []
+
+
+def test_the_guide_says_to_check_the_shells_variables_first():
+    steps = guide_steps("Check the shell")
+    assert "env | grep -E '^(LADO|COMPOSE)_'" in steps
+    assert any(step.startswith("unset ") for step in steps)
+
+
+def test_the_guides_docker_run_is_the_dockerfiles():
+    header = [line[1:].strip() for line in DOCKERFILE.splitlines() if line.startswith("#")]
+    start = next(i for i, line in enumerate(header) if line.endswith("One command starts it:")) + 2
+    run = "\n".join(header[start : header.index("", start)])
+    assert guide_steps("With docker run") == commands(run)
+
+
+def test_readme_and_the_headers_point_to_the_guide():
+    readme = (ROOT / "README.md").read_text()
+    install = readme[readme.index("## Install") :]
+    assert "docs/install.md#docker" in install[: install.index("\n## ", 3)]
+    assert "- [Docker](#docker)" in INSTALL.read_text()
+    for name in ("compose.yaml", "Dockerfile"):
+        assert "docs/install.md#docker" in leading_comment(DOCKER / name), name

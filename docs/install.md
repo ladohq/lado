@@ -17,6 +17,7 @@ missing. The short version of this guide is in [README.md](../README.md#install)
 - [macOS](#macos)
 - [Linux](#linux)
 - [Windows](#windows)
+- [Docker](#docker)
 - [Agent CLIs](#agent-clis)
 - [Your first session](#your-first-session)
 - [Update](#update)
@@ -162,6 +163,251 @@ Windows 10 or 11 with WSL2 available, and an account that can run cmd as adminis
 - `lado doctor` warns about tmux older than 3.3: see
   [Common problems](#lado-doctor-warns-about-tmux-older-than-33).
 - See also [Common problems](#common-problems).
+
+## Docker
+
+LADO's image, `ghcr.io/ladohq/lado:<version>`, holds LADO, tmux, git, gh, the ssh client
+and the four agent CLIs at the versions LADO is tested with: nothing to install but
+Docker. It runs the web UI on this computer's loopback; the agents work in your projects
+folder, which the container sees at the same path as your computer, so their commits and
+worktrees are yours too. The image holds no one's keys or logins: you give your own at run
+time (a secrets folder, a login inside, your ssh agent). Compose keeps every setting in one
+file, so an update is one line; [`docker run`](#with-docker-run) works too.
+
+The headers of [docker/compose.yaml](../docker/compose.yaml) and
+[docker/Dockerfile](../docker/Dockerfile) are the reference; this guide repeats the steps
+you run.
+
+### Prerequisites
+
+- **macOS**: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+- **Linux**: Docker Engine with the compose plugin (`docker compose version` answers).
+
+### Check the shell
+
+A variable set in your shell beats the same one in `.env`: a `LADO_VERSION` left from an
+earlier try runs that version, whatever `.env` says. Look first, and unset what you find:
+
+```bash
+env | grep -E '^(LADO|COMPOSE)_'
+unset LADO_VERSION LADO_PROJECTS LADO_PORT LADO_IMAGE   # each name the line above printed
+```
+
+### Get compose.yaml and write .env
+
+A folder of its own for this LADO, with the compose file of the latest release:
+
+```bash
+mkdir ~/lado-docker && cd ~/lado-docker
+curl -fLO https://github.com/ladohq/lado/releases/latest/download/compose.yaml
+```
+
+Next to it, a file `.env` with your settings; compose reads it for every command run in
+this folder. On a Mac:
+
+```ini
+LADO_VERSION=0.40.0                 # the LADO version to run: the latest release's
+LADO_PROJECTS=/Users/ann/projects   # your projects folder, a full path
+LADO_PORT=8765                      # the UI's port on this computer
+LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
+LADO_GIT_EMAIL=ann@example.com
+LADO_SSH_AGENT=/run/host-services/ssh-auth.sock   # Docker Desktop's ssh agent
+```
+
+On Linux:
+
+```ini
+LADO_VERSION=0.40.0                 # the LADO version to run: the latest release's
+LADO_PROJECTS=/home/ann/projects    # your projects folder, a full path
+LADO_PORT=8765                      # the UI's port on this computer
+LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
+LADO_GIT_EMAIL=ann@example.com
+LADO_SSH_AGENT=/run/user/1000/ssh-agent.socket    # your ssh agent: echo $SSH_AUTH_SOCK
+```
+
+`LADO_PROJECTS` is the only folder of your computer the agents see. `LADO_SSH_AGENT` is
+optional: without it there is no ssh in the container. On Linux the socket's path may
+change with each login: point it at a stable one, or run `docker compose up -d` again after
+a new login.
+
+### Start
+
+```bash
+mkdir -m 700 secrets
+docker compose up -d
+docker compose exec lado lado ui --no-open   # the UI's link with its token
+```
+
+Open the link in your browser. `secrets/` must be there before the first `up` (compose
+refuses to start without it). `docker compose logs lado` shows what the container says,
+its warnings too.
+
+### The agents' variables
+
+Tokens and keys for the agents are files in `secrets/`, one per variable: the file's name
+is the variable's, its content the value. LADO reads them at each agent's start, so a new
+file reaches the next agent with no restart; they never show in `docker inspect`, and
+`docker compose exec lado lado doctor` lists the names it uses. For example, git over https
+and `gh` with your GitHub token:
+
+```bash
+printf %s "$(gh auth token)" > secrets/GH_TOKEN
+```
+
+Others: `CLAUDE_CODE_OAUTH_TOKEN` (below), a kit's key as its MCP server names it (e.g.
+`YOUGILE_API_KEY`), a model provider's key for OpenCode and Kilo. Every agent of this LADO
+can read every file of its `secrets/`.
+
+### Log in to the agent CLIs
+
+Logins made inside the container stay on its home volume, through updates.
+
+- **Claude Code**: log in once inside, as on your computer (it prints a link to open in
+  your browser and asks for the code it shows):
+
+  ```bash
+  docker compose exec -it lado claude
+  ```
+
+  Then `/exit`. Or, instead, a long-lived token: run `claude setup-token` on your computer
+  and put what it prints in `secrets/CLAUDE_CODE_OAUTH_TOKEN` (`printf %s '<token>' >
+  secrets/CLAUDE_CODE_OAUTH_TOKEN`).
+- **OpenCode and Kilo**: `docker compose exec -it lado opencode auth login` or
+  `docker compose exec -it lado kilo auth login`, or the model provider's key in `secrets/`.
+- **Codex**: not covered in the container yet.
+
+### git over ssh
+
+The agents push over ssh with your computer's ssh agent (`LADO_SSH_AGENT`): every agent of
+this LADO may use the keys it holds. The key GitHub knows must be in that agent:
+
+```bash
+ssh-add -l                                   # your keys; none: add yours
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519   # on a Mac; on Linux: ssh-add ~/.ssh/id_ed25519
+docker compose exec lado bash -lc 'ssh -T git@github.com'
+```
+
+The last line answers `Hi <you>! You've successfully authenticated`. The image knows
+GitHub's host keys, so ssh asks nothing; another host's key: see
+[If something goes wrong](#if-something-goes-wrong-3).
+
+### Your first session
+
+In the UI, **Launch**: **Where** starts in your projects folder; pick a repository there (it
+needs a first commit), or **Clone from URL**, which clones into it. A folder outside the
+projects folder lives only in the container: the window warns about it. Choose the agent
+CLI and press **Start session**.
+
+### Update
+
+Set the new `LADO_VERSION` in `.env`, then (compose pulls that version's image):
+
+```bash
+docker compose up -d
+```
+
+A new version upgrades LADO's database at its start, after a backup
+(`~/.lado/backups/lado.db.schema-<N>` on the home volume; `docker compose logs lado` names
+it). The running sessions stop with the old container and resume in the new one.
+
+### Go back to the version before
+
+Put the version you had before back in `.env`, then, with `<N>` from the backup's name
+(what LADO did since the upgrade is lost):
+
+```bash
+docker compose down
+docker compose run --rm lado sh -c 'cd ~/.lado && rm -f lado.db-wal lado.db-shm && cp backups/lado.db.schema-<N> lado.db'
+docker compose up -d
+```
+
+When an upgrade's migration failed, the database is as it was: the first and the last
+command do it.
+
+### A second LADO
+
+Another folder with a copy of `compose.yaml`, a `secrets/` of its own and an `.env` that
+adds its own `COMPOSE_PROJECT_NAME` and port:
+
+```ini
+COMPOSE_PROJECT_NAME=lado-2
+LADO_PORT=8766
+LADO_VERSION=0.40.0
+LADO_PROJECTS=/Users/ann/work
+```
+
+It has its own container, home volume, logins and version: updating or removing one leaves
+the other as it is. Run each one's commands in its own folder.
+
+### The sessions and the container
+
+`docker compose down` (or `stop`, or Docker's own end) stops the container's sessions, as
+`lado stop` would; `docker compose up -d` (or `start`) resumes them, also after an update or
+a crash. Sessions you stopped yourself stay stopped. Each resumed session's supervisor takes
+one model turn at its start.
+
+### Remove it
+
+From its folder: the container, then its home volume by name. The volume is
+`<project>_home`: `lado_home`, or `lado-2_home` for `COMPOSE_PROJECT_NAME=lado-2`. Look
+before you remove:
+
+```bash
+docker compose down
+docker volume ls --filter name=lado_home
+docker volume rm lado_home
+```
+
+The volume holds LADO's sessions and the logins made inside; your projects stay. The image
+too, if no other container uses it: `docker image rm ghcr.io/ladohq/lado:<version>`.
+Nothing here touches another LADO's container or volume.
+
+### With docker run
+
+The same image with one command; an update is that command again with the new version
+(the [Dockerfile's header](../docker/Dockerfile) has the rest):
+
+```bash
+mkdir -m 700 secrets
+docker run -d --name lado -p 127.0.0.1:8765:8765 -v lado-home:/home/lado \
+  -v "$HOME/projects:$HOME/projects" -e LADO_REPOS="$HOME/projects" \
+  -v "$PWD/secrets:/run/secrets:ro" \
+  -e LADO_GIT_NAME="Ann Lee" -e LADO_GIT_EMAIL=ann@example.com \
+  ghcr.io/ladohq/lado:<version>
+docker exec lado lado ui --no-open   # the UI's link with its token
+```
+
+### If something goes wrong
+
+- **Another version, port or folder than `.env` says**: a variable of your shell beats
+  `.env`. `env | grep -E '^(LADO|COMPOSE)_'`, `unset` each, and `docker compose up -d`
+  again; `docker compose config` shows what compose takes.
+- **`set LADO_VERSION to the LADO version to run` though `LADO_IMAGE` is set**: an older
+  Compose v2 asks for it all the same. Set `LADO_VERSION` too, or update Docker.
+- **A git name or email removed from `.env` stays**: it is in git's config on the home
+  volume. `docker compose exec lado git config --global --unset user.name` (or
+  `user.email`).
+- **An agent has a token it should not**: every agent of one LADO reads every file of its
+  `secrets/`. Values for some agents only need another LADO with its own folder.
+- **Two LADOs on a Mac and ssh works only in one**: Docker Desktop's ssh agent socket is
+  one for all containers, and each LADO's start gives it to its own user. With projects
+  folders of two owners the LADO started last has it; `docker compose restart` takes it
+  back for the other. Projects folders of the same owner share it.
+- **`docker run --user root --cap-drop ALL` does not start**: drop one of them. Without
+  `--user root` the server runs as the container's user anyway.
+- **`could not give lado the uid and gid of LADO_REPOS's owner` or `could not give lado
+  everything under /home/lado` in `docker compose logs lado`**: a container tries this
+  only at its first start, so a restart does not try again. Fix the cause, then
+  `docker compose down` and `docker compose up -d`: a new container tries again.
+- **A session's folder that your computer does not see**: it is outside the projects
+  folder, on the container's home volume (the New session window and `lado start` warn).
+  Put the repository under `LADO_PROJECTS`. `~` in the container is `/home/lado`, not your
+  home: type the full path.
+- **Another git host over ssh asks about its key**: the image knows only GitHub's. Add the
+  host's key on the home volume, which trusts the first answer: compare its fingerprint
+  with the one the host publishes.
+  `docker compose exec lado sh -c 'mkdir -p -m 700 ~/.ssh && ssh-keyscan gitlab.com >> ~/.ssh/known_hosts && ssh-keygen -lf ~/.ssh/known_hosts'`.
+- **The UI's link is lost**: `docker compose exec lado lado ui --no-open`.
 
 ## Agent CLIs
 

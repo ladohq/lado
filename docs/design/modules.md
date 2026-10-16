@@ -933,8 +933,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   entrypoint's `lado-repos.sh`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The agents'
   variables are files at `/run/secrets` (`LADO_ENV_DIR`, docs/design/agents.md), never compose's
   `environment:` or `LADO_AGENT_ENV=inherit`, so no value is in `docker inspect`; compose
-  binds `${LADO_SECRETS:-./secrets}` there read-only with `create_host_path: false` (it
-  refuses a missing folder rather than Docker making it root's). Every start, as `lado`,
+  binds `${LADO_SECRETS:-/dev/null}` there read-only with `create_host_path: false`: by
+  default no secrets, which LADO takes silently (`agent_env.null_device`), and a folder
+  `LADO_SECRETS` names but that is missing is refused rather than Docker making it root's.
+  Every start, as `lado`,
   writes `LADO_GIT_NAME` and `LADO_GIT_EMAIL` (compose passes both from `.env`) to git's
   global config on the home volume and warns in `docker logs` when git still has no
   identity. The host's ssh agent: compose binds `${LADO_SSH_AGENT:-/dev/null}` at
@@ -958,8 +960,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `LADO_IMAGE` replaces it, `lado:local` and the tests), one `LADO_PORT` both inside and
   published as `127.0.0.1:${LADO_PORT}:${LADO_PORT}`, `LADO_PROJECTS` (required) at that
   same path and as `LADO_REPOS`, no container name; its header keeps the settings in
-  `.env` next to the file, updates by a new `LADO_VERSION` and `up -d`, goes back by the
-  version before with a migration's backup (`docker compose down`, the backup copied over
+  `.env` next to the file, updates by the version's `compose.yaml`
+  (`releases/download/v<version>/compose.yaml`), a new `LADO_VERSION` and `up -d`, goes
+  back by the version before, keeping the newer `compose.yaml`, with a migration's backup (`docker compose down`, the backup copied over
   lado.db by `docker compose run`, `up -d`), and runs a second LADO from a folder of its
   own with its own `.env` (`COMPOSE_PROJECT_NAME`, `LADO_PORT`, `LADO_VERSION`,
   `LADO_PROJECTS`); the Dockerfile's header gives the same for `docker run`.

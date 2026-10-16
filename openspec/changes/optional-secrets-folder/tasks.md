@@ -38,8 +38,8 @@ Tests first in each section; each task is one commit.
 - [x] 4.2 README.md (Docker install, Update › Docker), docs/install.md (opening, Start,
   The agents' variables, Update the container, A second LADO: "a `secrets/` of its own or
   none", Docker run, pitfalls). `make test`.
-- [ ] 4.3 CHANGELOG.md: amend the 0.40.0 lines of LAD-76 and LAD-83 (D6).
-- [ ] 4.4 docs/design/modules.md (the image's secrets bind) and docs/design/agents.md (the
+- [x] 4.3 CHANGELOG.md: amend the 0.40.0 lines of LAD-76 and LAD-83 (D6).
+- [x] 4.4 docs/design/modules.md (the image's secrets bind) and docs/design/agents.md (the
   null device is no layer), true to the code.
 
 ## 5. Container tests

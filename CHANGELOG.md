@@ -7,7 +7,11 @@
   `docker compose up -d`), the logins, update, going back, a second LADO, removal of only
   its own container and volume, and what to do when something goes wrong. README and
   docs/install.md now present two ways to install, Docker first and recommended, then
-  PyPI, and say how to update each. Every GitHub release now carries its `compose.yaml`.
+  PyPI, and say how to update each. Every GitHub release now carries its `compose.yaml`,
+  and each update downloads its version's (`releases/download/v<version>/compose.yaml`)
+  before `docker compose up -d`. Coming from 0.39.0 needs the new `compose.yaml`: under
+  0.39.0's the container has no git identity (`LADO_GIT_NAME`, `LADO_GIT_EMAIL`), no ssh
+  agent (`LADO_SSH_AGENT`) and no `secrets/`.
 - LADO's image knows GitHub's ssh host keys: an agent's first `git push` over ssh from a
   new home volume no longer fails with `Host key verification failed`.
 - In LADO's container the web UI's Clone from URL works with an ssh address
@@ -46,15 +50,17 @@
   reaches the next agent and a kit's MCP server that needs it starts. A file LADO cannot
   use (a reserved name such as `PATH` or `LADO_*`, not a variable name, over 64 KiB, not
   text) is named in `lado start`'s warnings and by `lado doctor` (`Variables from
-  outside`, names only), never applied. Without `LADO_ENV_DIR` nothing changes.
-- LADO's container gives the agents real access: variables from `secrets/` next to
-  compose.yaml, mounted read-only at `/run/secrets` (`GH_TOKEN`,
+  outside`, names only), never applied. Without `LADO_ENV_DIR`, or with no folder or the
+  null device at its path, nothing changes and nothing is said.
+- LADO's container gives the agents real access: variables from an optional `secrets/`
+  next to compose.yaml, mounted read-only at `/run/secrets` (`GH_TOKEN`,
   `CLAUDE_CODE_OAUTH_TOKEN`, a kit's key), never in `docker inspect`; git's identity from
   `LADO_GIT_NAME` and `LADO_GIT_EMAIL` in `.env`; git over https to github.com through
   gh (`GH_TOKEN` or `gh auth login` inside); and the host's ssh agent through
-  `LADO_SSH_AGENT` without root's group. compose now refuses to start without the
-  `secrets` folder: `mkdir -m 700 secrets` next to compose.yaml. The headers say how
-  Claude Code, OpenCode and Kilo log in.
+  `LADO_SSH_AGENT` without root's group. compose starts without `secrets/`, and LADO says
+  nothing about it (`lado doctor` says how to give secrets); `LADO_SECRETS=./secrets` in
+  `.env` and `mkdir -m 700 secrets` enable it, and compose then refuses to start while the
+  folder is missing. The headers say how Claude Code, OpenCode and Kilo log in.
 - A tab of the web UI closed or reloaded the very moment its clone shows running now
   cancels the clone at once too; before, the server cancelled it only after 150 s.
 - The fields of the web UI's waiting card where the human writes, an own answer, a

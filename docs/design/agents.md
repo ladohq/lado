@@ -38,7 +38,10 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   doctor` (`Variables from outside`: the names, never a value; the bug report has none). A
   name LADO or the provider sets for the launch keeps their value and is named in that
   launch's warnings, `spawn_worker`'s too (`LADO sets <name> for <provider>`). Unset,
-  empty or missing, there is no layer. A launching process with `LADO_ENV_DIR` set gives
+  empty, missing or the null device (`agent_env.null_device`: a character device with
+  `os.devnull`'s `st_rdev`, so compose's `/dev/null` bound at `/run/secrets` is one), there
+  is no layer and no line; any other path that is no folder is named `not a folder`. In a
+  container doctor's `[info]` for no secrets names how to give them. A launching process with `LADO_ENV_DIR` set gives
   it to the agent and its `lado mcp` among LADO's variables (`providers.agent_env`), so a
   supervisor's `spawn_worker` and `start_session` read the same folder, also when the login
   shell does not name it. A tmux window starts with its server's environment, so the

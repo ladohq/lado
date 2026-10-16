@@ -59,9 +59,13 @@ without the folder too, which gets no mount at all.
 
 ### D4. Every update downloads the version's compose.yaml; going back keeps it
 
-The update in the header, the guide and README: `curl -fLO
-https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml` in the folder
-of `compose.yaml`, then the new `LADO_VERSION` in `.env`, then `docker compose up -d`.
+The update in the header, the guide and README, in the folder of `compose.yaml`: `cp
+compose.yaml compose.yaml.bak`, then `curl -fLO
+https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml`, then the new
+`LADO_VERSION` in `.env`, then `docker compose up -d`. The copy keeps a change made by
+hand from being lost silently (`diff compose.yaml.bak compose.yaml` shows it); with
+several LADOs each is updated in its own folder with its own `.env`, touching no other
+one's container or volume (the supervisor's addition, 2026-10-16).
 Every release from 0.40.0 carries the asset; the tag is `v<version>`
 (`$GITHUB_REF_NAME` of the release workflow). Always, not "when the CHANGELOG says so":
 nobody has to judge, and the step is never missed (the human's answer). The guide says a

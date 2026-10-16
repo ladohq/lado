@@ -42,12 +42,13 @@ one (LAD-76, D9); and the update was written as if `compose.yaml` never changed.
   enables them as a step of its own. The Dockerfile's `docker run` drops `mkdir` and gives
   `-v "$PWD/secrets:/run/secrets:ro"` as the optional addition.
 - **Every update takes the version's compose.yaml.** In the header's update, the guide's
-  "Update the container" and README's Update: in the folder of `compose.yaml`, download
-  that version's file next to `.env` (`curl -fLO
-  https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml`), set the new
-  `LADO_VERSION` in `.env`, then `docker compose up -d`. `.env`, `secrets/` and the home
-  volume stay; a change made to `compose.yaml` by hand must be carried over (the guide
-  says so). Going back keeps the current `compose.yaml`.
+  "Update the container" and README's Update: in the folder of `compose.yaml`, keep a
+  copy (`cp compose.yaml compose.yaml.bak`), download that version's file next to `.env`
+  (`curl -fLO https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml`),
+  set the new `LADO_VERSION` in `.env`, then `docker compose up -d`. `.env`, `secrets/`
+  and the home volume stay; a change made to `compose.yaml` by hand must be carried over
+  (`diff compose.yaml.bak compose.yaml` shows it). With several LADOs, each is updated in
+  its own folder with its own `.env`. Going back keeps the current `compose.yaml`.
 - **CHANGELOG.** The 0.40.0 lines of LAD-76 and LAD-83 are amended, not contradicted:
   `secrets/` is optional and enabled by `LADO_SECRETS=./secrets`; coming from 0.39.0 needs
   the new `compose.yaml`, without which there is no git identity (`LADO_GIT_NAME`,

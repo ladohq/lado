@@ -45,5 +45,5 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test` green (counts in the build report);
+- [x] 4.1 `make lint`, `make test` green (counts in the build report);
   `openspec validate --specs --strict` green.

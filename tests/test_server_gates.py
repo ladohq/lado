@@ -90,6 +90,7 @@ def test_an_open_gate_comes_with_its_note_and_the_artifacts_it_reads(client, ses
         "comment": "",
         "answered_by": None,
         "answered_at": None,
+        "closed_by_event": None,
         "problem": None,
         # The lead is asked for its view when the gate opens.
         "recommendation": {
@@ -161,7 +162,11 @@ def test_a_closed_gate_has_no_reads_and_an_open_one_not_those_of_its_note(client
     )
     assert first["answered_at"].endswith("Z")
     assert first["reads"] is None
+    # The run's move the answer made, by its id: the chat links the comment to it.
+    [move] = [e for e in state.list_events("s") if e.detail == "check -rejected-> build"]
+    assert first["closed_by_event"] == move.id
     assert second["answer"] is None
+    assert second["closed_by_event"] is None
     # polish is attached to the note before the gate: shown there, once.
     assert [a["full_name"] for a in second["attachments"]] == ["ship/x/polish"]
     assert second["reads"] == ["ship/x/plan"]

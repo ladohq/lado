@@ -2,7 +2,7 @@
 
 Run them with `make test-live` (`PROVIDER=codex|opencode|kilo|claude`). They never run by
 default. The models, the local setup (LM Studio, the bridge the Codex tests start), the
-variables that override them and why a test skips are in AGENTS.md (Commands, "Live tests").
+variables that override them and why a test skips are in docs/testing.md ("Live tests").
 In short: Codex, OpenCode and Kilo run on LM Studio's `local_models.MODEL`, one source of
 the model per provider in the environment every LADO process of the test inherits; Claude
 Code on haiku (`--model`), paid: only with the human's yes.

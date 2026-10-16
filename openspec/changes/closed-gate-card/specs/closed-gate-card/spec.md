@@ -1,0 +1,52 @@
+## ADDED Requirements
+
+### Requirement: The answer's comment shows once in the chat
+
+The chat SHALL show the comment given with a gate's answer in one place: under the run's
+move that the answer made, where it was given. The closed gate's line, where the gate
+opened, SHALL show its title and time without the comment, whoever closed the gate.
+
+#### Scenario: The human rejects with a comment
+- **WHEN** the human rejects a gate with a comment of two lines and nothing else comes
+  into the chat between the gate's opening and the answer
+- **THEN** the chat shows the comment once, under the move "You <state> → <state>
+  rejected", and the line "Gate #<id> · <run> · <state>: reject by human" has no comment
+  under it
+
+#### Scenario: A gate closed otherwise
+- **WHEN** the supervisor cancels a run whose gate is open, with a reason
+- **THEN** the closed gate's line says "cancelled by supervisor" without the reason
+  under it, and the reason shows on the cancel's line of the run
+
+### Requirement: An opened closed gate shows its question and answer first
+
+A click on a closed gate's line SHALL open a card that shows the gate's question and its
+answer (who answered, the answer, where the run went when the chat knows the move, the
+time, and the comment in full), and SHALL fold the note that led to the gate and the
+supervisor's recommendation into one line each, which open on a click. The note opened
+SHALL show at most 6 lines of its body with Show more, and its artifacts.
+
+#### Scenario: A long note
+- **WHEN** the human opens the line of a gate whose note has a body of 30 lines and two
+  artifacts
+- **THEN** the card shows the question, the answer with its comment, a line "Note" with
+  the note's summary and "2 artifacts", and no line of the note's body; a click on that
+  line shows 6 lines of the body, Show more and the two artifacts
+
+#### Scenario: The recommendation folded
+- **WHEN** the human opens the line of a gate whose supervisor recommended Approve and
+  the human rejected it
+- **THEN** the card shows a line "Supervisor" that says "recommended Approve · you
+  answered otherwise" and not the recommendation's text, until a click on the line
+
+#### Scenario: The answer agreed
+- **WHEN** the supervisor recommended Approve and the human approved
+- **THEN** the line "Supervisor" says "recommended Approve · you agreed"
+
+#### Scenario: Nothing to fold
+- **WHEN** the human opens the line of a gate with no note and no recommendation
+- **THEN** the card shows the question and the answer only, with no folded line
+
+#### Scenario: Closed by an agent
+- **WHEN** the human opens the line of a gate the supervisor closed by cancelling its run
+- **THEN** the answer shows the supervisor as who closed it, "cancelled" and the reason

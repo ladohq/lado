@@ -178,6 +178,7 @@ def test_the_build_context_is_an_allowlist():
         "!docker/entrypoint.sh",
         "!docker/ssh-agent-socket.sh",
         "!docker/ssh_known_hosts",
+        "!docker/ssh-agent-env.sh",
     ]
 
 
@@ -262,11 +263,28 @@ def test_compose_binds_the_ssh_agent_or_dev_null(compose):
     assert "group_add" not in compose["services"]["lado"]
 
 
-def test_the_profile_points_ssh_auth_sock_only_at_a_socket():
-    """The profile's alone: the server needs no ssh agent (so outside the ENV parity)."""
-    profile = (DOCKER / "profile.sh").read_text()
-    assert f"[ -S {SOCKET} ] && export SSH_AUTH_SOCK={SOCKET} || true" in profile.splitlines()
+SSH_ENV = DOCKER / "ssh-agent-env.sh"
+SSH_PROFILE = "/etc/profile.d/lado-ssh-agent.sh"
+
+
+def test_ssh_auth_sock_points_only_at_a_socket_in_one_file():
+    """One rule: ssh-agent-env.sh, which every login shell reads (the agents) and the
+    entrypoint sources (the server, whose clone and branch listing use git over ssh). Not
+    in the ENV: an image cannot say whether compose bound a socket."""
+    rule = f"[ -S {SOCKET} ] && export SSH_AUTH_SOCK={SOCKET} || true"
+    assert rule in SSH_ENV.read_text().splitlines()
+    assert "SSH_AUTH_SOCK" not in (DOCKER / "profile.sh").read_text()
     assert "SSH_AUTH_SOCK" not in env()
+    assert f"COPY docker/ssh-agent-env.sh {SSH_PROFILE}" in lines()
+
+
+def test_the_server_gets_ssh_auth_sock_after_the_socket_is_lados():
+    """Sourced after the socket's owner is fixed, right before the command."""
+    body = ENTRYPOINT.splitlines()
+    # Read only when there: the unit tests run the entrypoint outside the image.
+    sourced = body.index(f"if [ -r {SSH_PROFILE} ]; then . {SSH_PROFILE}; fi")
+    assert sourced > max(i for i, line in enumerate(body) if "lado-ssh-agent-socket" in line)
+    assert body[sourced + 1 :].count('exec "$@"') == 1
 
 
 SSH_WARNING = "lado: warning: lado (uid $(id -u)) cannot use the ssh agent socket of uid $owner:"

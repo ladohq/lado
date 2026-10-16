@@ -135,6 +135,9 @@ if [ -S "$SOCK" ] && [ "$(ssh_status)" = 2 ]; then
         echo "lado: warning: lado (uid $(id -u)) cannot use the ssh agent socket of uid $owner: $reason" >&2
     fi
 fi
+# The server's git (Clone from URL, its branch listing) uses the same agent as the agents'
+# login shells: the one rule, sourced once the socket is lado's.
+if [ -r /etc/profile.d/lado-ssh-agent.sh ]; then . /etc/profile.d/lado-ssh-agent.sh; fi
 
 repos=${LADO_REPOS:-/projects}
 case $repos in

@@ -17,4 +17,4 @@
 ## 2. Checks
 
 - [x] 2.1 `make lint` green; `uv run pytest -m ui tests/ui/test_gates.py` green.
-- [ ] 2.2 The pull request's CI (`ci-ok`) green.
+- [x] 2.2 The pull request's CI (`ci-ok`) green.

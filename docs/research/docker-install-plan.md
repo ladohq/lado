@@ -271,6 +271,13 @@ From LAD-73: the update, the way back and a second LADO by version tags (`LADO_V
 `.env`); how users get `compose.yaml` (a release asset or a link); that variables of the
 shell beat `.env`; that an older Compose v2 (GitHub's runners) asks for `LADO_VERSION`
 also beside `LADO_IMAGE`.
+From LAD-76: the `secrets/` folder beside the compose file (one file per variable,
+`YOUGILE_API_KEY`, `GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, providers' keys) and `lado
+doctor`'s check of it; `LADO_GIT_NAME`, `LADO_GIT_EMAIL` and `LADO_SSH_AGENT` in `.env`
+(Mac and Linux values); each CLI's login (the headers have it: the page leads with it and
+the headers stay the reference); that a name or email removed from `.env` stays on the
+volume; that all agents of one LADO share its secrets, and sessions that need other
+values run in another LADO until profiles (LAD-80).
 Check: the human follows the instructions from scratch on a clean volume.
 
 **T9. Project toolchains through mise** (S)
@@ -281,8 +288,9 @@ change.
 Check: an agent in the container installs Go from `.tool-versions` by itself and builds
 the project; after the container is made again, Go is still there.
 
-**T10. Secrets and access: one place for secrets, and git** (M; LAD-76; widened
-2026-10-15 by the human's decision, done right after T6b, before T8)
+**T10. Secrets and access: one place for secrets, and git** (M; LAD-76, done: pull
+request #76, in 0.40.0; widened 2026-10-15 by the human's decision, done right after
+T6b, before T8)
 Without it the container cannot be used for real work: an agent has no git identity to
 commit with, and a kit whose MCP server needs a variable (sdlc's tracker:
 `YOUGILE_API_KEY`) refuses to start, as nothing puts it in the agents' environment.
@@ -302,6 +310,28 @@ gh).
 Check: an agent commits under the human's name, pushes over ssh and over https to a test
 remote, runs `gh api user`; a session of a kit that needs `YOUGILE_API_KEY` starts; no
 secret in `docker inspect`; no manual step but the logins.
+Result: not split. The one place is not on the home volume but a folder outside it, in
+LADO's core: `LADO_ENV_DIR` names a folder of files, one per variable (the file's name is
+the variable's, its content the value), laid over the login shell's environment at each
+agent's launch; a file LADO cannot take is named, with why, in `lado doctor` and in a
+start's warnings; without the variable nothing changes (a native install). The image sets
+`LADO_ENV_DIR=/run/secrets`, and compose mounts `./secrets` beside compose.yaml there,
+read-only, so each LADO's folder of its own has its own secrets. git's identity comes
+from `LADO_GIT_NAME` and `LADO_GIT_EMAIL` in `.env`, written to the global git config on
+the home volume at each start (none: one warning in `docker logs`); `gh` is git's
+credential helper for `https://github.com` (`GH_TOKEN` in `secrets/`, or `gh auth login`
+inside); the host's ssh agent comes by `LADO_SSH_AGENT` (Docker Desktop's
+`/run/host-services/ssh-auth.sock`, the host's `$SSH_AUTH_SOCK` on Linux), a root-owned
+socket given to `lado` by a second, narrow sudo rule, no `group_add`. The headers of
+compose.yaml and the Dockerfile say how Claude Code, OpenCode and Kilo log in. Review: F1
+(the supervisor's workers outside a container did not get the folder) and F2 fixed; F3,
+E1-E3 declined (minor; E3: a name removed from `.env` stays on the volume, by design).
+The design went far past Docker (variable levels, a UI, then profiles); the human brought
+it back to the step, and profiles became a task of their own outside this plan, LAD-80
+(Stage 4). Left: the check by hand on a Mac, steps 4, 9 and 11 of the pull request (the
+real Docker Desktop ssh socket through compose, its `chown` with a second LADO: U1, not
+testable in CI), and the live tests go with 0.40.0's release candidate; the flaky
+`test_agent_env.py::test_a_slow_shell_times_out` is LAD-81.
 
 **T11. A check on Windows and on a real Linux** (S, manual)
 Docker Desktop with WSL2, the whole scenario of T8, a speed measurement (section 5). On a
@@ -342,6 +372,12 @@ Check: on a Mac a double click opens the UI.
   killed, "Resume all" in the UI or `lado start --all`, on T6b's `resume_at_start`. Left
   out of T6b by the human's decision: outside a container the server starts often and a
   gone tmux may be the human's own doing.
+- **Profiles of variables and secrets** (L; LAD-80, outside this plan): named sets of
+  variables chosen per session, set from the CLI and the UI, born in LAD-76's design (its
+  artifacts are attached to the task). The folder of T10 (`LADO_ENV_DIR`) is to become
+  the read-only base of the profile `default`, so the container manager keeps setting a
+  container's variables from outside. The human may later want a multi-user mode with
+  variables per user.
 - **Projects in a Docker volume** (M/L): faster and better isolated, but needs a UI for
   files and diffs.
 - **LADO as a Dev Container Feature** (M).

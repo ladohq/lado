@@ -30,10 +30,10 @@ Tests first in each section; each task is one commit.
   `start_session` (new and resume) carries it in `Started.warnings` (D5).
 - [x] 3.2 `runtime.OUTSIDE_REPOS`, `runtime.outside_repos`, the warning in
   `start_session`. `uv run pytest tests/test_runtime.py -n auto`.
-- [ ] 3.3 Unit tests, the server's (`tests/test_server_launch.py` for the folder
+- [x] 3.3 Unit tests, the server's (`tests/test_server_launch.py` for the folder
   check, `tests/test_server_clones.py` for the clone target): `GET /api/folders` and `GET /api/clone-target`
   carry `warning` in a container, null outside (D5, D6).
-- [ ] 3.4 `models.FolderInfo.warning`, `models.CloneTarget.warning`, `launch.folder_info`,
+- [x] 3.4 `models.FolderInfo.warning`, `models.CloneTarget.warning`, `launch.folder_info`,
   `clones.py`; `make web-types`, both files committed.
 - [ ] 3.5 vitest, `web/src/Launch.test.tsx`: the warning shows under Where after the check
   mark and under Clone into, Start stays enabled; none without the field (D6).

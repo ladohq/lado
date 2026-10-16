@@ -60,7 +60,23 @@ def test_a_repository_folder_is_ok_with_its_branch_name_and_subfolders(client, r
         "default_name": "my-repo",
         "name_state": "free",
         "provider": None,
+        "warning": None,
     }
+
+
+def test_in_a_container_a_folder_outside_the_repositories_folder_is_ok_with_a_warning(
+    client, repo, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "projects"))
+    outside = folder(client, repo)
+    assert outside["ok"] is True
+    assert outside["warning"] == runtime.OUTSIDE_REPOS.format(folder=tmp_path / "projects")
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path))
+    assert folder(client, repo)["warning"] is None
+    monkeypatch.delenv("LADO_CONTAINER")
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "projects"))
+    assert folder(client, repo)["warning"] is None
 
 
 def test_the_folder_check_gives_the_cores_reason(client, tmp_path):

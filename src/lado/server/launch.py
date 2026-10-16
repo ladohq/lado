@@ -40,6 +40,7 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         default_name=name,
         name_state=name_state(name, root, has_db) if name and root else None,
         provider=provider_suggestion(root if has_db else None),
+        warning=runtime.outside_repos(root or path),  # a start judges the root
     )
 
 

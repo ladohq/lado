@@ -7,7 +7,9 @@ the environment of the process that starts it instead.
 
 Over either go the variables of the outside folder `LADO_ENV_DIR` names (LADO's image sets
 it to /run/secrets): one file per variable, read anew at each launch (`outside`). A file
-it cannot take is named with why, never with its content, and not applied.
+it cannot take is named with why, never with its content, and not applied. No folder there,
+or the null device (compose binds /dev/null when no secrets are given), is no layer and no
+line.
 
 A tmux window starts with its server's environment, so the launch does not rely on it: the
 window runs the module `lado.agent_env <file> <argv>` (`interpreter.run_module`), which
@@ -22,6 +24,7 @@ import select
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -112,7 +115,8 @@ class Outside(NamedTuple):
 
 def outside(environ: Mapping[str, str] | None = None) -> Outside:
     """The folder `LADO_ENV_DIR` names, read now: a new file reaches the next launch.
-    Unset, empty or missing: no layer and no line."""
+    Unset, empty, missing or the null device (compose's default with no secrets): no
+    layer and no line."""
     folder = (os.environ if environ is None else environ).get(ENV_DIR_VAR, "")
     if not folder:
         return Outside("", {}, [])
@@ -125,6 +129,8 @@ def outside(environ: Mapping[str, str] | None = None) -> Outside:
     except FileNotFoundError:
         return Outside(folder, {}, [])
     except NotADirectoryError:
+        if null_device(folder):
+            return Outside(folder, {}, [])
         return Outside(folder, {}, [f"{where}: not a folder"])
     except OSError as exc:
         return Outside(folder, {}, [f"{where}: cannot be listed: {exc.strerror}"])
@@ -140,6 +146,16 @@ def outside(environ: Mapping[str, str] | None = None) -> Outside:
         else:
             values[entry.name] = value
     return Outside(folder, values, unused)
+
+
+def null_device(path: str) -> bool:
+    """Whether the null device is at `path` (links followed): by the device, not the name,
+    so /dev/null bound at /run/secrets is one. Any other device is not."""
+    try:
+        found, null = os.stat(path), os.stat(os.devnull)
+    except OSError:
+        return False
+    return stat.S_ISCHR(found.st_mode) and found.st_rdev == null.st_rdev
 
 
 def _take(entry: os.DirEntry) -> tuple[str, str]:

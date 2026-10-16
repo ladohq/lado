@@ -2,10 +2,10 @@ Tests first in each section; each task is one commit.
 
 ## 1. The null device in agent_env
 
-- [ ] 1.1 Unit tests (layer 1), `tests/test_agent_env.py`: `LADO_ENV_DIR=/dev/null` gives
+- [x] 1.1 Unit tests (layer 1), `tests/test_agent_env.py`: `LADO_ENV_DIR=/dev/null` gives
   no values and no line; a regular file still gives `not a folder`; a missing path no line.
   `tests/test_runtime.py`: a start with `LADO_ENV_DIR=/dev/null` has no warning about it.
-- [ ] 1.2 `agent_env.outside()`: a character device with `os.devnull`'s `st_rdev` is no
+- [x] 1.2 `agent_env.outside()`: a character device with `os.devnull`'s `st_rdev` is no
   folder (D1); its docstring and the module's say so. `uv run pytest
   tests/test_agent_env.py tests/test_runtime.py -n auto`, `make lint`.
 

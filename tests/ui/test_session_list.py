@@ -178,3 +178,32 @@ def test_rename_from_the_row_menu_and_esc(page: Page, server, repo, shot):
     expect(cleared.locator(".session-about")).not_to_contain_text(f"{titled} · ")
     assert state.get_session(titled).title is None
     shot(page, "cleared")
+
+
+def test_tab_takes_the_rest_of_the_name_in_a_row(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    sessions = page.get_by_role("navigation", name="Sessions")
+    row = sessions.locator(".session-row").filter(has_text=session)
+    row.hover()
+    row.get_by_role("button", name=f"Actions for {session}").click()
+    page.get_by_role("menu", name=session).get_by_role("menuitem", name="Rename…").click()
+    field = sessions.get_by_role("textbox", name="Session title")
+    field.press_sequentially(session[:2])
+    rest = sessions.locator(".title-edit-rest")
+    expect(rest).to_have_text(session)
+    expect(rest.locator(".title-edit-typed")).to_have_text(session[:2])
+    expect(sessions.locator(".title-edit-hint")).to_have_text(
+        f"{session} · Tab takes the name · Enter to save · Esc to cancel"
+    )
+    shot(page, "rest-of-the-name")
+    field.press("Tab")
+    expect(field).to_have_value(session)
+    expect(field).to_be_focused()
+    expect(rest).to_have_count(0)
+    field.press_sequentially(" 2")
+    field.press("Enter")
+    expect(row.locator(".session-name")).to_have_text(f"{session} 2")
+    assert state.get_session(session).title == f"{session} 2"

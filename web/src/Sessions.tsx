@@ -402,7 +402,12 @@ function SessionRow({ session }: { session: SessionInfo }) {
     return (
       <li ref={item} className="session-row">
         <div className="session-link session-row-edit">
-          <TitleEdit session={session} hint={`${session.name} · Enter to save · Esc to cancel`} onClose={closed} />
+          <TitleEdit
+            session={session}
+            hint={`${session.name} · Enter to save · Esc to cancel`}
+            suggestionHint={`${session.name} · Tab takes the name · Enter to save · Esc to cancel`}
+            onClose={closed}
+          />
         </div>
       </li>
     );
@@ -690,7 +695,12 @@ function HeadLine({ session }: { session: SessionInfo }) {
     <div className="session-head">
       <StatusDot status={status} />
       {editing ? (
-        <TitleEdit session={session} hint="Enter to save · Esc to cancel · empty shows the name" onClose={closed} />
+        <TitleEdit
+          session={session}
+          hint="Enter to save · Esc to cancel · empty shows the name"
+          suggestionHint="Tab takes the name · Enter to save · Esc to cancel"
+          onClose={closed}
+        />
       ) : (
         <h1 title={label(session)} onDoubleClick={edit}>
           {label(session)}

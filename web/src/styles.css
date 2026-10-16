@@ -1466,6 +1466,34 @@ h3 {
   font-weight: 600;
 }
 
+/* The rest of the session's name, grey after a start of it typed (TitleEdit): a layer over
+   the input in its font and padding, the typed text transparent so the rest starts at the
+   caret. */
+.title-edit-field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.title-edit-rest {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  padding: 0 9px;
+  color: var(--muted);
+  font-size: 17px;
+  font-weight: 600;
+  white-space: pre;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.title-edit-typed {
+  color: transparent;
+}
+
 .title-edit input[aria-invalid] {
   border-color: var(--danger);
   outline-color: color-mix(in srgb, var(--danger) 30%, transparent);
@@ -1483,6 +1511,10 @@ h3 {
 
 .session-row-edit input {
   height: 28px;
+  font-size: 15px;
+}
+
+.session-row-edit .title-edit-rest {
   font-size: 15px;
 }
 

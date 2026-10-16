@@ -366,3 +366,40 @@ def test_a_title_set_by_the_cli_shows_without_a_reload(page: Page, server, repo,
     row = page.get_by_role("navigation", name="Sessions").locator(".session-row").first
     expect(row.locator(".session-name")).to_have_text("Review")
     shot(page, "from-cli")
+
+
+def test_tab_takes_the_name_into_the_title_and_other_text_leaves(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    title = head(page).get_by_role("heading", level=1)
+    expect(title).to_have_text(session)
+    pencil = head(page).get_by_role("button", name="Rename session")
+    title.hover()
+    pencil.click()
+    field = head(page).get_by_role("textbox", name="Session title")
+    hint = head(page).locator(".title-edit-hint")
+    expect(hint).to_have_text("Tab takes the name · Enter to save · Esc to cancel")
+    shot(page, "suggested")
+    field.press("Tab")
+    expect(field).to_have_value(session)
+    expect(field).to_be_focused()
+    assert field.evaluate("f => [f.selectionStart, f.selectionEnd]") == [len(session)] * 2
+    expect(hint).to_have_text("Enter to save · Esc to cancel · empty shows the name")
+    assert state.get_session(session).title is None  # nothing sent
+    shot(page, "taken")
+    field.press_sequentially(" (x)")
+    field.press("Enter")
+    expect(title).to_have_text(f"{session} (x)")
+    expect(pencil).to_be_focused()
+    assert state.get_session(session).title == f"{session} (x)"
+
+    pencil.click()
+    field.fill("zz")
+    expect(head(page).locator(".title-edit-rest")).to_have_count(0)
+    expect(hint).to_have_text("Enter to save · Esc to cancel · empty shows the name")
+    field.press("Tab")
+    expect(title).to_have_text("zz")
+    expect(field).to_have_count(0)
+    assert state.get_session(session).title == "zz"

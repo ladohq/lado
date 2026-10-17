@@ -55,6 +55,16 @@ What each one needs and how they differ: [docs/install.md](docs/install.md).
 
 ### Docker
 
+A variable set in your shell beats the same one in `.env`; look first, and unset what you
+find:
+
+```bash
+env | grep -E '^(LADO|COMPOSE)_'      # left from an earlier try? unset each name printed
+unset LADO_VERSION LADO_PROJECTS LADO_PORT LADO_IMAGE COMPOSE_PROJECT_NAME
+```
+
+Then a folder of its own with the compose file of the latest release:
+
 ```bash
 mkdir ~/lado-docker && cd ~/lado-docker
 curl -fLO https://github.com/ladohq/lado/releases/latest/download/compose.yaml

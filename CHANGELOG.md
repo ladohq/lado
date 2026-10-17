@@ -12,6 +12,10 @@
   tab opens it; a terminal shows over the whole screen with Close terminal; a tap on a
   hint (a kit, the CLI) shows its tooltip. A computer, with a mouse, keeps its layout at
   any window size.
+- Install with Docker: docs/install.md's "Your first session" says how to answer Claude
+  Code's question whether to trust a repository it has not seen ("Yes, I trust this
+  folder"; Enter alone answers "No, exit" and closes the agent), and README's Docker start
+  first checks the shell for `LADO_*` and `COMPOSE_*` variables, which beat `.env`.
 
 ## 0.40.0 (2026-10-17)
 

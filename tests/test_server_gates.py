@@ -91,6 +91,7 @@ def test_an_open_gate_comes_with_its_note_and_the_artifacts_it_reads(client, ses
         "answered_by": None,
         "answered_at": None,
         "closed_by_event": None,
+        "answer_attachments": [],
         "problem": None,
         # The lead is asked for its view when the gate opens.
         "recommendation": {
@@ -197,6 +198,28 @@ def test_the_human_answers_a_gate_with_a_comment(client, session):
     run = state.get_run("s", "ship/x")
     assert (run.state, run.note) == ("build", "rejected: too big")
     assert state.get_gate(1).answered_by == "human"
+
+
+def test_a_gates_answer_carries_files_the_feed_shows_under_it(client, session):
+    at_gate()
+    log = artifacts.upload("s", "server.log", b"boom").full_name
+    answer = client.post(
+        f"{GATES}/1/answer", json={"option": "reject", "comment": "see log", "artifacts": [log]}
+    )
+    assert answer.status_code == 200
+    [closed] = client.get(GATES).json()
+    assert [a["full_name"] for a in closed["answer_attachments"]] == [log]
+    assert closed["attachments"] == []  # the note before the gate carried none
+
+
+def test_a_gates_answer_naming_a_missing_file_is_400_and_leaves_it_open(client, session):
+    at_gate()
+    answer = client.post(f"{GATES}/1/answer", json={"option": "reject", "artifacts": ["nope.txt"]})
+    assert (answer.status_code, answer.json()["detail"]) == (
+        400,
+        'no artifact "nope.txt" in session s',
+    )
+    assert state.get_gate(1).answer is None
 
 
 def test_the_comment_is_optional(client, session):

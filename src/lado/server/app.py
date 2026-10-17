@@ -985,10 +985,14 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
     def answer_gate(
         name: str, gate: int, given: GateAnswer, has_db: bool = Depends(database)
     ) -> Sent:
-        """The human's answer to an open gate: one of its options and a comment for the
-        next step. The same core as `lado answer` and the popup."""
+        """The human's answer to an open gate: one of its options, a comment for the next
+        step and the files uploaded for it. The same core as `lado answer` and the popup."""
         known(name, has_db)
-        return Sent(result=core(runs.answer_text, name, str(gate), given.option, given.comment))
+        return Sent(
+            result=core(
+                runs.answer_text, name, str(gate), given.option, given.comment, given.artifacts
+            )
+        )
 
     @app.post("/api/sessions/{name}/messages", dependencies=[Depends(guard.changes)])
     def write(name: str, message: MessageText, has_db: bool = Depends(database)) -> Sent:
@@ -1004,7 +1008,10 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         """The human's replies to open questions of one agent (a tab of the waiting card),
         all or none, handed over to the agent together."""
         known(name, has_db)
-        replies = [runtime.HumanReply(r.question, r.choice, r.text, r.skip) for r in given.answers]
+        replies = [
+            runtime.HumanReply(r.question, r.choice, r.text, r.skip, tuple(r.artifacts))
+            for r in given.answers
+        ]
         return Sent(result=core(runtime.answer_questions, name, replies))
 
     @app.websocket("/api/sessions/{name}/agents/{agent}/terminal")

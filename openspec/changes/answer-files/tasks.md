@@ -19,7 +19,7 @@
 
 ## 3. Server (D9)
 
-- [ ] 3.1 `Reply.artifacts`, `GateAnswer.artifacts`, `GateInfo.answer_attachments`;
+- [x] 3.1 `Reply.artifacts`, `GateAnswer.artifacts`, `GateInfo.answer_attachments`;
   `app.answers`, `app.answer_gate`; `make web-types`, both generated files committed.
   Check: `uv run pytest tests/test_server_messages.py tests/test_server_gates.py -n auto`,
   `make web`.

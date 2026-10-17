@@ -1151,8 +1151,8 @@ export interface paths {
         put?: never;
         /**
          * Answer Gate
-         * @description The human's answer to an open gate: one of its options and a comment for the
-         *     next step. The same core as `lado answer` and the popup.
+         * @description The human's answer to an open gate: one of its options, a comment for the next
+         *     step and the files uploaded for it. The same core as `lado answer` and the popup.
          */
         post: operations["answer_gate_api_sessions__name__gates__gate__answer_post"];
         delete?: never;
@@ -1464,7 +1464,11 @@ export interface components {
             /** Worktrees */
             worktrees: components["schemas"]["Worktree"][];
         };
-        /** GateAnswer */
+        /**
+         * GateAnswer
+         * @description The human's answer to a gate: an option, a comment for the next step, and the full
+         *     names of the files uploaded for it (POST …/artifacts).
+         */
         GateAnswer: {
             /** Option */
             option: string;
@@ -1473,6 +1477,11 @@ export interface components {
              * @default
              */
             comment: string;
+            /**
+             * Artifacts
+             * @default []
+             */
+            artifacts: string[];
         };
         /**
          * GateInfo
@@ -1514,6 +1523,8 @@ export interface components {
             answered_at: string | null;
             /** Closed By Event */
             closed_by_event: number | null;
+            /** Answer Attachments */
+            answer_attachments: components["schemas"]["AttachmentInfo"][];
             /** Problem */
             problem: string | null;
             recommendation: components["schemas"]["RecommendationInfo"] | null;
@@ -2164,7 +2175,8 @@ export interface components {
         /**
          * Reply
          * @description The human's reply to one open question: one of its choices, own words, or with
-         *     `skip` a dismissal, `text` then its comment.
+         *     `skip` a dismissal, `text` then its comment; with the full names of the files uploaded
+         *     for it (POST …/artifacts), with which own words may be empty.
          */
         Reply: {
             /** Question */
@@ -2178,6 +2190,11 @@ export interface components {
              * @default false
              */
             skip: boolean;
+            /**
+             * Artifacts
+             * @default []
+             */
+            artifacts: string[];
         };
         /**
          * RepoInfo

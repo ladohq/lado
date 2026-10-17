@@ -2607,7 +2607,7 @@
     "/api/sessions/{name}/gates/{gate}/answer": {
       "post": {
         "summary": "Answer Gate",
-        "description": "The human's answer to an open gate: one of its options and a comment for the\nnext step. The same core as `lado answer` and the popup.",
+        "description": "The human's answer to an open gate: one of its options, a comment for the next\nstep and the files uploaded for it. The same core as `lado answer` and the popup.",
         "operationId": "answer_gate_api_sessions__name__gates__gate__answer_post",
         "parameters": [
           {
@@ -3649,13 +3649,22 @@
             "type": "string",
             "title": "Comment",
             "default": ""
+          },
+          "artifacts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Artifacts",
+            "default": []
           }
         },
         "type": "object",
         "required": [
           "option"
         ],
-        "title": "GateAnswer"
+        "title": "GateAnswer",
+        "description": "The human's answer to a gate: an option, a comment for the next step, and the full\nnames of the files uploaded for it (POST \u2026/artifacts)."
       },
       "GateInfo": {
         "properties": {
@@ -3772,6 +3781,13 @@
             ],
             "title": "Closed By Event"
           },
+          "answer_attachments": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentInfo"
+            },
+            "type": "array",
+            "title": "Answer Attachments"
+          },
           "problem": {
             "anyOf": [
               {
@@ -3812,6 +3828,7 @@
           "created_at",
           "answered_at",
           "closed_by_event",
+          "answer_attachments",
           "problem",
           "recommendation"
         ],
@@ -5761,6 +5778,14 @@
             "type": "boolean",
             "title": "Skip",
             "default": false
+          },
+          "artifacts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Artifacts",
+            "default": []
           }
         },
         "type": "object",
@@ -5768,7 +5793,7 @@
           "question"
         ],
         "title": "Reply",
-        "description": "The human's reply to one open question: one of its choices, own words, or with\n`skip` a dismissal, `text` then its comment."
+        "description": "The human's reply to one open question: one of its choices, own words, or with\n`skip` a dismissal, `text` then its comment; with the full names of the files uploaded\nfor it (POST \u2026/artifacts), with which own words may be empty."
       },
       "RepoInfo": {
         "properties": {

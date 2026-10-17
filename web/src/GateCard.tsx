@@ -5,15 +5,15 @@
 // names the gate (gateTitle). The answer goes through the server to runs.answer, as
 // `lado answer` and the popup do; the panel changes only when the feed brings the closed
 // gate, whoever answered it.
-import { useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { answerGate, ApiError, HUMAN, type GateInfo, type RunEventInfo, type RunInfo } from "./api";
+import { AnswerBox, filesLine, uploadFiles, useOwnFiles, type Attached, type SetFiles } from "./attachFiles";
 import { size } from "./artifacts";
 import { KindIcon } from "./ArtifactView";
 import { Attachments, useView } from "./Attachments";
 import { Body, clock, Preview } from "./ChatText";
 import { MiniAvatar } from "./FeedRow";
-import { CARD_LINES, MOST_LINES, useGrow } from "./fieldHeight";
 import { OutcomeChip } from "./flowSteps";
 import { ChevronIcon, GateIcon } from "./icons";
 import { useLive } from "./live";
@@ -64,8 +64,11 @@ export function GateCard({
 // and a button per option, the recommended one primary. `compact`: without the note and the
 // artifacts. `inTab`: the question, note, reads and comment as the tab's list
 // (`.waiting-list`, it scrolls), the buttons in its Send row (`.waiting-send`, always shown);
-// `marked`, the gate a link asked for. `comment` and `onComment`: the comment kept by who
-// shows the panel (the waiting card, across its tabs and its expanded view), else here.
+// `marked`, the gate a link asked for. `comment` and `onComment`, `files` and `onFiles`: the
+// comment and its files kept by who shows the panel (the waiting card, across its tabs and
+// its expanded view), else here. The comment takes files as the composer does
+// (attachFiles.AnswerBox); their count and size stand beside the buttons, and a button
+// uploads those not uploaded yet, then answers with their names.
 export function GatePanel({
   session,
   gate,
@@ -75,6 +78,8 @@ export function GatePanel({
   marked = false,
   comment: kept,
   onComment,
+  files: keptFiles,
+  onFiles,
 }: {
   session: string;
   gate: GateInfo;
@@ -84,21 +89,29 @@ export function GatePanel({
   marked?: boolean;
   comment?: string;
   onComment?: (comment: string) => void;
+  files?: Attached[];
+  onFiles?: SetFiles;
 }) {
   const [own, setOwn] = useState("");
   const comment = kept ?? own;
   const setComment = onComment ?? setOwn;
+  const [ownFiles, setOwnFiles] = useOwnFiles();
+  const files = keptFiles ?? ownFiles;
+  const setFiles = onFiles ?? setOwnFiles;
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const primary = primaryOf(gate.options, gate.recommendation);
-  const commentField = useRef<HTMLTextAreaElement>(null);
-  useGrow(commentField, comment, CARD_LINES, MOST_LINES);
 
   async function answer(option: string) {
     setBusy(true);
     setProblem(null);
     try {
-      await answerGate(session, gate.id, option, comment);
+      const uploaded = await uploadFiles(session, files, setFiles, "answer again");
+      if ("problem" in uploaded) {
+        setProblem(uploaded.problem);
+        return;
+      }
+      await answerGate(session, gate.id, option, comment, uploaded.names);
     } catch (error) {
       setProblem(error instanceof ApiError ? error.message : String(error));
     } finally {
@@ -117,27 +130,34 @@ export function GatePanel({
     </div>
   );
   const field = (
-    <textarea
-      ref={commentField}
-      aria-label="Comment for the next step (optional)"
-      placeholder="Comment for the next step (optional)"
-      rows={CARD_LINES}
-      value={comment}
-      disabled={inTab && stopped}
-      onChange={(event) => setComment(event.target.value)}
+    <AnswerBox
+      label="Comment for the next step (optional)"
+      text={comment}
+      change={setComment}
+      off={inTab && stopped}
+      locked={busy}
+      files={files}
+      setFiles={setFiles}
     />
   );
-  const buttons = gate.options.map((option) => (
-    <button
-      key={option}
-      type="button"
-      className={option === primary ? "primary" : "quiet"}
-      disabled={busy || stopped}
-      onClick={() => void answer(option)}
-    >
-      {label(gate)(option)}
-    </button>
-  ));
+  const buttons = [
+    ...gate.options.map((option) => (
+      <button
+        key={option}
+        type="button"
+        className={option === primary ? "primary" : "quiet"}
+        disabled={busy || stopped}
+        onClick={() => void answer(option)}
+      >
+        {label(gate)(option)}
+      </button>
+    )),
+    files.length > 0 && (
+      <span key="files" className="waiting-count">
+        {filesLine(files)}
+      </span>
+    ),
+  ];
   const said = (
     <>
       {stopped && <p className="chat-note">The session is stopped: resume it to answer.</p>}

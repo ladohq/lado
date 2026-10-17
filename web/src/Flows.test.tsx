@@ -119,6 +119,18 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
 }
 
 type Data = { runs?: RunInfo[]; notes?: NoteInfo[]; events?: RunEventInfo[]; gates?: GateInfo[]; agents?: string[] };
+
+const LIMITS = {
+  extensions: { log: "text/plain" },
+  text_types: [],
+  agent_images: [],
+  max_size: 1000,
+  max_files: 10,
+  image_limit: 500,
+  image_max_side: 8000,
+  max_message: 1000,
+  max_title: 80,
+};
 type Posted = { path: string; body: unknown };
 
 const AGENT = {
@@ -139,10 +151,16 @@ function serve({ runs = [], notes = [], events = [], gates = [], agents = [] }: 
   vi.stubGlobal(
     "fetch",
     vi.fn(async (path: string, init?: RequestInit) => {
+      const upload = /\/artifacts\?file_name=(.+)$/.exec(path);
+      if (init?.method === "POST" && upload) {
+        posted.push({ path: path.slice(0, upload.index + "/artifacts".length), body: decodeURIComponent(upload[1]) });
+        return new Response(JSON.stringify({ full_name: decodeURIComponent(upload[1]).replace(/\.(\w+)$/, "-1a2b3c4d.$1") }));
+      }
       if (init?.method === "POST") {
         posted.push({ path, body: init.body ? JSON.parse(String(init.body)) : undefined });
         return new Response(JSON.stringify({ result: "approved" }));
       }
+      if (path === "/api/limits") return new Response(JSON.stringify(LIMITS));
       if (path === "/api/sessions") return new Response(JSON.stringify(SESSIONS));
       const of = (list: unknown) => new Response(JSON.stringify(list));
       if (path.endsWith("/runs")) return of(runs);
@@ -591,6 +609,24 @@ test("a waiting run's now is its gate, compact, answered on the page; the run mo
   expect(within(region).queryByRole("article", { name: "Gate #41" })).toBeNull();
   expect(nowCard(region).textContent).toContain(`Ended · ${clock("2026-10-04T11:05:00.000Z")}`);
   expect(within(region).getByRole("listitem", { name: "State done" }).getAttribute("aria-current")).toBe("step");
+});
+
+test("the gate on a run's page keeps the files of its comment and answers with them", async () => {
+  const posted = serve({ runs: [WAITING], gates: [gate(41)] });
+  open(runPath("lado", WAITING.name));
+  const card = within(nowCard(await page("feature/flows-tab"))).getByRole("article", { name: "Gate #41" });
+  const clip = within(card).getByRole("button", { name: "Attach files" });
+  await vi.waitFor(() => expect(clip.getAttribute("title")).toContain("up to 10 files"));
+  const log = new File(["boom"], "server.log");
+  fireEvent.change(clip.parentElement!.querySelector("input[type=file]")!, { target: { files: [log] } });
+  expect(within(card).getByText("1 file, 4 B")).toBeTruthy();
+  fireEvent.click(within(card).getByRole("button", { name: "Reject" }));
+  await vi.waitFor(() =>
+    expect(posted).toEqual([
+      { path: "/api/sessions/lado/artifacts", body: "server.log" },
+      { path: "/api/sessions/lado/gates/41/answer", body: { option: "reject", comment: "", artifacts: ["server-1a2b3c4d.log"] } },
+    ]),
+  );
 });
 
 test("a waiting run without a gate says why it waits", async () => {

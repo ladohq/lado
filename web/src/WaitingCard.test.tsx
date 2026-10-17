@@ -80,16 +80,56 @@ type Props = {
 
 let posted: { path: string; body: unknown }[] = [];
 let answer: { status: number; body: unknown } = { status: 200, body: { result: "sent" } };
+// The human's files: the server's limits, each upload by its file name, those refused.
+const LIMITS = {
+  extensions: { png: "image/png", log: "text/plain" },
+  text_types: [],
+  agent_images: ["image/png"],
+  max_size: 1000,
+  max_files: 2,
+  image_limit: 500,
+  image_max_side: 8000,
+  max_message: 20,
+  max_title: 80,
+};
+let uploads: string[] = [];
+let refusedUploads: Record<string, string> = {};
+const made: string[] = [];
+const revoked: string[] = [];
 
 beforeEach(() => {
   localStorage.clear();
   posted = [];
+  uploads = [];
+  refusedUploads = {};
+  made.length = 0;
+  revoked.length = 0;
   answer = { status: 200, body: { result: "sent" } };
   FakeEventSource.all = [];
   vi.stubGlobal("EventSource", FakeEventSource);
+  let thumbs = 0;
+  vi.stubGlobal(
+    "URL",
+    Object.assign(URL, {
+      createObjectURL: () => {
+        const url = `blob:thumb-${++thumbs}`;
+        made.push(url);
+        return url;
+      },
+      revokeObjectURL: (url: string) => revoked.push(url),
+    }),
+  );
   vi.stubGlobal(
     "fetch",
     vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === "/api/limits") return new Response(JSON.stringify(LIMITS));
+      const url = new URL(path, "http://lado");
+      if (init?.method === "POST" && url.pathname.endsWith("/artifacts")) {
+        const name = url.searchParams.get("file_name")!;
+        uploads.push(name);
+        if (refusedUploads[name]) return new Response(JSON.stringify({ detail: refusedUploads[name] }), { status: 500 });
+        return new Response(JSON.stringify({ full_name: name.replace(/\.(\w+)$/, "-1a2b3c4d.$1") }));
+      }
       if (init?.method === "POST") {
         posted.push({ path, body: JSON.parse(String(init.body)) });
         return new Response(JSON.stringify(answer.body), { status: answer.status });
@@ -717,4 +757,118 @@ test("a stored height too tall for the chat shows lower and is kept; dragged bel
   expect(isMinimized()).toBe(true);
   expect(localStorage.getItem("lado.waitingHeight")).toBe(String(WAITING_MIN)); // kept for the restore
   expect(document.activeElement).toBe(iconButton("Restore the card"));
+});
+
+// The human's files in the card's fields (docs/design/ui.md, The waiting card: Fields).
+
+const file = (name: string, bytes = 10, type = "") => new File(["x".repeat(bytes)], name, { type });
+const questionItem = (id: number) => card().querySelector(`[data-item="${id}"]`) as HTMLElement;
+const chipsIn = (where: HTMLElement) => Array.from(where.querySelectorAll(".file-chip .file-name")).map((one) => one.textContent);
+
+async function attach(where: HTMLElement, ...files: File[]) {
+  const clip = within(where).getByRole("button", { name: "Attach files" });
+  await waitFor(() => expect(clip.getAttribute("title")).toContain("up to 2 files")); // the limits are loaded
+  fireEvent.change(clip.parentElement!.querySelector("input[type=file]")!, { target: { files } });
+}
+
+test("Other… of files only is an answer: Send uploads them, then answers with their names; a choice takes no files", async () => {
+  show({ questions: [question(5, "w1"), question(6, "w1")] });
+  const [one, two] = [questionItem(5), questionItem(6)];
+  fireEvent.click(within(one).getByRole("button", { name: "short" }));
+  expect(within(one).queryByRole("button", { name: "Attach files" })).toBeNull();
+  fireEvent.click(within(two).getByRole("button", { name: "Other…" }));
+  expect(send().disabled).toBe(true);
+  await attach(two, file("shot.png", 10, "image/png"));
+  expect(chipsIn(two)).toEqual(["shot.png"]);
+  expect(send().disabled).toBe(false);
+  fireEvent.click(send());
+  await waitFor(() =>
+    expect(posted).toEqual([
+      {
+        path: "/api/sessions/s/answers",
+        body: {
+          answers: [
+            { question: 5, choice: "short", skip: false },
+            { question: 6, text: "", skip: false, artifacts: ["shot-1a2b3c4d.png"] },
+          ],
+        },
+      },
+    ]),
+  );
+  expect(uploads).toEqual(["shot.png"]);
+});
+
+test("the files stay with their question from Other… to Skip and through a switch of tabs; a question closed elsewhere drops them", async () => {
+  const gates = [gate(1, "task/lad-27", "2026-10-03T12:00:30.000Z")];
+  const view = show({ questions: [question(5, "w1")], gates });
+  fireEvent.click(within(questionItem(5)).getByRole("button", { name: "Other…" }));
+  await attach(questionItem(5), file("shot.png", 10, "image/png"));
+  fireEvent.click(within(questionItem(5)).getByRole("button", { name: "Skip" }));
+  expect(chipsIn(questionItem(5))).toEqual(["shot.png"]);
+  fireEvent.click(tab("task/lad-27 1"));
+  fireEvent.click(tab("w1 1"));
+  expect(chipsIn(questionItem(5))).toEqual(["shot.png"]);
+  fireEvent.click(send());
+  await waitFor(() =>
+    expect(posted.at(-1)?.body).toEqual({ answers: [{ question: 5, skip: true, artifacts: ["shot-1a2b3c4d.png"] }] }),
+  );
+  expect(revoked).toEqual([]);
+  view.rerender(<Card questions={[question(7, "w1")]} gates={gates} />);
+  await waitFor(() => expect(revoked).toEqual(["blob:thumb-1"]));
+  fireEvent.click(within(questionItem(7)).getByRole("button", { name: "Other…" }));
+  expect(chipsIn(questionItem(7))).toEqual([]);
+});
+
+test("a file dropped on a field goes to it; dropped elsewhere on the card it goes nowhere, and the browser does not open it", async () => {
+  show({ questions: [question(5, "w1")] });
+  fireEvent.click(within(questionItem(5)).getByRole("button", { name: "Other…" }));
+  await attach(questionItem(5)); // the limits are loaded
+  const box = questionItem(5).querySelector(".composer-box") as HTMLElement;
+  const dragged = { types: ["Files"], files: [file("server.log")] };
+  expect(fireEvent.dragOver(box, { dataTransfer: dragged })).toBe(false);
+  expect(box.classList.contains("dropping")).toBe(true);
+  expect(within(box).getByText("Drop to attach · up to 2 files, 1000 B each")).toBeTruthy();
+  fireEvent.drop(box, { dataTransfer: dragged });
+  expect(chipsIn(questionItem(5))).toEqual(["server.log"]);
+  const text = within(questionItem(5)).getByText("Question 5?");
+  expect(fireEvent.dragOver(text, { dataTransfer: dragged })).toBe(false);
+  expect(fireEvent.drop(text, { dataTransfer: { types: ["Files"], files: [file("other.log")] } })).toBe(false);
+  expect(chipsIn(questionItem(5))).toEqual(["server.log"]);
+});
+
+test("a gate's comment takes files: their count beside its buttons; a button uploads them, then answers with their names", async () => {
+  show({ questions: [], gates: [gate(1, "task/lad-27", "2026-10-03T12:00:06.000Z")] });
+  const panel = within(card()).getByRole("tabpanel");
+  await attach(panel, file("shot.png", 100, "image/png"), file("server.log", 96));
+  const row = panel.querySelector(".waiting-send") as HTMLElement;
+  expect(within(row).getByText("2 files, 196 B")).toBeTruthy();
+  fireEvent.change(within(panel).getByRole("textbox", { name: "Comment for the next step (optional)" }), { target: { value: "see the log" } });
+  fireEvent.click(within(row).getByRole("button", { name: "Reject" }));
+  await waitFor(() =>
+    expect(posted).toEqual([
+      {
+        path: "/api/sessions/s/gates/1/answer",
+        body: { option: "reject", comment: "see the log", artifacts: ["shot-1a2b3c4d.png", "server-1a2b3c4d.log"] },
+      },
+    ]),
+  );
+});
+
+test("a failed upload leaves the gate open: its chip red with the reason; the next try uploads only that file", async () => {
+  refusedUploads = { "server.log": "disk full" };
+  show({ questions: [], gates: [gate(1, "task/lad-27", "2026-10-03T12:00:06.000Z")] });
+  const panel = within(card()).getByRole("tabpanel");
+  await attach(panel, file("shot.png", 10, "image/png"), file("server.log"));
+  fireEvent.click(within(panel).getByRole("button", { name: "Approve" }));
+  await waitFor(() =>
+    expect(within(panel).getByRole("alert").textContent).toBe(
+      "server.log was not uploaded: disk full. Remove it, or answer again to try it again.",
+    ),
+  );
+  expect(posted).toEqual([]);
+  expect(panel.querySelector(".file-chip.failed .file-size")?.textContent).toBe("disk full");
+  refusedUploads = {};
+  fireEvent.click(within(panel).getByRole("button", { name: "Approve" }));
+  await waitFor(() => expect(posted).toHaveLength(1));
+  expect(uploads).toEqual(["shot.png", "server.log", "server.log"]);
 });

@@ -13,14 +13,14 @@
 // In a session's chat (`chat`; not on Needs you) the human can minimize it to its tabs and
 // one line, until they restore it or a new tab comes, and give it a height by the edge
 // above it (prefs.ts keeps both).
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { useSearchParams } from "react-router";
 
 import { answerQuestions, ApiError, type GateInfo, type MessageInfo, type Reply, type RunInfo } from "./api";
+import { AnswerBox, release, uploadFiles, type Attached, type SetFiles } from "./attachFiles";
 import { Attachments } from "./Attachments";
 import { Body } from "./ChatText";
 import { avatar } from "./FeedRow";
-import { CARD_LINES, MOST_LINES, useGrow } from "./fieldHeight";
 import { GatePanel } from "./GateCard";
 import { Recommendation } from "./Recommendation";
 import { ExpandIcon, FlowsIcon, MinimizeIcon, RestoreIcon } from "./icons";
@@ -80,14 +80,27 @@ const MARKED_FOR = 1500; // ms an item asked for stays marked
 const FEED_MIN = 160; // the chat feed's least height (styles.css, .chat-feed)
 const NARROW = "(max-width: 900px)"; // the window that scrolls (styles.css)
 
-const answered = (pick: Pick | undefined) =>
-  pick !== undefined && ("choice" in pick || "skip" in pick || pick.own.trim() !== "");
+// An own answer counts with its words or its files, as a message of files only does.
+const answered = (pick: Pick | undefined, files: Attached[]) =>
+  pick !== undefined && ("choice" in pick || "skip" in pick || pick.own.trim() !== "" || files.length > 0);
 
-function toReply(question: number, pick: Pick): Reply {
+// The reply to a question, with the full names of its field's files: a choice has no field.
+function toReply(question: number, pick: Pick, artifacts: string[]): Reply {
   if ("choice" in pick) return { question, choice: pick.choice, skip: false };
-  if ("own" in pick) return { question, text: pick.own, skip: false };
-  return pick.skip.trim() ? { question, skip: true, text: pick.skip } : { question, skip: true };
+  const files = artifacts.length ? { artifacts } : {};
+  if ("own" in pick) return { question, text: pick.own, skip: false, ...files };
+  return pick.skip.trim() ? { question, skip: true, text: pick.skip, ...files } : { question, skip: true, ...files };
 }
+
+// Whose files a field's are in the card's state: a question's (its Other… and Skip share
+// them) or a gate's.
+const questionFiles = (id: number) => `question:${id}`;
+const gateFiles = (id: number) => `gate:${id}`;
+const fieldOf = (pick: Pick | undefined) => pick !== undefined && !("choice" in pick);
+
+const stopFiles = (event: DragEvent) => {
+  if (Array.from(event.dataTransfer?.types ?? []).includes("Files")) event.preventDefault();
+};
 
 const pickText = (pick: Pick | undefined) => (pick === undefined || "choice" in pick ? "" : "own" in pick ? pick.own : pick.skip);
 
@@ -122,6 +135,10 @@ export function WaitingCard({
   const [chosen, setChosen] = useState<string | null>(null);
   const [picks, setPicks] = useState<Picks>({});
   const [comments, setComments] = useState<Record<number, string>>({}); // a gate's, by its id
+  // The files of each field, by questionFiles / gateFiles, kept as the comments are.
+  const [files, setFiles] = useState<Record<string, Attached[]>>({});
+  const keptFiles = useRef(files);
+  keptFiles.current = files;
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<{ key: string; text: string } | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -167,6 +184,20 @@ export function WaitingCard({
       return kept.length === Object.keys(now).length ? now : Object.fromEntries(kept);
     });
   }, [gatesKey]);
+  // Files of questions and gates no longer open go, and so do all of them with the card.
+  useEffect(() => {
+    const still = new Set([...[...open].map(questionFiles), ...gates.map((one) => gateFiles(one.id))]);
+    const gone = Object.keys(keptFiles.current).filter((key) => !still.has(key));
+    if (gone.length === 0) return;
+    gone.forEach((key) => release(keptFiles.current[key]));
+    setFiles((now) => Object.fromEntries(Object.entries(now).filter(([key]) => still.has(key))));
+  }, [openKey, gatesKey]);
+  useEffect(() => () => Object.values(keptFiles.current).forEach(release), []);
+  const filesOf = (key: string) => files[key] ?? [];
+  const setFilesOf =
+    (key: string): SetFiles =>
+    (update) =>
+      setFiles((now) => ({ ...now, [key]: update(now[key] ?? []) }));
   // A quote of the session folds it, so the composer it goes to shows (the focus goes there).
   useEffect(() => onQuote(session, () => setExpanded(false)), [session]);
   // Nothing waits: no card, so not expanded either.
@@ -294,13 +325,30 @@ export function WaitingCard({
     });
   }
 
+  // Send uploads the files of the tab's fields not uploaded yet, then answers with their
+  // names in one request; a failed upload stops it, its chip red.
   async function send(tab: AgentTab) {
     setSending(true);
     setProblem(null);
     try {
+      const keys = tab.questions.filter((one) => fieldOf(pickOf(picks, one))).map((one) => questionFiles(one.id));
+      const all = keys.flatMap(filesOf);
+      // Each update maps the files by their key: applied to each field's own list.
+      const setAll: SetFiles = (update) =>
+        setFiles((now) => ({ ...now, ...Object.fromEntries(keys.map((key) => [key, update(now[key] ?? [])])) }));
+      const uploaded = await uploadFiles(session, all, setAll, "Send again");
+      if ("problem" in uploaded) {
+        setProblem({ key: tab.key, text: uploaded.problem });
+        return;
+      }
+      const names = new Map(all.map((one, n) => [one.key, uploaded.names[n]]));
       await answerQuestions(
         session,
-        tab.questions.map((one) => toReply(one.id, pickOf(picks, one)!)),
+        tab.questions.map((one) => {
+          const pick = pickOf(picks, one)!;
+          const given = fieldOf(pick) ? filesOf(questionFiles(one.id)).map((f) => names.get(f.key)!) : [];
+          return toReply(one.id, pick, given);
+        }),
       );
     } catch (error) {
       setProblem({ key: tab.key, text: error instanceof ApiError ? error.message : String(error) });
@@ -323,6 +371,10 @@ export function WaitingCard({
       className={`waiting-card${expanded ? " expanded" : ""}${folds ? " minimized" : ""}${given !== null ? " sized" : ""}`}
       aria-label={`What waits for you in ${session}`}
       style={given !== null ? ({ "--waiting-height": `${given}px` } as CSSProperties) : undefined}
+      // Files go to a field under them (its own drop zone); dropped elsewhere on the card,
+      // nowhere: neither the composer (it leaves the card alone) nor the browser opens them.
+      onDragOver={stopFiles}
+      onDrop={stopFiles}
     >
       {chat && !folds && !expanded && (
         <Splitter
@@ -441,6 +493,8 @@ export function WaitingCard({
               marked={marked === shown.gate.id}
               comment={comments[shown.gate.id] ?? ""}
               onComment={(text) => setComments((now) => ({ ...now, [shown.gate.id]: text }))}
+              files={filesOf(gateFiles(shown.gate.id))}
+              onFiles={setFilesOf(gateFiles(shown.gate.id))}
             />
           ) : (
             <AgentPanel
@@ -448,6 +502,8 @@ export function WaitingCard({
               tab={shown}
               picks={picks}
               pick={pick}
+              filesOf={(id) => filesOf(questionFiles(id))}
+              setFilesOf={(id) => setFilesOf(questionFiles(id))}
               marked={marked}
               off={sending || stopped}
               problem={problem?.key === shown.key ? problem.text : null}
@@ -460,44 +516,17 @@ export function WaitingCard({
   );
 }
 
-// An own answer or a skip's comment: it grows with its text from CARD_LINES to MOST_LINES,
-// then scrolls, its lower edge kept in view while the human types.
-function AnswerField({
-  label,
-  text,
-  off,
-  change,
-}: {
-  label: string;
-  text: string;
-  off: boolean;
-  change: (value: string) => void;
-}) {
-  const field = useRef<HTMLTextAreaElement>(null);
-  useGrow(field, text, CARD_LINES, MOST_LINES);
-  return (
-    <textarea
-      ref={field}
-      className="waiting-field"
-      rows={CARD_LINES}
-      autoFocus
-      aria-label={label}
-      placeholder={label}
-      value={text}
-      disabled={off}
-      onChange={(event) => change(event.target.value)}
-    />
-  );
-}
-
 // An agent's tab: its questions, numbered when more than one, each with the supervisor's
 // recommendation (Recommendation.tsx), its choices, Other… (a question with a free answer)
-// and Skip; then Send, on once each has an answer.
+// and Skip, whose field (an own answer, a skip's comment) takes files (attachFiles.AnswerBox);
+// then Send, on once each has an answer.
 function AgentPanel({
   session,
   tab,
   picks,
   pick,
+  filesOf,
+  setFilesOf,
   marked,
   off,
   problem,
@@ -507,13 +536,15 @@ function AgentPanel({
   tab: AgentTab;
   picks: Picks;
   pick: (id: number, next: Pick | undefined) => void;
+  filesOf: (id: number) => Attached[];
+  setFilesOf: (id: number) => SetFiles;
   marked: number | null;
   off: boolean;
   problem: string | null;
   send: () => void;
 }) {
   const many = tab.questions.length > 1;
-  const done = tab.questions.filter((one) => answered(pickOf(picks, one))).length;
+  const done = tab.questions.filter((one) => answered(pickOf(picks, one), filesOf(one.id))).length;
   const all = done === tab.questions.length;
   return (
     <>
@@ -574,12 +605,15 @@ function AgentPanel({
                 </button>
               </div>
               {now !== undefined && !("choice" in now) && (
-                <AnswerField
+                <AnswerBox
                   key={"own" in now ? "own" : "skip"}
                   label={"own" in now ? "Your own answer" : "Why you skip it (optional)"}
                   text={text}
                   off={off}
+                  autoFocus
                   change={(value) => pick(question.id, "own" in now ? { own: value } : { skip: value })}
+                  files={filesOf(question.id)}
+                  setFiles={setFilesOf(question.id)}
                 />
               )}
             </li>

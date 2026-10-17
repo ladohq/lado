@@ -4226,7 +4226,8 @@ h3 {
   text-align: center;
 }
 
-.composer .clip {
+/* The paperclip: the composer's and every field that takes files as it does. */
+.composer-clip .clip {
   display: grid;
   flex: none;
   place-items: center;
@@ -4239,19 +4240,43 @@ h3 {
   color: var(--muted);
 }
 
-.composer .clip:hover:not(:disabled) {
+.composer-clip .clip:hover:not(:disabled) {
   background: var(--raised);
   color: var(--ink);
 }
 
-.composer .clip:disabled {
+.composer-clip .clip:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.composer .clip .icon {
+.composer-clip .clip .icon {
   width: 18px;
   height: 18px;
+}
+
+/* A field of the waiting card that takes files (attachFiles.AnswerBox: an own answer, a
+   skip's comment, a gate's comment): the composer's frame, which takes the focus ring, with
+   the chips, the paperclip and the text, which has no frame of its own. */
+.answer-box .composer-clip {
+  align-self: flex-start;
+}
+
+.answer-box textarea,
+.answer .answer-box textarea {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  padding: 4px 2px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.answer-box textarea:focus {
+  border: 0;
+  box-shadow: none;
 }
 
 /* A file attached before Send: an image's thumbnail or its type's tile (with the crossed-out

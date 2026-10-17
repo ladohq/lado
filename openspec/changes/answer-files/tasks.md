@@ -39,7 +39,7 @@
 
 ## 6. Web: the card's fields (D2, D3, D4)
 
-- [ ] 6.1 Other… and Skip fields and a gate's comment take files (clip, paste, drop on the
+- [x] 6.1 Other… and Skip fields and a gate's comment take files (clip, paste, drop on the
   field), kept per question and per gate in the card; Send and a gate's buttons upload,
   then answer with `artifacts`; files-only answers count; "<n> files, <size>" beside a
   gate's buttons; `GatePanel` alone on Flows keeps its own. Check: `cd web && npx vitest

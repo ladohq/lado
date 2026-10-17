@@ -75,13 +75,23 @@ class Guard:
 
     def renew(self) -> str:
         """A new token, in LADO_HOME and for this server at once: the old one is refused
-        from the next request on (a request checked before finishes with it)."""
+        from the next check on. A short request checked before finishes with it; a long
+        connection (an event stream, a terminal) is checked again once the new token's
+        caller can end it (`admits`), so none of the old token outlives the renewal."""
         self.token = token(new=True)
         return self.token
 
     def set_cookie(self, response: Response) -> None:
         """The cookie of the current token on `response`."""
         response.set_cookie(self.cookie, self.token, httponly=True, samesite="strict", path="/")
+
+    def admits(self, conn: HTTPConnection) -> bool:
+        """Whether `conn` holds the token now (`check` without its reason)."""
+        try:
+            self.check(conn)
+        except Refused:
+            return False
+        return True
 
     def _valid(self, given: str | None) -> bool:
         return given is not None and secrets.compare_digest(given.encode(), self.token.encode())

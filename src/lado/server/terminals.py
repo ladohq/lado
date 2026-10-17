@@ -66,6 +66,13 @@ async def serve(ws: WebSocket, guard: Guard, session: str, agent: str, mode: str
     try:
         await ws.accept()
         OPEN.add(ws)
+        # Checked again where `close_all` finds it: a new token made while the terminal
+        # opened came after the first check and before the socket was there to close.
+        try:
+            guard.check(ws)
+        except Refused as refused:
+            await _say_and_close(ws, DENIED, refused.detail)
+            return
         await ws.send_json(_size(term.size))
         await _run(ws, term)
     finally:
@@ -84,6 +91,10 @@ async def close_all() -> None:
 async def _end(ws: WebSocket, code: int, reason: str) -> None:
     """Accept only to say why it ends: the browser cannot read a refused upgrade."""
     await ws.accept()
+    await _say_and_close(ws, code, reason)
+
+
+async def _say_and_close(ws: WebSocket, code: int, reason: str) -> None:
     await ws.send_json({"type": "error", "reason": reason})
     await ws.close(code, reason.encode()[:REASON_BYTES].decode(errors="ignore"))
 

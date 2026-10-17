@@ -162,7 +162,8 @@ later desktop app and a later cloud setup; the UI is its client.
   old token or the new one), swapped in the `Guard` at once (`Guard.renew`); every open
   event stream ends (`Hub.end_streams`) and every terminal socket closes with 4500
   (`terminals.close_all`), so each reconnects and is checked against the token its browser
-  has; the answer sets the asking browser's cookie and is the new `AccessInfo`. Others get
+  has (a stream or terminal checked before the swap checks again once subscribed or
+  registered, so none escapes); the answer sets the asking browser's cookie and is the new `AccessInfo`. Others get
   401, a terminal 4401. `GET /api/access` (under the token, `no-store`, no CORS) is
   `AccessInfo`: `link` (`http://<address>:<port>/?token=<token>`, or null), `reason`
   (`loopback`, `no-address`, `unknown`), `port`, `container`, `listen` (`LADO_LISTEN` in a

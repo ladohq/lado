@@ -428,13 +428,19 @@ async def check(hub: Hub) -> None:
         raise Unavailable(f"reading changes failed: {error}") from error
 
 
-async def stream(hub: Hub, position: int | None) -> AsyncIterator[str]:
+async def stream(
+    hub: Hub, position: int | None, admitted: Callable[[], bool] = lambda: True
+) -> AsyncIterator[str]:
     """One stream's text. With no position, or one the source no longer has, it starts with
     `reset` at the latest position, taken before it is sent: the UI loads its data on reset
     and gets every change after it. From a position the source has, it sends what came
-    after it, then everything derived as it is now."""
+    after it, then everything derived as it is now. `admitted` checks the token again once
+    the stream is subscribed, where a new token's `end_streams` reaches it: one made between
+    the request's check and the subscription ends it here."""
     queue = await hub.subscribe()
     try:
+        if not admitted():
+            return
         source = hub.source
         changes = None if position is None else await to_thread.run_sync(source.after, position)
         if changes is None:

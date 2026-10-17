@@ -17,6 +17,7 @@ import httpx
 import pytest
 import uvicorn
 from agent_helpers import install_kit, previous_schema, spoil_snapshot
+from anyio import to_thread
 from event_stream import EventStream
 
 from lado import artifacts, kits, loop, runs, runtime, state
@@ -612,6 +613,37 @@ def test_a_new_token_ends_the_open_streams_and_the_hub_serves_new_ones(server, s
     assert EventStream(f"{server}/api/events", old).status == 401
     again = streams()
     assert again.status == 200 and again.next().event == "reset"
+
+
+def test_a_stream_checked_before_a_new_token_but_not_yet_open_ends_too(
+    server, streams, monkeypatch
+):
+    """The token is checked before the stream subscribes to the hub: a new token between
+    the two would not reach it, and a browser logged out would read the feed on."""
+    old = auth.token()
+    check = feed.check
+    renewed = []
+
+    async def check_then_renew(hub):
+        await check(hub)
+        if not renewed:
+            renewed.append(
+                await to_thread.run_sync(
+                    lambda: (
+                        httpx.post(
+                            f"{server}/api/access/new-token",
+                            headers={"Authorization": f"Bearer {old}"},
+                            timeout=10,
+                        ).status_code
+                    )
+                )
+            )
+
+    monkeypatch.setattr(feed, "check", check_then_renew)
+    stream = streams()
+    assert stream.status == 200 and renewed == [200]
+    assert stream.closed.wait(2), "the stream of the old token is still open"
+    assert stream.quiet(0.1) == []  # not even its reset
 
 
 def test_a_stream_that_starts_after_the_shutdown_began_ends_at_once():

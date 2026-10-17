@@ -103,8 +103,12 @@ link, and the UI cannot either, as it never sees the token.
     0600, a stale tmp removed first), then `os.replace`s it. A reader sees the old file or
     the new one, never none.
   - `Guard.renew()` makes it and swaps `self.token`. FastAPI handlers run in one process;
-    a request in flight checked before the swap finishes with the old token, which is
-    harmless.
+    a short request in flight checked before the swap finishes with the old token. A long
+    connection is not: an event stream or a terminal checked before the swap but not yet
+    subscribed to the hub or in the terminal registry would escape the steps below. So
+    each checks the token again right where those steps reach it, with no `await` between:
+    the stream after `Hub.subscribe` (`Guard.admits`; refused, it ends), the terminal after
+    it is added to the registry (refused, it closes with 4401).
   - `POST /api/access/new-token` (`guard.changes`) then:
     1. ends the open change-feed streams with `Hub.end_streams()`, which sends the end to
        every queue but leaves the hub open (unlike `close`);

@@ -718,7 +718,7 @@ def create_app(
         responses={200: {"content": {"text/event-stream": {}}}},
     )
     async def events(
-        after: int | None = None, last_event_id: int | None = Header(None)
+        request: Request, after: int | None = None, last_event_id: int | None = Header(None)
     ) -> StreamingResponse:
         """The change feed as Server-Sent Events (lado.server.feed). The position is the
         Last-Event-ID header (the browser's own reconnect) or, without it, `after`."""
@@ -728,7 +728,7 @@ def create_app(
         except feed.Unavailable as error:
             raise HTTPException(503, str(error)) from error
         return StreamingResponse(
-            feed.stream(hub, position),
+            feed.stream(hub, position, lambda: guard.admits(request)),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )

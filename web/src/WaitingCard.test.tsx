@@ -798,6 +798,17 @@ test("Other… of files only is an answer: Send uploads them, then answers with 
   expect(uploads).toEqual(["shot.png"]);
 });
 
+test("the card loads the limits: a file attached as soon as Other… shows has its type and thumbnail", async () => {
+  show({ questions: [question(5, "w1")] });
+  await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([path]) => path === "/api/limits")).toBe(true));
+  await act(async () => {}); // the limits are in
+  fireEvent.click(within(questionItem(5)).getByRole("button", { name: "Other…" }));
+  const input = questionItem(5).querySelector("input[type=file]")!;
+  fireEvent.change(input, { target: { files: [file("shot.png", 10, "image/png")] } });
+  expect(questionItem(5).querySelector(".file-chip img")?.getAttribute("src")).toBe("blob:thumb-1");
+  expect(questionItem(5).querySelector(".file-unseen")).toBeNull();
+});
+
 test("the files stay with their question from Other… to Skip and through a switch of tabs; a question closed elsewhere drops them", async () => {
   const gates = [gate(1, "task/lad-27", "2026-10-03T12:00:30.000Z")];
   const view = show({ questions: [question(5, "w1")], gates });

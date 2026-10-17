@@ -277,7 +277,9 @@ export function ClipButton({ limits, disabled, attach }: { limits: Limits | null
 // comment, a gate's comment): the composer's frame with the files' chips, the paperclip and
 // the text, which grows with it from CARD_LINES to MOST_LINES. Files are attached by the
 // paperclip, a paste while the focus is in it, or a drop on its frame, which is its own drop
-// zone; a file the limits refuse is named under it. `files` are kept by who shows it.
+// zone; a file the limits refuse is named under it. `files` are kept by who shows it, and
+// the `limits` loaded with it, so a file attached as soon as the field shows is marked by
+// them.
 export function AnswerBox({
   label,
   text,
@@ -287,6 +289,7 @@ export function AnswerBox({
   autoFocus = false,
   files,
   setFiles,
+  limits,
 }: {
   label: string;
   text: string;
@@ -296,12 +299,12 @@ export function AnswerBox({
   autoFocus?: boolean;
   files: Attached[];
   setFiles: SetFiles;
+  limits: Limits | null;
 }) {
-  const limits = useLimits();
   const [problem, setProblem] = useState<string | null>(null);
   const frame = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
-  useGrow(field, text, CARD_LINES, MOST_LINES);
+  useGrow(field, text, CARD_LINES, MOST_LINES, frame);
   const attach = (given: File[]) => {
     const { added, problem: refused } = attachFiles(given, files.length, limits);
     setProblem(refused);

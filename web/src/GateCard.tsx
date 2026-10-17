@@ -7,8 +7,8 @@
 // gate, whoever answered it.
 import { useState, type ReactNode } from "react";
 
-import { answerGate, ApiError, HUMAN, type GateInfo, type RunEventInfo, type RunInfo } from "./api";
-import { AnswerBox, filesLine, uploadFiles, useOwnFiles, type Attached, type SetFiles } from "./attachFiles";
+import { answerGate, ApiError, HUMAN, type GateInfo, type Limits, type RunEventInfo, type RunInfo } from "./api";
+import { AnswerBox, filesLine, uploadFiles, useLimits, useOwnFiles, type Attached, type SetFiles } from "./attachFiles";
 import { size } from "./artifacts";
 import { KindIcon } from "./ArtifactView";
 import { Attachments, useView } from "./Attachments";
@@ -80,6 +80,7 @@ export function GatePanel({
   onComment,
   files: keptFiles,
   onFiles,
+  limits: given,
 }: {
   session: string;
   gate: GateInfo;
@@ -91,7 +92,10 @@ export function GatePanel({
   onComment?: (comment: string) => void;
   files?: Attached[];
   onFiles?: SetFiles;
+  limits?: Limits | null; // the card's; alone, the panel loads its own
 }) {
+  const loaded = useLimits();
+  const limits = given !== undefined ? given : loaded;
   const [own, setOwn] = useState("");
   const comment = kept ?? own;
   const setComment = onComment ?? setOwn;
@@ -138,6 +142,7 @@ export function GatePanel({
       locked={busy}
       files={files}
       setFiles={setFiles}
+      limits={limits}
     />
   );
   const buttons = [

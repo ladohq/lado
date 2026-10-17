@@ -16,8 +16,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { useSearchParams } from "react-router";
 
-import { answerQuestions, ApiError, type GateInfo, type MessageInfo, type Reply, type RunInfo } from "./api";
-import { AnswerBox, release, uploadFiles, type Attached, type SetFiles } from "./attachFiles";
+import { answerQuestions, ApiError, type GateInfo, type Limits, type MessageInfo, type Reply, type RunInfo } from "./api";
+import { AnswerBox, release, uploadFiles, useLimits, type Attached, type SetFiles } from "./attachFiles";
 import { Attachments } from "./Attachments";
 import { Body } from "./ChatText";
 import { avatar } from "./FeedRow";
@@ -139,6 +139,7 @@ export function WaitingCard({
   const [files, setFiles] = useState<Record<string, Attached[]>>({});
   const keptFiles = useRef(files);
   keptFiles.current = files;
+  const limits = useLimits(); // with the card, before any field shows
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<{ key: string; text: string } | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -495,6 +496,7 @@ export function WaitingCard({
               onComment={(text) => setComments((now) => ({ ...now, [shown.gate.id]: text }))}
               files={filesOf(gateFiles(shown.gate.id))}
               onFiles={setFilesOf(gateFiles(shown.gate.id))}
+              limits={limits}
             />
           ) : (
             <AgentPanel
@@ -504,6 +506,7 @@ export function WaitingCard({
               pick={pick}
               filesOf={(id) => filesOf(questionFiles(id))}
               setFilesOf={(id) => setFilesOf(questionFiles(id))}
+              limits={limits}
               marked={marked}
               off={sending || stopped}
               problem={problem?.key === shown.key ? problem.text : null}
@@ -527,6 +530,7 @@ function AgentPanel({
   pick,
   filesOf,
   setFilesOf,
+  limits,
   marked,
   off,
   problem,
@@ -538,6 +542,7 @@ function AgentPanel({
   pick: (id: number, next: Pick | undefined) => void;
   filesOf: (id: number) => Attached[];
   setFilesOf: (id: number) => SetFiles;
+  limits: Limits | null;
   marked: number | null;
   off: boolean;
   problem: string | null;
@@ -614,6 +619,7 @@ function AgentPanel({
                   change={(value) => pick(question.id, "own" in now ? { own: value } : { skip: value })}
                   files={filesOf(question.id)}
                   setFiles={setFilesOf(question.id)}
+                  limits={limits}
                 />
               )}
             </li>

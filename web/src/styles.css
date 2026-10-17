@@ -4258,6 +4258,10 @@ h3 {
 /* A field of the waiting card that takes files (attachFiles.AnswerBox: an own answer, a
    skip's comment, a gate's comment): the composer's frame, which takes the focus ring, with
    the chips, the paperclip and the text, which has no frame of its own. */
+.answer-box {
+  scroll-margin: var(--ring-room); /* its focus ring in view as its field grows (fieldHeight.ts) */
+}
+
 .answer-box .composer-clip {
   align-self: flex-start;
 }
@@ -6977,6 +6981,13 @@ del.kit-mcp-name {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
+}
+
+/* A chip's wrapper narrows to its frame, so a long name ends in an ellipsis inside a narrow
+   card (an opened gate's answer) instead of running out of it. */
+.chips > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chip {

@@ -2,6 +2,9 @@
 
 ## 0.41.0 (unreleased)
 
+- The UI server no longer lets anyone in when `LADO_HOME/server-token` is empty (left by a
+  failed write, e.g. a full disk): an empty file gets a new token, the token is written
+  atomically, and an empty token is always refused.
 - The web UI on a phone: on a touch screen no wider than 600 px or no higher than 500 px
   it picks a phone layout by itself. The rail opens from a Menu button (☰, with the Needs
   you count); the top bar is one line, and on a session's page its title opens a sheet with

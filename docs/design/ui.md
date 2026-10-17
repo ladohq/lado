@@ -144,7 +144,11 @@ later desktop app and a later cloud setup; the UI is its client.
   lock is held; with the lock free it is stale and removed, and `lado server stop` kills
   nobody. A second server refuses and names the first one's address.
 - Token: `LADO_HOME/server-token` (owner only), made on the first start, replaced with
-  `lado server --new-token`. The link `<url>/?token=<token>` (`url` from server.json) sets the
+  `lado server --new-token`. An empty or whitespace-only file counts as missing and gets a
+  new token, and the file is written atomically (a temporary file in `LADO_HOME`, then a
+  rename), so a failed write (a full disk) leaves the old file and stops the command with
+  `cannot write the UI server's token to <path>: <reason>`; an empty token (Bearer,
+  `?token=`, cookie) is always 401. The link `<url>/?token=<token>` (`url` from server.json) sets the
   cookie (HttpOnly, SameSite=Strict, Path=/) and redirects (303) to `/`, so the token leaves
   the address bar. Every page of the UI takes `?token=` the same way (decided in task 2):
   `/sessions/lado/activity?token=…` sets the cookie and redirects to

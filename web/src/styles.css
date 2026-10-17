@@ -8030,6 +8030,21 @@ del.kit-mcp-name {
   overflow-y: auto;
 }
 
+/* The terminals (Terminals.tsx): none until one is opened, then over the whole screen, the
+   top bar too, as the narrow window's expanded panel. */
+:root[data-phone] .terminals[hidden] {
+  display: none;
+}
+
+:root[data-phone] .terminals.expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  width: auto;
+  height: auto;
+  border: 0;
+}
+
 /* The session's tabs without their icons, smaller: all four fit 360 px. The Kits page's
    tabs take the same. */
 :root[data-phone] .session-tabs .tab-item,

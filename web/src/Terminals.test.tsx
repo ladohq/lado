@@ -9,6 +9,7 @@ import {
   columnWidth,
   FakeEventSource,
   FakeResizeObserver,
+  FakeScreen,
   FakeSocket,
   FakeXterm,
   setVisible,
@@ -58,7 +59,7 @@ beforeEach(() => {
   vi.stubGlobal("WebSocket", FakeSocket);
   vi.stubGlobal("EventSource", FakeEventSource);
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: narrow && query.includes("max-width"),
+    matches: narrow && query.includes("max-width") && !query.includes("pointer"), // a mouse's window
     media: query,
     addEventListener: () => {},
     removeEventListener: () => {},
@@ -474,6 +475,54 @@ test("Esc restores an expanded terminal to view; in control it goes to the agent
   fireEvent.keyDown(within(panel()).getByRole("button", { name: "Restore terminal" }), { key: "Escape" });
   expect(panel().classList.contains("expanded")).toBe(false);
   expect(control.closed).toBe(false);
+});
+
+// On a phone (docs/design/ui.md, Phone layout): no panel or strip; a terminal over the screen
+
+// The panel, also while hidden.
+const aside = () => document.querySelector<HTMLElement>('aside[aria-label="Terminals"]')!;
+
+test("on a phone no panel shows until a chip opens the terminal over the screen; Close terminal puts it away", async () => {
+  localStorage.setItem("lado.terminals", JSON.stringify({ width: 500, collapsed: false }));
+  FakeScreen.phone();
+  await open();
+  expect(aside().hidden).toBe(true);
+  expect(within(aside()).queryByRole("button", { name: "Terminals", hidden: true })).toBeNull(); // no strip
+  expect(FakeSocket.all).toHaveLength(0); // nothing shown, nothing opened
+  expect((await chip("supervisor")).getAttribute("aria-pressed")).toBe("false");
+
+  fireEvent.click(await chip("supervisor"));
+  expect(panel().hidden).toBe(false);
+  expect(panel().classList.contains("expanded")).toBe(true);
+  expect(tab("supervisor").getAttribute("aria-selected")).toBe("true");
+  expect(socketOf("supervisor", "view")).toHaveLength(1);
+  expect(within(panel()).queryByRole("button", { name: /^(Expand|Restore) terminal$/ })).toBeNull();
+  expect(within(panel()).queryByRole("button", { name: "Collapse terminals" })).toBeNull();
+  expect(within(panel()).queryByRole("separator")).toBeNull(); // no edge
+
+  fireEvent.click(within(panel()).getByRole("button", { name: "Close terminal" }));
+  expect(aside().hidden).toBe(true);
+  expect((await chip("supervisor")).getAttribute("aria-pressed")).toBe("false");
+  expect(localStorage.getItem("lado.terminals")).toBe(JSON.stringify({ width: 500, collapsed: false })); // untouched
+});
+
+test("on a phone Esc closes the terminal, but goes to the agent the human controls", async () => {
+  localStorage.setItem("lado.askControl", "never");
+  FakeScreen.phone();
+  await open();
+  fireEvent.click(await chip("w1"));
+  expect(aside().hidden).toBe(false);
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(aside().hidden).toBe(true);
+
+  fireEvent.click(await chip("w1"));
+  act(() => socketOf("w1", "view")[0].open());
+  const view = within(panel()).getByRole("tabpanel", { name: "w1" });
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  const [control] = socketOf("w1", "control");
+  act(() => control.open());
+  fireEvent.keyDown(FakeXterm.all[FakeXterm.all.length - 1].element!, { key: "Escape" });
+  expect(panel().hidden).toBe(false);
 });
 
 // The tabs: their agents' status, many of them, their tooltip

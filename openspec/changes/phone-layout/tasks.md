@@ -28,7 +28,7 @@ Design doc: `docs/superpowers/specs/2026-10-18-phone-layout-design.md`.
 
 ## 6. Terminals over the screen (D7)
 
-- [ ] 6.1 No panel or strip on a phone, opened expanded, Close terminal; vitest. Check:
+- [x] 6.1 No panel or strip on a phone, opened expanded, Close terminal; vitest. Check:
   `cd web && npx vitest run src/Terminals.test.tsx`, `make web`.
 
 ## 7. Tooltips on a tap (D8)

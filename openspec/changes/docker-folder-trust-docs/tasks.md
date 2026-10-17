@@ -42,15 +42,15 @@
 
 ## 3. Checks
 
-- [ ] 3.1 `make lint`, `make test` green (counts in the build report);
+- [x] 3.1 `make lint`, `make test` green (counts in the build report);
   `openspec validate --specs --strict` green.
-- [ ] 3.2 No `docker volume prune`, `docker system prune` or other global Docker command
+- [x] 3.2 No `docker volume prune`, `docker system prune` or other global Docker command
   added to any document: `git diff origin/main -- README.md docs/ | grep -n prune` finds
   nothing.
 
 ## 4. Manual check for the human (put these steps in the pull request's description)
 
-- [ ] 4.1 The pull request's description carries these steps, in English:
+- [x] 4.1 The pull request's description carries these steps, in English:
   1. Read the docs from the branch without switching your checkout:
      `git -C ~/Projects/lado fetch origin && git -C ~/Projects/lado worktree add
      /tmp/lad-87-docs origin/fix/lad-87-docker-folder-trust`; open

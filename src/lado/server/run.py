@@ -430,6 +430,18 @@ def health(url: str, timeout: float = 1) -> dict | None:
     return None
 
 
+def access(url: str, token: str, timeout: float = 2) -> dict | None:
+    """What the server at `url` answers on /api/access with the token: the link for another
+    device by the server's environment; None when it does not answer it (an older server,
+    an error)."""
+    ask = urllib.request.Request(f"{url}/api/access", headers={"Authorization": f"Bearer {token}"})
+    with contextlib.suppress(OSError, ValueError):
+        with urllib.request.urlopen(ask, timeout=timeout) as answer:
+            said = json.load(answer)
+            return said if isinstance(said, dict) else None
+    return None
+
+
 def _healthy(url: str) -> bool:
     said = health(url)
     return bool(said and said.get("ok") is True)

@@ -741,17 +741,29 @@ def test_ui_with_a_name_of_the_running_servers_host_takes_it(capsys):
         assert capsys.readouterr().out == f"http://127.0.0.1:8001/?token={auth.token()}\n"
 
 
+def answers_access(monkeypatch, link: str | None) -> list[tuple[str, str]]:
+    """The running server's /api/access, made up: its link (None: no link); the asks."""
+    asked = []
+
+    def access(url, token, timeout=2):
+        asked.append((url, token))
+        return {"link": link, "reason": None if link else "unknown"}
+
+    monkeypatch.setattr(server_run, "access", access)
+    return asked
+
+
 def test_ui_without_host_takes_a_server_open_to_other_machines_and_warns(capsys, monkeypatch):
-    monkeypatch.setattr(server_run, "network_address", lambda: None)
-    monkeypatch.setattr(socket, "gethostname", lambda: "box")
+    token = auth.token()
+    asked = answers_access(monkeypatch, f"http://192.168.1.23:8001/?token={token}")
     with server_run.take_lock():
         write_info(8001, host="0.0.0.0")
         assert cli.main(["ui", "--no-open"]) == 0
         out, err = capsys.readouterr()
-    token = auth.token()
+    assert asked == [("http://127.0.0.1:8001", token)]
     assert out.splitlines() == [
         f"http://127.0.0.1:8001/?token={token}",
-        f"From another machine: http://box:8001/?token={token} (or this host's address)",
+        f"From another machine: http://192.168.1.23:8001/?token={token}",
     ]
     assert "open to other machines" in err and "unencrypted" in err
 
@@ -759,21 +771,33 @@ def test_ui_without_host_takes_a_server_open_to_other_machines_and_warns(capsys,
 def test_ui_opens_the_local_link_and_prints_the_one_for_other_machines(capsys, monkeypatch):
     opened = []
     monkeypatch.setattr("webbrowser.open", opened.append)
+    token = auth.token()
+    answers_access(monkeypatch, f"http://192.0.2.7:8001/?token={token}")
     with server_run.take_lock():
         write_info(8001, host="192.0.2.7")
         assert cli.main(["ui"]) == 0
         out, err = capsys.readouterr()
-    token = auth.token()
     assert opened == [f"http://192.0.2.7:8001/?token={token}"]
     assert out.splitlines() == [
         f"Opening http://192.0.2.7:8001/?token={token}",
-        f"From another machine: http://192.0.2.7:8001/?token={token} (or this host's address)",
+        f"From another machine: http://192.0.2.7:8001/?token={token}",
     ]
     assert "listens on 192.0.2.7:8001" in err
 
 
+def test_ui_prints_no_line_for_other_machines_when_the_server_does_not_answer(capsys, monkeypatch):
+    """An older server (no /api/access) at an upgrade, or an error: the local link still."""
+    monkeypatch.setattr(server_run, "access", lambda url, token, timeout=2: None)
+    with server_run.take_lock():
+        write_info(8001, host="0.0.0.0")
+        assert cli.main(["ui", "--no-open"]) == 0
+        out, _ = capsys.readouterr()
+    assert out == f"http://127.0.0.1:8001/?token={auth.token()}\n"
+
+
 def test_ui_in_a_container_prints_only_the_link(capsys, monkeypatch):
     monkeypatch.setenv("LADO_CONTAINER", "1")
+    answers_access(monkeypatch, None)
     with server_run.take_lock():
         write_info(8765, host="0.0.0.0")
         assert cli.main(["ui", "--no-open"]) == 0
@@ -781,10 +805,40 @@ def test_ui_in_a_container_prints_only_the_link(capsys, monkeypatch):
     assert out == f"http://127.0.0.1:8765/?token={auth.token()}\n"
     assert "lado: note: the LADO server runs in a container" in err
     assert "open to other machines" not in err
+    assert "From another machine" not in err
+
+
+def test_ui_in_a_container_with_a_link_keeps_stdout_the_local_link(capsys, monkeypatch):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    monkeypatch.setenv("LADO_LISTEN", "0.0.0.0")
+    token = auth.token()
+    answers_access(monkeypatch, f"http://kaos.local:8765/?token={token}")
+    with server_run.take_lock():
+        write_info(8765, host="0.0.0.0")
+        assert cli.main(["ui", "--no-open"]) == 0
+        out, err = capsys.readouterr()
+        assert cli.main(["ui"]) == 0
+        shown, _ = capsys.readouterr()
+    assert out == f"http://127.0.0.1:8765/?token={token}\n"
+    assert f"From another machine: http://kaos.local:8765/?token={token}\n" in err
+    assert "listens on 0.0.0.0:8765, open to other machines" in err
+    assert shown.splitlines() == [
+        f"http://127.0.0.1:8765/?token={token}",
+        "Open it in your browser on the host.",
+        f"From another machine: http://kaos.local:8765/?token={token}",
+    ]
+
+
+def test_access_is_none_when_the_server_does_not_answer_it():
+    with socket.socket() as closed:
+        closed.bind(("127.0.0.1", 0))
+        port = closed.getsockname()[1]
+    assert server_run.access(f"http://127.0.0.1:{port}", "t", timeout=1) is None
 
 
 def test_ui_in_a_container_opens_no_browser(capsys, monkeypatch):
     monkeypatch.setenv("LADO_CONTAINER", "1")
+    answers_access(monkeypatch, None)
     opened = []
     monkeypatch.setattr("webbrowser.open", opened.append)
     with server_run.take_lock():

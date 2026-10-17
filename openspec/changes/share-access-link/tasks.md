@@ -29,12 +29,12 @@ Tests first in each section; each section is one commit. The plan with the code 
 
 ## 4. lado ui asks the server
 
-- [ ] 4.1 Unit tests of `lado ui`: the remote line's stream outside and in a container,
+- [x] 4.1 Unit tests of `lado ui`: the remote line's stream outside and in a container,
   no line when the server does not answer. Integration (layer 2,
   `tests/integration/test_server_process.py`): the line comes from the server's
   environment, not the shell's; a new token ends an open event stream and the old
   cookie. Plan, Task 4.
-- [ ] 4.2 `server_run.access` and `cli._ui` (D1).
+- [x] 4.2 `server_run.access` and `cli._ui` (D1).
   `uv run pytest -m integration -n auto tests/integration/test_server_process.py`.
 
 ## 5. Compose and the install guide

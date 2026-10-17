@@ -3,7 +3,7 @@
 Pull request #93 `fix/lad-93-mise-toolchains` → `main`. Scale: tweak, reviewed for
 precision and widened in round 1, as the diff changes `src/lado/runtime.py` (the
 container paragraph of LADO's instructions) and data on the home volume. Head reviewed
-last: `570e878` (= the remote head). `runtime.py` changed: live tests were not run.
+last: `ec25c01` (= the remote head). `runtime.py` changed: live tests were not run.
 
 ## Rounds
 
@@ -23,6 +23,11 @@ last: `570e878` (= the remote head). `runtime.py` changed: live tests were not r
   conflict was CHANGELOG.md's 0.41.0 section, both sides kept; nothing from `main` touches
   `docker/`, `runtime.py`, `agent_env.py` or the image's tests. No new findings
   (https://github.com/ladohq/lado/pull/93#issuecomment-6243045144).
+- **Round 5, local** (`570e878..ec25c01`, precision, after this report's update and the
+  second merge of `main`, which brought LAD-97): the only conflict was again CHANGELOG.md's
+  0.41.0 section, both sides kept; the pull request's diff against `main` is the same 18
+  files, LAD-97 is not in it and does not touch the image. No new findings
+  (https://github.com/ladohq/lado/pull/93#issuecomment-6243290105).
 
 No external round after round 1: the cap of 1 was used there.
 
@@ -40,18 +45,19 @@ less.
 | m3 | 1 | external remark 2 | a nested login shell adds the paths to `PATH` twice | confirmed | minor | declined: harmless (`docker/profile.sh:7`) |
 | H2 | 3 | the human's manual check, finding 2 | mise read the `go` line of go.mod: a deprecation `WARN` on every `go` call and Go picked by go.mod over `.go-version` (1.23.12 instead of 1.23.4) | confirmed | important | fixed in `571d87d`; probe on the pinned mise 2026.10.7: `go@1.23.4`, no `WARN`; a go.mod with only `toolchain go1.22.5` gives `go@1.22.5`. Tests: `tests/test_docker.py` (the setting), `tests/container/test_toolchains.py` (go.mod in `other-go`, no `WARN` from `go build` and `go version`) |
 
-Metrics: 4 local rounds, 1 external, 0 substitutes. Local confirmed 2 (minor), refuted 1;
+Metrics: 5 local rounds, 1 external, 0 substitutes. Local confirmed 2 (minor), refuted 1;
 external confirmed 1 (minor), refuted 1; from the human's manual check confirmed 1
 (important). Findings in code changed by the developer's cleanup: 0.
 
 ## Checks
 
-- CI on `570e878`: run 39078398841 green with `ci-ok` (lint, unit, integration, ui,
-  container, smoke); on `571d87d`: run 39077141661, 23/23 green.
-- `openspec validate --specs --strict` after the merge of `main`: 34 passed.
-- `make lint` and `make test` were not rerun locally in round 4 (the delta was CHANGELOG
-  and the archive); CI ran them, and the developer's `make test` after the merge: 3418
-  passed.
+- CI on `ec25c01`: run 39079780445 green with `ci-ok` (lint, unit, integration, ui,
+  container, smoke); before it on `570e878` run 39078398841 and on `571d87d` run
+  39077141661, both green.
+- `openspec validate --specs --strict` after the second merge of `main`: 35 passed.
+- `make lint` and `make test` were not rerun locally in rounds 4 and 5 (the delta was
+  CHANGELOG, the archive and this report); CI ran them, and the developer's `make test`
+  after the first merge: 3418 passed.
 - The container tests were run by CI and by the developer (6 passed); the reviewer ran
   mise probes on the official image of the same digest.
 
@@ -66,5 +72,5 @@ external confirmed 1 (minor), refuted 1; from the human's manual check confirmed
 
 - An empty `~/.lado/server-token` lets anyone into the UI without a token (not from this
   pull request; the same on `main`): `auth.token()` (`src/lado/server/auth.py:30-40`)
-  returns `""` for an empty file and `Guard._valid` (`auth.py:70-71`) accepts an empty
-  token. Proposed P1; a tracker task only with the human's yes.
+  returned `""` for an empty file and `Guard._valid` (`auth.py:70-71`) accepted an empty
+  token. Filed as LAD-97 with the human's yes and fixed in `main` (pull request #96).

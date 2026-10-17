@@ -33,7 +33,7 @@
 
 ## 5. Web: the shared file handling (D1, D3)
 
-- [ ] 5.1 The composer's file handling moves into one module (`attachFiles.tsx`); the
+- [x] 5.1 The composer's file handling moves into one module (`attachFiles.tsx`); the
   composer uses it, its drop ignoring the waiting card. Check: `cd web && npx vitest run
   attachFiles Composer` with `Composer.test.tsx` unchanged.
 

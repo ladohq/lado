@@ -45,13 +45,16 @@
 
 FROM ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 AS uv
 FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS node
+FROM jdxcode/mise:2026.10.7@sha256:66d03744d53f7da73eb3065b166151d48314c652985bdc420881376a4458aa67 AS mise
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 
 # tmux 3.3a and git 2.39 from Debian 12; tini reaps what tmux and the agents leave; gh and
-# the ssh client for the agents' pushes; curl fetches gh's keyring (a binary .gpg).
+# the ssh client for the agents' pushes; curl fetches gh's keyring (a binary .gpg); make,
+# gcc and g++ build the projects' Makefiles, Go's cgo and native modules of Node and Python.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates curl git tmux tini procps less openssh-client locales sudo \
+      make gcc g++ libc6-dev \
  && sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && locale-gen \
  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -72,6 +75,10 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # Claude Code's login). /projects is LADO_REPOS, the human's projects.
 COPY --from=uv /uv /usr/local/bin/uv
 COPY docker/profile.sh /etc/profile.d/lado.sh
+# mise, root's so no agent replaces it, with the image's settings (docker/mise.toml); the
+# toolchains it installs, its config and cache stay at its defaults on the home volume.
+COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise
+COPY docker/mise.toml /etc/mise/config.toml
 RUN useradd --create-home --uid 1000 --shell /bin/bash lado \
  && mkdir -p /opt/uv /opt/agents /projects \
  && chown lado:lado /opt/uv /opt/agents /projects
@@ -114,14 +121,13 @@ RUN git config --system --add safe.directory '*' \
 
 USER lado
 WORKDIR /home/lado
-ENV UV_TOOL_DIR=/opt/uv/tools \
-    UV_TOOL_BIN_DIR=/opt/uv/bin \
-    UV_PYTHON_INSTALL_DIR=/opt/uv/python \
-    NPM_CONFIG_PREFIX=/opt/agents
 
-# Installed as lado: a chown afterwards would copy the layer.
+# Installed as lado: a chown afterwards would copy the layer. /opt only here and in the
+# CLIs' installs below: at run time an install goes to the home volume (NPM_CONFIG_PREFIX,
+# uv's defaults under ~/.local).
 COPY --chown=lado:lado dist/lado-*.whl /tmp/wheel/
-RUN uv tool install --python 3.13 /tmp/wheel/lado-*.whl \
+RUN UV_TOOL_DIR=/opt/uv/tools UV_TOOL_BIN_DIR=/opt/uv/bin UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+    uv tool install --python 3.13 /tmp/wheel/lado-*.whl \
  && rm -rf /tmp/wheel /home/lado/.cache
 
 # The four agent CLIs at the versions LADO is tested with (scripts/smoke_ci.py's PINS;
@@ -142,7 +148,8 @@ ARG KILO_VERSION=7.8.8
 RUN npm install -g --prefix /opt/agents "@kilocode/cli@${KILO_VERSION}" \
  && npm cache clean --force
 
-ENV PATH=/opt/uv/bin:/opt/agents/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+ENV PATH=/opt/uv/bin:/opt/agents/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/lado/.local/bin:/home/lado/.local/share/mise/shims \
+    NPM_CONFIG_PREFIX=/home/lado/.local \
     SHELL=/bin/bash \
     LANG=en_US.UTF-8 \
     LADO_CONTAINER=1 \

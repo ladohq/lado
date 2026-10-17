@@ -57,7 +57,7 @@ Tests first in each section; each section is one commit. The plan with the code 
 
 ## 7. UI end to end
 
-- [ ] 7.1 `tests/ui/test_share_access.py` (layer 4): the dialog with a link, Copy link,
+- [x] 7.1 `tests/ui/test_share_access.py` (layer 4): the dialog with a link, Copy link,
   New link with a second context logged out, loopback, no-address; a screenshot of each,
   attached as run artifacts. `uv run pytest -m ui -n0 tests/ui/test_share_access.py`.
   Plan, Task 7.

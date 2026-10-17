@@ -70,6 +70,6 @@ Tests first in each section; each section is one commit. The plan with the code 
 
 ## 9. Regression run
 
-- [ ] 9.1 `make lint`; `make test`; the integration and UI files above with their
+- [x] 9.1 `make lint`; `make test`; the integration and UI files above with their
   markers; `make web`; `openspec validate share-access-link --strict`;
   `openspec validate --specs --strict`.

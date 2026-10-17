@@ -86,7 +86,9 @@ def test_a_computer_keeps_its_layout(device, server, repo, shot, size):
     expect(rail(page)).to_be_visible()
     expect(page.get_by_role("button", name=MENU)).to_have_count(0)
     expect(top_bar(page).get_by_role("button", name="Copy path")).to_be_visible()  # the facts
-    expect(page.get_by_role("navigation", name="Sessions", exact=True)).to_be_visible()  # list or strip
+    expect(
+        page.get_by_role("navigation", name="Sessions", exact=True)
+    ).to_be_visible()  # list or strip
     expect(page.get_by_role("complementary", name="Terminals")).to_be_visible()
     shot(page)
 
@@ -150,7 +152,9 @@ def test_the_top_bar_is_one_line_and_the_name_opens_the_details(device, server, 
     expect(bar.get_by_role("button", name="System")).to_be_visible()
     expect(bar.get_by_role("button", name="Copy path")).to_have_count(0)
     assert box(bar)["height"] <= 52
-    tops = [box(one)["y"] for one in (menu(page), name, bar.get_by_role("button", name="Stop session…"))]
+    tops = [
+        box(one)["y"] for one in (menu(page), name, bar.get_by_role("button", name="Stop session…"))
+    ]
     assert max(tops) - min(tops) < 12, tops  # one line
     shot(page, "bar", full_page=False)
 
@@ -247,7 +251,9 @@ def test_the_composer_stays_at_the_bottom_with_a_gate_waiting(device, server, re
 def test_a_flow_events_text_wraps_whole(device, server, repo, shot):
     session = gated_session(repo)
     page = opened(device(UPRIGHT), server, f"/sessions/{session}")
-    detail = page.locator(".run-detail", has_text="flow ship from kit uiflow 1.0.0: Add a login page")
+    detail = page.locator(
+        ".run-detail", has_text="flow ship from kit uiflow 1.0.0: Add a login page"
+    )
     expect(detail).to_be_visible()
     assert detail.evaluate("d => d.scrollWidth <= d.clientWidth")  # not cut
     actor = box(page.locator(".run-line").first.locator(".run-actor"))

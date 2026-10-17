@@ -10,6 +10,10 @@
   `From another machine` line now comes from the server and names this machine's address
   in its network instead of its hostname; in a container with `--no-open` it goes to
   stderr. The panel's `GitHub ↗` is now the GitHub icon.
+- Install with Docker: docs/install.md's "Your first session" says how to answer Claude
+  Code's question whether to trust a repository it has not seen ("Yes, I trust this
+  folder"; Enter alone answers "No, exit" and closes the agent), and README's Docker start
+  first checks the shell for `LADO_*` and `COMPOSE_*` variables, which beat `.env`.
 
 ## 0.40.0 (2026-10-17)
 

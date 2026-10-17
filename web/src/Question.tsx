@@ -6,7 +6,7 @@
 // a line in the feed. Also what the chat says of the human's answer, from the answer's
 // fields. A dismissal is "skipped" in the UI's words.
 import { HUMAN, type MessageInfo } from "./api";
-import { Attachments } from "./Attachments";
+import { Attachments, ImagePreviews } from "./Attachments";
 import { Body, clock } from "./ChatText";
 import { MiniAvatar } from "./FeedRow";
 import { RecommendationLine } from "./Recommendation";
@@ -36,7 +36,15 @@ export function replyOf(reply: MessageInfo, question?: MessageInfo): Reply {
   // The body, when there is one, is the whole text (runtime._human_text).
   if (reply.body.trim()) return { text: reply.body, comment: "" };
   const prefix = answerPrefix(id);
-  return { text: reply.summary.startsWith(prefix) ? reply.summary.slice(prefix.length) : reply.summary, comment: "" };
+  const text = reply.summary.startsWith(prefix) ? reply.summary.slice(prefix.length) : reply.summary;
+  return { text: filesOnly(reply, text) ? "" : text, comment: "" };
+}
+
+// Whether an own answer is of files only: the core's summary then names its files
+// (runtime._files_line), which the chat shows as files, not as words.
+function filesOnly(reply: MessageInfo, text: string): boolean {
+  const n = reply.attachments.length;
+  return n > 0 && text.startsWith(`${n} file${n === 1 ? "" : "s"}: `);
 }
 
 // `answer`: the human's reply to it, when it is in the window; `anchored`, the reply's
@@ -75,7 +83,7 @@ export function Question({
       {question.question_state === "closed" ? (
         <p className="chat-outcome">Closed: the agent left</p>
       ) : (
-        <Given question={question} answer={answer} anchored={anchored} />
+        <Given session={session} question={question} answer={answer} anchored={anchored} />
       )}
     </div>
   );
@@ -83,8 +91,18 @@ export function Question({
 
 // The human's reply in the question's card: who and when, then a choice's comment (the
 // choice itself is marked only in the card's list) or the own words, as the human typed
-// them; a skip, its comment if any.
-function Given({ question, answer, anchored }: { question: MessageInfo; answer?: MessageInfo; anchored: boolean }) {
+// them; a skip, its comment if any; then its files, as the human's message shows them.
+function Given({
+  session,
+  question,
+  answer,
+  anchored,
+}: {
+  session: string;
+  question: MessageInfo;
+  answer?: MessageInfo;
+  anchored: boolean;
+}) {
   const skipped = question.question_state === "dismissed";
   const reply = answer && replyOf(answer, question);
   const shown = reply && ("dismissed" in reply || answer?.choice ? reply.comment : reply.text);
@@ -99,6 +117,8 @@ function Given({ question, answer, anchored }: { question: MessageInfo; answer?:
         {answer && <time dateTime={answer.created_at}>{clock(answer.created_at)}</time>}
       </div>
       {shown && <Body text={shown} breaks />}
+      {answer && <ImagePreviews session={session} attachments={answer.attachments} />}
+      {answer && <Attachments session={session} attachments={answer.attachments} />}
     </div>
   );
 }

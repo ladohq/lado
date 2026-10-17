@@ -259,8 +259,9 @@ function Reads({ session, names }: { session: string; names: string[] }) {
 // opens it down in the same frame. The head: the gate's flag, "Gate #<id>", run and state,
 // the answer's chip, who answered, the time and a chevron; no comment, whoever closed it:
 // the comment stands under the move it made, and an override's or a cancel's reason on its
-// event's line. Opened: the question, the answer on the human's ground (an agent's quieter),
-// and the note and the recommendation folded into a line each. `move`: the run's move that
+// event's line. Opened: the question, the answer on the human's ground (an agent's quieter)
+// with its files' chips (their previews stand under the move), and the note and the
+// recommendation folded into a line each. `move`: the run's move that
 // closed it (moveOf), which gives the chip its direction by the run's flow `states` and the
 // answer its target; without one, the answer's word, neutral.
 export function GateLine({
@@ -324,6 +325,7 @@ export function GateLine({
               {time}
             </div>
             {gate.comment && <Body text={gate.comment} breaks />}
+            <Attachments session={session} attachments={gate.answer_attachments} />
           </div>
           <NoteLine session={session} gate={gate} />
           <SupervisorLine gate={gate} />

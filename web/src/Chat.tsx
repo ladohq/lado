@@ -377,7 +377,7 @@ function Top({
 // the run, then a line per event: who, what (a move from state to state and its outcome,
 // green forward and orange with a return icon back by the run's flow, neutral while the
 // flow is not known; else its word and the core's detail as it is) and when.
-// The human's move answered a gate: the answer's comment stands under it. The human's own
+// The human's move answered a gate: the answer's comment and files stand under it. The human's own
 // lines (an answer's move, a flow-set) stand on the human's ground, as their messages do.
 function RunEvents({
   session,
@@ -400,7 +400,9 @@ function RunEvents({
       </p>
       <ol aria-label={`Flow run ${run}`}>
         {events.map((event) => {
-          const comment = gateOf(event, gates)?.comment;
+          const gate = gateOf(event, gates);
+          const comment = gate?.comment;
+          const files = gate?.answer_attachments ?? [];
           return (
             <li key={event.id} className={`run-event run-${event.kind}${event.actor === HUMAN ? " mine" : ""}`} {...quoteArea(session)}>
               <div className="run-line">
@@ -409,9 +411,11 @@ function RunEvents({
                 <EventText event={event} states={states} />
                 <time dateTime={event.created_at}>{clock(event.created_at)}</time>
               </div>
-              {comment && (
+              {(comment || files.length > 0) && (
                 <div className="run-comment">
-                  <Body text={comment} breaks />
+                  {comment && <Body text={comment} breaks />}
+                  <ImagePreviews session={session} attachments={files} />
+                  <Attachments session={session} attachments={files} />
                 </div>
               )}
             </li>
@@ -591,11 +595,14 @@ function OpenLine({
 }
 
 // The human's reply to a question in the window given after other rows: one quiet line
-// where it was given, leading up to the question's card, with the start of the answer.
+// where it was given, leading up to the question's card, with the start of the answer and
+// how many files it has.
 function LateReply({ reply, question, go }: { reply: MessageInfo; question?: MessageInfo; go: (anchor: string) => void }) {
   const asked = reply.reply_to ?? 0;
   const said = replyOf(reply, question);
   const verb = "dismissed" in said ? "skipped" : "answered";
+  const words = ["text" in said ? said.text : "", said.comment].filter(Boolean).join(" · ").replace(/\s+/g, " ");
+  const files = reply.attachments.length;
   const link = (
     <a
       href={`#${messageAnchor(asked)}`}
@@ -612,8 +619,8 @@ function LateReply({ reply, question, go }: { reply: MessageInfo; question?: Mes
       <MiniAvatar who={HUMAN} />
       <span className="late-text">
         <span className="run-actor">You</span> {verb} {link}
-        {("text" in said || said.comment) &&
-          ` · ${["text" in said ? said.text : "", said.comment].filter(Boolean).join(" · ").replace(/\s+/g, " ")}`}
+        {words && ` · ${words}`}
+        {files > 0 && ` · ${files} file${files === 1 ? "" : "s"}`}
       </span>
       <time dateTime={reply.created_at}>{clock(reply.created_at)}</time>
     </article>
@@ -631,9 +638,9 @@ function DayDivider({ at }: { at: string }) {
 }
 
 // The human's reply to a question not in the window: a dismissal, one quiet line with the
-// comment under it; an answer,
-// the human's row with the answer (the choice, else the own words) and the comment under a
-// choice.
+// comment and its files' chips under it; an answer, the human's row with the answer (the
+// choice, else the own words) and the comment under a choice, then its files as the human's
+// message shows them.
 function Answer({
   session,
   message,
@@ -658,6 +665,7 @@ function Answer({
       >
         <span>You skipped question #{asked}</span> <time dateTime={message.created_at}>{clock(message.created_at)}</time>
         {reply.comment && <Body text={reply.comment} breaks />}
+        <Attachments session={session} attachments={message.attachments} />
       </article>
     );
   }
@@ -687,8 +695,10 @@ function Answer({
       className="chat-message"
       session={session}
     >
-      <h4 className="chat-summary chat-answer">{reply.text}</h4>
+      {reply.text && <h4 className="chat-summary chat-answer">{reply.text}</h4>}
       {reply.comment && <p className="chat-comment">{reply.comment}</p>}
+      <ImagePreviews session={session} attachments={message.attachments} />
+      <Attachments session={session} attachments={message.attachments} />
       {message.state === "failed" && <p className="chat-note">not delivered</p>}
     </FeedRow>
   );

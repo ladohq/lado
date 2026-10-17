@@ -47,7 +47,7 @@
 
 ## 7. Web: the feed (D8)
 
-- [ ] 7.1 A closed question's reply block and the row of an answer not in the window show
+- [x] 7.1 A closed question's reply block and the row of an answer not in the window show
   previews and chips; a late answer's line ends "· N files"; the gate's move shows the
   answer's previews and chips after the comment, the opened gate's card chips only.
   Check: `cd web && npx vitest run Chat`, `make web`.

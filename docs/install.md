@@ -197,9 +197,8 @@ projects folder lives only in the container: the window warns about it. Choose t
 CLI and press **Start session**.
 
 The container's Claude Code has trusted no folder yet, so on a repository it has not seen
-it asks whether to trust it before its first answer (in any permission mode but
-`bypassPermissions`). Meanwhile the agent waits in **Needs you**, which says what to
-answer: open its terminal and choose "Yes, I trust this folder"; Enter alone answers
+it asks whether to trust it before its first answer, in every permission mode. Meanwhile
+the agent waits in **Needs you**, which says what to answer: open its terminal and choose "Yes, I trust this folder"; Enter alone answers
 "No, exit" and closes the agent. It is asked once per repository (the workers' worktrees
 are covered) and remembered on the home volume, so restarts and updates do not ask again;
 another LADO container has its own home volume and asks once more. A trusted repository's

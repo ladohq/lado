@@ -3,7 +3,7 @@ Task: LAD-87
 ## Why
 
 In LADO's container Claude Code has no record of the folders it trusts, so the first
-session on each repository in a permission mode other than `bypassPermissions` waits, before
+session on each repository, in every permission mode, waits, before
 any hook, for "Yes, I trust this folder" in the agent's terminal. LADO already foresees this
 (`ClaudeProvider.first_hook_blocker`, `_trusted` in `src/lado/providers/claude.py`) and shows the
 agent in Needs you with what to answer, but docs/install.md's Docker section ("Your first

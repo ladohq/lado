@@ -67,7 +67,7 @@
      -q --allow-empty -m init` (your projects folder's full path in place of
      `$LADO_PROJECTS_PATH`).
   4. In the UI, **Launch**: pick `trust-check`, agent CLI Claude Code, permission mode
-     `default` (not `bypassPermissions`), **Start session**. Expected: the supervisor shows
+     `default`, **Start session**. Expected: the supervisor shows
      in **Needs you** with "asks whether to trust …/trust-check"; its terminal shows the
      question, as the guide says.
   5. In the agent's terminal choose "Yes, I trust this folder". Expected: the agent starts

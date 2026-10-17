@@ -7,11 +7,11 @@
 
 ## 2. Core: a gate's answer carries the files; schema 31 (D6, D7)
 
-- [ ] 2.1 Schema 31 `gates.answer_note`, set by `update_run` in the closing's
+- [x] 2.1 Schema 31 `gates.answer_note`, set by `update_run` in the closing's
   transaction; `Gate.answer_note`; `tests/agent_helpers.previous_schema` still undoes the
   last step. Check: `uv run pytest tests/test_state.py -n auto` (migration from 30, an
   old gate with no answer note).
-- [ ] 2.2 `runs.answer` / `answer_text` take `attached`, resolved before any write, on the
+- [x] 2.2 `runs.answer` / `answer_text` take `attached`, resolved before any write, on the
   answer's note; Cancel at a loop limit sends them to the supervisor;
   `runs.gate_answer_attachments`. Check: `uv run pytest tests/test_runs.py -n auto` (the
   next step's `Artifacts:` line, files only, a missing name leaves the gate open, the loop

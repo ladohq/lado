@@ -1400,7 +1400,7 @@ def test_answer_lets_the_human_pick_a_gate_and_leave(repo, fake_tmux, capsys, mo
 def test_answer_that_failed_exits_non_zero(repo, fake_tmux, capsys, monkeypatch):
     _at_gate(repo, capsys)
 
-    def refused(*args):
+    def refused(*args, **kwargs):
         raise runtime.LadoError("gate #1 is closed already: approve by human")
 
     monkeypatch.setattr(runs, "answer", refused)
@@ -1892,7 +1892,7 @@ def test_a_failed_migration_is_one_message_with_the_way_back(
     backup = lado_home / "backups" / f"lado.db.schema-{old}"
     assert capsys.readouterr().err == (
         f"lado: could not upgrade lado.db from schema {old} to {state.SCHEMA_VERSION}: "
-        "OperationalError: duplicate column name: closed_event. lado.db is unchanged; "
+        "OperationalError: duplicate column name: answer_note. lado.db is unchanged; "
         "its backup is "
         f"{backup}. {way_back} Report it with lado bug-report.\n"
     )

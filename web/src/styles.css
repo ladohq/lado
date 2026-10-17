@@ -5223,6 +5223,94 @@ h3 {
   margin: 0 0 12px;
 }
 
+/* Forget stopped sessions (ForgetMany.tsx): the sessions in a bordered list that scrolls
+   inside, All above them; the open runs in the human's colour, a refusal in the danger's. */
+.forget-many-list {
+  max-height: 50vh;
+  margin: 0 0 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.forget-many-list ul {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+
+.forget-many-list li {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.forget-many-list li label,
+.forget-many-all,
+.forget-many-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.forget-many-list label {
+  cursor: pointer;
+}
+
+.forget-many-all {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.forget-many-name {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.forget-many-runs {
+  margin-left: auto;
+  color: var(--human);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.forget-many-mark {
+  flex: none;
+  width: 14px;
+}
+
+.forget-many-list li.done .forget-many-mark {
+  color: var(--done);
+}
+
+.forget-many-list li.failed .forget-many-mark {
+  color: var(--danger);
+}
+
+.forget-many-reason {
+  display: block;
+  margin-left: 22px;
+  color: var(--danger);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.left-on-disk summary {
+  cursor: pointer;
+}
+
+/* The switch's text names the sessions: it wraps. */
+.forget-many .switch {
+  height: auto;
+  white-space: normal;
+}
+
+.question-dialog .forget-many-stay {
+  margin-top: -6px;
+  font-size: 12px;
+}
+
 /* What a start or resume said, above the session's tabs until closed: 12 px under the top
    bar, as the column has no top padding. */
 .started-notice {

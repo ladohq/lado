@@ -40,9 +40,9 @@ function actionsOf(session: SessionInfo): Action[] {
   }
 }
 
-const messageOf = (error: unknown) => (error instanceof ApiError ? error.message : String(error));
+export const messageOf = (error: unknown) => (error instanceof ApiError ? error.message : String(error));
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+export const plural =(n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 export function SessionActions({ session }: { session: SessionInfo }) {
   const launch = useLaunch();

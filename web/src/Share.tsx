@@ -13,6 +13,7 @@ import { useCopy } from "./Copy";
 const TITLE = "Open LADO on another device";
 const NAME = "<this computer's name>";
 const OPEN_COMMAND = "lado server stop && lado ui --host 0.0.0.0";
+const ENV_LINES = `LADO_LISTEN=0.0.0.0\nLADO_PUBLIC_HOST=${NAME}`;
 
 const messageOf = (error: unknown) => (error instanceof ApiError ? error.message : String(error));
 
@@ -200,7 +201,7 @@ function NoLink({ access }: { access: AccessInfo }) {
           To open it from a phone or another computer on your network, set in <code>.env</code> next to compose.yaml,
           then run <code>docker compose up -d</code>:
         </p>
-        <code className="command share-lines">{`LADO_LISTEN=0.0.0.0\nLADO_PUBLIC_HOST=${NAME}`}</code>
+        <code className="command share-lines">{ENV_LINES}</code>
       </>
     );
   }
@@ -236,11 +237,7 @@ function CopyHow({ access, copy }: { access: AccessInfo; copy: (text: string, co
     );
   }
   return (
-    <button
-      type="button"
-      className="quiet"
-      onClick={() => void copy(`LADO_LISTEN=0.0.0.0\nLADO_PUBLIC_HOST=${NAME}`, "Lines copied")}
-    >
+    <button type="button" className="quiet" onClick={() => void copy(ENV_LINES, "Lines copied")}>
       Copy lines
     </button>
   );

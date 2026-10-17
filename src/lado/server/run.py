@@ -421,25 +421,26 @@ def start_background(host: str | None, port: int | None) -> Started:
     return Started(process, log_from)
 
 
-def health(url: str, timeout: float = 1) -> dict | None:
-    """What the server at `url` answers on /api/health; None when it does not."""
+def _answer(ask: str | urllib.request.Request, timeout: float) -> dict | None:
+    """The JSON object a server answers; None for no answer, an error or another value."""
     with contextlib.suppress(OSError, ValueError):
-        with urllib.request.urlopen(f"{url}/api/health", timeout=timeout) as answer:
+        with urllib.request.urlopen(ask, timeout=timeout) as answer:
             said = json.load(answer)
             return said if isinstance(said, dict) else None
     return None
+
+
+def health(url: str, timeout: float = 1) -> dict | None:
+    """What the server at `url` answers on /api/health; None when it does not."""
+    return _answer(f"{url}/api/health", timeout)
 
 
 def access(url: str, token: str, timeout: float = 2) -> dict | None:
     """What the server at `url` answers on /api/access with the token: the link for another
     device by the server's environment; None when it does not answer it (an older server,
     an error)."""
-    ask = urllib.request.Request(f"{url}/api/access", headers={"Authorization": f"Bearer {token}"})
-    with contextlib.suppress(OSError, ValueError):
-        with urllib.request.urlopen(ask, timeout=timeout) as answer:
-            said = json.load(answer)
-            return said if isinstance(said, dict) else None
-    return None
+    headers = {"Authorization": f"Bearer {token}"}
+    return _answer(urllib.request.Request(f"{url}/api/access", headers=headers), timeout)
 
 
 def _healthy(url: str) -> bool:

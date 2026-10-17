@@ -2,6 +2,9 @@
 
 ## 0.41.0 (unreleased)
 
+- The UI server no longer lets anyone in when `LADO_HOME/server-token` is empty (left by a
+  failed write, e.g. a full disk): an empty file gets a new token, the token is written
+  atomically, and an empty token is always refused.
 - The human can answer a gate or an agent's question with files: the comment for the next
   step and the fields of Other… and Skip take files as the composer does (the paperclip,
   paste, a drop on the field), and a reply of files only is an answer. The agent gets them

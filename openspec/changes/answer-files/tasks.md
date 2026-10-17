@@ -63,7 +63,7 @@
 
 ## 9. Docs and release notes
 
-- [ ] 9.1 `docs/design/ui.md` (Flow gates, the API of the chat task, A question, The
+- [x] 9.1 `docs/design/ui.md` (Flow gates, the API of the chat task, A question, The
   waiting card's Fields, Composer), `docs/design/modules.md` (schema 31, the web module),
   CHANGELOG.md: `## 0.40.1 (unreleased)` renamed `## 0.41.0 (unreleased)` with the
   change's line. Check: read against the code.

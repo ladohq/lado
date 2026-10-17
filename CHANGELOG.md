@@ -1,7 +1,15 @@
 # Changelog
 
-## 0.40.1 (unreleased)
+## 0.41.0 (unreleased)
 
+- The human can answer a gate or an agent's question with files: the comment for the next
+  step and the fields of Other… and Skip take files as the composer does (the paperclip,
+  paste, a drop on the field), and a reply of files only is an answer. The agent gets them
+  with the answer (a gate's next step in its note's `Artifacts:` line; at a loop limit,
+  Cancel run gives them to the supervisor), and the chat shows them under the answer: in
+  the closed question's card and under the run's move, previews and chips. The API's
+  `POST …/answers` and `POST …/gates/{id}/answer` take `artifacts`, `GateInfo` gains
+  `answer_attachments`. lado.db goes to schema 31 (`gates.answer_note`).
 - Install with Docker: docs/install.md's "Your first session" says how to answer Claude
   Code's question whether to trust a repository it has not seen ("Yes, I trust this
   folder"; Enter alone answers "No, exit" and closes the agent), and README's Docker start

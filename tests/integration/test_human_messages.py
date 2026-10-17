@@ -120,6 +120,39 @@ def test_the_agents_question_is_answered_through_the_api(api, session):
     assert chat(api)[1]["question_state"] == "answered"
 
 
+def test_an_answer_of_files_only_reaches_the_agent_which_reads_the_file(api, session):
+    """The waiting card's path: an upload, then an own answer with its name and no text."""
+    api.post(f"/api/sessions/{SESSION}/messages", json={"text": "askhuman Which log?"})
+    [_, question] = wait_for(lambda: len(chat(api)) == 2 and chat(api), "the question", SESSION)
+    wait_for(lambda: state.get_agent(SESSION, "supervisor").status == state.IDLE, "idle", SESSION)
+    upload = api.post(
+        f"/api/sessions/{SESSION}/artifacts",
+        params={"file_name": "server.log"},
+        content=b"boom at line 3\n",
+    )
+    name = upload.json()["full_name"]
+    answered = api.post(
+        f"/api/sessions/{SESSION}/answers",
+        json={"answers": [{"question": question["id"], "text": "", "artifacts": [name]}]},
+    )
+    assert answered.status_code == 200
+    answer = next(m for m in chat(api) if m["reply_to"] == question["id"])
+    assert [a["full_name"] for a in answer["attachments"]] == [name]
+    line = (
+        f"[from human] Answer to #{question['id']}: 1 file: {name}"
+        f" (#{answer['id']}, 1 artifact: call read_messages)"
+    )
+    wait_for(lambda: line in inputs(), "the answer's line", SESSION)
+    wait_for(lambda: state.get_agent(SESSION, "supervisor").status == state.IDLE, "idle", SESSION)
+    api.post(f"/api/sessions/{SESSION}/messages", json={"text": "read"})
+    read = wait_for(lambda: seen().get("read"), "read_messages", SESSION)
+    [given] = [m for m in read if m["id"] == answer["id"]]
+    assert [a["name"] for a in given["artifacts"]] == [name]
+    api.post(f"/api/sessions/{SESSION}/messages", json={"text": f"artifact_read {name}"})
+    got = wait_for(lambda: seen().get("artifact_read"), "read_artifact", SESSION)
+    assert got["content"] == "boom at line 3\n"
+
+
 def test_two_answers_reach_the_agent_in_one_input(api, session):
     """A tab of the waiting card: the agent's two open questions answered in one request
     reach it in one hand-over, so they start one turn."""

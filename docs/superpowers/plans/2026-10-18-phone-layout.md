@@ -26,7 +26,9 @@ Mockup: run artifact `task/lad-95/mockup-phone.html`, navigation A.
 - No phone rule outside `styles.css`'s section "Phone layout"; every selector there
   starts with `:root[data-phone]`.
 - On a phone no remembered layout state is written: `lado.rail`, `lado.sessionsList`,
-  `lado.terminals`, `lado.waitingMinimized.*`, `lado.waitingHeight`.
+  `lado.terminals`, `lado.waitingHeight`; of `lado.waitingMinimized.*`, the layout's
+  sideways fold is not written, while the human's own minimize is remembered as on a
+  computer (D5).
 - The UI's strings are English: "Menu", "Menu, N waiting", "Close menu", "Close terminal",
   "Copy path", "Copy link", "Rename", "All sessions", "Close".
 - No server, API, schema or CLI change; `web/openapi.json` and `web/src/api.gen.ts`

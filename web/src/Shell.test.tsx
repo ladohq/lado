@@ -1,12 +1,13 @@
 // The Shell on a phone (docs/design/ui.md, Phone layout): <html data-phone>, the Menu button
 // and the rail as a drawer.
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { SessionInfo } from "./api";
 import { App } from "./App";
 import { FakeEventSource, FakeScreen, FakeSocket, stubDialogs } from "./fakes";
+import { Shell } from "./Shell";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -134,6 +135,35 @@ test("Launch in the menu opens the New session window and closes the menu", () =
   open();
   fireEvent.click(menu());
   act(() => fireEvent.click(screen.getByRole("button", { name: "Launch" })));
+  expect(rail().hasAttribute("data-open")).toBe(false);
+});
+
+// A page that moves on by itself, as the browser's Back does: not through the rail.
+function Elsewhere() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate("/b")}>
+      Go on
+    </button>
+  );
+}
+
+test("a route change from outside the rail (Back) closes the menu", async () => {
+  FakeScreen.phone();
+  render(
+    <MemoryRouter initialEntries={["/a"]}>
+      <Routes>
+        <Route element={<Shell />}>
+          <Route path="a" element={<Elsewhere />} />
+          <Route path="b" element={<p>Page b</p>} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+  fireEvent.click(menu());
+  expect(rail().hasAttribute("data-open")).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Go on" }));
+  await screen.findByText("Page b");
   expect(rail().hasAttribute("data-open")).toBe(false);
 });
 

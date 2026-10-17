@@ -17,7 +17,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useLocation } from "react-router";
 
 import { getHealth, onDenied } from "./api";
 import {
@@ -130,6 +130,9 @@ export function Shell() {
   useEffect(() => {
     if (phone === null) setDrawer(false);
   }, [phone]);
+  // A route change from outside the rail (Back) closes it too.
+  const { pathname } = useLocation();
+  useEffect(() => setDrawer(false), [pathname]);
   useEffect(() => {
     if (!drawer) return;
     rail.current?.querySelector<HTMLElement>(".rail-link")?.focus();

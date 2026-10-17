@@ -190,6 +190,10 @@ export function TerminalPanel({ session, children }: { session: string; children
     releaseAll();
     setPhoneOpen(false);
   }, [releaseAll]);
+  // No longer a phone (a mouse plugged in): its terminal and control go.
+  useEffect(() => {
+    if (phone === null && phoneOpen) closePhone();
+  }, [phone, phoneOpen, closePhone]);
 
   // A tab's terminal is made the first time it shows in the open panel.
   const made = collapsed || shown.includes(active) ? shown : [...shown, active];

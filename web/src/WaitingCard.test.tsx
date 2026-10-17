@@ -777,3 +777,26 @@ test("on a phone the card has no edge and keeps no height of its own", () => {
   expect(card().classList.contains("sized")).toBe(false);
   expect(within(card()).getByRole("button", { name: "Minimize the card" })).toBeTruthy(); // upright: as on a computer
 });
+
+test("upright on a phone the human's own minimize is remembered, as on a computer", () => {
+  FakeScreen.phone();
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+  fireEvent.click(iconButton("Minimize the card"));
+  expect(isMinimized()).toBe(true);
+  expect(localStorage.getItem("lado.waitingMinimized.s")).toBe(JSON.stringify(["gate:812"]));
+});
+
+test("Esc in a dialog over the page leaves an expanded card as it is", async () => {
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+  fireEvent.click(iconButton("Expand the card"));
+  await waitFor(() => expect(isExpanded()).toBe(true));
+  const dialog = document.createElement("dialog");
+  const inside = document.createElement("button");
+  dialog.append(inside);
+  document.body.append(dialog);
+  fireEvent.keyDown(inside, { key: "Escape" });
+  expect(isExpanded()).toBe(true);
+  dialog.remove();
+  fireEvent.keyDown(document, { key: "Escape" });
+  await waitFor(() => expect(isExpanded()).toBe(false));
+});

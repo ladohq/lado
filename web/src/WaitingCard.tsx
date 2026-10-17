@@ -218,7 +218,8 @@ export function WaitingCard({
   useEffect(() => {
     if (!expanded || viewing) return;
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      // A dialog over the page (the session's details) takes its own Esc.
+      if (event.key !== "Escape" || (event.target as Element | null)?.closest?.("dialog")) return;
       event.preventDefault();
       folded.current = true;
       setExpanded(false);

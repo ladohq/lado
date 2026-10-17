@@ -525,6 +525,22 @@ test("on a phone Esc closes the terminal, but goes to the agent the human contro
   expect(panel().hidden).toBe(false);
 });
 
+test("a phone that stops being one (a mouse plugged in) closes its terminal and its control", async () => {
+  localStorage.setItem("lado.askControl", "never");
+  const phone = FakeScreen.phone();
+  await open();
+  fireEvent.click(await chip("w1"));
+  act(() => socketOf("w1", "view")[0].open());
+  const view = within(panel()).getByRole("tabpanel", { name: "w1" });
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  const [control] = socketOf("w1", "control");
+  act(() => control.open());
+  phone.set({ pointer: "fine" });
+  expect(control.closed).toBe(true); // control ended
+  phone.set({ pointer: "coarse" });
+  expect(aside().hidden).toBe(true); // back on the phone, no terminal over the screen
+});
+
 // The tabs: their agents' status, many of them, their tooltip
 
 const dotOf = (element: Element) => element.querySelector(".dot")!.className;

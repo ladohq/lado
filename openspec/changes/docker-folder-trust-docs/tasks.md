@@ -1,6 +1,6 @@
 ## 1. The guide
 
-- [ ] 1.1 docs/install.md, Docker, "Your first session": after the paragraph on **Start
+- [x] 1.1 docs/install.md, Docker, "Your first session": after the paragraph on **Start
   session**, a paragraph on Claude Code's folder-trust question (proposal, What Changes,
   first item): where it shows (Needs you, the agent's terminal), the answer ("Yes, I trust
   this folder"; Enter alone is "No, exit" and closes the agent), once per repository,
@@ -8,11 +8,11 @@
   repository whose `.claude/` settings and `.mcp.json` you accept. Words as Claude Code
   2.1.295 shows them (the same as `ClaudeProvider.first_hook_blocker`'s reason). Check: read
   the rendered section on GitHub's preview of the branch.
-- [ ] 1.2 docs/install.md, "If something goes wrong in Docker": an entry **An agent closed
+- [x] 1.2 docs/install.md, "If something goes wrong in Docker": an entry **An agent closed
   right after the session started**: Enter on the trust question answered "No, exit";
   start the session again (`lado start` resumes it, or the UI's start) and choose "Yes, I
   trust this folder". Check: as 1.1.
-- [ ] 1.3 README.md, Install, Docker: before `mkdir ~/lado-docker`, one sentence (a shell
+- [x] 1.3 README.md, Install, Docker: before `mkdir ~/lado-docker`, one sentence (a shell
   variable beats `.env`) and
 
   ```bash
@@ -22,18 +22,18 @@
 
   matching docs/install.md's "Check the shell" (no new variable names). Check:
   `uv run pytest -n0 tests/test_agents_md.py` and any README test still green (`make test`).
-- [ ] 1.4 CHANGELOG.md: on top, `## 0.40.1 (unreleased)` with one line: the Docker guide
+- [x] 1.4 CHANGELOG.md: on top, `## 0.40.1 (unreleased)` with one line: the Docker guide
   says how to answer Claude Code's "trust this folder?" question of a new repository, and
   the README's Docker start checks the shell for `LADO_*`/`COMPOSE_*` variables first.
 
 ## 2. Tests
 
-- [ ] 2.1 `tests/test_docker.py`, `test_readmes_docker_install_checks_the_shell_first`:
+- [x] 2.1 `tests/test_docker.py`, `test_readmes_docker_install_checks_the_shell_first`:
   README's Docker install (`readme_part("Install", "Docker")`) has
   `env | grep -E '^(LADO|COMPOSE)_'` and an `unset` naming `LADO_VERSION` and
   `COMPOSE_PROJECT_NAME`, both before `docker compose up -d`. Check: red on main's README,
   green after 1.3, `uv run pytest -n0 tests/test_docker.py`.
-- [ ] 2.2 `tests/test_docker.py`, `test_the_first_session_names_claude_codes_trust_question`:
+- [x] 2.2 `tests/test_docker.py`, `test_the_first_session_names_claude_codes_trust_question`:
   the guide's Docker "Your first session" (`guide_part`) has "Needs you",
   "Yes, I trust this folder" and "No, exit", and each of the two answers is in the reason
   of `ClaudeProvider().first_hook_blocker(<a fresh git repo in tmp_path>, {"HOME": <empty

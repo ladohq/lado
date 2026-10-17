@@ -17,7 +17,7 @@ open streams and terminals, and sets this browser's cookie. Compose publishes th
 **Spec:** `openspec/changes/share-access-link/` (proposal, `specs/share-access/spec.md`,
 `specs/container/spec.md`, `design.md` D1–D11) and
 `docs/superpowers/specs/2026-10-18-share-access-design.md` (UI texts, docs). Mockup: run
-artifact `task/lad-94/mockup-share-access.html`, section 1 option И1 and sections 2a–2d.
+artifact `task/lad-94/mockup-share-access.html`, section 1 (option И3) and sections 2a–2d.
 
 ## Global Constraints
 
@@ -578,7 +578,8 @@ def access(url: str, token: str, timeout: float = 2) -> dict | None:
 
 **Files:**
 - Create: `web/src/Share.tsx`, `web/src/Share.test.tsx`
-- Modify: `web/src/SystemPanel.tsx` (Server row), `web/src/icons.tsx` (`QrIcon`),
+- Modify: `web/src/SystemPanel.tsx` (the header's icons), `web/src/icons.tsx` (`QrIcon`,
+  `GitHubIcon`),
   `web/src/api.ts` (`getAccess`, `newAccessToken`, type `AccessInfo`),
   `web/src/styles.css`, `web/package.json` and `web/package-lock.json`
   (`qrcode-generator`, exact version: `npm install --save-exact qrcode-generator`)
@@ -603,6 +604,9 @@ def access(url: str, token: str, timeout: float = 2) -> dict | None:
   - `reason: "unknown"`: shows `note`.
   - New link…: `Make a new link?` first; Cancel calls nothing; `Make a new link` calls
     `newAccessToken` and shows the new link; a refusal shows its message.
+  - `SystemPanel.test.tsx`: the header's buttons in the order `Open on another device`,
+    `Copy system info`, `LADO on GitHub` (a link to the repository, new tab), and no text
+    `GitHub ↗`.
   - `QrCode` for a text: a square SVG whose dark modules match
     `qrcode(0, "M")`'s `isDark` for that text.
 
@@ -650,8 +654,21 @@ export function QrCode({ text }: { text: string }) {
     share-dialog">` shown with `showModal()`, loading `getAccess()` on open; states and
     texts exactly as the design doc's UI section; `CopyButton` / `useCopy` from
     `Copy.tsx` for Copy link (`Link copied`), Copy command and Copy lines.
-  - `SystemPanel.tsx`: `<dt>Server</dt><dd className="system-home"><ShareButton
-    /><span>{window.location.origin}</span></dd>`. `useDismiss` of the panel must not
+  - `SystemPanel.tsx`, the header's `system-links`: `<ShareButton />`, the clipboard
+    button as today, then in place of the text `GitHub ↗`:
+
+```tsx
+<Tooltip tip="LADO on GitHub">
+  <a className="icon-button" href={GITHUB} target="_blank" rel="noreferrer" aria-label="LADO on GitHub">
+    <GitHubIcon />
+  </a>
+</Tooltip>
+```
+
+    `GitHubIcon`: the GitHub mark (GitHub's published logo, allowed for linking to
+    GitHub), `viewBox="0 0 16 16"`, `fill="currentColor"`, `aria-hidden`, the `icon`
+    class. Existing tests that find `GitHub ↗` by text (vitest `SystemPanel.test.tsx`,
+    `tests/ui/test_system_panel.py`) find the link by its label `LADO on GitHub`. `useDismiss` of the panel must not
     close it while the dialog is open: pass an `onOpenChange` like `onAsk` and hold
     `asking`-style state in `LiveButton` (the Update dialog's pattern).
   - `styles.css`: `.share-body` (flex, gap 18px, wrap), `.share-qr` (180px square, 1px
@@ -669,6 +686,7 @@ export function QrCode({ text }: { text: string }) {
   environment (add parameters; keep the defaults).
 
 - [ ] **Step 1: Write the tests** (marker `ui`):
+  - the panel's header: the three icons in order, screenshot `share-panel`;
   - a server on `0.0.0.0` with `LADO_PUBLIC_HOST=lado-ui.test`: open `live`, the icon
     `Open on another device`, the dialog shows the QR image and
     `http://lado-ui.test:<port>/?token=` with `…`; Copy link puts the full link on the

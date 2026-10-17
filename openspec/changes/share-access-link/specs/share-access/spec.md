@@ -108,8 +108,11 @@ link, also with no link.
 
 ### Requirement: The system panel opens the dialog for another device
 
-The system panel's Server row SHALL start with an icon button (a QR code; tooltip and
-label "Open on another device") that opens the dialog "Open LADO on another device", which
+The system panel's header SHALL hold, after `LADO X.Y.Z`, three icon buttons in this
+order: a QR code (tooltip and label "Open on another device"), the clipboard that copies
+the system info (as before), and the GitHub mark, a link to LADO's repository in a new tab
+(tooltip and label "LADO on GitHub") in place of the text link `GitHub ↗`. The QR code
+opens the dialog "Open LADO on another device", which
 reads `GET /api/access` each time it opens. The dialog SHALL show:
 - with a link: the warning that the link gives full access (sessions, agents' terminals,
   commands as the human) and travels unencrypted (plain HTTP), so it is for a trusted
@@ -129,6 +132,11 @@ reads `GET /api/access` each time it opens. The dialog SHALL show:
   opened LADO with the current link is logged out at once and this browser stays in) and
   then shows the new link.
 The dialog SHALL have no field to type an address.
+
+#### Scenario: The panel's header
+- **WHEN** the human opens the system panel
+- **THEN** its header shows the QR-code, clipboard and GitHub icons in this order, and no
+  text `GitHub ↗`
 
 #### Scenario: Scan from a phone
 - **WHEN** the human opens the dialog on a server with a link

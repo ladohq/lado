@@ -2,12 +2,12 @@
 
 Task LAD-94. Change `openspec/changes/share-access-link/` (proposal, specs `share-access`
 and `container`, `design.md` with decisions D1–D11). Mockup: run artifact
-`task/lad-94/mockup-share-access.html`, approved: section 1 icon option И1, sections
-2a–2d.
+`task/lad-94/mockup-share-access.html`, approved: section 1 (option И3: the icons in
+the panel's header, GitHub as an icon) and sections 2a–2d.
 
 ## What the human gets
 
-In the UI: `live` (top right) → the QR-code icon left of the Server address → the dialog
+In the UI: `live` (top right) → the QR-code icon in the panel's header → the dialog
 "Open LADO on another device", with a QR code to scan and Copy link. New link… logs out
 everyone who opened LADO with the old link; this browser stays in.
 
@@ -53,14 +53,17 @@ whole rule. Summary:
 
 ## UI
 
-Files: `web/src/Share.tsx` (new), `SystemPanel.tsx` (the Server row), `icons.tsx`
-(`QrIcon`), `api.ts`, `api.gen.ts` and `openapi.json` (`make web-types`), `styles.css`
+Files: `web/src/Share.tsx` (new), `SystemPanel.tsx` (the header's icons), `icons.tsx`
+(`QrIcon`, `GitHubIcon`), `api.ts`, `api.gen.ts` and `openapi.json` (`make web-types`), `styles.css`
 (the dialog's QR layout, from the mockup's `.mk-share-body`, `.mk-linkcol`, `.mk-link`,
 `.mk-warn` under real names: `.share-body`, `.share-link`, `.share-warning`),
 `package.json` (`qrcode-generator`, exact version).
 
+The panel's header: `LADO X.Y.Z` (and its pills), then the icons QR, clipboard, GitHub.
+
 Texts, exactly:
-- icon: aria-label and tooltip `Open on another device`;
+- QR icon: aria-label and tooltip `Open on another device`;
+- GitHub icon: aria-label and tooltip `LADO on GitHub` (it replaces the text `GitHub ↗`);
 - title: `Open LADO on another device`;
 - warning: `This link gives full access: sessions, agents' terminals, commands as you. It
   travels unencrypted (plain HTTP): share it only on a network you trust.` (`full access`
@@ -95,7 +98,8 @@ themes; `role="img"`, `aria-label="QR code of the link"`.
 
 ## Docs
 
-- `docs/design/ui.md`: the section `### Open on another device (decided 2026-10-18,
+- `docs/design/ui.md`: the System panel's P1 bullet names the three header icons in place of
+  `GitHub ↗`; the section `### Open on another device (decided 2026-10-18,
   LAD-94)` after System panel. The Server section's Host and Token bullets name
   `/api/access`, the new token in a running server, and `LADO_LISTEN`/`LADO_PUBLIC_HOST`.
 - `docs/install.md`: under Docker, `### Open LADO on your phone` after "Your first

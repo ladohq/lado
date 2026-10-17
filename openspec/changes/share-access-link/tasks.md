@@ -47,10 +47,12 @@ Tests first in each section; each section is one commit. The plan with the code 
 
 ## 6. The dialog
 
-- [ ] 6.1 vitest, `web/src/Share.test.tsx`: `cutToken`, each state, Copy link, New link's
+- [ ] 6.1 vitest, `web/src/Share.test.tsx` and `SystemPanel.test.tsx` (the header's
+  icons in order, no `GitHub ↗`): `cutToken`, each state, Copy link, New link's
   confirmation and refusal, the QR code's modules. Plan, Task 6.
-- [ ] 6.2 `qrcode-generator` (exact version), `Share.tsx`, `QrIcon`, the Server row,
-  `api.ts`, styles (D7, D8), to the approved mockup (section 1 option И1, 2a–2d).
+- [ ] 6.2 `qrcode-generator` (exact version), `Share.tsx`, `QrIcon`, `GitHubIcon`, the
+  panel header's three icons, `api.ts`, styles (D7, D8), to the approved mockup (section
+  1 option И3, 2a–2d).
   `cd web && npx vitest run`, `make web`.
 
 ## 7. UI end to end

@@ -43,9 +43,9 @@ build the link itself.
   4. otherwise no link, with the reason: loopback only, or in a container open to the
      network with no `LADO_PUBLIC_HOST` (the host's address is unknown), or in a container
      whose publication is unknown (`docker run` without `LADO_LISTEN`).
-- **The UI:** a QR-code icon left of the Server address in the system panel (under
-  `live`, tooltip "Open on another device") opens the dialog "Open LADO on another
-  device":
+- **The UI:** a QR-code icon in the system panel's header (under `live`, tooltip "Open
+  on another device") opens the dialog "Open LADO on another device"; the header's text
+  link `GitHub ↗` becomes the GitHub icon beside it:
   - with a link: the warning (full access, plain HTTP, a trusted network only), a QR code
     of the link, the link with the token cut in the middle, and Copy link, which copies the
     full link;

@@ -17,8 +17,9 @@
   by the browser; one refused with 401 is shown as the server's message
   (`live.ts`, `diagnose`). A terminal is a WebSocket checked once, at its connect
   (`terminals.serve`).
-- The system panel (`SystemPanel.tsx`) shows `Server` as `window.location.origin` and
-  `Home` with an icon button on its left (`.system-home`).
+- The system panel (`SystemPanel.tsx`) has a header with `LADO X.Y.Z`, the clipboard
+  icon (copy system info) and the text link `GitHub ↗`; it shows `Server` as
+  `window.location.origin`.
 
 Root cause: who reaches the server, and by which address, is decided outside LADO (the
 port's publication, the host's network), and LADO is told neither. So it cannot build the
@@ -117,15 +118,19 @@ link, and the UI cannot either, as it never sees the token.
     the server's message.
   - `lado server --new-token` stays as it is.
 - **D7. The UI.**
-  - `web/src/Share.tsx` holds `ShareButton` (the icon, in the Server row's `dd` with the
-    class `system-home`'s layout) and `ShareDialog` (a `<dialog>` with
-    `question-dialog`, like `UpdateDialog`).
-  - `QrIcon` goes in `icons.tsx`.
+  - `web/src/Share.tsx` holds `ShareButton` (the icon, first of the panel header's
+    `system-links`, chosen by the human: mockup option И3) and `ShareDialog` (a `<dialog>`
+    with `question-dialog`, like `UpdateDialog`).
+  - The header's `GitHub ↗` becomes an icon link (the human's ask): `GitHubIcon`, the
+    GitHub mark as GitHub publishes it for linking to GitHub, in `currentColor`; an
+    `icon-button` styled `<a>`, `target="_blank" rel="noreferrer"`, label and tooltip
+    `LADO on GitHub`. Order: QR, clipboard, GitHub.
+  - `QrIcon` and `GitHubIcon` go in `icons.tsx`.
   - API: `getAccess()` and `newAccessToken()` in `api.ts`; types from `make web-types`.
   - The QR code is drawn as an SVG in the page from the full link (D8).
   - The token is cut by `cutToken(link)`: `token=` followed by its first 4 characters,
     `…`, its last 4.
-  - Texts are the mockup's (`mockup-share-access.html`, sections 1 option И1 and 2a–2d),
+  - Texts are the mockup's (`mockup-share-access.html`, section 1 and 2a–2d),
     listed in the design doc.
   - The system panel stays open behind the dialog, as with Update….
 - **D8. The QR library: `qrcode-generator` (MIT, no dependencies), at an exact version.**

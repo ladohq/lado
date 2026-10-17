@@ -1,7 +1,7 @@
 # LAD-94 share-access-link: review report
 
 Pull request #95 `feature/lad-94-share-access` → `main`. Scale: full, reviewed for breadth
-(round 1) and precision (rounds 2 and 3). Head reviewed last: `729275f` (= the remote
+(round 1) and precision (rounds 2–4). Head reviewed last: `1c126a1` (= the remote
 head). `providers/`, `hooks.py`, `mcp_server.py`, `runtime.py`, `agent_env.py` and
 `tests/live/` did not change, so live tests are not needed before the merge.
 
@@ -29,6 +29,17 @@ head). `providers/`, `hooks.py`, `mcp_server.py`, `runtime.py`, `agent_env.py` a
     https://github.com/ladohq/lado/pull/95#issuecomment-6243049590): nothing blocking;
     E4–E6.
 
+- **Return from `conflicts` again.** `main` had taken PR #96 (LAD-97, an empty server
+  token never lets anyone in), which also rewrote how the token file is written.
+  - **Round 4, local** (precision over `729275f..1c126a1`, the merge `1c126a1`, conflicts
+    in `auth.py`, `tests/test_server.py`, `CHANGELOG.md` and `docs/design/ui.md`): one
+    atomic write of the token, LAD-97's `_write` (`mkstemp` 0600, then `os.replace`), used
+    by New link and for an empty file alike; `_valid` refuses an empty token; `renew`,
+    `set_cookie` and `admits` kept; both tasks' tests kept but the one of the fixed
+    `.tmp` name, which no longer exists; documents and changelog merged with nothing
+    lost. New: F5 (minor).
+  - No external round: the cap of 2 was used.
+
 The external reviewer is of the same model family, so its "nothing blocking" weighs
 less. External rounds used: 2 of 2.
 
@@ -46,13 +57,18 @@ less. External rounds used: 2 of 2.
 | E4 | ext 2 | external | `tests/ui/test_share_access.py::test_on_a_phone_the_dialog_fits_the_screen` closes its browser context only in its last line; on a failure only the `browser` fixture's teardown does | confirmed | minor | declined: test only, nothing leaks, the loop converged |
 | E5 | ext 2 | external | `from test_phone import ...` runs `test_phone`'s module code | refuted | — | dropped: harmless, the existing pattern (`test_phone.py` imports `test_main_screen` the same way) |
 | E6 | ext 2 | external | `box(icon)` is called twice per icon | confirmed | minor | declined: style |
+| F5 | 4 | local (silent failures, the merge with LAD-97) | `POST /api/access/new-token` does not catch the `LadoError` of `Guard.renew` (LAD-97's `_write`, e.g. on a full disk): a bare 500, and the dialog shows a general error instead of the cause; the token does not change, since `renew` assigns after the write (`src/lado/server/app.py:427`) | confirmed (by the code) | minor | declined: rare, opens no access, the token stays whole; the loop converged |
 
-Metrics: 3 local rounds, 2 external, 0 substitutes. Local confirmed 3 (2 important, 1
+Metrics: 4 local rounds, 2 external, 0 substitutes. Local confirmed 4 (2 important, 2
 minor), refuted 1; external confirmed 4 minor (E1 fixed, three declined), refuted 2.
 Findings in code changed by the developer's cleanup: 0.
 
 ## Checks
 
+- On `1c126a1`: `make lint` clean; `make test` 3467 passed; integration
+  `test_server_process.py` 11 passed; UI `test_share_access` + `test_system_panel` 11
+  passed; `openspec validate --specs --strict` 36 passed; `make web` not rerun (`web/`
+  unchanged since `729275f`). CI on `1c126a1`: all green with `ci-ok`.
 - On `729275f`: `make lint` clean; `make test` first run under load 1 failed, 3463 passed
   (the failed test's name was lost: its log was overwritten), the rerun 3464 passed; UI
   `test_share_access` + `test_system_panel` 11 passed; integration
@@ -68,6 +84,8 @@ Findings in code changed by the developer's cleanup: 0.
 - One local flake in `make test` whose name is unknown.
 - The flake of the UI test `test_an_up_to_date_final_release_shows_no_update` from the
   developer's report: whether to file a tracker task is the human's question.
+- The merge with LAD-97 (`729275f..1c126a1`) was not seen by the external reviewer: the
+  cap was used.
 - LAD-95's code that came in with the merge was not reviewed here.
 
 ## Found on the way

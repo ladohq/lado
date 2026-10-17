@@ -343,6 +343,11 @@ class Hub:
             self._task.cancel()
             self._task = None
 
+    def end_streams(self) -> None:
+        """A new token: every open stream ends, and its browser reopens it with the token it
+        has now (a new stream is checked again); unlike `close`, new streams are served."""
+        self._send(None)
+
     def unsubscribe(self, queue: asyncio.Queue) -> None:
         self._queues.discard(queue)
         if not self._queues and self._task is not None:

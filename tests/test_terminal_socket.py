@@ -278,6 +278,24 @@ def test_a_terminal_that_ends_for_good_closes_with_the_reason_else_to_open_again
     assert all(t.closed for t in terms)
 
 
+def test_a_new_token_closes_the_open_terminals_and_the_old_one_is_refused(session, terms):
+    """One event loop for the socket and the request (the client entered), as in uvicorn."""
+    old = auth.token()
+    with TestClient(server_app.create_app(old, PORT)) as client:
+        with logged_in(client).websocket_connect(URL, headers=headers()) as ws:
+            ws.receive_json()
+            asked = client.post("/api/access/new-token", headers=headers())
+            assert asked.status_code == 200
+            assert closed(ws)[0] == terminals.ENDED
+        assert terms[0].closed
+        assert terminals.OPEN == set()
+        other = TestClient(client.app)
+        other.cookies.set(auth.cookie_name(PORT), old)
+        with other.websocket_connect(URL, headers=headers()) as ws:
+            assert ws.receive_json()["type"] == "error"
+            assert closed(ws)[0] == terminals.DENIED
+
+
 def test_without_lado_db_it_ends_for_good_and_makes_none(client, terms):
     with logged_in(client).websocket_connect(URL, headers=headers()) as ws:
         assert ws.receive_json() == {"type": "error", "reason": 'unknown session "s"'}

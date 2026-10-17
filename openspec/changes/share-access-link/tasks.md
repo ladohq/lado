@@ -19,11 +19,11 @@ Tests first in each section; each section is one commit. The plan with the code 
 
 ## 3. The API
 
-- [ ] 3.1 Unit tests, `tests/test_server_access.py`, and the feed's and terminals' tests:
+- [x] 3.1 Unit tests, `tests/test_server_access.py`, and the feed's and terminals' tests:
   401, the link and `no-store`, no token without a link, each reason, the new token's
   cookie, old cookie and Bearer 401, two in a row, 403 from another Origin, streams and
   terminals ended. Plan, Task 3.
-- [ ] 3.2 `AccessInfo`, `GET /api/access`, `POST /api/access/new-token`,
+- [x] 3.2 `AccessInfo`, `GET /api/access`, `POST /api/access/new-token`,
   `Hub.end_streams`, `terminals.close_all` (D5, D6); `make web-types` and commit both
   files. `uv run pytest tests/test_server_access.py -n auto`, `make web`.
 

@@ -13,6 +13,7 @@ import threading
 import time
 from collections.abc import Callable
 
+import httpx
 import pytest
 import uvicorn
 from agent_helpers import install_kit, previous_schema, spoil_snapshot
@@ -593,6 +594,24 @@ def test_the_servers_shutdown_ends_the_open_streams_at_once(running, streams):
         assert stream.closed.wait(1)
         assert stream.error is None  # the response's end, not a cut connection
     assert took < SHUTDOWN_GRACE / 2
+
+
+def test_a_new_token_ends_the_open_streams_and_the_hub_serves_new_ones(server, streams):
+    """A browser of the old token reopens its stream and gets 401; one of the new, served."""
+    opened = [streams(), streams()]
+    for stream in opened:
+        assert stream.next().event == "reset"
+    old = auth.token()
+    asked = httpx.post(
+        f"{server}/api/access/new-token", headers={"Authorization": f"Bearer {old}"}, timeout=10
+    )
+    assert asked.status_code == 200
+    for stream in opened:
+        assert stream.closed.wait(2)
+        assert stream.error is None  # the response's end, not a cut connection
+    assert EventStream(f"{server}/api/events", old).status == 401
+    again = streams()
+    assert again.status == 200 and again.next().event == "reset"
 
 
 def test_a_stream_that_starts_after_the_shutdown_began_ends_at_once():

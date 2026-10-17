@@ -443,7 +443,8 @@ Sessions for now. The UI's texts are in English.
   (one page for the kits and their marketplaces: Kits below); Report a bug (a bug icon:
   Report a bug, below) and Settings apart at the bottom. A button collapses it to icons (each with its
   name as tooltip and accessible name; the button has `aria-expanded`). The browser
-  remembers the choice; a window narrower than 900 px starts collapsed.
+  remembers the choice; a window narrower than 900 px starts collapsed. On a phone the rail
+  is a drawer that Menu opens (Phone layout, below).
 - **Top bar**: the page's title on the left, or on a session's page the session's head
   (Session head, below); on the right the change feed's link (`live`, or `reconnecting…`
   with the reason), with the server's address in its tooltip ("The LADO server this page
@@ -1450,6 +1451,9 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 
 ### Session head (decided 2026-10-07, feature/session-head)
 
+On a phone the head is one line and its facts are in a sheet its title opens (Phone
+layout, below).
+
 - The head is the top bar's line (decided with the human 2026-10-08, run
   feature/session-head-topbar: its mockup `feature/session-head-topbar/mockup-topbar.html`,
   variant A with "A, status as an icon"; a head under the top bar, or two lines in it, or
@@ -1758,6 +1762,68 @@ is; there is no sound and no notification outside the browser.
   item (its card in the chat, or the agent's terminal) and closes it. An item that leaves
   the list (answered anywhere) closes the notification this tab made for it. A notification
   the browser refuses to show is said on Needs you and in Settings.
+
+### Phone layout (decided 2026-10-18, LAD-95)
+
+From a phone's browser the human follows a session and answers it: the feed and the runs,
+gates and questions, a message to the supervisor, artifacts, Stop. The computer's design
+does not change (the human's condition). Mockup: run artifact `task/lad-95/mockup-phone.html`
+(navigation A, the menu; B, a bottom bar, was turned down: 56 px of height always, 15% of a
+phone held sideways). Change: `openspec/changes/phone-layout/`.
+
+| Screen | Pointer | Layout |
+|---|---|---|
+| ≤ 600 px wide | coarse | phone, `data-phone="tall"` (`short` when also ≤ 500 px high) |
+| ≤ 500 px high | coarse | phone, `data-phone="short"` |
+| any | fine (a mouse, a trackpad) | as before |
+| a tablet (820×1180, 1180×820) | coarse | as before |
+
+- **One query**, in `web/src/phone.ts` (`PHONE_QUERY`, `SHORT_QUERY`, `usePhone()`), which
+  follows the screen as it turns or resizes. The Shell mirrors it to `<html data-phone>`;
+  every phone rule of `styles.css` is in its last section, "Phone layout", under
+  `:root[data-phone]`. A mouse never matches, so a computer's window of any size never gets
+  a phone rule; components branch on `usePhone()` only where the structure changes. No
+  setting or switch.
+- **The app's window**: as a wide window's, the window does not scroll and each page's
+  content does (`100dvh`); the viewport has `interactive-widget=resizes-content`, so the
+  composer stays above the on-screen keyboard.
+- **Menu**: the rail is hidden; Menu (☰, "Menu" or "Menu, N waiting", the Needs you count
+  as a badge) starts the top bar and opens the rail from the left as a drawer, 260 px,
+  with its names, over a dimmed page. An item, the dimmed page or Esc closes it, the focus
+  back on Menu. The computer's collapsed rail (`lado.rail`) is neither read nor written.
+- **Top bar**: one line, 52 px upright, 44 px sideways. On a session's page: Menu, the
+  status dot, the title (or name) as a button cut with "…", the change feed's mark (a dot
+  while live, "reconnecting…" otherwise; it opens the system panel), Stop.
+- **The session's details**: the title opens a sheet over the page's bottom
+  (`SessionDetails.tsx`, a modal `<dialog>` named by the session): the status and run time,
+  the whole folder, git, the kits with their versions, the CLI with its version and
+  permission mode, and Rename (the title edited in place), Copy path, Copy link, All
+  sessions. Close, Esc or a tap beside it closes it. It reuses the head's pieces (`GitFact`,
+  `KitTip`, `CliTip`), so the two never say different things.
+- **Sessions**: no strip; `/sessions` is the list across the screen, a session's page the
+  session alone. `lado.sessionsList` is neither read nor written.
+- **Tabs**: a session's four tabs without their icons fit 360 px; the Kits page's three too.
+- **The chat**: the feed scrolls by itself, the waiting card (at most half the chat, no
+  edge, no height of its own) and the composer stay at the bottom; the composer's text is
+  16 px (Safari zooms into a smaller field) and its keys hint is not shown. A flow event's
+  line starts at the feed's left edge, its actor, chips and time on the first line, its
+  text wrapped under them, whole.
+- **Sideways** (`short`): the chat's card is minimized by the layout (its tabs and one
+  line), not by the human: `lado.waitingMinimized.<session>` is not written. A tab or the
+  line shows it expanded over the chat; Esc or its fold button minimizes it again; turned
+  upright, it shows whole. The Team row and the composer's "to" line are not shown.
+- **Terminals**: no panel or strip. A team chip or Open terminal shows the terminal over
+  the whole screen, its tabs and bar as when expanded, with **Close terminal** in place of
+  Restore terminal; Close terminal or Esc (but in a terminal the human controls) puts it
+  away and ends control, as a folded panel does. `lado.terminals` is neither read nor
+  written. Typing into a terminal from a phone is a task of its own.
+- **Tooltips on a tap** (any touch screen, `Tooltip.tsx`): a tap on a hint (a trigger that
+  is no button or link: a kit, the CLI, git, the status dot) shows its tooltip at once, and
+  the next touch elsewhere hides it. A button's or link's tooltip only names it: a tap
+  never shows it, nor does the mouse the browser emulates for the tap.
+- **Unchanged on a phone**: Needs you, Flows, Agents, Artifacts (the artifact panel over
+  the whole screen below 464 px, as before), New session, Settings, Projects, Home, Report
+  a bug: they fit and only lose the rail.
 
 ## Lessons from another orchestrator's UI
 

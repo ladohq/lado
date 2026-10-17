@@ -178,6 +178,67 @@ export class FakeIntersectionObserver {
   }
 }
 
+// The screen as the browser's matchMedia sees it: its pointer, width and height. A query is
+// one or more lists split by ","; a list's features (pointer, hover, min/max-width,
+// max-height) joined by " and ". `set` changes the screen and tells each listener whose
+// query's answer changed, as the browser does when a phone turns.
+export class FakeScreen {
+  private listeners: { query: string; matches: boolean; listener: () => void }[] = [];
+
+  constructor(
+    public pointer: "fine" | "coarse",
+    public width: number,
+    public height: number,
+  ) {
+    vi.stubGlobal("matchMedia", (query: string) => this.list(query));
+  }
+  static phone = () => new FakeScreen("coarse", 390, 844);
+  static sideways = () => new FakeScreen("coarse", 844, 390);
+  static computer = () => new FakeScreen("fine", 1280, 800);
+
+  matches(query: string): boolean {
+    return query.split(",").some((list) =>
+      list
+        .trim()
+        .split(/\s+and\s+/)
+        .every((feature) => {
+          const [name, value] = feature.replace(/[()]/g, "").split(":").map((one) => one.trim());
+          const px = Number.parseFloat(value);
+          if (name === "pointer") return value === this.pointer;
+          if (name === "hover") return value === (this.pointer === "fine" ? "hover" : "none");
+          if (name === "max-width") return this.width <= px;
+          if (name === "min-width") return this.width >= px;
+          if (name === "max-height") return this.height <= px;
+          throw new Error(`FakeScreen: no feature ${feature}`);
+        }),
+    );
+  }
+  set(change: Partial<Pick<FakeScreen, "pointer" | "width" | "height">>) {
+    Object.assign(this, change);
+    act(() =>
+      this.listeners.forEach((one) => {
+        const now = this.matches(one.query);
+        if (now === one.matches) return;
+        one.matches = now;
+        one.listener();
+      }),
+    );
+  }
+  private list(query: string) {
+    const screen = this;
+    return {
+      media: query,
+      get matches() {
+        return screen.matches(query);
+      },
+      addEventListener: (_type: "change", listener: () => void) =>
+        screen.listeners.push({ query, matches: screen.matches(query), listener }),
+      removeEventListener: (_type: "change", listener: () => void) =>
+        (screen.listeners = screen.listeners.filter((one) => one.listener !== listener)),
+    };
+  }
+}
+
 // jsdom has <dialog> but not showModal and close: the UI's modal dialogs need them.
 export function stubDialogs() {
   HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {

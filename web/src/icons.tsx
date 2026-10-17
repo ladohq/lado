@@ -30,6 +30,15 @@ export const HomeIcon = () => (
   </Icon>
 );
 
+// Three lines: Menu, the rail on a phone.
+export const MenuIcon = () => (
+  <Icon>
+    <path d="M4 7h16" />
+    <path d="M4 12h16" />
+    <path d="M4 17h16" />
+  </Icon>
+);
+
 // A magnifier: a tab's search.
 export const FindIcon = () => (
   <Icon>

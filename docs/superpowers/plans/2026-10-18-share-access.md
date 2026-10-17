@@ -78,43 +78,60 @@ artifact `task/lad-94/mockup-share-access.html`, section 1 (option И3) and sect
 ```python
 from lado.server import run as server_run
 
+
 def of(host, container=False, **env):
     return server_run.Listening.of(host, 8765, container, env)
+
 
 def test_loopback_has_no_link_even_with_a_public_host():
     assert of("127.0.0.1", LADO_PUBLIC_HOST="kaos.local").reason == "loopback"
     assert of("127.0.0.1").remote is None
 
+
 def test_every_address_takes_the_public_host(monkeypatch):
     assert of("0.0.0.0", LADO_PUBLIC_HOST="kaos.local").remote == "http://kaos.local:8765"
+
 
 def test_every_address_finds_this_machines_address(monkeypatch):
     monkeypatch.setattr(server_run, "network_address", lambda: "192.168.1.23")
     assert of("0.0.0.0").remote == "http://192.168.1.23:8765"
+
 
 def test_without_a_network_the_hostname(monkeypatch):
     monkeypatch.setattr(server_run, "network_address", lambda: None)
     monkeypatch.setattr(server_run.socket, "gethostname", lambda: "box")
     assert of("0.0.0.0").remote == "http://box:8765"
 
+
 def test_one_address_is_itself_or_the_public_host():
     assert of("192.168.1.23").remote == "http://192.168.1.23:8765"
     assert of("192.168.1.23", LADO_PUBLIC_HOST="kaos.local").remote == "http://kaos.local:8765"
 
-@pytest.mark.parametrize(("env", "remote", "reason"), [
-    ({"LADO_LISTEN": "127.0.0.1", "LADO_PUBLIC_HOST": "kaos.local"}, None, "loopback"),
-    ({"LADO_LISTEN": "0.0.0.0"}, None, "no-address"),
-    ({"LADO_LISTEN": "0.0.0.0", "LADO_PUBLIC_HOST": "kaos.local"}, "http://kaos.local:8765", None),
-    ({"LADO_LISTEN": "192.168.1.23"}, "http://192.168.1.23:8765", None),
-    ({}, None, "unknown"),
-    ({"LADO_LISTEN": "lado.example"}, None, "unknown"),
-    ({"LADO_PUBLIC_HOST": "kaos.local"}, "http://kaos.local:8765", None),
-])
+
+@pytest.mark.parametrize(
+    ("env", "remote", "reason"),
+    [
+        ({"LADO_LISTEN": "127.0.0.1", "LADO_PUBLIC_HOST": "kaos.local"}, None, "loopback"),
+        ({"LADO_LISTEN": "0.0.0.0"}, None, "no-address"),
+        (
+            {"LADO_LISTEN": "0.0.0.0", "LADO_PUBLIC_HOST": "kaos.local"},
+            "http://kaos.local:8765",
+            None,
+        ),
+        ({"LADO_LISTEN": "192.168.1.23"}, "http://192.168.1.23:8765", None),
+        ({}, None, "unknown"),
+        ({"LADO_LISTEN": "lado.example"}, None, "unknown"),
+        ({"LADO_PUBLIC_HOST": "kaos.local"}, "http://kaos.local:8765", None),
+    ],
+)
 def test_in_a_container_lado_listen_decides(env, remote, reason):
     found = of("0.0.0.0", True, **env)
     assert (found.remote, found.reason) == (remote, reason)
 
-@pytest.mark.parametrize("value", ["http://kaos.local", "kaos.local:8765", " kaos.local ", "a/b", "-x"])
+
+@pytest.mark.parametrize(
+    "value", ["http://kaos.local", "kaos.local:8765", " kaos.local ", "a/b", "-x"]
+)
 def test_an_invalid_public_host_warns_and_counts_as_unset(value, monkeypatch):
     monkeypatch.setattr(server_run, "network_address", lambda: "192.168.1.23")
     found = of("0.0.0.0", LADO_PUBLIC_HOST=value)
@@ -124,8 +141,10 @@ def test_an_invalid_public_host_warns_and_counts_as_unset(value, monkeypatch):
         "the link for other devices does not use it",
     )
 
+
 def test_an_empty_public_host_is_unset_without_a_warning():
     assert of("0.0.0.0", True, LADO_LISTEN="0.0.0.0", LADO_PUBLIC_HOST="").problems == ()
+
 
 def test_start_lines_in_a_container_follow_lado_listen():
     assert of("0.0.0.0", True).note and not of("0.0.0.0", True).warning
@@ -228,18 +247,22 @@ def test_a_new_token_replaces_the_file_whole_and_for_the_owner_only(monkeypatch)
     old = auth.token()
     seen = []
     real_replace = os.replace
+
     def replace(src, dst):
         seen.append(auth.token_path().read_text().strip())  # the old one is still there
         real_replace(src, dst)
+
     monkeypatch.setattr(auth.os, "replace", replace)
     new = auth.token(new=True)
     assert seen == [old] and new != old and auth.token() == new
     assert stat.S_IMODE(auth.token_path().stat().st_mode) == 0o600
     assert not auth.token_path().with_suffix(".tmp").exists()
 
+
 def test_a_stale_tmp_does_not_stop_a_new_token():
     auth.token_path().with_suffix(".tmp").write_text("left\n")
     assert auth.token(new=True) == auth.token()
+
 
 def test_renew_swaps_the_guards_token():
     guard = auth.Guard(auth.token(), PORT)
@@ -310,16 +333,19 @@ from lado.server import app as server_app, auth
 PORT = 8765
 ORIGIN = {"origin": "http://testserver"}
 
+
 def client_for(host="0.0.0.0", container=False, **env):
     app = server_app.create_app(auth.token(), PORT, host=host, container=container, env=env)
     client = TestClient(app, follow_redirects=False)
     client.cookies.set(auth.cookie_name(PORT), auth.token())
     return client
 
+
 def test_access_needs_the_token():
     client = client_for()
     client.cookies.clear()
     assert client.get("/api/access").status_code == 401
+
 
 def test_the_link_holds_the_token_and_is_not_cached():
     answer = client_for(LADO_PUBLIC_HOST="kaos.local").get("/api/access")
@@ -327,18 +353,22 @@ def test_the_link_holds_the_token_and_is_not_cached():
     assert answer.headers["cache-control"] == "no-store"
     assert "access-control-allow-origin" not in answer.headers
 
+
 def test_on_loopback_no_link_and_no_token():
     answer = client_for(host="127.0.0.1").get("/api/access")
     assert answer.json()["reason"] == "loopback" and answer.json()["link"] is None
     assert auth.token() not in answer.text
 
+
 def test_in_a_container_without_a_name():
     found = client_for(container=True, LADO_LISTEN="0.0.0.0").get("/api/access").json()
     assert (found["reason"], found["listen"], found["container"]) == ("no-address", "0.0.0.0", True)
 
+
 def test_unknown_carries_the_note():
     found = client_for(container=True).get("/api/access").json()
     assert found["reason"] == "unknown" and "publishes the port" in found["note"]
+
 
 def test_a_new_token_logs_others_out_and_keeps_this_browser():
     client = client_for(LADO_PUBLIC_HOST="kaos.local")
@@ -354,16 +384,19 @@ def test_a_new_token_logs_others_out_and_keeps_this_browser():
     assert other.get("/api/sessions").status_code == 401
     assert other.get("/api/sessions", headers={"authorization": f"Bearer {old}"}).status_code == 401
 
+
 def test_two_new_tokens_in_a_row_from_one_tab():
     client = client_for()
     assert client.post("/api/access/new-token", headers=ORIGIN).status_code == 200
     assert client.post("/api/access/new-token", headers=ORIGIN).status_code == 200
+
 
 def test_a_new_token_from_another_origin_is_refused():
     client = client_for()
     old = auth.token()
     answer = client.post("/api/access/new-token", headers={"origin": "http://evil.example"})
     assert answer.status_code == 403 and auth.token() == old
+
 
 def test_a_new_token_ends_the_streams_and_the_terminals(monkeypatch):
     client = client_for()
@@ -399,32 +432,38 @@ class AccessInfo(BaseModel):
   - `app.py`, in `create_app`:
 
 ```python
-    in_container = update.in_container() if container is None else container
+in_container = update.in_container() if container is None else container
 
-    def access() -> JSONResponse:
-        listening = Listening.of(host, port, in_container, env)
-        link = f"{listening.remote}/?token={guard.token}" if listening.remote else None
-        info = AccessInfo(
-            link=link, reason=listening.reason, port=port, container=in_container,
-            listen=listening.listen,
-            note=listening.note if listening.reason == "unknown" else None,
-        )
-        return JSONResponse(info.model_dump(), headers={"Cache-Control": "no-store"})
 
-    @app.get("/api/access", dependencies=[Depends(guard)])
-    def access_info() -> AccessInfo:  # the model names the schema; the answer adds no-store
-        """The link for another device (share-access)."""
-        return access()
+def access() -> JSONResponse:
+    listening = Listening.of(host, port, in_container, env)
+    link = f"{listening.remote}/?token={guard.token}" if listening.remote else None
+    info = AccessInfo(
+        link=link,
+        reason=listening.reason,
+        port=port,
+        container=in_container,
+        listen=listening.listen,
+        note=listening.note if listening.reason == "unknown" else None,
+    )
+    return JSONResponse(info.model_dump(), headers={"Cache-Control": "no-store"})
 
-    @app.post("/api/access/new-token", dependencies=[Depends(guard.changes)])
-    async def new_token() -> AccessInfo:
-        """A new token now: every other browser is logged out, this one gets its cookie."""
-        await run_in_threadpool(guard.renew)
-        hub.end_streams()
-        await terminals.close_all()
-        answer = access()
-        guard.set_cookie(answer)
-        return answer
+
+@app.get("/api/access", dependencies=[Depends(guard)])
+def access_info() -> AccessInfo:  # the model names the schema; the answer adds no-store
+    """The link for another device (share-access)."""
+    return access()
+
+
+@app.post("/api/access/new-token", dependencies=[Depends(guard.changes)])
+async def new_token() -> AccessInfo:
+    """A new token now: every other browser is logged out, this one gets its cookie."""
+    await run_in_threadpool(guard.renew)
+    hub.end_streams()
+    await terminals.close_all()
+    answer = access()
+    guard.set_cookie(answer)
+    return answer
 ```
 
     (`Listening` is imported from `lado.server.run`; `port` is the bound port the app was

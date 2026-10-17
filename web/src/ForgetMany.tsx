@@ -33,8 +33,11 @@ export function ForgetManyDialog({ sessions, onClose }: { sessions: SessionInfo[
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [finished, setFinished] = useState(false);
 
+  const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     dialog.current?.showModal();
+    // Cancel first, not the first tick: showModal would focus that.
+    cancel.current?.focus();
     let shown = true;
     for (const { name } of sessions)
       getForgetPreview(name).then(
@@ -191,7 +194,7 @@ export function ForgetManyDialog({ sessions, onClose }: { sessions: SessionInfo[
               "open run",
             )} (${withRuns.join(", ")})`}
           </label>
-          {!force && <p className="muted forget-many-stay">{`While this is off, ${joined(withRuns)} stay.`}</p>}
+          {!force && <p className="muted forget-many-stay">{`While this is off, ${joined(withRuns)} ${withRuns.length === 1 ? "stays" : "stay"}.`}</p>}
         </>
       )}
       <div className="question-buttons">
@@ -201,7 +204,7 @@ export function ForgetManyDialog({ sessions, onClose }: { sessions: SessionInfo[
           </button>
         ) : (
           <>
-            <button type="button" className="quiet" onClick={onClose} disabled={busy} autoFocus>
+            <button ref={cancel} type="button" className="quiet" onClick={onClose} disabled={busy}>
               Cancel
             </button>
             <button

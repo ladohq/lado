@@ -113,6 +113,7 @@ test("the window lists every session given, ticked, with when it stopped, and sa
     expect(calls).toContainEqual({ method: "GET", path: `/api/sessions/${name}/forget-preview` });
   }
   expect((within(dialog).getByRole("checkbox", { name: "All 7" }) as HTMLInputElement).checked).toBe(true);
+  expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Cancel" }));
 });
 
 test("cleared ticks lower the count; All clears and ticks them all; none ticked, the button is off", async () => {

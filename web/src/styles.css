@@ -5167,7 +5167,19 @@ h3 {
   right: 0;
   left: auto;
   z-index: 6;
-  width: min(380px, calc(100vw - 32px));
+  width: min(440px, calc(100vw - 32px));
+}
+
+/* Three buttons: each on one line, the row wrapping when they do not fit; a long name is cut. */
+.stop-popover .question-buttons {
+  flex-wrap: wrap;
+}
+
+.stop-popover .question-buttons button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Why Stop and forget is off: the session has open runs. */

@@ -25,7 +25,7 @@ Design doc: `docs/superpowers/specs/2026-10-18-forget-stopped-sessions-design.md
 
 ## 5. UI e2e
 
-- [ ] 5.1 `test_forget_stopped_sessions`, `test_forget_stopped_sessions_open_runs`,
+- [x] 5.1 `test_forget_stopped_sessions`, `test_forget_stopped_sessions_open_runs`,
   `test_stop_and_forget` in `tests/ui/test_launch.py`; `test_phone_forget_stopped` in
   `tests/ui/test_phone.py`. Check: `uv run pytest -m ui tests/ui/test_launch.py
   tests/ui/test_phone.py`.

@@ -58,6 +58,7 @@ function folder(path: string, more: Partial<FolderInfo> = {}): FolderInfo {
     default_name: path.split("/").pop() ?? "",
     name_state: "free",
     provider: null,
+    scratch: false,
     ...more,
   };
 }

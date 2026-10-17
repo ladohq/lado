@@ -290,7 +290,7 @@
       },
       "post": {
         "summary": "Start",
-        "description": "Start a new session, as `lado start` does, without attaching to it. A name a\nsession has is 409 with that session's status and folder; on an empty LADO_HOME\nthe core makes lado.db.",
+        "description": "Start a new session, as `lado start` does, without attaching to it; for `where`\nof kind \"scratch\" the folder is made a repository first, as `lado start --new`\ndoes. A name a session has is 409 with that session's status and folder; on an\nempty LADO_HOME the core makes lado.db.",
         "operationId": "start_api_sessions_post",
         "requestBody": {
           "content": {
@@ -369,6 +369,62 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FolderInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/scratch-target": {
+      "get": {
+        "summary": "Scratch Target",
+        "description": "A fresh start of the name `text` (docs/design/ui.md, Launch and session control):\nthe folder's and the session's name and the title, the folder (by default\n$LADO_REPOS/<name>, else ~/lado/<name>) and whether it takes one, and git's author.",
+        "operationId": "scratch_target_api_scratch_target_get",
+        "parameters": [
+          {
+            "name": "text",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Text"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScratchTarget"
                 }
               }
             }
@@ -3572,6 +3628,11 @@
               }
             ],
             "title": "Warning"
+          },
+          "scratch": {
+            "type": "boolean",
+            "title": "Scratch",
+            "default": false
           }
         },
         "type": "object",
@@ -4464,6 +4525,17 @@
               }
             ],
             "title": "Prompt"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           }
         },
         "type": "object",
@@ -6082,6 +6154,170 @@
         "title": "RunInfo",
         "description": "A flow run: where it is, who acts and its flow."
       },
+      "ScratchProblem": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HintInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "hint"
+        ],
+        "title": "ScratchProblem",
+        "description": "Why git cannot make a fresh start's commit: no author, or no git that runs."
+      },
+      "ScratchTarget": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "new",
+                  "empty",
+                  "inside_repo",
+                  "not_empty",
+                  "not_folder"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScratchProblem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name_state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "free",
+                  "running",
+                  "stopped_here",
+                  "taken_elsewhere"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name State"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderSuggestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "name",
+          "title",
+          "problem",
+          "state",
+          "text",
+          "author",
+          "name_state",
+          "provider"
+        ],
+        "title": "ScratchTarget",
+        "description": "A fresh start as the core finds it (lado.scratch): the names from the text typed,\nthe folder and git's author; it changes nothing."
+      },
       "Sent": {
         "properties": {
           "result": {
@@ -7332,7 +7568,7 @@
           "path"
         ],
         "title": "Where",
-        "description": "Where a session runs: now only a folder (a full path, `~` allowed)."
+        "description": "Where a session runs: a folder (a full path, `~` allowed), made a repository first\nfor \"scratch\" (lado.scratch.make)."
       },
       "WorkInfo": {
         "properties": {

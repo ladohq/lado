@@ -33,7 +33,7 @@ Tests first in each section; each task is one commit. The plan with the steps is
 
 ## 4. Server
 
-- [ ] 4.1 `GET /api/scratch-target`, `where` kind `scratch`, `Launch.title`,
+- [x] 4.1 `GET /api/scratch-target`, `where` kind `scratch`, `Launch.title`,
   `FolderInfo.scratch` (D8); `make web-types`. Unit tests (`tests/test_server_launch.py`):
   "A name checked", "An empty folder in the folder check", the states, author, name
   state, warning, the start and its 400s. `make web`. Plan, Task 8.

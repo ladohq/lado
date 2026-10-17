@@ -1,13 +1,15 @@
-"""What the New session window asks before a start: a folder's check, the folders of past
-sessions, the kits a session of a folder can take and the providers. The decisions stay in
-the core: whether a folder will do is runtime.check_repo, a kit is the one kits.find takes,
-a provider's state is doctor.provider_status."""
+"""What the New session window asks before a start: a folder's check, a fresh start's
+names and folder, the folders of past sessions, the kits a session of a folder can take and
+the providers. The decisions stay in the core: whether a folder will do is
+runtime.check_repo, a fresh start is lado.scratch, a kit is the one kits.find takes, a
+provider's state is doctor.provider_status."""
 
+import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from lado import doctor, kits, providers, runtime, state
+from lado import clone, doctor, kits, providers, runtime, scratch, state
 from lado.server import models
 
 SUBFOLDERS = 50  # at most this many subfolders of a folder
@@ -41,6 +43,57 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         name_state=name_state(name, root, has_db) if name and root else None,
         provider=provider_suggestion(root if has_db else None),
         warning=runtime.outside_repos(root or path),  # a start judges the root
+        scratch=kind in ("missing", "not_repo") and _can_start_from_scratch(path),
+    )
+
+
+def _can_start_from_scratch(path: str) -> bool:
+    try:
+        return scratch.check_target(path).state in scratch.CAN_START
+    except runtime.LadoError:
+        return False
+
+
+def scratch_target(text: str, path: str | None, has_db: bool) -> models.ScratchTarget:
+    """A fresh start of the name `text` in `path` (by default the name's folder in where
+    clones go), as the core finds it; it changes nothing."""
+    try:
+        names, problem = scratch.names(text), None
+    except scratch.ScratchError as refused:
+        names, problem = None, str(refused)
+    if path is not None:
+        folder: str | None = runtime.full_path(path)
+    else:
+        folder = str(scratch.default_folder(names.name)) if names else None
+    target = scratch.check_target(folder) if folder else None
+    return models.ScratchTarget(
+        path=folder,
+        name=names.name if names else None,
+        title=names.title if names else None,
+        problem=problem,
+        state=target.state if target else None,
+        text=target.text if target else None,
+        author=_author(folder or str(clone.default_parent())),
+        name_state=(
+            name_state(names.name, os.path.realpath(folder), has_db) if names and folder else None
+        ),
+        provider=provider_suggestion(None),  # a new folder has no last session
+        warning=runtime.outside_repos(folder) if folder else None,
+    )
+
+
+def _author(path: str) -> models.ScratchProblem | None:
+    """Why git cannot sign a fresh start's commit at `path`; a git that does not run too."""
+    try:
+        problem: runtime.LadoError | None = scratch.author_problem(path)
+    except runtime.FolderProblem as no_git:
+        problem = no_git
+    if problem is None:
+        return None
+    hint = getattr(problem, "hint", None)
+    return models.ScratchProblem(
+        text=str(problem),
+        hint=models.HintInfo(text=hint.text, command=hint.command) if hint else None,
     )
 
 

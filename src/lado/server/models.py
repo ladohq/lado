@@ -18,6 +18,7 @@ from lado import (
     marketplaces,
     runs,
     runtime,
+    scratch,
     self_update,
     state,
     telemetry,
@@ -67,9 +68,10 @@ class TitleChange(BaseModel):
 
 
 class Where(BaseModel):
-    """Where a session runs: now only a folder (a full path, `~` allowed)."""
+    """Where a session runs: a folder (a full path, `~` allowed), made a repository first
+    for "scratch" (lado.scratch.make)."""
 
-    kind: str  # "folder"; another kind is refused for now
+    kind: str  # "folder" or "scratch"; another kind is refused for now
     path: str
 
 
@@ -97,6 +99,8 @@ class FolderInfo(BaseModel):
     # in LADO's container, a folder outside LADO_REPOS: the host does not see it
     # (runtime.outside_repos); a warning, never a refusal
     warning: str | None = None
+    # missing or not_repo, and a fresh start may go on there (lado.scratch: new or empty)
+    scratch: bool = False
 
 
 class HintInfo(BaseModel):
@@ -134,6 +138,32 @@ class CloneTarget(BaseModel):
     name_state: NameState  # as FolderInfo's, before anything is cloned
     provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions
     warning: str | None = None  # as FolderInfo's, for the folder the clone goes to
+
+
+ScratchTargetState = scratch.TargetState
+
+
+class ScratchProblem(BaseModel):
+    """Why git cannot make a fresh start's commit: no author, or no git that runs."""
+
+    text: str
+    hint: "HintInfo | None"
+
+
+class ScratchTarget(BaseModel):
+    """A fresh start as the core finds it (lado.scratch): the names from the text typed,
+    the folder and git's author; it changes nothing."""
+
+    path: str | None  # `~` expanded; the default folder when none; None: no name, no folder
+    name: str | None  # the folder's and the session's name; None when the text is refused
+    title: str | None  # the session's title; None when it is the name
+    problem: str | None  # why the text gives no name
+    state: ScratchTargetState | None  # the folder's; only new and empty take a fresh start
+    text: str | None  # the state as the core says it
+    author: ScratchProblem | None  # None when git knows the author
+    name_state: NameState | None  # as FolderInfo's, for the name and the folder
+    provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions
+    warning: str | None = None  # as FolderInfo's, for the folder
 
 
 class CloneRefused(BaseModel):
@@ -683,6 +713,7 @@ class Launch(BaseModel):
     permission_mode: str | None = None
     without: list[str] | None = None
     prompt: str | None = None  # the human's first message to the supervisor (check_prompt)
+    title: str | None = None  # the session's title (runtime.check_title)
 
 
 class Resume(BaseModel):

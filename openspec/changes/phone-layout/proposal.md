@@ -53,6 +53,9 @@ itself and the composer always at hand.
 - **Tooltips on a tap**: on a touch screen a tap on a hint (a kit's name, the CLI, git)
   shows its tooltip; a button's tooltip, which only names it, does not show.
 - **The Kits tabs fit** a 360 px screen.
+- **The living specs agree**: `session-title` (no pencil in a phone's head; Rename in the
+  details) and `chat-question-card` (the sideways card minimized by the layout, no team
+  row sideways, no edge on a phone) each get one sentence for the phone layout.
 - Docs: `docs/design/ui.md` (a section "Phone layout"), CHANGELOG.md under 0.41.0 (a new
   minor: a UI feature). BACKLOG.md loses "The UI scrolls sideways on a phone-wide screen"
   (no longer true) and "An image in the artifact's tab is sized by `vh` while the tab is

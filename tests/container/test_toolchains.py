@@ -107,6 +107,11 @@ def test_a_projects_go_is_installed_once_and_kept_in_a_new_container(start, proj
     assert login(first, "command -v go", cwd=app).stdout.strip() == (
         "/home/lado/.local/share/mise/shims/go"
     )
+    # A project that names its Go by .go-version alone: the same Go, nothing to install.
+    other = f"{PROJECTS}/other-go"
+    first.write(f"{other}/.go-version", f"{GO}\n")
+    assert login(first, "mise current go", cwd=other).stdout.strip() == GO
+    assert login(first, "go version", cwd=other).stdout.startswith(f"go version go{GO} ")
     docker("rm", "-f", first.name)
 
     second = served(start, projects, home=home)

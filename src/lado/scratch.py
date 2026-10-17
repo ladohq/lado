@@ -17,7 +17,7 @@ from pathlib import Path
 from shlex import quote
 from typing import Literal
 
-from lado import clone, runtime, update
+from lado import clone, runtime
 from lado import text as visible
 
 
@@ -145,6 +145,9 @@ def author_problem(path: str) -> ScratchError | None:
         if result.returncode not in (0, 1):  # 1: not set
             raise ScratchError("git_refused", f"git cannot read its config: {_line(result)}")
         if not result.stdout.strip():
+            # Imported here: the CLI, which imports this module, imports update lazily.
+            from lado import update
+
             hint = AUTHOR_HINT_CONTAINER if update.in_container() else AUTHOR_HINT
             return ScratchError("no_author", NO_AUTHOR, hint)
     return None

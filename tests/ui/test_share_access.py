@@ -12,7 +12,7 @@ import fake_provider
 import pytest
 from playwright.sync_api import Browser, Page, expect
 from test_main_screen import log_in
-from test_phone import NARROWEST, box, device, no_sideways_scroll  # noqa: F401 (a fixture)
+from test_phone import NARROWEST, box, no_sideways_scroll
 
 from lado.server import auth
 from lado.server import run as server_run
@@ -147,11 +147,15 @@ def test_in_a_container_without_a_name_the_dialog_names_lado_public_host(page: P
     shot(page, "share-no-address")
 
 
-def test_on_a_phone_the_dialog_fits_the_screen(device, serve, shot):  # noqa: F811
+def test_on_a_phone_the_dialog_fits_the_screen(browser: Browser, serve, shot):
     """The phone layout (LAD-95): the panel's three icons and the dialog with its QR code
     within the narrowest screen, nothing scrolled sideways."""
     server = serve("0.0.0.0", LADO_PUBLIC_HOST="lado-ui.test")
-    page = device(NARROWEST)
+    width, height = NARROWEST
+    context = browser.new_context(
+        viewport={"width": width, "height": height}, is_mobile=True, has_touch=True
+    )
+    page = context.new_page()
     log_in(page, server)
     page.get_by_role("button", name="System").click()
     head = page.get_by_role("dialog", name="System").locator(".system-head")
@@ -168,3 +172,4 @@ def test_on_a_phone_the_dialog_fits_the_screen(device, serve, shot):  # noqa: F8
         assert found["x"] >= 0 and found["x"] + found["width"] <= NARROWEST[0], found
     no_sideways_scroll(page)
     shot(page, "share-phone-dialog", full_page=False)
+    context.close()

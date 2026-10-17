@@ -85,7 +85,10 @@ def test_a_reply_carries_the_files_the_human_attached(session_with_questions):
     shot = artifacts.upload(session, "shot.png", PNG).full_name
     runtime.answer_questions(
         session,
-        [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text="like this", attached=(shot,))],
+        [
+            runtime.HumanReply(first, "short"),
+            runtime.HumanReply(second, text="like this", attached=(shot,)),
+        ],
     )
     reply = state.get_message(session, state.get_message(session, second).answered_by)
     assert [artifacts.attached(state.message_attachments(reply.id))[0].artifact.full_name] == [shot]
@@ -100,11 +103,13 @@ def test_an_own_answer_of_files_only_names_them():
 def test_a_skip_takes_files_without_a_comment(): ...  # outcome dismissed, attachment kept
 
 
-def test_a_reply_naming_a_missing_file_refuses_the_whole_call(): ...
+def test_a_reply_naming_a_missing_file_refuses_the_whole_call():
+    ...
     # LadoError, both questions still open, no message queued
 
 
-def test_a_reply_with_eleven_files_is_refused(): ...
+def test_a_reply_with_eleven_files_is_refused():
+    ...
     # LadoError "11 files, the limit is 10", nothing changed
 ```
 
@@ -165,10 +170,10 @@ the transaction (they already are built in `written = [...]`). Update the docstr
 
 ```python
 def test_a_gates_answer_gives_its_files_to_the_next_steps_note(session):  # tests/test_runs.py
-    gate = to_gate(session)                      # the helper the reject tests use, ~line 400
+    gate = to_gate(session)  # the helper the reject tests use, ~line 400
     log = artifacts.upload(session, "server.log", b"boom\n").full_name
     runs.answer(session, str(gate.id), "reject", "the form is too big", attached=[log])
-    assert f"Artifacts: /{log}" in first_input("analyst")    # the step's text the worker got
+    assert f"Artifacts: /{log}" in first_input("analyst")  # the step's text the worker got
     closed = state.get_gate(gate.id)
     assert [a.artifact.full_name for a in runs.gate_answer_attachments(closed)] == [log]
 

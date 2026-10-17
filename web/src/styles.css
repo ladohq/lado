@@ -1020,6 +1020,36 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+/* A band's action (GroupHead's `action`) at its right end: an icon in the colour of a
+   dangerous action, as Forget stopped sessions… on the Stopped band. */
+.group-action {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin: 0 4px 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--danger);
+}
+
+.group-action:hover {
+  background: var(--raised);
+}
+
+.group-action:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 1px;
+}
+
+.group-action .icon {
+  width: 16px;
+  height: 16px;
+}
+
 .group-count {
   margin-left: auto;
   font-variant-numeric: tabular-nums;

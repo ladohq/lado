@@ -3,7 +3,7 @@ Design doc: `docs/superpowers/specs/2026-10-18-forget-stopped-sessions-design.md
 
 ## 1. The band's action (D1)
 
-- [ ] 1.1 `GroupHead`'s optional `action`, `.group-action`; vitest. Check: `cd web && npx
+- [x] 1.1 `GroupHead`'s optional `action`, `.group-action`; vitest. Check: `cd web && npx
   vitest run src/GroupHead.test.tsx`.
 
 ## 2. The window (D2–D5, D7)

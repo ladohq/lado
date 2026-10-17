@@ -1,6 +1,10 @@
 """lado.scratch: a session from scratch in a new or empty folder (openspec change
 start-from-scratch)."""
 
+import os
+import subprocess
+from pathlib import Path
+
 import pytest
 
 from lado import scratch
@@ -64,3 +68,105 @@ def test_a_hidden_character_is_refused_by_its_name():
     assert str(refused.value) == (
         "a name is one line of visible text: U+202E RIGHT-TO-LEFT OVERRIDE is not allowed"
     )
+
+
+def git_init(path: Path) -> Path:
+    path.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    return path
+
+
+def test_a_missing_folder_is_new(tmp_path):
+    path = str(tmp_path / "a" / "shop")
+    assert scratch.check_target(path) == scratch.Target(path, "new", "a new folder")
+
+
+def test_an_empty_folder(tmp_path):
+    assert scratch.check_target(str(tmp_path)).state == "empty"
+    assert scratch.check_target(str(tmp_path)).text == "an empty folder"
+
+
+def test_a_folder_finder_made(tmp_path):
+    (tmp_path / ".DS_Store").write_bytes(b"\0")
+    assert scratch.check_target(str(tmp_path)).state == "empty"
+
+
+def test_a_folder_with_a_file_beside_finders_is_not_empty(tmp_path):
+    (tmp_path / ".DS_Store").write_bytes(b"\0")
+    (tmp_path / "notes.txt").write_text("x")
+    target = scratch.check_target(str(tmp_path))
+    assert (target.state, target.text) == (
+        "not_empty",
+        f"{tmp_path} is not empty: choose a new or empty folder",
+    )
+
+
+def test_a_file_is_not_a_folder(tmp_path):
+    (tmp_path / "notes.txt").write_text("x")
+    target = scratch.check_target(str(tmp_path / "notes.txt"))
+    assert (target.state, target.text) == (
+        "not_folder",
+        f"{tmp_path / 'notes.txt'} is a file, not a folder",
+    )
+
+
+def test_a_path_below_a_file_is_not_a_folder(tmp_path):
+    (tmp_path / "notes.txt").write_text("x")
+    target = scratch.check_target(str(tmp_path / "notes.txt" / "shop"))
+    assert (target.state, target.text) == (
+        "not_folder",
+        f"{tmp_path / 'notes.txt'} is a file, not a folder",
+    )
+
+
+def test_a_folder_of_a_repository(tmp_path):
+    root = git_init(tmp_path / "app")
+    (root / "site").mkdir()
+    path = str(root / "site")
+    target = scratch.check_target(path)
+    real = os.path.realpath(root)
+    assert target == scratch.Target(
+        path,
+        "inside_repo",
+        f"{path} is inside the git repository {real}: choose a folder outside it",
+        real,
+    )
+
+
+def test_a_missing_path_under_a_repository_is_inside_it(tmp_path):
+    root = git_init(tmp_path / "app")
+    target = scratch.check_target(str(root / "a" / "b"))
+    assert (target.state, target.root) == ("inside_repo", os.path.realpath(root))
+
+
+def test_a_link_to_an_empty_folder(tmp_path):
+    (tmp_path / "real").mkdir()
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    assert scratch.check_target(str(tmp_path / "link")).state == "empty"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any folder")
+def test_a_folder_lado_may_not_read(tmp_path):
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        with pytest.raises(scratch.ScratchError) as refused:
+            scratch.check_target(str(locked))
+    finally:
+        locked.chmod(0o700)
+    assert refused.value.kind == "no_access"
+    assert str(refused.value).startswith(f"cannot look at {locked}: ")
+
+
+def test_the_default_folder(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert scratch.default_folder("sait-kofeini") == tmp_path / "lado" / "sait-kofeini"
+
+
+def test_the_default_folder_in_the_container(tmp_path, monkeypatch):
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "projects"))
+    name = scratch.names("Сайт кофейни").name
+    folder = scratch.default_folder(name)
+    assert folder == tmp_path / "projects" / "sait-kofeini"
+    assert scratch.check_target(str(folder)).state == "new"

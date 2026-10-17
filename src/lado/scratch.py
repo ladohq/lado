@@ -7,11 +7,15 @@ server and `lado doctor` all call it, and print only what it says.
 None of the human's files ever goes into a commit: only a folder with nothing in it (but
 Finder's `.DS_Store`) is made a repository."""
 
+import os
 import re
+import subprocess
 import unicodedata
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal
 
-from lado import runtime
+from lado import clone, runtime
 from lado import text as visible
 
 
@@ -63,3 +67,81 @@ def names(text: str) -> Names:
         raise ScratchError("no_latin", NO_LATIN)
     name = runtime.slug(latin)
     return Names(name, title if title != name else None)
+
+
+TargetState = Literal["new", "empty", "inside_repo", "not_empty", "not_folder"]
+CAN_START = ("new", "empty")  # the target states a fresh start may go on in
+FINDER = ".DS_Store"  # what Finder leaves in a folder it shows: no file of the human's
+
+
+@dataclass(frozen=True)
+class Target:
+    """A folder a fresh start would make a repository of, as LADO found it; it changes
+    nothing there."""
+
+    path: str
+    state: TargetState
+    text: str
+    root: str | None = None  # the repository it is inside, for inside_repo
+
+
+def default_folder(name: str) -> Path:
+    """The folder of a fresh start when the human gives none: where a clone goes
+    (`clone.default_parent`), then the name."""
+    return clone.default_parent() / name
+
+
+def check_target(path: str) -> Target:
+    """Whether a fresh start may make the folder `path` (a full path) a repository, and
+    what is there when not. Only `CAN_START` states let it go on; a folder LADO may not look
+    at is a ScratchError `no_access`."""
+    try:
+        return _check_target(path)
+    except OSError as exc:
+        raise ScratchError("no_access", f"cannot look at {path}: {exc.strerror or exc}") from None
+
+
+def _check_target(path: str) -> Target:
+    folder = Path(path)
+    nearest = _nearest(folder)
+    if not nearest.is_dir():
+        return Target(path, "not_folder", f"{nearest} is a file, not a folder")
+    # Read first: git's own refusal of a folder it may not enter is no reason for the human.
+    entries = [entry.name for entry in folder.iterdir()] if nearest == folder else None
+    root = _repository_of(str(nearest))
+    if root is not None:
+        text = f"{path} is inside the git repository {root}: choose a folder outside it"
+        return Target(path, "inside_repo", text, root)
+    if entries is None:
+        return Target(path, "new", "a new folder")
+    if any(entry != FINDER for entry in entries):
+        return Target(path, "not_empty", f"{path} is not empty: choose a new or empty folder")
+    return Target(path, "empty", "an empty folder")
+
+
+def _nearest(folder: Path) -> Path:
+    """`folder` when it exists, else its nearest ancestor that does."""
+    while not folder.exists() and folder != folder.parent:
+        folder = folder.parent
+    return folder
+
+
+def _repository_of(folder: str) -> str | None:
+    """The root of the git repository `folder` is in; None outside any."""
+    # git's own words decide "not a repository", so they must not be translated.
+    result = runtime._run_git(folder, "rev-parse", "--show-toplevel", env=_english())
+    if result.returncode == 0:
+        return result.stdout.strip()
+    if "not a git repository" in result.stderr:
+        return None
+    raise ScratchError("git_refused", f"git cannot read {folder}: {_line(result)}")
+
+
+def _english() -> dict[str, str]:
+    return {**os.environ, "LC_ALL": "C"}
+
+
+def _line(result: subprocess.CompletedProcess) -> str:
+    """git's first line of a failure."""
+    lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+    return lines[0] if lines else f"git exited {result.returncode}"

@@ -3,11 +3,11 @@ Tests first in each section; each task is one commit. The plan with the steps is
 
 ## 1. Core: `lado.scratch`
 
-- [ ] 1.1 `names` and the transliteration table (D1, D2). Unit tests
+- [x] 1.1 `names` and the transliteration table (D1, D2). Unit tests
   (`tests/test_scratch.py`): "A Cyrillic name", "A name that is already a name", "A name
   with accents", "Another script", every table letter, empty, 81 characters, a hidden
   character. Plan, Task 1.
-- [ ] 1.2 `check_target`, `default_folder` (D4). Unit tests with real git: each state,
+- [x] 1.2 `check_target`, `default_folder` (D4). Unit tests with real git: each state,
   "A folder Finder made", "A folder of a repository", a missing path under a repository,
   no access, "The default folder in the container". Plan, Task 2.
 - [ ] 1.3 `author_problem` (D5). Unit tests: "The container without the variables", "A

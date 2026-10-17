@@ -64,7 +64,7 @@ Tests first in each section; each section is one commit. The plan with the code 
 
 ## 8. Docs
 
-- [ ] 8.1 `docs/design/ui.md` (the new section, Server's Host and Token), `docs/cli.md`,
+- [x] 8.1 `docs/design/ui.md` (the new section, Server's Host and Token), `docs/cli.md`,
   `docs/design/modules.md`, `auth.py`'s docstring, CHANGELOG `0.41.0 (unreleased)`.
   Plan, Task 8.
 

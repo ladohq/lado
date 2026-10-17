@@ -720,7 +720,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     sends nothing (`cli.cmd_stats` prints them).
   - `loop.py`: the session loop, `lado loop <session>` (see docs/design/agents.md).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
-    rules in [docs/design/ui.md](ui.md), section Server). `auth.py`: the token
+    rules in [docs/design/ui.md](ui.md), section Server). `auth.py`: the token (written
+    whole beside its file and moved over it; `Guard.renew` swaps it in the running server)
     and, for a connection that changes something, the Origin against the request's own
     Host (`Guard.check`), the only place that checks them; `app.py`: the FastAPI app, the API under `/api` (data only
     through `state.py`/`runtime.py`, never migrates the database), the bundle's files, and `index.html` for every other path
@@ -728,11 +729,13 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `GET /api/events` (Server-Sent Events): the `Source` of changes (now the `changes`
     journal, read only), one hub per server, `reset` and resume, the derived fields, and
     the end of every stream when the server shuts down (`Hub.close`, called first by
-    `app.Server`'s shutdown, as uvicorn waits for open responses before the lifespan's);
+    `app.Server`'s shutdown, as uvicorn waits for open responses before the lifespan's),
+    and of the open ones only at a new token (`Hub.end_streams`: the hub stays open);
     `models.py`: the API's models, one form for REST and the stream's items;
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
-    backpressure, close codes; the agents, messages, run events
+    backpressure, close codes, and the open sockets (`OPEN`), which a new token closes
+    (`close_all`); the agents, messages, run events
     (`/api/sessions/{name}/events`), gates (with the human's answer), the human's answers
     to one agent's open questions (`POST …/answers`, a tab of the UI's waiting card, all or
     none, through `runtime.answer_questions`), runs and notes endpoints are in `app.py`,
@@ -828,10 +831,15 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `bug_report.BROWSER_LINE`'s shape is 422; it reads only, so not under
     `Guard.changes`);
     `run.py`: the lock, `server.json`, the host and port (`--host`, 127.0.0.1 by default;
-    `Listening`: the local link, the remote one and the warning for the address taken; in a
-    container, `container=update.in_container()`, no remote link and no warning but a
+    `Listening`: the local link, the remote one (the base of the link for another device,
+    or none with its `reason`) and the warning for the address taken, by one rule with
+    `LADO_PUBLIC_HOST` (`public_host`; an invalid one is in `problems`, printed at the
+    start) and, for `0.0.0.0`, `network_address` (a UDP route's source address, found at
+    each call); in a container, `container=update.in_container()`, `LADO_LISTEN` decides
+    (`listen`): the warning for a non-loopback one, else none, and unset or not IPv4 a
     `note`, `CONTAINER_NOTE`, as the port's publication decides who reaches it; `lado ui`
-    there prints the link and `OPEN_ON_HOST` and opens no browser),
+    there prints the link and `OPEN_ON_HOST` and opens no browser; `access`, what a server
+    answers on `GET /api/access`, which `lado ui` prints as `From another machine`),
     the background start and stop (`stop` returns once the server's process has ended, not
     only its lock: `_gone` reaps a child of its own), server.log's bound (`rotate` at a background start,
     `housekeeping`'s `bound_log` and `telemetry.kick` every `KICK_EVERY`). Only in a

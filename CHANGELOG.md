@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.41.0 (unreleased)
+
+- The UI opens LADO on a phone or another computer: the system panel's new QR-code icon
+  shows a QR code and the link with its token (Copy link), or says what makes one; New
+  link… logs everyone else out without a restart (`POST /api/access/new-token`). In Docker
+  set `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST=<this computer's name>` in `.env` (take
+  0.41.0's `compose.yaml`, which publishes the port on `LADO_LISTEN`). `lado ui`'s
+  `From another machine` line now comes from the server and names this machine's address
+  in its network instead of its hostname; in a container with `--no-open` it goes to
+  stderr. The panel's `GitHub ↗` is now the GitHub icon.
+
 ## 0.40.0 (2026-10-17)
 
 - Install with Docker: docs/install.md has a Docker section, from nothing to an agent that

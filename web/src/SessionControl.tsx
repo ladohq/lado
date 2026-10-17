@@ -2,7 +2,9 @@
 // by its status: Stop a session that runs (or whose tmux session is gone, to mark it
 // stopped), Resume one that does not run, Forget one that is stopped. Stop asks in a
 // popover, Forget in a modal window; both say first what they do, from the server's
-// preview. The session list's rows have none of them (Sessions.tsx, SessionRowMenu).
+// preview. Stop's popover can also stop and forget the session in one go. The session list's
+// rows have none of them (Sessions.tsx, SessionRowMenu); its Stopped band forgets many
+// (ForgetMany.tsx).
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useNavigate } from "react-router";
 
@@ -134,22 +136,52 @@ function StopPopover({
   onClose: () => void;
 }) {
   const preview = usePreview(() => getStopPreview(session));
-  const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  // What is being done: the stop, or the forget of Stop and forget; "stopped" once its stop
+  // is done and its forget refused, when neither button has anything left to do.
+  const [busy, setBusy] = useState<"stopping" | "forgetting" | "stopped" | null>(null);
+  const [pressed, setPressed] = useState<"stop" | "forget" | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   useEffect(() => {
     panel.current?.focus();
   }, []);
   const stop = async () => {
-    setBusy(true);
+    setPressed("stop");
+    setBusy("stopping");
     setRefused(null);
     try {
       await stopSession(session);
       onClose();
     } catch (error) {
       setRefused(messageOf(error));
-      setBusy(false);
+      setBusy(null);
     }
   };
+  // The core's stop, then the core's forget without force: a session with open runs is not
+  // offered it (D6), and a refused forget leaves the session stopped, its reason shown.
+  const stopAndForget = async () => {
+    setPressed("forget");
+    setBusy("stopping");
+    setRefused(null);
+    try {
+      await stopSession(session);
+    } catch (error) {
+      setRefused(messageOf(error));
+      setBusy(null);
+      return;
+    }
+    setBusy("forgetting");
+    try {
+      await forgetSession(session, false);
+      onClose();
+      navigate("/sessions");
+    } catch (error) {
+      setRefused(messageOf(error));
+      setBusy("stopped");
+    }
+  };
+  const loaded = preview !== null && "value" in preview ? preview.value : null;
+  const hasRuns = (loaded?.open_runs.length ?? 0) > 0;
   const title = `Stop session "${session}"?`;
   return (
     <div
@@ -179,22 +211,32 @@ function StopPopover({
           ))}
         </ul>
       )}
+      {hasRuns && <p className="muted stop-forget-why">It has open runs: stop it, then forget it from the Stopped list.</p>}
       {refused && (
         <p className="problem" role="alert">
           {refused}
         </p>
       )}
       <div className="question-buttons">
-        <button type="button" className="quiet" onClick={onClose} disabled={busy}>
+        <button type="button" className="quiet" onClick={onClose} disabled={busy === "stopping" || busy === "forgetting"}>
           Cancel
         </button>
-        <button
-          type="button"
-          className="danger"
-          disabled={busy || preview === null || "error" in preview}
-          onClick={() => void stop()}
-        >
-          {busy ? "Stopping…" : `Stop ${session}`}
+        <Tooltip tip="Stops it, then deletes its history for good">
+          <button
+            type="button"
+            className="danger"
+            disabled={busy !== null || loaded === null || hasRuns}
+            onClick={() => void stopAndForget()}
+          >
+            {pressed === "forget" && busy === "stopping"
+              ? "Stopping…"
+              : busy === "forgetting"
+                ? "Forgetting…"
+                : "Stop and forget"}
+          </button>
+        </Tooltip>
+        <button type="button" className="danger" disabled={busy !== null || loaded === null} onClick={() => void stop()}>
+          {pressed === "stop" && busy === "stopping" ? "Stopping…" : `Stop ${session}`}
         </button>
       </div>
     </div>

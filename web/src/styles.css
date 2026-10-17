@@ -5170,6 +5170,12 @@ h3 {
   width: min(380px, calc(100vw - 32px));
 }
 
+/* Why Stop and forget is off: the session has open runs. */
+.stop-forget-why {
+  margin: -6px 0 12px;
+  font-size: 12px;
+}
+
 .link-popover {
   z-index: 6;
   width: min(360px, calc(100vw - 32px));

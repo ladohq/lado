@@ -19,8 +19,9 @@ Design doc: `docs/superpowers/specs/2026-10-18-forget-stopped-sessions-design.md
 
 ## 4. Stop and forget (D6)
 
-- [ ] 4.1 `StopPopover`'s `Stop and forget`; vitest. Check: `cd web && npx vitest run
-  src/SessionControl.test.tsx`, `make web`.
+- [x] 4.1 `StopPopover`'s `Stop and forget`; vitest. Check: `cd web && npx vitest run
+  src/SessionControl.test.tsx`, `make web`. (The vitest went to `src/Launch.test.tsx`
+  beside the existing Stop and Forget tests, whose fake server it shares.)
 
 ## 5. UI e2e
 

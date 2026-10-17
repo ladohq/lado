@@ -70,6 +70,6 @@
 
 ## 10. Regression
 
-- [ ] 10.1 `make lint`, `make test`, `make web`, the changed integration and UI files with
+- [x] 10.1 `make lint`, `make test`, `make web`, the changed integration and UI files with
   their markers, `openspec validate --specs --strict`; grep `openspec/specs/` for
   "comment for the next step", "own answer", "attachments" against the delta.

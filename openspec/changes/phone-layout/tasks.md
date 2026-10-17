@@ -33,7 +33,7 @@ Design doc: `docs/superpowers/specs/2026-10-18-phone-layout-design.md`.
 
 ## 7. Tooltips on a tap (D8)
 
-- [ ] 7.1 Touch tap on a hint shows it, buttons never; vitest. Check: `cd web && npx
+- [x] 7.1 Touch tap on a hint shows it, buttons never; vitest. Check: `cd web && npx
   vitest run src/Tooltip.test.tsx`.
 
 ## 8. UI e2e (D9)

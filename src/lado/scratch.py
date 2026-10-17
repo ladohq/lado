@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from lado import clone, runtime
+from lado import clone, runtime, update
 from lado import text as visible
 
 
@@ -117,6 +117,35 @@ def _check_target(path: str) -> Target:
     if any(entry != FINDER for entry in entries):
         return Target(path, "not_empty", f"{path} is not empty: choose a new or empty folder")
     return Target(path, "empty", "an empty folder")
+
+
+NO_AUTHOR = "git doesn't know who signs the agents' commits: it has no user.name or user.email"
+AUTHOR_HINT_CONTAINER = runtime.Hint(
+    "Set LADO_GIT_NAME and LADO_GIT_EMAIL in the .env file next to compose.yaml, then "
+    "restart LADO there:",
+    "docker compose up -d",
+)
+AUTHOR_HINT = runtime.Hint(
+    "Tell git who you are, once for this computer:",
+    'git config --global user.name "Your Name" && git config --global user.email you@example.com',
+)
+
+
+def author_problem(path: str) -> ScratchError | None:
+    """Why git cannot sign the commits of a repository at `path`: no `user.name` or
+    `user.email` where its nearest existing folder is, which outside any repository is
+    git's global and system config, the ones the agents' git reads. None when both are
+    set. A git that does not run raises LAD-5's FolderProblem; LADO never sets an author of
+    its own."""
+    folder = str(_nearest(Path(path)))
+    for key in ("user.name", "user.email"):
+        result = runtime._run_git(folder, "config", "--get", key, env=_english())
+        if result.returncode not in (0, 1):  # 1: not set
+            raise ScratchError("git_refused", f"git cannot read its config: {_line(result)}")
+        if not result.stdout.strip():
+            hint = AUTHOR_HINT_CONTAINER if update.in_container() else AUTHOR_HINT
+            return ScratchError("no_author", NO_AUTHOR, hint)
+    return None
 
 
 def _nearest(folder: Path) -> Path:

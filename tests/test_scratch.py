@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from lado import scratch
+from lado import runtime, scratch
 
 # The spec's table: each Cyrillic letter and its Latin letters.
 TABLE = (
@@ -170,3 +170,51 @@ def test_the_default_folder_in_the_container(tmp_path, monkeypatch):
     folder = scratch.default_folder(name)
     assert folder == tmp_path / "projects" / "sait-kofeini"
     assert scratch.check_target(str(folder)).state == "new"
+
+
+NO_AUTHOR = "git doesn't know who signs the agents' commits: it has no user.name or user.email"
+
+
+def test_a_developers_machine(git_config, tmp_path):
+    assert scratch.author_problem(str(tmp_path / "shop")) is None
+
+
+def test_a_git_without_the_email(git_config, tmp_path):
+    git_config.write_text("[user]\n\tname = Ann\n")
+    problem = scratch.author_problem(str(tmp_path / "shop"))
+    assert (problem.kind, str(problem)) == ("no_author", NO_AUTHOR)
+    assert problem.hint == runtime.Hint(
+        "Tell git who you are, once for this computer:",
+        'git config --global user.name "Your Name" && git config --global user.email '
+        "you@example.com",
+    )
+
+
+def test_an_empty_name_is_no_author(git_config, tmp_path):
+    git_config.write_text("[user]\n\tname =\n\temail = ann@example.com\n")
+    assert scratch.author_problem(str(tmp_path)).kind == "no_author"
+
+
+def test_the_container_without_the_variables(git_config, tmp_path, monkeypatch):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    git_config.write_text("")
+    problem = scratch.author_problem(str(tmp_path))
+    assert str(problem) == NO_AUTHOR
+    assert problem.hint == runtime.Hint(
+        "Set LADO_GIT_NAME and LADO_GIT_EMAIL in the .env file next to compose.yaml, then "
+        "restart LADO there:",
+        "docker compose up -d",
+    )
+
+
+def test_a_container_switched_off_is_outside(git_config, tmp_path, monkeypatch):
+    monkeypatch.setenv("LADO_CONTAINER", "0")
+    git_config.write_text("")
+    assert scratch.author_problem(str(tmp_path)).hint.command.startswith("git config --global")
+
+
+def test_no_git_is_lad_5s_problem_not_an_author_one(git_config, tmp_path, monkeypatch):
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
+    with pytest.raises(runtime.FolderProblem) as refused:
+        scratch.author_problem(str(tmp_path))
+    assert refused.value.kind == "no_git"

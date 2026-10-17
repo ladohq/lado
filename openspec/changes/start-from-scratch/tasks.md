@@ -10,7 +10,7 @@ Tests first in each section; each task is one commit. The plan with the steps is
 - [x] 1.2 `check_target`, `default_folder` (D4). Unit tests with real git: each state,
   "A folder Finder made", "A folder of a repository", a missing path under a repository,
   no access, "The default folder in the container". Plan, Task 2.
-- [ ] 1.3 `author_problem` (D5). Unit tests: "The container without the variables", "A
+- [x] 1.3 `author_problem` (D5). Unit tests: "The container without the variables", "A
   developer's machine", the outside hint, no git. Plan, Task 3.
 - [ ] 1.4 `make` (D6). Unit tests: "A new folder", an empty folder, `init.defaultBranch`,
   gpgsign and hooks off, "A failed commit" (made folder or `.git` removed), a taken name.

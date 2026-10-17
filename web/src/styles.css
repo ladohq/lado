@@ -7499,6 +7499,7 @@ del.kit-mcp-name {
 
 .artifact-tab-image .image-frame img {
   max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px); /* the tab's height (.artifact-tab) */
   object-fit: contain;
 }
 
@@ -7743,4 +7744,374 @@ del.kit-mcp-name {
   flex: 1;
   overflow-y: auto;
   padding: 16px 18px 24px;
+}
+
+/* Phone layout (docs/design/ui.md, Phone layout; decided 2026-10-18, LAD-95): a touch
+   screen no wider than 600 px or no higher than 500 px. Every rule of the phone is here and
+   starts with :root[data-phone], which the Shell sets from phone.ts's one query: a computer,
+   with a mouse, never gets one. "short" is the phone held sideways. A phone matches the
+   narrow window's rules above too (max-width: 900px), which stack the page for a window
+   that scrolls; these put the app's window back and take what a phone has no room for. */
+
+/* The app's window, as a wide one's: the window never scrolls, the content does; the rail
+   is the menu (Shell.tsx), out of the grid. */
+:root[data-phone],
+:root[data-phone] body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+:root[data-phone] .app {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+}
+
+:root[data-phone] .rail {
+  display: none;
+}
+
+:root[data-phone] .main {
+  min-height: 0;
+}
+
+/* Menu opens the rail as a drawer from the left, with its names, over a scrim that dims the
+   page; over the terminals (20), the artifact panel (30, 31) and the lightbox (40). */
+:root[data-phone] .rail[data-open] {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 46;
+  display: flex;
+  width: 260px;
+  max-width: calc(100vw - 48px);
+  height: 100%;
+  overflow-y: auto;
+  box-shadow: 0 0 40px var(--shadow);
+}
+
+:root[data-phone] .menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  padding: 0;
+  border: 0;
+  background: var(--shadow);
+  cursor: default;
+}
+
+:root[data-phone] .menu-button {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  color: var(--ink);
+}
+
+:root[data-phone] .menu-button .rail-count {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+:root[data-phone] .content {
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+:root[data-phone] .version-banner,
+:root[data-phone] .update-banner {
+  margin: 8px 12px 0;
+}
+
+/* The top bar: one line that never wraps. */
+:root[data-phone] .topbar {
+  flex-wrap: nowrap;
+  gap: 8px;
+  height: 52px;
+  min-height: 0;
+  padding: 0 8px;
+}
+
+:root[data-phone] .topbar > h1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root[data-phone="short"] .topbar {
+  height: 44px;
+}
+
+/* The change feed's mark: a dot while live; "reconnecting…" keeps its word. */
+:root[data-phone] .topbar .link-word {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+:root[data-phone] .topbar .system-button {
+  padding-inline: 4px;
+}
+
+:root[data-phone] .topbar .system-button::before {
+  margin-right: 0;
+}
+
+:root[data-phone] .topbar .reconnecting-why {
+  display: none;
+}
+
+/* A session's head (Sessions.tsx, PhoneHead): Menu, the status dot, the title as a button
+   that takes the room left, cut with "…", the change feed's mark, then Stop. */
+:root[data-phone] .topbar:has(.session-head) {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  padding-block: 0;
+}
+
+:root[data-phone] .session-head .session-dot {
+  margin-block: 0;
+}
+
+:root[data-phone] .session-head .session-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  line-height: normal;
+}
+
+:root[data-phone] .session-title button {
+  display: block;
+  max-width: 100%;
+  padding: 6px 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-phone] .topbar > .system,
+:root[data-phone] .topbar > .link {
+  order: 1;
+}
+
+:root[data-phone] .session-head-actions {
+  order: 2;
+  margin-left: 0;
+}
+
+/* The session's details (SessionDetails.tsx): a sheet over the page's bottom. */
+:root[data-phone] .session-details {
+  inset: auto 0 0;
+  width: 100%;
+  max-width: none;
+  max-height: 85%;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 14px 14px 0 0;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+:root[data-phone] .session-details::backdrop {
+  background: var(--shadow);
+}
+
+:root[data-phone] .session-details-box {
+  padding: 12px 16px 20px;
+}
+
+:root[data-phone] .session-details-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+:root[data-phone] .session-details-head h2,
+:root[data-phone] .session-details-head .title-edit {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+:root[data-phone] .session-details-head .ghost {
+  font-size: 22px;
+}
+
+:root[data-phone] .session-details-state {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+:root[data-phone] .session-details dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px 12px;
+  margin: 0 0 16px;
+}
+
+:root[data-phone] .session-details dt {
+  color: var(--muted);
+}
+
+:root[data-phone] .session-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+:root[data-phone] .session-details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+:root[data-phone] .session-details-actions .quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+:root[data-phone] .session-details-actions .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* A session's page fills the content: the session only, its main column scrolling by
+   itself; the terminals show over the screen when opened (Terminals.tsx). */
+:root[data-phone] .content:has(> .sessions) {
+  padding: 0;
+  overflow: hidden;
+}
+
+:root[data-phone] .sessions {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+}
+
+/* Sessions is the list alone (Sessions.tsx): the page beside it is empty. */
+:root[data-phone] .session-detail:empty {
+  display: none;
+}
+
+:root[data-phone] .session-list {
+  border-bottom: 0;
+}
+
+:root[data-phone] .session-main {
+  --main-pad: 12px;
+  min-height: 0;
+  padding-bottom: 8px;
+  overflow-y: auto;
+}
+
+/* The terminals (Terminals.tsx): none until one is opened, then over the whole screen, the
+   top bar too, as the narrow window's expanded panel. */
+:root[data-phone] .terminals[hidden] {
+  display: none;
+}
+
+:root[data-phone] .terminals.expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  width: auto;
+  height: auto;
+  border: 0;
+}
+
+/* The session's tabs without their icons, smaller: all four fit 360 px. The Kits page's
+   tabs take the same. */
+:root[data-phone] .session-tabs .tab-item,
+:root[data-phone] .kits-main .tab-item {
+  gap: 4px;
+  padding: 8px 6px;
+  font-size: 12px;
+}
+
+:root[data-phone] .session-tabs .tab-item > svg {
+  display: none;
+}
+
+/* A flow event's line from the feed's left edge: the actor, the chips and the time on the
+   first line, the text wrapped under them, whole. */
+:root[data-phone] .run-group,
+:root[data-phone] .chat-quiet {
+  padding-left: var(--row-pad);
+}
+
+:root[data-phone] .run-line .run-detail {
+  flex-basis: 100%;
+  order: 2;
+  padding-left: 26px; /* under the actor's name: the mini avatar's 18 px and the gap */
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+:root[data-phone] .run-line time {
+  order: 1;
+}
+
+/* The waiting card: at most half the chat (its stylesheet's), no edge; expanded, it fills
+   the chat, whose height is the window's here. */
+:root[data-phone] .waiting-card > .splitter-top {
+  display: none;
+}
+
+:root[data-phone] .waiting-card.expanded {
+  min-height: 0;
+}
+
+/* The composer: Safari zooms into a field under 16 px; no keys on a touch screen. */
+:root[data-phone] .composer textarea {
+  font-size: 16px;
+}
+
+:root[data-phone] .composer-keys {
+  display: none;
+}
+
+/* Sideways: the chat's room is for the feed; the card is minimized (WaitingCard.tsx). */
+:root[data-phone="short"] .team-row,
+:root[data-phone="short"] .composer-to {
+  display: none;
+}
+
+:root[data-phone="short"] .activity,
+:root[data-phone="short"] .chat {
+  gap: 6px;
+}
+
+:root[data-phone="short"] .chat-feed {
+  min-height: 60px;
+}
+
+:root[data-phone] .chat > .waiting-card.minimized {
+  flex: none;
 }

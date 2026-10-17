@@ -34,9 +34,10 @@ import {
 import { useSearchParams } from "react-router";
 
 import type { AgentInfo } from "./api";
-import { CollapsePanelIcon, ExpandIcon, KeyboardIcon, ViewIcon } from "./icons";
+import { CloseIcon, CollapsePanelIcon, ExpandIcon, KeyboardIcon, ViewIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
 import { TERMINAL_PARAM } from "./paths";
+import { usePhone } from "./phone";
 import { PANEL_WIDTH, storeAskControl, storedAskControl, storedPanel, storePanel, type ColumnPrefs } from "./prefs";
 import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
 import { AgentTip, StatusDot, SUPERVISOR } from "./Team";
@@ -89,6 +90,12 @@ export function TerminalPanel({ session, children }: { session: string; children
   const [active, setActive] = useState(SUPERVISOR);
   const [panel, setPanel] = useState(storedPanel);
   const [expanded, setExpanded] = useState(false);
+  // On a phone (phone.ts) there is no panel or strip: opening a terminal shows it over the
+  // screen, expanded, until Close terminal; the computer's panel is neither read nor written.
+  const phone = usePhone();
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const collapsed = phone ? !phoneOpen : panel.collapsed;
+  const over = phone ? phoneOpen : expanded; // over the page
   const [shown, setShown] = useState<string[]>([]); // the tabs whose terminal is made
   const [page, room] = useWidth<HTMLDivElement>();
   const tabList = useRef<HTMLDivElement>(null);
@@ -119,7 +126,7 @@ export function TerminalPanel({ session, children }: { session: string; children
     tabList.current
       ?.querySelector('[aria-selected="true"]')
       ?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
-  }, [active, panel.collapsed]);
+  }, [active, collapsed]);
 
   const keep = useCallback((change: Partial<ColumnPrefs>) => {
     setPanel((now) => {
@@ -133,9 +140,10 @@ export function TerminalPanel({ session, children }: { session: string; children
     (agent: string) => {
       setTabs((now) => (now.includes(agent) ? now : [...now, agent]));
       setActive(agent);
-      keep({ collapsed: false });
+      if (phone) setPhoneOpen(true);
+      else keep({ collapsed: false });
     },
-    [keep],
+    [keep, phone],
   );
 
   // ?terminal=<agent> (Needs you, a notification) opens that agent's terminal once the
@@ -177,28 +185,39 @@ export function TerminalPanel({ session, children }: { session: string; children
     focus.toggled();
     keep({ collapsed: true });
   };
+  // A phone's terminal put away: control ends, as when the panel folds.
+  const closePhone = useCallback(() => {
+    releaseAll();
+    setPhoneOpen(false);
+  }, [releaseAll]);
+  // No longer a phone (a mouse plugged in): its terminal and control go.
+  useEffect(() => {
+    if (phone === null && phoneOpen) closePhone();
+  }, [phone, phoneOpen, closePhone]);
 
   // A tab's terminal is made the first time it shows in the open panel.
-  const made = panel.collapsed || shown.includes(active) ? shown : [...shown, active];
+  const made = collapsed || shown.includes(active) ? shown : [...shown, active];
   useEffect(() => {
     if (made !== shown) setShown(made);
   });
 
   useEffect(() => {
-    if (!expanded) return;
+    if (!over) return;
     const restore = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && escapeIsOurs(event.target)) setExpanded(false);
+      if (event.key !== "Escape" || !escapeIsOurs(event.target)) return;
+      if (phone) closePhone();
+      else setExpanded(false);
     };
     // Captured: xterm.js takes the keys it handles, so they never bubble up to the window.
     window.addEventListener("keydown", restore, true);
     return () => window.removeEventListener("keydown", restore, true);
-  }, [expanded]);
+  }, [over, phone, closePhone]);
 
   const width = fitWidth(panel.width, PANEL_WIDTH, room === null ? null : room - MAIN_MIN);
-  const classes = ["terminals", panel.collapsed && "collapsed", expanded && "expanded"].filter(Boolean).join(" ");
+  const classes = ["terminals", collapsed && "collapsed", over && "expanded"].filter(Boolean).join(" ");
 
   return (
-    <TerminalsContext.Provider value={{ open, active: panel.collapsed ? null : active }}>
+    <TerminalsContext.Provider value={{ open, active: collapsed ? null : active }}>
       <div ref={page} className="session-page">
         <div className="session-main" style={{ minWidth: `${MAIN_MIN}px` }}>
           {missing !== null && (
@@ -211,9 +230,10 @@ export function TerminalPanel({ session, children }: { session: string; children
         <aside
           className={classes}
           aria-label="Terminals"
-          style={panel.collapsed ? undefined : { width: `${width}px` }}
+          hidden={(phone !== null && collapsed) || undefined}
+          style={collapsed || phone ? undefined : { width: `${width}px` }}
         >
-          {panel.collapsed ? (
+          {collapsed && phone === null ? (
             <>
               <button
                 ref={focus.open}
@@ -235,9 +255,9 @@ export function TerminalPanel({ session, children }: { session: string; children
                 ))}
               </ul>
             </>
-          ) : (
+          ) : collapsed ? null : (
             <>
-              {!expanded && (
+              {!over && (
                 <Splitter
                   label="Resize the terminals"
                   edge="left"
@@ -298,16 +318,28 @@ export function TerminalPanel({ session, children }: { session: string; children
                   ))}
                 </div>
                 <div className="term-actions">
-                  <button
-                    type="button"
-                    className="ghost"
-                    aria-label={expanded ? "Restore terminal" : "Expand terminal"}
-                    title={expanded ? "Restore terminal (Esc)" : "Expand terminal over the page"}
-                    onClick={() => setExpanded(!expanded)}
-                  >
-                    <ExpandIcon expanded={expanded} />
-                  </button>
-                  {!expanded && (
+                  {phone ? (
+                    <button
+                      type="button"
+                      className="ghost"
+                      aria-label="Close terminal"
+                      title="Close terminal (Esc)"
+                      onClick={closePhone}
+                    >
+                      <CloseIcon />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ghost"
+                      aria-label={expanded ? "Restore terminal" : "Expand terminal"}
+                      title={expanded ? "Restore terminal (Esc)" : "Expand terminal over the page"}
+                      onClick={() => setExpanded(!expanded)}
+                    >
+                      <ExpandIcon expanded={expanded} />
+                    </button>
+                  )}
+                  {!over && (
                     <button
                       ref={focus.collapse}
                       type="button"
@@ -330,13 +362,13 @@ export function TerminalPanel({ session, children }: { session: string; children
               role="tabpanel"
               aria-label={agent}
               className="term-body"
-              hidden={panel.collapsed || agent !== active}
+              hidden={collapsed || agent !== active}
             >
               {made.includes(agent) && (
                 <AgentTerminal
                   session={session}
                   agent={agent}
-                  visible={!panel.collapsed && agent === active}
+                  visible={!collapsed && agent === active}
                   info={infoOf(agent)}
                   mode={controlled.has(agent) ? "control" : "view"}
                   onMode={(next) => setMode(agent, next)}

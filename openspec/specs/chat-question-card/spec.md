@@ -150,7 +150,8 @@ line, the other sessions' cards and the waiting agents' rows hidden. Nothing aro
 SHALL be dimmed. There an icon button ("Collapse the card") or Esc SHALL bring it back,
 as it was before (minimized when it was), and it SHALL come back by itself when nothing
 waits any more. While an artifact panel is open, Esc SHALL close the panel only and leave
-the card expanded.
+the card expanded. In the phone layout held sideways (capability phone-layout) the team
+row SHALL not be shown, expanded or not.
 
 #### Scenario: Long questions
 - **WHEN** the supervisor's tab holds three questions whose text is longer than half the
@@ -229,7 +230,10 @@ SHALL restore the whole card (a tab clicked is shown). The card SHALL stay minim
 also across a reload in the same browser, while every tab it shows was there when it was
 minimized, and SHALL restore itself when a new tab comes. Minimizing SHALL change nothing
 of what waits: the gate or question stays open, and Needs you's count and the
-notifications are as before. Needs you's cards SHALL have no minimize icon.
+notifications are as before. Needs you's cards SHALL have no minimize icon. In the phone
+layout held sideways (capability phone-layout) the chat's card SHALL be minimized by the
+layout, without the minimize icon and without changing what the browser keeps: a click on
+a tab or on the line SHALL show it expanded, and folding it SHALL minimize it again.
 
 #### Scenario: Minimized while talking to the supervisor
 - **WHEN** gate #812 of run task/lad-52 waits and the human clicks "Minimize the card"
@@ -263,7 +267,8 @@ card's height between its least height and the chat's height less the feed's lea
 height SHALL be kept in the browser, one value for every session's chat; a chat too short
 for it SHALL show the card lower without forgetting the chosen height. Dragging the edge
 down past the card's least height SHALL minimize the card. Needs you SHALL have no such
-edge, nor a window of 900 px or less.
+edge, nor a window of 900 px or less, nor the phone layout (capability phone-layout),
+whatever its width, where the card is at most half the chat's height.
 
 #### Scenario: Made smaller
 - **WHEN** the human drags the edge above the card down to 230 px

@@ -1,9 +1,11 @@
 """Who may call the UI server: the only place that checks it.
 
 Now a token of LADO_HOME, kept in LADO_HOME/server-token (owner only) until
-`lado server --new-token`. `lado ui` opens `/?token=<token>` (any page of the UI takes it);
-the server then sets a cookie and sends the browser on to the same page without the token,
-so the token leaves the address bar. The cookie's name holds
+`lado server --new-token`. The file is written atomically (a temporary file, then a rename),
+and an empty one counts as missing: an empty token is never made, kept or accepted.
+`lado ui` opens `/?token=<token>` (any page of the UI takes it); the server then sets a
+cookie and sends the browser on to the same page without the token, so the token leaves the
+address bar. The cookie's name holds
 the port: a browser sends 127.0.0.1's cookies to every port, and two LADO servers (say, one
 for development) would otherwise overwrite each other's. Other clients send
 `Authorization: Bearer <token>`. A connection that changes something is also checked for
@@ -14,6 +16,8 @@ replace this module.
 
 import os
 import secrets
+import tempfile
+from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import HTTPException, Request
@@ -21,6 +25,7 @@ from fastapi.requests import HTTPConnection
 from fastapi.responses import RedirectResponse
 
 from lado import state
+from lado.runtime import LadoError
 
 
 def token_path():
@@ -28,16 +33,34 @@ def token_path():
 
 
 def token(new: bool = False) -> str:
-    """The server's token; made on first use, and again with `new`."""
+    """The server's token; made on first use, again with `new`, and when the file is empty
+    (an empty token would let anyone in)."""
     path = token_path()
     if not new and path.exists():
-        return path.read_text().strip()
+        value = path.read_text().strip()
+        if value:
+            return value
     value = secrets.token_urlsafe(32)
-    path.unlink(missing_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as file:
-        file.write(value + "\n")
+    _write(path, value)
     return value
+
+
+def _write(path, value: str) -> None:
+    """Write the token to a temporary file (owner only) and move it over `path`, so a failed
+    write leaves `path` as it was; LadoError names the path and the reason."""
+    temporary = None
+    try:
+        fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".server-token.")
+        try:
+            os.write(fd, (value + "\n").encode())
+        finally:
+            os.close(fd)
+        os.replace(temporary, path)
+    except OSError as error:
+        if temporary is not None:
+            Path(temporary).unlink(missing_ok=True)
+        reason = error.strerror or error
+        raise LadoError(f"cannot write the UI server's token to {path}: {reason}") from error
 
 
 def cookie_name(port: int) -> str:
@@ -64,11 +87,13 @@ class Guard:
     has no cookie: the cookie is the host's only."""
 
     def __init__(self, token: str, port: int):
+        if not token:
+            raise ValueError("the UI server's token is empty")
         self.token = token
         self.cookie = cookie_name(port)
 
     def _valid(self, given: str | None) -> bool:
-        return given is not None and secrets.compare_digest(given.encode(), self.token.encode())
+        return bool(given) and secrets.compare_digest(given.encode(), self.token.encode())
 
     def check(self, conn: HTTPConnection, changes: bool = False) -> None:
         """Refused (401) without the token. With `changes` first Refused (403) for an Origin

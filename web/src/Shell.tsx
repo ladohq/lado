@@ -32,6 +32,7 @@ import { LaunchProvider, useLaunch } from "./Launch";
 import { isLive, Live, LiveContext, useLive } from "./live";
 import { Notifier } from "./Notifications";
 import { NEEDS_YOU_PATH } from "./paths";
+import { usePhone } from "./phone";
 import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
 import { SelectionBar } from "./SelectionBar";
 import { LiveButton, UpdateProvider, UpdateStatus } from "./SystemPanel";
@@ -84,6 +85,17 @@ export function Shell() {
   const [collapsed, setCollapsed] = useState(storedRailCollapsed);
   const [denied, setDenied] = useState<string | null>(null);
   const [live] = useState(() => new Live());
+  const phone = usePhone();
+
+  // The key of styles.css's section "Phone layout".
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (phone) root.dataset.phone = phone;
+    else delete root.dataset.phone;
+    return () => {
+      delete root.dataset.phone;
+    };
+  }, [phone]);
 
   useEffect(() => {
     const off = onDenied(setDenied);

@@ -3,7 +3,7 @@ Design doc: `docs/superpowers/specs/2026-10-18-phone-layout-design.md`.
 
 ## 1. The query and the hook (D1)
 
-- [ ] 1.1 `web/src/phone.ts` (`PHONE_QUERY`, `SHORT_QUERY`, `usePhone`), the Shell's
+- [x] 1.1 `web/src/phone.ts` (`PHONE_QUERY`, `SHORT_QUERY`, `usePhone`), the Shell's
   `data-phone`; vitest. Check: `cd web && npx vitest run src/phone.test.ts`, `make web`.
 
 ## 2. The app window and the CSS section (D4)

@@ -12,9 +12,9 @@ Tests first in each section; each section is one commit. The plan with the code 
 
 ## 2. A new token in a running server
 
-- [ ] 2.1 Unit tests, `tests/test_server.py`: the file replaced whole (never missing),
+- [x] 2.1 Unit tests, `tests/test_server.py`: the file replaced whole (never missing),
   0600, a stale tmp, `Guard.renew`. Plan, Task 2.
-- [ ] 2.2 `auth.token(new=True)` atomic, `Guard.renew`, `Guard.set_cookie` (D6).
+- [x] 2.2 `auth.token(new=True)` atomic, `Guard.renew`, `Guard.set_cookie` (D6).
   `uv run pytest tests/test_server.py -n auto`.
 
 ## 3. The API

@@ -43,6 +43,37 @@ def test_the_token_is_kept_in_lado_home_for_the_owner_only():
     assert new != token and auth.token() == new
 
 
+def test_a_new_token_replaces_the_file_whole_and_for_the_owner_only(monkeypatch):
+    """A `lado ui` reading as the server renews sees the old token or the new one, never no
+    file (it would make a token of its own)."""
+    old = auth.token()
+    seen = []
+    replace = os.replace
+
+    def watched(src, dst):
+        seen.append(auth.token_path().read_text().strip())
+        replace(src, dst)
+
+    monkeypatch.setattr(auth.os, "replace", watched)
+    new = auth.token(new=True)
+    assert seen == [old] and new != old and auth.token() == new
+    assert stat.S_IMODE(auth.token_path().stat().st_mode) == 0o600
+    assert not auth.token_path().with_suffix(".tmp").exists()
+
+
+def test_a_stale_tmp_does_not_stop_a_new_token():
+    auth.token()
+    auth.token_path().with_suffix(".tmp").write_text("left\n")
+    assert auth.token(new=True) == auth.token()
+
+
+def test_renew_swaps_the_guards_token():
+    guard = auth.Guard(auth.token(), PORT)
+    old = guard.token
+    new = guard.renew()
+    assert guard.token == new == auth.token() and new != old
+
+
 def test_health_needs_no_token(client):
     answer = client.get("/api/health")
     assert answer.status_code == 200

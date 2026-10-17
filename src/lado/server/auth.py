@@ -1,7 +1,9 @@
 """Who may call the UI server: the only place that checks it.
 
 Now a token of LADO_HOME, kept in LADO_HOME/server-token (owner only) until
-`lado server --new-token`. `lado ui` opens `/?token=<token>` (any page of the UI takes it);
+`lado server --new-token` at a start, or a new link in the running server
+(`POST /api/access/new-token`, `Guard.renew`), which logs out every browser but the one
+that asked. `lado ui` opens `/?token=<token>` (any page of the UI takes it);
 the server then sets a cookie and sends the browser on to the same page without the token,
 so the token leaves the address bar. The cookie's name holds
 the port: a browser sends 127.0.0.1's cookies to every port, and two LADO servers (say, one
@@ -18,7 +20,7 @@ from urllib.parse import urlencode
 
 from fastapi import HTTPException, Request
 from fastapi.requests import HTTPConnection
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 
 from lado import state
 
@@ -28,15 +30,19 @@ def token_path():
 
 
 def token(new: bool = False) -> str:
-    """The server's token; made on first use, and again with `new`."""
+    """The server's token; made on first use, and again with `new`: written whole beside
+    the file, then moved over it, so a reader sees the old token or the new one, never
+    none."""
     path = token_path()
     if not new and path.exists():
         return path.read_text().strip()
     value = secrets.token_urlsafe(32)
-    path.unlink(missing_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    written = path.with_suffix(".tmp")
+    written.unlink(missing_ok=True)  # left by a write that died: O_EXCL would refuse it
+    fd = os.open(written, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as file:
         file.write(value + "\n")
+    os.replace(written, path)
     return value
 
 
@@ -66,6 +72,16 @@ class Guard:
     def __init__(self, token: str, port: int):
         self.token = token
         self.cookie = cookie_name(port)
+
+    def renew(self) -> str:
+        """A new token, in LADO_HOME and for this server at once: the old one is refused
+        from the next request on (a request checked before finishes with it)."""
+        self.token = token(new=True)
+        return self.token
+
+    def set_cookie(self, response: Response) -> None:
+        """The cookie of the current token on `response`."""
+        response.set_cookie(self.cookie, self.token, httponly=True, samesite="strict", path="/")
 
     def _valid(self, given: str | None) -> bool:
         return given is not None and secrets.compare_digest(given.encode(), self.token.encode())
@@ -117,5 +133,5 @@ class Guard:
         target = "/" + request.scope["raw_path"].decode("ascii").lstrip("/")
         rest = urlencode([(k, v) for k, v in request.query_params.multi_items() if k != "token"])
         answer = RedirectResponse(f"{target}?{rest}" if rest else target, status_code=303)
-        answer.set_cookie(self.cookie, self.token, httponly=True, samesite="strict", path="/")
+        self.set_cookie(answer)
         return answer

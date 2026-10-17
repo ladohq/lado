@@ -208,10 +208,7 @@ def answer(
     run = _run(session, found.run)
     word = canonical_option(found, option)
     comment = (comment or "").strip()
-    names = list(attached or [])
-    if len(names) > artifacts.MAX_HUMAN_FILES:
-        raise LadoError(f"{len(names)} files, the limit is {artifacts.MAX_HUMAN_FILES}")
-    attachments = artifacts.resolve_attachments(session, None, names)
+    attachments = runtime.human_files(session, list(attached or []))
     closes = (by, word, comment, found.id)  # nothing is written unless it is still open
     if found.kind == LOOP and word == CANCEL:
         line = visible.one_line(comment)

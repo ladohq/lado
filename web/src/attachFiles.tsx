@@ -46,10 +46,12 @@ const renamed = (file: File, name: string) => new File([file], name, { type: fil
 let nextKey = 0;
 
 // The server's limits, loaded once the component mounts; null until then (and when they
-// cannot be loaded: every file shows its icon and the server checks the rest).
-export function useLimits(): Limits | null {
+// cannot be loaded: every file shows its icon and the server checks the rest). `load`
+// false: not loaded, as the caller has them already.
+export function useLimits(load = true): Limits | null {
   const [limits, setLimits] = useState<Limits | null>(null);
   useEffect(() => {
+    if (!load) return;
     let mounted = true;
     getLimits().then(
       (got) => mounted && setLimits(got),
@@ -58,7 +60,7 @@ export function useLimits(): Limits | null {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [load]);
   return limits;
 }
 

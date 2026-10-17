@@ -1386,9 +1386,7 @@ def write_as_human(
         raise LadoError("the message is empty")
     if to == state.HUMAN:
         raise LadoError(f'no running agent "{to}": the human cannot write to themselves')
-    if len(names) > artifacts.MAX_HUMAN_FILES:
-        raise LadoError(f"{len(names)} files, the limit is {artifacts.MAX_HUMAN_FILES}")
-    attachments = artifacts.resolve_attachments(session, None, names)
+    attachments = human_files(session, names)
     summary, body = _human_text(text) if text else (_files_line(names), "")
     if to == SUPERVISOR:
         return post(session, state.HUMAN, to, summary, body, attachments=attachments)
@@ -1408,6 +1406,15 @@ def write_as_human(
     if supervisor is not None and supervisor.status != state.STOPPED:
         _deliver(session, SUPERVISOR)
     return result
+
+
+def human_files(session: str, names: list[str]) -> state.Attached:
+    """The files the human attaches (full names of their uploads, lado.artifacts.upload) to
+    a message, a reply or a gate's answer, resolved; LadoError over the limit, ArtifactError
+    for a name not found."""
+    if len(names) > artifacts.MAX_HUMAN_FILES:
+        raise LadoError(f"{len(names)} files, the limit is {artifacts.MAX_HUMAN_FILES}")
+    return artifacts.resolve_attachments(session, None, names)
 
 
 def _copy(to: str, summary: str, message_id: int, files: int = 0) -> str:
@@ -1509,9 +1516,7 @@ def _reply_of(session: str, question: state.Message, reply: HumanReply) -> state
     or LadoError (ArtifactError for a name not found) for one it does not take."""
     text = (reply.text or "").strip()
     names = list(reply.attached)
-    if len(names) > artifacts.MAX_HUMAN_FILES:
-        raise LadoError(f"{len(names)} files, the limit is {artifacts.MAX_HUMAN_FILES}")
-    attachments = artifacts.resolve_attachments(session, None, names)
+    attachments = human_files(session, names)
     if reply.skip:
         if reply.choice is not None:
             raise LadoError(f"question #{question.id}: skip takes no choice")

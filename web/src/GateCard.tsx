@@ -94,7 +94,7 @@ export function GatePanel({
   onFiles?: SetFiles;
   limits?: Limits | null; // the card's; alone, the panel loads its own
 }) {
-  const loaded = useLimits();
+  const loaded = useLimits(given === undefined);
   const limits = given !== undefined ? given : loaded;
   const [own, setOwn] = useState("");
   const comment = kept ?? own;

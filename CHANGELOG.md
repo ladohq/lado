@@ -2,6 +2,13 @@
 
 ## 0.41.0 (unreleased)
 
+- The web UI forgets stopped sessions in one go: a bin on the session list's Stopped band
+  opens a window with the stopped sessions the list shows, all ticked; clear the ones to
+  keep and press `Forget N sessions`. Sessions with open runs stay unless "Also forget
+  their open runs" is on; each session is forgotten as the single Forget does, and a
+  refused one is shown with its reason. Stop's popover has `Stop and forget` for a
+  session without open runs.
+
 - The UI server no longer lets anyone in when `LADO_HOME/server-token` is empty (left by a
   failed write, e.g. a full disk): an empty file gets a new token, the token is written
   atomically, and an empty token is always refused.

@@ -32,7 +32,7 @@ Design doc: `docs/superpowers/specs/2026-10-18-forget-stopped-sessions-design.md
 
 ## 6. Docs
 
-- [ ] 6.1 `docs/design/ui.md` (Launch and session control, the Sessions band),
+- [x] 6.1 `docs/design/ui.md` (Launch and session control, the Sessions band),
   CHANGELOG.md under `## 0.41.0 (unreleased)`. Check: read through.
 
 ## 7. Regression

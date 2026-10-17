@@ -266,8 +266,9 @@ repository's `OWNER`, `MEMBER` or `COLLABORATOR`. Vulnerability reports: SECURIT
 Live tests are not in CI: they run locally, at release only, every provider (Claude Code with
 the human's yes).
 
-A Windows probe, not in the per-push CI (a run takes 20-25 minutes): the `Windows probe`
-workflow (`.github/workflows/windows-shell.yml`) runs weekly on main (Monday 03:17 UTC, its
+A Windows probe, neither in the per-push CI (a run takes 20-25 minutes) nor a release step
+(docs/release.md, section 5): the `Windows probe` workflow
+(`.github/workflows/windows-shell.yml`) runs weekly on main (Monday 03:17 UTC, its
 `schedule`, with the defaults: WSL, tests, smoke; a red run mails the maintainers as any
 failed workflow does) and when started, `gh workflow run windows-shell.yml --ref <branch> -f
 runner=windows-latest` (`-f wsl=false -f smoke=false`: native only, as the smoke needs WSL;
@@ -337,5 +338,6 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    of `docker/` or of how LADO behaves in a container's environment. Never in the default
    run or `make check`; in CI on amd64 and arm64 (job `container`, every run).
 
-What must be green before a release (CI, the Windows probe, `make test-live`):
-[docs/release.md](release.md).
+What must be green before a release (CI, `make test-live`): [docs/release.md](release.md).
+The Windows probe is not a release step: it runs weekly, and a red run is fixed as any
+other regression.

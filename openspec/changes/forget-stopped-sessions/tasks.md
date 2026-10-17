@@ -8,13 +8,13 @@ Design doc: `docs/superpowers/specs/2026-10-18-forget-stopped-sessions-design.md
 
 ## 2. The window (D2–D5, D7)
 
-- [ ] 2.1 `ForgetMany.tsx`: ticks, All, count, open runs' switch, worktrees, the
+- [x] 2.1 `ForgetMany.tsx`: ticks, All, count, open runs' switch, worktrees, the
   sequential forget, close or Close, `/sessions`; vitest. Check: `cd web && npx vitest run
   src/ForgetMany.test.tsx`.
 
 ## 3. The Stopped band opens it (D1, D3)
 
-- [ ] 3.1 `Sessions.tsx`: the bin on the Stopped band opens the window with the group's
+- [x] 3.1 `Sessions.tsx`: the bin on the Stopped band opens the window with the group's
   sessions as shown. Check: `make web`.
 
 ## 4. Stop and forget (D6)

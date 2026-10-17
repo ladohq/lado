@@ -113,7 +113,8 @@ export function CopyIconButton({ label, text, field }: { label: string; text: st
 }
 
 // An icon button that copies `text`, with its tooltip, its note and, when the copy fails,
-// the field below it.
+// the field below it. `named`: a quiet button that shows its label beside the icon (the
+// session's details on a phone), with no tooltip.
 export function CopyButton({
   label,
   copied,
@@ -121,6 +122,7 @@ export function CopyButton({
   field,
   icon,
   className = "",
+  named = false,
 }: {
   label: string; // "Copy link": the button's name and tooltip
   copied: string; // "Link copied"
@@ -128,6 +130,7 @@ export function CopyButton({
   field: { title: string; label: string };
   icon: ReactNode;
   className?: string;
+  named?: boolean;
 }) {
   const { note, copy } = useCopy();
   const [shown, setShown] = useState(false);
@@ -140,19 +143,21 @@ export function CopyButton({
   };
   useDismiss(shown, box, () => setShown(false));
   const below = useBelow(box, popover, shown);
+  const onClick = async () => setShown(!(await copy(text, copied)));
   return (
     <span ref={box} className={`copy-button ${className}`.trim()}>
-      <Tooltip tip={label}>
-        <button
-          ref={button}
-          type="button"
-          className="icon-button"
-          aria-label={label}
-          onClick={async () => setShown(!(await copy(text, copied)))}
-        >
+      {named ? (
+        <button ref={button} type="button" className="quiet" onClick={onClick}>
           {icon}
+          {label}
         </button>
-      </Tooltip>
+      ) : (
+        <Tooltip tip={label}>
+          <button ref={button} type="button" className="icon-button" aria-label={label} onClick={onClick}>
+            {icon}
+          </button>
+        </Tooltip>
+      )}
       <span role="status" className="row-note">
         {note}
       </span>

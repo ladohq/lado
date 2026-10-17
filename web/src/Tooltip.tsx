@@ -3,7 +3,10 @@
 // when the trigger gets the focus from the keyboard; it goes when the pointer leaves, the
 // focus goes, or on Esc. While shown, the trigger is described by it (aria-describedby).
 // It takes no pointer events and stays inside the window. An arrow on the edge facing the
-// trigger points at the trigger's centre.
+// trigger points at the trigger's centre. On a touch screen (docs/design/ui.md, Phone
+// layout) a tap on a hint (a trigger that is no button or link) shows it at once, and the
+// next touch elsewhere hides it; a button's or link's tooltip, which only names it, never
+// shows on a tap, not even by the mouse the browser emulates for the tap.
 import {
   cloneElement,
   useEffect,
@@ -32,6 +35,7 @@ type Trigger = {
   onMouseEnter?: (event: MouseEvent<HTMLElement>) => void;
   onMouseLeave?: (event: MouseEvent<HTMLElement>) => void;
   onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
+  onPointerUp?: (event: PointerEvent<HTMLElement>) => void;
   onFocus?: (event: FocusEvent<HTMLElement>) => void;
   onBlur?: (event: FocusEvent<HTMLElement>) => void;
   "aria-describedby"?: string;
@@ -44,6 +48,7 @@ export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElem
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const trigger = useRef<HTMLElement | null>(null);
   const pressed = useRef(false); // the focus that follows comes from the pointer, not the keyboard
+  const touched = useRef(false); // the last press was a touch: the mouse that enters is emulated
   const box = useRef<HTMLDivElement>(null);
 
   const show = (element: HTMLElement) => {
@@ -60,8 +65,16 @@ export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElem
   useEffect(() => {
     if (!shown) return;
     const escape = (event: KeyboardEvent) => event.key === "Escape" && hide();
+    // A press elsewhere hides it: a tap shows it with no pointer to leave the trigger.
+    const elsewhere = (event: Event) => {
+      if (!trigger.current?.contains(event.target as Node)) hide();
+    };
     document.addEventListener("keydown", escape);
-    return () => document.removeEventListener("keydown", escape);
+    document.addEventListener("pointerdown", elsewhere);
+    return () => {
+      document.removeEventListener("keydown", escape);
+      document.removeEventListener("pointerdown", elsewhere);
+    };
   }, [shown]);
 
   // Under the trigger, or over it when there is no room below; from the trigger's left, but
@@ -89,17 +102,26 @@ export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElem
     "aria-describedby": shown ? id : own["aria-describedby"],
     onMouseEnter: (event) => {
       own.onMouseEnter?.(event);
+      if (touched.current) return;
       const target = event.currentTarget;
       clearTimeout(timer.current);
       timer.current = setTimeout(() => show(target), TOOLTIP_DELAY_MS);
     },
     onMouseLeave: (event) => {
       own.onMouseLeave?.(event);
+      touched.current = false; // the tap's mouse left: the next to enter may be a real one
       hide();
     },
     onPointerDown: (event) => {
       own.onPointerDown?.(event);
       pressed.current = true;
+      touched.current = event.pointerType === "touch";
+    },
+    onPointerUp: (event) => {
+      own.onPointerUp?.(event);
+      if (event.pointerType !== "touch" || event.currentTarget.matches("button, a, [role=button]")) return;
+      clearTimeout(timer.current);
+      show(event.currentTarget);
     },
     onFocus: (event) => {
       own.onFocus?.(event);

@@ -28,6 +28,7 @@ import { VIEW_PARAM } from "./paths";
 import { storedMinimized, storedWaitingHeight, storeMinimized, storeWaitingHeight, WAITING_MIN } from "./prefs";
 import { quoteArea } from "./quote";
 import { onQuote } from "./quotes";
+import { usePhone } from "./phone";
 import { fitWidth, Splitter, useHeight } from "./Splitter";
 import { runColours } from "./Team";
 import { Tooltip } from "./Tooltip";
@@ -143,6 +144,16 @@ export function WaitingCard({
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<{ key: string; text: string } | null>(null);
   const [expanded, setExpanded] = useState(false);
+  // On a phone (phone.ts) the card has no edge; held sideways, the chat's card is minimized
+  // by the layout, not by the human: not remembered, and a tab or its line shows it
+  // expanded. Turned upright, an expanded card folds back.
+  const phone = usePhone();
+  const sideways = chat !== undefined && phone === "short";
+  const [wasSideways, setWasSideways] = useState(sideways);
+  if (wasSideways !== sideways) {
+    setWasSideways(sideways);
+    if (!sideways) setExpanded(false);
+  }
   const viewing = useSearchParams()[0].has(VIEW_PARAM); // an artifact panel is open over the page
   const [marked, setMarked] = useState<number | null>(null);
   const card = useRef<HTMLElement>(null);
@@ -233,13 +244,14 @@ export function WaitingCard({
     if (!expanded) return;
     card.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
     // A narrow window scrolls (styles.css): the card goes under the top bar. A wide one
-    // scrolls nothing, nor a frame that hides its overflow.
-    if (window.matchMedia?.(NARROW).matches) card.current?.scrollIntoView?.({ block: "start" });
+    // scrolls nothing, nor a frame that hides its overflow, nor a phone's window.
+    if (window.matchMedia?.(NARROW).matches && !phone) card.current?.scrollIntoView?.({ block: "start" });
   }, [expanded]);
   useEffect(() => {
     if (!expanded || viewing) return;
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      // A dialog over the page (the session's details) takes its own Esc.
+      if (event.key !== "Escape" || (event.target as Element | null)?.closest?.("dialog")) return;
       event.preventDefault();
       folded.current = true;
       setExpanded(false);
@@ -291,7 +303,7 @@ export function WaitingCard({
     toggled.current = focusMinimize;
     remember(null);
   };
-  const folds = minimized && !expanded; // expanded, a minimized card shows whole
+  const folds = (minimized || sideways) && !expanded; // expanded, a minimized card shows whole
   // The edge's bounds: the card and the feed share their room, and the feed keeps its least
   // height; the card's height is the one the human gave, narrowed to that room (kept for a
   // taller chat), or the stylesheet's.
@@ -299,7 +311,7 @@ export function WaitingCard({
   // Below its least height the card minimizes: the edge goes down to 0.
   const max = Math.max(WAITING_MIN, Math.floor(room ?? height ?? 0));
   const given =
-    chat && !folds && !expanded && height !== null
+    chat && !phone && !folds && !expanded && height !== null
       ? fitWidth(height, { initial: height, min: WAITING_MIN, max }, room)
       : null;
   // Below its least height: a key minimizes at once; a drag shows the least height and
@@ -377,7 +389,7 @@ export function WaitingCard({
       onDragOver={stopFiles}
       onDrop={stopFiles}
     >
-      {chat && !folds && !expanded && (
+      {chat && !phone && !folds && !expanded && (
         <Splitter
           label="Resize the card"
           edge="top"
@@ -420,7 +432,8 @@ export function WaitingCard({
                 style={{ "--who": colour(tab), "--chars": name.length } as CSSProperties}
                 onClick={() => {
                   setChosen(tab.key);
-                  if (folds) restore(false);
+                  if (folds && sideways) setExpanded(true);
+                  else if (folds) restore(false);
                 }}
               >
                 {"gate" in tab ? (
@@ -439,7 +452,7 @@ export function WaitingCard({
           })}
         </div>
         <div className="waiting-actions">
-          {chat && !expanded && (
+          {chat && !sideways && !expanded && (
             <Tooltip tip={folds ? "Restore the card" : "Minimize the card"}>
               <button
                 ref={minimizer}
@@ -472,7 +485,7 @@ export function WaitingCard({
           type="button"
           className="waiting-line"
           style={{ "--who": colour(shown) } as CSSProperties}
-          onClick={() => restore()}
+          onClick={() => (sideways ? setExpanded(true) : restore())}
         >
           {"gate" in shown ? shown.gate.question : shown.questions[0].summary}
         </button>

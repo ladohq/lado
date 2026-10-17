@@ -56,6 +56,63 @@ test("the focus shows it at once; Esc and leaving the focus hide it", () => {
   expect(screen.queryByRole("tooltip")).toBeNull();
 });
 
+// A tap on a touch screen, as the browser sends it: the pointer's down and up, then the
+// mouse it emulates enters the trigger, the focus and the click.
+function tap(element: HTMLElement) {
+  fireEvent.pointerDown(element, { pointerType: "touch" });
+  fireEvent.pointerUp(element, { pointerType: "touch" });
+  fireEvent.mouseEnter(element);
+  fireEvent.focus(element);
+  fireEvent.click(element);
+}
+
+function hints() {
+  render(
+    <>
+      <Tooltip tip="uiflow v1.0.0">
+        <span tabIndex={0}>uiflow</span>
+      </Tooltip>
+      <Tooltip tip="Copy link">
+        <button type="button">Copy</button>
+      </Tooltip>
+      <Tooltip tip="Kits page">
+        <a href="/kits">Kits</a>
+      </Tooltip>
+      <p>elsewhere</p>
+    </>,
+  );
+}
+
+test("on a touch screen a tap on a hint shows its tooltip at once, and a tap elsewhere hides it", () => {
+  hints();
+  tap(screen.getByText("uiflow"));
+  expect(screen.getByRole("tooltip").textContent).toBe("uiflow v1.0.0");
+  tap(screen.getByText("uiflow")); // again: it stays
+  expect(screen.getByRole("tooltip")).toBeTruthy();
+  fireEvent.pointerDown(screen.getByText("elsewhere"), { pointerType: "touch" });
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test("a tap on a button or a link shows no tooltip, not even after the hover's delay", () => {
+  hints();
+  tap(screen.getByRole("button", { name: "Copy" }));
+  act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS * 2));
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  tap(screen.getByRole("link", { name: "Kits" }));
+  act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS * 2));
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test("after a tap the mouse shows a tooltip on hover again", () => {
+  hints();
+  const button = screen.getByRole("button", { name: "Copy" });
+  tap(button);
+  fireEvent.mouseLeave(button); // the next tap elsewhere, or the mouse, takes the pointer away
+  fireEvent.mouseEnter(button);
+  act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
+  expect(screen.getByRole("tooltip").textContent).toBe("Copy link");
+});
+
 test("the trigger keeps its own handlers, and the tooltip takes no clicks", () => {
   const clicked = vi.fn();
   render(

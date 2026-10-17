@@ -8,7 +8,7 @@ Design doc: `docs/superpowers/specs/2026-10-18-phone-layout-design.md`.
 
 ## 2. The app window and the CSS section (D4)
 
-- [ ] 2.1 `styles.css` section "Phone layout", `index.html`'s viewport, the artifact
+- [x] 2.1 `styles.css` section "Phone layout", `index.html`'s viewport, the artifact
   tab's image by `dvh`. Check: `make web`, task 8's e2e.
 
 ## 3. The menu (D2)

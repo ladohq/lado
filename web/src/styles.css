@@ -7499,6 +7499,7 @@ del.kit-mcp-name {
 
 .artifact-tab-image .image-frame img {
   max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px); /* the tab's height (.artifact-tab) */
   object-fit: contain;
 }
 
@@ -7743,4 +7744,173 @@ del.kit-mcp-name {
   flex: 1;
   overflow-y: auto;
   padding: 16px 18px 24px;
+}
+
+/* Phone layout (docs/design/ui.md, Phone layout; decided 2026-10-18, LAD-95): a touch
+   screen no wider than 600 px or no higher than 500 px. Every rule of the phone is here and
+   starts with :root[data-phone], which the Shell sets from phone.ts's one query: a computer,
+   with a mouse, never gets one. "short" is the phone held sideways. A phone matches the
+   narrow window's rules above too (max-width: 900px), which stack the page for a window
+   that scrolls; these put the app's window back and take what a phone has no room for. */
+
+/* The app's window, as a wide one's: the window never scrolls, the content does; the rail
+   is the menu (Shell.tsx), out of the grid. */
+:root[data-phone],
+:root[data-phone] body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+:root[data-phone] .app {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+}
+
+:root[data-phone] .rail {
+  display: none;
+}
+
+:root[data-phone] .main {
+  min-height: 0;
+}
+
+:root[data-phone] .content {
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+:root[data-phone] .version-banner,
+:root[data-phone] .update-banner {
+  margin: 8px 12px 0;
+}
+
+/* The top bar: one line that never wraps. */
+:root[data-phone] .topbar {
+  flex-wrap: nowrap;
+  gap: 8px;
+  height: 52px;
+  min-height: 0;
+  padding: 0 8px;
+}
+
+:root[data-phone] .topbar > h1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root[data-phone="short"] .topbar {
+  height: 44px;
+}
+
+/* The change feed's mark: a dot while live; "reconnecting…" keeps its word. */
+:root[data-phone] .topbar .link-word {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+:root[data-phone] .topbar .system-button {
+  padding-inline: 4px;
+}
+
+:root[data-phone] .topbar .system-button::before {
+  margin-right: 0;
+}
+
+:root[data-phone] .topbar .reconnecting-why {
+  display: none;
+}
+
+/* A session's page fills the content: the session only, its main column scrolling by
+   itself; the terminals show over the screen when opened (Terminals.tsx). */
+:root[data-phone] .content:has(> .sessions) {
+  padding: 0;
+  overflow: hidden;
+}
+
+:root[data-phone] .sessions {
+  grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+}
+
+:root[data-phone] .session-list {
+  border-bottom: 0;
+}
+
+:root[data-phone] .session-main {
+  --main-pad: 12px;
+  min-height: 0;
+  padding-bottom: 8px;
+  overflow-y: auto;
+}
+
+/* The session's tabs without their icons, smaller: all four fit 360 px. The Kits page's
+   tabs take the same. */
+:root[data-phone] .session-tabs .tab-item,
+:root[data-phone] .kits-main .tab-item {
+  gap: 4px;
+  padding: 8px 6px;
+  font-size: 12px;
+}
+
+:root[data-phone] .session-tabs .tab-item > svg {
+  display: none;
+}
+
+/* A flow event's line from the feed's left edge: the actor, the chips and the time on the
+   first line, the text wrapped under them, whole. */
+:root[data-phone] .run-group,
+:root[data-phone] .chat-quiet {
+  padding-left: var(--row-pad);
+}
+
+:root[data-phone] .run-line .run-detail {
+  flex-basis: 100%;
+  order: 2;
+  padding-left: 26px; /* under the actor's name: the mini avatar's 18 px and the gap */
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+:root[data-phone] .run-line time {
+  order: 1;
+}
+
+/* The waiting card: at most half the chat (its stylesheet's), no edge; expanded, it fills
+   the chat, whose height is the window's here. */
+:root[data-phone] .waiting-card > .splitter-top {
+  display: none;
+}
+
+:root[data-phone] .waiting-card.expanded {
+  min-height: 0;
+}
+
+/* The composer: Safari zooms into a field under 16 px; no keys on a touch screen. */
+:root[data-phone] .composer textarea {
+  font-size: 16px;
+}
+
+:root[data-phone] .composer-keys {
+  display: none;
+}
+
+/* Sideways: the chat's room is for the feed; the card is minimized (WaitingCard.tsx). */
+:root[data-phone="short"] .team-row,
+:root[data-phone="short"] .composer-to {
+  display: none;
+}
+
+:root[data-phone="short"] .activity,
+:root[data-phone="short"] .chat {
+  gap: 6px;
 }

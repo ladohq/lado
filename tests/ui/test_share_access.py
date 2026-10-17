@@ -12,6 +12,7 @@ import fake_provider
 import pytest
 from playwright.sync_api import Browser, Page, expect
 from test_main_screen import log_in
+from test_phone import NARROWEST, box, device, no_sideways_scroll  # noqa: F401 (a fixture)
 
 from lado.server import auth
 from lado.server import run as server_run
@@ -144,3 +145,26 @@ def test_in_a_container_without_a_name_the_dialog_names_lado_public_host(page: P
     expect(dialog.get_by_text("LADO_PUBLIC_HOST=<this computer's name>")).to_be_visible()
     expect(dialog.get_by_role("img")).to_have_count(0)
     shot(page, "share-no-address")
+
+
+def test_on_a_phone_the_dialog_fits_the_screen(device, serve, shot):  # noqa: F811
+    """The phone layout (LAD-95): the panel's three icons and the dialog with its QR code
+    within the narrowest screen, nothing scrolled sideways."""
+    server = serve("0.0.0.0", LADO_PUBLIC_HOST="lado-ui.test")
+    page = device(NARROWEST)
+    log_in(page, server)
+    page.get_by_role("button", name="System").click()
+    head = page.get_by_role("dialog", name="System").locator(".system-head")
+    expect(head.locator(".icon-button")).to_have_count(3)
+    for icon in head.locator(".icon-button").all():
+        assert box(icon)["x"] + box(icon)["width"] <= NARROWEST[0]
+    shot(page, "share-phone-panel", full_page=False)
+    head.get_by_role("button", name="Open on another device").click()
+    dialog = page.get_by_role("dialog", name=TITLE)
+    qr = dialog.get_by_role("img", name="QR code of the link")
+    expect(qr).to_be_visible()
+    for part in (dialog, qr, dialog.get_by_role("button", name="Copy link")):
+        found = box(part)
+        assert found["x"] >= 0 and found["x"] + found["width"] <= NARROWEST[0], found
+    no_sideways_scroll(page)
+    shot(page, "share-phone-dialog", full_page=False)

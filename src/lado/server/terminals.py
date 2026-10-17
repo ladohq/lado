@@ -12,7 +12,8 @@ How a socket ends tells the browser whether to open it again (close codes): 44xx
 with the reason (no token, a mode it does not know, no terminal: the agent or its session is
 gone or stopped); 45xx for now (the terminal ended but the agent is still there; lado.db of
 another schema), to open again after a pause. Another Origin is refused before the upgrade.
-The token is checked at the connect only, so a new token closes every open socket
+The token is checked at the connect, and again once the socket is in `OPEN` (a new token
+made while the terminal opened), not later: so a new token closes every open socket
 (`close_all`) to be opened again.
 """
 

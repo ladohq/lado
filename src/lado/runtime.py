@@ -1421,10 +1421,10 @@ def _copy(to: str, summary: str, message_id: int, files: int = 0) -> str:
     return prefix + summary + suffix
 
 
-def _files_line(names: list[str]) -> str:
-    """The summary of the human's message of files only: how many and their names, cut to
-    the limit."""
-    line = f"{len(names)} file{'s' if len(names) != 1 else ''}: {', '.join(names)}"
+def _files_line(names: list[str], prefix: str = "") -> str:
+    """The summary of the human's message or answer of files only: `prefix`, how many and
+    their names, cut to the limit."""
+    line = f"{prefix}{len(names)} file{'s' if len(names) != 1 else ''}: {', '.join(names)}"
     if len(line) > state.SUMMARY_LIMIT:
         line = line[: state.SUMMARY_LIMIT - 1] + "…"
     return line
@@ -1449,12 +1449,15 @@ def _human_text(text: str, prefix: str = "") -> tuple[str, str]:
 @dataclass(frozen=True)
 class HumanReply:
     """The human's reply to one open question: one of its `choice`s (with `text` as a
-    comment), their own `text`, or with `skip` a dismissal (`text` its comment)."""
+    comment), their own `text`, or with `skip` a dismissal (`text` its comment).
+    `attached` are the full names of the files the human uploaded for it
+    (lado.artifacts.upload); with them an own answer may have no text."""
 
     question: int
     choice: str | None = None
     text: str | None = None
     skip: bool = False
+    attached: tuple[str, ...] = ()
 
 
 def answer_question(
@@ -1492,7 +1495,7 @@ def answer_questions(session: str, replies: Sequence[HumanReply]) -> str:
                 f"answers go to one agent at a time: #{asker.id} is {asker.sender}'s,"
                 f" #{question.id} is {question.sender}'s"
             )
-    written = [_reply_of(q, r) for q, r in zip(questions, replies, strict=True)]
+    written = [_reply_of(session, q, r) for q, r in zip(questions, replies, strict=True)]
     try:
         with _to_running(session):
             ids = state.reply_to_questions(session, written)
@@ -1501,16 +1504,22 @@ def answer_questions(session: str, replies: Sequence[HumanReply]) -> str:
     return _deliver(session, asker.sender, ids[-1])
 
 
-def _reply_of(question: state.Message, reply: HumanReply) -> state.Reply:
-    """The message of the human's reply to `question`, or LadoError for one it does not
-    take."""
+def _reply_of(session: str, question: state.Message, reply: HumanReply) -> state.Reply:
+    """The message of the human's reply to `question` with the files it names resolved,
+    or LadoError (ArtifactError for a name not found) for one it does not take."""
     text = (reply.text or "").strip()
+    names = list(reply.attached)
+    if len(names) > artifacts.MAX_HUMAN_FILES:
+        raise LadoError(f"{len(names)} files, the limit is {artifacts.MAX_HUMAN_FILES}")
+    attachments = artifacts.resolve_attachments(session, None, names)
     if reply.skip:
         if reply.choice is not None:
             raise LadoError(f"question #{question.id}: skip takes no choice")
         if len(text) > MAX_MESSAGE:
             raise LadoError(f"the message is {len(text)} characters, the limit is {MAX_MESSAGE}")
-        return state.Reply(question.id, f"Dismissed #{question.id}", text, None, state.DISMISSED)
+        return state.Reply(
+            question.id, f"Dismissed #{question.id}", text, None, state.DISMISSED, attachments
+        )
     prefix = f"Answer to #{question.id}: "
     if reply.choice is not None:
         if reply.choice not in (question.choices or []):
@@ -1521,13 +1530,15 @@ def _reply_of(question: state.Message, reply: HumanReply) -> state.Reply:
         summary, body = prefix + reply.choice, text
         if len(body) > MAX_MESSAGE:
             raise LadoError(f"the message is {len(body)} characters, the limit is {MAX_MESSAGE}")
-    elif not text:
+    elif not text and not names:
         raise LadoError("choose one of the choices or write an answer")
     elif not question.free_answer:
         raise LadoError(f"question #{question.id} takes one of its choices, not an own answer")
-    else:
+    elif text:
         summary, body = _human_text(text, prefix)
-    return state.Reply(question.id, summary, body, reply.choice, state.ANSWERED)
+    else:
+        summary, body = _files_line(names, prefix), ""
+    return state.Reply(question.id, summary, body, reply.choice, state.ANSWERED, attachments)
 
 
 def _open_question(session: str, question_id: int) -> state.Message:

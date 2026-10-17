@@ -2531,13 +2531,14 @@ def add_question(
 class Reply:
     """The human's reply to one open question as it is queued (lado.runtime builds it): its
     message's summary and body, the choice, and the question's outcome, ANSWERED or
-    DISMISSED."""
+    DISMISSED; and the files the human attached, as resolve_attachments gives them."""
 
     question: int
     summary: str
     body: str
     choice: str | None
     outcome: str
+    attachments: Attached = ()
 
 
 class QuestionClosed(Exception):
@@ -2552,9 +2553,9 @@ class QuestionClosed(Exception):
 
 def reply_to_questions(session: str, replies: Sequence[Reply]) -> list[int]:
     """Queue the human's replies to open questions, each to the agent that asked it, and set
-    each question's outcome, in one transaction. Returns the replies' ids, in order; with
-    nothing changed, QuestionClosed when a question is not open and NotRunning when an
-    agent that asked does not run."""
+    each question's outcome, in one transaction, each with its attachments. Returns the
+    replies' ids, in order; with nothing changed, QuestionClosed when a question is not
+    open and NotRunning when an agent that asked does not run."""
     ids = []
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
@@ -2584,6 +2585,7 @@ def reply_to_questions(session: str, replies: Sequence[Reply]) -> list[int]:
                     reply.choice,
                 ),
             ).lastrowid
+            _attach(db, "message", message, reply.attachments)
             _drop_requests(db, "messages", "id = ?", (reply.question,))
             db.execute(
                 "UPDATE messages SET question_state = ?, answered_by = ? WHERE id = ?",

@@ -1,6 +1,6 @@
 ## 1. Core: a reply carries the human's files (D5)
 
-- [ ] 1.1 `runtime.HumanReply.attached`, `_reply_of` checks the count and resolves the
+- [x] 1.1 `runtime.HumanReply.attached`, `_reply_of` checks the count and resolves the
   names, a files-only own answer's summary; `state.Reply.attachments`,
   `reply_to_questions` attaches them. Check: `uv run pytest tests/test_runtime.py -n auto`
   (a reply with a file, files only, a skip with a file, a missing name, 11 files).

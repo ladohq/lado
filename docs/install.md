@@ -364,8 +364,10 @@ identity, the ssh agent, the projects folder).
   with the one the host publishes.
   `docker compose exec lado sh -c 'mkdir -p -m 700 ~/.ssh && ssh-keyscan gitlab.com >> ~/.ssh/known_hosts && ssh-keygen -lf ~/.ssh/known_hosts'`.
 - **An agent closed right after the session started**: Enter on Claude Code's trust
-  question answered "No, exit". Start the session again (the UI's start, or `lado start`,
-  which resumes it) and choose "Yes, I trust this folder"; see
+  question answered "No, exit". Stop the session and resume it in the UI (or
+  `docker compose exec lado lado stop <session>`, then
+  `docker compose exec lado lado start <repository> --name <session>` with the
+  repository's path in the container) and choose "Yes, I trust this folder"; see
   [Your first session](#your-first-session).
 - **The UI's link is lost**: `docker compose exec lado lado ui --no-open`.
 

@@ -10,8 +10,10 @@
   the rendered section on GitHub's preview of the branch.
 - [x] 1.2 docs/install.md, "If something goes wrong in Docker": an entry **An agent closed
   right after the session started**: Enter on the trust question answered "No, exit";
-  start the session again (`lado start` resumes it, or the UI's start) and choose "Yes, I
-  trust this folder". Check: as 1.1.
+  stop the session and resume it in the UI (or, in the container's form,
+  `docker compose exec lado lado stop <session>` and `docker compose exec lado lado start
+  <repository> --name <session>`; a bare `lado start` on the host does not reach the
+  container) and choose "Yes, I trust this folder". Check: as 1.1.
 - [x] 1.3 README.md, Install, Docker: before `mkdir ~/lado-docker`, one sentence (a shell
   variable beats `.env`) and
 
@@ -70,6 +72,10 @@
      question, as the guide says.
   5. In the agent's terminal choose "Yes, I trust this folder". Expected: the agent starts
      and leaves Needs you.
-  6. Stop the session and start it again on the same repository. Expected: no question.
-  7. Clean up: `git -C ~/Projects/lado worktree remove /tmp/lad-87-docs`; stop the
+  6. Ask the supervisor to start a worker in the session (e.g. "spawn a worker that lists
+     the repository's files"). Expected: the worker, in its own worktree, gets no trust
+     question and never shows in Needs you for it (the repository's trust covers its
+     worktrees).
+  7. Stop the session and start it again on the same repository. Expected: no question.
+  8. Clean up: `git -C ~/Projects/lado worktree remove /tmp/lad-87-docs`; stop the
      session; delete `trust-check` if you like. Touch no other container or volume.

@@ -931,9 +931,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
   comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
   `DISABLE_AUTOUPDATER`, `LANG`, `LADO_ENV_DIR=/run/secrets`, `NPM_CONFIG_PREFIX`;
-  `LADO_REPOS` is the entrypoint's `lado-repos.sh`, which `profile.sh` reads itself for
-  `MISE_TRUSTED_CONFIG_PATHS`, in the profile only, as the ENV cannot follow `-e
-  LADO_REPOS`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The projects' toolchains:
+  `LADO_REPOS` is the entrypoint's `lado-repos.sh`, read before `lado.sh` by name, so
+  `profile.sh` sets `MISE_TRUSTED_CONFIG_PATHS` from it, in the profile only, as the ENV
+  cannot follow `-e LADO_REPOS`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The projects' toolchains:
   `make`, `gcc`, `g++` and `libc6-dev` in the first apt layer, and mise at
   `/usr/local/bin/mise`, root's (copied before `USER lado`, so `mise self-update` cannot
   replace it), from `jdxcode/mise` pinned by digest, which Dependabot's `docker` ecosystem

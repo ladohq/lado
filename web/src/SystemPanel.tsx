@@ -1,6 +1,7 @@
 // The system panel and updating LADO from the UI (docs/design/ui.md, System panel): the top
 // bar's `live` is a button that opens a popover about this LADO, the server, its home, tmux,
-// git, the providers and the update check, with the system info to copy for an issue. A newer
+// git, the providers and the update check, with the system info to copy for an issue and the
+// dialog that opens LADO on another device (Share.tsx). A newer
 // LADO marks `live` with `↑ X.Y.Z` and gives the panel an Update block; Update… shows the
 // plan (U1), and after the human confirms, the page waits for the server, which the update
 // stops and starts again (U2), then shows the update's result once (U3).
@@ -40,10 +41,11 @@ import {
 import { clock, day, duration } from "./ChatText";
 import { CopyButton, useCopy } from "./Copy";
 import { statisticsLine } from "./Telemetry";
-import { ClipboardIcon, FolderIcon } from "./icons";
+import { ClipboardIcon, FolderIcon, GitHubIcon, QrIcon } from "./icons";
 import { useLive } from "./live";
 import { useBelow, useDismiss } from "./Menu";
 import { storeUpdateSeen, updateSeen } from "./prefs";
+import { ShareDialog } from "./Share";
 import { Tooltip } from "./Tooltip";
 import { BUNDLE_VERSION } from "./version";
 
@@ -134,11 +136,12 @@ export function LiveButton({ link }: { link: Link }) {
   const { info } = useUpdate();
   const [open, setOpen] = useState(false);
   const [asking, setAsking] = useState(false); // the plan's dialog
+  const [sharing, setSharing] = useState(false); // the dialog for another device
   const box = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setOpen(false), []);
-  useDismiss(open && !asking, box, close);
+  useDismiss(open && !asking && !sharing, box, close);
   const below = useBelow(box, panel, open, true);
   const available = info?.available ?? null;
   const label = available ? `System: LADO ${available} is available` : "System";
@@ -176,8 +179,10 @@ export function LiveButton({ link }: { link: Link }) {
             button.current?.focus();
           }}
           onAsk={() => setAsking(true)}
+          onShare={() => setSharing(true)}
         />
       )}
+      {sharing && <ShareDialog onClose={() => setSharing(false)} />}
       {asking && (
         <UpdateDialog
           onClose={(started) => {
@@ -245,11 +250,13 @@ function SystemPanel({
   style,
   onClose,
   onAsk,
+  onShare,
 }: {
   ref: RefObject<HTMLDivElement | null>;
   style?: CSSProperties;
   onClose: () => void;
   onAsk: () => void;
+  onShare: () => void;
 }) {
   const { info, setInfo } = useUpdate();
   const [system, setSystem] = useState<SystemInfo | { error: string } | null>(null);
@@ -316,6 +323,11 @@ function SystemPanel({
           <span role="status" className="row-note">
             {note}
           </span>
+          <Tooltip tip="Open on another device">
+            <button type="button" className="icon-button" aria-label="Open on another device" onClick={onShare}>
+              <QrIcon />
+            </button>
+          </Tooltip>
           <Tooltip tip="Copy system info for an issue">
             <button
               type="button"
@@ -329,9 +341,11 @@ function SystemPanel({
               <ClipboardIcon />
             </button>
           </Tooltip>
-          <a href={GITHUB} target="_blank" rel="noreferrer">
-            GitHub ↗
-          </a>
+          <Tooltip tip="LADO on GitHub">
+            <a className="icon-button" href={GITHUB} target="_blank" rel="noreferrer" aria-label="LADO on GitHub">
+              <GitHubIcon />
+            </a>
+          </Tooltip>
         </span>
       </header>
       {info?.available && <UpdateBlock info={info} onAsk={onAsk} />}

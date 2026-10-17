@@ -142,6 +142,9 @@ function serve() {
     }
     if (path === "/api/update/plan") return json(plan);
     if (path === "/api/system") return json(system);
+    if (path === "/api/access") {
+      return json({ link: null, reason: "loopback", port: 8765, container: false, listen: null, note: null });
+    }
     if (path.startsWith("/api/events")) return json("");
     if (path === "/api/sessions") return json([]);
     return json([]);
@@ -199,7 +202,15 @@ test("live is a button that opens the system panel", async () => {
   const shown = await panel();
   expect(button.getAttribute("aria-expanded")).toBe("true");
   expect(within(shown).getByText(`LADO ${BUNDLE_VERSION}`)).toBeTruthy();
-  expect(within(shown).getByRole("link", { name: "GitHub ↗" }).getAttribute("href")).toBe("https://github.com/ladohq/lado");
+  const head = shown.querySelector(".system-head")!;
+  expect(Array.from(head.querySelectorAll(".icon-button"), (icon) => icon.getAttribute("aria-label"))).toEqual([
+    "Open on another device",
+    "Copy system info",
+    "LADO on GitHub",
+  ]);
+  const github = within(shown).getByRole("link", { name: "LADO on GitHub" });
+  expect([github.getAttribute("href"), github.getAttribute("target")]).toEqual(["https://github.com/ladohq/lado", "_blank"]);
+  expect(head.textContent).not.toContain("GitHub ↗");
   const facts = await within(shown).findByText("Running");
   const rows = Array.from(facts.closest("dl")!.querySelectorAll("dt"), (dt) => [
     dt.textContent,
@@ -223,6 +234,17 @@ test("live is a button that opens the system panel", async () => {
   expect(shown.querySelector(".system-check")!.textContent).toMatch(/^Up to date · checked \d\d:\d\d↻$/);
   fireEvent.keyDown(shown, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "System" })).toBeNull();
+});
+
+test("the QR code opens the dialog for another device, the panel stays behind it", async () => {
+  open();
+  const shown = await panel();
+  fireEvent.click(within(shown).getByRole("button", { name: "Open on another device" }));
+  const dialog = await screen.findByRole("dialog", { name: "Open LADO on another device" });
+  fireEvent.mouseDown(dialog);
+  fireEvent.click(await within(dialog).findByRole("button", { name: "Close" }));
+  expect(screen.queryByRole("dialog", { name: "Open LADO on another device" })).toBeNull();
+  expect(screen.getByRole("dialog", { name: "System" })).toBeTruthy();
 });
 
 test("the Statistics row leads to Settings and closes the panel", async () => {

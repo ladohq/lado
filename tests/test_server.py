@@ -322,14 +322,138 @@ def test_a_loopback_address_is_reached_by_itself_with_no_warning(address):
     assert listening.warning is None and listening.remote is None
 
 
-def test_every_address_is_reached_locally_on_127_0_0_1_and_from_others_by_the_hostname(
+def test_every_address_is_reached_locally_on_127_0_0_1_and_from_others_by_its_address(
     monkeypatch,
 ):
-    monkeypatch.setattr(socket, "gethostname", lambda: "box")
+    monkeypatch.setattr(server_run, "network_address", lambda: "192.168.1.23")
     listening = server_run.Listening.of("0.0.0.0", 8001)
     assert listening.url == "http://127.0.0.1:8001"
-    assert listening.remote == "http://box:8001"
+    assert listening.remote == "http://192.168.1.23:8001"
+    assert listening.reason is None
     assert "listens on 0.0.0.0:8001, open to other machines" in listening.warning
+
+
+def of(host: str, container: bool = False, **env: str) -> server_run.Listening:
+    return server_run.Listening.of(host, 8765, container, env)
+
+
+def test_a_loopback_address_has_no_link_even_with_a_public_host():
+    assert of("127.0.0.1", LADO_PUBLIC_HOST="kaos.local").reason == "loopback"
+    assert of("127.0.0.1", LADO_PUBLIC_HOST="kaos.local").remote is None
+    assert of("127.0.0.1").reason == "loopback"
+
+
+def test_every_address_takes_the_public_host(monkeypatch):
+    monkeypatch.setattr(server_run, "network_address", lambda: "192.168.1.23")
+    assert of("0.0.0.0", LADO_PUBLIC_HOST="kaos.local").remote == "http://kaos.local:8765"
+
+
+def test_every_address_without_a_network_falls_back_to_the_hostname(monkeypatch):
+    monkeypatch.setattr(server_run, "network_address", lambda: None)
+    monkeypatch.setattr(server_run.socket, "gethostname", lambda: "box")
+    assert of("0.0.0.0").remote == "http://box:8765"
+
+
+def test_one_address_is_itself_or_the_public_host():
+    assert of("192.0.2.7").remote == "http://192.0.2.7:8765"
+    assert of("192.0.2.7", LADO_PUBLIC_HOST="kaos.local").remote == "http://kaos.local:8765"
+
+
+@pytest.mark.parametrize(
+    ("env", "remote", "reason"),
+    [
+        ({"LADO_LISTEN": "127.0.0.1", "LADO_PUBLIC_HOST": "kaos.local"}, None, "loopback"),
+        ({"LADO_LISTEN": "0.0.0.0"}, None, "no-address"),
+        (
+            {"LADO_LISTEN": "0.0.0.0", "LADO_PUBLIC_HOST": "kaos.local"},
+            "http://kaos.local:8765",
+            None,
+        ),
+        ({"LADO_LISTEN": "192.168.1.23"}, "http://192.168.1.23:8765", None),
+        ({}, None, "unknown"),
+        ({"LADO_LISTEN": "lado.example"}, None, "unknown"),
+        ({"LADO_LISTEN": "::"}, None, "unknown"),
+        ({"LADO_PUBLIC_HOST": "kaos.local"}, "http://kaos.local:8765", None),
+    ],
+)
+def test_in_a_container_lado_listen_decides_the_link(env, remote, reason, monkeypatch):
+    monkeypatch.setattr(server_run, "network_address", lambda: "172.17.0.2")  # the bridge's
+    found = of("0.0.0.0", True, **env)
+    assert (found.url, found.remote, found.reason) == ("http://127.0.0.1:8765", remote, reason)
+
+
+def test_in_a_container_listen_is_lado_listen_as_given():
+    assert of("0.0.0.0", True, LADO_LISTEN="0.0.0.0").listen == "0.0.0.0"
+    assert of("0.0.0.0", True, LADO_LISTEN="lado.example").listen == "lado.example"
+    assert of("0.0.0.0", True).listen is None
+    assert of("0.0.0.0", LADO_LISTEN="0.0.0.0").listen is None  # read only in a container
+
+
+@pytest.mark.parametrize(
+    "value", ["http://kaos.local", "kaos.local:8765", " kaos.local ", "a/b", "-x", "x.", "a" * 254]
+)
+def test_an_invalid_public_host_warns_and_counts_as_unset(value, monkeypatch):
+    monkeypatch.setattr(server_run, "network_address", lambda: "192.168.1.23")
+    found = of("0.0.0.0", LADO_PUBLIC_HOST=value)
+    assert found.remote == "http://192.168.1.23:8765"
+    assert found.problems == (
+        f"LADO_PUBLIC_HOST is not a host name or address: {value}; "
+        "the link for other devices does not use it",
+    )
+
+
+@pytest.mark.parametrize("value", ["kaos-mbp.local", "192.168.1.23", "x", "a" * 253])
+def test_a_public_host_is_a_host_name_or_address(value):
+    assert server_run.public_host({"LADO_PUBLIC_HOST": value}) == (value, None)
+
+
+def test_an_empty_public_host_is_unset_without_a_warning():
+    found = of("0.0.0.0", True, LADO_LISTEN="0.0.0.0", LADO_PUBLIC_HOST="")
+    assert (found.reason, found.problems) == ("no-address", ())
+
+
+def test_the_network_address_is_the_routes_source_and_none_without_one(monkeypatch):
+    class Probe:
+        def __init__(self, found):
+            self.found = found
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def connect(self, where):
+            assert where == server_run.PROBE
+            if self.found is None:
+                raise OSError(errno.ENETUNREACH, "Network is unreachable")
+
+        def getsockname(self):
+            return (self.found, 50000)
+
+    for found, expected in [
+        ("192.168.1.23", "192.168.1.23"),
+        ("127.0.0.1", None),
+        ("0.0.0.0", None),
+        (None, None),
+    ]:
+        monkeypatch.setattr(server_run.socket, "socket", lambda *a, f=found: Probe(f))
+        assert server_run.network_address() == expected
+
+
+@pytest.mark.parametrize(
+    ("env", "warning", "note"),
+    [
+        ({}, False, True),
+        ({"LADO_LISTEN": "0.0.0.0"}, True, False),
+        ({"LADO_LISTEN": "127.0.0.1"}, False, False),
+    ],
+)
+def test_in_a_container_the_start_line_follows_lado_listen(env, warning, note):
+    found = of("0.0.0.0", True, **env)
+    assert (bool(found.warning), bool(found.note)) == (warning, note)
+    if warning:
+        assert "listens on 0.0.0.0:8765, open to other machines" in found.warning
 
 
 def test_another_address_is_reached_by_itself_with_the_warning():
@@ -347,7 +471,7 @@ def test_another_address_is_reached_by_itself_with_the_warning():
     [("0.0.0.0", "http://127.0.0.1:8765"), ("192.0.2.7", "http://192.0.2.7:8765")],
 )
 def test_in_a_container_a_server_on_another_address_notes_the_publication(address, url):
-    listening = server_run.Listening.of(address, 8765, container=True)
+    listening = server_run.Listening.of(address, 8765, container=True, env={})
     assert listening.url == url
     assert listening.remote is None and listening.warning is None
     assert listening.note == (
@@ -369,6 +493,7 @@ def test_in_a_container_a_loopback_server_has_no_note():
 
 
 def test_outside_a_container_there_is_no_note(monkeypatch):
+    monkeypatch.setattr(server_run, "network_address", lambda: None)
     monkeypatch.setattr(socket, "gethostname", lambda: "box")
     assert server_run.Listening.of("0.0.0.0", 8001).note is None
     assert server_run.Listening.of("192.0.2.7", 8001).note is None
@@ -586,6 +711,7 @@ def test_ui_with_a_name_of_the_running_servers_host_takes_it(capsys):
 
 
 def test_ui_without_host_takes_a_server_open_to_other_machines_and_warns(capsys, monkeypatch):
+    monkeypatch.setattr(server_run, "network_address", lambda: None)
     monkeypatch.setattr(socket, "gethostname", lambda: "box")
     with server_run.take_lock():
         write_info(8001, host="0.0.0.0")

@@ -3,10 +3,10 @@ Tests first in each section; each section is one commit. The plan with the code 
 
 ## 1. The rule for the link's address
 
-- [ ] 1.1 Unit tests (layer 1), `tests/test_server.py`: each row of the rule's table, the
+- [x] 1.1 Unit tests (layer 1), `tests/test_server.py`: each row of the rule's table, the
   address and hostname fallbacks, an invalid or empty `LADO_PUBLIC_HOST`, the start lines
   in a container by `LADO_LISTEN`. Plan, Task 1.
-- [ ] 1.2 `run.network_address`, `run.public_host`, `Listening.of(..., env)` with
+- [x] 1.2 `run.network_address`, `run.public_host`, `Listening.of(..., env)` with
   `reason`, `problems`, `listen`; `serve` prints the problems (D1–D4).
   `uv run pytest tests/test_server.py -n auto`.
 

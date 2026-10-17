@@ -15,6 +15,7 @@ import fcntl
 import ipaddress
 import json
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -22,6 +23,7 @@ import sys
 import threading
 import time
 import urllib.request
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import IO
 
@@ -42,6 +44,10 @@ CONTAINER_NOTE = (
     "(127.0.0.1:{port}:{port}: this computer only). Published to other machines, the "
     "token travels unencrypted (plain HTTP)."
 )
+# A host name or an IPv4 address: letters, digits, `.` and `-`, at most 253 characters,
+# neither first nor last a `.` or `-`.
+PUBLIC_HOST = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?")
+PROBE = ("192.0.2.1", 9)  # TEST-NET-1: a UDP connect picks the route and sends nothing
 
 
 def lock_path():
@@ -135,36 +141,112 @@ def running() -> dict | None:
     return {"host": "127.0.0.1", **info}  # a LADO before `--host` wrote none
 
 
+def network_address() -> str | None:
+    """This machine's IPv4 address in its network: the source address of its route to the
+    outside, found anew at each call; None without one (no network)."""
+    with contextlib.suppress(OSError, ValueError):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(PROBE)
+            found = probe.getsockname()[0]
+        ip = ipaddress.ip_address(found)
+        if not (ip.is_loopback or ip.is_unspecified):
+            return found
+    return None
+
+
+def public_host(env: Mapping[str, str]) -> tuple[str | None, str | None]:
+    """LADO_PUBLIC_HOST when it is a host name or address, else None; with the warning for
+    a value that is not one (empty is unset, with no warning)."""
+    value = env.get("LADO_PUBLIC_HOST", "")
+    if not value:
+        return None, None
+    if PUBLIC_HOST.fullmatch(value):
+        return value, None
+    return None, (
+        f"LADO_PUBLIC_HOST is not a host name or address: {value}; "
+        "the link for other devices does not use it"
+    )
+
+
+def _open_warning(where: str) -> str:
+    return (
+        f"the LADO server listens on {where}, open to other machines: whoever "
+        "reaches it with the token can run commands as you, and the token travels "
+        "unencrypted (plain HTTP). Use it only on a network you trust."
+    )
+
+
 @dataclass(frozen=True)
 class Listening:
     """Where a server listening on an address is reached: `url` from this machine (what
-    server.json keeps), `remote` from others with the `warning` that says so, or None
-    for a loopback address. In a container (`container`, the caller's
-    `update.in_container()`) only the port's publication decides who reaches it: no
-    `remote` and no `warning`, but a `note` that says so."""
+    server.json keeps), `remote` from other devices (the base of the link for another
+    device), or None with its `reason` (`loopback`, `no-address`, `unknown`).
+
+    One rule (share-access): outside a container the address decides, with the `warning`
+    of a server open to other machines; in a container (`container`, the caller's
+    `update.in_container()`) only the port's publication does, which the container knows
+    from `LADO_LISTEN` (`listen`) and nothing else: unknown, it prints the `note`.
+    `LADO_PUBLIC_HOST` names the host for `remote`; a value that is not a host is one of
+    the `problems`, for the start's warning lines."""
 
     url: str
     remote: str | None
     warning: str | None
     note: str | None = None
+    reason: str | None = None
+    problems: tuple[str, ...] = ()
+    listen: str | None = None
 
     @classmethod
-    def of(cls, host: str, port: int, container: bool = False) -> "Listening":
-        """For the address the socket took (`getsockname`), not the name it was given."""
+    def of(
+        cls, host: str, port: int, container: bool = False, env: Mapping[str, str] | None = None
+    ) -> "Listening":
+        """For the address the socket took (`getsockname`), not the name it was given, and
+        the server's environment (`os.environ` by default)."""
+        env = os.environ if env is None else env
+        named, problem = public_host(env)
+        problems = (problem,) if problem else ()
         ip = ipaddress.ip_address(host)
         if ip.is_loopback:
-            return cls(f"http://{host}:{port}", None, None)
+            return cls(f"http://{host}:{port}", None, None, reason="loopback", problems=problems)
         local = f"http://127.0.0.1:{port}" if ip.is_unspecified else f"http://{host}:{port}"
         if container:
-            return cls(local, None, None, CONTAINER_NOTE.format(host=host, port=port))
-        warning = (
-            f"the LADO server listens on {host}:{port}, open to other machines: whoever "
-            "reaches it with the token can run commands as you, and the token travels "
-            "unencrypted (plain HTTP). Use it only on a network you trust."
+            return cls._in_container(
+                local, host, port, env.get("LADO_LISTEN") or None, named, problems
+            )
+        if named is not None:
+            address = named
+        elif ip.is_unspecified:
+            address = network_address() or socket.gethostname()
+        else:
+            address = host
+        return cls(
+            local, f"http://{address}:{port}", _open_warning(f"{host}:{port}"), problems=problems
         )
-        if ip.is_unspecified:
-            return cls(local, f"http://{socket.gethostname()}:{port}", warning)
-        return cls(local, local, warning)
+
+    @classmethod
+    def _in_container(
+        cls,
+        local: str,
+        host: str,
+        port: int,
+        listen: str | None,
+        named: str | None,
+        problems: tuple[str, ...],
+    ) -> "Listening":
+        remote = f"http://{named}:{port}" if named else None
+        try:
+            published = ipaddress.IPv4Address(listen or "")
+        except ValueError:  # unset, a name or IPv6: compose refuses a name at `up`
+            note = CONTAINER_NOTE.format(host=host, port=port)
+            reason = None if remote else "unknown"
+            return cls(local, remote, None, note, reason, problems, listen)
+        if published.is_loopback:
+            return cls(local, None, None, None, "loopback", problems, listen)
+        if remote is None and not published.is_unspecified:
+            remote = f"http://{listen}:{port}"
+        reason = None if remote else "no-address"
+        return cls(local, remote, _open_warning(f"{listen}:{port}"), None, reason, problems, listen)
 
 
 def _ipv4(host: str) -> None:
@@ -248,6 +330,8 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
         sock = bind(host, port)
         listens, bound = sock.getsockname()
         listening = Listening.of(listens, bound, update.in_container())
+        for problem in listening.problems:
+            print(f"lado: warning: {problem}", file=sys.stderr, flush=True)
         if listening.warning:
             print(f"lado: warning: {listening.warning}", file=sys.stderr, flush=True)
         if listening.note:

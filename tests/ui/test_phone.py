@@ -265,6 +265,10 @@ def test_sideways_the_card_starts_minimized_and_a_tab_opens_it(device, server, r
     assert page.evaluate("document.documentElement.dataset.phone") == "short"
     card = waiting_card(page, session)
     expect(card).to_have_class("waiting-card minimized")
+    line = card.locator(".waiting-line")
+    expect(line).to_have_text("Build it as planned?")
+    expect(line).to_be_in_viewport(ratio=1)
+    assert box(line)["y"] + box(line)["height"] <= box(page.locator(".chat > .composer"))["y"]
     assert box(top_bar(page))["height"] <= 44
     field = page.get_by_role("textbox", name="Write to the supervisor…")
     expect(field).to_be_visible()

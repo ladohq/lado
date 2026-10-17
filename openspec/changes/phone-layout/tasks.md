@@ -23,7 +23,7 @@ Design doc: `docs/superpowers/specs/2026-10-18-phone-layout-design.md`.
 
 ## 5. Sessions and the waiting card (D5, D6)
 
-- [ ] 5.1 The list as the Sessions page, no strip; the sideways card minimized by the
+- [x] 5.1 The list as the Sessions page, no strip; the sideways card minimized by the
   layout; vitest. Check: `cd web && npx vitest run src/WaitingCard.test.tsx`, `make web`.
 
 ## 6. Terminals over the screen (D7)

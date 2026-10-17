@@ -1,6 +1,8 @@
 // Sessions: the list on the left (from /api/sessions, searched by name here), the selected
 // session on the right with its tabs. The list's width is dragged on its edge and remembered;
-// the list collapses to a strip of the sessions' icons (remembered too).
+// the list collapses to a strip of the sessions' icons (remembered too). On a phone the list
+// is the Sessions page and a session's page shows the session alone (docs/design/ui.md,
+// Phone layout).
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -124,15 +126,20 @@ export function Sessions() {
       <span aria-hidden="true">+</span>
     </button>
   );
+  // On a phone (phone.ts) Sessions is the list and a session's page the session alone: no
+  // strip, no edge, nothing of the computer's list read or written.
+  const phone = usePhone();
+  const strip = phone === null && list.collapsed;
+  const showsList = phone === null || current === undefined;
   // The session keeps its place in the page whether the list is open or not: its terminals
   // stay connected.
   return (
     <div
       ref={page}
-      className={list.collapsed ? "sessions collapsed" : "sessions"}
-      style={{ "--list-width": `${list.collapsed ? STRIP_WIDTH : width}px` } as CSSProperties}
+      className={strip ? "sessions collapsed" : "sessions"}
+      style={phone ? undefined : ({ "--list-width": `${strip ? STRIP_WIDTH : width}px` } as CSSProperties)}
     >
-      {!list.collapsed && (
+      {phone === null && !strip && (
         <Splitter
           label="Resize the session list"
           edge="right"
@@ -141,25 +148,27 @@ export function Sessions() {
           onChange={(next) => keep({ width: next })}
         />
       )}
-      {list.collapsed ? (
+      {strip ? (
         <SessionStrip loaded={loaded} openRef={focus.open} onOpen={() => collapse(false)}>
           {newSession}
         </SessionStrip>
-      ) : (
+      ) : showsList ? (
         <div className="session-list">
           <div className="session-list-head">
             <h2>Sessions</h2>
             {newSession}
-            <button
-              ref={focus.collapse}
-              type="button"
-              className="ghost"
-              aria-label="Collapse sessions"
-              title="Collapse sessions"
-              onClick={() => collapse(true)}
-            >
-              <CollapsePanelIcon side="left" />
-            </button>
+            {phone === null && (
+              <button
+                ref={focus.collapse}
+                type="button"
+                className="ghost"
+                aria-label="Collapse sessions"
+                title="Collapse sessions"
+                onClick={() => collapse(true)}
+              >
+                <CollapsePanelIcon side="left" />
+              </button>
+            )}
           </div>
           <input
             type="search"
@@ -185,7 +194,7 @@ export function Sessions() {
             )}
           </nav>
         </div>
-      )}
+      ) : null}
       <div className="session-detail">
         <Outlet context={loaded} />
       </div>
@@ -476,10 +485,11 @@ function StatusDot({ status }: { status: SessionStatus }) {
 export function NoSession() {
   useTitle("Sessions");
   const loaded = useOutletContext<Loaded>();
+  const phone = usePhone(); // the list is the page: nothing to select beside it
   if (loaded && "sessions" in loaded && loaded.sessions.length === 0) {
     return <p className="empty">No sessions yet. Start one with Launch.</p>;
   }
-  return <p className="empty">Select a session</p>;
+  return phone ? null : <p className="empty">Select a session</p>;
 }
 
 const TAB_NAMES: Record<Tab, string> = {

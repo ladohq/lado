@@ -9,7 +9,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { GateInfo, MessageInfo, RecommendationInfo, RunInfo } from "./api";
 import { avatar } from "./FeedRow";
-import { columnWidth, FakeEventSource, FakeResizeObserver } from "./fakes";
+import { columnWidth, FakeEventSource, FakeResizeObserver, FakeScreen } from "./fakes";
 import { Live, LiveContext } from "./live";
 import { WAITING_MIN } from "./prefs";
 import { sendQuote, takePending } from "./quotes";
@@ -716,4 +716,64 @@ test("a stored height too tall for the chat shows lower and is kept; dragged bel
   expect(isMinimized()).toBe(true);
   expect(localStorage.getItem("lado.waitingHeight")).toBe(String(WAITING_MIN)); // kept for the restore
   expect(document.activeElement).toBe(iconButton("Restore the card"));
+});
+
+// On a phone (docs/design/ui.md, Phone layout)
+
+test("on a phone held sideways the card starts minimized, a tab shows it expanded, Esc minimizes it again", async () => {
+  FakeScreen.sideways();
+  show({ questions: [question(5, "supervisor")], gates: [GATE_812], chat: IN_CHAT });
+  expect(isMinimized()).toBe(true);
+  expect(line()?.textContent).toBe("Archive the change and merge the pull request?");
+  expect(within(card()).queryByRole("button", { name: /^(Minimize|Restore) the card$/ })).toBeNull();
+  fireEvent.click(tab("supervisor 1"));
+  await waitFor(() => expect(isExpanded()).toBe(true));
+  expect(selected()).toEqual([tab("supervisor 1")]);
+  expect(within(card()).getByRole("button", { name: /^Send / })).toBeTruthy();
+  fireEvent.keyDown(document, { key: "Escape" });
+  await waitFor(() => expect(isExpanded()).toBe(false));
+  expect(isMinimized()).toBe(true);
+  fireEvent.click(line()!); // the line shows it too
+  await waitFor(() => expect(isExpanded()).toBe(true));
+  fireEvent.click(iconButton("Collapse the card"));
+  await waitFor(() => expect(isMinimized()).toBe(true));
+  expect(localStorage.getItem("lado.waitingMinimized.s")).toBeNull(); // the layout's fold, not the human's
+});
+
+test("turned upright, a card minimized only by the phone held sideways shows whole", () => {
+  const phone = FakeScreen.sideways();
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+  expect(isMinimized()).toBe(true);
+  phone.set({ width: 390, height: 844 });
+  expect(isMinimized()).toBe(false);
+  expect(within(card()).getByRole("button", { name: "Approve" })).toBeTruthy();
+});
+
+test("turned upright from an expanded card, the card folds back in its place", async () => {
+  const phone = FakeScreen.sideways();
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+  fireEvent.click(tab("task/lad-52 1"));
+  await waitFor(() => expect(isExpanded()).toBe(true));
+  phone.set({ width: 390, height: 844 });
+  expect(isExpanded()).toBe(false);
+  expect(isMinimized()).toBe(false);
+});
+
+test("the human's own minimized card stays minimized on a phone, and is still theirs upright", () => {
+  localStorage.setItem("lado.waitingMinimized.s", JSON.stringify(["gate:812"]));
+  const phone = FakeScreen.sideways();
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+  expect(isMinimized()).toBe(true);
+  phone.set({ width: 390, height: 844 });
+  expect(isMinimized()).toBe(true);
+  expect(localStorage.getItem("lado.waitingMinimized.s")).toBe(JSON.stringify(["gate:812"]));
+});
+
+test("on a phone the card has no edge and keeps no height of its own", () => {
+  localStorage.setItem("lado.waitingHeight", "230");
+  FakeScreen.phone();
+  show({ questions: [], gates: [GATE_812], chat: { feed: 400, loaded: true } });
+  expect(edge()).toBeNull();
+  expect(card().classList.contains("sized")).toBe(false);
+  expect(within(card()).getByRole("button", { name: "Minimize the card" })).toBeTruthy(); // upright: as on a computer
 });

@@ -8010,7 +8010,13 @@ del.kit-mcp-name {
 
 :root[data-phone] .sessions {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
+}
+
+/* Sessions is the list alone (Sessions.tsx): the page beside it is empty. */
+:root[data-phone] .session-detail:empty {
+  display: none;
 }
 
 :root[data-phone] .session-list {
@@ -8085,4 +8091,12 @@ del.kit-mcp-name {
 :root[data-phone="short"] .activity,
 :root[data-phone="short"] .chat {
   gap: 6px;
+}
+
+:root[data-phone="short"] .chat-feed {
+  min-height: 60px;
+}
+
+:root[data-phone] .chat > .waiting-card.minimized {
+  flex: none;
 }

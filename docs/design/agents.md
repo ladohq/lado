@@ -462,6 +462,18 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `QUEUE_RESERVE`, at most `fingerprint.BUDGET` (2 s); under `MIN_BUDGET`, or on a git
   error or timeout, it is `repo_check_failed`, told to the lead once per launch
   (`state.has_kind`), and the hook goes on.
+- In LADO's container (`update.in_container`) every agent's instructions, on every
+  provider and a read-only role's too, get a paragraph after the read-only one and before
+  `MESSAGING` (`runtime.CONTAINER_INSTRUCTIONS`): a tool the project needs and lacks is
+  installed with mise into the home volume, by the project's version files or as
+  `<tool>@<version>` run through `mise exec`; no file is added to the project unless the
+  human asks; Node is the image's 22; apt packages and databases cannot be installed; a
+  version mise refuses is reported, its checks never switched off. Then one sentence by
+  role (`agent.name == SUPERVISOR`): the supervisor alone sets a container-wide default
+  (`mise use -g`, `CONTAINER_SUPERVISOR`), a worker, a flow run's too, asks it
+  (`CONTAINER_WORKER`). It is a rule of the instructions only: every agent has the shell.
+  Outside a container the paragraph is absent. The image's side: docs/design/modules.md,
+  `docker/`.
 - Agents talk only through LADO's MCP tools. A CLI's own agent messaging is switched off
   (Claude Code: `SendMessage` and `ListAgents` are denied in the agent's settings, and the
   `lado` MCP server has `alwaysLoad`, so its tools are not hidden behind tool search), and so

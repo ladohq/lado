@@ -2,7 +2,8 @@
 // the top bar with the page's title, or a head the page draws there (useTopBar), and the
 // change feed's link, and the page itself. The one place that handles a 401: it shows the server's own message
 // instead of the page. It holds the tab's one change feed (live.ts) for every page, and the
-// New session window (Launch.tsx).
+// New session window (Launch.tsx). On a phone (phone.ts) it says so on <html data-phone>,
+// and the rail is a drawer that Menu, at the top bar's start, opens.
 import {
   createContext,
   Fragment,
@@ -11,10 +12,12 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
+  type Ref,
 } from "react";
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useLocation } from "react-router";
 
 import { getHealth, onDenied } from "./api";
 import {
@@ -23,6 +26,7 @@ import {
   HomeIcon,
   KitsIcon,
   LaunchIcon,
+  MenuIcon,
   NeedsYouIcon,
   ProjectsIcon,
   SessionsIcon,
@@ -32,6 +36,7 @@ import { LaunchProvider, useLaunch } from "./Launch";
 import { isLive, Live, LiveContext, useLive } from "./live";
 import { Notifier } from "./Notifications";
 import { NEEDS_YOU_PATH } from "./paths";
+import { usePhone } from "./phone";
 import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
 import { SelectionBar } from "./SelectionBar";
 import { LiveButton, UpdateProvider, UpdateStatus } from "./SystemPanel";
@@ -84,6 +89,16 @@ export function Shell() {
   const [collapsed, setCollapsed] = useState(storedRailCollapsed);
   const [denied, setDenied] = useState<string | null>(null);
   const [live] = useState(() => new Live());
+  const phone = usePhone();
+
+  // The key of styles.css's section "Phone layout".
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (phone) root.dataset.phone = phone;
+    return () => {
+      delete root.dataset.phone;
+    };
+  }, [phone]);
 
   useEffect(() => {
     const off = onDenied(setDenied);
@@ -101,50 +116,90 @@ export function Shell() {
     storeRailCollapsed(!collapsed);
   };
 
+  // On a phone the rail is a drawer that Menu opens over the page, always with its names
+  // (the computer's collapsed rail is neither read nor written there). Choosing an item, the
+  // dimmed page or Esc closes it, and the focus goes back to Menu.
+  const [drawer, setDrawer] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const rail = useRef<HTMLElement>(null);
+  const folded = phone === null && collapsed;
+  const closeDrawer = useCallback(() => {
+    setDrawer(false);
+    menuButton.current?.focus();
+  }, []);
+  useEffect(() => {
+    if (phone === null) setDrawer(false);
+  }, [phone]);
+  // A route change from outside the rail (Back) closes it too.
+  const { pathname } = useLocation();
+  useEffect(() => setDrawer(false), [pathname]);
+  useEffect(() => {
+    if (!drawer) return;
+    rail.current?.querySelector<HTMLElement>(".rail-link")?.focus();
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || (event.target as Element | null)?.closest?.("dialog")) return;
+      closeDrawer();
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [drawer, closeDrawer]);
+
   const frame = (
-    <div className={`app${collapsed ? " collapsed" : ""}`}>
+    <div className={`app${folded ? " collapsed" : ""}`}>
       <TabTitle title={title} />
       <Notifier />
       <SelectionBar />
-      <nav className="rail" aria-label="Sections">
+      {drawer && <button type="button" className="menu-scrim" aria-label="Close menu" onClick={closeDrawer} />}
+      <nav
+        ref={rail}
+        className="rail"
+        aria-label="Sections"
+        data-open={drawer || undefined}
+        onClick={(event) => {
+          if (drawer && (event.target as Element).closest(".rail-link")) closeDrawer();
+        }}
+      >
         <div className="rail-head">
           <span className="mark">LADO</span>
-          <button
-            type="button"
-            className="ghost"
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? "Expand menu" : "Collapse menu"}
-            title={collapsed ? "Expand menu" : "Collapse menu"}
-            onClick={toggle}
-          >
-            <CollapseIcon collapsed={collapsed} />
-          </button>
+          {phone === null && (
+            <button
+              type="button"
+              className="ghost"
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? "Expand menu" : "Collapse menu"}
+              title={collapsed ? "Expand menu" : "Collapse menu"}
+              onClick={toggle}
+            >
+              <CollapseIcon collapsed={collapsed} />
+            </button>
+          )}
         </div>
         <ul>
           {SECTIONS.map((section) => (
             <Fragment key={section.to}>
               <li>
                 {section.to === NEEDS_YOU_PATH ? (
-                  <NeedsYouLink {...section} collapsed={collapsed} />
+                  <NeedsYouLink {...section} collapsed={folded} />
                 ) : (
-                  <RailLink {...section} collapsed={collapsed} />
+                  <RailLink {...section} collapsed={folded} />
                 )}
               </li>
               {section.to === "/" && (
                 <li>
-                  <LaunchLink collapsed={collapsed} />
+                  <LaunchLink collapsed={folded} />
                 </li>
               )}
             </Fragment>
           ))}
         </ul>
         <div className="rail-bottom">
-          <RailLink to="/report" name="Report a bug" icon={<BugIcon />} collapsed={collapsed} />
-          <RailLink to="/settings" name="Settings" icon={<SettingsIcon />} collapsed={collapsed} />
+          <RailLink to="/report" name="Report a bug" icon={<BugIcon />} collapsed={folded} />
+          <RailLink to="/settings" name="Settings" icon={<SettingsIcon />} collapsed={folded} />
         </div>
       </nav>
       <div className="main">
         <header className="topbar">
+          {phone !== null && <MenuButton ref={menuButton} open={drawer} onClick={() => setDrawer(!drawer)} />}
           {claims === 0 && <h1>{title}</h1>}
           <div ref={setSlot} className="topbar-slot" />
           <LinkState />
@@ -274,6 +329,28 @@ function RailLink(props: { to: string; name: string; icon: ReactNode; collapsed:
         </span>
       ) : null}
     </NavLink>
+  );
+}
+
+// Menu on a phone: the rail as a drawer; what waits counted on it, as on Needs you's link.
+function MenuButton({ ref, open, onClick }: { ref: Ref<HTMLButtonElement>; open: boolean; onClick: () => void }) {
+  const count = useWaitingCount();
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className="ghost menu-button"
+      aria-label={count ? `Menu, ${count} waiting` : "Menu"}
+      aria-expanded={open}
+      onClick={onClick}
+    >
+      <MenuIcon />
+      {count ? (
+        <span className="rail-count" aria-hidden="true">
+          {count}
+        </span>
+      ) : null}
+    </button>
   );
 }
 

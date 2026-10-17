@@ -97,7 +97,9 @@ change nothing, and an empty field SHALL clear the title. A text over `Limits.ma
 SHALL be shown as too long under the field and not sent; a refusal of the server SHALL
 show under the field (`role="alert"`) with the field kept open and the text kept. After a
 save or a cancel the focus SHALL go back to the button that opened the field (the pencil,
-or the row's ⋯).
+or the row's ⋯). In the phone layout (capability phone-layout) the head SHALL have no
+pencil and its title SHALL open the session's details instead, whose **Rename** SHALL turn
+the sheet's title into the same field, the focus going back to Rename.
 
 #### Scenario: Rename in the head
 - **WHEN** the human presses the pencil in the head of `lado-2`, types `Review`, and

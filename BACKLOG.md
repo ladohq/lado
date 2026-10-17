@@ -1839,15 +1839,6 @@ Codex the claim depends on the model.
 Wanted: the resume text names who it means; the comment says where the claim depends on the model.
 Found: 2026-10-11, review of feature/stable-local-live (Minor, left open).
 
-## An image in the artifact's tab is sized by `vh` while the tab is `dvh`
-
-Size: S. Why here: a few pixels of scroll on mobile, no loss.
-`.artifact-tab-image .image-frame img { max-height: calc(100vh - 32px) }` (styles.css): on a
-mobile browser with its toolbar showing, 100dvh < 100vh, so a tall image overflows the tab
-by the toolbar's height and the tab scrolls a little.
-Wanted: size the image by the tab (`100dvh` or the frame's height), so a tall image fits.
-Found: 2026-10-11, review of fix/artifact-tab-scroll.
-
 ## A long text record's horizontal scrollbar sits after its last line in the artifact's tab
 
 Size: S. Why here: Wrap lines and shift+wheel work around it.
@@ -2161,17 +2152,6 @@ After Check for updates says a kit has no newer version, its row still offers Up
 window now answers briefly, but the button promises an update.
 Wanted: after a check, such a kit's button says what it does (e.g. "Versions…").
 Found: 2026-10-05, design of feature/kits-page-polish.
-
-## The UI scrolls sideways on a phone-wide screen
-
-Size: M. Why here: a desktop app; the phone comes second.
-
-At a 420 px wide viewport the Kits page (the rail and the page) is wider than the screen:
-a full-page screenshot is 476 px wide, and the Marketplaces block runs past the right edge.
-Wanted: no horizontal page scroll at phone width (the rail collapses, the page fits).
-Found: 2026-10-05, UI e2e screenshot update-narrow of feature/kits-page-polish. Seen again
-2026-10-09 (feature/kits-cards): at 390 px the rail stays expanded and leaves the page
-~140 px; with the rail collapsed by hand the Kits page fits (the e2e test collapses it).
 
 ## The Kits up-to-date window drops the plan's other notes
 

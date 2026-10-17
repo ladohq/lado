@@ -54,10 +54,10 @@
 
 ## 8. UI e2e
 
-- [ ] 8.1 `tests/ui/test_gates.py`: paste and clip in a gate's comment, Reject, the move's
+- [x] 8.1 `tests/ui/test_gates.py`: paste and clip in a gate's comment, Reject, the move's
   preview and chips, the opened card's chips, a drop on the comment; screenshots.
   Check: `uv run pytest -m ui tests/ui/test_gates.py`.
-- [ ] 8.2 `tests/ui/test_chat.py`: Other… with a file only, the closed card's preview and
+- [x] 8.2 `tests/ui/test_chat.py`: Other… with a file only, the closed card's preview and
   chip, a drop on the feed goes to the composer; screenshots. Check: `uv run pytest -m ui
   tests/ui/test_chat.py`.
 

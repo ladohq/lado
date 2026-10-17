@@ -2,6 +2,9 @@
 
 ## 0.40.1 (unreleased)
 
+- The UI server no longer lets anyone in when `LADO_HOME/server-token` is empty (left by a
+  failed write, e.g. a full disk): an empty file gets a new token, the token is written
+  atomically, and an empty token is always refused.
 - Install with Docker: docs/install.md's "Your first session" says how to answer Claude
   Code's question whether to trust a repository it has not seen ("Yes, I trust this
   folder"; Enter alone answers "No, exit" and closes the agent), and README's Docker start

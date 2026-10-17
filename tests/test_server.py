@@ -43,6 +43,54 @@ def test_the_token_is_kept_in_lado_home_for_the_owner_only():
     assert new != token and auth.token() == new
 
 
+@pytest.mark.parametrize("content", ["", "  \n"])
+def test_an_empty_token_file_gets_a_new_token(content):
+    """A file left empty (a write that failed on a full disk) is no token: the server would
+    take an empty one from anyone."""
+    path = state.home() / "server-token"
+    path.write_text(content)
+    token = auth.token()
+    assert len(token) >= 32
+    assert path.read_text().strip() == token
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert auth.token() == token
+
+
+def test_a_failed_token_write_leaves_the_file_and_no_temporary_file(monkeypatch):
+    path = state.home() / "server-token"
+    old = auth.token()
+    before = set(os.listdir(state.home()))
+
+    def full(*args):
+        raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+
+    monkeypatch.setattr(os, "write", full)
+    with pytest.raises(runtime.LadoError) as error:
+        auth.token(new=True)
+    said = str(error.value)
+    assert "cannot write the UI server's token to" in said and str(path) in said
+    assert os.strerror(errno.ENOSPC) in said
+    assert path.read_text().strip() == old
+    assert set(os.listdir(state.home())) == before
+
+    path.unlink()
+    with pytest.raises(runtime.LadoError):
+        auth.token()
+    assert not path.exists()
+    assert set(os.listdir(state.home())) == before - {"server-token"}
+
+
+def test_the_server_refuses_an_empty_token(client):
+    assert client.get("/api/sessions", headers={"Authorization": "Bearer "}).status_code == 401
+    answer = client.get("/?token=")
+    assert answer.status_code == 401
+    assert "set-cookie" not in answer.headers
+    client.cookies.set(f"lado_token_{PORT}", "")
+    assert client.get("/api/sessions").status_code == 401
+    with pytest.raises(ValueError):
+        auth.Guard("", PORT)
+
+
 def test_health_needs_no_token(client):
     answer = client.get("/api/health")
     assert answer.status_code == 200

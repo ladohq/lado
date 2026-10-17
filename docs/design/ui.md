@@ -1798,7 +1798,8 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
 - **Tabs**: a session's four tabs without their icons fit 360 px; the Kits page's three too.
 - **The chat**: the feed scrolls by itself, the waiting card (at most half the chat, no
   edge, no height of its own) and the composer stay at the bottom; the composer's text is
-  16 px (Safari zooms into a smaller field) and its keys hint is not shown. A flow event's
+  16 px (Safari zooms into a smaller field) and its keys hint is not shown; so is the text
+  of the card's fields that take files (an own answer, a skip's or a gate's comment; LAD-86). A flow event's
   line starts at the feed's left edge, its actor, chips and time on the first line, its
   text wrapped under them, whole.
 - **Sideways** (`short`): the chat's card is minimized by the layout (its tabs and one

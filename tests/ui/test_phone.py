@@ -328,7 +328,11 @@ def test_a_tap_on_a_kit_shows_its_tooltip_and_a_button_none(device, server, repo
     shot(page, "kit", full_page=False)
     sheet.get_by_role("heading").tap()
     expect(tooltip).to_have_count(0)
-    sheet.get_by_role("button", name="Copy link").tap()
+    # A button's tooltip only names it: a tap (whose emulated mouse enters it) shows none.
+    sheet.get_by_role("button", name="Close").tap()
+    toggle = page.get_by_role("button", name="Messages between agents")
+    toggle.tap()
+    expect(toggle).to_have_attribute("aria-pressed", "true")
     page.wait_for_timeout(600)  # past the hover's delay
     expect(tooltip).to_have_count(0)
 

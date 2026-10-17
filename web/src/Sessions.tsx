@@ -17,7 +17,7 @@ import {
 import { Agents } from "./Agents";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { Artifacts } from "./ArtifactsTable";
-import { getSessionAbout, type ProviderInfo, type RepoInfo, type SessionAbout, type SessionKitInfo, type SessionInfo, type SessionStatus } from "./api";
+import { getSessionAbout, type SessionAbout, type SessionInfo, type SessionStatus } from "./api";
 import { Chat } from "./Chat";
 import { duration } from "./ChatText";
 import { CopyButton } from "./Copy";
@@ -33,7 +33,6 @@ import {
   FindIcon,
   FlowsIcon,
   FolderIcon,
-  GitIcon,
   KitsIcon,
   LinkIcon,
   PencilIcon,
@@ -59,7 +58,8 @@ import {
   type ColumnPrefs,
   type SessionGroup,
 } from "./prefs";
-import { shortRemote } from "./remote";
+import { usePhone } from "./phone";
+import { CliTip, GitFact, KitTip, SessionDetails } from "./SessionDetails";
 import { useTitle, useTopBar } from "./Shell";
 import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
 import { Team } from "./Team";
@@ -691,6 +691,8 @@ function HeadLine({ session }: { session: SessionInfo }) {
   // which gives the focus back to the pencil when it closes.
   const pencil = useRef<HTMLButtonElement>(null);
   const { editing, edit, closed } = useTitleEdit(() => pencil.current?.focus());
+  const phone = usePhone();
+  if (phone) return <PhoneHead session={session} about={about} />;
   return (
     <div className="session-head">
       <StatusDot status={status} />
@@ -799,7 +801,41 @@ function HeadLine({ session }: { session: SessionInfo }) {
   );
 }
 
-const NEXT_AGENT = "installed now: the next agent starts with it";
+// The head on a phone (docs/design/ui.md, Phone layout): the status dot, the title (or name)
+// as a button that opens the session's details, and the session's actions; the change
+// feed's mark is the Shell's, between them by styles.css. The facts are in the details.
+function PhoneHead({ session, about }: { session: SessionInfo; about: SessionAbout | null }) {
+  const live = useLiveStore();
+  const [details, setDetails] = useState(false);
+  const ran = useRan(session);
+  return (
+    <div className="session-head">
+      <StatusDot status={session.status} />
+      <h1 className="session-title">
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={details}
+          onClick={() => setDetails(true)}
+        >
+          {label(session)}
+        </button>
+      </h1>
+      <div className="session-head-actions">
+        <SessionActions session={session} />
+      </div>
+      {details && (
+        <SessionDetails
+          session={session}
+          about={about}
+          state={`${STATUS[session.status]} · ${ran}`}
+          onSaved={(saved) => live.sessionChanged(saved)}
+          onClose={() => setDetails(false)}
+        />
+      )}
+    </div>
+  );
+}
 
 // The session's about, asked when its head opens and again when what it is read from may
 // have changed: the session's folder, kits or provider, or an installed kit (the feed's
@@ -821,83 +857,6 @@ function useAbout(session: SessionInfo): SessionAbout | null {
     };
   }, [name, repo, kits, provider, kitChanges]);
   return about;
-}
-
-// The repository's remote, short, and its branch; the remote's whole URL is copied from
-// the git icon and shown in the tooltip with the branch and the path.
-function GitFact({ name, repo }: { name: string; repo: RepoInfo }) {
-  const { remote, branch, path } = repo;
-  if (!remote && !branch) return null;
-  const text = [remote && shortRemote(remote), branch].filter(Boolean).join(" · ");
-  const where = [branch && `branch ${branch}`, path].filter(Boolean).join(" · ");
-  return (
-    <span className="session-fact session-git">
-      {remote ? (
-        <CopyButton
-          label="Copy URL"
-          copied="URL copied"
-          text={remote}
-          field={{ title: `Remote of ${name}`, label: "URL" }}
-          icon={<GitIcon />}
-        />
-      ) : (
-        <GitIcon />
-      )}
-      <Tooltip
-        tip={
-          <>
-            {remote && <div className="tooltip-line">{remote}</div>}
-            <div className="tooltip-line">{where}</div>
-          </>
-        }
-      >
-        <span className="session-hint" tabIndex={0}>
-          {text}
-        </span>
-      </Tooltip>
-    </span>
-  );
-}
-
-function KitTip({ kit }: { kit: SessionKitInfo }) {
-  if (!kit.valid) {
-    return (
-      <div className="tooltip-line">
-        <b>{kit.name}</b>: {kit.problem}
-      </div>
-    );
-  }
-  return (
-    <>
-      <div className="tooltip-line">
-        <b>{kit.name}</b> v{kit.version}
-      </div>
-      <div className="tooltip-line">{kit.source}</div>
-      <div className="tooltip-line">{NEXT_AGENT}</div>
-    </>
-  );
-}
-
-// The CLI's version (or that it is not installed), then the session's permission mode.
-function CliTip({ cli, mode }: { cli: ProviderInfo; mode: string | null }) {
-  return (
-    <>
-      {cli.installed ? (
-        <>
-          <div className="tooltip-line">
-            <b>{cli.title}</b> {cli.version || cli.detail}
-          </div>
-          {cli.warning && <div className="tooltip-line session-warn">tested with {cli.tested_version}</div>}
-          <div className="tooltip-line">{NEXT_AGENT}</div>
-        </>
-      ) : (
-        <div className="tooltip-line">
-          <b>{cli.title}</b> not installed: {cli.detail}
-        </div>
-      )}
-      {mode && <div className="tooltip-line">mode {mode}</div>}
-    </>
-  );
 }
 
 const TICK_MS = 60_000; // how often the times of the session list and head are counted on

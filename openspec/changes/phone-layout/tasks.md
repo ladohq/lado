@@ -18,7 +18,7 @@ Design doc: `docs/superpowers/specs/2026-10-18-phone-layout-design.md`.
 
 ## 4. The compact head and the details sheet (D3)
 
-- [ ] 4.1 `HeadLine`'s phone branch, the live dot, `SessionDetails`; vitest. Check: `cd
+- [x] 4.1 `HeadLine`'s phone branch, the live dot, `SessionDetails`; vitest. Check: `cd
   web && npx vitest run src/SessionDetails.test.tsx`, `make web`.
 
 ## 5. Sessions and the waiting card (D5, D6)

@@ -48,5 +48,5 @@ Design doc: `docs/superpowers/specs/2026-10-18-phone-layout-design.md`.
 
 ## 10. Regression
 
-- [ ] 10.1 `make lint`, `make test`, `make web`, the UI e2e files of the plan's
+- [x] 10.1 `make lint`, `make test`, `make web`, the UI e2e files of the plan's
   regression list, unchanged but `test_phone.py`. Check: all green.

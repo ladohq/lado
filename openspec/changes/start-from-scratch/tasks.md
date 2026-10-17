@@ -27,7 +27,7 @@ Tests first in each section; each task is one commit. The plan with the steps is
 - [x] 3.1 `lado start --new` (D7) and `docs/cli.md`. Unit tests (`tests/test_cli.py`): "A
   folder with files", inside_repo, no author, usage errors, the start, "the repository
   stays in", `lado start` without `--new` unchanged. Plan, Task 6.
-- [ ] 3.2 `lado doctor`'s `git author` (D10). Unit tests (`tests/test_doctor.py`): "A
+- [x] 3.2 `lado doctor`'s `git author` (D10). Unit tests (`tests/test_doctor.py`): "A
   machine whose git knows the author", "A fresh machine", no git, no value printed.
   Plan, Task 7.
 

@@ -42,6 +42,12 @@ def _versions(
     )
 
 
+@pytest.fixture(autouse=True)
+def _own_git_config(git_config):
+    """The `git author` check reads the test's git config, never the user's."""
+    return git_config
+
+
 def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
     _versions(monkeypatch)
     monkeypatch.setattr(gui_session.sys, "platform", "linux")  # its check: below
@@ -51,6 +57,7 @@ def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
         "Python",
         "tmux",
         "git",
+        "git author",
         "Agent environment",
         "Agent config folders",
         "Artifacts",
@@ -240,7 +247,7 @@ def test_the_checks_hold_the_repositories_folder_only_when_it_is_set(tmp_path, m
     assert "Repositories folder" not in names()
     monkeypatch.setenv("LADO_REPOS", str(tmp_path))
     found = names()
-    assert found[found.index("git") + 1] == "Repositories folder"
+    assert found[found.index("git author") + 1] == "Repositories folder"
 
 
 @pytest.mark.parametrize(
@@ -735,6 +742,54 @@ def test_a_current_git_is_ok_with_its_version(tmp_path, monkeypatch, version):
     _git_on_path(tmp_path, monkeypatch, f"echo '{version}'")
     check = _git_check()
     assert (check.level, check.detail, check.hint) == (doctor.OK, version, "")
+
+
+def _doctor_output(monkeypatch, capsys) -> tuple[int, str]:
+    checks = doctor.run_checks
+    monkeypatch.setattr(doctor, "run_checks", lambda: checks(which=lambda cmd: cmd))
+    status = doctor.main()
+    return status, capsys.readouterr().out
+
+
+def test_a_machine_whose_git_knows_the_author(monkeypatch, capsys):
+    _versions(monkeypatch)
+    status, out = _doctor_output(monkeypatch, capsys)
+    assert "[ok  ] git author: user.name and user.email set\n" in out
+    assert "LADO test" not in out and "test@lado.invalid" not in out
+
+
+def test_a_fresh_machine(git_config, monkeypatch, capsys):
+    _versions(monkeypatch)
+    status_before, _ = _doctor_output(monkeypatch, capsys)  # git knows the author
+    git_config.write_text("[user]\n\tname = Ann Example\n")
+    status = doctor.main()
+    out = capsys.readouterr().out
+    assert (
+        "[warn] git author: no user.name or user.email: agents cannot commit\n"
+        "       Tell git who you are, once for this computer: git config --global user.name "
+        '"Your Name" && git config --global user.email you@example.com\n'
+    ) in out
+    assert "Ann Example" not in out
+    assert status == status_before
+
+
+def test_the_containers_git_author_hint(git_config, monkeypatch):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    git_config.write_text("")
+    check = doctor.check_git_author()
+    assert (check.name, check.level) == ("git author", doctor.WARN)
+    assert check.hint == (
+        "Set LADO_GIT_NAME and LADO_GIT_EMAIL in the .env file next to compose.yaml, then "
+        "restart LADO there: docker compose up -d"
+    )
+
+
+def test_no_git_author_line_without_git(tmp_path, monkeypatch):
+    _versions(monkeypatch)
+    _git_on_path(tmp_path, monkeypatch, None)
+    assert doctor.check_git_author() is None
+    names = [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
+    assert "git" in names and "git author" not in names
 
 
 @pytest.mark.parametrize(

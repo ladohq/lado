@@ -2,8 +2,8 @@
 
 Pull request #96 `hotfix/lad-97-empty-server-token` → `main`. Scale: hotfix; the local
 pass was widened from precision to broad, as the change touches `auth.py`, the only check
-of who may call the UI server (a security boundary). Head reviewed last: `54d9def` (= the
-remote head). `providers/`, `hooks.py`, `mcp_server.py`, `runtime.py`, `agent_env.py` and
+of who may call the UI server (a security boundary). Head reviewed last: `82e226e` (= the
+remote head), after a return from merge for a conflict with `main`. `providers/`, `hooks.py`, `mcp_server.py`, `runtime.py`, `agent_env.py` and
 `tests/live/` did not change, so live tests are not needed before the merge.
 
 ## Rounds
@@ -14,6 +14,14 @@ remote head). `providers/`, `hooks.py`, `mcp_server.py`, `runtime.py`, `agent_en
 - **Round 1, external** (Claude Code GitHub Action, request 23:04:31Z, "Claude finished"
   23:05:34Z): nothing blocking; agreed with declining F1–F3; one minor remark, F4. The
   external reviewer is of the same model family, so its "nothing blocking" weighs less.
+
+- **Visit 2, local** (precision over `54d9def..82e226e`: the archive `1113bcf` and the
+  merge of `origin/main` `3a8126c`, PR #94 LAD-95): the task's diff of `src/` and `tests/`
+  against main is byte for byte the one of round 1; `git show --remerge-diff` shows the
+  only conflict in CHANGELOG.md, resolved with both lines under the one
+  `## 0.41.0 (unreleased)` and no line of main lost; the archive moved the change
+  unchanged and the living spec matches the delta. No new findings. No external round:
+  the cap was used in round 1 and no code changed.
 
 External rounds used: 1 of 1.
 
@@ -26,7 +34,7 @@ External rounds used: 1 of 1.
 | F3 | 1 | local | a kill between `mkstemp` and `os.replace` leaves `.server-token.*` (0600) in `LADO_HOME` | confirmed | minor | declined: the spec's "no temporary file" is about a failed write (OSError), which the test covers; owner-only, cosmetic |
 | F4 | ext 1 | external | `path.read_text()` fails with a traceback on an unreadable file (`UnicodeDecodeError`, `IsADirectoryError`) | confirmed | minor (older than the change) | declined; under "Found on the way" |
 
-Metrics: 1 local round, 1 external, 0 substitutes. Local confirmed 3 (minor), refuted 0;
+Metrics: 2 local rounds (broad, then precision over the merge), 1 external, 0 substitutes. Local confirmed 3 (minor), refuted 0;
 external confirmed 1 (minor), refuted 0. Findings in code changed by the developer's
 cleanup: 0.
 
@@ -49,6 +57,8 @@ cleanup: 0.
   `make test` 3415 passed.
 - CI on `54d9def`: 23/23 green with `ci-ok` (lint, unit, integration, ui, container,
   smoke).
+- On `82e226e`: `openspec validate --specs --strict` 35 passed; CI 23/23 green with
+  `ci-ok`. `make lint` and `make test` not rerun locally: the task's code did not change.
 
 ## Found on the way
 

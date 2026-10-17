@@ -687,8 +687,9 @@ function Find({ label }: { label: string }) {
 // session's settings alone, the mode not shown. Drawn in the top bar's slot (useTopBar).
 function SessionHead({ session }: { session: SessionInfo }) {
   const slot = useTopBar();
+  const phone = usePhone();
   if (slot === null) return null;
-  return createPortal(<HeadLine session={session} />, slot);
+  return createPortal(phone ? <PhoneHead session={session} /> : <HeadLine session={session} />, slot);
 }
 
 function HeadLine({ session }: { session: SessionInfo }) {
@@ -701,8 +702,6 @@ function HeadLine({ session }: { session: SessionInfo }) {
   // which gives the focus back to the pencil when it closes.
   const pencil = useRef<HTMLButtonElement>(null);
   const { editing, edit, closed } = useTitleEdit(() => pencil.current?.focus());
-  const phone = usePhone();
-  if (phone) return <PhoneHead session={session} about={about} />;
   return (
     <div className="session-head">
       <StatusDot status={status} />
@@ -814,7 +813,8 @@ function HeadLine({ session }: { session: SessionInfo }) {
 // The head on a phone (docs/design/ui.md, Phone layout): the status dot, the title (or name)
 // as a button that opens the session's details, and the session's actions; the change
 // feed's mark is the Shell's, between them by styles.css. The facts are in the details.
-function PhoneHead({ session, about }: { session: SessionInfo; about: SessionAbout | null }) {
+function PhoneHead({ session }: { session: SessionInfo }) {
+  const about = useAbout(session);
   const live = useLiveStore();
   const [details, setDetails] = useState(false);
   const ran = useRan(session);

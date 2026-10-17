@@ -95,7 +95,6 @@ export function Shell() {
   useLayoutEffect(() => {
     const root = document.documentElement;
     if (phone) root.dataset.phone = phone;
-    else delete root.dataset.phone;
     return () => {
       delete root.dataset.phone;
     };

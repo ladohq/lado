@@ -40,8 +40,15 @@
 # a running container: `docker exec -u 0`. Another port: -e LADO_PORT=8766 -p
 # 127.0.0.1:8766:8766. compose.yaml runs the same image. The build context is the
 # repository through Dockerfile.dockerignore's allowlist: one wheel (dist/), profile.sh,
-# entrypoint.sh, ssh-agent-socket.sh, ssh-agent-env.sh and ssh_known_hosts (GitHub's
-# public host keys, the only keys in the image).
+# entrypoint.sh, ssh-agent-socket.sh, ssh-agent-env.sh, ssh_known_hosts (GitHub's
+# public host keys, the only keys in the image) and mise.toml.
+#
+# The projects' toolchains: make, gcc and g++ are here, and mise installs the rest (Go,
+# Rust, Java, a Python, ...) into the home volume, where it stays for every agent after a
+# new container or image; the agents are told so and do it themselves. By hand: `docker
+# exec lado mise use -g go@1.23`. An agent's `npm install -g` and `uv tool install` go to
+# ~/.local on the home volume too; the image's Node 22 stays first on PATH. Other apt
+# packages and databases are not covered.
 
 FROM ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 AS uv
 FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS node
@@ -71,8 +78,9 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 # The user lado (uid 1000, as the prototype). Programs live under /opt, outside the home
-# volume, so a new image replaces them; the home volume keeps only state (LADO_HOME,
-# Claude Code's login). /projects is LADO_REPOS, the human's projects.
+# volume, so a new image replaces them; the home volume keeps state (LADO_HOME, Claude
+# Code's login) and what the agents install (mise's tools, npm -g, uv tool). /projects is
+# LADO_REPOS, the human's projects.
 COPY --from=uv /uv /usr/local/bin/uv
 COPY docker/profile.sh /etc/profile.d/lado.sh
 # mise, root's so no agent replaces it, with the image's settings (docker/mise.toml); the

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.41.0 (unreleased)
+
+- LADO's image carries mise, `make`, `gcc` and `g++`: an agent in the container installs
+  the toolchain a project needs (Go, Rust, Java, a Python, ...) by itself, by the
+  project's version files (`.tool-versions`, `mise.toml`, `.go-version`, ...), into the
+  home volume, where it stays after a recreation and an update. The agents are told so in
+  their instructions, only in a container; the image's Node 22 stays the agents' Node.
+  Other system packages and databases are not covered (docs/install.md, The projects'
+  toolchains).
+- In LADO's container an agent's `npm install -g` works: it failed with `EACCES` at any
+  uid. It and `uv tool install` now write to `~/.local` on the home volume, whose `bin`
+  is on every agent's `PATH`, and also `docker compose exec`'s installs go there instead
+  of the image's `/opt`.
+
 ## 0.40.0 (2026-10-17)
 
 - Install with Docker: docs/install.md has a Docker section, from nothing to an agent that

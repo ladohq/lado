@@ -26,7 +26,7 @@
 
 ## 4. Integration (the fake agent)
 
-- [ ] 4.1 An answer with a file reaches the asking agent with its artifact, and
+- [x] 4.1 An answer with a file reaches the asking agent with its artifact, and
   `read_artifact` reads it; a gate's answer with a file reaches the next step's agent
   with `Artifacts: /<name>`. Check: `uv run pytest -m integration -n auto
   tests/integration/test_human_messages.py tests/integration/test_flow_runs.py`.

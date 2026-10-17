@@ -37,7 +37,7 @@ Tests first in each section; each task is one commit. The plan with the steps is
   `FolderInfo.scratch` (D8); `make web-types`. Unit tests (`tests/test_server_launch.py`):
   "A name checked", "An empty folder in the folder check", the states, author, name
   state, warning, the start and its 400s. `make web`. Plan, Task 8.
-- [ ] 4.2 Integration (`tests/integration/test_scratch_start.py`, `-m integration`): "A new
+- [x] 4.2 Integration (`tests/integration/test_scratch_start.py`, `-m integration`): "A new
   folder from the terminal" with a worker's worktree; the API start with a title against a
   real server. Plan, Task 9.
 

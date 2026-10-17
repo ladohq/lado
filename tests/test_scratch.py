@@ -2,12 +2,13 @@
 start-from-scratch)."""
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from lado import runtime, scratch
+from lado import runtime, scratch, state
 
 # The spec's table: each Cyrillic letter and its Latin letters.
 TABLE = (
@@ -218,3 +219,137 @@ def test_no_git_is_lad_5s_problem_not_an_author_one(git_config, tmp_path, monkey
     with pytest.raises(runtime.FolderProblem) as refused:
         scratch.author_problem(str(tmp_path))
     assert refused.value.kind == "no_git"
+
+
+def git_out(path, *args) -> str:
+    result = subprocess.run(["git", "-C", str(path), *args], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()
+
+
+def test_a_new_folder(git_config, tmp_path):
+    path = tmp_path / "a" / "sait-kofeini"
+    root = scratch.make(str(path), "sait-kofeini")
+    assert os.path.realpath(root) == os.path.realpath(path)
+    assert os.listdir(path) == [".git"]
+    assert git_out(path, "log", "--format=%s %an") == "Start from scratch LADO test"
+    assert git_out(path, "symbolic-ref", "--short", "HEAD") == "main"
+    assert git_out(path, "status", "--porcelain") == ""
+    assert git_out(path, "ls-tree", "-r", "HEAD") == ""
+
+
+def test_an_empty_folder_keeps_finders_file_out_of_the_commit(git_config, tmp_path):
+    path = tmp_path / "coffee-site"
+    path.mkdir()
+    (path / ".DS_Store").write_bytes(b"\0")
+    scratch.make(str(path), "coffee-site")
+    assert git_out(path, "ls-tree", "-r", "HEAD") == ""
+    assert git_out(path, "status", "--porcelain") == "?? .DS_Store"
+
+
+def test_the_branch_is_gits_default_one(git_config, tmp_path):
+    git_config.write_text(git_config.read_text() + "[init]\n\tdefaultBranch = trunk\n")
+    scratch.make(str(tmp_path / "shop"), "shop")
+    assert git_out(tmp_path / "shop", "symbolic-ref", "--short", "HEAD") == "trunk"
+
+
+def test_no_signing_and_no_hooks(git_config, tmp_path):
+    """A global config that signs every commit with a program that fails, and a template
+    whose hooks fail or write a file, make the first commit all the same, without them."""
+    hooks = tmp_path / "template" / "hooks"
+    hooks.mkdir(parents=True)
+    for hook in ("pre-commit", "commit-msg", "post-commit"):
+        (hooks / hook).write_text(f"#!/bin/sh\ntouch {tmp_path}/{hook}-ran\nexit 1\n")
+        (hooks / hook).chmod(0o755)
+    git_config.write_text(
+        git_config.read_text()
+        + "[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = false\n"
+        + f"[init]\n\ttemplateDir = {tmp_path / 'template'}\n"
+    )
+    scratch.make(str(tmp_path / "shop"), "shop")
+    assert git_out(tmp_path / "shop", "log", "--format=%s") == "Start from scratch"
+    assert not list(tmp_path.glob("*-ran"))
+
+
+def failing_commit(tmp_path, monkeypatch):
+    """A git on PATH whose commit fails, as a broken git or a full disk would."""
+    real = shutil.which("git")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "git").write_text(
+        "#!/bin/sh\n"
+        'for arg in "$@"; do\n'
+        '  if [ "$arg" = commit ]; then echo "fatal: no commit today" >&2; exit 128; fi\n'
+        "done\n"
+        f'exec {real} "$@"\n'
+    )
+    (bin_dir / "git").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+
+
+def test_a_failed_commit(git_config, tmp_path, monkeypatch):
+    failing_commit(tmp_path, monkeypatch)
+    path = tmp_path / "made" / "shop"
+    with pytest.raises(scratch.ScratchError) as refused:
+        scratch.make(str(path), "shop")
+    assert (refused.value.kind, str(refused.value)) == (
+        "git_failed",
+        f"git could not make {path} a repository: fatal: no commit today",
+    )
+    assert not (tmp_path / "made").exists()
+
+
+def test_a_failed_commit_in_an_empty_folder_leaves_it_as_it_was(git_config, tmp_path, monkeypatch):
+    failing_commit(tmp_path, monkeypatch)
+    path = tmp_path / "coffee-site"
+    path.mkdir()
+    (path / ".DS_Store").write_bytes(b"\0")
+    with pytest.raises(scratch.ScratchError):
+        scratch.make(str(path), "coffee-site")
+    assert os.listdir(path) == [".DS_Store"]
+
+
+def test_a_name_a_session_of_another_folder_has_is_refused_first(git_config, tmp_path):
+    state.add_session(state.Session("shop", str(tmp_path / "elsewhere"), None, "claude"))
+    with pytest.raises(runtime.LadoError, match='session "shop" was started in'):
+        scratch.make(str(tmp_path / "shop"), "shop")
+    assert not (tmp_path / "shop").exists()
+
+
+def test_a_folder_with_files_is_refused_with_lad_5s_hint(git_config, tmp_path):
+    (tmp_path / "notes.txt").write_text("x")
+    with pytest.raises(scratch.ScratchError) as refused:
+        scratch.make(str(tmp_path), "notes")
+    assert (refused.value.kind, str(refused.value)) == (
+        "not_empty",
+        f"{tmp_path} is not empty: choose a new or empty folder",
+    )
+    assert refused.value.hint == runtime.NOT_REPO_HINT
+    assert not (tmp_path / ".git").exists()
+
+
+def test_a_folder_inside_a_repository_is_refused_with_its_start(git_config, tmp_path):
+    root = git_init(tmp_path / "my app")
+    with pytest.raises(scratch.ScratchError) as refused:
+        scratch.make(str(root / "site"), "site")
+    real = os.path.realpath(root)
+    assert refused.value.kind == "inside_repo"
+    assert refused.value.hint == runtime.Hint(
+        "Start a session in that repository:", f"lado start '{real}'"
+    )
+    assert not (root / "site").exists()
+
+
+def test_a_file_is_refused(git_config, tmp_path):
+    (tmp_path / "notes.txt").write_text("x")
+    with pytest.raises(scratch.ScratchError) as refused:
+        scratch.make(str(tmp_path / "notes.txt"), "notes")
+    assert (refused.value.kind, refused.value.hint) == ("not_folder", None)
+
+
+def test_no_author_is_refused_before_anything(git_config, tmp_path):
+    git_config.write_text("")
+    with pytest.raises(scratch.ScratchError) as refused:
+        scratch.make(str(tmp_path / "shop"), "shop")
+    assert refused.value.kind == "no_author"
+    assert not (tmp_path / "shop").exists()

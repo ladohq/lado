@@ -9,10 +9,12 @@ Finder's `.DS_Store`) is made a repository."""
 
 import os
 import re
+import shutil
 import subprocess
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+from shlex import quote
 from typing import Literal
 
 from lado import clone, runtime, update
@@ -146,6 +148,87 @@ def author_problem(path: str) -> ScratchError | None:
             hint = AUTHOR_HINT_CONTAINER if update.in_container() else AUTHOR_HINT
             return ScratchError("no_author", NO_AUTHOR, hint)
     return None
+
+
+def refusal(target: Target) -> ScratchError:
+    """A target a fresh start may not go on in, as a refusal with what the human can do:
+    a folder of files is made a repository by the human (LAD-5's hint), a folder of a
+    repository starts in that repository."""
+    hint = None
+    if target.state == "not_empty":
+        hint = runtime.NOT_REPO_HINT
+    elif target.state == "inside_repo":
+        hint = runtime.Hint(
+            "Start a session in that repository:", f"lado start {quote(target.root)}"
+        )
+    return ScratchError(target.state, target.text, hint)
+
+
+FIRST_COMMIT = "Start from scratch"
+
+
+def make(path: str, name: str) -> str:
+    """Make the folder `path` (a full path) a git repository with one empty commit, for the
+    session `name`; its root. The checks first, again (the name as `runtime.check_name`, the
+    target, the author), then the folder and the folders above it when it is new, `git
+    init`, the branch of git's `init.defaultBranch` (else `main`) and the commit: no file,
+    no signing, no hooks, no prompt. A failed step removes what this call made (the
+    folders it created, or the `.git` of an empty folder it was given): a ScratchError
+    `git_failed` with git's line."""
+    runtime.check_name(name, path)
+    target = check_target(path)
+    if target.state not in CAN_START:
+        raise refusal(target)
+    if (problem := author_problem(path)) is not None:
+        raise problem
+    folder = Path(path)
+    made = None if folder.exists() else _topmost_missing(folder)
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        _git(path, "init", "--quiet")
+        found = _git(path, "config", "--get", "init.defaultBranch", missing_ok=True)
+        _git(path, "symbolic-ref", "HEAD", f"refs/heads/{found or 'main'}")
+        _git(
+            path,
+            *("-c", "commit.gpgsign=false", "-c", f"core.hooksPath={os.devnull}"),
+            *("commit", "--allow-empty", "--no-verify", "--quiet", "-m", FIRST_COMMIT),
+        )
+        return _git(path, "rev-parse", "--show-toplevel")
+    except (OSError, _GitFailed) as error:
+        shutil.rmtree(made or folder / ".git", ignore_errors=True)
+        line = (isinstance(error, OSError) and error.strerror) or str(error)
+        raise ScratchError(
+            "git_failed", f"git could not make {path} a repository: {line}"
+        ) from None
+
+
+class _GitFailed(Exception):
+    """A git command of `make` that failed, with git's first line."""
+
+
+def _git(path: str, *args: str, missing_ok: bool = False) -> str:
+    """git in `path` with no terminal, no prompt and git's words in English; its output.
+    `missing_ok`: exit 1 (a config key not set) is an empty output."""
+    result = subprocess.run(
+        ["git", "-C", path, *args],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**_english(), "GIT_TERMINAL_PROMPT": "0"},
+    )
+    if missing_ok and result.returncode == 1:
+        return ""
+    if result.returncode != 0:
+        raise _GitFailed(_line(result))
+    return result.stdout.strip()
+
+
+def _topmost_missing(folder: Path) -> Path:
+    """The highest of `folder` and its ancestors that does not exist (`folder` does not)."""
+    while not folder.parent.exists():
+        folder = folder.parent
+    return folder
 
 
 def _nearest(folder: Path) -> Path:

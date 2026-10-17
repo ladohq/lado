@@ -12,7 +12,7 @@ Tests first in each section; each task is one commit. The plan with the steps is
   no access, "The default folder in the container". Plan, Task 2.
 - [x] 1.3 `author_problem` (D5). Unit tests: "The container without the variables", "A
   developer's machine", the outside hint, no git. Plan, Task 3.
-- [ ] 1.4 `make` (D6). Unit tests: "A new folder", an empty folder, `init.defaultBranch`,
+- [x] 1.4 `make` (D6). Unit tests: "A new folder", an empty folder, `init.defaultBranch`,
   gpgsign and hooks off, "A failed commit" (made folder or `.git` removed), a taken name.
   Plan, Task 4.
 

@@ -263,6 +263,11 @@ class FolderProblem(LadoError):
         self.hint = hint
 
 
+# What to do with a folder of files that is no repository: the human picks what to commit.
+NOT_REPO_HINT = Hint(
+    "Make it a repository with a first commit, in that folder:",
+    "git init && git add -A && git commit -m 'First commit'",
+)
 GIT_MIN = (2, 31)  # `rev-parse --path-format=absolute` (providers/gitpaths.py)
 XCODE_TOOLS = "xcode-select --install"
 
@@ -436,14 +441,7 @@ def check_repo(path: str) -> str:
     top = _run_git(path, "rev-parse", "--show-toplevel", env=english)
     if top.returncode != 0:
         if "not a git repository" in top.stderr:
-            raise FolderProblem(
-                "not_repo",
-                f"{path} is not inside a git repository",
-                Hint(
-                    "Make it a repository with a first commit, in that folder:",
-                    "git init && git add -A && git commit -m 'First commit'",
-                ),
-            )
+            raise FolderProblem("not_repo", f"{path} is not inside a git repository", NOT_REPO_HINT)
         raise _git_refused(path, top)
     root = top.stdout.strip()
     head = _run_git(root, "rev-parse", "--verify", "--quiet", "HEAD", env=english)

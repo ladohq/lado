@@ -7,5 +7,9 @@
 # Node 22 runs Kilo, Codex and kits' MCP servers in the project's folder, so a project's
 # other Node goes through `mise exec node@<version> -- ...`.
 idiomatic_version_file_enable_tools = ["go", "java", "python", "ruby"]
+# Not go.mod's `go` line: a minimum, not the project's version, which mise warns of on every
+# call (deprecated, and no longer read from mise 2026.11.0); it also wins over .go-version.
+# Its `toolchain` line is read.
+idiomatic_version_file_ignore_minimum_versions = true
 # The binary is the image's pin: a newer mise comes with a new image, not from the agents.
 disable_update_warning = true

@@ -103,15 +103,20 @@ def test_a_projects_go_is_installed_once_and_kept_in_a_new_container(start, proj
     # Its folder alone: mise adds links beside it (1, 1.23, latest).
     installed = login(first, INSTALLED).stdout
     assert installed.split()[1:] == [GO], installed
-    assert login(first, "go build -o hello . && ./hello", cwd=app).stdout == "go ok\n"
+    built = login(first, "go build -o hello . && ./hello", cwd=app)
+    assert built.stdout == "go ok\n" and "WARN" not in built.stderr, built.stderr
     assert login(first, "command -v go", cwd=app).stdout.strip() == (
         "/home/lado/.local/share/mise/shims/go"
     )
-    # A project that names its Go by .go-version alone: the same Go, nothing to install.
+    # A project that names its Go by .go-version: the same Go, nothing to install. Its
+    # go.mod's `go` line, a minimum, is not read: no newer 1.23 and no mise warning.
     other = f"{PROJECTS}/other-go"
     first.write(f"{other}/.go-version", f"{GO}\n")
+    first.write(f"{other}/go.mod", "module example.com/other\n\ngo 1.23\n")
     assert login(first, "mise current go", cwd=other).stdout.strip() == GO
-    assert login(first, "go version", cwd=other).stdout.startswith(f"go version go{GO} ")
+    version = login(first, "go version", cwd=other)
+    assert version.stdout.startswith(f"go version go{GO} ")
+    assert "WARN" not in version.stderr, version.stderr
     docker("rm", "-f", first.name)
 
     second = served(start, projects, home=home)

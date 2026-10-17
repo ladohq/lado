@@ -10,7 +10,9 @@
   among them) and `docker/Dockerfile.dockerignore` (allow it). Check: `mise settings` in a
   login shell of the image lists the four tools. Also `disable_update_warning = true`: the
   binary is the image's pin, so mise's "a newer version is available" is no news for the
-  agents.
+  agents. And `idiomatic_version_file_ignore_minimum_versions = true` (the human's check):
+  go.mod's `go` line, a minimum, made mise warn on every call (deprecated, dropped in mise
+  2026.11.0) and won over `.go-version`; its `toolchain` line is still read.
 - [x] 1.3 `docker/profile.sh`: D5's `PATH`, `NPM_CONFIG_PREFIX`,
   `MISE_TRUSTED_CONFIG_PATHS="$LADO_REPOS"`, each with its comment. Check: section 3.
 - [x] 1.4 `tests/test_docker.py`: the unit tests of D9 (mise pinned and root's, the apt

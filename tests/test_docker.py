@@ -135,6 +135,8 @@ def test_mise_reads_the_version_files_of_go_java_python_and_ruby_alone():
         import tomli as tomllib
     settings = tomllib.loads(MISE_TOML.read_text())["settings"]
     assert settings["idiomatic_version_file_enable_tools"] == ["go", "java", "python", "ruby"]
+    # go.mod's `go` line is a minimum, deprecated in mise and read with a warning on every call.
+    assert settings["idiomatic_version_file_ignore_minimum_versions"] is True
     # The binary is the pin's: a newer release is the image's update, not the agents'.
     assert settings["disable_update_warning"] is True
     assert "COPY docker/mise.toml /etc/mise/config.toml" in lines()

@@ -39,10 +39,10 @@ Tests first in each section; each section is one commit. The plan with the code 
 
 ## 5. Compose and the install guide
 
-- [ ] 5.1 Unit tests, `tests/test_docker.py`: ports on `LADO_LISTEN`, the environment's
+- [x] 5.1 Unit tests, `tests/test_docker.py`: ports on `LADO_LISTEN`, the environment's
   six names, the header, the guide's `.env` and its section. Container (layer 7,
   `tests/container/test_access.py`): `lado ui --no-open` with both settings. Plan, Task 5.
-- [ ] 5.2 `docker/compose.yaml` (D9), `docs/install.md` `### Open LADO on your phone`.
+- [x] 5.2 `docker/compose.yaml` (D9), `docs/install.md` `### Open LADO on your phone`.
   `uv run pytest tests/test_docker.py -n auto`; the container test in CI.
 
 ## 6. The dialog

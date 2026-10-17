@@ -8,6 +8,10 @@
 #   LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 #   LADO_GIT_EMAIL=ann@example.com
 #   LADO_SSH_AGENT=/run/host-services/ssh-auth.sock   # optional: the host's ssh agent
+#   LADO_LISTEN=0.0.0.0                 # optional: open LADO to every device of your network
+#                                       # (default 127.0.0.1, this computer only)
+#   LADO_PUBLIC_HOST=my-mac.local       # optional: this computer's name for the UI's link
+#                                       # for a phone (Open on another device)
 #
 # Then, from this folder:
 #
@@ -45,7 +49,12 @@
 # the container may then use the host's keys. Unset, there is none.
 #
 # LADO_PORT (8765) is the server's port in the container and the one published on this
-# computer's loopback, always the same number. LADO_IMAGE, when set, runs another image
+# computer, always the same number: on its loopback, or on LADO_LISTEN's address.
+# LADO_LISTEN=0.0.0.0 opens LADO to every device of your network, and on a laptop to every
+# network it joins: whoever reaches it with the token can run commands as you, and the
+# token travels unencrypted (plain HTTP). The container cannot learn this computer's
+# address: LADO_PUBLIC_HOST names it for the link the UI shows (or LADO_LISTEN one address,
+# e.g. 192.168.1.23, instead of 0.0.0.0). LADO_IMAGE, when set, runs another image
 # instead of the version's (lado:local, which `make docker` builds); an older Compose
 # still asks for LADO_VERSION beside it.
 #
@@ -98,9 +107,14 @@ services:
       # git's identity for the agents' commits, written at every start.
       LADO_GIT_NAME: ${LADO_GIT_NAME:-}
       LADO_GIT_EMAIL: ${LADO_GIT_EMAIL:-}
+      # Where the port is published (below), and the name other devices reach this
+      # computer by: the UI's link for a phone (Open on another device).
+      LADO_LISTEN: ${LADO_LISTEN:-127.0.0.1}
+      LADO_PUBLIC_HOST: ${LADO_PUBLIC_HOST:-}
     ports:
-      # This computer only: the UI's token is the one guard.
-      - "127.0.0.1:${LADO_PORT:-8765}:${LADO_PORT:-8765}"
+      # This computer only, unless LADO_LISTEN names another address: the UI's token is
+      # the one guard, and it travels unencrypted.
+      - "${LADO_LISTEN:-127.0.0.1}:${LADO_PORT:-8765}:${LADO_PORT:-8765}"
     volumes:
       # LADO_HOME (~/.lado) and Claude Code's login and config.
       - home:/home/lado

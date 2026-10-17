@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.40.0 (unreleased)
+## 0.40.0 (2026-10-17)
 
 - Install with Docker: docs/install.md has a Docker section, from nothing to an agent that
   pushes over ssh, with compose first (`compose.yaml` of the latest release, `.env`,

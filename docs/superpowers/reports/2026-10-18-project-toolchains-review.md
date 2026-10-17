@@ -3,7 +3,7 @@
 Pull request #93 `fix/lad-93-mise-toolchains` → `main`. Scale: tweak, reviewed for
 precision and widened in round 1, as the diff changes `src/lado/runtime.py` (the
 container paragraph of LADO's instructions) and data on the home volume. Head reviewed
-last: `571d87d` (= the remote head). `runtime.py` changed: live tests were not run.
+last: `570e878` (= the remote head). `runtime.py` changed: live tests were not run.
 
 ## Rounds
 
@@ -16,8 +16,15 @@ last: `571d87d` (= the remote head). `runtime.py` changed: live tests were not r
   (https://github.com/ladohq/lado/pull/93#issuecomment-6241101969).
 - **Round 3, local** (`94bfd8a..571d87d`, precision, back from the `merge_ok` gate after
   the human's manual check): H2 checked and resolved, no new findings
-  (https://github.com/ladohq/lado/pull/93#issuecomment-6242823244). No external round:
-  the cap of 1 was used in round 1.
+  (https://github.com/ladohq/lado/pull/93#issuecomment-6242823244).
+- **Round 4, local** (`571d87d..570e878`, precision, after the archive `a44ef8b` and the
+  merge of `main` `570e878`): the archive moved the change unedited, the living spec
+  `container` took the modified requirement whole and the four new ones; the merge's only
+  conflict was CHANGELOG.md's 0.41.0 section, both sides kept; nothing from `main` touches
+  `docker/`, `runtime.py`, `agent_env.py` or the image's tests. No new findings
+  (https://github.com/ladohq/lado/pull/93#issuecomment-6243045144).
+
+No external round after round 1: the cap of 1 was used there.
 
 The external reviewer is of the same model family, so its "nothing blocking" weighs
 less.
@@ -33,15 +40,18 @@ less.
 | m3 | 1 | external remark 2 | a nested login shell adds the paths to `PATH` twice | confirmed | minor | declined: harmless (`docker/profile.sh:7`) |
 | H2 | 3 | the human's manual check, finding 2 | mise read the `go` line of go.mod: a deprecation `WARN` on every `go` call and Go picked by go.mod over `.go-version` (1.23.12 instead of 1.23.4) | confirmed | important | fixed in `571d87d`; probe on the pinned mise 2026.10.7: `go@1.23.4`, no `WARN`; a go.mod with only `toolchain go1.22.5` gives `go@1.22.5`. Tests: `tests/test_docker.py` (the setting), `tests/container/test_toolchains.py` (go.mod in `other-go`, no `WARN` from `go build` and `go version`) |
 
-Metrics: 3 local rounds, 1 external, 0 substitutes. Local confirmed 2 (minor), refuted 1;
+Metrics: 4 local rounds, 1 external, 0 substitutes. Local confirmed 2 (minor), refuted 1;
 external confirmed 1 (minor), refuted 1; from the human's manual check confirmed 1
 (important). Findings in code changed by the developer's cleanup: 0.
 
 ## Checks
 
-- CI on `571d87d`: run 39077141661, 23/23 green with `ci-ok` (lint, unit, integration,
-  ui, container, smoke).
-- `openspec validate --specs --strict` at archive: 33 passed.
+- CI on `570e878`: run 39078398841 green with `ci-ok` (lint, unit, integration, ui,
+  container, smoke); on `571d87d`: run 39077141661, 23/23 green.
+- `openspec validate --specs --strict` after the merge of `main`: 34 passed.
+- `make lint` and `make test` were not rerun locally in round 4 (the delta was CHANGELOG
+  and the archive); CI ran them, and the developer's `make test` after the merge: 3418
+  passed.
 - The container tests were run by CI and by the developer (6 passed); the reviewer ran
   mise probes on the official image of the same digest.
 

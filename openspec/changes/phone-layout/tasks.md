@@ -38,12 +38,12 @@ Design doc: `docs/superpowers/specs/2026-10-18-phone-layout-design.md`.
 
 ## 8. UI e2e (D9)
 
-- [ ] 8.1 `tests/ui/test_phone.py`, the plan's table of tests, with screenshots. Check:
+- [x] 8.1 `tests/ui/test_phone.py`, the plan's table of tests, with screenshots. Check:
   `uv run pytest -m ui tests/ui/test_phone.py`.
 
 ## 9. Docs
 
-- [ ] 9.1 `docs/design/ui.md` "Phone layout", CHANGELOG.md 0.41.0, BACKLOG.md's two
+- [x] 9.1 `docs/design/ui.md` "Phone layout", CHANGELOG.md 0.41.0, BACKLOG.md's two
   entries dropped. Check: `openspec validate --specs --strict`.
 
 ## 10. Regression

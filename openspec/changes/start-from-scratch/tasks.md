@@ -43,7 +43,7 @@ Tests first in each section; each task is one commit. The plan with the steps is
 
 ## 5. Window
 
-- [ ] 5.1 From scratch and Start from scratch here (D9), `docs/design/ui.md`. Vitest
+- [x] 5.1 From scratch and Start from scratch here (D9), `docs/design/ui.md`. Vitest
   (`web/src/Launch.test.tsx`): "The first window", "A developer's window", "No author",
   "Start from scratch here", the request, a refused start to Folder. `make web`. Plan,
   Task 10.

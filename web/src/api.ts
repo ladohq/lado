@@ -276,6 +276,13 @@ export const getRecentFolders = () => get<RecentFolder[]>("/api/folders/recent")
 
 export const getReposFolder = () => get<ReposFolder>("/api/repos-folder");
 
+export type ScratchTarget = components["schemas"]["ScratchTarget"];
+
+// A fresh start of the name `text` in `path` (else the name's default folder): the names,
+// the folder's state and git's author, as the core finds them.
+export const getScratchTarget = (text: string, path: string | null) =>
+  get<ScratchTarget>(`/api/scratch-target?${query(path ? { text, path } : { text })}`);
+
 export type RemoteInfo = components["schemas"]["RemoteInfo"];
 export type CloneTarget = components["schemas"]["CloneTarget"];
 export type CloneRefused = components["schemas"]["CloneRefused"];

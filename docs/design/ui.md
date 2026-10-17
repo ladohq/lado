@@ -1240,10 +1240,11 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 `forget_session`), so the decisions and their texts are the core's; the UI shows them.
 
 - **New session window** (`Launch.tsx`, a modal `<dialog>`; the rail's Launch and the
-  list's "+"): **Where** is a folder, or a clone of a git URL made first (the switch
-  **Folder | Clone from URL** beside its label, below); the start's request is the same
-  for both (its `where` is `{kind: "folder", path}`; another kind is refused, so Projects
-  can add theirs). The path
+  list's "+"): **Where** is a new folder made from scratch, a folder, or a clone of a git
+  URL made first (the switch **From scratch | Folder | Clone from URL** beside its label,
+  below); the start's request is the same for a folder and a clone (its `where` is
+  `{kind: "folder", path}`), from scratch it is `{kind: "scratch", path}`; another kind is
+  refused, so Projects can add theirs. The path
   is typed (`~` allowed, a relative path refused), and checked by `GET /api/folders`:
   under the field "✓ git repository · branch X", or the core's reason from
   `runtime.check_repo` (`FolderInfo.problem_kind`: does not exist, a file, git not
@@ -1252,8 +1253,13 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   no git, a git that does not run, no repository, no commits) the core's sentence follows
   in muted text and its one command in a code field with **Copy** (`useCopy`; "Command
   copied", or, when no copy works, the command selected with "Press ⌘C / Ctrl+C to copy";
-  LAD-5's mockup `mockup-folder-check.html`, variant 2). The window makes no repository
-  or commit itself: the human runs the command. Subfolders are suggested from the folder up to the last
+  LAD-5's mockup `mockup-folder-check.html`, variant 2). The window makes no repository of
+  a folder that holds files: the human runs the command. A new or empty folder outside git
+  (`FolderInfo.scratch`) shows instead `The folder is empty: LADO can start it from
+  scratch.` (for one that does not exist, under its text: `LADO can make this folder and
+  start it from scratch.`) and the button **Start from scratch here**, which switches to
+  From scratch with that folder in Create in and its last segment in Name (below).
+  Subfolders are suggested from the folder up to the last
   `/` (the arrow keys and Enter pick one), with chips of the **recent** folders
   (`/api/folders/recent`: the folders of past sessions, latest start first, at most 10).
   With a repositories folder (`LADO_REPOS`, which LADO's image sets to the projects folder
@@ -1322,6 +1328,30 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   `POST /api/sessions/{name}/resume`; a field of white space sends none. The core queues it
   as the human's message to the supervisor (`runtime.start_session(prompt=)`), after LADO's
   `session resumed` on a resume, and the Activity chat shows it as the human's.
+- **From scratch** (decided 2026-10-18, LAD-98; mockup `task/lad-98/mockup-from-scratch.html`):
+  for a human with no repository yet. The window opens in From scratch while LADO has no
+  sessions (`/api/folders/recent` answers none), else in Folder as before; a source the
+  human picks, or a folder or URL typed, before that answer is kept. The first field is
+  **Name**, in the human's words, with the note `folder and session: <name>` and, when the
+  text is not the name itself, ` · title: <text>` (Cyrillic transliterated, Latin letters
+  without accents: `lado.scratch.names`), or the name's refusal; a name a session has
+  shows under it as in Folder. **Create in** is the name's folder in where clones go
+  (`$LADO_REPOS/<name>`, else `~/lado/<name>`) until the human edits it, with its state:
+  `✓ a new folder`, `✓ an empty folder` (nothing but `.DS_Store`), or the core's refusal
+  (a folder with files, a file, a folder inside a git repository). Both come from `GET
+  /api/scratch-target` (`ScratchTarget`, 200 ms after typing; only the latest answer).
+  When git has no `user.name` or `user.email` (`ScratchTarget.author`), its text and hint
+  show under Name with Copy: in LADO's container `Set LADO_GIT_NAME and LADO_GIT_EMAIL in
+  the .env file next to compose.yaml, then restart LADO there:` `docker compose up -d`,
+  else `Tell git who you are, once for this computer:` and the `git config --global`
+  command; the window has no fields for them and LADO sets no author of its own. There is
+  no separate session Name; Kits, Provider (`ScratchTarget.provider`), Permission mode, the
+  first message and Advanced are as for a clone's folder. **Create and start** is on with
+  a name, a folder new or empty, the author known and the name free; it sends `where:
+  {kind: "scratch", path}` with the name and the title (`Launch.title`): the server makes
+  the folder a repository with one empty commit (`scratch.make`), then starts as for a
+  folder. A start refused after the repository was made switches the window to Folder
+  with it and keeps the refusal shown, as after a clone.
 - **Clone from URL** (decided 2026-10-12, LAD-6; mockup `task/lad-6/mockup-clone.html`
   v3): the Where field takes a git URL (`lado.clone.is_url`: `https://`, `http://`,
   `ssh://`, `git://`, `file://`, or `user@host:path`). **Clone into** is the default folder

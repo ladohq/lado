@@ -158,13 +158,17 @@ later desktop app and a later cloud setup; the UI is its client.
   nobody. A second server refuses and names the first one's address.
 - Token: `LADO_HOME/server-token` (owner only), made on the first start, replaced with
   `lado server --new-token`, or in the running server by `POST /api/access/new-token`
-  (`Guard.changes`; LAD-94): written beside the file and moved over it (a reader sees the
-  old token or the new one), swapped in the `Guard` at once (`Guard.renew`); every open
-  event stream ends (`Hub.end_streams`) and every terminal socket closes with 4500
-  (`terminals.close_all`), so each reconnects and is checked against the token its browser
-  has (a stream or terminal checked before the swap checks again once subscribed or
-  registered, so none escapes); the answer sets the asking browser's cookie and is the new `AccessInfo`. Others get
-  401, a terminal 4401. `GET /api/access` (under the token, `no-store`, no CORS) is
+  (`Guard.changes`; LAD-94), swapped in the `Guard` at once (`Guard.renew`). An empty or
+  whitespace-only file counts as missing and gets a new token, and the file is written
+  atomically (a temporary file in `LADO_HOME`, then a rename: a reader sees the old token
+  or the new one), so a failed write (a full disk) leaves the old file and stops the command
+  with `cannot write the UI server's token to <path>: <reason>`; an empty token (Bearer,
+  `?token=`, cookie) is always 401. After a new token every open event stream ends
+  (`Hub.end_streams`) and every terminal socket closes with 4500 (`terminals.close_all`),
+  so each reconnects and is checked against the token its browser has (a stream or
+  terminal checked before the swap checks again once subscribed or registered, so none
+  escapes); the answer sets the asking browser's cookie and is the new `AccessInfo`. Others
+  get 401, a terminal 4401. `GET /api/access` (under the token, `no-store`, no CORS) is
   `AccessInfo`: `link` (`http://<address>:<port>/?token=<token>`, or null), `reason`
   (`loopback`, `no-address`, `unknown`), `port`, `container`, `listen` (`LADO_LISTEN` in a
   container) and `note` (the container note for `unknown`); without a link it holds no

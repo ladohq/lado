@@ -37,9 +37,10 @@
   install` (a local package) in a login shell with the projects folder of uid 1001, files
   under `/home/lado/.local`, both commands found by a new login shell; the same on an
   `old_home` volume, its sessions listed. Check: as 3.1.
-- [ ] 3.3 Size and time (D7): `docker image inspect` of `lado:local` before and after,
+- [x] 3.3 Size and time (D7): `docker image inspect` of `lado:local` before and after,
   the compressed sizes of CI's build if it reports them, the step "Image" of the pull
-  request's CI run against run 39008559275; the numbers in the pull request.
+  request's CI run against run 39008559275; the numbers in the pull request. CI reports
+  no compressed size: amd64's is from a local `--platform linux/amd64` build.
 
 ## 4. Docs
 
@@ -60,9 +61,9 @@
 
 ## 5. Regression and the human's check
 
-- [ ] 5.1 `make lint`, `make test`, `openspec validate --specs --strict`; CI's container
+- [x] 5.1 `make lint`, `make test`, `openspec validate --specs --strict`; CI's container
   and smoke cells green.
-- [ ] 5.2 The pull request's description carries the human's check by hand on a Mac,
+- [x] 5.2 The pull request's description carries the human's check by hand on a Mac,
   each step with its folder, commands and expected result: in a fresh terminal `env |
   grep -E '^(LADO|COMPOSE)_'` and `unset` each; the branch through `git worktree add`
   (the human's checkout keeps its branch), `make docker`, compose with

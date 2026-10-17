@@ -13,7 +13,7 @@ Design doc: `docs/superpowers/specs/2026-10-18-phone-layout-design.md`.
 
 ## 3. The menu (D2)
 
-- [ ] 3.1 Menu, badge, the rail as a drawer, scrim, Esc, focus; vitest. Check: `cd web &&
+- [x] 3.1 Menu, badge, the rail as a drawer, scrim, Esc, focus; vitest. Check: `cd web &&
   npx vitest run src/Shell.test.tsx`, `make web`.
 
 ## 4. The compact head and the details sheet (D3)

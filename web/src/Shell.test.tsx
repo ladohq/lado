@@ -68,3 +68,80 @@ test("a computer's page never says it is a phone", () => {
   open();
   expect(document.documentElement.dataset.phone).toBeUndefined();
 });
+
+// The menu
+
+const rail = () => screen.getByRole("navigation", { name: "Sections" });
+const menu = () => screen.getByRole("button", { name: /^Menu/ });
+
+test("a computer has no Menu: the rail is there", () => {
+  new FakeScreen("fine", 390, 844);
+  open();
+  expect(screen.queryByRole("button", { name: /^Menu/ })).toBeNull();
+  expect(rail().hasAttribute("data-open")).toBe(false);
+  expect(screen.getByRole("button", { name: "Expand menu" })).toBeTruthy(); // narrow: collapsed
+});
+
+test("on a phone Menu starts the top bar and counts what waits", async () => {
+  FakeScreen.phone();
+  sessions = [session("lado", { waiting: { gates: 1, questions: 1, agents: 0 } })];
+  open();
+  await screen.findByRole("button", { name: "Menu, 2 waiting" });
+  const bar = screen.getByRole("banner");
+  expect(bar.firstElementChild).toBe(menu());
+  expect(menu().textContent).toBe("2");
+  expect(menu().getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByRole("button", { name: /(Collapse|Expand) menu/ })).toBeNull(); // the drawer has its names
+});
+
+test("Menu opens the rail with its names, and Esc closes it, the focus back on Menu", () => {
+  FakeScreen.phone();
+  localStorage.setItem("lado.rail", "collapsed");
+  open();
+  expect(menu().textContent).toBe("");
+  fireEvent.click(menu());
+  expect(rail().hasAttribute("data-open")).toBe(true);
+  expect(menu().getAttribute("aria-expanded")).toBe("true");
+  expect(document.querySelector(".app")!.classList.contains("collapsed")).toBe(false); // names shown
+  expect(document.activeElement).toBe(screen.getByRole("link", { name: "Home" }));
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(rail().hasAttribute("data-open")).toBe(false);
+  expect(document.activeElement).toBe(menu());
+  expect(localStorage.getItem("lado.rail")).toBe("collapsed"); // untouched
+});
+
+test("a tap on the dimmed page closes the menu", () => {
+  FakeScreen.phone();
+  open();
+  fireEvent.click(menu());
+  fireEvent.click(screen.getByRole("button", { name: "Close menu" }));
+  expect(rail().hasAttribute("data-open")).toBe(false);
+  expect(screen.queryByRole("button", { name: "Close menu" })).toBeNull();
+  expect(document.activeElement).toBe(menu());
+});
+
+test("choosing a section goes there and closes the menu", async () => {
+  FakeScreen.phone();
+  open("/kits");
+  fireEvent.click(menu());
+  fireEvent.click(screen.getByRole("link", { name: "Settings" }));
+  await screen.findByRole("heading", { name: "Settings" });
+  expect(rail().hasAttribute("data-open")).toBe(false);
+});
+
+test("Launch in the menu opens the New session window and closes the menu", () => {
+  FakeScreen.phone();
+  open();
+  fireEvent.click(menu());
+  act(() => fireEvent.click(screen.getByRole("button", { name: "Launch" })));
+  expect(rail().hasAttribute("data-open")).toBe(false);
+});
+
+test("turned into a computer (a mouse plugged in), an open menu goes", () => {
+  const phone = FakeScreen.phone();
+  open();
+  fireEvent.click(menu());
+  phone.set({ pointer: "fine" });
+  expect(rail().hasAttribute("data-open")).toBe(false);
+  expect(screen.queryByRole("button", { name: /^Menu/ })).toBeNull();
+});

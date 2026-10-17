@@ -5299,3 +5299,35 @@ def test_set_title_works_on_a_stopped_session():
     state.stop_session("s")
     assert runtime.set_title("s", "Review") == "Review"
     assert state.get_session("s").title == "Review"
+
+
+def test_a_fresh_starts_title(repo, fake_tmux):
+    runtime.start_session(str(repo), "sait-kofeini", None, "claude", title="  Сайт кофейни ")
+    assert state.get_session("sait-kofeini").title == "Сайт кофейни"
+
+
+def test_a_title_equal_to_the_name_is_none(repo, fake_tmux):
+    runtime.start_session(str(repo), "shop", None, "claude", title="shop")
+    assert state.get_session("shop").title is None
+
+
+def test_a_bad_title_refuses_before_anything_starts(repo, fake_tmux):
+    with pytest.raises(runtime.LadoError, match="^a title is one line of visible text"):
+        runtime.start_session(str(repo), "shop", None, "claude", title="a\nb")
+    assert fake_tmux == []
+    assert state.get_session("shop") is None
+
+
+def test_a_resume_with_a_title_is_refused(repo, fake_tmux):
+    runtime.start_session(str(repo), "shop", None, "claude")
+    state.stop_session("shop")
+    with pytest.raises(runtime.LadoError, match="^a title is set with lado title on a resume$"):
+        runtime.start_session(str(repo), "shop", None, "claude", title="Shop")
+    assert state.get_session("shop").stopped_at is not None
+
+
+def test_check_title_is_the_rule_of_set_title():
+    assert runtime.check_title("  Ревью ", "s") == "Ревью"
+    assert runtime.check_title("s", "s") is None
+    with pytest.raises(runtime.LadoError, match="^a title is at most 80 characters$"):
+        runtime.check_title("x" * 81, "s")

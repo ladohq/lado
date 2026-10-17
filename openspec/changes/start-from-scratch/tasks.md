@@ -18,7 +18,7 @@ Tests first in each section; each task is one commit. The plan with the steps is
 
 ## 2. Runtime
 
-- [ ] 2.1 `check_title`, `start_session(title=)` (D3). Unit tests (`tests/test_runtime.py`):
+- [x] 2.1 `check_title`, `start_session(title=)` (D3). Unit tests (`tests/test_runtime.py`):
   "A fresh start's title", a bad title refused before anything, a resume with a title
   refused. Plan, Task 5.
 

@@ -34,6 +34,7 @@ import { Notifier } from "./Notifications";
 import { NEEDS_YOU_PATH } from "./paths";
 import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
 import { SelectionBar } from "./SelectionBar";
+import { ShareDialog } from "./Share";
 import { LiveButton, UpdateProvider, UpdateStatus } from "./SystemPanel";
 import { StatisticsBanner } from "./Telemetry";
 import { BUNDLE_VERSION } from "./version";
@@ -223,15 +224,24 @@ function VersionBanner() {
 }
 
 // The change feed's link: live, or reconnecting while it is down (what the page shows may
-// be old), with the reason. Live opens the system panel (SystemPanel.tsx).
+// be old), with the reason. Live opens the system panel (SystemPanel.tsx). The dialog for
+// another device (Share.tsx) is kept here: its new link ends the stream, and the button
+// goes away while it reconnects.
 function LinkState() {
   const { link, problem } = useLive();
+  const [sharing, setSharing] = useState(false);
   if (link === "refused") return null; // the page says how to get in
-  if (link !== "down") return <LiveButton link={link} />;
   return (
-    <span className="link reconnecting" role="status" title={problem ?? undefined}>
-      reconnecting…{problem && <span className="reconnecting-why"> {problem}</span>}
-    </span>
+    <>
+      {link !== "down" ? (
+        <LiveButton link={link} sharing={sharing} onShare={() => setSharing(true)} />
+      ) : (
+        <span className="link reconnecting" role="status" title={problem ?? undefined}>
+          reconnecting…{problem && <span className="reconnecting-why"> {problem}</span>}
+        </span>
+      )}
+      {sharing && <ShareDialog onClose={() => setSharing(false)} />}
+    </>
   );
 }
 

@@ -45,7 +45,6 @@ import { ClipboardIcon, FolderIcon, GitHubIcon, QrIcon } from "./icons";
 import { useLive } from "./live";
 import { useBelow, useDismiss } from "./Menu";
 import { storeUpdateSeen, updateSeen } from "./prefs";
-import { ShareDialog } from "./Share";
 import { Tooltip } from "./Tooltip";
 import { BUNDLE_VERSION } from "./version";
 
@@ -131,12 +130,12 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
 export const useUpdate = () => useContext(UpdateContext);
 
 // `live` (or connecting…) as the button that opens the panel, `↑ X.Y.Z` beside it while a
-// newer LADO is out.
-export function LiveButton({ link }: { link: Link }) {
+// newer LADO is out. The dialog for another device is the caller's (`sharing`, `onShare`):
+// it stays while the feed reconnects, as this button does not.
+export function LiveButton({ link, sharing, onShare }: { link: Link; sharing: boolean; onShare: () => void }) {
   const { info } = useUpdate();
   const [open, setOpen] = useState(false);
   const [asking, setAsking] = useState(false); // the plan's dialog
-  const [sharing, setSharing] = useState(false); // the dialog for another device
   const box = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -179,10 +178,9 @@ export function LiveButton({ link }: { link: Link }) {
             button.current?.focus();
           }}
           onAsk={() => setAsking(true)}
-          onShare={() => setSharing(true)}
+          onShare={onShare}
         />
       )}
-      {sharing && <ShareDialog onClose={() => setSharing(false)} />}
       {asking && (
         <UpdateDialog
           onClose={(started) => {

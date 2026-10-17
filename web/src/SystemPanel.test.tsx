@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { Health, SystemInfo, UpdateInfo, UpdatePlan, UpdateResultInfo } from "./api";
 import { App } from "./App";
-import { FakeEventSource, stubDialogs } from "./fakes";
+import { FakeEventSource, stream, stubDialogs } from "./fakes";
 import { browserLine, checkLine, finished, GIVE_UP_MS, POLL_MS, shortHome, when, type Waiting } from "./SystemPanel";
 import { BUNDLE_VERSION } from "./version";
 
@@ -245,6 +245,16 @@ test("the QR code opens the dialog for another device, the panel stays behind it
   fireEvent.click(await within(dialog).findByRole("button", { name: "Close" }));
   expect(screen.queryByRole("dialog", { name: "Open LADO on another device" })).toBeNull();
   expect(screen.getByRole("dialog", { name: "System" })).toBeTruthy();
+});
+
+test("the dialog for another device stays while the feed reconnects after a new link", async () => {
+  open();
+  const shown = await panel();
+  fireEvent.click(within(shown).getByRole("button", { name: "Open on another device" }));
+  await screen.findByRole("dialog", { name: "Open LADO on another device" });
+  stream().fail(false); // the new token ended the stream; the browser opens it again
+  stream().open();
+  expect(screen.getByRole("dialog", { name: "Open LADO on another device" })).toBeTruthy();
 });
 
 test("the Statistics row leads to Settings and closes the panel", async () => {

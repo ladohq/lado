@@ -13,6 +13,10 @@
   uid. It and `uv tool install` now write to `~/.local` on the home volume, whose `bin`
   is on every agent's `PATH`, and also `docker compose exec`'s installs go there instead
   of the image's `/opt`.
+- Install with Docker: docs/install.md's "Your first session" says how to answer Claude
+  Code's question whether to trust a repository it has not seen ("Yes, I trust this
+  folder"; Enter alone answers "No, exit" and closes the agent), and README's Docker start
+  first checks the shell for `LADO_*` and `COMPOSE_*` variables, which beat `.env`.
 
 ## 0.40.0 (2026-10-17)
 

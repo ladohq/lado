@@ -15,6 +15,7 @@ import pytest
 import yaml
 
 from lado import update
+from lado.providers.claude import ClaudeProvider
 
 ROOT = Path(__file__).parents[1]
 DOCKER = ROOT / "docker"
@@ -851,6 +852,16 @@ def test_readmes_docker_install_starts_without_mkdir():
     ]
 
 
+def test_readmes_docker_install_checks_the_shell_first():
+    """A shell's LADO_VERSION beats .env's and ran a manual check on the wrong version
+    twice (LAD-69, LAD-73): README's start looks first, as the guide's does."""
+    steps = [line for block in blocks(readme_part("Install", "Docker")) for line in commands(block)]
+    look = steps.index("env | grep -E '^(LADO|COMPOSE)_'")
+    [unset] = [i for i, step in enumerate(steps) if step.startswith("unset ")]
+    assert {"LADO_VERSION", "COMPOSE_PROJECT_NAME"} <= set(steps[unset].split())
+    assert max(look, unset) < steps.index("docker compose up -d")
+
+
 def test_readmes_update_downloads_the_versions_compose_file_first():
     steps = [line for block in blocks(readme_part("Update", "Docker")) for line in commands(block)]
     assert steps == UPDATE_STEPS
@@ -897,6 +908,19 @@ def test_the_guide_says_to_check_the_shells_variables_first():
     [unset] = [step for step in steps if step.startswith("unset ")]
     # The same kinds the grep finds: a COMPOSE_ variable beats .env as a LADO_ one does.
     assert "COMPOSE_PROJECT_NAME" in unset.split() and "LADO_VERSION" in unset.split()
+
+
+def test_the_first_session_names_claude_codes_trust_question(tmp_path):
+    """The container's Claude Code has trusted no folder yet: the guide quotes the answers
+    as LADO's own reason for the wait words them, so Needs you and the guide agree."""
+    repo, home = tmp_path / "repo", tmp_path / "home"
+    home.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    reason = ClaudeProvider().first_hook_blocker(str(repo), {"HOME": str(home)}).reason
+    text = " ".join(guide_part("Your first session").split())
+    assert "Needs you" in text
+    for answer in ('"Yes, I trust this folder"', '"No, exit"'):
+        assert answer in text and answer in reason, answer
 
 
 def test_the_guides_docker_run_is_the_dockerfiles():

@@ -196,6 +196,15 @@ needs a first commit), or **Clone from URL**, which clones into it. A folder out
 projects folder lives only in the container: the window warns about it. Choose the agent
 CLI and press **Start session**.
 
+The container's Claude Code has trusted no folder yet, so on a repository it has not seen
+it asks whether to trust it before its first answer, in every permission mode. Meanwhile
+the agent waits in **Needs you**, which says what to answer: open its terminal and choose "Yes, I trust this folder"; Enter alone answers
+"No, exit" and closes the agent. It is asked once per repository (the workers' worktrees
+are covered) and remembered on the home volume, so restarts and updates do not ask again;
+another LADO container has its own home volume and asks once more. A trusted repository's
+own Claude Code settings (`.claude/`) and MCP servers (`.mcp.json`) run, so trust only a
+repository whose settings you accept.
+
 ### The projects' toolchains
 
 The image has git, Node.js 22, uv, `make`, `gcc` and `g++`, and
@@ -379,6 +388,12 @@ identity, the ssh agent, the projects folder).
   host's key on the home volume, which trusts the first answer: compare its fingerprint
   with the one the host publishes.
   `docker compose exec lado sh -c 'mkdir -p -m 700 ~/.ssh && ssh-keyscan gitlab.com >> ~/.ssh/known_hosts && ssh-keygen -lf ~/.ssh/known_hosts'`.
+- **An agent closed right after the session started**: Enter on Claude Code's trust
+  question answered "No, exit". Stop the session and resume it in the UI (or
+  `docker compose exec lado lado stop <session>`, then
+  `docker compose exec lado lado start <repository> --name <session>` with the
+  repository's path in the container) and choose "Yes, I trust this folder"; see
+  [Your first session](#your-first-session).
 - **The UI's link is lost**: `docker compose exec lado lado ui --no-open`.
 - **`No version is set for shim: go`**: neither the project's version files nor a default
   name that tool. Add the version to the project (`.tool-versions`: `go 1.23.4`) or set a

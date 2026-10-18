@@ -62,6 +62,14 @@ next tasks build on it. It builds nothing users get.
   2026-10-18, the staged plan in `docs/research/cloud-workers-plan.md`.
 - A Russian comment on LAD-100: the short result, the files, the pull request's link.
 
+- `openspec/changes/cloud-workers-research/inputs/` (temporary): the session's artifacts
+  as files, so the change can be built from another LADO installation (the human moves
+  from the PyPI install to the Docker one, 2026-10-19): `lad-100-research.md` (the
+  approved Russian summary, its line on `r5-references` removed), `r1-lado-coupling.md`
+  (its local path already replaced by "the repository root"), `r2-prior-art.md`,
+  `r3-cloud-survey.md`, `r4-credentials.md`. The build removes the folder once its
+  content is in `docs/research/`.
+
 ## Scope
 
 - Translating the approved summary into English and moving the plan's technical details
@@ -79,6 +87,10 @@ next tasks build on it. It builds nothing users get.
 - Tracker tasks for step 0 or stage A: each is created only on the human's separate yes.
 - Contacting Anthropic, OpenAI or a lawyer: the human's decision (2026-10-18), left to
   the later stages of implementation.
+- Merging before the 0.41.0 final: the release freeze (docs/release.md, sections 3 and 6)
+  refuses a final that differs from its last RC in any file, documentation too. The pull
+  request is merged only after the 0.41.0 final, or before v0.41.0rc1 is tagged, on the
+  human's yes at merge_ok; the integrator checks the `v0.41.0rc*` tags right before.
 - A CHANGELOG line: nothing users see changes (docs only, as LAD-52's research).
 - Changes to docs/design/*.md or AGENTS.md: they describe what is built; the plan is not
   built yet.
@@ -94,10 +106,10 @@ next tasks build on it. It builds nothing users get.
   protocol, the launch bundle, the git options for stage D and the credentials
   constraints, each pointing at the report it comes from.
 - AC-3: `docs/research/cloud-workers/` holds r1-r4, each with its sources as written; none
-  holds an absolute path of a home folder (`/Users/`, `/home/<name>`), a scratchpad or
-  temp path of the machine.
-- AC-4: No committed file names the private reference projects, mentions "reference A" or
-  "reference B", or holds content of `r5-references`.
+  holds a path of this machine (a home folder under `/Users/`, a scratchpad or temp
+  path); paths inside a container (`/home/lado`) are content and stay.
+- AC-4: No committed file names the private reference projects, refers to them by their
+  private nicknames, or holds content of `r5-references`.
 - AC-5: `ROADMAP.md` has the one line linking the plan under "Later (after stage 7)".
 - AC-6: LAD-100 has a Russian comment with the result, the files and the pull request's
   link; no tracker task is created.

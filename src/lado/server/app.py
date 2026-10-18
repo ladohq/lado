@@ -11,7 +11,7 @@ import re
 import sys
 import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Literal, TypeVar
 
@@ -38,6 +38,7 @@ from lado import (
     marketplaces,
     runs,
     runtime,
+    scratch,
     self_update,
     state,
     telemetry,
@@ -47,6 +48,7 @@ from lado import (
 from lado.server import clones, feed, launch, models, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
+    AccessInfo,
     AgentDetails,
     AgentInfo,
     ArtifactInfo,
@@ -93,6 +95,7 @@ from lado.server.models import (
     Resume,
     RunEventInfo,
     RunInfo,
+    ScratchTarget,
     Sent,
     SessionAbout,
     SessionCounts,
@@ -114,6 +117,7 @@ from lado.server.models import (
     UpdateStarted,
     WaitingItem,
 )
+from lado.server.run import Listening
 
 T = TypeVar("T")
 STATIC = Path(__file__).parent / "static"  # the built bundle (make web); not in git
@@ -323,8 +327,18 @@ def latest_plan() -> self_update.Plan:
     return plan
 
 
-def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.0.1") -> FastAPI:
+def create_app(
+    token: str,
+    port: int,
+    static: Path = STATIC,
+    host: str = "127.0.0.1",
+    container: bool | None = None,
+    env: Mapping[str, str] | None = None,
+) -> FastAPI:
+    """The app of a server listening on `host`:`port`; `container` and `env` decide the link
+    for another device (None: `update.in_container()` and `os.environ`)."""
     guard = Guard(token, port)
+    in_container = update.in_container() if container is None else container
     hub = feed.Hub(feed.Journal())
     app = FastAPI(title="LADO", version=lado.__version__)
     # Kept in memory only: /api/health tells a restarted server, also of the same version.
@@ -387,6 +401,36 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         requested = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
         self_update.start_detached(given.to, id)
         return UpdateStarted(id=id, requested_at=requested, log=str(self_update.log_path()))
+
+    def access(response: Response) -> AccessInfo:
+        """The link for another device by run.Listening's rule, with this machine's address
+        as it is now; never kept by a cache, as it holds the token."""
+        listening = Listening.of(host, port, in_container, env)
+        response.headers["Cache-Control"] = "no-store"
+        return AccessInfo(
+            link=f"{listening.remote}/?token={guard.token}" if listening.remote else None,
+            reason=listening.reason,
+            port=port,
+            container=in_container,
+            listen=listening.listen,
+            note=listening.note if listening.reason == "unknown" else None,
+        )
+
+    @app.get("/api/access", dependencies=[Depends(guard)])
+    def access_info(response: Response) -> AccessInfo:
+        """The link that opens LADO on another device, or why there is none (share-access).
+        No CORS: a page of another origin cannot read it."""
+        return access(response)
+
+    @app.post("/api/access/new-token", dependencies=[Depends(guard.changes)])
+    async def new_token(response: Response) -> AccessInfo:
+        """A new token now: every other browser is logged out (its open streams and terminals
+        end, and their reconnect is refused), this one gets the new cookie."""
+        await run_in_threadpool(guard.renew)
+        hub.end_streams()
+        await terminals.close_all()
+        guard.set_cookie(response)
+        return access(response)
 
     @app.get("/api/system", dependencies=[Depends(guard)])
     def system() -> SystemInfo:
@@ -461,6 +505,15 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         """A folder as the New session window checks it: whether a session can start
         there (the core's reason when not), its subfolders and the session name it gives."""
         return core(launch.folder_info, path, has_db)
+
+    @app.get("/api/scratch-target", dependencies=[Depends(guard)])
+    def scratch_target(
+        text: str, path: str | None = None, has_db: bool = Depends(database)
+    ) -> ScratchTarget:
+        """A fresh start of the name `text` (docs/design/ui.md, Launch and session control):
+        the folder's and the session's name and the title, the folder (by default
+        $LADO_REPOS/<name>, else ~/lado/<name>) and whether it takes one, and git's author."""
+        return core(launch.scratch_target, text, path, has_db)
 
     # Clone from URL (docs/design/ui.md, Launch and session control): the listing goes to
     # the network with this machine's credentials, so it is a change too.
@@ -676,7 +729,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         responses={200: {"content": {"text/event-stream": {}}}},
     )
     async def events(
-        after: int | None = None, last_event_id: int | None = Header(None)
+        request: Request, after: int | None = None, last_event_id: int | None = Header(None)
     ) -> StreamingResponse:
         """The change feed as Server-Sent Events (lado.server.feed). The position is the
         Last-Event-ID header (the browser's own reconnect) or, without it, `after`."""
@@ -686,7 +739,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         except feed.Unavailable as error:
             raise HTTPException(503, str(error)) from error
         return StreamingResponse(
-            feed.stream(hub, position),
+            feed.stream(hub, position, lambda: guard.admits(request)),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )
@@ -885,14 +938,18 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         responses={400: {"model": Refused}, 409: {"model": Taken}},
     )
     def start(given: Launch) -> Started:
-        """Start a new session, as `lado start` does, without attaching to it. A name a
-        session has is 409 with that session's status and folder; on an empty LADO_HOME
-        the core makes lado.db."""
-        if given.where.kind != "folder":
+        """Start a new session, as `lado start` does, without attaching to it; for `where`
+        of kind "scratch" the folder is made a repository first, as `lado start --new`
+        does. A name a session has is 409 with that session's status and folder; on an
+        empty LADO_HOME the core makes lado.db."""
+        if given.where.kind not in ("folder", "scratch"):
             raise HTTPException(400, f'where of kind "{given.where.kind}" is not supported yet')
         try:
+            path = runtime.full_path(given.where.path)
+            if given.where.kind == "scratch":
+                scratch.make(path, runtime.slug(given.name or Path(path).name))
             done = runtime.start_session(
-                runtime.full_path(given.where.path),
+                path,
                 given.name,
                 given.permission_mode,
                 given.provider,
@@ -900,6 +957,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
                 given.without,
                 resume=False,
                 prompt=given.prompt,
+                title=given.title,
             )
         except runtime.SessionExists as taken:
             detail = Taken(message=str(taken), status=taken.status, repo=taken.repo)
@@ -985,10 +1043,14 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
     def answer_gate(
         name: str, gate: int, given: GateAnswer, has_db: bool = Depends(database)
     ) -> Sent:
-        """The human's answer to an open gate: one of its options and a comment for the
-        next step. The same core as `lado answer` and the popup."""
+        """The human's answer to an open gate: one of its options, a comment for the next
+        step and the files uploaded for it. The same core as `lado answer` and the popup."""
         known(name, has_db)
-        return Sent(result=core(runs.answer_text, name, str(gate), given.option, given.comment))
+        return Sent(
+            result=core(
+                runs.answer_text, name, str(gate), given.option, given.comment, given.artifacts
+            )
+        )
 
     @app.post("/api/sessions/{name}/messages", dependencies=[Depends(guard.changes)])
     def write(name: str, message: MessageText, has_db: bool = Depends(database)) -> Sent:
@@ -1004,7 +1066,10 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         """The human's replies to open questions of one agent (a tab of the waiting card),
         all or none, handed over to the agent together."""
         known(name, has_db)
-        replies = [runtime.HumanReply(r.question, r.choice, r.text, r.skip) for r in given.answers]
+        replies = [
+            runtime.HumanReply(r.question, r.choice, r.text, r.skip, tuple(r.artifacts))
+            for r in given.answers
+        ]
         return Sent(result=core(runtime.answer_questions, name, replies))
 
     @app.websocket("/api/sessions/{name}/agents/{agent}/terminal")

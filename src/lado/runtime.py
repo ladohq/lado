@@ -287,6 +287,11 @@ class FolderProblem(LadoError):
         self.hint = hint
 
 
+# What to do with a folder of files that is no repository: the human picks what to commit.
+NOT_REPO_HINT = Hint(
+    "Make it a repository with a first commit, in that folder:",
+    "git init && git add -A && git commit -m 'First commit'",
+)
 GIT_MIN = (2, 31)  # `rev-parse --path-format=absolute` (providers/gitpaths.py)
 XCODE_TOOLS = "xcode-select --install"
 
@@ -460,14 +465,7 @@ def check_repo(path: str) -> str:
     top = _run_git(path, "rev-parse", "--show-toplevel", env=english)
     if top.returncode != 0:
         if "not a git repository" in top.stderr:
-            raise FolderProblem(
-                "not_repo",
-                f"{path} is not inside a git repository",
-                Hint(
-                    "Make it a repository with a first commit, in that folder:",
-                    "git init && git add -A && git commit -m 'First commit'",
-                ),
-            )
+            raise FolderProblem("not_repo", f"{path} is not inside a git repository", NOT_REPO_HINT)
         raise _git_refused(path, top)
     root = top.stdout.strip()
     head = _run_git(root, "rev-parse", "--verify", "--quiet", "HEAD", env=english)
@@ -602,17 +600,22 @@ def check_prompt(text: str) -> str:
     return text
 
 
-def set_title(name: str, text: str | None) -> str | None:
-    """Set or clear the session's title, a label for the human over its name (which stays
-    its identifier), whatever its status: the one rule of what a title is. Trimmed; empty or
-    equal to the name is no title; a hidden character (`lado.text`) or more than MAX_TITLE
-    characters is refused with nothing changed. Returns what is stored."""
+def check_title(text: str | None, name: str) -> str | None:
+    """The one rule of what a session's title is, a label for the human over its name
+    (which stays its identifier): trimmed; empty or equal to the name is no title (None); a
+    hidden character (`lado.text`) or more than MAX_TITLE characters is refused."""
     title = (text or "").strip()
     if (char := visible.first_hidden(title)) is not None:
         raise LadoError(f"a title is one line {visible.refusal(char)}")
     if len(title) > MAX_TITLE:
         raise LadoError(f"a title is at most {MAX_TITLE} characters")
-    stored = title if title and title != name else None
+    return title if title and title != name else None
+
+
+def set_title(name: str, text: str | None) -> str | None:
+    """Set or clear the session's title (check_title), whatever its status; refused with
+    nothing changed. Returns what is stored."""
+    stored = check_title(text, name)
     if not state.set_title(name, stored):
         raise NoSuchSession(f'unknown session "{name}"')
     return stored
@@ -629,12 +632,14 @@ def start_session(
     first: FirstInput | None = None,
     prompt: str | None = None,
     reason: str | None = None,
+    title: str | None = None,
 ) -> Started:
     """Start a session whose agents come from `kit_names` (default: the "default" kit), minus
     the `without` items ("agent:x", "skill:y", "mcp:z"). A new session's supervisor may get
     `first` as its first input. `prompt` is the human's first message, for a new session and
     a resume alike (check_prompt): queued from `human` after LADO's own messages. `reason`
-    begins a resume's event detail (why it was resumed: resume_at_start).
+    begins a resume's event detail (why it was resumed: resume_at_start). `title` is a new
+    session's (check_title); a resume keeps its own, which `lado title` changes.
 
     A stopped session of that name, or one whose tmux server is gone, is resumed: it keeps
     its history, open runs and gates, and the settings given replace its stored ones. The
@@ -649,11 +654,14 @@ def start_session(
     text = check_prompt(prompt) if prompt is not None else None
     repo = check_repo(path)
     session = slug(name or Path(repo).name)
+    stored_title = check_title(title, session)
     old = state.get_session(session)
     if old and resume is False:
         raise SessionExists(old, session_status(old))
     if not old and resume:
         raise NoSuchSession(f'unknown session "{session}"')
+    if old and title is not None:
+        raise LadoError("a title is set with lado title on a resume")
     if old:
         if not old.stopped_at and tmux.has_session(session):
             loop.ensure(session)
@@ -674,6 +682,7 @@ def start_session(
         agent_cli.name,
         kit_names or (old.kits if old else [kits.DEFAULT_KIT]),
         without if without is not None else (old.without if old else []),
+        title=old.title if old else stored_title,
     )
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.kits, sess.without)
@@ -1410,9 +1419,7 @@ def write_as_human(
         raise LadoError("the message is empty")
     if to == state.HUMAN:
         raise LadoError(f'no running agent "{to}": the human cannot write to themselves')
-    if len(names) > artifacts.MAX_HUMAN_FILES:
-        raise LadoError(f"{len(names)} files, the limit is {artifacts.MAX_HUMAN_FILES}")
-    attachments = artifacts.resolve_attachments(session, None, names)
+    attachments = human_files(session, names)
     summary, body = _human_text(text) if text else (_files_line(names), "")
     if to == SUPERVISOR:
         return post(session, state.HUMAN, to, summary, body, attachments=attachments)
@@ -1434,6 +1441,15 @@ def write_as_human(
     return result
 
 
+def human_files(session: str, names: list[str]) -> state.Attached:
+    """The files the human attaches (full names of their uploads, lado.artifacts.upload) to
+    a message, a reply or a gate's answer, resolved; LadoError over the limit, ArtifactError
+    for a name not found."""
+    if len(names) > artifacts.MAX_HUMAN_FILES:
+        raise LadoError(f"{len(names)} files, the limit is {artifacts.MAX_HUMAN_FILES}")
+    return artifacts.resolve_attachments(session, None, names)
+
+
 def _copy(to: str, summary: str, message_id: int, files: int = 0) -> str:
     """The supervisor's one line about the human's message to agent `to`, with how many
     files it carries."""
@@ -1445,10 +1461,10 @@ def _copy(to: str, summary: str, message_id: int, files: int = 0) -> str:
     return prefix + summary + suffix
 
 
-def _files_line(names: list[str]) -> str:
-    """The summary of the human's message of files only: how many and their names, cut to
-    the limit."""
-    line = f"{len(names)} file{'s' if len(names) != 1 else ''}: {', '.join(names)}"
+def _files_line(names: list[str], prefix: str = "") -> str:
+    """The summary of the human's message or answer of files only: `prefix`, how many and
+    their names, cut to the limit."""
+    line = f"{prefix}{len(names)} file{'s' if len(names) != 1 else ''}: {', '.join(names)}"
     if len(line) > state.SUMMARY_LIMIT:
         line = line[: state.SUMMARY_LIMIT - 1] + "…"
     return line
@@ -1473,12 +1489,15 @@ def _human_text(text: str, prefix: str = "") -> tuple[str, str]:
 @dataclass(frozen=True)
 class HumanReply:
     """The human's reply to one open question: one of its `choice`s (with `text` as a
-    comment), their own `text`, or with `skip` a dismissal (`text` its comment)."""
+    comment), their own `text`, or with `skip` a dismissal (`text` its comment).
+    `attached` are the full names of the files the human uploaded for it
+    (lado.artifacts.upload); with them an own answer may have no text."""
 
     question: int
     choice: str | None = None
     text: str | None = None
     skip: bool = False
+    attached: tuple[str, ...] = ()
 
 
 def answer_question(
@@ -1516,7 +1535,7 @@ def answer_questions(session: str, replies: Sequence[HumanReply]) -> str:
                 f"answers go to one agent at a time: #{asker.id} is {asker.sender}'s,"
                 f" #{question.id} is {question.sender}'s"
             )
-    written = [_reply_of(q, r) for q, r in zip(questions, replies, strict=True)]
+    written = [_reply_of(session, q, r) for q, r in zip(questions, replies, strict=True)]
     try:
         with _to_running(session):
             ids = state.reply_to_questions(session, written)
@@ -1525,16 +1544,20 @@ def answer_questions(session: str, replies: Sequence[HumanReply]) -> str:
     return _deliver(session, asker.sender, ids[-1])
 
 
-def _reply_of(question: state.Message, reply: HumanReply) -> state.Reply:
-    """The message of the human's reply to `question`, or LadoError for one it does not
-    take."""
+def _reply_of(session: str, question: state.Message, reply: HumanReply) -> state.Reply:
+    """The message of the human's reply to `question` with the files it names resolved,
+    or LadoError (ArtifactError for a name not found) for one it does not take."""
     text = (reply.text or "").strip()
+    names = list(reply.attached)
+    attachments = human_files(session, names)
     if reply.skip:
         if reply.choice is not None:
             raise LadoError(f"question #{question.id}: skip takes no choice")
         if len(text) > MAX_MESSAGE:
             raise LadoError(f"the message is {len(text)} characters, the limit is {MAX_MESSAGE}")
-        return state.Reply(question.id, f"Dismissed #{question.id}", text, None, state.DISMISSED)
+        return state.Reply(
+            question.id, f"Dismissed #{question.id}", text, None, state.DISMISSED, attachments
+        )
     prefix = f"Answer to #{question.id}: "
     if reply.choice is not None:
         if reply.choice not in (question.choices or []):
@@ -1545,13 +1568,15 @@ def _reply_of(question: state.Message, reply: HumanReply) -> state.Reply:
         summary, body = prefix + reply.choice, text
         if len(body) > MAX_MESSAGE:
             raise LadoError(f"the message is {len(body)} characters, the limit is {MAX_MESSAGE}")
-    elif not text:
+    elif not text and not names:
         raise LadoError("choose one of the choices or write an answer")
     elif not question.free_answer:
         raise LadoError(f"question #{question.id} takes one of its choices, not an own answer")
-    else:
+    elif text:
         summary, body = _human_text(text, prefix)
-    return state.Reply(question.id, summary, body, reply.choice, state.ANSWERED)
+    else:
+        summary, body = _files_line(names, prefix), ""
+    return state.Reply(question.id, summary, body, reply.choice, state.ANSWERED, attachments)
 
 
 def _open_question(session: str, question_id: int) -> state.Message:

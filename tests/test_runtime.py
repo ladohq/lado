@@ -17,6 +17,7 @@ import yaml
 
 from lado import (
     agent_env,
+    artifacts,
     gui_session,
     hooks,
     kits,
@@ -4390,6 +4391,93 @@ def test_a_skip_is_a_dismissal_with_its_comment(repo, fake_tmux):
     assert f"[from human] Dismissed #{second} (#{dismissal.id}, " in paste
 
 
+def _reply_files(reply: state.Message) -> list[str]:
+    return [a.artifact.full_name for a in artifacts.attached(state.message_attachments(reply.id))]
+
+
+def test_a_reply_carries_the_files_the_human_attached(repo, fake_tmux):
+    first, second = _two_asked(repo)
+    shot = artifacts.upload("s", "shot.png", b"png").full_name
+    log = artifacts.upload("s", "server.log", b"boom").full_name
+    runtime.answer_questions(
+        "s",
+        [
+            runtime.HumanReply(first, "short"),
+            runtime.HumanReply(second, text="like this", attached=(shot, log)),
+        ],
+    )
+    *_, answer, own = state.list_messages("s")
+    assert (own.summary, own.reply_to) == (f"Answer to #{second}: like this", second)
+    assert _reply_files(own) == [shot, log]
+    assert _reply_files(answer) == []
+    [paste] = _pastes(fake_tmux)
+    assert f"[from human] Answer to #{second}: like this (#{own.id}, " in paste
+
+
+def test_an_own_answer_of_files_only_names_them(repo, fake_tmux):
+    _, second = _two_asked(repo)
+    log = artifacts.upload("s", "server.log", b"boom").full_name
+    runtime.answer_questions("s", [runtime.HumanReply(second, text=" ", attached=(log,))])
+    own = state.list_messages("s")[-1]
+    assert (own.summary, own.body) == (f"Answer to #{second}: 1 file: {log}", "")
+    assert _reply_files(own) == [log]
+    assert _question_states() == [state.OPEN_QUESTION, state.ANSWERED]
+
+
+def test_a_files_only_answer_is_cut_to_the_summary_limit(repo, fake_tmux):
+    _, second = _two_asked(repo)
+    names = [
+        artifacts.upload("s", f"{'x' * 40}{n}.txt", str(n).encode()).full_name for n in range(9)
+    ]
+    runtime.answer_questions("s", [runtime.HumanReply(second, attached=tuple(names))])
+    own = state.list_messages("s")[-1]
+    assert own.summary.startswith(f"Answer to #{second}: 9 files: ")
+    assert len(own.summary) == state.SUMMARY_LIMIT and own.summary.endswith("…")
+    assert _reply_files(own) == names
+
+
+def test_a_skip_takes_files_without_a_comment(repo, fake_tmux):
+    _, second = _two_asked(repo)
+    log = artifacts.upload("s", "server.log", b"boom").full_name
+    runtime.answer_questions("s", [runtime.HumanReply(second, skip=True, attached=(log,))])
+    dismissal = state.list_messages("s")[-1]
+    assert (dismissal.summary, dismissal.body) == (f"Dismissed #{second}", "")
+    assert _reply_files(dismissal) == [log]
+    assert _question_states() == [state.OPEN_QUESTION, state.DISMISSED]
+
+
+def test_a_reply_naming_a_missing_file_refuses_the_whole_call(repo, fake_tmux):
+    first, second = _two_asked(repo)
+    before = state.list_messages("s")
+    with pytest.raises(artifacts.ArtifactError, match='no artifact "nope.txt" in session s'):
+        runtime.answer_questions(
+            "s",
+            [
+                runtime.HumanReply(first, "short"),
+                runtime.HumanReply(second, text="x", attached=("nope.txt",)),
+            ],
+        )
+    assert state.list_messages("s") == before
+    assert _question_states() == [state.OPEN_QUESTION, state.OPEN_QUESTION]
+    assert _pastes(fake_tmux) == []
+
+
+def test_a_reply_with_eleven_files_is_refused(repo, fake_tmux):
+    first, second = _two_asked(repo)
+    names = [artifacts.upload("s", f"{n}.txt", str(n).encode()).full_name for n in range(11)]
+    before = state.list_messages("s")
+    with pytest.raises(runtime.LadoError, match="^11 files, the limit is 10$"):
+        runtime.answer_questions(
+            "s",
+            [
+                runtime.HumanReply(first, "short"),
+                runtime.HumanReply(second, text="x", attached=tuple(names)),
+            ],
+        )
+    assert state.list_messages("s") == before
+    assert _question_states() == [state.OPEN_QUESTION, state.OPEN_QUESTION]
+
+
 def test_a_batch_with_a_question_closed_meanwhile_changes_nothing(repo, fake_tmux):
     first, second = _two_asked(repo)
     runtime.answer_question("s", second, None, "main")
@@ -5333,3 +5421,35 @@ def test_set_title_works_on_a_stopped_session():
     state.stop_session("s")
     assert runtime.set_title("s", "Review") == "Review"
     assert state.get_session("s").title == "Review"
+
+
+def test_a_fresh_starts_title(repo, fake_tmux):
+    runtime.start_session(str(repo), "sait-kofeini", None, "claude", title="  Сайт кофейни ")
+    assert state.get_session("sait-kofeini").title == "Сайт кофейни"
+
+
+def test_a_title_equal_to_the_name_is_none(repo, fake_tmux):
+    runtime.start_session(str(repo), "shop", None, "claude", title="shop")
+    assert state.get_session("shop").title is None
+
+
+def test_a_bad_title_refuses_before_anything_starts(repo, fake_tmux):
+    with pytest.raises(runtime.LadoError, match="^a title is one line of visible text"):
+        runtime.start_session(str(repo), "shop", None, "claude", title="a\nb")
+    assert fake_tmux == []
+    assert state.get_session("shop") is None
+
+
+def test_a_resume_with_a_title_is_refused(repo, fake_tmux):
+    runtime.start_session(str(repo), "shop", None, "claude")
+    state.stop_session("shop")
+    with pytest.raises(runtime.LadoError, match="^a title is set with lado title on a resume$"):
+        runtime.start_session(str(repo), "shop", None, "claude", title="Shop")
+    assert state.get_session("shop").stopped_at is not None
+
+
+def test_check_title_is_the_rule_of_set_title():
+    assert runtime.check_title("  Ревью ", "s") == "Ревью"
+    assert runtime.check_title("s", "s") is None
+    with pytest.raises(runtime.LadoError, match="^a title is at most 80 characters$"):
+        runtime.check_title("x" * 81, "s")

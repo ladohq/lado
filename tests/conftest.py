@@ -16,8 +16,8 @@ TEST_SOCKET = f"lado-test-{uuid.uuid4().hex[:8]}"
 
 # An agent's shell has these set (its session, its LADO home, its tmux): the tests run there
 # as is, and nothing of theirs reaches the agent's LADO, also not from a subprocess. LADO's
-# image sets LADO_CONTAINER, LADO_REPOS and LADO_ENV_DIR: a test that wants one sets it
-# itself.
+# image sets LADO_CONTAINER, LADO_REPOS and LADO_ENV_DIR, compose LADO_LISTEN and
+# LADO_PUBLIC_HOST: a test that wants one sets it itself.
 for _var in (
     "LADO_AGENT",
     "LADO_SESSION",
@@ -27,6 +27,8 @@ for _var in (
     "LADO_CONTAINER",
     "LADO_REPOS",
     "LADO_ENV_DIR",
+    "LADO_LISTEN",
+    "LADO_PUBLIC_HOST",
 ):
     os.environ.pop(_var, None)
 
@@ -185,6 +187,19 @@ def telemetry_endpoint(telemetry_on, monkeypatch):
 @pytest.fixture
 def repo(tmp_path):
     return init_repo(tmp_path / "My Repo")
+
+
+@pytest.fixture
+def git_config(tmp_path_factory, monkeypatch):
+    """git's global config for every git the test runs, never the user's: a file of its own
+    (GIT_CONFIG_GLOBAL, no system config; outside tmp_path, which tests list) that names an
+    author; the file's path. Empty it (`write_text("")`) for a git that does not know the
+    author."""
+    path = tmp_path_factory.mktemp("git-config") / "gitconfig"
+    path.write_text("[user]\n\tname = LADO test\n\temail = test@lado.invalid\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(path))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    return path
 
 
 @pytest.fixture

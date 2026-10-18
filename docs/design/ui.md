@@ -116,7 +116,14 @@ later desktop app and a later cloud setup; the UI is its client.
   is open to other machines and the token travels unencrypted: plain HTTP, a risk taken
   knowingly until TLS and a real login come. What the server reports is decided by the
   address it took (`run.Listening`): a loopback one is reached by itself, `0.0.0.0` locally
-  on `http://127.0.0.1:<port>` and from others by the hostname, another address by itself.
+  on `http://127.0.0.1:<port>`, another address by itself. From other devices (the link
+  of Open on another device, below; decided 2026-10-18, LAD-94) one rule, the
+  share-access spec's table: `LADO_PUBLIC_HOST` when set (a host name or IPv4 address;
+  another value warns at the start, `lado: warning: LADO_PUBLIC_HOST is not a host name or
+  address: …`, and counts as unset), else for `0.0.0.0` this machine's address in its
+  network (`run.network_address`: the source address of a UDP route, found at each answer;
+  without one the hostname), for another address that address, for loopback none. Both
+  settings come only from the server's environment, nothing is kept on disk.
   Only a busy port (`EADDRINUSE`) moves on to the next one (for `0.0.0.0` also one busy on
   127.0.0.1: macOS would let both take it, and the local link would reach the other); an
   address not on this machine,
@@ -124,15 +131,21 @@ later desktop app and a later cloud setup; the UI is its client.
   <host>:<port>: <reason>`. `lado ui --host H` while the server listens on another address
   (names resolved: `localhost` is 127.0.0.1) is an error naming its address; without
   `--host` it takes the running server wherever it listens, and for a non-loopback one
-  prints the warning and, after the local link, `From another machine: <link>`. The
+  prints the warning and, after the local link, `From another machine: <link>`, the link
+  the server gives (`GET /api/access` with the token, so the server's environment decides,
+  not the shell's; an older server without it: no line). The
   restart of a server of another version keeps its host and port. In a container
   (`LADO_CONTAINER`, decided 2026-10-14, LAD-63) the address does not decide who reaches
-  the server, the port's publication does: a non-loopback address prints no warning and no
-  `From another machine` link but a note (`lado: note: ...`, `run.CONTAINER_NOTE`, also in
-  `server.log`) naming the address inside the container, that the publication decides
+  the server, the port's publication does, which the container learns only from
+  `LADO_LISTEN` (compose publishes the port on it and passes it in, LAD-94): a non-loopback
+  one prints the warning naming `LADO_LISTEN:<port>`, a loopback one nothing; unset or not
+  an IPv4 address, a note (`lado: note: ...`, `run.CONTAINER_NOTE`, also in `server.log`)
+  naming the address inside the container, that the publication decides
   (`127.0.0.1:<port>:<port>`: this computer only), and that a link published to other
-  machines carries the token unencrypted. `lado ui` there opens no browser: it prints the
-  local link (with `--no-open` that one line only) and, without `--no-open`, `Open it in
+  machines carries the token unencrypted. The container cannot learn the host's name:
+  `LADO_LISTEN=0.0.0.0` without `LADO_PUBLIC_HOST` has no link (`no-address`). `lado ui`
+  there opens no browser: it prints the local link (with `--no-open` that one line only,
+  the `From another machine` line then on stderr) and, without `--no-open`, `Open it in
   your browser on the host.`; the issue report's server line says `in a container`.
 - Port: 8000, or the next free one up to 8020; `--port N` takes exactly N (busy: an error;
   0: any free port, as the tests use).
@@ -144,11 +157,22 @@ later desktop app and a later cloud setup; the UI is its client.
   lock is held; with the lock free it is stale and removed, and `lado server stop` kills
   nobody. A second server refuses and names the first one's address.
 - Token: `LADO_HOME/server-token` (owner only), made on the first start, replaced with
-  `lado server --new-token`. An empty or whitespace-only file counts as missing and gets a
-  new token, and the file is written atomically (a temporary file in `LADO_HOME`, then a
-  rename), so a failed write (a full disk) leaves the old file and stops the command with
-  `cannot write the UI server's token to <path>: <reason>`; an empty token (Bearer,
-  `?token=`, cookie) is always 401. The link `<url>/?token=<token>` (`url` from server.json) sets the
+  `lado server --new-token`, or in the running server by `POST /api/access/new-token`
+  (`Guard.changes`; LAD-94), swapped in the `Guard` at once (`Guard.renew`). An empty or
+  whitespace-only file counts as missing and gets a new token, and the file is written
+  atomically (a temporary file in `LADO_HOME`, then a rename: a reader sees the old token
+  or the new one), so a failed write (a full disk) leaves the old file and stops the command
+  with `cannot write the UI server's token to <path>: <reason>`; an empty token (Bearer,
+  `?token=`, cookie) is always 401. After a new token every open event stream ends
+  (`Hub.end_streams`) and every terminal socket closes with 4500 (`terminals.close_all`),
+  so each reconnects and is checked against the token its browser has (a stream or
+  terminal checked before the swap checks again once subscribed or registered, so none
+  escapes); the answer sets the asking browser's cookie and is the new `AccessInfo`. Others
+  get 401, a terminal 4401. `GET /api/access` (under the token, `no-store`, no CORS) is
+  `AccessInfo`: `link` (`http://<address>:<port>/?token=<token>`, or null), `reason`
+  (`loopback`, `no-address`, `unknown`), `port`, `container`, `listen` (`LADO_LISTEN` in a
+  container) and `note` (the container note for `unknown`); without a link it holds no
+  token. The link `<url>/?token=<token>` (`url` from server.json) sets the
   cookie (HttpOnly, SameSite=Strict, Path=/) and redirects (303) to `/`, so the token leaves
   the address bar. Every page of the UI takes `?token=` the same way (decided in task 2):
   `/sessions/lado/activity?token=…` sets the cookie and redirects to
@@ -706,10 +730,15 @@ reaches the feed. LADO takes the model and builds it on what it has:
   the full names of the artifacts its state reads but those the note carries, `reads`;
   closed, `closed_by_event`, the id of the run's event its closing wrote, a `flow` move, a
   `flow_set` or a `flow_cancel`, which the core stores in the closing's transaction,
-  `gates.closed_event`, since LAD-85) and takes the human's answer
-  (`POST …/gates/{id}/answer {option, comment}`, guarded like the composer, through
-  `runs.answer_text`, the one text `lado answer` prints too; what the core refuses is 400
-  with its reason). An **open gate** is a quiet line of the feed where it opened (the flag
+  `gates.closed_event`, since LAD-85; and `answer_attachments`, the files the human's
+  answer gave the next step, the attachments of the note it kept, `gates.answer_note`,
+  schema 31, LAD-86) and takes the human's answer
+  (`POST …/gates/{id}/answer {option, comment, artifacts?}`, guarded like the composer,
+  through `runs.answer_text`, the one text `lado answer` prints too; `artifacts` are the
+  full names of the files uploaded for it, attached to the next step's note, which its
+  agent reads as `Artifacts: /<name>`; at a loop limit Cancel run, which has no next step,
+  sends them with LADO's message about the cancel to the supervisor; what the core refuses
+  is 400 with its reason). An **open gate** is a quiet line of the feed where it opened (the flag
   avatar, "Gate #id run · state waits: <question> ↓", the time) and a tab of the waiting
   card above the composer (The waiting card, below; since LAD-28, 2026-10-13: before, a row
   of the feed with its card). The tab shows its panel (`GatePanel`, also the compact card of
@@ -720,10 +749,17 @@ reaches the feed. LADO takes the model and builds it on what it has:
   loaded): the latest record comes from the feed's artifacts, so a write while the gate is
   open shows at once, and the note's chip of an artifact written since says "changed
   since" (docs/design/artifacts.md, Flows), the supervisor's recommendation (below), an
-  optional comment for the next step, and a button per option (Approve / Reject, a choice
-  gate's own options, Continue / Cancel run at a loop limit; the recommended one primary,
-  else the first; on the tab, in its Send row). The buttons are off while the answer is
-  sent and in a stopped session (it says to resume it); a refusal shows on the panel. The
+  optional comment for the next step, which takes files as the composer does (LAD-86,
+  mockup `task/lad-86/mockup-gate-files.html`: the composer's frame with the paperclip at
+  its left, the chips above the text, paste and a drop on the field; The waiting card,
+  Fields), and a button per option (Approve / Reject, a choice gate's own options,
+  Continue / Cancel run at a loop limit; the recommended one primary, else the first; on
+  the tab, in its Send row), then "<n> file(s), <size>" while files are attached. A button
+  uploads the files not uploaded yet, then answers with the comment and their names; a
+  failed upload stops the answer, its chip red with the reason, and says "Remove it, or
+  answer again to try it again"; a comment of files only is an answer too. The buttons are
+  off while the answer is sent and in a stopped session (it says to resume it); a refusal
+  shows on the panel. The
   tab goes only when the feed brings the closed gate, wherever it was answered
   (the popup, `lado answer`, another tab). A **closed gate** (LAD-85, 2026-10-16, mockups
   `task/lad-85/mockup-gate-comment.html` A, `mockup-gate-expanded.html` 2 and
@@ -743,7 +779,8 @@ reaches the feed. LADO takes the model and builds it on what it has:
   the answer in the look of the human's reply in a question's card (`.question-answer` on
   the human's ground; a gate closed by an agent `.dismissed`, on `--raised`): the small
   avatar, "You" or the agent, the chip, "→ <state>" when the move is in the feed, the time
-  and the comment in full (`breaks`); then a folded line each (`<details>`, its label in
+  and the comment in full (`breaks`), then the answer's files as chips only, no previews
+  (LAD-86: the card is compact, the move's line shows them); then a folded line each (`<details>`, its label in
   small capitals in a fixed column, its head cut on one line), none opened with the card:
   **Note** (the note's summary in bold, "· N artifacts"; opened, its body's first 6 lines,
   `CLOSED_NOTE_LINES`, with Show more, and its chips) and **Supervisor** ("recommended
@@ -751,7 +788,9 @@ reaches the feed. LADO takes the model and builds it on what it has:
   "· disagreed with <agent>" in orange; opened, its text; without an option "Supervisor's
   recommendation"). The card stays where the gate opened, often far above the bottom; the **human's answer** is
   where it was given as one line, the run's move it made (a `flow` event of `human`), with
-  the answer's comment under it (Flow events in Look of the feed; since
+  the answer's comment under it and then its files, the images previewed and every file a
+  chip, as the human's own message shows them (LAD-86, mockup
+  `task/lad-86/mockup-feed-files.html`; files only, the files alone) (Flow events in Look of the feed; since
   feature/chat-message-text, 2026-10-07: no row of its own besides). On the open page it
   shows at the bottom as soon as the feed brings the event, and the feed scrolls to it as
   to a new message. The composer does not answer gates; no hint over it names them (the
@@ -795,7 +834,10 @@ Built in the chat task (2026-10-03):
   of one agent are taken together (`runtime.answer_questions`, LAD-28): each checked first,
   all queued and closed in one transaction, the agent's queue taken once, so an idle agent
   gets them in one hand-over and starts one turn; one wrong reply refuses the whole call
-  with nothing changed. When the agent is forgotten
+  with nothing changed. A reply may carry the files the human uploaded for it (LAD-86):
+  attached to its message, checked first (at most 10, every name found, else the call is
+  refused whole); an own answer of files only is an answer, its summary
+  `Answer to #<id>: <n> file(s): <names>`. `lado answer` and the popup attach none. When the agent is forgotten
   (`runtime.close_worker`: finish, a run's end or cancel, a failed spawn; `lado stop`), its
   open questions are `closed` in the same transaction.
 - **Where the human asked**: LADO's instructions to the supervisor say to answer
@@ -811,9 +853,10 @@ Built in the chat task (2026-10-03):
   the `messages` triggers.
 - **API**: `GET /api/sessions/{name}/messages?with=human` (`MessageInfo`, oldest first);
   `POST /api/sessions/{name}/messages` `{to?, text}` (default to the supervisor);
-  `POST /api/sessions/{name}/answers` `{answers: [{question, choice?, text?, skip}]}`, the
-  replies of a tab of the waiting card, all to one agent (`skip`: a dismissal, `text` its
-  comment; LAD-28, replacing `…/questions/{id}/answer` and `…/dismiss`).
+  `POST /api/sessions/{name}/answers` `{answers: [{question, choice?, text?, skip,
+  artifacts?}]}`, the replies of a tab of the waiting card, all to one agent (`skip`: a
+  dismissal, `text` its comment; LAD-28, replacing `…/questions/{id}/answer` and
+  `…/dismiss`; `artifacts`, the full names of the files uploaded for a reply, LAD-86).
   The POSTs need the server's own Origin (`Guard.changes`), answer 503 under another
   schema, 404 for an unknown session and 400 with the core's reason for what it refuses
   (a stopped session, an agent that is not running, a question not open). They return
@@ -951,11 +994,26 @@ Built in the chat task (2026-10-03):
   skip's comment and of a marked question) on every side and pulls itself back by as much
   at the top and the left, so the items and the Send row stand where they would without
   it, and a field scrolled into view keeps that room at whichever edge (`scroll-margin`;
-  also the Flows tab's gate card, whose run page scrolls it into view). The
+  also the Flows tab's gate card, whose run page scrolls it into view).
+  **Files in the fields** (decided 2026-10-18, LAD-86, mockup
+  `task/lad-86/mockup-answer-files.html`, option A): Other…'s field, Skip's and a gate's
+  comment take files as the composer does (Files in the composer, below; one module,
+  `attachFiles.tsx`, `AnswerBox`): the composer's frame, the paperclip at its left, the
+  chips above the text, a paste of a file or of a text longer than a message, and a drop
+  on the field, whose frame is its own drop zone. The frame draws the field's focus ring
+  (3 px, `.composer-box:focus-within`) and is what comes into view as the field grows. A
+  picked choice has no field and takes no files. The card keeps the files per question
+  (Other… and Skip share them, so a switch keeps them) and per gate, as it keeps the
+  comments, and drops those of an item closed elsewhere, revoking their thumbnails; the
+  server's limits (`GET /api/limits`) load with the card. A file dropped on the card but
+  not on a field goes nowhere (the browser does not open it); the composer leaves the card
+  to its fields, and takes what is dropped anywhere else in the chat. The
   Send row, always shown: **Send answer to <agent>** / **Send <n> answers to <agent>**, on
-  once each question has a choice, own words that are not blank, or Skip, with "<k> of <n>
-  answered" beside it until then; it posts the tab in one request (`POST …/answers`), and
-  the agent gets the replies in one hand-over. A refusal shows in the Send row with the
+  once each question has a choice, own words that are not blank or files, or Skip, with
+  "<k> of <n> answered" beside it until then; it uploads the files of the tab's fields not
+  uploaded yet, then posts the tab in one request (`POST …/answers`, each reply with its
+  files' names), and the agent gets the replies in one hand-over. A failed upload stops it,
+  its chip red with the reason. A refusal shows in the Send row with the
   core's reason and the picks stay (as a gate's comment does: the card keeps the picks and
   the comments across its tabs and its expanded view); the tab goes only when `waiting` brings its questions
   closed. Each question shows the supervisor's recommendation (below) under its details,
@@ -1060,7 +1118,13 @@ Built in the chat task (2026-10-03):
   start, cut the same way, when it has one). A reply whose question is not in
   the window (pages not loaded) is the human's row "answer to #N" as before, a dismissal
   the line "You skipped question #N", its comment under it. The reply's anchor `#message-<id>` is its late
-  line when there is one, else its block in the card.
+  line when there is one, else its block in the card. The reply's files (LAD-86, mockup
+  `task/lad-86/mockup-feed-files.html`) show as the human's own message shows them: in the
+  card's block and in the row "answer to #N", the images previewed (at most 240 × 180),
+  then every file a chip; under a skip's line, the chips; an own answer of files only shows
+  the files alone, not the core's summary that names them (`replyOf`: a summary
+  `Answer to #N: <n> file(s): …` with as many attachments). The late line ends
+  "· <n> file(s)".
 - **Flow events** (decided 2026-10-07, feature/chat-message-text, mockup
   `flow-events-a.html`): a run's events in a row, with no other row between (whatever the
   time), are one group (`<ol aria-label="Flow run <run>">`): the flow icon and the run's
@@ -1095,7 +1159,8 @@ Built in the chat task (2026-10-03):
   before the state they join, as the UI reads that order as forward. Its outcome is
   always written. The **human's answer to a gate** is one line: their
   `flow` move (only the human's answers write a `flow` event as `human`; `lado flow-set`
-  writes `flow_set`), with the answer's comment under it (Markdown with `breaks`), from the
+  writes `flow_set`), with the answer's comment under it (Markdown with `breaks`) and its
+  files after it, previews and chips (`answer_attachments`, LAD-86), from the
   `GateInfo` whose `closed_by_event` is the move's id (`gateOf`; the closed gate's card
   finds its move the same way, `moveOf`; before LAD-85 a guess by run, state and time).
   Without that gate loaded, the move alone. The closed gate's card stays where it opened.
@@ -1113,6 +1178,9 @@ Built in the chat task (2026-10-03):
   a stopped session's composer is off and says so, its paperclip too.
 - **Files in the composer** (`Composer.tsx`; run feature/chat-attachments, mockup
   `mockup-composer.html` of the run): the human attaches files to a message to any agent.
+  The handling below is one module (`attachFiles.tsx`, LAD-86) that the waiting card's
+  fields share (The waiting card, Files in the fields); the composer's drop leaves the
+  waiting card to them.
   - Three ways in: the paperclip left of the field (the file picker, several files);
     paste while the focus is in the composer (files in the clipboard; an image the browser
     names `image.png` becomes `screenshot-<HHMMSS>.png`; a text longer than `MAX_MESSAGE`
@@ -1247,10 +1315,11 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 `forget_session`), so the decisions and their texts are the core's; the UI shows them.
 
 - **New session window** (`Launch.tsx`, a modal `<dialog>`; the rail's Launch and the
-  list's "+"): **Where** is a folder, or a clone of a git URL made first (the switch
-  **Folder | Clone from URL** beside its label, below); the start's request is the same
-  for both (its `where` is `{kind: "folder", path}`; another kind is refused, so Projects
-  can add theirs). The path
+  list's "+"): **Where** is a new folder made from scratch, a folder, or a clone of a git
+  URL made first (the switch **From scratch | Folder | Clone from URL** beside its label,
+  below); the start's request is the same for a folder and a clone (its `where` is
+  `{kind: "folder", path}`), from scratch it is `{kind: "scratch", path}`; another kind is
+  refused, so Projects can add theirs. The path
   is typed (`~` allowed, a relative path refused), and checked by `GET /api/folders`:
   under the field "✓ git repository · branch X", or the core's reason from
   `runtime.check_repo` (`FolderInfo.problem_kind`: does not exist, a file, git not
@@ -1259,8 +1328,13 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   no git, a git that does not run, no repository, no commits) the core's sentence follows
   in muted text and its one command in a code field with **Copy** (`useCopy`; "Command
   copied", or, when no copy works, the command selected with "Press ⌘C / Ctrl+C to copy";
-  LAD-5's mockup `mockup-folder-check.html`, variant 2). The window makes no repository
-  or commit itself: the human runs the command. Subfolders are suggested from the folder up to the last
+  LAD-5's mockup `mockup-folder-check.html`, variant 2). The window makes no repository of
+  a folder that holds files: the human runs the command. A new or empty folder outside git
+  (`FolderInfo.scratch`) shows instead `The folder is empty: LADO can start it from
+  scratch.` (for one that does not exist, under its text: `LADO can make this folder and
+  start it from scratch.`) and the button **Start from scratch here**, which switches to
+  From scratch with that folder in Create in and its last segment in Name (below).
+  Subfolders are suggested from the folder up to the last
   `/` (the arrow keys and Enter pick one), with chips of the **recent** folders
   (`/api/folders/recent`: the folders of past sessions, latest start first, at most 10).
   With a repositories folder (`LADO_REPOS`, which LADO's image sets to the projects folder
@@ -1329,6 +1403,30 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   `POST /api/sessions/{name}/resume`; a field of white space sends none. The core queues it
   as the human's message to the supervisor (`runtime.start_session(prompt=)`), after LADO's
   `session resumed` on a resume, and the Activity chat shows it as the human's.
+- **From scratch** (decided 2026-10-18, LAD-98; mockup `task/lad-98/mockup-from-scratch.html`):
+  for a human with no repository yet. The window opens in From scratch while LADO has no
+  sessions (`/api/folders/recent` answers none), else in Folder as before; a source the
+  human picks, or a folder or URL typed, before that answer is kept. The first field is
+  **Name**, in the human's words, with the note `folder and session: <name>` and, when the
+  text is not the name itself, ` · title: <text>` (Cyrillic transliterated, Latin letters
+  without accents: `lado.scratch.names`), or the name's refusal; a name a session has
+  shows under it as in Folder. **Create in** is the name's folder in where clones go
+  (`$LADO_REPOS/<name>`, else `~/lado/<name>`) until the human edits it, with its state:
+  `✓ a new folder`, `✓ an empty folder` (nothing but `.DS_Store`), or the core's refusal
+  (a folder with files, a file, a folder inside a git repository). Both come from `GET
+  /api/scratch-target` (`ScratchTarget`, 200 ms after typing; only the latest answer).
+  When git has no `user.name` or `user.email` (`ScratchTarget.author`), its text and hint
+  show under Name with Copy: in LADO's container `Set LADO_GIT_NAME and LADO_GIT_EMAIL in
+  the .env file next to compose.yaml, then restart LADO there:` `docker compose up -d`,
+  else `Tell git who you are, once for this computer:` and the `git config --global`
+  command; the window has no fields for them and LADO sets no author of its own. There is
+  no separate session Name; Kits, Provider (`ScratchTarget.provider`), Permission mode, the
+  first message and Advanced are as for a clone's folder. **Create and start** is on with
+  a name, a folder new or empty, the author known and the name free; it sends `where:
+  {kind: "scratch", path}` with the name and the title (`Launch.title`): the server makes
+  the folder a repository with one empty commit (`scratch.make`), then starts as for a
+  folder. A start refused after the repository was made switches the window to Folder
+  with it and keeps the refusal shown, as after a clone.
 - **Clone from URL** (decided 2026-10-12, LAD-6; mockup `task/lad-6/mockup-clone.html`
   v3): the Where field takes a git URL (`lado.clone.is_url`: `https://`, `http://`,
   `ssh://`, `git://`, `file://`, or `user@host:path`). **Clone into** is the default folder
@@ -1570,9 +1668,11 @@ What LADO, the server and the machine are, and updating LADO without a terminal
 (`SystemPanel.tsx`; the mockup `feature/system-panel/mockup-panel.html`, approved variants
 M2, P1–P3 of round 3, F3 and U1–U3).
 
-- **The panel** (P1), a popover under `live`: the header `LADO X.Y.Z` with the clipboard
-  icon (copies `SystemInfo.report` and one line the page adds, its browser and OS from the
-  user agent; "System info copied") and GitHub ↗. Then Server (the page's origin), Running
+- **The panel** (P1), a popover under `live`: the header `LADO X.Y.Z` with three icons:
+  the QR code (Open on another device, below), the clipboard (copies `SystemInfo.report`
+  and one line the page adds, its browser and OS from the user agent; "System info
+  copied") and the GitHub mark (`LADO on GitHub`, the repository in a new tab; it replaced
+  the text link `GitHub ↗` in LAD-94). Then Server (the page's origin), Running
   (how long only; the start in its tooltip, F3), Home (shortened with `~`; the folder icon
   on its left copies the full path, the session head's `CopyButton`), tmux (version ·
   socket), git (`SystemInfo.git`: its version, `not installed` or `does not run`, by the
@@ -1626,6 +1726,35 @@ M2, P1–P3 of round 3, F3 and U1–U3).
   Oct`, `not sent yet`), `off`, `not chosen`, `off: DO_NOT_TRACK=1`, `off: no endpoint`
   (`SystemInfo.telemetry`, `statisticsLine`); it links to Settings and closes the panel.
   The copied report has `- Statistics: on|off|not chosen|off by <VAR>`.
+
+### Open on another device (decided 2026-10-18, LAD-94)
+
+A link and its QR code that open LADO on a phone or another computer (`Share.tsx`; the
+mockup `task/lad-94/mockup-share-access.html`, section 1 option И3 and sections 2a–2d).
+
+- **The icon**: the QR code, first of the system panel's header icons (tooltip and label
+  `Open on another device`). It opens the dialog `Open LADO on another device` (a
+  `question-dialog`); the panel stays behind it, and the dialog stays while the page's
+  feed reconnects after a new link (its state is `LinkState`'s, in `Shell.tsx`, which
+  outlives `live`).
+- **With a link** (`GET /api/access`, read at each opening): the warning (`.share-warning`:
+  the link gives **full access** and travels unencrypted, for a trusted network only); the
+  QR code of the full link, drawn in the page (`qrcode-generator`, error correction M; 180
+  px, black on white with a 4-module quiet zone in both themes, `role="img"`); `Scan it with
+  the phone's camera, or send the link.`; the link with its token cut to its first and last
+  four characters (`cutToken`); **Copy link** (the full link; `Link copied`; when the
+  browser cannot copy, the link in a field to copy by hand); `Anyone who opened LADO with
+  this link stays in until you make a new one.`
+- **Without one**: `loopback` outside a container, the command `lado server stop && lado
+  ui --host 0.0.0.0` (**Copy command**); `loopback` in a container, the `.env` lines
+  `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST=<this computer's name>` (**Copy lines**);
+  `no-address`, `LADO_PUBLIC_HOST` in `.env` or one address in `LADO_LISTEN`; `unknown`,
+  the container's note as the server prints it. No field to type an address: the address
+  is the environment's.
+- **New link…** in every state asks first (`Make a new link?`: everyone who opened LADO with
+  the current link is logged out at once, this browser stays in; the same as `lado server
+  --new-token`, without a restart; **Cancel**, **Make a new link** in `danger`), then
+  `POST /api/access/new-token` and shows the new link; a refusal shows the API's message.
 
 ### Usage statistics (decided 2026-10-13, LAD-32)
 
@@ -1784,7 +1913,8 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
 - **Tabs**: a session's four tabs without their icons fit 360 px; the Kits page's three too.
 - **The chat**: the feed scrolls by itself, the waiting card (at most half the chat, no
   edge, no height of its own) and the composer stay at the bottom; the composer's text is
-  16 px (Safari zooms into a smaller field) and its keys hint is not shown. A flow event's
+  16 px (Safari zooms into a smaller field) and its keys hint is not shown; so is the text
+  of the card's fields that take files (an own answer, a skip's or a gate's comment; LAD-86). A flow event's
   line starts at the feed's left edge, its actor, chips and time on the first line, its
   text wrapped under them, whole.
 - **Sideways** (`short`): the chat's card is minimized by the layout (its tabs and one

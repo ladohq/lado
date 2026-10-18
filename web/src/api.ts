@@ -94,6 +94,13 @@ export type SystemInfo = components["schemas"]["SystemInfo"];
 // The system panel's facts and the report to copy.
 export const getSystem = () => get<SystemInfo>("/api/system");
 
+export type AccessInfo = components["schemas"]["AccessInfo"];
+
+// The link that opens LADO on another device, or why there is none; a new one logs every
+// other browser out, and the answer sets this one's cookie.
+export const getAccess = () => get<AccessInfo>("/api/access");
+export const newAccessToken = () => post<AccessInfo>("/api/access/new-token");
+
 export type BugReport = components["schemas"]["BugReport"];
 
 // The Report a bug page: the report with the page's browser line, and its GitHub link.
@@ -208,9 +215,14 @@ export async function getContent(session: string, record: string, signal?: Abort
   if (!answer.ok) throw await refused(answer);
   return answer;
 }
-// The human's answer to an open gate: one of its options and a comment for the next step.
-export const answerGate = (session: string, id: number, option: string, comment: string) =>
-  post<Sent>(`${sessionPath(session)}/gates/${id}/answer`, { option, comment });
+// The human's answer to an open gate: one of its options and a comment for the next step,
+// with the full names of the files uploaded for it.
+export const answerGate = (session: string, id: number, option: string, comment: string, artifacts: string[] = []) =>
+  post<Sent>(`${sessionPath(session)}/gates/${id}/answer`, {
+    option,
+    comment,
+    ...(artifacts.length ? { artifacts } : {}),
+  });
 
 // The human's text to an agent of the session (default: the supervisor), with the full
 // names of the files uploaded for it.
@@ -239,7 +251,9 @@ export async function uploadFile(session: string, file: File, name: string): Pro
   return (await answer.json()) as ArtifactInfo;
 }
 
-export type Reply = components["schemas"]["Reply"];
+// A reply sends the full names of the files uploaded for it only when it has some, as a
+// message does.
+export type Reply = Omit<components["schemas"]["Reply"], "artifacts"> & { artifacts?: string[] };
 
 // The human's replies to open questions of one agent (a tab of the waiting card): all or
 // none, handed over to the agent together.
@@ -275,6 +289,13 @@ export const getFolder = (path: string) => get<FolderInfo>(`/api/folders?${query
 export const getRecentFolders = () => get<RecentFolder[]>("/api/folders/recent");
 
 export const getReposFolder = () => get<ReposFolder>("/api/repos-folder");
+
+export type ScratchTarget = components["schemas"]["ScratchTarget"];
+
+// A fresh start of the name `text` in `path` (else the name's default folder): the names,
+// the folder's state and git's author, as the core finds them.
+export const getScratchTarget = (text: string, path: string | null) =>
+  get<ScratchTarget>(`/api/scratch-target?${query(path ? { text, path } : { text })}`);
 
 export type RemoteInfo = components["schemas"]["RemoteInfo"];
 export type CloneTarget = components["schemas"]["CloneTarget"];

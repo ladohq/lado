@@ -18,6 +18,7 @@ import {
   getRecentFolders,
   getReposFolder,
   getRemoteBranches,
+  getScratchTarget,
   resumeSession,
   startClone,
   startSession,
@@ -31,6 +32,7 @@ import {
   type ProviderSuggestion,
   type RecentFolder,
   type RemoteInfo,
+  type ScratchTarget,
   type SessionInfo,
   type Refused,
   type Started,
@@ -50,6 +52,11 @@ export const CLONE_POLL = 500;
 export const BRANCH_LIST = 30;
 // The target states a clone may start in (lado.clone.CAN_CLONE).
 const CAN_CLONE = new Set<CloneTarget["state"]>(["new", "empty"]);
+// The folder states a fresh start may go on in (lado.scratch.CAN_START).
+const CAN_START = new Set<ScratchTarget["state"]>(["new", "empty"]);
+
+// Where a new session's folder comes from: made from scratch, one there is, or a clone.
+type Source = "scratch" | "folder" | "url";
 
 const DEFAULT_KIT = "default";
 const DEFAULT_MODE = "default"; // also "no mode given": the provider's own default
@@ -204,7 +211,17 @@ function LaunchDialog({
   const [refused, setRefused] = useState<ApiError | null>(null);
   // Clone from URL: the URL, the folder (null: the default one), the branch the human picked
   // for which URL, the running job, and what the last clone ended in.
-  const [source, setSource] = useState<"folder" | "url">("folder");
+  // The source starts in Folder and becomes From scratch once the recent folders are none,
+  // unless the human picked one or typed a folder or URL before (sourceTouched).
+  const [source, setSourceState] = useState<Source>("folder");
+  const sourceTouched = useRef(false);
+  const setSource = (next: Source) => {
+    sourceTouched.current = true;
+    setSourceState(next);
+  };
+  // From scratch: the name as typed and the folder (null: the name's default one).
+  const [scratchText, setScratchText] = useState("");
+  const [scratchInto, setScratchInto] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [into, setInto] = useState<string | null>(null);
   const [picked, setPicked] = useState<{ url: string; branch: string } | null>(null);
@@ -236,6 +253,21 @@ function LaunchDialog({
   }, [runningId]);
 
   const cloning = source === "url";
+  const scratching = source === "scratch";
+  const typedText = scratchText.trim();
+  const typedScratchInto = (scratchInto ?? "").trim();
+  const settledText = useDebounced(typedText);
+  const settledScratchInto = useDebounced(typedScratchInto);
+  // Only the latest request's answer: useAsked shows the answer of the key asked last.
+  const scratchAsked = useAsked(
+    scratching && (settledText || settledScratchInto) ? JSON.stringify([settledText, settledScratchInto]) : null,
+    (key) => {
+      const [text, path] = JSON.parse(key) as [string, string];
+      return getScratchTarget(text, path || null);
+    },
+  );
+  const fresh =
+    settledText === typedText && settledScratchInto === typedScratchInto ? valueOf(scratchAsked) : null;
   const typedUrl = url.trim();
   const typedInto = (into ?? "").trim();
   const settledUrl = useDebounced(typedUrl);
@@ -270,8 +302,14 @@ function LaunchDialog({
   const checked = useAsked(resuming ? null : toCheck(settled), getFolder);
   const folder = valueOf(checked);
   const current = folder !== null && folder.path === settled && settled === path.trim() ? folder : null;
-  const recent = valueOf(useOnce(getRecentFolders, resuming !== null)) ?? [];
-  const root = resuming?.repo ?? folder?.root ?? null;
+  const recentAsked = valueOf(useOnce(getRecentFolders, resuming !== null));
+  const recent = recentAsked ?? [];
+  useEffect(() => {
+    if (recentAsked === null || sourceTouched.current) return;
+    sourceTouched.current = true; // decided once
+    if (recentAsked.length === 0) setSourceState("scratch");
+  }, [recentAsked]);
+  const root = resuming?.repo ?? (scratching ? null : folder?.root) ?? null;
   const kitList = useAsked(root ?? "", (where) => getKits(where || null));
   const providerList = useOnce(getProviders);
   const providers = valueOf(providerList);
@@ -288,25 +326,26 @@ function LaunchDialog({
   // M5: kits, provider and mode of a new session come from the folder's last session.
   const last = resuming ? null : (recent.find((one) => one.path === folder?.root)?.session ?? null);
   useEffect(() => {
-    if (resuming || (folder === null && !cloning)) return;
-    // A clone's folder has no last session: LADO's defaults, not a folder's typed before.
-    const from = cloning ? null : last;
+    if (resuming || (folder === null && source === "folder")) return;
+    // A clone's or a fresh start's folder has no last session: LADO's defaults, not a
+    // folder's typed before.
+    const from = source === "folder" ? last : null;
     if (!touched.has("kits")) setKits(from?.kits ?? [DEFAULT_KIT]);
     if (!touched.has("mode")) setPermissionMode(from?.permission_mode ?? DEFAULT_MODE);
     setFromLast(from !== null);
     // Again only when the folder's last session is another one, or the source changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [last?.name, folder?.root, cloning]);
+  }, [last?.name, folder?.root, source]);
 
-  // No provider is the default: the folder's suggestion (a clone's folder's), with its
-  // reason, or none.
-  const suggesting = cloning ? target : folder;
+  // No provider is the default: the folder's suggestion (a clone's or a fresh start's
+  // folder's), with its reason, or none.
+  const suggesting = cloning ? target : scratching ? fresh : folder;
   useEffect(() => {
     if (resuming || suggesting === null || touched.has("provider")) return;
     setProvider(suggesting.provider?.name ?? null);
     setSuggested(suggesting.provider?.reason ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggesting?.path, suggesting?.provider?.name, suggesting?.provider?.reason]);
+  }, [suggesting?.path, suggesting?.provider?.name, suggesting?.provider?.reason, source]);
 
   const touch = (field: string) => setTouched((before) => new Set(before).add(field));
 
@@ -347,13 +386,26 @@ function LaunchDialog({
     providerInfo?.installed === true &&
     kits.length > 0 &&
     shownName !== "";
+  const scratchReady =
+    !promptOver &&
+    fresh !== null &&
+    fresh.path !== null &&
+    fresh.name !== null &&
+    CAN_START.has(fresh.state) &&
+    fresh.author === null &&
+    fresh.name_state === "free" &&
+    providerInfo?.installed === true &&
+    kits.length > 0;
 
-  // A new session in `where`, as the window's fields say.
-  const startIn = (where: string) => {
+  // A new session in `where`, as the window's fields say; from scratch, its folder is made
+  // a repository first, and the session takes the name and title of the name typed.
+  const startIn = (where: string, kind: "folder" | "scratch" = "folder") => {
     const off = splitWithout(without);
+    const scratchNames =
+      kind === "scratch" ? { name: fresh?.name, ...(fresh?.title ? { title: fresh.title } : {}) } : null;
     return startSession({
-      where: { kind: "folder", path: where },
-      ...(shownName ? { name: shownName } : {}),
+      where: { kind, path: where },
+      ...(scratchNames ?? (shownName ? { name: shownName } : {})),
       kits,
       ...(chosenProvider !== null ? { provider: chosenProvider } : {}),
       ...(permissionMode !== DEFAULT_MODE ? { permission_mode: permissionMode } : {}),
@@ -371,6 +423,34 @@ function LaunchDialog({
   const toFolder = (where: string) => {
     setSource("folder");
     setPath(where);
+  };
+
+  // Start from scratch here: the folder checked in Folder, in Create in, its name in Name.
+  const toScratch = (where: string) => {
+    setSource("scratch");
+    setScratchInto(where);
+    setScratchText(where.replace(/\/+$/, "").split("/").pop() ?? "");
+    setRefused(null);
+  };
+
+  // Make the folder a repository and start there; a start refused after the repository
+  // was made leaves the window in Folder with it and the refusal, as after a clone.
+  const createAndStart = async () => {
+    if (fresh?.path == null) return;
+    const where = fresh.path;
+    setBusy(true);
+    setRefused(null);
+    try {
+      opened(await startIn(where, "scratch"));
+    } catch (error) {
+      const given = error instanceof ApiError ? error : new ApiError(0, String(error));
+      if (given.status === 400 || given.status === 409) {
+        const made = await getFolder(where).catch(() => null);
+        if (made?.ok) toFolder(where);
+      }
+      setRefused(given);
+      setBusy(false);
+    }
   };
 
   // Clone, then start in the clone as Start does for a folder; a start refused after the
@@ -498,8 +578,9 @@ function LaunchDialog({
         onSubmit={(event) => {
           event.preventDefault();
           if (busy) return;
-          if (!cloning && ready) void submit();
+          if (source === "folder" && ready) void submit();
           if (cloning && cloneReady) void cloneAndStart();
+          if (scratching && scratchReady) void createAndStart();
         }}
       >
         <div className="launch-head">
@@ -509,10 +590,23 @@ function LaunchDialog({
           </button>
         </div>
 
-        {cloning ? (
+        {scratching ? (
+          <ScratchNameField
+            text={scratchText}
+            onText={(next) => {
+              setScratchText(next);
+              setRefused(null);
+            }}
+            target={fresh}
+            problem={scratchAsked !== null && "error" in scratchAsked ? scratchAsked.error : null}
+            head={<SourceSwitch source={source} onSource={setSource} disabled={busy} />}
+            disabled={busy}
+          />
+        ) : cloning ? (
           <UrlField
             url={url}
             onUrl={(next) => {
+              sourceTouched.current = true;
               setUrl(next);
               setRefused(null);
               setCloneEnd(null);
@@ -527,9 +621,11 @@ function LaunchDialog({
           <WhereField
             path={path}
             onPath={(next) => {
+              sourceTouched.current = true;
               setPath(next);
               setRefused(null);
             }}
+            onScratch={toScratch}
             folder={current}
             checking={!resuming && toCheck(path.trim()) !== null && current === null}
             problem={checked !== null && "error" in checked ? checked.error : null}
@@ -541,6 +637,29 @@ function LaunchDialog({
         )}
 
         <div className="launch-grid">
+          {scratching && (
+            <div className="field launch-where launch-wide">
+              <label htmlFor={`${ids}-create-in`}>Create in</label>
+              <input
+                id={`${ids}-create-in`}
+                value={scratchInto ?? fresh?.path ?? ""}
+                placeholder={repos ? `${withSlash(repos)}<name>` : "~/lado/<name>"}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={busy}
+                onChange={(event) => {
+                  setScratchInto(event.target.value);
+                  setRefused(null);
+                }}
+              />
+              {fresh?.text && (
+                <span className={`field-note ${CAN_START.has(fresh.state) ? "ok" : "bad"}`}>
+                  {CAN_START.has(fresh.state) ? `✓ ${fresh.text}` : fresh.text}
+                </span>
+              )}
+              {fresh?.warning && <span className="field-note warn">⚠ {fresh.warning}</span>}
+            </div>
+          )}
           {cloning && (
             <>
               <div className="field launch-where">
@@ -569,18 +688,20 @@ function LaunchDialog({
               />
             </>
           )}
-          <div className="field">
-            <label htmlFor={`${ids}-name`}>Name</label>
-            <input
-              id={`${ids}-name`}
-              value={shownName}
-              disabled={busy || resuming !== null}
-              onChange={(event) => setName(event.target.value)}
-            />
-            {!resuming && name === null && named && (
-              <NameHint folder={named} disabled={busy} onResume={() => resumeIt(named.default_name ?? "")} />
-            )}
-          </div>
+          {!scratching && (
+            <div className="field">
+              <label htmlFor={`${ids}-name`}>Name</label>
+              <input
+                id={`${ids}-name`}
+                value={shownName}
+                disabled={busy || resuming !== null}
+                onChange={(event) => setName(event.target.value)}
+              />
+              {!resuming && name === null && named && (
+                <NameHint folder={named} disabled={busy} onResume={() => resumeIt(named.default_name ?? "")} />
+              )}
+            </div>
+          )}
 
           <KitsField
             root={root}
@@ -750,7 +871,11 @@ function LaunchDialog({
               Cancel
             </button>
           )}
-          {!cloning ? (
+          {scratching ? (
+            <button type="submit" className="primary" disabled={busy || !scratchReady}>
+              {busy ? "Starting…" : "Create and start"}
+            </button>
+          ) : !cloning ? (
             <button type="submit" className="primary" disabled={busy || !ready}>
               {busy ? (resuming ? "Resuming…" : "Starting…") : title === "New session" ? "Start session" : title}
             </button>
@@ -828,6 +953,7 @@ function FirstMessage({
 function WhereField({
   path,
   onPath,
+  onScratch,
   folder,
   checking,
   problem,
@@ -838,6 +964,7 @@ function WhereField({
 }: {
   path: string;
   onPath: (path: string) => void;
+  onScratch: (path: string) => void; // Start from scratch here
   folder: FolderInfo | null;
   checking: boolean;
   problem: string | null;
@@ -966,7 +1093,23 @@ function WhereField({
       {folder && !folder.ok && (
         <div className="field-note bad">
           <div>{folder.problem}</div>
-          {folder.hint && <FolderHint text={folder.hint.text} command={folder.hint.command} />}
+          {folder.scratch ? (
+            // In place of LAD-5's command: a new or empty folder takes no file into a commit.
+            <div className="folder-hint">
+              <div className="muted">
+                {folder.problem_kind === "missing"
+                  ? "LADO can make this folder and start it from scratch."
+                  : "The folder is empty: LADO can start it from scratch."}
+              </div>
+              <div className="folder-hint-command">
+                <button type="button" className="chip-button" disabled={disabled} onClick={() => onScratch(folder.path)}>
+                  Start from scratch here
+                </button>
+              </div>
+            </div>
+          ) : (
+            folder.hint && <FolderHint text={folder.hint.text} command={folder.hint.command} />
+          )}
         </div>
       )}
       {problem && <span className="field-note bad">{problem}</span>}
@@ -975,18 +1118,22 @@ function WhereField({
   );
 }
 
-// Where a session's folder comes from: one there is, or a clone of a git URL.
+// Where a session's folder comes from: a new one made from scratch, one there is, or a
+// clone of a git URL.
 function SourceSwitch({
   source,
   onSource,
   disabled,
 }: {
-  source: "folder" | "url";
-  onSource: (source: "folder" | "url") => void;
+  source: Source;
+  onSource: (source: Source) => void;
   disabled: boolean;
 }) {
   return (
     <span className="segments" role="group" aria-label="Source">
+      <button type="button" aria-pressed={source === "scratch"} disabled={disabled} onClick={() => onSource("scratch")}>
+        From scratch
+      </button>
       <button type="button" aria-pressed={source === "folder"} disabled={disabled} onClick={() => onSource("folder")}>
         Folder
       </button>
@@ -994,6 +1141,61 @@ function SourceSwitch({
         Clone from URL
       </button>
     </span>
+  );
+}
+
+// From scratch's first field: the name in the human's words, what LADO makes of it (the
+// folder's and the session's name, the title), and why git cannot sign its commit yet.
+function ScratchNameField({
+  text,
+  onText,
+  target,
+  problem,
+  head,
+  disabled,
+}: {
+  text: string;
+  onText: (text: string) => void;
+  target: ScratchTarget | null;
+  problem: string | null; // the server's refusal of the request itself
+  head: ReactNode;
+  disabled: boolean;
+}) {
+  const ids = useId();
+  const name = target?.name;
+  return (
+    <div className="field launch-where">
+      <div className="where-head">
+        <label htmlFor={`${ids}-scratch-name`}>Name</label>
+        {head}
+      </div>
+      <input
+        id={`${ids}-scratch-name`}
+        className="launch-words"
+        value={text}
+        placeholder="Coffee shop site"
+        autoComplete="off"
+        disabled={disabled}
+        onChange={(event) => onText(event.target.value)}
+      />
+      {text.trim() !== "" && target?.problem && <span className="field-note bad">{target.problem}</span>}
+      {name && (
+        <span className="field-note">
+          folder and session: <b>{name}</b>
+          {target.title ? ` · title: ${target.title}` : ""}
+        </span>
+      )}
+      {name && target.name_state && (
+        <NameHint folder={{ default_name: name, name_state: target.name_state }} disabled onResume={() => {}} />
+      )}
+      {target?.author && (
+        <div className="field-note bad">
+          <div>{target.author.text}</div>
+          {target.author.hint && <FolderHint text={target.author.hint.text} command={target.author.hint.command} />}
+        </div>
+      )}
+      {problem && <span className="field-note bad">{problem}</span>}
+    </div>
   );
 }
 

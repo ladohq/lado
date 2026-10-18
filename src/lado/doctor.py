@@ -21,6 +21,7 @@ from lado import (
     kits,
     providers,
     runtime,
+    scratch,
     state,
     telemetry,
     terminal,
@@ -163,6 +164,24 @@ def check_git() -> Check:
         )
         return Check("git", WARN, version, hint)
     return Check("git", OK, version)
+
+
+def check_git_author() -> Check | None:
+    """Whether git knows whom to sign the agents' commits with, by a fresh start's own look
+    (`scratch.author_problem`, from `/` as the container's entrypoint looks); never the name
+    or the email. None when git does not run: the `git` check says why."""
+    try:
+        runtime.git_version()
+    except runtime.FolderProblem:
+        return None
+    try:
+        problem = scratch.author_problem("/")
+    except runtime.LadoError as error:
+        return Check("git author", WARN, str(error))
+    if problem is None:
+        return Check("git author", OK, "user.name and user.email set")
+    hint = problem.hint.line() if problem.hint else ""
+    return Check("git author", WARN, "no user.name or user.email: agents cannot commit", hint)
 
 
 def _git_fact() -> str:
@@ -602,11 +621,13 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
     graphical = check_graphical_session(which)
     repos = check_repos_folder()
     outside = check_outside()
+    author = check_git_author()
     return [
         check_lado(),
         Check("Python", OK, platform.python_version()),
         check_tmux(which),
         check_git(),
+        *([author] if author else []),
         *([repos] if repos else []),
         *([outside] if outside else []),
         *([graphical] if graphical else []),

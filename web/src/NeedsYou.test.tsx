@@ -38,6 +38,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     created_at: SINCE,
     answered_at: null,
     closed_by_event: null,
+    answer_attachments: [],
     problem: null,
     recommendation: null,
     ...more,

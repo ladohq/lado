@@ -15,7 +15,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `git` (after `tmux`, `check_git`) is the folder check's own look, `runtime.git_version`:
     `FAIL` with the core's text and hint when git is missing or does not run, `WARN` below
     `runtime.GIT_MIN` (2.31: `gitpaths`' `--path-format=absolute`), else `OK`.
-    `Repositories folder` (after `git`, `check_repos_folder`, only while `LADO_REPOS` is
+    `git author` (after `git`, `check_git_author`, no line when git does not run) is a fresh
+    start's own look, `scratch.author_problem("/")`: `OK` with both `user.name` and
+    `user.email`, else `WARN` with its hint (the `.env` one in LADO's container); it never
+    prints them.
+    `Repositories folder` (after `git author`, `check_repos_folder`, only while `LADO_REPOS` is
     set and not empty): `OK` for a folder, `INFO` for one not made yet, `WARN` for a path
     that is no folder or LADO may not look at (one `stat`, never `exists()`, which raises
     there on some Pythons), a folder LADO may not write in (a probe file made and removed,
@@ -277,6 +281,26 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     through `runtime.public_remote`; git missing or not running is LAD-5's `no_git` /
     `git_broken`, a folder LADO may not look at or write in `no_access`, a URL that names
     no repository (no default folder) `no_repo_name`. `ABANDONED` and `KEPT` are the server's clone jobs' times.
+  - `scratch.py`: a session from scratch (openspec change start-from-scratch), for `lado
+    start --new`, the UI server's From scratch and `lado doctor` alike, which print only
+    what it says. `names` (the text trimmed; refused empty, over `runtime.MAX_TITLE`, with
+    a hidden character, or with no Latin letter or digit left for a folder; Cyrillic by
+    the one table `CYRILLIC`, Latin letters without accents by NFKD, then `runtime.slug`;
+    the title is the text unless it is the name), `default_folder` (`clone.default_parent()
+    /<name>`), `check_target` (a `Target`: `new`, `empty` with nothing but `FINDER`'s
+    `.DS_Store`, `inside_repo` with the repository's root, `not_empty`, `not_folder`; the
+    path's nearest existing folder decides for a new path; only `CAN_START` lets a fresh
+    start go on; `make` refuses each other state with its hint: LAD-5's `NOT_REPO_HINT` for
+    files, `lado start <root>` inside a repository), `author_problem` (git's `user.name`
+    and `user.email` where the folder would be, outside any repository the global and
+    system config; no author is a refusal with the `.env` hint in LADO's container, the
+    `git config --global` one elsewhere; LADO sets no author) and `make` (the checks again,
+    the name as `runtime.check_name` first, then the folders, `git init`, the branch of
+    `init.defaultBranch` else `main` by `symbolic-ref`, one empty commit `Start from
+    scratch` with no signing, no hooks (`core.hooksPath` to the null device and
+    `--no-verify`), no prompt and stdin closed; a failed step removes the folders it made,
+    or the `.git` of an empty folder it was given). A refusal is a `ScratchError` (a
+    `LadoError` with `kind` and a `runtime.Hint`); git missing is LAD-5's `no_git`.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's
     `EVENTS` maps its native events; `claude.py`: Claude Code, its role in `prompt.md` of
@@ -688,10 +712,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `lado stats`'; `usage_counts` the report's.
     From schema 28 a session keeps an optional title, `sessions.title` (`SESSIONS_TITLE`;
     NULL for none; `state.set_title` stores it as given): a label for the human over its
-    name, which stays its identifier. `runtime.set_title` is the one rule of what a title
-    is (trimmed, one line with no hidden character, `text.py`, at most
+    name, which stays its identifier. `runtime.check_title` (and `set_title` through it)
+    is the one rule of what a title is (trimmed, one line with no hidden character, `text.py`, at most
     `runtime.MAX_TITLE`, 80, characters; empty or equal to the name is none; a bad one is
-    refused, never cut), for `lado title` and `PUT /api/sessions/{name}/title` alike;
+    refused, never cut), for `lado title`, `PUT /api/sessions/{name}/title` and a new
+    session's `runtime.start_session(title=)` (a fresh start's; a resume refuses one) alike;
     `SessionInfo.title` carries it, through the existing journal of `sessions`, and
     `Limits.max_title` the limit.
     From schema 29 a session keeps whether the container's stop stopped it,
@@ -708,7 +733,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     The migration fills it once for gates closed before (`gates_closed_events`: the run's
     first event after the gate's `gate_answer`); one not found stays NULL.
     `GateInfo.closed_by_event` gives it to the UI, which links the answer's comment to the
-    move by it.
+    move by it. From schema 31 a gate closed by an answer keeps the note that answer kept
+    for the next step, `gates.answer_note` (`GATES_ANSWER_NOTE`; NULL while open, for a
+    gate closed with no note, and for every gate closed before, whose answers carried no
+    files): `update_run` stores it in the closing's transaction, and
+    `runs.gate_answer_attachments` gives that note's attachments, the human's files,
+    `GateInfo.answer_attachments` (LAD-86).
   - `fingerprint.py`: a read-only agent's git fingerprint (docs/design/agents.md, Read-only roles): `take`
     (HEAD and checked-out branch of its worktree, the session repo's current branch, tags,
     stash, each changed or new file not ignored and not under `.lado/` with its content's
@@ -720,7 +750,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     sends nothing (`cli.cmd_stats` prints them).
   - `loop.py`: the session loop, `lado loop <session>` (see docs/design/agents.md).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
-    rules in [docs/design/ui.md](ui.md), section Server). `auth.py`: the token
+    rules in [docs/design/ui.md](ui.md), section Server). `auth.py`: the token (written
+    whole beside its file and moved over it; `Guard.renew` swaps it in the running server)
     and, for a connection that changes something, the Origin against the request's own
     Host (`Guard.check`), the only place that checks them; `app.py`: the FastAPI app, the API under `/api` (data only
     through `state.py`/`runtime.py`, never migrates the database), the bundle's files, and `index.html` for every other path
@@ -728,14 +759,17 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `GET /api/events` (Server-Sent Events): the `Source` of changes (now the `changes`
     journal, read only), one hub per server, `reset` and resume, the derived fields, and
     the end of every stream when the server shuts down (`Hub.close`, called first by
-    `app.Server`'s shutdown, as uvicorn waits for open responses before the lifespan's);
+    `app.Server`'s shutdown, as uvicorn waits for open responses before the lifespan's),
+    and of the open ones only at a new token (`Hub.end_streams`: the hub stays open);
     `models.py`: the API's models, one form for REST and the stream's items;
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
-    backpressure, close codes; the agents, messages, run events
+    backpressure, close codes, and the open sockets (`OPEN`), which a new token closes
+    (`close_all`); the agents, messages, run events
     (`/api/sessions/{name}/events`), gates (with the human's answer), the human's answers
     to one agent's open questions (`POST …/answers`, a tab of the UI's waiting card, all or
-    none, through `runtime.answer_questions`), runs and notes endpoints are in `app.py`,
+    none, through `runtime.answer_questions`; each reply and a gate's answer with the full
+    names of the files uploaded for it, `artifacts`), runs and notes endpoints are in `app.py`,
     and the artifacts' (docs/design/artifacts.md, The human's
     side): `GET …/artifacts`, `…/artifacts/{id}`, `…/records/{record}` and
     `…/records/{record}/content[?download=1]`, a session's only (404 else), the human's
@@ -787,7 +821,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     control): `GET /api/folders` (`FolderInfo`: the core's `check_repo`, its `problem_kind` and `hint`, subfolders, the
     default name and whether a session has it, and `provider`, the core's
     `runtime.suggested_provider` with the server's `shutil.which`, a
-    `ProviderSuggestion` of name and reason or none), `/api/folders/recent`,
+    `ProviderSuggestion` of name and reason or none; `scratch` for a missing or not-repo
+    folder a fresh start may take), `GET /api/scratch-target` (`ScratchTarget`: `lado.scratch`'s
+    names, folder state and author, the name's state and a provider), `/api/folders/recent`,
     `/api/repos-folder` (in `app.py`; `ReposFolder`, `clone.repos_folder` or none: where
     an empty Where starts),
     `/api/kits` (the kit of each name the lookup takes, the same for every folder; a
@@ -828,10 +864,15 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `bug_report.BROWSER_LINE`'s shape is 422; it reads only, so not under
     `Guard.changes`);
     `run.py`: the lock, `server.json`, the host and port (`--host`, 127.0.0.1 by default;
-    `Listening`: the local link, the remote one and the warning for the address taken; in a
-    container, `container=update.in_container()`, no remote link and no warning but a
+    `Listening`: the local link, the remote one (the base of the link for another device,
+    or none with its `reason`) and the warning for the address taken, by one rule with
+    `LADO_PUBLIC_HOST` (`public_host`; an invalid one is in `problems`, printed at the
+    start) and, for `0.0.0.0`, `network_address` (a UDP route's source address, found at
+    each call); in a container, `container=update.in_container()`, `LADO_LISTEN` decides
+    (`listen`): the warning for a non-loopback one, else none, and unset or not IPv4 a
     `note`, `CONTAINER_NOTE`, as the port's publication decides who reaches it; `lado ui`
-    there prints the link and `OPEN_ON_HOST` and opens no browser),
+    there prints the link and `OPEN_ON_HOST` and opens no browser; `access`, what a server
+    answers on `GET /api/access`, which `lado ui` prints as `From another machine`),
     the background start and stop (`stop` returns once the server's process has ended, not
     only its lock: `_gone` reaps a child of its own), server.log's bound (`rotate` at a background start,
     `housekeeping`'s `bound_log` and `telemetry.kick` every `KICK_EVERY`). Only in a
@@ -857,7 +898,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `running_since`, and one whose tmux is gone ends at `state.last_alive`, as the
     `session_gone` a stop or resume then writes, so its time stays the same.
 - `web/`: the web UI (React, TypeScript, Vite). `openapi.json` and `src/api.gen.ts` are made
-  by `make web-types` and committed.
+  by `make web-types` and committed. `src/attachFiles.tsx` is the human's files in one
+  module (attach by the server's limits, paste, drop zone, chips, upload, `AnswerBox`), used
+  by the composer and the waiting card's fields (docs/design/ui.md, Files in the composer).
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
   `tests/ui/`: UI end-to-end tests in a browser; `tests/live/`: live tests with real agent
   CLIs; `tests/js/`: Node tests of the OpenCode-family plugin; `web/src/*.test.tsx`: the

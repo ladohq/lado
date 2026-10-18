@@ -9,7 +9,7 @@ import pytest
 from agent_helpers import previous_schema
 from fastapi.testclient import TestClient
 
-from lado import runtime, state
+from lado import artifacts, runtime, state
 from lado.server import app as server_app
 from lado.server import auth
 
@@ -174,6 +174,24 @@ def test_the_human_answers_a_tab_in_one_request(client, session):
     again = client.post(ANSWERS, json={"answers": [{"question": ship.id, "text": "no"}]})
     assert again.status_code == 400
     assert again.json()["detail"] == f"question #{ship.id} is answered"
+
+
+def test_a_reply_carries_the_files_uploaded_for_it(client, session):
+    runtime.ask_human("s", "w1", "Port?")
+    [port] = _messages()
+    log = artifacts.upload("s", "server.log", b"boom").full_name
+    answered = client.post(
+        ANSWERS, json={"answers": [{"question": port.id, "text": "", "artifacts": [log]}]}
+    )
+    assert answered.status_code == 200
+    answer = _messages()[-1]
+    assert answer.summary == f"Answer to #{port.id}: 1 file: {log}"
+    listed = {m["id"]: m for m in client.get(MESSAGES, params={"with": "human"}).json()["items"]}
+    assert [a["full_name"] for a in listed[answer.id]["attachments"]] == [log]
+    missing = client.post(
+        ANSWERS, json={"answers": [{"question": port.id, "artifacts": ["nope.txt"]}]}
+    )
+    assert missing.status_code == 400
 
 
 def test_an_empty_tab_is_refused(client, session):

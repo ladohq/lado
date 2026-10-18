@@ -1,8 +1,10 @@
 """Who may call the UI server: the only place that checks it.
 
 Now a token of LADO_HOME, kept in LADO_HOME/server-token (owner only) until
-`lado server --new-token`. The file is written atomically (a temporary file, then a rename),
-and an empty one counts as missing: an empty token is never made, kept or accepted.
+`lado server --new-token` at a start, or a new link in the running server
+(`POST /api/access/new-token`, `Guard.renew`), which logs out every browser but the one
+that asked. The file is written atomically (a temporary file, then a rename), and an empty
+one counts as missing: an empty token is never made, kept or accepted.
 `lado ui` opens `/?token=<token>` (any page of the UI takes it); the server then sets a
 cookie and sends the browser on to the same page without the token, so the token leaves the
 address bar. The cookie's name holds
@@ -22,7 +24,7 @@ from urllib.parse import urlencode
 
 from fastapi import HTTPException, Request
 from fastapi.requests import HTTPConnection
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 
 from lado import state
 from lado.runtime import LadoError
@@ -33,8 +35,9 @@ def token_path():
 
 
 def token(new: bool = False) -> str:
-    """The server's token; made on first use, again with `new`, and when the file is empty
-    (an empty token would let anyone in)."""
+    """The server's token; made on first use, again with `new` (a reader sees the old token
+    or the new one, never none: `_write`), and when the file is empty (an empty token would
+    let anyone in)."""
     path = token_path()
     if not new and path.exists():
         value = path.read_text().strip()
@@ -92,6 +95,26 @@ class Guard:
         self.token = token
         self.cookie = cookie_name(port)
 
+    def renew(self) -> str:
+        """A new token, in LADO_HOME and for this server at once: the old one is refused
+        from the next check on. A short request checked before finishes with it; a long
+        connection (an event stream, a terminal) is checked again once the new token's
+        caller can end it (`admits`), so none of the old token outlives the renewal."""
+        self.token = token(new=True)
+        return self.token
+
+    def set_cookie(self, response: Response) -> None:
+        """The cookie of the current token on `response`."""
+        response.set_cookie(self.cookie, self.token, httponly=True, samesite="strict", path="/")
+
+    def admits(self, conn: HTTPConnection) -> bool:
+        """Whether `conn` holds the token now (`check` without its reason)."""
+        try:
+            self.check(conn)
+        except Refused:
+            return False
+        return True
+
     def _valid(self, given: str | None) -> bool:
         return bool(given) and secrets.compare_digest(given.encode(), self.token.encode())
 
@@ -142,5 +165,5 @@ class Guard:
         target = "/" + request.scope["raw_path"].decode("ascii").lstrip("/")
         rest = urlencode([(k, v) for k, v in request.query_params.multi_items() if k != "token"])
         answer = RedirectResponse(f"{target}?{rest}" if rest else target, status_code=303)
-        answer.set_cookie(self.cookie, self.token, httponly=True, samesite="strict", path="/")
+        self.set_cookie(answer)
         return answer

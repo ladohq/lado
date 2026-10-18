@@ -18,6 +18,7 @@ from lado import (
     marketplaces,
     runs,
     runtime,
+    scratch,
     self_update,
     state,
     telemetry,
@@ -67,9 +68,10 @@ class TitleChange(BaseModel):
 
 
 class Where(BaseModel):
-    """Where a session runs: now only a folder (a full path, `~` allowed)."""
+    """Where a session runs: a folder (a full path, `~` allowed), made a repository first
+    for "scratch" (lado.scratch.make)."""
 
-    kind: str  # "folder"; another kind is refused for now
+    kind: str  # "folder" or "scratch"; another kind is refused for now
     path: str
 
 
@@ -97,6 +99,8 @@ class FolderInfo(BaseModel):
     # in LADO's container, a folder outside LADO_REPOS: the host does not see it
     # (runtime.outside_repos); a warning, never a refusal
     warning: str | None = None
+    # missing or not_repo, and a fresh start may go on there (lado.scratch: new or empty)
+    scratch: bool = False
 
 
 class HintInfo(BaseModel):
@@ -134,6 +138,33 @@ class CloneTarget(BaseModel):
     name_state: NameState  # as FolderInfo's, before anything is cloned
     provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions
     warning: str | None = None  # as FolderInfo's, for the folder the clone goes to
+
+
+ScratchTargetState = scratch.TargetState
+
+
+class ScratchProblem(BaseModel):
+    """Why git cannot make a fresh start's commit: no author, or no git that runs."""
+
+    text: str
+    hint: "HintInfo | None"
+
+
+class ScratchTarget(BaseModel):
+    """A fresh start as the core finds it (lado.scratch): the names from the text typed,
+    the folder and git's author; it changes nothing."""
+
+    path: str | None  # `~` expanded; the default folder when none; None: no name, no folder
+    name: str | None  # the folder's and the session's name; None when the text is refused
+    title: str | None  # the session's title; None when it is the name
+    problem: str | None  # why the text gives no name
+    # the folder's; only new and empty take a fresh start; None: no folder, or unknown
+    state: ScratchTargetState | None
+    text: str | None  # the state as the core says it, or why the folder cannot be looked at
+    author: ScratchProblem | None  # None when git knows the author
+    name_state: NameState | None  # as FolderInfo's, for the name and the folder
+    provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions
+    warning: str | None = None  # as FolderInfo's, for the folder
 
 
 class CloneRefused(BaseModel):
@@ -565,6 +596,19 @@ class SessionCounts(BaseModel):
     gone: int
 
 
+class AccessInfo(BaseModel):
+    """The link that opens LADO on another device, token included, or why there is none
+    (share-access): `listen` is LADO_LISTEN as a container has it, `note` the container's
+    note when who reaches the server is unknown."""
+
+    link: str | None
+    reason: Literal["loopback", "no-address", "unknown"] | None
+    port: int
+    container: bool
+    listen: str | None
+    note: str | None
+
+
 class SystemInfo(BaseModel):
     """The system panel's facts (doctor.system_info) and the server's own."""
 
@@ -683,6 +727,7 @@ class Launch(BaseModel):
     permission_mode: str | None = None
     without: list[str] | None = None
     prompt: str | None = None  # the human's first message to the supervisor (check_prompt)
+    title: str | None = None  # the session's title (runtime.check_title)
 
 
 class Resume(BaseModel):
@@ -995,13 +1040,21 @@ class GateInfo(BaseModel):
     # flow_cancel; state.GATES_CLOSED_EVENT): the chat links the answer's comment to that
     # move. None while open, and for an older gate whose event was not found.
     closed_by_event: int | None
+    # The files the human's answer gave the next step (runs.gate_answer_attachments): the
+    # attachments of the note it kept. Empty while open, for a gate closed otherwise, and
+    # for one closed before schema 31.
+    answer_attachments: list[AttachmentInfo]
     problem: str | None  # why its run's flow snapshot cannot be read; None when it can
     recommendation: RecommendationInfo | None  # the lead's; None when never asked
 
 
 class GateAnswer(BaseModel):
+    """The human's answer to a gate: an option, a comment for the next step, and the full
+    names of the files uploaded for it (POST …/artifacts)."""
+
     option: str
     comment: str = ""
+    artifacts: list[str] = []
 
 
 class MessageInfo(BaseModel):
@@ -1064,12 +1117,14 @@ class Limits(BaseModel):
 
 class Reply(BaseModel):
     """The human's reply to one open question: one of its choices, own words, or with
-    `skip` a dismissal, `text` then its comment."""
+    `skip` a dismissal, `text` then its comment; with the full names of the files uploaded
+    for it (POST …/artifacts), with which own words may be empty."""
 
     question: int
     choice: str | None = None
     text: str | None = None
     skip: bool = False
+    artifacts: list[str] = []
 
 
 class Replies(BaseModel):
@@ -1389,6 +1444,7 @@ def gate_info(gate: state.Gate) -> GateInfo:
         created_at=_utc(gate.created_at),
         answered_at=_utc(gate.answered_at) if gate.answered_at else None,
         closed_by_event=gate.closed_event,
+        answer_attachments=[attachment_info(a) for a in runs.gate_answer_attachments(gate)],
         problem=problem,
         recommendation=recommendation_info(gate, runs.recommendation_by(gate))
         if gate.recommendation_state

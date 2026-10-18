@@ -307,6 +307,22 @@ def test_the_humans_answer_moves_the_run_on_to_the_next_agent(repo, flow_kit):
     assert f"human: flow {name} (check -rejected-> build)" in log
 
 
+def test_the_humans_files_with_a_gates_answer_reach_the_next_steps_worker(repo, flow_kit):
+    name = "reviewed/check-it"
+    to_the_gate(name)
+    log = artifacts.upload(SESSION, "server.log", b"boom at line 3\n").full_name
+    result = runs.answer_text(SESSION, "1", "reject", "see the log", attached=[log])
+    assert result == f"gate #1: reject. {name}: check -> build (→ worker)"
+    step = [m for m in state.list_messages(SESSION) if m.recipient == "worker"][-1]
+    assert step.summary == f"flow {name}: step build"
+    assert f"Note from the previous step: rejected: see the log\nArtifacts: /{log}" in step.body
+    wait_for(lambda: got("worker", f"[from lado] flow {name}: step build"), "the step")
+    wait_status("worker", state.IDLE)
+    runtime.send_message(SESSION, "human", "worker", f"artifact_read /{log}")
+    read = wait_for(lambda: seen("worker").get("artifact_read"), "read_artifact")
+    assert (read["name"], read["content"]) == (f"/{log}", "boom at line 3\n")
+
+
 def test_a_step_gets_the_artifact_it_reads_after_a_gate_and_after_flow_set(repo, flow_kit):
     name = "designed/build-it"
     supervisor_runs("flow_start designed build it")

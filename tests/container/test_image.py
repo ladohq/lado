@@ -91,6 +91,22 @@ def test_compose_serves_on_lado_port(compose):
     projects = compose.env["LADO_PROJECTS"]
     doctor = compose.run("exec", "-T", "lado", "lado", "doctor", check=False).stdout
     assert f"[ok  ] Repositories folder: {projects} (LADO_REPOS)" in doctor.splitlines(), doctor
+    assert "From another machine" not in link.stderr  # published on loopback only
+
+
+def test_compose_on_the_network_with_a_name_gives_the_link_for_a_phone(compose):
+    """LADO_LISTEN and LADO_PUBLIC_HOST from .env (share-access): stdout stays the one
+    local link a launcher reads, the phone's link goes to stderr."""
+    compose.env |= {"LADO_LISTEN": "0.0.0.0", "LADO_PUBLIC_HOST": "lado-test.local"}
+    compose.run("up", "-d")
+    health(compose.port)
+    link = compose.run("exec", "-T", "lado", "lado", "ui", "--no-open")
+    [local] = link.stdout.splitlines()
+    assert local.startswith(f"http://127.0.0.1:{compose.port}/?token="), link.stdout
+    token = local.partition("?token=")[2]
+    remote = f"From another machine: http://lado-test.local:{compose.port}/?token={token}"
+    assert remote in link.stderr.splitlines(), link.stderr
+    assert f"listens on 0.0.0.0:{compose.port}, open to other machines" in link.stderr
 
 
 def test_compose_refuses_without_the_projects_folder(compose):

@@ -14,6 +14,7 @@ from test_gates import (
     TWELVE_LINES,
     assert_long_field_fits,
     assert_ring_whole,
+    frame_of,
     gated_session,
     measured,
 )
@@ -131,7 +132,8 @@ def test_an_own_answer_field_grows_to_8_lines_within_the_card_and_the_expanded_c
 
 
 def test_an_own_answer_with_the_focus_shows_its_ring_whole(page: Page, server, repo, shot):
-    """LAD-78: Other…'s field, focused, has its 3 px ring whole on all four sides."""
+    """LAD-78: Other…'s field, focused, has its 3 px ring (its frame's, LAD-86) whole on all
+    four sides."""
     session = running_session(repo)
     runtime.ask_human(session, "supervisor", "Ship it?", None, ["yes", "no"])
     log_in(page, server)
@@ -141,7 +143,7 @@ def test_an_own_answer_with_the_focus_shows_its_ring_whole(page: Page, server, r
     field = card.get_by_role("textbox", name="Your own answer")
     field.focus()
     expect(field).to_be_focused()
-    assert_ring_whole(field, 3)
+    assert_ring_whole(frame_of(field), 3)
     shot(page, full_page=False)
 
 
@@ -813,6 +815,57 @@ def test_the_human_attaches_files_and_the_agent_gets_them(page: Page, server, re
     shot(page, "sent")
     preview.click()
     expect(page.get_by_role("dialog", name=re.compile(r"^Artifact screenshot-"))).to_be_visible()
+
+
+def test_the_human_answers_a_question_with_a_file_only_and_the_agent_gets_it(
+    page: Page, server, repo, shot
+):
+    """Other… takes a file by the paperclip and counts with no text; a drop on the feed
+    meanwhile goes to the composer, not to the field. The closed card shows the preview and
+    the chip, no text; the agent's line names the file."""
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    field = page.get_by_role("textbox", name="Write to the supervisor…")
+    field.fill("askhuman Which screen?")
+    field.press("Enter")
+    card = waiting_card(page, session)
+    item = card.locator(".waiting-question")
+    expect(item).to_have_count(1)
+    agent_helpers.wait_for(
+        lambda: state.get_agent(session, "supervisor").status == state.IDLE, "idle", session
+    )
+    item.get_by_role("button", name="Other…").click()
+    send = card.get_by_role("button", name="Send answer to supervisor")
+    expect(send).to_be_disabled()
+    item.locator("input[type=file]").set_input_files(
+        [{"name": "screen.png", "mimeType": "image/png", "buffer": SHOT}]
+    )
+    expect(item.locator(".file-chip .file-name")).to_have_text(["screen.png"])
+    expect(item.locator(".file-chip img")).to_have_count(1)  # its thumbnail: the limits were in
+    expect(send).to_be_enabled()
+    page.locator(".chat-feed").dispatch_event(
+        "drop", {"dataTransfer": page.evaluate_handle(DRAGGED)}
+    )
+    expect(page.locator(".composer .file-chip .file-name")).to_have_text(["x.txt"])
+    expect(item.locator(".file-chip")).to_have_count(1)
+    shot(page, "open", full_page=False)
+    send.click()
+    expect(card).to_have_count(0)
+    chat = page.get_by_role("log", name="Chat with the session")
+    given = chat.get_by_role("article", name="Question from supervisor").locator(".question-answer")
+    expect(given.locator(".chat-image img")).to_have_js_property("naturalWidth", 320)
+    expect(given.locator(".chip .chip-name")).to_have_text(
+        [re.compile(r"^screen-[0-9a-f]{8}\.png$")]
+    )
+    expect(given.locator(".chat-body")).to_have_count(0)
+    question, answer = [
+        m for m in state.list_messages(session) if m.reply_to or m.kind == "question"
+    ]
+    line = f"[from human] Answer to #{question.id}: 1 file: {answer.summary.split(': ', 2)[2]}"
+    agent_helpers.wait_for(lambda: any(line in i for i in inputs(session)), "the answer", session)
+    given.scroll_into_view_if_needed()
+    shot(page, "answered", full_page=False)
 
 
 # Files dragged over the page, as the browser's drag events carry them.

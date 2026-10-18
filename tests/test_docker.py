@@ -527,14 +527,31 @@ def test_compose_passes_the_git_identity_and_no_secret(compose):
     environment = compose["services"]["lado"]["environment"]
     assert environment["LADO_GIT_NAME"] == "${LADO_GIT_NAME:-}"
     assert environment["LADO_GIT_EMAIL"] == "${LADO_GIT_EMAIL:-}"
-    assert set(environment) == {"LADO_PORT", "LADO_REPOS", "LADO_GIT_NAME", "LADO_GIT_EMAIL"}
+    assert set(environment) == {
+        "LADO_PORT",
+        "LADO_REPOS",
+        "LADO_GIT_NAME",
+        "LADO_GIT_EMAIL",
+        "LADO_LISTEN",
+        "LADO_PUBLIC_HOST",
+    }
     assert "env_file" not in compose["services"]["lado"]
 
 
-def test_compose_publishes_one_port_number_on_loopback(compose):
+def test_compose_publishes_one_port_number_on_lado_listen(compose):
+    """On loopback unless .env says otherwise; the container learns where from LADO_LISTEN,
+    and the name for the link from LADO_PUBLIC_HOST (share-access)."""
     lado = compose["services"]["lado"]
-    assert lado["ports"] == ["127.0.0.1:${LADO_PORT:-8765}:${LADO_PORT:-8765}"]
+    assert lado["ports"] == ["${LADO_LISTEN:-127.0.0.1}:${LADO_PORT:-8765}:${LADO_PORT:-8765}"]
     assert lado["environment"]["LADO_PORT"] == "${LADO_PORT:-8765}"
+    assert lado["environment"]["LADO_LISTEN"] == "${LADO_LISTEN:-127.0.0.1}"
+    assert lado["environment"]["LADO_PUBLIC_HOST"] == "${LADO_PUBLIC_HOST:-}"
+
+
+def test_the_compose_header_names_the_settings_for_other_devices():
+    text = " ".join(header_text().split())
+    assert "LADO_LISTEN=0.0.0.0" in text and "LADO_PUBLIC_HOST=" in text
+    assert "every device of your network" in text and "unencrypted" in text
 
 
 def test_compose_names_no_container_and_needs_the_projects_folder(compose):
@@ -882,8 +899,25 @@ def test_the_guides_env_names_every_variable_compose_reads():
     envs = blocks(guide_part("Get compose.yaml and write .env"), "ini")
     assert len(envs) == 2  # a Mac's and Linux's
     for env_file in envs:
-        named = {line.split("=")[0] for line in env_file.splitlines() if "=" in line}
+        # An optional setting may be there commented out: `# LADO_LISTEN=0.0.0.0`.
+        lines = (line.removeprefix("# ") for line in env_file.splitlines())
+        named = {line.split("=")[0] for line in lines if re.match(r"[A-Z_]+=", line)}
         assert named == read, env_file
+
+
+def test_the_guide_says_how_to_open_lado_on_a_phone():
+    phone = " ".join(guide_part("Open LADO on your phone").split())
+    for said in (
+        "LADO_LISTEN=0.0.0.0",
+        "LADO_PUBLIC_HOST=",
+        "LADO_LISTEN=192.168.1.23",
+        "docker compose up -d",
+        "Open on another device",
+        "unencrypted",
+        "every network",
+        "New link",
+    ):
+        assert said in phone, said
 
 
 def test_the_guide_removes_only_its_own_container_and_volume():

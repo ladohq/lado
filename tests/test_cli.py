@@ -1400,7 +1400,7 @@ def test_answer_lets_the_human_pick_a_gate_and_leave(repo, fake_tmux, capsys, mo
 def test_answer_that_failed_exits_non_zero(repo, fake_tmux, capsys, monkeypatch):
     _at_gate(repo, capsys)
 
-    def refused(*args):
+    def refused(*args, **kwargs):
         raise runtime.LadoError("gate #1 is closed already: approve by human")
 
     monkeypatch.setattr(runs, "answer", refused)
@@ -1892,7 +1892,7 @@ def test_a_failed_migration_is_one_message_with_the_way_back(
     backup = lado_home / "backups" / f"lado.db.schema-{old}"
     assert capsys.readouterr().err == (
         f"lado: could not upgrade lado.db from schema {old} to {state.SCHEMA_VERSION}: "
-        "OperationalError: duplicate column name: closed_event. lado.db is unchanged; "
+        "OperationalError: duplicate column name: answer_note. lado.db is unchanged; "
         "its backup is "
         f"{backup}. {way_back} Report it with lado bug-report.\n"
     )
@@ -2636,3 +2636,90 @@ def test_ls_shows_the_title_after_the_name(repo, fake_tmux, capsys):
     lines = capsys.readouterr().out.splitlines()
     heads = [line.partition("  (")[0] for line in lines if not line.startswith(" ")]
     assert heads == [f's "Rename sessions (LAD-66)"  {repo}', f"t  {repo}"]
+
+
+# lado start --new [<folder>] (openspec change start-from-scratch)
+
+
+def test_new_with_a_git_url_or_a_second_folder_is_a_usage_error(tmp_path, capsys):
+    for argv in (
+        ["start", "--new", "https://h/a/app"],
+        ["start", "--new", str(tmp_path / "a"), str(tmp_path / "b")],
+    ):
+        with pytest.raises(SystemExit) as exited:
+            main(argv)
+        assert exited.value.code == 2
+        assert "--new takes a folder, not a git URL or a second folder" in capsys.readouterr().err
+    assert not (tmp_path / "a").exists()
+
+
+def test_a_new_folder_from_the_terminal(tmp_path, git_config, fake_tmux, capsys):
+    folder = tmp_path / "lado" / "shop"
+    assert main(["start", "--new", str(folder), "--provider", "kilo", "--no-attach"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    sess = state.get_session("shop")
+    assert sess.repo == os.path.realpath(folder)
+    assert out[:2] == [
+        f"Made {folder} a git repository with an empty first commit",
+        f'Started session "shop" in {sess.repo}',
+    ]
+    log = subprocess.run(
+        ["git", "-C", str(folder), "log", "--format=%s"], capture_output=True, text=True
+    )
+    assert log.stdout == "Start from scratch\n"
+
+
+def test_new_takes_the_name_given_and_a_relative_folder(
+    tmp_path, git_config, fake_tmux, capsys, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    argv = ["start", "--new", "shop", "--name", "Coffee", "--provider", "kilo", "--no-attach"]
+    assert main(argv) == 0
+    assert f"Made {tmp_path / 'shop'} a git repository" in capsys.readouterr().out
+    assert state.get_session("coffee").repo == os.path.realpath(tmp_path / "shop")
+
+
+def test_new_in_the_current_folder(tmp_path, git_config, fake_tmux, monkeypatch):
+    (tmp_path / "coffee-site").mkdir()
+    monkeypatch.chdir(tmp_path / "coffee-site")
+    assert main(["start", "--new", "--provider", "kilo", "--no-attach"]) == 0
+    assert state.get_session("coffee-site").repo == os.path.realpath(tmp_path / "coffee-site")
+
+
+def test_a_folder_with_files(tmp_path, git_config, fake_tmux, capsys):
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "todo.txt").write_text("x")
+    assert main(["start", "--new", str(tmp_path / "notes"), "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: {tmp_path / 'notes'} is not empty: choose a new or empty folder",
+        "lado: Make it a repository with a first commit, in that folder: "
+        "git init && git add -A && git commit -m 'First commit'",
+    ]
+    assert os.listdir(tmp_path / "notes") == ["todo.txt"]
+    assert state.list_sessions() == []
+
+
+def test_new_inside_a_repository_names_its_start(repo, git_config, fake_tmux, capsys):
+    assert main(["start", "--new", str(repo / "site"), "--no-attach"]) == 1
+    err = capsys.readouterr().err.splitlines()
+    real = os.path.realpath(repo)
+    assert err[-1] == f"lado: Start a session in that repository: lado start '{real}'"
+    assert not (repo / "site").exists()
+
+
+def test_new_without_the_author(tmp_path, git_config, fake_tmux, capsys):
+    git_config.write_text("")
+    assert main(["start", "--new", str(tmp_path / "shop"), "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "lado: git doesn't know who signs the agents' commits: it has no user.name or user.email",
+        "lado: Tell git who you are, once for this computer: git config --global user.name "
+        '"Your Name" && git config --global user.email you@example.com',
+    ]
+    assert not (tmp_path / "shop").exists()
+
+
+def test_a_start_refused_after_new_keeps_the_repository(tmp_path, git_config, fake_tmux, capsys):
+    folder = tmp_path / "shop"
+    assert main(["start", "--new", str(folder), "--provider", "nosuch", "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines()[-1] == f"lado: the repository stays in {folder}"
+    assert runtime.check_repo(str(folder)) == os.path.realpath(folder)

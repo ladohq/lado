@@ -94,6 +94,13 @@ export type SystemInfo = components["schemas"]["SystemInfo"];
 // The system panel's facts and the report to copy.
 export const getSystem = () => get<SystemInfo>("/api/system");
 
+export type AccessInfo = components["schemas"]["AccessInfo"];
+
+// The link that opens LADO on another device, or why there is none; a new one logs every
+// other browser out, and the answer sets this one's cookie.
+export const getAccess = () => get<AccessInfo>("/api/access");
+export const newAccessToken = () => post<AccessInfo>("/api/access/new-token");
+
 export type BugReport = components["schemas"]["BugReport"];
 
 // The Report a bug page: the report with the page's browser line, and its GitHub link.
@@ -282,6 +289,13 @@ export const getFolder = (path: string) => get<FolderInfo>(`/api/folders?${query
 export const getRecentFolders = () => get<RecentFolder[]>("/api/folders/recent");
 
 export const getReposFolder = () => get<ReposFolder>("/api/repos-folder");
+
+export type ScratchTarget = components["schemas"]["ScratchTarget"];
+
+// A fresh start of the name `text` in `path` (else the name's default folder): the names,
+// the folder's state and git's author, as the core finds them.
+export const getScratchTarget = (text: string, path: string | null) =>
+  get<ScratchTarget>(`/api/scratch-target?${query(path ? { text, path } : { text })}`);
 
 export type RemoteInfo = components["schemas"]["RemoteInfo"];
 export type CloneTarget = components["schemas"]["CloneTarget"];

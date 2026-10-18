@@ -1,0 +1,15 @@
+# LADO's image: mise's system config (/etc/mise/config.toml). The image owns it, so a new
+# image replaces it and a home volume needs no change; `mise use -g` writes the container's
+# own defaults to ~/.config/mise/config.toml on the home volume. The projects folder's
+# trust is profile.sh's (MISE_TRUSTED_CONFIG_PATHS): it follows the container's LADO_REPOS.
+[settings]
+# Read besides .tool-versions and mise.toml. Not Node's (.nvmrc, .node-version): the image's
+# Node 22 runs Kilo, Codex and kits' MCP servers in the project's folder, so a project's
+# other Node goes through `mise exec node@<version> -- ...`.
+idiomatic_version_file_enable_tools = ["go", "java", "python", "ruby"]
+# Not go.mod's `go` line: a minimum, not the project's version, which mise warns of on every
+# call (deprecated, and no longer read from mise 2026.11.0); it also wins over .go-version.
+# Its `toolchain` line is read.
+idiomatic_version_file_ignore_minimum_versions = true
+# The binary is the image's pin: a newer mise comes with a new image, not from the agents.
+disable_update_warning = true

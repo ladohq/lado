@@ -15,7 +15,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `git` (after `tmux`, `check_git`) is the folder check's own look, `runtime.git_version`:
     `FAIL` with the core's text and hint when git is missing or does not run, `WARN` below
     `runtime.GIT_MIN` (2.31: `gitpaths`' `--path-format=absolute`), else `OK`.
-    `Repositories folder` (after `git`, `check_repos_folder`, only while `LADO_REPOS` is
+    `git author` (after `git`, `check_git_author`, no line when git does not run) is a fresh
+    start's own look, `scratch.author_problem("/")`: `OK` with both `user.name` and
+    `user.email`, else `WARN` with its hint (the `.env` one in LADO's container); it never
+    prints them.
+    `Repositories folder` (after `git author`, `check_repos_folder`, only while `LADO_REPOS` is
     set and not empty): `OK` for a folder, `INFO` for one not made yet, `WARN` for a path
     that is no folder or LADO may not look at (one `stat`, never `exists()`, which raises
     there on some Pythons), a folder LADO may not write in (a probe file made and removed,
@@ -277,6 +281,26 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     through `runtime.public_remote`; git missing or not running is LAD-5's `no_git` /
     `git_broken`, a folder LADO may not look at or write in `no_access`, a URL that names
     no repository (no default folder) `no_repo_name`. `ABANDONED` and `KEPT` are the server's clone jobs' times.
+  - `scratch.py`: a session from scratch (openspec change start-from-scratch), for `lado
+    start --new`, the UI server's From scratch and `lado doctor` alike, which print only
+    what it says. `names` (the text trimmed; refused empty, over `runtime.MAX_TITLE`, with
+    a hidden character, or with no Latin letter or digit left for a folder; Cyrillic by
+    the one table `CYRILLIC`, Latin letters without accents by NFKD, then `runtime.slug`;
+    the title is the text unless it is the name), `default_folder` (`clone.default_parent()
+    /<name>`), `check_target` (a `Target`: `new`, `empty` with nothing but `FINDER`'s
+    `.DS_Store`, `inside_repo` with the repository's root, `not_empty`, `not_folder`; the
+    path's nearest existing folder decides for a new path; only `CAN_START` lets a fresh
+    start go on; `make` refuses each other state with its hint: LAD-5's `NOT_REPO_HINT` for
+    files, `lado start <root>` inside a repository), `author_problem` (git's `user.name`
+    and `user.email` where the folder would be, outside any repository the global and
+    system config; no author is a refusal with the `.env` hint in LADO's container, the
+    `git config --global` one elsewhere; LADO sets no author) and `make` (the checks again,
+    the name as `runtime.check_name` first, then the folders, `git init`, the branch of
+    `init.defaultBranch` else `main` by `symbolic-ref`, one empty commit `Start from
+    scratch` with no signing, no hooks (`core.hooksPath` to the null device and
+    `--no-verify`), no prompt and stdin closed; a failed step removes the folders it made,
+    or the `.git` of an empty folder it was given). A refusal is a `ScratchError` (a
+    `LadoError` with `kind` and a `runtime.Hint`); git missing is LAD-5's `no_git`.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's
     `EVENTS` maps its native events; `claude.py`: Claude Code, its role in `prompt.md` of
@@ -688,10 +712,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `lado stats`'; `usage_counts` the report's.
     From schema 28 a session keeps an optional title, `sessions.title` (`SESSIONS_TITLE`;
     NULL for none; `state.set_title` stores it as given): a label for the human over its
-    name, which stays its identifier. `runtime.set_title` is the one rule of what a title
-    is (trimmed, one line with no hidden character, `text.py`, at most
+    name, which stays its identifier. `runtime.check_title` (and `set_title` through it)
+    is the one rule of what a title is (trimmed, one line with no hidden character, `text.py`, at most
     `runtime.MAX_TITLE`, 80, characters; empty or equal to the name is none; a bad one is
-    refused, never cut), for `lado title` and `PUT /api/sessions/{name}/title` alike;
+    refused, never cut), for `lado title`, `PUT /api/sessions/{name}/title` and a new
+    session's `runtime.start_session(title=)` (a fresh start's; a resume refuses one) alike;
     `SessionInfo.title` carries it, through the existing journal of `sessions`, and
     `Limits.max_title` the limit.
     From schema 29 a session keeps whether the container's stop stopped it,
@@ -725,7 +750,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     sends nothing (`cli.cmd_stats` prints them).
   - `loop.py`: the session loop, `lado loop <session>` (see docs/design/agents.md).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
-    rules in [docs/design/ui.md](ui.md), section Server). `auth.py`: the token
+    rules in [docs/design/ui.md](ui.md), section Server). `auth.py`: the token (written
+    whole beside its file and moved over it; `Guard.renew` swaps it in the running server)
     and, for a connection that changes something, the Origin against the request's own
     Host (`Guard.check`), the only place that checks them; `app.py`: the FastAPI app, the API under `/api` (data only
     through `state.py`/`runtime.py`, never migrates the database), the bundle's files, and `index.html` for every other path
@@ -733,11 +759,13 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `GET /api/events` (Server-Sent Events): the `Source` of changes (now the `changes`
     journal, read only), one hub per server, `reset` and resume, the derived fields, and
     the end of every stream when the server shuts down (`Hub.close`, called first by
-    `app.Server`'s shutdown, as uvicorn waits for open responses before the lifespan's);
+    `app.Server`'s shutdown, as uvicorn waits for open responses before the lifespan's),
+    and of the open ones only at a new token (`Hub.end_streams`: the hub stays open);
     `models.py`: the API's models, one form for REST and the stream's items;
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
-    backpressure, close codes; the agents, messages, run events
+    backpressure, close codes, and the open sockets (`OPEN`), which a new token closes
+    (`close_all`); the agents, messages, run events
     (`/api/sessions/{name}/events`), gates (with the human's answer), the human's answers
     to one agent's open questions (`POST …/answers`, a tab of the UI's waiting card, all or
     none, through `runtime.answer_questions`; each reply and a gate's answer with the full
@@ -793,7 +821,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     control): `GET /api/folders` (`FolderInfo`: the core's `check_repo`, its `problem_kind` and `hint`, subfolders, the
     default name and whether a session has it, and `provider`, the core's
     `runtime.suggested_provider` with the server's `shutil.which`, a
-    `ProviderSuggestion` of name and reason or none), `/api/folders/recent`,
+    `ProviderSuggestion` of name and reason or none; `scratch` for a missing or not-repo
+    folder a fresh start may take), `GET /api/scratch-target` (`ScratchTarget`: `lado.scratch`'s
+    names, folder state and author, the name's state and a provider), `/api/folders/recent`,
     `/api/repos-folder` (in `app.py`; `ReposFolder`, `clone.repos_folder` or none: where
     an empty Where starts),
     `/api/kits` (the kit of each name the lookup takes, the same for every folder; a
@@ -834,10 +864,15 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `bug_report.BROWSER_LINE`'s shape is 422; it reads only, so not under
     `Guard.changes`);
     `run.py`: the lock, `server.json`, the host and port (`--host`, 127.0.0.1 by default;
-    `Listening`: the local link, the remote one and the warning for the address taken; in a
-    container, `container=update.in_container()`, no remote link and no warning but a
+    `Listening`: the local link, the remote one (the base of the link for another device,
+    or none with its `reason`) and the warning for the address taken, by one rule with
+    `LADO_PUBLIC_HOST` (`public_host`; an invalid one is in `problems`, printed at the
+    start) and, for `0.0.0.0`, `network_address` (a UDP route's source address, found at
+    each call); in a container, `container=update.in_container()`, `LADO_LISTEN` decides
+    (`listen`): the warning for a non-loopback one, else none, and unset or not IPv4 a
     `note`, `CONTAINER_NOTE`, as the port's publication decides who reaches it; `lado ui`
-    there prints the link and `OPEN_ON_HOST` and opens no browser),
+    there prints the link and `OPEN_ON_HOST` and opens no browser; `access`, what a server
+    answers on `GET /api/access`, which `lado ui` prints as `From another machine`),
     the background start and stop (`stop` returns once the server's process has ended, not
     only its lock: `_gone` reaps a child of its own), server.log's bound (`rotate` at a background start,
     `housekeeping`'s `bound_log` and `telemetry.kick` every `KICK_EVERY`). Only in a
@@ -901,11 +936,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   Node 22 and npm from the official `node` image, uv from its own, every base pinned by
   digest; LADO from the one wheel of the build context (`Dockerfile.dockerignore`, an
   allowlist: `dist/lado-*.whl`, `profile.sh`, `entrypoint.sh`, `ssh-agent-socket.sh`,
-  `ssh-agent-env.sh` and `ssh_known_hosts`; the image holds no one's key or login, only public host keys), the
+  `ssh-agent-env.sh`, `ssh_known_hosts` and `mise.toml`; the image holds no one's key or login, only public host keys), the
   four agent CLIs at
   `smoke_ci.py`'s `PINS`, one `ARG <NAME>_VERSION` and one layer each (`CLAUDE_VERSION`,
   `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet),
-  programs under `/opt`, the user `lado` (uid
+  programs under `/opt` (the `/opt` folders named only in the build's install lines), the
+  projects' toolchains (below), the user `lado` (uid
   1000 in the image) with its home a volume; `lado server --host 0.0.0.0 --port
   $LADO_PORT` (8765) under tini and `entrypoint.sh` (`/usr/local/bin/lado-entrypoint`).
   The human's projects are mounted at the host's own path and named by `LADO_REPOS`
@@ -937,8 +973,24 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   values (`tests/test_docker.py`): in `ENV` for the server and `docker exec`, and in
   `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
   comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
-  `DISABLE_AUTOUPDATER`, `LANG`, `LADO_ENV_DIR=/run/secrets`; `LADO_REPOS` is the
-  entrypoint's `lado-repos.sh`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The agents'
+  `DISABLE_AUTOUPDATER`, `LANG`, `LADO_ENV_DIR=/run/secrets`, `NPM_CONFIG_PREFIX`;
+  `LADO_REPOS` is the entrypoint's `lado-repos.sh`, read before `lado.sh` by name, so
+  `profile.sh` sets `MISE_TRUSTED_CONFIG_PATHS` from it, in the profile only, as the ENV
+  cannot follow `-e LADO_REPOS`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The projects' toolchains:
+  `make`, `gcc`, `g++` and `libc6-dev` in the first apt layer, and mise at
+  `/usr/local/bin/mise`, root's (copied before `USER lado`, so `mise self-update` cannot
+  replace it), from `jdxcode/mise` pinned by digest, which Dependabot's `docker` ecosystem
+  moves with the other bases. Its system config `/etc/mise/config.toml` is
+  `docker/mise.toml`, the image's (a new image replaces it, a home volume needs no change):
+  the version files of Go, Java, Python and Ruby besides `.tool-versions` and `mise.toml`,
+  not Node's, and no update warning. Its data, config and cache stay at mise's defaults on
+  the home volume (`~/.local/share/mise`, `~/.config/mise`, `~/.cache/mise`). `PATH` is the
+  image's programs, the system's, then `~/.local/bin` and mise's shims: no shim shadows the
+  image's Node 22, which Kilo and Codex (`env node`) and kits' MCP servers (`npx`) run on.
+  An agent's `npm install -g` (`NPM_CONFIG_PREFIX=$HOME/.local`) and `uv tool install`
+  (uv's defaults) write under `~/.local`, at any uid the entrypoint gave `lado`; the runtime
+  `ENV` points no install at `/opt`, which stays uid 1000's. What the agents are told:
+  docs/design/agents.md (the container paragraph). The agents'
   variables are files at `/run/secrets` (`LADO_ENV_DIR`, docs/design/agents.md), never compose's
   `environment:` or `LADO_AGENT_ENV=inherit`, so no value is in `docker inspect`; compose
   binds `${LADO_SECRETS:-/dev/null}` there read-only with `create_host_path: false`: by

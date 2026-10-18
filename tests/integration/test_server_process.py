@@ -7,6 +7,7 @@ import socket
 import stat
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -110,10 +111,10 @@ def test_a_server_on_every_address_warns_and_gives_a_link_for_other_machines():
     assert info["host"] == "0.0.0.0"
     assert info["url"] == f"http://127.0.0.1:{info['port']}"
     token = auth.token()
+    address = server_run.network_address() or socket.gethostname()
     assert first.stdout.splitlines() == [
         f"{info['url']}/?token={token}",
-        f"From another machine: http://{socket.gethostname()}:{info['port']}/?token={token} "
-        "(or this host's address)",
+        f"From another machine: http://{address}:{info['port']}/?token={token}",
     ]
     assert "open to other machines" in first.stderr
     assert "listens on 0.0.0.0" in (state.home() / "server.log").read_text()
@@ -123,6 +124,72 @@ def test_a_server_on_every_address_warns_and_gives_a_link_for_other_machines():
     stopped = lado_cli("server", "stop")
     assert stopped.returncode == 0, stopped.stderr
     assert gone(info["pid"])
+
+
+def test_ui_prints_the_servers_link_for_another_device_not_its_own(monkeypatch):
+    """The server's environment decides the link, not that of the shell running lado ui."""
+    monkeypatch.setenv("LADO_PUBLIC_HOST", "server-side.local")
+    info = server_run.wait_ready(server_run.start_background("0.0.0.0", 0))
+    monkeypatch.setenv("LADO_PUBLIC_HOST", "shell side")  # not a host: lado ui would warn
+    shown = lado_cli("ui", "--no-open")
+    assert shown.returncode == 0, shown.stderr
+    token = auth.token()
+    assert shown.stdout.splitlines() == [
+        f"{info['url']}/?token={token}",
+        f"From another machine: http://server-side.local:{info['port']}/?token={token}",
+    ]
+    assert "LADO_PUBLIC_HOST" not in shown.stderr  # warned at the server's start only
+    lado_cli("server", "stop")
+
+
+def test_a_public_host_that_is_not_a_host_is_warned_at_the_start(monkeypatch):
+    monkeypatch.setenv("LADO_PUBLIC_HOST", "http://kaos.local:8765")
+    first = lado_cli("ui", "--no-open", "--host", "0.0.0.0", "--port", "0")
+    assert first.returncode == 0, first.stderr
+    info = server_run.running()
+    assert (
+        "lado: warning: LADO_PUBLIC_HOST is not a host name or address: http://kaos.local:8765; "
+        "the link for other devices does not use it"
+    ) in (state.home() / "server.log").read_text()
+    assert "From another machine: http://kaos.local" not in first.stdout
+    lado_cli("server", "stop")
+    assert gone(info["pid"])
+
+
+def test_a_new_token_ends_an_open_event_stream_and_the_old_cookie():
+    info = server_run.wait_ready(server_run.start_background(None, 0))
+    old = auth.token()
+    cookie = {"Cookie": f"{auth.cookie_name(info['port'])}={old}"}
+    stream = urllib.request.urlopen(
+        urllib.request.Request(f"{info['url']}/api/events", headers=cookie), timeout=10
+    )
+    ended = threading.Event()
+
+    def read() -> None:
+        while stream.readline():
+            pass
+        ended.set()
+
+    threading.Thread(target=read, daemon=True).start()
+    ask = urllib.request.Request(
+        f"{info['url']}/api/access/new-token",
+        method="POST",
+        headers={**cookie, "Origin": info["url"]},
+    )
+    with urllib.request.urlopen(ask, timeout=10) as answer:
+        said = json.load(answer)
+        set_cookie = answer.headers["set-cookie"]
+    new = auth.token()
+    assert new != old and said["reason"] == "loopback"
+    assert f"{auth.cookie_name(info['port'])}={new}" in set_cookie
+    assert ended.wait(5), "the open event stream did not end"
+    with pytest.raises(urllib.error.HTTPError) as refused:
+        urllib.request.urlopen(
+            urllib.request.Request(f"{info['url']}/api/sessions", headers=cookie), timeout=10
+        )
+    assert refused.value.code == 401
+    stream.close()
+    lado_cli("server", "stop")
 
 
 def test_a_server_in_a_container_notes_the_publication_and_no_other_machines(monkeypatch):

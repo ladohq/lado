@@ -4884,6 +4884,40 @@ def test_a_read_only_worker_is_stored_so_and_its_cli_takes_its_edit_tools(
     assert state.get_agent("s", "supervisor").read_only is False
 
 
+def test_in_a_container_every_agent_is_told_of_mise_and_who_sets_a_default(
+    repo, fake_tmux, quiet_kit, monkeypatch
+):
+    """The common paragraph for every agent, a read-only one too; the sentence on a default
+    version for the whole container by whether the agent is the session's supervisor."""
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    runtime.start_session(str(repo), "s", None, kit_names=["quiet"], provider="claude")
+    supervisor = agent_helpers.claude_prompt(fake_tmux[0][-1])
+    runtime.spawn_worker("s", "build", role="dev")
+    worker = agent_helpers.claude_prompt(fake_tmux[-1][-1])
+    runtime.spawn_worker("s", "review", role="reviewer")
+    reviewer = agent_helpers.claude_prompt(fake_tmux[-1][-1])
+    run = state.Run("s", "ship/x", "ship", "{}", {}, "Add x", "build", str(repo), "main")
+    runtime.spawn_worker("s", "build", role="dev", run=run, has_step=True)
+    run_worker = agent_helpers.claude_prompt(fake_tmux[-1][-1])
+    for prompt in (supervisor, worker, reviewer, run_worker):
+        assert runtime.CONTAINER_INSTRUCTIONS in prompt
+        assert prompt.index(runtime.CONTAINER_INSTRUCTIONS) < prompt.index(runtime.MESSAGING)
+    assert runtime.CONTAINER_SUPERVISOR in supervisor
+    assert runtime.CONTAINER_WORKER not in supervisor
+    for prompt in (worker, reviewer, run_worker):
+        assert runtime.CONTAINER_WORKER in prompt
+        assert runtime.CONTAINER_SUPERVISOR not in prompt
+    assert "Only you set a tool's default version" in runtime.CONTAINER_SUPERVISOR
+    assert "ask the supervisor" in runtime.CONTAINER_WORKER
+
+
+def test_outside_a_container_no_agent_is_told_of_mise(repo, fake_tmux, quiet_kit):
+    runtime.start_session(str(repo), "s", None, kit_names=["quiet"], provider="claude")
+    runtime.spawn_worker("s", "build", role="dev")
+    for call in (fake_tmux[0], fake_tmux[-1]):
+        assert "mise" not in agent_helpers.claude_prompt(call[-1])
+
+
 def test_a_read_only_worker_on_a_cli_that_cannot_take_edits_is_refused_before_its_worktree(
     repo, fake_tmux, quiet_kit, monkeypatch
 ):
@@ -5387,3 +5421,35 @@ def test_set_title_works_on_a_stopped_session():
     state.stop_session("s")
     assert runtime.set_title("s", "Review") == "Review"
     assert state.get_session("s").title == "Review"
+
+
+def test_a_fresh_starts_title(repo, fake_tmux):
+    runtime.start_session(str(repo), "sait-kofeini", None, "claude", title="  Сайт кофейни ")
+    assert state.get_session("sait-kofeini").title == "Сайт кофейни"
+
+
+def test_a_title_equal_to_the_name_is_none(repo, fake_tmux):
+    runtime.start_session(str(repo), "shop", None, "claude", title="shop")
+    assert state.get_session("shop").title is None
+
+
+def test_a_bad_title_refuses_before_anything_starts(repo, fake_tmux):
+    with pytest.raises(runtime.LadoError, match="^a title is one line of visible text"):
+        runtime.start_session(str(repo), "shop", None, "claude", title="a\nb")
+    assert fake_tmux == []
+    assert state.get_session("shop") is None
+
+
+def test_a_resume_with_a_title_is_refused(repo, fake_tmux):
+    runtime.start_session(str(repo), "shop", None, "claude")
+    state.stop_session("shop")
+    with pytest.raises(runtime.LadoError, match="^a title is set with lado title on a resume$"):
+        runtime.start_session(str(repo), "shop", None, "claude", title="Shop")
+    assert state.get_session("shop").stopped_at is not None
+
+
+def test_check_title_is_the_rule_of_set_title():
+    assert runtime.check_title("  Ревью ", "s") == "Ревью"
+    assert runtime.check_title("s", "s") is None
+    with pytest.raises(runtime.LadoError, match="^a title is at most 80 characters$"):
+        runtime.check_title("x" * 81, "s")

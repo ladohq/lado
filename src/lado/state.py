@@ -1327,8 +1327,9 @@ def add_session(session: Session) -> bool:
     """False, with nothing changed, when a session of that name exists already."""
     with connect() as db:
         added = db.execute(
-            "INSERT INTO sessions (name, repo, permission_mode, provider, kits, switched_off)"
-            " VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (name) DO NOTHING",
+            "INSERT INTO sessions"
+            " (name, repo, permission_mode, provider, kits, switched_off, title)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (name) DO NOTHING",
             (
                 session.name,
                 session.repo,
@@ -1336,6 +1337,7 @@ def add_session(session: Session) -> bool:
                 session.provider,
                 json.dumps(session.kits),
                 json.dumps(session.without),
+                session.title,
             ),
         ).rowcount
     return added == 1

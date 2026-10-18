@@ -113,17 +113,32 @@ the installer as `(<installer>, in a container)`.
 
 ### Requirement: The UI server in a container names the port's publication, not other machines
 
-In a container, a UI server listening on a non-loopback address SHALL NOT print the
-warning that it is open to other machines; `lado server` and `lado ui` SHALL instead print
-on stderr the one line `lado: note: the LADO server runs in a container and listens on
-<host>:<port> inside it; who reaches it depends on how the container publishes the port
-(127.0.0.1:<port>:<port>: this computer only). Published to other machines, the token
-travels unencrypted (plain HTTP).` A server on a loopback address SHALL print neither, as
-outside a container. Outside a container the warning SHALL stay as it is.
+In a container, a UI server listening on a non-loopback address SHALL decide its start
+line by `LADO_LISTEN`, the host address compose publishes the port on:
+- `LADO_LISTEN` a non-loopback IPv4 address (`0.0.0.0` too): the warning that the server
+  is open to other machines, as outside a container, naming `LADO_LISTEN` and the port;
+- `LADO_LISTEN` a loopback address: no line;
+- `LADO_LISTEN` unset or not an IPv4 address: on stderr the one line `lado: note: the LADO
+  server runs in a container and listens on <host>:<port> inside it; who reaches it
+  depends on how the container publishes the port (127.0.0.1:<port>:<port>: this computer
+  only). Published to other machines, the token travels unencrypted (plain HTTP).`
+`lado server` and `lado ui` SHALL print the same line. A server on a loopback address
+SHALL print neither, as outside a container. Outside a container the warning SHALL stay as
+it is.
 
 #### Scenario: The image's server starts
-- **WHEN** `lado server --host 0.0.0.0 --port 8765` starts with `LADO_CONTAINER=1`
+- **WHEN** `lado server --host 0.0.0.0 --port 8765` starts with `LADO_CONTAINER=1` and no
+  `LADO_LISTEN`
 - **THEN** its output has the note naming `0.0.0.0:8765` and no `open to other machines`
+
+#### Scenario: Published to the network by compose
+- **WHEN** the same server starts with `LADO_LISTEN=0.0.0.0`
+- **THEN** its output has the warning that it is open to other machines, naming
+  `0.0.0.0:8765`, and no note
+
+#### Scenario: Published on this computer only by compose
+- **WHEN** the same server starts with `LADO_LISTEN=127.0.0.1`
+- **THEN** its output has neither the note nor the warning
 
 #### Scenario: The same server outside a container
 - **WHEN** `lado server --host 0.0.0.0` starts without `LADO_CONTAINER`
@@ -132,10 +147,12 @@ outside a container. Outside a container the warning SHALL stay as it is.
 ### Requirement: lado ui in a container prints the link for the host's browser
 
 In a container `lado ui` SHALL print the server's local link
-(`http://127.0.0.1:<port>/?token=<token>` for a server on `0.0.0.0`) and SHALL NOT print a
-`From another machine` line nor try to open a browser. With `--no-open` its standard
-output SHALL be that one line; without it, the link followed by the line `Open it in your
-browser on the host.`
+(`http://127.0.0.1:<port>/?token=<token>` for a server on `0.0.0.0`) and SHALL NOT try to
+open a browser. With `--no-open` its standard output SHALL be that one line; without it,
+the link followed by the line `Open it in your browser on the host.` A `From another
+machine` line SHALL follow only when the link for another device exists (share-access,
+"The link to another device follows one rule"): on standard output without `--no-open`,
+on stderr with it.
 
 #### Scenario: The launcher asks for the link
 - **WHEN** `docker exec lado lado ui --no-open` runs against a server on `0.0.0.0:8765` in
@@ -144,15 +161,15 @@ browser on the host.`
   has the note
 
 #### Scenario: lado ui without --no-open in a container
-- **WHEN** the human runs `lado ui` in a container
+- **WHEN** the human runs `lado ui` in a container without `LADO_LISTEN`
 - **THEN** no browser is opened, and it prints the link and `Open it in your browser on
-  the host.`
+  the host.`, and no `From another machine` line
 
 #### Scenario: Outside a container
 - **WHEN** `lado ui --no-open` runs without `LADO_CONTAINER` against a server on
   `0.0.0.0`
-- **THEN** it prints the local link, then `From another machine: http://<hostname>:<port>/?token=<token> (or this host's address)`,
-  and the warning, as before
+- **THEN** it prints the local link, then `From another machine: http://<address>:<port>/?token=<token>`
+  with the address of share-access's rule, and the warning
 
 ### Requirement: LADO's image starts the UI server with one docker run
 
@@ -206,11 +223,14 @@ build the web UI's bundle and the wheel from the working copy and the image from
 
 The image SHALL set, in `/etc/profile.d/`, which every login shell reads, the variables
 the container's environment sets for the agents' sake: `LADO_CONTAINER=1`, the programs'
-folders first on `PATH`, `CLAUDE_CONFIG_DIR=$HOME/.claude` and Claude Code's update check
-off in `/etc/profile.d/lado.sh`, and the container's own `LADO_REPOS` (the image's
-`/projects`, or the value given with `-e`) in `/etc/profile.d/lado-repos.sh`, written at
-the container's first start; an agent's environment comes from the user's login shell
-(`agent_env.resolve`), not from the container's environment.
+folders first on `PATH`, then the system's, then `~/.local/bin` and mise's shims folder
+(`~/.local/share/mise/shims`), npm's global prefix `$HOME/.local`,
+`CLAUDE_CONFIG_DIR=$HOME/.claude` and Claude Code's update check off in
+`/etc/profile.d/lado.sh`, mise's trusted folder set to the container's `LADO_REPOS`, and
+the container's own `LADO_REPOS` (the image's `/projects`, or the value given with `-e`)
+in `/etc/profile.d/lado-repos.sh`, written at the container's first start; an agent's
+environment comes from the user's login shell (`agent_env.resolve`), not from the
+container's environment.
 
 #### Scenario: An agent's lado doctor
 
@@ -224,6 +244,13 @@ the container's first start; an agent's environment comes from the user's login 
   starts in it
 - **THEN** the agent's process has `LADO_REPOS=/home/runner/projects`, not `/projects`
 
+#### Scenario: The image's Node stays first
+
+- **WHEN** Node 20 is installed through mise as the container's default
+  (`mise use -g node@20`) and a login shell in a project runs `node --version`
+- **THEN** it answers with Node 22, the image's, and `mise exec node@20 -- node --version`
+  answers with Node 20
+
 ### Requirement: The compose file publishes one port number
 
 `docker/compose.yaml` SHALL run LADO's published image of the version `LADO_VERSION` names,
@@ -231,13 +258,19 @@ the container's first start; an agent's environment comes from the user's login 
 the tests'); without either compose SHALL refuse and name `LADO_VERSION`, and it SHALL
 never default to `latest`. It SHALL use one variable, `LADO_PORT` (8765 by default), as
 both the server's port in the container and the published one,
-`127.0.0.1:${LADO_PORT}:${LADO_PORT}`, so the host's number and the container's are always
-the same. It SHALL mount `LADO_PROJECTS`, which is required, at that same path inside the
-container and set `LADO_REPOS` to it, and mount the home volume at `/home/lado`, and SHALL
-name no container. Its header SHALL say to keep these variables in `.env` next to the file,
-and that a second LADO is a folder of its own with a copy of the file and its own `.env`
-(`COMPOSE_PROJECT_NAME`, `LADO_PORT`, `LADO_VERSION`, `LADO_PROJECTS`), so it runs beside
-the first with a container, a volume and a version of its own.
+`${LADO_LISTEN:-127.0.0.1}:${LADO_PORT}:${LADO_PORT}`, so the host's number and the
+container's are always the same; `LADO_LISTEN` is the host address the port is published
+on, the host's loopback unless `.env` names another. It SHALL give the container
+`LADO_LISTEN` (`${LADO_LISTEN:-127.0.0.1}`) and `LADO_PUBLIC_HOST`
+(`${LADO_PUBLIC_HOST:-}`), the name other devices reach the host by. It SHALL mount
+`LADO_PROJECTS`, which is required, at that same path inside the container and set
+`LADO_REPOS` to it, and mount the home volume at `/home/lado`, and SHALL name no
+container. Its header SHALL say to keep these variables in `.env` next to the file, that
+`LADO_LISTEN=0.0.0.0` opens LADO to every device of the network with the token
+travelling unencrypted, and that a second LADO is a folder of its own with a copy of the
+file and its own `.env` (`COMPOSE_PROJECT_NAME`, `LADO_PORT`, `LADO_VERSION`,
+`LADO_PROJECTS`), so it runs beside the first with a container, a volume and a version of
+its own.
 
 #### Scenario: Two LADOs on one host
 - **WHEN** the human runs `docker compose up -d` in a folder whose `.env` has
@@ -263,6 +296,16 @@ the first with a container, a volume and a version of its own.
 - **WHEN** the human runs `LADO_PROJECTS=/Users/me/projects docker compose up -d`
 - **THEN** the container sees the projects at `/Users/me/projects` and `lado doctor` in it
   prints `[ok  ] Repositories folder: /Users/me/projects (LADO_REPOS)`
+
+#### Scenario: Published to the network
+- **WHEN** `.env` has `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST=kaos-mbp.local`
+- **THEN** `docker compose config` publishes `0.0.0.0:8765:8765` and gives the container
+  `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST=kaos-mbp.local`
+
+#### Scenario: Published on this computer by default
+- **WHEN** `.env` has neither `LADO_LISTEN` nor `LADO_PUBLIC_HOST`
+- **THEN** `docker compose config` publishes `127.0.0.1:8765:8765` and gives the container
+  `LADO_LISTEN=127.0.0.1`
 
 ### Requirement: A worker's worktree made in the container works on the host
 
@@ -895,3 +938,108 @@ LADO's folder, container or volume.
 - **WHEN** `tests/test_docker.py` reads README's `## Update`, `### Docker`
 - **THEN** it downloads `releases/download/v<version>/compose.yaml` before `docker compose
   up -d`
+
+### Requirement: The image carries mise with its data on the home volume
+
+The image SHALL carry mise at `/usr/local/bin/mise`, owned by root, copied from mise's
+official image pinned by digest, and SHALL keep mise's data, config and cache at its
+defaults under `/home/lado`, on the home volume. Its system config
+`/etc/mise/config.toml`, from `docker/mise.toml`, SHALL enable the version files of Go,
+Java, Python and Ruby besides `.tool-versions` and `mise.toml`, and no other tool's. A
+project's `mise.toml` under `LADO_REPOS` SHALL be trusted without `mise trust`. The user
+`lado` SHALL install a tool through mise without root, and the tool SHALL still run after
+the container is made again on the same home volume.
+
+#### Scenario: A project's Go from its .tool-versions
+
+- **WHEN** a project under `LADO_REPOS` holds `.tool-versions` with `go <version>` and a
+  login shell as `lado` runs `mise install` and `go build` there
+- **THEN** both succeed without root, and the Go is under `/home/lado/.local/share/mise`
+
+#### Scenario: The tool survives a recreation
+
+- **WHEN** that container is removed and a new one of the image starts on the same home
+  volume
+- **THEN** `go version` in the project's folder answers with the same version, with no
+  install
+
+#### Scenario: Two agents install the same version at once
+
+- **WHEN** two login shells run `mise install go@<version>` at the same time
+- **THEN** both succeed and that version is installed once
+
+#### Scenario: A project's mise.toml needs no trust
+
+- **WHEN** a project under `LADO_REPOS` holds a `mise.toml` naming a tool and a login
+  shell runs `mise install` there
+- **THEN** mise installs it and does not refuse the file as not trusted
+
+#### Scenario: An unpinned mise
+
+- **WHEN** `docker/Dockerfile` takes mise from an image named without `@sha256:`
+- **THEN** the unit tests fail and name its line
+
+### Requirement: The image carries the build tools
+
+The image SHALL carry `make`, `gcc`, `g++` and `libc6-dev` from Debian, on every login
+shell's `PATH`.
+
+#### Scenario: C and C++ build
+
+- **WHEN** a login shell as `lado` runs a Makefile that compiles a C and a C++ file
+- **THEN** both programs build and run
+
+### Requirement: The agents' global installs go to the home volume
+
+An agent's `npm install -g` and `uv tool install` SHALL write under `/home/lado/.local`,
+on the home volume, whatever uid the entrypoint gave `lado`, and the command they install
+SHALL be on the `PATH` of the next login shell. The image's `ENV`, which the server and
+`docker exec` get, SHALL point no install at `/opt`; the baked-in agent CLIs and LADO stay
+in `/opt`.
+
+#### Scenario: Installs at another uid
+
+- **WHEN** the projects folder belongs to uid 1001 (GitHub's runner) and an agent's login
+  shell runs `npm install -g` of a package and `uv tool install` of another, both local
+- **THEN** both succeed, their files are under `/home/lado/.local`, and a new login shell
+  runs both commands
+
+#### Scenario: Installs on a home volume of 0.40.0
+
+- **WHEN** the image starts on a home volume a container of LADO 0.40.0 used, and an
+  agent's login shell runs the same installs
+- **THEN** they succeed as on a new volume, and the volume's sessions are kept
+
+#### Scenario: The image's ENV names no /opt for installs
+
+- **WHEN** `docker/Dockerfile`'s runtime `ENV` sets `NPM_CONFIG_PREFIX`, `UV_TOOL_DIR`,
+  `UV_TOOL_BIN_DIR` or `UV_PYTHON_INSTALL_DIR` to a folder under `/opt`
+- **THEN** the unit tests fail and name the variable
+
+### Requirement: The agents in a container are told to install a missing tool with mise
+
+When LADO runs in its container (`LADO_CONTAINER`), LADO's instructions SHALL give every
+agent, on every provider, a paragraph saying that mise is there: a tool the project needs
+and lacks is installed with mise, by the project's version files when they name it, and
+otherwise by tool and version and run with `mise exec`; no version file or other file is
+added to the project unless the human asks; apt packages and databases cannot be
+installed. The supervisor's paragraph SHALL say that only it sets a tool's container-wide
+default version (`mise use -g`); a worker's SHALL say to ask the supervisor for one.
+Outside a container the paragraph SHALL be absent.
+
+#### Scenario: A worker in a container
+
+- **WHEN** LADO runs with `LADO_CONTAINER=1` and starts a worker
+- **THEN** the worker's instructions hold the mise paragraph with the sentence to ask the
+  supervisor for a default version, and not the supervisor's sentence
+
+#### Scenario: The supervisor in a container
+
+- **WHEN** LADO runs with `LADO_CONTAINER=1` and starts a session
+- **THEN** the supervisor's instructions hold the mise paragraph with the sentence that
+  only it sets a default version
+
+#### Scenario: Outside a container
+
+- **WHEN** LADO runs without `LADO_CONTAINER` and starts a session with a worker
+- **THEN** no agent's instructions name mise

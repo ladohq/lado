@@ -8,6 +8,7 @@ import importlib.util
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -84,11 +85,11 @@ def test_no_other_npm_package_is_installed():
 
 def unpinned(text: str) -> list[str]:
     """Each FROM or COPY --from of `text` that names an image without a digest (a stage of
-    the same file, `uv` or `node`, is no image)."""
+    the same file, `uv`, `node` or `mise`, is no image)."""
     bad = []
     for line in lines(text):
         m = re.match(r"(?:FROM\s+|COPY\s+(?:--\S+\s+)*--from=)(\S+)", line)
-        if m and m.group(1) not in ("uv", "node") and "@sha256:" not in m.group(1):
+        if m and m.group(1) not in ("uv", "node", "mise") and "@sha256:" not in m.group(1):
             bad.append(line)
     return bad
 
@@ -101,6 +102,44 @@ def test_an_unpinned_base_is_named():
     assert unpinned("FROM debian:bookworm-slim\n") == ["FROM debian:bookworm-slim"]
     assert unpinned("COPY --from=node:22-bookworm-slim /x /x\n") != []
     assert unpinned("COPY --chown=a:a --from=ghcr.io/x/y:1 /x /x\n") != []
+    assert unpinned("FROM jdxcode/mise:2026.10.7 AS mise\n") == [
+        "FROM jdxcode/mise:2026.10.7 AS mise"
+    ]
+    assert unpinned("COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise\n") == []
+
+
+def test_mise_comes_from_its_official_image_root_owned():
+    """Copied before `USER lado`, so the binary is root's and `mise self-update` cannot
+    replace it: the version is the pin's, which Dependabot moves with the other bases."""
+    [stage] = [line for line in lines() if line.startswith("FROM jdxcode/mise:")]
+    assert re.fullmatch(r"FROM jdxcode/mise:\d{4}\.\d+\.\d+@sha256:[0-9a-f]{64} AS mise", stage)
+    copy = "COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise"
+    assert copy in lines()
+    assert lines().index(copy) < lines().index("USER lado")
+
+
+def test_the_image_carries_the_build_tools():
+    [install] = [line for line in lines() if "apt-get install" in line and " tmux " in line]
+    assert {"make", "gcc", "g++", "libc6-dev"} <= set(install.split())
+
+
+MISE_TOML = DOCKER / "mise.toml"
+
+
+def test_mise_reads_the_version_files_of_go_java_python_and_ruby_alone():
+    """Not Node's (.nvmrc, .node-version): the image's Node 22 runs the agents and kits'
+    MCP servers; a project's other Node goes through `mise exec`."""
+    if sys.version_info >= (3, 11):
+        import tomllib
+    else:
+        import tomli as tomllib
+    settings = tomllib.loads(MISE_TOML.read_text())["settings"]
+    assert settings["idiomatic_version_file_enable_tools"] == ["go", "java", "python", "ruby"]
+    # go.mod's `go` line is a minimum, deprecated in mise and read with a warning on every call.
+    assert settings["idiomatic_version_file_ignore_minimum_versions"] is True
+    # The binary is the pin's: a newer release is the image's update, not the agents'.
+    assert settings["disable_update_warning"] is True
+    assert "COPY docker/mise.toml /etc/mise/config.toml" in lines()
 
 
 def test_no_piped_install_script():
@@ -128,12 +167,22 @@ def test_profile_sets_what_env_sets_for_the_agents():
         "DISABLE_AUTOUPDATER",
         "LANG",
         "LADO_ENV_DIR",
+        "NPM_CONFIG_PREFIX",
+        "MISE_TRUSTED_CONFIG_PATHS",
     }
     for key, value in exported.items():
         value = value.replace("$HOME", "/home/lado")
         if key == "PATH":
-            assert value == "/opt/uv/bin:/opt/agents/bin:$PATH"
-            assert image["PATH"].startswith("/opt/uv/bin:/opt/agents/bin:")
+            # The image's programs first, so no shim shadows its Node; the agents' installs
+            # and mise's shims last.
+            mine, after = "/opt/uv/bin:/opt/agents/bin:", ":" + ":".join(AGENTS_PATH)
+            assert value == f"{mine}$PATH{after}"
+            assert image["PATH"].startswith(mine) and image["PATH"].endswith(after)
+            assert "/home/lado" not in image["PATH"][len(mine) : -len(after)]
+        elif key == "MISE_TRUSTED_CONFIG_PATHS":
+            # The container's own LADO_REPOS, which the ENV cannot follow.
+            assert value == "$LADO_REPOS"
+            assert key not in image
         else:
             assert image[key] == value, key
     assert image["LADO_CONTAINER"] == "1"
@@ -142,6 +191,31 @@ def test_profile_sets_what_env_sets_for_the_agents():
     assert image["LADO_REPOS"] == "/projects"
     assert image["LADO_PORT"] == "8765"
     assert image["SHELL"] == "/bin/bash"
+
+
+AGENTS_PATH = ["/home/lado/.local/bin", "/home/lado/.local/share/mise/shims"]
+INSTALL_DIRS = ["NPM_CONFIG_PREFIX", "UV_TOOL_DIR", "UV_TOOL_BIN_DIR", "UV_PYTHON_INSTALL_DIR"]
+
+
+def opt_installs(found: dict[str, str]) -> list[str]:
+    """The variables of `found` that point an install at a folder under /opt."""
+    return [key for key in INSTALL_DIRS if found.get(key, "").startswith("/opt")]
+
+
+def test_no_install_goes_to_opt_at_run_time():
+    """/opt stays uid 1000's after the entrypoint's uid change and a new image replaces it:
+    the agents' and `docker exec`'s installs go to the home volume, ~/.local."""
+    assert opt_installs(env()) == []
+    assert env()["NPM_CONFIG_PREFIX"] == "/home/lado/.local"
+    assert opt_installs({"UV_TOOL_DIR": "/opt/uv/tools"}) == ["UV_TOOL_DIR"]
+
+
+def test_the_build_installs_lado_and_the_clis_under_opt():
+    [lado] = [" ".join(line.split()) for line in lines() if "uv tool install" in line]
+    assert lado.startswith(
+        "RUN UV_TOOL_DIR=/opt/uv/tools UV_TOOL_BIN_DIR=/opt/uv/bin "
+        "UV_PYTHON_INSTALL_DIR=/opt/uv/python uv tool install "
+    )
 
 
 def test_the_image_reads_the_agents_variables_from_the_secrets_folder():
@@ -180,6 +254,7 @@ def test_the_build_context_is_an_allowlist():
         "!docker/ssh-agent-socket.sh",
         "!docker/ssh_known_hosts",
         "!docker/ssh-agent-env.sh",
+        "!docker/mise.toml",
     ]
 
 
@@ -452,14 +527,31 @@ def test_compose_passes_the_git_identity_and_no_secret(compose):
     environment = compose["services"]["lado"]["environment"]
     assert environment["LADO_GIT_NAME"] == "${LADO_GIT_NAME:-}"
     assert environment["LADO_GIT_EMAIL"] == "${LADO_GIT_EMAIL:-}"
-    assert set(environment) == {"LADO_PORT", "LADO_REPOS", "LADO_GIT_NAME", "LADO_GIT_EMAIL"}
+    assert set(environment) == {
+        "LADO_PORT",
+        "LADO_REPOS",
+        "LADO_GIT_NAME",
+        "LADO_GIT_EMAIL",
+        "LADO_LISTEN",
+        "LADO_PUBLIC_HOST",
+    }
     assert "env_file" not in compose["services"]["lado"]
 
 
-def test_compose_publishes_one_port_number_on_loopback(compose):
+def test_compose_publishes_one_port_number_on_lado_listen(compose):
+    """On loopback unless .env says otherwise; the container learns where from LADO_LISTEN,
+    and the name for the link from LADO_PUBLIC_HOST (share-access)."""
     lado = compose["services"]["lado"]
-    assert lado["ports"] == ["127.0.0.1:${LADO_PORT:-8765}:${LADO_PORT:-8765}"]
+    assert lado["ports"] == ["${LADO_LISTEN:-127.0.0.1}:${LADO_PORT:-8765}:${LADO_PORT:-8765}"]
     assert lado["environment"]["LADO_PORT"] == "${LADO_PORT:-8765}"
+    assert lado["environment"]["LADO_LISTEN"] == "${LADO_LISTEN:-127.0.0.1}"
+    assert lado["environment"]["LADO_PUBLIC_HOST"] == "${LADO_PUBLIC_HOST:-}"
+
+
+def test_the_compose_header_names_the_settings_for_other_devices():
+    text = " ".join(header_text().split())
+    assert "LADO_LISTEN=0.0.0.0" in text and "LADO_PUBLIC_HOST=" in text
+    assert "every device of your network" in text and "unencrypted" in text
 
 
 def test_compose_names_no_container_and_needs_the_projects_folder(compose):
@@ -807,8 +899,25 @@ def test_the_guides_env_names_every_variable_compose_reads():
     envs = blocks(guide_part("Get compose.yaml and write .env"), "ini")
     assert len(envs) == 2  # a Mac's and Linux's
     for env_file in envs:
-        named = {line.split("=")[0] for line in env_file.splitlines() if "=" in line}
+        # An optional setting may be there commented out: `# LADO_LISTEN=0.0.0.0`.
+        lines = (line.removeprefix("# ") for line in env_file.splitlines())
+        named = {line.split("=")[0] for line in lines if re.match(r"[A-Z_]+=", line)}
         assert named == read, env_file
+
+
+def test_the_guide_says_how_to_open_lado_on_a_phone():
+    phone = " ".join(guide_part("Open LADO on your phone").split())
+    for said in (
+        "LADO_LISTEN=0.0.0.0",
+        "LADO_PUBLIC_HOST=",
+        "LADO_LISTEN=192.168.1.23",
+        "docker compose up -d",
+        "Open on another device",
+        "unencrypted",
+        "every network",
+        "New link",
+    ):
+        assert said in phone, said
 
 
 def test_the_guide_removes_only_its_own_container_and_volume():

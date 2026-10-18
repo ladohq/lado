@@ -91,6 +91,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Access Info
+         * @description The link that opens LADO on another device, or why there is none (share-access).
+         *     No CORS: a page of another origin cannot read it.
+         */
+        get: operations["access_info_api_access_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/access/new-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * New Token
+         * @description A new token now: every other browser is logged out (its open streams and terminals
+         *     end, and their reconnect is refused), this one gets the new cookie.
+         */
+        post: operations["new_token_api_access_new_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/system": {
         parameters: {
             query?: never;
@@ -193,9 +235,10 @@ export interface paths {
         put?: never;
         /**
          * Start
-         * @description Start a new session, as `lado start` does, without attaching to it. A name a
-         *     session has is 409 with that session's status and folder; on an empty LADO_HOME
-         *     the core makes lado.db.
+         * @description Start a new session, as `lado start` does, without attaching to it; for `where`
+         *     of kind "scratch" the folder is made a repository first, as `lado start --new`
+         *     does. A name a session has is 409 with that session's status and folder; on an
+         *     empty LADO_HOME the core makes lado.db.
          */
         post: operations["start_api_sessions_post"];
         delete?: never;
@@ -217,6 +260,28 @@ export interface paths {
          *     there (the core's reason when not), its subfolders and the session name it gives.
          */
         get: operations["folder_api_folders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scratch-target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scratch Target
+         * @description A fresh start of the name `text` (docs/design/ui.md, Launch and session control):
+         *     the folder's and the session's name and the title, the folder (by default
+         *     $LADO_REPOS/<name>, else ~/lado/<name>) and whether it takes one, and git's author.
+         */
+        get: operations["scratch_target_api_scratch_target_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1186,6 +1251,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AccessInfo
+         * @description The link that opens LADO on another device, token included, or why there is none
+         *     (share-access): `listen` is LADO_LISTEN as a container has it, `note` the container's
+         *     note when who reaches the server is unknown.
+         */
+        AccessInfo: {
+            /** Link */
+            link: string | null;
+            /** Reason */
+            reason: ("loopback" | "no-address" | "unknown") | null;
+            /** Port */
+            port: number;
+            /** Container */
+            container: boolean;
+            /** Listen */
+            listen: string | null;
+            /** Note */
+            note: string | null;
+        };
         /** AgentDetails */
         AgentDetails: {
             /** Task */
@@ -1449,6 +1534,11 @@ export interface components {
             provider: components["schemas"]["ProviderSuggestion"] | null;
             /** Warning */
             warning?: string | null;
+            /**
+             * Scratch
+             * @default false
+             */
+            scratch: boolean;
         };
         /** ForgetPreview */
         ForgetPreview: {
@@ -1725,6 +1815,8 @@ export interface components {
             without?: string[] | null;
             /** Prompt */
             prompt?: string | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * Limits
@@ -2301,6 +2393,40 @@ export interface components {
             /** Problem */
             problem: string | null;
         };
+        /**
+         * ScratchProblem
+         * @description Why git cannot make a fresh start's commit: no author, or no git that runs.
+         */
+        ScratchProblem: {
+            /** Text */
+            text: string;
+            hint: components["schemas"]["HintInfo"] | null;
+        };
+        /**
+         * ScratchTarget
+         * @description A fresh start as the core finds it (lado.scratch): the names from the text typed,
+         *     the folder and git's author; it changes nothing.
+         */
+        ScratchTarget: {
+            /** Path */
+            path: string | null;
+            /** Name */
+            name: string | null;
+            /** Title */
+            title: string | null;
+            /** Problem */
+            problem: string | null;
+            /** State */
+            state: ("new" | "empty" | "inside_repo" | "not_empty" | "not_folder") | null;
+            /** Text */
+            text: string | null;
+            author: components["schemas"]["ScratchProblem"] | null;
+            /** Name State */
+            name_state: ("free" | "running" | "stopped_here" | "taken_elsewhere") | null;
+            provider: components["schemas"]["ProviderSuggestion"] | null;
+            /** Warning */
+            warning?: string | null;
+        };
         /** Sent */
         Sent: {
             /** Result */
@@ -2708,7 +2834,8 @@ export interface components {
         };
         /**
          * Where
-         * @description Where a session runs: now only a folder (a full path, `~` allowed).
+         * @description Where a session runs: a folder (a full path, `~` allowed), made a repository first
+         *     for "scratch" (lado.scratch.make).
          */
         Where: {
             /** Kind */
@@ -2870,6 +2997,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Refused"];
+                };
+            };
+        };
+    };
+    access_info_api_access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessInfo"];
+                };
+            };
+        };
+    };
+    new_token_api_access_new_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessInfo"];
                 };
             };
         };
@@ -3087,6 +3254,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FolderInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scratch_target_api_scratch_target_get: {
+        parameters: {
+            query: {
+                text: string;
+                path?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScratchTarget"];
                 };
             };
             /** @description Validation Error */

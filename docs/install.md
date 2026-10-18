@@ -92,6 +92,8 @@ LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
 LADO_SSH_AGENT=/run/host-services/ssh-auth.sock   # Docker Desktop's ssh agent
+# LADO_LISTEN=0.0.0.0               # a phone too: see Open LADO on your phone
+# LADO_PUBLIC_HOST=ann-mbp.local
 ```
 
 On Linux:
@@ -103,6 +105,8 @@ LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
 LADO_SSH_AGENT=/run/user/1000/ssh-agent.socket    # your ssh agent: echo $SSH_AUTH_SOCK
+# LADO_LISTEN=0.0.0.0               # a phone too: see Open LADO on your phone
+# LADO_PUBLIC_HOST=ann-laptop.local
 ```
 
 `<version>` is a LADO version without `v`, e.g. the newest on the
@@ -192,7 +196,9 @@ GitHub's host keys, so ssh asks nothing; another host's key: see
 ### Your first session
 
 In the UI, **Launch**: **Where** starts in your projects folder; pick a repository there (it
-needs a first commit), or **Clone from URL**, which clones into it. A folder outside the
+needs a first commit), or **Clone from URL**, which clones into it. No repository yet? Your
+first window opens in **From scratch**: type a name, and LADO makes a new folder with an
+empty git repository there (no GitHub needed). A folder outside the
 projects folder lives only in the container: the window warns about it. Choose the agent
 CLI and press **Start session**.
 
@@ -204,6 +210,60 @@ are covered) and remembered on the home volume, so restarts and updates do not a
 another LADO container has its own home volume and asks once more. A trusted repository's
 own Claude Code settings (`.claude/`) and MCP servers (`.mcp.json`) run, so trust only a
 repository whose settings you accept.
+
+### Open LADO on your phone
+
+The container publishes the UI on this computer's loopback only. To open it from a phone
+or another computer on your network, add two lines to `.env`, then start again:
+
+```ini
+LADO_LISTEN=0.0.0.0              # let the other devices of your network in
+LADO_PUBLIC_HOST=ann-mbp.local   # this computer's name (or address), for the link
+```
+
+```bash
+docker compose up -d
+```
+
+Inside its container LADO cannot learn this computer's name or address, so
+`LADO_PUBLIC_HOST` gives it; or publish on one address instead of both lines:
+`LADO_LISTEN=192.168.1.23`. Then in the UI: `live` (top right) → the QR-code icon, **Open on
+another device**: scan the QR code with the phone's camera, or **Copy link** and send it.
+`docker compose exec lado lado ui --no-open` prints the same link on its stderr, as
+`From another machine: …`.
+
+The link holds the token: whoever has it can run commands as you, and it travels
+unencrypted (plain HTTP). Use it only on a network you trust. With `LADO_LISTEN=0.0.0.0`
+a laptop is open on every network it joins: café Wi-Fi too. To take access back, **New
+link…** in the same dialog logs out everyone who opened LADO with the old link, without a
+restart; this browser stays in.
+
+### The projects' toolchains
+
+The image has git, Node.js 22, uv, `make`, `gcc` and `g++`, and
+[mise](https://mise.jdx.dev) for the rest. An agent that needs a tool the project lacks (Go,
+Rust, Java, a Python, ...) installs it with mise by itself: by the project's version files
+(`.tool-versions`, `mise.toml`, `.go-version`, `.java-version`, `.python-version`,
+`.ruby-version`) when they name it, otherwise as `<tool>@<version>`, which it runs with
+`mise exec`. A `go.mod` names a Go only by its `toolchain` line: its `go` line is a minimum
+and is not read. It adds no file to the project unless you ask. What mise installs lives on the
+home volume, so it stays for every agent of this LADO, after `docker compose up -d
+--force-recreate` and after an update; a second LADO has its own home volume and its own
+tools.
+
+- A tool by hand, the default for every agent of this LADO where no version file names one:
+  `docker compose exec lado mise use -g go@1.23`. An agent leaves this to the supervisor; a
+  worker asks it.
+- The agents always run on the image's Node 22, also where `.nvmrc` or a version file names
+  another (Kilo, Codex and the kits' MCP servers run on it). A project's other Node runs
+  through mise: `mise exec node@20 -- npm test`.
+- A project's `mise.toml` under the projects folder needs no `mise trust`.
+- An agent's `npm install -g` and `uv tool install` go to `~/.local` on the home volume and
+  stay over an update too.
+- What is not covered: other system packages (`apt`) and databases (PostgreSQL, Redis, ...).
+  An agent says so instead of installing them.
+- An old version takes room on the home volume until you remove it:
+  `docker compose exec lado mise ls`, then `docker compose exec lado mise uninstall go@1.22.5`.
 
 ### Update the container
 
@@ -369,6 +429,15 @@ identity, the ssh agent, the projects folder).
   repository's path in the container) and choose "Yes, I trust this folder"; see
   [Your first session](#your-first-session).
 - **The UI's link is lost**: `docker compose exec lado lado ui --no-open`.
+- **`No version is set for shim: go`**: neither the project's version files nor a default
+  name that tool. Add the version to the project (`.tool-versions`: `go 1.23.4`) or set a
+  default: `docker compose exec lado mise use -g go@1.23`.
+- **mise refuses a Python version** (an attestation or checksum it cannot check): take
+  another version, or the project's Python through uv (`uv run`). Do not switch mise's
+  checks off.
+- **`Config files in ... are not trusted`**: the project is outside the projects folder.
+  Move it under `LADO_PROJECTS`, or trust it once:
+  `docker compose exec lado mise trust <folder>/mise.toml`.
 
 ## macOS
 
@@ -540,7 +609,9 @@ lado start .            # a supervisor in tmux; --provider NAME picks the agent 
 lado ui                 # the web UI in your browser
 ```
 
-A new folder needs `git init` and a first commit before `lado start`.
+No repository yet? `lado start --new ~/lado/my-site` makes a new or empty folder a git
+repository with an empty first commit and starts there; the UI's **Launch** offers the same
+as **From scratch**. Either needs git to know your name and email (`lado doctor` checks it).
 `lado start --help` lists the options; `lado update` installs a newer LADO later
 ([Update](#update)).
 

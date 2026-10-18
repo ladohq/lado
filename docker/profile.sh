@@ -2,7 +2,14 @@
 # agent's environment from `$SHELL -ilc`, not from the image's ENV). The Dockerfile's ENV
 # sets the same for the server and `docker exec`; tests/test_docker.py keeps them the same.
 # LADO_REPOS is the container's own (-e), so the entrypoint writes it to lado-repos.sh.
-export PATH="/opt/uv/bin:/opt/agents/bin:$PATH"
+# The image's programs first, so no mise shim shadows its Node 22; then the agents' own
+# installs (npm -g, uv tool) and mise's shims, both on the home volume.
+export PATH="/opt/uv/bin:/opt/agents/bin:$PATH:$HOME/.local/bin:$HOME/.local/share/mise/shims"
+# `npm i -g` into ~/.local: /usr/local is root's and /opt is the image's.
+export NPM_CONFIG_PREFIX="$HOME/.local"
+# A project's mise.toml under the projects folder needs no `mise trust`. LADO_REPOS is
+# lado-repos.sh's, which /etc/profile reads before this file (by name, in any locale).
+export MISE_TRUSTED_CONFIG_PATHS="$LADO_REPOS"
 export LADO_CONTAINER=1
 export CLAUDE_CONFIG_DIR="$HOME/.claude"
 export DISABLE_AUTOUPDATER=1

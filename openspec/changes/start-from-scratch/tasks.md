@@ -54,6 +54,6 @@ Tests first in each section; each task is one commit. The plan with the steps is
 
 - [x] 6.1 `docs/design/modules.md`, AGENTS.md's Layout, README, `docs/install.md`,
   CHANGELOG (`0.41.0 (unreleased)`). Plan, Task 12.
-- [ ] 6.2 Regression run: `make lint`, `make test`, the changed integration and UI files
+- [x] 6.2 Regression run: `make lint`, `make test`, the changed integration and UI files
   with their markers, `make web`, `openspec validate --specs --strict`, the grep for
   contradictions. Plan, Task 13.

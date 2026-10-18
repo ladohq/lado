@@ -1,9 +1,9 @@
 # LAD-94 share-access-link: review report
 
 Pull request #95 `feature/lad-94-share-access` → `main`. Scale: full, reviewed for breadth
-(round 1) and precision (rounds 2–4). Head reviewed last: `1c126a1` (= the remote
-head). `providers/`, `hooks.py`, `mcp_server.py`, `runtime.py`, `agent_env.py` and
-`tests/live/` did not change, so live tests are not needed before the merge.
+(round 1) and precision (rounds 2–5). Head reviewed last: `dd3d637` (= the remote
+head). `providers/`, `hooks.py`, `mcp_server.py`, `agent_env.py` and `tests/live/` did not change
+(`runtime.py` only by LAD-93's code from `main`), so live tests are not needed before the merge.
 
 ## Rounds
 
@@ -39,6 +39,14 @@ head). `providers/`, `hooks.py`, `mcp_server.py`, `runtime.py`, `agent_env.py` a
     `.tmp` name, which no longer exists; documents and changelog merged with nothing
     lost. New: F5 (minor).
   - No external round: the cap of 2 was used.
+- **Return from `conflicts` a third time.** `main` had taken PR #93 (LAD-93, the projects'
+  toolchains in LADO's image).
+  - **Round 5, local** (precision over `1c126a1..dd3d637`, the merge `dd3d637`): conflicts
+    only in `CHANGELOG.md` (every 0.41.0 line kept) and `docs/install.md` ("Open LADO on
+    your phone" and "The projects' toolchains" one after the other, both whole). The
+    task's code did not change; `runtime.py`, `docker/profile.sh`, the `Dockerfile` and
+    the `container` spec came from `main` without a conflict. No new findings.
+  - No external round: the cap of 2 was used.
 
 The external reviewer is of the same model family, so its "nothing blocking" weighs
 less. External rounds used: 2 of 2.
@@ -59,12 +67,16 @@ less. External rounds used: 2 of 2.
 | E6 | ext 2 | external | `box(icon)` is called twice per icon | confirmed | minor | declined: style |
 | F5 | 4 | local (silent failures, the merge with LAD-97) | `POST /api/access/new-token` does not catch the `LadoError` of `Guard.renew` (LAD-97's `_write`, e.g. on a full disk): a bare 500, and the dialog shows a general error instead of the cause; the token does not change, since `renew` assigns after the write (`src/lado/server/app.py:427`) | confirmed (by the code) | minor | declined: rare, opens no access, the token stays whole; the loop converged |
 
-Metrics: 4 local rounds, 2 external, 0 substitutes. Local confirmed 4 (2 important, 2
+Metrics: 5 local rounds, 2 external, 0 substitutes. Local confirmed 4 (2 important, 2
 minor), refuted 1; external confirmed 4 minor (E1 fixed, three declined), refuted 2.
 Findings in code changed by the developer's cleanup: 0.
 
 ## Checks
 
+- On `dd3d637`: `make lint` clean; `make test` 3474 passed (`test_docker` of both tasks
+  included); `openspec validate --specs --strict` 36 passed; integration and UI not run
+  locally (the merge touches neither `src/lado/server`, `web/` nor `tests/ui`). CI on
+  `dd3d637`: all green with `ci-ok`, container included.
 - On `1c126a1`: `make lint` clean; `make test` 3467 passed; integration
   `test_server_process.py` 11 passed; UI `test_share_access` + `test_system_panel` 11
   passed; `openspec validate --specs --strict` 36 passed; `make web` not rerun (`web/`
@@ -84,8 +96,8 @@ Findings in code changed by the developer's cleanup: 0.
 - One local flake in `make test` whose name is unknown.
 - The flake of the UI test `test_an_up_to_date_final_release_shows_no_update` from the
   developer's report: whether to file a tracker task is the human's question.
-- The merge with LAD-97 (`729275f..1c126a1`) was not seen by the external reviewer: the
-  cap was used.
+- The merges with LAD-97 (`729275f..1c126a1`) and LAD-93 (`1c126a1..dd3d637`) were not
+  seen by the external reviewer: the cap was used.
 - LAD-95's code that came in with the merge was not reviewed here.
 
 ## Found on the way

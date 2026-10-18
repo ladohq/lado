@@ -455,8 +455,9 @@ Sessions for now. The UI's texts are in English.
   (`--done` on `--done-ground`), Stopped `neutral` (`--muted` on `--raised`), the name in
   small capitals and the count on the right in the group's colour, a chevron on the left;
   the Stopped band ends with a bin, Forget stopped sessions… (Launch and session control,
-  below), a button of its own. The rest of the band is a button (`aria-expanded`, `aria-controls` naming the group's list,
-  which stays in the page folded or not; Enter and Space as any button) that folds and
+  below), a button of its own. The rest of the band is a button (`aria-expanded`,
+  `aria-controls` naming the group's list, which stays in the page folded or not; Enter
+  and Space as any button) that folds and
   opens its group; a folded group keeps its count, and a group without sessions is not
   drawn, heading and all. Each group's state is remembered in the browser by its id
   (`lado.sessionGroups`: `{"needs-you", "running", "stopped"}`, each `open` or `folded`);

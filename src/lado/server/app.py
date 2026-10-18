@@ -11,7 +11,7 @@ import re
 import sys
 import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Literal, TypeVar
 
@@ -47,6 +47,7 @@ from lado import (
 from lado.server import clones, feed, launch, models, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
+    AccessInfo,
     AgentDetails,
     AgentInfo,
     ArtifactInfo,
@@ -114,6 +115,7 @@ from lado.server.models import (
     UpdateStarted,
     WaitingItem,
 )
+from lado.server.run import Listening
 
 T = TypeVar("T")
 STATIC = Path(__file__).parent / "static"  # the built bundle (make web); not in git
@@ -323,8 +325,18 @@ def latest_plan() -> self_update.Plan:
     return plan
 
 
-def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.0.1") -> FastAPI:
+def create_app(
+    token: str,
+    port: int,
+    static: Path = STATIC,
+    host: str = "127.0.0.1",
+    container: bool | None = None,
+    env: Mapping[str, str] | None = None,
+) -> FastAPI:
+    """The app of a server listening on `host`:`port`; `container` and `env` decide the link
+    for another device (None: `update.in_container()` and `os.environ`)."""
     guard = Guard(token, port)
+    in_container = update.in_container() if container is None else container
     hub = feed.Hub(feed.Journal())
     app = FastAPI(title="LADO", version=lado.__version__)
     # Kept in memory only: /api/health tells a restarted server, also of the same version.
@@ -387,6 +399,36 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         requested = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
         self_update.start_detached(given.to, id)
         return UpdateStarted(id=id, requested_at=requested, log=str(self_update.log_path()))
+
+    def access(response: Response) -> AccessInfo:
+        """The link for another device by run.Listening's rule, with this machine's address
+        as it is now; never kept by a cache, as it holds the token."""
+        listening = Listening.of(host, port, in_container, env)
+        response.headers["Cache-Control"] = "no-store"
+        return AccessInfo(
+            link=f"{listening.remote}/?token={guard.token}" if listening.remote else None,
+            reason=listening.reason,
+            port=port,
+            container=in_container,
+            listen=listening.listen,
+            note=listening.note if listening.reason == "unknown" else None,
+        )
+
+    @app.get("/api/access", dependencies=[Depends(guard)])
+    def access_info(response: Response) -> AccessInfo:
+        """The link that opens LADO on another device, or why there is none (share-access).
+        No CORS: a page of another origin cannot read it."""
+        return access(response)
+
+    @app.post("/api/access/new-token", dependencies=[Depends(guard.changes)])
+    async def new_token(response: Response) -> AccessInfo:
+        """A new token now: every other browser is logged out (its open streams and terminals
+        end, and their reconnect is refused), this one gets the new cookie."""
+        await run_in_threadpool(guard.renew)
+        hub.end_streams()
+        await terminals.close_all()
+        guard.set_cookie(response)
+        return access(response)
 
     @app.get("/api/system", dependencies=[Depends(guard)])
     def system() -> SystemInfo:
@@ -676,7 +718,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         responses={200: {"content": {"text/event-stream": {}}}},
     )
     async def events(
-        after: int | None = None, last_event_id: int | None = Header(None)
+        request: Request, after: int | None = None, last_event_id: int | None = Header(None)
     ) -> StreamingResponse:
         """The change feed as Server-Sent Events (lado.server.feed). The position is the
         Last-Event-ID header (the browser's own reconnect) or, without it, `after`."""
@@ -686,7 +728,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         except feed.Unavailable as error:
             raise HTTPException(503, str(error)) from error
         return StreamingResponse(
-            feed.stream(hub, position),
+            feed.stream(hub, position, lambda: guard.admits(request)),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )

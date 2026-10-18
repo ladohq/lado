@@ -1210,8 +1210,15 @@ def cmd_ui(args: argparse.Namespace) -> int:
     else:
         print(f"Opening {url}")
         webbrowser.open(url)
-    if listening.remote:
-        print(f"From another machine: {listening.remote}/?token={token} (or this host's address)")
+    # The server's environment decides the link (LADO_PUBLIC_HOST), not this shell's.
+    found = server_run.access(info["url"], token)
+    link = found.get("link") if found else None
+    if link:
+        # In a container with --no-open stdout is the one local link a launcher reads.
+        print(
+            f"From another machine: {link}",
+            file=sys.stderr if args.no_open and container else sys.stdout,
+        )
     return 0
 
 

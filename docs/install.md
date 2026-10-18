@@ -92,6 +92,8 @@ LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
 LADO_SSH_AGENT=/run/host-services/ssh-auth.sock   # Docker Desktop's ssh agent
+# LADO_LISTEN=0.0.0.0               # a phone too: see Open LADO on your phone
+# LADO_PUBLIC_HOST=ann-mbp.local
 ```
 
 On Linux:
@@ -103,6 +105,8 @@ LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
 LADO_SSH_AGENT=/run/user/1000/ssh-agent.socket    # your ssh agent: echo $SSH_AUTH_SOCK
+# LADO_LISTEN=0.0.0.0               # a phone too: see Open LADO on your phone
+# LADO_PUBLIC_HOST=ann-laptop.local
 ```
 
 `<version>` is a LADO version without `v`, e.g. the newest on the
@@ -204,6 +208,33 @@ are covered) and remembered on the home volume, so restarts and updates do not a
 another LADO container has its own home volume and asks once more. A trusted repository's
 own Claude Code settings (`.claude/`) and MCP servers (`.mcp.json`) run, so trust only a
 repository whose settings you accept.
+
+### Open LADO on your phone
+
+The container publishes the UI on this computer's loopback only. To open it from a phone
+or another computer on your network, add two lines to `.env`, then start again:
+
+```ini
+LADO_LISTEN=0.0.0.0              # let the other devices of your network in
+LADO_PUBLIC_HOST=ann-mbp.local   # this computer's name (or address), for the link
+```
+
+```bash
+docker compose up -d
+```
+
+Inside its container LADO cannot learn this computer's name or address, so
+`LADO_PUBLIC_HOST` gives it; or publish on one address instead of both lines:
+`LADO_LISTEN=192.168.1.23`. Then in the UI: `live` (top right) → the QR-code icon, **Open on
+another device**: scan the QR code with the phone's camera, or **Copy link** and send it.
+`docker compose exec lado lado ui --no-open` prints the same link on its stderr, as
+`From another machine: …`.
+
+The link holds the token: whoever has it can run commands as you, and it travels
+unencrypted (plain HTTP). Use it only on a network you trust. With `LADO_LISTEN=0.0.0.0`
+a laptop is open on every network it joins: café Wi-Fi too. To take access back, **New
+link…** in the same dialog logs out everyone who opened LADO with the old link, without a
+restart; this browser stays in.
 
 ### The projects' toolchains
 

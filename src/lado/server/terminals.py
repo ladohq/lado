@@ -12,6 +12,9 @@ How a socket ends tells the browser whether to open it again (close codes): 44xx
 with the reason (no token, a mode it does not know, no terminal: the agent or its session is
 gone or stopped); 45xx for now (the terminal ended but the agent is still there; lado.db of
 another schema), to open again after a pause. Another Origin is refused before the upgrade.
+The token is checked at the connect, and again once the socket is in `OPEN` (a new token
+made while the terminal opened), not later: so a new token closes every open socket
+(`close_all`) to be opened again.
 """
 
 import json
@@ -31,6 +34,7 @@ DENIED, BAD_MODE, GONE = 4401, 4400, 4404  # for good
 ENDED, UNAVAILABLE = 4500, 4503  # for now: open again after a pause
 SIZE_EVERY = 1.0  # seconds between two looks at the window's size, in view
 REASON_BYTES = 123  # the most a close frame's reason holds
+OPEN: set[WebSocket] = set()  # the sockets accepted with a terminal, until they end
 
 log = logging.getLogger("lado.server")
 
@@ -62,16 +66,36 @@ async def serve(ws: WebSocket, guard: Guard, session: str, agent: str, mode: str
         return
     try:
         await ws.accept()
+        OPEN.add(ws)
+        # Checked again where `close_all` finds it: a new token made while the terminal
+        # opened came after the first check and before the socket was there to close.
+        try:
+            guard.check(ws)
+        except Refused as refused:
+            await _say_and_close(ws, DENIED, refused.detail)
+            return
         await ws.send_json(_size(term.size))
         await _run(ws, term)
     finally:
+        OPEN.discard(ws)
         with anyio.CancelScope(shield=True):  # also when the server stops
             await to_thread.run_sync(term.close)
+
+
+async def close_all() -> None:
+    """A new token: every open terminal socket closes to be opened again, and its reconnect
+    is checked against the token the browser has now."""
+    for ws in list(OPEN):
+        await _close(ws, ENDED, "a new link was made: the terminal opens again")
 
 
 async def _end(ws: WebSocket, code: int, reason: str) -> None:
     """Accept only to say why it ends: the browser cannot read a refused upgrade."""
     await ws.accept()
+    await _say_and_close(ws, code, reason)
+
+
+async def _say_and_close(ws: WebSocket, code: int, reason: str) -> None:
     await ws.send_json({"type": "error", "reason": reason})
     await ws.close(code, reason.encode()[:REASON_BYTES].decode(errors="ignore"))
 

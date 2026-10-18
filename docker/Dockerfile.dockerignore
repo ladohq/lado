@@ -5,3 +5,4 @@
 !docker/ssh-agent-socket.sh
 !docker/ssh_known_hosts
 !docker/ssh-agent-env.sh
+!docker/mise.toml

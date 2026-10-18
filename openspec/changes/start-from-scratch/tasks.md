@@ -47,7 +47,7 @@ Tests first in each section; each task is one commit. The plan with the steps is
   (`web/src/Launch.test.tsx`): "The first window", "A developer's window", "No author",
   "Start from scratch here", the request, a refused start to Folder. `make web`. Plan,
   Task 10.
-- [ ] 5.2 UI e2e (`tests/ui/test_launch.py`, `-m ui`) with screenshots of each screen.
+- [x] 5.2 UI e2e (`tests/ui/test_launch.py`, `-m ui`) with screenshots of each screen.
   Plan, Task 11.
 
 ## 6. Docs and regression

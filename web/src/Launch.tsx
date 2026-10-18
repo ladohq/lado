@@ -637,7 +637,7 @@ function LaunchDialog({
 
         <div className="launch-grid">
           {scratching && (
-            <div className="field launch-where">
+            <div className="field launch-where launch-wide">
               <label htmlFor={`${ids}-create-in`}>Create in</label>
               <input
                 id={`${ids}-create-in`}
@@ -1170,6 +1170,7 @@ function ScratchNameField({
       </div>
       <input
         id={`${ids}-scratch-name`}
+        className="launch-words"
         value={text}
         placeholder="Coffee shop site"
         autoComplete="off"

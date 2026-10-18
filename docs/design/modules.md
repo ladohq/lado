@@ -15,7 +15,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `git` (after `tmux`, `check_git`) is the folder check's own look, `runtime.git_version`:
     `FAIL` with the core's text and hint when git is missing or does not run, `WARN` below
     `runtime.GIT_MIN` (2.31: `gitpaths`' `--path-format=absolute`), else `OK`.
-    `Repositories folder` (after `git`, `check_repos_folder`, only while `LADO_REPOS` is
+    `git author` (after `git`, `check_git_author`, no line when git does not run) is a fresh
+    start's own look, `scratch.author_problem("/")`: `OK` with both `user.name` and
+    `user.email`, else `WARN` with its hint (the `.env` one in LADO's container); it never
+    prints them.
+    `Repositories folder` (after `git author`, `check_repos_folder`, only while `LADO_REPOS` is
     set and not empty): `OK` for a folder, `INFO` for one not made yet, `WARN` for a path
     that is no folder or LADO may not look at (one `stat`, never `exists()`, which raises
     there on some Pythons), a folder LADO may not write in (a probe file made and removed,
@@ -277,6 +281,26 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     through `runtime.public_remote`; git missing or not running is LAD-5's `no_git` /
     `git_broken`, a folder LADO may not look at or write in `no_access`, a URL that names
     no repository (no default folder) `no_repo_name`. `ABANDONED` and `KEPT` are the server's clone jobs' times.
+  - `scratch.py`: a session from scratch (openspec change start-from-scratch), for `lado
+    start --new`, the UI server's From scratch and `lado doctor` alike, which print only
+    what it says. `names` (the text trimmed; refused empty, over `runtime.MAX_TITLE`, with
+    a hidden character, or with no Latin letter or digit left for a folder; Cyrillic by
+    the one table `CYRILLIC`, Latin letters without accents by NFKD, then `runtime.slug`;
+    the title is the text unless it is the name), `default_folder` (`clone.default_parent()
+    /<name>`), `check_target` (a `Target`: `new`, `empty` with nothing but `FINDER`'s
+    `.DS_Store`, `inside_repo` with the repository's root, `not_empty`, `not_folder`; the
+    path's nearest existing folder decides for a new path; only `CAN_START` lets a fresh
+    start go on; `refusal` gives each other state its hint: LAD-5's `NOT_REPO_HINT` for
+    files, `lado start <root>` inside a repository), `author_problem` (git's `user.name`
+    and `user.email` where the folder would be, outside any repository the global and
+    system config; no author is a refusal with the `.env` hint in LADO's container, the
+    `git config --global` one elsewhere; LADO sets no author) and `make` (the checks again,
+    the name as `runtime.check_name` first, then the folders, `git init`, the branch of
+    `init.defaultBranch` else `main` by `symbolic-ref`, one empty commit `Start from
+    scratch` with no signing, no hooks (`core.hooksPath` to the null device and
+    `--no-verify`), no prompt and stdin closed; a failed step removes the folders it made,
+    or the `.git` of an empty folder it was given). A refusal is a `ScratchError` (a
+    `LadoError` with `kind` and a `runtime.Hint`); git missing is LAD-5's `no_git`.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's
     `EVENTS` maps its native events; `claude.py`: Claude Code, its role in `prompt.md` of
@@ -688,10 +712,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `lado stats`'; `usage_counts` the report's.
     From schema 28 a session keeps an optional title, `sessions.title` (`SESSIONS_TITLE`;
     NULL for none; `state.set_title` stores it as given): a label for the human over its
-    name, which stays its identifier. `runtime.set_title` is the one rule of what a title
-    is (trimmed, one line with no hidden character, `text.py`, at most
+    name, which stays its identifier. `runtime.check_title` (and `set_title` through it)
+    is the one rule of what a title is (trimmed, one line with no hidden character, `text.py`, at most
     `runtime.MAX_TITLE`, 80, characters; empty or equal to the name is none; a bad one is
-    refused, never cut), for `lado title` and `PUT /api/sessions/{name}/title` alike;
+    refused, never cut), for `lado title`, `PUT /api/sessions/{name}/title` and a new
+    session's `runtime.start_session(title=)` (a fresh start's; a resume refuses one) alike;
     `SessionInfo.title` carries it, through the existing journal of `sessions`, and
     `Limits.max_title` the limit.
     From schema 29 a session keeps whether the container's stop stopped it,
@@ -787,7 +812,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     control): `GET /api/folders` (`FolderInfo`: the core's `check_repo`, its `problem_kind` and `hint`, subfolders, the
     default name and whether a session has it, and `provider`, the core's
     `runtime.suggested_provider` with the server's `shutil.which`, a
-    `ProviderSuggestion` of name and reason or none), `/api/folders/recent`,
+    `ProviderSuggestion` of name and reason or none; `scratch` for a missing or not-repo
+    folder a fresh start may take), `GET /api/scratch-target` (`ScratchTarget`: `lado.scratch`'s
+    names, folder state and author, the name's state and a provider), `/api/folders/recent`,
     `/api/repos-folder` (in `app.py`; `ReposFolder`, `clone.repos_folder` or none: where
     an empty Where starts),
     `/api/kits` (the kit of each name the lookup takes, the same for every folder; a

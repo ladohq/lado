@@ -192,7 +192,9 @@ GitHub's host keys, so ssh asks nothing; another host's key: see
 ### Your first session
 
 In the UI, **Launch**: **Where** starts in your projects folder; pick a repository there (it
-needs a first commit), or **Clone from URL**, which clones into it. A folder outside the
+needs a first commit), or **Clone from URL**, which clones into it. No repository yet? Your
+first window opens in **From scratch**: type a name, and LADO makes a new folder with an
+empty git repository there (no GitHub needed). A folder outside the
 projects folder lives only in the container: the window warns about it. Choose the agent
 CLI and press **Start session**.
 
@@ -540,7 +542,9 @@ lado start .            # a supervisor in tmux; --provider NAME picks the agent 
 lado ui                 # the web UI in your browser
 ```
 
-A new folder needs `git init` and a first commit before `lado start`.
+No repository yet? `lado start --new ~/lado/my-site` makes a new or empty folder a git
+repository with an empty first commit and starts there; the UI's **Launch** offers the same
+as **From scratch**. Either needs git to know your name and email (`lado doctor` checks it).
 `lado start --help` lists the options; `lado update` installs a newer LADO later
 ([Update](#update)).
 

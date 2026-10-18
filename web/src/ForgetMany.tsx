@@ -23,6 +23,7 @@ const joined = (names: string[]) =>
 
 export function ForgetManyDialog({ sessions, onClose }: { sessions: SessionInfo[]; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const current = useParams().name;
   const [previews, setPreviews] = useState<Record<string, Preview>>({});
@@ -33,7 +34,6 @@ export function ForgetManyDialog({ sessions, onClose }: { sessions: SessionInfo[
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [finished, setFinished] = useState(false);
 
-  const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     dialog.current?.showModal();
     // Cancel first, not the first tick: showModal would focus that.

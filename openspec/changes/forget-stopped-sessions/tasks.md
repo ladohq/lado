@@ -37,6 +37,6 @@ Design doc: `docs/superpowers/specs/2026-10-18-forget-stopped-sessions-design.md
 
 ## 7. Regression
 
-- [ ] 7.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui
+- [x] 7.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui
   tests/ui/test_launch.py tests/ui/test_session_list.py tests/ui/test_phone.py
   tests/ui/test_layout.py`, `openspec validate forget-stopped-sessions --strict`.

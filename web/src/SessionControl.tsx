@@ -44,7 +44,7 @@ function actionsOf(session: SessionInfo): Action[] {
 
 export const messageOf = (error: unknown) => (error instanceof ApiError ? error.message : String(error));
 
-export const plural =(n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 export function SessionActions({ session }: { session: SessionInfo }) {
   const launch = useLaunch();
@@ -137,17 +137,15 @@ function StopPopover({
 }) {
   const preview = usePreview(() => getStopPreview(session));
   const navigate = useNavigate();
-  // What is being done: the stop, or the forget of Stop and forget; "stopped" once its stop
-  // is done and its forget refused, when neither button has anything left to do.
-  const [busy, setBusy] = useState<"stopping" | "forgetting" | "stopped" | null>(null);
-  const [pressed, setPressed] = useState<"stop" | "forget" | null>(null);
+  // What is being done: Stop's stop, or Stop and forget's stop, then its forget; "stopped"
+  // once that stop is done and its forget refused, when neither button has anything left to do.
+  const [busy, setBusy] = useState<"stop" | "stop-to-forget" | "forget" | "stopped" | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   useEffect(() => {
     panel.current?.focus();
   }, []);
   const stop = async () => {
-    setPressed("stop");
-    setBusy("stopping");
+    setBusy("stop");
     setRefused(null);
     try {
       await stopSession(session);
@@ -160,8 +158,7 @@ function StopPopover({
   // The core's stop, then the core's forget without force: a session with open runs is not
   // offered it (D6), and a refused forget leaves the session stopped, its reason shown.
   const stopAndForget = async () => {
-    setPressed("forget");
-    setBusy("stopping");
+    setBusy("stop-to-forget");
     setRefused(null);
     try {
       await stopSession(session);
@@ -170,7 +167,7 @@ function StopPopover({
       setBusy(null);
       return;
     }
-    setBusy("forgetting");
+    setBusy("forget");
     try {
       await forgetSession(session, false);
       onClose();
@@ -218,7 +215,7 @@ function StopPopover({
         </p>
       )}
       <div className="question-buttons">
-        <button type="button" className="quiet" onClick={onClose} disabled={busy === "stopping" || busy === "forgetting"}>
+        <button type="button" className="quiet" onClick={onClose} disabled={busy !== null && busy !== "stopped"}>
           Cancel
         </button>
         <Tooltip tip="Stops it, then deletes its history for good">
@@ -228,15 +225,11 @@ function StopPopover({
             disabled={busy !== null || loaded === null || hasRuns}
             onClick={() => void stopAndForget()}
           >
-            {pressed === "forget" && busy === "stopping"
-              ? "Stopping…"
-              : busy === "forgetting"
-                ? "Forgetting…"
-                : "Stop and forget"}
+            {busy === "stop-to-forget" ? "Stopping…" : busy === "forget" ? "Forgetting…" : "Stop and forget"}
           </button>
         </Tooltip>
         <button type="button" className="danger" disabled={busy !== null || loaded === null} onClick={() => void stop()}>
-          {pressed === "stop" && busy === "stopping" ? "Stopping…" : `Stop ${session}`}
+          {busy === "stop" ? "Stopping…" : `Stop ${session}`}
         </button>
       </div>
     </div>

@@ -1,7 +1,7 @@
 """Launch and session control in a browser: a session started from the New session window,
 a refused folder, the session list row's menu, Stop from the session's head, Resume and
-Forget, Forget stopped sessions from the Stopped band and Stop and forget. The server is `lado` with the fake providers, so what it starts runs the fake
-agent."""
+Forget, Forget stopped sessions from the Stopped band and Stop and forget. The server is
+`lado` with the fake providers, so what it starts runs the fake agent."""
 
 import re
 import subprocess

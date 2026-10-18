@@ -2,7 +2,10 @@
 // in the group's tone, its name in small capitals and how many rows it has now. With `fold`
 // the whole band is a button that opens and folds the group (the chevron shows which); the
 // element `controls` names stays in the page either way. The tone sets `--g` and
-// `--g-ground` (styles.css), which the group's rows take too.
+// `--g-ground` (styles.css), which the group's rows take too. An `action` (a button of the
+// list's) sits at the band's right end, apart from the fold: pressing it never folds.
+import type { ReactNode } from "react";
+
 import { ChevronIcon } from "./icons";
 
 // human: what waits for the human; done: what works now; neutral: the rest.
@@ -17,12 +20,14 @@ export function GroupHead({
   count,
   tone = "neutral",
   fold,
+  action,
 }: {
   nameId: string; // the name's id, for the group's aria-labelledby
   name: string;
   count: number;
   tone?: Tone;
   fold?: Fold;
+  action?: ReactNode;
 }) {
   // The space between keeps the name and the count apart in what a screen reader says.
   const label = (
@@ -50,6 +55,7 @@ export function GroupHead({
       ) : (
         label
       )}
+      {action}
     </h3>
   );
 }

@@ -1,8 +1,8 @@
 // A list group's heading (docs/design/ui.md, Structure: List and page): one look for every
 // list, a band in the group's tone, folding when the list asks for it.
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 import { GroupHead, type Tone } from "./GroupHead";
 
@@ -51,4 +51,36 @@ test("folding: the heading holds a button with the chevron, aria-expanded and ar
   expect(document.getElementById(button.getAttribute("aria-controls")!)).toBeTruthy(); // still there, folded
   fireEvent.click(button);
   expect(button.getAttribute("aria-expanded")).toBe("true");
+});
+
+test("an action: a button of its own after the fold button, in the band; pressing it does not fold the group", () => {
+  const acted = vi.fn();
+  const toggled = vi.fn();
+  render(
+    <GroupHead
+      nameId="s-name"
+      name="Stopped"
+      count={7}
+      fold={{ open: false, controls: "s-list", onToggle: toggled }}
+      action={
+        <button type="button" className="group-action" aria-label="Forget stopped sessions…" onClick={acted} />
+      }
+    />,
+  );
+  const heading = screen.getByRole("heading", { level: 3 });
+  const buttons = within(heading).getAllByRole("button");
+  expect(buttons.map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual([
+    "Stopped 7",
+    "Forget stopped sessions…",
+  ]);
+  fireEvent.click(buttons[1]);
+  expect(acted).toHaveBeenCalledOnce();
+  expect(toggled).not.toHaveBeenCalled();
+  expect(buttons[0].getAttribute("aria-expanded")).toBe("false");
+});
+
+test("an action without folding is drawn after the count", () => {
+  render(<GroupHead nameId="a" name="Active" count={1} action={<button type="button">Act</button>} />);
+  const heading = screen.getByRole("heading", { level: 3 });
+  expect(heading.lastElementChild!.textContent).toBe("Act");
 });

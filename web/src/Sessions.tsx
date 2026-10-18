@@ -24,6 +24,7 @@ import { Chat } from "./Chat";
 import { duration } from "./ChatText";
 import { CopyButton } from "./Copy";
 import { Flows, isOpen } from "./Flows";
+import { ForgetManyDialog } from "./ForgetMany";
 import { GroupHead, type Tone } from "./GroupHead";
 import {
   ActivityIcon,
@@ -35,6 +36,7 @@ import {
   FindIcon,
   FlowsIcon,
   FolderIcon,
+  ForgetIcon,
   KitsIcon,
   LinkIcon,
   PencilIcon,
@@ -96,6 +98,22 @@ export function Sessions() {
     setFolds(next);
     storeSessionGroups(next);
   };
+  // The stopped sessions Forget stopped sessions… was pressed for, as the group showed them
+  // then (the search's): the window keeps them while it is open.
+  const [forgetting, setForgetting] = useState<SessionInfo[] | null>(null);
+  const forgetStopped = (
+    <Tooltip tip="Forget stopped sessions…">
+      <button
+        type="button"
+        className="group-action"
+        aria-label="Forget stopped sessions…"
+        aria-haspopup="dialog"
+        onClick={() => setForgetting(groups.stopped)}
+      >
+        <ForgetIcon />
+      </button>
+    </Tooltip>
+  );
   const group = (id: SessionGroup) => (
     <Group
       id={id}
@@ -104,6 +122,7 @@ export function Sessions() {
       searching={wanted !== ""}
       current={current}
       onToggle={() => toggle(id)}
+      action={id === "stopped" ? forgetStopped : undefined}
     />
   );
   const [list, setList] = useState(storedSessionsList);
@@ -198,6 +217,7 @@ export function Sessions() {
       <div className="session-detail">
         <Outlet context={loaded} />
       </div>
+      {forgetting && <ForgetManyDialog sessions={forgetting} onClose={() => setForgetting(null)} />}
     </div>
   );
 }
@@ -371,6 +391,7 @@ function Group({
   searching,
   current,
   onToggle,
+  action,
 }: {
   id: SessionGroup;
   sessions: SessionInfo[];
@@ -378,6 +399,7 @@ function Group({
   searching: boolean;
   current?: string;
   onToggle: () => void;
+  action?: ReactNode;
 }) {
   if (sessions.length === 0) return null;
   const rows = open ? sessions : sessions.filter((one) => one.name === current);
@@ -389,6 +411,7 @@ function Group({
         count={sessions.length}
         tone={TONES[id]}
         fold={{ open, controls: `group-${id}`, onToggle, disabled: searching }}
+        action={action}
       />
       <ul id={`group-${id}`} hidden={rows.length === 0}>
         {rows.map((session) => (

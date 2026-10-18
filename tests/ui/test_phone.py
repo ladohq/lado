@@ -200,6 +200,27 @@ def test_the_sessions_page_is_the_list(device, server, repo, shot):
     shot(page, "session", full_page=False)
 
 
+def test_phone_forget_stopped(device, server, repo, shot):
+    session = running_session(repo)
+    runtime.stop_session(session)
+    page = opened(device(UPRIGHT), server, "/sessions")
+    band = (
+        page.get_by_role("navigation", name="Sessions", exact=True)
+        .get_by_role("region", name="Stopped")
+        .locator("h3")
+    )
+    action = band.get_by_role("button", name="Forget stopped sessions…")
+    expect(action).to_be_visible()
+    shot(page, "band", full_page=False)
+    action.tap()
+    asked = page.get_by_role("dialog", name="Forget stopped sessions?")
+    expect(asked.get_by_role("button", name="Forget 1 session")).to_be_enabled()
+    no_sideways_scroll(page)
+    shot(page, "window", full_page=False)
+    asked.get_by_role("button", name="Cancel").tap()
+    expect(asked).to_have_count(0)
+
+
 # Tabs
 
 

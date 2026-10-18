@@ -1,7 +1,7 @@
 """Launch and session control in a browser: a session started from the New session window,
 a refused folder, the session list row's menu, Stop from the session's head, Resume and
-Forget. The server is `lado` with the fake providers, so what it starts runs the fake
-agent."""
+Forget, Forget stopped sessions from the Stopped band and Stop and forget. The server is
+`lado` with the fake providers, so what it starts runs the fake agent."""
 
 import re
 import subprocess
@@ -10,8 +10,9 @@ import uuid
 import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
+from test_layout import BUILD
 
-from lado import loop, runtime, state
+from lado import loop, runs, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -416,6 +417,116 @@ def test_forget_a_stopped_session(page: Page, server, repo, shot):
     shot(page, "asked")
 
     forget.click()
+    expect(page).to_have_url(f"{server['url']}/sessions")
+    expect(page.get_by_role("navigation", name="Sessions").get_by_role("link")).to_have_count(0)
+    assert state.get_session(session) is None
+    shot(page)
+
+
+# Forget stopped sessions and Stop and forget (openspec change forget-stopped-sessions)
+
+
+def stopped_band(page: Page):
+    return (
+        page.get_by_role("navigation", name="Sessions")
+        .get_by_role("region", name="Stopped")
+        .locator("h3")
+    )
+
+
+def test_forget_stopped_sessions(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1280, "height": 900})
+    first, second, third = (stopped_session(repo) for _ in range(3))
+    running = running_session(repo)
+    log_in(page, server)
+    sessions = page.get_by_role("navigation", name="Sessions")
+    bin_ = stopped_band(page).get_by_role("button", name="Forget stopped sessions…")
+    expect(bin_).to_be_visible()
+    expect(
+        sessions.get_by_role("region", name="Running").get_by_role(
+            "button", name="Forget stopped sessions…"
+        )
+    ).to_have_count(0)
+    bin_.hover()
+    expect(page.get_by_role("tooltip")).to_have_text("Forget stopped sessions…")
+    shot(page, "band")
+
+    bin_.click()
+    asked = page.get_by_role("dialog", name="Forget stopped sessions?")
+    expect(asked.get_by_role("listitem")).to_have_count(3)
+    expect(asked.get_by_role("checkbox", name="All 3")).to_be_checked()
+    forget = asked.get_by_role("button", name="Forget 3 sessions")
+    expect(forget).to_be_enabled()  # the previews came: no open runs
+    expect(asked.get_by_role("button", name="Cancel")).to_be_focused()
+    asked.get_by_role("checkbox", name=re.compile(f"^{third}")).uncheck()
+    forget = asked.get_by_role("button", name="Forget 2 sessions")
+    shot(page, "window")
+
+    forget.click()
+    expect(asked).to_have_count(0)
+    for gone in (first, second):
+        expect(sessions.get_by_role("link", name=gone)).to_have_count(0)
+        assert state.get_session(gone) is None
+    assert state.get_session(third) is not None
+    assert state.get_session(running) is not None
+    expect(stopped_band(page).get_by_role("button", name="Stopped 1")).to_be_visible()
+    shot(page)
+
+
+def stopped_with_an_open_run(repo) -> str:
+    """A stopped session of the fake agent whose run build/x is still open."""
+    kit = repo.parent / "kits" / "uibuild"
+    (kit / "flows").mkdir(parents=True, exist_ok=True)
+    (kit / "kit.yaml").write_text("name: uibuild\nversion: 1.0.0\n")
+    (kit / "flows" / "build.yaml").write_text(BUILD)
+    agent_helpers.install_kit(kit)
+    session = f"ui-{uuid.uuid4().hex[:6]}"
+    runtime.start_session(str(repo), session, None, "fake", ["default", "uibuild"])
+    idle(session)
+    runs.start(session, "build", "Add a login page", name="x")
+    runtime.stop_session(session)
+    return session
+
+
+def test_forget_stopped_sessions_open_runs(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1280, "height": 900})
+    plain = stopped_session(repo)
+    busy = stopped_with_an_open_run(repo)
+    log_in(page, server)
+    stopped_band(page).get_by_role("button", name="Forget stopped sessions…").click()
+    asked = page.get_by_role("dialog", name="Forget stopped sessions?")
+    expect(asked).to_contain_text("1 open run")
+    switch = asked.get_by_role("checkbox", name=f"Also forget their 1 open run ({busy})")
+    expect(switch).not_to_be_checked()
+    expect(asked).to_contain_text(f"While this is off, {busy} stays.")
+    shot(page, "switch-off")
+    asked.get_by_role("button", name="Forget 1 session").click()
+    expect(asked).to_have_count(0)
+    assert state.get_session(plain) is None
+    assert state.get_session(busy) is not None  # its open run kept it
+
+    stopped_band(page).get_by_role("button", name="Forget stopped sessions…").click()
+    asked.get_by_role("checkbox", name=f"Also forget their 1 open run ({busy})").check()
+    asked.get_by_role("button", name="Forget 1 session").click()
+    expect(asked).to_have_count(0)
+    assert state.get_session(busy) is None
+
+
+def test_stop_and_forget(page: Page, server, repo, shot):
+    session = running_session(repo)
+    log_in(page, server, f"/sessions/{session}")
+    page.get_by_role("banner").locator(".session-head").get_by_role(
+        "button", name="Stop session…"
+    ).click()
+    asked = page.get_by_role("dialog", name=f'Stop session "{session}"?')
+    expect(asked).to_contain_text("its agent is closed")
+    both = asked.get_by_role("button", name="Stop and forget")
+    expect(both).to_be_enabled()
+    both.hover()
+    expect(page.get_by_role("tooltip")).to_have_text("Stops it, then deletes its history for good")
+    shot(page, "asked")
+
+    both.click()
     expect(page).to_have_url(f"{server['url']}/sessions")
     expect(page.get_by_role("navigation", name="Sessions").get_by_role("link")).to_have_count(0)
     assert state.get_session(session) is None

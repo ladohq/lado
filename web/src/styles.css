@@ -1102,6 +1102,36 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+/* A band's action (GroupHead's `action`) at its right end: an icon in the colour of a
+   dangerous action, as Forget stopped sessions… on the Stopped band. */
+.group-action {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin: 0 4px 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--danger);
+}
+
+.group-action:hover {
+  background: var(--raised);
+}
+
+.group-action:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 1px;
+}
+
+.group-action .icon {
+  width: 16px;
+  height: 16px;
+}
+
 .group-count {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
@@ -5257,7 +5287,25 @@ h3 {
   right: 0;
   left: auto;
   z-index: 6;
-  width: min(380px, calc(100vw - 32px));
+  width: min(440px, calc(100vw - 32px));
+}
+
+/* Three buttons: each on one line, the row wrapping when they do not fit; a long name is cut. */
+.stop-popover .question-buttons {
+  flex-wrap: wrap;
+}
+
+.stop-popover .question-buttons button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Why Stop and forget is off: the session has open runs. */
+.stop-forget-why {
+  margin: -6px 0 12px;
+  font-size: 12px;
 }
 
 .link-popover {
@@ -5311,6 +5359,94 @@ h3 {
 
 .question-dialog .switch {
   margin: 0 0 12px;
+}
+
+/* Forget stopped sessions (ForgetMany.tsx): the sessions in a bordered list that scrolls
+   inside, All above them; the open runs in the human's colour, a refusal in the danger's. */
+.forget-many-list {
+  max-height: 50vh;
+  margin: 0 0 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.forget-many-list ul {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+
+.forget-many-list li {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.forget-many-list li label,
+.forget-many-all,
+.forget-many-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.forget-many-list label {
+  cursor: pointer;
+}
+
+.forget-many-all {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.forget-many-name {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.forget-many-runs {
+  margin-left: auto;
+  color: var(--human);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.forget-many-mark {
+  flex: none;
+  width: 14px;
+}
+
+.forget-many-list li.done .forget-many-mark {
+  color: var(--done);
+}
+
+.forget-many-list li.failed .forget-many-mark {
+  color: var(--danger);
+}
+
+.forget-many-reason {
+  display: block;
+  margin-left: 22px;
+  color: var(--danger);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.left-on-disk summary {
+  cursor: pointer;
+}
+
+/* The switch's text names the sessions: it wraps. */
+.forget-many .switch {
+  height: auto;
+  white-space: normal;
+}
+
+.question-dialog .forget-many-stay {
+  margin-top: -6px;
+  font-size: 12px;
 }
 
 /* What a start or resume said, above the session's tabs until closed: 12 px under the top

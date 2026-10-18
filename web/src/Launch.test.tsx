@@ -1184,6 +1184,123 @@ test("Forget lists what stays on disk and needs the open runs ticked, then leave
   expect(calls.find((c) => c.method === "DELETE")!.path).toBe("/api/sessions/lado?force=true");
 });
 
+// Stop and forget in Stop's popover
+
+const NO_RUNS = { agents: ["supervisor"], dropped: 0, open_runs: [], worktrees: [] };
+
+test("Stop and forget stops the session, then forgets it without force, then leaves for the list", async () => {
+  answers["GET /api/sessions/lado/stop-preview"] = () => json(NO_RUNS);
+  answers["POST /api/sessions/lado/stop"] = () => json({ dropped: 0 });
+  answers["DELETE /api/sessions/lado"] = () => json({ open_runs: [], worktrees: [] });
+  open("/sessions/lado");
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(head()).getByRole("button", { name: "Stop session…" }));
+  const asked = await screen.findByRole("dialog", { name: 'Stop session "lado"?' });
+  await within(asked).findByText("its agent is closed");
+  const buttons = within(asked).getAllByRole("button");
+  expect(buttons.map((button) => button.textContent)).toEqual(["Cancel", "Stop and forget", "Stop lado"]);
+  expect(buttons[1].classList).toContain("danger");
+  fireEvent.focus(buttons[1]);
+  expect(screen.getByRole("tooltip").textContent).toBe("Stops it, then deletes its history for good");
+  fireEvent.click(buttons[1]);
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Session lado" })).toBeNull());
+  expect(calls.filter((c) => c.method !== "GET").map((c) => `${c.method} ${c.path}`)).toEqual([
+    "POST /api/sessions/lado/stop",
+    "DELETE /api/sessions/lado?force=false",
+  ]);
+});
+
+test("Stop and forget is off for a session with open runs, and says why; Stop works as before", async () => {
+  answers["GET /api/sessions/lado/stop-preview"] = () => json({ ...NO_RUNS, open_runs: ["feature/x"] });
+  answers["POST /api/sessions/lado/stop"] = () => json({ dropped: 0 });
+  open("/sessions/lado");
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(head()).getByRole("button", { name: "Stop session…" }));
+  const asked = await screen.findByRole("dialog", { name: 'Stop session "lado"?' });
+  expect(await within(asked).findByText("It has open runs: stop it, then forget it from the Stopped list.")).toBeTruthy();
+  expect((within(asked).getByRole("button", { name: "Stop and forget" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(within(asked).getByRole("button", { name: "Stop lado" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: 'Stop session "lado"?' })).toBeNull());
+  expect(calls.filter((c) => c.method !== "GET").map((c) => c.path)).toEqual(["/api/sessions/lado/stop"]);
+});
+
+test("a refused forget after Stop and forget leaves the session stopped and says why in the popover", async () => {
+  answers["GET /api/sessions/lado/stop-preview"] = () => json(NO_RUNS);
+  answers["POST /api/sessions/lado/stop"] = () => json({ dropped: 0 });
+  answers["DELETE /api/sessions/lado"] = () => json({ detail: 'session "lado" has 1 open run' }, 400);
+  open("/sessions/lado");
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(head()).getByRole("button", { name: "Stop session…" }));
+  const asked = await screen.findByRole("dialog", { name: 'Stop session "lado"?' });
+  fireEvent.click(await within(asked).findByRole("button", { name: "Stop and forget" }));
+  expect((await within(asked).findByRole("alert")).textContent).toBe('session "lado" has 1 open run');
+  expect(screen.getByRole("region", { name: "Session lado" })).toBeTruthy(); // the page stays
+  // Stopped by now: neither stop is offered again.
+  expect((within(asked).getByRole("button", { name: "Stop and forget" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((within(asked).getByRole("button", { name: "Stop lado" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+// Forget stopped sessions… on the list's Stopped band (the window itself: ForgetMany.test.tsx)
+
+const sessionList = () => screen.getByRole("navigation", { name: "Sessions" });
+const band = (group: string) => within(sessionList()).getByRole("region", { name: group }).querySelector("h3") as HTMLElement;
+
+test("the Stopped band has Forget stopped sessions…, the other bands none; it opens the window with the group's sessions, the group still folded", async () => {
+  sessions = [
+    session("lado"),
+    session("asks", { waiting: { gates: 1, questions: 0, agents: 0 } }),
+    session("old", { status: "stopped" }),
+    session("older", { status: "stopped", title: "Older work" }),
+  ];
+  answers["GET /api/sessions/old/forget-preview"] = () => json({ open_runs: [], worktrees: [] });
+  answers["GET /api/sessions/older/forget-preview"] = () => json({ open_runs: [], worktrees: [] });
+  open("/sessions");
+  await within(sessionList()).findByRole("link", { name: /lado/ });
+  expect(within(band("Running")).queryByRole("button", { name: "Forget stopped sessions…" })).toBeNull();
+  expect(within(band("Needs you")).queryByRole("button", { name: "Forget stopped sessions…" })).toBeNull();
+  const fold = within(band("Stopped")).getByRole("button", { name: "Stopped 2" });
+  expect(fold.getAttribute("aria-expanded")).toBe("false");
+  const action = within(band("Stopped")).getByRole("button", { name: "Forget stopped sessions…" });
+  expect(action.getAttribute("aria-haspopup")).toBe("dialog");
+  expect(action.querySelector("svg")).toBeTruthy();
+  fireEvent.focus(action);
+  expect(screen.getByRole("tooltip").textContent).toBe("Forget stopped sessions…");
+  fireEvent.blur(action);
+  fireEvent.click(action);
+  const asked = await screen.findByRole("dialog", { name: "Forget stopped sessions?" });
+  expect(within(asked).getAllByRole("listitem").map((item) => item.querySelector(".forget-many-name")!.textContent)).toEqual([
+    "old",
+    "Older work",
+  ]);
+  expect(fold.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(within(asked).getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("dialog", { name: "Forget stopped sessions?" })).toBeNull();
+});
+
+test("with text in the search the window lists only the matching stopped sessions", async () => {
+  sessions = [session("lado"), session("lad-85", { status: "stopped" }), session("lad-71", { status: "stopped" })];
+  answers["GET /api/sessions/lad-85/forget-preview"] = () => json({ open_runs: [], worktrees: [] });
+  open("/sessions");
+  await within(sessionList()).findByRole("link", { name: /lado/ });
+  fireEvent.change(screen.getByRole("searchbox", { name: "Find a session" }), { target: { value: "lad-8" } });
+  fireEvent.click(within(band("Stopped")).getByRole("button", { name: "Forget stopped sessions…" }));
+  const asked = await screen.findByRole("dialog", { name: "Forget stopped sessions?" });
+  expect(within(asked).getAllByRole("listitem").map((item) => item.querySelector(".forget-many-name")!.textContent)).toEqual([
+    "lad-85",
+  ]);
+  expect(calls.filter((c) => c.path.endsWith("/forget-preview")).map((c) => c.path)).toEqual([
+    "/api/sessions/lad-85/forget-preview",
+  ]);
+});
+
+test("with no stopped session there is no Stopped band and no Forget stopped sessions…", async () => {
+  sessions = [session("lado")];
+  open("/sessions");
+  await within(sessionList()).findByRole("link", { name: /lado/ });
+  expect(within(sessionList()).queryByRole("region", { name: "Stopped" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Forget stopped sessions…" })).toBeNull();
+});
+
 // The head's facts from GET /api/sessions/{name}/about: the repository, the kits' and the
 // provider's versions (docs/design/ui.md, Session head)
 

@@ -2,6 +2,12 @@
 
 ## 0.41.0 (unreleased)
 
+- The web UI forgets stopped sessions in one go: a bin on the session list's Stopped band
+  opens a window with the stopped sessions the list shows, all ticked; clear the ones to
+  keep and press `Forget N sessions`. Sessions with open runs stay unless "Also forget
+  their open runs" is on; each session is forgotten as the single Forget does, and a
+  refused one is shown with its reason. Stop's popover has `Stop and forget` for a
+  session without open runs.
 - Start from scratch: a session no longer needs a repository made by hand or a GitHub
   account. The New session window's switch reads **From scratch | Folder | Clone from
   URL** and opens in From scratch while LADO has no sessions (else in Folder, as before):

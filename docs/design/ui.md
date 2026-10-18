@@ -477,9 +477,11 @@ Sessions for now. The UI's texts are in English.
   is under the one group heading of every list (`GroupHead.tsx`, List and page below), a
   band of its tone, Needs you `human` (`--human` on `--human-ground`), Running `done`
   (`--done` on `--done-ground`), Stopped `neutral` (`--muted` on `--raised`), the name in
-  small capitals and the count on the right in the group's colour, a chevron on the left.
-  The whole band is a button (`aria-expanded`, `aria-controls` naming the group's list,
-  which stays in the page folded or not; Enter and Space as any button) that folds and
+  small capitals and the count on the right in the group's colour, a chevron on the left;
+  the Stopped band ends with a bin, Forget stopped sessions… (Launch and session control,
+  below), a button of its own. The rest of the band is a button (`aria-expanded`,
+  `aria-controls` naming the group's list, which stays in the page folded or not; Enter
+  and Space as any button) that folds and
   opens its group; a folded group keeps its count, and a group without sessions is not
   drawn, heading and all. Each group's state is remembered in the browser by its id
   (`lado.sessionGroups`: `{"needs-you", "running", "stopped"}`, each `open` or `folded`);
@@ -1515,8 +1517,15 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   decides.
 - **Stop** asks in a popover by its button: `Stop session "<name>"?`, what it does from
   `stop-preview` (its agents are closed, the messages they did not get are dropped,
-  branches, worktrees, open runs and the history stay, it can be resumed) and the button
-  `Stop <name>`; the name is in the request's address. The page stays on the session.
+  branches, worktrees, open runs and the history stay, it can be resumed) and the buttons
+  `Stop and forget` and `Stop <name>`; the name is in the request's address. The page
+  stays on the session. **Stop and forget** (decided 2026-10-18, LAD-92; mockup
+  `task/lad-92/mockup-bulk-forget.html`), in the colour of a dangerous action with the
+  tooltip "Stops it, then deletes its history for good", stops the session, then forgets
+  it without force (`Stopping…`, then `Forgetting…`), then goes to `/sessions`. It is off
+  while `stop-preview` names open runs, the popover saying "It has open runs: stop it,
+  then forget it from the Stopped list."; a refused forget leaves the session stopped and
+  the popover shows the core's reason.
 - **A menu or popover below its button** (the row's menu, the selected text of a copy that
   failed, Stop's popover; `useBelow` in `Menu.tsx`) is fixed 6px under the button, so a
   scrolling box around it does not cut it: from the button's left edge, Stop's from its
@@ -1526,6 +1535,27 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   branches left on disk (`forget-preview`), and with open runs a box to tick
   ("Also forget its N open runs (…)") before `Forget <name>` can be pressed. After it,
   `/sessions`.
+- **Forget stopped sessions** (`ForgetMany.tsx`; decided 2026-10-18, LAD-92; mockup
+  `task/lad-92/mockup-bulk-forget.html`, variant 1; ticks in the list itself were turned
+  down): a bin at the right end of the session list's Stopped band (`GroupHead`'s
+  `action`), in the colour of a dangerous action, named and tipped "Forget stopped
+  sessions…", whenever the band is drawn, folded or open; pressing it never folds the
+  group. It opens a modal window "Forget stopped sessions?" with the stopped sessions the
+  list shows at that moment (with text in the search, the matching ones), fixed while it
+  is open: each with a tick, all ticked, its title or name and when it stopped; "All N"
+  ticks or clears them all. The window loads each one's `forget-preview` (in parallel): a
+  session with open runs says "N open run(s)", one whose preview is refused shows the
+  core's reason and cannot be ticked. The worktrees the ticked sessions leave on disk are
+  under a folded "Left on disk: N worktrees of M sessions (…)". With open runs among the
+  ticked, the switch "Also forget their N open runs (…)", off; while off those sessions
+  stay ("While this is off, … stay.") and are not counted. `Forget N sessions` (off while
+  the previews load or at 0) forgets the counted ones one at a time, in the list's order,
+  with the single Forget's `DELETE` (force only for those with runs, switch on): the rest
+  of the window is off, Esc does nothing, `Forgetting K of N…`, and each row ends as
+  "forgotten" or with the core's reason, a refusal never stopping the others. All
+  forgotten: the window closes; any refused: it stays with the reasons and Close. When the
+  open session is among the forgotten, the page goes to `/sessions`. No API of its own:
+  the core decides each session.
 
 ### Session head (decided 2026-10-07, feature/session-head)
 

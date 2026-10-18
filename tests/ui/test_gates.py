@@ -2,6 +2,7 @@
 waiting card, and a gate answered elsewhere (`lado answer`) leaves the card and is a closed
 line on the open page."""
 
+import base64
 import re
 import subprocess
 import sys
@@ -10,6 +11,7 @@ import uuid
 import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
+from test_images import png
 from test_main_screen import log_in
 
 from lado import artifacts, loop, runs, runtime, state
@@ -185,8 +187,15 @@ def comment_field(page: Page, session: str):
     return panel.get_by_role("textbox", name="Comment for the next step (optional)")
 
 
+def frame_of(field):
+    """The frame of a field that takes files (LAD-86): it draws the field's focus ring."""
+    return field.locator(
+        "xpath=ancestor::div[contains(concat(' ', @class, ' '), ' answer-box ')][1]"
+    )
+
+
 def test_a_gates_comment_with_the_focus_shows_its_ring_whole(page: Page, server, repo, shot):
-    """LAD-78: the comment's focus ring (the UI's outline, 4 px out) is whole on the left,
+    """LAD-78: the comment's focus ring (its frame's, 3 px out, LAD-86) is whole on the left,
     the top, the right and the bottom, within the card's list."""
     session = gated_session(repo)
     log_in(page, server)
@@ -194,7 +203,7 @@ def test_a_gates_comment_with_the_focus_shows_its_ring_whole(page: Page, server,
     field = comment_field(page, session)
     field.click()
     expect(field).to_be_focused()
-    assert_ring_whole(field, 4)
+    assert_ring_whole(frame_of(field), 3)
     shot(page, full_page=False)
 
 
@@ -208,7 +217,7 @@ def test_a_gates_long_comment_shows_its_ring_whole(page: Page, server, repo, sho
     field.fill(TWELVE_LINES)
     expect(field).to_be_focused()
     assert_long_field_fits(field)
-    assert_ring_whole(field, 4)
+    assert_ring_whole(frame_of(field), 3)
     shot(page, full_page=False)
 
 
@@ -221,7 +230,7 @@ def test_a_gates_comment_in_a_narrow_window_shows_its_ring_whole(page: Page, ser
     field = comment_field(page, session)
     field.click()
     expect(field).to_be_focused()
-    assert_ring_whole(field, 4)
+    assert_ring_whole(frame_of(field), 3)
     shot(page, full_page=False)
 
 
@@ -239,7 +248,7 @@ def test_a_gates_long_comment_on_the_flows_tab_shows_its_ring_whole(page: Page, 
     expect(field).to_be_focused()
     # Grown past the window's lower edge, so the page scrolled to bring it into view.
     assert page.locator(".list-main").evaluate("main => main.scrollTop") > 0
-    assert_ring_whole(field, 4, clips=(".list-main",))
+    assert_ring_whole(frame_of(field), 3, clips=(".list-main",))
     shot(page, full_page=False)
 
 
@@ -496,3 +505,75 @@ def test_a_gate_with_a_recommendation_that_disagrees(page: Page, server, repo, s
     expect(quiet.locator(".chat-body")).to_contain_text("no test covers the second step")
     expect(line.locator(".rec")).to_have_count(0)
     shot(page, "closed")
+
+
+# A file put on the clipboard and pasted into the focused element, as a browser does with a
+# screenshot (named image.png); its bytes base64.
+PASTE_IMAGE = """(field, data) => {
+  const bytes = Uint8Array.from(atob(data), c => c.charCodeAt(0));
+  const clip = new DataTransfer();
+  clip.items.add(new File([bytes], 'image.png', { type: 'image/png' }));
+  const paste = { clipboardData: clip, bubbles: true, cancelable: true };
+  field.dispatchEvent(new ClipboardEvent('paste', paste));
+}"""
+
+# A file dragged and dropped from the desktop, as the browser's drag events carry it.
+DROPPED_NOTES = (
+    "() => { const d = new DataTransfer();"
+    " d.items.add(new File(['split it\\n'], 'notes.txt', { type: 'text/plain' })); return d; }"
+)
+
+
+def test_the_human_answers_a_gate_with_files_the_next_step_gets(page: Page, server, repo, shot):
+    """A gate's comment takes files as the composer does: a paste, the paperclip and a drop on
+    the field; Reject uploads them and answers; the move shows the comment, the preview and
+    the chips, the opened gate's card the chips only."""
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session).get_by_role("tabpanel")
+    field = card.get_by_role("textbox", name="Comment for the next step (optional)")
+    clip = card.get_by_role("button", name="Attach files")
+    expect(clip).to_have_attribute("title", re.compile("up to 10 files"))  # the limits loaded
+    field.evaluate(PASTE_IMAGE, base64.b64encode(png(320, 180)).decode())
+    card.locator("input[type=file]").set_input_files(
+        [{"name": "server.log", "mimeType": "text/plain", "buffer": b"GET / 500\n" * 30}]
+    )
+    box = card.locator(".answer-box")
+    box.scroll_into_view_if_needed()
+    box.dispatch_event("dragenter", {"dataTransfer": page.evaluate_handle(DROPPED_NOTES)})
+    expect(box.get_by_text("Drop to attach · up to 10 files, 25.0 MB each")).to_be_visible()
+    shot(page, "drop", full_page=False)
+    box.dispatch_event("drop", {"dataTransfer": page.evaluate_handle(DROPPED_NOTES)})
+    chips = card.get_by_role("list", name="Attached files").locator(".file-name")
+    expect(chips).to_have_text([re.compile(r"^screenshot-\d{6}\.png$"), "server.log", "notes.txt"])
+    expect(page.locator(".composer .file-chip")).to_have_count(0)  # the drop went to the field
+    expect(card.locator(".waiting-send")).to_contain_text("3 files,")
+    field.fill("the button covers the field")
+    shot(page, "tab", full_page=False)
+    card.get_by_role("button", name="Reject", exact=True).click()
+    expect(waiting_card(page, session)).to_have_count(0)
+    feed = page.get_by_role("log", name="Chat with the session")
+    you = page.locator(".run-actor", has_text=re.compile(r"^You$"))
+    move = feed.locator(".run-group li").filter(has=you).last
+    comment = move.locator(".run-comment")
+    expect(comment).to_contain_text("the button covers the field")
+    expect(comment.locator(".chat-image img")).to_have_js_property("naturalWidth", 320)
+    expect(comment.locator(".chip")).to_have_count(3)
+    move.scroll_into_view_if_needed()
+    shot(page, "move", full_page=False)
+    line = feed.get_by_role("article", name="Gate #1", exact=True)
+    line.get_by_role("button", name="Gate #1 · ship/x · check: reject by human").click()
+    answer = line.locator(".gate-closed-card .question-answer")
+    expect(answer.locator(".chip")).to_have_count(3)
+    expect(answer.locator(".chat-image")).to_have_count(0)
+    chip = answer.locator(".chip").first.bounding_box()
+    frame = answer.bounding_box()
+    assert chip and frame and chip["x"] + chip["width"] <= frame["x"] + frame["width"]  # inside
+    answer.scroll_into_view_if_needed()
+    shot(page, "card", full_page=False)
+    gate = state.get_gate(1)
+    names = [a.artifact.name for a in runs.gate_answer_attachments(gate)]
+    assert len(names) == 3 and names[1].startswith("server-") and names[2].startswith("notes-")
+    step = state.last_note(session, "ship/x")
+    assert step.summary == "rejected: the button covers the field"

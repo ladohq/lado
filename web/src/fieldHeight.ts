@@ -28,16 +28,23 @@ export function grow(field: HTMLTextAreaElement, least: number, most: number): n
 
 // `grow` on each change of the text. A field with the focus that grew brings its lower edge
 // into view: the nearest box that scrolls (the waiting card's list, else the page) moves by
-// as much as the field passed its edge.
-export function useGrow(field: RefObject<HTMLTextAreaElement | null>, text: string, least: number, most: number) {
+// as much as the field passed its edge. A field inside a frame that draws its ring (a field
+// that takes files, attachFiles.AnswerBox) brings that `frame` into view instead.
+export function useGrow(
+  field: RefObject<HTMLTextAreaElement | null>,
+  text: string,
+  least: number,
+  most: number,
+  frame?: RefObject<HTMLElement | null>,
+) {
   const before = useRef(0);
   useLayoutEffect(() => {
     const box = field.current;
     if (!box) return;
     const height = grow(box, least, most);
     if (height > before.current && before.current > 0 && document.activeElement === box) {
-      box.scrollIntoView?.({ block: "nearest" });
+      (frame?.current ?? box).scrollIntoView?.({ block: "nearest" });
     }
     before.current = height;
-  }, [field, text, least, most]);
+  }, [field, text, least, most, frame]);
 }

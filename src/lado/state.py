@@ -19,7 +19,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 30
+SCHEMA_VERSION = 31
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -905,6 +905,15 @@ def gates_closed_events(db: sqlite3.Connection) -> None:
 SCHEMA += GATES_CLOSED_EVENT + ";\n"
 MIGRATIONS[29] = [GATES_CLOSED_EVENT, gates_closed_events]
 
+# From version 31: the note an answer to the gate kept for the next step, stored by
+# update_run in the transaction that closes the gate; the UI shows the files attached to it
+# under the answer (lado.runs.gate_answer_attachments). NULL while the gate is open, for a
+# gate closed with no note (a cancel), and for every gate closed before: their answers
+# carried no files.
+GATES_ANSWER_NOTE = "ALTER TABLE gates ADD COLUMN answer_note INTEGER REFERENCES notes(id)"
+SCHEMA += GATES_ANSWER_NOTE + ";\n"
+MIGRATIONS[30] = [GATES_ANSWER_NOTE]
+
 # Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
 # approval or choice gate. An override is the human's past the flow (flow-set's reason, an
 # answer at a loop limit): kept, but never taken for the state's report.
@@ -1064,6 +1073,7 @@ class Gate:
     note_id: int | None = None  # the note that led here (GATES_NOTE); None for none kept
     attachments: int = 0  # how many artifacts that note carries
     closed_event: int | None = None  # the event its closing wrote (GATES_CLOSED_EVENT)
+    answer_note: int | None = None  # the note its answer kept (GATES_ANSWER_NOTE)
     # The lead's recommendation on it (RECOMMENDATION).
     recommendation_state: str | None = None
     recommendation: str = ""
@@ -2073,8 +2083,9 @@ def update_run(
     was written. In the same transaction `closes` closes the run's open gate (nothing is
     written if it names a gate that is not open) and keeps the first of `events` as the
     event of its closing (GATES_CLOSED_EVENT), `after`'s note is kept as `noted` says,
-    if given, with the artifacts attached, and the gate `opens` is stored after it (its id
-    set), keeping that note's id."""
+    if given, with the artifacts attached (and as the closed gate's answer note,
+    GATES_ANSWER_NOTE), and the gate `opens` is stored after it (its id set), keeping that
+    note's id."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         cur = db.execute(
@@ -2123,6 +2134,8 @@ def update_run(
                     ),
                 ).lastrowid
                 _attach(db, "note", note, attachments)
+                if closed:  # GATES_ANSWER_NOTE
+                    db.execute("UPDATE gates SET answer_note = ? WHERE id = ?", (note, closed))
                 if opens:
                     opens.note_id = note
             if opens:
@@ -2533,13 +2546,14 @@ def add_question(
 class Reply:
     """The human's reply to one open question as it is queued (lado.runtime builds it): its
     message's summary and body, the choice, and the question's outcome, ANSWERED or
-    DISMISSED."""
+    DISMISSED; and the files the human attached, as resolve_attachments gives them."""
 
     question: int
     summary: str
     body: str
     choice: str | None
     outcome: str
+    attachments: Attached = ()
 
 
 class QuestionClosed(Exception):
@@ -2554,9 +2568,9 @@ class QuestionClosed(Exception):
 
 def reply_to_questions(session: str, replies: Sequence[Reply]) -> list[int]:
     """Queue the human's replies to open questions, each to the agent that asked it, and set
-    each question's outcome, in one transaction. Returns the replies' ids, in order; with
-    nothing changed, QuestionClosed when a question is not open and NotRunning when an
-    agent that asked does not run."""
+    each question's outcome, in one transaction, each with its attachments. Returns the
+    replies' ids, in order; with nothing changed, QuestionClosed when a question is not
+    open and NotRunning when an agent that asked does not run."""
     ids = []
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
@@ -2586,6 +2600,7 @@ def reply_to_questions(session: str, replies: Sequence[Reply]) -> list[int]:
                     reply.choice,
                 ),
             ).lastrowid
+            _attach(db, "message", message, reply.attachments)
             _drop_requests(db, "messages", "id = ?", (reply.question,))
             db.execute(
                 "UPDATE messages SET question_state = ?, answered_by = ? WHERE id = ?",
@@ -3101,6 +3116,7 @@ def _gate(row: sqlite3.Row) -> Gate:
         note_id=row["note_id"],
         attachments=row["attachments"],
         closed_event=row["closed_event"],
+        answer_note=row["answer_note"],
         **_recommendation(row),
     )
 

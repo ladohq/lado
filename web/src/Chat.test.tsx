@@ -984,6 +984,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     created_at: "2026-10-03T12:00:00.250Z",
     answered_at: null,
     closed_by_event: null,
+    answer_attachments: [],
     problem: null,
     recommendation: null,
     ...more,
@@ -1419,6 +1420,98 @@ test("a move of the human without its gate in the feed is the move alone; anothe
   expect(kept(mine, "run-actor")).toBe("You");
   expect(mine.querySelector(".run-comment")).toBeNull();
   expect(theirs.querySelector(".run-comment")).toBeNull();
+});
+
+// The files of the human's answers (docs/design/ui.md, Answer in the question card; Flow
+// gates): uploads of the session's scope, an image previewed, every file a chip.
+const uploads = (...names: string[]): AttachmentInfo[] =>
+  names.map((name) => ({
+    artifact: `a-${name}`,
+    record: `r-${name}`,
+    full_name: name,
+    name,
+    scope: "",
+    title: null,
+    media_type: name.endsWith(".png") ? "image/png" : "text/plain",
+    size: 1200,
+    hash: "h",
+  }));
+const shown = (where: Element) => ({
+  images: where.querySelectorAll(".chat-image").length,
+  chips: Array.from(where.querySelectorAll(".chip .chip-name")).map((one) => one.textContent),
+});
+
+test("an answer's files show in its question's card, previews and chips; its late line counts them", async () => {
+  serve(
+    [
+      question(5, { question_state: "answered", answered_by: 7 }),
+      message(6, "supervisor", "human", "in between"),
+      message(7, "human", "w1", "Answer to #5: see these", { reply_to: 5, attachments: uploads("shot-1a2b3c4d.png", "server-1a2b3c4d.log") }),
+    ].map((one, i) => ({ ...one, created_at: `2026-10-03T12:0${i}:00.000Z` })),
+  );
+  open();
+  const log = await chat();
+  const card = await within(log).findByRole("article", { name: "Question from w1" });
+  const given = card.querySelector(".question-answer")!;
+  expect(given.querySelector(".chat-body")?.textContent).toBe("see these");
+  expect(shown(given)).toEqual({ images: 1, chips: ["shot-1a2b3c4d.png", "server-1a2b3c4d.log"] });
+  const late = within(log).getByRole("article", { name: "You answered question #5" });
+  expect(late.querySelector(".late-text")?.textContent).toMatch(/· see these · 2 files$/);
+});
+
+test("an own answer of files only shows them alone in the card; a skip's files show under its comment", async () => {
+  serve([
+    question(5, { question_state: "answered", answered_by: 6 }),
+    message(6, "human", "w1", "Answer to #5: 1 file: shot-1a2b3c4d.png", { reply_to: 5, attachments: uploads("shot-1a2b3c4d.png") }),
+    question(7, { question_state: "dismissed", answered_by: 8 }),
+    message(8, "human", "w1", "Dismissed #7", { reply_to: 7, body: "later", attachments: uploads("notes-1a2b3c4d.log") }),
+  ]);
+  open();
+  const [own, skipped] = await within(await chat()).findAllByRole("article", { name: "Question from w1" });
+  expect(own.querySelector(".question-answer .chat-body")).toBeNull();
+  expect(shown(own.querySelector(".question-answer")!)).toEqual({ images: 1, chips: ["shot-1a2b3c4d.png"] });
+  expect(skipped.querySelector(".question-answer .chat-body")?.textContent).toBe("later");
+  expect(shown(skipped.querySelector(".question-answer")!)).toEqual({ images: 0, chips: ["notes-1a2b3c4d.log"] });
+});
+
+test("an answer and a skip to questions not in the window show their files", async () => {
+  serve(
+    [
+      message(13, "human", "w1", "Answer to #10: 1 file: shot-1a2b3c4d.png", { reply_to: 10, attachments: uploads("shot-1a2b3c4d.png") }),
+      message(14, "human", "w1", "Dismissed #11", { reply_to: 11, attachments: uploads("notes-1a2b3c4d.log") }),
+    ].map((one, i) => ({ ...one, created_at: `2026-10-03T12:00:0${i}.000Z` })),
+  );
+  open();
+  const log = await chat();
+  const row = await within(log).findByRole("article", { name: "Message from you" });
+  expect(row.querySelector(".chat-answer")).toBeNull();
+  expect(shown(row)).toEqual({ images: 1, chips: ["shot-1a2b3c4d.png"] });
+  expect(shown(within(log).getByRole("article", { name: "You skipped question #11" }))).toEqual({ images: 0, chips: ["notes-1a2b3c4d.log"] });
+});
+
+test("a gate's answer with files: previews and chips under the move after the comment; the opened card chips only, the folded one none", async () => {
+  rejected({ answer_attachments: uploads("shot-1a2b3c4d.png", "server-1a2b3c4d.log") });
+  const card = await gateCard();
+  await waitFor(async () => expect((await moves()).some((one) => one.querySelector(".run-comment"))).toBe(true));
+  const move = (await moves()).find((one) => kept(one, "run-actor") === "You")!;
+  const comment = move.querySelector(".run-comment")!;
+  expect(comment.textContent).toContain("split the form first");
+  expect(shown(comment)).toEqual({ images: 1, chips: ["shot-1a2b3c4d.png", "server-1a2b3c4d.log"] });
+  expect(shown(card)).toEqual({ images: 0, chips: [] });
+  fireEvent.click(gateHead(card));
+  expect(shown(card.querySelector(".gate-closed-card .question-answer")!)).toEqual({
+    images: 0,
+    chips: ["shot-1a2b3c4d.png", "server-1a2b3c4d.log"],
+  });
+});
+
+test("a gate answered with files only shows them under the move", async () => {
+  rejected({ comment: "", answer_attachments: uploads("server-1a2b3c4d.log") });
+  await gateCard();
+  await waitFor(async () => expect((await moves()).some((one) => one.querySelector(".run-comment"))).toBe(true));
+  const move = (await moves()).find((one) => kept(one, "run-actor") === "You")!;
+  expect(shown(move.querySelector(".run-comment")!)).toEqual({ images: 0, chips: ["server-1a2b3c4d.log"] });
+  expect(move.querySelector(".run-comment .chat-body")).toBeNull();
 });
 
 test("answering a gate on the open page puts the move at the bottom and scrolls to it", async () => {

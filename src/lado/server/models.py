@@ -1040,13 +1040,21 @@ class GateInfo(BaseModel):
     # flow_cancel; state.GATES_CLOSED_EVENT): the chat links the answer's comment to that
     # move. None while open, and for an older gate whose event was not found.
     closed_by_event: int | None
+    # The files the human's answer gave the next step (runs.gate_answer_attachments): the
+    # attachments of the note it kept. Empty while open, for a gate closed otherwise, and
+    # for one closed before schema 31.
+    answer_attachments: list[AttachmentInfo]
     problem: str | None  # why its run's flow snapshot cannot be read; None when it can
     recommendation: RecommendationInfo | None  # the lead's; None when never asked
 
 
 class GateAnswer(BaseModel):
+    """The human's answer to a gate: an option, a comment for the next step, and the full
+    names of the files uploaded for it (POST …/artifacts)."""
+
     option: str
     comment: str = ""
+    artifacts: list[str] = []
 
 
 class MessageInfo(BaseModel):
@@ -1109,12 +1117,14 @@ class Limits(BaseModel):
 
 class Reply(BaseModel):
     """The human's reply to one open question: one of its choices, own words, or with
-    `skip` a dismissal, `text` then its comment."""
+    `skip` a dismissal, `text` then its comment; with the full names of the files uploaded
+    for it (POST …/artifacts), with which own words may be empty."""
 
     question: int
     choice: str | None = None
     text: str | None = None
     skip: bool = False
+    artifacts: list[str] = []
 
 
 class Replies(BaseModel):
@@ -1434,6 +1444,7 @@ def gate_info(gate: state.Gate) -> GateInfo:
         created_at=_utc(gate.created_at),
         answered_at=_utc(gate.answered_at) if gate.answered_at else None,
         closed_by_event=gate.closed_event,
+        answer_attachments=[attachment_info(a) for a in runs.gate_answer_attachments(gate)],
         problem=problem,
         recommendation=recommendation_info(gate, runs.recommendation_by(gate))
         if gate.recommendation_state

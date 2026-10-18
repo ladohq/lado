@@ -191,21 +191,30 @@ def _as_written(run: state.Run, current: flows.State, name: str) -> str:
 
 
 def answer(
-    session: str, gate: str, option: str, comment: str | None = None, by: str = HUMAN
+    session: str,
+    gate: str,
+    option: str,
+    comment: str | None = None,
+    by: str = HUMAN,
+    attached: list[str] | None = None,
 ) -> state.Run:
     """The human's answer to an open gate, given by its id or its run's name: moves the run
-    on like flow_advance, with the answer and comment as the next step's note. At a loop
-    limit, continue enters the state anyway and cancel cancels the run."""
+    on like flow_advance, with the answer and comment as the next step's note and the files
+    `attached` (full names of the human's uploads, lado.artifacts.upload) attached to it.
+    At a loop limit, continue enters the state anyway and cancel cancels the run, the files
+    going to the supervisor with LADO's message about it, as there is no next step."""
     found = find_gate(session, gate)
     runtime.running_session(session)
     run = _run(session, found.run)
     word = canonical_option(found, option)
     comment = (comment or "").strip()
+    attachments = runtime.human_files(session, list(attached or []))
     closes = (by, word, comment, found.id)  # nothing is written unless it is still open
     if found.kind == LOOP and word == CANCEL:
         line = visible.one_line(comment)
         _cancel(run, f"loop limit: {line}" if line else "loop limit", by, closes)
-        _tell_supervisor(run, f"cancelled by the human at {found.state} (loop limit)", comment)
+        what = f"cancelled by the human at {found.state} (loop limit)"
+        _tell_supervisor(run, what, comment, attachments=attachments)
         return _run(session, run.name)
     flow = flow_of(run)
     if found.kind == LOOP:
@@ -220,7 +229,17 @@ def answer(
     # A loop limit is no state of the flow: its answer must not stand for a state's report.
     kind = state.OVERRIDE if found.kind == LOOP else state.REPORT
     noted = state.Noted(found.state, kind, by, outcome, target)
-    after = _commit(run, after, [transition, *events], flow, by, opens, closes, noted=noted)
+    after = _commit(
+        run,
+        after,
+        [transition, *events],
+        flow,
+        by,
+        opens,
+        closes,
+        noted=noted,
+        attachments=attachments,
+    )
     if after.status == state.ACTIVE:
         # A worker got the step; the supervisor only hears that the run moved on.
         if _acting_agent(after, flow.states[after.state]) not in (None, SUPERVISOR):
@@ -228,12 +247,19 @@ def answer(
     return after
 
 
-def answer_text(session: str, gate: str, option: str, comment: str | None = None) -> str:
+def answer_text(
+    session: str,
+    gate: str,
+    option: str,
+    comment: str | None = None,
+    attached: list[str] | None = None,
+) -> str:
     """`answer`, said in one line for the human: the answer and where the run went. Every
-    surface of the human (`lado answer`, the popup, the UI) shows this text."""
+    surface of the human (`lado answer`, the popup, the UI) shows this text; only the UI
+    attaches files."""
     found = find_gate(session, gate)
     before = _run(session, found.run)
-    run = answer(session, str(found.id), option, comment)
+    run = answer(session, str(found.id), option, comment, attached=attached)
     word = state.get_gate(found.id).answer
     return f"gate #{found.id}: {word}. {run.name}: {before.state} -> {run.state} ({now(run)})"
 
@@ -634,6 +660,14 @@ def gate_attachments(gate: state.Gate) -> list[artifacts.Attachment]:
     return artifacts.attached(state.note_attachments(gate.note_id))
 
 
+def gate_answer_attachments(gate: state.Gate) -> list[artifacts.Attachment]:
+    """The files the gate's answer gave the next step: the attachments of the note it kept
+    (state.GATES_ANSWER_NOTE); none for a gate closed otherwise or before version 31."""
+    if not gate.answer_note:
+        return []
+    return artifacts.attached(state.note_attachments(gate.answer_note))
+
+
 def gate_artifacts(gate: state.Gate) -> str:
     """The line naming the artifacts of the note that led to the gate; '' for none."""
     if not gate.note_id or not gate.attachments:
@@ -921,14 +955,20 @@ def _unfinished(repo: str, run: state.Run, missing: list[str]) -> str:
 
 
 def _tell_supervisor(
-    run: state.Run, what: str, body: str = "", notices: list[str] | None = None
+    run: state.Run,
+    what: str,
+    body: str = "",
+    notices: list[str] | None = None,
+    attachments: state.Attached = (),
 ) -> None:
-    """Send the supervisor a message, or add it to `notices`: the supervisor caused it
-    itself and gets it in its tool's result."""
+    """Send the supervisor a message with the `attachments`, or add it to `notices`: the
+    supervisor caused it itself and gets it in its tool's result (the human's files never
+    take that path)."""
     if notices is not None:
         notices.append(f"flow {run.name}: {what}\n{body}".strip())
         return
-    runtime.post(run.session, LADO, SUPERVISOR, *_to_supervisor(run, what, body))
+    summary, body = _to_supervisor(run, what, body)
+    runtime.post(run.session, LADO, SUPERVISOR, summary, body, attachments=attachments)
 
 
 def _to_supervisor(run: state.Run, what: str, body: str = "") -> tuple[str, str]:

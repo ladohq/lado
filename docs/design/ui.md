@@ -728,10 +728,15 @@ reaches the feed. LADO takes the model and builds it on what it has:
   the full names of the artifacts its state reads but those the note carries, `reads`;
   closed, `closed_by_event`, the id of the run's event its closing wrote, a `flow` move, a
   `flow_set` or a `flow_cancel`, which the core stores in the closing's transaction,
-  `gates.closed_event`, since LAD-85) and takes the human's answer
-  (`POST …/gates/{id}/answer {option, comment}`, guarded like the composer, through
-  `runs.answer_text`, the one text `lado answer` prints too; what the core refuses is 400
-  with its reason). An **open gate** is a quiet line of the feed where it opened (the flag
+  `gates.closed_event`, since LAD-85; and `answer_attachments`, the files the human's
+  answer gave the next step, the attachments of the note it kept, `gates.answer_note`,
+  schema 31, LAD-86) and takes the human's answer
+  (`POST …/gates/{id}/answer {option, comment, artifacts?}`, guarded like the composer,
+  through `runs.answer_text`, the one text `lado answer` prints too; `artifacts` are the
+  full names of the files uploaded for it, attached to the next step's note, which its
+  agent reads as `Artifacts: /<name>`; at a loop limit Cancel run, which has no next step,
+  sends them with LADO's message about the cancel to the supervisor; what the core refuses
+  is 400 with its reason). An **open gate** is a quiet line of the feed where it opened (the flag
   avatar, "Gate #id run · state waits: <question> ↓", the time) and a tab of the waiting
   card above the composer (The waiting card, below; since LAD-28, 2026-10-13: before, a row
   of the feed with its card). The tab shows its panel (`GatePanel`, also the compact card of
@@ -742,10 +747,17 @@ reaches the feed. LADO takes the model and builds it on what it has:
   loaded): the latest record comes from the feed's artifacts, so a write while the gate is
   open shows at once, and the note's chip of an artifact written since says "changed
   since" (docs/design/artifacts.md, Flows), the supervisor's recommendation (below), an
-  optional comment for the next step, and a button per option (Approve / Reject, a choice
-  gate's own options, Continue / Cancel run at a loop limit; the recommended one primary,
-  else the first; on the tab, in its Send row). The buttons are off while the answer is
-  sent and in a stopped session (it says to resume it); a refusal shows on the panel. The
+  optional comment for the next step, which takes files as the composer does (LAD-86,
+  mockup `task/lad-86/mockup-gate-files.html`: the composer's frame with the paperclip at
+  its left, the chips above the text, paste and a drop on the field; The waiting card,
+  Fields), and a button per option (Approve / Reject, a choice gate's own options,
+  Continue / Cancel run at a loop limit; the recommended one primary, else the first; on
+  the tab, in its Send row), then "<n> file(s), <size>" while files are attached. A button
+  uploads the files not uploaded yet, then answers with the comment and their names; a
+  failed upload stops the answer, its chip red with the reason, and says "Remove it, or
+  answer again to try it again"; a comment of files only is an answer too. The buttons are
+  off while the answer is sent and in a stopped session (it says to resume it); a refusal
+  shows on the panel. The
   tab goes only when the feed brings the closed gate, wherever it was answered
   (the popup, `lado answer`, another tab). A **closed gate** (LAD-85, 2026-10-16, mockups
   `task/lad-85/mockup-gate-comment.html` A, `mockup-gate-expanded.html` 2 and
@@ -765,7 +777,8 @@ reaches the feed. LADO takes the model and builds it on what it has:
   the answer in the look of the human's reply in a question's card (`.question-answer` on
   the human's ground; a gate closed by an agent `.dismissed`, on `--raised`): the small
   avatar, "You" or the agent, the chip, "→ <state>" when the move is in the feed, the time
-  and the comment in full (`breaks`); then a folded line each (`<details>`, its label in
+  and the comment in full (`breaks`), then the answer's files as chips only, no previews
+  (LAD-86: the card is compact, the move's line shows them); then a folded line each (`<details>`, its label in
   small capitals in a fixed column, its head cut on one line), none opened with the card:
   **Note** (the note's summary in bold, "· N artifacts"; opened, its body's first 6 lines,
   `CLOSED_NOTE_LINES`, with Show more, and its chips) and **Supervisor** ("recommended
@@ -773,7 +786,9 @@ reaches the feed. LADO takes the model and builds it on what it has:
   "· disagreed with <agent>" in orange; opened, its text; without an option "Supervisor's
   recommendation"). The card stays where the gate opened, often far above the bottom; the **human's answer** is
   where it was given as one line, the run's move it made (a `flow` event of `human`), with
-  the answer's comment under it (Flow events in Look of the feed; since
+  the answer's comment under it and then its files, the images previewed and every file a
+  chip, as the human's own message shows them (LAD-86, mockup
+  `task/lad-86/mockup-feed-files.html`; files only, the files alone) (Flow events in Look of the feed; since
   feature/chat-message-text, 2026-10-07: no row of its own besides). On the open page it
   shows at the bottom as soon as the feed brings the event, and the feed scrolls to it as
   to a new message. The composer does not answer gates; no hint over it names them (the
@@ -817,7 +832,10 @@ Built in the chat task (2026-10-03):
   of one agent are taken together (`runtime.answer_questions`, LAD-28): each checked first,
   all queued and closed in one transaction, the agent's queue taken once, so an idle agent
   gets them in one hand-over and starts one turn; one wrong reply refuses the whole call
-  with nothing changed. When the agent is forgotten
+  with nothing changed. A reply may carry the files the human uploaded for it (LAD-86):
+  attached to its message, checked first (at most 10, every name found, else the call is
+  refused whole); an own answer of files only is an answer, its summary
+  `Answer to #<id>: <n> file(s): <names>`. `lado answer` and the popup attach none. When the agent is forgotten
   (`runtime.close_worker`: finish, a run's end or cancel, a failed spawn; `lado stop`), its
   open questions are `closed` in the same transaction.
 - **Where the human asked**: LADO's instructions to the supervisor say to answer
@@ -833,9 +851,10 @@ Built in the chat task (2026-10-03):
   the `messages` triggers.
 - **API**: `GET /api/sessions/{name}/messages?with=human` (`MessageInfo`, oldest first);
   `POST /api/sessions/{name}/messages` `{to?, text}` (default to the supervisor);
-  `POST /api/sessions/{name}/answers` `{answers: [{question, choice?, text?, skip}]}`, the
-  replies of a tab of the waiting card, all to one agent (`skip`: a dismissal, `text` its
-  comment; LAD-28, replacing `…/questions/{id}/answer` and `…/dismiss`).
+  `POST /api/sessions/{name}/answers` `{answers: [{question, choice?, text?, skip,
+  artifacts?}]}`, the replies of a tab of the waiting card, all to one agent (`skip`: a
+  dismissal, `text` its comment; LAD-28, replacing `…/questions/{id}/answer` and
+  `…/dismiss`; `artifacts`, the full names of the files uploaded for a reply, LAD-86).
   The POSTs need the server's own Origin (`Guard.changes`), answer 503 under another
   schema, 404 for an unknown session and 400 with the core's reason for what it refuses
   (a stopped session, an agent that is not running, a question not open). They return
@@ -973,11 +992,26 @@ Built in the chat task (2026-10-03):
   skip's comment and of a marked question) on every side and pulls itself back by as much
   at the top and the left, so the items and the Send row stand where they would without
   it, and a field scrolled into view keeps that room at whichever edge (`scroll-margin`;
-  also the Flows tab's gate card, whose run page scrolls it into view). The
+  also the Flows tab's gate card, whose run page scrolls it into view).
+  **Files in the fields** (decided 2026-10-18, LAD-86, mockup
+  `task/lad-86/mockup-answer-files.html`, option A): Other…'s field, Skip's and a gate's
+  comment take files as the composer does (Files in the composer, below; one module,
+  `attachFiles.tsx`, `AnswerBox`): the composer's frame, the paperclip at its left, the
+  chips above the text, a paste of a file or of a text longer than a message, and a drop
+  on the field, whose frame is its own drop zone. The frame draws the field's focus ring
+  (3 px, `.composer-box:focus-within`) and is what comes into view as the field grows. A
+  picked choice has no field and takes no files. The card keeps the files per question
+  (Other… and Skip share them, so a switch keeps them) and per gate, as it keeps the
+  comments, and drops those of an item closed elsewhere, revoking their thumbnails; the
+  server's limits (`GET /api/limits`) load with the card. A file dropped on the card but
+  not on a field goes nowhere (the browser does not open it); the composer leaves the card
+  to its fields, and takes what is dropped anywhere else in the chat. The
   Send row, always shown: **Send answer to <agent>** / **Send <n> answers to <agent>**, on
-  once each question has a choice, own words that are not blank, or Skip, with "<k> of <n>
-  answered" beside it until then; it posts the tab in one request (`POST …/answers`), and
-  the agent gets the replies in one hand-over. A refusal shows in the Send row with the
+  once each question has a choice, own words that are not blank or files, or Skip, with
+  "<k> of <n> answered" beside it until then; it uploads the files of the tab's fields not
+  uploaded yet, then posts the tab in one request (`POST …/answers`, each reply with its
+  files' names), and the agent gets the replies in one hand-over. A failed upload stops it,
+  its chip red with the reason. A refusal shows in the Send row with the
   core's reason and the picks stay (as a gate's comment does: the card keeps the picks and
   the comments across its tabs and its expanded view); the tab goes only when `waiting` brings its questions
   closed. Each question shows the supervisor's recommendation (below) under its details,
@@ -1082,7 +1116,13 @@ Built in the chat task (2026-10-03):
   start, cut the same way, when it has one). A reply whose question is not in
   the window (pages not loaded) is the human's row "answer to #N" as before, a dismissal
   the line "You skipped question #N", its comment under it. The reply's anchor `#message-<id>` is its late
-  line when there is one, else its block in the card.
+  line when there is one, else its block in the card. The reply's files (LAD-86, mockup
+  `task/lad-86/mockup-feed-files.html`) show as the human's own message shows them: in the
+  card's block and in the row "answer to #N", the images previewed (at most 240 × 180),
+  then every file a chip; under a skip's line, the chips; an own answer of files only shows
+  the files alone, not the core's summary that names them (`replyOf`: a summary
+  `Answer to #N: <n> file(s): …` with as many attachments). The late line ends
+  "· <n> file(s)".
 - **Flow events** (decided 2026-10-07, feature/chat-message-text, mockup
   `flow-events-a.html`): a run's events in a row, with no other row between (whatever the
   time), are one group (`<ol aria-label="Flow run <run>">`): the flow icon and the run's
@@ -1117,7 +1157,8 @@ Built in the chat task (2026-10-03):
   before the state they join, as the UI reads that order as forward. Its outcome is
   always written. The **human's answer to a gate** is one line: their
   `flow` move (only the human's answers write a `flow` event as `human`; `lado flow-set`
-  writes `flow_set`), with the answer's comment under it (Markdown with `breaks`), from the
+  writes `flow_set`), with the answer's comment under it (Markdown with `breaks`) and its
+  files after it, previews and chips (`answer_attachments`, LAD-86), from the
   `GateInfo` whose `closed_by_event` is the move's id (`gateOf`; the closed gate's card
   finds its move the same way, `moveOf`; before LAD-85 a guess by run, state and time).
   Without that gate loaded, the move alone. The closed gate's card stays where it opened.
@@ -1135,6 +1176,9 @@ Built in the chat task (2026-10-03):
   a stopped session's composer is off and says so, its paperclip too.
 - **Files in the composer** (`Composer.tsx`; run feature/chat-attachments, mockup
   `mockup-composer.html` of the run): the human attaches files to a message to any agent.
+  The handling below is one module (`attachFiles.tsx`, LAD-86) that the waiting card's
+  fields share (The waiting card, Files in the fields); the composer's drop leaves the
+  waiting card to them.
   - Three ways in: the paperclip left of the field (the file picker, several files);
     paste while the focus is in the composer (files in the clipboard; an image the browser
     names `image.png` becomes `screenshot-<HHMMSS>.png`; a text longer than `MAX_MESSAGE`
@@ -1839,7 +1883,8 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
 - **Tabs**: a session's four tabs without their icons fit 360 px; the Kits page's three too.
 - **The chat**: the feed scrolls by itself, the waiting card (at most half the chat, no
   edge, no height of its own) and the composer stay at the bottom; the composer's text is
-  16 px (Safari zooms into a smaller field) and its keys hint is not shown. A flow event's
+  16 px (Safari zooms into a smaller field) and its keys hint is not shown; so is the text
+  of the card's fields that take files (an own answer, a skip's or a gate's comment; LAD-86). A flow event's
   line starts at the feed's left edge, its actor, chips and time on the first line, its
   text wrapped under them, whole.
 - **Sideways** (`short`): the chat's card is minimized by the layout (its tabs and one

@@ -347,6 +347,44 @@ def test_a_tap_on_a_kit_shows_its_tooltip_and_a_button_none(device, server, repo
     expect(tooltip).to_have_count(0)
 
 
+def test_the_cards_fields_with_files_fit_the_phone(device, server, repo, shot):
+    """LAD-86: a gate's comment and Other… with files fit the narrowest phone: the frame and
+    its chips inside the card, nothing scrolls sideways, and the field's text is 16 px so
+    the browser does not zoom into it."""
+    session = waiting_session(repo)
+    page = opened(device(NARROWEST), server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    files = [
+        {"name": "screenshot-with-a-long-name.png", "mimeType": "image/png", "buffer": b"x"},
+        {"name": "server.log", "mimeType": "text/plain", "buffer": b"GET / 500\n"},
+    ]
+    card.get_by_role("tab", name="ship/x 1").tap()
+    gate = card.get_by_role("tabpanel")
+    gate.locator("input[type=file]").set_input_files(files)
+    comment = gate.get_by_role("textbox", name="Comment for the next step (optional)")
+    expect(gate.locator(".file-chip")).to_have_count(2)
+    expect(gate.locator(".waiting-send")).to_contain_text("2 files,")
+    assert comment.evaluate("f => getComputedStyle(f).fontSize") == "16px"
+    frame = box(gate.locator(".answer-box"))
+    panel = box(gate)
+    assert frame["x"] >= panel["x"] and frame["x"] + frame["width"] <= panel["x"] + panel["width"]
+    for chip in gate.locator(".file-chip").all():
+        found = box(chip)
+        assert found["x"] + found["width"] <= frame["x"] + frame["width"], found
+    no_sideways_scroll(page)
+    gate.locator(".answer-box").scroll_into_view_if_needed()
+    shot(page, "gate", full_page=False)
+    card.get_by_role("tab", name="supervisor 1").tap()
+    question = card.get_by_role("tabpanel")
+    question.get_by_role("button", name="Other…").tap()
+    question.locator("input[type=file]").set_input_files(files[:1])
+    expect(question.locator(".file-chip")).to_have_count(1)
+    own = question.get_by_role("textbox", name="Your own answer")
+    assert own.evaluate("f => getComputedStyle(f).fontSize") == "16px"
+    no_sideways_scroll(page)
+    shot(page, "question", full_page=False)
+
+
 # Nothing scrolls sideways
 
 

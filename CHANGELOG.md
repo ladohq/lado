@@ -37,6 +37,14 @@
 - The UI server no longer lets anyone in when `LADO_HOME/server-token` is empty (left by a
   failed write, e.g. a full disk): an empty file gets a new token, the token is written
   atomically, and an empty token is always refused.
+- The human can answer a gate or an agent's question with files: the comment for the next
+  step and the fields of Other… and Skip take files as the composer does (the paperclip,
+  paste, a drop on the field), and a reply of files only is an answer. The agent gets them
+  with the answer (a gate's next step in its note's `Artifacts:` line; at a loop limit,
+  Cancel run gives them to the supervisor), and the chat shows them under the answer: in
+  the closed question's card and under the run's move, previews and chips. The API's
+  `POST …/answers` and `POST …/gates/{id}/answer` take `artifacts`, `GateInfo` gains
+  `answer_attachments`. lado.db goes to schema 31 (`gates.answer_note`).
 - The web UI on a phone: on a touch screen no wider than 600 px or no higher than 500 px
   it picks a phone layout by itself. The rail opens from a Menu button (☰, with the Needs
   you count); the top bar is one line, and on a session's page its title opens a sheet with

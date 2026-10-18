@@ -430,6 +430,25 @@ def test_schema_30_gives_each_gate_closed_before_the_event_of_its_closing(lado_h
     ]
 
 
+def test_schema_31_gives_gates_the_answer_note_and_old_gates_none(lado_home):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    with state.connect() as db:
+        fresh = db.execute(GATES_TABLE).fetchone()[0]
+        db.execute(
+            "INSERT INTO gates (session, run, state, kind, question, options, answer)"
+            " VALUES ('s', 'a', 'ok', 'approval', 'Ship?', '[]', 'reject')"
+        )
+    agent_helpers.schema_before(31)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert "answer_note" not in _columns(db, "gates")
+    db.close()
+    assert state.migrate().after == state.SCHEMA_VERSION == 31
+    with state.connect() as db:
+        assert db.execute(GATES_TABLE).fetchone()[0] == fresh
+    [old] = state.session_gates("s")
+    assert (old.answer, old.answer_note) == ("reject", None)
+
+
 def _kinds(name: str) -> list[str]:
     return [e.kind for e in state.list_events(name)]
 
@@ -703,7 +722,7 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
         columns = {row[1] for row in db.execute("PRAGMA table_info(gates)")}
-    assert "closed_event" not in columns  # the content before the migration
+    assert "answer_note" not in columns  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 

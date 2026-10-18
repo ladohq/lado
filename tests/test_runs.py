@@ -602,6 +602,89 @@ def test_rejecting_sends_the_answer_and_the_earlier_note_to_the_next_step(sessio
     assert state.list_events(session)[-1].detail == "gated -rejected-> implement"
 
 
+def _answer_files(gate_id: int) -> list[str]:
+    return [a.artifact.full_name for a in runs.gate_answer_attachments(state.get_gate(gate_id))]
+
+
+def test_a_gates_answer_gives_its_files_to_the_next_steps_note(session):
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    shot = artifacts.upload(session, "shot.png", b"png").full_name
+    log = artifacts.upload(session, "server.log", b"boom").full_name
+    run = runs.answer(session, str(gate.id), "reject", "the form is too big", attached=[shot, log])
+    assert run.note == "rejected: the form is too big"
+    step = messages("developer")[-1]
+    assert "Note from the previous step: rejected: the form is too big" in step.body
+    assert f"Artifacts: /{shot}, /{log}" in step.body
+    closed = state.get_gate(gate.id)
+    assert closed.answer_note == state.last_note(session, "feature/login").id
+    assert _answer_files(gate.id) == [shot, log]
+
+
+def test_a_gate_answered_with_files_only_has_the_outcome_as_its_note(session):
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    log = artifacts.upload(session, "server.log", b"boom").full_name
+    assert runs.answer_text(session, str(gate.id), "reject", attached=[log]) == (
+        f"gate #{gate.id}: reject. feature/login: gated -> implement (→ developer)"
+    )
+    run = state.get_run(session, "feature/login")
+    assert (run.note, run.note_body) == ("rejected", "Note before the gate: ready to ship\na\nb")
+    assert f"Artifacts: /{log}" in messages("developer")[-1].body
+    assert _answer_files(gate.id) == [log]
+
+
+def test_a_gate_answer_without_files_keeps_none(session):
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    runs.answer(session, str(gate.id), "reject", "too big")
+    assert state.get_gate(gate.id).answer_note is not None
+    assert _answer_files(gate.id) == []
+    assert "Artifacts:" not in messages("developer")[-1].body
+
+
+@pytest.mark.parametrize(
+    ("names", "error", "reason"),
+    [
+        (["nope.txt"], artifacts.ArtifactError, 'no artifact "nope.txt" in session s'),
+        ([f"{n}.txt" for n in range(11)], runtime.LadoError, "11 files, the limit is 10"),
+    ],
+    ids=["missing", "eleven"],
+)
+def test_a_gates_answer_with_files_it_cannot_take_leaves_it_open(session, names, error, reason):
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    if len(names) > 1:
+        names = [artifacts.upload(session, n, n.encode()).full_name for n in names]
+    before = state.get_run(session, "feature/login")
+    with pytest.raises(error, match=f"^{re.escape(reason)}$"):
+        runs.answer(session, str(gate.id), "reject", "x", attached=names)
+    assert state.get_run(session, "feature/login") == before
+    assert state.get_gate(gate.id).answer is None
+
+
+def test_cancel_at_a_loop_limit_sends_the_files_to_the_supervisor(session):
+    to_loop_limit(session)
+    [gate] = state.open_gates(session)
+    log = artifacts.upload(session, "server.log", b"boom").full_name
+    runs.answer(session, str(gate.id), "cancel", "not worth it", attached=[log])
+    told = messages("supervisor")[-1]
+    assert told.summary == "flow feature/login: cancelled by the human at review (loop limit)"
+    assert [
+        a.artifact.full_name for a in artifacts.attached(state.message_attachments(told.id))
+    ] == [log]
+    assert state.get_gate(gate.id).answer_note is None
+
+
+def test_a_gate_closed_by_a_cancel_has_no_answer_files(session):
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    runs.cancel(session, "feature/login", "dropped")
+    closed = state.get_gate(gate.id)
+    assert (closed.answer, closed.answer_note) == ("cancelled", None)
+    assert runs.gate_answer_attachments(closed) == []
+
+
 def test_the_answers_text_says_where_the_run_went(session):
     """One text for every surface of the human: `lado answer`, the popup, the UI."""
     to_gate(session)

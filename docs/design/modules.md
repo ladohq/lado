@@ -733,7 +733,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     The migration fills it once for gates closed before (`gates_closed_events`: the run's
     first event after the gate's `gate_answer`); one not found stays NULL.
     `GateInfo.closed_by_event` gives it to the UI, which links the answer's comment to the
-    move by it.
+    move by it. From schema 31 a gate closed by an answer keeps the note that answer kept
+    for the next step, `gates.answer_note` (`GATES_ANSWER_NOTE`; NULL while open, for a
+    gate closed with no note, and for every gate closed before, whose answers carried no
+    files): `update_run` stores it in the closing's transaction, and
+    `runs.gate_answer_attachments` gives that note's attachments, the human's files,
+    `GateInfo.answer_attachments` (LAD-86).
   - `fingerprint.py`: a read-only agent's git fingerprint (docs/design/agents.md, Read-only roles): `take`
     (HEAD and checked-out branch of its worktree, the session repo's current branch, tags,
     stash, each changed or new file not ignored and not under `.lado/` with its content's
@@ -763,7 +768,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (`close_all`); the agents, messages, run events
     (`/api/sessions/{name}/events`), gates (with the human's answer), the human's answers
     to one agent's open questions (`POST …/answers`, a tab of the UI's waiting card, all or
-    none, through `runtime.answer_questions`), runs and notes endpoints are in `app.py`,
+    none, through `runtime.answer_questions`; each reply and a gate's answer with the full
+    names of the files uploaded for it, `artifacts`), runs and notes endpoints are in `app.py`,
     and the artifacts' (docs/design/artifacts.md, The human's
     side): `GET …/artifacts`, `…/artifacts/{id}`, `…/records/{record}` and
     `…/records/{record}/content[?download=1]`, a session's only (404 else), the human's
@@ -892,7 +898,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `running_since`, and one whose tmux is gone ends at `state.last_alive`, as the
     `session_gone` a stop or resume then writes, so its time stays the same.
 - `web/`: the web UI (React, TypeScript, Vite). `openapi.json` and `src/api.gen.ts` are made
-  by `make web-types` and committed.
+  by `make web-types` and committed. `src/attachFiles.tsx` is the human's files in one
+  module (attach by the server's limits, paste, drop zone, chips, upload, `AnswerBox`), used
+  by the composer and the waiting card's fields (docs/design/ui.md, Files in the composer).
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
   `tests/ui/`: UI end-to-end tests in a browser; `tests/live/`: live tests with real agent
   CLIs; `tests/js/`: Node tests of the OpenCode-family plugin; `web/src/*.test.tsx`: the

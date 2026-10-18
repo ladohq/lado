@@ -1,7 +1,7 @@
 # LAD-98 start-from-scratch: review report
 
 Pull request #99 `feature/lad-98-start-from-scratch` → `main`. Scale: full, reviewed
-breadth first. Head reviewed last: `30bd1e7` (= the remote head). `runtime.py` changed
+breadth first. Head reviewed last: `5551103` (= the remote head). `runtime.py` changed
 (`check_title`, `start_session(title=)`, `NOT_REPO_HINT`), so the human may want live
 tests before the merge; `providers/`, `hooks.py`, `mcp_server.py`, `agent_env.py` and
 `tests/live/` did not change.
@@ -17,8 +17,16 @@ tests before the merge; `providers/`, `hooks.py`, `mcp_server.py`, `agent_env.py
   answer at 00:25:46Z; the reply in `issuecomment-6243707409`): E1, E2, E3. By its own
   words it read only the Python part (not the web code, the tests or openspec) and ran
   no tests; it is of the same model family, so its "nothing more" weighs less.
+- **Round 3, local** (after the return from conflicts; precision over `30bd1e7..5551103`:
+  `a628e2c` the archive, `5551103` the merge of main with LAD-94, the conflict only in
+  CHANGELOG.md, both 0.41.0 lines kept; `cli.py`, `server/app.py`, `server/models.py`,
+  `web/openapi.json`, `web/src/api.gen.ts` and the docs merged without markers; LAD-98's
+  code unchanged): nothing new.
+- **Round 2, external** (request `issuecomment-6253009977`, answer
+  `issuecomment-6253022433`): no defects; the interplay of LAD-94 and LAD-98 in `app.py`,
+  `models.py` and `cli.py` checked, the triage accepted; one suggestion, E4.
 
-External rounds used: 1 of 2.
+External rounds used: 2 of 2.
 
 ## Findings
 
@@ -30,15 +38,18 @@ External rounds used: 1 of 2.
 | E1 | 1 | external | a start refused after `scratch.make` keeps the repository, and a retry in From scratch hits `inside_repo` | refuted | — | dropped: session-scratch requires keeping it and switching the window to Folder, which `createAndStart` does by itself; tests `web/src/Launch.test.tsx`, `tests/test_server_launch.py::test_a_fresh_start_refused_after_the_repository_keeps_it` |
 | E2 | 1 | external | `author_problem` ignores `GIT_AUTHOR_*`/`EMAIL` from the environment | confirmed | minor | declined: the spec checks `git config` only; agents take their environment from the login shell, not from the server's, and a refusal with a hint is the safe side; left to the human at the merge gate |
 | E3 | 1 | external | a title refused on resume is not tested | refuted | — | dropped: `tests/test_runtime.py::test_a_resume_with_a_title_is_refused`; `POST /api/sessions` always passes `resume=False` |
+| E4 | 2 | external (suggestion) | say in the docs that refusing an author set only in `GIT_AUTHOR_*` is on purpose | confirmed | minor | declined: the refusal names its cause and gives the `git config` command; the loop had converged; left to the human at the merge gate |
 
-Metrics: 2 local rounds, 1 external, 0 substitutes. Local confirmed 3 (1 blocker, 1
-important, 1 minor), refuted 0; external confirmed 1 (minor), refuted 2. Findings in code
+Metrics: 3 local rounds, 2 external, 0 substitutes. Local confirmed 3 (1 blocker, 1
+important, 1 minor), refuted 0; external confirmed 2 (both minor), refuted 2. Findings in code
 changed by the developer's cleanup (`c94bb3f`): 0.
 
 ## Checks
 
-- CI of PR #99 on `30bd1e7`: 23/23 pass with `ci-ok` (unit 3.10/3.13, integration ×6,
+- CI of PR #99 on `5551103`: 23/23 pass with `ci-ok` (unit 3.10/3.13, integration ×6,
   ui ×2, js, container amd64/arm64, smoke macOS/Ubuntu × 4 providers).
+- Round 3 on `5551103`: `openspec validate --specs --strict` 37 passed, 0 failed;
+  `openspec/changes/` holds only `archive`.
 - Round 2: `openspec validate --specs --strict` 35 passed, 0 failed; the change valid in
   strict mode.
 - Round 1 on `9c1390b`: `make lint` clean, `make test` 3519 passed,
@@ -49,9 +60,9 @@ changed by the developer's cleanup (`c94bb3f`): 0.
 ## Not checked (residual risk)
 
 - `make web` and the UI e2e tests were not run locally by the reviewer: CI (ui ×2, the
-  web build) and the developer (904 vitest, 21 UI) ran them.
+  web build) and the developer (920 vitest, UI `test_launch` 21 and `test_share_access` 6) ran them.
 - `make check` as a whole was not run locally; CI covered its equivalent.
 - Live tests were not run, though `runtime.py` changed.
-- The external reviewer read only the Python part.
+- The external reviewer read only the Python part and the delta.
 
 Found on the way: none.

@@ -290,7 +290,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     /<name>`), `check_target` (a `Target`: `new`, `empty` with nothing but `FINDER`'s
     `.DS_Store`, `inside_repo` with the repository's root, `not_empty`, `not_folder`; the
     path's nearest existing folder decides for a new path; only `CAN_START` lets a fresh
-    start go on; `refusal` gives each other state its hint: LAD-5's `NOT_REPO_HINT` for
+    start go on; `make` refuses each other state with its hint: LAD-5's `NOT_REPO_HINT` for
     files, `lado start <root>` inside a repository), `author_problem` (git's `user.name`
     and `user.email` where the folder would be, outside any repository the global and
     system config; no author is a refusal with the `.env` hint in LADO's container, the

@@ -401,10 +401,11 @@ function LaunchDialog({
   // a repository first, and the session takes the name and title of the name typed.
   const startIn = (where: string, kind: "folder" | "scratch" = "folder") => {
     const off = splitWithout(without);
-    const named = kind === "scratch" ? { name: fresh?.name, ...(fresh?.title ? { title: fresh.title } : {}) } : null;
+    const scratchNames =
+      kind === "scratch" ? { name: fresh?.name, ...(fresh?.title ? { title: fresh.title } : {}) } : null;
     return startSession({
       where: { kind, path: where },
-      ...(named ?? (shownName ? { name: shownName } : {})),
+      ...(scratchNames ?? (shownName ? { name: shownName } : {})),
       kits,
       ...(chosenProvider !== null ? { provider: chosenProvider } : {}),
       ...(permissionMode !== DEFAULT_MODE ? { permission_mode: permissionMode } : {}),

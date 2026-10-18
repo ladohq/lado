@@ -153,7 +153,7 @@ def author_problem(path: str) -> ScratchError | None:
     return None
 
 
-def refusal(target: Target) -> ScratchError:
+def _refusal(target: Target) -> ScratchError:
     """A target a fresh start may not go on in, as a refusal with what the human can do:
     a folder of files is made a repository by the human (LAD-5's hint), a folder of a
     repository starts in that repository."""
@@ -181,7 +181,7 @@ def make(path: str, name: str) -> str:
     runtime.check_name(name, path)
     target = check_target(path)
     if target.state not in CAN_START:
-        raise refusal(target)
+        raise _refusal(target)
     if (problem := author_problem(path)) is not None:
         raise problem
     folder = Path(path)
@@ -258,5 +258,4 @@ def _english() -> dict[str, str]:
 
 def _line(result: subprocess.CompletedProcess) -> str:
     """git's first line of a failure."""
-    lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
-    return lines[0] if lines else f"git exited {result.returncode}"
+    return runtime._first_line(result.stderr) or f"git exited {result.returncode}"

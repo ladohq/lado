@@ -82,11 +82,12 @@ function open(path: string) {
 }
 
 function wide(matches: boolean) {
-  // jsdom has no matchMedia: (max-width: 899px) matches when the window is narrow.
+  // jsdom has no matchMedia: (max-width: 899px) matches when the window is narrow; a mouse's
+  // window, so the phone's query (pointer: coarse) never does.
   vi.stubGlobal(
     "matchMedia",
     vi.fn((query: string) => ({
-      matches: query.includes("max-width") ? !matches : false,
+      matches: query.includes("max-width") && !query.includes("pointer") ? !matches : false,
       media: query,
       addEventListener: () => {},
       removeEventListener: () => {},

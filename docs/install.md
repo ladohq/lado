@@ -207,6 +207,33 @@ another LADO container has its own home volume and asks once more. A trusted rep
 own Claude Code settings (`.claude/`) and MCP servers (`.mcp.json`) run, so trust only a
 repository whose settings you accept.
 
+### The projects' toolchains
+
+The image has git, Node.js 22, uv, `make`, `gcc` and `g++`, and
+[mise](https://mise.jdx.dev) for the rest. An agent that needs a tool the project lacks (Go,
+Rust, Java, a Python, ...) installs it with mise by itself: by the project's version files
+(`.tool-versions`, `mise.toml`, `.go-version`, `.java-version`, `.python-version`,
+`.ruby-version`) when they name it, otherwise as `<tool>@<version>`, which it runs with
+`mise exec`. A `go.mod` names a Go only by its `toolchain` line: its `go` line is a minimum
+and is not read. It adds no file to the project unless you ask. What mise installs lives on the
+home volume, so it stays for every agent of this LADO, after `docker compose up -d
+--force-recreate` and after an update; a second LADO has its own home volume and its own
+tools.
+
+- A tool by hand, the default for every agent of this LADO where no version file names one:
+  `docker compose exec lado mise use -g go@1.23`. An agent leaves this to the supervisor; a
+  worker asks it.
+- The agents always run on the image's Node 22, also where `.nvmrc` or a version file names
+  another (Kilo, Codex and the kits' MCP servers run on it). A project's other Node runs
+  through mise: `mise exec node@20 -- npm test`.
+- A project's `mise.toml` under the projects folder needs no `mise trust`.
+- An agent's `npm install -g` and `uv tool install` go to `~/.local` on the home volume and
+  stay over an update too.
+- What is not covered: other system packages (`apt`) and databases (PostgreSQL, Redis, ...).
+  An agent says so instead of installing them.
+- An old version takes room on the home volume until you remove it:
+  `docker compose exec lado mise ls`, then `docker compose exec lado mise uninstall go@1.22.5`.
+
 ### Update the container
 
 A new version of LADO in Docker is a new image: `lado update` and the web UI's **Update…**
@@ -371,6 +398,15 @@ identity, the ssh agent, the projects folder).
   repository's path in the container) and choose "Yes, I trust this folder"; see
   [Your first session](#your-first-session).
 - **The UI's link is lost**: `docker compose exec lado lado ui --no-open`.
+- **`No version is set for shim: go`**: neither the project's version files nor a default
+  name that tool. Add the version to the project (`.tool-versions`: `go 1.23.4`) or set a
+  default: `docker compose exec lado mise use -g go@1.23`.
+- **mise refuses a Python version** (an attestation or checksum it cannot check): take
+  another version, or the project's Python through uv (`uv run`). Do not switch mise's
+  checks off.
+- **`Config files in ... are not trusted`**: the project is outside the projects folder.
+  Move it under `LADO_PROJECTS`, or trust it once:
+  `docker compose exec lado mise trust <folder>/mise.toml`.
 
 ## macOS
 

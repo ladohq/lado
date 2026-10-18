@@ -203,6 +203,30 @@ messages and artifacts are yours to write. LADO compares the repository at each 
 start and end and reports any change.
 """
 
+# What every agent in LADO's container (update.in_container) must know of its toolchains,
+# after the above; then the supervisor's or a worker's sentence on a container-wide default.
+CONTAINER_INSTRUCTIONS = """\
+You run in LADO's container. A tool the project needs and lacks (go, cargo, java, ...): \
+install it with mise, into the home volume, where it stays for every agent of this \
+container. In the project's folder `mise install` installs what its version files name \
+(`.tool-versions`, `mise.toml`, `.go-version`, `.python-version`, ...); a tool or version \
+they do not name: `mise install <tool>@<version>`, then run it with \
+`mise exec <tool>@<version> -- <command>`. Add no version file or other file to the \
+project unless the human asks. Node is the image's Node 22; another Node only through \
+`mise exec node@<version> -- ...`. make, gcc and g++ are installed; apt packages and \
+databases cannot be installed: say so instead. A version mise refuses: report it, do not \
+switch its checks off.
+"""
+CONTAINER_SUPERVISOR = """\
+Only you set a tool's default version for the whole container \
+(`mise use -g <tool>@<version>`), which every agent gets where no version file names one; \
+workers ask you for it.
+"""
+CONTAINER_WORKER = """\
+Do not set a tool's default version for the whole container (`mise use -g`): ask the \
+supervisor.
+"""
+
 # How every agent sends and reads messages, appended to the instructions above.
 MESSAGING = """\
 Messages: send_message takes a one-line summary (at most 200 characters), the only thing \
@@ -2662,6 +2686,12 @@ def _spec(
         read.append(config / LEAD_FILES)
     if read_only:
         instructions += READ_ONLY_INSTRUCTIONS.format(role=role)
+    from lado import update  # only here: the CLI's commands do not import it (cli.py)
+
+    if update.in_container():
+        instructions += CONTAINER_INSTRUCTIONS + (
+            CONTAINER_SUPERVISOR if agent.name == SUPERVISOR else CONTAINER_WORKER
+        )
     return providers.AgentSpec(
         prompt=f"{resolved.agent.body}\n\n{instructions}{MESSAGING}",
         skills=skills,

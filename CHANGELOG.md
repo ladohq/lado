@@ -15,7 +15,30 @@
   in `.env`), the window says how to set them. From the terminal: `lado start --new
   <folder>`. `lado doctor` has a new check, `git author`. API: `GET /api/scratch-target`,
   `where` of kind `scratch` and `title` for `POST /api/sessions`, `FolderInfo.scratch`.
-
+- LADO's image carries mise, `make`, `gcc` and `g++`: an agent in the container installs
+  the toolchain a project needs (Go, Rust, Java, a Python, ...) by itself, by the
+  project's version files (`.tool-versions`, `mise.toml`, `.go-version`, ...), into the
+  home volume, where it stays after a recreation and an update. The agents are told so in
+  their instructions, only in a container; the image's Node 22 stays the agents' Node.
+  Other system packages and databases are not covered (docs/install.md, The projects'
+  toolchains).
+- In LADO's container an agent's `npm install -g` works: it failed with `EACCES` at any
+  uid. It and `uv tool install` now write to `~/.local` on the home volume, whose `bin`
+  is on every agent's `PATH`, and also `docker compose exec`'s installs go there instead
+  of the image's `/opt`.
+- The UI server no longer lets anyone in when `LADO_HOME/server-token` is empty (left by a
+  failed write, e.g. a full disk): an empty file gets a new token, the token is written
+  atomically, and an empty token is always refused.
+- The web UI on a phone: on a touch screen no wider than 600 px or no higher than 500 px
+  it picks a phone layout by itself. The rail opens from a Menu button (☰, with the Needs
+  you count); the top bar is one line, and on a session's page its title opens a sheet with
+  the whole folder, git, the kits with their versions, the CLI, Rename, Copy path, Copy
+  link and All sessions. Sessions is the list; a session's four tabs fit the screen; the
+  feed scrolls by itself while the waiting card and the composer stay at the bottom; a
+  flow event's text wraps whole; held sideways, the waiting card starts minimized and a
+  tab opens it; a terminal shows over the whole screen with Close terminal; a tap on a
+  hint (a kit, the CLI) shows its tooltip. A computer, with a mouse, keeps its layout at
+  any window size.
 - Install with Docker: docs/install.md's "Your first session" says how to answer Claude
   Code's question whether to trust a repository it has not seen ("Yes, I trust this
   folder"; Enter alone answers "No, exit" and closes the agent), and README's Docker start

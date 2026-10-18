@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeSocket, stream, stubDialogs } from "./fakes";
+import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeScreen, FakeSocket, stream, stubDialogs } from "./fakes";
 import { ranText } from "./Sessions";
 import { Shell, useTitle, useTopBar } from "./Shell";
 import { TOOLTIP_DELAY_MS } from "./Tooltip";
@@ -644,6 +644,34 @@ test("on a narrow window with nothing remembered the list starts as a strip", as
 
 const collapsed = () => localStorage.setItem("lado.sessionsList", JSON.stringify({ width: 260, collapsed: true }));
 const icons = () => within(strip()!).queryAllByRole("link");
+
+// On a phone (docs/design/ui.md, Phone layout): Sessions is the list, a session's page the
+// session alone; nothing of the computer's list is read or written.
+
+test("on a phone Sessions is the list, whatever the computer's list keeps: no strip, no edge, no collapse", async () => {
+  collapsed();
+  FakeScreen.phone();
+  open("/sessions");
+  const list = screen.getByRole("navigation", { name: "Sessions" });
+  expect(list.classList.contains("sessions-strip")).toBe(false);
+  expect(await within(list).findByRole("link", { name: /^lado/ })).toBeTruthy();
+  expect(screen.getByRole("searchbox", { name: "Find a session" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "New session" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Collapse sessions" })).toBeNull();
+  expect(screen.queryByRole("separator", { name: "Resize the session list" })).toBeNull();
+  expect(screen.queryByText("Select a session")).toBeNull();
+  expect(screen.getByRole("banner").textContent).toContain("Sessions");
+});
+
+test("on a phone a session's page is the session alone; the computer's list state is untouched", async () => {
+  localStorage.setItem("lado.sessionsList", JSON.stringify({ width: 320, collapsed: false }));
+  FakeScreen.phone();
+  open("/sessions");
+  fireEvent.click(await screen.findByRole("link", { name: /^lado/ }));
+  await screen.findByRole("region", { name: "Session lado" });
+  expect(screen.queryByRole("navigation", { name: "Sessions" })).toBeNull();
+  expect(JSON.parse(localStorage.getItem("lado.sessionsList")!)).toEqual({ width: 320, collapsed: false });
+});
 
 test("the strip shows each session not stopped as two letters, those that need the human first", async () => {
   collapsed();

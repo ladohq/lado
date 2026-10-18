@@ -920,11 +920,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   Node 22 and npm from the official `node` image, uv from its own, every base pinned by
   digest; LADO from the one wheel of the build context (`Dockerfile.dockerignore`, an
   allowlist: `dist/lado-*.whl`, `profile.sh`, `entrypoint.sh`, `ssh-agent-socket.sh`,
-  `ssh-agent-env.sh` and `ssh_known_hosts`; the image holds no one's key or login, only public host keys), the
+  `ssh-agent-env.sh`, `ssh_known_hosts` and `mise.toml`; the image holds no one's key or login, only public host keys), the
   four agent CLIs at
   `smoke_ci.py`'s `PINS`, one `ARG <NAME>_VERSION` and one layer each (`CLAUDE_VERSION`,
   `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet),
-  programs under `/opt`, the user `lado` (uid
+  programs under `/opt` (the `/opt` folders named only in the build's install lines), the
+  projects' toolchains (below), the user `lado` (uid
   1000 in the image) with its home a volume; `lado server --host 0.0.0.0 --port
   $LADO_PORT` (8765) under tini and `entrypoint.sh` (`/usr/local/bin/lado-entrypoint`).
   The human's projects are mounted at the host's own path and named by `LADO_REPOS`
@@ -956,8 +957,24 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   values (`tests/test_docker.py`): in `ENV` for the server and `docker exec`, and in
   `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
   comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
-  `DISABLE_AUTOUPDATER`, `LANG`, `LADO_ENV_DIR=/run/secrets`; `LADO_REPOS` is the
-  entrypoint's `lado-repos.sh`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The agents'
+  `DISABLE_AUTOUPDATER`, `LANG`, `LADO_ENV_DIR=/run/secrets`, `NPM_CONFIG_PREFIX`;
+  `LADO_REPOS` is the entrypoint's `lado-repos.sh`, read before `lado.sh` by name, so
+  `profile.sh` sets `MISE_TRUSTED_CONFIG_PATHS` from it, in the profile only, as the ENV
+  cannot follow `-e LADO_REPOS`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The projects' toolchains:
+  `make`, `gcc`, `g++` and `libc6-dev` in the first apt layer, and mise at
+  `/usr/local/bin/mise`, root's (copied before `USER lado`, so `mise self-update` cannot
+  replace it), from `jdxcode/mise` pinned by digest, which Dependabot's `docker` ecosystem
+  moves with the other bases. Its system config `/etc/mise/config.toml` is
+  `docker/mise.toml`, the image's (a new image replaces it, a home volume needs no change):
+  the version files of Go, Java, Python and Ruby besides `.tool-versions` and `mise.toml`,
+  not Node's, and no update warning. Its data, config and cache stay at mise's defaults on
+  the home volume (`~/.local/share/mise`, `~/.config/mise`, `~/.cache/mise`). `PATH` is the
+  image's programs, the system's, then `~/.local/bin` and mise's shims: no shim shadows the
+  image's Node 22, which Kilo and Codex (`env node`) and kits' MCP servers (`npx`) run on.
+  An agent's `npm install -g` (`NPM_CONFIG_PREFIX=$HOME/.local`) and `uv tool install`
+  (uv's defaults) write under `~/.local`, at any uid the entrypoint gave `lado`; the runtime
+  `ENV` points no install at `/opt`, which stays uid 1000's. What the agents are told:
+  docs/design/agents.md (the container paragraph). The agents'
   variables are files at `/run/secrets` (`LADO_ENV_DIR`, docs/design/agents.md), never compose's
   `environment:` or `LADO_AGENT_ENV=inherit`, so no value is in `docker inspect`; compose
   binds `${LADO_SECRETS:-/dev/null}` there read-only with `create_host_path: false`: by

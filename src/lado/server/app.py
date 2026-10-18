@@ -283,7 +283,7 @@ def bundle_missing(static: Path) -> bool:
 def contract() -> dict:
     """The API's OpenAPI schema as web/openapi.json keeps it (`make web-types`): without
     LADO's version, so a release does not change it."""
-    schema = create_app("", 0).openapi()
+    schema = create_app("unused", 0).openapi()  # the schema holds no token
     del schema["info"]["version"]
     return schema
 

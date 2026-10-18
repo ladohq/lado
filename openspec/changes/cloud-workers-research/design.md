@@ -30,9 +30,16 @@ living `docker-install-plan.md` and the folder `docker-install/` of evidence.
   starts from the plan and opens a report only for evidence.
 - D5. `r5-references` is not committed and nothing names its subjects (public
   repository); where the summary drew on it, the plan states the reasoning as LADO's own.
-  The check is a grep of the diff for the reference projects' names and for
-  "reference A/B" (the developer gets the names from the supervisor, not into any file).
+  The check is a grep of the diff for the reference projects' names and nicknames (the
+  developer gets them from the supervisor, never into any file).
 - D6. No delta spec: no behaviour rule changes; archived with `--skip-specs`, as
   `docker-install-research` was.
 - D7. No CHANGELOG line and no version bump: research documents are not something users
   see, as with LAD-52 and LAD-58.
+- D8. The session's artifacts are committed as files under the change's `inputs/`
+  (temporary), because the human continues in another LADO installation whose
+  `LADO_HOME` does not hold them. They sit inside the change, not in `docs/`, so they are
+  clearly sources for the build, and the build deletes the folder when it is done. Before
+  the commit the two private traces were removed (the summary's line on `r5-references`,
+  R1's local path); `r5-references` and every artifact are also kept outside the
+  repository, in a private folder of the human's home.

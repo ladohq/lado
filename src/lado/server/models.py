@@ -596,6 +596,19 @@ class SessionCounts(BaseModel):
     gone: int
 
 
+class AccessInfo(BaseModel):
+    """The link that opens LADO on another device, token included, or why there is none
+    (share-access): `listen` is LADO_LISTEN as a container has it, `note` the container's
+    note when who reaches the server is unknown."""
+
+    link: str | None
+    reason: Literal["loopback", "no-address", "unknown"] | None
+    port: int
+    container: bool
+    listen: str | None
+    note: str | None
+
+
 class SystemInfo(BaseModel):
     """The system panel's facts (doctor.system_info) and the server's own."""
 

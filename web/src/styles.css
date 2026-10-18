@@ -645,6 +645,88 @@ h3 {
   padding-left: 18px;
 }
 
+/* The header's GitHub mark is an icon button like the two before it, not a muted link. */
+.system-links a.icon-button,
+.system-links a.icon-button:hover {
+  color: var(--ink);
+}
+
+.system-links .icon {
+  width: 17px;
+  height: 17px;
+}
+
+/* Open LADO on another device (Share.tsx): the warning, then the QR code beside the link. */
+.share-warning {
+  margin: 0 0 14px;
+  border-left-color: var(--human);
+  font-size: 13px;
+}
+
+.share-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 18px;
+  margin: 12px 0;
+}
+
+/* Black on white in both themes: a phone's camera reads it. */
+.share-qr {
+  flex: none;
+  width: 180px;
+  height: 180px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.share-link-column {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 200px;
+}
+
+.question-dialog .share-link-column p {
+  margin: 0;
+}
+
+.share-link {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.share-lines {
+  white-space: pre;
+}
+
+.share-copy {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.share-small {
+  font-size: 12px;
+}
+
+.share-uncopied textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  font: 12px var(--mono);
+}
+
+.share-dialog .question-buttons .row-note {
+  margin-right: auto;
+}
+
 /* The update while the server restarts (U2), then its result (U3), under the top bar. */
 .update-banner {
   margin: 12px 32px 0;

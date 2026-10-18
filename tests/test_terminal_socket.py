@@ -278,6 +278,49 @@ def test_a_terminal_that_ends_for_good_closes_with_the_reason_else_to_open_again
     assert all(t.closed for t in terms)
 
 
+def test_a_new_token_closes_the_open_terminals_and_the_old_one_is_refused(session, terms):
+    """One event loop for the socket and the request (the client entered), as in uvicorn."""
+    old = auth.token()
+    with TestClient(server_app.create_app(old, PORT)) as client:
+        with logged_in(client).websocket_connect(URL, headers=headers()) as ws:
+            ws.receive_json()
+            asked = client.post("/api/access/new-token", headers=headers())
+            assert asked.status_code == 200
+            assert closed(ws)[0] == terminals.ENDED
+        assert terms[0].closed
+        assert terminals.OPEN == set()
+        other = TestClient(client.app)
+        other.cookies.set(auth.cookie_name(PORT), old)
+        with other.websocket_connect(URL, headers=headers()) as ws:
+            assert ws.receive_json()["type"] == "error"
+            assert closed(ws)[0] == terminals.DENIED
+
+
+def test_a_terminal_checked_before_a_new_token_but_not_yet_open_is_refused(
+    session, terms, monkeypatch
+):
+    """The token is checked before the terminal opens: a new token while it opens would
+    find no socket to close, and a device logged out would type into the agent's terminal."""
+    old = auth.token()
+    opening = terminal.open
+    with TestClient(server_app.create_app(old, PORT)) as client:
+        logged_in(client)
+
+        def renew_while_opening(session, agent, mode):
+            assert client.post("/api/access/new-token", headers=headers()).status_code == 200
+            return opening(session, agent, mode)
+
+        monkeypatch.setattr(terminal, "open", renew_while_opening)
+        other = TestClient(client.app)
+        other.cookies.set(auth.cookie_name(PORT), old)
+        with other.websocket_connect(URL + "?mode=control", headers=headers()) as ws:
+            assert ws.receive_json()["type"] == "error"
+            assert closed(ws)[0] == terminals.DENIED
+        assert auth.token() != old
+        assert terms[0].closed and terms[0].written == []
+        assert terminals.OPEN == set()
+
+
 def test_without_lado_db_it_ends_for_good_and_makes_none(client, terms):
     with logged_in(client).websocket_connect(URL, headers=headers()) as ws:
         assert ws.receive_json() == {"type": "error", "reason": 'unknown session "s"'}

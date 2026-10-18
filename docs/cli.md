@@ -214,6 +214,14 @@ or when the earliest row is later than the period's start. It reads only, opens 
 connection and starts no statistics sender (`cli.main` does not kick after it); it
 migrates lado.db as `lado ls` does.
 
+`lado ui` prints (or opens) the local link with the token, then, when the running server
+has a link for another device, `From another machine: <link>`: it asks the server
+(`GET /api/access` with the token, `run.access`), so `LADO_PUBLIC_HOST` and, in a
+container, `LADO_LISTEN` of the server's environment decide, not the shell's; a server that
+does not answer it (an older one) gets no such line. In a container with `--no-open` that
+line goes to stderr, so stdout stays the one local link. The rule for the link:
+docs/design/ui.md, Server, Host.
+
 `lado bug-report` prints a warning (the issue is public, nothing is sent until the human
 submits GitHub's form, a vulnerability goes to private reporting), the bug report and
 `Open a new issue: <link>` (`bug_report.build`; docs/design/modules.md); then, only when stdin and stdout

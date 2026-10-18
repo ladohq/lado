@@ -158,8 +158,9 @@ class ScratchTarget(BaseModel):
     name: str | None  # the folder's and the session's name; None when the text is refused
     title: str | None  # the session's title; None when it is the name
     problem: str | None  # why the text gives no name
-    state: ScratchTargetState | None  # the folder's; only new and empty take a fresh start
-    text: str | None  # the state as the core says it
+    # the folder's; only new and empty take a fresh start; None: no folder, or unknown
+    state: ScratchTargetState | None
+    text: str | None  # the state as the core says it, or why the folder cannot be looked at
     author: ScratchProblem | None  # None when git knows the author
     name_state: NameState | None  # as FolderInfo's, for the name and the folder
     provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions

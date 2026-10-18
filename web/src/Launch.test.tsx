@@ -1925,6 +1925,16 @@ test("a folder with files under Create in is refused there, and Create in edited
   expect(createIn().value).toBe(notes);
 });
 
+test("a folder the server cannot look at shows why under Create in, and Create and start stays off", async () => {
+  answers["GET /api/scratch-target"] = () =>
+    json(scratchTarget("shop", null, { state: null, text: "cannot look at /home/ann/lado/shop: Permission denied" }));
+  const dialog = await openLaunch(false);
+  await waitFor(() => expect(pressed(dialog, "From scratch")).toBe("true"));
+  fireEvent.change(scratchName(), { target: { value: "shop" } });
+  expect(await within(dialog).findByText("cannot look at /home/ann/lado/shop: Permission denied")).toBeTruthy();
+  expect(createButton().disabled).toBe(true);
+});
+
 test("Create and start sends the folder, the name and the title, and opens the session", async () => {
   answers["POST /api/sessions"] = () => json({ session: session("sait-kofeini", { repo: KOFEINI }), ...STARTED });
   await scratchReady();

@@ -775,6 +775,42 @@ def test_in_a_container_a_fresh_start_outside_the_repositories_folder_warns(
     assert outside == runtime.OUTSIDE_REPOS.format(folder=tmp_path / "projects")
 
 
+def test_no_git_in_the_target_is_the_author_with_its_hint(
+    client, git_config, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(runtime.platform, "system", lambda: "Linux")
+    bin_dir = _git_script(tmp_path, monkeypatch, None)
+    info = scratch_target(client, "shop", tmp_path / "shop")
+    assert (info["name"], info["state"], info["text"]) == ("shop", None, None)
+    assert info["author"] == {
+        "text": f"git is not installed or not on PATH ({bin_dir})",
+        "hint": {
+            "text": "Install git (or with your distribution's package manager):",
+            "command": "sudo apt install git",
+        },
+    }
+
+
+def test_a_git_config_git_cannot_read_is_the_author(client, git_config, tmp_path):
+    git_config.write_text("[user\n")
+    info = scratch_target(client, "shop", tmp_path / "shop")
+    assert info["author"]["text"].startswith("git cannot read its config: ")
+    assert info["author"]["hint"] is None
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any folder")
+def test_a_folder_lado_may_not_read_is_its_text(client, git_config, tmp_path):
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        info = scratch_target(client, "shop", locked)
+    finally:
+        locked.chmod(0o700)
+    assert info["state"] is None
+    assert info["text"].startswith(f"cannot look at {locked}: ")
+
+
 def test_a_relative_folder_for_a_fresh_start_is_400(client, git_config):
     answer = client.get("/api/scratch-target", params={"text": "x", "path": "some/where"})
     assert answer.status_code == 400 and "full path" in answer.json()["detail"]

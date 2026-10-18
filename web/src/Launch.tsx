@@ -652,7 +652,7 @@ function LaunchDialog({
                   setRefused(null);
                 }}
               />
-              {fresh?.state && (
+              {fresh?.text && (
                 <span className={`field-note ${CAN_START.has(fresh.state) ? "ok" : "bad"}`}>
                   {CAN_START.has(fresh.state) ? `✓ ${fresh.text}` : fresh.text}
                 </span>

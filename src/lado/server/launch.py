@@ -65,14 +65,22 @@ def scratch_target(text: str, path: str | None, has_db: bool) -> models.ScratchT
         folder: str | None = runtime.full_path(path)
     else:
         folder = str(scratch.default_folder(names.name)) if names else None
-    target = scratch.check_target(folder) if folder else None
+    state, text = None, None
+    if folder:
+        try:
+            target = scratch.check_target(folder)
+            state, text = target.state, target.text
+        except runtime.FolderProblem:
+            pass  # no git that runs: unknown, and `author` says why with its hint
+        except runtime.LadoError as refused:  # a folder LADO or git may not read
+            text = str(refused)
     return models.ScratchTarget(
         path=folder,
         name=names.name if names else None,
         title=names.title if names else None,
         problem=problem,
-        state=target.state if target else None,
-        text=target.text if target else None,
+        state=state,
+        text=text,
         author=_author(folder or str(clone.default_parent())),
         name_state=(
             name_state(names.name, os.path.realpath(folder), has_db) if names and folder else None
@@ -83,11 +91,12 @@ def scratch_target(text: str, path: str | None, has_db: bool) -> models.ScratchT
 
 
 def _author(path: str) -> models.ScratchProblem | None:
-    """Why git cannot sign a fresh start's commit at `path`; a git that does not run too."""
+    """Why git cannot sign a fresh start's commit at `path`; a git that does not run, or
+    cannot read its config, too."""
     try:
         problem: runtime.LadoError | None = scratch.author_problem(path)
-    except runtime.FolderProblem as no_git:
-        problem = no_git
+    except runtime.LadoError as refused:
+        problem = refused
     if problem is None:
         return None
     hint = getattr(problem, "hint", None)

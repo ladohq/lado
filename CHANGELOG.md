@@ -19,16 +19,14 @@
   folder offers **Start from scratch here**. When git does not know whom to sign commits
   with (`user.name`, `user.email`; in the container `LADO_GIT_NAME` and `LADO_GIT_EMAIL`
   in `.env`), the window says how to set them. From the terminal: `lado start --new
-  <folder>`. `lado doctor` has a new check, `git author`. API: `GET /api/scratch-target`,
-  `where` of kind `scratch` and `title` for `POST /api/sessions`, `FolderInfo.scratch`.
+  <folder>`. `lado doctor` has a new check, `git author`.
 - The UI opens LADO on a phone or another computer: the system panel's new QR-code icon
   shows a QR code and the link with its token (Copy link), or says what makes one; New
-  link… logs everyone else out without a restart (`POST /api/access/new-token`). In Docker
-  set `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST=<this computer's name>` in `.env` (take
-  0.41.0's `compose.yaml`, which publishes the port on `LADO_LISTEN`). `lado ui`'s
-  `From another machine` line now comes from the server and names this machine's address
-  in its network instead of its hostname; in a container with `--no-open` it goes to
-  stderr. The panel's `GitHub ↗` is now the GitHub icon.
+  link… logs everyone else out without a restart. In Docker set `LADO_LISTEN=0.0.0.0` and
+  `LADO_PUBLIC_HOST=<this computer's name>` in `.env`. `lado ui`'s `From another machine`
+  line now comes from the server and names this machine's address in its network instead
+  of its hostname; in a container with `--no-open` it goes to stderr. The panel's
+  `GitHub ↗` is now the GitHub icon.
 - LADO's image carries mise, `make`, `gcc` and `g++`: an agent in the container installs
   the toolchain a project needs (Go, Rust, Java, a Python, ...) by itself, by the
   project's version files (`.tool-versions`, `mise.toml`, `.go-version`, ...), into the
@@ -48,9 +46,7 @@
   paste, a drop on the field), and a reply of files only is an answer. The agent gets them
   with the answer (a gate's next step in its note's `Artifacts:` line; at a loop limit,
   Cancel run gives them to the supervisor), and the chat shows them under the answer: in
-  the closed question's card and under the run's move, previews and chips. The API's
-  `POST …/answers` and `POST …/gates/{id}/answer` take `artifacts`, `GateInfo` gains
-  `answer_attachments`. lado.db goes to schema 31 (`gates.answer_note`).
+  the closed question's card and under the run's move, previews and chips.
 - The web UI on a phone: on a touch screen no wider than 600 px or no higher than 500 px
   it picks a phone layout by itself. The rail opens from a Menu button (☰, with the Needs
   you count); the top bar is one line, and on a session's page its title opens a sheet with
@@ -65,6 +61,17 @@
   Code's question whether to trust a repository it has not seen ("Yes, I trust this
   folder"; Enter alone answers "No, exit" and closes the agent), and README's Docker start
   first checks the shell for `LADO_*` and `COMPOSE_*` variables, which beat `.env`.
+- Upgrade: schema 31, restart running sessions after the update (lado update does it).
+- Upgrade: Docker: take 0.41.0's `compose.yaml`, as every update does (docs/install.md,
+  Update the container). Only it publishes the port on `LADO_LISTEN` and passes
+  `LADO_LISTEN` and `LADO_PUBLIC_HOST` to the container: under 0.40.0's no other device
+  reaches LADO and the UI shows no link for a phone.
+- API: `GET /api/scratch-target` (`ScratchTarget`), `where` of kind `scratch` and `title`
+  for `POST /api/sessions`, `FolderInfo.scratch`.
+- API: `GET /api/access` (`AccessInfo`), `POST /api/access/new-token`.
+- API: `POST /api/sessions/{name}/answers` and
+  `POST /api/sessions/{name}/gates/{gate}/answer` take `artifacts`; `GateInfo` gains
+  `answer_attachments`.
 
 ## 0.40.0 (2026-10-17)
 

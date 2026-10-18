@@ -190,6 +190,19 @@ def repo(tmp_path):
 
 
 @pytest.fixture
+def git_config(tmp_path_factory, monkeypatch):
+    """git's global config for every git the test runs, never the user's: a file of its own
+    (GIT_CONFIG_GLOBAL, no system config; outside tmp_path, which tests list) that names an
+    author; the file's path. Empty it (`write_text("")`) for a git that does not know the
+    author."""
+    path = tmp_path_factory.mktemp("git-config") / "gitconfig"
+    path.write_text("[user]\n\tname = LADO test\n\temail = test@lado.invalid\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(path))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    return path
+
+
+@pytest.fixture
 def loop_starts(monkeypatch):
     """Record the sessions whose loop is started, instead of starting a process."""
     from lado import loop

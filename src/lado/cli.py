@@ -28,6 +28,7 @@ from lado import (
     providers,
     runs,
     runtime,
+    scratch,
     state,
     telemetry,
     tmux,
@@ -48,6 +49,8 @@ def cmd_start(args: argparse.Namespace) -> int:
     if not hasattr(args, "prompt_text"):  # once: a clone calls this again after it
         telemetry.ask_if_needed()
         args.prompt_text = _read_prompt(args)
+    if args.new:
+        return _start_new(args)
     if clone.is_url(args.path):
         return _start_clone(args)
     if args.branch:
@@ -146,6 +149,22 @@ def _start_clone(args: argparse.Namespace) -> int:
         return cmd_start(args)
     except Exception as exc:
         exc.__notes__ = [*getattr(exc, "__notes__", []), f"the clone stays in {folder}"]
+        raise
+
+
+def _start_new(args: argparse.Namespace) -> int:
+    """`lado start --new [<folder>]`: make a new or empty folder a repository with an empty
+    first commit (lado.scratch), then start in it as `lado start <folder>` does."""
+    if clone.is_url(args.path) or args.folder or args.branch:
+        args.start_parser.error("--new takes a folder, not a git URL or a second folder")
+    folder = os.path.abspath(os.path.expanduser(args.path))
+    scratch.make(folder, runtime.slug(args.name or Path(folder).name))
+    print(f"Made {folder} a git repository with an empty first commit")
+    args.path, args.new = folder, False
+    try:
+        return cmd_start(args)
+    except Exception as exc:
+        exc.__notes__ = [*getattr(exc, "__notes__", []), f"the repository stays in {folder}"]
         raise
 
 
@@ -1307,6 +1326,12 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument(
         "--branch", help="with a git URL: the branch to clone (default: the remote's default)"
     )
+    start.add_argument(
+        "--new",
+        action="store_true",
+        help="make the folder, new or empty, a git repository with an empty first commit, "
+        "then start there",
+    )
     start.add_argument("--name", help="session name (default: repository folder name)")
     start.add_argument(
         "--provider",
@@ -1654,7 +1679,8 @@ def main(argv: list[str] | None = None) -> int:
     ) as exc:
         # A folder's or a clone's hint: what the human can do. The notes: what undoing a
         # failed start could not do (runtime._undo).
-        hint = exc.hint if isinstance(exc, (runtime.FolderProblem, clone.CloneError)) else None
+        refusals = (runtime.FolderProblem, clone.CloneError, scratch.ScratchError)
+        hint = exc.hint if isinstance(exc, refusals) else None
         if isinstance(exc, runtime.MigrationFailed) and not removes:
             telemetry.record(f"cli:{_where(args)}", exc.__cause__)  # LADO's bug, no traceback
         lines = [str(exc), *([hint.line()] if hint else [])]

@@ -38,6 +38,7 @@ from lado import (
     marketplaces,
     runs,
     runtime,
+    scratch,
     self_update,
     state,
     telemetry,
@@ -94,6 +95,7 @@ from lado.server.models import (
     Resume,
     RunEventInfo,
     RunInfo,
+    ScratchTarget,
     Sent,
     SessionAbout,
     SessionCounts,
@@ -503,6 +505,15 @@ def create_app(
         """A folder as the New session window checks it: whether a session can start
         there (the core's reason when not), its subfolders and the session name it gives."""
         return core(launch.folder_info, path, has_db)
+
+    @app.get("/api/scratch-target", dependencies=[Depends(guard)])
+    def scratch_target(
+        text: str, path: str | None = None, has_db: bool = Depends(database)
+    ) -> ScratchTarget:
+        """A fresh start of the name `text` (docs/design/ui.md, Launch and session control):
+        the folder's and the session's name and the title, the folder (by default
+        $LADO_REPOS/<name>, else ~/lado/<name>) and whether it takes one, and git's author."""
+        return core(launch.scratch_target, text, path, has_db)
 
     # Clone from URL (docs/design/ui.md, Launch and session control): the listing goes to
     # the network with this machine's credentials, so it is a change too.
@@ -927,14 +938,18 @@ def create_app(
         responses={400: {"model": Refused}, 409: {"model": Taken}},
     )
     def start(given: Launch) -> Started:
-        """Start a new session, as `lado start` does, without attaching to it. A name a
-        session has is 409 with that session's status and folder; on an empty LADO_HOME
-        the core makes lado.db."""
-        if given.where.kind != "folder":
+        """Start a new session, as `lado start` does, without attaching to it; for `where`
+        of kind "scratch" the folder is made a repository first, as `lado start --new`
+        does. A name a session has is 409 with that session's status and folder; on an
+        empty LADO_HOME the core makes lado.db."""
+        if given.where.kind not in ("folder", "scratch"):
             raise HTTPException(400, f'where of kind "{given.where.kind}" is not supported yet')
         try:
+            path = runtime.full_path(given.where.path)
+            if given.where.kind == "scratch":
+                scratch.make(path, runtime.slug(given.name or Path(path).name))
             done = runtime.start_session(
-                runtime.full_path(given.where.path),
+                path,
                 given.name,
                 given.permission_mode,
                 given.provider,
@@ -942,6 +957,7 @@ def create_app(
                 given.without,
                 resume=False,
                 prompt=given.prompt,
+                title=given.title,
             )
         except runtime.SessionExists as taken:
             detail = Taken(message=str(taken), status=taken.status, repo=taken.repo)

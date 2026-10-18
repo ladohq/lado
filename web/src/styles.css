@@ -4845,6 +4845,15 @@ h3 {
   font: 13px var(--mono);
 }
 
+/* From scratch: the name is the human's words, not a path; Create in takes the whole row. */
+.launch-where input.launch-words {
+  font: inherit;
+}
+
+.launch-grid > .launch-wide {
+  grid-column: 1 / -1;
+}
+
 .field-note {
   color: var(--muted);
   font-size: 12px;

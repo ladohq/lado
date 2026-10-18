@@ -2,6 +2,19 @@
 
 ## 0.41.0 (unreleased)
 
+- Start from scratch: a session no longer needs a repository made by hand or a GitHub
+  account. The New session window's switch reads **From scratch | Folder | Clone from
+  URL** and opens in From scratch while LADO has no sessions (else in Folder, as before):
+  type a name in any words (`Сайт кофейни` gives the folder and session `sait-kofeini` and
+  the title `Сайт кофейни`), **Create in** shows the folder (`$LADO_REPOS/<name>`, else
+  `~/lado/<name>`), and **Create and start** makes it a git repository with one empty
+  commit, `Start from scratch`, and starts the session. Only a new or empty folder outside
+  any repository is taken, and none of your files goes into a commit; in Folder an empty
+  folder offers **Start from scratch here**. When git does not know whom to sign commits
+  with (`user.name`, `user.email`; in the container `LADO_GIT_NAME` and `LADO_GIT_EMAIL`
+  in `.env`), the window says how to set them. From the terminal: `lado start --new
+  <folder>`. `lado doctor` has a new check, `git author`. API: `GET /api/scratch-target`,
+  `where` of kind `scratch` and `title` for `POST /api/sessions`, `FolderInfo.scratch`.
 - The UI opens LADO on a phone or another computer: the system panel's new QR-code icon
   shows a QR code and the link with its token (Copy link), or says what makes one; New
   link… logs everyone else out without a restart (`POST /api/access/new-token`). In Docker

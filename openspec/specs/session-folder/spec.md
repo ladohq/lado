@@ -84,7 +84,8 @@ carry none.
 `problem_kind: null`, `hint: null` for a folder that will do. `FolderInfo.has_commits`
 SHALL be removed. The New session window SHALL show the text under the Where field and,
 with a hint, its sentence and its command in a code field with a Copy button, and keep
-Start off.
+Start off; for a folder with `FolderInfo.scratch` it SHALL show Start from scratch here
+in place of the command (capability session-scratch).
 
 #### Scenario: No git on the server's machine
 - **WHEN** the server's process finds no git and the window checks a folder
@@ -99,6 +100,11 @@ Start off.
 - **WHEN** the folder is a repository with a commit
 - **THEN** `ok` is true, `problem_kind` and `hint` are null, and the window shows
   "✓ git repository · branch X" as before
+
+#### Scenario: An empty folder offers a fresh start instead of the command
+- **WHEN** the window checks an empty folder outside git
+- **THEN** the answer keeps `problem_kind: "not_repo"` and its hint, and the window shows
+  Start from scratch here instead of the `git init` command
 
 ### Requirement: LADO's git calls never crash for a missing git
 

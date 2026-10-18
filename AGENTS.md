@@ -61,6 +61,7 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `telemetry.py`: LADO's error journal and, with the human's yes, usage statistics.
   - `runtime.py`: sessions and agents in tmux, workers' worktrees, message delivery.
   - `clone.py`: a repository from its git URL (`lado start <git-url>`, the UI's clone).
+  - `scratch.py`: a new or empty folder made a repository (`lado start --new`, From scratch).
   - `providers/`: the agent CLIs behind one interface: `base.py`, `claude.py`, `codex.py`,
     `opencode_family.py` (with `opencode_plugin.js`), `kilo.py`, `opencode.py`, `gitpaths.py`.
   - `tmux.py`: tmux calls on LADO's private server (`tmux -L lado`).

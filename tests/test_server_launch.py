@@ -2,6 +2,7 @@
 kits, providers, and starting, resuming, stopping and forgetting a session. In process,
 with FastAPI's test client."""
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -61,6 +62,7 @@ def test_a_repository_folder_is_ok_with_its_branch_name_and_subfolders(client, r
         "name_state": "free",
         "provider": None,
         "warning": None,
+        "scratch": False,
     }
 
 
@@ -668,3 +670,209 @@ def test_a_launch_change_needs_the_token_and_the_servers_own_origin(
 def test_the_previews_need_the_token(client, path):
     client.cookies.clear()
     assert client.get(path).status_code == 401
+
+
+# From scratch (openspec change start-from-scratch)
+
+
+def scratch_target(client, text, path=None) -> dict:
+    params = {"text": text, **({"path": str(path)} if path is not None else {})}
+    answer = client.get("/api/scratch-target", params=params)
+    assert answer.status_code == 200, answer.text
+    return answer.json()
+
+
+def test_a_name_checked(client, git_config, tmp_path, monkeypatch, installed):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    installed.intersection_update({"kilo"})
+    assert scratch_target(client, "Сайт кофейни") == {
+        "path": str(tmp_path / "home" / "lado" / "sait-kofeini"),
+        "name": "sait-kofeini",
+        "title": "Сайт кофейни",
+        "problem": None,
+        "state": "new",
+        "text": "a new folder",
+        "author": None,
+        "name_state": "free",
+        "provider": {"name": "kilo", "reason": "only_installed"},
+        "warning": None,
+    }
+
+
+def test_the_default_folder_is_in_the_repositories_folder(
+    client, git_config, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "projects"))
+    info = scratch_target(client, "coffee-site")
+    assert (info["path"], info["title"]) == (str(tmp_path / "projects" / "coffee-site"), None)
+
+
+def test_a_folder_given_is_checked(client, git_config, tmp_path):
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "a.txt").write_text("x")
+    info = scratch_target(client, "Notes", tmp_path / "notes")
+    assert (info["path"], info["state"], info["name"]) == (
+        str(tmp_path / "notes"),
+        "not_empty",
+        "notes",
+    )
+    assert info["text"] == f"{tmp_path / 'notes'} is not empty: choose a new or empty folder"
+    (tmp_path / "empty").mkdir()
+    assert scratch_target(client, "x", tmp_path / "empty")["state"] == "empty"
+    inside = scratch_target(client, "x", agent_helpers.init_repo(tmp_path / "app") / "site")
+    assert inside["state"] == "inside_repo"
+
+
+def test_a_refused_name_without_a_folder_has_none(client, git_config):
+    info = scratch_target(client, "東京")
+    assert info["problem"] == "the name needs a Latin letter or digit for its folder: type one"
+    assert (info["path"], info["name"], info["state"], info["name_state"]) == (
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+def test_a_refused_name_with_a_folder_checks_the_folder(client, git_config, tmp_path):
+    info = scratch_target(client, "", tmp_path / "shop")
+    assert (info["problem"], info["path"], info["state"]) == (
+        "type a name",
+        str(tmp_path / "shop"),
+        "new",
+    )
+
+
+@pytest.mark.parametrize(
+    ("container", "command"),
+    [(None, 'git config --global user.name "Your Name"'), ("1", "docker compose up -d")],
+)
+def test_no_author_in_the_target(client, git_config, tmp_path, monkeypatch, container, command):
+    if container:
+        monkeypatch.setenv("LADO_CONTAINER", container)
+    git_config.write_text("")
+    author = scratch_target(client, "shop", tmp_path / "shop")["author"]
+    assert author["text"] == (
+        "git doesn't know who signs the agents' commits: it has no user.name or user.email"
+    )
+    assert author["hint"]["command"].startswith(command)
+
+
+def test_the_name_taken_by_a_session_of_another_folder(
+    client, git_config, repo, tmp_path, fake_tmux
+):
+    runtime.start_session(str(repo), "shop", None, provider="claude")
+    assert scratch_target(client, "Shop", tmp_path / "shop")["name_state"] == "taken_elsewhere"
+
+
+def test_in_a_container_a_fresh_start_outside_the_repositories_folder_warns(
+    client, git_config, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "projects"))
+    assert scratch_target(client, "shop")["warning"] is None
+    outside = scratch_target(client, "shop", tmp_path / "shop")["warning"]
+    assert outside == runtime.OUTSIDE_REPOS.format(folder=tmp_path / "projects")
+
+
+def test_no_git_in_the_target_is_the_author_with_its_hint(
+    client, git_config, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(runtime.platform, "system", lambda: "Linux")
+    bin_dir = _git_script(tmp_path, monkeypatch, None)
+    info = scratch_target(client, "shop", tmp_path / "shop")
+    assert (info["name"], info["state"], info["text"]) == ("shop", None, None)
+    assert info["author"] == {
+        "text": f"git is not installed or not on PATH ({bin_dir})",
+        "hint": {
+            "text": "Install git (or with your distribution's package manager):",
+            "command": "sudo apt install git",
+        },
+    }
+
+
+def test_a_git_config_git_cannot_read_is_the_author(client, git_config, tmp_path):
+    git_config.write_text("[user\n")
+    info = scratch_target(client, "shop", tmp_path / "shop")
+    assert info["author"]["text"].startswith("git cannot read its config: ")
+    assert info["author"]["hint"] is None
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any folder")
+def test_a_folder_lado_may_not_read_is_its_text(client, git_config, tmp_path):
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        info = scratch_target(client, "shop", locked)
+    finally:
+        locked.chmod(0o700)
+    assert info["state"] is None
+    assert info["text"].startswith(f"cannot look at {locked}: ")
+
+
+def test_a_relative_folder_for_a_fresh_start_is_400(client, git_config):
+    answer = client.get("/api/scratch-target", params={"text": "x", "path": "some/where"})
+    assert answer.status_code == 400 and "full path" in answer.json()["detail"]
+
+
+def start_scratch(client, path, **given):
+    return client.post(
+        "/api/sessions", json={"where": {"kind": "scratch", "path": str(path)}, **given}
+    )
+
+
+def test_a_fresh_start_from_the_api(client, git_config, tmp_path, fake_tmux):
+    path = tmp_path / "lado" / "sait-kofeini"
+    answer = start_scratch(client, path, name="sait-kofeini", title="Сайт кофейни", provider="kilo")
+    assert answer.status_code == 200, answer.text
+    sess = answer.json()["session"]
+    assert (sess["name"], sess["repo"], sess["title"]) == (
+        "sait-kofeini",
+        os.path.realpath(path),
+        "Сайт кофейни",
+    )
+    assert runtime.check_repo(str(path)) == os.path.realpath(path)
+
+
+def test_a_fresh_start_refused_before_the_repository_is_400_and_makes_nothing(
+    client, git_config, tmp_path, repo, fake_tmux
+):
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "a.txt").write_text("x")
+    answer = start_scratch(client, tmp_path / "notes", name="notes", provider="kilo")
+    assert (answer.status_code, answer.json()["detail"]) == (
+        400,
+        f"{tmp_path / 'notes'} is not empty: choose a new or empty folder",
+    )
+    assert not (tmp_path / "notes" / ".git").exists()
+    runtime.start_session(str(repo), "shop", None, provider="claude")
+    answer = start_scratch(client, tmp_path / "shop", name="shop", provider="kilo")
+    assert answer.status_code == 400 and 'session "shop" was started in' in answer.json()["detail"]
+    git_config.write_text("")
+    answer = start_scratch(client, tmp_path / "cafe", name="cafe", provider="kilo")
+    assert answer.status_code == 400 and "user.name or user.email" in answer.json()["detail"]
+    assert not (tmp_path / "shop").exists() and not (tmp_path / "cafe").exists()
+
+
+def test_a_fresh_start_refused_after_the_repository_keeps_it(
+    client, git_config, tmp_path, fake_tmux
+):
+    answer = start_scratch(client, tmp_path / "shop", name="shop", provider="nosuch")
+    assert answer.status_code == 400
+    assert runtime.check_repo(str(tmp_path / "shop")) == os.path.realpath(tmp_path / "shop")
+
+
+def test_an_empty_folder_in_the_folder_check(client, git_config, tmp_path):
+    (tmp_path / "empty").mkdir()
+    info = folder(client, tmp_path / "empty")
+    assert (info["ok"], info["problem_kind"], info["scratch"]) == (False, "not_repo", True)
+    assert folder(client, tmp_path / "new")["scratch"] is True  # missing
+
+
+def test_a_folder_that_cannot_start_from_scratch(client, git_config, tmp_path, repo):
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "a.txt").write_text("x")
+    assert folder(client, tmp_path / "notes")["scratch"] is False
+    assert folder(client, repo / "nope")["scratch"] is False  # missing, inside a repository
+    assert folder(client, repo)["scratch"] is False

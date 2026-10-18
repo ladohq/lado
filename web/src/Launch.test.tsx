@@ -13,6 +13,7 @@ import type {
   KitInfo,
   ProviderInfo,
   RecentFolder,
+  ScratchTarget,
   SessionAbout,
   SessionInfo,
 } from "./api";
@@ -58,6 +59,7 @@ function folder(path: string, more: Partial<FolderInfo> = {}): FolderInfo {
     default_name: path.split("/").pop() ?? "",
     name_state: "free",
     provider: null,
+    scratch: false,
     ...more,
   };
 }
@@ -134,6 +136,9 @@ beforeEach(() => {
         return json(folders[asked] ?? folder(asked, { ok: false, problem: `${asked} does not exist`, root: null }));
       }
       if (url.pathname === "/api/folders/recent") return json(recent);
+      if (url.pathname === "/api/scratch-target") {
+        return json(scratchTarget(url.searchParams.get("text") ?? "", url.searchParams.get("path")));
+      }
       if (url.pathname === "/api/repos-folder") return json({ path: repos });
       if (url.pathname === "/api/kits") return json(kits);
       if (url.pathname === "/api/providers") return json(await providers());
@@ -165,10 +170,14 @@ function open(path = "/sessions") {
   );
 }
 
-async function openLaunch() {
+// The New session window; in Folder unless `folderSource` is false: with no recent folders
+// it opens in From scratch, a developer's window in Folder.
+async function openLaunch(folderSource = true) {
   open();
   fireEvent.click(screen.getByRole("button", { name: "Launch" }));
-  return screen.findByRole("dialog", { name: "New session" });
+  const dialog = await screen.findByRole("dialog", { name: "New session" });
+  if (folderSource) fireEvent.click(within(dialog).getByRole("button", { name: "Folder" }));
+  return dialog;
 }
 
 const where = () => screen.getByRole("combobox", { name: /Where/ }) as HTMLInputElement;
@@ -1774,4 +1783,243 @@ test("a clone that ended while the window was away is offered as a folder, not r
   expect(within(dialog).getByRole("button", { name: "Folder" }).getAttribute("aria-pressed")).toBe("true");
   expect(where().value).toBe(INTO);
   expect(within(dialog).queryByRole("alert")).toBeNull();
+});
+
+// From scratch (openspec change start-from-scratch)
+
+const KOFEINI = "/home/ann/lado/sait-kofeini";
+
+function scratchTarget(text: string, path: string | null, more: Partial<ScratchTarget> = {}): ScratchTarget {
+  const name = text === "Сайт кофейни" ? "sait-kofeini" : text.trim().toLowerCase();
+  return {
+    path: path ?? (name ? `/home/ann/lado/${name}` : null),
+    name: name || null,
+    title: name && name !== text.trim() ? text.trim() : null,
+    problem: name ? null : "type a name",
+    state: "new",
+    text: "a new folder",
+    author: null,
+    name_state: "free",
+    provider: { name: "claude", reason: "only_installed" },
+    warning: null,
+    ...more,
+  };
+}
+
+const sourceButton = (dialog: HTMLElement, name: string) => within(dialog).getByRole("button", { name });
+const pressed = (dialog: HTMLElement, name: string) => sourceButton(dialog, name).getAttribute("aria-pressed");
+const scratchName = () => screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
+const createIn = () => screen.getByRole("textbox", { name: "Create in" }) as HTMLInputElement;
+const createButton = () => screen.getByRole("button", { name: "Create and start" }) as HTMLButtonElement;
+
+async function scratchReady(text = "Сайт кофейни") {
+  const dialog = await openLaunch(false);
+  await waitFor(() => expect(pressed(dialog, "From scratch")).toBe("true"));
+  fireEvent.change(scratchName(), { target: { value: text } });
+  await waitFor(() => expect(createButton().disabled).toBe(false));
+  return dialog;
+}
+
+test("the switch has From scratch first, then Folder and Clone from URL", async () => {
+  const dialog = await openLaunch(false);
+  const group = within(dialog).getByRole("group", { name: "Source" });
+  expect(within(group).getAllByRole("button").map((one) => one.textContent)).toEqual([
+    "From scratch",
+    "Folder",
+    "Clone from URL",
+  ]);
+});
+
+test("the first window: From scratch, the names under Name and the folder under Create in", async () => {
+  const dialog = await openLaunch(false);
+  await waitFor(() => expect(pressed(dialog, "From scratch")).toBe("true"));
+  expect(within(dialog).queryByRole("combobox", { name: /Where/ })).toBeNull();
+  fireEvent.change(scratchName(), { target: { value: "Сайт кофейни" } });
+  const note = await within(dialog).findByText(/folder and session:/);
+  expect(note.textContent).toBe("folder and session: sait-kofeini · title: Сайт кофейни");
+  expect(await within(dialog).findByText("✓ a new folder")).toBeTruthy();
+  expect(createIn().value).toBe(KOFEINI);
+  expect(within(dialog).getAllByRole("textbox", { name: "Name" })).toHaveLength(1); // no session Name
+  await waitFor(() => expect(createButton().disabled).toBe(false));
+});
+
+test("a developer's window opens in Folder, as before", async () => {
+  recent = [{ path: "/src/lado", session: session("lado") }];
+  const dialog = await openLaunch(false);
+  await within(dialog).findByRole("button", { name: "/src/lado" });
+  expect(pressed(dialog, "Folder")).toBe("true");
+  expect(where()).toBeTruthy();
+});
+
+test("a source the human picks before the recent folders answer is kept", async () => {
+  let answer: (value: Response) => void = () => {};
+  answers["GET /api/folders/recent"] = () => new Promise<Response>((resolve) => (answer = resolve));
+  const dialog = await openLaunch(false);
+  fireEvent.click(sourceButton(dialog, "Clone from URL"));
+  await act(async () => answer(json([])));
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/folders/recent")).toBe(true));
+  expect(pressed(dialog, "Clone from URL")).toBe("true");
+});
+
+test("no author: the text and the hint with Copy under Name, Create and start off", async () => {
+  answers["GET /api/scratch-target"] = () =>
+    json(
+      scratchTarget("Сайт кофейни", null, {
+        author: {
+          text: "git doesn't know who signs the agents' commits: it has no user.name or user.email",
+          hint: { text: "Tell git who you are, once for this computer:", command: "git config --global user.name x" },
+        },
+      }),
+    );
+  const dialog = await openLaunch(false);
+  await waitFor(() => expect(pressed(dialog, "From scratch")).toBe("true"));
+  fireEvent.change(scratchName(), { target: { value: "Сайт кофейни" } });
+  expect(await within(dialog).findByText(/git doesn't know who signs the agents' commits/)).toBeTruthy();
+  expect(within(dialog).getByText("git config --global user.name x")).toBeTruthy();
+  expect(within(dialog).getByRole("button", { name: "Copy command" })).toBeTruthy();
+  expect(createButton().disabled).toBe(true);
+});
+
+test("a refused name shows under Name, and Create and start stays off", async () => {
+  answers["GET /api/scratch-target"] = () =>
+    json(
+      scratchTarget("東京", null, {
+        path: null,
+        name: null,
+        title: null,
+        state: null,
+        text: null,
+        name_state: null,
+        problem: "the name needs a Latin letter or digit for its folder: type one",
+      }),
+    );
+  const dialog = await openLaunch(false);
+  await waitFor(() => expect(pressed(dialog, "From scratch")).toBe("true"));
+  fireEvent.change(scratchName(), { target: { value: "東京" } });
+  expect(await within(dialog).findByText("the name needs a Latin letter or digit for its folder: type one")).toBeTruthy();
+  expect(createButton().disabled).toBe(true);
+});
+
+test("a folder with files under Create in is refused there, and Create in edited stops following the name", async () => {
+  const notes = "/home/ann/Documents/notes";
+  answers["GET /api/scratch-target"] = () => {
+    const asked = new URL(calls[calls.length - 1].path, "http://lado.test").searchParams;
+    const path = asked.get("path");
+    return json(
+      path === notes
+        ? scratchTarget(asked.get("text") ?? "", path, {
+            state: "not_empty",
+            text: `${notes} is not empty: choose a new or empty folder`,
+          })
+        : scratchTarget(asked.get("text") ?? "", path),
+    );
+  };
+  const dialog = await scratchReady("shop");
+  fireEvent.change(createIn(), { target: { value: notes } });
+  expect(await within(dialog).findByText(`${notes} is not empty: choose a new or empty folder`)).toBeTruthy();
+  expect(createButton().disabled).toBe(true);
+  fireEvent.change(scratchName(), { target: { value: "cafe" } });
+  await waitFor(() =>
+    expect(calls.some((c) => c.path.startsWith("/api/scratch-target") && c.path.includes("text=cafe"))).toBe(true),
+  );
+  expect(createIn().value).toBe(notes);
+});
+
+test("a folder the server cannot look at shows why under Create in, and Create and start stays off", async () => {
+  answers["GET /api/scratch-target"] = () =>
+    json(scratchTarget("shop", null, { state: null, text: "cannot look at /home/ann/lado/shop: Permission denied" }));
+  const dialog = await openLaunch(false);
+  await waitFor(() => expect(pressed(dialog, "From scratch")).toBe("true"));
+  fireEvent.change(scratchName(), { target: { value: "shop" } });
+  expect(await within(dialog).findByText("cannot look at /home/ann/lado/shop: Permission denied")).toBeTruthy();
+  expect(createButton().disabled).toBe(true);
+});
+
+test("Create and start sends the folder, the name and the title, and opens the session", async () => {
+  answers["POST /api/sessions"] = () => json({ session: session("sait-kofeini", { repo: KOFEINI }), ...STARTED });
+  await scratchReady();
+  fireEvent.click(createButton());
+  expect(await screen.findByRole("region", { name: "Session sait-kofeini" })).toBeTruthy();
+  const sent = calls.find((c) => c.method === "POST" && c.path === "/api/sessions")!;
+  expect(sent.body).toEqual({
+    where: { kind: "scratch", path: KOFEINI },
+    name: "sait-kofeini",
+    title: "Сайт кофейни",
+    kits: ["default"],
+    provider: "claude",
+  });
+});
+
+test("a start refused after the repository was made switches to Folder with it and the refusal", async () => {
+  answers["POST /api/sessions"] = () => json({ detail: "the provider nosuch is not known" }, 400);
+  folders[KOFEINI] = folder(KOFEINI);
+  const dialog = await scratchReady();
+  fireEvent.click(createButton());
+  expect((await within(dialog).findByRole("alert")).textContent).toBe("the provider nosuch is not known");
+  await waitFor(() => expect(pressed(dialog, "Folder")).toBe("true"));
+  expect(where().value).toBe(KOFEINI);
+});
+
+test("a start refused before the repository was made keeps From scratch", async () => {
+  answers["POST /api/sessions"] = () => json({ detail: "x is not empty: choose a new or empty folder" }, 400);
+  const dialog = await scratchReady();
+  fireEvent.click(createButton());
+  expect((await within(dialog).findByRole("alert")).textContent).toBe("x is not empty: choose a new or empty folder");
+  await waitFor(() => expect(createButton().disabled).toBe(false));
+  expect(pressed(dialog, "From scratch")).toBe("true");
+});
+
+test("Start from scratch here: an empty folder in Folder switches to From scratch with it", async () => {
+  const empty = "/home/ann/Documents/coffee-site";
+  folders[empty] = folder(empty, {
+    ok: false,
+    root: null,
+    branch: null,
+    problem: `${empty} is not inside a git repository`,
+    problem_kind: "not_repo",
+    hint: { text: "Make it a repository with a first commit, in that folder:", command: "git init" },
+    scratch: true,
+  });
+  answers["GET /api/scratch-target"] = () =>
+    json(scratchTarget("coffee-site", empty, { state: "empty", text: "an empty folder" }));
+  const dialog = await openLaunch();
+  type(empty);
+  expect(await within(dialog).findByText("The folder is empty: LADO can start it from scratch.")).toBeTruthy();
+  expect(within(dialog).queryByText("git init")).toBeNull();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Start from scratch here" }));
+  expect(pressed(dialog, "From scratch")).toBe("true");
+  expect(scratchName().value).toBe("coffee-site");
+  expect(createIn().value).toBe(empty);
+  expect(await within(dialog).findByText("✓ an empty folder")).toBeTruthy();
+});
+
+test("a missing folder in Folder offers to make it from scratch, under its text", async () => {
+  const missing = "/home/ann/lado/shop";
+  folders[missing] = folder(missing, {
+    ok: false,
+    root: null,
+    branch: null,
+    problem: `${missing} does not exist`,
+    problem_kind: "missing",
+    scratch: true,
+  });
+  const dialog = await openLaunch();
+  type(missing);
+  expect(await within(dialog).findByText(`${missing} does not exist`)).toBeTruthy();
+  expect(within(dialog).getByText("LADO can make this folder and start it from scratch.")).toBeTruthy();
+  expect(within(dialog).getByRole("button", { name: "Start from scratch here" })).toBeTruthy();
+});
+
+test("a folder with files keeps LAD-5's command and no Start from scratch here", async () => {
+  folders["/home/ann/notes"] = folder("/home/ann/notes", {
+    ok: false,
+    root: null,
+    problem: "/home/ann/notes is not inside a git repository",
+    problem_kind: "not_repo",
+    hint: { text: "Make it a repository with a first commit, in that folder:", command: "git init" },
+  });
+  const dialog = await openLaunch();
+  type("/home/ann/notes");
+  expect(await within(dialog).findByText("git init")).toBeTruthy();
+  expect(within(dialog).queryByRole("button", { name: "Start from scratch here" })).toBeNull();
 });

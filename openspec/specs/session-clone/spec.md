@@ -185,7 +185,8 @@ and `--branch` without a git URL SHALL be refused.
 
 ### Requirement: The New session window clones from a URL
 
-The New session window SHALL have a switch **Folder | Clone from URL** in its Where field.
+The New session window SHALL have a switch **From scratch | Folder | Clone from URL** in
+its first field (capability session-scratch).
 With Clone from URL it SHALL show a URL field, **Clone into** (the default folder, which
 follows the URL until the human edits it) with the target folder's state, **Branch**
 (listed by the server half a second after the URL stops changing, `fetching branches…`

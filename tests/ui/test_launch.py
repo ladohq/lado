@@ -57,6 +57,7 @@ def test_where_starts_in_the_repositories_folder(page: Page, repos, server, shot
     log_in(page, server)
     page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
     dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
     where = dialog.get_by_role("combobox", name=re.compile("Where"))
     expect(where).to_have_value("")
     expect(where).to_have_attribute("placeholder", f"{repos}/…")
@@ -90,6 +91,7 @@ def test_in_a_container_a_folder_outside_the_repositories_folder_is_warned_about
     log_in(page, server)
     page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
     dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
     where = dialog.get_by_role("combobox", name=re.compile("Where"))
     where.fill(f"{repos}/app")
     expect(dialog).to_contain_text("✓ git repository · branch main")
@@ -128,6 +130,7 @@ def test_a_session_starts_from_the_new_session_window(page: Page, server, repo, 
     log_in(page, server)
     page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
     dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
     expect(dialog).to_contain_text("✓ git repository · branch main")
     expect(dialog.get_by_role("textbox", name="Name")).to_have_value("my-repo")
@@ -150,6 +153,7 @@ def test_a_session_starts_with_a_first_message(page: Page, server, repo, shot):
     log_in(page, server)
     page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
     dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
     expect(dialog).to_contain_text("✓ git repository · branch main")
     dialog.get_by_label("Provider").select_option("fake")
@@ -193,6 +197,7 @@ def test_a_role_in_two_kits_is_switched_off_from_the_refusal(page: Page, server,
     log_in(page, server)
     page.get_by_role("button", name="New session").click()
     dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
     expect(dialog).to_contain_text("✓ git repository · branch main")
     dialog.get_by_label("Provider").select_option("fake")
@@ -220,6 +225,7 @@ def test_a_folder_that_will_not_do_shows_the_cores_reason(page: Page, server, tm
     log_in(page, server)
     page.get_by_role("button", name="New session").click()
     dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(plain))
     expect(dialog).to_contain_text(f"{plain} is not inside a git repository")
     expect(dialog.get_by_role("button", name="Start session")).to_be_disabled()
@@ -236,6 +242,7 @@ def test_a_folder_without_commits_shows_the_command_that_makes_one(
     log_in(page, server)
     page.get_by_role("button", name="New session").click()
     dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(empty))
     expect(dialog).to_contain_text(f"{empty} has no commits yet")
     expect(dialog).to_contain_text("Make a first commit, in that folder:")
@@ -510,3 +517,115 @@ def test_a_page_reloaded_during_a_clone_cancels_it_at_once(
 
     agent_helpers.wait_for(ended, "the clone cancelled by the beacon", "none", timeout=15)
     assert not into.exists()
+
+
+# From scratch (openspec change start-from-scratch)
+
+
+@pytest.fixture
+def projects(tmp_path, monkeypatch, git_config):
+    """Where a fresh start goes (LADO_REPOS) and a git that knows the author, both taken
+    before `server`, so the server's process has them; the folder."""
+    folder = tmp_path / "projects"
+    folder.mkdir()
+    monkeypatch.setenv("LADO_REPOS", str(folder))
+    return folder
+
+
+def scratch_window(page: Page, server):
+    log_in(page, server)
+    page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
+    dialog = page.get_by_role("dialog", name="New session")
+    expect(dialog.get_by_role("button", name="From scratch")).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    return dialog
+
+
+def test_a_first_session_from_scratch(page: Page, projects, server, shot):
+    dialog = scratch_window(page, server)
+    dialog.get_by_role("textbox", name="Name").fill("Сайт кофейни")
+    expect(dialog).to_contain_text("folder and session: sait-kofeini · title: Сайт кофейни")
+    expect(dialog.get_by_role("textbox", name="Create in")).to_have_value(
+        str(projects / "sait-kofeini")
+    )
+    expect(dialog).to_contain_text("✓ a new folder")
+    dialog.get_by_label("Provider").select_option("fake")
+    create = dialog.get_by_role("button", name="Create and start")
+    expect(create).to_be_enabled()
+    shot(page, "window")
+
+    create.click()
+    expect(page).to_have_url(f"{server['url']}/sessions/sait-kofeini/activity")
+    head = page.get_by_role("banner").locator(".session-head")
+    expect(head.get_by_role("heading", level=1)).to_have_text("Сайт кофейни")
+    idle("sait-kofeini")
+    log = subprocess.run(
+        ["git", "-C", str(projects / "sait-kofeini"), "log", "--format=%s"],
+        capture_output=True,
+        text=True,
+    )
+    assert log.stdout == "Start from scratch\n"
+    shot(page, "started")
+
+
+def test_create_in_a_folder_with_files_is_refused_there(page: Page, projects, server, shot):
+    (projects / "coffee").mkdir()
+    (projects / "coffee" / "menu.txt").write_text("x")
+    dialog = scratch_window(page, server)
+    dialog.get_by_role("textbox", name="Name").fill("Сайт кофейни")
+    dialog.get_by_role("textbox", name="Create in").fill(str(projects / "coffee"))
+    expect(dialog).to_contain_text(
+        f"{projects / 'coffee'} is not empty: choose a new or empty folder"
+    )
+    expect(dialog.get_by_role("button", name="Create and start")).to_be_disabled()
+    shot(page)
+
+
+def test_start_from_scratch_here(page: Page, projects, server, tmp_path, shot):
+    empty = tmp_path / "Documents" / "coffee-site"
+    empty.mkdir(parents=True)
+    log_in(page, server)
+    page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
+    dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()
+    dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(empty))
+    expect(dialog).to_contain_text("The folder is empty: LADO can start it from scratch.")
+    here = dialog.get_by_role("button", name="Start from scratch here")
+    expect(here).to_be_visible()
+    shot(page, "folder")
+
+    here.click()
+    expect(dialog.get_by_role("button", name="From scratch")).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    expect(dialog.get_by_role("textbox", name="Name")).to_have_value("coffee-site")
+    expect(dialog.get_by_role("textbox", name="Create in")).to_have_value(str(empty))
+    expect(dialog).to_contain_text("✓ an empty folder")
+    shot(page, "scratch")
+
+
+NO_AUTHOR = "git doesn't know who signs the agents' commits: it has no user.name or user.email"
+
+
+def test_no_author_says_what_to_do(page: Page, projects, git_config, server, shot):
+    git_config.write_text("")
+    dialog = scratch_window(page, server)
+    dialog.get_by_role("textbox", name="Name").fill("Сайт кофейни")
+    expect(dialog).to_contain_text(NO_AUTHOR)
+    expect(dialog).to_contain_text("Tell git who you are, once for this computer:")
+    expect(dialog.get_by_role("button", name="Copy command")).to_be_visible()
+    dialog.get_by_label("Provider").select_option("fake")
+    expect(dialog.get_by_role("button", name="Create and start")).to_be_disabled()
+    shot(page)
+
+
+def test_no_author_in_the_container(page: Page, projects, git_config, server_in_container, shot):
+    git_config.write_text("")
+    dialog = scratch_window(page, server_in_container)
+    dialog.get_by_role("textbox", name="Name").fill("Сайт кофейни")
+    expect(dialog).to_contain_text(NO_AUTHOR)
+    expect(dialog).to_contain_text("Set LADO_GIT_NAME and LADO_GIT_EMAIL in the .env file")
+    expect(dialog.locator("code", has_text="docker compose up -d")).to_be_visible()
+    expect(dialog.get_by_role("button", name="Create and start")).to_be_disabled()
+    shot(page)

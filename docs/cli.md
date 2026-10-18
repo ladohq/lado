@@ -21,6 +21,20 @@ is exit 1) before any clone or start, stdin read once, and `first message: queue
 supervisor` after the Started or Resumed line. The UI starts sessions too (Launch). Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
+`lado start --new [<folder>]` (default: the current folder; relative paths are taken from
+it) starts from scratch (`lado.scratch`): the folder must be new or empty (nothing but
+`.DS_Store`) and in no git repository, and git must know the commits' author (`user.name`
+and `user.email`). It makes the folder (and the folders above it), `git init`, the branch
+of `init.defaultBranch` (else `main`) and one empty commit `Start from scratch` (no file, no
+signing, no hooks), prints `Made <folder> a git repository with an empty first commit`, and
+starts the session as `lado start <folder>` does, named by `--name` or the folder. A refusal
+is exit 1 with its hint and changes nothing: a folder with files gets LAD-5's `git init`
+command, a folder of a repository `lado start <root>`, a git without the author the `git
+config --global` command (in LADO's container: `LADO_GIT_NAME` and `LADO_GIT_EMAIL` in
+`.env`); a git step that fails removes what it made. A start refused after the repository
+was made says `the repository stays in <folder>`. `--new` with a git URL, a second folder or
+`--branch` exits 2. Without `--new`, `lado start` never makes a repository.
+
 `lado kits add <git-url>[@vX.Y.Z]` installs the kit of a repository (a row in lado.db; its
 clone in the git cache): without a tag its latest release, with `--pre` its latest version
 of all. A folder (read in place, the way to develop a kit) has no version. `lado kits add <kit>[@vX.Y.Z]

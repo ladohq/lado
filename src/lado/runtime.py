@@ -287,6 +287,11 @@ class FolderProblem(LadoError):
         self.hint = hint
 
 
+# What to do with a folder of files that is no repository: the human picks what to commit.
+NOT_REPO_HINT = Hint(
+    "Make it a repository with a first commit, in that folder:",
+    "git init && git add -A && git commit -m 'First commit'",
+)
 GIT_MIN = (2, 31)  # `rev-parse --path-format=absolute` (providers/gitpaths.py)
 XCODE_TOOLS = "xcode-select --install"
 
@@ -460,14 +465,7 @@ def check_repo(path: str) -> str:
     top = _run_git(path, "rev-parse", "--show-toplevel", env=english)
     if top.returncode != 0:
         if "not a git repository" in top.stderr:
-            raise FolderProblem(
-                "not_repo",
-                f"{path} is not inside a git repository",
-                Hint(
-                    "Make it a repository with a first commit, in that folder:",
-                    "git init && git add -A && git commit -m 'First commit'",
-                ),
-            )
+            raise FolderProblem("not_repo", f"{path} is not inside a git repository", NOT_REPO_HINT)
         raise _git_refused(path, top)
     root = top.stdout.strip()
     head = _run_git(root, "rev-parse", "--verify", "--quiet", "HEAD", env=english)
@@ -602,17 +600,22 @@ def check_prompt(text: str) -> str:
     return text
 
 
-def set_title(name: str, text: str | None) -> str | None:
-    """Set or clear the session's title, a label for the human over its name (which stays
-    its identifier), whatever its status: the one rule of what a title is. Trimmed; empty or
-    equal to the name is no title; a hidden character (`lado.text`) or more than MAX_TITLE
-    characters is refused with nothing changed. Returns what is stored."""
+def check_title(text: str | None, name: str) -> str | None:
+    """The one rule of what a session's title is, a label for the human over its name
+    (which stays its identifier): trimmed; empty or equal to the name is no title (None); a
+    hidden character (`lado.text`) or more than MAX_TITLE characters is refused."""
     title = (text or "").strip()
     if (char := visible.first_hidden(title)) is not None:
         raise LadoError(f"a title is one line {visible.refusal(char)}")
     if len(title) > MAX_TITLE:
         raise LadoError(f"a title is at most {MAX_TITLE} characters")
-    stored = title if title and title != name else None
+    return title if title and title != name else None
+
+
+def set_title(name: str, text: str | None) -> str | None:
+    """Set or clear the session's title (check_title), whatever its status; refused with
+    nothing changed. Returns what is stored."""
+    stored = check_title(text, name)
     if not state.set_title(name, stored):
         raise NoSuchSession(f'unknown session "{name}"')
     return stored
@@ -629,12 +632,14 @@ def start_session(
     first: FirstInput | None = None,
     prompt: str | None = None,
     reason: str | None = None,
+    title: str | None = None,
 ) -> Started:
     """Start a session whose agents come from `kit_names` (default: the "default" kit), minus
     the `without` items ("agent:x", "skill:y", "mcp:z"). A new session's supervisor may get
     `first` as its first input. `prompt` is the human's first message, for a new session and
     a resume alike (check_prompt): queued from `human` after LADO's own messages. `reason`
-    begins a resume's event detail (why it was resumed: resume_at_start).
+    begins a resume's event detail (why it was resumed: resume_at_start). `title` is a new
+    session's (check_title); a resume keeps its own, which `lado title` changes.
 
     A stopped session of that name, or one whose tmux server is gone, is resumed: it keeps
     its history, open runs and gates, and the settings given replace its stored ones. The
@@ -649,11 +654,14 @@ def start_session(
     text = check_prompt(prompt) if prompt is not None else None
     repo = check_repo(path)
     session = slug(name or Path(repo).name)
+    stored_title = check_title(title, session)
     old = state.get_session(session)
     if old and resume is False:
         raise SessionExists(old, session_status(old))
     if not old and resume:
         raise NoSuchSession(f'unknown session "{session}"')
+    if old and title is not None:
+        raise LadoError("a title is set with lado title on a resume")
     if old:
         if not old.stopped_at and tmux.has_session(session):
             loop.ensure(session)
@@ -674,6 +682,7 @@ def start_session(
         agent_cli.name,
         kit_names or (old.kits if old else [kits.DEFAULT_KIT]),
         without if without is not None else (old.without if old else []),
+        title=old.title if old else stored_title,
     )
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.kits, sess.without)

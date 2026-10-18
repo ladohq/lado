@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.41.0 (unreleased)
+## 0.41.0 (2026-10-18)
 
 - The web UI forgets stopped sessions in one go: a bin on the session list's Stopped band
   opens a window with the stopped sessions the list shows, all ticked; clear the ones to

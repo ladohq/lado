@@ -667,7 +667,7 @@ wheels = [
 
 [[package]]
 name = "lado"
-version = "0.40.0"
+version = "0.41.0rc1"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },

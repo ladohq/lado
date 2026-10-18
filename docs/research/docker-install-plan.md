@@ -331,15 +331,49 @@ until T11. Projects in languages other than Python and JavaScript wait for T9. F
 first RC main is frozen, so T9 and LAD-87 merge after the final; T11 needs no code and runs
 on the RC's image. The RC's checks by hand: LAD-74's (sessions stop and resume over an
 image update), LAD-76's other steps (secrets, the tracker, https, gh), the live tests and
-an image update 0.39.0 -> 0.40.0rc1 on a live volume.
+an image update 0.39.0 -> 0.40.0rc1 on a live volume. Released 2026-10-17.
 
-**T9. Project toolchains through mise** (S)
+**LAD-87. Claude Code's trust question in the container** (S; done: pull request #92,
+in 0.41.0)
+Result: the question stays and the guide describes it ("Your first session" and "If
+something goes wrong in Docker"); README's short start checks the shell with
+`env | grep -E '^(LADO|COMPOSE)_'` and `unset` (M1 of LAD-83). LADO recording the trust
+itself for folders under `LADO_PROJECTS` was declined with the human: it touches the
+agent's config, races Claude Code over `.claude.json`, rests on an undocumented key and
+would silently run the hooks of any repository cloned from a URL; the cost is one answer
+per repository. Codex's question belongs to T15. Born: LAD-96 (a CI flake at a test's
+teardown). Not known: whether the human's check by hand in the container (steps 1-8 of
+the pull request) was run; it goes with 0.41.0's RC.
+
+**T9. Project toolchains through mise** (S; LAD-93, done: pull request #93, in 0.41.0;
+run in parallel with LAD-87)
 mise in the image, its shims on the login shell's PATH, its data on the home volume; in
 the agents' instructions: "a tool is missing: install it through mise from the project's
 files". Tools go to the home volume, never `/opt`, which stays uid 1000's after T4's uid
 change.
 Check: an agent in the container installs Go from `.tool-versions` by itself and builds
 the project; after the container is made again, Go is still there.
+Result: mise pinned by digest, its data on the home volume, `docker/mise.toml` as the
+system config (version files of Go, Java, Python, Ruby; go.mod's `go` line not read);
+`NPM_CONFIG_PREFIX=$HOME/.local` and no `UV_*` paths in `/opt`, so `npm install -g` and
+`uv tool install` work for any uid; in a container LADO's instructions give every agent,
+on any provider, a paragraph on mise, and only the supervisor sets a container-wide
+version (`mise use -g`), a rule in the instructions only. Widened by the human's yes:
+`make`, `gcc`, `g++`, `libc6-dev` in the image (+136 MB compressed: 615 -> 751 MB arm64,
+761 -> 897 MB amd64). The human's check by hand passed, and found H2 (mise read go.mod's
+`go` line: a `WARN` on each call and the wrong Go), fixed. Declined: the project's Node
+from `.nvmrc` (agents keep the image's Node 22; another Node through `mise exec`). Left:
+apt packages and databases (a task when a real project needs one), Ruby and Java not in
+container tests, the live tests after `runtime.py` changed (with 0.41.0's RC). Born:
+LAD-97 (an empty `server-token` let anyone into the UI), merged by its own pull request.
+
+**The release 0.41.0** (after T9 and LAD-87; the human's decision, 2026-10-18, before
+LAD-90): it also holds LAD-94 (a link and QR code to open LADO from another device), which
+changes `compose.yaml` again (`LADO_LISTEN`, `LADO_PUBLIC_HOST`), and LAD-97's fix. Until
+LAD-90, an update without the new `compose.yaml` loses that silently; CHANGELOG says to
+take 0.41.0's file. The RC's checks by hand: the live tests, LAD-87's steps in the
+container, an image update 0.40.0 -> 0.41.0rc1 by the guide on a live volume, and T11 on
+the RC's image when the human takes it.
 
 **T10. Secrets and access: one place for secrets, and git** (M; LAD-76, done: pull
 request #76, in 0.40.0; widened 2026-10-15 by the human's decision, done right after
@@ -450,8 +484,9 @@ Check: on a Mac a double click opens the UI.
 
 ```
 T1, T2 ──┐
-         ├─> T3 ─> T4 (with T5) ─> T6a ─> T7 ─> T6b ─> T10 ─> T8 ─> T8b ─> 0.40.0 ─> T11
-         │          └─> T9 (after T3)
+         ├─> T3 ─> T4 (with T5) ─> T6a ─> T7 ─> T6b ─> T10 ─> T8 ─> T8b ─> 0.40.0
+         │                                                    ─> T9 + LAD-87 ─> 0.41.0 ─> T11
+LAD-90: after 0.41.0, when the human takes it
 T12, T13: independent of the image (useful for the usual install too)
 T14: after T7
 ```

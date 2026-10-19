@@ -21,6 +21,17 @@ agent works, and `idle` when none does.
 - **WHEN** a running session has 3 agents, none at work, and nothing waits
 - **THEN** its mark is `idle` and its words are `running · idle · 3 agents`
 
+### Requirement: The list's group follows what waits, not the mark
+
+The session list's group and the strip icon's "needs you" SHALL follow what waits for the
+human, also in a session in trouble (`tmux_gone`, `loop_down`), whose mark stays its
+trouble.
+
+#### Scenario: Trouble while a gate waits
+- **WHEN** a session's tmux is gone and a gate waits in it
+- **THEN** its row is under **Needs you**, its strip icon is named `<name>, needs you`, and
+  its head's dot is the `--danger` dot named `tmux session is gone`
+
 ### Requirement: The session's head shows the list's mark
 
 The session's head, on a computer and on a phone, SHALL show the session's mark as a dot

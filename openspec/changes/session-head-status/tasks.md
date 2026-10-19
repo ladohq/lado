@@ -52,3 +52,10 @@
 
 - [x] 5.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_phone.py
   tests/ui/test_session_head.py tests/ui/test_session_list.py` pass; CI is green (AC-6).
+
+## 6. Review
+
+- [x] 6.1 F1: a session in trouble in which something waits is in Needs you and its strip
+  icon says so, while its head's dot is the trouble. The spec's scenario "Trouble while a
+  gate waits" and `docs/design/ui.md` say so. A vitest pins it for `tmux_gone` and
+  `loop_down`.

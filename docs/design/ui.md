@@ -529,6 +529,8 @@ Sessions for now. The UI's texts are in English.
   2026-10-19, LAD-108, mockup artifact `task/lad-108/mockup-head-status.html`): stopped,
   tmux gone or loop down by its status; else needs you when something waits; else working
   or idle. The row, the strip's icon, the card and the session's head all take it. The
+  group is not the mark: a session in trouble in which something waits is in Needs you,
+  its strip icon `<name>, needs you`, while its head's dot says the trouble. The
   rule of working is the
   core's (`state.working_agents`, a count): the agents in `busy`, `starting` or
   `background` (its turn ended, work it started still runs; the human, 2026-10-09,

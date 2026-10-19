@@ -893,6 +893,24 @@ test("a question waits while the agents idle: the head's dot is the orange diamo
   expect(bar().querySelector(".activity-working, .activity-idle, .session-dot-running")).toBeNull();
 });
 
+test.each([
+  ["tmux_gone", "tmux session is gone"],
+  ["loop_down", "session loop not running"],
+] as const)("%s while a gate waits: the row is in Needs you and the icon says so, the head's dot is the trouble", async (status, words) => {
+  sessions = [session("lado", { status, waiting: { gates: 1, questions: 0, agents: 0 } })];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  const dot = within(bar()).getByRole("img", { name: words });
+  expect(dot.classList).toContain(`session-dot-${status}`);
+  expect(within(group("Needs you")).getByRole("link", { name: /^lado/ })).toBeTruthy();
+  cleanup();
+  collapsed();
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  expect(within(strip()!).getByRole("link", { name: /^lado/ }).getAttribute("aria-label")).toBe("lado, needs you");
+  expect(within(bar()).getByRole("img", { name: words }).classList).toContain(`session-dot-${status}`);
+});
+
 test("the head's dot follows the session's work, as its row does, with no reload", async () => {
   sessions = [session("lado", { agents: 2, busy: 1 })];
   open();

@@ -2,6 +2,9 @@
 
 ## 0.42.0 (unreleased)
 
+- On a phone the browser's bottom bar no longer cuts off the chat's composer, the waiting
+  card or its Send button: the web UI is as high as the part of the window in sight. With
+  the on-screen keyboard open the page shrinks above it and the top bar stays.
 - Files attached right after a chat opens no longer all show the crossed-out eye, and an
   image keeps its thumbnail: a file's chip shows its type by the server's table once that
   is known, whenever the file was attached.

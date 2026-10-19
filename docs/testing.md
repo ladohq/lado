@@ -61,6 +61,26 @@ file in `telemetry/outbox/`; the live and smoke tests, under `tests/`, get it to
 `true <url>`), a test that forgot to replace `webbrowser.open` neither
 (`tests/test_cli_bug_report.py` checks it is set).
 
+No test leaves a process alive (`tests/leftovers.py`). Every process a test starts carries
+the test's `LADO_HOME` in its environment: the tmux server, the agents, their hooks and
+`lado mcp`, the session loop, `lado server`, a real CLI and its children. After killing the
+test's tmux server, the `isolated` fixtures of the integration, UI, smoke and live tests
+wait up to 10 s for those processes to end (no longer than they take), then kill the rest
+and fail the test, naming each by pid and command. Before that the integration tests check
+that each session loop ended by itself within the same 10 s ("session loops still running
+10s after the test"); one pass of a loop can take seconds on a loaded runner, and no test is
+retried. The UI `server` fixture kills its `lado server` itself when it does not stop.
+Each pytest process (each xdist worker too) also sets `LADO_TEST_PID` to its own pid, which
+every process it starts inherits: a run's start kills the processes whose `LADO_TEST_PID`
+names a pid no longer alive (a run killed from outside, a crashed worker), from any worktree
+of the machine, and removes the `lado-test-*` tmux sockets no server answers on; a living
+run's processes are never touched. At its end, each pytest process kills what still carries
+its own mark and fails the run under "processes left by the test run, killed"; an xdist
+controller checks after xdist has stopped its workers, which carry its mark from their start
+(the environment a process was started with is what is read), and each worker hands it what
+it left. The environment is read from `/proc` on Linux and with `ps -E` on macOS.
+`LADO_TEST_PID` is a mark of the test suite only: LADO itself neither sets nor reads it.
+
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
 is missing or not logged in. Models: Claude Code on `haiku` (paid: only with the human's
 yes; `--model`, `real_clis.with_model`); Codex CLI, OpenCode and Kilo on one local model,

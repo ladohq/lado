@@ -14,6 +14,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
+import leftovers
 import pytest
 from agent_helpers import refuse_unless_isolated
 
@@ -39,13 +40,14 @@ def isolated(lado_home, monkeypatch, kill_tmux_server):
         monkeypatch.setitem(providers._PROVIDERS, fake.name, fake)
     yield
     kill_tmux_server(socket)
+    leftovers.fail_if(leftovers.sweep(lado_home), "the test")
 
 
 @pytest.fixture
 def server(tmp_path):
     """A real `lado server` on a free port; its server.json. It is `lado` with the fake
     providers (fake_provider.py), so a session it starts runs the fake agent. Stopped after
-    the test, and no server process may be left."""
+    the test, and killed when it does not stop (also when it never got ready)."""
     with open(tmp_path / "server.out", "w") as out:
         process = subprocess.Popen(
             [sys.executable, str(fake_provider.LADO), "server", "--port", "0"],
@@ -57,7 +59,11 @@ def server(tmp_path):
         yield {**server_run.wait_ready(), "token": auth.token()}
     finally:
         server_run.stop()
-        process.wait(timeout=10)
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
 
 
 @pytest.fixture

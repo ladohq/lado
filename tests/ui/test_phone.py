@@ -74,6 +74,14 @@ def no_sideways_scroll(page: Page) -> None:
     assert sizes[0] <= sizes[1], (page.url, sizes)
 
 
+def keeps_the_computers_frame(page: Page) -> None:
+    """None of the phone's frame (LAD-109): no variable of usePhoneViewport on <html>, and
+    the app in the page's flow."""
+    root = "getComputedStyle(document.documentElement).getPropertyValue('--phone-height')"
+    assert page.evaluate(root) == ""
+    assert page.locator(".app").evaluate("a => getComputedStyle(a).position") == "static"
+
+
 # A computer and a tablet keep their layout
 
 
@@ -90,6 +98,7 @@ def test_a_computer_keeps_its_layout(device, server, repo, shot, size):
         page.get_by_role("navigation", name="Sessions", exact=True)
     ).to_be_visible()  # list or strip
     expect(page.get_by_role("complementary", name="Terminals")).to_be_visible()
+    keeps_the_computers_frame(page)
     shot(page)
 
 
@@ -100,6 +109,7 @@ def test_a_tablet_keeps_its_layout(device, server, repo, shot):
     assert page.evaluate("document.documentElement.dataset.phone") is None
     expect(rail(page)).to_be_visible()
     expect(page.get_by_role("button", name=MENU)).to_have_count(0)
+    keeps_the_computers_frame(page)
     shot(page, full_page=False)
 
 
@@ -266,6 +276,122 @@ def test_the_composer_stays_at_the_bottom_with_a_gate_waiting(device, server, re
     expect(page.locator(".composer-keys")).to_be_hidden()
     expect(page.locator(".composer-to")).to_have_text("to supervisor")
     assert field.evaluate("f => getComputedStyle(f).fontSize") == "16px"
+    shot(page, full_page=False)
+
+
+# The visible part of the window (LAD-109): what the browser's bars and the keyboard leave.
+
+# window.visualViewport replaced by one the test moves, as the keyboard or a browser's bar
+# would: `moveViewport(height, top)` sets it and dispatches resize and scroll.
+FAKE_VIEWPORT = """(() => {
+  const fake = new EventTarget();
+  let height = null;
+  let top = 0;
+  Object.defineProperties(fake, {
+    height: { get: () => height ?? window.innerHeight },
+    width: { get: () => window.innerWidth },
+    offsetTop: { get: () => top },
+    offsetLeft: { value: 0 },
+    scale: { value: 1 },
+  });
+  Object.defineProperty(window, "visualViewport", { configurable: true, get: () => fake });
+  window.moveViewport = (newHeight, newTop) => {
+    height = newHeight;
+    top = newTop;
+    fake.dispatchEvent(new Event("resize"));
+    fake.dispatchEvent(new Event("scroll"));
+  };
+})()"""
+
+
+def question_session(repo) -> str:
+    """gated_session's gate, and a long question of the supervisor's, its list scrolling."""
+    session = gated_session(repo)
+    runtime.ask_human(session, "supervisor", "Merge w1 now?", "Long details.\n" * 30, ["yes", "no"])
+    return session
+
+
+def question_tab(page: Page, session: str):
+    """The waiting card on the supervisor's question, and its Send button."""
+    card = waiting_card(page, session)
+    card.get_by_role("tab", name="supervisor 1").tap()
+    send = card.get_by_role("tabpanel").get_by_role("button", name="Send answer to supervisor")
+    expect(send).to_be_visible()
+    return card, send
+
+
+def within(locator, top: float, bottom: float) -> None:
+    found = box(locator)
+    assert found["y"] >= top - 1 and found["y"] + found["height"] <= bottom + 1, (
+        locator,
+        found,
+        top,
+        bottom,
+    )
+
+
+def test_the_composer_and_the_send_button_are_in_sight(device, server, repo, shot):
+    """AC-1: the composer and the card's Send button lie within the visible part of the
+    window without scrolling, also with the card expanded."""
+    session = question_session(repo)
+    page = opened(device(UPRIGHT), server, f"/sessions/{session}")
+    card, send = question_tab(page, session)
+    visible = page.evaluate("window.visualViewport.height")
+    composer = page.locator(".chat > .composer")
+    within(composer, 0, visible)
+    within(send, 0, visible)
+    shot(page, "question", full_page=False)
+    card.get_by_role("button", name="Expand the card").tap()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    within(send, 0, visible)
+    shot(page, "expanded", full_page=False)
+
+
+def test_the_app_shrinks_to_the_visible_part_and_grows_back(device, server, repo, shot):
+    """AC-2: with the visible part 300 px lower than the window (the keyboard), the app ends
+    at its bottom, the top bar stays at its top, the composer and Send within it, the card at
+    most half the chat; when it grows back, the app does too."""
+    session = question_session(repo)
+    phone = device(UPRIGHT)
+    phone.add_init_script(FAKE_VIEWPORT)
+    page = opened(phone, server, f"/sessions/{session}")
+    card, send = question_tab(page, session)
+    app = page.locator(".app")
+    assert abs(box(app)["height"] - UPRIGHT[1]) <= 1
+
+    shrunk = UPRIGHT[1] - 300
+    page.evaluate(f"window.moveViewport({shrunk}, 0)")
+    expect(app).to_have_css("height", f"{shrunk}px")
+    found = box(app)
+    assert abs(found["y"] + found["height"] - shrunk) <= 1, found
+    assert abs(box(top_bar(page))["y"]) <= 1
+    within(page.locator(".chat > .composer"), 0, shrunk)
+    within(send, 0, shrunk)
+    assert box(card)["height"] <= box(page.get_by_role("region", name="Chat"))["height"] / 2 + 1
+    assert page.evaluate("document.documentElement.style.getPropertyValue('--phone-height')") == (
+        f"{shrunk}px"
+    )
+    shot(page, "shrunk", full_page=False)
+
+    page.evaluate(f"window.moveViewport({UPRIGHT[1]}, 0)")
+    expect(app).to_have_css("height", f"{UPRIGHT[1]}px")
+    within(page.locator(".chat > .composer"), 0, UPRIGHT[1])
+
+
+def test_the_app_follows_safaris_pan(device, server, repo, shot):
+    """AC-2: Safari pans the page 120 px up under its keyboard; the app moves down with the
+    visible part, so the top bar stays at its top."""
+    session = question_session(repo)
+    phone = device(UPRIGHT)
+    phone.add_init_script(FAKE_VIEWPORT)
+    page = opened(phone, server, f"/sessions/{session}")
+    _, send = question_tab(page, session)
+    shrunk = UPRIGHT[1] - 300
+    page.evaluate(f"window.moveViewport({shrunk}, 120)")
+    expect(page.locator(".app")).to_have_css("top", "120px")
+    assert abs(box(top_bar(page))["y"] - 120) <= 1
+    within(page.locator(".chat > .composer"), 120, 120 + shrunk)
+    within(send, 120, 120 + shrunk)
     shot(page, full_page=False)
 
 

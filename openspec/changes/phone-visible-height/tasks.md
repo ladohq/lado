@@ -52,7 +52,7 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_phone.py`
+- [x] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_phone.py`
   pass; `openspec validate phone-visible-height --strict` passes; CI green on the pull
   request's last commit (AC-5). AC-4 is the human's check on an iPhone after the merge
-  or on the branch.
+  or on the branch. The UI tests ran in CI's two UI shards, not locally (LAD-110).

@@ -14,10 +14,7 @@ its first hook.
 and for a resume alike. Given, it SHALL be queued for the session's supervisor before the
 supervisor starts, as a message from `human` whose summary is the fixed line
 `runtime.FIRST_MESSAGE` (`the human's first message`) and whose body is the whole text,
-stripped. It SHALL come after every message LADO queues for that start (a resume's
-`session resumed: …` and the supervisor's own steps; a supervisor-started session's
-brief), and SHALL be handed over as any queued message: with the supervisor's first hook,
-through the same confirmation and retries. Without `prompt` the start SHALL queue nothing
+stripped. Without `prompt` the start SHALL queue nothing
 new.
 
 #### Scenario: A new session with a first message
@@ -25,12 +22,6 @@ new.
 - **THEN** its supervisor's queue holds one message from `human`, summary
   `the human's first message`, body that text, and the supervisor reads it with
   `read_messages` after its first hook
-
-#### Scenario: A resumed session with a first message
-- **WHEN** a stopped session with one open run is resumed with `prompt` "Continue the
-  review"
-- **THEN** the supervisor gets `session resumed: 1 open run` from `lado` first and the
-  human's message after it
 
 #### Scenario: No first message
 - **WHEN** a session starts without `prompt`
@@ -41,6 +32,19 @@ new.
   not start)
 - **THEN** the message is dropped with the rest of the supervisor's queue, as the start's
   other queued messages are
+
+### Requirement: The first message comes after LADO's own messages of the start
+
+The human's first message SHALL come after every message LADO queues for that start (a resume's
+`session resumed: …` and the supervisor's own steps; a supervisor-started session's
+brief), and SHALL be handed over as any queued message: with the supervisor's first hook,
+through the same confirmation and retries.
+
+#### Scenario: A resumed session with a first message
+- **WHEN** a stopped session with one open run is resumed with `prompt` "Continue the
+  review"
+- **THEN** the supervisor gets `session resumed: 1 open run` from `lado` first and the
+  human's message after it
 
 ### Requirement: The first message is checked before anything changes
 
@@ -80,10 +84,7 @@ read with `read_messages` as any body.
 ### Requirement: lado start takes a first message
 
 `lado start` SHALL take `--prompt TEXT` or `--prompt-file FILE`, not both (argparse's exit
-2); `--prompt-file -` SHALL read the text from stdin, a file SHALL be read as UTF-8. It
-SHALL read and check the text before anything else starts: before a git URL's clone and
-before `start_session`; a file it cannot read SHALL be `lado: cannot read the first message
-from <FILE>: <reason>` with exit 1 and nothing changed. With a message queued, `lado start`
+2); `--prompt-file -` SHALL read the text from stdin, a file SHALL be read as UTF-8. With a message queued, `lado start`
 SHALL print `first message: queued for the supervisor` after its `Started session` or
 `Resumed session` line. It SHALL work for a folder, a git URL and a resume alike.
 
@@ -101,6 +102,18 @@ SHALL print `first message: queued for the supervisor` after its `Started sessio
 - **WHEN** `lado start ~/app --prompt a --prompt-file b` runs
 - **THEN** it exits 2 with argparse's "not allowed with" error and nothing starts
 
+#### Scenario: A resume with a first message
+- **WHEN** `lado start ~/app --prompt "Continue"` runs for a stopped session of that
+  folder
+- **THEN** the session is resumed and the supervisor gets the message after LADO's
+  `session resumed` message
+
+### Requirement: lado start checks the first message before anything starts
+
+`lado start` SHALL read and check the first message's text before anything else starts: before a git URL's clone and
+before `start_session`; a file it cannot read SHALL be `lado: cannot read the first message
+from <FILE>: <reason>` with exit 1 and nothing changed.
+
 #### Scenario: A file that cannot be read
 - **WHEN** `lado start ~/app --prompt-file missing.md` runs
 - **THEN** it exits 1 with `lado: cannot read the first message from missing.md: …` and
@@ -110,12 +123,6 @@ SHALL print `first message: queued for the supervisor` after its `Started sessio
 - **WHEN** `lado start file:///srv/app.git --prompt ""` runs
 - **THEN** it is refused with `the first message is empty` and no clone starts
 
-#### Scenario: A resume with a first message
-- **WHEN** `lado start ~/app --prompt "Continue"` runs for a stopped session of that
-  folder
-- **THEN** the session is resumed and the supervisor gets the message after LADO's
-  `session resumed` message
-
 ### Requirement: The New session window takes a first message
 
 The New session window SHALL show, in its New and its Resume mode, for a folder and a
@@ -123,23 +130,27 @@ clone alike, a row **First message to the supervisor (optional)** above Advanced
 each time the window opens; opened, a text field (`aria-label` "First message") with the
 note "sent to the supervisor as your message once it starts; its answer comes in the
 chat". Folded with text in it, the row SHALL read `First message to the supervisor:
-<the text's first line>`, cut to one line. The window SHALL send the field's text as
-`prompt` of `POST /api/sessions` or `POST /api/sessions/{name}/resume`, and no `prompt`
-when the field holds only white space. A text longer than `Limits.max_message` SHALL show
-`<n> characters, the limit is <limit>` under the field and keep the start button off.
+<the text's first line>`, cut to one line.
 
 #### Scenario: Folded by default
 - **WHEN** the human opens the New session window
 - **THEN** the First message row is folded and the window shows no text field for it
 
+#### Scenario: Folded with text
+- **WHEN** the human types two lines and folds the row
+- **THEN** the row reads `First message to the supervisor: <first line>`
+
+### Requirement: The New session window sends the first message as prompt
+
+The New session window SHALL send the First message field's text as
+`prompt` of `POST /api/sessions` or `POST /api/sessions/{name}/resume`, and no `prompt`
+when the field holds only white space. A text longer than `Limits.max_message` SHALL show
+`<n> characters, the limit is <limit>` under the field and keep the start button off.
+
 #### Scenario: A first message sent
 - **WHEN** the human opens the row, types "Take LAD-19" and presses Start session
 - **THEN** the request carries `prompt: "Take LAD-19"`, and the session's Activity shows
   the message as the human's
-
-#### Scenario: Folded with text
-- **WHEN** the human types two lines and folds the row
-- **THEN** the row reads `First message to the supervisor: <first line>`
 
 #### Scenario: Over the limit
 - **WHEN** the field holds 8001 characters

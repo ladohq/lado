@@ -349,6 +349,38 @@ def test_an_artifact_from_the_expanded_card_shows_over_it_and_esc_closes_the_top
     expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
 
 
+def test_a_second_esc_the_moment_the_panel_is_gone_folds_the_card(page: Page, server, repo):
+    """LAD-99: the panel closes in a router transition, whose passive effects come in a later
+    task; an Esc sent from a MutationObserver (a microtask right after the commit that removes
+    the panel) comes before them, so it finds the card's listener only if that listener
+    changes in the same commit (docs/design/ui.md, The waiting card)."""
+    session = running_session(repo)
+    asked_with_a_plan(session)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Expand the card").click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    card.get_by_role("button", name="myself").click()
+    card.get_by_role("button", name="Open artifact plan").click()
+    panel = page.get_by_role("dialog", name="Artifact plan")
+    expect(panel).to_contain_text("J1 to J9.")
+    page.evaluate(
+        """() => {
+            const watch = new MutationObserver(() => {
+                if (document.querySelector(".artifact-panel")) return;
+                watch.disconnect();
+                const esc = new KeyboardEvent("keydown", { key: "Escape", bubbles: true });
+                document.dispatchEvent(esc);
+            });
+            watch.observe(document.body, { childList: true, subtree: true });
+        }"""
+    )
+    page.keyboard.press("Escape")
+    expect(panel).to_have_count(0)
+    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
+
+
 def test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways(
     page: Page, server, repo, shot
 ):

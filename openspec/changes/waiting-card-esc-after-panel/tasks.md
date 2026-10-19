@@ -38,5 +38,5 @@ before any fix (CI runs 39246518194, 39250165796) and the test passed 100 times 
 
 ## 3. Checks
 
-- [ ] 3.1 `make lint` passes; `uv run pytest -m ui --collect-only tests/ui/test_chat.py`
+- [x] 3.1 `make lint` passes; `uv run pytest -m ui --collect-only tests/ui/test_chat.py`
   lists the test and not the probe; CI is green on the pull request's last commit (AC-4).

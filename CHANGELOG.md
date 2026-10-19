@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.41.1 (unreleased)
+
+- Files attached right after a chat opens no longer all show the crossed-out eye, and an
+  image keeps its thumbnail: a file's chip shows its type by the server's table once that
+  is known, whenever the file was attached.
+
 ## 0.41.0 (2026-10-18)
 
 - The web UI forgets stopped sessions in one go: a bin on the session list's Stopped band

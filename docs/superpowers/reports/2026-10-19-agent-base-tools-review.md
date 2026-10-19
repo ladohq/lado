@@ -54,18 +54,19 @@ Fixing commit: `5482d46` (F1, F3). Confirmed 3 (F1, F3 fixed; E1 declined), refu
   on `PATH` in `ENV` and `profile.sh` (unit); container: 3.13 outside a project, 3.12 in
   one and 3.13 above it, pip refused, files root's and not writable, venv works,
   `lado --version` answers.
-- **The image tells the agents they run in a container** (modified): all three earlier
-  scenarios kept, the new `PATH`, the openspec variables and their scenario added.
+- **The image's profile sets the container, the PATH and the tools' settings** (modified,
+  one of main's split requirements): its scenario kept, the new `PATH` and the openspec
+  variables added; the openspec scenario sits under the openspec requirement.
 - Every task of `tasks.md` is checked but 2.4 (image size), which says why: the
   developer's container has no Docker.
 
 ## Checks
 
-- `make lint`: green.
-- `tests/test_docker.py` on Python 3.13: 90 passed, 1 skipped.
-- `openspec validate agent-base-tools --strict`: valid; `openspec validate --specs`: 39
-  passed.
-- CI run 39217387050 on `17d5c15`: success, every job, container amd64 and arm64, smoke ×8
+- `make lint`: green; `make test` on Python 3.13: 3607 passed, 1 skipped (developer).
+- `tests/test_docker.py` on Python 3.13: 90 passed, 1 skipped (round 1).
+- `openspec validate agent-base-tools --strict`: valid; after the archive
+  `openspec validate --specs --strict`: 39 passed.
+- CI run 39241823712 on `5482d46`: success, every job, container amd64 and arm64, smoke ×8
   included.
 
 ## Not checked (residual risk)
@@ -80,4 +81,4 @@ Fixing commit: `5482d46` (F1, F3). Confirmed 3 (F1, F3 fixed; E1 declined), refu
 
 ## Found on the way
 
-Nothing new; the clone defect on Python 3.14+ is already in BACKLOG.md (a92ead8).
+Nothing new; the clone defect on Python 3.14+ is in BACKLOG.md through this pull request.

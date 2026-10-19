@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 import agent_helpers
+import leftovers
 import pytest
 from agent_helpers import refuse_unless_isolated
 
@@ -63,6 +64,7 @@ def isolated(lado_home, monkeypatch, kill_tmux_server):
     refuse_unless_isolated()
     yield
     kill_tmux_server(socket)
+    leftovers.fail_if(leftovers.sweep(lado_home), "the test")
 
 
 def keep_evidence(

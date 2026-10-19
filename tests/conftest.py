@@ -5,6 +5,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
+import leftovers
 import pytest
 from agent_helpers import init_repo, no_maintenance_env, write_index
 
@@ -61,6 +62,46 @@ os.environ["BROWSER"] = "true"
 # ssh too): no test starts LADO's tmux server through launchd unless it says so
 # (lado.gui_session; its own tests and the integration test of launchd set their place).
 os.environ["LADO_MACOS_PLACE"] = "gui"
+
+# Every process this pytest process starts carries its pid (each xdist worker its own): a
+# run's start reaps what a dead one left, a run's end fails on what it left (tests/leftovers.py).
+os.environ["LADO_TEST_PID"] = str(os.getpid())
+
+
+def pytest_sessionstart(session):
+    # The controller of an xdist run, or a run without workers; the workers start with it.
+    if not hasattr(session.config, "workerinput"):
+        leftovers.reap_dead_runs()
+
+
+_LEFT_BY_WORKERS: list[str] = []
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error):
+    _LEFT_BY_WORKERS.append(getattr(node, "workeroutput", {}).get("leftovers", ""))
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_sessionfinish(session):
+    # A worker hands what it left to the controller (xdist sends its output after this
+    # hook); the controller checks its own after xdist has stopped the workers, which carry
+    # its mark.
+    if hasattr(session.config, "workerinput"):
+        session.config.workeroutput["leftovers"] = leftovers.describe(leftovers.own_left())
+        return (yield)
+    result = yield
+    left = [leftovers.describe(leftovers.own_left()), *_LEFT_BY_WORKERS]
+    if any(left):
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        text = "\n".join(lines for lines in left if lines)
+        if reporter:
+            reporter.write_sep("=", "processes left by the test run, killed", red=True)
+            reporter.write_line(text)
+        else:
+            print(f"processes left by the test run, killed:\n{text}")
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    return result
 
 
 def _kill_tmux_server(socket: str) -> None:

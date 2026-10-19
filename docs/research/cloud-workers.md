@@ -136,8 +136,11 @@ leaves the local mode untouched.
 | Scenario | Claude Code | Codex | Kilo / OpenCode | Gemini CLI |
 |---|---|---|---|---|
 | (a) the user runs LADO in their own cloud with their own subscription | yes: `claude setup-token` or `/login` in the container | yes, but `auth.json` is one per machine and cannot be shared between replicas | yes | only an API key or Vertex |
-| (b) our hosting, the user's subscription | only if the user signs in to an unmodified `claude` themselves. Storing or inserting their token is forbidden. Needs Anthropic's written confirmation | only on application and OpenAI's approval | Kilo allows it; OpenCode Zen/Go do not | no |
-| (c) our hosting, our keys, we charge money | **forbidden** without a separate agreement with Anthropic | seems allowed under the Services Agreement (to confirm) | Kilo allows it | API key: yes |
+| (b) our hosting, the user's subscription | only if the user signs in to an unmodified `claude` themselves. Storing or inserting their token is forbidden. Needs Anthropic's written confirmation | only on application and OpenAI's approval | Kilo: unclear (seat rules); OpenCode: depends on the model provider behind it (Anthropic: no; OpenAI: SIWC) | no |
+| (c) our hosting, our keys, we charge money | **forbidden** without a separate agreement with Anthropic | seems allowed under the Services Agreement (to confirm) | Kilo: its terms allow serving end users through its API; OpenCode: not with Zen/Go | API key: yes |
+
+The Kilo / OpenCode cells of (b) and (c) are corrected by R4 sections 2.3-2.4; the approved
+summary of 2026-10-18 was wrong here.
 
 Hence:
 

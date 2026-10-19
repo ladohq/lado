@@ -39,9 +39,10 @@ Status of every step: not started.
 ### Step 0. Checks before the design (hands-on research, no product code)
 
 - **MCP over HTTP:** does it work with a Bearer header in each CLI at its tested version
-  (4.3; R1 section 6, items 1-2; R4 4.4).
-- **Claude Code's HTTP hooks:** how they behave (R4 4.2).
-- **Latency:** a hook's round trip over the network against the 60-second limit (4.3).
+  (4.3; R1 section 6, item 1; R4 4.4).
+- **Claude Code's HTTP hooks:** how they behave (R1 section 6, item 2; R4 4.2).
+- **Latency:** a hook's round trip over the network against the 60-second limit (R1
+  section 6, item 3; 4.3).
 - **Codex `auth.json` in a container:** what happens to it when the token is refreshed
   (4.6).
 - **Running LADO's image on a remote Docker host:** through `DOCKER_HOST=ssh://`, and in
@@ -115,7 +116,7 @@ in a cloud; the cloud is changed by one setting.
 
 Single workers are placed remotely (`spawn_worker(..., placement=...)`), branches are
 synced through git, with heartbeats and a node registry. The most expensive stage; the
-decision is taken after C. Details: 4.5, and R1 split points C and D.
+decision is taken after C. Details: 4.5, and R1's split points C and D (R1's C is this stage).
 
 ### Stage E. A paid service (an idea only; decided after A-C and the lawyers' answer)
 
@@ -353,13 +354,13 @@ Secret handling (R4 3):
   base path is an SSH tunnel or Headscale.
 - **Hook latency** against the 60 s turn-end limit (step 0).
 - **A lost node mid-turn** needs new `agent_ended` reasons; partial failures are new to
-  LADO (R1 split C).
-- **The laptop as the control plane** must stay up and reachable for splits C and D (R1
-  split C).
+  LADO (R1's split C, our D).
+- **The laptop as the control plane** must stay up and reachable for splits C and D (R1's
+  split C, our D).
 - **Two implementations of every backend verb** to test: today's integration tests
-  assume one machine (R1 split D).
+  assume one machine (R1's split D, our C).
 - **Provider configs checked by hand per CLI version** need checking again with remote
-  MCP (R1 split C).
+  MCP (R1's split C, our D).
 
 ### Open questions (all: decide later)
 

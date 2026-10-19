@@ -17,4 +17,4 @@
   `npx vitest run src/ForgetMany.test.tsx -t "goes to /sessions"` from `web/`; all 1000
   pass; restore the file and kill the load. Optionally first show the same run on the
   code before 1.1 fails at least once in 300 (AC-2).
-- [ ] 2.2 `make web` passes; CI is green on the pull request's last commit (AC-3).
+- [x] 2.2 `make web` passes; CI is green on the pull request's last commit (AC-3).

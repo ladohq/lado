@@ -90,7 +90,7 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   by `make web-types` and committed.
 - `tests/`: unit tests; `integration/` (fake agent), `ui/` (browser), `live/` (real CLIs),
   `smoke/` (real CLIs, no model), `container/` (the image), `js/` (the plugin);
-  `agent_helpers.py`, `real_clis.py`, `fake_endpoint.py` shared helpers.
+  `agent_helpers.py`, `real_clis.py`, `fake_endpoint.py`, `leftovers.py` shared helpers.
 - `scripts/`: the test-run lock and groups, CI's smoke and container cells, release checks.
 - `docker/`: LADO's image (`Dockerfile`, `compose.yaml`, entrypoint, profile).
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

@@ -928,6 +928,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
 - `tests/real_clis.py`: what the live and the smoke tests share (isolation, `with_model`,
   the trust dialogs, the agents' processes, the evidence of a failed test).
   `tests/fake_endpoint.py`: the 401 model API of the smoke and container tests.
+  `tests/leftovers.py`: the processes a test or a test run leaves alive, found by
+  `LADO_HOME` or `LADO_TEST_PID` in their environment, killed and named (docs/testing.md).
   `tests/container/`: the container tests (docs/testing.md).
 - `docker/`: LADO's image, built from a checkout by `make docker` (`lado:local`) and
   published by the Release workflow for each release as `ghcr.io/ladohq/lado:<version>`

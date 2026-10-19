@@ -1,10 +1,13 @@
 ## 1. The test
 
-- [ ] 1.1 `web/src/ForgetMany.test.tsx`, "when the session open in the page is forgotten,
+- [x] 1.1 `web/src/ForgetMany.test.tsx`, "when the session open in the page is forgotten,
   the page goes to /sessions": replace `expect(screen.getByText("No session open")).toBeTruthy();`
   with `expect(await screen.findByText("No session open")).toBeTruthy();`, and add a
   one-line comment that React Router applies the navigation in a transition, a render
   after Close (AC-1).
+- [x] 1.2 At the human's word at design_ok: the same replacement in "the sessions are
+  forgotten one at a time in the list's order, each reported, and Esc waits", after
+  `onClose` is called (AC-1).
 
 ## 2. Checks
 

@@ -28,10 +28,13 @@ which no user can tell apart. Only the test assumes both land in one render.
 - The test waits for the page under the window to show `/sessions`
   (`await screen.findByText("No session open")`) after Close appears, instead of
   checking it synchronously.
+- At the human's word at the design's approval, the test "the sessions are forgotten one
+  at a time in the list's order, each reported, and Esc waits" checks the page the same
+  way (`await screen.findByText`) after `onClose` is called.
 
 ## Scope
 
-`web/src/ForgetMany.test.tsx`, the one test. Nothing in `src/` or in the UI's code.
+`web/src/ForgetMany.test.tsx`, the two tests. Nothing in `src/` or in the UI's code.
 
 ## Out of scope
 
@@ -50,7 +53,8 @@ which no user can tell apart. Only the test assumes both land in one render.
 ## Acceptance criteria
 
 - AC-1: The test awaits "No session open" after Close appears; its other steps and
-  checks stay as they are.
+  checks stay as they are; the "one at a time" test awaits it the same way after
+  `onClose`.
 - AC-2: Repeated at least 1000 times with the CPU loaded (a temporary, uncommitted
   `test.each` over the test, as in Why), the test passes every time; the build report
   gives the count and the load.

@@ -568,6 +568,20 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## On Python 3.14 and later a clone target LADO may not look into is taken for a new folder
+
+Size: S. Why here: LADO supports any Python from 3.10 and CI tests only 3.10 and 3.13, so
+the break is unseen; the clone would then fail late, inside git, with a worse message.
+From Python 3.14 `Path.exists()` returns False on any `OSError`, a permission error too,
+where 3.13 raised it. `clone._check_target` relies on that error for its `no_access`
+refusal, so a path under a folder LADO may not enter is "a new folder". Two unit tests
+fail on 3.15 (and on 3.14 by the same rule), passing on 3.13:
+`tests/test_clone.py::test_a_folder_that_cannot_be_read_is_refused_not_raised` and
+`tests/test_server_clones.py::test_a_folder_that_cannot_be_read_is_400_not_500`. Wanted:
+the check looks with `os.stat` (or `Path.stat`) so the error stays, and CI tests the
+newest Python LADO allows.
+Found: 2026-10-19, fix/lad-107-agent-base-tools (a local `uv sync` took Python 3.15).
+
 ## `lado kits check` calls `${KIT_DIR}` in an MCP server's command a hardcoded path
 
 Size: S. Why here: a kit that follows the documented form (README before 0.36, the Kits

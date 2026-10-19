@@ -47,8 +47,11 @@
 # Rust, Java, a Python, ...) into the home volume, where it stays for every agent after a
 # new container or image; the agents are told so and do it themselves. By hand: `docker
 # exec lado mise use -g go@1.23`. An agent's `npm install -g` and `uv tool install` go to
-# ~/.local on the home volume too; the image's Node 22 stays first on PATH. Other apt
-# packages and databases are not covered.
+# ~/.local on the home volume too; the image's Node 22 stays first on PATH. The agents' base
+# tools are here too (jq, rg, unzip, zip, xz, bzip2, patch, file, rsync, sqlite3, tree, lsof,
+# nc), and openspec at its pin, its usage statistics and update check off. python3 and
+# python are the image's Python 3.13, root's, unless a project's version file or `mise use
+# -g` names another. Other apt packages and databases are not covered.
 
 FROM ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 AS uv
 FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS node

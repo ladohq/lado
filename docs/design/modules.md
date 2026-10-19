@@ -963,7 +963,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `--read-only`) is not sent to sudo: it warns and runs as uid 1000, the agents'
   `LADO_REPOS` the image's default `lado-repos.sh` (`/projects`). `docker run --user root`
   runs its command as `lado` too. Every start then warns in `docker logs` about a `LADO_REPOS` that is no
-  folder or not writable (a probe file), and execs the command. `/opt` stays uid 1000's.
+  folder or not writable (a probe file), and execs the command. `/opt` stays uid 1000's,
+  but for `/opt/uv`, `/opt/uv/python` and `/opt/fallback`, root's (below).
   git's system config has `safe.directory = *` and `gh auth git-credential` as the one
   credential helper of `https://github.com` (`GH_TOKEN`, or `gh auth login` inside, its
   token on the home volume). `/etc/ssh/ssh_known_hosts` is `docker/ssh_known_hosts`,
@@ -973,7 +974,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   values (`tests/test_docker.py`): in `ENV` for the server and `docker exec`, and in
   `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
   comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
-  `DISABLE_AUTOUPDATER`, `LANG`, `LADO_ENV_DIR=/run/secrets`, `NPM_CONFIG_PREFIX`;
+  `DISABLE_AUTOUPDATER`, `LANG`, `LADO_ENV_DIR=/run/secrets`, `NPM_CONFIG_PREFIX`,
+  `OPENSPEC_TELEMETRY=0`, `OPENSPEC_NO_UPDATE_CHECK=1`;
   `LADO_REPOS` is the entrypoint's `lado-repos.sh`, read before `lado.sh` by name, so
   `profile.sh` sets `MISE_TRUSTED_CONFIG_PATHS` from it, in the profile only, as the ENV
   cannot follow `-e LADO_REPOS`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The projects' toolchains:
@@ -984,9 +986,22 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `docker/mise.toml`, the image's (a new image replaces it, a home volume needs no change):
   the version files of Go, Java, Python and Ruby besides `.tool-versions` and `mise.toml`,
   not Node's, and no update warning. Its data, config and cache stay at mise's defaults on
-  the home volume (`~/.local/share/mise`, `~/.config/mise`, `~/.cache/mise`). `PATH` is the
-  image's programs, the system's, then `~/.local/bin` and mise's shims: no shim shadows the
-  image's Node 22, which Kilo and Codex (`env node`) and kits' MCP servers (`npx`) run on.
+  the home volume (`~/.local/share/mise`, `~/.config/mise`, `~/.cache/mise`). The agents'
+  base tools are Debian's, in the first apt layer too (`jq`, `ripgrep`, `unzip`, `zip`,
+  `xz-utils`, `bzip2`, `patch`, `file`, `rsync`, `sqlite3`, `tree`, `lsof`,
+  `netcat-openbsd`; `tests/test_docker.py` names a missing one). openspec
+  (`@fission-ai/openspec`), which kits expect, is pinned by `ARG OPENSPEC_VERSION` in a
+  layer of its own under `/opt/tools`, not `/opt/agents` (the four of `PINS`); Dependabot
+  does not move it. The Python LADO runs on (uv's 3.13) is installed as root before `USER
+  lado` (`uv python install --no-bin`) into `/opt/uv/python`, `/opt/uv` root's with it and
+  only `/opt/uv/tools` and `/opt/uv/bin` `lado`'s, so no agent changes it (pip refuses it:
+  externally managed); LADO's `uv tool install` as `lado` only reads it. `/opt/fallback/bin`
+  (root's) links `python3` and `python` to it. `PATH` is the image's programs
+  (`/opt/uv/bin`, `/opt/agents/bin`, `/opt/tools/bin`), the system's, then `~/.local/bin`
+  and mise's shims, and last `/opt/fallback/bin`: no shim shadows the image's Node 22,
+  which Kilo and Codex (`env node`) and kits' MCP servers (`npx`) run on, or its openspec;
+  a mise shim with no Python for the folder falls through to the image's python3, so a
+  project's `.python-version` (or `mise use -g`) wins.
   An agent's `npm install -g` (`NPM_CONFIG_PREFIX=$HOME/.local`) and `uv tool install`
   (uv's defaults) write under `~/.local`, at any uid the entrypoint gave `lado`; the runtime
   `ENV` points no install at `/opt`, which stays uid 1000's. What the agents are told:

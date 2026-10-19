@@ -13,7 +13,16 @@ Before LADO upgrades `lado.db` to a newer schema, by any command that migrates i
 copy `lado.db` by SQLite's backup API to `LADO_HOME/backups/lado.db.schema-<N>`, N the
 schema version before the migration, and then remove every other `lado.db.schema-*` file
 of that folder (one it cannot remove stays, and the migration goes on), leaving files of other names (`lado update`'s `lado.db.<version>`) as they
-are. Once the migration is done the command SHALL print on stderr `lado: upgraded lado.db
+are.
+
+#### Scenario: The update's backup stays
+- **WHEN** `backups/` holds `lado.db.0.38.0` and `lado.db.schema-26`, and a command
+  migrates `lado.db` from schema 27
+- **THEN** `backups/` holds `lado.db.0.38.0` and `lado.db.schema-27`
+
+### Requirement: An upgrade of lado.db is said on stderr, and only an upgrade makes a backup
+
+Once the migration is done the command SHALL print on stderr `lado: upgraded lado.db
 from schema <N> to <M>; its backup is <path>`. A `lado.db` at the current schema, or no
 `lado.db`, SHALL make no backup and no line.
 
@@ -22,11 +31,6 @@ from schema <N> to <M>; its backup is <path>`. A `lado.db` at the current schema
 - **THEN** `lado.db` has schema 28, `backups/lado.db.schema-27` holds the database as it
   was at schema 27, and stderr has `lado: upgraded lado.db from schema 27 to 28; its
   backup is <LADO_HOME>/backups/lado.db.schema-27`
-
-#### Scenario: The update's backup stays
-- **WHEN** `backups/` holds `lado.db.0.38.0` and `lado.db.schema-26`, and a command
-  migrates `lado.db` from schema 27
-- **THEN** `backups/` holds `lado.db.0.38.0` and `lado.db.schema-27`
 
 #### Scenario: Nothing to migrate
 - **WHEN** `lado.db` has the current schema and the human runs `lado ls`
@@ -53,15 +57,19 @@ When a step of the migration fails, LADO SHALL leave `lado.db` as it was (the mi
 one transaction), keep the error in its error journal, and exit 1 with one message on
 stderr and no traceback: `lado: could not upgrade lado.db from schema <N> to <M>: <error>.
 lado.db is unchanged; its backup is <path>.`, then the way back, and `Report it with lado
-bug-report.` The way back SHALL be, in a container (`update.in_container`), `To go back,
-run the image of the LADO version you ran before (ghcr.io/ladohq/lado:<that version>) on
-the same home volume.`, and elsewhere `To go back, install the LADO you had before.`
+bug-report.`
 
 #### Scenario: Outside a container
 - **WHEN** a migration step fails while `lado ls` migrates `lado.db` from schema 27
 - **THEN** `lado ls` exits 1, stderr has the message with `install the LADO you had
   before`, `lado.db` still has schema 27, `backups/lado.db.schema-27` exists, and
   `errors.jsonl` has the error
+
+### Requirement: The way back after a failed migration fits where LADO runs
+
+The way back of a failed migration's message SHALL be, in a container (`update.in_container`), `To go back,
+run the image of the LADO version you ran before (ghcr.io/ladohq/lado:<that version>) on
+the same home volume.`, and elsewhere `To go back, install the LADO you had before.`
 
 #### Scenario: In a container
 - **WHEN** the same happens with `LADO_CONTAINER=1`

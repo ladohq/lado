@@ -316,11 +316,22 @@ def asked_with_a_plan(session: str) -> None:
     )
 
 
+@pytest.mark.parametrize("lad99_round", range(100))  # LAD-99 diagnostic, temporary
 def test_an_artifact_from_the_expanded_card_shows_over_it_and_esc_closes_the_topmost(
-    page: Page, server, repo, shot
+    page: Page, server, repo, shot, lad99_round
 ):
     """LAD-48: a chip in the expanded card opens the panel over it; the first Esc closes the
     panel, the second folds the card (docs/design/ui.md, The waiting card)."""
+    page.on("console", lambda message: print(message.text))  # shown on a failure only
+    page.add_init_script(
+        """window.addEventListener("keydown", (event) => {
+            const at = document.activeElement;
+            const label = at && (at.getAttribute("aria-label") || at.textContent || "");
+            console.debug(`[lad99] ${performance.now().toFixed(1)} keydown ${event.key}`
+                + ` trusted=${event.isTrusted} active=${at && at.nodeName}:${label}`
+                + ` panel=${!!document.querySelector(".artifact-panel")}`);
+        }, true);"""
+    )
     session = running_session(repo)
     asked_with_a_plan(session)
     log_in(page, server)
@@ -343,6 +354,7 @@ def test_an_artifact_from_the_expanded_card_shows_over_it_and_esc_closes_the_top
     expect(chip).to_be_focused()
     expect(card).to_have_class(re.compile(r"\bexpanded\b"))
     expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
+    print("[lad99] second Esc at", page.evaluate("performance.now()"))
     page.keyboard.press("Escape")
     expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
     expect(card.get_by_role("button", name="Expand the card")).to_be_focused()

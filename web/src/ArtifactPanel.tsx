@@ -84,7 +84,10 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
     if (back instanceof HTMLElement && back.isConnected) setTimeout(() => back.focus());
   };
   useEffect(() => {
-    const key = (event: KeyboardEvent) => event.key === "Escape" && close();
+    const key = (event: KeyboardEvent) => {
+      console.debug(`[lad99] ${performance.now().toFixed(1)} panel esc key=${event.key}`);
+      return event.key === "Escape" && close();
+    };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
   });

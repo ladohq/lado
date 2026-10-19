@@ -248,16 +248,27 @@ export function WaitingCard({
     if (window.matchMedia?.(NARROW).matches && !phone) card.current?.scrollIntoView?.({ block: "start" });
   }, [expanded]);
   useEffect(() => {
+    console.debug(`[lad99] ${performance.now().toFixed(1)} card expanded=${expanded} viewing=${viewing}`);
+  }, [expanded, viewing]);
+  useEffect(() => {
     if (!expanded || viewing) return;
     const escape = (event: KeyboardEvent) => {
+      const target = event.target as Element | null;
+      console.debug(
+        `[lad99] ${performance.now().toFixed(1)} card esc key=${event.key} target=${target?.nodeName}.${(target as HTMLElement | null)?.className ?? ""} dialog=${!!target?.closest?.("dialog")}`,
+      );
       // A dialog over the page (the session's details) takes its own Esc.
       if (event.key !== "Escape" || (event.target as Element | null)?.closest?.("dialog")) return;
       event.preventDefault();
       folded.current = true;
       setExpanded(false);
     };
+    console.debug(`[lad99] ${performance.now().toFixed(1)} card listener on`);
     document.addEventListener("keydown", escape);
-    return () => document.removeEventListener("keydown", escape);
+    return () => {
+      console.debug(`[lad99] ${performance.now().toFixed(1)} card listener off`);
+      document.removeEventListener("keydown", escape);
+    };
   }, [expanded, viewing]);
   useLayoutEffect(() => {
     if (!expanded && folded.current) {

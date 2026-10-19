@@ -8,6 +8,7 @@ import time
 import uuid
 
 import fake_provider
+import leftovers
 import pytest
 from agent_helpers import refuse_unless_isolated
 
@@ -41,6 +42,7 @@ def isolated(lado_home, monkeypatch, kill_tmux_server):
     yield
     kill_tmux_server(socket)
     no_loop_left()
+    leftovers.fail_if(leftovers.sweep(lado_home), "the test")
 
 
 def retry_delays(monkeypatch, value: str | None) -> None:
@@ -73,8 +75,9 @@ def fakes_known_to_lado(monkeypatch):
 
 def no_loop_left() -> None:
     """Session loops end by themselves once their tmux session is gone: fail a test that
-    leaves one running five loop intervals after."""
-    timeout = 5 * loop.INTERVAL
+    leaves one running `leftovers.WAIT` after (one pass of a loop can take seconds on a
+    loaded machine)."""
+    timeout = leftovers.WAIT
     deadline = time.monotonic() + timeout
     folder = state.home() / "loop"
     locks = sorted(folder.glob("*.lock")) if folder.exists() else []

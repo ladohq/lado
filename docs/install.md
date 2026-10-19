@@ -240,8 +240,10 @@ restart; this browser stays in.
 
 ### The projects' toolchains
 
-The image has git, Node.js 22, uv, `make`, `gcc` and `g++`, and
-[mise](https://mise.jdx.dev) for the rest. An agent that needs a tool the project lacks (Go,
+The image has git, Node.js 22, uv, `make`, `gcc` and `g++`, the agents' everyday tools
+(`jq`, `rg`, `unzip`, `zip`, `xz`, `bzip2`, `patch`, `file`, `rsync`, `sqlite3`, `tree`,
+`lsof`, `nc`), openspec, `python3` and `python`, and [mise](https://mise.jdx.dev) for the
+rest. An agent that needs a tool the project lacks (Go,
 Rust, Java, a Python, ...) installs it with mise by itself: by the project's version files
 (`.tool-versions`, `mise.toml`, `.go-version`, `.java-version`, `.python-version`,
 `.ruby-version`) when they name it, otherwise as `<tool>@<version>`, which it runs with
@@ -257,7 +259,17 @@ tools.
 - The agents always run on the image's Node 22, also where `.nvmrc` or a version file names
   another (Kilo, Codex and the kits' MCP servers run on it). A project's other Node runs
   through mise: `mise exec node@20 -- npm test`.
+- `python3` and `python` are the image's Python 3.13, the one LADO runs on, unless the
+  project's version file or `mise use -g` names another: then mise's answers. No agent can
+  change the image's Python (pip refuses it); a project's packages go into a virtual
+  environment (`python3 -m venv`, `uv`).
+- openspec is the image's, at the version the image pins, with its usage statistics and
+  update check off (`OPENSPEC_TELEMETRY=0`, `OPENSPEC_NO_UPDATE_CHECK=1`). One installed
+  through mise stays on the home volume and is shadowed by the image's; a newer openspec
+  comes with a newer image.
 - A project's `mise.toml` under the projects folder needs no `mise trust`.
+- A tool the image lacks, such as `shellcheck`, comes through mise:
+  `mise exec shellcheck@latest -- shellcheck script.sh`.
 - An agent's `npm install -g` and `uv tool install` go to `~/.local` on the home volume and
   stay over an update too.
 - What is not covered: other system packages (`apt`) and databases (PostgreSQL, Redis, ...).

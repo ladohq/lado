@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.42.0 (unreleased)
+
+- Files attached right after a chat opens no longer all show the crossed-out eye, and an
+  image keeps its thumbnail: a file's chip shows its type by the server's table once that
+  is known, whenever the file was attached.
+- LADO's image carries the agents' everyday tools: `jq`, `rg` (ripgrep), `unzip`, `zip`,
+  `xz`, `bzip2`, `patch`, `file`, `rsync`, `sqlite3`, `tree`, `lsof` and `nc`, so the
+  agents and the kits' scripts find them in a new container with nothing installed.
+- The image carries openspec 1.14.1, so a kit that expects it (sdlc) starts on a clean home
+  volume; its usage statistics and update check are off. An openspec installed through
+  mise on the home volume no longer answers instead of the image's.
+- `python3` and `python` in the image answer with its Python 3.13, the one LADO runs on,
+  unless a project's `.python-version` or `mise use -g` names another. The agents can no
+  longer change that Python: pip refuses it, and a virtual environment takes a project's
+  packages.
+
 ## 0.41.0 (2026-10-18)
 
 - The web UI forgets stopped sessions in one go: a bin on the session list's Stopped band

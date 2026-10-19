@@ -1188,8 +1188,9 @@ Built in the chat task (2026-10-03):
     files dragged over the chat column or an agent's page make the composer's frame the
     drop zone ("Drop to attach · up to <n> files, <size> each", dashed `--action`), and a
     drop there lands in that composer.
-  - Chips above the field, 44 px: an image's thumbnail (an object URL, revoked when the
-    chip is removed, after Send and when the composer unmounts), else the type's icon;
+  - Chips above the field, 44 px: an image's thumbnail (the object URL made for every file
+    when it is attached and shown for an image; revoked when the chip is removed, after
+    Send and when the composer unmounts), else the type's icon;
     the name and size; × removes it (a button, reachable by keyboard). A file an agent
     cannot read (by the server's types; an image over `IMAGE_LIMIT` too) has a small
     crossed-out eye on its tile, a button whose hint (the UI's Tooltip: the light card,
@@ -1201,7 +1202,9 @@ Built in the chat task (2026-10-03):
     keeps no copy of the extension table, the readable types or the limits): more than
     `max_files` files or one over `max_size` is refused at the field before any upload,
     naming each file refused; the rest stay. A media type is the server's, by the
-    extension, never the browser's.
+    extension, never the browser's, and a chip takes it each time it shows, never at
+    attach: a file attached before the limits load shows the generic file icon and no eye
+    until they load, then its thumbnail or icon and eye by the server's table (LAD-102).
   - Send (on with text or files) locks the field and the chips, uploads each file not
     uploaded yet (`POST …/artifacts?file_name=`, the bytes as the body; a moving bar on its
     chip, as fetch tells no progress), then sends the message with the uploaded full names

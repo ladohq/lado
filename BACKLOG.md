@@ -187,36 +187,6 @@ terminal' 30 s timeout), test_launch::test_a_session_starts_from_the_new_session
 (provider select disabled: `/api/providers` slower than 30 s, since the CLIs' `--version`
 are slow under load; failed twice, passed the third time).
 
-## Test runs leave `lado server` processes behind
-
-Size: S. Why here: each leaked server keeps loading a machine whose load already makes `make check` fail on timeouts, and one ran for 29 hours.
-
-On 2026-10-06 the supervisor found 23 orphaned `tests/integration/fake_provider.py server
---port 0` processes (parent 1, about 35 minutes old, from the feature-mcp-secrets and
-session-tabs worktrees) and a `lado.cli server --port 0` from the feature-self-update
-worktree that had run for 29 hours. Cause: the `server` fixture in tests/ui/conftest.py:44-60
-only calls `server_run.stop()` and `process.wait(timeout=10)` in its `finally`; when
-`wait_ready` times out under load (no server.json yet), `stop()` finds no server and nothing
-kills the process.
-Wanted: every test that starts a server kills its process whatever `stop()` did, and a
-check at the end of the test session that no process a test started is still alive.
-Found: 2026-10-06, supervisor; recorded in fix/check-lock.
-Seen again 2026-10-07: two `lado.cli server --port 0` from the feature-turn-resume (13 h)
-and feature-mcp-secrets (16 h) worktrees, and three test tmux servers (`tmux -L
-lado-test-*`, sessions `ui-*`, from UI tests of fix-server-stop-streams, 1.5 h old, parent
-1) with their fake agents still alive: the tmux servers a UI test starts leak too. All idle
-(0% CPU); killed by hand.
-Seen again 2026-10-11: live tests leak too. Two `tmux -L lado-test-*` servers (session
-`live`, Codex supervisor and worker on Ollama models, from
-`test_worker_does_a_task_reports_and_gets_a_message[codex]`, a researcher's venv of the
-lado-windows session) ran for ~4 h with parent 1 and no pytest left: the run was stopped
-from outside, so its teardown never stopped the session. Killed by hand on the human's
-word. Wanted as well: a live or smoke run kills, at its start, the `lado-test-*` servers
-whose pytest is gone.
-A Codex live run stopped from outside leaks its LiteLLM bridge as well (`uvx … litellm`, its
-own process group on 127.0.0.1; `local_models.Bridge`, feature/stable-local-live): only the
-fixture's teardown ends it.
-
 ## Flaky: integration test of a swallowed message typed again after a hook
 
 Size: M. Why here: also a product problem: the retry is pasted into a line the human has started typing.
@@ -597,6 +567,20 @@ failure goes through `fix` and a patch release.
 Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
+
+## On Python 3.14 and later a clone target LADO may not look into is taken for a new folder
+
+Size: S. Why here: LADO supports any Python from 3.10 and CI tests only 3.10 and 3.13, so
+the break is unseen; the clone would then fail late, inside git, with a worse message.
+From Python 3.14 `Path.exists()` returns False on any `OSError`, a permission error too,
+where 3.13 raised it. `clone._check_target` relies on that error for its `no_access`
+refusal, so a path under a folder LADO may not enter is "a new folder". Two unit tests
+fail on 3.15 (and on 3.14 by the same rule), passing on 3.13:
+`tests/test_clone.py::test_a_folder_that_cannot_be_read_is_refused_not_raised` and
+`tests/test_server_clones.py::test_a_folder_that_cannot_be_read_is_400_not_500`. Wanted:
+the check looks with `os.stat` (or `Path.stat`) so the error stays, and CI tests the
+newest Python LADO allows.
+Found: 2026-10-19, fix/lad-107-agent-base-tools (a local `uv sync` took Python 3.15).
 
 ## `lado kits check` calls `${KIT_DIR}` in an MCP server's command a hardcoded path
 

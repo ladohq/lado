@@ -1881,6 +1881,25 @@ Wanted: switch it off in the agent's config.toml, once a config key for it is ch
 hand on the tested Codex version.
 Found: 2026-10-14, feature/lad-44-flake-races (design, from the smoke's evidence).
 
+## The expanded waiting card sometimes stays expanded after the second Esc
+
+Size: S. Why here: a UI flake seen once; 100 of 100 green in a focused CI run.
+`tests/ui/test_chat.py::test_an_artifact_from_the_expanded_card_shows_over_it_and_esc_closes_the_topmost`
+failed once in CI (run 39150756993, job ui (2)): the artifact panel closed with the first
+Esc and the focus was back on the chip, but after the second Esc the card stayed expanded.
+LAD-99 did not find the cause. Ruled out in Chromium: the gap between the router
+transition that removes the panel and its passive effects, where the card's Esc listener
+is not yet back (a `MutationObserver` Esc right after the commit, and React's scheduler
+tasks delayed by 1 s, both passed on the code before any fix: CI runs 39246518194 and
+39250165796); the test passed 100 of 100 in CI run 39250945744. The test now records every
+keydown, the card's class and the address's changes, and prints the record and the card's
+HTML on a failure (`record_esc`, `printed_on_failure`). A candidate fix, not pushed and
+unproven: the card's and the panel's Esc listeners in `useLayoutEffect` instead of
+`useEffect` (local branch `lad-99-backup`, commit 99b32ad of LAD-99).
+Wanted: when the test fails again, read its record in the ui job's log and file a task
+with it.
+Found: 2026-10-18, CI of e859751.
+
 # P3: maybe never
 
 ## A field that grows with its text keeps its height when its width changes

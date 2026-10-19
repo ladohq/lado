@@ -33,7 +33,7 @@
 
 ## 3. On a phone, in a browser
 
-- [ ] 3.1 `tests/ui/test_phone.py::test_the_top_bar_is_one_line_and_the_name_opens_the_details`:
+- [x] 3.1 `tests/ui/test_phone.py::test_the_top_bar_is_one_line_and_the_name_opens_the_details`:
   its gated session waits at a gate, so the bar's dot is named `needs you · 1 gate` (not
   `running`); a tap on the dot shows that tooltip; the sheet contains the same words
   (AC-4). Run with `-m ui`.
@@ -50,5 +50,5 @@
 
 ## 5. Checks
 
-- [ ] 5.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_phone.py
+- [x] 5.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_phone.py
   tests/ui/test_session_head.py tests/ui/test_session_list.py` pass; CI is green (AC-6).

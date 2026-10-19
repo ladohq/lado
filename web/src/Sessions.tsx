@@ -277,7 +277,7 @@ const initials = (name: string) => {
 
 function StripIcon({ session }: { session: SessionInfo }) {
   const needsYou = waits(session);
-  const work = tracked(session) && workWord(session);
+  const working = workWord(session);
   const called = label(session);
   return (
     <li>
@@ -285,10 +285,10 @@ function StripIcon({ session }: { session: SessionInfo }) {
         <NavLink
           to={sessionPath(session.name)}
           className={`strip-session${needsYou ? " waits" : ""}`}
-          aria-label={needsYou ? `${called}, needs you` : work ? `${called}, ${work}` : called}
+          aria-label={needsYou ? `${called}, needs you` : working ? `${called}, ${working}` : called}
         >
           {initials(called)}
-          {work && <span className={`dot dot-small activity-${work}`} aria-hidden="true" />}
+          {working && <span className={`dot dot-small activity-${working}`} aria-hidden="true" />}
         </NavLink>
       </Tooltip>
     </li>
@@ -304,18 +304,12 @@ function SessionTip({ session }: { session: SessionInfo }) {
   const trouble = session.status === "tmux_gone" || session.status === "loop_down";
   const mode = session.permission_mode ? ` · mode ${session.permission_mode}` : "";
   const ran = useRan(session);
-  const agents = count(session.agents, "agent");
-  const work = !tracked(session)
-    ? agents
-    : session.busy > 0
-      ? `${session.busy} of ${agents} working`
-      : `idle · ${agents}`;
   return (
     <div className={`session-tip tone-${TONES[groupOf(session)]}`}>
       <div className="tooltip-line">
         <b>{label(session)}</b> · {session.title !== null && `${session.name} · `}
         <span className={trouble ? "danger-text" : "tip-status"}>{STATUS[session.status]}</span> ·{" "}
-        {work}
+        {tracked(session) ? work(session) : count(session.agents, "agent")}
       </div>
       <div className="tooltip-line">{session.running_since ? `ran ${ran}` : ran}</div>
       {waits(session) && <div className="tooltip-line waits">Needs you: {about(session)}</div>}
@@ -336,8 +330,27 @@ const waits = (session: SessionInfo) => {
   return isLive(session) && gates + questions + agents > 0;
 };
 
+// What a session is in, the one rule of its row, its icon, its card and its head: stopped or
+// in trouble (tmux gone, loop down) by its status; else needs you when something waits for
+// the human; else working when an agent works (SessionInfo.busy), idle when none does. The
+// words name it in the head's tooltip and the phone's details, in the card's words.
+type Mark = "needs-you" | "working" | "idle" | Exclude<SessionStatus, "running">;
+
+export function sessionMark(session: SessionInfo): { mark: Mark; words: string } {
+  if (session.status !== "running") return { mark: session.status, words: STATUS[session.status] };
+  if (waits(session)) return { mark: "needs-you", words: `needs you · ${about(session)}` };
+  return { mark: session.busy > 0 ? "working" : "idle", words: `${STATUS.running} · ${work(session)}` };
+}
+
+// A running session's agents at work, in its card's and its head's words.
+const work = (session: SessionInfo) => {
+  const agents = count(session.agents, "agent");
+  return session.busy > 0 ? `${session.busy} of ${agents} working` : `idle · ${agents}`;
+};
+
 // The list's groups, by their ids (prefs.ts): a stopped session is Stopped whatever waits in
-// it. Each has its name and its heading's tone (GroupHead), which its rows and cards take.
+// it, one in trouble is in Needs you when something waits. Each has its name and its
+// heading's tone (GroupHead), which its rows and cards take.
 const groupOf = (session: SessionInfo): SessionGroup =>
   !isLive(session) ? "stopped" : waits(session) ? "needs-you" : "running";
 
@@ -352,10 +365,11 @@ function grouped(sessions: SessionInfo[]): Record<SessionGroup, SessionInfo[]> {
 
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-// Whether the list says if a session's agents work (SessionInfo.busy): a Running row of a
-// session that runs; the server counts none in one that does not.
-const tracked = (session: SessionInfo) => session.status === "running" && !waits(session);
-const workWord = (session: SessionInfo) => (session.busy > 0 ? "working" : "idle");
+// Whether the list says if a session's agents work, and its word for it: a Running row of a
+// session that runs (its mark working or idle); the server counts none in one that does not.
+const ACTIVITY: Partial<Record<Mark, "working" | "idle">> = { working: "working", idle: "idle" };
+const workWord = (session: SessionInfo) => ACTIVITY[sessionMark(session).mark] ?? null;
+const tracked = (session: SessionInfo) => workWord(session) !== null;
 
 // The line under a Running row's name, its agents and how long it ran, and a Stopped row's,
 // when it stopped and how long it ran: the head's run time, counted on by the minute.
@@ -444,17 +458,16 @@ function SessionRow({ session }: { session: SessionInfo }) {
       </li>
     );
   }
+  const working = workWord(session);
   return (
     <li ref={item} className="session-row">
       <Tooltip tip={<SessionTip session={session} />}>
         <NavLink to={sessionPath(session.name)} className="session-link">
           <span className="session-name">
             <span>{label(session)}</span>
-            {tracked(session) && (
-              <span className={`dot activity-${workWord(session)}`} role="img" aria-label={workWord(session)} />
-            )}
+            {working && <span className={`dot activity-${working}`} role="img" aria-label={working} />}
           </span>
-          {tracked(session) || !isLive(session) ? (
+          {working || !isLive(session) ? (
             <RanAbout session={session} />
           ) : (
             <span className="session-about">{named(session, about(session))}</span>
@@ -494,13 +507,24 @@ function Status({ status }: { status: SessionStatus }) {
   return <span className={`status status-${status}`}>{STATUS[status]}</span>;
 }
 
-// The session's status in its head, a dot before its name: running in the done tone with
-// no word, stopped in the muted one (its run time says "stopped"), and a session that needs
-// an action (tmux gone, loop down) in the danger tone, its status in words after the name.
-function StatusDot({ status }: { status: SessionStatus }) {
+// The session's mark in its head, a dot before its name, the list's (sessionMark), named by
+// its words: needs you the orange diamond of a waiting agent, working and idle the row's full
+// dot and ring; stopped in the muted tone (its run time says "stopped"), and a session that
+// needs an action (tmux gone, loop down) in the danger tone, its status in words after the name.
+const HEAD_MARKS: Record<Mark, string> = {
+  "needs-you": "dot dot-waiting",
+  working: "dot activity-working",
+  idle: "dot activity-idle",
+  stopped: "session-dot-stopped",
+  tmux_gone: "session-dot-tmux_gone",
+  loop_down: "session-dot-loop_down",
+};
+
+function StatusDot({ session }: { session: SessionInfo }) {
+  const { mark, words } = sessionMark(session);
   return (
-    <Tooltip tip={STATUS[status]}>
-      <span className={`session-dot session-dot-${status}`} role="img" aria-label={STATUS[status]} tabIndex={0} />
+    <Tooltip tip={words}>
+      <span className={`session-dot ${HEAD_MARKS[mark]}`} role="img" aria-label={words} tabIndex={0} />
     </Tooltip>
   );
 }
@@ -727,7 +751,7 @@ function HeadLine({ session }: { session: SessionInfo }) {
   const { editing, edit, closed } = useTitleEdit(() => pencil.current?.focus());
   return (
     <div className="session-head">
-      <StatusDot status={status} />
+      <StatusDot session={session} />
       {editing ? (
         <TitleEdit
           session={session}
@@ -843,7 +867,7 @@ function PhoneHead({ session }: { session: SessionInfo }) {
   const ran = useRan(session);
   return (
     <div className="session-head">
-      <StatusDot status={session.status} />
+      <StatusDot session={session} />
       <h1 className="session-title">
         <button
           type="button"
@@ -861,7 +885,7 @@ function PhoneHead({ session }: { session: SessionInfo }) {
         <SessionDetails
           session={session}
           about={about}
-          state={`${STATUS[session.status]} · ${ran}`}
+          state={`${sessionMark(session).words} · ${ran}`}
           onSaved={(saved) => live.sessionChanged(saved)}
           onClose={() => setDetails(false)}
         />

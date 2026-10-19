@@ -518,7 +518,7 @@ def test_the_sudo_rule_names_the_entrypoint_alone():
     assert "chmod 0440 /etc/sudoers.d/lado-entrypoint" in run
     assert "visudo -cf /etc/sudoers.d/lado-entrypoint" in run
     assert "touch /etc/lado/first-start" in run
-    [install] = [line for line in lines() if "apt-get install" in line]
+    [install] = [line for line in lines() if "apt-get install" in line and " tmux " in line]
     assert " sudo " in install
 
 

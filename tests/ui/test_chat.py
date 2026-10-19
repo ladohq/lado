@@ -349,13 +349,26 @@ def test_an_artifact_from_the_expanded_card_shows_over_it_and_esc_closes_the_top
     expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
 
 
-def test_a_second_esc_the_moment_the_panel_is_gone_folds_the_card(page: Page, server, repo):
-    """LAD-99: the panel closes in a router transition, whose passive effects come in a later
-    task; an Esc sent from a MutationObserver (a microtask right after the commit that removes
-    the panel) comes before them, so it finds the card's listener only if that listener
-    changes in the same commit (docs/design/ui.md, The waiting card)."""
+def test_a_second_esc_while_the_page_is_busy_folds_the_card(page: Page, server, repo):
+    """LAD-99: React's scheduler runs the router transition that removes the panel, and then
+    that commit's passive effects, in tasks it posts through MessageChannel. Delaying those
+    posts by a second stands for a busy runner: it holds the gap between the commit that
+    removes the panel and its passive effects open, and the second Esc lands in it; the card
+    folds only if its Esc listener changes in the commit itself (docs/design/ui.md, The
+    waiting card). The count of delayed posts shows the delay took effect."""
     session = running_session(repo)
     asked_with_a_plan(session)
+    page.add_init_script(
+        """(() => {
+            const post = MessagePort.prototype.postMessage;
+            window.__delayedPosts = 0;
+            MessagePort.prototype.postMessage = function (...args) {
+                if (!window.__slowScheduler) return post.apply(this, args);
+                window.__delayedPosts += 1;
+                setTimeout(() => post.apply(this, args), 1000);
+            };
+        })()"""
+    )
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     card = waiting_card(page, session)
@@ -365,20 +378,12 @@ def test_a_second_esc_the_moment_the_panel_is_gone_folds_the_card(page: Page, se
     card.get_by_role("button", name="Open artifact plan").click()
     panel = page.get_by_role("dialog", name="Artifact plan")
     expect(panel).to_contain_text("J1 to J9.")
-    page.evaluate(
-        """() => {
-            const watch = new MutationObserver(() => {
-                if (document.querySelector(".artifact-panel")) return;
-                watch.disconnect();
-                const esc = new KeyboardEvent("keydown", { key: "Escape", bubbles: true });
-                document.dispatchEvent(esc);
-            });
-            watch.observe(document.body, { childList: true, subtree: true });
-        }"""
-    )
+    page.evaluate("window.__slowScheduler = true")
     page.keyboard.press("Escape")
     expect(panel).to_have_count(0)
+    page.keyboard.press("Escape")
     expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
+    assert page.evaluate("window.__delayedPosts") > 0
 
 
 def test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways(

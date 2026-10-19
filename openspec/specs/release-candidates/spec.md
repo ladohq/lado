@@ -28,8 +28,8 @@ than this LADO.
 
 ### Requirement: A pre-release is installed only when its version is named
 
-A pre-release SHALL be installed by a final release only when its version is named
-(`lado update X.Y.ZrcN`).
+A LADO whose own version is a final release SHALL install a pre-release only when its
+version is named (`lado update X.Y.ZrcN`).
 
 #### Scenario: A named release candidate is installed
 - **WHEN** LADO 0.36.0 runs `lado update 0.37.0rc1` and PyPI has 0.37.0rc1

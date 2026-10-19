@@ -53,7 +53,7 @@ the human: `cancelled` with its run, `overridden` by `lado flow-set`).
 - **THEN** `usage` has a `gate_open` row with key `approval` and a `gate_close` row with
   key `approve` that agrees
 
-### Requirement: Usage counts flow runs, questions and failed messages
+### Requirement: Usage counts flow runs, questions and failed and dropped messages
 
 The counted facts of `usage` SHALL include: a `flow_start`, `flow_end` or `flow_cancel` event
 (`run_start`, `run_end`, `run_cancel`, key the run's flow with its kit), a question added

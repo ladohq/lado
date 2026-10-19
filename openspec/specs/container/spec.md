@@ -796,10 +796,10 @@ processes that launch agents), so the agents get the variables of the files moun
 
 ### Requirement: compose binds the secrets folder read-only, no folder by default
 
-- `docker/compose.yaml` SHALL bind the path `LADO_SECRETS` names read-only at
-  `/run/secrets`, by default `/dev/null`: no secrets, as for the ssh agent. It SHALL refuse
-  to start when a folder `LADO_SECRETS` names does not exist, rather than letting Docker
-  make it (`create_host_path: false`).
+`docker/compose.yaml` SHALL bind the path `LADO_SECRETS` names read-only at
+`/run/secrets`, by default `/dev/null`: no secrets, as for the ssh agent. It SHALL refuse
+to start when a folder `LADO_SECRETS` names does not exist, rather than letting Docker
+make it (`create_host_path: false`).
 
 #### Scenario: Secrets enabled by one line
 - **WHEN** `.env` has `LADO_SECRETS=./secrets`, the folder `secrets/` next to
@@ -813,10 +813,10 @@ processes that launch agents), so the agents get the variables of the files moun
 
 ### Requirement: With no secrets the container says nothing about the folder
 
-- With no secrets (the null device at `/run/secrets`, or nothing mounted there, as with
-  `docker run` without the folder), the container SHALL say nothing about the folder in
-  `docker logs`, and `lado start` no warning about it; `lado doctor` says how to give
-  secrets (capability agent-variables).
+With no secrets (the null device at `/run/secrets`, or nothing mounted there, as with
+`docker run` without the folder), the container SHALL say nothing about the folder in
+`docker logs`, and `lado start` no warning about it; `lado doctor` says how to give
+secrets (capability agent-variables).
 
 #### Scenario: compose without the folder
 - **WHEN** `docker compose up -d` runs in a folder with `compose.yaml` and `.env`, without
@@ -828,9 +828,9 @@ processes that launch agents), so the agents get the variables of the files moun
 
 ### Requirement: The headers say that the secrets folder is optional and how to enable it
 
-- The headers SHALL say that the secrets folder is optional and is enabled by
-  `LADO_SECRETS=./secrets` in `.env` (compose) or `-v <folder>:/run/secrets:ro` (`docker
-  run`).
+The headers SHALL say that the secrets folder is optional and is enabled by
+`LADO_SECRETS=./secrets` in `.env` (compose) or `-v <folder>:/run/secrets:ro` (`docker
+run`).
 
 #### Scenario: The headers on the secrets folder
 - **WHEN** the human reads the headers of `docker/compose.yaml` and `docker/Dockerfile`
@@ -839,12 +839,11 @@ processes that launch agents), so the agents get the variables of the files moun
 
 ### Requirement: The headers say how to fill the secrets folder
 
-- The headers SHALL say to make the secrets folder with mode 700 and to put one file per
-  variable in it
-  (`GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, a kit's key such as `YOUGILE_API_KEY`, a model
-  provider's key). A new file reaches the agents started after it, with no restart. Each
-  LADO container has its own folder or none, and every agent of one container can read
-  every variable given to it.
+The headers SHALL say to make the secrets folder with mode 700 and to put one file per
+variable in it (`GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, a kit's key such as
+`YOUGILE_API_KEY`, a model provider's key). A new file reaches the agents started after
+it, with no restart. Each LADO container has its own folder or none, and every agent of
+one container can read every variable given to it.
 
 #### Scenario: The headers on the folder's files
 - **WHEN** the human reads the headers of `docker/compose.yaml` and `docker/Dockerfile`
@@ -945,9 +944,9 @@ At every start, the entrypoint SHALL check, as `lado`, whether `lado` can use th
 
 ### Requirement: An ssh agent's socket lado cannot use is a warning
 
-- when `lado` still cannot use the ssh agent's socket after the entrypoint's check, `docker logs` SHALL get one line, `lado: warning: lado
-  (uid <uid>) cannot use the ssh agent socket of uid <owner>: <reason>`, and the server
-  SHALL start.
+When `lado` still cannot use the ssh agent's socket after the entrypoint's check, `docker
+logs` SHALL get one line, `lado: warning: lado (uid <uid>) cannot use the ssh agent socket
+of uid <owner>: <reason>`, and the server SHALL start.
 
 #### Scenario: A socket of another user
 - **WHEN** the socket belongs to uid 1234, not 0, and `lado` (uid 1000) may not use it

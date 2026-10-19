@@ -92,7 +92,7 @@ SHALL find a session whose title or name holds the text.
 Where the UI shows a session's title,
 it SHALL also show the name: in the row, first in its grey line (`lado-2 · 3 agents ·
 1h 12m`); in the head, small and grey after the title; in the cards, after the title. A
-session without a title SHALL look as it does without the title.
+session without a title SHALL look as it does without this change.
 
 #### Scenario: The list and the head
 - **WHEN** the session `lado-2` has the title `Rename sessions (LAD-66)`

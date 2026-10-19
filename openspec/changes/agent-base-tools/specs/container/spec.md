@@ -1,32 +1,13 @@
 ## MODIFIED Requirements
 
-### Requirement: The image tells the agents they run in a container
+### Requirement: The image's profile sets the container, the PATH and the tools' settings
 
-The image SHALL set, in `/etc/profile.d/`, which every login shell reads, the variables
-the container's environment sets for the agents' sake: `LADO_CONTAINER=1`, the programs'
+The image SHALL set in `/etc/profile.d/lado.sh`: `LADO_CONTAINER=1`, the programs'
 folders first on `PATH` (`/opt/uv/bin`, `/opt/agents/bin`, `/opt/tools/bin`), then the
 system's, then `~/.local/bin` and mise's shims folder (`~/.local/share/mise/shims`), and
 last the image's fallbacks (`/opt/fallback/bin`), npm's global prefix `$HOME/.local`,
-`CLAUDE_CONFIG_DIR=$HOME/.claude`, Claude Code's update check off, and openspec's usage
-statistics and update check off (`OPENSPEC_TELEMETRY=0`, `OPENSPEC_NO_UPDATE_CHECK=1`) in
-`/etc/profile.d/lado.sh`, mise's trusted folder set to the container's `LADO_REPOS`, and
-the container's own `LADO_REPOS` (the image's `/projects`, or the value given with `-e`)
-in `/etc/profile.d/lado-repos.sh`, written at the container's first start; an agent's
-environment comes from the user's login shell (`agent_env.resolve`), not from the
-container's environment. The image's `ENV` SHALL set the same `PATH` and the same
-variables for the server and `docker exec`.
-
-#### Scenario: An agent's lado doctor
-
-- **WHEN** a Claude Code agent runs in a container of the image and `lado doctor` runs
-  with exactly the environment of the agent's process
-- **THEN** its LADO line ends with `in a container`
-
-#### Scenario: An agent's LADO_REPOS is the container's
-
-- **WHEN** the container runs with `-e LADO_REPOS=/home/runner/projects` and an agent
-  starts in it
-- **THEN** the agent's process has `LADO_REPOS=/home/runner/projects`, not `/projects`
+`CLAUDE_CONFIG_DIR=$HOME/.claude` and Claude Code's update check off, and mise's trusted
+folder set to the container's `LADO_REPOS`.
 
 #### Scenario: The image's Node stays first
 
@@ -34,12 +15,6 @@ variables for the server and `docker exec`.
   (`mise use -g node@20`) and a login shell in a project runs `node --version`
 - **THEN** it answers with Node 22, the image's, and `mise exec node@20 -- node --version`
   answers with Node 20
-
-#### Scenario: openspec stays off the network for statistics
-
-- **WHEN** an agent's login shell in a container of the image prints its environment
-- **THEN** it has `OPENSPEC_TELEMETRY=0` and `OPENSPEC_NO_UPDATE_CHECK=1`, and so does
-  `docker exec`'s environment
 
 ## ADDED Requirements
 
@@ -67,14 +42,16 @@ a new container on a clean home volume with nothing installed.
 
 The image SHALL carry the openspec CLI (`@fission-ai/openspec`) at the exact version of
 the build argument `OPENSPEC_VERSION`, in a layer of its own under `/opt/tools`, on every
-login shell's `PATH` before mise's shims, with its usage statistics and update check off,
-so that a kit expecting `openspec` starts on a clean home volume and no openspec of the
-home volume shadows the image's.
+login shell's `PATH` before mise's shims, with its usage statistics and update check off
+(`OPENSPEC_TELEMETRY=0`, `OPENSPEC_NO_UPDATE_CHECK=1` in `/etc/profile.d/lado.sh` and the
+image's `ENV`), so that a kit expecting `openspec` starts on a clean home volume and no
+openspec of the home volume shadows the image's.
 
-#### Scenario: Statistics and update check off
+#### Scenario: openspec stays off the network for statistics
 
-- **WHEN** a login shell as `lado` prints its environment
-- **THEN** it has `OPENSPEC_TELEMETRY=0` and `OPENSPEC_NO_UPDATE_CHECK=1`
+- **WHEN** an agent's login shell in a container of the image prints its environment
+- **THEN** it has `OPENSPEC_TELEMETRY=0` and `OPENSPEC_NO_UPDATE_CHECK=1`, and so does
+  `docker exec`'s environment
 
 #### Scenario: A clean home volume
 

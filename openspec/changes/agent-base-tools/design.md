@@ -115,9 +115,9 @@ The pull request gives `docker image inspect` sizes of `lado:local` before and a
   and python answer 3.13 outside a project; in a project with `.python-version` `3.12`
   after `mise install` they answer 3.12; `pip install` into the image's Python is
   refused and its files are root's; `python3 -m venv` works; LADO still serves).
-- The image tells the agents they run in a container (modified): unit (profile and `ENV`),
-  plus the existing container scenarios.
+- The image's profile sets the container, the PATH and the tools' settings (modified):
+  unit (profile and `ENV`), plus the existing container scenarios.
 - No integration test: no LADO process behaviour changes. The container layer is the
   lowest one that runs the image.
-- Regression: `make lint`, `make test`, `openspec validate --specs`, CI's container and
+- Regression: `make lint`, `make test`, `openspec validate --specs --strict`, CI's container and
   smoke cells (the Dockerfile is off the smoke skip list).

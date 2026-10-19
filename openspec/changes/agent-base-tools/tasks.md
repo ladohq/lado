@@ -60,7 +60,7 @@
 
 ## 4. Regression
 
-- [x] 4.1 `make lint`, `make test`, `openspec validate --specs`,
+- [x] 4.1 `make lint`, `make test`, `openspec validate --specs --strict`,
   `openspec validate agent-base-tools --strict`; CI's container and smoke cells green.
 - [x] 4.2 The pull request's description carries the human's check: `make docker`,
   compose with `LADO_IMAGE=lado:local` on a new home volume, an sdlc session starts

@@ -155,7 +155,7 @@ exits 0 and names `VERSION (pre-release)`.
 
 ### Requirement: The sandbox starts and stops a session and uninstalls itself
 
-After those checks the sandbox SHALL check, printing one `[ok  ]` or `[FAIL]` line each:
+After those checks the sandbox SHALL check, with one such line each:
 that `lado start` of a scratch git repository
 with one commit (provider `claude`, or `--provider`) exits 0 and `lado ls` shows its
 session; then, unless `--no-ui`, it SHALL start the sandbox's UI, print its link and wait

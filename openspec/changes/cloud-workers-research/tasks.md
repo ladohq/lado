@@ -23,6 +23,6 @@
 
 ## 3. Tracker
 
-- [ ] 3.1 After the pull request is open, post a Russian comment on LAD-100 with the short
+- [x] 3.1 After the pull request is open, post a Russian comment on LAD-100 with the short
   result, the files and the pull request's link (AC-6); create no task. Check: the
   comment by its id in the task.

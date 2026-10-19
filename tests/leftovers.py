@@ -161,7 +161,7 @@ def reap_dead_runs() -> list[Process]:
     dead = [p for p in processes() if p.pid != os.getpid() and _dead_owner(p.get("LADO_TEST_PID"))]
     _kill(dead)
     if shutil.which("tmux"):
-        folder = Path(os.environ.get("TMUX_TMPDIR") or "/tmp", f"tmux-{os.getuid()}")
+        folder = tmux_folder()
         for socket in sorted(folder.glob("lado-test-*")) if folder.is_dir() else []:
             answer = subprocess.run(
                 ["tmux", "-L", socket.name, "list-sessions"], capture_output=True, text=True
@@ -171,6 +171,11 @@ def reap_dead_runs() -> list[Process]:
             ):
                 socket.unlink(missing_ok=True)
     return dead
+
+
+def tmux_folder() -> Path:
+    """The folder of the user's tmux sockets."""
+    return Path(os.environ.get("TMUX_TMPDIR") or "/tmp", f"tmux-{os.getuid()}")
 
 
 def _dead_owner(mark: str | None) -> bool:

@@ -3,7 +3,6 @@ import os
 import shutil
 import subprocess
 import uuid
-from pathlib import Path
 
 import leftovers
 import pytest
@@ -108,8 +107,7 @@ def _kill_tmux_server(socket: str) -> None:
     if shutil.which("tmux"):
         subprocess.run(["tmux", "-L", socket, "kill-server"], capture_output=True, check=False)
     # tmux leaves the socket file behind.
-    tmpdir = Path(os.environ.get("TMUX_TMPDIR") or "/tmp", f"tmux-{os.getuid()}")
-    (tmpdir / socket).unlink(missing_ok=True)
+    (leftovers.tmux_folder() / socket).unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="session")

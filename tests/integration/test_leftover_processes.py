@@ -6,7 +6,6 @@ import signal
 import subprocess
 import time
 import uuid
-from pathlib import Path
 
 import leftovers
 import pytest
@@ -93,7 +92,7 @@ def tmux_server(socket: str) -> tuple[int, int]:
 
 
 def test_a_dead_tmux_servers_socket_is_removed_and_a_living_ones_kept(kill_tmux_server):
-    folder = Path(os.environ.get("TMUX_TMPDIR") or "/tmp", f"tmux-{os.getuid()}")
+    folder = leftovers.tmux_folder()
     dead, living = (f"lado-test-{uuid.uuid4().hex[:8]}" for _ in range(2))
     dead_server, dead_pane = tmux_server(dead)
     tmux_server(living)

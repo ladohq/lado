@@ -87,9 +87,13 @@ def from_proc(root: Path) -> list[Process]:
 
 def from_ps(with_environ: str, commands: str) -> list[Process]:
     """The processes of `ps -E -o pid=,command=` (each line's environment after its
-    command), named by their command in `ps -o pid=,command=`."""
+    command), named by their command in a later `ps -o pid=,command=`. One the later `ps`
+    does not list is left out: it ended meanwhile, as the first `ps` itself has, which
+    carries the caller's environment."""
     names = dict(_ps_lines(commands))
-    return [Process(pid, names.get(pid, line), line, " ") for pid, line in _ps_lines(with_environ)]
+    return [
+        Process(pid, names[pid], line, " ") for pid, line in _ps_lines(with_environ) if pid in names
+    ]
 
 
 def _ps_lines(text: str) -> list[tuple[int, str]]:

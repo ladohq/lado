@@ -70,6 +70,15 @@ def test_the_macos_reader_matches_a_value_followed_by_a_space_or_the_lines_end()
     assert processes[102].command == "tmux -L lado-test-1 new-session"
 
 
+def test_the_macos_reader_leaves_out_its_own_ps_and_what_ended_meanwhile():
+    # The first ps, which carries the caller's environment, is gone by the second.
+    with_environ = PS_E + "  105 ps -E -ww -U 501 -o pid=,command= LADO_HOME=/t/home\n"
+
+    processes = leftovers.from_ps(with_environ, PS + "  106 ps -ww -U 501 -o pid=,command=\n")
+
+    assert [p.pid for p in processes] == [101, 102, 103, 104]
+
+
 def test_marked_names_the_processes_with_the_value_but_the_caller(monkeypatch):
     processes = leftovers.from_ps(PS_E, PS)
     monkeypatch.setattr(leftovers, "processes", lambda: processes)

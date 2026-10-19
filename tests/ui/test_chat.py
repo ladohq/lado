@@ -443,7 +443,7 @@ def test_an_artifact_from_the_expanded_card_shows_over_it_and_esc_closes_the_top
         expect(chip).to_be_focused()
         expect(card).to_have_class(re.compile(r"\bexpanded\b"))
         expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
-        page.keyboard.press("Escape")
+        page.keyboard.press("F2")  # TEMPORARY (LAD-99): a lost Esc, to see the record
         expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
         expect(card.get_by_role("button", name="Expand the card")).to_be_focused()
         expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")

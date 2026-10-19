@@ -8017,7 +8017,11 @@ del.kit-mcp-name {
    that scrolls; these put the app's window back and take what a phone has no room for. */
 
 /* The app's window, as a wide one's: the window never scrolls, the content does; the rail
-   is the menu (Shell.tsx), out of the grid. */
+   is the menu (Shell.tsx), out of the grid. The app is as high as the part of the window
+   the human sees (LAD-109): phone.ts's usePhoneViewport puts the visual viewport on <html>,
+   so with the keyboard open the app shrinks above it and follows Safari's pan, the top bar
+   kept. Without it, html's box, which body clips to: on iOS 26 Safari 100dvh is taller
+   than that box, and the bottom bar cut the composer off. */
 :root[data-phone],
 :root[data-phone] body {
   height: 100%;
@@ -8026,10 +8030,13 @@ del.kit-mcp-name {
 }
 
 :root[data-phone] .app {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--phone-top, 0px);
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
-  height: 100vh;
-  height: 100dvh;
+  height: var(--phone-height, 100%);
+  min-height: 0;
 }
 
 :root[data-phone] .rail {

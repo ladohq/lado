@@ -36,7 +36,7 @@ import { LaunchProvider, useLaunch } from "./Launch";
 import { isLive, Live, LiveContext, useLive } from "./live";
 import { Notifier } from "./Notifications";
 import { NEEDS_YOU_PATH } from "./paths";
-import { usePhone } from "./phone";
+import { usePhone, usePhoneViewport } from "./phone";
 import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
 import { SelectionBar } from "./SelectionBar";
 import { ShareDialog } from "./Share";
@@ -100,6 +100,7 @@ export function Shell() {
       delete root.dataset.phone;
     };
   }, [phone]);
+  usePhoneViewport(phone);
 
   useEffect(() => {
     const off = onDenied(setDenied);

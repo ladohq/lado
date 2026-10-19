@@ -12,19 +12,8 @@ the human edit it in place, and `lado title` (docs/design/ui.md, Session title).
 A session SHALL have an optional title, a label for the human, stored with the session
 (`sessions.title`, schema 28), while its name SHALL stay its identifier: setting or
 clearing a title SHALL NOT change the session's name, its address in the UI, its tmux
-session, its agents' environment, its branches or its worktrees. A title SHALL be set
-and cleared only through the core's one rule (`runtime.set_title`), for a session of any
-status, running or stopped. The rule SHALL trim white space at both ends of the text; a
-text that is then empty or equal to the session's name SHALL clear the title (store
-none). It SHALL refuse, with its reason and nothing changed, a text that holds a hidden
-character (the rule of capability visible-text: Unicode categories Cc, Zl, Zp and Cf but
-U+200D ZERO WIDTH JOINER; a line break, a tab, a line separator, a bidi control, a
-zero-width space among them), naming the first one (`a title is one line of visible
-text: U+202E RIGHT-TO-LEFT OVERRIDE is not allowed`), or is longer than
-`runtime.MAX_TITLE` (80) characters after the trim, and a session that does not exist.
-Two sessions MAY have the same title. A stop and a resume SHALL keep the title;
-`lado forget` SHALL delete it with the session, and a new session of that name SHALL
-start without one.
+session, its agents' environment, its branches or its worktrees. Two sessions MAY have the
+same title.
 
 #### Scenario: A title is set on a running session
 - **WHEN** the human sets the title `Rename sessions (LAD-66)` on the running session
@@ -32,16 +21,38 @@ start without one.
 - **THEN** the session keeps the name `lado-2`, its page stays at `/sessions/lado-2`, its
   agents keep running, and its title is `Rename sessions (LAD-66)`
 
+### Requirement: A title is set only through the core's one rule, which trims it
+
+A title SHALL be set
+and cleared only through the core's one rule (`runtime.set_title`), for a session of any
+status, running or stopped. The rule SHALL trim white space at both ends of the text; a
+text that is then empty or equal to the session's name SHALL clear the title (store
+none).
+
 #### Scenario: Trimmed, empty and equal to the name
 - **WHEN** the human sets `  Ревью kit-sdlc  `, then `   `, then `lado-2` on the session
   `lado-2`
 - **THEN** its title is first `Ревью kit-sdlc`, then none, then none
+
+### Requirement: The title rule refuses a long text and an unknown session
+
+The title rule (`runtime.set_title`) SHALL refuse, with its reason and nothing changed, a
+text that is longer than `runtime.MAX_TITLE` (80) characters after the trim, and a session
+that does not exist.
 
 #### Scenario: A refused title
 - **WHEN** the human sets a title of 81 characters, or one with a line break
 - **THEN** the core refuses it with the reason (`a title is at most 80 characters`,
   `a title is one line of visible text: U+000A is not allowed`) and the session's title
   is what it was
+
+### Requirement: The title rule refuses a hidden character
+
+The title rule (`runtime.set_title`) SHALL refuse, with its reason and nothing changed, a text that holds a hidden
+character (the rule of capability visible-text: Unicode categories Cc, Zl, Zp and Cf but
+U+200D ZERO WIDTH JOINER; a line break, a tab, a line separator, a bidi control, a
+zero-width space among them), naming the first one (`a title is one line of visible
+text: U+202E RIGHT-TO-LEFT OVERRIDE is not allowed`).
 
 #### Scenario: Invisible and bidi characters are refused
 - **WHEN** the human sets a title holding U+2028, U+202E or U+200B
@@ -53,6 +64,12 @@ start without one.
 - **WHEN** the human sets the title `Семья 👨‍👩‍👧` (its emoji joined by U+200D)
 - **THEN** it is stored as given
 
+### Requirement: A title lives and dies with its session
+
+A stop and a resume SHALL keep the title;
+`lado forget` SHALL delete it with the session, and a new session of that name SHALL
+start without one.
+
 #### Scenario: Stop, resume and forget
 - **WHEN** a session with a title is stopped and resumed, then stopped and forgotten, and
   a new session of the same name is started
@@ -63,13 +80,19 @@ start without one.
 Wherever the UI names a session, it SHALL show its title when it has one, else its name:
 the session list's row, the collapsed list's icon (its letters and accessible name), the
 card of a row and of an icon, the session's head, the browser tab's title, the session's
-line in Needs you, and the title of the browser's notification. Where it shows a title,
+line in Needs you, and the title of the browser's notification. The list's search
+SHALL find a session whose title or name holds the text.
+
+#### Scenario: Search by name or title
+- **WHEN** the human types `rename` or `lado-2` in Find a session
+- **THEN** the list keeps the session `lado-2` titled `Rename sessions (LAD-66)` both times
+
+### Requirement: Where the UI shows a title it shows the name too
+
+Where the UI shows a session's title,
 it SHALL also show the name: in the row, first in its grey line (`lado-2 · 3 agents ·
 1h 12m`); in the head, small and grey after the title; in the cards, after the title. A
-session without a title SHALL look as it does without this change. The list's search
-SHALL find a session whose title or name holds the text. The title SHALL reach the page
-in `SessionInfo.title` through the change feed, so a title set anywhere (the CLI, another
-browser) shows without a reload.
+session without a title SHALL look as it does without the title.
 
 #### Scenario: The list and the head
 - **WHEN** the session `lado-2` has the title `Rename sessions (LAD-66)`
@@ -77,9 +100,11 @@ browser) shows without a reload.
   `Rename sessions (LAD-66)` with `lado-2` after it, and the browser tab's title names
   `Rename sessions (LAD-66)`
 
-#### Scenario: Search by name or title
-- **WHEN** the human types `rename` or `lado-2` in Find a session
-- **THEN** the list keeps the session `lado-2` titled `Rename sessions (LAD-66)` both times
+### Requirement: A title reaches the page through the change feed
+
+The title SHALL reach the page
+in `SessionInfo.title` through the change feed, so a title set anywhere (the CLI, another
+browser) shows without a reload.
 
 #### Scenario: A title set from the CLI while the page is open
 - **WHEN** `lado title lado-2 "Review"` runs while the session's page is open
@@ -91,15 +116,7 @@ The session's head SHALL have a button **Rename session** (a pencil) after the t
 shown on the title's hover and the button's focus and always on a device without hover;
 it and a double click on the title SHALL turn the title into a text field holding the
 title (empty without one, the name as its placeholder). The list row's ⋯ menu SHALL hold
-**Rename…** first, which turns the row's title into the same field. In the field, Enter
-and leaving it SHALL save through `PUT /api/sessions/{name}/title`, Esc SHALL cancel and
-change nothing, and an empty field SHALL clear the title. A text over `Limits.max_title`
-SHALL be shown as too long under the field and not sent; a refusal of the server SHALL
-show under the field (`role="alert"`) with the field kept open and the text kept. After a
-save or a cancel the focus SHALL go back to the button that opened the field (the pencil,
-or the row's ⋯). In the phone layout (capability phone-layout) the head SHALL have no
-pencil and its title SHALL open the session's details instead, whose **Rename** SHALL turn
-the sheet's title into the same field, the focus going back to Rename.
+**Rename…** first, which turns the row's title into the same field.
 
 #### Scenario: Rename in the head
 - **WHEN** the human presses the pencil in the head of `lado-2`, types `Review`, and
@@ -107,25 +124,47 @@ the sheet's title into the same field, the focus going back to Rename.
 - **THEN** the title is saved, the head and the row show `Review`, and the focus is on
   the pencil
 
+### Requirement: The title field saves on Enter and on leaving, cancels on Esc
+
+In the title field, Enter
+and leaving it SHALL save through `PUT /api/sessions/{name}/title`, Esc SHALL cancel and
+change nothing, and an empty field SHALL clear the title. After a
+save or a cancel the focus SHALL go back to the button that opened the field (the pencil,
+or the row's ⋯).
+
 #### Scenario: Rename from the row's menu and cancel
 - **WHEN** the human chooses Rename… in the ⋯ of the row of `lado-2`, types `x`, and
   presses Esc
 - **THEN** nothing is sent, the row shows what it showed before, and the focus is on ⋯
 
+### Requirement: The title field shows a text too long or refused under it
+
+A text over `Limits.max_title`
+SHALL be shown as too long under the title field and not sent; a refusal of the server SHALL
+show under the field (`role="alert"`) with the field kept open and the text kept.
+
 #### Scenario: Too long
 - **WHEN** the human types 81 characters into the field
 - **THEN** the field says it is too long and Enter sends nothing
+
+### Requirement: On a phone the title is renamed from the session's details
+
+In the phone layout (capability phone-layout) the head SHALL have no
+pencil and its title SHALL open the session's details instead, whose **Rename** SHALL turn
+the sheet's title into the same field, the focus going back to Rename.
+
+#### Scenario: Rename on a phone
+- **WHEN** in the phone layout the human taps the session's title in the top bar, then
+  Rename, types `Review` and presses Enter
+- **THEN** the title is saved as `Review` and the focus is on Rename
 
 ### Requirement: `lado title` reads and sets a session's title
 
 `lado title <session>` SHALL print the session's title, or that it has none. `lado title
 <session> TEXT` SHALL set it and `lado title <session> --clear` SHALL clear it, both
 through the core's rule, printing what the title is now; TEXT and `--clear` together
-SHALL exit 2. Setting or clearing SHALL be refused inside an agent (`LADO_AGENT` set),
-as `lado answer` and `lado flow-set` are; reading SHALL NOT. An unknown session SHALL be
-refused with its name. `lado ls` SHALL print a session's title, quoted, after its name
-(`lado-2 "Rename sessions (LAD-66)"  /path/to/repo`), and nothing more for a session
-without one.
+SHALL exit 2. An unknown session SHALL be
+refused with its name.
 
 #### Scenario: Set, read, clear
 - **WHEN** the human runs `lado title lado-2 "Review"`, `lado title lado-2`, then
@@ -133,9 +172,25 @@ without one.
 - **THEN** the first prints the title `Review`, the second prints `Review`, the third
   says the session has no title, and `lado ls` shows `lado-2` without a title
 
+### Requirement: Only the human sets a title from the CLI
+
+Setting or clearing a title with `lado title` SHALL be refused inside an agent (`LADO_AGENT` set),
+as `lado answer` and `lado flow-set` are; reading SHALL NOT.
+
 #### Scenario: Inside an agent
 - **WHEN** an agent runs `lado title lado-2 "x"`
 - **THEN** it is refused as the human's command and the title is unchanged
+
+### Requirement: lado ls prints a session's title
+
+`lado ls` SHALL print a session's title, quoted, after its name
+(`lado-2 "Rename sessions (LAD-66)"  /path/to/repo`), and nothing more for a session
+without one.
+
+#### Scenario: A session with a title in the list
+- **WHEN** the session `lado-2` has the title `Rename sessions (LAD-66)` and the human runs
+  `lado ls`
+- **THEN** its line reads `lado-2 "Rename sessions (LAD-66)"` followed by its folder
 
 ### Requirement: Tab takes the session's name into the title field
 
@@ -143,25 +198,25 @@ The title field SHALL offer the session's name as a suggestion while its text is
 proper start of the name, compared case-sensitively, the empty text included, with the
 caret at the text's end, nothing selected, no save in flight and no input method
 composing: the empty field SHALL show the name grey as its placeholder, and a start typed
-SHALL show the rest of the name grey after it. While the suggestion shows, Tab without
+SHALL show the rest of the name grey after it. A session with a title
+SHALL open the field with the title selected and no suggestion.
+
+#### Scenario: A session with a title
+- **WHEN** the human opens the field of a session titled `lad-84 (имя сессии)`
+- **THEN** the field holds the title selected, no grey shows, and Tab leaves the field
+
+### Requirement: Tab and → take the suggested name, else they do as in any field
+
+While the suggestion shows, Tab without
 modifiers and → without modifiers SHALL make the name the field's text with the caret at
 its end, keep the focus in the field and send nothing. Otherwise Tab, Shift+Tab and →
-SHALL do what they do in any field (Tab leaves the field, which saves it). While the
-suggestion shows, the hint under the field SHALL read `Tab takes the name · Enter to save
-· Esc to cancel` in the head and `<name> · Tab takes the name · Enter to save · Esc to
-cancel` in a row; otherwise it SHALL read as without this rule. A session with a title
-SHALL open the field with the title selected and no suggestion.
+SHALL do what they do in any field (Tab leaves the field, which saves it).
 
 #### Scenario: Tab takes the name in an empty field
 - **WHEN** the human presses the pencil in the head of the session `lad-84`, which has
   no title, presses Tab, types ` (имя сессии)` and presses Enter
 - **THEN** after Tab the field holds `lad-84` with the caret at its end and nothing was
   sent, and after Enter the title is `lad-84 (имя сессии)` and the focus is on the pencil
-
-#### Scenario: A start of the name in a row
-- **WHEN** the human chooses Rename… in the row of `lad-84` and types `la`
-- **THEN** `d-84` shows grey after `la`, the hint reads `lad-84 · Tab takes the name ·
-  Enter to save · Esc to cancel`, and → or Tab makes the text `lad-84`
 
 #### Scenario: Tab with other text leaves the field
 - **WHEN** the human types `zz` (or `LA`, or the whole `lad-84`) into the field of
@@ -174,6 +229,14 @@ SHALL open the field with the title selected and no suggestion.
   presses →
 - **THEN** no grey shows and the caret moves after `a`; the text stays `la`
 
-#### Scenario: A session with a title
-- **WHEN** the human opens the field of a session titled `lad-84 (имя сессии)`
-- **THEN** the field holds the title selected, no grey shows, and Tab leaves the field
+### Requirement: The title field's hint names Tab while the suggestion shows
+
+While the
+suggestion shows, the hint under the title field SHALL read `Tab takes the name · Enter to save
+· Esc to cancel` in the head and `<name> · Tab takes the name · Enter to save · Esc to
+cancel` in a row; otherwise it SHALL read as without the suggestion.
+
+#### Scenario: A start of the name in a row
+- **WHEN** the human chooses Rename… in the row of `lad-84` and types `la`
+- **THEN** `d-84` shows grey after `la`, the hint reads `lad-84 · Tab takes the name ·
+  Enter to save · Esc to cancel`, and → or Tab makes the text `lad-84`

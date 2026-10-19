@@ -50,6 +50,12 @@ and text:
 | `git_refused` | `git cannot read <path>: <the first line git printed>` |
 | `no_commits` | `<path> has no commits yet` |
 
+#### Scenario: A repository without commits
+- **WHEN** the folder is in a repository whose HEAD has no commit
+- **THEN** the check refuses with kind `no_commits` and `<path> has no commits yet`
+
+### Requirement: Only git's own answer makes a folder not a repository
+
 `not_repo` SHALL be only git's own "not a git repository" answer; any other failure of
 git in the folder SHALL be `git_refused` with git's words.
 
@@ -60,10 +66,6 @@ git in the folder SHALL be `git_refused` with git's words.
 #### Scenario: git refuses to read the folder
 - **WHEN** git fails in the folder for another reason (e.g. "detected dubious ownership")
 - **THEN** the check refuses with kind `git_refused` and git's first line
-
-#### Scenario: A repository without commits
-- **WHEN** the folder is in a repository whose HEAD has no commit
-- **THEN** the check refuses with kind `no_commits` and `<path> has no commits yet`
 
 ### Requirement: A refusal the human can fix carries a hint
 

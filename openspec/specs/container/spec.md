@@ -33,9 +33,7 @@ In a container `lado update` SHALL refuse before it stops, writes or looks up an
 (no PyPI request, no `update.lock`, no `update.json`, no result, no stopped session or
 server), with exit 1 and the one line `lado: LADO runs in a container: a new image updates
 it, not lado update`, whatever its version argument and `--yes`; it SHALL name no command
-to run on the host (how to update a container is the documentation's). Inside an agent the
-agent's refusal SHALL come first; the container's refusal SHALL come before the refusal of
-a running update and the missing installer.
+to run on the host (how to update a container is the documentation's).
 
 #### Scenario: The human updates in a container
 - **WHEN** the human runs `lado update --yes` in a container where LADO is a uv tool
@@ -48,22 +46,36 @@ a running update and the missing installer.
 - **WHEN** the human runs `lado update 0.36.0` in a container
 - **THEN** the same refusal, and PyPI is not asked
 
-#### Scenario: An agent in a container
-- **WHEN** an agent runs `lado update` in a container
-- **THEN** it gets the agent's refusal
-
 #### Scenario: The same commands as the compose header
 - **WHEN** `docker/compose.yaml`'s header says how to update and `lado update` refuses in
   a container
 - **THEN** the refusal names none of the header's commands, no `docker` command and no
   `lado:previous`: how to update is the header's and the documentation's
 
+### Requirement: The container's refusal of lado update comes after the agent's
+
+Inside an agent the
+agent's refusal of `lado update` SHALL come first; the container's refusal SHALL come before the refusal of
+a running update and the missing installer.
+
+#### Scenario: An agent in a container
+- **WHEN** an agent runs `lado update` in a container
+- **THEN** it gets the agent's refusal
+
 ### Requirement: The UI's update refuses in a container
 
 In a container `GET /api/update` SHALL answer `can_update` false, `why_not` `LADO runs in
 a container: a new image updates it, not lado update`, `by_hand` empty, and `container`
 true (false outside one); `POST /api/update` SHALL answer 409 with that reason and start
-nothing. The System panel SHALL show a grey `container` pill beside `LADO <version>` in its
+nothing.
+
+#### Scenario: A start of the update is refused
+- **WHEN** a client posts `/api/update` in a container
+- **THEN** it gets 409 with the reason, and no `lado update` process is started
+
+### Requirement: The System panel shows the container and no Update… button
+
+In a container the System panel SHALL show a grey `container` pill beside `LADO <version>` in its
 head (its tooltip: LADO runs in a container and a new image updates it), and, when a newer
 LADO is out, an Update block with the version, What's new, no **Update…** button, the
 reason, and no commands.
@@ -78,10 +90,6 @@ reason, and no commands.
 - **WHEN** the System panel opens in a container and nothing newer is out
 - **THEN** the head has the `container` pill and there is no Update block
 
-#### Scenario: A start of the update is refused
-- **WHEN** a client posts `/api/update` in a container
-- **THEN** it gets 409 with the reason, and no `lado update` process is started
-
 #### Scenario: Outside a container
 - **WHEN** the System panel opens without `LADO_CONTAINER`
 - **THEN** it shows no `container` pill and `UpdateInfo.container` is false
@@ -91,9 +99,7 @@ reason, and no commands.
 In a container `lado doctor`'s LADO line SHALL end with `, in a container`, and the line
 that a newer LADO is out (`update.available_line`, shown by `lado ls` and as
 `lado doctor`'s hint) SHALL read `LADO <version> is available: a new image updates LADO in
-a container (ghcr.io/ladohq/lado:<version>)` instead of naming `lado update`. The image's
-name SHALL be one constant, `update.IMAGE`, that the Release workflow and
-`docker/compose.yaml` publish and pull by (a unit test keeps the three the same). The
+a container (ghcr.io/ladohq/lado:<version>)` instead of naming `lado update`. The
 system report (`doctor.report`: the System panel's copy and `lado bug-report`) SHALL name
 the installer as `(<installer>, in a container)`.
 
@@ -111,25 +117,23 @@ the installer as `(<installer>, in a container)`.
 - **WHEN** the human copies the system info in a container where LADO is a uv tool install
 - **THEN** its LADO line reads `- LADO 0.38.0 (uv tool, in a container), Python ...`
 
+### Requirement: The image's name is one constant
+
+The image's name SHALL be one constant, `update.IMAGE`, that the Release workflow and
+`docker/compose.yaml` publish and pull by (a unit test keeps the three the same).
+
+#### Scenario: The names drift apart
+- **WHEN** `update.IMAGE`, the image the Release workflow publishes and the image
+  `docker/compose.yaml` pulls are not the same name
+- **THEN** the unit tests fail
+
 ### Requirement: The UI server in a container names the port's publication, not other machines
 
 In a container, a UI server listening on a non-loopback address SHALL decide its start
 line by `LADO_LISTEN`, the host address compose publishes the port on:
 - `LADO_LISTEN` a non-loopback IPv4 address (`0.0.0.0` too): the warning that the server
   is open to other machines, as outside a container, naming `LADO_LISTEN` and the port;
-- `LADO_LISTEN` a loopback address: no line;
-- `LADO_LISTEN` unset or not an IPv4 address: on stderr the one line `lado: note: the LADO
-  server runs in a container and listens on <host>:<port> inside it; who reaches it
-  depends on how the container publishes the port (127.0.0.1:<port>:<port>: this computer
-  only). Published to other machines, the token travels unencrypted (plain HTTP).`
-`lado server` and `lado ui` SHALL print the same line. A server on a loopback address
-SHALL print neither, as outside a container. Outside a container the warning SHALL stay as
-it is.
-
-#### Scenario: The image's server starts
-- **WHEN** `lado server --host 0.0.0.0 --port 8765` starts with `LADO_CONTAINER=1` and no
-  `LADO_LISTEN`
-- **THEN** its output has the note naming `0.0.0.0:8765` and no `open to other machines`
+- `LADO_LISTEN` a loopback address: no line.
 
 #### Scenario: Published to the network by compose
 - **WHEN** the same server starts with `LADO_LISTEN=0.0.0.0`
@@ -140,6 +144,26 @@ it is.
 - **WHEN** the same server starts with `LADO_LISTEN=127.0.0.1`
 - **THEN** its output has neither the note nor the warning
 
+### Requirement: Without LADO_LISTEN the server in a container notes how its port is published
+
+In a container, a UI server listening on a non-loopback address with `LADO_LISTEN` unset
+or not an IPv4 address SHALL print on stderr the one line `lado: note: the LADO
+  server runs in a container and listens on <host>:<port> inside it; who reaches it
+  depends on how the container publishes the port (127.0.0.1:<port>:<port>: this computer
+  only). Published to other machines, the token travels unencrypted (plain HTTP).`
+`lado server` and `lado ui` SHALL print the same line.
+
+#### Scenario: The image's server starts
+- **WHEN** `lado server --host 0.0.0.0 --port 8765` starts with `LADO_CONTAINER=1` and no
+  `LADO_LISTEN`
+- **THEN** its output has the note naming `0.0.0.0:8765` and no `open to other machines`
+
+### Requirement: A server on loopback or outside a container warns as before
+
+A server on a loopback address
+SHALL print neither the warning nor the note, as outside a container. Outside a container the warning SHALL stay as
+it is.
+
 #### Scenario: The same server outside a container
 - **WHEN** `lado server --host 0.0.0.0` starts without `LADO_CONTAINER`
 - **THEN** it prints the warning that it is open to other machines, as before
@@ -149,10 +173,7 @@ it is.
 In a container `lado ui` SHALL print the server's local link
 (`http://127.0.0.1:<port>/?token=<token>` for a server on `0.0.0.0`) and SHALL NOT try to
 open a browser. With `--no-open` its standard output SHALL be that one line; without it,
-the link followed by the line `Open it in your browser on the host.` A `From another
-machine` line SHALL follow only when the link for another device exists (share-access,
-"The link to another device follows one rule"): on standard output without `--no-open`,
-on stderr with it.
+the link followed by the line `Open it in your browser on the host.`
 
 #### Scenario: The launcher asks for the link
 - **WHEN** `docker exec lado lado ui --no-open` runs against a server on `0.0.0.0:8765` in
@@ -165,6 +186,13 @@ on stderr with it.
 - **THEN** no browser is opened, and it prints the link and `Open it in your browser on
   the host.`, and no `From another machine` line
 
+### Requirement: lado ui adds the link for another device only when there is one
+
+A `From another
+machine` line of `lado ui` SHALL follow only when the link for another device exists (share-access,
+"The link to another device follows one rule"): on standard output without `--no-open`,
+on stderr with it.
+
 #### Scenario: Outside a container
 - **WHEN** `lado ui --no-open` runs without `LADO_CONTAINER` against a server on
   `0.0.0.0`
@@ -175,11 +203,7 @@ on stderr with it.
 
 The repository SHALL hold LADO's image as `docker/Dockerfile`, whose every default is
 inside the image, so that `docker run -d -p 127.0.0.1:<port>:<port> -e LADO_PORT=<port>
--v <volume>:/home/lado <image>`, with no other file, starts LADO's UI server. The server
-SHALL listen on `0.0.0.0` at the port of `LADO_PORT`, 8765 when it is unset, as the
-image's user `lado` (uid 1000 unless the projects' owner gives it another, see "The
-image's user takes the projects folder's owner") under tini, with LADO_HOME in
-`/home/lado/.lado` on the home volume. The image SHALL set `LADO_CONTAINER=1` and
+-v <volume>:/home/lado <image>`, with no other file, starts LADO's UI server. The image SHALL set `LADO_CONTAINER=1` and
 `LADO_REPOS=/projects` as defaults, and SHALL make `/projects` a folder its user may
 write, so that a container without a projects mount still starts.
 
@@ -189,16 +213,24 @@ write, so that a container without a projects mount still starts.
 - **THEN** `http://127.0.0.1:8765/api/health` on the host answers `ok` with LADO's
   version, and `docker logs` has the container note naming `0.0.0.0:8765`
 
+#### Scenario: lado doctor in the container
+
+- **WHEN** `lado doctor` runs in a container of the image
+- **THEN** it prints no `[FAIL]`, exits 0, and its LADO line ends with `in a container`
+
+### Requirement: The image's server listens on LADO_PORT as the image's user
+
+The image's server
+SHALL listen on `0.0.0.0` at the port of `LADO_PORT`, 8765 when it is unset, as the
+image's user `lado` (uid 1000 unless the projects' owner gives it another, see "The
+image's user takes the projects folder's owner") under tini, with LADO_HOME in
+`/home/lado/.lado` on the home volume.
+
 #### Scenario: Another port
 
 - **WHEN** the human runs it with `-e LADO_PORT=8766 -p 127.0.0.1:8766:8766`
 - **THEN** `/api/health` answers on the host's port 8766, and `lado ui --no-open` in the
   container prints `http://127.0.0.1:8766/?token=<token>`
-
-#### Scenario: lado doctor in the container
-
-- **WHEN** `lado doctor` runs in a container of the image
-- **THEN** it prints no `[FAIL]`, exits 0, and its LADO line ends with `in a container`
 
 ### Requirement: The image installs LADO from the wheel given to its build
 
@@ -222,13 +254,7 @@ build the web UI's bundle and the wheel from the working copy and the image from
 ### Requirement: The image tells the agents they run in a container
 
 The image SHALL set, in `/etc/profile.d/`, which every login shell reads, the variables
-the container's environment sets for the agents' sake: `LADO_CONTAINER=1`, the programs'
-folders first on `PATH`, then the system's, then `~/.local/bin` and mise's shims folder
-(`~/.local/share/mise/shims`), npm's global prefix `$HOME/.local`,
-`CLAUDE_CONFIG_DIR=$HOME/.claude` and Claude Code's update check off in
-`/etc/profile.d/lado.sh`, mise's trusted folder set to the container's `LADO_REPOS`, and
-the container's own `LADO_REPOS` (the image's `/projects`, or the value given with `-e`)
-in `/etc/profile.d/lado-repos.sh`, written at the container's first start; an agent's
+the container's environment sets for the agents' sake; an agent's
 environment comes from the user's login shell (`agent_env.resolve`), not from the
 container's environment.
 
@@ -238,11 +264,13 @@ container's environment.
   with exactly the environment of the agent's process
 - **THEN** its LADO line ends with `in a container`
 
-#### Scenario: An agent's LADO_REPOS is the container's
+### Requirement: The image's profile sets the container, the PATH and the tools' settings
 
-- **WHEN** the container runs with `-e LADO_REPOS=/home/runner/projects` and an agent
-  starts in it
-- **THEN** the agent's process has `LADO_REPOS=/home/runner/projects`, not `/projects`
+The image SHALL set in `/etc/profile.d/lado.sh`: `LADO_CONTAINER=1`, the programs'
+folders first on `PATH`, then the system's, then `~/.local/bin` and mise's shims folder
+(`~/.local/share/mise/shims`), npm's global prefix `$HOME/.local`,
+`CLAUDE_CONFIG_DIR=$HOME/.claude` and Claude Code's update check off, and mise's trusted
+folder set to the container's `LADO_REPOS`.
 
 #### Scenario: The image's Node stays first
 
@@ -251,21 +279,76 @@ container's environment.
 - **THEN** it answers with Node 22, the image's, and `mise exec node@20 -- node --version`
   answers with Node 20
 
-### Requirement: The compose file publishes one port number
+### Requirement: The agents get the container's own LADO_REPOS
+
+The image SHALL set the container's own `LADO_REPOS` (the image's `/projects`, or the value given with `-e`)
+in `/etc/profile.d/lado-repos.sh`, written at the container's first start.
+
+#### Scenario: An agent's LADO_REPOS is the container's
+
+- **WHEN** the container runs with `-e LADO_REPOS=/home/runner/projects` and an agent
+  starts in it
+- **THEN** the agent's process has `LADO_REPOS=/home/runner/projects`, not `/projects`
+
+### Requirement: The compose file runs the published image of LADO_VERSION
 
 `docker/compose.yaml` SHALL run LADO's published image of the version `LADO_VERSION` names,
 `ghcr.io/ladohq/lado:${LADO_VERSION}`, unless `LADO_IMAGE` names another image (`lado:local`,
 the tests'); without either compose SHALL refuse and name `LADO_VERSION`, and it SHALL
-never default to `latest`. It SHALL use one variable, `LADO_PORT` (8765 by default), as
+never default to `latest`.
+
+#### Scenario: No version given
+- **WHEN** the human runs `docker compose up -d` with neither `LADO_VERSION` nor
+  `LADO_IMAGE`
+- **THEN** compose refuses and names `LADO_VERSION`
+
+#### Scenario: The published image by its version
+- **WHEN** `.env` has `LADO_VERSION=0.39.0` and no `LADO_IMAGE`
+- **THEN** `docker compose config` names the image `ghcr.io/ladohq/lado:0.39.0`
+
+### Requirement: The compose file publishes one port number
+
+`docker/compose.yaml` SHALL use one variable, `LADO_PORT` (8765 by default), as
 both the server's port in the container and the published one,
 `${LADO_LISTEN:-127.0.0.1}:${LADO_PORT}:${LADO_PORT}`, so the host's number and the
 container's are always the same; `LADO_LISTEN` is the host address the port is published
-on, the host's loopback unless `.env` names another. It SHALL give the container
+on, the host's loopback unless `.env` names another.
+
+#### Scenario: Published on this computer by default
+- **WHEN** `.env` has neither `LADO_LISTEN` nor `LADO_PUBLIC_HOST`
+- **THEN** `docker compose config` publishes `127.0.0.1:8765:8765` and gives the container
+  `LADO_LISTEN=127.0.0.1`
+
+### Requirement: The compose file tells the container where it is published
+
+`docker/compose.yaml` SHALL give the container
 `LADO_LISTEN` (`${LADO_LISTEN:-127.0.0.1}`) and `LADO_PUBLIC_HOST`
-(`${LADO_PUBLIC_HOST:-}`), the name other devices reach the host by. It SHALL mount
+(`${LADO_PUBLIC_HOST:-}`), the name other devices reach the host by.
+
+#### Scenario: Published to the network
+- **WHEN** `.env` has `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST=kaos-mbp.local`
+- **THEN** `docker compose config` publishes `0.0.0.0:8765:8765` and gives the container
+  `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST=kaos-mbp.local`
+
+### Requirement: The compose file mounts the projects at the host's path
+
+`docker/compose.yaml` SHALL mount
 `LADO_PROJECTS`, which is required, at that same path inside the container and set
 `LADO_REPOS` to it, and mount the home volume at `/home/lado`, and SHALL name no
-container. Its header SHALL say to keep these variables in `.env` next to the file, that
+container.
+
+#### Scenario: No projects folder given
+- **WHEN** the human runs `docker compose up -d` without `LADO_PROJECTS`
+- **THEN** compose refuses and names `LADO_PROJECTS`
+
+#### Scenario: The projects at the host's path
+- **WHEN** the human runs `LADO_PROJECTS=/Users/me/projects docker compose up -d`
+- **THEN** the container sees the projects at `/Users/me/projects` and `lado doctor` in it
+  prints `[ok  ] Repositories folder: /Users/me/projects (LADO_REPOS)`
+
+### Requirement: The compose header says where the settings go and how to run a second LADO
+
+The header of `docker/compose.yaml` SHALL say to keep its variables in `.env` next to the file, that
 `LADO_LISTEN=0.0.0.0` opens LADO to every device of the network with the token
 travelling unencrypted, and that a second LADO is a folder of its own with a copy of the
 file and its own `.env` (`COMPOSE_PROJECT_NAME`, `LADO_PORT`, `LADO_VERSION`,
@@ -278,34 +361,6 @@ its own.
   and `LADO_PORT=8766`
 - **THEN** both run, `/api/health` answers on 8765 and on 8766, and each has its own home
   volume
-
-#### Scenario: No projects folder given
-- **WHEN** the human runs `docker compose up -d` without `LADO_PROJECTS`
-- **THEN** compose refuses and names `LADO_PROJECTS`
-
-#### Scenario: No version given
-- **WHEN** the human runs `docker compose up -d` with neither `LADO_VERSION` nor
-  `LADO_IMAGE`
-- **THEN** compose refuses and names `LADO_VERSION`
-
-#### Scenario: The published image by its version
-- **WHEN** `.env` has `LADO_VERSION=0.39.0` and no `LADO_IMAGE`
-- **THEN** `docker compose config` names the image `ghcr.io/ladohq/lado:0.39.0`
-
-#### Scenario: The projects at the host's path
-- **WHEN** the human runs `LADO_PROJECTS=/Users/me/projects docker compose up -d`
-- **THEN** the container sees the projects at `/Users/me/projects` and `lado doctor` in it
-  prints `[ok  ] Repositories folder: /Users/me/projects (LADO_REPOS)`
-
-#### Scenario: Published to the network
-- **WHEN** `.env` has `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST=kaos-mbp.local`
-- **THEN** `docker compose config` publishes `0.0.0.0:8765:8765` and gives the container
-  `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST=kaos-mbp.local`
-
-#### Scenario: Published on this computer by default
-- **WHEN** `.env` has neither `LADO_LISTEN` nor `LADO_PUBLIC_HOST`
-- **THEN** `docker compose config` publishes `127.0.0.1:8765:8765` and gives the container
-  `LADO_LISTEN=127.0.0.1`
 
 ### Requirement: A worker's worktree made in the container works on the host
 
@@ -328,32 +383,8 @@ At a container's first start, before the UI server starts, the image SHALL give 
 `lado` the uid and gid of the owner of `LADO_REPOS`'s folder, unless that owner's uid is 0
 (how Docker Desktop shows a bind mount) or equal to `lado`'s already; a gid of 0, root's
 group, SHALL never be taken (`lado` keeps its own group). It SHALL then give
-`lado` everything under `/home/lado` whose owner is not `lado`'s uid and gid. The server,
-`docker exec <container> <command>` with no `-u`, and every agent SHALL run as `lado`
-with that uid. The change SHALL be made by a step that runs as root once per container
-and, first of all, removes its way to it (a sudo rule for the entrypoint alone), so
-that no process started after it, an agent included, can become root through it; the
-image's one other sudo rule, for the ssh agent's socket (requirement "The host's ssh agent
-reaches the agents without root's group"), runs one fixed program that takes no argument
-and no variable and gives no root shell. Where
-the image's entrypoint was replaced, the rule stays; the root step SHALL then run no
-program chosen by its caller's environment (its commands by a fixed PATH or full paths,
-the caller's PATH given back only after the drop to `lado`), so that the rule runs only
-that step's own work. A container whose settings forbid becoming root (no-new-privileges,
-capabilities dropped) or whose root file system is read-only SHALL start as before, `lado` with uid 1000 and the agents'
-`LADO_REPOS` the image's `/projects`, with one warning line in `docker logs`; a step of the
-root run that fails SHALL be a warning line, and the server SHALL start anyway. A
-restart of the same container SHALL keep the uid it took. A folder `LADO_REPOS` that is no
-folder in the container, or one `lado` may not write in, SHALL be named in `docker logs`
-with one warning line, and the server SHALL start anyway.
-
-#### Scenario: A Linux host's user
-
-- **WHEN** the human's projects folder, owned by uid 1001 and gid 1001 on a Linux host
-  (GitHub's runner), is mounted at its path with `LADO_REPOS` set to it, and an agent of
-  the container writes a file and a commit there
-- **THEN** `docker exec <container> id -u` prints 1001, and on the host the file and the
-  commit's objects belong to uid 1001
+`lado` everything under `/home/lado` whose owner is not `lado`'s uid and gid. A
+restart of the same container SHALL keep the uid it took.
 
 #### Scenario: Docker Desktop shows the owner as 0
 
@@ -373,11 +404,59 @@ with one warning line, and the server SHALL start anyway.
 - **WHEN** `LADO_REPOS`'s folder is owned by uid 2001 and gid 0
 - **THEN** `id -u` in the container prints 2001 and `id -g` 1000
 
+#### Scenario: A restart
+
+- **WHEN** a container that took uid 2001 is restarted with `docker restart`
+- **THEN** it runs as uid 2001 again and the server answers
+
+### Requirement: The server, docker exec and the agents run as the image's user
+
+The server,
+`docker exec <container> <command>` with no `-u`, and every agent SHALL run as `lado`
+with the uid it took from the projects folder's owner.
+
+#### Scenario: A Linux host's user
+
+- **WHEN** the human's projects folder, owned by uid 1001 and gid 1001 on a Linux host
+  (GitHub's runner), is mounted at its path with `LADO_REPOS` set to it, and an agent of
+  the container writes a file and a commit there
+- **THEN** `docker exec <container> id -u` prints 1001, and on the host the file and the
+  commit's objects belong to uid 1001
+
+### Requirement: The root step removes its own way to root first
+
+The change of `lado`'s uid SHALL be made by a step that runs as root once per container
+and, first of all, removes its way to it (a sudo rule for the entrypoint alone), so
+that no process started after it, an agent included, can become root through it; the
+image's one other sudo rule, for the ssh agent's socket (requirement "The host's ssh agent
+reaches the agents without root's group"), runs one fixed program that takes no argument
+and no variable and gives no root shell.
+
+#### Scenario: No way to root is left
+
+- **WHEN** the container has started
+- **THEN** `sudo -n true` run as `lado` in it fails
+
+### Requirement: With the entrypoint replaced, the root step runs nothing its caller chose
+
+Where
+the image's entrypoint was replaced, the rule stays; the root step SHALL then run no
+program chosen by its caller's environment (its commands by a fixed PATH or full paths,
+the caller's PATH given back only after the drop to `lado`), so that the rule runs only
+that step's own work.
+
 #### Scenario: The entrypoint replaced
 
 - **WHEN** the container runs with `--entrypoint`, so the sudo rule stays, and `lado` runs
   the entrypoint through it with a `setpriv` of its own first on the PATH it hands over
 - **THEN** that `setpriv` does not run, and the command runs as `lado`
+
+### Requirement: A container that may not become root starts as before
+
+A container whose settings forbid becoming root (no-new-privileges,
+capabilities dropped) or whose root file system is read-only SHALL start as before, `lado` with uid 1000 and the agents'
+`LADO_REPOS` the image's `/projects`, with one warning line in `docker logs`; a step of the
+root run that fails SHALL be a warning line, and the server SHALL start anyway.
 
 #### Scenario: The container may not become root
 
@@ -396,15 +475,11 @@ with one warning line, and the server SHALL start anyway.
   line `lado: warning: the container's root file system is read-only: lado keeps uid 1000
   instead of the owner's of <path>, and the agents' LADO_REPOS is /projects`
 
-#### Scenario: A restart
+### Requirement: A projects folder LADO cannot use is named at the start
 
-- **WHEN** a container that took uid 2001 is restarted with `docker restart`
-- **THEN** it runs as uid 2001 again and the server answers
-
-#### Scenario: No way to root is left
-
-- **WHEN** the container has started
-- **THEN** `sudo -n true` run as `lado` in it fails
+A folder `LADO_REPOS` that is no
+folder in the container, or one `lado` may not write in, SHALL be named in `docker logs`
+with one warning line, and the server SHALL start anyway.
 
 #### Scenario: The projects folder is not writable
 
@@ -437,17 +512,6 @@ whoever the folder's owner seems to be.
 A container of LADO's image whose home volume holds a `lado.db` of an older schema SHALL
 migrate it at its start with the backup the capability `schema-migration` describes, and
 `docker logs` SHALL show the upgrade line, or, when the migration fails, its message.
-`docker/compose.yaml`'s header SHALL say that an update is that version's `compose.yaml`
-downloaded next to `.env` and a new `LADO_VERSION` in `.env`, followed by `docker compose
-up -d` (which pulls the image of that version; see "An update takes the version's
-compose.yaml"), and that the
-image before keeps its version's name, so no name is kept by hand and nothing names
-`lado:previous`. It SHALL give the steps that go back after a migration that succeeded:
-put the version before back in `.env`, stop the container, put the backup in place of
-`lado.db` (with its `-wal` and `-shm` removed) with that image, and start it; after a
-migration that failed, the first and the last step alone. The Dockerfile's header SHALL
-say the same for `docker run`: the container removed and run again with the other
-version's tag on the same home volume.
 
 #### Scenario: The migration on start
 - **WHEN** the image starts on a home volume whose `lado.db` has the schema before this
@@ -461,11 +525,29 @@ version's tag on the same home volume.
 - **THEN** `docker logs` has the message of a failed migration naming the image of the
   version run before and no traceback, and `lado.db` keeps its schema
 
+### Requirement: The compose header's update keeps the image before by its version
+
+`docker/compose.yaml`'s header SHALL say that an update is that version's `compose.yaml`
+downloaded next to `.env` and a new `LADO_VERSION` in `.env`, followed by `docker compose
+up -d` (which pulls the image of that version; see "An update takes the version's
+compose.yaml"), and that the
+image before keeps its version's name, so no name is kept by hand and nothing names
+`lado:previous`.
+
 #### Scenario: The image before keeps a name
 - **WHEN** a container is updated by the compose header's steps from one version to
   another
 - **THEN** the image of the version before is still named by its version tag, and no
   step tags an image
+
+### Requirement: The headers give the way back to the image before
+
+The header of `docker/compose.yaml` SHALL give the steps that go back after a migration that succeeded:
+put the version before back in `.env`, stop the container, put the backup in place of
+`lado.db` (with its `-wal` and `-shm` removed) with that image, and start it; after a
+migration that failed, the first and the last step alone. The Dockerfile's header SHALL
+say the same for `docker run`: the container removed and run again with the other
+version's tag on the same home volume.
 
 #### Scenario: Back to the backup
 - **WHEN** after the migration on start the compose header's steps back run
@@ -523,13 +605,7 @@ When the UI server runs in a container (`update.in_container()`) and is told to 
 (SIGTERM, SIGINT, `lado server stop`), it SHALL, before it waits for any open request or
 event stream, mark every session not stopped as stopped, as `lado stop` marks one (its
 agents forgotten, messages they never got dropped, open runs and gates kept), with the mark
-`resume_at_start` set, all sessions in one transaction; and only then kill each one's tmux
-session, close its UI viewers and remove its agents' config folders. The `session_stop`
-event's detail SHALL end with `; the container stopped`. It SHALL print one line on stderr
-(`docker logs`): `lado: the container stops: stopped sessions "<a>", "<b>"; they resume at
-its start`, and none when no session ran. A session stopped already keeps its mark as it
-is. The agents that end by this SHALL tell no one, as after `lado stop`. When `lado.db`
-does not exist, it SHALL do nothing and make no `LADO_HOME`.
+`resume_at_start` set, all sessions in one transaction.
 
 #### Scenario: compose down with a running session
 - **WHEN** a session runs in a container of `docker/compose.yaml` and the human runs
@@ -543,18 +619,44 @@ does not exist, it SHALL do nothing and make no `LADO_HOME`.
   ten seconds
 - **THEN** the container's exit code is 0 and all three sessions are stopped with the mark
 
-#### Scenario: No message about the dying agents
-- **WHEN** the container's stop ends a session whose supervisor and worker run
-- **THEN** no message from `lado` to the human or the supervisor is queued about their end,
-  and `lado log` shows the session's stop with `the container stopped`
+### Requirement: The container's stop ends the sessions only after it marked them
+
+Only after the transaction that marks the sessions SHALL the container's stop kill each
+one's tmux session, close its UI viewers and remove its agents' config folders.
+
+#### Scenario: The order of the stop
+- **WHEN** the container's stop finds two sessions running
+- **THEN** `lado.db` has both stopped with the mark before their tmux sessions are killed,
+  their viewers closed and their agents' config folders removed
+
+### Requirement: A session stopped before the container's stop keeps its mark
+
+A session the container's stop finds stopped already SHALL keep its mark as it is.
 
 #### Scenario: A session the human stopped
 - **WHEN** a session was stopped with `lado stop` before the container's stop
 - **THEN** it stays stopped without the mark, and the stop's line does not name it
 
+### Requirement: The container's stop is said in its log and to no one else
+
+The `session_stop`
+event's detail of the container's stop SHALL end with `; the container stopped`. It SHALL print one line on stderr
+(`docker logs`): `lado: the container stops: stopped sessions "<a>", "<b>"; they resume at
+its start`, and none when no session ran. The agents that end by this SHALL tell no one, as after `lado stop`.
+
+#### Scenario: No message about the dying agents
+- **WHEN** the container's stop ends a session whose supervisor and worker run
+- **THEN** no message from `lado` to the human or the supervisor is queued about their end,
+  and `lado log` shows the session's stop with `the container stopped`
+
 #### Scenario: Nothing ran
 - **WHEN** the container stops with no session running
 - **THEN** `docker logs` has no line about sessions
+
+### Requirement: The container's stop makes no LADO_HOME
+
+When `lado.db`
+does not exist, the container's stop SHALL do nothing and make no `LADO_HOME`.
 
 #### Scenario: The server's stop after an uninstall
 - **WHEN** the server in a container ends after `LADO_HOME` was deleted
@@ -567,19 +669,7 @@ before the command, as before), it SHALL resume in the background, while it alre
 serves, one session at a time: each stopped session with `resume_at_start` set, and each
 session not stopped whose tmux session is gone (the container ended without its stop:
 `docker kill`, a crash of Docker or the machine, or a tmux that ended inside the
-container). It SHALL NOT resume a session stopped without the mark. Each resume SHALL be
-`lado start`'s resume of that session with its stored repository and settings, its
-`session_resume` event's detail starting with `at the container's start`, and SHALL clear
-`resume_at_start` in the transaction that takes the session. `docker logs` SHALL get
-`lado: resumed session "<name>" at the container's start` for each one resumed, followed
-by `lado: session "<name>": <line>` for each problem and warning `lado start` prints for
-that resume (an open run that cannot go on, a kit's or the provider's warning), and
-`lado: could not resume session "<name>" at the container's start: <error>; it stays
-stopped` for one that fails, which stays stopped without the mark and is not tried at the
-next start; the others SHALL go on. Workers SHALL NOT be restarted by LADO: the
-supervisor's `session resumed` message names the open runs and the workers to start for
-them, as after `lado start`. When the server is told to end while it resumes, it SHALL
-resume no further session.
+container). It SHALL NOT resume a session stopped without the mark.
 
 #### Scenario: compose up after compose down
 - **WHEN** after `docker compose down` with a running session the human runs `docker
@@ -603,12 +693,12 @@ resume no further session.
 - **WHEN** the container starts with a session stopped by `lado stop`
 - **THEN** that session is still stopped and `docker logs` does not name it
 
-#### Scenario: A resume that fails
-- **WHEN** a session with the mark cannot be resumed at the start (its repository folder
-  is gone)
-- **THEN** `docker logs` has the failure line with the reason, the session is stopped with
-  `resume_at_start` 0, the other sessions are resumed, and at the container's next start
-  it is not named
+### Requirement: Each resume at the container's start is lado start's resume
+
+Each resume at the container's start
+SHALL be `lado start`'s resume of that session with its stored repository and settings, its
+`session_resume` event's detail starting with `at the container's start`, and SHALL clear
+`resume_at_start` in the transaction that takes the session.
 
 #### Scenario: The human resumes a session meanwhile
 - **WHEN** while the start resumes sessions one by one, the human resumes from the UI a
@@ -616,6 +706,38 @@ resume no further session.
 - **THEN** that session keeps running, is not stopped or resumed again by the start, and
   `docker logs` says `lado: session "<name>" runs already at the container's start` when
   its resume was under way
+
+### Requirement: Each resume at the container's start is said in docker logs
+
+`docker logs` SHALL get
+`lado: resumed session "<name>" at the container's start` for each one resumed, followed
+by `lado: session "<name>": <line>` for each problem and warning `lado start` prints for
+that resume (an open run that cannot go on, a kit's or the provider's warning).
+
+#### Scenario: A resume with a warning
+- **WHEN** a session whose open run cannot go on is resumed at the container's start
+- **THEN** `docker logs` has `lado: resumed session "<name>" at the container's start`,
+  followed by `lado: session "<name>": <the line lado start prints about that run>`
+
+### Requirement: A resume that fails at the start leaves its session stopped
+
+`docker logs` SHALL get `lado: could not resume session "<name>" at the container's start: <error>; it stays
+stopped` for a resume at the start that fails, which stays stopped without the mark and is not tried at the
+next start; the others SHALL go on. When the server is told to end while it resumes, it SHALL
+resume no further session.
+
+#### Scenario: A resume that fails
+- **WHEN** a session with the mark cannot be resumed at the start (its repository folder
+  is gone)
+- **THEN** `docker logs` has the failure line with the reason, the session is stopped with
+  `resume_at_start` 0, the other sessions are resumed, and at the container's next start
+  it is not named
+
+### Requirement: LADO restarts no worker at the container's start
+
+Workers SHALL NOT be restarted by LADO at the container's start: the
+supervisor's `session resumed` message names the open runs and the workers to start for
+them, as after `lado start`.
 
 #### Scenario: An open run's worker
 - **WHEN** a session with an open run whose step is a worker's is resumed at the start
@@ -660,24 +782,9 @@ Dockerfile's header SHALL say the same for `docker stop` and `docker start`.
 The image SHALL set `LADO_ENV_DIR=/run/secrets` for the UI server and `docker exec` (the
 processes that launch agents), so the agents get the variables of the files mounted there
 (capability agent-variables).
-- `docker/compose.yaml` SHALL bind the path `LADO_SECRETS` names read-only at
-  `/run/secrets`, by default `/dev/null`: no secrets, as for the ssh agent. It SHALL refuse
-  to start when a folder `LADO_SECRETS` names does not exist, rather than letting Docker
-  make it (`create_host_path: false`).
-- With no secrets (the null device at `/run/secrets`, or nothing mounted there, as with
-  `docker run` without the folder), the container SHALL say nothing about the folder in
-  `docker logs`, and `lado start` no warning about it; `lado doctor` says how to give
-  secrets (capability agent-variables).
 - No variable for the agents SHALL be set through compose's `environment:` or the image's
   `ENV`, and `LADO_AGENT_ENV=inherit` SHALL not be set, so no value is in `docker
   inspect`.
-- The headers SHALL say that the secrets folder is optional and is enabled by
-  `LADO_SECRETS=./secrets` in `.env` (compose) or `-v <folder>:/run/secrets:ro` (`docker
-  run`), to make the folder with mode 700 and to put one file per variable in it
-  (`GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, a kit's key such as `YOUGILE_API_KEY`, a model
-  provider's key). A new file reaches the agents started after it, with no restart. Each
-  LADO container has its own folder or none, and every agent of one container can read
-  every variable given to it.
 
 #### Scenario: A kit that needs a variable starts
 - **WHEN** a container runs with a folder holding `TEST_KIT_KEY` mounted at
@@ -687,13 +794,12 @@ processes that launch agents), so the agents get the variables of the files moun
   `TEST_KIT_KEY` with the file's value, and `docker inspect` of the container does not
   contain the value
 
-#### Scenario: compose without the folder
-- **WHEN** `docker compose up -d` runs in a folder with `compose.yaml` and `.env`, without
-  `secrets/` and without `LADO_SECRETS`
-- **THEN** the container starts, `lado doctor` exits 0 with `[info] Variables from
-  outside: /run/secrets: none` and no warning, `docker compose logs lado` has no line
-  about `/run/secrets` or `LADO_ENV_DIR`, and a session with the fake endpoint reaches
-  idle
+### Requirement: compose binds the secrets folder read-only, no folder by default
+
+`docker/compose.yaml` SHALL bind the path `LADO_SECRETS` names read-only at
+`/run/secrets`, by default `/dev/null`: no secrets, as for the ssh agent. It SHALL refuse
+to start when a folder `LADO_SECRETS` names does not exist, rather than letting Docker
+make it (`create_host_path: false`).
 
 #### Scenario: Secrets enabled by one line
 - **WHEN** `.env` has `LADO_SECRETS=./secrets`, the folder `secrets/` next to
@@ -705,14 +811,51 @@ processes that launch agents), so the agents get the variables of the files moun
 - **WHEN** `.env` has `LADO_SECRETS=./secrets` and there is no `secrets/`
 - **THEN** compose refuses to start and names the missing path, and no folder is made
 
+### Requirement: With no secrets the container says nothing about the folder
+
+With no secrets (the null device at `/run/secrets`, or nothing mounted there, as with
+`docker run` without the folder), the container SHALL say nothing about the folder in
+`docker logs`, and `lado start` no warning about it; `lado doctor` says how to give
+secrets (capability agent-variables).
+
+#### Scenario: compose without the folder
+- **WHEN** `docker compose up -d` runs in a folder with `compose.yaml` and `.env`, without
+  `secrets/` and without `LADO_SECRETS`
+- **THEN** the container starts, `lado doctor` exits 0 with `[info] Variables from
+  outside: /run/secrets: none` and no warning, `docker compose logs lado` has no line
+  about `/run/secrets` or `LADO_ENV_DIR`, and a session with the fake endpoint reaches
+  idle
+
+### Requirement: The headers say that the secrets folder is optional and how to enable it
+
+The headers SHALL say that the secrets folder is optional and is enabled by
+`LADO_SECRETS=./secrets` in `.env` (compose) or `-v <folder>:/run/secrets:ro` (`docker
+run`).
+
+#### Scenario: The headers on the secrets folder
+- **WHEN** the human reads the headers of `docker/compose.yaml` and `docker/Dockerfile`
+- **THEN** they say that the folder is optional, enabled by `LADO_SECRETS=./secrets` or
+  `-v <folder>:/run/secrets:ro`
+
+### Requirement: The headers say how to fill the secrets folder
+
+The headers SHALL say to make the secrets folder with mode 700 and to put one file per
+variable in it (`GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, a kit's key such as
+`YOUGILE_API_KEY`, a model provider's key). A new file reaches the agents started after
+it, with no restart. Each LADO container has its own folder or none, and every agent of
+one container can read every variable given to it.
+
+#### Scenario: The headers on the folder's files
+- **WHEN** the human reads the headers of `docker/compose.yaml` and `docker/Dockerfile`
+- **THEN** they say to make the folder with mode 700 and to put one file per variable in
+  it, such as `GH_TOKEN`
+
 ### Requirement: The container gives the agents the human's git identity
 
 At every start of the container, the entrypoint, running as `lado`, SHALL write
 `LADO_GIT_NAME` and `LADO_GIT_EMAIL`, when set and not empty, to `lado`'s global git
 config (`user.name`, `user.email`) on the home volume. A repository's own config still
-wins. When either is still missing from git's config after that, `docker logs` SHALL get
-one line: `lado: warning: git has no user.name or user.email: agents cannot commit; set
-LADO_GIT_NAME and LADO_GIT_EMAIL`. `docker/compose.yaml` SHALL pass both from `.env`, empty
+wins. `docker/compose.yaml` SHALL pass both from `.env`, empty
 by default.
 
 #### Scenario: An agent's commit
@@ -720,14 +863,20 @@ by default.
   LADO_GIT_EMAIL=ann@example.com` and an agent's shell commits in a worktree with no `-c`
 - **THEN** the commit's author and committer are `Ann Lee <ann@example.com>`
 
-#### Scenario: No identity
-- **WHEN** the container runs without either variable on a fresh home volume
-- **THEN** `docker logs` has the warning line, and the server starts
-
 #### Scenario: A later change
 - **WHEN** the container is made again with another `LADO_GIT_EMAIL` on the same home
   volume
 - **THEN** git's global `user.email` is the new one
+
+### Requirement: A container without the git identity warns in its log
+
+When `user.name` or `user.email` is still missing from git's config after the entrypoint wrote the identity, `docker logs` SHALL get
+one line: `lado: warning: git has no user.name or user.email: agents cannot commit; set
+LADO_GIT_NAME and LADO_GIT_EMAIL`.
+
+#### Scenario: No identity
+- **WHEN** the container runs without either variable on a fresh home volume
+- **THEN** `docker logs` has the warning line, and the server starts
 
 ### Requirement: git over https to GitHub uses gh's token
 
@@ -745,33 +894,22 @@ get that token for `https://github.com` with no prompt and no extra step.
 
 `docker/compose.yaml` SHALL bind the path that `LADO_SSH_AGENT` names (default
 `/dev/null`: no ssh agent) at `/run/lado/ssh-agent.sock`, refusing to start when that
-path does not exist. When that path in the container is a socket, the image SHALL set
-`SSH_AUTH_SOCK=/run/lado/ssh-agent.sock` for every login shell, so for every agent, and
-for the UI server, whose Clone from URL and branch listing run git over ssh: one rule,
-`docker/ssh-agent-env.sh` at `/etc/profile.d/lado-ssh-agent.sh`, which the entrypoint
-sources before the command, after the step below.
-
-At every start, the entrypoint SHALL check, as `lado`, whether `lado` can use the socket:
-- when it cannot and the socket belongs to uid 0, it SHALL run through `sudo` the image's
-  program `/usr/local/bin/lado-ssh-agent-socket`, which takes no argument and keeps no
-  variable of its caller (no `SETENV`). That program SHALL give that one path, only when
-  it is a socket that is no symbolic link and belongs to uid 0, to `lado`'s uid, keeping
-  its group.
-- when `lado` still cannot use it, `docker logs` SHALL get one line, `lado: warning: lado
-  (uid <uid>) cannot use the ssh agent socket of uid <owner>: <reason>`, and the server
-  SHALL start.
-
-The container SHALL need no `group_add`. The headers SHALL give `LADO_SSH_AGENT` for a
+path does not exist. The container SHALL need no `group_add`. The headers SHALL give `LADO_SSH_AGENT` for a
 Mac (`/run/host-services/ssh-auth.sock`, Docker Desktop's) and for Linux (the host's
 `$SSH_AUTH_SOCK`), and SHALL say that every agent of the container may then use the
 host's keys.
 
-#### Scenario: Docker Desktop's root-owned socket
-- **WHEN** an ssh agent holding a test key listens on a socket owned by uid 0 at
-  `/run/lado/ssh-agent.sock` (made by another container on a shared volume) and LADO's
-  container starts, or restarts
-- **THEN** `ssh-add -l` in an agent's login shell lists the test key, the UI server's
-  process has `SSH_AUTH_SOCK=/run/lado/ssh-agent.sock`, and `id -G` of `lado` has no 0
+#### Scenario: A missing ssh agent socket
+- **WHEN** `.env` has `LADO_SSH_AGENT=/run/missing.sock` and that path does not exist
+- **THEN** compose refuses to start and names the path
+
+### Requirement: The image gives the agents and the server the ssh agent's socket
+
+When the path `/run/lado/ssh-agent.sock` in the container is a socket, the image SHALL set
+`SSH_AUTH_SOCK=/run/lado/ssh-agent.sock` for every login shell, so for every agent, and
+for the UI server, whose Clone from URL and branch listing run git over ssh: one rule,
+`docker/ssh-agent-env.sh` at `/etc/profile.d/lado-ssh-agent.sh`, which the entrypoint
+sources before the command, after the entrypoint's check of the socket.
 
 #### Scenario: A Linux host's socket of the projects' owner
 - **WHEN** the socket belongs to the uid of the projects' owner, which `lado` takes
@@ -783,10 +921,37 @@ host's keys.
 - **THEN** agents and the UI server have no `SSH_AUTH_SOCK` from the image, and `docker
   logs` has no ssh line
 
+### Requirement: The entrypoint gives a root's socket to lado through one fixed program
+
+At every start, the entrypoint SHALL check, as `lado`, whether `lado` can use the socket:
+- when it cannot and the socket belongs to uid 0, it SHALL run through `sudo` the image's
+  program `/usr/local/bin/lado-ssh-agent-socket`, which takes no argument and keeps no
+  variable of its caller (no `SETENV`). That program SHALL give that one path, only when
+  it is a socket that is no symbolic link and belongs to uid 0, to `lado`'s uid, keeping
+  its group.
+
+#### Scenario: Docker Desktop's root-owned socket
+- **WHEN** an ssh agent holding a test key listens on a socket owned by uid 0 at
+  `/run/lado/ssh-agent.sock` (made by another container on a shared volume) and LADO's
+  container starts, or restarts
+- **THEN** `ssh-add -l` in an agent's login shell lists the test key, the UI server's
+  process has `SSH_AUTH_SOCK=/run/lado/ssh-agent.sock`, and `id -G` of `lado` has no 0
+
 #### Scenario: The rule gives no root
 - **WHEN** an agent runs `sudo -n /usr/local/bin/lado-ssh-agent-socket` with any variable
   or argument
 - **THEN** it can at most give that socket to `lado`, and `sudo -n true` fails
+
+### Requirement: An ssh agent's socket lado cannot use is a warning
+
+When `lado` still cannot use the ssh agent's socket after the entrypoint's check, `docker
+logs` SHALL get one line, `lado: warning: lado (uid <uid>) cannot use the ssh agent socket
+of uid <owner>: <reason>`, and the server SHALL start.
+
+#### Scenario: A socket of another user
+- **WHEN** the socket belongs to uid 1234, not 0, and `lado` (uid 1000) may not use it
+- **THEN** `docker logs` has `lado: warning: lado (uid 1000) cannot use the ssh agent
+  socket of uid 1234: <reason>`, and the server starts
 
 ### Requirement: The headers say how the agents log in and get access
 
@@ -796,20 +961,23 @@ The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL say:
   variable);
 - the git identity (`LADO_GIT_NAME`, `LADO_GIT_EMAIL`);
 - GitHub over https (`GH_TOKEN` in the folder, or `gh auth login` inside);
-- the ssh agent (`LADO_SSH_AGENT` for a Mac and for Linux);
-- the logins of the agent CLIs: Claude Code by `CLAUDE_CODE_OAUTH_TOKEN` (from `claude
-  setup-token`) in the folder or one login inside; OpenCode and Kilo by `opencode auth
-  login` and `kilo auth login` inside (kept on the home volume) or a model provider's key
-  in the folder. Codex's login is not covered.
-
-The first start's commands of both headers SHALL make no folder: the minimal start needs
-no secrets.
+- the ssh agent (`LADO_SSH_AGENT` for a Mac and for Linux).
 
 #### Scenario: The steps are in the headers
 - **WHEN** `tests/test_docker.py` reads the headers
 - **THEN** each names `secrets`, `LADO_GIT_NAME`, `LADO_GIT_EMAIL`, `GH_TOKEN`, `gh auth
   login`, `LADO_SSH_AGENT`, `CLAUDE_CODE_OAUTH_TOKEN`, `opencode auth login` and `kilo auth
   login`; compose's names `LADO_SECRETS=./secrets`
+
+### Requirement: The headers say how the agent CLIs log in, and the first start makes no folder
+
+The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL also say:
+- the logins of the agent CLIs: Claude Code by `CLAUDE_CODE_OAUTH_TOKEN` (from `claude
+  setup-token`) in the folder or one login inside; OpenCode and Kilo by `opencode auth
+  login` and `kilo auth login` inside (kept on the home volume) or a model provider's key
+  in the folder. Codex's login is not covered.
+The first start's commands of both headers SHALL make no folder: the minimal start needs
+no secrets.
 
 #### Scenario: The minimal start makes no folder
 - **WHEN** `tests/test_docker.py` reads the first start's commands of both headers
@@ -854,41 +1022,7 @@ docs/install.md SHALL have a section `Docker` that leads with compose: get `comp
 write `.env`, start, open the UI, the agents' variables (the optional `secrets/`, enabled
 by `LADO_SECRETS=./secrets` in `.env` and `mkdir -m 700 secrets`), log in to the agent
 CLIs, ssh, update and go back, a second LADO, the sessions, removal and the pitfalls;
-README's Install SHALL link to it. Its start, update and way-back commands SHALL be
-exactly those of `docker/compose.yaml`'s header, which the container tests run (the
-update's download is checked by its address, not run). Its `.env` SHALL name every
-variable compose reads but `LADO_IMAGE` and `LADO_SECRETS`. It SHALL remove only its own
-container and volume, by name, and nothing in the guide or the headers SHALL run a
-`docker ... prune`. The guide SHALL say to check `env | grep -E '^(LADO|COMPOSE)_'` and
-`unset` what the shell sets, since a shell's variable beats `.env`. Its "Your first
-session" SHALL say that Claude Code asks whether to trust a repository it has not seen
-before its first answer, that the agent waits in Needs you meanwhile, that the answer is
-"Yes, I trust this folder" in the agent's terminal while Enter alone answers "No, exit" and
-closes the agent, that it is asked once per repository and remembered on the home volume,
-and that a trusted repository's own Claude Code settings and MCP servers run; the two
-answers SHALL be quoted as LADO's own reason for that wait words them.
-
-README's Install and docs/install.md's opening SHALL present the two ways to install,
-Docker first and recommended, then PyPI, each with what it is for and what it needs; PyPI's
-differences by system (macOS, Linux, Windows inside WSL2) SHALL be named there too.
-README's Docker install SHALL start without `mkdir`, and SHALL first check the shell
-with `env | grep -E '^(LADO|COMPOSE)_'` and `unset`, as the guide does.
-
-#### Scenario: Two ways, Docker first
-- **WHEN** `tests/test_docker.py` reads README's Install and docs/install.md's opening
-- **THEN** each names Docker as recommended before PyPI, and docs/install.md's `## Docker`
-  comes before its systems' sections
-
-#### Scenario: The commands agree
-- **WHEN** `tests/test_docker.py` reads the guide's code blocks and the header
-- **THEN** the guide's start commands, its update (the version's `compose.yaml`, then
-  `docker compose up -d`) and its way back (`way_back()`) are the header's
-
-#### Scenario: Removal by name
-- **WHEN** the test reads the guide's removal
-- **THEN** it runs `docker compose down` and `docker volume rm` of the project's own
-  `home` volume, and README.md, docs/*.md and docker/ hold no `prune` (docs/research/ and
-  docs/superpowers/ are records, not read as instructions)
+README's Install SHALL link to it.
 
 #### Scenario: Secrets as a step of their own
 - **WHEN** `tests/test_docker.py` reads the guide's Docker section and README's Docker
@@ -896,16 +1030,77 @@ with `env | grep -E '^(LADO|COMPOSE)_'` and `unset`, as the guide does.
 - **THEN** neither start has `mkdir`, and the guide's "The agents' variables" has
   `LADO_SECRETS=./secrets` and `mkdir -m 700 secrets`
 
+### Requirement: The guide's commands are the compose header's
+
+The guide's start, update and way-back commands SHALL be
+exactly those of `docker/compose.yaml`'s header, which the container tests run (the
+update's download is checked by its address, not run). Its `.env` SHALL name every
+variable compose reads but `LADO_IMAGE` and `LADO_SECRETS`.
+
+#### Scenario: The commands agree
+- **WHEN** `tests/test_docker.py` reads the guide's code blocks and the header
+- **THEN** the guide's start commands, its update (the version's `compose.yaml`, then
+  `docker compose up -d`) and its way back (`way_back()`) are the header's
+
+### Requirement: The guide removes only its own container and volume
+
+The guide SHALL remove only its own
+container and volume, by name, and nothing in the guide or the headers SHALL run a
+`docker ... prune`.
+
+#### Scenario: Removal by name
+- **WHEN** the test reads the guide's removal
+- **THEN** it runs `docker compose down` and `docker volume rm` of the project's own
+  `home` volume, and README.md, docs/*.md and docker/ hold no `prune` (docs/research/ and
+  docs/superpowers/ are records, not read as instructions)
+
+### Requirement: The guide and README check the shell's variables first
+
+The guide SHALL say to check `env | grep -E '^(LADO|COMPOSE)_'` and
+`unset` what the shell sets, since a shell's variable beats `.env`. README's Docker install SHALL start without `mkdir`, and SHALL first check the shell
+with `env | grep -E '^(LADO|COMPOSE)_'` and `unset`, as the guide does.
+
 #### Scenario: README checks the shell first
 - **WHEN** `tests/test_docker.py` reads README's Docker install
 - **THEN** its commands have `env | grep -E '^(LADO|COMPOSE)_'` and an `unset` naming
   `LADO_VERSION` and `COMPOSE_PROJECT_NAME`, both before `docker compose up -d`
+
+### Requirement: The guide's first session names Claude Code's trust question
+
+The guide's "Your first session"
+SHALL say that Claude Code asks whether to trust a repository it has not seen
+before its first answer, that the agent waits in Needs you meanwhile, that the answer is
+"Yes, I trust this folder" in the agent's terminal while Enter alone answers "No, exit" and
+closes the agent, that it is asked once per repository and remembered on the home volume,
+and that a trusted repository's own Claude Code settings and MCP servers run.
+
+#### Scenario: The guide on the trust question
+- **WHEN** the human reads the guide's Docker "Your first session"
+- **THEN** it says that Claude Code asks once per repository whether to trust it, that the
+  agent waits in Needs you meanwhile, and that "Yes, I trust this folder" answers it while
+  Enter alone answers "No, exit" and closes the agent
+
+### Requirement: The guide quotes the trust answers as LADO's reason words them
+
+The guide's two answers to Claude Code's trust question SHALL be quoted as LADO's own
+reason for that wait words them.
 
 #### Scenario: The first session names Claude Code's trust question
 - **WHEN** `tests/test_docker.py` reads the guide's Docker "Your first session"
 - **THEN** it names Needs you and quotes "Yes, I trust this folder" and "No, exit", and
   each quoted answer is in the reason `ClaudeProvider.first_hook_blocker` gives for a folder
   Claude Code does not trust
+
+### Requirement: README and the guide present Docker first, then PyPI
+
+README's Install and docs/install.md's opening SHALL present the two ways to install,
+Docker first and recommended, then PyPI, each with what it is for and what it needs; PyPI's
+differences by system (macOS, Linux, Windows inside WSL2) SHALL be named there too.
+
+#### Scenario: Two ways, Docker first
+- **WHEN** `tests/test_docker.py` reads README's Install and docs/install.md's opening
+- **THEN** each names Docker as recommended before PyPI, and docs/install.md's `## Docker`
+  comes before its systems' sections
 
 ### Requirement: An update takes the version's compose.yaml
 
@@ -914,7 +1109,22 @@ Docker update SHALL update in this order, in the folder of `compose.yaml`: keep 
 the file (`cp compose.yaml compose.yaml.bak`), download that version's `compose.yaml` next
 to `.env` (`curl -fLO
 https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml`), set the new
-`LADO_VERSION` in `.env`, then `docker compose up -d`. They SHALL say that `.env`,
+`LADO_VERSION` in `.env`, then `docker compose up -d`.
+
+#### Scenario: The address is the release's asset
+- **WHEN** `tests/test_docker.py` reads the update's address and the release workflow's
+  `gh release create`
+- **THEN** the address's tag is `v` and the version, as `$GITHUB_REF_NAME` is, and its
+  file is the asset `compose.yaml`
+
+#### Scenario: README's update
+- **WHEN** `tests/test_docker.py` reads README's `## Update`, `### Docker`
+- **THEN** it downloads `releases/download/v<version>/compose.yaml` before `docker compose
+  up -d`
+
+### Requirement: An update says what stays and touches no other LADO
+
+The update's steps SHALL say that `.env`,
 `secrets/` and the home volume stay, that a change made to `compose.yaml` by hand must be
 carried over to the new file (`diff compose.yaml.bak compose.yaml` shows it), and that
 with several LADOs each is updated in its own folder with its own `.env`. Going back to
@@ -928,25 +1138,11 @@ LADO's folder, container or volume.
   names `LADO_VERSION` in `.env`, `diff compose.yaml.bak compose.yaml` and each LADO in
   its own folder
 
-#### Scenario: The address is the release's asset
-- **WHEN** `tests/test_docker.py` reads the update's address and the release workflow's
-  `gh release create`
-- **THEN** the address's tag is `v` and the version, as `$GITHUB_REF_NAME` is, and its
-  file is the asset `compose.yaml`
-
-#### Scenario: README's update
-- **WHEN** `tests/test_docker.py` reads README's `## Update`, `### Docker`
-- **THEN** it downloads `releases/download/v<version>/compose.yaml` before `docker compose
-  up -d`
-
 ### Requirement: The image carries mise with its data on the home volume
 
 The image SHALL carry mise at `/usr/local/bin/mise`, owned by root, copied from mise's
 official image pinned by digest, and SHALL keep mise's data, config and cache at its
-defaults under `/home/lado`, on the home volume. Its system config
-`/etc/mise/config.toml`, from `docker/mise.toml`, SHALL enable the version files of Go,
-Java, Python and Ruby besides `.tool-versions` and `mise.toml`, and no other tool's. A
-project's `mise.toml` under `LADO_REPOS` SHALL be trusted without `mise trust`. The user
+defaults under `/home/lado`, on the home volume. The user
 `lado` SHALL install a tool through mise without root, and the tool SHALL still run after
 the container is made again on the same home volume.
 
@@ -968,16 +1164,23 @@ the container is made again on the same home volume.
 - **WHEN** two login shells run `mise install go@<version>` at the same time
 - **THEN** both succeed and that version is installed once
 
+#### Scenario: An unpinned mise
+
+- **WHEN** `docker/Dockerfile` takes mise from an image named without `@sha256:`
+- **THEN** the unit tests fail and name its line
+
+### Requirement: mise reads the projects' version files and trusts their mise.toml
+
+The image's mise system config
+`/etc/mise/config.toml`, from `docker/mise.toml`, SHALL enable the version files of Go,
+Java, Python and Ruby besides `.tool-versions` and `mise.toml`, and no other tool's. A
+project's `mise.toml` under `LADO_REPOS` SHALL be trusted without `mise trust`.
+
 #### Scenario: A project's mise.toml needs no trust
 
 - **WHEN** a project under `LADO_REPOS` holds a `mise.toml` naming a tool and a login
   shell runs `mise install` there
 - **THEN** mise installs it and does not refuse the file as not trusted
-
-#### Scenario: An unpinned mise
-
-- **WHEN** `docker/Dockerfile` takes mise from an image named without `@sha256:`
-- **THEN** the unit tests fail and name its line
 
 ### Requirement: The image carries the build tools
 
@@ -1023,15 +1226,19 @@ agent, on every provider, a paragraph saying that mise is there: a tool the proj
 and lacks is installed with mise, by the project's version files when they name it, and
 otherwise by tool and version and run with `mise exec`; no version file or other file is
 added to the project unless the human asks; apt packages and databases cannot be
-installed. The supervisor's paragraph SHALL say that only it sets a tool's container-wide
-default version (`mise use -g`); a worker's SHALL say to ask the supervisor for one.
-Outside a container the paragraph SHALL be absent.
+installed.
 
 #### Scenario: A worker in a container
 
 - **WHEN** LADO runs with `LADO_CONTAINER=1` and starts a worker
 - **THEN** the worker's instructions hold the mise paragraph with the sentence to ask the
   supervisor for a default version, and not the supervisor's sentence
+
+### Requirement: Only the supervisor sets a tool's default version, and only in a container
+
+The supervisor's mise paragraph SHALL say that only it sets a tool's container-wide
+default version (`mise use -g`); a worker's SHALL say to ask the supervisor for one.
+Outside a container the paragraph SHALL be absent.
 
 #### Scenario: The supervisor in a container
 

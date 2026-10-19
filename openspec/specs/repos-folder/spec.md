@@ -30,12 +30,7 @@ and out of a container.
 When `LADO_REPOS` is set and not empty, `lado doctor` SHALL print a check
 `Repositories folder`: `ok` with `<path> (LADO_REPOS)` for a folder LADO may write in,
 `info` with `<path> (LADO_REPOS), not made yet: the first clone makes it` for a missing
-path, `warn` for a value that is not absolute, a path that is not a folder (`LADO_REPOS is
-not a folder: <path>`), one LADO may not look at (`cannot look at LADO_REPOS <path>:
-<reason>`) or a folder LADO may not write in (`LADO may not write in LADO_REPOS <path>:
-<reason>`). Whether LADO may write SHALL be found by making a new hidden file in the
-folder and removing it at once, never by its owner and mode bits alone, which a bind mount
-of Docker Desktop shows wrong. When it is unset or empty, `lado doctor` SHALL print no
+path. When it is unset or empty, `lado doctor` SHALL print no
 such line.
 
 #### Scenario: The image's folder
@@ -45,6 +40,24 @@ such line.
 #### Scenario: Unset
 - **WHEN** `lado doctor` runs without `LADO_REPOS`
 - **THEN** it prints no Repositories folder line
+
+### Requirement: lado doctor warns about a repositories folder LADO cannot use
+
+The check `Repositories folder` SHALL be `warn` for a value that is not absolute, a path that is not a folder (`LADO_REPOS is
+not a folder: <path>`), one LADO may not look at (`cannot look at LADO_REPOS <path>:
+<reason>`) or a folder LADO may not write in (`LADO may not write in LADO_REPOS <path>:
+<reason>`).
+
+#### Scenario: A file instead of a folder
+- **WHEN** `lado doctor` runs with `LADO_REPOS=/Users/me/notes`, a regular file
+- **THEN** it prints `[warn] Repositories folder: LADO_REPOS is not a folder:
+  /Users/me/notes`
+
+### Requirement: Whether LADO may write in the repositories folder is found by trying
+
+Whether LADO may write in the repositories folder SHALL be found by making a new hidden file in the
+folder and removing it at once, never by its owner and mode bits alone, which a bind mount
+of Docker Desktop shows wrong.
 
 #### Scenario: A folder LADO may not write in
 - **WHEN** `lado doctor` runs with `LADO_REPOS` a folder where LADO cannot make a file
@@ -56,12 +69,7 @@ such line.
 The server SHALL answer `GET /api/repos-folder` with `{path}`, the repositories folder or
 null. With a folder, the New session window's **Where** field, while empty, SHALL suggest
 that folder's subfolders when it has the focus, and picking one SHALL put its full path
-(`<folder>/<name>`) in the field; its placeholder SHALL be `<folder>/…`; under it a row
-`Repositories folder:` SHALL show the folder as a button that puts `<folder>/` into the
-field and gives the field the focus, before the recent folders and hidden in Resume, as
-they are. The field SHALL stay empty when the window opens, with no folder check until the
-human types or picks; the repositories folder itself (with or without its last `/`) is not
-checked either, as it is no session's folder. **Clone
+(`<folder>/<name>`) in the field; its placeholder SHALL be `<folder>/…`. **Clone
 into**'s placeholder SHALL be `<folder>/<repo>`. Without a folder the window SHALL be as
 before.
 
@@ -71,30 +79,32 @@ before.
 - **THEN** the list shows `api/`, `app/`, `site/`, and picking `app/` puts
   `/Users/me/repos/app` into Where, which is checked as any folder
 
-#### Scenario: The button
-- **WHEN** the human clicks `/Users/me/repos` in the Repositories folder row
-- **THEN** Where reads `/Users/me/repos/`, has the focus and lists its subfolders, with no
-  folder check under it; leaving the field closes the list
-
 #### Scenario: Without the variable
 - **WHEN** the server runs without `LADO_REPOS`
 - **THEN** `GET /api/repos-folder` gives `{"path": null}`, and the window has the
   placeholder `~/projects/app`, no Repositories folder row, and suggests nothing for an
   empty field
 
+### Requirement: The Repositories folder row puts the folder into Where
+
+With a folder, under the **Where** field a row
+`Repositories folder:` SHALL show the folder as a button that puts `<folder>/` into the
+field and gives the field the focus, before the recent folders and hidden in Resume, as
+they are. The field SHALL stay empty when the window opens, with no folder check until the
+human types or picks; the repositories folder itself (with or without its last `/`) is not
+checked either, as it is no session's folder.
+
+#### Scenario: The button
+- **WHEN** the human clicks `/Users/me/repos` in the Repositories folder row
+- **THEN** Where reads `/Users/me/repos/`, has the focus and lists its subfolders, with no
+  folder check under it; leaving the field closes the list
+
 ### Requirement: In a container LADO warns about a session folder outside LADO_REPOS
 
 In a container (`LADO_CONTAINER`), with a repositories folder (`LADO_REPOS`), LADO SHALL
 warn about a session folder whose real path is not the repositories folder's real path or
 below it. The warning is `Outside the repositories folder (<folder>): this folder is only
-in the container, your computer does not see it or the agents' work in it`. One function
-(`runtime.outside_repos`) SHALL give it, or None:
-- for the UI's folder check, as `FolderInfo.warning`, shown under **Where** after the
-  check mark;
-- for the clone's target, as `CloneTarget.warning`, shown under **Clone into**;
-- for a start and a resume, among its warnings: `lado start` on stderr, `Started.warnings`
-  in the UI, the result of the supervisor's `start_session`.
-It SHALL never refuse a folder: the check mark and Start stay as they are. Outside a
+in the container, your computer does not see it or the agents' work in it`. Outside a
 container, or without a repositories folder, there SHALL be no warning.
 
 #### Scenario: A folder on the home volume
@@ -112,11 +122,22 @@ container, or without a repositories folder, there SHALL be no warning.
 - **WHEN** the folder is a symbolic link whose real path is below the repositories folder
 - **THEN** no warning shows
 
-#### Scenario: A start outside it
-- **WHEN** in that container `lado start /home/lado/app` starts a session
-- **THEN** stderr has the warning, and the session runs
-
 #### Scenario: Outside a container
 - **WHEN** LADO runs without `LADO_CONTAINER` and with `LADO_REPOS=/Users/ann/projects`,
   and the human types `/tmp/app`
 - **THEN** no warning shows
+
+### Requirement: One function gives the warning about a folder outside LADO_REPOS
+
+One function
+(`runtime.outside_repos`) SHALL give that warning, or None:
+- for the UI's folder check, as `FolderInfo.warning`, shown under **Where** after the
+  check mark;
+- for the clone's target, as `CloneTarget.warning`, shown under **Clone into**;
+- for a start and a resume, among its warnings: `lado start` on stderr, `Started.warnings`
+  in the UI, the result of the supervisor's `start_session`.
+It SHALL never refuse a folder: the check mark and Start stay as they are.
+
+#### Scenario: A start outside it
+- **WHEN** in that container `lado start /home/lado/app` starts a session
+- **THEN** stderr has the warning, and the session runs

@@ -15,15 +15,19 @@ sessions of this `LADO_HOME` it stops (by name, with the tmux socket it sees), e
 repository with the worktrees and branches it removes and those it keeps, the `LADO_HOME`
 folder it deletes with its size, the program and the command that removes it (or why it
 keeps it), and one line naming what it leaves by design (the agent CLIs' own records,
-see `docs/install.md`). Then it SHALL ask `Uninstall? [y/N]`; only `y` or `yes` goes on.
-`--yes` SHALL skip the question; without a terminal on stdin and without `--yes` it SHALL
-refuse with exit 1. `--dry-run` SHALL print the plan and exit 0 without asking or changing
-anything.
+see `docs/install.md`).
 
 #### Scenario: Dry run
 - **WHEN** the human runs `lado uninstall --dry-run` with a session running
 - **THEN** the plan names the session, its repository and `~/.lado`, the exit code is 0,
   and the session, its worktrees, `~/.lado` and the program are as before
+
+### Requirement: lado uninstall asks before it changes anything
+
+After its plan `lado uninstall` SHALL ask `Uninstall? [y/N]`; only `y` or `yes` goes on.
+`--yes` SHALL skip the question; without a terminal on stdin and without `--yes` it SHALL
+refuse with exit 1. `--dry-run` SHALL print the plan and exit 0 without asking or changing
+anything.
 
 #### Scenario: Not confirmed
 - **WHEN** the human answers `n`, or presses Enter, at `Uninstall? [y/N]`
@@ -58,9 +62,7 @@ started meanwhile is refused. A `lado.db` of an older schema SHALL be migrated a
 
 After confirmation `lado uninstall` SHALL stop the UI server of this `LADO_HOME`, stop
 every session not stopped yet as `lado stop --all` does, wait for each session's loop to
-end, and close this `LADO_HOME`'s terminal viewers. When no tmux session is left on LADO's
-socket, it SHALL end that tmux server; when sessions of another `LADO_HOME` remain there,
-it SHALL keep the server and name them. A loop that does not end SHALL stop the uninstall
+end, and close this `LADO_HOME`'s terminal viewers. A loop that does not end SHALL stop the uninstall
 before any repository or file is touched, saying so, with exit 1.
 
 #### Scenario: A running session and the UI server
@@ -68,6 +70,12 @@ before any repository or file is touched, saying so, with exit 1.
   human confirms the uninstall
 - **THEN** no agent process, session loop or UI server of this `LADO_HOME` is left, and
   LADO's tmux server has ended
+
+### Requirement: The uninstall ends LADO's tmux server only when no session is left
+
+When no tmux session is left on LADO's
+socket, `lado uninstall` SHALL end that tmux server; when sessions of another `LADO_HOME` remain there,
+it SHALL keep the server and name them.
 
 #### Scenario: Another LADO_HOME on the same socket
 - **WHEN** a session of another `LADO_HOME` runs on the same tmux socket
@@ -81,15 +89,19 @@ SHALL remove each worktree under `.lado/worktrees/<session>/` and each branch
 `lado/<session>/<name>` of those sessions by `lado finish`'s rule: merged into the
 repository's current branch and with nothing uncommitted, it is removed (the worktree,
 then the branch); otherwise both SHALL be kept and listed with the git commands that
-remove them. When `.lado/worktrees` holds nothing afterwards, it SHALL remove that folder
-and the `/.lado/worktrees/` line of `.git/info/exclude`; it SHALL never remove or change
-any other file under `.lado/`. A repository that is gone or that git cannot read SHALL be
-named and passed over.
+remove them.
 
 #### Scenario: Merged and unmerged workers
 - **WHEN** a repository has a merged clean worker `dev` and an unmerged worker `rev`
 - **THEN** `dev`'s worktree and branch are gone, `rev`'s stay, and the output lists `rev`'s
   worktree and branch with `git worktree remove --force <path>` and `git branch -D <branch>`
+
+### Requirement: The uninstall touches nothing else of a repository
+
+When `.lado/worktrees` holds nothing after the worktrees' removal, `lado uninstall` SHALL remove that folder
+and the `/.lado/worktrees/` line of `.git/info/exclude`; it SHALL never remove or change
+any other file under `.lado/`. A repository that is gone or that git cannot read SHALL be
+named and passed over.
 
 #### Scenario: The project's own files stay
 - **WHEN** the repository has `.lado/sdlc.md` and every worktree was removed
@@ -124,10 +136,7 @@ be named as kept, with exit 1. A file it cannot delete SHALL be named, with exit
 When `LADO_HOME` is the default `~/.lado`, `lado uninstall` SHALL, as its last step,
 remove the program with the tool that installed it: `uv tool uninstall lado` for a uv tool
 install (a `uv-receipt.toml` in its prefix), `pipx uninstall lado<suffix>` for a pipx one
-(`pipx_metadata.json`), whatever source either installed from. Installed otherwise (pip in
-an environment, a working copy run with `uv run`), it SHALL keep the program and print
-where it runs from and how to remove it. With another `LADO_HOME` it SHALL keep the
-program and print the command that removes it, since `~/.lado` may still use it. Nothing
+(`pipx_metadata.json`), whatever source either installed from. Nothing
 SHALL be imported after the remover started. A remover that fails SHALL be named with its
 exit code and the command to run by hand, with exit 1.
 
@@ -135,6 +144,13 @@ exit code and the command to run by hand, with exit 1.
 - **WHEN** LADO was installed with `uv tool install lado` and the uninstall of `~/.lado` is
   confirmed
 - **THEN** `uv tool uninstall lado` runs last, and `lado` is no longer on the PATH
+
+### Requirement: Otherwise the uninstall keeps the program and says how to remove it
+
+Installed otherwise than with uv tool or pipx (pip in
+an environment, a working copy run with `uv run`), `lado uninstall` SHALL keep the program and print
+where it runs from and how to remove it. With another `LADO_HOME` it SHALL keep the
+program and print the command that removes it, since `~/.lado` may still use it.
 
 #### Scenario: Another LADO_HOME
 - **WHEN** `LADO_HOME=/tmp/try lado uninstall --yes` runs

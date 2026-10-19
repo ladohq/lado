@@ -55,8 +55,7 @@ start (`scratch.author_problem`, git's `user.name` and `user.email` outside any
 repository): `OK` with `user.name and user.email set` when both are, `WARN` with `no
 user.name or user.email: agents cannot commit` and the fresh start's hint (in LADO's
 container the `.env` one, elsewhere the `git config --global` one) otherwise, and no line
-when git itself does not run (the `git` check says why). It SHALL never print the name or
-the email, and the check SHALL NOT change the exit status.
+when git itself does not run (the `git` check says why).
 
 #### Scenario: A machine whose git knows the author
 - **WHEN** git's global config has `user.name` and `user.email`
@@ -67,3 +66,14 @@ the email, and the check SHALL NOT change the exit status.
 - **THEN** `lado doctor` prints `[warn] git author: no user.name or user.email: agents
   cannot commit` with the `git config --global` command, and its exit status is that of
   the other checks
+
+### Requirement: The git author check names no one and keeps the exit status
+
+The `git author` check SHALL never print the name or the email, and the check SHALL NOT
+change the exit status.
+
+#### Scenario: The author stays out of the output
+- **WHEN** git's global config has `user.name` `Ann Lee` and `user.email`
+  `ann@example.com`
+- **THEN** no line of `lado doctor` holds `Ann Lee` or `ann@example.com`, and the exit
+  status is that of the other checks

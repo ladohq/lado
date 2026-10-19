@@ -36,17 +36,11 @@ it.
 
 ### Requirement: On a phone the rail opens as a menu
 
-In the phone layout the rail SHALL not be shown. The top bar SHALL start with a Menu
-button (three lines, accessible name "Menu", or "Menu, N waiting" while N things wait for
-the human) that shows the Needs you count as a badge while it is not zero. Menu SHALL open
+In the phone layout the rail SHALL not be shown. Menu SHALL open
 the rail over the page from the left, with each section's icon and name, the Needs you
 count, Launch, Report a bug and Settings, and dim the rest of the page. Choosing an item,
 a tap on the dimmed page, or Esc SHALL close it; on closing the focus SHALL go back to
 Menu.
-
-#### Scenario: Two things wait
-- **WHEN** a gate and a question wait and the human looks at the top bar on a phone
-- **THEN** Menu shows the badge 2 and is named "Menu, 2 waiting"
 
 #### Scenario: Going to Kits
 - **WHEN** the human taps Menu, then Kits
@@ -56,15 +50,23 @@ Menu.
 - **WHEN** the menu is open and the human taps the dimmed page
 - **THEN** the menu closes and the page under it is as it was
 
+### Requirement: On a phone the top bar starts with Menu and its count
+
+In the phone layout the top bar SHALL start with a Menu
+button (three lines, accessible name "Menu", or "Menu, N waiting" while N things wait for
+the human) that shows the Needs you count as a badge while it is not zero.
+
+#### Scenario: Two things wait
+- **WHEN** a gate and a question wait and the human looks at the top bar on a phone
+- **THEN** Menu shows the badge 2 and is named "Menu, 2 waiting"
+
 ### Requirement: On a phone the top bar is one line
 
 In the phone layout the top bar SHALL be one line no higher than 52 px upright and 44 px
 sideways, and SHALL not wrap. On a session's page it SHALL hold, left to right: Menu, the
 session's status dot, the session's title (or name) as a button that opens the session's
 details, cut with "…" when long, the change feed's mark and Stop session. On another page
-it SHALL hold Menu and the page's title. The change feed's mark SHALL be a dot while the
-feed is live and the word "reconnecting…" while it is not, and SHALL open the system panel
-as before; a newer LADO's `↑ X.Y.Z` SHALL stay beside it.
+it SHALL hold Menu and the page's title.
 
 #### Scenario: A session's page upright
 - **WHEN** the human opens session lad-95 on a phone 390 px wide
@@ -74,6 +76,12 @@ as before; a newer LADO's `↑ X.Y.Z` SHALL stay beside it.
 #### Scenario: A long title
 - **WHEN** the session's title is longer than the room left
 - **THEN** it is cut with "…" and the line does not wrap
+
+### Requirement: On a phone the change feed's mark is a dot or a word
+
+In the phone layout the change feed's mark SHALL be a dot while the
+feed is live and the word "reconnecting…" while it is not, and SHALL open the system panel
+as before; a newer LADO's `↑ X.Y.Z` SHALL stay beside it.
 
 #### Scenario: The feed is lost
 - **WHEN** the change feed reconnects
@@ -85,13 +93,18 @@ In the phone layout a tap on the session's name in the top bar SHALL open a shee
 page's bottom, named by the session, with: the status and the run time; the whole folder
 (wrapped, never cut) with Copy path; git (the remote, the branch) as the head shows it on a
 computer; the kits, each with its version; the CLI with its version and permission mode;
-and the buttons Rename, Copy link and All sessions. Rename SHALL edit the title as the
-pencil does on a computer. A tap outside the sheet, Esc or its close button SHALL close it.
+and the buttons Rename, Copy link and All sessions. A tap outside the sheet, Esc or its
+close button SHALL close it.
 
 #### Scenario: The whole folder
 - **WHEN** the session's folder is `/Users/kao/Projects/lado/.lado/worktrees/lad-95/task-lad-95`
   and the human taps the session's name
 - **THEN** the sheet shows the whole path, wrapped, and Copy path copies it
+
+### Requirement: On a phone Rename in the session's details edits the title
+
+In the phone layout Rename in the session's details SHALL edit the title as the
+pencil does on a computer.
 
 #### Scenario: Rename from the sheet
 - **WHEN** the human taps Rename in the sheet, types "Phone layout" and confirms
@@ -125,14 +138,18 @@ In the phone layout the window SHALL not scroll as a page; each page's content S
 scroll by itself under the top bar, as on a computer's wide window. In a session's chat
 the feed SHALL scroll by itself, and the waiting card and the composer SHALL stay at the
 chat's bottom; the card SHALL be at most half the chat's height, its list scrolling
-inside. The composer's text SHALL be at least 16 px, and its keys hint ("Enter to send ·
-Shift+Enter …") SHALL not be shown on a touch screen. When the on-screen keyboard opens,
+inside. When the on-screen keyboard opens,
 the composer SHALL stay above it.
 
 #### Scenario: Writing with a gate waiting
 - **WHEN** a gate waits and the human opens the session's chat on a phone 390×844
 - **THEN** the composer is at the screen's bottom without scrolling, the card above it is
   at most half the chat's height, and the feed above scrolls by itself
+
+### Requirement: On a phone the composer's text is large and shows no keys hint
+
+In the phone layout the composer's text SHALL be at least 16 px, and its keys hint ("Enter to send ·
+Shift+Enter …") SHALL not be shown on a touch screen.
 
 #### Scenario: No keys hint
 - **WHEN** the chat is shown on a touch screen

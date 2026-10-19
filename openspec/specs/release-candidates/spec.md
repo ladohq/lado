@@ -15,22 +15,26 @@ offered only final releases: `update.check` (the daily check behind `lado ls`,
 `lado doctor`, `GET /api/update` and the System panel), `lado update` without a version
 and the UI's update plan (`GET /api/update/plan`) SHALL take the newest release of PyPI's
 index that is no pre-release and not wholly yanked, and offer it only when it is newer
-than this LADO. A pre-release SHALL be installed only when its version is named
-(`lado update X.Y.ZrcN`).
+than this LADO.
 
 #### Scenario: A newer release candidate is not offered to a final release
 - **WHEN** LADO 0.36.0 runs and PyPI's index holds 0.36.0 and 0.37.0rc1
 - **THEN** `update.check` finds 0.36.0, nothing is available, `lado update` prints
   `LADO 0.36.0 is the latest version.`, and the System panel shows no Update block
 
+#### Scenario: A newer final release is offered
+- **WHEN** LADO 0.36.0 runs and PyPI's index holds 0.37.0rc1 and 0.37.0
+- **THEN** 0.37.0 is available
+
+### Requirement: A pre-release is installed only when its version is named
+
+A LADO whose own version is a final release SHALL install a pre-release only when its
+version is named (`lado update X.Y.ZrcN`).
+
 #### Scenario: A named release candidate is installed
 - **WHEN** LADO 0.36.0 runs `lado update 0.37.0rc1` and PyPI has 0.37.0rc1
 - **THEN** the plan is `LADO 0.36.0 -> 0.37.0rc1` and the update installs it as any
   named version
-
-#### Scenario: A newer final release is offered
-- **WHEN** LADO 0.36.0 runs and PyPI's index holds 0.37.0rc1 and 0.37.0
-- **THEN** 0.37.0 is available
 
 ### Requirement: A pre-release is offered newer pre-releases
 
@@ -82,13 +86,25 @@ show none of them.
 The Release workflow SHALL run `scripts/release_check.py <tag>` with the repository's full
 history before it builds, and SHALL publish nothing when it fails. For a final tag
 `vX.Y.Z` the check SHALL fail when Z is 0 and no tag `vX.Y.ZrcN` exists (`vX.Y.0 needs a
-release candidate: tag vX.Y.0rc1 first`), and, when such tags exist, SHALL compare the
-final tag's commit with the commit of the RC tag of the highest N and fail when a file
+release candidate: tag vX.Y.0rc1 first`). A pre-release tag and a patch tag without RC
+tags SHALL pass.
+
+#### Scenario: A minor release without a release candidate
+- **WHEN** `v0.38.0` is pushed and no tag `v0.38.0rcN` exists
+- **THEN** the check fails with `v0.38.0 needs a release candidate: tag v0.38.0rc1 first`
+
+#### Scenario: A patch release without a release candidate
+- **WHEN** `v0.37.1` is pushed and no tag `v0.37.1rcN` exists
+- **THEN** the check passes
+
+### Requirement: A final tag differs from its last release candidate only in its version
+
+For a final tag `vX.Y.Z` with tags `vX.Y.ZrcN`, the check SHALL
+compare the final tag's commit with the commit of the RC tag of the highest N and fail when a file
 other than `CHANGELOG.md`, `pyproject.toml` and `uv.lock` differs, a changed line of
 `pyproject.toml` is not a `version = "…"` line, or a changed line of `uv.lock` is not
 the `version = "…"` line of the `lado` package's own block (a dependency's version is
-refused), naming each such file or line. A pre-release tag and a patch tag without RC
-tags SHALL pass.
+refused), naming each such file or line.
 
 #### Scenario: A final release after its release candidate
 - **WHEN** `v0.37.0` points to a commit that differs from `v0.37.0rc2`'s only in
@@ -105,35 +121,14 @@ tags SHALL pass.
   `lado` in uv.lock against `v0.37.0rc2`
 - **THEN** the check fails naming that line, and nothing is published
 
-#### Scenario: A minor release without a release candidate
-- **WHEN** `v0.38.0` is pushed and no tag `v0.38.0rcN` exists
-- **THEN** the check fails with `v0.38.0 needs a release candidate: tag v0.38.0rc1 first`
-
-#### Scenario: A patch release without a release candidate
-- **WHEN** `v0.37.1` is pushed and no tag `v0.37.1rcN` exists
-- **THEN** the check passes
-
 ### Requirement: A release candidate is checked in a scratch install
 
 `python3 scripts/rc_check.py sandbox [VERSION]` SHALL install the release candidate
 `VERSION` (by default the newest release in PyPI's index; when that is a final release it
 SHALL refuse, exit 2, asking for the RC's version) with `uv tool install` into a new
 temporary folder, and run every LADO process of it with `LADO_HOME`, `LADO_TMUX_SOCKET`,
-`UV_TOOL_DIR` and `UV_TOOL_BIN_DIR` inside that folder and `LADO_TELEMETRY=0`. It SHALL
-check, printing one `[ok  ]` or `[FAIL]` line each: that the installed `lado --version`
-is `VERSION`; that `lado telemetry status` says statistics are off; that `lado doctor`
-exits 0 and names `VERSION (pre-release)`; that `lado start` of a scratch git repository
-with one commit (provider `claude`, or `--provider`) exits 0 and `lado ls` shows its
-session; then, unless `--no-ui`, it SHALL start the sandbox's UI, print its link and wait
-for Enter; then that `lado stop` of the session exits 0 and `lado uninstall --yes` of the
-sandbox exits 0 and leaves no `LADO_HOME` and no tmux server on its socket. It SHALL then
-remove the folder and exit 0. It SHALL never read or change the human's own `LADO_HOME`.
-
-#### Scenario: A good release candidate
-- **WHEN** the human runs `python3 scripts/rc_check.py sandbox 0.38.0rc1 --no-ui` and
-  every check passes
-- **THEN** each check prints `[ok  ]`, the temporary folder, its LADO home and its tmux
-  server are gone, the script prints the checklist of what is left by hand and exits 0
+`UV_TOOL_DIR` and `UV_TOOL_BIN_DIR` inside that folder and `LADO_TELEMETRY=0`. It SHALL never read or change the human's own
+`LADO_HOME`.
 
 #### Scenario: Statistics stay off in the scratch install
 - **WHEN** the sandbox runs any LADO command
@@ -146,10 +141,33 @@ remove the folder and exit 0. It SHALL never read or change the human's own `LAD
 - **THEN** the script installs nothing and exits 2 saying that 0.38.0 is a final release
   and to name the RC to check
 
+### Requirement: The sandbox checks the release candidate's version, statistics and doctor
+
+The sandbox SHALL
+check, printing one `[ok  ]` or `[FAIL]` line each: that the installed `lado --version`
+is `VERSION`; that `lado telemetry status` says statistics are off; that `lado doctor`
+exits 0 and names `VERSION (pre-release)`.
+
 #### Scenario: A failed check keeps the sandbox
 - **WHEN** `lado doctor` of the RC reports a FAIL
 - **THEN** that check prints `[FAIL]` with the reason, no later check runs, the folder is
   kept, the script prints its path and one command that stops and removes it, and exits 1
+
+### Requirement: The sandbox starts and stops a session and uninstalls itself
+
+After those checks the sandbox SHALL check, with one such line each:
+that `lado start` of a scratch git repository
+with one commit (provider `claude`, or `--provider`) exits 0 and `lado ls` shows its
+session; then, unless `--no-ui`, it SHALL start the sandbox's UI, print its link and wait
+for Enter; then that `lado stop` of the session exits 0 and `lado uninstall --yes` of the
+sandbox exits 0 and leaves no `LADO_HOME` and no tmux server on its socket. It SHALL
+then remove the folder and exit 0.
+
+#### Scenario: A good release candidate
+- **WHEN** the human runs `python3 scripts/rc_check.py sandbox 0.38.0rc1 --no-ui` and
+  every check passes
+- **THEN** each check prints `[ok  ]`, the temporary folder, its LADO home and its tmux
+  server are gone, the script prints the checklist of what is left by hand and exits 0
 
 #### Scenario: Ctrl-C removes the sandbox
 - **WHEN** the human presses Ctrl-C while the sandbox's UI waits for Enter
@@ -159,15 +177,11 @@ remove the folder and exit 0. It SHALL never read or change the human's own `LAD
 ### Requirement: Moving onto a release candidate keeps the final's database
 
 `python3 scripts/rc_check.py upgrade VERSION` SHALL run the human's own `lado update
-VERSION` on the terminal, without `--yes`, then read `lado --version`. When that is not
-`VERSION`, it SHALL keep nothing and exit with the update's exit code (1 when that was 0).
-When it is `VERSION`, it SHALL keep the copy below also when the update exited non-zero
-(an update that installed the RC exits 1 when a session did not resume on it), and then
-exit with that code, saying that LADO is on `VERSION` now.
+VERSION` on the terminal, without `--yes`, then read `lado --version`.
 When the LADO it updated was a final release and `~/.lado/backups/lado.db.<final>` exists
 (under `LADO_HOME` when set), it SHALL copy that file to `~/.lado-rc/lado.db.<final>` and
 remove every other file of `~/.lado-rc/`; when the LADO it updated was a pre-release, it
-SHALL leave `~/.lado-rc/` as it is. It SHALL refuse inside an agent (`LADO_AGENT` set).
+SHALL leave `~/.lado-rc/` as it is.
 
 #### Scenario: The first release candidate of a cycle
 - **WHEN** LADO 0.37.1 runs and the human runs `python3 scripts/rc_check.py upgrade
@@ -179,6 +193,15 @@ SHALL leave `~/.lado-rc/` as it is. It SHALL refuse inside an agent (`LADO_AGENT
 - **WHEN** LADO 0.38.0rc1 runs and the human runs `upgrade 0.38.0rc2`
 - **THEN** `~/.lado-rc/lado.db.0.37.1` stays as it was, although `lado update` replaced
   its own backup with `lado.db.0.38.0rc1`
+
+### Requirement: upgrade keeps the copy only when the release candidate is installed
+
+When the `lado --version` that `upgrade` reads is not
+`VERSION`, it SHALL keep nothing and exit with the update's exit code (1 when that was 0).
+When it is `VERSION`, it SHALL keep the copy also when the update exited non-zero
+(an update that installed the RC exits 1 when a session did not resume on it), and then
+exit with that code, saying that LADO is on `VERSION` now. It SHALL refuse inside an agent
+(`LADO_AGENT` set).
 
 #### Scenario: The RC is installed but a session did not resume
 - **WHEN** LADO 0.37.1 runs, the human runs `upgrade 0.38.0rc1`, and `lado update`
@@ -194,18 +217,35 @@ SHALL leave `~/.lado-rc/` as it is. It SHALL refuse inside an agent (`LADO_AGENT
 ### Requirement: Going back from a release candidate
 
 `python3 scripts/rc_check.py rollback` SHALL go back to the final release whose copy
-`~/.lado-rc/lado.db.<final>` holds. Before it changes anything it SHALL print its plan:
+`~/.lado-rc/lado.db.<final>` holds. It SHALL refuse,
+changing nothing, inside an agent, when the human's LADO is no pre-release, and when
+`~/.lado-rc/` holds no copy.
+
+#### Scenario: No copy to go back to
+- **WHEN** `~/.lado-rc/` holds no `lado.db.<version>`
+- **THEN** the script changes nothing and exits 1 saying that `upgrade` from a final
+  makes the copy, and that without a schema change `lado update <final>` is enough
+
+### Requirement: rollback prints its plan and asks first
+
+Before it changes anything `rollback` SHALL print its plan:
 the sessions that run (not stopped in lado.db) and will be started again, whether the UI
 server runs and will be started again, the final it installs, and whether lado.db will be
 restored from the copy, which is when its schema (`PRAGMA user_version`) is newer than the
 copy's, with what that loses (everything done on the RC); and it SHALL ask
-`Roll back? [y/N]`. On yes it SHALL run `lado stop --all`, `lado server stop`,
+`Roll back? [y/N]`.
+
+#### Scenario: Back to the final without a schema change
+- **WHEN** lado.db's schema equals the copy's
+- **THEN** the plan says lado.db is kept, and the rollback restores nothing
+
+### Requirement: rollback installs the final, restores lado.db and starts again what ran
+
+On yes `rollback` SHALL run `lado stop --all`, `lado server stop`,
 `lado update <final>` (on the terminal, without `--yes`), check that `lado --version` is
 the final, restore lado.db from the copy by SQLite's backup API when the plan said so,
 then run `lado start <repo> --name <session> --no-attach` for each planned session and
-`lado ui --no-open` with the server's host and port when it ran. It SHALL refuse,
-changing nothing, inside an agent, when the human's LADO is no pre-release, and when
-`~/.lado-rc/` holds no copy.
+`lado ui --no-open` with the server's host and port when it ran.
 
 #### Scenario: Back to the final after a schema migration
 - **WHEN** LADO 0.38.0rc1 runs with schema 27, `~/.lado-rc/lado.db.0.37.1` has schema 26,
@@ -213,19 +253,10 @@ changing nothing, inside an agent, when the human's LADO is no pre-release, and 
 - **THEN** LADO is 0.37.1, lado.db has schema 26 and the copy's content, session `app`
   runs again, and the UI server runs on its port again when it ran before
 
-#### Scenario: Back to the final without a schema change
-- **WHEN** lado.db's schema equals the copy's
-- **THEN** the plan says lado.db is kept, and the rollback restores nothing
-
 #### Scenario: The update back is refused
 - **WHEN** the human answers `n` to `lado update <final>`'s own question, or it fails
 - **THEN** lado.db is not restored, no session is started, and the script exits 1 naming
   the stopped sessions with the `lado start <repo> --name <session>` that resumes each
-
-#### Scenario: No copy to go back to
-- **WHEN** `~/.lado-rc/` holds no `lado.db.<version>`
-- **THEN** the script changes nothing and exits 1 saying that `upgrade` from a final
-  makes the copy, and that without a schema change `lado update <final>` is enough
 
 ### Requirement: The release candidate's checklist names what is left by hand
 

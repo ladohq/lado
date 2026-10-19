@@ -11,7 +11,7 @@
 
 ## 2. Checks
 
-- [ ] 2.1 By hand, not committed: turn the test into
+- [x] 2.1 By hand, not committed: turn the test into
   `test.each(Array.from({ length: 1000 }, (_, i) => i))("… %i", …)`, load the CPU (e.g.
   eight `yes > /dev/null` processes), run
   `npx vitest run src/ForgetMany.test.tsx -t "goes to /sessions"` from `web/`; all 1000

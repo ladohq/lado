@@ -75,12 +75,131 @@ def test_node_22_comes_from_the_official_image():
 
 
 def test_no_other_npm_package_is_installed():
-    packages = {pin[0] for pin in _pins().values()}
+    """The four CLIs of PINS and openspec, the kits' tool."""
+    packages = {pin[0] for pin in _pins().values()} | {OPENSPEC}
     installs = [line for line in lines() if "npm install" in line]
     assert len(installs) == len(packages), installs
     for line in installs:
         named = re.findall(r'"(@?[^"@]+)@[^"]*"', line)
         assert named and set(named) <= packages, line
+
+
+def flat() -> list[str]:
+    """The Dockerfile's instructions with their runs of spaces made one."""
+    return [" ".join(line.split()) for line in lines()]
+
+
+OPENSPEC = "@fission-ai/openspec"
+OPENSPEC_INSTALL = (
+    f'RUN npm install -g --prefix /opt/tools "{OPENSPEC}@${{OPENSPEC_VERSION}}" '
+    "&& npm cache clean --force"
+)
+
+
+def loose_pin(text: str) -> list[str]:
+    """The lines of `text` that leave openspec's pin loose: its ARG's default not an exact
+    version, its install sharing a layer with another package (or missing)."""
+    bad = [
+        line
+        for line in lines(text)
+        if line.startswith("ARG OPENSPEC_VERSION")
+        and not re.fullmatch(r"ARG OPENSPEC_VERSION=\d+\.\d+\.\d+", line)
+    ]
+    installs = [line for line in lines(text) if f'"{OPENSPEC}@' in line]
+    bad += [line for line in installs if " ".join(line.split()) != OPENSPEC_INSTALL]
+    if not installs:
+        bad.append(f"no install of {OPENSPEC}")
+    return bad
+
+
+def test_openspec_is_pinned_in_a_layer_of_its_own_after_the_clis():
+    assert loose_pin(DOCKERFILE) == []
+    [arg] = [line for line in lines() if line.startswith("ARG OPENSPEC_VERSION=")]
+    install = flat().index(OPENSPEC_INSTALL)
+    assert lines().index(arg) < install
+    clis = [i for i, line in enumerate(lines()) if "--prefix /opt/agents" in line]
+    assert len(clis) == len(ARGS) and max(clis) < install
+
+
+def test_a_loose_openspec_pin_is_named():
+    arg = "ARG OPENSPEC_VERSION=1.14.1\n"
+    assert loose_pin(arg + OPENSPEC_INSTALL + "\n") == []
+    assert loose_pin("ARG OPENSPEC_VERSION=latest\n" + OPENSPEC_INSTALL + "\n") == [
+        "ARG OPENSPEC_VERSION=latest"
+    ]
+    assert loose_pin("ARG OPENSPEC_VERSION=^1.14\n" + OPENSPEC_INSTALL + "\n") != []
+    shared = 'RUN npm install -g --prefix /opt/tools "@fission-ai/openspec@${OPENSPEC_VERSION}" jq'
+    assert loose_pin(arg + shared + "\n") == [shared]
+    assert loose_pin(arg) == [f"no install of {OPENSPEC}"]
+
+
+def test_opt_tools_is_named_only_where_it_is_made_installed_and_on_path():
+    """openspec is no agent CLI: /opt/agents stays the four of PINS."""
+    named = [line for line in flat() if "/opt/tools" in line]
+    [made] = [line for line in named if line.startswith("RUN useradd")]
+    assert re.search(r"mkdir -p [^&]*/opt/tools", made)
+    assert re.search(r"chown lado:lado [^&]*/opt/tools", made)
+    [path] = [line for line in named if line.startswith("ENV ")]
+    assert named == [made, OPENSPEC_INSTALL, path]
+
+
+# The agents' base tools from Debian (package: command): the kits' scripts and the agent
+# CLIs call them in a new container on a clean home volume.
+BASE_TOOLS = {
+    "jq": "jq",
+    "ripgrep": "rg",
+    "unzip": "unzip",
+    "zip": "zip",
+    "xz-utils": "xz",
+    "bzip2": "bzip2",
+    "patch": "patch",
+    "file": "file",
+    "rsync": "rsync",
+    "sqlite3": "sqlite3",
+    "tree": "tree",
+    "lsof": "lsof",
+    "netcat-openbsd": "nc",
+}
+
+
+def missing_tools(text: str) -> list[str]:
+    """The base tools' packages missing from the first `apt-get install` of `text`."""
+    installs = [line for line in lines(text) if "apt-get install" in line]
+    first = installs[0].split("apt-get install", 1)[1].split("&&", 1)[0].split()
+    return sorted(set(BASE_TOOLS) - set(first))
+
+
+def test_the_image_carries_the_agents_base_tools():
+    assert missing_tools(DOCKERFILE) == []
+
+
+def test_a_base_tool_left_out_of_the_first_apt_layer_is_named():
+    first = "RUN apt-get update && apt-get install -y " + " ".join(sorted(set(BASE_TOOLS) - {"jq"}))
+    assert missing_tools(first + " && rm -rf /var/lib/apt/lists/*\n") == ["jq"]
+    # A later apt-get install does not count: the first layer carries them.
+    later = "RUN apt-get update && apt-get install -y jq\n"
+    assert missing_tools(first + "\n" + later) == ["jq"]
+
+
+PYTHON_FALLBACK = "/opt/fallback/bin"
+
+
+def test_the_images_python_is_roots_and_the_fallback_of_python3():
+    """Installed as root before `USER lado`, so no agent changes the Python LADO runs on;
+    /opt/uv itself is root's too, or lado could rename the folder away. Without uv's bin
+    links, which would land in root's ~/.local/bin."""
+    [install] = [line for line in lines() if "uv python install" in line]
+    assert " ".join(install.split()).startswith(
+        "RUN UV_PYTHON_INSTALL_DIR=/opt/uv/python uv python install 3.13 --no-bin "
+    )
+    assert lines().index(install) < lines().index("USER lado")
+    for name in ("python3", "python"):
+        assert f'ln -s "$python" {PYTHON_FALLBACK}/{name}' in install, name
+    assert f"{PYTHON_FALLBACK}/python3 --version" in install
+    [made] = [line for line in lines() if line.startswith("RUN useradd")]
+    [chown] = re.findall(r"chown lado:lado ([^&]*)", made)
+    assert "/opt/uv/tools" in chown.split() and "/opt/uv/bin" in chown.split()
+    assert "/opt/uv" not in chown.split() and "/opt/uv/python" not in chown.split()
 
 
 def unpinned(text: str) -> list[str]:
@@ -169,16 +288,21 @@ def test_profile_sets_what_env_sets_for_the_agents():
         "LADO_ENV_DIR",
         "NPM_CONFIG_PREFIX",
         "MISE_TRUSTED_CONFIG_PATHS",
+        "OPENSPEC_TELEMETRY",
+        "OPENSPEC_NO_UPDATE_CHECK",
     }
     for key, value in exported.items():
         value = value.replace("$HOME", "/home/lado")
         if key == "PATH":
-            # The image's programs first, so no shim shadows its Node; the agents' installs
-            # and mise's shims last.
-            mine, after = "/opt/uv/bin:/opt/agents/bin:", ":" + ":".join(AGENTS_PATH)
+            # The image's programs first, so no shim shadows its Node or openspec; then the
+            # agents' installs and mise's shims; last the image's python3, so a project's
+            # Python through mise answers first.
+            mine = "/opt/uv/bin:/opt/agents/bin:/opt/tools/bin:"
+            after = ":" + ":".join([*AGENTS_PATH, PYTHON_FALLBACK])
             assert value == f"{mine}$PATH{after}"
             assert image["PATH"].startswith(mine) and image["PATH"].endswith(after)
             assert "/home/lado" not in image["PATH"][len(mine) : -len(after)]
+            assert "/opt" not in image["PATH"][len(mine) : -len(after)]
         elif key == "MISE_TRUSTED_CONFIG_PATHS":
             # The container's own LADO_REPOS, which the ENV cannot follow.
             assert value == "$LADO_REPOS"
@@ -186,6 +310,8 @@ def test_profile_sets_what_env_sets_for_the_agents():
         else:
             assert image[key] == value, key
     assert image["LADO_CONTAINER"] == "1"
+    # openspec's usage statistics and update check off: the human's choice.
+    assert (image["OPENSPEC_TELEMETRY"], image["OPENSPEC_NO_UPDATE_CHECK"]) == ("0", "1")
     # The container's own LADO_REPOS (-e) reaches the agents through the entrypoint's
     # lado-repos.sh, so profile.sh does not set the image's default.
     assert image["LADO_REPOS"] == "/projects"

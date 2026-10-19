@@ -30,14 +30,20 @@
 
 ## 3. Checks
 
-- [ ] 3.1 `make lint`, `make test` (counts in the build report), `make web`;
+- [x] 3.1 `make lint`, `make test` (counts in the build report), `make web`;
   `openspec validate file-type-after-limits --strict`, `openspec validate --specs
   --strict`.
 - [ ] 3.2 `uv run pytest -m ui tests/ui/test_chat.py` green, then the attach test 20 times
   in a row with two workers, e.g. `for i in $(seq 20); do uv run pytest -m ui -n 2
   tests/ui/test_chat.py -k "attaches_files or file_only" > /tmp/lad-102-ui-$i.log 2>&1 ||
   echo "run $i red"; done`: no red run (the count in the build report).
+  Not done in the build: Chromium does not start in LADO's container (no libglib, LAD-110).
+  By the human's decision the UI tests ran in the pull request's CI, the job "ui (1)" with
+  this test rerun several times (the build report names the runs); the 20 runs with
+  `-n 2` are the human's, on their machine.
 - [ ] 3.3 By hand, the defect reproduced and gone: a one-off Playwright script (not
   committed) that delays `**/api/limits` by 2 s with `page.route`, attaches the test's
   three files at once and counts the eye after the limits come: 3 on main, 1 with the fix.
   Name the counts in the build report.
+  Not done in the build, for the same reason as 3.2: the human runs it, with the script
+  given in the build report.

@@ -75,8 +75,11 @@ every process it starts inherits: a run's start kills the processes whose `LADO_
 names a pid no longer alive (a run killed from outside, a crashed worker), from any worktree
 of the machine, and removes the `lado-test-*` tmux sockets no server answers on; a living
 run's processes are never touched. At its end, each pytest process kills what still carries
-its own mark and fails the run under "processes left by the test run, killed". The
-environment is read from `/proc` on Linux and with `ps -E` on macOS.
+its own mark and fails the run under "processes left by the test run, killed"; an xdist
+controller checks after xdist has stopped its workers, which carry its mark from their start
+(the environment a process was started with is what is read), and each worker hands it what
+it left. The environment is read from `/proc` on Linux and with `ps -E` on macOS.
+`LADO_TEST_PID` is a mark of the test suite only: LADO itself neither sets nor reads it.
 
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
 is missing or not logged in. Models: Claude Code on `haiku` (paid: only with the human's

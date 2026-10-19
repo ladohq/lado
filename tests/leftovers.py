@@ -197,21 +197,17 @@ def _alive(pid: int) -> bool:
 
 
 def _kill(left: list[Process]) -> None:
-    """SIGKILL each and wait (up to a few seconds) until it is gone; a child of the caller
-    is reaped, so it is not left a zombie."""
+    """SIGKILL each and wait (up to a few seconds) until it is gone. A zombie counts as gone
+    (it has no environment left); a child of the caller is not reaped here, so its exit
+    status stays with whoever waits for it."""
     for process in left:
         try:
             os.kill(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
     deadline = time.monotonic() + 3
-    pids = {p.pid for p in left}
-    while pids and time.monotonic() < deadline:
-        for pid in list(pids):
-            try:
-                os.waitpid(pid, os.WNOHANG)
-            except ChildProcessError:
-                pass
-        pids &= {p.pid for p in processes()}
-        if pids:
+    alive = {(p.pid, p.environ) for p in left}
+    while alive and time.monotonic() < deadline:
+        alive &= {(p.pid, p.environ) for p in processes()}
+        if alive:
             time.sleep(POLL)

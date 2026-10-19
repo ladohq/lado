@@ -31,6 +31,8 @@
   fail naming it, and the process is gone after (not committed). Built: an xdist worker
   hands what it left to the controller (`workeroutput`, read in `pytest_testnodedown`);
   the controller checks its own mark after xdist stopped the workers, which carry it.
+  `test_leftover_processes.py::test_a_run_with_workers_does_not_take_them_for_its_leftovers`
+  runs pytest with two workers and fails when the controller names them.
 - [x] 2.2 `tests/integration/conftest.py`: `no_loop_left` waits `leftovers.WAIT` (D7);
   `isolated` calls `sweep` after it and fails on what is left (D3). Check: `uv run pytest
   -m integration -n auto tests/integration/test_agent_liveness.py

@@ -84,6 +84,6 @@ no CHANGELOG.md line, as users see nothing.
 - `tests/leftovers.py` (new), `tests/conftest.py`, `tests/integration/conftest.py`,
   `tests/ui/conftest.py`, `tests/real_clis.py`.
 - Tests: `tests/test_leftovers.py` (unit: parsing a process's environment),
-  `tests/integration/test_leftovers.py` (real processes).
+  `tests/integration/test_leftover_processes.py` (real processes).
 - `docs/testing.md`, `AGENTS.md` (the shared helpers' line), `BACKLOG.md`.
 - New capability spec `test-processes`.

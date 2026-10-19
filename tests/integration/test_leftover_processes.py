@@ -4,8 +4,10 @@ run's leftovers and the check at a run's end."""
 import os
 import signal
 import subprocess
+import sys
 import time
 import uuid
+from pathlib import Path
 
 import leftovers
 import pytest
@@ -108,6 +110,32 @@ def test_a_dead_tmux_servers_socket_is_removed_and_a_living_ones_kept(kill_tmux_
     finally:
         kill_tmux_server(dead)
         kill_tmux_server(living)
+
+
+def test_a_run_with_workers_does_not_take_them_for_its_leftovers():
+    # A worker starts with the controller's LADO_TEST_PID in its environment (the one it
+    # was exec'd with): the controller's check must come after xdist has stopped them.
+    tests = Path(__file__).parent.parent
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-n",
+            "2",
+            "-p",
+            "no:cacheprovider",
+            "-q",
+            str(tests / "test_isolation.py"),
+        ],
+        cwd=tests.parent,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert "processes left" not in run.stdout
+    assert run.returncode == 0, run.stdout + run.stderr
 
 
 def test_a_process_of_the_run_left_at_its_end_is_killed_and_named():

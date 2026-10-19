@@ -156,3 +156,6 @@ their time comes.
   state, and a busy agent loses its turn. Wanted: the runtime keeps each agent's
   conversation id and a resume continues it through the provider (Claude Code
   `--resume <id>`, Kilo's own way); `lado update` then needs no change.
+- [ ] Cloud workers: agents in a cloud, as an option next to the local mode, with no cloud
+  lock-in and any provider. Researched 2026-10-18 (docs/research/cloud-workers.md); the
+  staged plan, from "the whole of LADO in a cloud" on: docs/research/cloud-workers-plan.md

@@ -598,6 +598,18 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## `openspec validate --specs --strict` is red on main: 33 of 39 specs fail
+
+Size: M. Why here: a check of the sdlc settings that can never be green hides a real spec
+error among the old ones, and the integrator's "with it green, push" cannot be done as
+written; a change's own `openspec validate <name> --strict` still works meanwhile.
+With openspec 1.14.1, `--strict` turns warnings into errors, such as "Requirement text is
+very long (>500 characters)", and 33 of the 39 living specs under `openspec/specs/` fail
+on them; a diff that touches no spec gets the same result. Wanted: the living specs pass
+`--strict` (long requirements split, examples moved into scenarios), or the Checks of
+`.lado/sdlc.md` name a check that can pass (the human's file).
+Found: 2026-10-19, review of fix/lad-100-cloud-workers-research.
+
 ## `lado kits check` calls `${KIT_DIR}` in an MCP server's command a hardcoded path
 
 Size: S. Why here: a kit that follows the documented form (README before 0.36, the Kits

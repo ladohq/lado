@@ -1,6 +1,7 @@
 """The chat in a session's Activity tab, in a browser: the human writes to the supervisor
 (the fake agent), and answers its question."""
 
+import contextlib
 import functools
 import json
 import re
@@ -316,74 +317,136 @@ def asked_with_a_plan(session: str) -> None:
     )
 
 
+ESC_RECORDER = """(() => {
+    const record = (window.__escRecord = []);
+    const now = () => Math.round(performance.now() * 10) / 10;
+    const describe = (node) => {
+        if (!node || !node.tagName) return node ? node.nodeName : "none";
+        const id = node.id ? `#${node.id}` : "";
+        const names = typeof node.className === "string" ? node.className.trim() : "";
+        const classes = names ? `.${names.split(/\\s+/).join(".")}` : "";
+        const label = node.getAttribute("aria-label");
+        return `${node.tagName.toLowerCase()}${id}${classes}${label ? `[${label}]` : ""}`;
+    };
+    const card = () => document.querySelector(".waiting-card");
+    const page = () => ({
+        search: location.search,
+        card: card() ? card().className : "none",
+        panel: !!document.querySelector(".artifact-panel"),
+    });
+    const listen = (capture) => (event) => {
+        const entry = {
+            at: now(),
+            what: `keydown ${capture ? "capture" : "bubble"}`,
+            key: event.key,
+            trusted: event.isTrusted,
+            target: describe(event.target),
+            active: describe(document.activeElement),
+            ...page(),
+        };
+        if (!capture) entry.defaultPrevented = event.defaultPrevented;
+        record.push(entry);
+    };
+    window.addEventListener("keydown", listen(true), true);
+    window.addEventListener("keydown", listen(false), false);
+    const isCard = (node) => node.nodeType === 1 && node.matches(".waiting-card");
+    const holdsCard = (node) =>
+        node.nodeType === 1 && (isCard(node) || !!node.querySelector(".waiting-card"));
+    new MutationObserver((changes) => {
+        for (const change of changes) {
+            if (change.type === "attributes" && isCard(change.target)) {
+                const was = change.oldValue;
+                record.push({ at: now(), what: "card class", was, now: change.target.className });
+            }
+            if (change.type !== "childList") continue;
+            const mounted = [...change.addedNodes].some(holdsCard);
+            const unmounted = [...change.removedNodes].some(holdsCard);
+            if (mounted) record.push({ at: now(), what: "card mounted" });
+            if (unmounted) record.push({ at: now(), what: "card unmounted" });
+        }
+    }).observe(document, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ["class"],
+        attributeOldValue: true,
+    });
+    const query = (url) => (url == null ? location.search : new URL(url, location.href).search);
+    for (const name of ["pushState", "replaceState"]) {
+        const original = history[name];
+        history[name] = function (state, unused, url) {
+            record.push({ at: now(), what: name, search: query(url) });
+            return original.apply(this, arguments);
+        };
+    }
+    window.addEventListener("popstate", () =>
+        record.push({ at: now(), what: "popstate", search: location.search })
+    );
+})()"""
+
+
+def record_esc(page: Page) -> None:
+    """LAD-99: the expanded waiting card sometimes stayed expanded after the second Esc in CI,
+    and its cause was not found (two probes and 100 runs in CI stayed green). The page keeps a
+    record of every keydown (capture and bubble), the card's class, mounts and unmounts, and
+    the address's changes, for `printed_on_failure` to show. Call before `page.goto`."""
+    page.add_init_script(ESC_RECORDER)
+
+
+@contextlib.contextmanager
+def printed_on_failure(page: Page):
+    """On a failure, print the Esc record of `record_esc` and the card's HTML, then re-raise;
+    nothing is printed on a pass."""
+    try:
+        yield
+    except Exception:
+        try:
+            print("LAD-99 Esc record:")
+            for entry in page.evaluate("window.__escRecord || []"):
+                print(json.dumps(entry))
+            print(
+                "The card:",
+                page.evaluate("document.querySelector('.waiting-card')?.outerHTML ?? 'none'"),
+            )
+        except Exception as error:  # the record is a help; the test's own failure counts
+            print(f"LAD-99 Esc record not read: {error}")
+        raise
+
+
 def test_an_artifact_from_the_expanded_card_shows_over_it_and_esc_closes_the_topmost(
     page: Page, server, repo, shot
 ):
     """LAD-48: a chip in the expanded card opens the panel over it; the first Esc closes the
-    panel, the second folds the card (docs/design/ui.md, The waiting card)."""
+    panel, the second folds the card (docs/design/ui.md, The waiting card). It prints a record
+    of the Esc keys on a failure (LAD-99, `record_esc`)."""
     session = running_session(repo)
     asked_with_a_plan(session)
     log_in(page, server)
+    record_esc(page)
     page.goto(f"{server['url']}/sessions/{session}")
     card = waiting_card(page, session)
-    card.get_by_role("button", name="Expand the card").click()
-    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
-    card.get_by_role("button", name="myself").click()
-    chip = card.get_by_role("button", name="Open artifact plan")
-    chip.click()
-    panel = page.get_by_role("dialog", name="Artifact plan")
-    expect(panel).to_contain_text("J1 to J9.")
-    assert on_top(page, panel)
-    for theme in ("light", "dark"):
-        page.emulate_media(color_scheme=theme)
-        shot(page, f"{theme}-panel")
-    page.emulate_media(color_scheme="light")
-    page.keyboard.press("Escape")
-    expect(panel).to_have_count(0)
-    expect(chip).to_be_focused()
-    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
-    expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
-    page.keyboard.press("Escape")
-    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
-    expect(card.get_by_role("button", name="Expand the card")).to_be_focused()
-    expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
-
-
-def test_a_second_esc_while_the_page_is_busy_folds_the_card(page: Page, server, repo):
-    """LAD-99: React's scheduler runs the router transition that removes the panel, and then
-    that commit's passive effects, in tasks it posts through MessageChannel. Delaying those
-    posts by a second stands for a busy runner: it holds the gap between the commit that
-    removes the panel and its passive effects open, and the second Esc lands in it; the card
-    folds only if its Esc listener changes in the commit itself (docs/design/ui.md, The
-    waiting card). The count of delayed posts shows the delay took effect."""
-    session = running_session(repo)
-    asked_with_a_plan(session)
-    page.add_init_script(
-        """(() => {
-            const post = MessagePort.prototype.postMessage;
-            window.__delayedPosts = 0;
-            MessagePort.prototype.postMessage = function (...args) {
-                if (!window.__slowScheduler) return post.apply(this, args);
-                window.__delayedPosts += 1;
-                setTimeout(() => post.apply(this, args), 1000);
-            };
-        })()"""
-    )
-    log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}")
-    card = waiting_card(page, session)
-    card.get_by_role("button", name="Expand the card").click()
-    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
-    card.get_by_role("button", name="myself").click()
-    card.get_by_role("button", name="Open artifact plan").click()
-    panel = page.get_by_role("dialog", name="Artifact plan")
-    expect(panel).to_contain_text("J1 to J9.")
-    page.evaluate("window.__slowScheduler = true")
-    page.keyboard.press("Escape")
-    expect(panel).to_have_count(0)
-    page.keyboard.press("Escape")
-    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
-    assert page.evaluate("window.__delayedPosts") > 0
+    with printed_on_failure(page):
+        card.get_by_role("button", name="Expand the card").click()
+        expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+        card.get_by_role("button", name="myself").click()
+        chip = card.get_by_role("button", name="Open artifact plan")
+        chip.click()
+        panel = page.get_by_role("dialog", name="Artifact plan")
+        expect(panel).to_contain_text("J1 to J9.")
+        assert on_top(page, panel)
+        for theme in ("light", "dark"):
+            page.emulate_media(color_scheme=theme)
+            shot(page, f"{theme}-panel")
+        page.emulate_media(color_scheme="light")
+        page.keyboard.press("Escape")
+        expect(panel).to_have_count(0)
+        expect(chip).to_be_focused()
+        expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+        expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
+        page.keyboard.press("Escape")
+        expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
+        expect(card.get_by_role("button", name="Expand the card")).to_be_focused()
+        expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
 
 
 def test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways(

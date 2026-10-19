@@ -11,11 +11,7 @@ kits a human can use do not depend on the folder a session runs in.
 LADO SHALL look a kit up by name among the installed kits (the `kits` table of lado.db),
 then among the kits built into LADO, and take the first one found. It SHALL NOT read a
 repository's `.lado/kits` folder, for a new session, a resume, a spawned worker, a flow
-run, `lado kits`, `kits show`, `kits check` or any API endpoint. A name found in neither
-SHALL be refused with `kit "<name>" not found; looked in the installed kits in
-<LADO_HOME>/lado.db, <the built-in kits' folder>`, followed only by the hints about an
-older LADO's `LADO_HOME` (`sources.yaml`, `LADO_HOME/kits`) when they apply; nothing about
-project kits.
+run, `lado kits`, `kits show`, `kits check` or any API endpoint.
 
 #### Scenario: A repository's own kit is not read
 - **WHEN** a repository has `.lado/kits/team/kit.yaml` and no kit `team` is installed or
@@ -28,16 +24,24 @@ project kits.
   installed (`lado kits add <folder>`)
 - **THEN** a session of that repository with `--kit team` takes the installed kit's agents
 
+#### Scenario: An installed kit shadows a built-in one
+- **WHEN** a kit named `default` is installed
+- **THEN** sessions take the installed `default`, and `lado kits` lists the built-in one
+  as `shadowed by user`
+
+### Requirement: A kit found nowhere is refused with where LADO looked
+
+A name found in neither the installed nor the built-in kits
+SHALL be refused with `kit "<name>" not found; looked in the installed kits in
+<LADO_HOME>/lado.db, <the built-in kits' folder>`, followed only by the hints about an
+older LADO's `LADO_HOME` (`sources.yaml`, `LADO_HOME/kits`) when they apply; nothing about
+project kits.
+
 #### Scenario: A stopped session whose kit was a project kit
 - **WHEN** a session was started with a kit that lived only in its repository's
   `.lado/kits`, and `lado start` resumes it
 - **THEN** the resume is refused with the same `kit "<name>" not found` text, with no
   hint about project kits
-
-#### Scenario: An installed kit shadows a built-in one
-- **WHEN** a kit named `default` is installed
-- **THEN** sessions take the installed `default`, and `lado kits` lists the built-in one
-  as `shadowed by user`
 
 ### Requirement: The kit list does not depend on a folder
 

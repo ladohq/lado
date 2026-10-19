@@ -36,12 +36,30 @@ collapsed to a strip SHALL have none. Pressing it SHALL NOT fold or open the gro
 that says their history (messages, runs, notes, gates) is deleted for good, and lists the
 stopped sessions the list shows when it opens (with text in the search, only the matching
 ones), in the list's order, each with a tick, ticked, its title or name and when it
-stopped. A tick "All N" SHALL tick or clear them all. The window SHALL load each session's
+stopped. A tick "All N" SHALL tick or clear them all.
+
+#### Scenario: The search narrows the window
+- **WHEN** the search holds "lad-8" and the human presses the button
+- **THEN** the window lists only the stopped sessions whose name or title matches
+
+### Requirement: The window shows each session's forget preview and what stays on disk
+
+The window SHALL load each session's
 forget preview: a session with open runs SHALL say "1 open run" or "N open runs"; a
 session whose preview is refused (it is no longer stopped) SHALL show the core's reason,
 unticked and off. The worktrees and branches the ticked sessions leave on disk SHALL be
 listed under a folded line "Left on disk: N worktrees of M sessions (remove them yourself
-if you need to)". The forget button SHALL say `Forget 1 session` or `Forget N sessions`,
+if you need to)".
+
+#### Scenario: Open runs and a session resumed meanwhile
+- **WHEN** the window opens for seven stopped sessions, lad-88 has one open run, and
+  lad-85 is resumed in another tab before its preview loads
+- **THEN** lad-88's row says "1 open run", lad-85's row shows the core's reason, unticked
+  and off, and the worktrees left on disk are listed under the folded line "Left on disk: …"
+
+### Requirement: The forget button counts the sessions it will forget
+
+The forget button SHALL say `Forget 1 session` or `Forget N sessions`,
 N the sessions it will forget, and SHALL be off while previews load or N is 0. Cancel and
 Esc SHALL close the window with nothing forgotten.
 
@@ -53,10 +71,6 @@ Esc SHALL close the window with nothing forgotten.
 #### Scenario: Two cleared
 - **WHEN** the human clears the ticks of lad-97 and lad-67
 - **THEN** the button says `Forget 5 sessions`, and clearing "All 7" turns it off
-
-#### Scenario: The search narrows the window
-- **WHEN** the search holds "lad-8" and the human presses the button
-- **THEN** the window lists only the stopped sessions whose name or title matches
 
 ### Requirement: A session with open runs is forgotten only with the switch
 
@@ -77,13 +91,10 @@ forgotten with their runs (the forget's `force`).
 
 Pressing the forget button SHALL forget the counted sessions one after another, each
 through the same forget as the session head's Forget… (`DELETE /api/sessions/{name}`), so
-the core decides each. While it works the button SHALL say `Forgetting K of N…`, the ticks
-and Cancel be off and Esc do nothing, and each row SHALL say "forgotten" or the core's
-reason when its turn ends; a refused session SHALL NOT stop the others. Each forgotten
+the core decides each. Each forgotten
 session SHALL leave the list as the change feed brings it. When every one is forgotten the
 window SHALL close by itself; when any is refused it SHALL stay open with the reasons and
-a Close button. When the session open in the page is among the forgotten, the UI SHALL go
-to `/sessions`.
+a Close button.
 
 #### Scenario: All forgotten
 - **WHEN** the human presses `Forget 5 sessions`
@@ -95,6 +106,14 @@ to `/sessions`.
 - **THEN** the other four are forgotten, lad-85 stays in the list, and the window stays
   open with lad-85's reason and Close
 
+### Requirement: The window shows the forget's progress
+
+While the forget works the button SHALL say `Forgetting K of N…`, the ticks
+and Cancel be off and Esc do nothing, and each row SHALL say "forgotten" or the core's
+reason when its turn ends; a refused session SHALL NOT stop the others. When the session
+open in the page is among the forgotten, the UI SHALL go
+to `/sessions`.
+
 #### Scenario: The open session
 - **WHEN** the page shows lad-97 and the window forgets it
 - **THEN** the page goes to `/sessions`
@@ -104,14 +123,17 @@ to `/sessions`.
 The Stop popover of a running session SHALL have, before `Stop <name>`, a second
 dangerous button `Stop and forget` (its tooltip "Stops it, then deletes its history for
 good"). It SHALL stop the session, then forget it without `force`, then go to
-`/sessions`. When the stop preview names open runs the button SHALL be off and the
-popover SHALL say "It has open runs: stop it, then forget it from the Stopped list."
-When the stop succeeds and the forget is refused, the session SHALL stay stopped and the
-popover SHALL show the core's reason.
+`/sessions`. When the stop succeeds and the forget is refused, the session SHALL stay
+stopped and the popover SHALL show the core's reason.
 
 #### Scenario: A session with no open runs
 - **WHEN** the human opens Stop on running lad-92 and presses `Stop and forget`
 - **THEN** lad-92 is stopped and forgotten, and the page is `/sessions`
+
+### Requirement: Stop and forget is off for a session with open runs
+
+When the stop preview names open runs the button `Stop and forget` SHALL be off and the
+popover SHALL say "It has open runs: stop it, then forget it from the Stopped list."
 
 #### Scenario: A session with open runs
 - **WHEN** the human opens Stop on lad-80, which has two open runs

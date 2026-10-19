@@ -7,17 +7,23 @@ them to its agent as artifacts, as the composer's files reach an agent.
 
 ## Requirements
 
-### Requirement: A gate's answer carries the files the human attached to the next step
+### Requirement: A gate's answer takes only files it finds, at most ten
 
 `runs.answer` SHALL take the full names of files the human uploaded for the answer, at
 most `artifacts.MAX_HUMAN_FILES` (10), resolved before anything is written; a name not
-found, or more files than the limit, SHALL refuse the answer with the gate left open. The
-note the answer keeps for the next step SHALL carry their latest records as its
-attachments, in the transaction that closes the gate, so the step's agent gets them in
+found, or more files than the limit, SHALL refuse the answer with the gate left open.
+
+#### Scenario: A file that is not there
+- **WHEN** the answer names `gone-00000000.png`, which the session has no artifact of
+- **THEN** the answer is refused and the gate stays open
+
+### Requirement: A gate's answer carries the files the human attached to the next step
+
+The note the answer keeps for the next step SHALL carry the attached files' latest records
+as its attachments, in the transaction that closes the gate, so the step's agent gets them in
 `Note from the previous step: …` with its `Artifacts:` line, as it gets a step's
 artifacts. A comment of files only SHALL be an answer: the note is the outcome alone with
-the files. At a loop limit, Cancel run SHALL send the files with LADO's message to the
-supervisor about the cancel; Continue SHALL carry them as any answer's note.
+the files.
 
 #### Scenario: Reject with a screenshot
 - **WHEN** the human rejects task/lad-86's design_ok gate with the comment "the button
@@ -30,9 +36,10 @@ supervisor about the cancel; Continue SHALL carry them as any answer's note.
 - **WHEN** the human approves a gate with no comment and `server-3f7a91c2.log`
 - **THEN** the next step's note is `approve` and carries `server-3f7a91c2.log`
 
-#### Scenario: A file that is not there
-- **WHEN** the answer names `gone-00000000.png`, which the session has no artifact of
-- **THEN** the answer is refused and the gate stays open
+### Requirement: An answer at a loop limit carries its files to the cancel or the continuation
+
+At a loop limit, Cancel run SHALL send the files with LADO's message to the
+supervisor about the cancel; Continue SHALL carry them as any answer's note.
 
 #### Scenario: Cancel at a loop limit
 - **WHEN** the human cancels a run at its loop limit with `notes-b81e6d04.md`

@@ -64,10 +64,7 @@ The smoke jobs SHALL run on every push to `main`, on the daily schedule, on manu
 dispatch, and on every pull request except one whose every changed file is under a path
 of the skip list: `web/`, `docs/`, `openspec/`, `tests/ui/`, `tests/js/`, `README.md`,
 `CHANGELOG.md`, `AGENTS.md`, `BACKLOG.md`, `ROADMAP.md`, `SECURITY.md`,
-`.github/dependabot.yml`. The smoke MUST be skipped by a condition on its job, never by
-filtering the workflow's triggers. No path of the list MAY be or contain `src/`,
-`scripts/`, `tests/` (but `tests/ui/` and `tests/js/`), `docker/`, `pyproject.toml`,
-`uv.lock` or `.github/workflows/`.
+`.github/dependabot.yml`.
 
 #### Scenario: A pull request that changes LADO's code
 
@@ -88,6 +85,13 @@ filtering the workflow's triggers. No path of the list MAY be or contain `src/`,
 
 - **WHEN** the schedule starts CI on `main`
 - **THEN** every job runs, the smoke included
+
+### Requirement: The smoke's skip list holds no path of code
+
+The smoke MUST be skipped by a condition on its job, never by
+filtering the workflow's triggers. No path of the skip list MAY be or contain `src/`,
+`scripts/`, `tests/` (but `tests/ui/` and `tests/js/`), `docker/`, `pyproject.toml`,
+`uv.lock` or `.github/workflows/`.
 
 #### Scenario: The list gains a path the smoke runs
 
@@ -120,28 +124,36 @@ cancelled by another run.
 CI SHALL have a job `container`, one cell per architecture on GitHub's native runners
 (`ubuntu-24.04` for amd64, `ubuntu-24.04-arm` for arm64), that builds the web UI's bundle
 and the wheel from the run's code, builds `docker/Dockerfile` from that wheel, and runs the
-container tests (`tests/container/`, marker `container`) against the image. It SHALL run on
-every CI run, with no condition on the changed files, SHALL publish no image, and `ci-ok`
-SHALL need it. A cell SHALL pass only when pytest exits 0 and its summary has a pass and no
-skip, the smoke cell's rule; a failing cell SHALL keep the containers' logs and LADO's log
-as an artifact.
+container tests (`tests/container/`, marker `container`) against the image.
 
 #### Scenario: A pull request breaks LADO in the container
 
 - **WHEN** a pull request makes `lado doctor` print a `[FAIL]` in the image
 - **THEN** the container job fails on both architectures, and `ci-ok` fails and names it
 
+### Requirement: The container job runs on every CI run and publishes nothing
+
+The job `container` SHALL run on
+every CI run, with no condition on the changed files, SHALL publish no image, and `ci-ok`
+SHALL need it.
+
 #### Scenario: A pull request of the docs only
 
 - **WHEN** every file a pull request changes is under `docs/`
 - **THEN** the smoke is skipped, and the container job still runs
 
-#### Scenario: Docker is missing on the runner
-
-- **WHEN** the container tests skip because no `docker` runs
-- **THEN** the cell fails
-
 #### Scenario: Nothing is pushed
 
 - **WHEN** the container job runs
 - **THEN** it logs in to no registry and pushes no image
+
+### Requirement: A container cell passes only with a pass and no skip
+
+A cell of the job `container` SHALL pass only when pytest exits 0 and its summary has a
+pass and no skip, the smoke cell's rule; a failing cell SHALL keep the containers' logs and
+LADO's log as an artifact.
+
+#### Scenario: Docker is missing on the runner
+
+- **WHEN** the container tests skip because no `docker` runs
+- **THEN** the cell fails

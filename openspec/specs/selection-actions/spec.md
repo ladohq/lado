@@ -14,16 +14,7 @@ When the human selects text that lies in one readable area of the web UI (its st
 end in that area, or its end past it with no text taken there, as a triple click on the
 area's last line selects), the UI SHALL show the selection bar: two icon buttons with no visible label, Copy (two
 sheets) and Quote in reply (a speech bubble with quote marks), each named by its
-accessible name and the UI's tooltip ("Copy", "Quote in reply"). The readable areas SHALL
-be: the messages of the session's chat and of an agent's page, the waiting card's
-questions, gates and recommendations, the chat's closed gates and run events, the notes of
-the Flows tab, the cards of Needs you, and the body of a Markdown or text artifact in the
-artifact panel and in the Artifacts tab. A selection in an input field, the composer, an
-agent's terminal, an HTML artifact, an image or the UI's chrome (rail, tabs, heads,
-buttons) SHALL show no bar. With a pointer that can hover the bar SHALL stand above the
-selection; on a touch screen (no hover) below it, clear of the system's own menu. Esc, a
-click outside the bar, a scroll of the area that holds the selection, or a selection that
-becomes empty SHALL hide it. Pressing a button of the bar SHALL keep the selection.
+accessible name and the UI's tooltip ("Copy", "Quote in reply").
 
 #### Scenario: A sentence in the supervisor's message
 - **WHEN** the human selects "the bar hides on Esc" in the body of the supervisor's
@@ -36,9 +27,15 @@ becomes empty SHALL hide it. Pressing a button of the bar SHALL keep the selecti
   the browser selects up to the start of the next row
 - **THEN** the bar shows, and Quote in reply quotes only that paragraph
 
-#### Scenario: Esc
-- **WHEN** the bar shows and the human presses Esc
-- **THEN** the bar is gone
+### Requirement: The readable areas are the texts the human reads
+
+The readable areas SHALL
+be: the messages of the session's chat and of an agent's page, the waiting card's
+questions, gates and recommendations, the chat's closed gates and run events, the notes of
+the Flows tab, the cards of Needs you, and the body of a Markdown or text artifact in the
+artifact panel and in the Artifacts tab. A selection in an input field, the composer, an
+agent's terminal, an HTML artifact, an image or the UI's chrome (rail, tabs, heads,
+buttons) SHALL show no bar.
 
 #### Scenario: The composer
 - **WHEN** the human selects a word they typed in the composer
@@ -48,6 +45,17 @@ becomes empty SHALL hide it. Pressing a button of the bar SHALL keep the selecti
 - **WHEN** the human selects text inside the HTML artifact `task/lad-67/mockup-selection.html`
   in the artifact panel
 - **THEN** no selection bar shows
+
+### Requirement: The selection bar stands by the selection and goes with it
+
+With a pointer that can hover the selection bar SHALL stand above the
+selection; on a touch screen (no hover) below it, clear of the system's own menu. Esc, a
+click outside the bar, a scroll of the area that holds the selection, or a selection that
+becomes empty SHALL hide it. Pressing a button of the bar SHALL keep the selection.
+
+#### Scenario: Esc
+- **WHEN** the bar shows and the human presses Esc
+- **THEN** the bar is gone
 
 #### Scenario: A phone
 - **WHEN** the human selects text in a message on a touch screen 390 px wide
@@ -70,18 +78,22 @@ Ctrl+C to copy" and keep the selection.
 Quote SHALL append the selected text to a composer as a Markdown quote, each of its lines
 prefixed with `> ` (an empty line as `>`), after a blank line when the composer already
 holds text, then a new empty line with the cursor on it, and SHALL focus that composer.
-The composer's recipient SHALL NOT change. The composer SHALL be the one on the page the
-selection is on: the session's chat (to the supervisor), or an agent's page (to that
-agent), also under an artifact panel opened over that page. On a page with no composer
-(the Artifacts tab, the Flows tab, Needs you, or an artifact panel over one of them) Quote
-SHALL open the session's chat with the quote in its composer. An expanded waiting card
-SHALL fold so the composer shows.
+The composer's recipient SHALL NOT change.
 
 #### Scenario: Quote in the chat
 - **WHEN** the composer holds "Почему так?" and the human selects the two lines "A" and
   "B" of the supervisor's message and clicks Quote
 - **THEN** the composer holds "Почему так?", an empty line, "> A", "> B" and an empty last
   line with the cursor on it, and its recipient is still the supervisor
+
+### Requirement: Quote goes to the composer of the page the selection is on
+
+The composer Quote fills SHALL be the one on the page the
+selection is on: the session's chat (to the supervisor), or an agent's page (to that
+agent), also under an artifact panel opened over that page. On a page with no composer
+(the Artifacts tab, the Flows tab, Needs you, or an artifact panel over one of them) Quote
+SHALL open the session's chat with the quote in its composer. An expanded waiting card
+SHALL fold so the composer shows.
 
 #### Scenario: Quote on an agent's page
 - **WHEN** the human selects a line of the developer's message on the developer's page and
@@ -100,16 +112,25 @@ SHALL fold so the composer shows.
 ### Requirement: A quote from an artifact names the artifact
 
 A quote from a Markdown artifact SHALL start with the line `In <full name>:` followed by
-the quote. A quote from a text or code artifact SHALL start with `In <full name> (lines
-a–b):`, or `(line a)` for a single line, by the line numbers the viewer shows, followed by
-the selected lines, without their numbers and cut at the selection's ends, as a fenced code
-block instead of `> ` lines. When the record shown is not the artifact's latest, the first
-line SHALL say so: `In <full name>, an earlier record:` (with its lines as above).
+the quote. When the record shown is not the artifact's latest, the first
+line SHALL say so: `In <full name>, an earlier record:` (with its lines as for any quote of
+that artifact).
 
 #### Scenario: A Markdown artifact
 - **WHEN** the human quotes "AC-2. Quote puts the selection…" from `task/lad-67/design` in
   the panel over the chat
 - **THEN** the chat's composer gets "In task/lad-67/design:" and the `> ` quote under it
+
+#### Scenario: An earlier record
+- **WHEN** the human quotes from a record of `task/lad-67/design` older than its latest
+- **THEN** the first line is "In task/lad-67/design, an earlier record:"
+
+### Requirement: A quote from a code artifact names its lines
+
+A quote from a text or code artifact SHALL start with `In <full name> (lines
+a–b):`, or `(line a)` for a single line, by the line numbers the viewer shows, followed by
+the selected lines, without their numbers and cut at the selection's ends, as a fenced code
+block instead of `> ` lines.
 
 #### Scenario: Lines of a code artifact
 - **WHEN** the human selects lines 12 and 13 of a Python artifact `task/lad-67/notes.py`
@@ -117,36 +138,40 @@ line SHALL say so: `In <full name>, an earlier record:` (with its lines as above
 - **THEN** the composer gets "In task/lad-67/notes.py (lines 12–13):" and the two lines
   in a fenced code block, indentation kept, no line numbers
 
-#### Scenario: An earlier record
-- **WHEN** the human quotes from a record of `task/lad-67/design` older than its latest
-- **THEN** the first line is "In task/lad-67/design, an earlier record:"
-
-### Requirement: Code blocks and messages have copy buttons shown on hover
+### Requirement: Code blocks have a Copy code button
 
 Each code block of a Markdown text the UI renders (messages, notes, cards, recommendations,
 Markdown artifacts) SHALL have an icon button Copy code in its top right corner that copies
-the block's code exactly. Each message of the session's chat and of an agent's page SHALL
-have an icon button Copy message in its head that copies the message's Markdown text: for
-the human's message its text, for an agent's message its summary (when the chat shows it)
-and its body separated by a blank line. Both SHALL say "Copied" for 2 seconds after a copy.
-With a pointer that can hover, both SHALL be hidden until the pointer is over the code
-block or the message, or the keyboard's focus is on the button; on a touch screen they
-SHALL always be shown.
+the block's code exactly.
 
 #### Scenario: A command in a report
 - **WHEN** the human moves the pointer over a code block `uv run pytest -m ui` in the
   developer's message and clicks Copy code
 - **THEN** the clipboard holds exactly `uv run pytest -m ui` and the button says "Copied"
 
-#### Scenario: Hidden without the pointer
-- **WHEN** the pointer is not over a message
-- **THEN** its head shows no Copy message button, and moving the pointer over the message
-  shows it
+### Requirement: Messages have a Copy message button
+
+Each message of the session's chat and of an agent's page SHALL
+have an icon button Copy message in its head that copies the message's Markdown text: for
+the human's message its text, for an agent's message its summary (when the chat shows it)
+and its body separated by a blank line.
 
 #### Scenario: A message's text
 - **WHEN** the human copies the analyst's message "Раунд 1" whose body is "1. Какие
   действия?"
 - **THEN** the clipboard holds "Раунд 1", an empty line and "1. Какие действия?"
+
+### Requirement: Code blocks and messages have copy buttons shown on hover
+
+Copy code and Copy message SHALL say "Copied" for 2 seconds after a copy.
+With a pointer that can hover, both SHALL be hidden until the pointer is over the code
+block or the message, or the keyboard's focus is on the button; on a touch screen they
+SHALL always be shown.
+
+#### Scenario: Hidden without the pointer
+- **WHEN** the pointer is not over a message
+- **THEN** its head shows no Copy message button, and moving the pointer over the message
+  shows it
 
 #### Scenario: A touch screen
 - **WHEN** the chat is shown on a touch screen

@@ -13,11 +13,17 @@ At a turn's end, and at every other switch of an agent to idle or background by 
 LADO SHALL set the status and take the agent's pending queue in one write transaction,
 by the channel the hook delivers through (`hook_output` when the provider can carry the
 queue on in the turn-end hook's output and its CLI does not ignore that output, else
-`typed`). No other process (the session loop's sweep, a sender) SHALL see the agent idle
-or background with a queue that this hook is about to take. A sender SHALL still queue
-first and take the queue of an agent that takes input second, so a message queued at
-any time is handed over by exactly one of them. With an empty queue the transaction
+`typed`). With an empty queue the transaction
 SHALL leave the agent idle or background, with its `status` event, as before.
+
+#### Scenario: A turn's end with nothing queued
+- **WHEN** an agent ends its turn with no message pending
+- **THEN** it is idle, a `status` event records it, and the hook prints nothing
+
+### Requirement: No other process sees the agent idle with the queue its hook takes
+
+No other process (the session loop's sweep, a sender) SHALL see the agent idle
+or background with a queue that this hook is about to take.
 
 #### Scenario: The session loop sweeps during a turn's end
 - **WHEN** an agent of a provider that delivers on turn end ends its turn with one
@@ -25,9 +31,11 @@ SHALL leave the agent idle or background, with its `status` event, as before.
 - **THEN** the message is handed over by the hook's output with channel `hook_output`
   and one attempt, and is never typed into the agent's window
 
-#### Scenario: A turn's end with nothing queued
-- **WHEN** an agent ends its turn with no message pending
-- **THEN** it is idle, a `status` event records it, and the hook prints nothing
+### Requirement: A message is handed over by exactly one of the sender and the hook
+
+A sender SHALL still queue
+first and take the queue of an agent that takes input second, so a message queued at
+any time is handed over by exactly one of them, the sender or the hook.
 
 #### Scenario: A message sent right after the turn's end
 - **WHEN** a message is sent to the agent after its turn-end hook's transaction

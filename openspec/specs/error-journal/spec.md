@@ -13,47 +13,13 @@ An unexpected exception in a CLI command, a hook, a tool of `lado mcp`, a pass o
 session loop or a request of the UI server SHALL add one JSON line to
 `LADO_HOME/errors.jsonl` with the time, LADO's version, where it happened (`cli:<command>`,
 `hook:<event>`, `mcp:<tool>`, `loop`, `server:<route template>`), the exception's type and
-message, and its traceback; the session and agent, when known, are kept in that line. The
-line SHALL also hold the exception's scrubbed form, as `telemetry.scrub` makes it: `chain`
-(its causes' types), `stack` (LADO's frames as `lado/<file>:<function>:<line>`, others as
-`<external>`), `fingerprint` and `provider` (the agent CLI of a failing hook, else null).
-When `telemetry.scrub` itself raises, the line SHALL still be written, without `chain`,
-`stack`, `fingerprint` and `provider` (as LADO 0.37 wrote it), and nothing of that
-exception SHALL be queued for sending; the scrub's failure SHALL then be recorded as an
-error of its own at `where` `telemetry:scrub` (its line with its scrubbed form, queued
-while sending is on, except for the sender's own failure, which queues nothing), once: when
-scrubbing that failure fails too, its line is written without the scrubbed fields and
-nothing more is recorded. The file SHALL be readable by its owner only. Writing the line SHALL never raise: a failure to
-write leaves the process's own handling as it was. LADO's refusals that it prints as
-reasons (the CLI's known errors, the errors `lado mcp` passes on to the agent) and
-`state.SchemaError` SHALL NOT be written. Each process SHALL go on handling the exception
-as before (the CLI's traceback, the hook's exit 0 and `hooks.log` line, the tool's error,
-the loop's `loop.log` line, the server's 500).
+message, and its traceback; the session and agent, when known, are kept in that line.
 
 #### Scenario: A hook fails
 - **WHEN** a hook of agent `w1` raises a `KeyError` while it handles a turn's end
 - **THEN** `errors.jsonl` has one line with `where` `hook:turn_end`, type `KeyError`, the
   traceback, LADO's version and agent `w1`, `hooks.log` has its line as before, and the
   hook exits 0
-
-#### Scenario: The line holds the scrubbed form
-- **WHEN** a hook of a Claude Code agent raises a `KeyError` in `lado/hooks.py`
-- **THEN** its line in `errors.jsonl` has `provider` `claude`, a `stack` whose LADO frames
-  read `lado/hooks.py:<function>:<line>`, `chain` and a `fingerprint`, besides its message
-  and traceback
-
-#### Scenario: The scrub fails
-- **WHEN** a hook raises a `KeyError` at `hook:turn_end`, sending is on, and
-  `telemetry.scrub` raises a `TypeError` for that `KeyError`
-- **THEN** `errors.jsonl` has the `KeyError`'s line with its time, version, `where`, type,
-  message, traceback, session and agent and without `chain`, `stack`, `fingerprint` and
-  `provider`, and a `TypeError` line at `telemetry:scrub` with its scrubbed form; only the
-  `TypeError` is queued
-
-#### Scenario: The scrub fails on its own failure too
-- **WHEN** `telemetry.scrub` raises for every exception
-- **THEN** `errors.jsonl` gets the error's line and one line at `telemetry:scrub`, neither
-  with the scrubbed fields, nothing is queued, and the process goes on as before
 
 #### Scenario: A CLI command fails unexpectedly
 - **WHEN** `lado ls` raises a `TypeError`
@@ -65,10 +31,6 @@ the loop's `loop.log` line, the server's 500).
 - **THEN** `errors.jsonl` has a line with `where` `mcp:send_message`, and the agent gets
   the tool's error as before
 
-#### Scenario: A refusal is no error
-- **WHEN** `lado start` is refused because the folder is not a git repository
-- **THEN** `errors.jsonl` gets no line
-
 #### Scenario: The loop's repeated error
 - **WHEN** a pass of the session loop fails with the same error five times in a row
 - **THEN** `errors.jsonl` gets one line for it, not five
@@ -77,6 +39,75 @@ the loop's `loop.log` line, the server's 500).
 - **WHEN** `GET /api/sessions/{name}/agents` raises an unexpected exception
 - **THEN** `errors.jsonl` has a line with `where` `server:/api/sessions/{name}/agents`
   and the response is 500
+
+### Requirement: The journal's line holds the exception's scrubbed form
+
+The line SHALL also hold the exception's scrubbed form, as `telemetry.scrub` makes it: `chain`
+(its causes' types), `stack` (LADO's frames as `lado/<file>:<function>:<line>`, others as
+`<external>`), `fingerprint` and `provider` (the agent CLI of a failing hook, else null).
+
+#### Scenario: The line holds the scrubbed form
+- **WHEN** a hook of a Claude Code agent raises a `KeyError` in `lado/hooks.py`
+- **THEN** its line in `errors.jsonl` has `provider` `claude`, a `stack` whose LADO frames
+  read `lado/hooks.py:<function>:<line>`, `chain` and a `fingerprint`, besides its message
+  and traceback
+
+### Requirement: A failing scrub still writes the line and queues nothing of it
+
+When `telemetry.scrub` itself raises, the line SHALL still be written, without `chain`,
+`stack`, `fingerprint` and `provider` (as LADO 0.37 wrote it), and nothing of that
+exception SHALL be queued for sending.
+
+#### Scenario: The scrub fails
+- **WHEN** a hook raises a `KeyError` at `hook:turn_end`, sending is on, and
+  `telemetry.scrub` raises a `TypeError` for that `KeyError`
+- **THEN** `errors.jsonl` has the `KeyError`'s line with its time, version, `where`, type,
+  message, traceback, session and agent and without `chain`, `stack`, `fingerprint` and
+  `provider`, and a `TypeError` line at `telemetry:scrub` with its scrubbed form; only the
+  `TypeError` is queued
+
+### Requirement: A scrub's failure is recorded once as an error of its own
+
+When `telemetry.scrub` itself raises, the scrub's failure SHALL then be recorded as an
+error of its own at `where` `telemetry:scrub` (its line with its scrubbed form, queued
+while sending is on, except for the sender's own failure, which queues nothing), once: when
+scrubbing that failure fails too, its line is written without the scrubbed fields and
+nothing more is recorded.
+
+#### Scenario: The scrub fails on its own failure too
+- **WHEN** `telemetry.scrub` raises for every exception
+- **THEN** `errors.jsonl` gets the error's line and one line at `telemetry:scrub`, neither
+  with the scrubbed fields, nothing is queued, and the process goes on as before
+
+### Requirement: The journal is readable by its owner only
+
+The file SHALL be readable by its owner only.
+
+#### Scenario: Another user reads the journal
+- **WHEN** an error has been written to `errors.jsonl` and another user of the machine
+  reads the file
+- **THEN** the read is refused: only the file's owner can read it
+
+### Requirement: Writing the journal never changes how a process handles its exception
+
+Writing the line SHALL never raise: a failure to
+write leaves the process's own handling as it was. Each process SHALL go on handling the
+exception as before (the CLI's traceback, the hook's exit 0 and `hooks.log` line, the
+tool's error, the loop's `loop.log` line, the server's 500).
+
+#### Scenario: The journal cannot be written
+- **WHEN** a hook raises an exception and `errors.jsonl` cannot be written
+- **THEN** the hook writes its `hooks.log` line and exits 0, as before
+
+### Requirement: LADO's refusals are not written to the journal
+
+LADO's refusals that it prints as
+reasons (the CLI's known errors, the errors `lado mcp` passes on to the agent) and
+`state.SchemaError` SHALL NOT be written.
+
+#### Scenario: A refusal is no error
+- **WHEN** `lado start` is refused because the folder is not a git repository
+- **THEN** `errors.jsonl` gets no line
 
 ### Requirement: LADO's logs are bounded in size
 

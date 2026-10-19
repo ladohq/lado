@@ -12,15 +12,19 @@ preview of exactly what goes, and a switch in Settings and `lado telemetry`.
 LADO SHALL send statistics or errors only while all of these hold: the human chose `on`
 for the current list of fields, neither `DO_NOT_TRACK` (set, not empty and not `0`) nor
 `LADO_TELEMETRY=0` is in the process's environment, and this LADO has an endpoint (a
-PostHog project token, or `LADO_TELEMETRY_URL`). Otherwise nothing SHALL be queued or sent, and
-`lado telemetry status`, `GET /api/telemetry` and the System panel SHALL say why: not
-chosen, off, off by the named variable, or no statistics endpoint. The choice SHALL be
+PostHog project token, or `LADO_TELEMETRY_URL`). The choice SHALL be
 kept in `LADO_HOME` and be the same for the CLI, the UI and every LADO process of that
 home.
 
 #### Scenario: No choice yet
 - **WHEN** LADO fails in a hook and no choice was made
 - **THEN** the error is in `errors.jsonl` only, nothing is queued, and nothing is sent
+
+### Requirement: When nothing may be sent, LADO says why
+
+When any condition of sending does not hold, nothing SHALL be queued or sent, and
+`lado telemetry status`, `GET /api/telemetry` and the System panel SHALL say why: not
+chosen, off, off by the named variable, or no statistics endpoint.
 
 #### Scenario: Switched off by the environment
 - **WHEN** the choice is `on` and the UI server runs with `DO_NOT_TRACK=1`
@@ -40,15 +44,19 @@ list of fields) and nothing switches it off and there is an endpoint, the UI SHA
 banner under the top bar on every page: "Help improve LADO?", what is sent and never
 sent, "Nothing is sent until you choose", a What is sent disclosure with the next daily
 report, and the buttons Send statistics and Don't send and a link to `docs/telemetry.md`.
-`lado start` and `lado ui` SHALL ask the same before their work, on stderr, ending with
-`Send them? [y/N]`, only when stdin and stderr are terminals and not inside an agent
-(`LADO_AGENT`); `y` is on, Enter or `n` is off, EOF or Ctrl-C stores nothing. When the
-stored yes covers an older list, the question SHALL name the new fields.
 
 #### Scenario: The human says yes in the UI
 - **WHEN** the banner shows and the human presses Send statistics
 - **THEN** the choice is `on` for the current fields, the banner goes, and Settings shows
   Send
+
+### Requirement: The CLI asks the statistics question on a terminal
+
+While the banner would show, `lado start` and `lado ui` SHALL ask the same before their
+work, on stderr, ending with
+`Send them? [y/N]`, only when stdin and stderr are terminals and not inside an agent
+(`LADO_AGENT`); `y` is on, Enter or `n` is off, EOF or Ctrl-C stores nothing. When the
+stored yes covers an older list, the question SHALL name the new fields.
 
 #### Scenario: Enter in the CLI
 - **WHEN** `lado start ~/work/app` asks in a terminal and the human presses Enter
@@ -68,9 +76,7 @@ stored yes covers an older list, the question SHALL name the new fields.
 Settings SHALL have a last section, Usage statistics, with Send / Don't send, a line for
 its state (last sent and when, "Not chosen yet: nothing is sent", or off by the named
 variable with the switch disabled) and links to the next report and to
-`docs/telemetry.md`. The System panel SHALL have a row `Statistics` (`sending · last
-<time>`, `off`, `not chosen`, or off by the variable) that leads to Settings, and the
-copied system report SHALL have a line `- Statistics: ...`. `lado telemetry` SHALL have
+`docs/telemetry.md`. `lado telemetry` SHALL have
 `status` (the default), `on`, `off` and `show`; `on` and `off` SHALL be refused inside an
 agent; `off` SHALL drop what is queued.
 
@@ -82,6 +88,12 @@ agent; `off` SHALL drop what is queued.
 - **WHEN** an agent runs `lado telemetry on`
 - **THEN** it is refused and the choice is unchanged
 
+### Requirement: The System panel and the system report show the statistics' state
+
+The System panel SHALL have a row `Statistics` (`sending · last
+<time>`, `off`, `not chosen`, or off by the variable) that leads to Settings, and the
+copied system report SHALL have a line `- Statistics: ...`.
+
 #### Scenario: The panel's row
 - **WHEN** the choice is `on` and the last send was today at 09:12
 - **THEN** the System panel shows `Statistics` `sending · last today 09:12`, and the
@@ -89,25 +101,50 @@ agent; `off` SHALL drop what is queued.
 
 ### Requirement: What is sent is the published list and nothing else
 
-The daily report SHALL carry only: a random install ID kept in `LADO_HOME`, LADO's and
+Besides its counts of use, the daily report SHALL carry only these facts of the install: a
+random install ID kept in `LADO_HOME`, LADO's and
 Python's versions, the OS and architecture, the installer kind (`uv tool`, `pipx`, `dev`,
 `other`), the installed agent CLIs and their versions, the built-in and official kits by
-name and a count of the others, and, since the last report, the counts of sessions started
+name and a count of the others.
+
+#### Scenario: A kit of the human's own
+- **WHEN** a kit that is neither built in nor official is installed and the daily report
+  is built
+- **THEN** the report counts it among the others and does not name it
+
+### Requirement: The daily report counts the use since the last report
+
+Besides the facts of the install, the daily report SHALL carry only, since the last
+report, the counts of sessions started
 or resumed, agents spawned per provider, flow runs started, gates opened, turn errors,
-LADO errors and errors dropped from a full queue. An error event SHALL carry only its
+LADO errors and errors dropped from a full queue.
+
+#### Scenario: Two sessions since the last report
+- **WHEN** two sessions were started and three agents of provider `claude` spawned since
+  the last report
+- **THEN** the next report counts 2 sessions and 3 `claude` agents, and names no session
+  or agent
+
+### Requirement: An error event carries its type and LADO's frames, nothing of the user's work
+
+An error event SHALL carry only its
 type and its causes' types, its stack as frames of LADO's own package (file relative to
 the package, function, line; other frames as `<external>`), where it happened without
 ids, the provider, a fingerprint, its count and its first and last time. No event SHALL
 carry a path, a repository, session or agent name, a message, a prompt, a command's
-argument, an environment value or an exception's text. `lado telemetry show` and
-`GET /api/telemetry/preview` SHALL give exactly the JSON the next send would post, the token
-left out. `docs/telemetry.md` SHALL list the same fields as the code, checked by a test.
+argument, an environment value or an exception's text.
 
 #### Scenario: An error with a path in its message
 - **WHEN** an `OSError` whose message names `/Users/ann/work/app` and whose locals hold a
   token is queued
 - **THEN** the queued event has type `OSError` and LADO frames only, and neither the path,
   the user's name nor the token is anywhere in it
+
+### Requirement: The preview is what the next send posts, and the docs list the same fields
+
+`lado telemetry show` and
+`GET /api/telemetry/preview` SHALL give exactly the JSON the next send would post, the token
+left out. `docs/telemetry.md` SHALL list the same fields as the code, checked by a test.
 
 #### Scenario: Show before sending
 - **WHEN** the human runs `lado telemetry show`
@@ -119,16 +156,7 @@ left out. `docs/telemetry.md` SHALL list the same fields as the code, checked by
 With sending on, LADO SHALL send at most one daily report per 24 hours and the queued
 errors, one event per fingerprint with its count, from a detached process (`lado
 telemetry send`, one at a time by a lock) that a CLI command run by the human, the session
-loop or the UI server starts when something is due; a hook SHALL only queue. A failed
-send SHALL keep everything for a later try, at most every 15 minutes, and keep its reason
-for `status`. The queue SHALL hold at most 200 errors; further ones are counted and the
-count is sent with the next report.
-
-#### Scenario: Offline
-- **WHEN** a send fails because the network is down
-- **THEN** the report and the errors stay queued, `lado telemetry status` names the
-  failure, and the next try comes no sooner than 15 minutes later (the requirement on an
-  unreachable endpoint says the rest)
+loop or the UI server starts when something is due; a hook SHALL only queue.
 
 #### Scenario: The same error a hundred times
 - **WHEN** the same hook error is queued 100 times in a day
@@ -138,6 +166,18 @@ count is sent with the next report.
 - **WHEN** the loop and a CLI command start a sender at the same moment
 - **THEN** one of them sends and the other exits without sending
 
+### Requirement: A failed send keeps everything for a later try in a bounded queue
+
+A failed send SHALL keep everything for a later try, at most every 15 minutes, and keep its reason
+for `status`. The queue SHALL hold at most 200 errors; further ones are counted and the
+count is sent with the next report.
+
+#### Scenario: Offline
+- **WHEN** a send fails because the network is down
+- **THEN** the report and the errors stay queued, `lado telemetry status` names the
+  failure, and the next try comes no sooner than 15 minutes later (the requirement on an
+  unreachable endpoint says the rest)
+
 ### Requirement: An unreachable endpoint changes nothing for the user
 
 When the statistics endpoint cannot be reached or refuses (no network, DNS failure, a
@@ -145,31 +185,39 @@ proxy, a TLS error, a firewall or a block by region, a timeout, any non-2xx answ
 whether it is PostHog or another endpoint set by `LADO_TELEMETRY_URL` or a later
 `ENDPOINT`, nothing a user sees or runs SHALL change: no CLI command, hook, `lado mcp`
 tool, session loop pass or UI request SHALL wait for the network, print or show an error
-about it, or end differently. Only the detached sender talks to the endpoint, each try
-SHALL give up after `SEND_TIMEOUT` (2 seconds, as the update check's
-`update.CHECK_TIMEOUT`) per network operation and its whole process SHALL end within
-`SEND_DEADLINE` (30 seconds) whatever the network does, DNS included; a failed try SHALL
-be followed by the next one no sooner than 15 minutes later, with no retries inside a
-try. What waits SHALL stay bounded while the endpoint stays unreachable: at most 200
-queued errors, none older than 30 days (further and older ones only counted), and one
-pending daily report whose window grows from the last report that went through, never
-back more than 30 days. The failure SHALL be kept only for
-`lado telemetry status` (`last try failed: <reason>`) and the Settings section's line.
+about it, or end differently.
 
 #### Scenario: Offline laptop
 - **WHEN** the network is down and the human runs `lado start ~/work/app` with sending on
 - **THEN** the session starts as fast as without statistics, nothing about the network
   is printed, and `lado telemetry status` says `last try failed: <reason>`
 
-#### Scenario: Blocked by region or firewall
-- **WHEN** every connection to the endpoint is refused or answered 403 for a month
-- **THEN** LADO works as usual, the queue holds at most 200 errors and one report, and a
-  try comes at most every 15 minutes, each over within 30 seconds
+### Requirement: Each try of the sender ends in bounded time
+
+Only the detached sender talks to the endpoint, each try
+SHALL give up after `SEND_TIMEOUT` (2 seconds, as the update check's
+`update.CHECK_TIMEOUT`) per network operation and its whole process SHALL end within
+`SEND_DEADLINE` (30 seconds) whatever the network does, DNS included; a failed try SHALL
+be followed by the next one no sooner than 15 minutes later, with no retries inside a
+try.
 
 #### Scenario: DNS that hangs
 - **WHEN** resolving the endpoint's name never answers
 - **THEN** the sender's process ends after 30 seconds, releases its lock, and no other
   LADO process waited for it
+
+### Requirement: What waits for an unreachable endpoint stays bounded
+
+What waits SHALL stay bounded while the endpoint stays unreachable: at most 200
+queued errors, none older than 30 days (further and older ones only counted), and one
+pending daily report whose window grows from the last report that went through, never
+back more than 30 days. The failure SHALL be kept only for
+`lado telemetry status` (`last try failed: <reason>`) and the Settings section's line.
+
+#### Scenario: Blocked by region or firewall
+- **WHEN** every connection to the endpoint is refused or answered 403 for a month
+- **THEN** LADO works as usual, the queue holds at most 200 errors and one report, and a
+  try comes at most every 15 minutes, each over within 30 seconds
 
 #### Scenario: The endpoint comes back
 - **WHEN** a send succeeds after two days offline
@@ -182,7 +230,17 @@ LADO SHALL NOT keep usage data for sending: the daily report SHALL be counted fr
 `lado.db` when it is built and not stored after it is sent. Its counts SHALL come from the
 local table `usage` (capability usage-stats), which LADO keeps for `lado stats` whatever
 the human's choice about sending, and which no send reads but the report's counts; so a
-session forgotten before the report is still counted. What waits to be sent SHALL be at
+session forgotten before the report is still counted.
+
+#### Scenario: A session forgotten before the report
+- **WHEN** a session with two spawned agents is started and forgotten after the last
+  report and before the next one
+- **THEN** the next report counts its session and its two agents, as it would without
+  the forget
+
+### Requirement: What waits to be sent is at most 200 errors of 30 days
+
+What waits to be sent SHALL be at
 most 200 queued errors and the drop count; an error queued more than 30 days ago SHALL be
 removed and counted as dropped; a report's window SHALL start no earlier than 30 days
 before it is built.
@@ -194,25 +252,27 @@ before it is built.
   and no report file; the first send after that posts one report counting the last 30
   days and the queued errors, and `errors_dropped` counts the rest
 
-#### Scenario: A session forgotten before the report
-- **WHEN** a session with two spawned agents is started and forgotten after the last
-  report and before the next one
-- **THEN** the next report counts its session and its two agents, as it would without
-  the forget
-
 ### Requirement: Tests never send
 
 The test suite SHALL run with `LADO_TELEMETRY=0`, set in `tests/conftest.py`, for every
 layer under `tests/` (unit, integration, UI, smoke and live), and every LADO process a test
 starts SHALL inherit it; a test of sending SHALL take a fixture that removes it and points
-`LADO_TELEMETRY_URL` at a local server of the test. An autouse fixture of
-`tests/conftest.py` SHALL fail a test when, before it, sending is not off by
-`LADO_TELEMETRY=0`, or when, after it, the test's `LADO_HOME` holds `telemetry/sent.json`
-or a file in `telemetry/outbox/` and the test did not take `telemetry_on`.
+`LADO_TELEMETRY_URL` at a local server of the test.
 
 #### Scenario: A test session's hook fails
 - **WHEN** an integration test's hook raises
 - **THEN** nothing is sent anywhere outside the test
+
+#### Scenario: A LADO process of a test
+- **WHEN** a test runs `lado telemetry status` as a subprocess
+- **THEN** it prints that statistics are off because `LADO_TELEMETRY=0` is set
+
+### Requirement: A guard fails a test that could send
+
+An autouse fixture of
+`tests/conftest.py` SHALL fail a test when, before it, sending is not off by
+`LADO_TELEMETRY=0`, or when, after it, the test's `LADO_HOME` holds `telemetry/sent.json`
+or a file in `telemetry/outbox/` and the test did not take `telemetry_on`.
 
 #### Scenario: The setting is dropped from the conftest
 - **WHEN** a change removes `LADO_TELEMETRY=0` from `tests/conftest.py`
@@ -224,25 +284,25 @@ or a file in `telemetry/outbox/` and the test did not take `telemetry_on`.
 - **THEN** the test fails at the guard's check after it, which names the file and
   `telemetry_on`
 
-#### Scenario: A LADO process of a test
-- **WHEN** a test runs `lado telemetry status` as a subprocess
-- **THEN** it prints that statistics are off because `LADO_TELEMETRY=0` is set
-
 ### Requirement: The project token belongs to the endpoint's region
 
 LADO's built-in PostHog project token (`telemetry.PROJECT_TOKEN`) SHALL be a token of a
 project in the region of its built-in endpoint (`telemetry.ENDPOINT`), and a release SHALL
 NOT be published while that endpoint's host does not accept the token. The Release
-workflow SHALL run `scripts/check_telemetry.py` before it builds and publishes; the script
-SHALL ask the endpoint's own host about the token with one request that stores no event,
-exit 0 only on a 2xx answer, and otherwise exit 1 with one line saying whether the host
-refused the token (401 or 403) or the check could not be made.
+workflow SHALL run `scripts/check_telemetry.py` before it builds and publishes.
 
 #### Scenario: A token of another region
 - **WHEN** a tag `vX.Y.Z` is pushed and `eu.i.posthog.com` answers 401 to the project token
 - **THEN** the Release workflow fails at the check with `telemetry: eu.i.posthog.com
   refuses the project token: it is not a token of a project in this region`, and nothing
   is built or published
+
+### Requirement: The token check asks the endpoint's host and stores nothing
+
+The script `scripts/check_telemetry.py`
+SHALL ask the endpoint's own host about the token with one request that stores no event,
+exit 0 only on a 2xx answer, and otherwise exit 1 with one line saying whether the host
+refused the token (401 or 403) or the check could not be made.
 
 #### Scenario: The region knows the token
 - **WHEN** the endpoint's host answers 200 to the project token

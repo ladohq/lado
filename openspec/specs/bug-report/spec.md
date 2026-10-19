@@ -9,12 +9,20 @@ form.
 
 ## Requirements
 
-### Requirement: The bug report holds the system info and LADO's recent errors, and nothing that names the user's work
+### Requirement: The bug report holds the system info and LADO's recent errors
 
 LADO SHALL build one Markdown bug report for the CLI and the UI alike
 (`bug_report.build`). It SHALL hold, in this order: a `### What happened` section with a
 placeholder comment for the human; the system info of `doctor.report`; in the UI, the line
-naming the page's browser and its OS; and a `### LADO errors` section. The report SHALL
+naming the page's browser and its OS; and a `### LADO errors` section.
+
+#### Scenario: No errors
+- **WHEN** the journal has no line from the last 30 days
+- **THEN** the errors section says `No LADO errors in the last 30 days.`
+
+### Requirement: The bug report holds nothing that names the user's work
+
+The report SHALL
 NOT hold a path, a home folder, a session, agent or repository name, a message's text, an
 exception's message or a traceback, whatever the journal's lines hold. From the journal it
 SHALL take only each line's time, LADO version, `where`, type, `chain`, `stack` and
@@ -24,24 +32,12 @@ SHALL take only each line's time, LADO version, `where`, type, `chain`, `stack` 
 - **WHEN** `errors.jsonl` has a line whose message is `no such file: /Users/ann/acme/.lado/worktrees/billing/dev`, whose traceback names `/Users/ann/acme`, with session `billing` and agent `dev`
 - **THEN** the report contains none of `/Users/ann`, `acme`, `billing` or `dev` (as a session or agent), and it shows that error's type, `where` and stack
 
-#### Scenario: No errors
-- **WHEN** the journal has no line from the last 30 days
-- **THEN** the errors section says `No LADO errors in the last 30 days.`
-
 ### Requirement: The report groups LADO's errors of the last 30 days by kind
 
 The errors section SHALL hold the journal's lines from the last 30 days, read from
 `errors.jsonl` and `errors.jsonl.1`, grouped by `fingerprint`. A line without one, as
 LADO 0.37 wrote, SHALL be grouped by its type and `where`. The groups SHALL be ordered
-newest first, by their latest line. Each kind SHALL show its type, `where`, its provider
-when known, its count (`once`, `N times`), its first and last day, the LADO versions it
-happened in, and its stack (LADO's frames as `lado/<file>:<function>:<line>`, others as
-`<external>`), at most 12 frames from the innermost. A kind without a stack SHALL show no
-stack lines.
-
-#### Scenario: The same error three times
-- **WHEN** a `KeyError` at `hook:turn_end` of provider `claude` was journaled on Oct 12, 13 and 14 by LADO 0.37.0 and 0.38.0
-- **THEN** the report has one kind: `KeyError at hook:turn_end (claude), 3 times, 2026-10-12 to 2026-10-14, LADO 0.37.0, 0.38.0`, then its frames
+newest first, by their latest line.
 
 #### Scenario: A line of LADO 0.37
 - **WHEN** a line has no `fingerprint` or `stack`
@@ -51,15 +47,35 @@ stack lines.
 - **WHEN** a line of `errors.jsonl.1` is 31 days old
 - **THEN** the report leaves it out
 
+### Requirement: Each kind of error shows its facts and its stack
+
+Each kind of error in the report SHALL show its type, `where`, its provider
+when known, its count (`once`, `N times`), its first and last day, the LADO versions it
+happened in, and its stack (LADO's frames as `lado/<file>:<function>:<line>`, others as
+`<external>`), at most 12 frames from the innermost. A kind without a stack SHALL show no
+stack lines.
+
+#### Scenario: The same error three times
+- **WHEN** a `KeyError` at `hook:turn_end` of provider `claude` was journaled on Oct 12, 13 and 14 by LADO 0.37.0 and 0.38.0
+- **THEN** the report has one kind: `KeyError at hook:turn_end (claude), 3 times, 2026-10-12 to 2026-10-14, LADO 0.37.0, 0.38.0`, then its frames
+
 ### Requirement: The issue link fits GitHub's bound
 
 LADO SHALL make the report a link to GitHub's new issue form,
 `https://github.com/ladohq/lado/issues/new?title=<title>&body=<body>`, at most 8000
 characters long. The title SHALL be `<type> at <where>` of the newest kind of error, or
-empty with no errors. When the link with the whole report is longer, LADO SHALL leave out
+empty with no errors. The report the CLI prints and the page shows SHALL never be cut.
+
+#### Scenario: The link's title
+- **WHEN** the newest kind of error in the report is a `KeyError` at `hook:turn_end`
+- **THEN** the link's title is `KeyError at hook:turn_end`
+
+### Requirement: The issue link leaves out the oldest kinds of errors until it fits
+
+When the link with the whole report is longer than its bound, LADO SHALL leave out
 of its body the oldest kinds of errors, one by one, until it fits. The body SHALL then end
 the errors section with `N more kinds of errors left out: lado bug-report prints them
-all`. The report the CLI prints and the page shows SHALL never be cut.
+all`.
 
 #### Scenario: Many kinds of errors
 - **WHEN** the journal has 40 kinds of errors in the last 30 days
@@ -83,26 +99,38 @@ open a browser.
 `lado bug-report` SHALL print the warning, the whole report and the line `Open a new
 issue: <link>`. When stdin and stdout are terminals and a browser can show (macOS with the
 process in the graphical session; elsewhere `DISPLAY`, `WAYLAND_DISPLAY` or `BROWSER` set),
-it SHALL then ask `Open it in the browser? [y/N]`. `y` SHALL open the link in the default
-browser. Enter, `n`, EOF or Ctrl-C SHALL open nothing and exit 0. A browser that does not
-open SHALL print `could not open a browser: open the link above`. Otherwise it SHALL ask
-nothing. The command SHALL NOT migrate `lado.db`, and SHALL work with a `lado.db` of
-another schema version or with none. Its `Server:` line SHALL say whether the UI server
-runs (`not running`, or `running, loopback only` / `running, open to the network`; in a
-container `running, in a container`, as the container's port publication, not LADO,
-decides who reaches it).
+it SHALL then ask `Open it in the browser? [y/N]`. Otherwise it SHALL ask
+nothing.
 
 #### Scenario: Over ssh on Linux
 - **WHEN** the human runs `lado bug-report` over ssh, with no `DISPLAY`, `WAYLAND_DISPLAY` or `BROWSER`
 - **THEN** it prints the report and the link and asks nothing
 
+### Requirement: lado bug-report opens the browser only on yes
+
+At the question of `lado bug-report`, `y` SHALL open the link in the default
+browser. Enter, `n`, EOF or Ctrl-C SHALL open nothing and exit 0. A browser that does not
+open SHALL print `could not open a browser: open the link above`.
+
 #### Scenario: The human says yes
 - **WHEN** the human runs it in a Mac's terminal in the graphical session and answers `y`
 - **THEN** the default browser opens the link
 
+### Requirement: lado bug-report leaves lado.db as it is
+
+The command `lado bug-report` SHALL NOT migrate `lado.db`, and SHALL work with a `lado.db` of
+another schema version or with none.
+
 #### Scenario: A database of a newer LADO
 - **WHEN** `lado.db` has a newer schema than this LADO's
 - **THEN** `lado bug-report` prints the report with `schema <n>`, and the database is unchanged
+
+### Requirement: lado bug-report says whether the UI server runs
+
+The `Server:` line of `lado bug-report` SHALL say whether the UI server
+runs (`not running`, or `running, loopback only` / `running, open to the network`; in a
+container `running, in a container`, as the container's port publication, not LADO,
+decides who reaches it).
 
 #### Scenario: The server in a container
 - **WHEN** the human runs `lado bug-report` in a container (`LADO_CONTAINER=1`) whose UI
@@ -114,11 +142,20 @@ decides who reaches it).
 
 The rail SHALL have a **Report a bug** item with a bug icon above Settings, on every page,
 with only its icon (its name as tooltip and accessible name) when the rail is collapsed.
-It SHALL open the page `/report` (title "Report a bug"). The page SHALL load `GET
+It SHALL open the page `/report` (title "Report a bug"). A failed load SHALL show its reason.
+The page SHALL load the report anew on each visit; the change feed does not carry it.
+
+#### Scenario: The collapsed rail
+- **WHEN** the rail is collapsed
+- **THEN** Report a bug shows only its bug icon, above Settings, with "Report a bug" as
+  its tooltip and accessible name
+
+### Requirement: The Report a bug page shows the report, its link and Copy text
+
+The page `/report` SHALL load `GET
 /api/bug-report?browser=<line>` with its browser line, and show the warning, the whole
 report, **Open a new issue on GitHub ↗** (the report's link, opened in a new tab) and
-**Copy text** (copies the report; "Report copied"). A failed load SHALL show its reason.
-The page SHALL load the report anew on each visit; the change feed does not carry it.
+**Copy text** (copies the report; "Report copied").
 
 #### Scenario: From a session's page
 - **WHEN** the human is on a session's page and clicks Report a bug on the rail

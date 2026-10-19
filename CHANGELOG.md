@@ -2,6 +2,9 @@
 
 ## 0.42.0 (unreleased)
 
+- Files attached right after a chat opens no longer all show the crossed-out eye, and an
+  image keeps its thumbnail: a file's chip shows its type by the server's table once that
+  is known, whenever the file was attached.
 - LADO's image carries the agents' everyday tools: `jq`, `rg` (ripgrep), `unzip`, `zip`,
   `xz`, `bzip2`, `patch`, `file`, `rsync`, `sqlite3`, `tree`, `lsof` and `nc`, so the
   agents and the kits' scripts find them in a new container with nothing installed.

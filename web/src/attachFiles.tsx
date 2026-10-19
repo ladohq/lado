@@ -1,9 +1,10 @@
 // The human's files (docs/design/ui.md, Composer): one module for the composer and the
 // waiting card's fields (an own answer, a skip's comment, a gate's comment), so they attach,
 // show, upload and refuse files the same way. What they check and how a file is marked comes
-// from the server's limits, never a copy of them here. Whoever keeps the files (the
-// composer, the waiting card across its tabs) owns their thumbnails' object URLs: `release`
-// revokes them when the files go.
+// from the server's limits, never a copy of them here: a chip takes its file's type from
+// them each time it shows, so a file attached before they load takes its type when they do.
+// Whoever keeps the files (the composer, the waiting card across its tabs) owns their object
+// URLs: `release` revokes them when the files go.
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type RefObject } from "react";
 
 import { ApiError, getLimits, uploadFile, type Limits } from "./api";
@@ -19,8 +20,7 @@ export type Attached = {
   key: number;
   file: File;
   name: string;
-  mediaType: string;
-  thumb: string | null; // an image's object URL, revoked when the chip goes
+  thumb: string; // the file's object URL, an image's thumbnail; revoked when the chip goes
   state: "ready" | "uploading" | "uploaded" | "failed";
   uploaded: string | null;
   reason: string | null;
@@ -73,8 +73,9 @@ export function filesLine(files: Attached[]): string {
   return `${files.length} file${files.length === 1 ? "" : "s"}, ${size(total)}`;
 }
 
-// The files `given` that the limits allow next to `count` attached already, each with an
-// image's thumbnail; each one refused is named in `problem` (null when none is).
+// The files `given` that the limits allow next to `count` attached already, each with its
+// object URL (a chip shows it when the server's type is an image); each one refused is
+// named in `problem` (null when none is).
 export function attachFiles(given: File[], count: number, limits: Limits | null): { added: Attached[]; problem: string | null } {
   const taken: File[] = [];
   const refused: string[] = [];
@@ -87,11 +88,17 @@ export function attachFiles(given: File[], count: number, limits: Limits | null)
       taken.push(file);
     }
   }
-  const added = taken.map((file): Attached => {
-    const mediaType = mediaTypeOf(file.name, limits);
-    const thumb = kindOf(mediaType) === "image" ? URL.createObjectURL(file) : null;
-    return { key: ++nextKey, file, name: file.name, mediaType, thumb, state: "ready", uploaded: null, reason: null };
-  });
+  const added = taken.map(
+    (file): Attached => ({
+      key: ++nextKey,
+      file,
+      name: file.name,
+      thumb: URL.createObjectURL(file),
+      state: "ready",
+      uploaded: null,
+      reason: null,
+    }),
+  );
   return { added, problem: refused.length ? refused.join(" ") : null };
 }
 
@@ -147,9 +154,9 @@ export async function uploadFiles(
   return { problem: `${failed.join(" ")} Remove ${them}, or ${again} to try ${them} again.` };
 }
 
-// The thumbnails of files that go (sent, removed, their question closed) are revoked.
+// The object URLs of files that go (sent, removed, their question closed) are revoked.
 export function release(files: Attached[]) {
-  for (const one of files) if (one.thumb) URL.revokeObjectURL(one.thumb);
+  for (const one of files) URL.revokeObjectURL(one.thumb);
 }
 
 // Files kept by one component: those still there when it goes are released.
@@ -238,7 +245,7 @@ export function FileChips({
   return (
     <ul className="composer-files" aria-label="Attached files">
       {files.map((one) => (
-        <FileChip key={one.key} attached={one} unseen={unseen(one, limits)} locked={locked} remove={() => remove(one.key)} />
+        <FileChip key={one.key} attached={one} limits={limits} locked={locked} remove={() => remove(one.key)} />
       ))}
     </ul>
   );
@@ -357,10 +364,10 @@ export function AnswerBox({
 const UNSEEN = "The agent sees only this file's name and size";
 
 // Why an agent would see only the file's name and size, by the server's limits: a type it
-// cannot read, or an image larger than it is shown; null when it reads the file.
-function unseen(attached: Attached, limits: Limits | null): string | null {
+// cannot read, or an image larger than it is shown; null when it reads the file, and while
+// the limits are not loaded.
+function unseen(file: File, mediaType: string, limits: Limits | null): string | null {
   if (!limits) return null;
-  const { mediaType, file } = attached;
   if (limits.agent_images.includes(mediaType)) {
     if (file.size <= limits.image_limit) return null;
     return `${UNSEEN}: an image over ${size(limits.image_limit)} is not shown to agents.`;
@@ -369,27 +376,29 @@ function unseen(attached: Attached, limits: Limits | null): string | null {
   return `${UNSEEN}. Agents read text and PNG, JPEG, GIF and WebP images.`;
 }
 
-// One attached file: an image's thumbnail or its type's icon (with the crossed-out eye when
-// an agent cannot read it), its name and size (its upload's state while it goes, its reason
-// when it failed), and × to remove it.
+// One attached file: by its type in the server's limits, an image's thumbnail or the type's
+// icon (with the crossed-out eye when an agent cannot read it); its name and size (its
+// upload's state while it goes, its reason when it failed), and × to remove it.
 function FileChip({
   attached,
-  unseen,
+  limits,
   locked,
   remove,
 }: {
   attached: Attached;
-  unseen: string | null;
+  limits: Limits | null;
   locked: boolean;
   remove: () => void;
 }) {
   const { name, file, thumb, state } = attached;
+  const mediaType = mediaTypeOf(name, limits);
+  const why = unseen(file, mediaType, limits);
   return (
     <li className={`file-chip${state === "failed" ? " failed" : ""}`}>
       <span className="file-tile">
-        {thumb ? <img src={thumb} alt="" /> : <KindIcon mediaType={attached.mediaType} />}
-        {unseen && (
-          <Tooltip tip={unseen}>
+        {kindOf(mediaType) === "image" ? <img src={thumb} alt="" /> : <KindIcon mediaType={mediaType} />}
+        {why && (
+          <Tooltip tip={why}>
             <button type="button" className="file-unseen" aria-label={UNSEEN}>
               <UnseenIcon />
             </button>

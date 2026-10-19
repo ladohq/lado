@@ -104,11 +104,11 @@ test("the paperclip opens the picker for several files; each file is a chip with
   const [log, shot] = screen.getAllByRole("listitem");
   expect(within(log).getByText("900 B")).toBeTruthy();
   expect(log.querySelector("img")).toBeNull(); // the type's icon
-  expect(shot.querySelector("img")?.getAttribute("src")).toBe("blob:thumb-1");
+  expect(shot.querySelector("img")?.getAttribute("src")).toBe("blob:thumb-2");
   expect(screen.getByText(/2 files, 910 B/)).toBeTruthy();
   fireEvent.click(within(shot).getByRole("button", { name: "Remove shot.png" }));
   expect(chips()).toEqual(["server.log"]);
-  expect(revoked).toEqual(["blob:thumb-1"]);
+  expect(revoked).toEqual(["blob:thumb-2"]);
 });
 
 test("Send with files and no text uploads each, then sends the message with their names", async () => {
@@ -123,7 +123,7 @@ test("Send with files and no text uploads each, then sends the message with thei
     { path: "/api/sessions/lado/artifacts", body: "shot.png" },
     { path: "/api/sessions/lado/messages", body: { to: "w1", text: "", artifacts: ["a-1a2b3c4d.txt", "shot-1a2b3c4d.png"] } },
   ]);
-  expect(revoked).toEqual(["blob:thumb-1"]);
+  expect(revoked).toEqual(["blob:thumb-1", "blob:thumb-2"]);
 });
 
 test("a stopped session's composer has its paperclip off", async () => {
@@ -304,7 +304,7 @@ test("a file dropped while Send uploads stays for the next message; only the sen
     path: "/api/sessions/lado/messages",
     body: { text: "", artifacts: ["a-1a2b3c4d.txt", "shot-1a2b3c4d.png"] },
   });
-  expect(revoked).toEqual(["blob:thumb-1"]); // the sent image's, not the late one's
+  expect(revoked).toEqual(["blob:thumb-1", "blob:thumb-2"]); // the sent files', not the late one's
   expect(screen.getByRole("button", { name: "Remove late.png" })).toBeTruthy();
 });
 

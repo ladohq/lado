@@ -87,10 +87,11 @@ next tasks build on it. It builds nothing users get.
 - Tracker tasks for step 0 or stage A: each is created only on the human's separate yes.
 - Contacting Anthropic, OpenAI or a lawyer: the human's decision (2026-10-18), left to
   the later stages of implementation.
-- Merging before the 0.41.0 final: the release freeze (docs/release.md, sections 3 and 6)
-  refuses a final that differs from its last RC in any file, documentation too. The pull
-  request is merged only after the 0.41.0 final, or before v0.41.0rc1 is tagged, on the
-  human's yes at merge_ok; the integrator checks the `v0.41.0rc*` tags right before.
+- Waiting for a release: the 0.41.0 release freeze (docs/release.md, sections 3 and 6)
+  no longer holds the pull request back, since v0.41.0 final is tagged and merged into
+  main (86100a9, 2026-10-19). Should a release candidate newer than the latest final be
+  tagged before the merge, the freeze applies again: the integrator checks the tags
+  right before the merge.
 - A CHANGELOG line: nothing users see changes (docs only, as LAD-52's research).
 - Changes to docs/design/*.md or AGENTS.md: they describe what is built; the plan is not
   built yet.

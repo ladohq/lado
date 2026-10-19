@@ -1,3 +1,9 @@
+## Purpose
+
+What state a session is in, as the web UI shows it: one rule gives the mark and its words
+to the session list's row, the strip's icon, the session's card and the session's head, so
+that none of them says something else about the same session.
+
 ## ADDED Requirements
 
 ### Requirement: A session's mark comes from one rule

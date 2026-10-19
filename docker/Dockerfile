@@ -149,8 +149,8 @@ USER lado
 WORKDIR /home/lado
 
 # Installed as lado: a chown afterwards would copy the layer. /opt only here and in the
-# CLIs' and openspec's installs below: at run time an install goes to the home volume (NPM_CONFIG_PREFIX,
-# uv's defaults under ~/.local).
+# CLIs' and openspec's installs below: at run time an install goes to the home volume
+# (NPM_CONFIG_PREFIX, uv's defaults under ~/.local).
 COPY --chown=lado:lado dist/lado-*.whl /tmp/wheel/
 RUN UV_TOOL_DIR=/opt/uv/tools UV_TOOL_BIN_DIR=/opt/uv/bin UV_PYTHON_INSTALL_DIR=/opt/uv/python \
     uv tool install --python 3.13 /tmp/wheel/lado-*.whl \

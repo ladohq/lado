@@ -1897,11 +1897,12 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   setting or switch.
 - **The app's window**: as a wide window's, the window does not scroll and each page's
   content does. The app is as high as the part of the window the human sees (LAD-109,
-  `openspec/changes/phone-visible-height/`): fixed in place, by default `html`'s box (not
-  `100dvh`, which on iOS 26 Safari is taller than that box, so Safari's bottom bar cut the
-  composer off), and while `window.visualViewport` exists, its height and its offset from
-  the page's top, which `phone.ts`'s `usePhoneViewport()` puts on `<html>` as
-  `--phone-height` and `--phone-top`. With the on-screen keyboard open the app shrinks to
+  `openspec/changes/phone-visible-height/`): fixed in place, at `window.visualViewport`'s
+  height and its offset from the page's top, which `phone.ts`'s `usePhoneViewport()` puts
+  on `<html>` as `--phone-height` and `--phone-top` (not `100dvh`, which on iOS 26 Safari
+  is taller than the visible part, so Safari's bottom bar cut the composer off). Without a
+  visual viewport (an old browser; no phone browser of today) the app is the viewport's
+  height, and `body` does not clip it, the app being fixed. With the on-screen keyboard open the app shrinks to
   the part above it, the top bar kept at the screen's top: Safari ignores the viewport's
   `interactive-widget=resizes-content` (Android follows it) and pans the page instead.
   None of it on a computer: no variable, the app in the page's flow.

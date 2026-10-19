@@ -20,9 +20,9 @@ whole page up instead, the top bar off the screen while the human types.
 
 ## What Changes
 
-- On a phone the app is as high as the part of the window the human sees: by default the
-  box of `html` (`height: 100%` from `html` through `body` to the app) in place of
-  `100dvh`, so the browser's bars never cut it.
+- On a phone the app is as high as the part of the window the human sees, in place of
+  `100dvh`, so the browser's bars never cut it: fixed in place, its height and top from
+  the visual viewport (below); without one (an old browser) the viewport's height.
 - On a phone a small hook of `phone.ts` follows `window.visualViewport` (its height and
   its offset from the page's top) and puts them on `<html>` as two CSS variables; the
   app takes its height and its top from them. With the keyboard open, the app shrinks to
@@ -87,9 +87,10 @@ whole page up instead, the top bar off the screen while the human types.
 
 - Scale hotfix: a defect with a clear symptom; one CSS section, one hook; review by
   precision.
-- The default height is `100%` of `html`'s box, not `100svh`: `svh` assumes the bars
-  expanded and is reported unreliable on iOS 26, while `html`'s box is what `body` clips
-  to, so the app can never be taller than the clip.
+- The fallback height, without a visual viewport, is `100%` of the viewport (the fixed
+  app's containing block), not `100svh`: `svh` assumes the bars expanded and is reported
+  unreliable on iOS 26. Being fixed, the app is not clipped by `body`; no phone browser of
+  today lacks `visualViewport`, so the fallback is not met on a phone.
 - The hook writes CSS variables on `<html>` (`--phone-height`, `--phone-top`) rather than
   a React state: the frame's CSS stays the one place that sizes the app, and a resize does
   not render the tree again.

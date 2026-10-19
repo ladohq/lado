@@ -3,9 +3,9 @@
 - [x] 1.1 `web/src/styles.css`, section "Phone layout", the app's window: `:root[data-phone]`
   and its `body` keep `height: 100%; overflow: hidden; overscroll-behavior: none`;
   `:root[data-phone] .app` loses `100vh`/`100dvh` and takes `position: fixed; inset-inline: 0;
-  top: var(--phone-top, 0px); height: var(--phone-height, 100%)` (or equivalent that keeps
-  the app within `html`'s box when no variable is set). The section's comment says why
-  (iOS 26 Safari: `100dvh` taller than the box `body` clips to; the keyboard). Check that
+  top: var(--phone-top, 0px); height: var(--phone-height, 100%)` (with no variable set, the
+  viewport's height: a fixed app is not clipped by `body`). The section's comment says why
+  (iOS 26 Safari: `100dvh` taller than the visible part; the keyboard). Check that
   the drawer (`.rail[data-open]`, `.menu-scrim`), the terminal over the screen, the
   session details' sheet and the artifact panel still cover the app as before.
 - [x] 1.2 `web/src/phone.ts`: a hook (e.g. `usePhoneViewport(phone)`) that, while `phone`
@@ -43,8 +43,8 @@
 ## 3. Documents
 
 - [x] 3.1 `docs/design/ui.md`, Phone layout, "The app's window": the app is as high as the
-  visible part of the window (`html`'s box, then `visualViewport` through `phone.ts`'s
-  hook), and with the keyboard it shrinks above it, top bar kept; Safari ignores
+  visible part of the window (`visualViewport` through `phone.ts`'s hook, else the
+  viewport's height), and with the keyboard it shrinks above it, top bar kept; Safari ignores
   `interactive-widget` (LAD-109).
 - [x] 3.2 CHANGELOG.md under `## 0.42.0 (unreleased)`: on a phone the composer, the
   waiting card and its Send button are no longer cut off by the browser's bottom bar, and

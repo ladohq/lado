@@ -230,7 +230,7 @@ test("the sessions are forgotten one at a time in the list's order, each reporte
   await waitFor(() => expect(pending).toHaveLength(3));
   pending[2](json(NOTHING));
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
-  expect(screen.getByText("No session open")).toBeTruthy();
+  expect(await screen.findByText("No session open")).toBeTruthy();
 });
 
 test("a refused forget does not stop the others; the window stays with the reason and Close", async () => {
@@ -255,7 +255,8 @@ test("when the session open in the page is forgotten, the page goes to /sessions
   await waitFor(() => expect(forgetButton(dialog).disabled).toBe(false));
   fireEvent.click(forgetButton(dialog));
   await within(dialog).findByRole("button", { name: "Close" });
-  expect(screen.getByText("No session open")).toBeTruthy();
+  // React Router applies the navigation in a transition, a render after Close.
+  expect(await screen.findByText("No session open")).toBeTruthy();
 });
 
 test("another session open in the page stays", async () => {

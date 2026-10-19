@@ -157,7 +157,10 @@ def test_the_top_bar_is_one_line_and_the_name_opens_the_details(device, server, 
     bar = top_bar(page)
     name = bar.get_by_role("button", name=session)
     expect(name).to_be_visible()
-    expect(bar.get_by_role("img", name="running")).to_be_visible()
+    # The session waits at a gate: the bar's dot is the list's mark, not "running".
+    dot = bar.get_by_role("img", name="needs you · 1 gate")
+    expect(dot).to_be_visible()
+    expect(dot).to_have_class(re.compile(r"\bdot-waiting\b"))
     expect(bar.get_by_role("button", name="Stop session…")).to_be_visible()
     expect(bar.get_by_role("button", name="System")).to_be_visible()
     expect(bar.get_by_role("button", name="Copy path")).to_have_count(0)
@@ -166,11 +169,19 @@ def test_the_top_bar_is_one_line_and_the_name_opens_the_details(device, server, 
         box(one)["y"] for one in (menu(page), name, bar.get_by_role("button", name="Stop session…"))
     ]
     assert max(tops) - min(tops) < 12, tops  # one line
+    mark, line = box(dot), box(bar)
+    assert line["y"] <= mark["y"] and mark["y"] + mark["height"] <= line["y"] + line["height"]
     shot(page, "bar", full_page=False)
+    dot.tap()  # the mark's words, which the bar has no room for
+    expect(page.get_by_role("tooltip")).to_have_text("needs you · 1 gate")
+    shot(page, "mark", full_page=False)
 
     name.tap()
     sheet = page.get_by_role("dialog", name=session)
     expect(sheet).to_be_visible()
+    expect(sheet.locator(".session-details-state")).to_contain_text(
+        re.compile(r"^needs you · 1 gate · ")
+    )
     expect(sheet).to_contain_text(str(repo))  # the whole folder
     expect(sheet).to_contain_text("uiflow 1.0.0")
     expect(sheet).to_contain_text("fake")

@@ -51,7 +51,9 @@
 # tools are here too (jq, rg, unzip, zip, xz, bzip2, patch, file, rsync, sqlite3, tree, lsof,
 # nc), and openspec at its pin, its usage statistics and update check off. python3 and
 # python are the image's Python 3.13, root's, unless a project's version file or `mise use
-# -g` names another. Other apt packages and databases are not covered.
+# -g` names another. The system libraries of Playwright's Chromium are here, for the UI
+# tests; the browser itself comes from `make browser`, into the home volume. Other apt
+# packages and databases are not covered.
 
 FROM ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 AS uv
 FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS node
@@ -75,6 +77,18 @@ RUN apt-get update \
  && echo "deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
       > /etc/apt/sources.list.d/github-cli.list \
  && apt-get update && apt-get install -y --no-install-recommends gh \
+ && rm -rf /var/lib/apt/lists/*
+
+# The system libraries of Playwright's Chromium, for the UI tests (`make test-ui`): the
+# packages `playwright install-deps chromium` installs on Debian 12 (Playwright's `chromium`
+# list), in a layer of their own. No fonts and no xvfb (the tests run headless, the UI's
+# fonts come with its bundle); the browser itself is not here: `make browser` installs it
+# into ~/.cache/ms-playwright on the home volume, at the project's own Playwright version.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcairo2 libcups2 \
+      libdbus-1-3 libdrm2 libgbm1 libglib2.0-0 libnspr4 libnss3 libpango-1.0-0 libx11-6 \
+      libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2 \
  && rm -rf /var/lib/apt/lists/*
 
 # Node 22 and npm from the official image, no NodeSource script: npm installs the agent CLIs,

@@ -9,7 +9,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
 import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeScreen, FakeSocket, stream, stubDialogs } from "./fakes";
-import { ranText } from "./Sessions";
+import { ranText, sessionMark } from "./Sessions";
 import { Shell, useTitle, useTopBar } from "./Shell";
 import { TOOLTIP_DELAY_MS } from "./Tooltip";
 
@@ -811,14 +811,15 @@ test("the top bar has the title and the link; the server's address is in the lin
 const bar = () => screen.getByRole("banner");
 const barHeadings = () => [...bar().querySelectorAll("h1")].map((one) => one.textContent);
 
-test("a session's head is the top bar: its name, the running dot with no word, the facts and the actions", async () => {
+test("a session's head is the top bar: its name, the idle ring with no word, the facts and the actions", async () => {
   open();
   const region = await screen.findByRole("region", { name: "Session lado" });
   expect(barHeadings()).toEqual(["lado"]);
-  const dot = within(bar()).getByRole("img", { name: "running" });
+  const dot = within(bar()).getByRole("img", { name: "running · idle · 1 agent" });
+  expect(dot.classList).toContain("activity-idle");
   expect(bar().textContent).not.toMatch(/running/);
   fireEvent.focus(dot);
-  expect(screen.getByRole("tooltip").textContent).toBe("running");
+  expect(screen.getByRole("tooltip").textContent).toBe("running · idle · 1 agent");
   fireEvent.blur(dot);
   expect(bar().querySelector(".session-meta .session-path")!.textContent).toBe("/src/lado");
   expect(within(bar()).getByRole("button", { name: "Copy link" })).toBeTruthy();
@@ -845,6 +846,83 @@ test.each([
   if (said) expect(said.classList).toContain("danger-text");
   expect(bar().querySelector(".session-ran")!.textContent).toMatch(ran);
   expect(bar().textContent!.match(/stopped/g)?.length ?? 0).toBe(status === "stopped" ? 1 : 0);
+});
+
+// A session's mark, one rule for its row, its icon, its card and its head (LAD-108)
+
+test.each([
+  ["needs-you", { waiting: { gates: 0, questions: 1, agents: 0 } }, "needs you · 1 question"],
+  ["needs-you", { agents: 3, busy: 2, waiting: { gates: 2, questions: 0, agents: 1 } }, "needs you · 2 gates · 1 agent waiting"],
+  ["working", { agents: 3, busy: 2 }, "running · 2 of 3 agents working"],
+  ["idle", { agents: 3 }, "running · idle · 3 agents"],
+  ["stopped", { status: "stopped", waiting: { gates: 1, questions: 0, agents: 0 } }, "stopped"],
+  ["tmux_gone", { status: "tmux_gone", waiting: { gates: 1, questions: 0, agents: 0 } }, "tmux session is gone"],
+  ["loop_down", { status: "loop_down", busy: 1 }, "session loop not running"],
+] as const)("a session's mark is %s, its words %j", (mark, more, words) => {
+  expect(sessionMark(session("lado", more))).toEqual({ mark, words });
+});
+
+test.each([
+  ["needs-you", { waiting: { gates: 0, questions: 1, agents: 0 } }, "needs you · 1 question", "dot-waiting", "Needs you", null],
+  ["working", { agents: 3, busy: 2 }, "running · 2 of 3 agents working", "activity-working", "Running", "activity-working"],
+  ["idle", { agents: 3 }, "running · idle · 3 agents", "activity-idle", "Running", "activity-idle"],
+  ["stopped", { status: "stopped" }, "stopped", "session-dot-stopped", "Stopped", null],
+  ["tmux_gone", { status: "tmux_gone" }, "tmux session is gone", "session-dot-tmux_gone", "Running", null],
+  ["loop_down", { status: "loop_down" }, "session loop not running", "session-dot-loop_down", "Running", null],
+] as const)("%s: the head's dot and the session's row show the same mark", async (_mark, more, words, look, where, rowDot) => {
+  sessions = [session("lado", more)];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  const dot = within(bar()).getByRole("img", { name: words });
+  expect(dot.classList).toContain("session-dot");
+  expect(dot.classList).toContain(look);
+  fireEvent.focus(dot);
+  expect(screen.getByRole("tooltip").textContent).toBe(words);
+  fireEvent.blur(dot);
+  const link = within(group(where)).getByRole("link", { name: /^lado/ });
+  const mark = within(link).queryByRole("img");
+  expect(mark?.className ?? null).toEqual(rowDot && expect.stringContaining(rowDot));
+});
+
+test("a question waits while the agents idle: the head's dot is the orange diamond, no green dot", async () => {
+  sessions = [session("lado", { agents: 3, waiting: { gates: 0, questions: 1, agents: 0 } })];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  const dot = within(bar()).getByRole("img", { name: "needs you · 1 question" });
+  expect([...dot.classList]).toEqual(["session-dot", "dot", "dot-waiting"]);
+  expect(bar().querySelector(".activity-working, .activity-idle, .session-dot-running")).toBeNull();
+});
+
+test.each([
+  ["tmux_gone", "tmux session is gone"],
+  ["loop_down", "session loop not running"],
+] as const)("%s while a gate waits: the row is in Needs you and the icon says so, the head's dot is the trouble", async (status, words) => {
+  sessions = [session("lado", { status, waiting: { gates: 1, questions: 0, agents: 0 } })];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  const dot = within(bar()).getByRole("img", { name: words });
+  expect(dot.classList).toContain(`session-dot-${status}`);
+  expect(within(group("Needs you")).getByRole("link", { name: /^lado/ })).toBeTruthy();
+  cleanup();
+  collapsed();
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  expect(within(strip()!).getByRole("link", { name: /^lado/ }).getAttribute("aria-label")).toBe("lado, needs you");
+  expect(within(bar()).getByRole("img", { name: words }).classList).toContain(`session-dot-${status}`);
+});
+
+test("the head's dot follows the session's work, as its row does, with no reload", async () => {
+  sessions = [session("lado", { agents: 2, busy: 1 })];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  expect(within(bar()).getByRole("img", { name: "running · 1 of 2 agents working" }).classList).toContain("activity-working");
+  const calm = session("lado", { agents: 2, busy: 0 });
+  stream().send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: calm }, "11");
+  expect(within(bar()).getByRole("img", { name: "running · idle · 2 agents" }).classList).toContain("activity-idle");
+  expect(within(row("lado")).getByRole("img", { name: "idle" }).className).toContain("activity-idle");
+  const asked = session("lado", { agents: 2, waiting: { gates: 0, questions: 1, agents: 0 } });
+  stream().send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: asked }, "12");
+  expect(within(bar()).getByRole("img", { name: "needs you · 1 question" }).classList).toContain("dot-waiting");
 });
 
 test("the top bar is the page's: a session claims it, not found and loading keep the title, under StrictMode too", async () => {

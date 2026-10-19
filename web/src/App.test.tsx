@@ -352,7 +352,7 @@ test("the search filters the list by name", async () => {
 test("a session opens on its Activity tab with its status, and no placeholder for its gates", async () => {
   open("/sessions/lado");
   const view = await screen.findByRole("region", { name: "Session lado" });
-  expect(within(screen.getByRole("banner")).getByRole("img", { name: "running" })).toBeTruthy(); // the head is the top bar
+  expect(within(screen.getByRole("banner")).getByRole("img", { name: /^running · / })).toBeTruthy(); // the head is the top bar
   expect(within(view).queryByRole("note")).toBeNull();
   expect(view.textContent).not.toMatch(/will show here/);
   const tabs = within(view).getByRole("navigation", { name: "Session sections" });

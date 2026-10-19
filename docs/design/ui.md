@@ -524,7 +524,14 @@ Sessions for now. The UI's texts are in English.
   session (the strip's icons have no row line), the run time: `ran ` and `ranText` while
   the session runs (`ran 1 d 8 h`), else `ranText` as it is (`stopped … · ran …` or
   `ran …`). Its icon in the strip has the same dot,
-  small, in its corner, with `working` or `idle` in its accessible name. The rule is the
+  small, in its corner, with `working` or `idle` in its accessible name. Which mark a
+  session has, and its words, is one rule, `sessionMark` (Sessions.tsx; decided
+  2026-10-19, LAD-108, mockup artifact `task/lad-108/mockup-head-status.html`): stopped,
+  tmux gone or loop down by its status; else needs you when something waits; else working
+  or idle. The row, the strip's icon, the card and the session's head all take it. The
+  group is not the mark: a session in trouble in which something waits is in Needs you,
+  its strip icon `<name>, needs you`, while its head's dot says the trouble. The
+  rule of working is the
   core's (`state.working_agents`, a count): the agents in `busy`, `starting` or
   `background` (its turn ended, work it started still runs; the human, 2026-10-09,
   feature/background-status) work. Its known
@@ -542,9 +549,13 @@ Sessions for now. The UI's texts are in English.
   (Artifacts below). The head, one line of the top bar, left to right: the status as a dot,
   the name (`h1`, the browser tab's title too), how long the session ran, a thin line, the
   facts (below); on the right Copy link, its actions (Launch and session control, below),
-  a thin line and the feed's link. The dot: running `--done` with no word (its name and
-  tooltip "running"); stopped `--muted`, the run time saying "stopped"; tmux gone and loop
-  down `--danger`, their status in words in `--danger` after the name. The run time is
+  a thin line and the feed's link. The dot is the list's mark (`sessionMark`, since
+  LAD-108, 2026-10-19), with no word, its name and tooltip the mark's words: needs you
+  the orange diamond of a waiting agent (`needs you · 1 question`); working the row's
+  full `--done` dot with its pulse (`running · 2 of 3 agents working`); idle the row's
+  `--muted` ring (`running · idle · 3 agents`); stopped `--muted`, the run time saying
+  "stopped"; tmux gone and loop down `--danger`, their status in words in `--danger`
+  after the name. The run time is
   the server's (`SessionInfo.ran_seconds`, `running_since`: `runtime.session_time`, stops
   and the time after its tmux died left out); while it runs the UI adds the time since
   `running_since` and counts on each minute ("2 h 14 min"); a stopped session says
@@ -1572,8 +1583,9 @@ layout, below).
   higher. The Shell knows nothing of sessions: `SessionHead` draws itself into the top
   bar's slot (`useTopBar`); while the sessions load or a session is not found nothing
   claims the bar and it keeps the title "Sessions".
-- The head's first items: the status dot, the title (or the name), the name when there is
-  a title, the pencil **Rename session**, the run time (Session title, below).
+- The head's first items: the status dot (the session list's mark, its words in its
+  tooltip; LAD-108), the title (or the name), the name when there is a title, the pencil
+  **Rename session**, the run time (Session title, below).
 - The head's facts, left to right: where (the folder, then its git: the origin
   remote short, `github.com/ladohq/lado`, without scheme, user and `.git`, and `· <branch>`),
   the kits, the CLI (its permission mode is in its tooltip, below; decided 2026-10-08,
@@ -1914,7 +1926,8 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   status dot, the title (or name) as a button cut with "…", the change feed's mark (a dot
   while live, "reconnecting…" otherwise; it opens the system panel), Stop.
 - **The session's details**: the title opens a sheet over the page's bottom
-  (`SessionDetails.tsx`, a modal `<dialog>` named by the session): the status and run time,
+  (`SessionDetails.tsx`, a modal `<dialog>` named by the session): the words of the
+  status dot's mark (`needs you · 1 question`; LAD-108) and the run time,
   the whole folder, git, the kits with their versions, the CLI with its version and
   permission mode, and Rename (the title edited in place), Copy path, Copy link, All
   sessions. Close, Esc or a tap beside it closes it. It reuses the head's pieces (`GitFact`,
@@ -2475,7 +2488,8 @@ Both themes add a raised ground for hover and the current item (#EEF0F4 / #20242
 history (#1E7A46 on #E7F4EC / #5CC98A on #18301F); since task feature/session-list-groups
 green (`--done`) also means what works now, the session list's Running group, since
 task feature/flows-list-states (2026-10-07) the Flows overview's Active group, and since
-feature/session-head-topbar (2026-10-08) the running dot of a session's head, where
+feature/session-head-topbar (2026-10-08) the dot of a session's head (since LAD-108 the
+list's working dot), where
 `--danger` marks a session that needs an action (tmux gone, loop down). (Kits, 2026-10-05) A quiet ground for the action
 colour, a kit's mark (#E8EFFC / #1C2840). A kit's source dot: official `--done`, another
 marketplace `--action`, always beside the source's text. Every

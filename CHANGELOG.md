@@ -5,6 +5,11 @@
 - On a phone the browser's bottom bar no longer cuts off the chat's composer, the waiting
   card or its Send button: the web UI is as high as the part of the window in sight. With
   the on-screen keyboard open the page shrinks above it and the top bar stays.
+- A session's head shows the same state as the session list, on a phone too: an orange
+  diamond when it needs you, the pulsing green dot while its agents work, a ring when they
+  idle. The dot's tooltip and the phone's details sheet say it in words
+  (`needs you · 1 question`, `running · 2 of 3 agents working`); before, the head's dot
+  was green whenever the session ran.
 - Files attached right after a chat opens no longer all show the crossed-out eye, and an
   image keeps its thumbnail: a file's chip shows its type by the server's table once that
   is known, whenever the file was attached.
@@ -18,6 +23,9 @@
   unless a project's `.python-version` or `mise use -g` names another. The agents can no
   longer change that Python: pip refuses it, and a virtual environment takes a project's
   packages.
+- LADO's image carries the system libraries of Playwright's Chromium, so `make test-ui`
+  runs in the container after `make browser`; the browser itself is not in the image and
+  stays on the home volume at the project's Playwright version.
 
 ## 0.41.0 (2026-10-18)
 

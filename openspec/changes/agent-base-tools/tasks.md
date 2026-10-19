@@ -1,9 +1,9 @@
 ## 1. The image (D1-D4)
 
-- [ ] 1.1 `docker/Dockerfile`: `jq ripgrep unzip zip xz-utils bzip2 patch file rsync
+- [x] 1.1 `docker/Dockerfile`: `jq ripgrep unzip zip xz-utils bzip2 patch file rsync
   sqlite3 tree lsof netcat-openbsd` in the first `apt-get install`, with the comment above
   it saying what they are for (D1). Check: 1.5, `make docker`.
-- [ ] 1.2 `docker/Dockerfile`: uv's Python 3.13 installed as root before `USER lado`
+- [x] 1.2 `docker/Dockerfile`: uv's Python 3.13 installed as root before `USER lado`
   (`UV_PYTHON_INSTALL_DIR=/opt/uv/python uv python install 3.13 --no-bin`); `/opt/uv/python`
   left root's, `/opt/uv/tools` and `/opt/uv/bin` `lado`'s; `/opt/fallback/bin` (root's)
   with the links `python3` and `python` to the installed `python3.13` (a glob, amd64 and
@@ -25,20 +25,20 @@
 
 ## 2. Container tests (D7)
 
-- [ ] 2.1 `tests/container/test_toolchains.py` (or a new `test_base_tools.py` beside it,
+- [x] 2.1 `tests/container/test_toolchains.py` (or a new `test_base_tools.py` beside it,
   marker `container`): in a login shell from a clean environment on a new home volume,
   each base tool answers its version or help flag; `openspec --version` equals the
   Dockerfile's pin; `OPENSPEC_TELEMETRY=0` and `OPENSPEC_NO_UPDATE_CHECK=1` in the
   environment of the login shell and of `docker exec`.
-- [ ] 2.2 The same file: with an older openspec as mise's container default, `openspec
+- [x] 2.2 The same file: with an older openspec as mise's container default, `openspec
   --version` still answers the pin.
-- [ ] 2.3 The same file: `python3` and `python` answer 3.13 outside a project; a project
+- [x] 2.3 The same file: `python3` and `python` answer 3.13 outside a project; a project
   with `.python-version` `3.12` after `mise install` answers 3.12, and its parent folder
   still 3.13; `python3 -m pip install` of a local package outside an environment is
   refused and the image's Python is root's and not writable by `lado`; `python3 -m venv`
   plus its pip installs a local package; `lado --version` still answers. Check: `make
   docker && make test-container PYTEST_ARGS="-k <file>"` locally once; CI's container
-  cells.
+  cells (run in CI only: the developer's container has no Docker).
 - [ ] 2.4 Size (D6): `docker image inspect` of `lado:local` before and after (arm64, and
   amd64 by `--platform linux/amd64`); the numbers in the pull request. Not done in the
   build: the developer's container has no Docker; the human measures it with 4.2's
@@ -60,8 +60,8 @@
 
 ## 4. Regression
 
-- [ ] 4.1 `make lint`, `make test`, `openspec validate --specs`,
+- [x] 4.1 `make lint`, `make test`, `openspec validate --specs`,
   `openspec validate agent-base-tools --strict`; CI's container and smoke cells green.
-- [ ] 4.2 The pull request's description carries the human's check: `make docker`,
+- [x] 4.2 The pull request's description carries the human's check: `make docker`,
   compose with `LADO_IMAGE=lado:local` on a new home volume, an sdlc session starts
   (openspec found), an agent runs `python3 --version`, `rg --version` and `jq --version`.

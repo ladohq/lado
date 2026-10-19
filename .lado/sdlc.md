@@ -56,7 +56,8 @@ at the start of every step.
 | `uv run pytest -m ui <changed files>` | root | when `web/` or `tests/ui/` changed; screenshots in `<temp dir>/lado-ui-shots/` |
 | `make test-js` | root | when `src/lado/providers/opencode_plugin.js` or `tests/js/` changed |
 | `make web` | root | when `web/` or the server's API models changed (stale-types check) |
-| `openspec validate --specs --strict` | root | blind to contradictions between capabilities: grep `openspec/specs/` |
+| `openspec validate --specs` | root | the living specs, not strict: with `--strict` 33 of 39 fail on long requirements (BACKLOG, P2); blind to contradictions between capabilities: grep `openspec/specs/` |
+| `openspec validate <change> --strict` | root | the change itself, while it is open (not after its archive) |
 
 - Excluded from a normal round:
   - `make check` and `make test-integration` as a whole: CI runs them on every push, and a
@@ -189,7 +190,7 @@ Integrator:
 - Never bump the version, date CHANGELOG.md or tag: a release is a separate task the
   human starts.
 - After merging `origin/<target>` into the run's branch (the kit's Merge, step 2), run
-  none of the settings' **Checks** locally but `openspec validate --specs --strict`
+  none of the settings' **Checks** locally but `openspec validate --specs`
   (CI does not run it); with it green, push and wait for the pull request's CI, which
   runs the rest. A red CI then follows step 3 as written, after the Review trap's
   reruns for a CI job red with no cause in the work: the merge commit stays, and a

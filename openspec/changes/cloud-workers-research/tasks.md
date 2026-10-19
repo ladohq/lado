@@ -14,7 +14,7 @@
   section 6, the technical details from R1 sections 2-6 and R4 sections 1.1-1.4, 2.6,
   3 and 4.4 (design D4), risks and open questions. Check: by reading against AC-2.
 - [x] 2.3 Add the line to `ROADMAP.md` under "Later (after stage 7)" (AC-5).
-- [ ] 2.4 Check AC-4 and AC-7: a grep of `git diff origin/main` for the reference
+- [x] 2.4 Check AC-4 and AC-7: a grep of `git diff origin/main` for the reference
   projects' names and nicknames (from the supervisor) and for `r5`; every
   relative link of the new files resolves (a short script or by hand).
   `openspec validate cloud-workers-research --strict` and `make lint` pass.

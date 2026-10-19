@@ -58,10 +58,14 @@ FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595
 # tmux 3.3a and git 2.39 from Debian 12; tini reaps what tmux and the agents leave; gh and
 # the ssh client for the agents' pushes; curl fetches gh's keyring (a binary .gpg); make,
 # gcc and g++ build the projects' Makefiles, Go's cgo and native modules of Node and Python.
+# The agents' base tools, which the kits' scripts and the agent CLIs call before any project
+# installs a thing: jq (JSON), ripgrep (Codex, OpenCode and Kilo search with rg), archives
+# (unzip, zip, xz, bzip2), patch, file, rsync, sqlite3, tree, lsof and nc.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates curl git tmux tini procps less openssh-client locales sudo \
       make gcc g++ libc6-dev \
+      jq ripgrep unzip zip xz-utils bzip2 patch file rsync sqlite3 tree lsof netcat-openbsd \
  && sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && locale-gen \
  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -88,8 +92,19 @@ COPY docker/profile.sh /etc/profile.d/lado.sh
 COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise
 COPY docker/mise.toml /etc/mise/config.toml
 RUN useradd --create-home --uid 1000 --shell /bin/bash lado \
- && mkdir -p /opt/uv /opt/agents /projects \
- && chown lado:lado /opt/uv /opt/agents /projects
+ && mkdir -p /opt/uv/tools /opt/uv/bin /opt/agents /opt/tools /projects \
+ && chown lado:lado /opt/uv/tools /opt/uv/bin /opt/agents /opt/tools /projects
+# The Python LADO runs on (uv's 3.13), root's, /opt/uv with it: it answers every agent's
+# python3, so no agent may change it (pip refuses it too, externally managed). No uv bin
+# links (root's ~/.local/bin): python3 and python are links in /opt/fallback/bin, last on
+# PATH, after mise's shims, so a project's Python through mise answers first.
+RUN UV_PYTHON_INSTALL_DIR=/opt/uv/python uv python install 3.13 --no-bin \
+ && rm -rf /root/.cache \
+ && python=$(ls -d /opt/uv/python/cpython-3.13.*-linux-*-gnu/bin/python3.13) \
+ && mkdir -p /opt/fallback/bin \
+ && ln -s "$python" /opt/fallback/bin/python3 \
+ && ln -s "$python" /opt/fallback/bin/python \
+ && /opt/fallback/bin/python3 --version
 
 # The entrypoint (entrypoint.sh) gives lado the uid of the projects' owner at a container's
 # first start, as root once, and writes LADO_REPOS for the agents (lado-repos.sh, /projects
@@ -156,7 +171,15 @@ ARG KILO_VERSION=7.8.8
 RUN npm install -g --prefix /opt/agents "@kilocode/cli@${KILO_VERSION}" \
  && npm cache clean --force
 
-ENV PATH=/opt/uv/bin:/opt/agents/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/lado/.local/bin:/home/lado/.local/share/mise/shims \
+# openspec, which kits expect (sdlc's `expects.commands`), at its pin in /opt/tools: no
+# agent CLI, so not in /opt/agents. Before mise's shims on PATH, so an openspec of the home
+# volume does not shadow it. Dependabot does not read it: move the pin by hand. Its usage
+# statistics and update check are off (OPENSPEC_TELEMETRY, OPENSPEC_NO_UPDATE_CHECK).
+ARG OPENSPEC_VERSION=1.14.1
+RUN npm install -g --prefix /opt/tools "@fission-ai/openspec@${OPENSPEC_VERSION}" \
+ && npm cache clean --force
+
+ENV PATH=/opt/uv/bin:/opt/agents/bin:/opt/tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/lado/.local/bin:/home/lado/.local/share/mise/shims:/opt/fallback/bin \
     NPM_CONFIG_PREFIX=/home/lado/.local \
     SHELL=/bin/bash \
     LANG=en_US.UTF-8 \
@@ -165,6 +188,8 @@ ENV PATH=/opt/uv/bin:/opt/agents/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/u
     LADO_ENV_DIR=/run/secrets \
     CLAUDE_CONFIG_DIR=/home/lado/.claude \
     DISABLE_AUTOUPDATER=1 \
+    OPENSPEC_TELEMETRY=0 \
+    OPENSPEC_NO_UPDATE_CHECK=1 \
     LADO_PORT=8765
 
 EXPOSE 8765

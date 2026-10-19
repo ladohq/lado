@@ -41,7 +41,8 @@
   auto`, `uv run pytest -m ui -n auto`), one after another, under the check lock
   (`scripts/check_lock.py`, as `make test-integration` takes it): green, and every leak
   the sweep reports fixed at the fixture or test that made it (a new commit each, named
-  in the build report). After them `pgrep -af 'fake_agent.py|lado-test-'` prints nothing.
+  in the build report). After them `pgrep -af 'fake_agent.py|lado-test-'` lists no process of this worktree
+  (another worktree's run going at the same time is not this run's).
 - [ ] 3.2 LAD-96's test under load: `test_an_agent_whose_cli_asks_first_waits_until_the_human_answers`
   five runs in a row of `tests/integration/test_agent_liveness.py` with `-n auto` while
   one busy loop per CPU runs (`python -c 'while True: pass'`, killed after); all green,

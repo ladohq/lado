@@ -1273,13 +1273,15 @@ h3 {
   margin-block: 5px;
 }
 
+/* The head's dot keeps its size and place in the bar; its look is the session's mark: the
+   list's working dot and idle ring and a waiting agent's diamond (.dot, .activity-*,
+   .dot-waiting), or the stopped and trouble dots below. */
 .session-dot {
   flex: none;
   width: 9px;
   height: 9px;
   margin-block: 11.5px;
   border-radius: 50%;
-  background: var(--done);
 }
 
 .session-dot-stopped {

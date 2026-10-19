@@ -228,7 +228,14 @@ lists the session; a lado.db whose last step fails (its column there already) ex
 container with the message (the way back: the image of the version before) and no
 traceback in `docker logs`, its schema kept; compose's header steps back, run as written
 with the version before as `LADO_IMAGE` (a tag of the run's prefix on the image under
-test), put the backup's schema back and start that image. A
+test), put the backup's schema back and start that image.
+The browser (`test_browser.py`): on a new home volume the Playwright of `uv.lock` (`uv
+tool run --from playwright==<version>`) installs its headless shell, whose `ldd` names no
+library `not found` (the missing ones in the failure), and launches Chromium, which renders
+a page with Latin and Cyrillic text and gives it back, its screenshot in `<temp
+dir>/lado-container-shots/` (in CI's artifact `container-<arch>`); a new home volume has no
+`~/.cache/ms-playwright` and no `chromium`, `chromium-browser` or `google-chrome` on
+`PATH`. So the UI tests run in LADO's image after `make browser`. A
 test that fails in its setup or its
 call keeps, for each container it started (a compose project's too), `docker logs` and
 LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before
@@ -245,7 +252,8 @@ e2e tests in two shards on Python 3.13 (on two workers, `-n 2 --shard K/2`), the
 the bundle; `changes`, whether the run needs the smoke; `smoke <os> <provider>`, the smoke
 tests on Linux and macOS, one cell per (system, provider), none stopping the others;
 `container (<arch>)`, LADO's image on amd64 (`ubuntu-24.04`) and arm64 (`ubuntu-24.04-arm`),
-each on its native runner: `make docker`, then `scripts/smoke_ci.py container <out>` (the
+each on its native runner: `make docker` and `docker history lado:local` (each layer's
+size, so a new layer's is the image's growth), then `scripts/smoke_ci.py container <out>` (the
 container tests with the smoke cell's pass rule, so a skip is red; the artifact
 `container-<arch>`), on every run whatever it changes, pushing nothing anywhere; and
 `ci-ok`, the one check the ruleset of main requires. `--shard K/N` (`tests/shard.py`, also

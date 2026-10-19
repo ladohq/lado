@@ -991,7 +991,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   the home volume (`~/.local/share/mise`, `~/.config/mise`, `~/.cache/mise`). The agents'
   base tools are Debian's, in the first apt layer too (`jq`, `ripgrep`, `unzip`, `zip`,
   `xz-utils`, `bzip2`, `patch`, `file`, `rsync`, `sqlite3`, `tree`, `lsof`,
-  `netcat-openbsd`; `tests/test_docker.py` names a missing one). openspec
+  `netcat-openbsd`; `tests/test_docker.py` names a missing one). The system libraries of
+  Playwright's Chromium are a second apt layer of their own: the packages `playwright
+  install-deps chromium` installs on Debian 12 (Playwright's `chromium` list), moved by hand
+  when a Playwright of `uv.lock` needs another (`tests/container/test_browser.py` goes red),
+  without its fonts and xvfb; the browser itself is not in the image (`make browser`, on the
+  home volume). openspec
   (`@fission-ai/openspec`), which kits expect, is pinned by `ARG OPENSPEC_VERSION` in a
   layer of its own under `/opt/tools`, not `/opt/agents` (the four of `PINS`); Dependabot
   does not move it. The Python LADO runs on (uv's 3.13) is installed as root before `USER

@@ -228,7 +228,8 @@ def test_the_container_job_runs_on_every_run(container):
 
 def test_the_container_job_builds_then_tests_and_keeps_its_out(container):
     steps = container["steps"]
-    assert step_named(steps, "Image")["run"] == "make docker"
+    # The layers' sizes in the log: a new layer's is the image's growth.
+    assert step_named(steps, "Image")["run"] == "make docker\ndocker history lado:local\n"
     run = step_named(steps, "Container tests")["run"]
     assert run == 'uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container"'
     names = [s.get("name") for s in steps]
@@ -236,7 +237,8 @@ def test_the_container_job_builds_then_tests_and_keeps_its_out(container):
     upload = step_using(steps, "actions/upload-artifact")
     assert upload["if"] == "always()"
     assert upload["with"]["name"] == "container-${{ matrix.arch }}"
-    assert upload["with"]["path"] == "${{ runner.temp }}/container"
+    # With test_browser.py's screenshot (its SHOTS: the runner's temp dir is /tmp).
+    assert upload["with"]["path"] == "${{ runner.temp }}/container\n/tmp/lado-container-shots\n"
 
 
 def test_the_container_job_pushes_nothing(container):

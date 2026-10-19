@@ -19,12 +19,6 @@ each with its own kind and text:
 | `not_folder` | `<path> is a file, not a folder` |
 | `no_git` | `git is not installed or not on PATH (<PATH of LADO's process>)` |
 | `git_broken` | `git does not run: <the first line git printed>` |
-| `not_repo` | `<path> is not inside a git repository` |
-| `git_refused` | `git cannot read <path>: <the first line git printed>` |
-| `no_commits` | `<path> has no commits yet` |
-
-`not_repo` SHALL be only git's own "not a git repository" answer; any other failure of
-git in the folder SHALL be `git_refused` with git's words.
 
 #### Scenario: A folder that does not exist
 - **WHEN** the path does not exist
@@ -44,6 +38,21 @@ git in the folder SHALL be `git_refused` with git's words.
 - **THEN** the check refuses with kind `git_broken` and git's first line, not with
   `not_repo`
 
+### Requirement: The folder check then names what git says of the folder
+
+After the cases of a missing folder and a missing or broken git, the folder check SHALL
+go on in this order and refuse with the first case that holds, each with its own kind
+and text:
+
+| Kind | Text |
+|---|---|
+| `not_repo` | `<path> is not inside a git repository` |
+| `git_refused` | `git cannot read <path>: <the first line git printed>` |
+| `no_commits` | `<path> has no commits yet` |
+
+`not_repo` SHALL be only git's own "not a git repository" answer; any other failure of
+git in the folder SHALL be `git_refused` with git's words.
+
 #### Scenario: A folder outside any repository
 - **WHEN** git answers that the folder is not a git repository
 - **THEN** the check refuses with kind `not_repo`
@@ -59,13 +68,7 @@ git in the folder SHALL be `git_refused` with git's words.
 ### Requirement: A refusal the human can fix carries a hint
 
 A refusal of kind `no_git`, `git_broken`, `not_repo` or `no_commits` SHALL carry a hint:
-one sentence and one command to copy, the same in the CLI and the UI. `no_git` SHALL name
-this OS's install command (macOS: `xcode-select --install`; Linux and WSL:
-`sudo apt install git`, the sentence naming the distribution's package manager as the
-other way); `git_broken` on macOS `xcode-select --install`, on Linux and WSL
-`sudo apt install --reinstall git`; `not_repo`
-`git init && git add -A && git commit -m 'First commit'`; `no_commits`
-`git add -A && git commit -m 'First commit'`, both "in that folder". Other kinds SHALL
+one sentence and one command to copy, the same in the CLI and the UI. Other kinds SHALL
 carry none.
 
 #### Scenario: lado start prints the hint
@@ -77,20 +80,27 @@ carry none.
 - **WHEN** the refusal is `git_refused`
 - **THEN** it carries no hint: git's own line says what to do
 
+### Requirement: Each hint gives the command that fixes its kind
+
+`no_git` SHALL name
+this OS's install command (macOS: `xcode-select --install`; Linux and WSL:
+`sudo apt install git`, the sentence naming the distribution's package manager as the
+other way); `git_broken` on macOS `xcode-select --install`, on Linux and WSL
+`sudo apt install --reinstall git`; `not_repo`
+`git init && git add -A && git commit -m 'First commit'`; `no_commits`
+`git add -A && git commit -m 'First commit'`, both "in that folder".
+
+#### Scenario: A folder outside git on Linux
+- **WHEN** the check refuses a folder with `not_repo` on Linux
+- **THEN** its hint's command is `git init && git add -A && git commit -m 'First commit'`,
+  to run in that folder
+
 ### Requirement: The UI's folder check gives the kind and the hint
 
 `GET /api/folders` SHALL answer 200 for every case of the folder check with `ok: false`,
 `problem` (the text), `problem_kind` and `hint` (`{text, command}` or null), and
 `problem_kind: null`, `hint: null` for a folder that will do. `FolderInfo.has_commits`
-SHALL be removed. The New session window SHALL show the text under the Where field and,
-with a hint, its sentence and its command in a code field with a Copy button, and keep
-Start off; for a folder with `FolderInfo.scratch` it SHALL show Start from scratch here
-in place of the command (capability session-scratch).
-
-#### Scenario: No git on the server's machine
-- **WHEN** the server's process finds no git and the window checks a folder
-- **THEN** the answer is 200 with `problem_kind: "no_git"` and the install hint, and the
-  window shows the command with a Copy button
+SHALL be removed.
 
 #### Scenario: Starting with no git is a refusal, not a server error
 - **WHEN** `POST /api/sessions` is sent while the server finds no git
@@ -100,6 +110,18 @@ in place of the command (capability session-scratch).
 - **WHEN** the folder is a repository with a commit
 - **THEN** `ok` is true, `problem_kind` and `hint` are null, and the window shows
   "✓ git repository · branch X" as before
+
+### Requirement: The New session window shows the folder check's hint
+
+The New session window SHALL show the folder check's text under the Where field and,
+with a hint, its sentence and its command in a code field with a Copy button, and keep
+Start off; for a folder with `FolderInfo.scratch` it SHALL show Start from scratch here
+in place of the command (capability session-scratch).
+
+#### Scenario: No git on the server's machine
+- **WHEN** the server's process finds no git and the window checks a folder
+- **THEN** the answer is 200 with `problem_kind: "no_git"` and the install hint, and the
+  window shows the command with a Copy button
 
 #### Scenario: An empty folder offers a fresh start instead of the command
 - **WHEN** the window checks an empty folder outside git

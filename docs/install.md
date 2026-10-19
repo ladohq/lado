@@ -272,6 +272,10 @@ tools.
   `mise exec shellcheck@latest -- shellcheck script.sh`.
 - An agent's `npm install -g` and `uv tool install` go to `~/.local` on the home volume and
   stay over an update too.
+- The system libraries of Playwright's Chromium are in the image, so a project's browser
+  tests (LADO's own `make test-ui`) run headless; the browser itself is not:
+  `make browser` (`playwright install chromium`) puts it on the home volume, at the
+  project's own Playwright version.
 - What is not covered: other system packages (`apt`) and databases (PostgreSQL, Redis, ...).
   An agent says so instead of installing them.
 - An old version takes room on the home volume until you remove it:

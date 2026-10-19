@@ -21,6 +21,9 @@
   unless a project's `.python-version` or `mise use -g` names another. The agents can no
   longer change that Python: pip refuses it, and a virtual environment takes a project's
   packages.
+- LADO's image carries the system libraries of Playwright's Chromium, so `make test-ui`
+  runs in the container after `make browser`; the browser itself is not in the image and
+  stays on the home volume at the project's Playwright version.
 
 ## 0.41.0 (2026-10-18)
 

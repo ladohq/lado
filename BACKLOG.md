@@ -568,6 +568,18 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## On a phone the expanded terminal and the menu's drawer ignore the visible part of the window
+
+Size: S. Why here: LAD-109 sized the app by `window.visualViewport`, but the overlays
+fixed to the layout viewport still reach under Safari's bottom bar or the keyboard; not a
+regression, they did so before.
+The expanded terminal (`.terminals.expanded`) and the drawer (`.rail[data-open]`) are
+`position: fixed` against the layout viewport, so with the on-screen keyboard open or
+under Safari's bottom bar their bottom can be hidden. Wanted: they take their height and
+top from `--phone-height`/`--phone-top` as the app does, with a UI test on a fake
+`visualViewport` (`tests/ui/test_phone.py`'s `FAKE_VIEWPORT`).
+Found: 2026-10-19, review of hotfix/lad-109-phone-bottom-cut.
+
 ## On Python 3.14 and later a clone target LADO may not look into is taken for a new folder
 
 Size: S. Why here: LADO supports any Python from 3.10 and CI tests only 3.10 and 3.13, so

@@ -2,12 +2,14 @@
 
 ## 0.42.0 (unreleased)
 
+- On a phone the browser's bottom bar no longer cuts off the chat's composer, the waiting
+  card or its Send button: the web UI is as high as the part of the window in sight. With
+  the on-screen keyboard open the page shrinks above it and the top bar stays.
 - A session's head shows the same state as the session list, on a phone too: an orange
   diamond when it needs you, the pulsing green dot while its agents work, a ring when they
   idle. The dot's tooltip and the phone's details sheet say it in words
   (`needs you · 1 question`, `running · 2 of 3 agents working`); before, the head's dot
   was green whenever the session ran.
-
 - Files attached right after a chat opens no longer all show the crossed-out eye, and an
   image keeps its thumbnail: a file's chip shows its type by the server's table once that
   is known, whenever the file was attached.

@@ -217,12 +217,15 @@ class Bridge:
         )
         port, key = _free_port(), f"sk-{secrets.token_hex(24)}"
         argv = [*command, "--config", str(config), "--host", "127.0.0.1", "--port", str(port)]
+        # It serves the whole test run: without the LADO_HOME of the test that starts it,
+        # the mark by which that test's leftovers are killed (tests/leftovers.py).
+        env = {name: value for name, value in os.environ.items() if name != "LADO_HOME"}
         with log.open("w") as out:
             process = subprocess.Popen(
                 argv,
                 stdout=out,
                 stderr=subprocess.STDOUT,
-                env={**os.environ, "LITELLM_MASTER_KEY": key},
+                env={**env, "LITELLM_MASTER_KEY": key},
                 start_new_session=True,  # its own process group, ended by stop()
             )
         bridge = cls(folder, port, key, process)

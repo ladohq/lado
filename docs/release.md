@@ -25,15 +25,30 @@ makes it (add that heading on top when it is missing; X.Y.Z is the next version 
 rules above). An RC adds no heading: its changes are the `(unreleased)` section. The
 final's commit puts the date in place of `(unreleased)`.
 
-A version's section is also its GitHub release's notes (section 7), which is what users
-read, so it is written for them, in this order:
+A version's section is also its GitHub release's notes (section 7). They are read by
+people who use LADO, in its UI, its CLI or its Docker image, not by its developers, so
+each item is written for them:
 
-1. What users see and do: a command, a screen, a fix they notice; one item per change,
-   in words a user of the CLI or the UI knows.
-2. Upgrade notes, each its own item that starts with `Upgrade:`, for what a user must do
-   when moving to this version, e.g. `Upgrade: schema 27, restart running sessions after
-   the update (lado update does it).`
-3. Lines for integrators last, each starting with `API:` or `MCP:`.
+1. **Groups.** Items go under these subheadings, in this order, and an empty group is
+   left out: `### New`, `### Improved`, `### Fixed`, `### Docker image`, `### Upgrade`
+   (what a user must do when moving to this version, e.g. `restart running sessions after
+   the update; lado update does it`), `### For integrators` (items starting with `API:`
+   or `MCP:`).
+2. **A bold title, then one or two sentences.** The title is the result for the user in
+   three to eight words (`**Phone: nothing hides the composer.**`); the sentences say what
+   they now see or can do and, when needed, what they must do themselves.
+3. **At most three lines** in the file. Details go to the documentation, named by a link
+   (`docs/install.md`), not into the item.
+4. **The user's words.** Name what they see: a button, a screen, a command they type
+   themselves. No modules, source files, tests, internal mechanisms or task keys; an
+   environment variable or a command only when the user sets or runs it.
+5. **A fix says what works now**, not how the bug looked from inside: "Files attached
+   right after a chat opens show their preview", not "a file's chip shows its type by the
+   server's table once that is known".
+6. **What users do not notice gets no item**: tests, CI, flaky tests, internal documents,
+   the kits' rules.
+7. **One change, one item.** A later pull request of the same feature edits its item
+   instead of adding another.
 
 An item may wrap over lines, the lines that go on indented by two spaces; the notes join
 them into one. Past sections stay as they were written.

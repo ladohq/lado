@@ -2,30 +2,28 @@
 
 ## 0.42.0 (unreleased)
 
-- On a phone the browser's bottom bar no longer cuts off the chat's composer, the waiting
-  card or its Send button: the web UI is as high as the part of the window in sight. With
-  the on-screen keyboard open the page shrinks above it and the top bar stays.
-- A session's head shows the same state as the session list, on a phone too: an orange
-  diamond when it needs you, the pulsing green dot while its agents work, a ring when they
-  idle. The dot's tooltip and the phone's details sheet say it in words
-  (`needs you · 1 question`, `running · 2 of 3 agents working`); before, the head's dot
-  was green whenever the session ran.
-- Files attached right after a chat opens no longer all show the crossed-out eye, and an
-  image keeps its thumbnail: a file's chip shows its type by the server's table once that
-  is known, whenever the file was attached.
-- LADO's image carries the agents' everyday tools: `jq`, `rg` (ripgrep), `unzip`, `zip`,
-  `xz`, `bzip2`, `patch`, `file`, `rsync`, `sqlite3`, `tree`, `lsof` and `nc`, so the
-  agents and the kits' scripts find them in a new container with nothing installed.
-- The image carries openspec 1.14.1, so a kit that expects it (sdlc) starts on a clean home
-  volume; its usage statistics and update check are off. An openspec installed through
-  mise on the home volume no longer answers instead of the image's.
-- `python3` and `python` in the image answer with its Python 3.13, the one LADO runs on,
-  unless a project's `.python-version` or `mise use -g` names another. The agents can no
-  longer change that Python: pip refuses it, and a virtual environment takes a project's
-  packages.
-- LADO's image carries the system libraries of Playwright's Chromium, so `make test-ui`
-  runs in the container after `make browser`; the browser itself is not in the image and
-  stays on the home volume at the project's Playwright version.
+### Fixed
+
+- **Phone: nothing hides the composer.** The browser's bottom bar no longer covers the
+  chat's input, the waiting card or its Send button; with the keyboard open the page
+  shrinks above it.
+- **The session's header shows its real state.** It matches the session list: orange
+  when the session needs you, pulsing green while agents work, a ring when they idle.
+  Tap or hover the dot to read it in words.
+- **Attached files show their preview.** Files attached right after a chat opens no
+  longer show a crossed-out eye, and images keep their thumbnails.
+
+### Docker image
+
+- **Everyday tools for agents.** `jq`, `rg`, `unzip`, `zip`, `xz`, `bzip2`, `patch`,
+  `file`, `rsync`, `sqlite3`, `tree`, `lsof` and `nc` are in the image, so agents and kit
+  scripts find them in a fresh container.
+- **openspec is built in.** The sdlc kit starts in a fresh container without installing
+  anything (openspec 1.14.1).
+- **`python3` works.** `python3` and `python` run Python 3.13 unless your project names
+  another version; install a project's packages in a virtual environment.
+- **UI tests run in the container.** The image has the system libraries Chromium needs,
+  so `make test-ui` works after `make browser`.
 
 ## 0.41.0 (2026-10-18)
 

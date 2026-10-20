@@ -175,8 +175,9 @@ Developer:
 - Edit files with your edit tools, not shell heredocs or `sed -i`. No sub-agents.
 - Each change users see adds a line to CHANGELOG.md under `## X.Y.Z (unreleased)` (add
   that heading on top when it is missing; X.Y.Z is the next version by AGENTS.md's
-  Versions rule). AGENTS.md is the project's map: add to it only what an agent needs in
-  any task. Behaviour goes to `docs/design/agents.md`, `docs/design/modules.md`,
+  Versions rule), written by docs/release.md's rules for its items (CHANGELOG.md: its
+  group, a bold title, at most three lines, the user's words). AGENTS.md is the
+  project's map: add to it only what an agent needs in any task. Behaviour goes to `docs/design/agents.md`, `docs/design/modules.md`,
   `docs/testing.md`, `docs/cli.md` or the module's docstring; keep them true to the code
   in the same pull request.
 - A schema change: bump `SCHEMA_VERSION`, add a step to `MIGRATIONS` and update

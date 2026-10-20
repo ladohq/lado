@@ -6,7 +6,8 @@ statuses:
   review: Review
   done: Done
 labels:
-  waiting for release: 'Release: Waiting'
+  # ready for the release: set at the merge, removed by the release (docs/release.md)
+  waiting for release: 'Status: Ready'
   component lado: 'Component: lado'
   component kit-sdlc: 'Component: kit-sdlc'
   component kit-builder: 'Component: kit-builder'

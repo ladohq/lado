@@ -26,8 +26,12 @@ at the start of every step.
 
 ## Tracker
 
-- Waiting for release label: `waiting for release` (the sticker `Release: Waiting`,
-  mapped in `.lado/tracker.yaml`)
+- Waiting for release label: `waiting for release` (the sticker `Status: Ready`, "ready
+  for the release", mapped in `.lado/tracker.yaml`). It stays on the task until the
+  release that ships it removes it (docs/release.md, The final).
+- After a merge into the base branch the task goes to the status `done`, with the
+  waiting-for-release label; after a merge into an epic branch it stays in review, as the
+  kit says.
 - Component labels: the sticker `Component` says which part of the system a task
   changes, one of `component lado`, `component kit-sdlc`, `component kit-builder`,
   `component kit-tracker-yougile`, `component kit-tracker-jira-server` (mapped in
@@ -37,7 +41,7 @@ at the start of every step.
 - Merge comment (Markdown):
 
   ```markdown
-  **Слит PR #<n>** — войдёт в следующий релиз.
+  **Слит PR #<n>** — войдёт в релиз <X.Y.Z>.
 
   **Для проверки: что смотреть**
   - <2-4 пункта: видимые изменения, сценарии, крайние случаи, риски регрессии>
@@ -45,6 +49,10 @@ at the start of every step.
   **Для разработчиков: что сделано**
   - <по слоям: ключевые решения, новые поля API/MCP/CLI, миграция схемы да/нет, CHANGELOG>
   ```
+
+  `<X.Y.Z>` is the version of CHANGELOG.md's `## X.Y.Z (unreleased)` heading on the
+  target branch after the merge; without such a heading, write «войдёт в следующий
+  релиз».
 
 ## Checks
 
@@ -189,6 +197,10 @@ Reviewer:
 Integrator:
 - Never bump the version, date CHANGELOG.md or tag: a release is a separate task the
   human starts.
+- After a merge into the base branch, besides the merge comment and the
+  waiting-for-release label, move the task to the status `done` and check it there, as
+  **Tracker** says. This replaces the kit's "change nothing else on the task"; a merge
+  into an epic branch stays as the kit says.
 - After merging `origin/<target>` into the run's branch (the kit's Merge, step 2), run
   none of the settings' **Checks** locally but `openspec validate --specs --strict`
   (CI does not run it); with it green, push and wait for the pull request's CI, which

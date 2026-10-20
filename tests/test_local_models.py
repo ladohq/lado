@@ -257,6 +257,8 @@ config = args[args.index("--config") + 1]
 (here / "seen.json").write_text(json.dumps({
     "argv": args,
     "key": os.environ.get("LITELLM_MASTER_KEY"),
+    "lado_home": os.environ.get("LADO_HOME"),
+    "test_pid": os.environ.get("LADO_TEST_PID"),
     "config": pathlib.Path(config).read_text(),
     "pid": os.getpid(),
 }))
@@ -313,6 +315,22 @@ def test_the_bridge_starts_with_a_random_key_and_stops(tmp_path, fake_litellm):
     other = local_models.Bridge.start(tmp_path / "b2", "http://127.0.0.1:1234", MODEL, command)
     other.stop()
     assert other.key != bridge.key
+
+
+def test_the_bridge_outlives_the_test_that_starts_it(tmp_path, fake_litellm):
+    """The bridge serves the whole test run, so it does not carry the LADO_HOME of the test
+    that starts it, the mark by which that test's leftovers are killed (tests/leftovers.py);
+    it keeps the run's LADO_TEST_PID."""
+    command, seen = fake_litellm
+    assert os.environ["LADO_HOME"]
+    bridge = local_models.Bridge.start(tmp_path / "b", "http://127.0.0.1:1234", MODEL, command)
+    try:
+        recorded = json.loads(seen.read_text())
+    finally:
+        bridge.stop()
+    assert recorded["lado_home"] is None
+    assert recorded["test_pid"] == os.environ["LADO_TEST_PID"]
+    assert os.environ["LADO_HOME"]
 
 
 def test_a_bridge_that_does_not_come_up_fails_with_its_log(tmp_path, fake_litellm, monkeypatch):

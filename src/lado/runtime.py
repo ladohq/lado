@@ -206,13 +206,13 @@ start and end and reports any change.
 # What every agent in LADO's container (update.in_container) must know of its toolchains,
 # after the above; then the supervisor's or a worker's sentence on a container-wide default.
 CONTAINER_INSTRUCTIONS = """\
-You run in LADO's container. A tool the project needs and lacks (go, cargo, java, ...): \
+You run in LADO's container. A tool the repository needs and lacks (go, cargo, java, ...): \
 install it with mise, into the home volume, where it stays for every agent of this \
-container. In the project's folder `mise install` installs what its version files name \
+container. In the repository's folder `mise install` installs what its version files name \
 (`.tool-versions`, `mise.toml`, `.go-version`, `.python-version`, ...); a tool or version \
 they do not name: `mise install <tool>@<version>`, then run it with \
 `mise exec <tool>@<version> -- <command>`. Add no version file or other file to the \
-project unless the human asks. Node is the image's Node 22; another Node only through \
+repository unless the human asks. Node is the image's Node 22; another Node only through \
 `mise exec node@<version> -- ...`. make, gcc and g++ are installed; apt packages and \
 databases cannot be installed: say so instead. A version mise refuses: report it, do not \
 switch its checks off.
@@ -2863,7 +2863,7 @@ def _next_name(role: str, taken: set[str]) -> str:
 
 def exclude_worktrees(repo: str) -> None:
     """Keep worker worktrees out of `git status` without touching .gitignore. The rest of
-    `.lado/` (the project's own files there, e.g. sdlc.md) stays visible, so it can be
+    `.lado/` (the repository's own files there, e.g. sdlc.md) stays visible, so it can be
     committed."""
     exclude = Path(repo, git(repo, "rev-parse", "--git-common-dir"), "info", "exclude")
     lines = exclude.read_text().splitlines() if exclude.exists() else []

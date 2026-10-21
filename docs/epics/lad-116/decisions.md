@@ -20,4 +20,4 @@
 | 2026-10-21 | review after S1, step_ok gate #41 | The plan's revision after S1 (S1 done, leftovers to S2, the rule "questions as cards") and the next step S1b | approve; reject | approve (lead) | approved (human) | yes |
 | 2026-10-21 | S1b (LAD-120), analyst's question #585 | The warning box's colour | A: a new amber token, orange stays "waiting for you"; B: the orange "waiting for you" ground | A (analyst, lead) | A (human) | yes |
 | 2026-10-21 | S1b (LAD-120), analyst's question #587 | The kit list's load error: a refusal with Start enabled | make it a warning; keep it a refusal and disable Start | a warning (analyst, lead) | a warning (human) | yes |
-| 2026-10-21 | S1b (LAD-120), design_ok gate #42 | The design: tweak, CSS on the existing note classes, tokens `--warn`, `--warn-ground`, `--danger-ground`, new capability `launch-notes` | approve; reject | approve (lead) | pending (human) | — |
+| 2026-10-21 | S1b (LAD-120), design_ok gate #42 | The design: tweak, CSS on the existing note classes, tokens `--warn`, `--warn-ground`, `--danger-ground`, new capability `launch-notes` | approve; reject | approve (lead) | approved (human) | yes |

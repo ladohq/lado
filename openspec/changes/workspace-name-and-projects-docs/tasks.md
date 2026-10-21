@@ -114,7 +114,7 @@
   `docs/research/`, `docs/superpowers/`, `openspec/changes/archive/`, `docs/epics/`: hits
   only in this open change's delta (its RENAMED `FROM` and REMOVED lines, which go to the
   archive at merge); after the archive none (AC-2).
-- [ ] 5.2 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_launch.py`,
+- [x] 5.2 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_launch.py`,
   `openspec validate --specs --strict`; CI green, the container tests included (AC-4).
 - [x] 5.3 Screenshots of the New session window's Workspace row and of the warning (from
   the UI test's shots), as run artifacts in `build-report`.

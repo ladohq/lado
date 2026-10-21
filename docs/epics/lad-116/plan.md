@@ -7,57 +7,86 @@ Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
 - Each phase task gets the label `component lado` and is linked to LAD-116; LAD-80 is not touched.
-Last review: 2026-10-21, base at b687caf
+Last review: 2026-10-21, base at b687caf (revised after plan-review round 1)
 
 ## Steps
 
-The concept's phases 0–5 map to S1–S7. One change against the concept's order: the
-session in a project (concept phase 3) comes before variables and secrets (phase 2), so
-that S5's check is end to end — two sessions of two projects, each agent seeing its own
-value — instead of a store no agent reads yet (open question Q1).
+The concept's phases 0–5 map to S1–S7 (phase 2 split into S5a and S5b). One change against
+the concept's order, for the human's explicit yes (Q1): the session in a project (concept
+phase 3, S3) comes before variables and secrets (phase 2, S5a/S5b), so S5a's check is end to
+end. No two steps run at once: S3–S5b all change `runtime.py` and `state.py`.
 
 ### S1 — Docs rewrite and the rename to Workspace (M)
 Status: planned
-Check: the reviewer greps the tree (outside CHANGELOG, `docs/research/`, `docs/superpowers/`, `openspec/changes/archive/`, `docs/epics/`) for "projects folder", "Repositories folder", "repositories folder" and the old project model ("named set of repositories", the 2026-10-03 research where it no longer holds): no hit; `make lint`, `make test`, `make web`, the changed UI and container tests with their markers, `openspec validate --specs --strict` green; CI green.
-Touches: `docs/design/projects.md` (new), AGENTS.md (Read more), `docs/design/modules.md`, `docs/design/ui.md`, ROADMAP.md, BACKLOG.md, README.md, `docs/install.md`, `docker/*` comments and messages, `openspec/specs/{repos-folder,container,session-clone}`, `src/lado/doctor.py` (the line), `src/lado/clone.py`/`runtime.py` (texts), `web/src/Launch.tsx`, tests that check these texts.
-Notes: concept phase 0. Texts and docs only, no behaviour change; patch-level CHANGELOG line for the renamed labels. `docs/design/projects.md` describes the target model and says which parts are not built yet. Open question Q2 (the compose variable `LADO_PROJECTS`).
+Check:
+- `grep -rniE "projects? folders?|repositor(y|ies) folders?"` over the tree, outside CHANGELOG.md, `docs/research/`, `docs/superpowers/`, `openspec/changes/archive/`, `docs/epics/`: no hit (the reviewer).
+- These places are rewritten to the new model or removed, checked one by one: ROADMAP.md "Later → Projects" (lines 139–148 at b687caf: "a project is a named configuration (its repos, tracker filters, default kit and flow)", "deleting a project removes its clones too"); BACKLOG.md "Flows cannot work on another repository" and "Artifacts end with their session"; the Projects stub, `repos` in the session header, "Projects can add theirs" and the repositories-folder hint in `docs/design/ui.md`.
+- BACKLOG.md has the entry "managing workspace folders outside projects".
+- `make lint`, `make test`, `make web`, the changed UI tests with `-m ui`, `openspec validate --specs --strict`, CI green.
+- The human reads `docs/design/projects.md` against the concept at the merge gate.
+Notes: concept phase 0. Texts only: no name an installation sees changes (environment variables, paths, API keys), so no behaviour changes; one patch-level CHANGELOG line for the renamed labels. Compose's `LADO_PROJECTS` keeps its name here; only its message says "workspace" (whether a new name comes is Q2, in S2). `docs/design/projects.md` describes the target model, says which parts are not built yet, and says plainly: projects of one LADO are not isolated; LADO is not a store; a volume backup holds the secrets; `lado uninstall` deletes `LADO_HOME` with the secrets and never touches the workspace.
 
-### S2 — The project in the core (M)
+### S2 — The project in the core and the default workspace (M)
 Status: planned
-Check: integration tests: `lado project create/list/show/rename/delete` against a temp workspace and `LADO_HOME`; the folder `<workspace>/projects/<id>` made and removed; refusals (folder exists, `projects/` owned by the human, bad id); `lado doctor` shows the workspace, a foreign folder in `projects/` and a project whose folder is missing; schema migration tested from `previous_schema`.
-Notes: concept phase 1, plus D3: one function gives the workspace (`LADO_REPOS`, else `~/workspace`), and the default clone parent of a session without a project moves from `~/lado` to it (CHANGELOG says existing sessions keep their folders). `delete` here covers a project that cannot have sessions yet: it shows uncommitted or unpushed work in the repositories of its folder, refuses without `--yes`; S3 extends it to sessions. Agents cannot run the project commands (refused from inside an agent). Minor bump (migration, new CLI).
+Check:
+- Integration tests: `lado project create/list/show/rename/delete` against a temp workspace and `LADO_HOME`; the folder `<workspace>/projects/<id>` made and removed; refusals: the folder exists, `projects/` is the human's own folder, a bad id; refused from inside an agent (`LADO_SESSION`/`LADO_AGENT` set).
+- `lado doctor`: the workspace line with and without `LADO_REPOS` (incl. a default `~/workspace` not made yet), a foreign folder in `projects/`, a project whose folder is missing, `projects/` owned by the human.
+- D3: without `LADO_REPOS` a clone with no folder given lands in `~/workspace/<repo>` (unit and `test_server_launch`), and the New session window's Where starts from `~/workspace`.
+- The schema migration from `tests/agent_helpers.previous_schema`; an `lado update` rollback test is not needed beyond the existing one (it restores `lado.db`; the folders stay, see brief "Data and migrations").
+Notes: concept phase 1, plus D3. One function gives the workspace (`LADO_REPOS`, else `~/workspace`) for the clone default, the server, `lado doctor` and projects. Changes the specs `repos-folder` (the requirement "unset: no folder, no doctor line, no Where hints" becomes "unset: `~/workspace`") and `session-clone` (default `~/lado/<repo>` becomes `<workspace>/<repo>`). Making `~/workspace`: Q3. CHANGELOG: existing sessions keep their folders. Compose's `LADO_WORKSPACE`, if Q2 says so, lands here (`docker/compose.yaml`, `tests/test_docker.py`, `tests/container/*`, `docs/install.md`, `docs/release.md`, `docs/testing.md`, `openspec/specs/container`). `delete` covers a project that has no sessions yet: it shows uncommitted or unpushed work in the repositories of its folder and refuses without `--yes`; S3 extends it to sessions, S5b to secrets. Minor bump.
 
 ### S3 — A session in a project (L)
 Status: planned
-Check: integration tests with the fake agent: `lado start --project <id> --repo <name>` starts in `<workspace>/projects/<id>/<name>`; the session's project is a reference in `lado.db`, shown by `lado ls` and the session header (API); a session from `start_session` gets the same project and repository; `lado start` of a folder under `projects/` without `--project` is refused with the hint naming the project; the project's repositories are listed from disk (git subfolders, branch, remote; a folder without git and an in-progress clone are not listed); `lado project delete` refuses while a session of the project runs and forgets the stopped ones.
+Check:
+- Integration tests with the fake agent: `lado start --project <id> --repo <name>` starts in `<workspace>/projects/<id>/<name>`; the session's project is a reference in `lado.db`, shown by `lado ls` and in the session's API; a session from `start_session` gets the same project and repository.
+- A session without a project under `projects/` is refused on every path: `lado start <folder>`, `lado start <git-url>` with a target there, `lado start --new` there, the server's launch API (folder, clone, from scratch), and `start_session` from a session without a project; each refusal names the project and offers the session in it.
+- The Where hints of New session never offer `projects/` (server test and `tests/ui`).
+- The session header in the UI shows the project (mockup at `design_ok`, `docs/design/ui.md`, UI e2e).
+- The project's repositories are listed from disk: git subfolders with branch and remote; a folder without git and an unfinished clone are not listed.
+- `lado project delete` refuses while a session of the project runs, and forgets the stopped ones.
 Notes: concept phase 3 without adding repositories (S4). Repositories for the check are made by hand (`git init`/`git clone` into the project folder).
 
 ### S4 — Adding and removing a project's repositories (M)
 Status: planned
-Check: integration tests: a repository added by clone (into a temp folder, renamed at the end) and from scratch, both through LADO's existing clone and scratch paths, landing in the project folder; removing a repository refuses while its sessions run, shows unpushed work including workers' worktrees, needs `--yes`, removes its sessions and folder; nothing outside `projects/` is ever removed.
-Touches: `clone.py`, `scratch.py`, `cli.py`, `runtime.py` (removal) — a parallel candidate with S5 (overlap only in `cli.py`).
+Check: integration tests: a repository added by clone (into a temporary folder, renamed at the end) and from scratch, through LADO's existing clone and scratch paths, landing in the project folder; removing a repository refuses while its sessions run, shows unpushed work including workers' worktrees, needs `--yes`, forgets its sessions and removes its folder; nothing outside `projects/` is ever removed.
 Notes: the CLI shape (e.g. `lado project repo add/remove`) is the analyst's.
 
-### S5 — Variables and secrets (L)
+### S5a — Plain project variables reach the whole session (M)
 Status: planned
-Check: integration: two sessions of two projects with the same variable get each its own value; layers login shell → `LADO_ENV_DIR` → project → LADO/CLI, the project winning over the outside folder; a kit key set only in the project counts as set; `lado project set/unset` (plain, `--secret` read hidden), name guards (secret-like names refused as plain, reserved names refused); secrets one file each, 700/600, atomic writes, read by the same function as `LADO_ENV_DIR`; refused from inside an agent; the canary test: a secret's value is in no API answer, feed, log, `lado log`, bug report or telemetry. Smoke per provider (CI): a kit's MCP server sees a project variable (D5).
-Touches: `agent_env.py`, `kits.py`/`mcp_exec.py`, `state.py`, `cli.py`, `doctor.py` — a parallel candidate with S4.
-Notes: concept phase 2. Minor bump (migration, new CLI). Open check after merge: one live run with models on the four CLIs before the release that ships S5 (Claude only with the human's yes) — goes to the release checklist at the review.
+Check:
+- Integration with the fake agent: two sessions of two projects with the same variable get each its own value in the supervisor, a worker, a flow run's worker and a session from `start_session`; layers login shell → `LADO_ENV_DIR` → project → LADO/CLI, the project winning over the outside folder; a name LADO or the CLI sets keeps LADO's value, with the warning as for the outside folder.
+- Kit keys: `kits.ResolvedAgent.mcp_servers` checks each `${VAR}` of a kit's MCP server against the agent's environment before the agent starts (today's refusal "… environment variable X is not set"); a key set only in the project passes it and reaches the server through `mcp_exec`, the same key in a session without a project is refused.
+- `lado project set/unset` (plain); a secret-like name (`*TOKEN*`, `*KEY*`, `*SECRET*`, `*PASSWORD*`) refused as plain; reserved names (`LADO_*`, `PATH`, `HOME`, `CLAUDE_CONFIG_DIR` and the like, from one list) refused; refused from inside an agent.
+- Smoke per provider (CI, D5): a test MCP server of a kit writes whether it sees a project variable to a file the test reads (the current smoke has no such server: S5a adds it).
+Notes: concept phase 2, plain half. Minor bump (migration, new CLI). Open check after merge: one live run with models on the four CLIs before the release that ships S5a (Claude only with the human's yes) — goes to the release checklist at the review.
+
+### S5b — Project secrets (M)
+Status: planned
+Check:
+- `lado project set <id> NAME --secret` reads the value hidden; one file per secret in `<LADO_HOME>/projects/<id>/secrets/`, 700/600, written atomically; read by the same function as `LADO_ENV_DIR` with its limits; a secret reaches the agents as in S5a; replace and delete, never read back.
+- `lado doctor` names an unusable secret file of a project by name, never by content.
+- `lado project delete` removes `<LADO_HOME>/projects/<id>/`; delete then create with the same id: no secrets.
+- The canary test: a secret's value is in no API answer, UI feed, log, LADO's error journal, `lado log`, bug report or telemetry.
+Notes: concept phase 2, secrets half.
 
 ### S6 — UI: Projects section, variables, the Project way of New session (L)
 Status: planned
-Check: mockups approved at `design_ok`; UI e2e tests: create a project, set a plain variable and replace/delete a secret (its value never shown or returned), the security-boundary warning and "new values reach new agents" with the running sessions listed; New session's Project way: project, then the repository list (always shown) with "+ new repository" (clone or from scratch); all through the documented token API (`docs/design/ui.md`, OpenAPI).
+Check: mockups approved at `design_ok`; UI e2e: the project list with title, number of repositories and of running sessions; create a project; set a plain variable; replace and delete a secret (its value never shown or returned); the mark of the outside value a variable overrides (`LADO_ENV_DIR` with the same name); the security-boundary warning and "new values reach new agents" with the running sessions listed; New session's Project way: project, then the repository list (always shown) with "+ new repository" (clone or from scratch). All through the documented token API (`docs/design/ui.md`, OpenAPI). The canary test of S5b extended to the new endpoints and the feed.
 Notes: concept phase 4. The Projects stub goes away here.
 
 ### S7 — UI: project page, removing a repository and a project (M)
 Status: planned
-Check: mockups approved; UI e2e: the project page lists repositories with branch and remote, sessions, variables; removing a repository and a project shows the unpushed work (incl. workers' worktrees) and asks for the id typed; refused while sessions run.
+Check: mockups approved; UI e2e: the project page lists repositories with branch and remote, sessions, variables; renaming the title; removing a repository and a project shows the unpushed work (incl. workers' worktrees) and asks for the id typed; refused while sessions run.
 Notes: concept phase 5.
 
 ## Open questions
 
-- **Q1. S3 (session in a project) before S5 (variables)?** Recommended: yes. Each step still stands on its own; S5's check becomes end to end; a release between them ships projects with sessions but no variables, which is harmless. The concept's order would ship a variable store no agent reads.
-- **Q2. The compose variable `LADO_PROJECTS`** (`docker/compose.yaml`: "set LADO_PROJECTS to your projects folder") sits next to the new `projects/` and means the workspace. Recommended: S1 adds `LADO_WORKSPACE` as the documented name and keeps `LADO_PROJECTS` working as the old name, so no installed `.env` breaks; `LADO_REPOS` inside the container is unchanged (concept). Alternative: keep `LADO_PROJECTS` and only change its message.
+- **Q1. S3 (session in a project) before S5a/S5b (variables)?** It departs from the concept's phase order, so it needs the human's yes. Recommended: yes. Each step still stands on its own; S5a's check becomes end to end; a release between them ships projects with sessions but no variables, which is harmless. The concept's order would ship a variable store no agent reads.
+- **Q2. Compose's `LADO_PROJECTS`** ("set LADO_PROJECTS to your projects folder") sits next to the new `projects/` and means the workspace. (a) S2 adds `LADO_WORKSPACE` as the documented name and keeps `LADO_PROJECTS` working as the old one, so no installed `.env` breaks — a compose behaviour change, tested by `tests/test_docker.py` and the container tests, needing a compose that nests interpolation defaults; (b) keep `LADO_PROJECTS`, only its message changes (S1). Recommended: (a), in S2.
+- **Q3. `~/workspace` without `LADO_REPOS`.** Recommended: as today for a `LADO_REPOS` folder not made yet — LADO makes it when it first needs it (the first clone or project), `lado doctor` prints `~/workspace (default), not made yet: the first clone or project makes it`, the New session window's Where starts there once it exists.
+- **Q4. S5 split into S5a (plain variables) and S5b (secrets)?** Recommended: yes; each half is designed in one round and merges on its own.
+
+Answered by the code (no question): the critic's P4 said no pre-launch key check exists. It does: `kits.ResolvedAgent.mcp_servers` (`src/lado/kits.py:257–276`) refuses a launch when a kit MCP server's `${VAR}` is not in the agent's environment; S5a makes that environment include the project layer.
 
 ## Later
 

@@ -26,7 +26,7 @@ The plan with each task's tests and code: `docs/superpowers/plans/2026-10-21-pro
   Check: `tests/test_projects.py` with real git.
 - [x] 2.4 `lado project list|create|show|rename|delete`, agents refused (D9, D10).
   Check: `tests/test_cli.py`.
-- [ ] 2.5 `doctor.check_projects` (D11). Check: `tests/test_doctor.py`.
+- [x] 2.5 `doctor.check_projects` (D11). Check: `tests/test_doctor.py`.
 
 ## 3. End to end
 

@@ -130,21 +130,28 @@ def _visible() -> list[str] | None:
         return None
 
 
+def _ids() -> set[str]:
+    """The ids of LADO's projects; none without a lado.db, which asking does not make
+    (`lado doctor`)."""
+    if state.schema_version() is None:
+        return set()
+    return {project.id for project in state.list_projects()}
+
+
 def owned_by_human() -> list[str] | None:
     """The visible entries of projects/ when it is the human's own folder: it holds some and
     none is a project's folder. None otherwise."""
     visible = _visible()
     if not visible:
         return None
-    ids = {project.id for project in state.list_projects()}
-    return None if ids & set(visible) else visible
+    return None if _ids() & set(visible) else visible
 
 
 def foreign() -> list[str]:
     """The visible entries of projects/ that are no project's folder, files too, once a
     project's folder is there (before that, the folder is the human's: owned_by_human)."""
     visible = _visible() or []
-    ids = {project.id for project in state.list_projects()}
+    ids = _ids()
     return [name for name in visible if name not in ids] if ids & set(visible) else []
 
 
@@ -204,7 +211,10 @@ def get(id: str) -> state.Project:
 
 
 def listed() -> list[tuple[state.Project, Path, bool]]:
-    """Every project by id, with its folder and whether that folder is there."""
+    """Every project by id, with its folder and whether that folder is there; none without
+    a lado.db."""
+    if state.schema_version() is None:
+        return []
     return [(p, folder(p.id), folder(p.id).is_dir()) for p in state.list_projects()]
 
 

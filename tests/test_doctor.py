@@ -13,6 +13,7 @@ from lado import (
     artifacts_local,
     doctor,
     gui_session,
+    projects,
     providers,
     runtime,
     state,
@@ -920,3 +921,75 @@ def test_report_server_line_in_a_container(server, line):
     report = doctor.report(system, server)
     [found] = [text for text in report.splitlines() if text.startswith("- Server: ")]
     assert found.startswith(line)
+
+
+# Projects (openspec change projects-in-core)
+
+
+@pytest.fixture
+def ws(tmp_path, monkeypatch):
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    return tmp_path / "ws"
+
+
+def test_no_projects_line_before_any_project(ws):
+    assert doctor.check_projects() is None
+    ws.mkdir()
+    assert doctor.check_projects() is None
+
+
+def test_projects_all_well(ws):
+    projects.create("shop", None)
+    projects.create("acme", None)
+    assert doctor.check_projects() == doctor.Check("Projects", doctor.OK, f"2 in {ws / 'projects'}")
+
+
+def test_a_project_without_its_folder_and_a_foreign_folder(ws):
+    projects.create("shop", None)
+    projects.create("acme", None)
+    (ws / "projects" / "acme").rmdir()
+    (ws / "projects" / "old").mkdir()
+    assert doctor.check_projects() == doctor.Check(
+        "Projects",
+        doctor.WARN,
+        f"acme: folder not found {ws / 'projects' / 'acme'}; foreign folder in projects/: old",
+    )
+
+
+def test_projects_that_is_the_humans_own_folder(ws):
+    (ws / "projects" / "notes").mkdir(parents=True)
+    assert doctor.check_projects() == doctor.Check(
+        "Projects",
+        doctor.WARN,
+        f"{ws / 'projects'} is your own folder (it holds notes): LADO cannot make projects there",
+    )
+
+
+def test_projects_that_is_a_file(ws):
+    ws.mkdir()
+    (ws / "projects").write_text("")
+    assert doctor.check_projects() == doctor.Check(
+        "Projects", doctor.WARN, f"{ws / 'projects'} is not a folder"
+    )
+
+
+def test_the_projects_line_follows_the_workspace(ws, monkeypatch):
+    _versions(monkeypatch)
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+    projects.create("shop", None)
+    found = [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
+    assert found[found.index("Workspace") + 1] == "Projects"
+
+
+def test_the_projects_check_makes_no_lado_db(ws, lado_home):
+    (ws / "projects" / "notes").mkdir(parents=True)
+    assert doctor.check_projects().level == doctor.WARN
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_the_projects_check_on_an_older_lado_db(ws, lado_home):
+    projects.create("shop", None)
+    agent_helpers.previous_schema()
+    check = doctor.check_projects()
+    assert (check.level, check.detail[:13]) == (doctor.INFO, "not checked: ")
+    assert f"schema version {state.SCHEMA_VERSION - 1}" in check.detail

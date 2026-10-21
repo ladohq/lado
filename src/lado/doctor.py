@@ -565,6 +565,35 @@ def check_workspace() -> Check:
     return Check(name, OK, f"{folder} {tag}")
 
 
+def check_projects() -> Check | None:
+    """The projects once LADO has one or projects/ exists: their folders, the entries of
+    projects/ that are no project's, and projects/ that is the human's own folder."""
+    name = "Projects"
+    where = projects.projects_folder()
+    try:
+        listed = projects.listed()
+    except state.SchemaError as exc:  # doctor checks lado.db as it is: no migration
+        return Check(name, INFO, f"not checked: {exc}")
+    if not listed and not os.path.lexists(where):
+        return None
+    if not where.is_dir():
+        if os.path.lexists(where):
+            return Check(name, WARN, f"{where} is not a folder")
+    elif own := projects.owned_by_human():
+        return Check(
+            name,
+            WARN,
+            f"{where} is your own folder (it holds {projects.names(own)}): LADO cannot make "
+            "projects there",
+        )
+    findings = [f"{p.id}: folder not found {folder}" for p, folder, found in listed if not found]
+    if foreign := projects.foreign():
+        findings.append(f"foreign folder in projects/: {projects.names(foreign)}")
+    if findings:
+        return Check(name, WARN, "; ".join(findings))
+    return Check(name, OK, f"{len(listed)} in {where}")
+
+
 SECRETS_HINT = (
     "to give the agents variables: LADO_SECRETS=./secrets in compose's .env and "
     "mkdir -m 700 secrets (docker run: -v <folder>:/run/secrets:ro); "
@@ -599,6 +628,7 @@ def check_outside() -> Check | None:
 
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
     graphical = check_graphical_session(which)
+    projects_found = check_projects()
     outside = check_outside()
     author = check_git_author()
     return [
@@ -608,6 +638,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         check_git(),
         *([author] if author else []),
         check_workspace(),
+        *([projects_found] if projects_found else []),
         *([outside] if outside else []),
         *([graphical] if graphical else []),
         *check_agent_env(),

@@ -84,6 +84,25 @@ def test_where_starts_in_the_repositories_folder(page: Page, repos, server, shot
 
 OUTSIDE = "⚠ Outside the workspace ({}): this folder is only in the container"
 
+# A note under a field without a level: a hint, quiet text without a ground.
+HINT = ".field-note:not(.ok):not(.warn):not(.bad)"
+
+
+def look(note) -> dict:
+    """A note's computed ground, stripe and text size."""
+    return note.evaluate(
+        "el => { const s = getComputedStyle(el); return {ground: s.backgroundColor,"
+        " stripe: s.borderLeftColor, stripeWidth: s.borderLeftWidth, size: s.fontSize}; }"
+    )
+
+
+def both_themes(page: Page, shot, name: str) -> None:
+    """Screenshots of the page in the light and in the dark theme."""
+    for scheme in ("light", "dark"):
+        page.emulate_media(color_scheme=scheme)
+        shot(page, f"{name}-{scheme}")
+    page.emulate_media(color_scheme="light")
+
 
 def test_in_a_container_a_folder_outside_the_repositories_folder_is_warned_about(
     page: Page, repos, repo, server_in_container, shot
@@ -99,14 +118,22 @@ def test_in_a_container_a_folder_outside_the_repositories_folder_is_warned_about
     expect(dialog.locator(".field-note.warn")).to_have_count(0)
     where.blur()
     shot(page, "inside")
+    both_themes(page, shot, "hint-and-ok")
 
     where.fill(str(repo))
     expect(dialog).to_contain_text("✓ git repository · branch main")
-    expect(dialog.locator(".field-note.warn")).to_contain_text(OUTSIDE.format(repos))
+    warning = dialog.locator(".field-note.warn")
+    expect(warning).to_contain_text(OUTSIDE.format(repos))
+    hint = look(dialog.locator(HINT).first)
+    warned = look(warning)
+    assert warned["ground"] != hint["ground"], (warned, hint)
+    assert warned["stripe"] != hint["stripe"] and warned["stripeWidth"] == "3px", (warned, hint)
+    assert warned["size"] == "13px", warned
     dialog.get_by_label("Provider").select_option("fake")
     expect(dialog.get_by_role("button", name="Start session")).to_be_enabled()
     where.blur()
     shot(page, "outside")
+    both_themes(page, shot, "warning")
 
     dialog.get_by_role("button", name="Clone from URL").click()
     dialog.get_by_role("textbox", name=re.compile("Where")).fill(
@@ -233,6 +260,43 @@ def test_a_folder_that_will_not_do_shows_the_cores_reason(page: Page, server, tm
     # The CLIs checked: each `--version` may take seconds on a loaded machine.
     expect(dialog.get_by_label("Provider")).to_be_enabled(timeout=30_000)
     shot(page)
+    # A refusal is a red panel: its ground is neither a hint's nor a warning's.
+    refusal = dialog.locator(".field-note.bad", has_text="is not inside a git repository")
+    refused = look(refusal)
+    hint = look(dialog.locator(HINT).first)
+    warn_ground = page.evaluate(
+        "() => { const el = document.createElement('span'); el.className = 'field-note warn';"
+        " document.body.append(el); const c = getComputedStyle(el).backgroundColor;"
+        " el.remove(); return c; }"
+    )
+    assert refused["ground"] not in (hint["ground"], warn_ground), (refused, hint, warn_ground)
+    assert refused["stripeWidth"] == "3px" and refused["size"] == "13px", refused
+    icon = refusal.evaluate("el => getComputedStyle(el, '::before').content")
+    assert icon == '"!"', icon
+    both_themes(page, shot, "refusal")
+
+
+def test_on_a_phone_the_window_with_a_warning_scrolls_to_start(
+    page: Page, repos, repo, server_in_container, shot
+):
+    # At 390x844 the warning's panel takes Start below the screen (on main it was half in
+    # view already): the window scrolls to it (LAD-120, the human's answer #594).
+    page.set_viewport_size({"width": 390, "height": 844})
+    log_in(page, server_in_container)
+    page.get_by_role("button", name="New session").click()
+    dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
+    where = dialog.get_by_role("combobox", name=re.compile("Where"))
+    where.fill(str(repo))
+    expect(dialog.locator(".field-note.warn")).to_contain_text(OUTSIDE.format(repos))
+    dialog.get_by_label("Provider").select_option("fake")
+    where.blur()
+    shot(page, full_page=False)
+    start = dialog.get_by_role("button", name="Start session")
+    dialog.evaluate("el => el.scrollTo(0, el.scrollHeight)")
+    expect(start).to_be_in_viewport(ratio=1)
+    expect(start).to_be_enabled()
+    shot(page, "scrolled", full_page=False)
 
 
 def test_a_folder_without_commits_shows_the_command_that_makes_one(

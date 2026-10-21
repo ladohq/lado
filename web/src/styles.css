@@ -4933,7 +4933,7 @@ h3 {
   color: var(--ink);
   font-size: 13px;
   line-height: 1.4;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 6px;
   border-left: 3px solid;
 }
@@ -4945,7 +4945,7 @@ h3 {
 
 .field-note.bad {
   position: relative;
-  padding-left: 30px;
+  padding-left: 28px;
   background: var(--danger-ground);
   border-left-color: var(--danger);
 }
@@ -4953,8 +4953,8 @@ h3 {
 .field-note.bad::before {
   content: "!";
   position: absolute;
-  left: 9px;
-  top: 7px;
+  left: 7px;
+  top: 6px;
   width: 15px;
   height: 15px;
   border-radius: 50%;

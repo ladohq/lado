@@ -133,8 +133,8 @@ def test_agents_that_end_with_their_hook_do_not_make_lado_home_again(
     pids = agent_pids(session)
     done = lado("uninstall", "--yes")
     assert done.returncode == 0, done.stdout + done.stderr
-    assert not any(alive(pid) for pid in pids)
     assert not lado_home.exists()
+    assert not any(alive(pid) for pid in pids)
 
 
 def test_uninstall_keep_data_resumes(repo, session, lado_home):

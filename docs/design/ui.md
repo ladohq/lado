@@ -1408,6 +1408,19 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   `changes` show above the session's tabs until closed (`.started-notice`: 12 px under
   the top bar, 10 px above the tabs, which move down while it is open; LAD-42,
   2026-10-14). No tmux attach.
+- **The window's notes in three levels** (decided 2026-10-21, LAD-120, mockup
+  `task/lad-120/mockup-launch-notes.html` variant A): each note under a field is one of
+  three by its class. A hint (`field-note`) and a success (`field-note ok`) are quiet 12 px
+  text, muted or in the action's blue, without a ground. A warning (`field-note warn`) is
+  an amber panel: `--warn-ground` with a 3 px `--warn` stripe on its left, text 13 px in
+  `--ink`, its icon the `⚠` its text starts with. A refusal (`field-note bad`) is the same
+  panel on `--danger-ground` with a `--danger` stripe and a round `!` drawn by CSS before
+  its first line (not part of its text); its hint, command and Copy stay inside it. Start
+  (Clone and start, Create and start) is off while a refusal shows, and a note that does
+  not keep the session from starting is not a refusal: the kits list that does not load
+  (`/api/kits` failed) is a warning, since the start itself refuses a kit that does not
+  load. Notes outside this window (`.field-problem`, the start's own `.problem`) are other
+  classes.
 - **First message** (decided 2026-10-12, LAD-19; mockup `task/lad-19/mockup-first-message.html`
   v2, variant C): a row **First message to the supervisor (optional)** just above
   Advanced, in the New and the Resume mode, for a folder and a clone alike, folded each
@@ -2500,6 +2513,12 @@ colour, a kit's mark (#E8EFFC / #1C2840). A kit's source dot: official `--done`,
 marketplace `--action`, always beside the source's text. Every
 text colour has a contrast of at least 4.5:1 on its grounds in both themes; a unit test
 (`web/src/tokens.test.ts`) checks it.
+
+**Notes of the New session window** (LAD-120, 2026-10-21): a warning's panel is amber,
+`--warn` on `--warn-ground` (#8A5A00 on #FDF5DC / #E0B04A on #2F2814), apart from the orange
+of what waits for the human by hue and by place; a refusal's panel is `--danger` on
+`--danger-ground` (#FDECEB / #3A1D1B). The panels' text is `--ink`, a refusal's hint
+`--muted`; the test checks each of them on both grounds.
 
 **Avatars** (task feature/chat-look, 2026-10-07; Look of the feed): six colours,
 `--avatar-1` … `--avatar-6` (indigo, green, violet, magenta, teal, olive; light #4F5BD5,

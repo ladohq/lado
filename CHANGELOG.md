@@ -7,6 +7,8 @@
 - **The folder LADO keeps your code in is called the workspace.** `lado doctor`, the New
   session window, compose's message and the guide use that one name; nothing to change in
   your installation (`LADO_PROJECTS` and `LADO_REPOS` stay).
+- **Warnings and refusals in the New session window stand out.** They show as amber and
+  red panels; hints stay quiet.
 
 ## 0.42.0 (2026-10-20)
 

@@ -3,7 +3,7 @@
 # settings in .env next to this file, where compose reads them for every command:
 #
 #   LADO_VERSION=<version>              # the LADO version to run, e.g. the latest release's
-#   LADO_PROJECTS=/Users/me/workspace   # your workspace, absolute: the container sees it at this path
+#   LADO_WORKSPACE=/Users/me/workspace  # your workspace, absolute: the container sees it at this path
 #   LADO_PORT=8765                      # optional
 #   LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 #   LADO_GIT_EMAIL=ann@example.com
@@ -13,7 +13,8 @@
 #   LADO_PUBLIC_HOST=my-mac.local       # optional: this computer's name for the UI's link
 #                                       # for a phone (Open on another device)
 #
-# Then, from this folder:
+# An .env with LADO_PROJECTS, the workspace's name before 0.43.0, is still accepted;
+# LADO_WORKSPACE wins when both are set. Then, from this folder:
 #
 #   docker compose up -d
 #   docker compose exec lado lado ui --no-open               # the UI's link with its token
@@ -86,7 +87,7 @@
 #
 # A second LADO beside the first: a folder of its own with a copy of this file and an .env
 # with its own COMPOSE_PROJECT_NAME (e.g. lado-2), LADO_PORT (8766), LADO_VERSION and
-# LADO_PROJECTS, and a secrets/ of its own or none. It has its own container, home volume
+# LADO_WORKSPACE, and a secrets/ of its own or none. It has its own container, home volume
 # and version: updating one leaves the other as it is.
 #
 # The container's sessions go with it: `docker compose down` (or stop, or Docker's own end)
@@ -103,7 +104,7 @@ services:
     hostname: lado
     environment:
       LADO_PORT: ${LADO_PORT:-8765}
-      LADO_REPOS: ${LADO_PROJECTS:?set LADO_PROJECTS to your workspace folder}
+      LADO_REPOS: ${LADO_WORKSPACE:-${LADO_PROJECTS:-/set-LADO_WORKSPACE-to-your-workspace-folder}}
       # git's identity for the agents' commits, written at every start.
       LADO_GIT_NAME: ${LADO_GIT_NAME:-}
       LADO_GIT_EMAIL: ${LADO_GIT_EMAIL:-}
@@ -119,8 +120,15 @@ services:
       # LADO_HOME (~/.lado) and Claude Code's login and config.
       - home:/home/lado
       # The human's workspace at the host's own path (LADO_REPOS above), so a worker's
-      # worktree made in the container is one on the host too.
-      - ${LADO_PROJECTS:?set LADO_PROJECTS to your workspace folder}:${LADO_PROJECTS:?set LADO_PROJECTS to your workspace folder}
+      # worktree made in the container is one on the host too. LADO_PROJECTS is its name
+      # before 0.43.0. A missing workspace is never made on the host: without either,
+      # `up` refuses with Docker's error naming the path below, LADO_WORKSPACE in it (no
+      # nested `:?`: some Compose versions evaluate it even when LADO_WORKSPACE is set).
+      - type: bind
+        source: ${LADO_WORKSPACE:-${LADO_PROJECTS:-/set-LADO_WORKSPACE-to-your-workspace-folder}}
+        target: ${LADO_WORKSPACE:-${LADO_PROJECTS:-/set-LADO_WORKSPACE-to-your-workspace-folder}}
+        bind:
+          create_host_path: false
       # The agents' variables, one file each (LADO_ENV_DIR): never in docker inspect
       # (LADO_SECRETS; /dev/null: none).
       - type: bind

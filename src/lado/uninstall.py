@@ -15,7 +15,9 @@ import os
 import shlex
 import shutil
 import sqlite3
+import subprocess
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +30,10 @@ Say = Callable[..., None]  # print's signature: text, file=, end=, flush=
 
 # Seconds to wait for a statistics sender that runs (it lives SEND_DEADLINE at most).
 SENDER_WAIT = telemetry.SEND_DEADLINE + 5
+# Seconds for the agents' processes to end after their sessions stopped, all at once, and
+# how often they are looked at.
+AGENTS_TIMEOUT = 10
+AGENTS_POLL = 0.05
 
 DOCS = "docs/install.md, Uninstall"
 AGENT_CLIS = (
@@ -360,6 +366,55 @@ def run(found: Plan, say: Say = print) -> int:
         return _Uninstall(found, say).run()
 
 
+def _agents(sessions: list[Session]) -> dict[str, list[int]]:
+    """The processes of the panes of each session not stopped yet; none without tmux."""
+    try:
+        return {s.name: tmux.pane_pids(s.name) for s in sessions if not s.stopped}
+    except tmux.TmuxMissing:
+        return {}
+
+
+def _wait_for_agents(agents: dict[str, list[int]]) -> None:
+    """Wait up to AGENTS_TIMEOUT for every process of `agents` to end; a LadoError names
+    each session with a process left and the command that ends them."""
+    deadline = time.monotonic() + AGENTS_TIMEOUT
+    while True:
+        left = {name: [p for p in pids if not _ended(p)] for name, pids in agents.items()}
+        left = {name: pids for name, pids in left.items() if pids}
+        if not left or time.monotonic() >= deadline:
+            break
+        time.sleep(AGENTS_POLL)
+    if left:
+        raise runtime.LadoError(
+            "; ".join(
+                f'the agents of session "{name}" did not end in {AGENTS_TIMEOUT:g}s (pids '
+                f"{', '.join(map(str, pids))}): end them with kill {' '.join(map(str, pids))}"
+                for name, pids in left.items()
+            )
+        )
+
+
+def _ended(pid: int) -> bool:
+    """Whether the process is gone, no longer ours, or a zombie: an agent whose parent, the
+    tmux server, has ended waits for init to reap it, which the uninstall cannot do. Without
+    ps it counts as running, and AGENTS_TIMEOUT still ends the wait."""
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        return True
+    try:
+        listed = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=AGENTS_TIMEOUT,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return listed.stdout.strip().startswith("Z")
+
+
 class _Uninstall:
     def __init__(self, found: Plan, say: Say):
         self.plan, self.say = found, say
@@ -398,12 +453,16 @@ class _Uninstall:
         return _sessions(state.schema_version())
 
     def _stop(self) -> None:
-        """The UI server, the sessions, their loops, the viewers, then the tmux server when
-        no session is left on its socket. Raises when something did not stop."""
+        """The UI server, the sessions, their loops, their agents' processes, the viewers,
+        then the tmux server when no session is left on its socket. Raises when something
+        did not stop."""
         say = self.say
         if server_run.lock_path().exists() and server_run.stop():
             say("Stopped the UI server")
         if self.plan.schema is not None:
+            # Taken before the stop, which ends the panes: tmux kills a session at once, and
+            # its agents end a moment later, some after their session-end hook.
+            agents = _agents(self._sessions())
             runtime.stop_all(lambda name, _: say(f'Stopped session "{name}"'))
             for sess in self._sessions():
                 if not loop.wait_stopped(sess.name):
@@ -411,6 +470,7 @@ class _Uninstall:
                         f'the loop of session "{sess.name}" did not end '
                         f"(LADO_HOME/loop/{sess.name}.lock is held)"
                     )
+            _wait_for_agents(agents)
         terminal.close_viewers(None)
         try:
             if not tmux.server_running():

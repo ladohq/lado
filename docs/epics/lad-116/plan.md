@@ -7,7 +7,7 @@ Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
 - Each phase task gets the label `component lado` and is linked to LAD-116; LAD-80 is not touched.
-Last review: 2026-10-21, base at b687caf (revised after plan-review round 1)
+Last review: 2026-10-21, base at b687caf (revised after plan-review rounds 1 and 2)
 
 ## Steps
 
@@ -19,7 +19,7 @@ end. No two steps run at once: S3–S5b all change `runtime.py` and `state.py`.
 ### S1 — Docs rewrite and the rename to Workspace (M)
 Status: planned
 Check:
-- `grep -rniE "projects? folders?|repositor(y|ies) folders?"` over the tree, outside CHANGELOG.md, `docs/research/`, `docs/superpowers/`, `openspec/changes/archive/`, `docs/epics/`: no hit (the reviewer).
+- `grep -rniE "projects folders?|repositories folders?"` (the old names only; "project folder" and "repository folder" are the new model's terms) over the tree, outside CHANGELOG.md, `docs/research/`, `docs/superpowers/`, `openspec/changes/archive/`, `docs/epics/`: no hit (the reviewer).
 - These places are rewritten to the new model or removed, checked one by one: ROADMAP.md "Later → Projects" (lines 139–148 at b687caf: "a project is a named configuration (its repos, tracker filters, default kit and flow)", "deleting a project removes its clones too"); BACKLOG.md "Flows cannot work on another repository" and "Artifacts end with their session"; the Projects stub, `repos` in the session header, "Projects can add theirs" and the repositories-folder hint in `docs/design/ui.md`.
 - BACKLOG.md has the entry "managing workspace folders outside projects".
 - `make lint`, `make test`, `make web`, the changed UI tests with `-m ui`, `openspec validate --specs --strict`, CI green.
@@ -31,9 +31,14 @@ Status: planned
 Check:
 - Integration tests: `lado project create/list/show/rename/delete` against a temp workspace and `LADO_HOME`; the folder `<workspace>/projects/<id>` made and removed; refusals: the folder exists, `projects/` is the human's own folder, a bad id; refused from inside an agent (`LADO_SESSION`/`LADO_AGENT` set).
 - `lado doctor`: the workspace line with and without `LADO_REPOS` (incl. a default `~/workspace` not made yet), a foreign folder in `projects/`, a project whose folder is missing, `projects/` owned by the human.
-- D3: without `LADO_REPOS` a clone with no folder given lands in `~/workspace/<repo>` (unit and `test_server_launch`), and the New session window's Where starts from `~/workspace`.
+- D3: without `LADO_REPOS` a clone with no folder given lands in `~/workspace/<repo>` (unit and `test_server_launch`), and the New session window's Where: no hints while `~/workspace` is not made yet, hints from it once it exists.
 - The schema migration from `tests/agent_helpers.previous_schema`; an `lado update` rollback test is not needed beyond the existing one (it restores `lado.db`; the folders stay, see brief "Data and migrations").
-Notes: concept phase 1, plus D3. One function gives the workspace (`LADO_REPOS`, else `~/workspace`) for the clone default, the server, `lado doctor` and projects. Changes the specs `repos-folder` (the requirement "unset: no folder, no doctor line, no Where hints" becomes "unset: `~/workspace`") and `session-clone` (default `~/lado/<repo>` becomes `<workspace>/<repo>`). Making `~/workspace`: Q3. CHANGELOG: existing sessions keep their folders. Compose's `LADO_WORKSPACE`, if Q2 says so, lands here (`docker/compose.yaml`, `tests/test_docker.py`, `tests/container/*`, `docs/install.md`, `docs/release.md`, `docs/testing.md`, `openspec/specs/container`). `delete` covers a project that has no sessions yet: it shows uncommitted or unpushed work in the repositories of its folder and refuses without `--yes`; S3 extends it to sessions, S5b to secrets. Minor bump.
+Notes: concept phase 1, plus D3. One function gives the workspace (`LADO_REPOS`, else `~/workspace`) for the clone default, the server, `lado doctor` and projects. Changes the specs `repos-folder` (the requirement "unset: no folder, no doctor line, no Where hints" becomes "unset: `~/workspace`") and `session-clone` (default `~/lado/<repo>` becomes `<workspace>/<repo>`). Making `~/workspace`: Q3. CHANGELOG: existing sessions keep their folders. Compose's `LADO_WORKSPACE`, if Q2 says so, is its own small step S2b, not part of S2. `delete` covers a project that has no sessions yet: it shows uncommitted or unpushed work in the repositories of its folder and refuses without `--yes`; S3 extends it to sessions, S5b to secrets. Minor bump.
+
+### S2b — Compose's `LADO_WORKSPACE` (S) — only if Q2 is (a)
+Status: planned
+Check: `tests/test_docker.py` and the container tests (CI): `LADO_WORKSPACE` names the host folder; an installed `.env` with only `LADO_PROJECTS` still works; with neither, compose names `LADO_WORKSPACE` in its error; `docs/install.md`, `docs/release.md`, `docs/testing.md`, `openspec/specs/container` name `LADO_WORKSPACE` first and the old name as still accepted.
+Notes: independent of S2's core; `LADO_REPOS` inside the container keeps its name (concept). Past a compose version that cannot nest interpolation defaults, stop and ask the human. Dropped from the plan if Q2 is (b).
 
 ### S3 — A session in a project (L)
 Status: planned
@@ -82,7 +87,7 @@ Notes: concept phase 5.
 ## Open questions
 
 - **Q1. S3 (session in a project) before S5a/S5b (variables)?** It departs from the concept's phase order, so it needs the human's yes. Recommended: yes. Each step still stands on its own; S5a's check becomes end to end; a release between them ships projects with sessions but no variables, which is harmless. The concept's order would ship a variable store no agent reads.
-- **Q2. Compose's `LADO_PROJECTS`** ("set LADO_PROJECTS to your projects folder") sits next to the new `projects/` and means the workspace. (a) S2 adds `LADO_WORKSPACE` as the documented name and keeps `LADO_PROJECTS` working as the old one, so no installed `.env` breaks — a compose behaviour change, tested by `tests/test_docker.py` and the container tests, needing a compose that nests interpolation defaults; (b) keep `LADO_PROJECTS`, only its message changes (S1). Recommended: (a), in S2.
+- **Q2. Compose's `LADO_PROJECTS`** ("set LADO_PROJECTS to your projects folder") sits next to the new `projects/` and means the workspace. (a) a small step S2b adds `LADO_WORKSPACE` as the documented name and keeps `LADO_PROJECTS` working as the old one, so no installed `.env` breaks — a compose behaviour change, tested by `tests/test_docker.py` and the container tests, needing a compose that nests interpolation defaults; (b) keep `LADO_PROJECTS`, only its message changes (S1). Recommended: (a), as S2b.
 - **Q3. `~/workspace` without `LADO_REPOS`.** Recommended: as today for a `LADO_REPOS` folder not made yet — LADO makes it when it first needs it (the first clone or project), `lado doctor` prints `~/workspace (default), not made yet: the first clone or project makes it`, the New session window's Where starts there once it exists.
 - **Q4. S5 split into S5a (plain variables) and S5b (secrets)?** Recommended: yes; each half is designed in one round and merges on its own.
 

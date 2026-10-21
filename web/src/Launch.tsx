@@ -378,8 +378,11 @@ function LaunchDialog({
     }
   };
 
+  // The provider's part holds in both modes: it is the condition under which ProviderNote
+  // shows no refusal. Resume does not check its folder.
   const ready =
-    (resuming !== null || ((current?.ok ?? false) && providerInfo?.installed === true)) &&
+    (resuming !== null || (current?.ok ?? false)) &&
+    providerInfo?.installed === true &&
     kits.length > 0 &&
     !promptOver;
   const cloneReady =
@@ -734,6 +737,13 @@ function LaunchDialog({
                   {chosenProvider === null && (
                     <option value="" disabled>
                       choose…
+                    </option>
+                  )}
+                  {/* A chosen name the list lacks (a resumed session's) gets its own option,
+                      or the select would show the first one, and picking it would be no change. */}
+                  {chosenProvider !== null && providerInfo === null && (
+                    <option value={chosenProvider} disabled>
+                      {`${chosenProvider} · unknown`}
                     </option>
                   )}
                   {providers.map((one) => (

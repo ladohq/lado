@@ -52,7 +52,7 @@ The plan with each task's tests and code: `docs/superpowers/plans/2026-10-21-pro
 
 ## 5. Regression
 
-- [ ] 5.1 `make lint`; `make test` (counts; the leftover check of LAD-121 named if it is
+- [x] 5.1 `make lint`; `make test` (counts; the leftover check of LAD-121 named if it is
   the only red); the changed integration and UI files with their markers; `make web`;
   `openspec validate projects-in-core --strict`; `openspec validate --specs --strict`;
   CI `ci-ok` green.

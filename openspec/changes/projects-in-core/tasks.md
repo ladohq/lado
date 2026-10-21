@@ -2,7 +2,7 @@ The plan with each task's tests and code: `docs/superpowers/plans/2026-10-21-pro
 
 ## 1. The workspace
 
-- [ ] 1.1 `src/lado/projects.py` with `WORKSPACE_VAR`, `DEFAULT_WORKSPACE`, `workspace()`,
+- [x] 1.1 `src/lado/projects.py` with `WORKSPACE_VAR`, `DEFAULT_WORKSPACE`, `workspace()`,
   `workspace_source()` (D1); `clone.py`, `scratch.py`, `runtime.py`, `cli.py`,
   `server/launch.py`, `server/clones.py` take it, the old names go (D2). Check: unit
   tests of the workspace, the clone's and a fresh start's default folder without and with

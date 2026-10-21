@@ -9,7 +9,7 @@ import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from lado import clone, doctor, kits, providers, runtime, scratch, state
+from lado import doctor, kits, projects, providers, runtime, scratch, state
 from lado.server import models
 
 SUBFOLDERS = 50  # at most this many subfolders of a folder
@@ -42,7 +42,7 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         default_name=name,
         name_state=name_state(name, root, has_db) if name and root else None,
         provider=provider_suggestion(root if has_db else None),
-        warning=runtime.outside_repos(root or path),  # a start judges the root
+        warning=runtime.outside_workspace(root or path),  # a start judges the root
         scratch=kind in ("missing", "not_repo") and _can_start_from_scratch(path),
     )
 
@@ -81,12 +81,12 @@ def scratch_target(text: str, path: str | None, has_db: bool) -> models.ScratchT
         problem=problem,
         state=state,
         text=text,
-        author=_author(folder or str(clone.default_parent())),
+        author=_author(folder or str(projects.workspace())),
         name_state=(
             name_state(names.name, os.path.realpath(folder), has_db) if names and folder else None
         ),
         provider=provider_suggestion(None),  # a new folder has no last session
-        warning=runtime.outside_repos(folder) if folder else None,
+        warning=runtime.outside_workspace(folder) if folder else None,
     )
 
 

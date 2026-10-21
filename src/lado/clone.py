@@ -22,13 +22,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from lado import runtime
+from lado import projects, runtime
 
 URL = re.compile(r"(https?|ssh|git|file)://(.+)", re.IGNORECASE)
 # user@host:path, git's scp form; a bare host:path would take a folder with a colon.
 SCP = re.compile(r"([^\s@/:]+)@([^\s@/:]+):(.+)")
-DEFAULT_PARENT = "~/lado"  # a clone's folder is <parent>/<repo> unless given: default_parent
-REPOS = "LADO_REPOS"  # the folder of the human's repositories (LADO's image sets it)
 
 
 LIST_TIMEOUT = 20  # seconds a listing of the remote's branches may take
@@ -119,22 +117,9 @@ class Address:
         return self.host == other.host and self._segments() == other._segments()
 
 
-def repos_folder() -> Path | None:
-    """The human's workspace, the folder LADO keeps code in: `LADO_REPOS` with `~`
-    expanded; None when it is unset, empty or not a full path (`lado doctor` says why it is
-    ignored)."""
-    folder = Path(os.path.expanduser(os.environ.get(REPOS, "")))  # unset: ".", not absolute
-    return folder if folder.is_absolute() else None
-
-
-def default_parent() -> Path:
-    """Where a clone goes when the human gives no folder: the workspace, else ~/lado."""
-    return repos_folder() or Path(os.path.expanduser(DEFAULT_PARENT))
-
-
 def default_folder(url: str) -> Path:
-    """The folder a clone of `url` goes to when the human gives none: <parent>/<repo>
-    (`default_parent`); a URL that names no repository has none (it would be the parent
+    """The folder a clone of `url` goes to when the human gives none: <workspace>/<repo>
+    (`projects.workspace`); a URL that names no repository has none (it would be the parent
     itself)."""
     name = Address.parse(url).repo_name
     if not name:
@@ -142,7 +127,7 @@ def default_folder(url: str) -> Path:
             "no_repo_name",
             f"{runtime.public_remote(url)} names no repository: give the folder to clone into",
         )
-    return default_parent() / name
+    return projects.workspace() / name
 
 
 class CloneError(runtime.LadoError):

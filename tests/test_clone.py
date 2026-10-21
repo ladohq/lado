@@ -35,36 +35,22 @@ def test_a_folder(source):
 
 def test_default_folder(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("LADO_REPOS", raising=False)
     assert clone.default_folder("https://github.com/ladohq/marketplace.git/") == (
-        tmp_path / "lado" / "marketplace"
+        tmp_path / "workspace" / "marketplace"
     )
-    assert clone.default_folder("git@github.com:ladohq/lado.git") == tmp_path / "lado" / "lado"
-    assert clone.default_folder("file:///srv/app.git") == tmp_path / "lado" / "app"
+    assert clone.default_folder("git@github.com:ladohq/lado.git") == (
+        tmp_path / "workspace" / "lado"
+    )
+    assert clone.default_folder("file:///srv/app.git") == tmp_path / "workspace" / "app"
 
 
-@pytest.mark.parametrize("value", [None, "", "code", "./code"])
-def test_no_repositories_folder(value, monkeypatch):
-    if value is None:
-        monkeypatch.delenv("LADO_REPOS", raising=False)
-    else:
-        monkeypatch.setenv("LADO_REPOS", value)
-    assert clone.repos_folder() is None
-
-
-def test_the_repositories_folder_expands_the_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("LADO_REPOS", "~/code")
-    assert clone.repos_folder() == tmp_path / "code"
-    monkeypatch.setenv("LADO_REPOS", "/srv/repos")
-    assert clone.repos_folder() == Path("/srv/repos")
-
-
-def test_the_default_folder_is_in_the_repositories_folder(tmp_path, monkeypatch):
+def test_the_default_folder_is_in_the_workspace(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "repos"))
     assert clone.default_folder("git@github.com:acme/app.git") == tmp_path / "repos" / "app"
     monkeypatch.setenv("LADO_REPOS", "code")  # relative: ignored
-    assert clone.default_folder("git@github.com:acme/app.git") == tmp_path / "lado" / "app"
+    assert clone.default_folder("git@github.com:acme/app.git") == tmp_path / "workspace" / "app"
 
 
 def test_address_parts():

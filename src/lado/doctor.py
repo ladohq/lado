@@ -16,9 +16,9 @@ import lado
 from lado import (
     agent_env,
     artifacts,
-    clone,
     gui_session,
     kits,
+    projects,
     providers,
     runtime,
     scratch,
@@ -544,11 +544,11 @@ def _duration(seconds: float) -> str:
 def check_repos_folder() -> Check | None:
     """LADO_REPOS when it is set: the workspace, the folder the New session window and a
     clone start from, or why LADO ignores it."""
-    value = os.environ.get(clone.REPOS, "")
+    value = os.environ.get(projects.WORKSPACE_VAR, "")
     if not value:
         return None
     name = "Workspace"
-    folder = clone.repos_folder()
+    folder = projects.workspace() if projects.workspace_source() == "LADO_REPOS" else None
     if folder is None:
         return Check(
             name,

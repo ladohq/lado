@@ -162,7 +162,9 @@ def test_a_folder_lado_may_not_read(tmp_path):
 
 def test_the_default_folder(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
-    assert scratch.default_folder("sait-kofeini") == tmp_path / "lado" / "sait-kofeini"
+    monkeypatch.delenv("LADO_REPOS", raising=False)
+    assert scratch.default_folder("sait-kofeini") == tmp_path / "workspace" / "sait-kofeini"
+    assert not (tmp_path / "workspace").exists()  # Create and start makes it
 
 
 def test_the_default_folder_in_the_container(tmp_path, monkeypatch):

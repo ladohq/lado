@@ -97,7 +97,7 @@ class FolderInfo(BaseModel):
     # the provider a new session here takes (runtime.suggested_provider); none: the human picks
     provider: "ProviderSuggestion | None"
     # in LADO's container, a folder outside LADO_REPOS: the host does not see it
-    # (runtime.outside_repos); a warning, never a refusal
+    # (runtime.outside_workspace); a warning, never a refusal
     warning: str | None = None
     # missing or not_repo, and a fresh start may go on there (lado.scratch: new or empty)
     scratch: bool = False

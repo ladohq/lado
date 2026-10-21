@@ -32,10 +32,10 @@ import lado
 from lado import (
     artifacts,
     bug_report,
-    clone,
     doctor,
     kits,
     marketplaces,
+    projects,
     runs,
     runtime,
     scratch,
@@ -584,7 +584,7 @@ def create_app(
     @app.get("/api/repos-folder", dependencies=[Depends(guard)])
     def repos_folder() -> ReposFolder:
         """The folder the New session window starts Where from (LADO_REPOS), or none."""
-        folder = clone.repos_folder()
+        folder = projects.workspace() if projects.workspace_source() == "LADO_REPOS" else None
         return ReposFolder(path=str(folder) if folder else None)
 
     @app.get("/api/kits", dependencies=[Depends(guard)])

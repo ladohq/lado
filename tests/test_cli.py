@@ -2327,7 +2327,7 @@ def test_clone_into_the_default_folder_with_the_remotes_default_branch(
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     url = agent_helpers.bare_remote(tmp_path)
     assert main(["start", url, "--provider", "kilo", "--no-attach"]) == 0
-    folder = tmp_path / "home" / "lado" / "app"
+    folder = tmp_path / "home" / "workspace" / "app"
     assert _branch_of(folder) == "main"
     assert f"Cloning the default branch of {url} into {folder}" in capsys.readouterr().err
 

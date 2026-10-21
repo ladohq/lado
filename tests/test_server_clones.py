@@ -100,7 +100,7 @@ def test_the_clone_target_by_default(client, tmp_path, monkeypatch):
     answer = client.get("/api/clone-target", params={"url": "git@github.com:ladohq/lado.git"})
     assert answer.status_code == 200
     assert answer.json() == {
-        "path": str(tmp_path / "home" / "lado" / "lado"),
+        "path": str(tmp_path / "home" / "workspace" / "lado"),
         "state": "new",
         "text": "a new folder",
         "origin": None,
@@ -123,7 +123,7 @@ def test_in_a_container_a_clone_target_outside_the_repositories_folder_warns(
     inside = client.get("/api/clone-target", params={"url": url}).json()
     assert (inside["path"], inside["warning"]) == (str(tmp_path / "repos" / "app"), None)
     away = client.get("/api/clone-target", params={"url": url, "path": str(tmp_path / "app")})
-    assert away.json()["warning"] == runtime.OUTSIDE_REPOS.format(folder=tmp_path / "repos")
+    assert away.json()["warning"] == runtime.OUTSIDE_WORKSPACE.format(folder=tmp_path / "repos")
 
 
 def test_the_clone_targets_other_states(client, tmp_path, repo, fake_tmux):

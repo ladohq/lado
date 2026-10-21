@@ -25,6 +25,7 @@ from lado import (
     log,
     loop,
     marketplaces,
+    projects,
     providers,
     runs,
     runtime,
@@ -1320,8 +1321,9 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument(
         "folder",
         nargs="?",
-        help="with a git URL: the folder to clone into (default: "
-        f"${clone.REPOS}/<repo>, else {clone.DEFAULT_PARENT}/<repo>); it must be new or empty",
+        help="with a git URL: the folder to clone into (default: <workspace>/<repo>, the "
+        f"workspace being ${projects.WORKSPACE_VAR} or {projects.DEFAULT_WORKSPACE}); it must "
+        "be new or empty",
     )
     start.add_argument(
         "--branch", help="with a git URL: the branch to clone (default: the remote's default)"

@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: none · Next: S2 · Open checks: none
+In work: S2 (LAD-123, run task/lad-123) · Next: S2b · Open checks: none
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
@@ -35,7 +35,7 @@ Result: PR #128 merged 2026-10-21 (0fadd64), LAD-120 Done; change `launch-note-l
 Notes: added on the human's word (#525, 2026-10-21): today every note under a field is `field-note`, 12px grey; a warning differs from a hint only by its text colour, a refusal by a thin left bar, so users skip them. Three levels, only the top two change: hints stay small and grey; a warning becomes a box with a light warm background, an icon and 13px text in the normal colour; a refusal that blocks the start becomes the same box in the error colour. No new elements; only the look of the existing `warn` and `bad` notes (`web/src/styles.css`, `web/src/Launch.tsx`). Before S3, whose refusal "this folder belongs to project <title>: start the session in the project" must be seen. After S1 merges (both touch `Launch.tsx`). Patch.
 
 ### S2 — The project in the core and the default workspace (M)
-Status: planned
+Status: in progress (LAD-123, run task/lad-123)
 Check:
 - Integration tests: `lado project create/list/show/rename/delete` against a temp workspace and `LADO_HOME`; the folder `<workspace>/projects/<id>` made and removed; refusals: the folder exists, `projects/` is the human's own folder, a bad id; refused from inside an agent (`LADO_SESSION`/`LADO_AGENT` set).
 - `lado doctor`: the workspace line with and without `LADO_REPOS` (incl. a default `~/workspace` not made yet), a foreign folder in `projects/`, a project whose folder is missing, `projects/` owned by the human.

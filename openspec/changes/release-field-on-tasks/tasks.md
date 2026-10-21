@@ -30,9 +30,9 @@
 
 ## 3. Regression
 
-- [ ] 3.1 `make lint`, `make test` (the docs and settings tests, e.g.
+- [x] 3.1 `make lint`, `make test` (the docs and settings tests, e.g.
   `tests/test_agents_md.py`, stay green; numbers in the build report).
-- [ ] 3.2 `openspec validate release-field-on-tasks --strict` and `openspec validate
+- [x] 3.2 `openspec validate release-field-on-tasks --strict` and `openspec validate
   --specs --strict`; `grep -rn "waiting for release\|Release" openspec/specs` finds no
   rule that contradicts `release-tracking`.
 - [ ] 3.3 After the merge (integrator, not the build): LAD-119 shows the merge comment,

@@ -9,6 +9,7 @@ import time
 import uuid
 from pathlib import Path
 
+import agent_helpers
 import leftovers
 import pytest
 
@@ -136,6 +137,40 @@ def test_a_run_with_workers_does_not_take_them_for_its_leftovers():
 
     assert "processes left" not in run.stdout
     assert run.returncode == 0, run.stdout + run.stderr
+
+
+LEAVES_A_SLEEP = """\
+import subprocess
+from pathlib import Path
+
+
+def test_leaves_a_sleep():
+    sleep = subprocess.Popen(["sleep", "60"])
+    Path(__file__).with_name("sleep.pid").write_text(str(sleep.pid))
+"""
+
+
+@pytest.mark.parametrize("workers", ["0", "2"])
+def test_a_run_names_the_test_that_left_a_process(tmp_path, workers):
+    # A scratch run with the suite's conftest as a plugin, in a folder of its own: its
+    # LADO_TEST_PID is its own, so what it leaves is its check's, not this run's.
+    tests = Path(__file__).parent.parent
+    (tmp_path / "test_leaves.py").write_text(LEAVES_A_SLEEP)
+    run = subprocess.run(
+        [sys.executable, "-m", "pytest", "-n", workers, "-p", "conftest"]
+        + ["-p", "no:cacheprovider", "-q", "test_leaves.py"],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(tests)},
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    pid = int((tmp_path / "sleep.pid").read_text())
+    assert "1 passed" in run.stdout, run.stdout + run.stderr
+    assert f"{pid} sleep 60, started in test_leaves.py::test_leaves_a_sleep" in run.stdout
+    assert run.returncode == pytest.ExitCode.TESTS_FAILED, run.stdout + run.stderr
+    assert agent_helpers.gone(pid)
 
 
 def test_a_process_of_the_run_left_at_its_end_is_killed_and_named():

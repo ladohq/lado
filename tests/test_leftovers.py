@@ -85,3 +85,14 @@ def test_marked_names_the_processes_with_the_value_but_the_caller(monkeypatch):
     monkeypatch.setattr(os, "getpid", lambda: 103)
 
     assert [p.pid for p in leftovers.marked("LADO_HOME", "/t/home")] == [101]
+
+
+def test_describe_names_the_test_that_started_a_process_and_only_pid_and_command_without_it():
+    with_mark = leftovers.Process(
+        41, "sleep 60", "LADO_TEST_PID=7\0LADO_TEST_ID=tests/test_a.py::test_b[x]", "\0"
+    )
+    without = leftovers.Process(42, "sleep 60", "LADO_TEST_PID=7", "\0")
+
+    assert leftovers.describe([with_mark, without]) == (
+        "  41 sleep 60, started in tests/test_a.py::test_b[x]\n  42 sleep 60"
+    )

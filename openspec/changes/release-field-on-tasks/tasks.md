@@ -22,7 +22,7 @@
 
 ## 2. The release
 
-- [ ] 2.1 `docs/release.md`, section 5 (The final), step 3: each shipped task also gets
+- [x] 2.1 `docs/release.md`, section 5 (The final), step 3: each shipped task also gets
   the field `release` set to X.Y.Z (no change when it already holds it); a task not in
   the release keeps its label and field; "The merge sets that label (`.lado/sdlc.md`,
   Tracker)" reads "(`.lado/sdlc.md`, After the merge)", and the field's sticker is named

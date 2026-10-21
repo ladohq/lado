@@ -32,6 +32,6 @@
 
 ## 4. Regression
 
-- [ ] 4.1 `make lint`; `make test` exits 0 three times in a row with no "processes left
+- [x] 4.1 `make lint`; `make test` exits 0 three times in a row with no "processes left
   by the test run" (numbers of each run in the build report).
-- [ ] 4.2 `openspec validate leftover-names-its-test --strict`.
+- [x] 4.2 `openspec validate leftover-names-its-test --strict`.

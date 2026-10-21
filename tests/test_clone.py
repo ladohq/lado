@@ -506,6 +506,8 @@ def test_a_target_filled_during_the_clone(tmp_path, monkeypatch):
     assert refused.value.kind == "not_empty"
     assert sorted(p.name for p in (tmp_path / "app").iterdir()) == ["theirs.txt"]
     assert _leftovers(tmp_path) == []
+    [call] = fake_git_calls(tmp_path / "fake")
+    assert gone(call["pid"]) and gone(call["child"])
 
 
 @pytest.mark.parametrize(

@@ -1,8 +1,8 @@
 ## 1. The leak
 
-- [ ] 1.1 `tests/agent_helpers.py` (`FAKE_GIT`): in the mode `ok`, kill the child and
+- [x] 1.1 `tests/agent_helpers.py` (`FAKE_GIT`): in the mode `ok`, kill the child and
   wait for it before `sys.exit(0)` (D1); update the comment above `FAKE_GIT`.
-- [ ] 1.2 `tests/test_clone.py::test_a_target_filled_during_the_clone`: read the fake
+- [x] 1.2 `tests/test_clone.py::test_a_target_filled_during_the_clone`: read the fake
   git's call and assert `gone(call["child"])` after the clone. Check: `uv run pytest -n0
   -p no:cacheprovider tests/test_clone.py -k target_filled_during` exits 0 with no
   "processes left by the test run"; with 1.1 reverted, it fails naming the test.

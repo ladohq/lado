@@ -432,7 +432,8 @@ def bare_remote(folder: Path, branches: tuple[str, ...] = ("develop", "release/1
 # git's. Each call is a line in $FAKE_GIT_LOG: its args, pid, session, whether stdin is a
 # terminal, its environment and the pid of a child it keeps (its process group's), but
 # when it fails. By $FAKE_GIT: `slow` prints clone progress, then waits; `fail` prints
-# $FAKE_GIT_STDERR and exits 128; `ok` clones as `slow` prints, then exits 0;
+# $FAKE_GIT_STDERR and exits 128; `ok` clones as `slow` prints, then ends its child and
+# exits 0, leaving nothing;
 # `slow-clone` is `slow` for a clone only, ls-remote the real git's.
 FAKE_GIT = """#!{python}
 import json, os, subprocess, sys, time
@@ -462,6 +463,8 @@ if args[0] == "clone":
         sys.stderr.flush()
         time.sleep(0.05)
     if mode == "ok":
+        child.kill()
+        child.wait()
         sys.exit(0)
 time.sleep(60)
 """

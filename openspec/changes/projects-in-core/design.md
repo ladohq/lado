@@ -159,12 +159,12 @@ Changed.
 
 | Requirement | Layer | Where |
 |---|---|---|
-| workspace function, relative and unset values | unit | `tests/test_projects.py`, `tests/test_clone.py` |
+| workspace function, relative and unset values | unit | `tests/test_projects_core.py`, `tests/test_clone.py` |
 | doctor Workspace line (LADO_REPOS, default, not made, file, unwritable, relative) | unit | `tests/test_doctor.py` |
 | doctor Projects line (ok, foreign, missing, human's own, none) | unit | `tests/test_doctor.py` |
-| id rule, title rule, ownership rule, create order and rollback | unit | `tests/test_projects.py` |
-| unpushed scan (dirty, no upstream, ahead, worktree, broken repo) | unit with real git in tmp | `tests/test_projects.py` |
-| delete: link, outside check, rmtree failure keeps the record | unit | `tests/test_projects.py` |
+| id rule, title rule, ownership rule, create order and rollback | unit | `tests/test_projects_core.py` |
+| unpushed scan (dirty, no upstream, ahead, worktree, broken repo) | unit with real git in tmp | `tests/test_projects_core.py` |
+| delete: link, outside check, rmtree failure keeps the record | unit | `tests/test_projects_core.py` |
 | schema 31 → 32 with backup | unit | `tests/test_state.py` (via `previous_schema`) |
 | clone and fresh start default in `~/workspace` (HOME = tmp) | unit | `tests/test_clone.py`, `tests/test_scratch.py`, `tests/test_server_launch.py`, `tests/test_server_clones.py` |
 | `GET /api/repos-folder` `{path, made}` | unit | `tests/test_server_launch.py` |

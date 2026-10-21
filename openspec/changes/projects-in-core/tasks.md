@@ -6,7 +6,7 @@ The plan with each task's tests and code: `docs/superpowers/plans/2026-10-21-pro
   `workspace_source()` (D1); `clone.py`, `scratch.py`, `runtime.py`, `cli.py`,
   `server/launch.py`, `server/clones.py` take it, the old names go (D2). Check: unit
   tests of the workspace, the clone's and a fresh start's default folder without and with
-  `LADO_REPOS`, the container's warning (`tests/test_projects.py`, `test_clone.py`,
+  `LADO_REPOS`, the container's warning (`tests/test_projects_core.py`, `test_clone.py`,
   `test_scratch.py`, `test_runtime.py`, `test_server_clones.py`, `test_server_launch.py`).
 - [x] 1.2 `doctor.check_workspace` always a line; `(LADO_REPOS)`/`(default)`, not made
   yet, the ignored relative value, a file, unwritable (D4, D11). Check:
@@ -21,17 +21,17 @@ The plan with each task's tests and code: `docs/superpowers/plans/2026-10-21-pro
   `creating_project`; `tests/agent_helpers.schema_before` (D5). Check: `tests/test_state.py`
   (migration from `previous_schema` with its backup).
 - [x] 2.2 The id rule, titles, `owned_by_human`, `foreign`, `create`, `rename`, `listed`
-  (D6, D7). Check: `tests/test_projects.py`.
+  (D6, D7). Check: `tests/test_projects_core.py`.
 - [x] 2.3 The unpushed scan and `delete` (link, outside check, rmtree failure) (D8).
-  Check: `tests/test_projects.py` with real git.
+  Check: `tests/test_projects_core.py` with real git.
 - [x] 2.4 `lado project list|create|show|rename|delete`, agents refused (D9, D10).
   Check: `tests/test_cli.py`.
 - [x] 2.5 `doctor.check_projects` (D11). Check: `tests/test_doctor.py`.
 
 ## 3. End to end
 
-- [x] 3.1 `tests/integration/test_projects_process.py` (`_process`: the unit file has the
-  basename `test_projects.py`): the commands as processes, folders made
+- [x] 3.1 `tests/integration/test_projects_process.py` (`_process`: pytest takes one module
+  per basename): the commands as processes, folders made
   and removed, every create refusal, the agent refusal, delete with unpushed work, doctor
   with and without `LADO_REPOS` and its Projects findings; the clone's default in
   `~/workspace`. Check: `uv run pytest -m integration -n auto <files>`.

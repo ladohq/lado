@@ -10,6 +10,12 @@
 - **Warnings and refusals in the New session window stand out.** They show as amber and
   red panels; hints stay quiet.
 
+### Fixed
+
+- **`lado uninstall` leaves no `~/.lado` behind.** It waits for the agents to end, so an
+  agent that ends a moment later no longer makes the folder again; one that does not end
+  stops the uninstall with the `kill` command for it.
+
 ## 0.42.0 (2026-10-20)
 
 ### Fixed

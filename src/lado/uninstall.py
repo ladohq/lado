@@ -1,5 +1,5 @@
 """`lado uninstall`: the plan, and the uninstall itself. Stop the UI server, every session of
-this LADO_HOME, their loops and the UI's viewers, and LADO's tmux server when no session is
+this LADO_HOME, their loops, their agents' processes and the UI's viewers, and LADO's tmux server when no session is
 left on its socket; in each session's repository remove the worktrees and branches
 `lado finish` would remove without asking (runtime.keeps_work), keep and list the others;
 delete LADO_HOME; and, for the default ~/.lado only, remove the program last.

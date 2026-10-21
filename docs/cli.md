@@ -159,7 +159,10 @@ never set at the start and by no MCP tool.
 `lado uninstall [--dry-run] [--keep-data] [--yes]` removes LADO (`uninstall.py`): it prints
 its plan and asks `Uninstall? [y/N]` (`--yes` is required without a terminal; `--dry-run`
 only prints), then stops the UI server and every session of this `LADO_HOME` with their
-loops and viewers, ends LADO's tmux server when no other session is on its socket, removes
+loops and viewers, waits up to 10 s for the agents' processes to end (an agent may run its
+session-end hook first; one still running stops the uninstall with exit 1 before any
+repository or file is touched, naming its session, its pid and `kill <pid>`, after which
+`lado uninstall` runs again), ends LADO's tmux server when no other session is on its socket, removes
 in each session's repository the worktrees and branches `lado finish` would remove without
 asking and lists the others with their `git worktree remove --force` and `git branch -D`,
 deletes `LADO_HOME`, and, only for the default `~/.lado`, removes the program last (`uv

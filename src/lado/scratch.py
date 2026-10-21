@@ -17,7 +17,7 @@ from pathlib import Path
 from shlex import quote
 from typing import Literal
 
-from lado import clone, runtime
+from lado import projects, runtime
 from lado import text as visible
 
 
@@ -88,9 +88,9 @@ class Target:
 
 
 def default_folder(name: str) -> Path:
-    """The folder of a fresh start when the human gives none: where a clone goes
-    (`clone.default_parent`), then the name."""
-    return clone.default_parent() / name
+    """The folder of a fresh start when the human gives none: the workspace
+    (`projects.workspace`), then the name."""
+    return projects.workspace() / name
 
 
 def check_target(path: str) -> Target:

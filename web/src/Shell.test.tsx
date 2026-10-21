@@ -30,6 +30,7 @@ beforeEach(() => {
       if (path === "/api/sessions") return new Response(JSON.stringify(sessions));
       if (path.endsWith("/about")) return new Response("{}", { status: 404 });
       if (path.includes("/messages?")) return new Response(JSON.stringify({ items: [], earlier: false }));
+      if (path === "/api/repos-folder") return new Response(JSON.stringify({ path: "/Users/ann/workspace", made: false }));
       return new Response("[]");
     }),
   );

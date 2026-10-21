@@ -1699,27 +1699,27 @@ def projects(tmp_path, monkeypatch):
 
 def test_a_folder_outside_the_repositories_folder_is_named_in_a_container(projects, tmp_path):
     (tmp_path / "app").mkdir()
-    assert runtime.outside_repos(str(tmp_path / "app")) == runtime.OUTSIDE_REPOS.format(
+    assert runtime.outside_workspace(str(tmp_path / "app")) == runtime.OUTSIDE_WORKSPACE.format(
         folder=projects
     )
     # One not made yet is judged by where it would be.
-    assert runtime.outside_repos(str(tmp_path / "new" / "app")) is not None
+    assert runtime.outside_workspace(str(tmp_path / "new" / "app")) is not None
     # A sibling whose name starts with the folder's is outside too.
     (tmp_path / "projects-old").mkdir()
-    assert runtime.outside_repos(str(tmp_path / "projects-old")) is not None
+    assert runtime.outside_workspace(str(tmp_path / "projects-old")) is not None
 
 
 def test_the_repositories_folder_and_what_is_in_it_get_no_warning(projects, tmp_path):
     (projects / "app").mkdir()
-    assert runtime.outside_repos(str(projects)) is None
-    assert runtime.outside_repos(str(projects / "app")) is None
-    assert runtime.outside_repos(str(projects / "new" / "app")) is None
+    assert runtime.outside_workspace(str(projects)) is None
+    assert runtime.outside_workspace(str(projects / "app")) is None
+    assert runtime.outside_workspace(str(projects / "new" / "app")) is None
     # By real path: a link to a folder inside is inside, a link inside to outside is not.
     (tmp_path / "link").symlink_to(projects / "app")
-    assert runtime.outside_repos(str(tmp_path / "link")) is None
+    assert runtime.outside_workspace(str(tmp_path / "link")) is None
     (tmp_path / "out").mkdir()
     (projects / "away").symlink_to(tmp_path / "out")
-    assert runtime.outside_repos(str(projects / "away")) is not None
+    assert runtime.outside_workspace(str(projects / "away")) is not None
 
 
 def test_a_link_loop_is_judged_without_an_error(projects, tmp_path, monkeypatch):
@@ -1727,13 +1727,13 @@ def test_a_link_loop_is_judged_without_an_error(projects, tmp_path, monkeypatch)
     warning's rule must not raise on it (a 500 of the UI's checks)."""
     (tmp_path / "a").symlink_to(tmp_path / "b")
     (tmp_path / "b").symlink_to(tmp_path / "a")
-    assert runtime.outside_repos(str(tmp_path / "a")) is not None
-    assert runtime.outside_repos(str(tmp_path / "a" / "sub")) is not None
+    assert runtime.outside_workspace(str(tmp_path / "a")) is not None
+    assert runtime.outside_workspace(str(tmp_path / "a" / "sub")) is not None
     (projects / "c").symlink_to(projects / "d")
     (projects / "d").symlink_to(projects / "c")
-    assert runtime.outside_repos(str(projects / "c")) is None
+    assert runtime.outside_workspace(str(projects / "c")) is None
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "a"))
-    assert runtime.outside_repos(str(tmp_path / "a")) is None
+    assert runtime.outside_workspace(str(tmp_path / "a")) is None
 
 
 def test_a_repositories_folder_given_through_a_link_holds_its_folders(tmp_path, monkeypatch):
@@ -1742,27 +1742,37 @@ def test_a_repositories_folder_given_through_a_link_holds_its_folders(tmp_path, 
     (tmp_path / "projects").symlink_to(real)
     monkeypatch.setenv("LADO_CONTAINER", "1")
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "projects"))
-    assert runtime.outside_repos(str(real / "app")) is None
+    assert runtime.outside_workspace(str(real / "app")) is None
 
 
-def test_no_warning_outside_a_container_or_without_a_repositories_folder(
-    projects, tmp_path, monkeypatch
-):
+def test_no_warning_outside_a_container(projects, tmp_path, monkeypatch):
     (tmp_path / "app").mkdir()
     monkeypatch.setenv("LADO_CONTAINER", "0")
-    assert runtime.outside_repos(str(tmp_path / "app")) is None
+    assert runtime.outside_workspace(str(tmp_path / "app")) is None
     monkeypatch.delenv("LADO_CONTAINER")
-    assert runtime.outside_repos(str(tmp_path / "app")) is None
+    assert runtime.outside_workspace(str(tmp_path / "app")) is None
+
+
+@pytest.mark.parametrize("value", [None, "relative/projects"])
+def test_in_a_container_without_lado_repos_the_default_workspace_is_judged(
+    home_workspace, value, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("LADO_CONTAINER", "1")
-    monkeypatch.delenv("LADO_REPOS")
-    assert runtime.outside_repos(str(tmp_path / "app")) is None
-    monkeypatch.setenv("LADO_REPOS", "relative/projects")
-    assert runtime.outside_repos(str(tmp_path / "app")) is None
+    if value is None:
+        monkeypatch.delenv("LADO_REPOS", raising=False)
+    else:
+        monkeypatch.setenv("LADO_REPOS", value)
+    (tmp_path / "app").mkdir()
+    assert runtime.outside_workspace(str(tmp_path / "app")) == runtime.OUTSIDE_WORKSPACE.format(
+        folder=tmp_path / "workspace"
+    )
+    assert runtime.outside_workspace(str(tmp_path / "workspace" / "app")) is None
 
 
 def test_a_start_and_a_resume_outside_the_repositories_folder_warn(repo, fake_tmux, projects):
     """A warning, never a refusal: the session runs."""
-    line = runtime.OUTSIDE_REPOS.format(folder=projects)
+    line = runtime.OUTSIDE_WORKSPACE.format(folder=projects)
     started = runtime.start_session(str(repo), "s", None, provider="kilo")
     assert line in started.warnings
     assert state.get_session("s") is not None

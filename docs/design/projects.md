@@ -5,11 +5,11 @@ The model of projects in LADO, settled with the human on 2026-10-21 (the concept
 This file is the contract the epic's steps are built against; a step that changes the model
 changes this file.
 
-> **What is built.** Only the workspace's name (step S1): the UI, `lado doctor` and the
-> documents call the folder LADO keeps code in the workspace. Everything else here is
-> steps S2–S7 and is marked **not built yet** where it is described. Until S2 the
-> workspace is `LADO_REPOS` alone: without it LADO has no workspace, and there is no
-> `~/workspace` default.
+> **What is built.** The workspace's name (step S1); the workspace as one function with
+> its default `~/workspace`, the project's record and folder, `lado project list | create |
+> show | rename | delete` and `lado doctor`'s Workspace and Projects checks (step S2,
+> 0.43.0; `lado.projects`, [cli.md](../cli.md)). Everything else here is steps S3–S7 and is
+> marked **not built yet** where it is described.
 
 ## Why
 
@@ -27,8 +27,9 @@ rework.
 
 - **Workspace**: the folder LADO keeps code in. In LADO's image it is mounted from the host,
   and `LADO_REPOS` names its path (the variable keeps its name so installations do not
-  break). Without Docker it is `LADO_REPOS` too, and `~/workspace` when that is unset
-  (**not built yet**: step S2). `lado doctor` shows which workspace is in use. The
+  break). Without Docker it is `LADO_REPOS` too, and `~/workspace` when that is unset or
+  not an absolute path; LADO makes it at the first clone, fresh start or project. `lado
+  doctor` shows which workspace is in use. The
   workspace is the human's folder: LADO owns only its subfolder `projects/`, everything
   else in it is the human's.
 - **Project**: a named record in LADO with a folder and environment variables.
@@ -72,9 +73,12 @@ secrets, below).
 
 ## The project
 
-**Not built yet** (step S2).
+Built in step S2 (`lado project`, [cli.md](../cli.md)); the data under `~/.lado/projects/`
+and the UI's addresses are not built yet (steps S5b, S6).
 
-A project has an **id**: Latin letters, digits and `-`. It never changes, and it is at once:
+A project has an **id**: lowercase Latin letters, digits and `-`, starting with a letter or
+digit, at most 40 characters (lowercase, so the folder never depends on the file system's
+case). It never changes, and it is at once:
 - the project folder's name;
 - the path of its data under `~/.lado/projects/`;
 - its name in CLI commands and in the UI's addresses.
@@ -87,9 +91,10 @@ is stored nowhere: it is derived from the id, so there is nothing for it to drif
 The special cases:
 - **A folder of that name already exists in `projects/`.** The project is not made, and
   LADO says why.
-- **`projects/` in the workspace is the human's own folder**: it exists and holds more than
-  LADO's projects. The first project is not made, LADO says why, and `lado doctor` warns
-  about it too.
+- **`projects/` in the workspace is the human's own folder**: it exists, holds entries
+  whose names do not start with `.`, and none of them is a project's folder (read from the
+  disk and `lado.db`, no marker file). The project is not made, LADO says why, and `lado
+  doctor` warns about it too. Once a project's folder is there, other entries are foreign.
 - **A folder in `projects/` with no project in LADO** (made by hand, or left over).
   `lado doctor` shows it as foreign. LADO does not touch it or take it for a project.
 - **The workspace changed (another `LADO_REPOS`) or a project folder was deleted by
@@ -208,9 +213,11 @@ an agent could slip every future agent, say, a model address of its own.
 
 ## Where a project's data lives
 
-**Not built yet** (steps S2 and S5b).
+The record and the folder are built (step S2); variables and secrets are not (steps S5a,
+S5b).
 
-- **The project's record** (id, title, plain variables): in `lado.db`.
+- **The project's record** (id, title, plain variables): in `lado.db` (the table
+  `projects`, schema 32; plain variables from S5a).
 - **Secrets**: in `~/.lado/projects/<id>/secrets/`, one file per secret. The format is that
   of Docker's outside secrets (`LADO_ENV_DIR`, `/run/secrets`): the file's name is the
   variable's, its content the value, exactly one trailing newline dropped, its size
@@ -248,7 +255,9 @@ workers and the LADO manager.
 
 ## Deleting
 
-**Not built yet** (steps S2 to S7; today `lado uninstall` alone, below).
+A project without sessions is deleted by `lado project delete <id> --yes` (step S2): it
+shows its repositories' unpushed work first and removes the record and the folder. Sessions
+(step S3), secrets (step S5b) and the UI (steps S6, S7) are **not built yet**.
 
 Deleting a project removes the project, its secrets, all its sessions (as `lado forget`
 does) and the whole project folder.

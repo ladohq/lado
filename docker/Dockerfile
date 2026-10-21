@@ -43,7 +43,7 @@
 # entrypoint.sh, ssh-agent-socket.sh, ssh-agent-env.sh, ssh_known_hosts (GitHub's
 # public host keys, the only keys in the image) and mise.toml.
 #
-# The projects' toolchains: make, gcc and g++ are here, and mise installs the rest (Go,
+# The repositories' toolchains: make, gcc and g++ are here, and mise installs the rest (Go,
 # Rust, Java, a Python, ...) into the home volume, where it stays for every agent after a
 # new container or image; the agents are told so and do it themselves. By hand: `docker
 # exec lado mise use -g go@1.23`. An agent's `npm install -g` and `uv tool install` go to
@@ -62,7 +62,7 @@ FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595
 
 # tmux 3.3a and git 2.39 from Debian 12; tini reaps what tmux and the agents leave; gh and
 # the ssh client for the agents' pushes; curl fetches gh's keyring (a binary .gpg); make,
-# gcc and g++ build the projects' Makefiles, Go's cgo and native modules of Node and Python.
+# gcc and g++ build the repositories' Makefiles, Go's cgo and native modules of Node and Python.
 # The agents' base tools, which the kits' scripts and the agent CLIs call before any project
 # installs a thing: jq (JSON), ripgrep (Codex, OpenCode and Kilo search with rg), archives
 # (unzip, zip, xz, bzip2), patch, file, rsync, sqlite3, tree, lsof and nc.

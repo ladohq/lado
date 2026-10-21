@@ -7,7 +7,7 @@ Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
 - Each phase task gets the label `component lado` and is linked to LAD-116; LAD-80 is not touched.
-Last review: 2026-10-21, base at b687caf (revised after plan-review rounds 1 and 2)
+Last review: 2026-10-21 (after S1), base at 6c2336e
 
 ## Steps
 
@@ -24,6 +24,7 @@ Check:
 - BACKLOG.md has the entry "managing workspace folders outside projects".
 - `make lint`, `make test`, `make web`, the changed UI tests with `-m ui`, `openspec validate --specs --strict`, CI green.
 - The human reads `docs/design/projects.md` against the concept at the merge gate.
+Result: PR #126 merged 2026-10-21 (6c2336e), LAD-117 Done; the change `workspace-name-and-projects-docs` archived; CI 23/23; `make test` 3614 passed (developer); one merge_ok rejection (F1, leftover "projects" meaning the workspace). CHANGELOG line under `## 0.42.1 (unreleased)`.
 Notes: concept phase 0. Texts only: no name an installation sees changes (environment variables, paths, API keys), so no behaviour changes; one patch-level CHANGELOG line for the renamed labels. Compose's `LADO_PROJECTS` keeps its name here; only its message says "workspace" (whether a new name comes is Q2, in S2). `docs/design/projects.md` describes the target model, says which parts are not built yet, and says plainly: projects of one LADO are not isolated; LADO is not a store; a volume backup holds the secrets; `lado uninstall` deletes `LADO_HOME` with the secrets and never touches the workspace.
 
 ### S1b — Warnings and refusals in the New session window stand out (S)
@@ -38,7 +39,7 @@ Check:
 - `lado doctor`: the workspace line with and without `LADO_REPOS` (incl. a default `~/workspace` not made yet), a foreign folder in `projects/`, a project whose folder is missing, `projects/` owned by the human.
 - D3: without `LADO_REPOS` a clone with no folder given lands in `~/workspace/<repo>` (unit and `test_server_launch`), and the New session window's Where: no hints while `~/workspace` is not made yet, hints from it once it exists.
 - The schema migration from `tests/agent_helpers.previous_schema`; an `lado update` rollback test is not needed beyond the existing one (it restores `lado.db`; the folders stay, see brief "Data and migrations").
-Notes: concept phase 1, plus D3. One function gives the workspace (`LADO_REPOS`, else `~/workspace`) for the clone default, the server, `lado doctor` and projects. Changes the specs `repos-folder` (the requirement "unset: no folder, no doctor line, no Where hints" becomes "unset: `~/workspace`") and `session-clone` (default `~/lado/<repo>` becomes `<workspace>/<repo>`). Making `~/workspace`: Q3. CHANGELOG: existing sessions keep their folders. Compose's `LADO_WORKSPACE`, if Q2 says so, is its own small step S2b, not part of S2. `delete` covers a project that has no sessions yet: it shows uncommitted or unpushed work in the repositories of its folder and refuses without `--yes`; S3 extends it to sessions, S5b to secrets. Minor bump.
+Notes: concept phase 1, plus D3. One function gives the workspace (`LADO_REPOS`, else `~/workspace`) for the clone default, the server, `lado doctor` and projects. Changes the specs `repos-folder` (the requirement "unset: no folder, no doctor line, no Where hints" becomes "unset: `~/workspace`") and `session-clone` (default `~/lado/<repo>` becomes `<workspace>/<repo>`). Making `~/workspace`: Q3. Leftovers of S1 (`openspec/changes/archive/2026-10-21-workspace-name-and-projects-docs`, proposal "Out of scope"; S1 review): the Where placeholder `~/projects/app` used without a workspace becomes the `~/workspace` form; the code names `repos_folder`, `check_repos_folder`, `OUTSIDE_REPOS`, `ReposFolder`, `DEFAULT_PARENT` and the capability `repos-folder` are reshaped by the one workspace function (renaming them is S2's call); "the projects' toolchains" (meaning the code in general) in `docker/Dockerfile:46,65`, `docs/install.md:241`, `docs/design/modules.md:983` and the docstring of `tests/container/test_toolchains.py` say "the repositories' toolchains". CHANGELOG: S1's line sits under `## 0.42.1 (unreleased)`; S2's minor bump renames that heading to `## 0.43.0 (unreleased)` unless 0.42.1 is released first. CHANGELOG: existing sessions keep their folders. Compose's `LADO_WORKSPACE`, if Q2 says so, is its own small step S2b, not part of S2. `delete` covers a project that has no sessions yet: it shows uncommitted or unpushed work in the repositories of its folder and refuses without `--yes`; S3 extends it to sessions, S5b to secrets. Minor bump.
 
 ### S2b — Compose's `LADO_WORKSPACE` (S)
 Status: planned

@@ -26,19 +26,20 @@ at the start of every step.
 
 ## Tracker
 
-- Waiting for release label: `waiting for release` (the sticker `Status: Ready`, "ready
-  for the release", mapped in `.lado/tracker.yaml`). It stays on the task until the
-  release that ships it removes it (docs/release.md, The final).
-- After a merge into the base branch the task goes to the status `done`, with the
-  waiting-for-release label; after a merge into an epic branch it stays in review, as the
-  kit says.
 - Component labels: the sticker `Component` says which part of the system a task
   changes, one of `component lado`, `component kit-sdlc`, `component kit-builder`,
   `component kit-tracker-yougile`, `component kit-tracker-jira-server` (mapped in
   `.lado/tracker.yaml`). A task created through LADO gets the label of the part it
   changes; a task of this repository is `component lado`.
 - Skipped issue types: none
-- Merge comment (Markdown):
+
+## After the merge
+
+`<X.Y.Z>` below is the version of CHANGELOG.md's `## X.Y.Z (unreleased)` heading on the
+target branch after the merge.
+
+Into the base branch:
+- Post a comment by this template (Markdown):
 
   ```markdown
   **Слит PR #<n>** — войдёт в релиз <X.Y.Z>.
@@ -50,9 +51,17 @@ at the start of every step.
   - <по слоям: ключевые решения, новые поля API/MCP/CLI, миграция схемы да/нет, CHANGELOG>
   ```
 
-  `<X.Y.Z>` is the version of CHANGELOG.md's `## X.Y.Z (unreleased)` heading on the
-  target branch after the merge; without such a heading, write «войдёт в следующий
-  релиз».
+  Without an `(unreleased)` heading, its first line ends «— войдёт в следующий релиз.»
+- Move the task to the status `done`.
+- Add the label `waiting for release` (the sticker `Status: Ready`, "ready for the
+  release", mapped in `.lado/tracker.yaml`). It stays on the task until the release that
+  ships it removes it (docs/release.md, The final).
+- Set the field `release` to `<X.Y.Z>` (the text sticker `Release`, mapped in
+  `.lado/tracker.yaml`); without an `(unreleased)` heading, leave the field as it is.
+
+Into an epic branch:
+- Post the comment above with the first line «**Слит PR #<n> в эпик-ветку `<branch>`** —
+  войдёт в релиз вместе с эпиком.»; change nothing else: the task stays in review.
 
 ## Checks
 
@@ -198,10 +207,6 @@ Reviewer:
 Integrator:
 - Never bump the version, date CHANGELOG.md or tag: a release is a separate task the
   human starts.
-- After a merge into the base branch, besides the merge comment and the
-  waiting-for-release label, move the task to the status `done` and check it there, as
-  **Tracker** says. This replaces the kit's "change nothing else on the task"; a merge
-  into an epic branch stays as the kit says.
 - After merging `origin/<target>` into the run's branch (the kit's Merge, step 2), run
   none of the settings' **Checks** locally but `openspec validate --specs --strict`
   (CI does not run it); with it green, push and wait for the pull request's CI, which

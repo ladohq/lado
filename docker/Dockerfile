@@ -101,7 +101,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # The user lado (uid 1000, as the prototype). Programs live under /opt, outside the home
 # volume, so a new image replaces them; the home volume keeps state (LADO_HOME, Claude
 # Code's login) and what the agents install (mise's tools, npm -g, uv tool). /projects is
-# LADO_REPOS, the human's projects.
+# LADO_REPOS, the human's workspace.
 COPY --from=uv /uv /usr/local/bin/uv
 COPY docker/profile.sh /etc/profile.d/lado.sh
 # mise, root's so no agent replaces it, with the image's settings (docker/mise.toml); the
@@ -123,7 +123,7 @@ RUN UV_PYTHON_INSTALL_DIR=/opt/uv/python uv python install 3.13 --no-bin \
  && ln -s "$python" /opt/fallback/bin/python \
  && /opt/fallback/bin/python3 --version
 
-# The entrypoint (entrypoint.sh) gives lado the uid of the projects' owner at a container's
+# The entrypoint (entrypoint.sh) gives lado the uid of the workspace's owner at a container's
 # first start, as root once, and writes LADO_REPOS for the agents (lado-repos.sh, /projects
 # until then and where the container may not become root).
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/lado-entrypoint
@@ -151,7 +151,7 @@ RUN printf '%s\n' 'lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socke
 # cannot answer) and ssh still refuses a key that is not GitHub's. The only keys in the
 # image: the human's own come at run time.
 COPY --chmod=644 docker/ssh_known_hosts /etc/ssh/ssh_known_hosts
-# git trusts every repository: the projects' owner may seem another user (git 2.39 has no
+# git trusts every repository: the workspace's owner may seem another user (git 2.39 has no
 # `<path>/*` form, and the container has one user). It gets github.com's https credentials
 # from gh: GH_TOKEN, or gh's own login on the home volume (what `gh auth setup-git` writes;
 # the empty helper drops any helper set before it).

@@ -2,7 +2,7 @@
 container-secrets-and-git): variables from the secrets folder at /run/secrets (a kit that
 needs one starts, and docker inspect holds no value), git's identity from LADO_GIT_NAME and
 LADO_GIT_EMAIL, github.com's https credentials from gh, and the host's ssh agent without
-root's group, through a socket of root's (Docker Desktop's) or of the projects' owner.
+root's group, through a socket of root's (Docker Desktop's) or of the workspace's owner.
 Only fake values."""
 
 import time

@@ -85,7 +85,7 @@ def seed_home(volume: str, lado_db: bytes) -> None:
 def schema(volume: str) -> int:
     """The schema of lado.db in the home volume `volume`, read by a container of its own
     that runs no LADO command, so nothing migrates it. As root, since the entrypoint may
-    have given the home to the projects' owner (uid 1001 on GitHub's runner), and
+    have given the home to the workspace's owner (uid 1001 on GitHub's runner), and
     immutable, so it writes nothing there (no -shm or -wal of root's): no LADO may run on
     the volume meanwhile."""
     done = docker(

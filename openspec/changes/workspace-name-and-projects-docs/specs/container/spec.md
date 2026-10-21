@@ -119,6 +119,11 @@ environment.
 
 ## REMOVED Requirements
 
+### Requirement: The image gives the agents and the server the ssh agent's socket
+
+**Reason**: Renamed: a scenario named the workspace's owner "the projects' owner" (docs/design/projects.md).
+**Migration**: Replaced by "The image gives the agents and the server the host's ssh agent socket", the same rule in the new words.
+
 ### Requirement: The compose file mounts the projects at the host's path
 
 **Reason**: Renamed: the folder is called the workspace (docs/design/projects.md).
@@ -203,3 +208,21 @@ with one warning line, and the server SHALL start anyway.
 - **THEN** `docker logs` has a line `lado: warning: LADO_REPOS is not a folder in the
   container: /home/me/projects; mount the host's folder at this same path`, and the server
   starts
+
+### Requirement: The image gives the agents and the server the host's ssh agent socket
+
+When the path `/run/lado/ssh-agent.sock` in the container is a socket, the image SHALL set
+`SSH_AUTH_SOCK=/run/lado/ssh-agent.sock` for every login shell, so for every agent, and
+for the UI server, whose Clone from URL and branch listing run git over ssh: one rule,
+`docker/ssh-agent-env.sh` at `/etc/profile.d/lado-ssh-agent.sh`, which the entrypoint
+sources before the command, after the entrypoint's check of the socket.
+
+#### Scenario: A Linux host's socket of the workspace's owner
+- **WHEN** the socket belongs to the uid of the workspace's owner, which `lado` takes
+- **THEN** `ssh-add -l` in an agent's login shell lists the key, and the socket's owner is
+  unchanged
+
+#### Scenario: No ssh agent
+- **WHEN** `LADO_SSH_AGENT` is not set
+- **THEN** agents and the UI server have no `SSH_AUTH_SOCK` from the image, and `docker
+  logs` has no ssh line

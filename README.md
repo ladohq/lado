@@ -170,7 +170,7 @@ update each in its own folder.
 Your sessions stop with the old container and resume in the new one (each agent starts a
 new conversation and a busy one loses its current turn, so update while your agents are
 idle); LADO upgrades its database after a backup; logins, kits and history stay on the
-home volume, and your projects are not touched. `lado update` and the web UI's **Update…** do not update a
+home volume, and your workspace is not touched. `lado update` and the web UI's **Update…** do not update a
 container: they say a new image does. Back to the version before:
 [docs/install.md](docs/install.md#go-back-to-the-version-before).
 

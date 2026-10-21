@@ -215,14 +215,15 @@ def listed() -> list[tuple[state.Project, Path, bool]]:
     a lado.db."""
     if state.schema_version() is None:
         return []
-    return [(p, folder(p.id), folder(p.id).is_dir()) for p in state.list_projects()]
+    found = [(p, folder(p.id)) for p in state.list_projects()]
+    return [(p, where, where.is_dir()) for p, where in found]
 
 
 GIT_TIMEOUT = 20  # seconds one git command of the unpushed scan may take
 
 
 def _git(checkout: Path, *args: str) -> str:
-    """git's output in `checkout`, with no prompt and git's words in English; GitFailed
+    """git's output in `checkout`, with no prompt and git's words in English; _GitFailed
     with git's first line when it fails or takes too long."""
     from lado import clone  # lado.clone builds on this module
 

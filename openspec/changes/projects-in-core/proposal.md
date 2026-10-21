@@ -129,5 +129,5 @@ repositories, variables and the UI of projects are later steps.
   `cli.py`, `state.py` (schema 32), `server/app.py`, `server/models.py`,
   `server/launch.py`, `server/clones.py`; `web/src/Launch.tsx`, `web/src/api.ts`,
   `web/openapi.json`, `web/src/api.gen.ts`.
-- Tests: unit, integration (`tests/integration/test_projects.py`), UI e2e for Where.
+- Tests: unit, integration (`tests/integration/test_projects_process.py`), UI e2e for Where.
 - Users: a new CLI command, a schema migration, a new default folder. Version: **minor**.

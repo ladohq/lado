@@ -168,8 +168,8 @@ Changed.
 | schema 31 → 32 with backup | unit | `tests/test_state.py` (via `previous_schema`) |
 | clone and fresh start default in `~/workspace` (HOME = tmp) | unit | `tests/test_clone.py`, `tests/test_scratch.py`, `tests/test_server_launch.py`, `tests/test_server_clones.py` |
 | `GET /api/repos-folder` `{path, made}` | unit | `tests/test_server_launch.py` |
-| `lado project` commands end to end, folders made and removed, refusals, agent refusal, delete with unpushed work | integration (real processes, git) | `tests/integration/test_projects.py` |
-| `lado doctor` as a process with and without `LADO_REPOS` | integration | `tests/integration/test_projects.py` |
+| `lado project` commands end to end, folders made and removed, refusals, agent refusal, delete with unpushed work | integration (real processes, git) | `tests/integration/test_projects_process.py` |
+| `lado doctor` as a process with and without `LADO_REPOS` | integration | `tests/integration/test_projects_process.py` |
 | the window: no row or hints while not made, row and hints once made, placeholders | vitest + UI e2e | `web/src/Launch.test.tsx`, `tests/ui/test_launch.py` |
 
 No provider is involved: the change is above `providers/` and works the same for every CLI.

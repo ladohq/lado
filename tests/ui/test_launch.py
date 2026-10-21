@@ -433,6 +433,7 @@ def test_resume_is_off_while_the_sessions_provider_cannot_run(page: Page, server
     expect(refusal).to_have_text("unknown provider gone", timeout=30_000)  # CLIs checked
     resume = dialog.get_by_role("button", name="Resume session")
     expect(resume).to_be_disabled()
+    expect(dialog.get_by_label("Provider")).to_have_value("gone")
     shot(page, "refused")
 
     dialog.get_by_label("Provider").select_option("fake")

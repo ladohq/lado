@@ -735,6 +735,13 @@ function LaunchDialog({
                       choose…
                     </option>
                   )}
+                  {/* A chosen name the list lacks (a resumed session's) gets its own option,
+                      or the select would show the first one, and picking it would be no change. */}
+                  {chosenProvider !== null && providerInfo === null && (
+                    <option value={chosenProvider} disabled>
+                      {`${chosenProvider} · unknown`}
+                    </option>
+                  )}
                   {providers.map((one) => (
                     <option key={one.name} value={one.name} disabled={!one.installed}>
                       {one.installed ? `${one.name} · ${one.title} ${one.version}`.trim() : `${one.name} · not installed`}

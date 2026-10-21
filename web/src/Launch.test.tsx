@@ -864,6 +864,12 @@ test("Resume session is off while the session's provider is not among the provid
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
   expect((await within(dialog).findByText("unknown provider gone")).classList).toContain("bad");
   expect((within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement).disabled).toBe(true);
+  // The select shows the session's provider, not the first listed one: picking that one
+  // is a change, which a select only reports for another option.
+  const select = within(dialog).getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
+  expect(select.value).toBe("gone");
+  const gone = within(select).getByRole("option", { name: "gone · unknown" }) as HTMLOptionElement;
+  expect(gone.disabled).toBe(true);
 });
 
 // The session's actions, by status: icons in its head, in the top bar; its list row has only

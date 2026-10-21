@@ -5,9 +5,7 @@ import platform
 import re
 import shlex
 import shutil
-import stat
 import subprocess
-import tempfile
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -541,48 +539,30 @@ def _duration(seconds: float) -> str:
     return f"{minutes // (24 * 60)} d {minutes // 60 % 24} h"
 
 
-def check_repos_folder() -> Check | None:
-    """LADO_REPOS when it is set: the workspace, the folder the New session window and a
-    clone start from, or why LADO ignores it."""
-    value = os.environ.get(projects.WORKSPACE_VAR, "")
-    if not value:
-        return None
+def check_workspace() -> Check:
+    """The workspace, the folder the New session window, a clone and projects start from:
+    where it comes from (LADO_REPOS or the default), or why LADO ignores LADO_REPOS."""
     name = "Workspace"
-    folder = projects.workspace() if projects.workspace_source() == "LADO_REPOS" else None
-    if folder is None:
+    folder = projects.workspace()
+    source = projects.workspace_source()
+    if source == "ignored":
+        value = os.environ[projects.WORKSPACE_VAR]
         return Check(
             name,
             WARN,
-            f"LADO_REPOS is not an absolute path: {value}; LADO ignores it",
+            f"LADO_REPOS is not an absolute path: {value}; LADO uses {folder}",
             "set it to a full path, e.g. ~/repos or /Users/me/repos",
         )
-    # stat, not exists(): for a folder above it LADO may not look in, exists() raises on some
-    # Pythons and says "missing" on others; stat says why on all.
+    tag = "(LADO_REPOS)" if source == "LADO_REPOS" else "(default)"
     try:
-        info = folder.stat()
+        problem = projects.workspace_problem(folder, projects.workspace_label())
     except FileNotFoundError:
-        return Check(name, INFO, f"{folder} (LADO_REPOS), not made yet: the first clone makes it")
-    except OSError as error:
-        return Check(name, WARN, f"cannot look at LADO_REPOS {folder}: {error.strerror or error}")
-    if not stat.S_ISDIR(info.st_mode):
-        return Check(name, WARN, f"LADO_REPOS is not a folder: {folder}")
-    # A file made and removed, not os.access: a bind mount of Docker Desktop shows its root
-    # as 0:0 to any user while it lets that user write.
-    try:
-        handle, probe = tempfile.mkstemp(prefix=".lado-doctor-", dir=folder)
-    except OSError as error:
         return Check(
-            name,
-            WARN,
-            f"LADO may not write in LADO_REPOS {folder}: {error.strerror or error}",
-            "give your user write access to it; in LADO's image on Linux, the folder's "
-            "owner gives the container's user its uid",
+            name, INFO, f"{folder} {tag}, not made yet: the first clone or project makes it"
         )
-    try:
-        os.close(handle)
-    finally:
-        os.unlink(probe)
-    return Check(name, OK, f"{folder} (LADO_REPOS)")
+    if problem:
+        return Check(name, WARN, *problem)
+    return Check(name, OK, f"{folder} {tag}")
 
 
 SECRETS_HINT = (
@@ -619,7 +599,6 @@ def check_outside() -> Check | None:
 
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
     graphical = check_graphical_session(which)
-    repos = check_repos_folder()
     outside = check_outside()
     author = check_git_author()
     return [
@@ -628,7 +607,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         check_tmux(which),
         check_git(),
         *([author] if author else []),
-        *([repos] if repos else []),
+        check_workspace(),
         *([outside] if outside else []),
         *([graphical] if graphical else []),
         *check_agent_env(),

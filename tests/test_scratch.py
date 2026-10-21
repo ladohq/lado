@@ -160,7 +160,7 @@ def test_a_folder_lado_may_not_read(tmp_path):
     assert str(refused.value).startswith(f"cannot look at {locked}: ")
 
 
-def test_the_default_folder(tmp_path, monkeypatch):
+def test_the_default_folder(home_workspace, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("LADO_REPOS", raising=False)
     assert scratch.default_folder("sait-kofeini") == tmp_path / "workspace" / "sait-kofeini"

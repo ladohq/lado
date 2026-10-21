@@ -94,7 +94,7 @@ def test_the_clone_target_in_the_repositories_folder(client, tmp_path, monkeypat
     assert answer.json()["path"] == str(tmp_path / "repos" / "app")
 
 
-def test_the_clone_target_by_default(client, tmp_path, monkeypatch):
+def test_the_clone_target_by_default(home_workspace, client, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setattr(launch, "_installed", lambda provider: False)
     answer = client.get("/api/clone-target", params={"url": "git@github.com:ladohq/lado.git"})

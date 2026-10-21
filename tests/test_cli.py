@@ -2322,7 +2322,7 @@ def test_clone_and_start(tmp_path, fake_tmux, capsys):
 
 
 def test_clone_into_the_default_folder_with_the_remotes_default_branch(
-    tmp_path, fake_tmux, capsys, monkeypatch
+    home_workspace, tmp_path, fake_tmux, capsys, monkeypatch
 ):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     url = agent_helpers.bare_remote(tmp_path)

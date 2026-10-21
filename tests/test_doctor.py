@@ -48,8 +48,9 @@ def _own_git_config(git_config):
     return git_config
 
 
-def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
+def test_all_checks_pass_when_tools_are_on_path(tmp_path, monkeypatch):
     _versions(monkeypatch)
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path))  # a workspace made
     monkeypatch.setattr(gui_session.sys, "platform", "linux")  # its check: below
     checks = doctor.run_checks(which=lambda cmd: cmd)
     names = [
@@ -58,6 +59,7 @@ def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
         "tmux",
         "git",
         "git author",
+        "Workspace",
         "Agent environment",
         "Agent config folders",
         "Artifacts",
@@ -169,33 +171,55 @@ def test_the_report_has_no_variable_name_or_value(tmp_path, monkeypatch):
     assert "SECRET_NAME_X" not in text and "canary-3" not in text
 
 
-def test_no_repositories_folder_line_without_the_variable(monkeypatch):
+@pytest.fixture
+def default_home(home_workspace, tmp_path, monkeypatch):
+    """No LADO_REPOS, HOME in tmp_path: the workspace is <tmp>/workspace."""
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("LADO_REPOS", raising=False)
-    assert doctor.check_repos_folder() is None
-    monkeypatch.setenv("LADO_REPOS", "")
-    assert doctor.check_repos_folder() is None
+    return tmp_path / "workspace"
 
 
-def test_the_repositories_folder_line(tmp_path, monkeypatch):
+def test_the_default_workspace_line(default_home):
+    name = "Workspace"
+    assert doctor.check_workspace() == doctor.Check(
+        name,
+        doctor.INFO,
+        f"{default_home} (default), not made yet: the first clone or project makes it",
+    )
+    default_home.mkdir()
+    assert doctor.check_workspace() == doctor.Check(name, doctor.OK, f"{default_home} (default)")
+    default_home.rmdir()
+    default_home.write_text("")
+    assert doctor.check_workspace() == doctor.Check(
+        name, doctor.WARN, f"the workspace is not a folder: {default_home}"
+    )
+
+
+def test_the_workspace_line_of_lado_repos(tmp_path, monkeypatch):
     name = "Workspace"
     monkeypatch.setenv("LADO_REPOS", str(tmp_path))
-    assert doctor.check_repos_folder() == doctor.Check(name, doctor.OK, f"{tmp_path} (LADO_REPOS)")
+    assert doctor.check_workspace() == doctor.Check(name, doctor.OK, f"{tmp_path} (LADO_REPOS)")
     missing = tmp_path / "repos"
     monkeypatch.setenv("LADO_REPOS", str(missing))
-    assert doctor.check_repos_folder() == doctor.Check(
-        name, doctor.INFO, f"{missing} (LADO_REPOS), not made yet: the first clone makes it"
+    assert doctor.check_workspace() == doctor.Check(
+        name,
+        doctor.INFO,
+        f"{missing} (LADO_REPOS), not made yet: the first clone or project makes it",
     )
     afile = tmp_path / "file"
     afile.write_text("")
     monkeypatch.setenv("LADO_REPOS", str(afile))
-    assert doctor.check_repos_folder() == doctor.Check(
+    assert doctor.check_workspace() == doctor.Check(
         name, doctor.WARN, f"LADO_REPOS is not a folder: {afile}"
     )
+
+
+def test_a_relative_lado_repos_is_ignored_for_the_default(default_home, monkeypatch):
     monkeypatch.setenv("LADO_REPOS", "code")
-    assert doctor.check_repos_folder() == doctor.Check(
-        name,
+    assert doctor.check_workspace() == doctor.Check(
+        "Workspace",
         doctor.WARN,
-        "LADO_REPOS is not an absolute path: code; LADO ignores it",
+        f"LADO_REPOS is not an absolute path: code; LADO uses {default_home}",
         "set it to a full path, e.g. ~/repos or /Users/me/repos",
     )
 
@@ -207,7 +231,7 @@ def test_a_repositories_folder_lado_may_not_look_at_warns_with_the_reason(tmp_pa
     folder = closed / "repos"
     monkeypatch.setenv("LADO_REPOS", str(folder))
     try:
-        check = doctor.check_repos_folder()
+        check = doctor.check_workspace()
     finally:
         closed.chmod(0o700)
     assert (check.name, check.level) == ("Workspace", doctor.WARN)
@@ -221,7 +245,7 @@ def test_a_repositories_folder_lado_may_not_write_in_warns(tmp_path, monkeypatch
     folder.mkdir(mode=0o555)
     monkeypatch.setenv("LADO_REPOS", str(folder))
     try:
-        check = doctor.check_repos_folder()
+        check = doctor.check_workspace()
     finally:
         folder.chmod(0o755)
     assert (check.name, check.level) == ("Workspace", doctor.WARN)
@@ -231,20 +255,32 @@ def test_a_repositories_folder_lado_may_not_write_in_warns(tmp_path, monkeypatch
     assert list(folder.iterdir()) == []
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes in any folder")
+def test_a_default_workspace_lado_may_not_write_in_warns(default_home):
+    default_home.mkdir(mode=0o555)
+    try:
+        check = doctor.check_workspace()
+    finally:
+        default_home.chmod(0o755)
+    assert check.level == doctor.WARN
+    assert check.detail.startswith(f"LADO may not write in the workspace {default_home}: ")
+
+
 def test_the_write_check_leaves_no_file(tmp_path, monkeypatch):
     monkeypatch.setenv("LADO_REPOS", str(tmp_path))
-    assert doctor.check_repos_folder().level == doctor.OK
+    assert doctor.check_workspace().level == doctor.OK
     assert list(tmp_path.iterdir()) == []
 
 
-def test_the_checks_hold_the_repositories_folder_only_when_it_is_set(tmp_path, monkeypatch):
+def test_the_checks_always_hold_the_workspace(tmp_path, monkeypatch):
     _versions(monkeypatch)
     monkeypatch.setattr(gui_session.sys, "platform", "linux")
 
     def names():
         return [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
 
-    assert "Workspace" not in names()
+    found = names()
+    assert found[found.index("git author") + 1] == "Workspace"
     monkeypatch.setenv("LADO_REPOS", str(tmp_path))
     found = names()
     assert found[found.index("git author") + 1] == "Workspace"

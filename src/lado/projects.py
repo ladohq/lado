@@ -7,6 +7,8 @@ fresh start's default folder, the UI server, the container's warning, `lado doct
 projects); nothing makes it before the first clone, fresh start or project needs it."""
 
 import os
+import stat
+import tempfile
 from pathlib import Path
 from typing import Literal
 
@@ -31,3 +33,41 @@ def workspace_source() -> Literal["LADO_REPOS", "default", "ignored"]:
     if not os.environ.get(WORKSPACE_VAR):
         return "default"
     return "LADO_REPOS" if _given().is_absolute() else "ignored"
+
+
+def workspace_label() -> str:
+    """The workspace's name in a text: LADO_REPOS when it comes from there."""
+    return WORKSPACE_VAR if workspace_source() == "LADO_REPOS" else "the workspace"
+
+
+WRITE_HINT = (
+    "give your user write access to it; in LADO's image on Linux, the folder's owner gives "
+    "the container's user its uid"
+)
+
+
+def workspace_problem(folder: Path, name: str) -> tuple[str, str] | None:
+    """Why LADO cannot use the existing path `folder` as the workspace (`name` in the
+    text), with a hint or ""; None when it is a folder LADO may write in. A missing path
+    raises FileNotFoundError: the caller says what that means (`lado doctor`, create)."""
+    # stat, not exists(): for a folder above it LADO may not look in, exists() raises on some
+    # Pythons and says "missing" on others; stat says why on all.
+    try:
+        info = folder.stat()
+    except FileNotFoundError:
+        raise
+    except OSError as error:
+        return f"cannot look at {name} {folder}: {error.strerror or error}", ""
+    if not stat.S_ISDIR(info.st_mode):
+        return f"{name} is not a folder: {folder}", ""
+    # A file made and removed, not os.access: a bind mount of Docker Desktop shows its root
+    # as 0:0 to any user while it lets that user write.
+    try:
+        handle, probe = tempfile.mkstemp(prefix=".lado-doctor-", dir=folder)
+    except OSError as error:
+        return f"LADO may not write in {name} {folder}: {error.strerror or error}", WRITE_HINT
+    try:
+        os.close(handle)
+    finally:
+        os.unlink(probe)
+    return None

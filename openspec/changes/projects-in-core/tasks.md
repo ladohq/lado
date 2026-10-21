@@ -8,7 +8,7 @@ The plan with each task's tests and code: `docs/superpowers/plans/2026-10-21-pro
   tests of the workspace, the clone's and a fresh start's default folder without and with
   `LADO_REPOS`, the container's warning (`tests/test_projects.py`, `test_clone.py`,
   `test_scratch.py`, `test_runtime.py`, `test_server_clones.py`, `test_server_launch.py`).
-- [ ] 1.2 `doctor.check_workspace` always a line; `(LADO_REPOS)`/`(default)`, not made
+- [x] 1.2 `doctor.check_workspace` always a line; `(LADO_REPOS)`/`(default)`, not made
   yet, the ignored relative value, a file, unwritable (D4, D11). Check:
   `tests/test_doctor.py`.
 - [ ] 1.3 `GET /api/repos-folder` answers `Workspace{path, made}`; the window's

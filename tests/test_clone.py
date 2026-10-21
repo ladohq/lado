@@ -33,7 +33,7 @@ def test_a_folder(source):
     assert not clone.is_url(source)
 
 
-def test_default_folder(tmp_path, monkeypatch):
+def test_default_folder(home_workspace, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("LADO_REPOS", raising=False)
     assert clone.default_folder("https://github.com/ladohq/marketplace.git/") == (
@@ -45,7 +45,7 @@ def test_default_folder(tmp_path, monkeypatch):
     assert clone.default_folder("file:///srv/app.git") == tmp_path / "workspace" / "app"
 
 
-def test_the_default_folder_is_in_the_workspace(tmp_path, monkeypatch):
+def test_the_default_folder_is_in_the_workspace(home_workspace, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "repos"))
     assert clone.default_folder("git@github.com:acme/app.git") == tmp_path / "repos" / "app"

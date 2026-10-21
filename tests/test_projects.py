@@ -8,7 +8,7 @@ from lado import projects
 
 
 @pytest.fixture
-def home(tmp_path, monkeypatch):
+def home(home_workspace, tmp_path, monkeypatch):
     """HOME in tmp_path and no LADO_REPOS: the workspace is <tmp>/workspace."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("LADO_REPOS", raising=False)

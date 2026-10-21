@@ -682,7 +682,7 @@ def scratch_target(client, text, path=None) -> dict:
     return answer.json()
 
 
-def test_a_name_checked(client, git_config, tmp_path, monkeypatch, installed):
+def test_a_name_checked(home_workspace, client, git_config, tmp_path, monkeypatch, installed):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     installed.intersection_update({"kilo"})
     assert scratch_target(client, "Сайт кофейни") == {
@@ -699,9 +699,7 @@ def test_a_name_checked(client, git_config, tmp_path, monkeypatch, installed):
     }
 
 
-def test_the_default_folder_is_in_the_workspace(
-    client, git_config, tmp_path, monkeypatch
-):
+def test_the_default_folder_is_in_the_workspace(client, git_config, tmp_path, monkeypatch):
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "projects"))
     info = scratch_target(client, "coffee-site")
     assert (info["path"], info["title"]) == (str(tmp_path / "projects" / "coffee-site"), None)

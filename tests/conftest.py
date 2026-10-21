@@ -130,6 +130,24 @@ def lado_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _test_workspace(tmp_path, monkeypatch):
+    """The default workspace (no LADO_REPOS) is in tmp_path, never the user's ~/workspace,
+    which lado doctor would write a probe in; not made. A test of the ~/workspace default
+    takes home_workspace."""
+    from lado import projects
+
+    monkeypatch.setattr(projects, "DEFAULT_WORKSPACE", str(tmp_path / "default-workspace"))
+
+
+@pytest.fixture
+def home_workspace(monkeypatch):
+    """The default workspace as shipped, ~/workspace: the test points HOME into tmp_path."""
+    from lado import projects
+
+    monkeypatch.setattr(projects, "DEFAULT_WORKSPACE", "~/workspace")
+
+
+@pytest.fixture(autouse=True)
 def _no_statistics(request, lado_home):
     """Every test runs with sending off by LADO_TELEMETRY=0 (set above), and leaves nothing
     sent or queued in its LADO_HOME unless it took telemetry_on, which sends to a local port."""

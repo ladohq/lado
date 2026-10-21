@@ -1755,7 +1755,7 @@ def test_no_warning_outside_a_container(projects, tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("value", [None, "relative/projects"])
 def test_in_a_container_without_lado_repos_the_default_workspace_is_judged(
-    value, tmp_path, monkeypatch
+    home_workspace, value, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("LADO_CONTAINER", "1")

@@ -115,7 +115,7 @@ if [ -z "$(cd / && git config user.name)" ] || [ -z "$(cd / && git config user.e
     echo "lado: warning: git has no user.name or user.email: agents cannot commit; set LADO_GIT_NAME and LADO_GIT_EMAIL" >&2
 fi
 
-# The host's ssh agent (compose's LADO_SSH_AGENT): a socket of the projects' owner works as
+# The host's ssh agent (compose's LADO_SSH_AGENT): a socket of the workspace's owner works as
 # it is; Docker Desktop's is root's in the container, and its own sudo rule gives it to lado
 # at every start, as Docker Desktop's restart makes it root's again. ssh-add exits 2 when it
 # cannot connect (0 or 1: keys or none).

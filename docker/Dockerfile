@@ -4,7 +4,7 @@
 # (lado:local). The guide, step by step: docs/install.md#docker. One command starts it:
 #
 #   docker run -d --name lado -p 127.0.0.1:8765:8765 -v lado-home:/home/lado \
-#     -v "$HOME/projects:$HOME/projects" -e LADO_REPOS="$HOME/projects" \
+#     -v "$HOME/workspace:$HOME/workspace" -e LADO_REPOS="$HOME/workspace" \
 #     -e LADO_GIT_NAME="Ann Lee" -e LADO_GIT_EMAIL=ann@example.com \
 #     ghcr.io/ladohq/lado:<version>
 #   docker exec lado lado ui --no-open            # the UI's link with its token
@@ -34,7 +34,7 @@
 # start` (or a new container on the same home volume) resumes them; sessions stopped by
 # hand stay stopped. Each resumed session's supervisor takes one model turn at the start.
 #
-# The projects are mounted at the host's own path and named by LADO_REPOS, so a worker's
+# The workspace is mounted at the host's own path and named by LADO_REPOS, so a worker's
 # worktree made here is one on the host too; on Linux the container's user takes the
 # folder owner's uid. The command runs as lado also with `docker run --user root`; root in
 # a running container: `docker exec -u 0`. Another port: -e LADO_PORT=8766 -p

@@ -4925,14 +4925,43 @@ h3 {
   color: var(--action);
 }
 
+/* A warning and a refusal are panels (docs/design/ui.md, New session): text 13px in --ink on
+   a ground of their own with a stripe on the left. A warning's icon is the ⚠ of its text; a
+   refusal's round "!" is drawn here, at its first line, and is not part of its text. */
+.field-note.warn,
 .field-note.bad {
   color: var(--ink);
-  border-left: 3px solid var(--ink);
-  padding-left: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border-left: 3px solid;
 }
 
 .field-note.warn {
-  color: var(--ink);
+  background: var(--warn-ground);
+  border-left-color: var(--warn);
+}
+
+.field-note.bad {
+  position: relative;
+  padding-left: 30px;
+  background: var(--danger-ground);
+  border-left-color: var(--danger);
+}
+
+.field-note.bad::before {
+  content: "!";
+  position: absolute;
+  left: 9px;
+  top: 7px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: var(--on-danger);
+  font: 700 11px/15px var(--sans);
+  text-align: center;
 }
 
 /* The folder's hint under its reason: the sentence, then the command and Copy. */

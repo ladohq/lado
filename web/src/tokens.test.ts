@@ -64,6 +64,14 @@ const PAIRS = [
   ["danger", "ground"],
   ["on-danger", "danger"],
   ["term-ink", "term-ground"],
+  // A warning's and a refusal's panel under a field of the New session window: its text,
+  // a refusal's muted hint, the warning's stripe and the refusal's stripe and icon.
+  ["ink", "warn-ground"],
+  ["ink", "danger-ground"],
+  ["muted", "warn-ground"],
+  ["muted", "danger-ground"],
+  ["warn", "warn-ground"],
+  ["danger", "danger-ground"],
   // An avatar's letter on each of its colours (FeedRow.tsx, AVATAR_COLOURS).
   ["on-avatar", "avatar-1"],
   ["on-avatar", "avatar-2"],

@@ -23,6 +23,13 @@
   /* What cannot be taken back or ends work: Stop and Forget. */
   --danger: light-dark(#b42318, #ff8f85);
   --on-danger: light-dark(#ffffff, #111317);
+  /* A refusal under a field of the New session window: the panel's ground, with a --danger
+     stripe and icon. */
+  --danger-ground: light-dark(#fdeceb, #3a1d1b);
+  /* A warning under a field of the New session window: the panel's stripe and its ground.
+     Amber, not the orange of what waits for the human. */
+  --warn: light-dark(#8a5a00, #e0b04a);
+  --warn-ground: light-dark(#fdf5dc, #2f2814);
   /* An agent's avatar in the feed (FeedRow.tsx): one of six by its name, the letter in
      --on-avatar; none is orange or the action's blue (the human's avatar). */
   --avatar-1: light-dark(#4f5bd5, #9aa6ff);

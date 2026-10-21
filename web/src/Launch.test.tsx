@@ -235,6 +235,15 @@ test("a folder outside the workspace in a container: a warning after the check m
   expect(startButton().disabled).toBe(false);
 });
 
+test("the kits list that does not load is a warning, not a refusal: Start stays on", async () => {
+  answers["GET /api/kits"] = () => json({ detail: "the kits do not load" }, 500);
+  await openLaunch();
+  await ready("/Users/ann/projects/app");
+  const warned = await screen.findByText("the kits do not load");
+  expect(warned.className).toBe("field-note warn");
+  expect(startButton().disabled).toBe(false);
+});
+
 test("a folder with no warning shows none", async () => {
   await openLaunch();
   await ready("/Users/ann/projects/app");

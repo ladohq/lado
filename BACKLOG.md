@@ -1896,6 +1896,27 @@ Wanted: when the test fails again, read its record in the ui job's log and file 
 with it.
 Found: 2026-10-18, CI of e859751.
 
+## `make test` leaves a `sleep 60` behind and goes red with every test passed
+
+Size: S. Why here: a red unit run with no failing test hides a real red and costs each
+build a question to the supervisor.
+
+Two `make test` runs in a row in the worktree of fix/lad-120-launch-note-levels both ended
+`3614 passed, 1 skipped` (66.00 s, 63.25 s) and exit 2, from the leftover check of
+`tests/conftest.py`:
+
+```
+==================== processes left by the test run, killed ====================
+  540190 sleep 60
+```
+
+(the second run: `564467 sleep 60`). That diff touches no Python a unit run collects (only
+`web/`, `tests/ui/`, docs), so the leak is elsewhere: `sleep 60` is started by the fake
+git's clone and ls-remote child (`tests/agent_helpers.py`, `FAKE_GIT`) and by
+`tests/test_tmux.py`. Not checked on a clean main; CI decides.
+Wanted: the test that starts it ends it (or waits for it), and the check names the test.
+Found: 2026-10-21, fix/lad-120-launch-note-levels (developer).
+
 # P3: maybe never
 
 ## A field that grows with its text keeps its height when its width changes

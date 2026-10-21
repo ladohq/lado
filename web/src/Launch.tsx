@@ -1530,7 +1530,7 @@ function KitsField({
         )}
       </div>
       {kits.length === 0 && <span className="field-note bad">a session needs at least one kit</span>}
-      {listed !== null && "error" in listed && <span className="field-note bad">{listed.error}</span>}
+      {listed !== null && "error" in listed && <span className="field-note warn">{listed.error}</span>}
       {fromLast && <span className="field-note">from the last session of this folder</span>}
       {root === null && listed === null && <span className="field-note">checking…</span>}
     </div>

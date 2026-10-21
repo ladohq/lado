@@ -25,9 +25,9 @@
 
 ## 3. Docs and backlog
 
-- [ ] 3.1 `docs/testing.md`: `LADO_TEST_ID` and the "started in" of the run's report, in
+- [x] 3.1 `docs/testing.md`: `LADO_TEST_ID` and the "started in" of the run's report, in
   the paragraph of `LADO_TEST_PID`.
-- [ ] 3.2 BACKLOG.md: remove the entry "`make test` leaves a `sleep 60` behind and goes
+- [x] 3.2 BACKLOG.md: remove the entry "`make test` leaves a `sleep 60` behind and goes
   red with every test passed".
 
 ## 4. Regression

@@ -1,8 +1,11 @@
 """lado.projects: the workspace and projects in it (openspec change projects-in-core)."""
 
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
+from agent_helpers import init_repo
 
 from lado import projects, runtime, state
 
@@ -217,3 +220,148 @@ def test_listed_marks_a_folder_not_found(home, monkeypatch):
 def test_names_lists_three_then_an_ellipsis():
     assert projects.names(["b", "a"]) == "a, b"
     assert projects.names(["d", "c", "b", "a"]) == "a, b, c, …"
+
+
+# The unpushed scan and delete
+
+
+def _git(repo: Path, *args: str) -> str:
+    done = subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+    )
+    return done.stdout
+
+
+@pytest.fixture
+def shop(home, git_config):
+    """The project shop, its folder holding the repository frontend, pushed and clean."""
+    projects.create("shop", "Shop")
+    folder = projects.folder("shop")
+    remote = home / "frontend.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    repo = init_repo(folder / "frontend")
+    _git(repo, "remote", "add", "origin", str(remote))
+    _git(repo, "push", "-q", "-u", "origin", "main")
+    return folder
+
+
+def test_a_pushed_clean_repository_is_nothing_unpushed(shop):
+    (shop / "notes").mkdir()  # a folder that is no repository: not looked at
+    assert projects.unpushed(shop) == []
+
+
+def test_uncommitted_changes_and_branches_not_pushed(shop):
+    repo = shop / "frontend"
+    (repo / "new.txt").write_text("x")  # untracked counts
+    _git(repo, "branch", "feature-x")
+    assert projects.unpushed(shop) == ["frontend: uncommitted changes; branch feature-x not pushed"]
+
+
+def test_a_branch_ahead_of_its_upstream(shop):
+    repo = shop / "frontend"
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "more")
+    assert projects.unpushed(shop) == ["frontend: branch main not pushed"]
+
+
+def test_a_worktree_with_work_of_its_own(shop):
+    repo = shop / "frontend"
+    tree = repo / ".lado" / "worktrees" / "s" / "w"
+    _git(repo, "worktree", "add", "-q", str(tree), "-b", "w")
+    (tree / "work.txt").write_text("x")
+    assert projects.unpushed(shop) == [
+        "frontend: uncommitted changes; branch w not pushed",
+        "frontend (worktree frontend/.lado/worktrees/s/w): uncommitted changes",
+    ]
+
+
+def test_a_worktree_outside_the_folder_is_named_by_its_full_path(shop, home):
+    repo = shop / "frontend"
+    tree = home / "elsewhere"
+    _git(repo, "worktree", "add", "-q", "--detach", str(tree))
+    (tree / "work.txt").write_text("x")
+    assert projects.unpushed(shop) == [f"frontend (worktree {tree}): uncommitted changes"]
+
+
+def test_a_repository_git_cannot_read(shop):
+    broken = shop / "broken"
+    broken.mkdir()
+    (broken / ".git").write_text("gitdir: /nowhere\n")
+    [line] = projects.unpushed(shop)
+    assert line.startswith("broken: could not check: fatal: ")
+
+
+def test_delete_needs_yes(shop):
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.delete("shop", yes=False)
+    assert str(refused.value) == (
+        f"deleting project shop removes its folder {shop} with everything in it; "
+        "run again with --yes"
+    )
+    assert shop.is_dir() and state.get_project("shop")
+
+
+def test_delete_with_yes_removes_the_folder_then_the_record(shop, home):
+    projects.create("acme", None)
+    (shop / "frontend" / "new.txt").write_text("x")
+    outside = home / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("x")
+    (shop / "link").symlink_to(outside)  # a link inside: removed as a link
+    projects.delete("shop", yes=True)
+    assert not os.path.lexists(shop)
+    assert state.get_project("shop") is None
+    assert (home / "workspace" / "projects" / "acme").is_dir() and state.get_project("acme")
+    assert (outside / "keep.txt").read_text() == "x"
+
+
+def test_a_project_folder_that_is_a_link_loses_the_link_only(home):
+    projects.create("shop", None)
+    target = projects.folder("shop")
+    target.rmdir()
+    elsewhere = home / "srv-shop"
+    elsewhere.mkdir()
+    (elsewhere / "a.txt").write_text("x")
+    target.symlink_to(elsewhere)
+    projects.delete("shop", yes=True)
+    assert not os.path.lexists(target)
+    assert (elsewhere / "a.txt").read_text() == "x"
+    assert state.get_project("shop") is None
+
+
+def test_delete_refuses_a_folder_outside_projects(home, monkeypatch):
+    projects.create("shop", None)
+    elsewhere = home / "workspace" / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setattr(
+        projects, "folder", lambda id: projects.projects_folder() / ".." / "elsewhere"
+    )
+    with pytest.raises(projects.ProjectError, match="LADO removes nothing outside it"):
+        projects.delete("shop", yes=True)
+    assert elsewhere.is_dir() and state.get_project("shop")
+
+
+def test_a_project_whose_folder_is_gone_loses_its_record_only(home):
+    projects.create("shop", None)
+    projects.folder("shop").rmdir()
+    projects.delete("shop", yes=True)
+    assert state.get_project("shop") is None
+    assert (home / "workspace" / "projects").is_dir()
+
+
+def test_a_folder_not_removed_whole_keeps_the_record(home, monkeypatch):
+    projects.create("shop", None)
+
+    def fail(path, *args, **kwargs):
+        raise PermissionError(13, "Permission denied", str(Path(path) / "locked"))
+
+    monkeypatch.setattr(projects.shutil, "rmtree", fail)
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.delete("shop", yes=True)
+    assert str(refused.value).startswith(f"could not remove {projects.folder('shop')} whole: ")
+    assert "locked" in str(refused.value) and str(refused.value).endswith("; the project stays")
+    assert state.get_project("shop")
+
+
+def test_delete_of_an_unknown_project(home):
+    with pytest.raises(projects.NoSuchProject, match='unknown project "nope"'):
+        projects.delete("nope", yes=True)

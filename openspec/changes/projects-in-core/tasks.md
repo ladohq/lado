@@ -22,7 +22,7 @@ The plan with each task's tests and code: `docs/superpowers/plans/2026-10-21-pro
   (migration from `previous_schema` with its backup).
 - [x] 2.2 The id rule, titles, `owned_by_human`, `foreign`, `create`, `rename`, `listed`
   (D6, D7). Check: `tests/test_projects.py`.
-- [ ] 2.3 The unpushed scan and `delete` (link, outside check, rmtree failure) (D8).
+- [x] 2.3 The unpushed scan and `delete` (link, outside check, rmtree failure) (D8).
   Check: `tests/test_projects.py` with real git.
 - [ ] 2.4 `lado project list|create|show|rename|delete`, agents refused (D9, D10).
   Check: `tests/test_cli.py`.

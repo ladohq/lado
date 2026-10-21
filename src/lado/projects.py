@@ -14,8 +14,10 @@ there. The CLI (`lado project`) and `lado doctor` only print what this module sa
 
 import os
 import re
+import shutil
 import sqlite3
 import stat
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Literal
@@ -204,3 +206,122 @@ def get(id: str) -> state.Project:
 def listed() -> list[tuple[state.Project, Path, bool]]:
     """Every project by id, with its folder and whether that folder is there."""
     return [(p, folder(p.id), folder(p.id).is_dir()) for p in state.list_projects()]
+
+
+GIT_TIMEOUT = 20  # seconds one git command of the unpushed scan may take
+
+
+def _git(checkout: Path, *args: str) -> str:
+    """git's output in `checkout`, with no prompt and git's words in English; GitFailed
+    with git's first line when it fails or takes too long."""
+    from lado import clone  # lado.clone builds on this module
+
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(checkout), *args],
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT,
+            env={**os.environ, **clone.NO_PROMPT},
+        )
+    except subprocess.TimeoutExpired as error:
+        raise _GitFailed(f"git took more than {GIT_TIMEOUT} s") from error
+    except OSError as error:
+        raise _GitFailed(error.strerror or str(error)) from error
+    if done.returncode:
+        lines = (done.stderr or done.stdout).strip().splitlines()
+        raise _GitFailed(lines[0] if lines else f"git exited with {done.returncode}")
+    return done.stdout
+
+
+class _GitFailed(Exception):
+    pass
+
+
+def _not_pushed(repo: Path) -> list[str]:
+    """The local branches of `repo` with no upstream, a gone one, or commits ahead of it
+    (the last fetch's view: no network)."""
+    found = []
+    refs = _git(
+        repo,
+        "for-each-ref",
+        "refs/heads",
+        "--format=%(refname:short)%00%(upstream)%00%(upstream:track)",
+    )
+    for line in refs.splitlines():
+        branch, upstream, track = line.split("\0")
+        if not upstream or "ahead" in track or "gone" in track:
+            found.append(f"branch {branch} not pushed")
+    return found
+
+
+def _checkouts(repo: Path) -> list[Path]:
+    """The worktrees of `repo` but its own, wherever they are."""
+    listing = _git(repo, "worktree", "list", "--porcelain")
+    trees = [
+        Path(line.removeprefix("worktree "))
+        for line in listing.splitlines()
+        if line.startswith("worktree ")
+    ]
+    return trees[1:]  # the first is the repository's own
+
+
+def unpushed(project_folder: Path) -> list[str]:
+    """What deleting `project_folder` would lose of the human's work, one line per checkout:
+    each git repository directly in it and each worktree of one, with its uncommitted
+    changes (untracked files too) and, for the repository, its branches not pushed."""
+    lines = []
+    real = Path(os.path.realpath(project_folder))  # git names worktrees by real paths
+    for entry in sorted(project_folder.iterdir()):
+        if not entry.is_dir() or not os.path.lexists(entry / ".git"):
+            continue
+        try:
+            findings = []
+            if _git(entry, "status", "--porcelain", "--untracked-files=normal").strip():
+                findings.append("uncommitted changes")
+            findings += _not_pushed(entry)
+            trees = []
+            for tree in _checkouts(entry):
+                if (
+                    tree.is_dir()
+                    and _git(tree, "status", "--porcelain", "--untracked-files=normal").strip()
+                ):
+                    trees.append(tree)
+        except _GitFailed as failed:
+            lines.append(f"{entry.name}: could not check: {failed}")
+            continue
+        if findings:
+            lines.append(f"{entry.name}: {'; '.join(findings)}")
+        for tree in trees:
+            shown = tree.relative_to(real) if tree.is_relative_to(real) else tree
+            lines.append(f"{entry.name} (worktree {shown}): uncommitted changes")
+    return lines
+
+
+def delete(id: str, yes: bool) -> None:
+    """Remove the project's folder whole, then its record; without `yes`, refuse (the CLI
+    shows `unpushed` first). Nothing outside <workspace>/projects is removed: a folder that
+    is a link loses the link only, and a folder whose real path is not directly in the real
+    projects/ is refused. A folder not removed whole keeps the record."""
+    get(id)
+    target = folder(id)
+    if not yes:
+        raise ProjectError(
+            f"deleting project {id} removes its folder {target} with everything in it; "
+            "run again with --yes"
+        )
+    if target.is_symlink():
+        target.unlink()
+    elif os.path.lexists(target):
+        real = Path(os.path.realpath(target))
+        if real.parent != Path(os.path.realpath(projects_folder())):
+            raise ProjectError(
+                f"{target} is not in {projects_folder()}: LADO removes nothing outside it"
+            )
+        try:
+            shutil.rmtree(real)  # links inside are removed as links, never followed
+        except OSError as error:
+            raise ProjectError(
+                f"could not remove {target} whole: {error}; the project stays"
+            ) from error
+    state.delete_project(id)

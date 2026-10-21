@@ -43,17 +43,21 @@ def isolated(lado_home, monkeypatch, kill_tmux_server):
     leftovers.fail_if(leftovers.sweep(lado_home), "the test")
 
 
-@pytest.fixture
-def server(tmp_path):
-    """A real `lado server` on a free port; its server.json. It is `lado` with the fake
-    providers (fake_provider.py), so a session it starts runs the fake agent. Stopped after
-    the test, and killed when it does not stop (also when it never got ready)."""
+@pytest.fixture(autouse=True)
+def _workspace(tmp_path, monkeypatch):
+    """The servers' workspace is in tmp_path (LADO_REPOS, not made), never the user's
+    ~/workspace, which the system panel's checks would write a probe in. A test of its own
+    sets LADO_REPOS, or takes home_server for the ~/workspace default."""
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "workspace"))
+
+
+def _serve(tmp_path, env):
     with open(tmp_path / "server.out", "w") as out:
         process = subprocess.Popen(
             [sys.executable, str(fake_provider.LADO), "server", "--port", "0"],
             stdout=out,
             stderr=subprocess.STDOUT,
-            env=os.environ,
+            env=env,
         )
     try:
         yield {**server_run.wait_ready(), "token": auth.token()}
@@ -64,6 +68,25 @@ def server(tmp_path):
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
+
+
+@pytest.fixture
+def server(tmp_path):
+    """A real `lado server` on a free port; its server.json. It is `lado` with the fake
+    providers (fake_provider.py), so a session it starts runs the fake agent. Stopped after
+    the test, and killed when it does not stop (also when it never got ready)."""
+    yield from _serve(tmp_path, os.environ)
+
+
+@pytest.fixture
+def home_server(tmp_path):
+    """`server` whose process has its HOME in tmp_path (<tmp>/home, made) and no
+    LADO_REPOS: its workspace is the default <tmp>/home/workspace, not made. Only the
+    server's: the test's own HOME stays, which the browser's files are found by."""
+    home = tmp_path / "home"
+    home.mkdir()
+    env = {key: value for key, value in os.environ.items() if key != "LADO_REPOS"}
+    yield from _serve(tmp_path, {**env, "HOME": str(home)})
 
 
 @pytest.fixture

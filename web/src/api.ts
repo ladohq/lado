@@ -264,7 +264,7 @@ export const answerQuestions = (session: string, answers: Reply[]) =>
 
 export type FolderInfo = components["schemas"]["FolderInfo"];
 export type RecentFolder = components["schemas"]["RecentFolder"];
-export type ReposFolder = components["schemas"]["ReposFolder"];
+export type Workspace = components["schemas"]["Workspace"];
 export type KitInfo = components["schemas"]["KitInfo"];
 export type ProviderInfo = components["schemas"]["ProviderInfo"];
 export type SessionAbout = components["schemas"]["SessionAbout"];
@@ -288,7 +288,7 @@ export const getFolder = (path: string) => get<FolderInfo>(`/api/folders?${query
 
 export const getRecentFolders = () => get<RecentFolder[]>("/api/folders/recent");
 
-export const getReposFolder = () => get<ReposFolder>("/api/repos-folder");
+export const getWorkspace = () => get<Workspace>("/api/repos-folder");
 
 export type ScratchTarget = components["schemas"]["ScratchTarget"];
 

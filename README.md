@@ -134,7 +134,7 @@ In Docker, open the UI's link and press **Launch**; the commands below run there
 
 ```bash
 lado start <repo>       # a supervisor for a git repository (with at least one commit), in tmux
-lado start <git-url>    # or clone one first, into ~/lado/<repo> (--branch NAME, or give a folder)
+lado start <git-url>    # or clone one first, into ~/workspace/<repo> (--branch NAME, or give a folder)
 lado start --new <dir>  # no repository yet: a new or empty folder, made one with an empty commit
 lado ui                 # the web UI in your browser
 ```

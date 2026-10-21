@@ -97,7 +97,7 @@ class FolderInfo(BaseModel):
     # the provider a new session here takes (runtime.suggested_provider); none: the human picks
     provider: "ProviderSuggestion | None"
     # in LADO's container, a folder outside LADO_REPOS: the host does not see it
-    # (runtime.outside_repos); a warning, never a refusal
+    # (runtime.outside_workspace); a warning, never a refusal
     warning: str | None = None
     # missing or not_repo, and a fresh start may go on there (lado.scratch: new or empty)
     scratch: bool = False
@@ -212,11 +212,12 @@ class RecentFolder(BaseModel):
     session: SessionInfo  # its latest started session
 
 
-class ReposFolder(BaseModel):
-    """The human's workspace (LADO_REPOS, clone.repos_folder): the New session window's
-    start folder, or None."""
+class Workspace(BaseModel):
+    """The human's workspace (`projects.workspace`: LADO_REPOS, else ~/workspace): the New
+    session window's start folder, and whether it exists yet."""
 
-    path: str | None
+    path: str
+    made: bool  # a folder there: the window suggests its subfolders
 
 
 class KitSummary(BaseModel):

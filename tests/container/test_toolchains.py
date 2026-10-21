@@ -1,4 +1,4 @@
-"""The projects' toolchains in LADO's image (openspec capability container): mise at its pin,
+"""The repositories' toolchains in LADO's image (openspec capability container): mise at its pin,
 its tools on the home volume kept over a new container, the workspace trusted, the
 image's Node 22 first; make, gcc and g++; the agents' `npm i -g` and `uv tool install` under
 ~/.local at another uid and on an older home volume; the agents' base tools, openspec at its

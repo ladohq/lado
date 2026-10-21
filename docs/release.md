@@ -290,9 +290,12 @@ cd / && rm -rf /tmp/lado-rc-update /tmp/lado-rc-beside
    the GitHub release, marked the latest (section 7).
 3. The tracker (Yougile, through LADO's skill `tracker`): each task in the status `done`
    with the label `waiting for release` whose change the release ships gets the comment
-   «Вышла в X.Y.Z», and the label is removed; a task whose change is not in the release
-   keeps it. The merge sets that label (`.lado/sdlc.md`, Tracker); its sticker is named
-   in `.lado/tracker.yaml`.
+   «Вышла в X.Y.Z» and the field `release` set to X.Y.Z (unchanged when it already holds
+   it), and the label is removed; a task whose change is not in the release keeps its
+   label and its field. The merge sets that label and the coming version in the field
+   (`.lado/sdlc.md`, After the merge), so the final corrects a planned patch that became
+   a minor and fills the field of a task merged before it existed; the label's and the
+   field's stickers are named in `.lado/tracker.yaml`.
 
 The live tests are not run again: the code is the last RC's, which they ran on. A patch
 released without an RC gets all of section 2's checks (CI, `make test-live`) on its

@@ -50,6 +50,7 @@ beforeEach(() => {
       if (path.endsWith("/runs")) return runs === "pending" ? new Promise<Response>(() => {}) : new Response(JSON.stringify(runs));
       if (path.endsWith("/about")) return new Response("{}", { status: 404 }); // the head without its about
       if (path.includes("/messages?")) return new Response(JSON.stringify({ items: [], earlier: false }));
+      if (path === "/api/repos-folder") return new Response(JSON.stringify({ path: "/Users/ann/workspace", made: false }));
       return new Response("[]");
     }),
   );
@@ -767,6 +768,9 @@ test("while the sessions load the strip's column is busy; a failed load is an al
     "fetch",
     vi.fn((path: string) => {
       if (path === "/api/sessions") return new Promise<Response>((resolve) => pending.push(resolve));
+      if (path === "/api/repos-folder") {
+        return Promise.resolve(new Response(JSON.stringify({ path: "/Users/ann/workspace", made: false })));
+      }
       return Promise.resolve(new Response("[]"));
     }),
   );

@@ -563,29 +563,29 @@ class FirstInput:
     records: list[artifacts.Record]
 
 
-OUTSIDE_REPOS = (
+OUTSIDE_WORKSPACE = (
     "Outside the workspace ({folder}): this folder is only in the container, "
     "your computer does not see it or the agents' work in it"
 )
 
 
-def outside_repos(path: str) -> str | None:
-    """The warning for a session folder outside the workspace (LADO_REPOS) in LADO's
-    container, where the host sees only that folder; None outside a container, with no
-    workspace, or for that folder and what is below it, by real paths (a
+def outside_workspace(path: str) -> str | None:
+    """The warning for a session folder outside the workspace (`projects.workspace`) in
+    LADO's container, where the host sees only that folder; None outside a container, or
+    for that folder and what is below it, by real paths (a
     folder not made yet as far as it is). Never a refusal: the one rule for the UI's folder
     check, the clone's target and a start."""
-    # Imported here: lado.clone builds on this module, and the CLI imports update lazily.
-    from lado import clone, update
+    # Imported here: lado.projects builds on this module, and the CLI imports update lazily.
+    from lado import projects, update
 
-    folder = clone.repos_folder()
-    if not update.in_container() or folder is None:
+    if not update.in_container():
         return None
+    folder = projects.workspace()
     # realpath, not Path.resolve: a loop of links raises there, and is no folder anyway.
     real = Path(os.path.realpath(os.path.expanduser(path)))
     if real.is_relative_to(os.path.realpath(folder)):
         return None
-    return OUTSIDE_REPOS.format(folder=folder)
+    return OUTSIDE_WORKSPACE.format(folder=folder)
 
 
 def check_prompt(text: str) -> str:
@@ -696,7 +696,7 @@ def start_session(
     spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env)
     agent.read_only = spec.read_only  # stored anew at each resume, as the kit says now
     started = Started(sess, chosen, lead=env.lead_line(), warnings=list(env.warnings))
-    if outside := outside_repos(repo):
+    if outside := outside_workspace(repo):
         started.warnings.append(outside)
     if old and not old.stopped_at:
         state.stop_session(session, gone=True)  # left over from a tmux session that is gone

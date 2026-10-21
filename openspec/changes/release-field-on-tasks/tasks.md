@@ -1,10 +1,10 @@
 ## 1. Settings
 
-- [ ] 1.1 `.lado/tracker.yaml`: add `fields:` with `release:
+- [x] 1.1 `.lado/tracker.yaml`: add `fields:` with `release:
   73563bdb-7110-43da-95e7-a60c01b07984` (the board's text sticker `Release`). Check:
   `yougile.py field LAD-119 release` prints `LAD-119: release not set` (or its value), not
   exit 3.
-- [ ] 1.2 `.lado/sdlc.md`: a section `## After the merge` between Tracker and Checks, with
+- [x] 1.2 `.lado/sdlc.md`: a section `## After the merge` between Tracker and Checks, with
   the parts "Into the base branch" (comment by the moved template, status `done`, label
   `waiting for release` and what removes it, field `release` = X.Y.Z of the
   `(unreleased)` heading on the target after the merge; without the heading «войдёт в
@@ -12,10 +12,10 @@
   first line «**Слит PR #<n> в эпик-ветку `<branch>`** — войдёт в релиз вместе с
   эпиком.», the rest of the template as is; the task stays in review), in the shape of
   kit-sdlc's `sdlc.example.md`.
-- [ ] 1.3 `.lado/sdlc.md`, Tracker: remove "Waiting for release label", "After a merge
+- [x] 1.3 `.lado/sdlc.md`, Tracker: remove "Waiting for release label", "After a merge
   into the base branch …" and "Merge comment" (moved to 1.2); Component labels and
   Skipped issue types stay.
-- [ ] 1.4 `.lado/sdlc.md`, Extra instructions, Integrator: remove the rule "After a merge
+- [x] 1.4 `.lado/sdlc.md`, Extra instructions, Integrator: remove the rule "After a merge
   into the base branch, besides the merge comment …"; the other integrator rules stay.
   Check for 1.2–1.4: `grep -n "Waiting for release label\|as \*\*Tracker\*\* says"
   .lado/sdlc.md` finds nothing.

@@ -13,3 +13,7 @@ labels:
   component kit-builder: 'Component: kit-builder'
   component kit-tracker-yougile: 'Component: kit-tracker-yougile'
   component kit-tracker-jira-server: 'Component: kit-tracker-jira-server'
+fields:
+  # the text sticker Release: the coming version at the merge, the shipped one at the
+  # final release (.lado/sdlc.md, After the merge; docs/release.md)
+  release: 73563bdb-7110-43da-95e7-a60c01b07984

@@ -433,8 +433,7 @@ def bare_remote(folder: Path, branches: tuple[str, ...] = ("develop", "release/1
 # terminal, its environment and the pid of a child it keeps (its process group's), but
 # when it fails. By $FAKE_GIT: `slow` prints clone progress, then waits; `fail` prints
 # $FAKE_GIT_STDERR and exits 128; `ok` clones as `slow` prints, then ends its child and
-# exits 0, leaving nothing;
-# `slow-clone` is `slow` for a clone only, ls-remote the real git's.
+# exits 0, leaving nothing; `slow-clone` is `slow` for a clone only, ls-remote the real git's.
 FAKE_GIT = """#!{python}
 import json, os, subprocess, sys, time
 args = sys.argv[1:]

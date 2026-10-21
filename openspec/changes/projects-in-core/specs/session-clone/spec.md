@@ -43,3 +43,42 @@ when missing. Sessions in `~/lado/<repo>`, the default before 0.43.0, SHALL keep
 #### Scenario: An older session's folder
 - **WHEN** a session made before this change runs in `~/lado/app` and the human resumes it
 - **THEN** it resumes in `~/lado/app`
+
+### Requirement: The target check tells a clone by its origin
+
+The target folder's check SHALL also give these states, each of which lets no clone start:
+
+| State | When | Text |
+|---|---|---|
+| `same_repo` | the root of a git repository whose `origin` is the same repository | `<path> is already a clone of this repository (origin <origin>), on branch <b>` |
+| `other_repo` | the root of a git repository whose `origin` is another repository | `<path> is a clone of another repository (origin <origin>): choose another folder` |
+
+#### Scenario: Another repository with the same name
+- **WHEN** the folder `~/workspace/app` is a clone of `git@github.com:acme/app.git` and
+  the URL is `git@github.com:ladohq/app.git`
+- **THEN** the state is `other_repo`, the text names the origin `git@github.com:acme/app.git`
+  and suggests `~/workspace/ladohq-app`, and no clone starts
+
+### Requirement: A clone of another repository suggests a free folder
+
+For `other_repo`, when the URL's path has an owner segment and `<parent>/<owner>-<repo>`
+(`<parent>` the given folder's parent) is `new`, the text SHALL end with `, e.g. <that
+folder>`.
+
+#### Scenario: The suggested folder is taken too
+- **WHEN** the folder `~/workspace/app` is a clone of `git@github.com:acme/app.git`, the
+  URL is `git@github.com:ladohq/app.git`, and `~/workspace/ladohq-app` exists
+- **THEN** the state is `other_repo` and its text suggests no folder
+
+### Requirement: lado start refuses a target or a name before the clone
+
+A folder that is not
+`new` or `empty` SHALL be refused by `lado start <git-url>` with its text and nothing cloned; for `same_repo` the
+next line SHALL be `lado: To start a session in it as it is: lado start <folder>`. A name
+held by a session of another folder SHALL be refused before the clone.
+
+#### Scenario: The clone is there already
+- **WHEN** `LADO_REPOS` is unset, `~/workspace/lado` is a clone of
+  `https://github.com/ladohq/lado` and `lado start git@github.com:ladohq/lado.git` runs
+- **THEN** it exits 1 printing the `same_repo` text and `lado start ~/workspace/lado`, and
+  changes nothing

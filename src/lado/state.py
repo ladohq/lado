@@ -3377,12 +3377,6 @@ def _project(row: sqlite3.Row) -> Project:
     return Project(row["id"], row["title"], row["created_at"])
 
 
-def add_project(id: str, title: str | None) -> None:
-    """Raises sqlite3.IntegrityError when a project of that id exists."""
-    with connect() as db:
-        db.execute("INSERT INTO projects (id, title) VALUES (?, ?)", (id, title))
-
-
 @contextmanager
 def creating_project(id: str, title: str | None) -> Iterator[None]:
     """Add a project that stays only when the block ends without an error (its folder is

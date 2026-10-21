@@ -312,8 +312,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (`DEFAULT_WORKSPACE`), read at each call, never None and never made by asking;
     `workspace_source` says `LADO_REPOS`, `default` or `ignored`; `workspace_problem` the
     one probe of an existing workspace (doctor's line, `create`'s refusal). A project is a
-    row of lado.db's `projects` (schema 32: `id`, `title`, `created_at`; `state.add_project`
-    and the rest, `creating_project` a transaction around its folder's mkdir); its folder
+    row of lado.db's `projects` (schema 32: `id`, `title`, `created_at`; `state.creating_project`
+    adds one in a transaction around its folder's mkdir, beside get, list, title and delete); its folder
     is `folder(id)`, `<workspace>/projects/<id>`, stored nowhere. `check_id` (`ID`,
     `MAX_ID`), titles by `runtime.check_title`, `owned_by_human` (a `projects/` with visible
     entries and no project's folder among them, from the disk and lado.db: no marker file),

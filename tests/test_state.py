@@ -328,10 +328,13 @@ def test_the_migration_makes_the_projects_table_as_a_new_database_has_it(lado_ho
 
 
 def test_projects_kept_in_lado_db(lado_home):
-    state.add_project("shop", "Shop")
-    state.add_project("acme", None)
+    with state.creating_project("shop", "Shop"):
+        pass
+    with state.creating_project("acme", None):
+        pass
     with pytest.raises(sqlite3.IntegrityError):
-        state.add_project("shop", "Again")
+        with state.creating_project("shop", "Again"):
+            pass
     assert [p.id for p in state.list_projects()] == ["acme", "shop"]
     shop = state.get_project("shop")
     assert (shop.id, shop.title) == ("shop", "Shop")

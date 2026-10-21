@@ -4,8 +4,9 @@ waited for, killed and named.
 Every process a test starts carries the test's `LADO_HOME` in its environment (the tmux
 server, the agents, their hooks and `lado mcp`, the session loop, `lado server`, a real CLI
 and its children), and every process a pytest process starts carries that pytest process's
-pid as `LADO_TEST_PID` (tests/conftest.py). Parent-child trees miss orphans and the session
-loop (a session of its own), process groups miss the daemonised tmux server; the
+pid as `LADO_TEST_PID` and, while a test runs, the test's node id as `LADO_TEST_ID`
+(tests/conftest.py), which names a leftover's test. Parent-child trees miss orphans and the
+session loop (a session of its own), process groups miss the daemonised tmux server; the
 environment is the one mark all of them keep.
 
 - `sweep(home)`: after a test's tmux server is killed, the `isolated` fixtures wait up to
@@ -153,7 +154,14 @@ def fail_if(left: list[Process], after: str) -> None:
 
 
 def describe(left: list[Process]) -> str:
-    return "\n".join(f"  {p.pid} {p.command}" for p in left)
+    """One line per process: its pid and command, and the test it was started in when it
+    carries `LADO_TEST_ID`."""
+    return "\n".join(f"  {p.pid} {p.command}{_started_in(p)}" for p in left)
+
+
+def _started_in(process: Process) -> str:
+    test = process.get("LADO_TEST_ID")
+    return f", started in {test}" if test else ""
 
 
 def reap_dead_runs() -> list[Process]:

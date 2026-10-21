@@ -35,7 +35,7 @@
 
 ## 4. Regression
 
-- [ ] 4.1 `make lint`; `make test` (numbers in the build report).
-- [ ] 4.2 `uv run pytest -m integration -n auto tests/integration/test_uninstall_process.py
+- [x] 4.1 `make lint`; `make test` (numbers in the build report).
+- [x] 4.2 `uv run pytest -m integration -n auto tests/integration/test_uninstall_process.py
   tests/integration/test_agent_terminal.py`.
-- [ ] 4.3 `openspec validate uninstall-waits-for-agents --strict`.
+- [x] 4.3 `openspec validate uninstall-waits-for-agents --strict`.

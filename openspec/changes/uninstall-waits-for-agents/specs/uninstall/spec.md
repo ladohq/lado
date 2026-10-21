@@ -7,8 +7,7 @@ every session not stopped yet as `lado stop --all` does, wait for each session's
 end, wait for the process of each tmux pane those sessions had to end (a zombie counts as
 ended), and close this `LADO_HOME`'s terminal viewers. A loop or an agent's process that
 does not end SHALL stop the uninstall before any repository or file is touched, saying so,
-with exit 1; for an agent's process it SHALL name the session, the pids and the command
-that ends them.
+with exit 1.
 
 #### Scenario: A running session and the UI server
 - **WHEN** a session with a supervisor and a worker runs, the UI server runs, and the
@@ -21,6 +20,14 @@ that ends them.
   them, and the human confirms the uninstall
 - **THEN** the uninstall ends with no agent process left, and `LADO_HOME` does not exist
   afterwards
+
+## ADDED Requirements
+
+### Requirement: An agent that does not end is named with the command that ends it
+
+When an agent's process is still running 10 s after its session was stopped, `lado
+uninstall` SHALL name the session, the pids and the command that ends them (`kill <pid>
+...`) in the error that stops it.
 
 #### Scenario: An agent's process does not end
 - **WHEN** an agent's process is still running 10 s after its session was stopped

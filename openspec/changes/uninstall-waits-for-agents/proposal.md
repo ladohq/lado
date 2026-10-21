@@ -63,4 +63,6 @@ patch (a fix); no schema, MCP tool or CLI option change.
 - `src/lado/uninstall.py` (`_Uninstall._stop`), `src/lado/tmux.py`.
 - `tests/test_uninstall.py`, `tests/integration/test_uninstall_process.py`.
 - `docs/cli.md`, CHANGELOG.md.
-- Modified capability spec `uninstall`.
+- Modified capability spec `uninstall`: the requirement "Everything of this LADO_HOME
+  stops" modified, and "An agent that does not end is named with the command that ends
+  it" added (one requirement would pass openspec's length limit).

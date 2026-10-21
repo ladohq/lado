@@ -2,12 +2,13 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: none · Next: S1 · Open checks: none
+In work: none · Next: S1b · Open checks: none
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
 - Each phase task gets the label `component lado` and is linked to LAD-116; LAD-80 is not touched.
-Last review: 2026-10-21, base at b687caf (revised after plan-review rounds 1 and 2)
+- Questions to the human go as question cards (`ask_human`) with choices, not only as text messages (the human's remark #521, 2026-10-21).
+Last review: 2026-10-21 (after S1), base at 6c2336e
 
 ## Steps
 
@@ -17,14 +18,20 @@ phase 3, S3) comes before variables and secrets (phase 2, S5a/S5b), so S5a's che
 end. No two steps run at once: S3–S5b all change `runtime.py` and `state.py`.
 
 ### S1 — Docs rewrite and the rename to Workspace (M)
-Status: planned
+Status: done (LAD-117, PR https://github.com/ladohq/lado/pull/126)
 Check:
 - `grep -rniE "projects folders?|repositories folders?"` (the old names only; "project folder" and "repository folder" are the new model's terms) over the tree, outside CHANGELOG.md, `docs/research/`, `docs/superpowers/`, `openspec/changes/archive/`, `docs/epics/`: no hit (the reviewer).
 - These places are rewritten to the new model or removed, checked one by one: ROADMAP.md "Later → Projects" (lines 139–148 at b687caf: "a project is a named configuration (its repos, tracker filters, default kit and flow)", "deleting a project removes its clones too"); BACKLOG.md "Flows cannot work on another repository" and "Artifacts end with their session"; the Projects stub, `repos` in the session header, "Projects can add theirs" and the repositories-folder hint in `docs/design/ui.md`.
 - BACKLOG.md has the entry "managing workspace folders outside projects".
 - `make lint`, `make test`, `make web`, the changed UI tests with `-m ui`, `openspec validate --specs --strict`, CI green.
 - The human reads `docs/design/projects.md` against the concept at the merge gate.
+Result: PR #126 merged 2026-10-21 (6c2336e), LAD-117 Done; the change `workspace-name-and-projects-docs` archived; CI 23/23; `make test` 3614 passed (developer); one merge_ok rejection (F1, leftover "projects" meaning the workspace). CHANGELOG line under `## 0.42.1 (unreleased)`.
 Notes: concept phase 0. Texts only: no name an installation sees changes (environment variables, paths, API keys), so no behaviour changes; one patch-level CHANGELOG line for the renamed labels. Compose's `LADO_PROJECTS` keeps its name here; only its message says "workspace" (whether a new name comes is Q2, in S2). `docs/design/projects.md` describes the target model, says which parts are not built yet, and says plainly: projects of one LADO are not isolated; LADO is not a store; a volume backup holds the secrets; `lado uninstall` deletes `LADO_HOME` with the secrets and never touches the workspace.
+
+### S1b — Warnings and refusals in the New session window stand out (S)
+Status: planned
+Check: mockup approved at `design_ok`; UI e2e: a warning (e.g. "Outside the workspace" in the container) and a refusal (a folder that cannot be used) render in their own styles, distinct from the grey hints, and the Start button is disabled while a refusal shows; `docs/design/ui.md` names the three levels; `make web`, the changed UI tests with `-m ui`, CI green.
+Notes: added on the human's word (#525, 2026-10-21): today every note under a field is `field-note`, 12px grey; a warning differs from a hint only by its text colour, a refusal by a thin left bar, so users skip them. Three levels, only the top two change: hints stay small and grey; a warning becomes a box with a light warm background, an icon and 13px text in the normal colour; a refusal that blocks the start becomes the same box in the error colour. No new elements; only the look of the existing `warn` and `bad` notes (`web/src/styles.css`, `web/src/Launch.tsx`). Before S3, whose refusal "this folder belongs to project <title>: start the session in the project" must be seen. After S1 merges (both touch `Launch.tsx`). Patch.
 
 ### S2 — The project in the core and the default workspace (M)
 Status: planned
@@ -33,7 +40,7 @@ Check:
 - `lado doctor`: the workspace line with and without `LADO_REPOS` (incl. a default `~/workspace` not made yet), a foreign folder in `projects/`, a project whose folder is missing, `projects/` owned by the human.
 - D3: without `LADO_REPOS` a clone with no folder given lands in `~/workspace/<repo>` (unit and `test_server_launch`), and the New session window's Where: no hints while `~/workspace` is not made yet, hints from it once it exists.
 - The schema migration from `tests/agent_helpers.previous_schema`; an `lado update` rollback test is not needed beyond the existing one (it restores `lado.db`; the folders stay, see brief "Data and migrations").
-Notes: concept phase 1, plus D3. One function gives the workspace (`LADO_REPOS`, else `~/workspace`) for the clone default, the server, `lado doctor` and projects. Changes the specs `repos-folder` (the requirement "unset: no folder, no doctor line, no Where hints" becomes "unset: `~/workspace`") and `session-clone` (default `~/lado/<repo>` becomes `<workspace>/<repo>`). Making `~/workspace`: Q3. CHANGELOG: existing sessions keep their folders. Compose's `LADO_WORKSPACE`, if Q2 says so, is its own small step S2b, not part of S2. `delete` covers a project that has no sessions yet: it shows uncommitted or unpushed work in the repositories of its folder and refuses without `--yes`; S3 extends it to sessions, S5b to secrets. Minor bump.
+Notes: concept phase 1, plus D3. One function gives the workspace (`LADO_REPOS`, else `~/workspace`) for the clone default, the server, `lado doctor` and projects. Changes the specs `repos-folder` (the requirement "unset: no folder, no doctor line, no Where hints" becomes "unset: `~/workspace`") and `session-clone` (default `~/lado/<repo>` becomes `<workspace>/<repo>`). Making `~/workspace`: Q3. Leftovers of S1 (`openspec/changes/archive/2026-10-21-workspace-name-and-projects-docs`, proposal "Out of scope"; S1 review): the Where placeholder `~/projects/app` used without a workspace becomes the `~/workspace` form; the code names `repos_folder`, `check_repos_folder`, `OUTSIDE_REPOS`, `ReposFolder`, `DEFAULT_PARENT` and the capability `repos-folder` are reshaped by the one workspace function (renaming them is S2's call); "the projects' toolchains" (meaning the code in general) in `docker/Dockerfile:46,65`, `docs/install.md:241`, `docs/design/modules.md:983` and the docstring of `tests/container/test_toolchains.py` say "the repositories' toolchains". CHANGELOG: S1's line sits under `## 0.42.1 (unreleased)`; S2's minor bump renames that heading to `## 0.43.0 (unreleased)` unless 0.42.1 is released first. CHANGELOG: existing sessions keep their folders. Compose's `LADO_WORKSPACE`, if Q2 says so, is its own small step S2b, not part of S2. `delete` covers a project that has no sessions yet: it shows uncommitted or unpushed work in the repositories of its folder and refuses without `--yes`; S3 extends it to sessions, S5b to secrets. Minor bump.
 
 ### S2b — Compose's `LADO_WORKSPACE` (S)
 Status: planned

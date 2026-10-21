@@ -3,7 +3,7 @@
 # settings in .env next to this file, where compose reads them for every command:
 #
 #   LADO_VERSION=<version>              # the LADO version to run, e.g. the latest release's
-#   LADO_PROJECTS=/Users/me/projects    # absolute: the container sees it at this path
+#   LADO_PROJECTS=/Users/me/workspace   # your workspace, absolute: the container sees it at this path
 #   LADO_PORT=8765                      # optional
 #   LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 #   LADO_GIT_EMAIL=ann@example.com
@@ -103,7 +103,7 @@ services:
     hostname: lado
     environment:
       LADO_PORT: ${LADO_PORT:-8765}
-      LADO_REPOS: ${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}
+      LADO_REPOS: ${LADO_PROJECTS:?set LADO_PROJECTS to your workspace folder}
       # git's identity for the agents' commits, written at every start.
       LADO_GIT_NAME: ${LADO_GIT_NAME:-}
       LADO_GIT_EMAIL: ${LADO_GIT_EMAIL:-}
@@ -118,9 +118,9 @@ services:
     volumes:
       # LADO_HOME (~/.lado) and Claude Code's login and config.
       - home:/home/lado
-      # The human's projects at the host's own path (LADO_REPOS above), so a worker's
+      # The human's workspace at the host's own path (LADO_REPOS above), so a worker's
       # worktree made in the container is one on the host too.
-      - ${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}:${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}
+      - ${LADO_PROJECTS:?set LADO_PROJECTS to your workspace folder}:${LADO_PROJECTS:?set LADO_PROJECTS to your workspace folder}
       # The agents' variables, one file each (LADO_ENV_DIR): never in docker inspect
       # (LADO_SECRETS; /dev/null: none).
       - type: bind

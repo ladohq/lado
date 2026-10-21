@@ -213,8 +213,8 @@ class RecentFolder(BaseModel):
 
 
 class ReposFolder(BaseModel):
-    """The folder of the human's repositories (LADO_REPOS, clone.repos_folder): the New
-    session window's start folder, or None."""
+    """The human's workspace (LADO_REPOS, clone.repos_folder): the New session window's
+    start folder, or None."""
 
     path: str | None
 

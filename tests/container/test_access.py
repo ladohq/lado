@@ -41,7 +41,7 @@ def served(start, *args: str, home: str | None = None):
 
 def with_secrets(tmp_path, **files: str) -> list[str]:
     """`docker run` arguments for a secrets folder of the host (700, its files 600) at
-    /run/secrets, read-only, and the host's projects folder as LADO_REPOS, so lado takes
+    /run/secrets, read-only, and the host's workspace as LADO_REPOS, so lado takes
     the host user's uid and can read the files, as with compose."""
     secrets = tmp_path / "secrets"
     secrets.mkdir(mode=0o700)

@@ -93,7 +93,7 @@ type Call = { method: string; path: string; body: unknown };
 let sessions: SessionInfo[];
 let folders: Record<string, FolderInfo>;
 let recent: RecentFolder[];
-let repos: string | null; // the repositories folder, LADO_REPOS
+let repos: string | null; // the workspace, LADO_REPOS
 let kits: KitInfo[];
 let abouts: Record<string, SessionAbout>; // by session; none: 404
 let providers: () => Promise<ProviderInfo[]>;
@@ -223,9 +223,9 @@ test("Launch is on the rail right after Home, not in the top bar, and + opens th
 // Where
 
 const OUTSIDE =
-  "Outside the repositories folder (/Users/ann/projects): this folder is only in the container, your computer does not see it or the agents' work in it";
+  "Outside the workspace (/Users/ann/projects): this folder is only in the container, your computer does not see it or the agents' work in it";
 
-test("a folder outside the repositories folder in a container: a warning after the check mark, Start stays", async () => {
+test("a folder outside the workspace in a container: a warning after the check mark, Start stays", async () => {
   await openLaunch();
   await ready("/home/lado/app", { warning: OUTSIDE });
   const ok = screen.getByText(/✓ git repository · branch main/);
@@ -238,7 +238,7 @@ test("a folder outside the repositories folder in a container: a warning after t
 test("a folder with no warning shows none", async () => {
   await openLaunch();
   await ready("/Users/ann/projects/app");
-  expect(screen.queryByText(/Outside the repositories folder/)).toBeNull();
+  expect(screen.queryByText(/Outside the workspace/)).toBeNull();
 });
 
 test("the folder is checked by the server and its reason shown; Start stays off until it will do", async () => {
@@ -351,11 +351,11 @@ test("a recent folder is one click, and its last session gives kits, provider an
   expect((screen.getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement).value).toBe("plan");
 });
 
-// The repositories folder (LADO_REPOS)
+// The workspace (LADO_REPOS)
 
 const REPOS = "/Users/me/repos";
 
-test("an empty Where suggests the repositories folder's subfolders on focus, and a pick is its full path", async () => {
+test("an empty Where suggests the workspace's subfolders on focus, and a pick is its full path", async () => {
   repos = REPOS;
   folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem: "no", subfolders: ["api", "app", "site"] });
   await openLaunch();
@@ -370,11 +370,11 @@ test("an empty Where suggests the repositories folder's subfolders on focus, and
   expect(where().value).toBe(`${REPOS}/app`);
 });
 
-test("the Repositories folder row puts the folder in Where and lists it", async () => {
+test("the Workspace row puts the folder in Where and lists it", async () => {
   repos = REPOS;
   folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem: "no", subfolders: ["api", "app", "site"] });
   const dialog = await openLaunch();
-  const row = await within(dialog).findByText(/Repositories folder:/);
+  const row = await within(dialog).findByText(/Workspace:/);
   fireEvent.click(within(row).getByRole("button", { name: REPOS }));
   expect(where().value).toBe(`${REPOS}/`);
   const list = await screen.findByRole("listbox", { name: "Folders" });
@@ -387,13 +387,13 @@ test("the Repositories folder row puts the folder in Where and lists it", async 
   expect(screen.queryByRole("listbox", { name: "Folders" })).toBeNull();
 });
 
-test("the repositories folder itself in Where is not checked as a folder for a session", async () => {
+test("the workspace itself in Where is not checked as a folder for a session", async () => {
   repos = REPOS;
   const problem = `${REPOS} is not inside a git repository`;
   folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem, root: null, subfolders: ["api"] });
   folders[REPOS] = folders[`${REPOS}/`];
   const dialog = await openLaunch();
-  fireEvent.click(within(await within(dialog).findByText(/Repositories folder:/)).getByRole("button", { name: REPOS }));
+  fireEvent.click(within(await within(dialog).findByText(/Workspace:/)).getByRole("button", { name: REPOS }));
   await screen.findByRole("listbox", { name: "Folders" });
   for (const value of [`${REPOS}/`, REPOS]) {
     type(value);
@@ -406,7 +406,7 @@ test("the repositories folder itself in Where is not checked as a folder for a s
   expect(await screen.findByText("api is not inside a git repository")).toBeTruthy();
 });
 
-test("a repositories folder of / is listed as /, never //", async () => {
+test("a workspace of / is listed as /, never //", async () => {
   repos = "/";
   folders["/"] = folder("/", { ok: false, problem: "no", subfolders: ["srv"] });
   await openLaunch();
@@ -417,17 +417,17 @@ test("a repositories folder of / is listed as /, never //", async () => {
   expect(calls.some((c) => c.path.includes("%2F%2F"))).toBe(false);
 });
 
-test("Resume shows no Repositories folder row", async () => {
+test("Resume shows no Workspace row", async () => {
   repos = REPOS;
   sessions = [session("lado", { status: "stopped", repo: "/src/lado" })];
   open("/sessions/lado");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
-  expect(within(dialog).queryByText(/Repositories folder:/)).toBeNull();
+  expect(within(dialog).queryByText(/Workspace:/)).toBeNull();
 });
 
-test("Clone into's placeholder is in the repositories folder", async () => {
+test("Clone into's placeholder is in the workspace", async () => {
   repos = REPOS;
   const dialog = await openLaunch();
   await waitFor(() => expect(where().placeholder).toBe(`${REPOS}/…`));
@@ -439,14 +439,14 @@ test("Clone into's placeholder is in the repositories folder", async () => {
   expect(into.placeholder).toBe(`${REPOS}/<repo>`);
 });
 
-test("without a repositories folder an empty Where suggests nothing and has no row", async () => {
+test("without a workspace an empty Where suggests nothing and has no row", async () => {
   const dialog = await openLaunch();
   expect(where().placeholder).toBe("~/projects/app");
   fireEvent.focus(where());
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
   expect(screen.queryByRole("listbox", { name: "Folders" })).toBeNull();
   expect(calls.some((c) => c.path.startsWith("/api/folders?"))).toBe(false);
-  expect(within(dialog).queryByText(/Repositories folder:/)).toBeNull();
+  expect(within(dialog).queryByText(/Workspace:/)).toBeNull();
   fireEvent.click(within(dialog).getByRole("button", { name: "Clone from URL" }));
   fireEvent.change(screen.getByRole("textbox", { name: /Where/ }), {
     target: { value: "git@github.com:acme/app.git" },
@@ -1477,7 +1477,7 @@ async function cloneReady() {
   return dialog;
 }
 
-test("a clone target outside the repositories folder in a container: a warning under Clone into", async () => {
+test("a clone target outside the workspace in a container: a warning under Clone into", async () => {
   answers["GET /api/clone-target"] = () => json(target({ path: "/home/lado/marketplace", warning: OUTSIDE }));
   answers["POST /api/remote-branches"] = remote();
   await cloneSource();
@@ -1492,7 +1492,7 @@ test("a clone target outside the repositories folder in a container: a warning u
 
 test("a clone target with no warning shows none", async () => {
   await cloneReady();
-  expect(screen.queryByText(/Outside the repositories folder/)).toBeNull();
+  expect(screen.queryByText(/Outside the workspace/)).toBeNull();
 });
 
 test("branches come by themselves, the default one chosen and marked; Clone and start waits for them", async () => {

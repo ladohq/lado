@@ -123,6 +123,20 @@ def test_uninstall_leaves_nothing(repo, session, lado_home, no_program):
     assert f"Kept the program: LADO runs from {no_program}" in out
 
 
+def test_agents_that_end_with_their_hook_do_not_make_lado_home_again(
+    repo, session, lado_home, monkeypatch
+):
+    """Like Claude Code, the fake agent runs its session-end hook, `lado hook`, when tmux
+    kills it, and the hook opens lado.db: the uninstall waits for it before LADO_HOME goes."""
+    monkeypatch.setenv("FAKE_AGENT_HANGUP_HOOK", "1")
+    running_session(repo, session)
+    pids = agent_pids(session)
+    done = lado("uninstall", "--yes")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert not any(alive(pid) for pid in pids)
+    assert not lado_home.exists()
+
+
 def test_uninstall_keep_data_resumes(repo, session, lado_home):
     dev, rev = running_session(repo, session)
     done = lado("uninstall", "--keep-data", "--yes")

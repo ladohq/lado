@@ -454,6 +454,26 @@ def test_resume_a_stopped_session(page: Page, server, repo, shot):
     shot(page)
 
 
+def test_resume_is_off_while_the_sessions_provider_cannot_run(page: Page, server, repo, shot):
+    session = stopped_session(repo)
+    with state.connect() as db:
+        db.execute("UPDATE sessions SET provider = ? WHERE name = ?", ("gone", session))
+    log_in(page, server, f"/sessions/{session}")
+    page.get_by_role("button", name="Resume…").click()
+    dialog = page.get_by_role("dialog", name="Resume session")
+    refusal = dialog.locator(".field-note.bad")
+    expect(refusal).to_have_text("unknown provider gone", timeout=30_000)  # CLIs checked
+    resume = dialog.get_by_role("button", name="Resume session")
+    expect(resume).to_be_disabled()
+    expect(dialog.get_by_label("Provider")).to_have_value("gone")
+    shot(page, "refused")
+
+    dialog.get_by_label("Provider").select_option("fake")
+    expect(refusal).to_have_count(0)
+    expect(resume).to_be_enabled()
+    shot(page, "picked")
+
+
 def test_the_resume_notice_stands_above_the_tabs(page: Page, server, repo, shot):
     session = stopped_session(repo)
     log_in(page, server, f"/sessions/{session}")

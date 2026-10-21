@@ -211,7 +211,7 @@ def test_a_folder_that_will_not_do_suggests_by_what_is_installed(client, tmp_pat
     assert folder(client, tmp_path)["provider"] == {"name": "claude", "reason": "only_installed"}
 
 
-# The repositories folder
+# The workspace
 
 
 def test_the_repositories_folder(client, tmp_path, monkeypatch):

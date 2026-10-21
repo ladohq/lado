@@ -5,7 +5,7 @@ There are two ways to install LADO: **Docker**, the recommended one, and **PyPI*
 | | Docker (recommended) | PyPI (`uv tool install lado`) |
 |---|---|---|
 | What you install | Docker only: the image holds LADO, tmux, git, gh and the four agent CLIs at the versions LADO is tested with | tmux, git, uv and an agent CLI on your computer, then LADO |
-| What the agents reach | your projects folder and the keys you give them (files in `secrets/`, your ssh agent); not the rest of your computer | everything you can: they run as you |
+| What the agents reach | your workspace folder and the keys you give them (files in `secrets/`, your ssh agent); not the rest of your computer | everything you can: they run as you |
 | Agent CLI logins | made once inside the container, or a token in `secrets/`; your own CLI config stays as it is. Codex's login is not carried yet | the logins and config your CLIs already have |
 | How you work | the web UI; commands as `docker compose exec lado lado ...` | the terminal (`lado start`, tmux windows with `lado attach`) and the web UI |
 | Update and back | a new `LADO_VERSION` in `.env` and `docker compose up -d`; the version before the same way | `lado update` |
@@ -47,7 +47,7 @@ missing. The short version of this guide is in [README.md](../README.md#install)
 
 LADO's image, `ghcr.io/ladohq/lado:<version>`, holds LADO, tmux, git, gh, the ssh client
 and the four agent CLIs at the versions LADO is tested with: nothing to install but
-Docker. It runs the web UI on this computer's loopback; the agents work in your projects
+Docker. It runs the web UI on this computer's loopback; the agents work in your workspace
 folder, which the container sees at the same path as your computer, so their commits and
 worktrees are yours too. The image holds no one's keys or logins: you give your own at run
 time (a login inside, your ssh agent, a secrets folder if you want one). Compose keeps
@@ -87,7 +87,7 @@ this folder. On a Mac:
 
 ```ini
 LADO_VERSION=<version>              # the LADO version to run, e.g. the latest release's
-LADO_PROJECTS=/Users/ann/projects   # your projects folder, a full path
+LADO_PROJECTS=/Users/ann/workspace  # your workspace folder, a full path
 LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
@@ -100,7 +100,7 @@ On Linux:
 
 ```ini
 LADO_VERSION=<version>              # the LADO version to run, e.g. the latest release's
-LADO_PROJECTS=/home/ann/projects    # your projects folder, a full path
+LADO_PROJECTS=/home/ann/workspace   # your workspace folder, a full path
 LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
@@ -195,11 +195,11 @@ GitHub's host keys, so ssh asks nothing; another host's key: see
 
 ### Your first session
 
-In the UI, **Launch**: **Where** starts in your projects folder; pick a repository there (it
+In the UI, **Launch**: **Where** starts in your workspace; pick a repository there (it
 needs a first commit), or **Clone from URL**, which clones into it. No repository yet? Your
 first window opens in **From scratch**: type a name, and LADO makes a new folder with an
 empty git repository there (no GitHub needed). A folder outside the
-projects folder lives only in the container: the window warns about it. Choose the agent
+workspace lives only in the container: the window warns about it. Choose the agent
 CLI and press **Start session**.
 
 The container's Claude Code has trusted no folder yet, so on a repository it has not seen
@@ -267,7 +267,7 @@ tools.
   update check off (`OPENSPEC_TELEMETRY=0`, `OPENSPEC_NO_UPDATE_CHECK=1`). One installed
   through mise stays on the home volume and is shadowed by the image's; a newer openspec
   comes with a newer image.
-- A project's `mise.toml` under the projects folder needs no `mise trust`.
+- A project's `mise.toml` under the workspace needs no `mise trust`.
 - A tool the image lacks, such as `shellcheck`, comes through mise:
   `mise exec shellcheck@latest -- shellcheck script.sh`.
 - An agent's `npm install -g` and `uv tool install` go to `~/.local` on the home volume and
@@ -321,7 +321,7 @@ What happens:
   (`~/.lado/backups/lado.db.schema-<N>` on the home volume; `docker compose logs lado`
   names it).
 - Logins made inside, kits, sessions and their history, git's identity and the files of
-  `secrets/` stay; your projects folder is not touched.
+  `secrets/` stay; your workspace is not touched.
 - The old image keeps its tag, so going back is the version before in `.env` (below).
 
 `docker compose exec lado lado --version` shows the version that runs. The commands of
@@ -376,7 +376,7 @@ docker volume ls --filter name='^lado_home$'   # exactly this name
 docker volume rm lado_home
 ```
 
-The volume holds LADO's sessions and the logins made inside; your projects stay. The image
+The volume holds LADO's sessions and the logins made inside; your workspace stays. The image
 too, if no other container uses it: `docker image rm ghcr.io/ladohq/lado:<version>`.
 Nothing here touches another LADO's container or volume.
 
@@ -387,7 +387,7 @@ The same image with one command; an update is that command again with the new ve
 
 ```bash
 docker run -d --name lado -p 127.0.0.1:8765:8765 -v lado-home:/home/lado \
-  -v "$HOME/projects:$HOME/projects" -e LADO_REPOS="$HOME/projects" \
+  -v "$HOME/workspace:$HOME/workspace" -e LADO_REPOS="$HOME/workspace" \
   -e LADO_GIT_NAME="Ann Lee" -e LADO_GIT_EMAIL=ann@example.com \
   ghcr.io/ladohq/lado:<version>
 docker exec lado lado ui --no-open   # the UI's link with its token
@@ -400,10 +400,10 @@ to the `docker run`.
 
 The image brings tmux, git and the agent CLIs at their tested versions, so there is no
 `lado doctor` step to install anything. When something is off, it is the first look:
-`docker compose exec lado lado doctor` says whether the projects folder is there and
+`docker compose exec lado lado doctor` says whether the workspace is there and
 writable, which files of `secrets/` the agents get (names only) and which are not used, and
 which agent CLIs run. `docker compose logs lado` has the container's own warnings (git's
-identity, the ssh agent, the projects folder).
+identity, the ssh agent, the workspace).
 
 - **Another version, port or folder than `.env` says**: a variable of your shell beats
   `.env`. `env | grep -E '^(LADO|COMPOSE)_'`, `unset` each, and `docker compose up -d`
@@ -421,17 +421,17 @@ identity, the ssh agent, the projects folder).
   `compose.yaml` is still 0.39.0's. Take the new version's, as
   [Update the container](#update-the-container) says.
 - **Two LADOs on a Mac and ssh works only in one**: Docker Desktop's ssh agent socket is
-  one for all containers, and each LADO's start gives it to its own user. With projects
-  folders of two owners the LADO started last has it; `docker compose restart` takes it
-  back for the other. Projects folders of the same owner share it.
+  one for all containers, and each LADO's start gives it to its own user. With
+  workspaces of two owners the LADO started last has it; `docker compose restart` takes it
+  back for the other. Workspaces of the same owner share it.
 - **`docker run --user root --cap-drop ALL` does not start**: drop one of them. Without
   `--user root` the server runs as the container's user anyway.
 - **`could not give lado the uid and gid of LADO_REPOS's owner` or `could not give lado
   everything under /home/lado` in `docker compose logs lado`**: a container tries this
   only at its first start, so a restart does not try again. Fix the cause, then
   `docker compose down` and `docker compose up -d`: a new container tries again.
-- **A session's folder that your computer does not see**: it is outside the projects
-  folder, on the container's home volume (the New session window and `lado start` warn).
+- **A session's folder that your computer does not see**: it is outside the
+  workspace, on the container's home volume (the New session window and `lado start` warn).
   Put the repository under `LADO_PROJECTS`. `~` in the container is `/home/lado`, not your
   home: type the full path.
 - **Another git host over ssh asks about its key**: the image knows only GitHub's. Add the
@@ -451,7 +451,7 @@ identity, the ssh agent, the projects folder).
 - **mise refuses a Python version** (an attestation or checksum it cannot check): take
   another version, or the project's Python through uv (`uv run`). Do not switch mise's
   checks off.
-- **`Config files in ... are not trusted`**: the project is outside the projects folder.
+- **`Config files in ... are not trusted`**: the project is outside the workspace.
   Move it under `LADO_PROJECTS`, or trust it once:
   `docker compose exec lado mise trust <folder>/mise.toml`.
 

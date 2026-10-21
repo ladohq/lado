@@ -700,7 +700,7 @@ def test_compose_mounts_the_projects_at_the_hosts_own_path(compose):
     """The same path inside as on the host, named by LADO_REPOS: git's worktree links and
     LADO's stored paths are then right on both sides."""
     lado = compose["services"]["lado"]
-    projects = "${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}"
+    projects = "${LADO_PROJECTS:?set LADO_PROJECTS to your workspace folder}"
     assert lado["volumes"][:2] == ["home:/home/lado", f"{projects}:{projects}"]
     assert all(isinstance(v, dict) for v in lado["volumes"][2:])  # the binds below
     assert lado["environment"]["LADO_REPOS"] == projects

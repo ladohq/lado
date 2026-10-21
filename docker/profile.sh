@@ -8,7 +8,7 @@
 export PATH="/opt/uv/bin:/opt/agents/bin:/opt/tools/bin:$PATH:$HOME/.local/bin:$HOME/.local/share/mise/shims:/opt/fallback/bin"
 # `npm i -g` into ~/.local: /usr/local is root's and /opt is the image's.
 export NPM_CONFIG_PREFIX="$HOME/.local"
-# A project's mise.toml under the projects folder needs no `mise trust`. LADO_REPOS is
+# A project's mise.toml under the workspace needs no `mise trust`. LADO_REPOS is
 # lado-repos.sh's, which /etc/profile reads before this file (by name, in any locale).
 export MISE_TRUSTED_CONFIG_PATHS="$LADO_REPOS"
 export LADO_CONTAINER=1

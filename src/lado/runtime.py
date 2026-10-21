@@ -564,15 +564,15 @@ class FirstInput:
 
 
 OUTSIDE_REPOS = (
-    "Outside the repositories folder ({folder}): this folder is only in the container, "
+    "Outside the workspace ({folder}): this folder is only in the container, "
     "your computer does not see it or the agents' work in it"
 )
 
 
 def outside_repos(path: str) -> str | None:
-    """The warning for a session folder outside the repositories folder (LADO_REPOS) in
-    LADO's container, where the host sees only that folder; None outside a container, with
-    no repositories folder, or for that folder and what is below it, by real paths (a
+    """The warning for a session folder outside the workspace (LADO_REPOS) in LADO's
+    container, where the host sees only that folder; None outside a container, with no
+    workspace, or for that folder and what is below it, by real paths (a
     folder not made yet as far as it is). Never a refusal: the one rule for the UI's folder
     check, the clone's target and a start."""
     # Imported here: lado.clone builds on this module, and the CLI imports update lazily.

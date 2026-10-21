@@ -1,5 +1,5 @@
 """The projects' toolchains in LADO's image (openspec capability container): mise at its pin,
-its tools on the home volume kept over a new container, the projects folder trusted, the
+its tools on the home volume kept over a new container, the workspace trusted, the
 image's Node 22 first; make, gcc and g++; the agents' `npm i -g` and `uv tool install` under
 ~/.local at another uid and on an older home volume; the agents' base tools, openspec at its
 pin with its statistics off, python3 the image's 3.13 unless a project names its own, and
@@ -139,7 +139,7 @@ node = "20"
 
 def test_the_projects_mise_toml_is_trusted_and_node_22_stays_first(start, projects_volume):
     """A mise.toml with an [env], which mise refuses where it is not trusted (the control
-    outside the projects folder). Its Node 20, and then a container-wide one, never shadows
+    outside the workspace). Its Node 20, and then a container-wide one, never shadows
     the image's Node 22."""
     c = served(start, projects_volume(1000, 1000))
     app, outside = f"{PROJECTS}/web", "/tmp/elsewhere"

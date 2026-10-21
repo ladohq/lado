@@ -78,7 +78,7 @@ def start(request, projects_volume):
 @pytest.fixture
 def projects_volume(request):
     """`projects_volume(uid, gid, mode="755")`: a named volume whose root belongs to
-    `uid:gid` with `mode`, as a Linux host's projects folder of that user looks in the
+    `uid:gid` with `mode`, as a Linux host's workspace of that user looks in the
     container; removed after the test. Its path in a container is the test's choice."""
 
     def make(uid: int, gid: int, mode: str = "755") -> str:
@@ -158,7 +158,7 @@ class Compose:
 
 @pytest.fixture
 def compose(request, tmp_path) -> Compose:
-    """A compose project on a free LADO_PORT, its projects folder a temporary one, with no
+    """A compose project on a free LADO_PORT, its workspace a temporary one, with no
     LADO_SECRETS (compose's default, no secrets); taken down after the test, its
     container's logs kept when the test fails."""
     override = tmp_path / "quiet.yaml"

@@ -147,7 +147,7 @@ function parentOf(path: string): { parent: string; prefix: string } | null {
   return { parent: path.slice(0, slash + 1), prefix: path.slice(slash + 1) };
 }
 
-// The repositories folder as a parent: "/" stays "/", "/a/b" becomes "/a/b/".
+// The workspace as a parent: "/" stays "/", "/a/b" becomes "/a/b/".
 const withSlash = (folder: string) => (folder.endsWith("/") ? folder : `${folder}/`);
 
 const sameFolder = (path: string, folder: string | null) => folder !== null && withSlash(path) === withSlash(folder);
@@ -295,7 +295,7 @@ function LaunchDialog({
     : null;
 
   const repos = valueOf(useOnce(getReposFolder, resuming !== null))?.path ?? null;
-  // The repositories folder itself holds the repositories, it is none: no check, as for an
+  // The workspace itself holds the repositories, it is none: no check, as for an
   // empty field (its "not inside a git repository" would offer `git init` over them all).
   const toCheck = (where: string) => (where !== "" && !sameFolder(where, repos) ? where : null);
   const settled = useDebounced(path.trim());
@@ -969,7 +969,7 @@ function WhereField({
   checking: boolean;
   problem: string | null;
   recent: RecentFolder[];
-  repos: string | null; // the repositories folder (LADO_REPOS), or none
+  repos: string | null; // the workspace (LADO_REPOS), or none
   disabled: boolean;
   head: ReactNode; // the switch to Clone from URL, beside the label
 }) {
@@ -978,7 +978,7 @@ function WhereField({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const empty = path.trim() === "";
-  // An empty field suggests the repositories folder's subfolders.
+  // An empty field suggests the workspace's subfolders.
   const split = empty && repos ? { parent: withSlash(repos), prefix: "" } : parentOf(path);
   const parent = useDebounced(split?.parent ?? null);
   const listed = valueOf(useAsked(open && parent ? parent : null, getFolder));
@@ -1060,7 +1060,7 @@ function WhereField({
       </div>
       {repos && !disabled && (
         <div className="recent">
-          Repositories folder:
+          Workspace:
           <button
             type="button"
             className="chip-button"

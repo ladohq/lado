@@ -19,8 +19,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     start's own look, `scratch.author_problem("/")`: `OK` with both `user.name` and
     `user.email`, else `WARN` with its hint (the `.env` one in LADO's container); it never
     prints them.
-    `Repositories folder` (after `git author`, `check_repos_folder`, only while `LADO_REPOS` is
-    set and not empty): `OK` for a folder, `INFO` for one not made yet, `WARN` for a path
+    `Workspace` (after `git author`, `check_repos_folder`, only while `LADO_REPOS` is set
+    and not empty; the workspace: [projects.md](projects.md)): `OK` for a folder, `INFO` for one not made yet, `WARN` for a path
     that is no folder or LADO may not look at (one `stat`, never `exists()`, which raises
     there on some Pythons), a folder LADO may not write in (a probe file made and removed,
     never `os.access`: a Docker Desktop bind mount shows its root as 0:0) or a value that
@@ -259,10 +259,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `is_url` (`https://`, `http://`, `ssh://`, `git://`, `file://`, or the scp form only
     with a user; anything else, `/srv/app.git` too, is a folder), `Address` (host and path
     by which two URLs are `same_repo`; scheme, user and port aside; local ones by real
-    path), `repos_folder` (the one reader of `REPOS`, `LADO_REPOS`, the folder of the
-    human's repositories that LADO's image sets: `~` expanded, None when unset, empty or
-    not absolute; read at each call), `default_folder` (`default_parent()`/<repo>: the
-    repositories folder, else `DEFAULT_PARENT`, `~/lado`), `check_target` (a
+    path), `repos_folder` (the one reader of `REPOS`, `LADO_REPOS`, the human's
+    workspace ([projects.md](projects.md)) that LADO's image sets: `~` expanded, None when
+    unset, empty or not absolute; read at each call), `default_folder`
+    (`default_parent()`/<repo>: the workspace, else `DEFAULT_PARENT`, `~/lado`), `check_target` (a
     `Target`: `new`, `empty`, `same_repo`, `other_repo` with a free `~/lado/<owner>-<repo>`
     beside it, `not_empty`, `not_folder`; only `CAN_CLONE` lets a clone start, and LADO
     changes nothing in a folder of another state: no clone over it, no fetch, no branch
@@ -946,7 +946,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   projects' toolchains (below), the user `lado` (uid
   1000 in the image) with its home a volume; `lado server --host 0.0.0.0 --port
   $LADO_PORT` (8765) under tini and `entrypoint.sh` (`/usr/local/bin/lado-entrypoint`).
-  The human's projects are mounted at the host's own path and named by `LADO_REPOS`
+  The human's workspace is mounted at the host's own path and named by `LADO_REPOS`
   (`/projects` by default), so git's absolute worktree links and LADO's stored paths hold
   on the host too. The entrypoint, at a container's first start (the marker
   `/etc/lado/first-start`), reruns itself as root by `sudo -E` through

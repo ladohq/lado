@@ -136,18 +136,27 @@ settings for its tracker are in its `.lado/tracker.yaml`, read only by that skil
 Shown in the UI's menu as sections to come (docs/design/ui.md, Structure); designed when
 their time comes.
 
-- [ ] Projects: sessions grouped by project; what a project is in LADO's core (repo, kits,
-  settings) is decided first. Researched 2026-10-03 in another orchestrator, where a
-  project is a named configuration (its repos, tracker filters, default kit and flow) and
-  its workspace a folder of clones of those repos, made when a session starts in it.
-  Lessons for LADO:
+- [ ] Projects: a project is a folder `<workspace>/projects/<id>` with its repositories and
+  its own environment variables, so sessions for different clients get different keys.
+  The workspace is the folder LADO keeps code in (`LADO_REPOS`). The model:
+  [docs/design/projects.md](docs/design/projects.md); the epic LAD-116 builds it in steps
+  that each merge on their own ([plan](docs/epics/lad-116/plan.md)):
+  - [x] S1: the documents, and the folder called the workspace in the UI and `lado doctor`
+  - [ ] S2: the project in the core (`lado project`), and `~/workspace` without `LADO_REPOS`
+  - [ ] S2b: compose's `LADO_WORKSPACE`, with `LADO_PROJECTS` still taken
+  - [ ] S3: a session in a project (`lado start --project <id> --repo <name>`)
+  - [ ] S4: adding and removing a project's repositories
+  - [ ] S5a: a project's plain variables reach the whole session
+  - [ ] S5b: a project's secrets
+  - [ ] S6: the UI's Projects section, its variables, and New session's Project way
+  - [ ] S7: the UI's project page, removing a repository and a project
+  Lessons kept from a study of another orchestrator (2026-10-03):
   - a session refers to its project by a real reference, not by a name found in its path;
-  - deleting a project removes its clones too, or says what it leaves;
   - the CLI can do what the UI does (`lado start --project`);
   - LADO itself makes each worker's worktree in each repo; agents are not left to do it.
-  A project brings sessions over several repos (BACKLOG: "Flows cannot work on another
-  repository") and ties in with the task trackers (stage 9). Until then a session is one
-  repo, and Launch in the UI starts one from a folder.
+  Deleting a project removes its folder only after LADO shows the work not pushed, and LADO
+  never deletes a folder outside `projects/`. Sessions over several repositories and the
+  tie-in with the task trackers (stage 9) come after the epic (projects.md, Not now).
 - [x] Kit marketplace: find and add kits from the UI (the same `lado kits add`, later by a
   name from a public index): the UI's Kits page (installed, available from the
   marketplaces' `index.json`, updates, marketplaces); skill packs reach a session through a kit's `dependencies`

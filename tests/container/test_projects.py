@@ -1,8 +1,8 @@
-"""The projects folder in LADO's image (openspec capability container): mounted at the
-host's own path, a worker's worktree made in the container is a working tree on the host
-and its files the host user's; the container's user takes the projects owner's uid (not 0),
-keeps it over a restart, takes another one with the same home volume, and keeps no way to
-root; a projects folder not mounted or not writable is named in `docker logs`."""
+"""The workspace in LADO's image (openspec capability container): mounted at the host's
+own path, a worker's worktree made in the container is a working tree on the host and its
+files the host user's; the container's user takes the workspace owner's uid (not 0), keeps
+it over a restart, takes another one with the same home volume, and keeps no way to root;
+a workspace not mounted or not writable is named in `docker logs`."""
 
 import os
 import subprocess
@@ -43,7 +43,7 @@ def served(start, *args: str, home: str | None = None):
 
 
 def test_a_workers_worktree_works_on_the_host(start, tmp_path):
-    # The host's projects folder, mounted at its own path, with a repository made on the host.
+    # The host's workspace, mounted at its own path, with a repository made on the host.
     projects = tmp_path / "projects"
     app = projects / "app"
     app.mkdir(parents=True)

@@ -18,7 +18,8 @@ export function Projects() {
   useTitle("Projects");
   return (
     <Placeholder title="Projects" plan={PLANS.projects} toSessions>
-      Sessions grouped by project, with each project's repository, kits and settings.
+      Each project is a folder in your workspace with its repositories and its own environment
+      variables, so sessions for different clients get different keys.
     </Placeholder>
   );
 }

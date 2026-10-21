@@ -177,7 +177,7 @@ def test_no_repositories_folder_line_without_the_variable(monkeypatch):
 
 
 def test_the_repositories_folder_line(tmp_path, monkeypatch):
-    name = "Repositories folder"
+    name = "Workspace"
     monkeypatch.setenv("LADO_REPOS", str(tmp_path))
     assert doctor.check_repos_folder() == doctor.Check(name, doctor.OK, f"{tmp_path} (LADO_REPOS)")
     missing = tmp_path / "repos"
@@ -210,7 +210,7 @@ def test_a_repositories_folder_lado_may_not_look_at_warns_with_the_reason(tmp_pa
         check = doctor.check_repos_folder()
     finally:
         closed.chmod(0o700)
-    assert (check.name, check.level) == ("Repositories folder", doctor.WARN)
+    assert (check.name, check.level) == ("Workspace", doctor.WARN)
     assert check.detail.startswith(f"cannot look at LADO_REPOS {folder}: ")
     assert "Permission denied" in check.detail
 
@@ -224,7 +224,7 @@ def test_a_repositories_folder_lado_may_not_write_in_warns(tmp_path, monkeypatch
         check = doctor.check_repos_folder()
     finally:
         folder.chmod(0o755)
-    assert (check.name, check.level) == ("Repositories folder", doctor.WARN)
+    assert (check.name, check.level) == ("Workspace", doctor.WARN)
     assert check.detail.startswith(f"LADO may not write in LADO_REPOS {folder}: ")
     assert "Permission denied" in check.detail
     assert check.hint.startswith("give your user write access to it")
@@ -244,10 +244,10 @@ def test_the_checks_hold_the_repositories_folder_only_when_it_is_set(tmp_path, m
     def names():
         return [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
 
-    assert "Repositories folder" not in names()
+    assert "Workspace" not in names()
     monkeypatch.setenv("LADO_REPOS", str(tmp_path))
     found = names()
-    assert found[found.index("git author") + 1] == "Repositories folder"
+    assert found[found.index("git author") + 1] == "Workspace"
 
 
 @pytest.mark.parametrize(

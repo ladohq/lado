@@ -1689,7 +1689,7 @@ def test_a_start_with_the_null_device_warns_nothing(repo, fake_tmux, monkeypatch
 
 @pytest.fixture
 def projects(tmp_path, monkeypatch):
-    """A container (LADO_CONTAINER) whose repositories folder (LADO_REPOS) is a new one."""
+    """A container (LADO_CONTAINER) whose workspace (LADO_REPOS) is a new one."""
     folder = tmp_path / "projects"
     folder.mkdir()
     monkeypatch.setenv("LADO_CONTAINER", "1")
@@ -1776,7 +1776,7 @@ def test_a_start_inside_the_repositories_folder_has_no_warning(
     monkeypatch.setenv("LADO_CONTAINER", "1")
     monkeypatch.setenv("LADO_REPOS", str(repo.parent))
     started = runtime.start_session(str(repo), "s", None, provider="kilo")
-    assert not [w for w in started.warnings if "repositories folder" in w]
+    assert not [w for w in started.warnings if "Outside the workspace" in w]
 
 
 def test_a_name_the_provider_sets_keeps_its_value_and_is_named(repo, fake_tmux, outside):

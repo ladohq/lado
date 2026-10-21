@@ -6034,7 +6034,7 @@
           "path"
         ],
         "title": "ReposFolder",
-        "description": "The folder of the human's repositories (LADO_REPOS, clone.repos_folder): the New\nsession window's start folder, or None."
+        "description": "The human's workspace (LADO_REPOS, clone.repos_folder): the New session window's\nstart folder, or None."
       },
       "Resume": {
         "properties": {

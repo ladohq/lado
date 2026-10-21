@@ -60,7 +60,7 @@ find:
 
 ```bash
 env | grep -E '^(LADO|COMPOSE)_'      # left from an earlier try? unset each name printed
-unset LADO_VERSION LADO_PROJECTS LADO_PORT LADO_IMAGE COMPOSE_PROJECT_NAME
+unset LADO_VERSION LADO_WORKSPACE LADO_PROJECTS LADO_PORT LADO_IMAGE COMPOSE_PROJECT_NAME
 ```
 
 Then a folder of its own with the compose file of the latest release:
@@ -74,7 +74,7 @@ Next to it, a file `.env`:
 
 ```ini
 LADO_VERSION=<version>              # the latest release's number, from the releases page
-LADO_PROJECTS=/Users/you/workspace  # your workspace folder, the only one the agents see
+LADO_WORKSPACE=/Users/you/workspace # your workspace folder, the only one the agents see
 LADO_GIT_NAME="Your Name"           # git's identity for the agents' commits
 LADO_GIT_EMAIL=you@example.com
 ```

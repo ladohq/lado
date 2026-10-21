@@ -143,7 +143,7 @@ their time comes.
   that each merge on their own ([plan](docs/epics/lad-116/plan.md)):
   - [x] S1: the documents, and the folder called the workspace in the UI and `lado doctor`
   - [ ] S2: the project in the core (`lado project`), and `~/workspace` without `LADO_REPOS`
-  - [ ] S2b: compose's `LADO_WORKSPACE`, with `LADO_PROJECTS` still taken
+  - [x] S2b: compose's `LADO_WORKSPACE`, with `LADO_PROJECTS` still taken
   - [ ] S3: a session in a project (`lado start --project <id> --repo <name>`)
   - [ ] S4: adding and removing a project's repositories
   - [ ] S5a: a project's plain variables reach the whole session

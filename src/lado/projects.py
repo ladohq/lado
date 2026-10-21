@@ -4,13 +4,23 @@
 The workspace is the folder LADO keeps code in: `LADO_REPOS` when it is a full path after
 `~`, else `~/workspace`. One function answers it for every caller (the clone's and a
 fresh start's default folder, the UI server, the container's warning, `lado doctor`,
-projects); nothing makes it before the first clone, fresh start or project needs it."""
+projects); nothing makes it before the first clone, fresh start or project needs it.
+
+A project is an id that never changes, a title that can, and a record in lado.db; its
+folder `<workspace>/projects/<id>` is derived from the id, stored nowhere, and made by
+LADO. `projects/` belongs to LADO once a project's folder is in it; before that, a
+`projects/` holding anything visible is the human's own folder, and LADO makes no project
+there. The CLI (`lado project`) and `lado doctor` only print what this module says."""
 
 import os
+import re
+import sqlite3
 import stat
 import tempfile
 from pathlib import Path
 from typing import Literal
+
+from lado import runtime, state
 
 WORKSPACE_VAR = "LADO_REPOS"  # the workspace's name in an installation (LADO's image sets it)
 DEFAULT_WORKSPACE = "~/workspace"
@@ -71,3 +81,126 @@ def workspace_problem(folder: Path, name: str) -> tuple[str, str] | None:
     finally:
         os.unlink(probe)
     return None
+
+
+ID = re.compile(r"[a-z0-9][a-z0-9-]*")  # lowercase: the folder never depends on the case
+MAX_ID = 40
+SHOWN = 3  # names a text lists, then "…"
+
+
+class ProjectError(runtime.LadoError):
+    pass
+
+
+class NoSuchProject(ProjectError):
+    pass
+
+
+def check_id(id: str) -> None:
+    if not (ID.fullmatch(id) and len(id) <= MAX_ID):
+        raise ProjectError(
+            f"the project id {id} is not valid: lowercase Latin letters, digits and -, "
+            f"starting with a letter or digit, at most {MAX_ID} characters"
+        )
+
+
+def projects_folder() -> Path:
+    return workspace() / "projects"
+
+
+def folder(id: str) -> Path:
+    """A project's folder, derived from its id in the workspace of now."""
+    return projects_folder() / id
+
+
+def names(entries: list[str]) -> str:
+    """Names for a text: sorted, at most SHOWN, then "…"."""
+    shown = sorted(entries)
+    return ", ".join(shown[:SHOWN] + (["…"] if len(shown) > SHOWN else []))
+
+
+def _visible() -> list[str] | None:
+    """The entries of projects/ whose names do not start with "."; None when it is no
+    folder (missing, a file, or one LADO may not list)."""
+    try:
+        return sorted(name for name in os.listdir(projects_folder()) if not name.startswith("."))
+    except OSError:
+        return None
+
+
+def owned_by_human() -> list[str] | None:
+    """The visible entries of projects/ when it is the human's own folder: it holds some and
+    none is a project's folder. None otherwise."""
+    visible = _visible()
+    if not visible:
+        return None
+    ids = {project.id for project in state.list_projects()}
+    return None if ids & set(visible) else visible
+
+
+def foreign() -> list[str]:
+    """The visible entries of projects/ that are no project's folder, files too, once a
+    project's folder is there (before that, the folder is the human's: owned_by_human)."""
+    visible = _visible() or []
+    ids = {project.id for project in state.list_projects()}
+    return [name for name in visible if name not in ids] if ids & set(visible) else []
+
+
+def create(id: str, title: str | None) -> state.Project:
+    """Make the project `id`: its record and its folder, with the workspace and projects/
+    when they are missing. Refused, with nothing made, for a bad id or title, a workspace
+    LADO cannot use, a taken id, an existing folder of the name (a dangling link too) and
+    the human's own projects/."""
+    check_id(id)
+    stored = runtime.check_title(title, id)
+    try:
+        problem = workspace_problem(workspace(), workspace_label())
+    except FileNotFoundError:
+        problem = None  # the first project makes it
+    if problem:
+        raise ProjectError(problem[0])
+    if state.get_project(id):
+        raise ProjectError(f"project {id} exists")
+    target = folder(id)
+    if os.path.lexists(target):
+        raise ProjectError(
+            f"{target} already exists: LADO makes a project's folder itself; "
+            "choose another id or move that folder away"
+        )
+    if (own := owned_by_human()) is not None:
+        raise ProjectError(
+            f"{projects_folder()} is your own folder (it holds {names(own)}): LADO keeps "
+            "projects there only; move it away or set LADO_REPOS to another workspace"
+        )
+    try:
+        # The record stays only with its folder; exist_ok=False loses a race of two creates.
+        with state.creating_project(id, stored):
+            target.mkdir(parents=True, exist_ok=False)
+    except sqlite3.IntegrityError as error:
+        raise ProjectError(f"project {id} exists") from error
+    except OSError as error:
+        raise ProjectError(f"could not make {target}: {error.strerror or error}") from error
+    made = state.get_project(id)
+    assert made is not None
+    return made
+
+
+def rename(id: str, text: str | None) -> str | None:
+    """Set or clear the title (the session title's rule); the id and the folder stay.
+    Returns what is stored."""
+    stored = runtime.check_title(text, id)
+    if not state.set_project_title(id, stored):
+        raise NoSuchProject(f'unknown project "{id}"')
+    return stored
+
+
+def get(id: str) -> state.Project:
+    project = state.get_project(id)
+    if project is None:
+        raise NoSuchProject(f'unknown project "{id}"')
+    return project
+
+
+def listed() -> list[tuple[state.Project, Path, bool]]:
+    """Every project by id, with its folder and whether that folder is there."""
+    return [(p, folder(p.id), folder(p.id).is_dir()) for p in state.list_projects()]

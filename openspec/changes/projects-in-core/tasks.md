@@ -20,7 +20,7 @@ The plan with each task's tests and code: `docs/superpowers/plans/2026-10-21-pro
 - [x] 2.1 Schema 32: the table `projects`, its state functions and
   `creating_project`; `tests/agent_helpers.schema_before` (D5). Check: `tests/test_state.py`
   (migration from `previous_schema` with its backup).
-- [ ] 2.2 The id rule, titles, `owned_by_human`, `foreign`, `create`, `rename`, `listed`
+- [x] 2.2 The id rule, titles, `owned_by_human`, `foreign`, `create`, `rename`, `listed`
   (D6, D7). Check: `tests/test_projects.py`.
 - [ ] 2.3 The unpushed scan and `delete` (link, outside check, rmtree failure) (D8).
   Check: `tests/test_projects.py` with real git.

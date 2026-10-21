@@ -34,7 +34,7 @@ The plan with each task's tests and code: `docs/superpowers/plans/2026-10-21-pro
   and removed, every create refusal, the agent refusal, delete with unpushed work, doctor
   with and without `LADO_REPOS` and its Projects findings; the clone's default in
   `~/workspace`. Check: `uv run pytest -m integration -n auto <files>`.
-- [ ] 3.2 `tests/ui/test_launch.py`: Where without and with `~/workspace`, screenshots.
+- [x] 3.2 `tests/ui/test_launch.py`: Where without and with `~/workspace`, screenshots.
   Check: `uv run pytest -m ui <file>`.
 
 ## 4. Documents and version

@@ -9,14 +9,14 @@
 
 ## 2. The test's name
 
-- [ ] 2.1 `tests/conftest.py`: a `pytest_runtest_protocol` hook wrapper sets
+- [x] 2.1 `tests/conftest.py`: a `pytest_runtest_protocol` hook wrapper sets
   `LADO_TEST_ID` to the item's node id and removes it after (D2, D4); comment beside
   `LADO_TEST_PID`'s.
-- [ ] 2.2 `tests/leftovers.py`: `describe` adds `, started in <node id>` when the process
+- [x] 2.2 `tests/leftovers.py`: `describe` adds `, started in <node id>` when the process
   carries `LADO_TEST_ID` (D3); the module docstring names the mark.
-- [ ] 2.3 `tests/test_leftovers.py` (unit): `describe` of a process with the mark and of
+- [x] 2.3 `tests/test_leftovers.py` (unit): `describe` of a process with the mark and of
   one without it. Check: `uv run pytest -n0 tests/test_leftovers.py`.
-- [ ] 2.4 `tests/integration/test_leftover_processes.py` (marker `integration`): a
+- [x] 2.4 `tests/integration/test_leftover_processes.py` (marker `integration`): a
   scratch pytest run with two workers in a temp folder (as
   `test_a_run_with_workers_does_not_take_them_for_its_leftovers`) whose test starts a
   `sleep 60` and leaves it: the run exits 1, its output names the process and the

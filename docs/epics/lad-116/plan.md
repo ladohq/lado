@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: S1 (LAD-117, run task/lad-117) · Next: S1b · Open checks: none
+In work: none · Next: S1b · Open checks: none
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
@@ -17,7 +17,7 @@ phase 3, S3) comes before variables and secrets (phase 2, S5a/S5b), so S5a's che
 end. No two steps run at once: S3–S5b all change `runtime.py` and `state.py`.
 
 ### S1 — Docs rewrite and the rename to Workspace (M)
-Status: in progress (LAD-117, run task/lad-117)
+Status: done (LAD-117, PR https://github.com/ladohq/lado/pull/126)
 Check:
 - `grep -rniE "projects folders?|repositories folders?"` (the old names only; "project folder" and "repository folder" are the new model's terms) over the tree, outside CHANGELOG.md, `docs/research/`, `docs/superpowers/`, `openspec/changes/archive/`, `docs/epics/`: no hit (the reviewer).
 - These places are rewritten to the new model or removed, checked one by one: ROADMAP.md "Later → Projects" (lines 139–148 at b687caf: "a project is a named configuration (its repos, tracker filters, default kit and flow)", "deleting a project removes its clones too"); BACKLOG.md "Flows cannot work on another repository" and "Artifacts end with their session"; the Projects stub, `repos` in the session header, "Projects can add theirs" and the repositories-folder hint in `docs/design/ui.md`.

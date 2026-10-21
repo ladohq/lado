@@ -212,11 +212,12 @@ class RecentFolder(BaseModel):
     session: SessionInfo  # its latest started session
 
 
-class ReposFolder(BaseModel):
-    """The human's workspace (LADO_REPOS, clone.repos_folder): the New session window's
-    start folder, or None."""
+class Workspace(BaseModel):
+    """The human's workspace (`projects.workspace`: LADO_REPOS, else ~/workspace): the New
+    session window's start folder, and whether it exists yet."""
 
-    path: str | None
+    path: str
+    made: bool  # a folder there: the window suggests its subfolders
 
 
 class KitSummary(BaseModel):

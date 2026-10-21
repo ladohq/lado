@@ -16,7 +16,7 @@ import {
   getLimits,
   getProviders,
   getRecentFolders,
-  getReposFolder,
+  getWorkspace,
   getRemoteBranches,
   getScratchTarget,
   resumeSession,
@@ -37,6 +37,7 @@ import {
   type Refused,
   type Started,
   type Taken,
+  type Workspace,
 } from "./api";
 import { useCopy } from "./Copy";
 import { useLive } from "./live";
@@ -294,10 +295,13 @@ function LaunchDialog({
       : defaultBranch(remote)
     : null;
 
-  const repos = valueOf(useOnce(getReposFolder, resuming !== null))?.path ?? null;
+  const workspace = valueOf(useOnce(getWorkspace, resuming !== null)) ?? null;
   // The workspace itself holds the repositories, it is none: no check, as for an
   // empty field (its "not inside a git repository" would offer `git init` over them all).
-  const toCheck = (where: string) => (where !== "" && !sameFolder(where, repos) ? where : null);
+  const toCheck = (where: string) =>
+    where !== "" && !sameFolder(where, workspace?.path ?? null) ? where : null;
+  // In the workspace, which the first clone or fresh start makes; nothing before it is known.
+  const inWorkspace = (rest: string) => (workspace ? `${withSlash(workspace.path)}${rest}` : "");
   const settled = useDebounced(path.trim());
   const checked = useAsked(resuming ? null : toCheck(settled), getFolder);
   const folder = valueOf(checked);
@@ -630,7 +634,7 @@ function LaunchDialog({
             checking={!resuming && toCheck(path.trim()) !== null && current === null}
             problem={checked !== null && "error" in checked ? checked.error : null}
             recent={recent}
-            repos={repos}
+            workspace={workspace}
             disabled={busy || resuming !== null}
             head={resuming ? null : <SourceSwitch source={source} onSource={setSource} disabled={busy} />}
           />
@@ -643,7 +647,7 @@ function LaunchDialog({
               <input
                 id={`${ids}-create-in`}
                 value={scratchInto ?? fresh?.path ?? ""}
-                placeholder={repos ? `${withSlash(repos)}<name>` : "~/lado/<name>"}
+                placeholder={inWorkspace("<name>")}
                 autoComplete="off"
                 spellCheck={false}
                 disabled={busy}
@@ -667,7 +671,7 @@ function LaunchDialog({
                 <input
                   id={`${ids}-into`}
                   value={into ?? target?.path ?? ""}
-                  placeholder={repos ? `${withSlash(repos)}<repo>` : "~/lado/<repo>"}
+                  placeholder={inWorkspace("<repo>")}
                   autoComplete="off"
                   spellCheck={false}
                   disabled={busy}
@@ -958,7 +962,7 @@ function WhereField({
   checking,
   problem,
   recent,
-  repos,
+  workspace,
   disabled,
   head,
 }: {
@@ -969,7 +973,7 @@ function WhereField({
   checking: boolean;
   problem: string | null;
   recent: RecentFolder[];
-  repos: string | null; // the workspace (LADO_REPOS), or none
+  workspace: Workspace | null; // LADO_REPOS, else ~/workspace; null until it is known
   disabled: boolean;
   head: ReactNode; // the switch to Clone from URL, beside the label
 }) {
@@ -978,8 +982,9 @@ function WhereField({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const empty = path.trim() === "";
-  // An empty field suggests the workspace's subfolders.
-  const split = empty && repos ? { parent: withSlash(repos), prefix: "" } : parentOf(path);
+  // An empty field suggests the workspace's subfolders, once it exists.
+  const made = workspace?.made ? workspace.path : null;
+  const split = empty && made ? { parent: withSlash(made), prefix: "" } : parentOf(path);
   const parent = useDebounced(split?.parent ?? null);
   const listed = valueOf(useAsked(open && parent ? parent : null, getFolder));
   const prefix = (split?.prefix ?? "").toLowerCase();
@@ -1011,7 +1016,7 @@ function WhereField({
           aria-controls={`${ids}-folders`}
           aria-activedescendant={active >= 0 && options[active] ? `${ids}-folder-${active}` : undefined}
           value={path}
-          placeholder={repos ? `${withSlash(repos)}…` : "~/projects/app"}
+          placeholder={workspace ? `${withSlash(workspace.path)}…` : ""}
           autoComplete="off"
           spellCheck={false}
           disabled={disabled}
@@ -1021,7 +1026,7 @@ function WhereField({
             setActive(-1);
           }}
           onFocus={() => {
-            if (empty && repos) setOpen(true);
+            if (empty && made) setOpen(true);
           }}
           onBlur={() => setOpen(false)}
           onKeyDown={(event) => {
@@ -1058,19 +1063,19 @@ function WhereField({
           </ul>
         )}
       </div>
-      {repos && !disabled && (
+      {made && !disabled && (
         <div className="recent">
           Workspace:
           <button
             type="button"
             className="chip-button"
             onClick={() => {
-              onPath(withSlash(repos));
+              onPath(withSlash(made));
               input.current?.focus(); // the list's keys and its closing on blur are the field's
               setOpen(true);
             }}
           >
-            {repos}
+            {made}
           </button>
         </div>
       )}

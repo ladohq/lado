@@ -214,13 +214,17 @@ def test_a_folder_that_will_not_do_suggests_by_what_is_installed(client, tmp_pat
 # The workspace
 
 
-def test_the_repositories_folder(client, tmp_path, monkeypatch):
+def test_the_workspace(client, home_workspace, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("LADO_REPOS", raising=False)
-    assert client.get("/api/repos-folder").json() == {"path": None}
-    monkeypatch.setenv("LADO_REPOS", str(tmp_path))
-    assert client.get("/api/repos-folder").json() == {"path": str(tmp_path)}
-    monkeypatch.setenv("LADO_REPOS", "code")
-    assert client.get("/api/repos-folder").json() == {"path": None}
+    ws = str(tmp_path / "workspace")
+    assert client.get("/api/repos-folder").json() == {"path": ws, "made": False}
+    (tmp_path / "workspace").mkdir()
+    assert client.get("/api/repos-folder").json() == {"path": ws, "made": True}
+    monkeypatch.setenv("LADO_REPOS", "code")  # relative: ignored
+    assert client.get("/api/repos-folder").json() == {"path": ws, "made": True}
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "code"))
+    assert client.get("/api/repos-folder").json() == {"path": str(tmp_path / "code"), "made": False}
 
 
 # Recent folders

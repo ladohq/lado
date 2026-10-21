@@ -427,7 +427,7 @@
     "/api/scratch-target": {
       "get": {
         "summary": "Scratch Target",
-        "description": "A fresh start of the name `text` (docs/design/ui.md, Launch and session control):\nthe folder's and the session's name and the title, the folder (by default\n$LADO_REPOS/<name>, else ~/lado/<name>) and whether it takes one, and git's author.",
+        "description": "A fresh start of the name `text` (docs/design/ui.md, Launch and session control):\nthe folder's and the session's name and the title, the folder (by default\n<workspace>/<name>) and whether it takes one, and git's author.",
         "operationId": "scratch_target_api_scratch_target_get",
         "parameters": [
           {
@@ -532,7 +532,7 @@
     "/api/clone-target": {
       "get": {
         "summary": "Clone Target",
-        "description": "The folder a clone of `url` would go to (by default $LADO_REPOS/<repo>, else\n~/lado/<repo>): whether it takes one, and the session name it gives.",
+        "description": "The folder a clone of `url` would go to (by default <workspace>/<repo>): whether\nit takes one, and the session name it gives.",
         "operationId": "clone_target_api_clone_target_get",
         "parameters": [
           {
@@ -791,7 +791,7 @@
     "/api/repos-folder": {
       "get": {
         "summary": "Repos Folder",
-        "description": "The folder the New session window starts Where from (LADO_REPOS), or none.",
+        "description": "The folder the New session window starts Where from (`projects.workspace`), and\nwhether it exists yet.",
         "operationId": "repos_folder_api_repos_folder_get",
         "responses": {
           "200": {
@@ -799,7 +799,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReposFolder"
+                  "$ref": "#/components/schemas/Workspace"
                 }
               }
             }
@@ -6015,27 +6015,6 @@
         "title": "RepoInfo",
         "description": "A repository of a session: now its one folder; a project will have several."
       },
-      "ReposFolder": {
-        "properties": {
-          "path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Path"
-          }
-        },
-        "type": "object",
-        "required": [
-          "path"
-        ],
-        "title": "ReposFolder",
-        "description": "The human's workspace (LADO_REPOS, clone.repos_folder): the New session window's\nstart folder, or None."
-      },
       "Resume": {
         "properties": {
           "kits": {
@@ -7757,6 +7736,25 @@
         ],
         "title": "WorkInfo",
         "description": "Where a worker's work stands in git when asked (runtime.work_state): what finishing\nit goes by."
+      },
+      "Workspace": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "made": {
+            "type": "boolean",
+            "title": "Made"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "made"
+        ],
+        "title": "Workspace",
+        "description": "The human's workspace (`projects.workspace`: LADO_REPOS, else ~/workspace): the New\nsession window's start folder, and whether it exists yet."
       },
       "Worktree": {
         "properties": {

@@ -11,7 +11,7 @@ The plan with each task's tests and code: `docs/superpowers/plans/2026-10-21-pro
 - [x] 1.2 `doctor.check_workspace` always a line; `(LADO_REPOS)`/`(default)`, not made
   yet, the ignored relative value, a file, unwritable (D4, D11). Check:
   `tests/test_doctor.py`.
-- [ ] 1.3 `GET /api/repos-folder` answers `Workspace{path, made}`; the window's
+- [x] 1.3 `GET /api/repos-folder` answers `Workspace{path, made}`; the window's
   placeholders, Workspace row and hints per D12; `make web-types`. Check:
   `tests/test_server_launch.py`, `web/src/Launch.test.tsx`, `make web`.
 

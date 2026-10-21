@@ -279,7 +279,7 @@ export interface paths {
          * Scratch Target
          * @description A fresh start of the name `text` (docs/design/ui.md, Launch and session control):
          *     the folder's and the session's name and the title, the folder (by default
-         *     $LADO_REPOS/<name>, else ~/lado/<name>) and whether it takes one, and git's author.
+         *     <workspace>/<name>) and whether it takes one, and git's author.
          */
         get: operations["scratch_target_api_scratch_target_get"];
         put?: never;
@@ -319,8 +319,8 @@ export interface paths {
         };
         /**
          * Clone Target
-         * @description The folder a clone of `url` would go to (by default $LADO_REPOS/<repo>, else
-         *     ~/lado/<repo>): whether it takes one, and the session name it gives.
+         * @description The folder a clone of `url` would go to (by default <workspace>/<repo>): whether
+         *     it takes one, and the session name it gives.
          */
         get: operations["clone_target_api_clone_target_get"];
         put?: never;
@@ -425,7 +425,8 @@ export interface paths {
         };
         /**
          * Repos Folder
-         * @description The folder the New session window starts Where from (LADO_REPOS), or none.
+         * @description The folder the New session window starts Where from (`projects.workspace`), and
+         *     whether it exists yet.
          */
         get: operations["repos_folder_api_repos_folder_get"];
         put?: never;
@@ -2301,15 +2302,6 @@ export interface components {
             branch: string | null;
         };
         /**
-         * ReposFolder
-         * @description The human's workspace (LADO_REPOS, clone.repos_folder): the New session window's
-         *     start folder, or None.
-         */
-        ReposFolder: {
-            /** Path */
-            path: string | null;
-        };
-        /**
          * Resume
          * @description A stopped session started again; what is given replaces its stored settings.
          */
@@ -2862,6 +2854,17 @@ export interface components {
             last_commit: components["schemas"]["CommitInfo"] | null;
             /** Gone */
             gone: string[];
+        };
+        /**
+         * Workspace
+         * @description The human's workspace (`projects.workspace`: LADO_REPOS, else ~/workspace): the New
+         *     session window's start folder, and whether it exists yet.
+         */
+        Workspace: {
+            /** Path */
+            path: string;
+            /** Made */
+            made: boolean;
         };
         /** Worktree */
         Worktree: {
@@ -3559,7 +3562,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ReposFolder"];
+                    "application/json": components["schemas"]["Workspace"];
                 };
             };
         };

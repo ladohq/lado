@@ -374,8 +374,11 @@ function LaunchDialog({
     }
   };
 
+  // The provider's part holds in both modes: it is the condition under which ProviderNote
+  // shows no refusal. Resume does not check its folder.
   const ready =
-    (resuming !== null || ((current?.ok ?? false) && providerInfo?.installed === true)) &&
+    (resuming !== null || (current?.ok ?? false)) &&
+    providerInfo?.installed === true &&
     kits.length > 0 &&
     !promptOver;
   const cloneReady =

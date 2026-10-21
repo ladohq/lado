@@ -838,6 +838,34 @@ test("Resume fills the window from the session, sends only what changed and show
   expect((await screen.findByRole("alert")).textContent).toContain("run y needs a rev");
 });
 
+test("Resume session is off while the session's provider is not installed, on once an installed one is picked", async () => {
+  sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "kilo" })];
+  providers = async () => [provider("claude"), provider("kilo", { installed: false, version: "", detail: "kilo not found" })];
+  answers["POST /api/sessions/lado/resume"] = () => json({ session: session("lado"), ...STARTED, resumed: true });
+  open("/sessions/lado");
+  fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Resume session" });
+  const refusal = await within(dialog).findByText("kilo not found; install kilo");
+  expect(refusal.classList).toContain("bad");
+  const resume = within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement;
+  expect(resume.disabled).toBe(true);
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "Provider" }), { target: { value: "claude" } });
+  await waitFor(() => expect(resume.disabled).toBe(false));
+  expect(within(dialog).queryByText("kilo not found; install kilo")).toBeNull();
+  fireEvent.click(resume);
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Resume session" })).toBeNull());
+  expect(calls.find((c) => c.method === "POST")!.body).toEqual({ provider: "claude" });
+});
+
+test("Resume session is off while the session's provider is not among the providers", async () => {
+  sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "gone" })];
+  open("/sessions/lado");
+  fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Resume session" });
+  expect((await within(dialog).findByText("unknown provider gone")).classList).toContain("bad");
+  expect((within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
 // The session's actions, by status: icons in its head, in the top bar; its list row has only
 // the entry's menu
 

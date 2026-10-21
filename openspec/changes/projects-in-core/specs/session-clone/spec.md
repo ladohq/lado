@@ -24,12 +24,11 @@ and `--branch` without a git URL SHALL be refused.
 
 ### Requirement: The default folder of a clone is in the workspace
 
-A clone's folder SHALL be, unless the human gives one, `<workspace>/<repo>`: the workspace
-is `projects.workspace` (`LADO_REPOS`, else `~/workspace`); `<repo>` is the
-URL's last path segment without a trailing `/` or `.git`. A given folder SHALL be a full
-path (`~` allowed); a relative one SHALL be refused as the window refuses it today. The
-folders above it, the workspace among them, SHALL be made when missing. Sessions whose
-folders are elsewhere (`~/lado/<repo>`, the default before 0.43.0) SHALL keep working.
+A clone's folder SHALL be, unless the human gives one, `<workspace>/<repo>`
+(`projects.workspace`; `<repo>` is the URL's last path segment without a trailing `/` or
+`.git`). A given folder SHALL be a full path (`~` allowed); a relative one SHALL be refused
+as the window refuses it. The folders above it, the workspace among them, SHALL be made
+when missing. Sessions in `~/lado/<repo>`, the default before 0.43.0, SHALL keep working.
 
 #### Scenario: Default folder
 - **WHEN** `LADO_REPOS` is unset, the URL is `https://github.com/ladohq/marketplace.git/`

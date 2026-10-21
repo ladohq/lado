@@ -2,14 +2,12 @@
 
 ### Requirement: LADO_REPOS names the folder of the human's repositories
 
-LADO SHALL take the environment variable `LADO_REPOS` as the workspace, the folder of the
-human's repositories and projects, when it is an absolute path after `~` is expanded, and
-SHALL take `~/workspace` (expanded) when it is unset, empty or not absolute. One function
-(`projects.workspace`) SHALL answer it for the clone's and a fresh start's default
-folder, the UI server, the container's warning about a folder outside the workspace,
-`lado doctor` and projects. It SHALL work alike in and out of a container. LADO SHALL
-make the workspace when it first needs it (a clone, a fresh start or a project), and
-never before.
+LADO SHALL take `LADO_REPOS` as the workspace, the folder of the human's repositories and
+projects, when it is an absolute path after `~` is expanded, else `~/workspace`
+(expanded), in and out of a container. One function (`projects.workspace`) SHALL answer
+it for every caller (the clone's and a fresh start's default folder, the UI server, the
+container's warning, `lado doctor`, projects). LADO SHALL make the workspace only when it
+first needs it: a clone, a fresh start or a project.
 
 #### Scenario: A home-relative value
 - **WHEN** `LADO_REPOS=~/code`

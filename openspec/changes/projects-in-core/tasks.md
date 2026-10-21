@@ -39,14 +39,14 @@ The plan with each task's tests and code: `docs/superpowers/plans/2026-10-21-pro
 
 ## 4. Documents and version
 
-- [ ] 4.1 `docs/cli.md`, `docs/design/modules.md`, `docs/design/projects.md`,
+- [x] 4.1 `docs/cli.md`, `docs/design/modules.md`, `docs/design/projects.md`,
   `docs/design/ui.md`, `docs/install.md`, AGENTS.md (Layout line of `projects.py`).
   Check: `uv run pytest tests/test_agents_md.py`.
-- [ ] 4.2 S1's leftover "the repositories' toolchains" in `docker/Dockerfile`,
+- [x] 4.2 S1's leftover "the repositories' toolchains" in `docker/Dockerfile`,
   `docs/install.md`, `docs/design/modules.md`, `tests/container/test_toolchains.py`
   (D13).
-- [ ] 4.3 CHANGELOG: `## 0.43.0 (unreleased)`, two lines (D14).
-- [ ] 4.4 The grep by meaning of AC-10 finds no default-folder claim of `~/lado` and no
+- [x] 4.3 CHANGELOG: `## 0.43.0 (unreleased)`, two lines (D14).
+- [x] 4.4 The grep by meaning of AC-10 finds no default-folder claim of `~/lado` and no
   "no workspace without LADO_REPOS" outside the historical documents.
 
 ## 5. Regression

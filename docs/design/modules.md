@@ -19,12 +19,19 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     start's own look, `scratch.author_problem("/")`: `OK` with both `user.name` and
     `user.email`, else `WARN` with its hint (the `.env` one in LADO's container); it never
     prints them.
-    `Workspace` (after `git author`, `check_repos_folder`, only while `LADO_REPOS` is set
-    and not empty; the workspace: [projects.md](projects.md)): `OK` for a folder, `INFO` for one not made yet, `WARN` for a path
-    that is no folder or LADO may not look at (one `stat`, never `exists()`, which raises
-    there on some Pythons), a folder LADO may not write in (a probe file made and removed,
-    never `os.access`: a Docker Desktop bind mount shows its root as 0:0) or a value that
-    is not absolute (which `clone.repos_folder` ignores).
+    `Workspace` (after `git author`, `check_workspace`, always; the workspace,
+    `projects.workspace`: [projects.md](projects.md)): `<path> (LADO_REPOS)` or `<path>
+    (default)`, `OK` for a folder, `INFO` for one not made yet, `WARN` for a path that is no
+    folder or LADO may not look at (one `stat`, never `exists()`, which raises there on some
+    Pythons), a folder LADO may not write in (a probe file made and removed, never
+    `os.access`: a Docker Desktop bind mount shows its root as 0:0; the probe is
+    `projects.workspace_problem`, shared with `projects.create`) or a `LADO_REPOS` that is
+    not absolute (ignored for `~/workspace`, whose state that line does not check).
+    `Projects` (after `Workspace`, `check_projects`, once LADO has a project or
+    `<workspace>/projects` exists): `OK` with how many, `WARN` with each finding joined by
+    `; `: a project whose folder is not found, foreign entries of `projects/`, a
+    `projects/` that is the human's own folder or no folder; it reads lado.db as it is (no
+    lado.db made, an older schema `INFO` not checked).
     `Agent config folders` warns about each folder under `LADO_HOME/agents/` that no
     running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
     kit MCP secrets there. The UI's system panel (`GET /api/system`) takes its facts from
@@ -211,8 +218,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     the line after the reason, the UI's folder check gives both), asked by `start_session`
     and the UI's folder check. `not_repo` is only git's own "not a git repository" (its
     `rev-parse` runs with `LC_ALL=C`); another failure is `git_refused` with git's line.
-    `outside_repos` (`OUTSIDE_REPOS`) is the one rule of the warning for a session folder
-    outside `LADO_REPOS` in LADO's container (`update.in_container`; the host sees only
+    `outside_workspace` (`OUTSIDE_WORKSPACE`) is the one rule of the warning for a session
+    folder outside the workspace (`projects.workspace`) in LADO's container (`update.in_container`; the host sees only
     that folder), by real paths, never a refusal and none outside a container: the UI's
     folder check (`FolderInfo.warning`), the clone's target (`CloneTarget.warning`) and
     `start_session`'s warnings, new and resumed. `git_version` (`git --version` on this process's PATH, no cache) is the one look at
@@ -259,11 +266,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `is_url` (`https://`, `http://`, `ssh://`, `git://`, `file://`, or the scp form only
     with a user; anything else, `/srv/app.git` too, is a folder), `Address` (host and path
     by which two URLs are `same_repo`; scheme, user and port aside; local ones by real
-    path), `repos_folder` (the one reader of `REPOS`, `LADO_REPOS`, the human's
-    workspace ([projects.md](projects.md)) that LADO's image sets: `~` expanded, None when
-    unset, empty or not absolute; read at each call), `default_folder`
-    (`default_parent()`/<repo>: the workspace, else `DEFAULT_PARENT`, `~/lado`), `check_target` (a
-    `Target`: `new`, `empty`, `same_repo`, `other_repo` with a free `~/lado/<owner>-<repo>`
+    path), `default_folder` (`projects.workspace()`/<repo>), `check_target` (a
+    `Target`: `new`, `empty`, `same_repo`, `other_repo` with a free `<parent>/<owner>-<repo>`
     beside it, `not_empty`, `not_folder`; only `CAN_CLONE` lets a clone start, and LADO
     changes nothing in a folder of another state: no clone over it, no fetch, no branch
     switch), `list_branches` (one `git ls-remote --symref`, within `LIST_TIMEOUT`; a
@@ -286,7 +290,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     what it says. `names` (the text trimmed; refused empty, over `runtime.MAX_TITLE`, with
     a hidden character, or with no Latin letter or digit left for a folder; Cyrillic by
     the one table `CYRILLIC`, Latin letters without accents by NFKD, then `runtime.slug`;
-    the title is the text unless it is the name), `default_folder` (`clone.default_parent()
+    the title is the text unless it is the name), `default_folder` (`projects.workspace()
     /<name>`), `check_target` (a `Target`: `new`, `empty` with nothing but `FINDER`'s
     `.DS_Store`, `inside_repo` with the repository's root, `not_empty`, `not_folder`; the
     path's nearest existing folder decides for a new path; only `CAN_START` lets a fresh
@@ -301,6 +305,27 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `--no-verify`), no prompt and stdin closed; a failed step removes the folders it made,
     or the `.git` of an empty folder it was given). A refusal is a `ScratchError` (a
     `LadoError` with `kind` and a `runtime.Hint`); git missing is LAD-5's `no_git`.
+  - `projects.py`: the workspace and the projects in it (openspec change projects-in-core;
+    the model: [projects.md](projects.md)), for `lado project` and `lado doctor`, which
+    print only what it says. `workspace` is the one answer to where LADO keeps code:
+    `LADO_REPOS` (`WORKSPACE_VAR`) when it is absolute after `~`, else `~/workspace`
+    (`DEFAULT_WORKSPACE`), read at each call, never None and never made by asking;
+    `workspace_source` says `LADO_REPOS`, `default` or `ignored`; `workspace_problem` the
+    one probe of an existing workspace (doctor's line, `create`'s refusal). A project is a
+    row of lado.db's `projects` (schema 32: `id`, `title`, `created_at`; `state.add_project`
+    and the rest, `creating_project` a transaction around its folder's mkdir); its folder
+    is `folder(id)`, `<workspace>/projects/<id>`, stored nowhere. `check_id` (`ID`,
+    `MAX_ID`), titles by `runtime.check_title`, `owned_by_human` (a `projects/` with visible
+    entries and no project's folder among them, from the disk and lado.db: no marker file),
+    `foreign`, `create` (id, title, workspace, record, folder by `lexists`, the human's
+    `projects/`, then record and mkdir in one transaction), `rename`, `listed` and `get`.
+    `unpushed` lists, per git repository directly in a project folder and per worktree of
+    one, uncommitted changes and branches with no upstream, a gone one or commits ahead
+    (git with `clone.NO_PROMPT` and `GIT_TIMEOUT`, no network); `delete` refuses without
+    `yes`, unlinks a folder that is a link, refuses one whose real path is not directly in
+    the real `projects/`, removes the rest by `shutil.rmtree` (links inside as links), then
+    the record; a folder not removed whole keeps it. A refusal is a `ProjectError`
+    (`NoSuchProject` for an unknown id), a `runtime.LadoError`.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's
     `EVENTS` maps its native events; `claude.py`: Claude Code, its role in `prompt.md` of
@@ -824,8 +849,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `ProviderSuggestion` of name and reason or none; `scratch` for a missing or not-repo
     folder a fresh start may take), `GET /api/scratch-target` (`ScratchTarget`: `lado.scratch`'s
     names, folder state and author, the name's state and a provider), `/api/folders/recent`,
-    `/api/repos-folder` (in `app.py`; `ReposFolder`, `clone.repos_folder` or none: where
-    an empty Where starts),
+    `/api/repos-folder` (in `app.py`; `Workspace`, `projects.workspace` and whether it is
+    made: where an empty Where starts once it exists),
     `/api/kits` (the kit of each name the lookup takes, the same for every folder; a
     `where` the page still sends is ignored; an invalid one `valid: false`) and `/api/providers` (no provider is marked the default);
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
@@ -943,7 +968,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `smoke_ci.py`'s `PINS`, one `ARG <NAME>_VERSION` and one layer each (`CLAUDE_VERSION`,
   `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet),
   programs under `/opt` (the `/opt` folders named only in the build's install lines), the
-  projects' toolchains (below), the user `lado` (uid
+  repositories' toolchains (below), the user `lado` (uid
   1000 in the image) with its home a volume; `lado server --host 0.0.0.0 --port
   $LADO_PORT` (8765) under tini and `entrypoint.sh` (`/usr/local/bin/lado-entrypoint`).
   The human's workspace is mounted at the host's own path and named by `LADO_REPOS`
@@ -980,7 +1005,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `OPENSPEC_TELEMETRY=0`, `OPENSPEC_NO_UPDATE_CHECK=1`;
   `LADO_REPOS` is the entrypoint's `lado-repos.sh`, read before `lado.sh` by name, so
   `profile.sh` sets `MISE_TRUSTED_CONFIG_PATHS` from it, in the profile only, as the ENV
-  cannot follow `-e LADO_REPOS`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The projects' toolchains:
+  cannot follow `-e LADO_REPOS`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The repositories' toolchains:
   `make`, `gcc`, `g++` and `libc6-dev` in the first apt layer, and mise at
   `/usr/local/bin/mise`, root's (copied before `USER lado`, so `mise self-update` cannot
   replace it), from `jdxcode/mise` pinned by digest, which Dependabot's `docker` ecosystem

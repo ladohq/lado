@@ -238,7 +238,7 @@ a laptop is open on every network it joins: café Wi-Fi too. To take access back
 link…** in the same dialog logs out everyone who opened LADO with the old link, without a
 restart; this browser stays in.
 
-### The projects' toolchains
+### The repositories' toolchains
 
 The image has git, Node.js 22, uv, `make`, `gcc` and `g++`, the agents' everyday tools
 (`jq`, `rg`, `unzip`, `zip`, `xz`, `bzip2`, `patch`, `file`, `rsync`, `sqlite3`, `tree`,
@@ -625,7 +625,7 @@ lado start .            # a supervisor in tmux; --provider NAME picks the agent 
 lado ui                 # the web UI in your browser
 ```
 
-No repository yet? `lado start --new ~/lado/my-site` makes a new or empty folder a git
+No repository yet? `lado start --new ~/workspace/my-site` makes a new or empty folder a git
 repository with an empty first commit and starts there; the UI's **Launch** offers the same
 as **From scratch**. Either needs git to know your name and email (`lado doctor` checks it).
 `lado start --help` lists the options; `lado update` installs a newer LADO later
@@ -743,7 +743,8 @@ It refuses, changing nothing: inside an agent, while `lado update` runs, and whe
 ### What stays
 
 - Worktrees and branches with work that is not merged, listed with their commands.
-- Repositories `lado start <git-url>` cloned into `~/lado/`: they are yours.
+- Repositories `lado start <git-url>` cloned into the workspace (`~/workspace/` by default,
+  `~/lado/` before 0.43.0), and projects' folders: they are yours.
 - tmux, uv, git and the agent CLIs.
 - The agent CLIs' own records of the folders they ran in. LADO never writes to them, and
   removes nothing there:

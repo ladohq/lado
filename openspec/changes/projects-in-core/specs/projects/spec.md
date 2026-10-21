@@ -1,3 +1,10 @@
+## Purpose
+
+The human's projects: a project is an id, a title and a record in `lado.db`, with its folder
+`<workspace>/projects/<id>` derived from the id and made by LADO; `lado project` makes,
+lists, shows, renames and deletes them, agents only read them, and `lado doctor` checks
+them.
+
 ## ADDED Requirements
 
 ### Requirement: A project is an id, a title and a record in lado.db

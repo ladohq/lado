@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.42.1 (unreleased)
+## 0.43.0 (unreleased)
+
+### Added
+
+- **Projects in the terminal.** `lado project create|list|show|rename|delete` keeps a
+  project as a folder in your workspace's `projects/`; `lado doctor` checks them.
+
+### Changed
+
+- **The workspace is `~/workspace` without `LADO_REPOS`.** New clones and fresh starts go
+  there (was `~/lado`); sessions in `~/lado` keep working.
 
 ### Improved
 

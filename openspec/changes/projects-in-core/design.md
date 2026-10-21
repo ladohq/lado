@@ -86,7 +86,7 @@ line, as today).
 
 **D5. The table.** `projects(id TEXT PRIMARY KEY, title TEXT, created_at TEXT NOT NULL)`,
 `created_at` in the format of `sessions.created_at`. `SCHEMA_VERSION = 32`,
-`MIGRATIONS[32] = [PROJECTS_TABLE]`, `PROJECTS_TABLE` also in the fresh schema;
+`MIGRATIONS[31] = [PROJECTS_TABLE]` (the step from 31), `PROJECTS_TABLE` also in the fresh schema;
 `schema_before` drops the table for 32. No journal triggers (`changes`): the UI feed
 does not show projects until S6, which adds them (only what is used). One new table, no
 existing table changes: within the brief's threshold.

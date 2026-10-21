@@ -697,7 +697,10 @@ Sessions for now. The UI's texts are in English.
 - **Placeholders**: one component, with the section's name, one sentence on what it will
   hold, and a link to the plan item that builds it. A placeholder is allowed only when its
   section has an item in ROADMAP.md or in Tasks below: Projects is ROADMAP's "Later (after
-  stage 7)", the others are Tasks here.
+  stage 7)", the others are Tasks here. Projects' sentence: "Each project is a folder in
+  your workspace with its repositories and its own environment variables, so sessions for
+  different clients get different keys." (LAD-117; the model, and the step S6 that
+  replaces the placeholder: [projects.md](projects.md)).
 - **Addresses**: `/` Home, `/needs-you`, `/sessions`, `/sessions/<name>/<tab>` (tab:
   activity, agents, flows, artifacts; without one, activity), a flow run's page
   `/sessions/<name>/flows/<run>` (Flows below), an agent's page
@@ -1333,7 +1336,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   URL made first (the switch **From scratch | Folder | Clone from URL** beside its label,
   below); the start's request is the same for a folder and a clone (its `where` is
   `{kind: "folder", path}`), from scratch it is `{kind: "scratch", path}`; another kind is
-  refused, so Projects can add theirs. The path
+  refused; a session in a project will be the window's fourth way (step S6 of
+  [projects.md](projects.md), not built yet). The path
   is typed (`~` allowed, a relative path refused), and checked by `GET /api/folders`:
   under the field "✓ git repository · branch X", or the core's reason from
   `runtime.check_repo` (`FolderInfo.problem_kind`: does not exist, a file, git not
@@ -1351,24 +1355,25 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   Subfolders are suggested from the folder up to the last
   `/` (the arrow keys and Enter pick one), with chips of the **recent** folders
   (`/api/folders/recent`: the folders of past sessions, latest start first, at most 10).
-  With a repositories folder (`LADO_REPOS`, which LADO's image sets to the projects folder
-  mounted at the host's path; `GET /api/repos-folder`, `ReposFolder`, read once per window;
-  decided 2026-10-14, LAD-63, mockup `task/lad-63/mockup-where-start.html` variant 2) the
-  empty field's placeholder is `<folder>/…` (else `~/projects/app`), its focus lists the
-  folder's subfolders (a pick sets `<folder>/<name>`), and a row **Repositories folder:**
-  with the folder as a chip, before Recent and hidden in Resume as Recent is, sets
+  With a workspace (`LADO_REPOS`, which LADO's image sets to the workspace mounted at the
+  host's path; [projects.md](projects.md); `GET /api/repos-folder`, `ReposFolder`, read
+  once per window; decided 2026-10-14, LAD-63, mockup `task/lad-63/mockup-where-start.html`
+  variant 2; renamed LAD-117) the empty field's placeholder is `<folder>/…` (else
+  `~/projects/app`), its focus lists the folder's subfolders (a pick sets
+  `<folder>/<name>`), and a row **Workspace:** with the folder as a chip, before Recent and hidden in Resume as Recent is, sets
   `<folder>/`, gives the field the focus (its keys and its blur work the list) and opens
   the list. The folder is the parent with one `/` at its end (`/` stays `/`). The folder
   check runs only on what is typed or picked, never on the empty field nor on the
-  repositories folder itself (with or without its last `/`): it holds the repositories,
-  and its "not inside a git repository" would offer a `git init` over them all.
+  workspace itself (with or without its last `/`): it holds the repositories, and its
+  "not inside a git repository" would offer a `git init` over them all.
   In LADO's container only (`LADO_CONTAINER`), a folder whose real path is outside the
-  repositories folder gets a warning after the check mark, `⚠ Outside the repositories
-  folder (<folder>): this folder is only in the container, your computer does not see it
+  workspace gets a warning after the check mark, `⚠ Outside the workspace (<folder>):
+  this folder is only in the container, your computer does not see it
   or the agents' work in it` (a `field-note warn` line; `FolderInfo.warning`, the core's
   `runtime.outside_repos`, which a start also gives among its warnings); the check mark and
   Start stay. **Clone into** shows the same under the target's note (`CloneTarget.warning`).
-  Decided 2026-10-16, LAD-83, mockup `task/lad-83/mockup-outside-repos.html` variant 2.
+  Decided 2026-10-16, LAD-83, mockup `task/lad-83/mockup-outside-repos.html` variant 2;
+  renamed LAD-117.
   **Name** is the folder's default (`default_name`, the core's `slug`) with what the server
   says of it (`name_state`): taken by a running session, by a session of another folder,
   or a stopped session of this folder with **Resume it**, which turns the window to Resume.
@@ -1611,10 +1616,10 @@ layout, below).
 - The remote reaches the API only through `runtime.public_remote`: no userinfo for a URL
   scheme but ssh (a token alone too), a password dropped from `ssh://`, the scp form and a
   local path as they are.
-- `repos` is a list, one item now (the session's folder). A project (ROADMAP Later:
-  Projects) takes the place of the folder and git: its icon, its name and "N repositories
-  ▾", which opens the list, each with path, remote and branch in the same form; kits and
-  CLI stay where they are.
+- `repos` is a list of one item: the session's repository. A session in a project (step S3
+  of [projects.md](projects.md), not built yet) shows its project there too; how it looks
+  is decided with a mockup at S3. More than one item comes only with sessions over several
+  repositories, which the projects model leaves for later (projects.md, Not now).
 - Known limit: the server finds the CLI on its own PATH (`shutil.which`), as
   `/api/providers` and the folder check do; agents get their login shell's PATH, so the
   version shown may differ from theirs.

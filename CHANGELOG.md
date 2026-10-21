@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.42.1 (unreleased)
+
+### Improved
+
+- **The folder LADO keeps your code in is called the workspace.** `lado doctor`, the New
+  session window, compose's message and the guide use that one name; nothing to change in
+  your installation (`LADO_PROJECTS` and `LADO_REPOS` stay).
+
 ## 0.42.0 (2026-10-20)
 
 ### Fixed

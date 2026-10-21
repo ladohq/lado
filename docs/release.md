@@ -167,7 +167,7 @@ docker logout ghcr.io
 docker pull ghcr.io/ladohq/lado:X.Y.ZrcN
 ```
 
-Run it with compose from a temporary folder, with a test folder of projects (one small
+Run it with compose from a temporary folder, with a test workspace (one small
 git repository in it) and a port of its own, so it meets nothing of your own LADO. The
 `compose.yaml` comes as a user gets it, the release's asset, which the guide's update
 downloads too; `cmp` checks it is the repository's file at the tag:
@@ -211,7 +211,7 @@ cd / && rm -rf /tmp/lado-rc-image
 
 ### 4.6 The image's update (the first RC of a cycle)
 
-On one machine, as in 4.5 (a fresh terminal, a test folder of projects), from the last
+On one machine, as in 4.5 (a fresh terminal, a test workspace), from the last
 final before the RC, `X.Y.Z` below, the way a user of `X.Y.Z` updates: with that
 version's own `compose.yaml` and a session running. Two LADOs, each in a folder of its
 own; the second only stands beside the first. The old files come from the tag (a release

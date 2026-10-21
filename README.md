@@ -44,7 +44,7 @@ In Russian, *лад* (lad) means harmony or being in tune, the way a well-run te
 Two ways, Docker first:
 
 - **Docker** (recommended): LADO, tmux, git and the four agent CLIs at the versions LADO is
-  tested with, in one container. The agents see only your projects folder and the keys you
+  tested with, in one container. The agents see only your workspace folder and the keys you
   give them, not the rest of your computer; you install nothing but Docker, and an update
   is one line. You work in the web UI. macOS and Linux; Codex's login is not carried yet.
 - **PyPI** (`uv tool install lado`): LADO on your computer, with the agent CLIs and logins
@@ -74,7 +74,7 @@ Next to it, a file `.env`:
 
 ```ini
 LADO_VERSION=<version>              # the latest release's number, from the releases page
-LADO_PROJECTS=/Users/you/projects   # your projects folder, the only one the agents see
+LADO_PROJECTS=/Users/you/workspace  # your workspace folder, the only one the agents see
 LADO_GIT_NAME="Your Name"           # git's identity for the agents' commits
 LADO_GIT_EMAIL=you@example.com
 ```

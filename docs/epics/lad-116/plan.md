@@ -7,6 +7,7 @@ Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
 - Each phase task gets the label `component lado` and is linked to LAD-116; LAD-80 is not touched.
+- Questions to the human go as question cards (`ask_human`) with choices, not only as text messages (the human's remark #521, 2026-10-21).
 Last review: 2026-10-21 (after S1), base at 6c2336e
 
 ## Steps

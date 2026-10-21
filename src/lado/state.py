@@ -19,7 +19,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 31
+SCHEMA_VERSION = 32
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -913,6 +913,17 @@ MIGRATIONS[29] = [GATES_CLOSED_EVENT, gates_closed_events]
 GATES_ANSWER_NOTE = "ALTER TABLE gates ADD COLUMN answer_note INTEGER REFERENCES notes(id)"
 SCHEMA += GATES_ANSWER_NOTE + ";\n"
 MIGRATIONS[30] = [GATES_ANSWER_NOTE]
+
+# From version 32: the human's projects (lado.projects). A project's folder is stored
+# nowhere: it is <workspace>/projects/<id>, derived each time.
+PROJECTS_TABLE = """
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,  -- never changes: the folder's name
+    title TEXT,           -- none: the id is shown
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))  -- UTC
+)"""
+SCHEMA += PROJECTS_TABLE + ";\n"
+MIGRATIONS[31] = [PROJECTS_TABLE]
 
 # Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
 # approval or choice gate. An override is the human's past the flow (flow-set's reason, an
@@ -3353,3 +3364,61 @@ def _session(row: sqlite3.Row) -> Session:
         row["title"],
         bool(row["resume_at_start"]),
     )
+
+
+@dataclass(frozen=True)
+class Project:
+    id: str
+    title: str | None
+    created_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+
+
+def _project(row: sqlite3.Row) -> Project:
+    return Project(row["id"], row["title"], row["created_at"])
+
+
+def add_project(id: str, title: str | None) -> None:
+    """Raises sqlite3.IntegrityError when a project of that id exists."""
+    with connect() as db:
+        db.execute("INSERT INTO projects (id, title) VALUES (?, ?)", (id, title))
+
+
+@contextmanager
+def creating_project(id: str, title: str | None) -> Iterator[None]:
+    """Add a project that stays only when the block ends without an error (its folder is
+    made there): the insert waits in a transaction until then, and a taken id raises
+    sqlite3.IntegrityError before the block runs."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            db.execute("INSERT INTO projects (id, title) VALUES (?, ?)", (id, title))
+            yield
+        except BaseException:
+            db.execute("ROLLBACK")
+            raise
+        db.execute("COMMIT")
+
+
+def get_project(id: str) -> Project | None:
+    with connect() as db:
+        row = db.execute("SELECT * FROM projects WHERE id = ?", (id,)).fetchone()
+    return _project(row) if row else None
+
+
+def list_projects() -> list[Project]:
+    """Every project, by id."""
+    with connect() as db:
+        rows = db.execute("SELECT * FROM projects ORDER BY id").fetchall()
+    return [_project(row) for row in rows]
+
+
+def set_project_title(id: str, title: str | None) -> bool:
+    """False when there is no such project."""
+    with connect() as db:
+        return db.execute("UPDATE projects SET title = ? WHERE id = ?", (title, id)).rowcount == 1
+
+
+def delete_project(id: str) -> bool:
+    """False when there was no such project."""
+    with connect() as db:
+        return db.execute("DELETE FROM projects WHERE id = ?", (id,)).rowcount == 1

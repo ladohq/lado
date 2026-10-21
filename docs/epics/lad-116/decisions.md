@@ -14,3 +14,4 @@
 | 2026-10-21 | plan_ok, gate #33 (Q4) | Split S5 | S5a plain variables + S5b secrets; one step | split (lead) | approved as recommended (human) | yes |
 | 2026-10-21 | plan_ok, gate #33 | The plan and the first step S1 | approve; reject | approve (lead) | approved (human) | yes |
 | 2026-10-21 | run (S1 in work), human's remark #523 | Warnings and refusals in the New session window are small and grey, users do not take them seriously | a separate tweak task after S1; an epic step between S1 and S2; not now | a separate task after S1 (lead) | an epic step between S1 and S2 — S1b (human) | no |
+| 2026-10-21 | S1 (LAD-117), design_ok gate #34 | The design of S1: tweak, texts only, code names and installation names kept, the Projects placeholder's sentence in this step, specs by RENAMED/MODIFIED and REMOVED+ADDED | approve; reject | approve (lead) | pending (human) | — |

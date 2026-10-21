@@ -6,7 +6,8 @@ rest. Moved from AGENTS.md's "Try it locally" (LAD-82).
 `uv run lado start <repo>` runs the working copy (a repository without commits is refused:
 make a first commit). `lado start <git-url> [<folder>] [--branch NAME]` clones the URL's
 branch (the remote's default without `--branch`) into the folder, a full path, by default
-`$LADO_REPOS/<repo>` (an absolute `LADO_REPOS`), else `~/lado/<repo>`, then starts there as `lado start <folder>` does: the folder must be new or
+`<workspace>/<repo>` (the workspace: an absolute `LADO_REPOS`, else `~/workspace`, made with
+the clone when missing), then starts there as `lado start <folder>` does: the folder must be new or
 empty (a clone of the same repository there is refused with the `lado start <folder>` that
 uses it as it is; LADO never fetches into or switches a folder that exists), and a name a
 session of another folder has is refused before the clone (`runtime.check_name`). git's
@@ -34,6 +35,42 @@ config --global` command (in LADO's container: `LADO_GIT_NAME` and `LADO_GIT_EMA
 `.env`); a git step that fails removes what it made. A start refused after the repository
 was made says `the repository stays in <folder>`. `--new` with a git URL, a second folder or
 `--branch` exits 2. Without `--new`, `lado start` never makes a repository.
+
+`lado project` keeps the human's projects (`lado.projects`, [design/projects.md](design/projects.md)):
+a project is an id (lowercase Latin letters, digits and `-`, starting with a letter or
+digit, at most 40 characters; it never changes), a title (the session title's rule; none
+shows the id) and a record in lado.db; its folder is `<workspace>/projects/<id>`, derived
+and made by LADO. `lado project create <id> [--title TEXT]` makes the record and the folder
+(with the workspace and `projects/` when missing) and prints `Made project <id> "<title>":
+<folder>`; it refuses, naming why and making nothing, a bad id, a taken id, an existing
+`projects/<id>` (a dangling link too), a `projects/` that is the human's own folder (it
+holds visible entries and none is a project's folder; `.DS_Store` and other names starting
+with `.` do not count) and a workspace that is not a folder LADO may write in. `lado
+project list` prints one line per project by id, columns padded: the id, the title (the id
+without one) and the folder, `  (folder not found)` when it is missing (another workspace,
+or deleted by hand); with none, `No projects. Make one with: lado project create <id>`.
+`lado project show <id>` prints `<id> "<title>"`, `  folder:  <folder>` and `  made:    <local
+YYYY-MM-DD HH:MM>`. `lado project rename <id> <title>` sets the title (`""` clears it); the id
+and the folder stay. `lado project delete <id>` first lists, under `Unpushed work in
+<folder>:`, each git repository directly in the folder and each of its worktrees with
+uncommitted changes (untracked files too) or local branches with no upstream or ahead of it,
+as of the last fetch (LADO goes to no network), and git's first line for a repository it
+cannot read; without `--yes` it then refuses. With `--yes` it removes the folder whole, then
+the record (`Deleted project <id>`): a folder that is a symbolic link loses the link only,
+nothing outside `<workspace>/projects/` is removed, links inside are removed as links, and a
+folder not removed whole keeps the record. An unknown id is exit 1 with `unknown project
+"<id>"`. `create`, `rename` and `delete` are the human's: inside an agent of LADO
+(`LADO_AGENT` set) they exit 1 with `lado project <command> is for the human; agent "<agent>"
+cannot use it`, while `list` and `show` work; no MCP tool changes projects. `lado project`
+alone prints its help.
+
+`lado doctor` always has a `Workspace` line: `<path> (LADO_REPOS)` or `<path> (default)`, `info`
+with `, not made yet: the first clone or project makes it` while the folder is missing, and a
+warning for a `LADO_REPOS` that is not absolute (ignored: `LADO uses <home>/workspace`), a path
+that is not a folder, one LADO may not look at, or a folder it may not write in. Once LADO has
+a project or `projects/` exists, a `Projects` line follows: `<n> in <workspace>/projects`, or a
+warning naming projects whose folder is not found, foreign entries of `projects/` (no project's
+folder) and a `projects/` that is the human's own folder.
 
 `lado kits add <git-url>[@vX.Y.Z]` installs the kit of a repository (a row in lado.db; its
 clone in the git cache): without a tag its latest release, with `--pre` its latest version

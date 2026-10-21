@@ -82,6 +82,38 @@ def test_where_starts_in_the_repositories_folder(page: Page, repos, server, shot
     shot(page, "clone")
 
 
+def test_where_without_lado_repos_starts_in_home_workspace_once_it_exists(
+    page: Page, home_server, tmp_path, shot
+):
+    """No LADO_REPOS: the workspace is ~/workspace; the window suggests nothing in it
+    until it exists (openspec change projects-in-core, D12)."""
+    workspace = tmp_path / "home" / "workspace"
+    log_in(page, home_server)
+    launch = page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch")
+    launch.click()
+    dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()
+    where = dialog.get_by_role("combobox", name=re.compile("Where"))
+    expect(where).to_have_attribute("placeholder", f"{workspace}/…")
+    where.focus()
+    page.wait_for_timeout(300)  # past the list's debounce: still nothing to suggest
+    expect(dialog.get_by_role("listbox", name="Folders")).to_have_count(0)
+    expect(dialog.locator(".recent", has_text="Workspace:")).to_have_count(0)
+    shot(page, "not-made")
+    page.keyboard.press("Escape")
+    expect(dialog).to_be_hidden()
+
+    agent_helpers.init_repo(workspace / "app")
+    launch.click()
+    dialog.get_by_role("button", name="Folder", exact=True).click()
+    row = dialog.locator(".recent", has_text="Workspace:")
+    expect(row.get_by_role("button", name=str(workspace))).to_be_visible()
+    where.focus()
+    folders = dialog.get_by_role("listbox", name="Folders")
+    expect(folders.get_by_role("option")).to_have_text(["app/"])
+    shot(page, "made")
+
+
 OUTSIDE = "⚠ Outside the workspace ({}): this folder is only in the container"
 
 # A note under a field without a level: a hint, quiet text without a ground.

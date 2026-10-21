@@ -1,3 +1,4 @@
+import datetime
 import io
 import json
 import os
@@ -1839,12 +1840,14 @@ def test_a_newer_database_is_a_message_not_a_traceback(lado_home, capsys):
 
 
 def _stopped_session_on_schema(old: int) -> None:
-    """A stopped session in lado.db, whose schema is set back to `old` with the newer one's
-    changes still there when `old` is the one before (the last step then fails)."""
+    """A stopped session in lado.db, whose schema is set back to `old`, the one before; the
+    last step of the migration then fails (FAILING_STEP)."""
     state.add_session(state.Session("s", "/r", None, "claude", ["default"], []))
     state.stop_session("s")
-    with state.connect() as db:
-        db.execute(f"PRAGMA user_version = {old}")
+    agent_helpers.previous_schema()
+
+
+FAILING_STEP = "SELECT no_such_function()"
 
 
 def _journal(lado_home) -> list[dict]:
@@ -1888,11 +1891,12 @@ def test_a_failed_migration_is_one_message_with_the_way_back(
         monkeypatch.setenv("LADO_CONTAINER", "1")
     old = state.SCHEMA_VERSION - 1
     _stopped_session_on_schema(old)
+    monkeypatch.setitem(state.MIGRATIONS, old, [*state.MIGRATIONS[old], FAILING_STEP])
     assert main(["ls"]) == 1
     backup = lado_home / "backups" / f"lado.db.schema-{old}"
     assert capsys.readouterr().err == (
         f"lado: could not upgrade lado.db from schema {old} to {state.SCHEMA_VERSION}: "
-        "OperationalError: duplicate column name: answer_note. lado.db is unchanged; "
+        "OperationalError: no such function: no_such_function. lado.db is unchanged; "
         "its backup is "
         f"{backup}. {way_back} Report it with lado bug-report.\n"
     )
@@ -2322,12 +2326,12 @@ def test_clone_and_start(tmp_path, fake_tmux, capsys):
 
 
 def test_clone_into_the_default_folder_with_the_remotes_default_branch(
-    tmp_path, fake_tmux, capsys, monkeypatch
+    home_workspace, tmp_path, fake_tmux, capsys, monkeypatch
 ):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     url = agent_helpers.bare_remote(tmp_path)
     assert main(["start", url, "--provider", "kilo", "--no-attach"]) == 0
-    folder = tmp_path / "home" / "lado" / "app"
+    folder = tmp_path / "home" / "workspace" / "app"
     assert _branch_of(folder) == "main"
     assert f"Cloning the default branch of {url} into {folder}" in capsys.readouterr().err
 
@@ -2723,3 +2727,118 @@ def test_a_start_refused_after_new_keeps_the_repository(tmp_path, git_config, fa
     assert main(["start", "--new", str(folder), "--provider", "nosuch", "--no-attach"]) == 1
     assert capsys.readouterr().err.splitlines()[-1] == f"lado: the repository stays in {folder}"
     assert runtime.check_repo(str(folder)) == os.path.realpath(folder)
+
+
+# lado project (openspec change projects-in-core)
+
+
+@pytest.fixture
+def ws(tmp_path, monkeypatch):
+    """The workspace: LADO_REPOS=<tmp>/ws, not made."""
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    return tmp_path / "ws"
+
+
+def test_project_create_list_show_rename(ws, capsys):
+    assert main(["project", "list"]) == 0
+    assert capsys.readouterr().out == "No projects. Make one with: lado project create <id>\n"
+    assert main(["project", "create", "shop-eu", "--title", "Shop EU"]) == 0
+    folder = ws / "projects" / "shop-eu"
+    assert capsys.readouterr().out == f'Made project shop-eu "Shop EU": {folder}\n'
+    assert folder.is_dir()
+    assert main(["project", "create", "a"]) == 0
+    assert capsys.readouterr().out == f"Made project a: {ws / 'projects' / 'a'}\n"
+    (ws / "projects" / "a").rmdir()
+    assert main(["project", "list"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"a        a        {ws / 'projects' / 'a'}  (folder not found)",
+        f"shop-eu  Shop EU  {folder}",
+    ]
+    utc = datetime.datetime(2026, 10, 21, 18, 5, 9, tzinfo=datetime.timezone.utc)
+    with state.connect() as db:
+        db.execute("UPDATE projects SET created_at = '2026-10-21 18:05:09' WHERE id = 'shop-eu'")
+    assert main(["project", "show", "shop-eu"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        'shop-eu "Shop EU"',
+        f"  folder:  {folder}",
+        f"  made:    {utc.astimezone():%Y-%m-%d %H:%M}",
+    ]
+    assert main(["project", "show", "a"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[:2] == ["a", f"  folder:  {ws / 'projects' / 'a'}  (folder not found)"]
+    assert main(["project", "rename", "shop-eu", "Shop"]) == 0
+    assert capsys.readouterr().out == 'shop-eu: title "Shop"\n'
+    assert main(["project", "rename", "shop-eu", ""]) == 0
+    assert capsys.readouterr().out == "shop-eu: no title\n"
+    assert folder.is_dir()
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["show", "nope"], ["rename", "nope", "x"], ["delete", "nope"], ["delete", "nope", "--yes"]],
+)
+def test_project_commands_refuse_an_unknown_project(ws, capsys, argv):
+    assert main(["project", *argv]) == 1
+    assert capsys.readouterr().err == 'lado: unknown project "nope"\n'
+
+
+def test_project_create_refuses_with_its_reason(ws, capsys):
+    assert main(["project", "create", "Shop"]) == 1
+    assert "lado: the project id Shop is not valid" in capsys.readouterr().err
+    assert not ws.exists()
+
+
+def test_project_delete_shows_unpushed_work_and_needs_yes(ws, git_config, capsys):
+    assert main(["project", "create", "shop"]) == 0
+    folder = ws / "projects" / "shop"
+    repo = init_repo(folder / "frontend")
+    (repo / "new.txt").write_text("x")
+    capsys.readouterr()
+    assert main(["project", "delete", "shop"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        f"Unpushed work in {folder}:",
+        "  frontend: uncommitted changes; branch main not pushed",
+    ]
+    assert captured.err == (
+        f"lado: deleting project shop removes its folder {folder} with everything in it; "
+        "run again with --yes\n"
+    )
+    assert folder.is_dir() and state.get_project("shop")
+    assert main(["project", "delete", "shop", "--yes"]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "Deleted project shop"
+    assert not folder.exists() and state.get_project("shop") is None
+    assert (ws / "projects").is_dir()
+
+
+def test_project_delete_with_nothing_unpushed_prints_no_list(ws, capsys):
+    assert main(["project", "create", "shop"]) == 0
+    capsys.readouterr()
+    assert main(["project", "delete", "shop"]) == 1
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["create", "acme"], ["rename", "shop", "X"], ["delete", "shop"], ["delete", "shop", "--yes"]],
+)
+def test_agents_cannot_change_projects(ws, capsys, monkeypatch, argv):
+    assert main(["project", "create", "shop", "--title", "Shop"]) == 0
+    capsys.readouterr()
+    monkeypatch.setenv("LADO_SESSION", "s")
+    monkeypatch.setenv("LADO_AGENT", "w1")
+    assert main(["project", *argv]) == 1
+    assert capsys.readouterr().err == (
+        f'lado: lado project {argv[0]} is for the human; agent "w1" cannot use it\n'
+    )
+    assert [(p.id, p.title) for p in state.list_projects()] == [("shop", "Shop")]
+    assert (ws / "projects" / "shop").is_dir() and not (ws / "projects" / "acme").exists()
+    assert main(["project", "list"]) == 0
+    assert main(["project", "show", "shop"]) == 0
+
+
+def test_project_alone_prints_its_help(capsys):
+    assert main(["project"]) == 0
+    out = capsys.readouterr().out
+    for command in ("list", "create", "show", "rename", "delete"):
+        assert command in out

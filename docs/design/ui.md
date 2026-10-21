@@ -1355,12 +1355,14 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   Subfolders are suggested from the folder up to the last
   `/` (the arrow keys and Enter pick one), with chips of the **recent** folders
   (`/api/folders/recent`: the folders of past sessions, latest start first, at most 10).
-  With a workspace (`LADO_REPOS`, which LADO's image sets to the workspace mounted at the
-  host's path; [projects.md](projects.md); `GET /api/repos-folder`, `ReposFolder`, read
-  once per window; decided 2026-10-14, LAD-63, mockup `task/lad-63/mockup-where-start.html`
-  variant 2; renamed LAD-117) the empty field's placeholder is `<folder>/…` (else
-  `~/projects/app`), its focus lists the folder's subfolders (a pick sets
-  `<folder>/<name>`), and a row **Workspace:** with the folder as a chip, before Recent and hidden in Resume as Recent is, sets
+  The workspace (`projects.workspace`: `LADO_REPOS`, which LADO's image sets to the
+  workspace mounted at the host's path, else `~/workspace`; [projects.md](projects.md);
+  `GET /api/repos-folder`, `Workspace{path, made}`, read once per window; decided
+  2026-10-14, LAD-63, mockup `task/lad-63/mockup-where-start.html` variant 2; renamed
+  LAD-117; the default and `made` LAD-123, mockup `task/lad-123/mockup-workspace-where.html`)
+  gives the empty field's placeholder `<folder>/…`. Once the folder exists (`made`), the
+  field's focus while empty lists its subfolders (a pick sets `<folder>/<name>`), and a row
+  **Workspace:** with the folder as a chip, before Recent and hidden in Resume as Recent is, sets
   `<folder>/`, gives the field the focus (its keys and its blur work the list) and opens
   the list. The folder is the parent with one `/` at its end (`/` stays `/`). The folder
   check runs only on what is typed or picked, never on the empty field nor on the
@@ -1370,7 +1372,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   workspace gets a warning after the check mark, `⚠ Outside the workspace (<folder>):
   this folder is only in the container, your computer does not see it
   or the agents' work in it` (a `field-note warn` line; `FolderInfo.warning`, the core's
-  `runtime.outside_repos`, which a start also gives among its warnings); the check mark and
+  `runtime.outside_workspace`, which a start also gives among its warnings); the check mark and
   Start stay. **Clone into** shows the same under the target's note (`CloneTarget.warning`).
   Decided 2026-10-16, LAD-83, mockup `task/lad-83/mockup-outside-repos.html` variant 2;
   renamed LAD-117.
@@ -1445,7 +1447,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   text is not the name itself, ` · title: <text>` (Cyrillic transliterated, Latin letters
   without accents: `lado.scratch.names`), or the name's refusal; a name a session has
   shows under it as in Folder. **Create in** is the name's folder in where clones go
-  (`$LADO_REPOS/<name>`, else `~/lado/<name>`) until the human edits it, with its state:
+  (`<workspace>/<name>`, its placeholder too) until the human edits it, with its state:
   `✓ a new folder`, `✓ an empty folder` (nothing but `.DS_Store`), or the core's refusal
   (a folder with files, a file, a folder inside a git repository). Both come from `GET
   /api/scratch-target` (`ScratchTarget`, 200 ms after typing; only the latest answer).
@@ -1464,8 +1466,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 - **Clone from URL** (decided 2026-10-12, LAD-6; mockup `task/lad-6/mockup-clone.html`
   v3): the Where field takes a git URL (`lado.clone.is_url`: `https://`, `http://`,
   `ssh://`, `git://`, `file://`, or `user@host:path`). **Clone into** is the default folder
-  (`$LADO_REPOS/<repo>`, else `~/lado/<repo>`: the server's `CloneTarget.path`; its
-  placeholder names the same parent) until the human edits it, with the
+  (`<workspace>/<repo>`: the server's `CloneTarget.path`; its placeholder names the same
+  parent) until the human edits it, with the
   folder's state from `GET /api/clone-target` (200 ms after typing, like the folder): "✓ a
   new folder", "✓ an empty folder", or the core's text for a folder that holds something.
   **Branch** lists the remote's branches by itself, from `POST /api/remote-branches` (one
@@ -1485,7 +1487,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   aside) shows "✓ <the core's text>. LADO will use it as it is: no clone, no pull, no
   branch switch." and the button **Use this clone**, which switches the window to Folder
   with that folder and changes nothing on disk; a clone of another repository shows its
-  origin and a free folder beside it (`~/lado/<owner>-<repo>`), and the button stays off.
+  origin and a free folder beside it (`<parent>/<owner>-<repo>`), and the button stays off.
   LADO never clones over, fetches into or switches the branch of a folder that exists.
   The clone is a job of the server (`server/clones.py`): `POST /api/clones` (`{url, path,
   branch}`; 400 `CloneRefused`, 409 while another job clones into that folder) starts it,

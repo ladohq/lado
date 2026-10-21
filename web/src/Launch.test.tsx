@@ -93,13 +93,14 @@ type Call = { method: string; path: string; body: unknown };
 let sessions: SessionInfo[];
 let folders: Record<string, FolderInfo>;
 let recent: RecentFolder[];
-let repos: string | null; // the workspace, LADO_REPOS
+let workspace: { path: string; made: boolean }; // LADO_REPOS, else ~/workspace
 let kits: KitInfo[];
 let abouts: Record<string, SessionAbout>; // by session; none: 404
 let providers: () => Promise<ProviderInfo[]>;
 let answers: Record<string, () => Response | Promise<Response>>; // "METHOD path" -> the server's answer
 let calls: Call[];
 
+const HOME_WORKSPACE = "/Users/ann/workspace"; // the default, not made unless a test says so
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
 
 beforeEach(() => {
@@ -108,7 +109,7 @@ beforeEach(() => {
   sessions = [session("lado")];
   folders = {};
   recent = [];
-  repos = null;
+  workspace = { path: HOME_WORKSPACE, made: false };
   kits = [kit("default"), kit("team")];
   abouts = {};
   providers = async () => [provider("claude"), provider("kilo")];
@@ -139,7 +140,7 @@ beforeEach(() => {
       if (url.pathname === "/api/scratch-target") {
         return json(scratchTarget(url.searchParams.get("text") ?? "", url.searchParams.get("path")));
       }
-      if (url.pathname === "/api/repos-folder") return json({ path: repos });
+      if (url.pathname === "/api/repos-folder") return json(workspace);
       if (url.pathname === "/api/kits") return json(kits);
       if (url.pathname === "/api/providers") return json(await providers());
       const about = /^\/api\/sessions\/([^/]+)\/about$/.exec(url.pathname);
@@ -360,12 +361,12 @@ test("a recent folder is one click, and its last session gives kits, provider an
   expect((screen.getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement).value).toBe("plan");
 });
 
-// The workspace (LADO_REPOS)
+// The workspace (LADO_REPOS, else ~/workspace)
 
 const REPOS = "/Users/me/repos";
 
 test("an empty Where suggests the workspace's subfolders on focus, and a pick is its full path", async () => {
-  repos = REPOS;
+  workspace = { path: REPOS, made: true };
   folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem: "no", subfolders: ["api", "app", "site"] });
   await openLaunch();
   await waitFor(() => expect(where().placeholder).toBe(`${REPOS}/…`));
@@ -380,7 +381,7 @@ test("an empty Where suggests the workspace's subfolders on focus, and a pick is
 });
 
 test("the Workspace row puts the folder in Where and lists it", async () => {
-  repos = REPOS;
+  workspace = { path: REPOS, made: true };
   folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem: "no", subfolders: ["api", "app", "site"] });
   const dialog = await openLaunch();
   const row = await within(dialog).findByText(/Workspace:/);
@@ -397,7 +398,7 @@ test("the Workspace row puts the folder in Where and lists it", async () => {
 });
 
 test("the workspace itself in Where is not checked as a folder for a session", async () => {
-  repos = REPOS;
+  workspace = { path: REPOS, made: true };
   const problem = `${REPOS} is not inside a git repository`;
   folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem, root: null, subfolders: ["api"] });
   folders[REPOS] = folders[`${REPOS}/`];
@@ -416,7 +417,7 @@ test("the workspace itself in Where is not checked as a folder for a session", a
 });
 
 test("a workspace of / is listed as /, never //", async () => {
-  repos = "/";
+  workspace = { path: "/", made: true };
   folders["/"] = folder("/", { ok: false, problem: "no", subfolders: ["srv"] });
   await openLaunch();
   await waitFor(() => expect(where().placeholder).toBe("/…"));
@@ -427,7 +428,7 @@ test("a workspace of / is listed as /, never //", async () => {
 });
 
 test("Resume shows no Workspace row", async () => {
-  repos = REPOS;
+  workspace = { path: REPOS, made: true };
   sessions = [session("lado", { status: "stopped", repo: "/src/lado" })];
   open("/sessions/lado");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
@@ -437,7 +438,7 @@ test("Resume shows no Workspace row", async () => {
 });
 
 test("Clone into's placeholder is in the workspace", async () => {
-  repos = REPOS;
+  workspace = { path: REPOS, made: true };
   const dialog = await openLaunch();
   await waitFor(() => expect(where().placeholder).toBe(`${REPOS}/…`));
   fireEvent.click(within(dialog).getByRole("button", { name: "Clone from URL" }));
@@ -448,9 +449,9 @@ test("Clone into's placeholder is in the workspace", async () => {
   expect(into.placeholder).toBe(`${REPOS}/<repo>`);
 });
 
-test("without a workspace an empty Where suggests nothing and has no row", async () => {
+test("a workspace not made yet: its placeholders, no suggestions and no row", async () => {
   const dialog = await openLaunch();
-  expect(where().placeholder).toBe("~/projects/app");
+  await waitFor(() => expect(where().placeholder).toBe(`${HOME_WORKSPACE}/…`));
   fireEvent.focus(where());
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
   expect(screen.queryByRole("listbox", { name: "Folders" })).toBeNull();
@@ -461,7 +462,21 @@ test("without a workspace an empty Where suggests nothing and has no row", async
     target: { value: "git@github.com:acme/app.git" },
   });
   const into = (await screen.findByRole("textbox", { name: "Clone into" })) as HTMLInputElement;
-  expect(into.placeholder).toBe("~/lado/<repo>");
+  expect(into.placeholder).toBe(`${HOME_WORKSPACE}/<repo>`);
+  fireEvent.click(within(dialog).getByRole("button", { name: "From scratch" }));
+  const createIn = (await screen.findByRole("textbox", { name: "Create in" })) as HTMLInputElement;
+  expect(createIn.placeholder).toBe(`${HOME_WORKSPACE}/<name>`);
+});
+
+test("the default workspace made: its row and its subfolders", async () => {
+  workspace = { path: HOME_WORKSPACE, made: true };
+  folders[`${HOME_WORKSPACE}/`] = folder(`${HOME_WORKSPACE}/`, { ok: false, problem: "no", subfolders: ["app"] });
+  const dialog = await openLaunch();
+  const row = await within(dialog).findByText(/Workspace:/);
+  expect(within(row).getByRole("button", { name: HOME_WORKSPACE })).toBeTruthy();
+  fireEvent.focus(where());
+  const list = await screen.findByRole("listbox", { name: "Folders" });
+  expect(within(list).getAllByRole("option").map((o) => o.textContent)).toEqual(["app/"]);
 });
 
 // Name

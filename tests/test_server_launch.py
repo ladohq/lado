@@ -73,7 +73,7 @@ def test_in_a_container_a_folder_outside_the_repositories_folder_is_ok_with_a_wa
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "projects"))
     outside = folder(client, repo)
     assert outside["ok"] is True
-    assert outside["warning"] == runtime.OUTSIDE_REPOS.format(folder=tmp_path / "projects")
+    assert outside["warning"] == runtime.OUTSIDE_WORKSPACE.format(folder=tmp_path / "projects")
     monkeypatch.setenv("LADO_REPOS", str(tmp_path))
     assert folder(client, repo)["warning"] is None
     monkeypatch.delenv("LADO_CONTAINER")
@@ -214,13 +214,17 @@ def test_a_folder_that_will_not_do_suggests_by_what_is_installed(client, tmp_pat
 # The workspace
 
 
-def test_the_repositories_folder(client, tmp_path, monkeypatch):
+def test_the_workspace(client, home_workspace, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("LADO_REPOS", raising=False)
-    assert client.get("/api/repos-folder").json() == {"path": None}
-    monkeypatch.setenv("LADO_REPOS", str(tmp_path))
-    assert client.get("/api/repos-folder").json() == {"path": str(tmp_path)}
-    monkeypatch.setenv("LADO_REPOS", "code")
-    assert client.get("/api/repos-folder").json() == {"path": None}
+    ws = str(tmp_path / "workspace")
+    assert client.get("/api/repos-folder").json() == {"path": ws, "made": False}
+    (tmp_path / "workspace").mkdir()
+    assert client.get("/api/repos-folder").json() == {"path": ws, "made": True}
+    monkeypatch.setenv("LADO_REPOS", "code")  # relative: ignored
+    assert client.get("/api/repos-folder").json() == {"path": ws, "made": True}
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "code"))
+    assert client.get("/api/repos-folder").json() == {"path": str(tmp_path / "code"), "made": False}
 
 
 # Recent folders
@@ -682,11 +686,11 @@ def scratch_target(client, text, path=None) -> dict:
     return answer.json()
 
 
-def test_a_name_checked(client, git_config, tmp_path, monkeypatch, installed):
+def test_a_name_checked(home_workspace, client, git_config, tmp_path, monkeypatch, installed):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     installed.intersection_update({"kilo"})
     assert scratch_target(client, "Сайт кофейни") == {
-        "path": str(tmp_path / "home" / "lado" / "sait-kofeini"),
+        "path": str(tmp_path / "home" / "workspace" / "sait-kofeini"),
         "name": "sait-kofeini",
         "title": "Сайт кофейни",
         "problem": None,
@@ -699,9 +703,7 @@ def test_a_name_checked(client, git_config, tmp_path, monkeypatch, installed):
     }
 
 
-def test_the_default_folder_is_in_the_repositories_folder(
-    client, git_config, tmp_path, monkeypatch
-):
+def test_the_default_folder_is_in_the_workspace(client, git_config, tmp_path, monkeypatch):
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "projects"))
     info = scratch_target(client, "coffee-site")
     assert (info["path"], info["title"]) == (str(tmp_path / "projects" / "coffee-site"), None)
@@ -772,7 +774,7 @@ def test_in_a_container_a_fresh_start_outside_the_repositories_folder_warns(
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "projects"))
     assert scratch_target(client, "shop")["warning"] is None
     outside = scratch_target(client, "shop", tmp_path / "shop")["warning"]
-    assert outside == runtime.OUTSIDE_REPOS.format(folder=tmp_path / "projects")
+    assert outside == runtime.OUTSIDE_WORKSPACE.format(folder=tmp_path / "projects")
 
 
 def test_no_git_in_the_target_is_the_author_with_its_hint(

@@ -308,6 +308,62 @@ def test_the_migration_gives_gates_the_note_before_them_as_a_new_database_has_it
     assert old.note_id is None
 
 
+PROJECTS_TABLE = "SELECT sql FROM sqlite_master WHERE name = 'projects'"
+
+
+def test_the_migration_makes_the_projects_table_as_a_new_database_has_it(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    with state.connect() as db:
+        fresh = db.execute(PROJECTS_TABLE).fetchone()[0]
+    agent_helpers.schema_before(32)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert db.execute(PROJECTS_TABLE).fetchone() is None
+    db.close()
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (31, 32)
+    assert migrated.backup == lado_home / "backups" / "lado.db.schema-31"
+    with state.connect() as db:
+        assert db.execute(PROJECTS_TABLE).fetchone()[0] == fresh
+    assert state.list_projects() == []
+
+
+def test_projects_kept_in_lado_db(lado_home):
+    with state.creating_project("shop", "Shop"):
+        pass
+    with state.creating_project("acme", None):
+        pass
+    with pytest.raises(sqlite3.IntegrityError):
+        with state.creating_project("shop", "Again"):
+            pass
+    assert [p.id for p in state.list_projects()] == ["acme", "shop"]
+    shop = state.get_project("shop")
+    assert (shop.id, shop.title) == ("shop", "Shop")
+    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", shop.created_at)  # UTC
+    assert state.get_project("nope") is None
+    assert state.set_project_title("shop", "Shop EU") is True
+    assert state.get_project("shop").title == "Shop EU"
+    assert state.set_project_title("shop", None) is True
+    assert state.get_project("shop").title is None
+    assert state.set_project_title("nope", "x") is False
+    assert state.delete_project("acme") is True
+    assert state.delete_project("acme") is False
+    assert [p.id for p in state.list_projects()] == ["shop"]
+
+
+def test_a_project_being_made_stays_only_when_its_block_ends_well(lado_home):
+    with pytest.raises(OSError):
+        with state.creating_project("shop", "Shop"):
+            assert state.get_project("shop") is None  # not committed yet: other readers
+            raise OSError("no folder")
+    assert state.get_project("shop") is None
+    with state.creating_project("acme", None):
+        pass
+    assert state.get_project("acme").title is None
+    with pytest.raises(sqlite3.IntegrityError):
+        with state.creating_project("acme", None):
+            pass
+
+
 def test_the_migration_gives_agents_their_read_only_flag(lado_home):
     _session_with(_agent(status=state.BUSY))
     agent_helpers.schema_before(25)
@@ -442,7 +498,7 @@ def test_schema_31_gives_gates_the_answer_note_and_old_gates_none(lado_home):
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     assert "answer_note" not in _columns(db, "gates")
     db.close()
-    assert state.migrate().after == state.SCHEMA_VERSION == 31
+    assert state.migrate().after == state.SCHEMA_VERSION
     with state.connect() as db:
         assert db.execute(GATES_TABLE).fetchone()[0] == fresh
     [old] = state.session_gates("s")
@@ -721,8 +777,8 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
-        columns = {row[1] for row in db.execute("PRAGMA table_info(gates)")}
-    assert "answer_note" not in columns  # the content before the migration
+        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
+    assert "projects" not in tables  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -757,19 +813,24 @@ def test_a_backup_that_cannot_be_written_stops_the_migration(lado_home):
     assert _schema(lado_home / "lado.db") == old
 
 
-def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home):
+def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkeypatch):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
     old = state.SCHEMA_VERSION - 1
-    with state.connect() as db:  # the last step's column is there already: its step fails
-        db.execute(f"PRAGMA user_version = {old}")
+    agent_helpers.previous_schema()
+    # The last step, then a statement that fails: the step's change must not stay either.
+    monkeypatch.setitem(
+        state.MIGRATIONS, old, [*state.MIGRATIONS[old], "SELECT no_such_function()"]
+    )
     with pytest.raises(state.MigrationFailed) as e:
         state.migrate()
     backup = lado_home / "backups" / f"lado.db.schema-{old}"
     assert (e.value.before, e.value.after, e.value.backup) == (old, state.SCHEMA_VERSION, backup)
     assert isinstance(e.value.__cause__, sqlite3.OperationalError)
-    assert "duplicate column" in e.value.reason
+    assert "no such function" in e.value.reason
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
+    with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
+        assert db.execute(PROJECTS_TABLE).fetchone() is None  # the step was rolled back
 
 
 def test_no_pending_migration_without_a_database(lado_home):

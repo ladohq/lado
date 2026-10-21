@@ -36,8 +36,9 @@
   `<workspace>/projects/acme`; `GET /api/folders?path=<workspace>/projects/acme` with the
   UI's token answers `warning: null`, and the same for `/home/lado/elsewhere` answers the
   "Outside the workspace" warning (the check is not blind).
-- [ ] 2.4 Run: `make docker` then `make test-container` when Docker is at hand; otherwise
-  CI's container cells are the check, and the build report says so.
+- [x] 2.4 Run: `make docker` then `make test-container` when Docker is at hand; otherwise
+  CI's container cells are the check, and the build report says so. No Docker on the
+  build machine: CI's container (amd64) and (arm64) cells passed on `fc22acb`.
 
 ## 3. "project" → "repository"
 
@@ -92,7 +93,7 @@
 
 ## 5. The checks
 
-- [ ] 5.1 `make lint`, `make test`, `openspec validate compose-workspace-variable --strict`,
+- [x] 5.1 `make lint`, `make test`, `openspec validate compose-workspace-variable --strict`,
   `openspec validate --specs --strict`; CI green with its container and smoke cells.
 - [x] 5.2 The pull request's manual check: the branch, the folder (a temporary one with a
   copy of `docker/compose.yaml`), `env | grep -E '^(LADO|COMPOSE)_'` and `unset` first,

@@ -169,7 +169,7 @@ session against the fake endpoint, run inside the container on its own loopback 
 through `~/.profile`, gets its supervisor to idle, the window's process is the `claude`
 binary itself (`/proc/<pid>/exe`), and `lado doctor` run with exactly that process's
 environment (`/proc/<pid>/environ`) says `in a container`; `docker/compose.yaml` serves on
-its `LADO_PORT`, its `lado doctor` names the projects at the host's path as `LADO_REPOS`,
+its `LADO_PORT`, its `lado doctor` names the workspace at the host's path as `LADO_REPOS`,
 it refuses without `LADO_PROJECTS`, and its `config` refuses without `LADO_VERSION` (naming
 it), runs `ghcr.io/ladohq/lado:<LADO_VERSION>` with it and `LADO_IMAGE` when that is set.
 Two LADOs (`test_two_lados.py`): two compose projects, each a folder of its own with a copy
@@ -195,14 +195,14 @@ no agent config folder; `docker kill`, then `docker start`, resumes it too; thre
 stop within Docker's default ten seconds with exit 0, all marked; a new image on a home
 volume with a session not stopped (`old_home(running=True)`) prints the upgrade line before
 the resumed line.
-The projects (`test_projects.py`): with the test's
+The workspace (`test_projects.py`): with the test's
 folder mounted at its own path, a worker spawned in the container commits in its worktree,
 and on the host `git status` works there, `git worktree list` has no `prunable`, the file
 and the commit's object belong to the host's user (uid 1001 on GitHub's runner), and the
 worker's process has the container's `LADO_REPOS`; a projects volume owned by 2001
 (`projects_volume`) makes `lado` uid 2001, its home too, leaves no sudo rule, `docker exec
 lado ui` works, and a restart (under 8 s) keeps the uid; the same home volume in a new
-container with projects of 2002 is 2002's, with `lado doctor` clean and `lado ls` working;
+container with a workspace of 2002 is 2002's, with `lado doctor` clean and `lado ls` working;
 an owner of 0 keeps 1000 and warns in `docker logs`, as does a `LADO_REPOS` not mounted; a
 gid of 0 is not taken; with the entrypoint replaced (the sudo rule left), a `setpriv`
 first on the PATH its caller hands over does not run as root; with no-new-privileges,
@@ -216,7 +216,7 @@ committer, a new email on the same home volume replaces the old, and without the
 github.com and `gh auth token`; an ssh agent of a sidecar container (OpenSSH's agent
 serves only its own uid, so it runs as lado's) on a shared volume, its socket given to
 root as Docker Desktop's is, lists its key in an agent's login shell, also after a
-restart that found it root's again, with no 0 in `id -G`; one of the projects' owner
+restart that found it root's again, with no 0 in `id -G`; one of the workspace's owner
 (2001) works as it is and stays 2001's; under no-new-privileges a root socket is the
 warning; compose's default (`/dev/null`) gives no `SSH_AUTH_SOCK` and no line; and the
 ssh rule refuses an argument and a variable, `sudo -n true` fails.

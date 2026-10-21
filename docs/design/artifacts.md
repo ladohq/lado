@@ -391,8 +391,8 @@ schema 23.
 - Showing records as versions, and a diff between them.
 - Files in gate answers, in answers to `ask_human` and in the New session window; uploads
   in the Artifacts tab.
-- Artifacts that outlive their session (a project's, a tracker task's): with projects
-  (ROADMAP, Later).
+- Artifacts that outlive their session (a project's, a tracker task's): after the projects
+  epic ([projects.md](projects.md), Not now).
 - A retention policy; removing an upload nothing refers to.
 - PDFs and other binaries an agent reads (a PDF's pages as images); resizing an image an
   agent is not shown (it is named, not shown).

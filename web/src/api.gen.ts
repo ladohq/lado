@@ -2302,8 +2302,8 @@ export interface components {
         };
         /**
          * ReposFolder
-         * @description The folder of the human's repositories (LADO_REPOS, clone.repos_folder): the New
-         *     session window's start folder, or None.
+         * @description The human's workspace (LADO_REPOS, clone.repos_folder): the New session window's
+         *     start folder, or None.
          */
         ReposFolder: {
             /** Path */

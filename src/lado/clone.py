@@ -120,15 +120,15 @@ class Address:
 
 
 def repos_folder() -> Path | None:
-    """The folder of the human's repositories, `LADO_REPOS` with `~` expanded; None when it
-    is unset, empty or not a full path (`lado doctor` says why it is ignored)."""
+    """The human's workspace, the folder LADO keeps code in: `LADO_REPOS` with `~`
+    expanded; None when it is unset, empty or not a full path (`lado doctor` says why it is
+    ignored)."""
     folder = Path(os.path.expanduser(os.environ.get(REPOS, "")))  # unset: ".", not absolute
     return folder if folder.is_absolute() else None
 
 
 def default_parent() -> Path:
-    """Where a clone goes when the human gives no folder: the repositories folder, else
-    ~/lado."""
+    """Where a clone goes when the human gives no folder: the workspace, else ~/lado."""
     return repos_folder() or Path(os.path.expanduser(DEFAULT_PARENT))
 
 

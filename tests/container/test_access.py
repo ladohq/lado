@@ -2,7 +2,7 @@
 container-secrets-and-git): variables from the secrets folder at /run/secrets (a kit that
 needs one starts, and docker inspect holds no value), git's identity from LADO_GIT_NAME and
 LADO_GIT_EMAIL, github.com's https credentials from gh, and the host's ssh agent without
-root's group, through a socket of root's (Docker Desktop's) or of the projects' owner.
+root's group, through a socket of root's (Docker Desktop's) or of the workspace's owner.
 Only fake values."""
 
 import time
@@ -41,7 +41,7 @@ def served(start, *args: str, home: str | None = None):
 
 def with_secrets(tmp_path, **files: str) -> list[str]:
     """`docker run` arguments for a secrets folder of the host (700, its files 600) at
-    /run/secrets, read-only, and the host's projects folder as LADO_REPOS, so lado takes
+    /run/secrets, read-only, and the host's workspace as LADO_REPOS, so lado takes
     the host user's uid and can read the files, as with compose."""
     secrets = tmp_path / "secrets"
     secrets.mkdir(mode=0o700)

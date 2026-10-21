@@ -45,7 +45,7 @@ def stopped_session(repo) -> str:
 
 @pytest.fixture
 def repos(tmp_path, monkeypatch):
-    """A repositories folder of two repositories as LADO_REPOS; a test takes it before
+    """A workspace of two repositories as LADO_REPOS; a test takes it before
     `server`, so the server's process has it."""
     folder = tmp_path / "repos"
     agent_helpers.init_repo(folder / "api")
@@ -62,7 +62,7 @@ def test_where_starts_in_the_repositories_folder(page: Page, repos, server, shot
     where = dialog.get_by_role("combobox", name=re.compile("Where"))
     expect(where).to_have_value("")
     expect(where).to_have_attribute("placeholder", f"{repos}/…")
-    row = dialog.locator(".recent", has_text="Repositories folder:")
+    row = dialog.locator(".recent", has_text="Workspace:")
     expect(row.get_by_role("button", name=str(repos))).to_be_visible()
     where.blur()
     shot(page, "empty")
@@ -82,7 +82,7 @@ def test_where_starts_in_the_repositories_folder(page: Page, repos, server, shot
     shot(page, "clone")
 
 
-OUTSIDE = "⚠ Outside the repositories folder ({}): this folder is only in the container"
+OUTSIDE = "⚠ Outside the workspace ({}): this folder is only in the container"
 
 
 def test_in_a_container_a_folder_outside_the_repositories_folder_is_warned_about(

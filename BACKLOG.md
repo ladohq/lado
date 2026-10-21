@@ -1394,7 +1394,7 @@ Found: 2026-10-01, provider fixes task.
 
 ## Flows cannot work on another repository
 
-Size: L. Why here: part of "Projects" (Later in ROADMAP.md).
+Size: L. Why here: comes with sessions over several repositories of a project, which the projects model leaves for after the projects epic (docs/design/projects.md, Not now).
 
 A run's worktree and branch are always made in the session's repo, so a change to another
 repo (e.g. the lado-kits kit repo while the session runs on LADO) cannot go through a flow:
@@ -2256,10 +2256,11 @@ Found: 2026-10-07, design of feature/artifacts (the human's decision: later).
 
 ## Artifacts end with their session
 
-Size: L. Why here: comes with projects (ROADMAP, Later); a session's artifacts are enough until then (docs/design/artifacts.md, Left out).
+Size: L. Why here: a project's artifacts that outlive its sessions come after the projects epic (docs/design/projects.md, Not now); a session's artifacts are enough until then (docs/design/artifacts.md, Left out).
 `lado forget` removes a session's artifacts with it, so a design or report cannot outlive
 the session that wrote it, nor belong to a project or a tracker task.
-Wanted: a project scope for artifacts (one more scope, one migration), kept across sessions.
+Wanted: a project scope for artifacts (one more scope, one migration), kept across the
+sessions of that project and removed with the project.
 Found: 2026-10-07, design of feature/artifacts (the human's decision: later).
 
 ## Artifacts have no retention policy
@@ -2318,3 +2319,14 @@ opens and closes for good keeps the blue bar and the tab's mark beside `closed: 
 until Reconnect (which opens in View) or the agent changes.
 Wanted: a close for good in control releases it too, whatever the phase before.
 Found: 2026-10-11, review of feature/terminal-control-bar (noted, allowed by the design).
+
+## Managing workspace folders outside projects
+
+Size: M. Why here: the projects model gives LADO only the workspace's `projects/`; the rest is the human's (docs/design/projects.md, Not now).
+LADO lists, adds and removes the repositories of a project, but not the other folders of the
+workspace: sessions without a project (a clone by URL, a folder made from scratch) and
+anything the human put there. Tidying them up is done on the host, which in Docker means
+leaving the UI.
+Wanted: if it is ever needed, listing those folders in the UI and removing one there, with
+the same unpushed-work check as a project's repository; never a folder LADO did not show.
+Found: 2026-10-21, design of LAD-117.

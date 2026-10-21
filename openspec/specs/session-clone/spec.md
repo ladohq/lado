@@ -29,23 +29,6 @@ SHALL name a URL through `runtime.public_remote` (no password or token).
 - **WHEN** the source is `https://ghp_secret@github.com/acme/app` and the clone fails
 - **THEN** the text names `https://github.com/acme/app` and holds no `ghp_secret`
 
-### Requirement: The default folder of a clone
-
-A clone's folder SHALL be, unless the human gives one, `<parent>/<repo>`: `<parent>` is
-the repositories folder (`LADO_REPOS`) when one is set, else `~/lado`; `<repo>` is the
-URL's last path segment without a trailing `/` or `.git`. A given folder SHALL be a full
-path (`~` allowed); a relative one SHALL be refused as the window refuses it today. The
-folders above it SHALL be made when missing.
-
-#### Scenario: Default folder
-- **WHEN** the URL is `https://github.com/ladohq/marketplace.git/` and no folder is given
-- **THEN** the folder is `~/lado/marketplace`
-
-#### Scenario: Default folder in the repositories folder
-- **WHEN** `LADO_REPOS=/Users/me/repos` and the human clones `git@github.com:acme/app.git`
-  with no folder, by `lado start` or the New session window
-- **THEN** the folder is `/Users/me/repos/app`, and the window's Clone into shows it
-
 ### Requirement: The target folder is checked before any clone
 
 Before it lists branches or clones, LADO SHALL check the target folder and give one of
@@ -371,3 +354,20 @@ clones.
 #### Scenario: A window that went away
 - **WHEN** a clone runs and nobody asks `GET /api/clones/{id}` for `ABANDONED` seconds
 - **THEN** the server cancels it and removes the temporary folder
+
+### Requirement: The default folder of a clone, in the workspace when there is one
+
+A clone's folder SHALL be, unless the human gives one, `<parent>/<repo>`: `<parent>` is
+the workspace (`LADO_REPOS`) when one is set, else `~/lado`; `<repo>` is the
+URL's last path segment without a trailing `/` or `.git`. A given folder SHALL be a full
+path (`~` allowed); a relative one SHALL be refused as the window refuses it today. The
+folders above it SHALL be made when missing.
+
+#### Scenario: Default folder
+- **WHEN** the URL is `https://github.com/ladohq/marketplace.git/` and no folder is given
+- **THEN** the folder is `~/lado/marketplace`
+
+#### Scenario: Default folder in the workspace
+- **WHEN** `LADO_REPOS=/Users/me/repos` and the human clones `git@github.com:acme/app.git`
+  with no folder, by `lado start` or the New session window
+- **THEN** the folder is `/Users/me/repos/app`, and the window's Clone into shows it

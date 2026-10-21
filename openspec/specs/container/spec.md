@@ -222,8 +222,8 @@ write, so that a container without a projects mount still starts.
 
 The image's server
 SHALL listen on `0.0.0.0` at the port of `LADO_PORT`, 8765 when it is unset, as the
-image's user `lado` (uid 1000 unless the projects' owner gives it another, see "The
-image's user takes the projects folder's owner") under tini, with LADO_HOME in
+image's user `lado` (uid 1000 unless the workspace's owner gives it another, see "The
+image's user takes the workspace's owner") under tini, with LADO_HOME in
 `/home/lado/.lado` on the home volume.
 
 #### Scenario: Another port
@@ -331,22 +331,6 @@ on, the host's loopback unless `.env` names another.
 - **THEN** `docker compose config` publishes `0.0.0.0:8765:8765` and gives the container
   `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST=kaos-mbp.local`
 
-### Requirement: The compose file mounts the projects at the host's path
-
-`docker/compose.yaml` SHALL mount
-`LADO_PROJECTS`, which is required, at that same path inside the container and set
-`LADO_REPOS` to it, and mount the home volume at `/home/lado`, and SHALL name no
-container.
-
-#### Scenario: No projects folder given
-- **WHEN** the human runs `docker compose up -d` without `LADO_PROJECTS`
-- **THEN** compose refuses and names `LADO_PROJECTS`
-
-#### Scenario: The projects at the host's path
-- **WHEN** the human runs `LADO_PROJECTS=/Users/me/projects docker compose up -d`
-- **THEN** the container sees the projects at `/Users/me/projects` and `lado doctor` in it
-  prints `[ok  ] Repositories folder: /Users/me/projects (LADO_REPOS)`
-
 ### Requirement: The compose header says where the settings go and how to run a second LADO
 
 The header of `docker/compose.yaml` SHALL say to keep its variables in `.env` next to the file, that
@@ -365,60 +349,28 @@ its own.
 
 ### Requirement: A worker's worktree made in the container works on the host
 
-With the projects folder mounted at the host's own path and `LADO_REPOS` set to it, every
+With the workspace mounted at the host's own path and `LADO_REPOS` set to it, every
 path LADO stores and every link git writes in the container (a worker's worktree, its
 `.git` file, the repository's `worktrees/` record) SHALL be the host's path too, so that
 git on the host reads a worktree LADO made in the container as a working tree.
 
 #### Scenario: A worker commits in the container
 
-- **WHEN** a session in the container works on `<projects>/app`, a worker of it commits a
-  file in its worktree, and the host runs git in `<projects>/app`
-- **THEN** on the host `git -C <projects>/app/.lado/worktrees/<session>/<worker> status`
+- **WHEN** a session in the container works on `<workspace>/app`, a worker of it commits a
+  file in its worktree, and the host runs git in `<workspace>/app`
+- **THEN** on the host `git -C <workspace>/app/.lado/worktrees/<session>/<worker> status`
   succeeds, `git worktree list --porcelain` names that worktree with no `prunable`, and
   the worker's commit is on its branch
-
-### Requirement: The image's user takes the projects folder's owner
-
-At a container's first start, before the UI server starts, the image SHALL give its user
-`lado` the uid and gid of the owner of `LADO_REPOS`'s folder, unless that owner's uid is 0
-(how Docker Desktop shows a bind mount) or equal to `lado`'s already; a gid of 0, root's
-group, SHALL never be taken (`lado` keeps its own group). It SHALL then give
-`lado` everything under `/home/lado` whose owner is not `lado`'s uid and gid. A
-restart of the same container SHALL keep the uid it took.
-
-#### Scenario: Docker Desktop shows the owner as 0
-
-- **WHEN** `LADO_REPOS`'s folder is owned by uid 0 in the container
-- **THEN** `lado` keeps uid 1000, and the server starts
-
-#### Scenario: Recreated with another owner, the same home volume
-
-- **WHEN** a container whose projects belong to uid 2001 has run with home volume H, and a
-  new container of the image starts with H and projects that belong to uid 2002
-- **THEN** in the new container `id -u` prints 2002, nothing under `/home/lado` belongs to
-  another uid, the server answers `/api/health`, `lado doctor` prints no `[FAIL]`, and
-  `lado ls` works
-
-#### Scenario: Projects of root's group
-
-- **WHEN** `LADO_REPOS`'s folder is owned by uid 2001 and gid 0
-- **THEN** `id -u` in the container prints 2001 and `id -g` 1000
-
-#### Scenario: A restart
-
-- **WHEN** a container that took uid 2001 is restarted with `docker restart`
-- **THEN** it runs as uid 2001 again and the server answers
 
 ### Requirement: The server, docker exec and the agents run as the image's user
 
 The server,
 `docker exec <container> <command>` with no `-u`, and every agent SHALL run as `lado`
-with the uid it took from the projects folder's owner.
+with the uid it took from the workspace's owner.
 
 #### Scenario: A Linux host's user
 
-- **WHEN** the human's projects folder, owned by uid 1001 and gid 1001 on a Linux host
+- **WHEN** the human's workspace, owned by uid 1001 and gid 1001 on a Linux host
   (GitHub's runner), is mounted at its path with `LADO_REPOS` set to it, and an agent of
   the container writes a file and a commit there
 - **THEN** `docker exec <container> id -u` prints 1001, and on the host the file and the
@@ -476,30 +428,10 @@ root run that fails SHALL be a warning line, and the server SHALL start anyway.
   line `lado: warning: the container's root file system is read-only: lado keeps uid 1000
   instead of the owner's of <path>, and the agents' LADO_REPOS is /projects`
 
-### Requirement: A projects folder LADO cannot use is named at the start
-
-A folder `LADO_REPOS` that is no
-folder in the container, or one `lado` may not write in, SHALL be named in `docker logs`
-with one warning line, and the server SHALL start anyway.
-
-#### Scenario: The projects folder is not writable
-
-- **WHEN** `LADO_REPOS`'s folder belongs to uid 0 and is not writable by others
-- **THEN** `docker logs` has a line `lado: warning: LADO may not write in LADO_REPOS
-  <path>`, and the server starts
-
-#### Scenario: LADO_REPOS is not mounted
-
-- **WHEN** the container runs with `-e LADO_REPOS=/home/me/projects` and nothing is
-  mounted there
-- **THEN** `docker logs` has a line `lado: warning: LADO_REPOS is not a folder in the
-  container: /home/me/projects; mount the host's folder at this same path`, and the server
-  starts
-
 ### Requirement: git in the image trusts every repository
 
 The image's system git configuration SHALL have `safe.directory = *`, so that git in the
-container never refuses a repository of the projects folder as of "dubious ownership",
+container never refuses a repository of the workspace as of "dubious ownership",
 whoever the folder's owner seems to be.
 
 #### Scenario: A repository owned by another uid
@@ -904,24 +836,6 @@ host's keys.
 - **WHEN** `.env` has `LADO_SSH_AGENT=/run/missing.sock` and that path does not exist
 - **THEN** compose refuses to start and names the path
 
-### Requirement: The image gives the agents and the server the ssh agent's socket
-
-When the path `/run/lado/ssh-agent.sock` in the container is a socket, the image SHALL set
-`SSH_AUTH_SOCK=/run/lado/ssh-agent.sock` for every login shell, so for every agent, and
-for the UI server, whose Clone from URL and branch listing run git over ssh: one rule,
-`docker/ssh-agent-env.sh` at `/etc/profile.d/lado-ssh-agent.sh`, which the entrypoint
-sources before the command, after the entrypoint's check of the socket.
-
-#### Scenario: A Linux host's socket of the projects' owner
-- **WHEN** the socket belongs to the uid of the projects' owner, which `lado` takes
-- **THEN** `ssh-add -l` in an agent's login shell lists the key, and the socket's owner is
-  unchanged
-
-#### Scenario: No ssh agent
-- **WHEN** `LADO_SSH_AGENT` is not set
-- **THEN** agents and the UI server have no `SSH_AUTH_SOCK` from the image, and `docker
-  logs` has no ssh line
-
 ### Requirement: The entrypoint gives a root's socket to lado through one fixed program
 
 At every start, the entrypoint SHALL check, as `lado`, whether `lado` can use the socket:
@@ -1203,7 +1117,7 @@ in `/opt`.
 
 #### Scenario: Installs at another uid
 
-- **WHEN** the projects folder belongs to uid 1001 (GitHub's runner) and an agent's login
+- **WHEN** the workspace belongs to uid 1001 (GitHub's runner) and an agent's login
   shell runs `npm install -g` of a package and `uv tool install` of another, both local
 - **THEN** both succeed, their files are under `/home/lado/.local`, and a new login shell
   runs both commands
@@ -1323,9 +1237,9 @@ environment.
 
 #### Scenario: A project's own Python
 
-- **WHEN** a project under `LADO_REPOS` holds `.python-version` with `3.12` and a login
+- **WHEN** a repository under `LADO_REPOS` holds `.python-version` with `3.12` and a login
   shell there runs `mise install`, then `python3 --version`
-- **THEN** it answers `Python 3.12.<patch>`, and in the projects folder above it
+- **THEN** it answers `Python 3.12.<patch>`, and in the workspace above it
   `python3 --version` still answers 3.13
 
 #### Scenario: The agents cannot change LADO's Python
@@ -1369,3 +1283,89 @@ volume (`make browser`), at the project's own version.
   Playwright's browsers (`~/.cache/ms-playwright`) and for `chromium`, `chromium-browser`
   or `google-chrome` on `PATH`
 - **THEN** there is none
+
+### Requirement: The compose file mounts the workspace at the host's path
+
+`docker/compose.yaml` SHALL mount
+`LADO_PROJECTS`, which is required, at that same path inside the container and set
+`LADO_REPOS` to it, and mount the home volume at `/home/lado`, and SHALL name no
+container.
+
+#### Scenario: No workspace given
+- **WHEN** the human runs `docker compose up -d` without `LADO_PROJECTS`
+- **THEN** compose refuses and names `LADO_PROJECTS`
+
+#### Scenario: The workspace at the host's path
+- **WHEN** the human runs `LADO_PROJECTS=/Users/me/projects docker compose up -d`
+- **THEN** the container sees the workspace at `/Users/me/projects` and `lado doctor` in it
+  prints `[ok  ] Workspace: /Users/me/projects (LADO_REPOS)`
+
+### Requirement: The image's user takes the workspace's owner
+
+At a container's first start, before the UI server starts, the image SHALL give its user
+`lado` the uid and gid of the owner of `LADO_REPOS`'s folder, unless that owner's uid is 0
+(how Docker Desktop shows a bind mount) or equal to `lado`'s already; a gid of 0, root's
+group, SHALL never be taken (`lado` keeps its own group). It SHALL then give
+`lado` everything under `/home/lado` whose owner is not `lado`'s uid and gid. A
+restart of the same container SHALL keep the uid it took.
+
+#### Scenario: Docker Desktop shows the owner as 0
+
+- **WHEN** `LADO_REPOS`'s folder is owned by uid 0 in the container
+- **THEN** `lado` keeps uid 1000, and the server starts
+
+#### Scenario: Recreated with another owner, the same home volume
+
+- **WHEN** a container whose workspace belongs to uid 2001 has run with home volume H, and a
+  new container of the image starts with H and a workspace that belongs to uid 2002
+- **THEN** in the new container `id -u` prints 2002, nothing under `/home/lado` belongs to
+  another uid, the server answers `/api/health`, `lado doctor` prints no `[FAIL]`, and
+  `lado ls` works
+
+#### Scenario: A workspace of root's group
+
+- **WHEN** `LADO_REPOS`'s folder is owned by uid 2001 and gid 0
+- **THEN** `id -u` in the container prints 2001 and `id -g` 1000
+
+#### Scenario: A restart
+
+- **WHEN** a container that took uid 2001 is restarted with `docker restart`
+- **THEN** it runs as uid 2001 again and the server answers
+
+### Requirement: A workspace LADO cannot use is named at the start
+
+A folder `LADO_REPOS` that is no
+folder in the container, or one `lado` may not write in, SHALL be named in `docker logs`
+with one warning line, and the server SHALL start anyway.
+
+#### Scenario: The workspace is not writable
+
+- **WHEN** `LADO_REPOS`'s folder belongs to uid 0 and is not writable by others
+- **THEN** `docker logs` has a line `lado: warning: LADO may not write in LADO_REPOS
+  <path>`, and the server starts
+
+#### Scenario: LADO_REPOS is not mounted
+
+- **WHEN** the container runs with `-e LADO_REPOS=/home/me/projects` and nothing is
+  mounted there
+- **THEN** `docker logs` has a line `lado: warning: LADO_REPOS is not a folder in the
+  container: /home/me/projects; mount the host's folder at this same path`, and the server
+  starts
+
+### Requirement: The image gives the agents and the server the host's ssh agent socket
+
+When the path `/run/lado/ssh-agent.sock` in the container is a socket, the image SHALL set
+`SSH_AUTH_SOCK=/run/lado/ssh-agent.sock` for every login shell, so for every agent, and
+for the UI server, whose Clone from URL and branch listing run git over ssh: one rule,
+`docker/ssh-agent-env.sh` at `/etc/profile.d/lado-ssh-agent.sh`, which the entrypoint
+sources before the command, after the entrypoint's check of the socket.
+
+#### Scenario: A Linux host's socket of the workspace's owner
+- **WHEN** the socket belongs to the uid of the workspace's owner, which `lado` takes
+- **THEN** `ssh-add -l` in an agent's login shell lists the key, and the socket's owner is
+  unchanged
+
+#### Scenario: No ssh agent
+- **WHEN** `LADO_SSH_AGENT` is not set
+- **THEN** agents and the UI server have no `SSH_AUTH_SOCK` from the image, and `docker
+  logs` has no ssh line

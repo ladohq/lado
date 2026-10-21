@@ -542,12 +542,12 @@ def _duration(seconds: float) -> str:
 
 
 def check_repos_folder() -> Check | None:
-    """LADO_REPOS when it is set: the folder the New session window and a clone start
-    from, or why LADO ignores it."""
+    """LADO_REPOS when it is set: the workspace, the folder the New session window and a
+    clone start from, or why LADO ignores it."""
     value = os.environ.get(clone.REPOS, "")
     if not value:
         return None
-    name = "Repositories folder"
+    name = "Workspace"
     folder = clone.repos_folder()
     if folder is None:
         return Check(

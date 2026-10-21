@@ -189,5 +189,7 @@ Vulnerability reports: [SECURITY.md](SECURITY.md).
 - [docs/cli.md](docs/cli.md): how the `lado` commands behave.
 - [docs/design/ui.md](docs/design/ui.md): the web UI and its server.
 - [docs/design/artifacts.md](docs/design/artifacts.md): artifacts.
+- [docs/design/projects.md](docs/design/projects.md): projects and the workspace (mostly
+  not built yet).
 - [docs/release.md](docs/release.md): releases and what must be green before one.
 - [openspec/specs/](openspec/specs/): the living specs of each capability.

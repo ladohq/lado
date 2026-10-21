@@ -87,10 +87,10 @@ def test_compose_serves_on_lado_port(compose):
     assert health(compose.port)["ok"] is True
     link = compose.run("exec", "-T", "lado", "lado", "ui", "--no-open")
     assert link.stdout.strip().startswith(f"http://127.0.0.1:{compose.port}/?token="), link.stdout
-    # The projects folder at the host's own path, and LADO's repositories folder.
+    # The workspace at the host's own path, as LADO_REPOS.
     projects = compose.env["LADO_PROJECTS"]
     doctor = compose.run("exec", "-T", "lado", "lado", "doctor", check=False).stdout
-    assert f"[ok  ] Repositories folder: {projects} (LADO_REPOS)" in doctor.splitlines(), doctor
+    assert f"[ok  ] Workspace: {projects} (LADO_REPOS)" in doctor.splitlines(), doctor
     assert "From another machine" not in link.stderr  # published on loopback only
 
 

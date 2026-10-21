@@ -29,3 +29,4 @@
 | 2026-10-21 | S2 (LAD-123), analyst's questions #613 | Five design questions of S2 (scale and details) | as recommended; other | as recommended (analyst, lead) | as recommended, scale full (human) | yes |
 | 2026-10-21 | S2 (LAD-123), analyst's question #615 | "Project" meaning a repository in the container spec and the agents' mise paragraph: in S2 or S2b | S2b; S2 | S2b (lead) | S2b (human) | yes |
 | 2026-10-21 | S2 (LAD-123), design_ok gate #46 | The design `projects-in-core`: `projects.workspace()`, table `projects` (schema 32), `lado project`, doctor's Projects check, renames without aliases, fresh start's default also `~/workspace` | approve; reject | approve (lead) | approved (human) | yes |
+| 2026-10-21 | LAD-121 (alongside S2), merge_ok gate #47 | Merge PR #130 (the `sleep 60` leak fixed; `make test` exit 0) with two minor findings declined | approve; reject | approve, LAD-121 first, S2 brings in main (lead) | approved (human) | yes |

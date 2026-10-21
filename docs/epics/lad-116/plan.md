@@ -46,7 +46,7 @@ Notes: concept phase 1, plus D3. The id: `[a-z0-9][a-z0-9-]*`, 1–40 characters
 ### S2b — Compose's `LADO_WORKSPACE` (S)
 Status: planned
 Check: `tests/test_docker.py` and the container tests (CI): `LADO_WORKSPACE` names the host folder; an installed `.env` with only `LADO_PROJECTS` still works; with neither, compose names `LADO_WORKSPACE` in its error; `docs/install.md`, `docs/release.md`, `docs/testing.md`, `openspec/specs/container` name `LADO_WORKSPACE` first and the old name as still accepted.
-Notes: independent of S2's core; `LADO_REPOS` inside the container keeps its name (concept). Past a compose version that cannot nest interpolation defaults, stop and ask the human.
+Notes: leftover of S2 (analyst's question #615): "project" meaning the human's repository in the live spec `container` (the scenarios "A project's Go from its .tool-versions", "A project's mise.toml needs no trust", "A project's own Python", "Outside a project"; the requirements "mise reads the projects' version files…", "The image's python3 gives way to a project's Python") and in the agents' mise paragraph ("a tool the project needs…", also in `runtime.py`) say "repository". Independent of S2's core; `LADO_REPOS` inside the container keeps its name (concept). Past a compose version that cannot nest interpolation defaults, stop and ask the human.
 
 ### S3 — A session in a project (L)
 Status: planned

@@ -98,7 +98,7 @@ None open. Decided at `plan_ok` (gate #33, 2026-10-21), all as recommended: Q1 �
 
 ## Later
 
-- LAD-121 `make test` red with every test passed (a `sleep 60` left) — outside the epic, born in S1b; recommended before S3, whose integration tests lean on a green unit run; touches only `tests/`, so it can run as its own task alongside S2 when the human names it.
+- LAD-121 `make test` red with every test passed (a `sleep 60` left) — outside the epic, born in S1b; run as its own task (run task/lad-121) alongside S2 on the human's word at gate #44.
 - LAD-122 the Resume window's provider refusal does not disable Resume — outside the epic, born in S1b; any time.
 
 - Database extras for repositories (order, description, role, address to re-clone; "missing, clone again?") — concept option C — after this epic, when multi-repo sessions need them.

@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: S1b (LAD-120, run task/lad-120) · Next: S2 · Open checks: none
+In work: none · Next: S2 · Open checks: none
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
@@ -29,7 +29,7 @@ Result: PR #126 merged 2026-10-21 (6c2336e), LAD-117 Done; the change `workspace
 Notes: concept phase 0. Texts only: no name an installation sees changes (environment variables, paths, API keys), so no behaviour changes; one patch-level CHANGELOG line for the renamed labels. Compose's `LADO_PROJECTS` keeps its name here; only its message says "workspace" (whether a new name comes is Q2, in S2). `docs/design/projects.md` describes the target model, says which parts are not built yet, and says plainly: projects of one LADO are not isolated; LADO is not a store; a volume backup holds the secrets; `lado uninstall` deletes `LADO_HOME` with the secrets and never touches the workspace.
 
 ### S1b — Warnings and refusals in the New session window stand out (S)
-Status: in progress (LAD-120, run task/lad-120)
+Status: done (LAD-120, PR https://github.com/ladohq/lado/pull/128)
 Check: mockup approved at `design_ok`; UI e2e: a warning (e.g. "Outside the workspace" in the container) and a refusal (a folder that cannot be used) render in their own styles, distinct from the grey hints, and the Start button is disabled while a refusal shows; `docs/design/ui.md` names the three levels; `make web`, the changed UI tests with `-m ui`, CI green.
 Notes: added on the human's word (#525, 2026-10-21): today every note under a field is `field-note`, 12px grey; a warning differs from a hint only by its text colour, a refusal by a thin left bar, so users skip them. Three levels, only the top two change: hints stay small and grey; a warning becomes a box with a light warm background, an icon and 13px text in the normal colour; a refusal that blocks the start becomes the same box in the error colour. No new elements; only the look of the existing `warn` and `bad` notes (`web/src/styles.css`, `web/src/Launch.tsx`). Before S3, whose refusal "this folder belongs to project <title>: start the session in the project" must be seen. After S1 merges (both touch `Launch.tsx`). Patch.
 

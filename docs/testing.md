@@ -78,8 +78,12 @@ run's processes are never touched. At its end, each pytest process kills what st
 its own mark and fails the run under "processes left by the test run, killed"; an xdist
 controller checks after xdist has stopped its workers, which carry its mark from their start
 (the environment a process was started with is what is read), and each worker hands it what
-it left. The environment is read from `/proc` on Linux and with `ps -E` on macOS.
-`LADO_TEST_PID` is a mark of the test suite only: LADO itself neither sets nor reads it.
+it left. From the start of a test's setup to the end of its teardown, the pytest process
+also sets `LADO_TEST_ID` to the test's node id, so the report names each process with the
+test it was started in (`<pid> <command>, started in <node id>`); a process started outside
+a test is named by pid and command alone. The environment is read from `/proc` on Linux and
+with `ps -E` on macOS. `LADO_TEST_PID` and `LADO_TEST_ID` are marks of the test suite only:
+LADO itself neither sets nor reads them.
 
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
 is missing or not logged in. Models: Claude Code on `haiku` (paid: only with the human's

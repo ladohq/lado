@@ -67,6 +67,17 @@ os.environ["LADO_MACOS_PLACE"] = "gui"
 os.environ["LADO_TEST_PID"] = str(os.getpid())
 
 
+# Every process started during a test, its fixtures' included, carries the test's node id:
+# the run's end names the test that left a process (tests/leftovers.py).
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_protocol(item, nextitem):
+    os.environ["LADO_TEST_ID"] = item.nodeid
+    try:
+        return (yield)
+    finally:
+        os.environ.pop("LADO_TEST_ID", None)
+
+
 def pytest_sessionstart(session):
     # The controller of an xdist run, or a run without workers; the workers start with it.
     if not hasattr(session.config, "workerinput"):

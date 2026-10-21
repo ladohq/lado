@@ -1009,6 +1009,56 @@ def cmd_title(args: argparse.Namespace) -> int:
     return 0
 
 
+NOT_FOUND = "  (folder not found)"
+
+
+def _project_folder(folder: Path, found: bool) -> str:
+    return f"{folder}{'' if found else NOT_FOUND}"
+
+
+def cmd_project(args: argparse.Namespace) -> int:
+    """`lado project <command>`: the human's projects (lado.projects); agents only read."""
+    if args.sub in ("create", "rename", "delete"):
+        _human_only(f"project {args.sub}")
+    if args.sub == "list":
+        listed = projects.listed()
+        if not listed:
+            print("No projects. Make one with: lado project create <id>")
+            return 0
+        ids = max(len(p.id) for p, _, _ in listed)
+        titles = max(len(p.title or p.id) for p, _, _ in listed)
+        for project, folder, found in listed:
+            title = project.title or project.id
+            print(f"{project.id:<{ids}}  {title:<{titles}}  {_project_folder(folder, found)}")
+    elif args.sub == "create":
+        made = projects.create(args.id, args.title)
+        title = f' "{made.title}"' if made.title else ""
+        print(f"Made project {made.id}{title}: {projects.folder(made.id)}")
+    elif args.sub == "show":
+        project = projects.get(args.id)
+        folder = projects.folder(project.id)
+        made = datetime.datetime.fromisoformat(project.created_at).replace(
+            tzinfo=datetime.timezone.utc
+        )
+        print(f'{project.id} "{project.title}"' if project.title else project.id)
+        print(f"  folder:  {_project_folder(folder, folder.is_dir())}")
+        print(f"  made:    {made.astimezone():%Y-%m-%d %H:%M}")
+    elif args.sub == "rename":
+        title = projects.rename(args.id, args.title)
+        print(f'{args.id}: title "{title}"' if title else f"{args.id}: no title")
+    else:
+        projects.get(args.id)
+        folder = projects.folder(args.id)
+        lines = projects.unpushed(folder) if folder.is_dir() else []
+        if lines:
+            print(f"Unpushed work in {folder}:")
+            for line in lines:
+                print(f"  {line}")
+        projects.delete(args.id, args.yes)
+        print(f"Deleted project {args.id}")
+    return 0
+
+
 def cmd_artifacts_list(args: argparse.Namespace) -> int:
     rows = [
         (
@@ -1491,6 +1541,40 @@ def main(argv: list[str] | None = None) -> int:
     )
     title_change.add_argument("--clear", action="store_true", help="remove the title")
     title.set_defaults(func=cmd_title)
+
+    project = commands.add_parser(
+        "project", help="the human's projects: folders in the workspace's projects/"
+    )
+    project.set_defaults(func=lambda _: project.print_help() or 0)
+    project_sub = project.add_subparsers(dest="sub", metavar="<command>")
+    project_sub.add_parser("list", help="every project with its folder").set_defaults(
+        func=cmd_project
+    )
+    project_create = project_sub.add_parser(
+        "create", help="make a project and its folder <workspace>/projects/<id>"
+    )
+    project_create.add_argument(
+        "id", help="lowercase Latin letters, digits and -, at most 40; never changes"
+    )
+    project_create.add_argument("--title", help="what the human reads (default: the id)")
+    project_create.set_defaults(func=cmd_project)
+    project_show = project_sub.add_parser("show", help="a project, its folder and when made")
+    project_show.add_argument("id")
+    project_show.set_defaults(func=cmd_project)
+    project_rename = project_sub.add_parser(
+        "rename", help="change a project's title; its id and folder stay"
+    )
+    project_rename.add_argument("id")
+    project_rename.add_argument("title", help='the new title; "" clears it')
+    project_rename.set_defaults(func=cmd_project)
+    project_delete = project_sub.add_parser(
+        "delete", help="remove a project and its folder, after showing its unpushed work"
+    )
+    project_delete.add_argument("id")
+    project_delete.add_argument(
+        "--yes", action="store_true", help="remove it; without, only show what would go"
+    )
+    project_delete.set_defaults(func=cmd_project)
 
     artifacts_cmd = commands.add_parser(
         "artifacts", help="list a session's artifacts, show or get one (also when stopped)"

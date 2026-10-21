@@ -5,10 +5,7 @@
 At its end, each pytest process of the test suite SHALL kill every process still alive
 that carries its own `LADO_TEST_PID` (itself left out), and SHALL fail the run, naming
 each by pid and command and, when the process carries a `LADO_TEST_ID`, by the node id of
-the test that started it. Every pytest process of the test suite SHALL set `LADO_TEST_ID`
-in its environment to the node id of the test it runs, from the start of the test's setup
-to the end of its teardown, so every process started meanwhile inherits it, and SHALL
-remove it between tests.
+the test that started it.
 
 #### Scenario: A unit test leaves a subprocess
 - **WHEN** a test starts a process that is still alive when the run ends
@@ -28,6 +25,22 @@ remove it between tests.
 - **THEN** the run's result is the tests' own
 
 ## ADDED Requirements
+
+### Requirement: Each test marks the processes it starts
+
+Every pytest process of the test suite SHALL set `LADO_TEST_ID` in its environment to the
+node id of the test it runs, from the start of the test's setup to the end of its
+teardown, so every process started meanwhile inherits it, and SHALL remove it between
+tests.
+
+#### Scenario: A process started in a test's fixture
+- **WHEN** a test's setup, call or teardown starts a process
+- **THEN** the process carries `LADO_TEST_ID` with that test's node id
+
+#### Scenario: Between tests
+- **WHEN** a pytest process has finished a test's teardown and not yet started the next
+  test's setup
+- **THEN** its environment has no `LADO_TEST_ID`
 
 ### Requirement: A fake git's clone that succeeds leaves no process
 

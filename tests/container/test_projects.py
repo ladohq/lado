@@ -2,11 +2,15 @@
 own path, a worker's worktree made in the container is a working tree on the host and its
 files the host user's; the container's user takes the workspace owner's uid (not 0), keeps
 it over a restart, takes another one with the same home volume, and keeps no way to root;
-a workspace not mounted or not writable is named in `docker logs`."""
+a workspace not mounted or not writable is named in `docker logs`; compose's
+LADO_WORKSPACE holds a LADO project's folder where the host sees it."""
 
+import json
 import os
 import subprocess
 import time
+import urllib.parse
+import urllib.request
 
 import pytest
 from container_helpers import agent_environ, claude_session, docker, free_port, health, new_name
@@ -181,3 +185,33 @@ def test_a_read_only_container_starts_as_1000(start, projects_volume):
 def test_lado_repos_not_mounted_warns(start):
     c = served(start, "-e", "LADO_REPOS=/home/me/projects")
     assert NOT_MOUNTED.format("/home/me/projects") in c.logs().splitlines()
+
+
+def folder_warning(port: int, token: str, path: str) -> str | None:
+    """The UI's folder check of `path` (`GET /api/folders`): its warning."""
+    query = urllib.parse.urlencode({"path": path})
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/folders?{query}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as answer:
+        return json.load(answer)["warning"]
+
+
+def test_a_lado_project_of_the_compose_workspace_is_on_the_host(compose):
+    """LADO_WORKSPACE is mounted at its own path as LADO_REPOS, so a LADO project's folder
+    (<workspace>/projects/<id>) is the host's, and the UI does not call it outside."""
+    compose.run("up", "-d")
+    health(compose.port)
+    workspace = compose.env["LADO_WORKSPACE"]
+    made = compose.run("exec", "-T", "lado", "lado", "project", "create", "acme")
+    acme = os.path.join(workspace, "projects", "acme")
+    assert made.stdout.strip() == f"Made project acme: {acme}", made.stdout + made.stderr
+    assert os.path.isdir(acme)
+
+    link = compose.run("exec", "-T", "lado", "lado", "ui", "--no-open").stdout.strip()
+    token = link.partition("?token=")[2]
+    assert folder_warning(compose.port, token, acme) is None
+    # The check is not blind: a folder only in the container is outside.
+    outside = folder_warning(compose.port, token, "/home/lado/elsewhere")
+    assert outside and outside.startswith(f"Outside the workspace ({workspace})"), outside

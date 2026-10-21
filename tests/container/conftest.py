@@ -174,9 +174,10 @@ def compose(request, tmp_path) -> Compose:
         # Compose v2 (GitHub's runners) asks for LADO_VERSION also when LADO_IMAGE wins.
         "LADO_VERSION": "test",
         "LADO_PORT": str(port),
-        "LADO_PROJECTS": str(tmp_path),
+        "LADO_WORKSPACE": str(tmp_path),
     }
     env.pop("LADO_SECRETS", None)
+    env.pop("LADO_PROJECTS", None)  # the name before LADO_WORKSPACE, which a shell may hold
     project = Compose(new_name(), port, override, env)
     # Compose names the service's one container <project>-lado-1.
     keep(request.node, Container(f"{project.project}-lado-1", port))
@@ -198,6 +199,8 @@ FROM_ENV = (
     "LADO_VERSION",
     "LADO_PORT",
     "LADO_SECRETS",
+    "LADO_WORKSPACE",
+    "LADO_PROJECTS",
 )
 
 
@@ -247,7 +250,7 @@ def folder(request, tmp_path):
                 "LADO_PORT": str(free_port()),
                 "LADO_IMAGE": tag,
                 "LADO_VERSION": "test",  # asked for by Compose v2 also beside LADO_IMAGE
-                "LADO_PROJECTS": str(projects),
+                "LADO_WORKSPACE": str(projects),
                 **settings,
             },
         )

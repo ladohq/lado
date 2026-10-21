@@ -1416,7 +1416,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   `--ink`, its icon the `⚠` its text starts with. A refusal (`field-note bad`) is the same
   panel on `--danger-ground` with a `--danger` stripe and a round `!` drawn by CSS before
   its first line (not part of its text); its hint, command and Copy stay inside it. Start
-  (Clone and start, Create and start) is off while a refusal shows, and a note that does
+  (Clone and start, Create and start, and Resume session in the Resume mode: LAD-122,
+  2026-10-21) is off while a refusal shows, and a note that does
   not keep the session from starting is not a refusal: the kits list that does not load
   (`/api/kits` failed) is a warning, since the start itself refuses a kit that does not
   load. Notes outside this window (`.field-problem`, the start's own `.problem`) are other

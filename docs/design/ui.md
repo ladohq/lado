@@ -1383,7 +1383,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   with `lado kits check <name>`),
   **Provider** (`/api/providers`: each provider of the registry with
   `doctor.provider_status`; "checking…" while the CLIs answer, one not installed is off,
-  a version warning shows under it) and **Permission mode** (the provider's modes; a mode
+  a version warning shows under it; a chosen name the list lacks, a resumed session's, is
+  an option of its own, `<name> · unknown`, off, so the select shows it: LAD-122) and **Permission mode** (the provider's modes; a mode
   the new provider lacks goes back to `default`, and the window says so). Kits and mode
   of a new session come from the folder's last session ("from the last session of this
   folder"), else LADO's defaults; only the UI does this, `lado start` is unchanged. No

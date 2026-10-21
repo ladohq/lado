@@ -1,7 +1,7 @@
 # Plan: Projects in LADO (LAD-116)
 
 ## State
-Phase: plan · Epic run: epic/epic-projects · Branch: base (`main`)
+Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
 In work: none · Next: S1 · Open checks: none
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
@@ -35,10 +35,10 @@ Check:
 - The schema migration from `tests/agent_helpers.previous_schema`; an `lado update` rollback test is not needed beyond the existing one (it restores `lado.db`; the folders stay, see brief "Data and migrations").
 Notes: concept phase 1, plus D3. One function gives the workspace (`LADO_REPOS`, else `~/workspace`) for the clone default, the server, `lado doctor` and projects. Changes the specs `repos-folder` (the requirement "unset: no folder, no doctor line, no Where hints" becomes "unset: `~/workspace`") and `session-clone` (default `~/lado/<repo>` becomes `<workspace>/<repo>`). Making `~/workspace`: Q3. CHANGELOG: existing sessions keep their folders. Compose's `LADO_WORKSPACE`, if Q2 says so, is its own small step S2b, not part of S2. `delete` covers a project that has no sessions yet: it shows uncommitted or unpushed work in the repositories of its folder and refuses without `--yes`; S3 extends it to sessions, S5b to secrets. Minor bump.
 
-### S2b — Compose's `LADO_WORKSPACE` (S) — only if Q2 is (a)
+### S2b — Compose's `LADO_WORKSPACE` (S)
 Status: planned
 Check: `tests/test_docker.py` and the container tests (CI): `LADO_WORKSPACE` names the host folder; an installed `.env` with only `LADO_PROJECTS` still works; with neither, compose names `LADO_WORKSPACE` in its error; `docs/install.md`, `docs/release.md`, `docs/testing.md`, `openspec/specs/container` name `LADO_WORKSPACE` first and the old name as still accepted.
-Notes: independent of S2's core; `LADO_REPOS` inside the container keeps its name (concept). Past a compose version that cannot nest interpolation defaults, stop and ask the human. Dropped from the plan if Q2 is (b).
+Notes: independent of S2's core; `LADO_REPOS` inside the container keeps its name (concept). Past a compose version that cannot nest interpolation defaults, stop and ask the human.
 
 ### S3 — A session in a project (L)
 Status: planned
@@ -86,12 +86,7 @@ Notes: concept phase 5.
 
 ## Open questions
 
-- **Q1. S3 (session in a project) before S5a/S5b (variables)?** It departs from the concept's phase order, so it needs the human's yes. Recommended: yes. Each step still stands on its own; S5a's check becomes end to end; a release between them ships projects with sessions but no variables, which is harmless. The concept's order would ship a variable store no agent reads.
-- **Q2. Compose's `LADO_PROJECTS`** ("set LADO_PROJECTS to your projects folder") sits next to the new `projects/` and means the workspace. (a) a small step S2b adds `LADO_WORKSPACE` as the documented name and keeps `LADO_PROJECTS` working as the old one, so no installed `.env` breaks — a compose behaviour change, tested by `tests/test_docker.py` and the container tests, needing a compose that nests interpolation defaults; (b) keep `LADO_PROJECTS`, only its message changes (S1). Recommended: (a), as S2b.
-- **Q3. `~/workspace` without `LADO_REPOS`.** Recommended: as today for a `LADO_REPOS` folder not made yet — LADO makes it when it first needs it (the first clone or project), `lado doctor` prints `~/workspace (default), not made yet: the first clone or project makes it`, the New session window's Where starts there once it exists.
-- **Q4. S5 split into S5a (plain variables) and S5b (secrets)?** Recommended: yes; each half is designed in one round and merges on its own.
-
-Answered by the code (no question): the critic's P4 said no pre-launch key check exists. It does: `kits.ResolvedAgent.mcp_servers` (`src/lado/kits.py:257–276`) refuses a launch when a kit MCP server's `${VAR}` is not in the agent's environment; S5a makes that environment include the project layer.
+None open. Decided at `plan_ok` (gate #33, 2026-10-21), all as recommended: Q1 — S3 before S5a/S5b; Q2 — (a), step S2b adds `LADO_WORKSPACE`, `LADO_PROJECTS` kept working; Q3 — LADO makes `~/workspace` on first need, `lado doctor` says it is not made yet, Where hints once it exists; Q4 — S5 split into S5a and S5b (`decisions.md`).
 
 ## Later
 

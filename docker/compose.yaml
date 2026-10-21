@@ -3,7 +3,7 @@
 # settings in .env next to this file, where compose reads them for every command:
 #
 #   LADO_VERSION=<version>              # the LADO version to run, e.g. the latest release's
-#   LADO_WORKSPACE=/Users/me/workspace  # your workspace, absolute: the container sees it at this path
+#   LADO_WORKSPACE=/Users/me/workspace  # your workspace, existing, absolute: the same path inside
 #   LADO_PORT=8765                      # optional
 #   LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 #   LADO_GIT_EMAIL=ann@example.com

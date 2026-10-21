@@ -1056,6 +1056,24 @@ def test_the_guides_env_names_every_variable_compose_reads():
         assert named == read, env_file
 
 
+def test_the_guide_makes_the_workspace_before_compose_needs_it():
+    """Compose never makes a missing workspace (`create_host_path: false`), so the guide
+    makes it, and its troubleshooting reads Docker's refusal for any path, not only the
+    placeholder's."""
+    envs = blocks(guide_part("Get compose.yaml and write .env"), "ini")
+    for env_file in envs:
+        [workspace] = re.findall(r"^LADO_WORKSPACE=(\S+)", env_file, flags=re.M)
+        assert workspace.endswith("/workspace"), env_file
+    assert "mkdir -p ~/workspace" in guide_steps("Get compose.yaml and write .env")
+    said = " ".join(guide_part("Get compose.yaml and write .env").split())
+    assert "compose never makes it" in said, said
+    trouble = " ".join(guide_part("If something goes wrong in Docker").split())
+    assert "**`bind source path does not exist: <path>`**" in trouble, trouble
+    line = trouble.split("bind source path does not exist: <path>")[1][:500]
+    assert "/set-LADO_WORKSPACE-to-your-workspace-folder" in line, line
+    assert "mkdir -p" in line, line
+
+
 def test_the_guide_says_how_to_open_lado_on_a_phone():
     phone = " ".join(guide_part("Open LADO on your phone").split())
     for said in (

@@ -112,7 +112,14 @@ LADO_SSH_AGENT=/run/user/1000/ssh-agent.socket    # your ssh agent: echo $SSH_AU
 `<version>` is a LADO version without `v`, e.g. the newest on the
 [releases page](https://github.com/ladohq/lado/releases). `LADO_WORKSPACE` is the only
 folder of your computer the agents see; an `.env` that names it `LADO_PROJECTS`, its name
-before 0.43.0, is still accepted. `LADO_SSH_AGENT` is
+before 0.43.0, is still accepted. The folder must exist: compose never makes it. For the
+examples above:
+
+```bash
+mkdir -p ~/workspace
+```
+
+`LADO_SSH_AGENT` is
 optional: without it there is no ssh in the container. On Linux the socket's path may
 change with each login: point it at a stable one, or run `docker compose up -d` again after
 a new login.
@@ -457,9 +464,11 @@ identity, the ssh agent, the workspace).
 - **`Config files in ... are not trusted`**: the repository is outside the workspace.
   Move it under `LADO_WORKSPACE`, or trust it once:
   `docker compose exec lado mise trust <folder>/mise.toml`.
-- **`bind source path does not exist: /set-LADO_WORKSPACE-to-your-workspace-folder`** at
-  `docker compose up -d`: `.env` names no workspace. Set `LADO_WORKSPACE` in it to your
-  workspace folder, a full path.
+- **`bind source path does not exist: <path>`** at `docker compose up -d` (Docker Desktop
+  may word it otherwise, naming the same path): with
+  `/set-LADO_WORKSPACE-to-your-workspace-folder`, `.env` names no workspace: set
+  `LADO_WORKSPACE` in it to your workspace folder, a full path. With your own folder, it
+  does not exist yet: `mkdir -p <path>`, then `docker compose up -d` again.
 
 ## macOS
 

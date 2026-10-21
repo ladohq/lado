@@ -80,7 +80,8 @@ LADO_GIT_EMAIL=you@example.com
 ```
 
 `<version>` is the newest on the [releases page](https://github.com/ladohq/lado/releases),
-without `v`. Then start it and open the link it prints:
+without `v`. The workspace folder must exist (`mkdir -p ~/workspace`): compose never
+makes it. Then start it and open the link it prints:
 
 ```bash
 docker compose up -d

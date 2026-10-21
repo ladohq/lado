@@ -12,7 +12,8 @@
 - **The workspace is `~/workspace` without `LADO_REPOS`.** New clones and fresh starts go
   there (was `~/lado`); sessions in `~/lado` keep working.
 - **Compose takes the workspace from `LADO_WORKSPACE`.** An installed `.env` with
-  `LADO_PROJECTS` keeps working; renaming it to `LADO_WORKSPACE` is optional.
+  `LADO_PROJECTS` keeps working; renaming it to `LADO_WORKSPACE` is optional. A missing
+  workspace folder is no longer made on the host: `docker compose up -d` refuses.
 
 ### Improved
 

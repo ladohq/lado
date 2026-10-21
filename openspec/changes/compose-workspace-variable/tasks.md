@@ -90,6 +90,13 @@
   `openspec/changes/archive/`, CHANGELOG.md's released sections: every hit is compose's
   fallback, a "still accepted" sentence, an `unset` line, `docs/release.md` 4.6, the
   delta's scenario of the old `.env`, or a test of the fallback.
+- [x] 4.7 Review round 1, F1: compose no longer makes a missing workspace, so the guide's
+  "Get compose.yaml and write .env" says the folder must exist and runs
+  `mkdir -p ~/workspace`, README says so in prose, the compose header's example says
+  "existing", and the troubleshooting line covers `bind source path does not exist:
+  <path>` for the placeholder and for a folder of one's own (Docker Desktop may word it
+  otherwise). CHANGELOG's line says a missing folder is no longer made. Check:
+  `tests/test_docker.py::test_the_guide_makes_the_workspace_before_compose_needs_it`.
 
 ## 5. The checks
 

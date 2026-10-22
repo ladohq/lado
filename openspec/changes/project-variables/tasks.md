@@ -39,7 +39,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-project-vari
 
 ## 5. Regression
 
-- [ ] 5.1 `make lint`; `make test` (counts); the changed and neighbouring integration
+- [x] 5.1 `make lint`; `make test` (counts); the changed and neighbouring integration
   files (`test_outside_variables.py`, `test_project_sessions.py`,
   `test_project_repositories.py`, `test_agent_kits.py`); `make web`; `openspec validate
   --specs --strict`; the trial archive in a copy of `openspec/`; CI green with the

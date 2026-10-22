@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: none · Next: S3 · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5)
+In work: S3 (LAD-125, run task/lad-125) · Next: S4 · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5)
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
@@ -51,7 +51,7 @@ Notes: leftover of S2 (analyst's question #615): "project" meaning the human's r
 Result: PR #136 merged 2026-10-22 (f99ebb7), LAD-124 Done, "waiting for release" (0.43.0); change `compose-workspace-variable` archived (`container` spec changed). Compose reads `${LADO_WORKSPACE:-${LADO_PROJECTS:-/set-LADO_WORKSPACE-to-your-workspace-folder}}` for `LADO_REPOS` and a long bind with `create_host_path: false`: with neither variable `up` refuses with Docker's bind error naming that path, and a missing workspace folder is no longer made on the host (the guide makes `~/workspace` before `up`; CHANGELOG says so). No nested `:?`: Compose on GitHub's runners evaluates it even when the outer variable is set (LAD-73); the human chose the placeholder at question #694. `make test` 3688 passed; CI 23/23 incl. container amd64/arm64 and 8 smoke; 2 local rounds and 1 external round, the external one did not read the spec delta or `tests/container/` (local only). Open: F3, Docker Desktop's (macOS) text for a missing bind source, not seen; moved to the release checklist (`docs/release.md` 4.5). Container tests ran on Linux CI only.
 
 ### S3 — A session in a project (L)
-Status: planned
+Status: in progress (LAD-125, run task/lad-125)
 Check:
 - Integration tests with the fake agent: `lado start --project <id> --repo <name>` starts in `<workspace>/projects/<id>/<name>`; the session's project is a reference in `lado.db`, shown by `lado ls` and in the session's API; a session from `start_session` gets the same project and repository.
 - A session without a project under `projects/` is refused on every path: `lado start <folder>`, `lado start <git-url>` with a target there, `lado start --new` there, the server's launch API (folder, clone, from scratch), and `start_session` from a session without a project; each refusal names the project and offers the session in it.

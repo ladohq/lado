@@ -99,10 +99,10 @@ def old_home(request, tmp_path, monkeypatch):
     name of this run's prefix) whose lado.db has the schema before this LADO's and a
     session "old", stopped unless `running` (then as a container killed while it ran left
     it), made on the host by this checkout's own lado.state, as the image's LADO is; with
-    `broken` the schema's number is set back two, to the step that adds gates.answer_note,
-    with that column there, so the migration fails (the last step makes a table if it is
-    missing, which cannot fail so). Its schema before, and the volume, removed after the
-    test."""
+    `broken` the schema's number is set back to the step that adds gates.answer_note, with
+    that column there, so the migration fails at that step (the later ones would not all
+    fail: one makes a table only if it is missing). Its schema before, and the volume,
+    removed after the test."""
 
     def make(
         volume: str | None = None, broken: bool = False, running: bool = False
@@ -115,8 +115,11 @@ def old_home(request, tmp_path, monkeypatch):
             state.stop_session("old")
         before = state.SCHEMA_VERSION - 1
         if broken:
-            assert state.MIGRATIONS[state.SCHEMA_VERSION - 2] == [state.GATES_ANSWER_NOTE]
-            before = state.SCHEMA_VERSION - 2
+            before = next(
+                step
+                for step, statements in state.MIGRATIONS.items()
+                if statements == [state.GATES_ANSWER_NOTE]
+            )
             with state.connect() as db:
                 db.execute(f"PRAGMA user_version = {before}")
         else:

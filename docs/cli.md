@@ -72,10 +72,50 @@ nothing outside `<workspace>/projects/` is removed, links inside are removed as 
 folder not removed whole keeps the sessions and the record, and a session not forgotten
 keeps the record (run it again). A stopped session from before projects had sessions is
 not forgotten: its folder goes. An unknown id is exit 1 with `unknown project
-"<id>"`. `create`, `rename` and `delete` are the human's: inside an agent of LADO
-(`LADO_AGENT` set) they exit 1 with `lado project <command> is for the human; agent "<agent>"
-cannot use it`, while `list` and `show` work; no MCP tool changes projects. `lado project`
-alone prints its help.
+"<id>"`. `create`, `rename`, `delete`, `repo add` and `repo remove` are the human's: inside
+an agent of LADO (`LADO_AGENT` set) they exit 1 with `lado project <command> is for the
+human; agent "<agent>" cannot use it`, while `list` and `show` work; no MCP tool changes
+projects or their repositories. `lado project` and `lado project repo` alone print their
+help.
+
+`lado project repo add <id> <git-url> [--name NAME] [--branch BRANCH]` clones the URL (its
+default branch, or `BRANCH`) into `<workspace>/projects/<id>/<name>`, `<name>` being `NAME`
+or the URL's repository name, as `lado start <git-url>` clones: `Cloning <which> of <url>
+into <folder>` and git's progress on stderr, a hidden temporary folder beside the target
+renamed only once git succeeded, Ctrl-C `lado: clone cancelled` (exit 130) and SIGTERM or
+SIGHUP `lado: clone cancelled (<signal>)` (exit 128+n), leaving neither folder. `lado
+project repo add <id> --new <name>` makes the folder a repository with one empty commit, as
+`lado start --new` does (git's author checked first), and prints `Made <folder> a git
+repository with an empty first commit`. Both then print `Added repository <name> to project
+<id>: <folder>` and `Start a session in it: lado start --project <id> --repo <name>`. A
+repository's name is 1 to 100 Latin letters, digits, `.`, `_` and `-`, not starting with `.`
+or `-`, its case kept (`the repository name <name> is not valid: …`); a name any entry of
+the project folder has is refused (`<folder> already exists in project <id>: choose another
+name with --name`), as are an unknown project, a project whose folder is not found (`the
+folder of project <id> is not found: <folder>`) and a URL that names no repository: exit 1,
+nothing cloned or made. A URL with `--new`, neither, `--name` or `--branch` with `--new`,
+and a source that is no git URL (a local path: give it as `file://<path>`) exit 2.
+
+`lado project repo remove <id> <name> [--yes]` removes an entry of the project folder that
+is a repository or a symbolic link. It refuses, exit 1, changing nothing, while any session
+whose folder is inside the repository (one without a project too) is not stopped
+(`repository <name> of project <id> has sessions not stopped: <names>; stop them first with
+lado stop <name>`), an unknown project, a name no visible entry has (`project <id> has no
+repository <name>; its repositories: <names>`, or the `no repositories yet` text), and an
+entry that is neither (`<name> in project <id> is not a repository: LADO removes only
+repositories and links`). It prints `Sessions to forget: …` for the project's stopped
+sessions in the repository and `Unpushed work in <folder>:` with the repository's lines as
+`lado project delete` gives them, its workers' worktrees included; without `--yes` it then
+refuses (`removing repository <name> of project <id> deletes its folder <folder> with
+everything in it[ and forgets its <n> session[s]]; run again with --yes`, or for a link
+`removing <name> of project <id> deletes the link only, not its target <target>; run again
+with --yes`). With `--yes` it removes the folder whole (links inside as links; refused when
+its real path is not directly in the project folder's, itself directly in the real
+`projects/`), then forgets those sessions as `lado forget --force` does, and prints
+`Removed repository <name> from project <id>`; a link loses the link only (`Removed the
+link <name> from project <id>`). A folder not removed whole keeps the sessions; a session not
+forgotten is named with `lado forget <s> --force`. A stopped session there without a project
+is not forgotten. The project's record, its other entries and sessions stay.
 
 `lado start --project <id> --repo <name>` starts a session in the project's repository
 `<name>` (one `lado project show` lists), named `<id>-<name>` without `--name`, and prints
@@ -86,8 +126,8 @@ session of another project or of none has is refused (`session "<s>" is in proje
 `is not in a project`, `; a session's project never changes: give another name with
 --name`). Its other options work as for a folder. An unknown project (`unknown project
 "<id>"`), a name that is no repository (`project <id> has no repository <name>; its
-repositories: <names>`, or `has no repositories yet: a repository is a git folder in
-<folder>`) and a link (`<name> in project <id> is a link to <target>: clone it into <folder>
+repositories: <names>`, or `has no repositories yet: add one with lado project repo add <id>
+<git-url> or --new <name>`) and a link (`<name> in project <id> is a link to <target>: clone it into <folder>
 instead`) are exit 1. `--project` without `--repo`, `--repo` without `--project`, and
 `--project` with a folder, a git URL, `--new`, `--branch` or a second folder exit 2.
 While `<workspace>/projects/` is LADO's (a project's folder is in it), no new session
@@ -95,8 +135,12 @@ without a project starts inside it, by its real path, on any way: `lado start <f
 (a folder without git too), a clone, `--new`, the UI's folder, clone and fresh start, and
 `start_session` from a session without a project. The refusal is exit 1 with the project
 and its command: `<path> belongs to the project <title>: start a session in the project`
-and `Start a session in the project: lado start --project <id> --repo <name>` (`See the
-project's repositories: lado project show <id>` for the project folder itself), or, for a
+and `Start a session in the project: lado start --project <id> --repo <name>` when the path
+is in the project's repository `<name>`; a clone or fresh start (the UI's folder check too)
+aimed at a new folder `<workspace>/projects/<id>/<name>` with a good name gets `Add a
+repository to the project: lado project repo add <id> <url>[ --name <name>]` or `… --new
+<name>`; anything else, the project folder itself too, gets `See the project's
+repositories: lado project show <id>`. For a
 folder of no project, `<path> is in <workspace>/projects, which holds LADO's projects only:
 start a session in a project, or move the folder out of projects/` with `See the projects:
 lado project list`. A resume is never refused by it: a session started there before

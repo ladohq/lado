@@ -1500,7 +1500,9 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   origin and a free folder beside it (`<parent>/<owner>-<repo>`), and the button stays off.
   LADO never clones over, fetches into or switches the branch of a folder that exists.
   The clone is a job of the server (`server/clones.py`): `POST /api/clones` (`{url, path,
-  branch}`; 400 `CloneRefused`, 409 while another job clones into that folder) starts it,
+  branch}`, or `{url, project, name, branch}` for a repository added to a project, which no
+  screen sends yet (steps S6, S7; docs/design/projects.md); 400 `CloneRefused`, 404 for an
+  unknown project, 409 while another job clones into that folder) starts it,
   and the window asks `GET /api/clones/{id}` every 500 ms: a progress block with git's
   phase, its percent with a bar (`role="progressbar"`), the rest of git's line and the
   time it runs; a poll that fails is asked again (the clone goes on), and one the server

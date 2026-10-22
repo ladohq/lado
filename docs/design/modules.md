@@ -288,6 +288,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     through `runtime.public_remote`; git missing or not running is LAD-5's `no_git` /
     `git_broken`, a folder LADO may not look at or write in `no_access`, a URL that names
     no repository (no default folder) `no_repo_name`. `ABANDONED` and `KEPT` are the server's clone jobs' times.
+    `check_target` and `clone` take a `project`: a folder directly in that project's folder
+    (`projects.adds_to`) is then no `in_project`, as `projects.add_clone` adds a repository.
   - `scratch.py`: a session from scratch (openspec change start-from-scratch), for `lado
     start --new`, the UI server's From scratch and `lado doctor` alike, which print only
     what it says. `names` (the text trimmed; refused empty, over `runtime.MAX_TITLE`, with
@@ -308,6 +310,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `--no-verify`), no prompt and stdin closed; a failed step removes the folders it made,
     or the `.git` of an empty folder it was given). A refusal is a `ScratchError` (a
     `LadoError` with `kind` and a `runtime.Hint`); git missing is LAD-5's `no_git`.
+    `check_target` and `make` take a `project` as `clone`'s do (`projects.add_new`); `make`
+    then asks no session's name, as it makes no session.
   - `projects.py`: the workspace and the projects in it (openspec change projects-in-core;
     the model: [projects.md](projects.md)), for `lado project` and `lado doctor`, which
     print only what it says. `workspace` is the one answer to where LADO keeps code:
@@ -340,11 +344,25 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     --show-toplevel` is itself; `links(id)` names the links there; `repository(id, name)`
     is a session's folder in a project, refused naming what there is. `lados_folder` is the
     real `projects/` while it is LADO's (a folder, LADO has projects, not the human's own);
-    `refusal(path)` is the one refusal (`runtime.FolderProblem` of kind `in_project`, with
-    the project's command as its hint) of a new session without a project inside it, asked
-    by `runtime.start_session`, `clone.check_target`, `scratch.check_target` and the
-    server's folder check. A refusal is a `ProjectError`
-    (`NoSuchProject` for an unknown id), a `runtime.LadoError`.
+    `refusal(path, url=, fresh=)` is the one refusal (`runtime.FolderProblem` of kind
+    `in_project`) of a new session without a project inside it, asked by
+    `runtime.start_session`, `clone.check_target` (with its `url`), `scratch.check_target`
+    and the server's folder check (`fresh`); its hint is the session's for a repository of
+    the project, `lado project repo add` for a clone's or fresh start's new folder directly
+    in the project's folder with a good name, else `lado project show` (openspec change
+    project-repositories). A project's repositories are added and removed there too:
+    `check_repo_name` (`REPO_NAME`, `MAX_REPO_NAME`), `new_repo_folder` (the known project,
+    its folder, the name, no entry of that name by `lexists`), `adds_to` (a path directly
+    in the project's folder, by real paths: the one place `clone.clone` and `scratch.make`
+    with `project` go past `refusal`), `add_clone` and `add_new` (through those two, so a
+    failed or cancelled clone leaves nothing), `removal` (a `Removal`: a repository, with
+    the project's stopped sessions in it and its `_checkout_lines`, the per-repository body
+    of `unpushed`, or a link; refused while any session works in it by real path, for a
+    name no visible entry has, `NoSuchRepository`, and for an entry that is neither) and
+    `remove_repo` (refuses without `yes`; a link unlinked; a repository's real path must be
+    directly in the project folder's, itself directly in the real `projects/`; `rmtree`,
+    then `runtime.forget_session(force=True)` for its sessions). A refusal is a
+    `ProjectError` (`NoSuchProject` for an unknown id), a `runtime.LadoError`.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's
     `EVENTS` maps its native events; `claude.py`: Claude Code, its role in `prompt.md` of
@@ -860,7 +878,13 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     a sweeper cancels a running job no request asked about for `clone.ABANDONED` seconds and
     drops a finished one after `clone.KEPT`, and `app.Server`'s shutdown cancels every
     running job (`Jobs.close`). A refusal is 400 `CloneRefused` (`message`, `kind`, `hint`);
-    a cancelled job has no `error`;
+    a cancelled job has no `error`. With `project` (and `name`, else the URL's) and no
+    `path`, `POST /api/clones` clones into the project's folder (`projects.new_repo_folder`
+    first; an unknown project 404). `app.py` has the rest of a project's repositories:
+    `POST /api/projects/{id}/repos` (`RepoNew` → `ProjectRepo`, `projects.add_new`), `GET
+    …/repos/{name}/removal` (`RepoRemoval`, `projects.removal`) and `DELETE
+    …/repos/{name}` (`projects.remove_repo` with yes; the `ProjectInfo` after), an unknown
+    project or name 404, a refusal 400; the server is the human's and asks no `LADO_AGENT`;
     `launch.py`: what the New session window asks (docs/design/ui.md, Launch and session
     control): `GET /api/folders` (`FolderInfo`: the core's `check_repo`, its `problem_kind` and `hint`, subfolders, the
     default name and whether a session has it, and `provider`, the core's

@@ -19,7 +19,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 32
+SCHEMA_VERSION = 33
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -925,6 +925,13 @@ CREATE TABLE IF NOT EXISTS projects (
 SCHEMA += PROJECTS_TABLE + ";\n"
 MIGRATIONS[31] = [PROJECTS_TABLE]
 
+# From version 33: the project a session is in (lado.projects), set when the session is
+# made and never changed; NULL for a session in no project and for every session made
+# before. A project with sessions keeps its record: lado.projects.delete forgets them first.
+SESSIONS_PROJECT = "ALTER TABLE sessions ADD COLUMN project TEXT REFERENCES projects(id)"
+SCHEMA += SESSIONS_PROJECT + ";\n"
+MIGRATIONS[32] = [SESSIONS_PROJECT]
+
 # Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
 # approval or choice gate. An override is the human's past the flow (flow-set's reason, an
 # answer at a loop limit): kept, but never taken for the state's report.
@@ -964,6 +971,7 @@ class Session:
     created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS", when it was added; set by the database
     title: str | None = None  # the human's label over the name; None for none
     resume_at_start: bool = False  # stopped by its container's stop, to resume at its start
+    project: str | None = None  # the project's id (lado.projects); never changes
 
 
 @dataclass(frozen=True)
@@ -1339,8 +1347,8 @@ def add_session(session: Session) -> bool:
     with connect() as db:
         added = db.execute(
             "INSERT INTO sessions"
-            " (name, repo, permission_mode, provider, kits, switched_off, title)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (name) DO NOTHING",
+            " (name, repo, permission_mode, provider, kits, switched_off, title, project)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (name) DO NOTHING",
             (
                 session.name,
                 session.repo,
@@ -1349,6 +1357,7 @@ def add_session(session: Session) -> bool:
                 json.dumps(session.kits),
                 json.dumps(session.without),
                 session.title,
+                session.project,
             ),
         ).rowcount
     return added == 1
@@ -1550,6 +1559,15 @@ def _set_settings(db: sqlite3.Connection, session: Session) -> None:
 def list_sessions() -> list[Session]:
     with connect() as db:
         rows = db.execute("SELECT * FROM sessions ORDER BY created_at, rowid").fetchall()
+    return [_session(r) for r in rows]
+
+
+def project_sessions(project: str) -> list[Session]:
+    """The sessions of the project, in creation order."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM sessions WHERE project = ? ORDER BY created_at, rowid", (project,)
+        ).fetchall()
     return [_session(r) for r in rows]
 
 
@@ -3363,6 +3381,7 @@ def _session(row: sqlite3.Row) -> Session:
         row["created_at"],
         row["title"],
         bool(row["resume_at_start"]),
+        row["project"],
     )
 
 

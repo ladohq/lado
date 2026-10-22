@@ -1079,7 +1079,8 @@ Built in the chat task (2026-10-03):
   `task/lad-48/mockup-expanded-card.html`, option A; before, a dialog over the window and
   a scrim, under which an artifact panel opened from it stayed hidden): in the chat over
   the chat's whole area, the feed and the composer hidden, the session's head, tabs and
-  team row seen and usable; on Needs you over the page's content area (Needs you, above).
+  team row seen and usable (but on a phone, which hides the tabs and the team row too:
+  Phone layout, The chat); on Needs you over the page's content area (Needs you, above).
   Its host hides the rest by CSS (`:has(.waiting-card.expanded)`), so the artifact panel
   and its scrim, fixed over the page, are over the card too. On a window of 900 px or
   less, which scrolls, it is the window's height under the top bar and expanding scrolls
@@ -1962,7 +1963,14 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   16 px (Safari zooms into a smaller field) and its keys hint is not shown; so is the text
   of the card's fields that take files (an own answer, a skip's or a gate's comment; LAD-86). A flow event's
   line starts at the feed's left edge, its actor, chips and time on the first line, its
-  text wrapped under them, whole.
+  text wrapped under them, whole. With the keyboard open the chat has no room for the
+  card above the composer (LAD-126), so a field of the card (a gate's comment, an own
+  answer, a skip's comment) taking the focus expands it, the focus kept in the field, and
+  the field scrolls into the card's view, again whenever the card is laid out anew (the
+  keyboard opening). An expanded card, by its button, a field or sideways, also hides the
+  session's tabs and the Team row: it fills the page under the top bar. It stays expanded
+  when the keyboard closes, until its fold button, Esc, or nothing waits. Needs you, which
+  scrolls as a page, keeps the card as it is.
 - **Sideways** (`short`): the chat's card is minimized by the layout (its tabs and one
   line), not by the human: `lado.waitingMinimized.<session>` is not written. A tab or the
   line shows it expanded over the chat; Esc or its fold button minimizes it again; turned

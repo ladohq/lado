@@ -24,7 +24,10 @@ that would blur the field and close the keyboard. A ref (as `folded` and `toggle
 marks an expansion that a field's focus caused; that effect then leaves the focus where
 it is and scrolls the focused field into the list's view (`scrollIntoView({ block:
 "nearest" })`, after layout), since the list was laid out at the collapsed height. The
-expand button's expansion keeps focusing the tab.
+expand button's expansion keeps focusing the tab. The keyboard opens after the tap, so the
+card is laid out lower once more: while it is expanded on a phone, each new height of the
+card (its existing `useHeight` measure) scrolls the focused field into view again. This
+reacts to the layout; it guesses nothing about the keyboard (D4).
 
 ### D3. The phone hides the session's tabs and the Team row by CSS
 

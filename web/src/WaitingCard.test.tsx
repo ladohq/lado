@@ -952,6 +952,67 @@ test("upright on a phone the human's own minimize is remembered, as on a compute
   expect(localStorage.getItem("lado.waitingMinimized.s")).toBe(JSON.stringify(["gate:812"]));
 });
 
+// LAD-126: with the keyboard open the chat has no room for the card above the composer.
+const commentField = () => within(card()).getByRole("textbox", { name: "Comment for the next step (optional)" });
+
+test("on a phone in the chat a gate's comment taking the focus expands the card; the field keeps it and scrolls into view", async () => {
+  FakeScreen.phone();
+  columnWidth(null);
+  const scrolled: Element[] = [];
+  Element.prototype.scrollIntoView = function (this: Element) {
+    scrolled.push(this);
+  };
+  try {
+    show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+    act(() => commentField().focus());
+    await waitFor(() => expect(isExpanded()).toBe(true));
+    expect(document.activeElement).toBe(commentField());
+    expect(scrolled).toContain(commentField());
+    // The keyboard opens after the expansion: the card laid out lower, the field scrolls again.
+    scrolled.length = 0;
+    FakeResizeObserver.resize(
+      () => 400,
+      () => 300,
+    );
+    expect(scrolled).toContain(commentField());
+    // The field losing the focus (the keyboard closing) leaves the card expanded.
+    act(() => commentField().blur());
+    expect(isExpanded()).toBe(true);
+    fireEvent.click(iconButton("Collapse the card"));
+    await waitFor(() => expect(isExpanded()).toBe(false));
+  } finally {
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  }
+});
+
+test("on a phone in the chat Other… expands the card with the own answer focused", async () => {
+  FakeScreen.phone();
+  show({ questions: [question(5, "supervisor")], chat: IN_CHAT });
+  fireEvent.click(within(card()).getByRole("button", { name: "Other…" }));
+  await waitFor(() => expect(isExpanded()).toBe(true));
+  expect(document.activeElement).toBe(within(card()).getByRole("textbox", { name: "Your own answer" }));
+});
+
+test("a field's focus does not expand the card on a computer, nor on Needs you on a phone", () => {
+  new FakeScreen("fine", 390, 844);
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+  act(() => commentField().focus());
+  expect(isExpanded()).toBe(false);
+  cleanup();
+  FakeScreen.phone();
+  show({ questions: [], gates: [GATE_812] });
+  act(() => commentField().focus());
+  expect(isExpanded()).toBe(false);
+});
+
+test("on a phone the expand button still puts the focus on the shown tab", async () => {
+  FakeScreen.phone();
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+  fireEvent.click(iconButton("Expand the card"));
+  await waitFor(() => expect(isExpanded()).toBe(true));
+  expect(document.activeElement).toBe(tab("task/lad-52 1"));
+});
+
 test("Esc in a dialog over the page leaves an expanded card as it is", async () => {
   show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
   fireEvent.click(iconButton("Expand the card"));

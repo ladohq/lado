@@ -281,6 +281,7 @@ def test_three_tabs_switch_a_gate_is_approved_on_its_tab_and_the_card_expands(
     expect(page.get_by_role("dialog")).to_have_count(0)
     sections = page.get_by_role("navigation", name="Session sections")
     expect(sections.get_by_role("link", name="Agents")).to_be_visible()
+    expect(page.get_by_role("group", name="Team")).to_be_visible()  # not a phone's (LAD-126)
     for theme in ("light", "dark"):
         page.emulate_media(color_scheme=theme)
         shot(page, f"{theme}-expanded")

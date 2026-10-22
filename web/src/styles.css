@@ -8390,6 +8390,13 @@ del.kit-mcp-name {
   min-height: 0;
 }
 
+/* Expanded (its button, sideways, or a field's focus with the keyboard open: LAD-126), the
+   card fills the page under the top bar: the session's tabs and the Team row go too. */
+:root[data-phone] .session:has(.waiting-card.expanded) .session-tabs,
+:root[data-phone] .activity:has(> .chat > .waiting-card.expanded) > .team-row {
+  display: none;
+}
+
 /* The composer: Safari zooms into a field under 16 px; no keys on a touch screen. */
 :root[data-phone] .composer textarea,
 :root[data-phone] .answer-box textarea {

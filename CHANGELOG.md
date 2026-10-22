@@ -11,12 +11,15 @@
 
 - **The workspace is `~/workspace` without `LADO_REPOS`.** New clones and fresh starts go
   there (was `~/lado`); sessions in `~/lado` keep working.
+- **Compose takes the workspace from `LADO_WORKSPACE`.** An installed `.env` with
+  `LADO_PROJECTS` keeps working; renaming it to `LADO_WORKSPACE` is optional. A missing
+  workspace folder is no longer made on the host: `docker compose up -d` refuses.
 
 ### Improved
 
 - **The folder LADO keeps your code in is called the workspace.** `lado doctor`, the New
   session window, compose's message and the guide use that one name; nothing to change in
-  your installation (`LADO_PROJECTS` and `LADO_REPOS` stay).
+  your installation (`LADO_REPOS` stays).
 - **Warnings and refusals in the New session window stand out.** They show as amber and
   red panels; hints stay quiet.
 

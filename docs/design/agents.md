@@ -464,9 +464,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   (`state.has_kind`), and the hook goes on.
 - In LADO's container (`update.in_container`) every agent's instructions, on every
   provider and a read-only role's too, get a paragraph after the read-only one and before
-  `MESSAGING` (`runtime.CONTAINER_INSTRUCTIONS`): a tool the project needs and lacks is
-  installed with mise into the home volume, by the project's version files or as
-  `<tool>@<version>` run through `mise exec`; no file is added to the project unless the
+  `MESSAGING` (`runtime.CONTAINER_INSTRUCTIONS`): a tool the repository needs and lacks is
+  installed with mise into the home volume, by the repository's version files or as
+  `<tool>@<version>` run through `mise exec`; no file is added to the repository unless the
   human asks; Node is the image's 22; apt packages and databases cannot be installed; a
   version mise refuses is reported, its checks never switched off. Then one sentence by
   role (`agent.name == SUPERVISOR`): the supervisor alone sets a container-wide default

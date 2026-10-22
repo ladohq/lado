@@ -4,6 +4,8 @@ Node 22 and npx are on the agents' PATH, a Claude Code agent gets to idle and kn
 in a container, and the compose file publishes one port number and runs the image of
 LADO_VERSION."""
 
+import json
+import os
 import urllib.request
 
 import pytest
@@ -88,9 +90,9 @@ def test_compose_serves_on_lado_port(compose):
     link = compose.run("exec", "-T", "lado", "lado", "ui", "--no-open")
     assert link.stdout.strip().startswith(f"http://127.0.0.1:{compose.port}/?token="), link.stdout
     # The workspace at the host's own path, as LADO_REPOS.
-    projects = compose.env["LADO_PROJECTS"]
+    workspace = compose.env["LADO_WORKSPACE"]
     doctor = compose.run("exec", "-T", "lado", "lado", "doctor", check=False).stdout
-    assert f"[ok  ] Workspace: {projects} (LADO_REPOS)" in doctor.splitlines(), doctor
+    assert f"[ok  ] Workspace: {workspace} (LADO_REPOS)" in doctor.splitlines(), doctor
     assert "From another machine" not in link.stderr  # published on loopback only
 
 
@@ -109,11 +111,53 @@ def test_compose_on_the_network_with_a_name_gives_the_link_for_a_phone(compose):
     assert f"listens on 0.0.0.0:{compose.port}, open to other machines" in link.stderr
 
 
-def test_compose_refuses_without_the_projects_folder(compose):
-    del compose.env["LADO_PROJECTS"]
-    done = compose.run("config", check=False)
-    assert done.returncode != 0
-    assert "LADO_PROJECTS" in done.stderr
+PLACEHOLDER = "/set-LADO_WORKSPACE-to-your-workspace-folder"
+
+
+def workspace_of(compose) -> tuple[str, str]:
+    """What `docker compose config` makes of the workspace: LADO_REPOS, and the folder of
+    the one bind that is neither the secrets' nor the ssh agent's, mounted at its own path
+    and never made on the host."""
+    config = json.loads(compose.run("config", "--format", "json").stdout)
+    lado = config["services"]["lado"]
+    binds = [
+        (v["source"], v["target"], v.get("bind", {}).get("create_host_path"))
+        for v in lado["volumes"]
+        if v["type"] == "bind" and v["target"] not in ("/run/secrets", "/run/lado/ssh-agent.sock")
+    ]
+    assert len(binds) == 1, lado["volumes"]
+    [(source, target, create)] = binds
+    # A short bind comes out with create_host_path true; a false one may be left out.
+    assert source == target and not create, binds
+    return lado["environment"]["LADO_REPOS"], source
+
+
+@pytest.mark.parametrize(
+    "env, want",
+    [
+        ({"LADO_WORKSPACE": "/tmp/lado-new"}, "/tmp/lado-new"),
+        ({"LADO_PROJECTS": "/tmp/lado-old"}, "/tmp/lado-old"),  # an installed .env
+        ({"LADO_WORKSPACE": "/tmp/lado-new", "LADO_PROJECTS": "/tmp/lado-old"}, "/tmp/lado-new"),
+    ],
+    ids=["workspace", "projects-still-accepted", "workspace-wins"],
+)
+def test_compose_takes_the_workspace_from_lado_workspace_else_lado_projects(compose, env, want):
+    for name in ("LADO_WORKSPACE", "LADO_PROJECTS"):
+        compose.env.pop(name, None)
+    compose.env |= env
+    assert workspace_of(compose) == (want, want)
+
+
+def test_compose_without_a_workspace_refuses_at_up_and_names_lado_workspace(compose):
+    """No nested `:?` (Compose v2 on GitHub's runners evaluates it even when the outer
+    variable is set): `config` passes, `up` refuses at the bind, which is never made."""
+    for name in ("LADO_WORKSPACE", "LADO_PROJECTS"):
+        compose.env.pop(name, None)
+    assert workspace_of(compose) == (PLACEHOLDER, PLACEHOLDER)
+    done = compose.run("up", "-d", check=False)
+    assert done.returncode != 0, done.stdout
+    assert "LADO_WORKSPACE" in done.stderr, done.stderr
+    assert not os.path.exists(PLACEHOLDER)
 
 
 def test_compose_runs_the_image_of_lado_version_and_lado_image_wins(compose):

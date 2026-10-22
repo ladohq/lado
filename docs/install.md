@@ -70,7 +70,7 @@ earlier try runs that version, whatever `.env` says. Look first, and unset what 
 
 ```bash
 env | grep -E '^(LADO|COMPOSE)_'
-unset LADO_VERSION LADO_PROJECTS LADO_PORT LADO_IMAGE COMPOSE_PROJECT_NAME   # each name printed
+unset LADO_VERSION LADO_WORKSPACE LADO_PROJECTS LADO_PORT LADO_IMAGE COMPOSE_PROJECT_NAME   # each name printed
 ```
 
 ### Get compose.yaml and write .env
@@ -87,7 +87,7 @@ this folder. On a Mac:
 
 ```ini
 LADO_VERSION=<version>              # the LADO version to run, e.g. the latest release's
-LADO_PROJECTS=/Users/ann/workspace  # your workspace folder, a full path
+LADO_WORKSPACE=/Users/ann/workspace # your workspace folder, a full path
 LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
@@ -100,7 +100,7 @@ On Linux:
 
 ```ini
 LADO_VERSION=<version>              # the LADO version to run, e.g. the latest release's
-LADO_PROJECTS=/home/ann/workspace   # your workspace folder, a full path
+LADO_WORKSPACE=/home/ann/workspace  # your workspace folder, a full path
 LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
@@ -110,8 +110,16 @@ LADO_SSH_AGENT=/run/user/1000/ssh-agent.socket    # your ssh agent: echo $SSH_AU
 ```
 
 `<version>` is a LADO version without `v`, e.g. the newest on the
-[releases page](https://github.com/ladohq/lado/releases). `LADO_PROJECTS` is the only
-folder of your computer the agents see. `LADO_SSH_AGENT` is
+[releases page](https://github.com/ladohq/lado/releases). `LADO_WORKSPACE` is the only
+folder of your computer the agents see; an `.env` that names it `LADO_PROJECTS`, its name
+before 0.43.0, is still accepted. The folder must exist: compose never makes it. For the
+examples above:
+
+```bash
+mkdir -p ~/workspace
+```
+
+`LADO_SSH_AGENT` is
 optional: without it there is no ssh in the container. On Linux the socket's path may
 change with each login: point it at a stable one, or run `docker compose up -d` again after
 a new login.
@@ -243,12 +251,12 @@ restart; this browser stays in.
 The image has git, Node.js 22, uv, `make`, `gcc` and `g++`, the agents' everyday tools
 (`jq`, `rg`, `unzip`, `zip`, `xz`, `bzip2`, `patch`, `file`, `rsync`, `sqlite3`, `tree`,
 `lsof`, `nc`), openspec, `python3` and `python`, and [mise](https://mise.jdx.dev) for the
-rest. An agent that needs a tool the project lacks (Go,
-Rust, Java, a Python, ...) installs it with mise by itself: by the project's version files
+rest. An agent that needs a tool the repository lacks (Go,
+Rust, Java, a Python, ...) installs it with mise by itself: by the repository's version files
 (`.tool-versions`, `mise.toml`, `.go-version`, `.java-version`, `.python-version`,
 `.ruby-version`) when they name it, otherwise as `<tool>@<version>`, which it runs with
 `mise exec`. A `go.mod` names a Go only by its `toolchain` line: its `go` line is a minimum
-and is not read. It adds no file to the project unless you ask. What mise installs lives on the
+and is not read. It adds no file to the repository unless you ask. What mise installs lives on the
 home volume, so it stays for every agent of this LADO, after `docker compose up -d
 --force-recreate` and after an update; a second LADO has its own home volume and its own
 tools.
@@ -257,25 +265,25 @@ tools.
   `docker compose exec lado mise use -g go@1.23`. An agent leaves this to the supervisor; a
   worker asks it.
 - The agents always run on the image's Node 22, also where `.nvmrc` or a version file names
-  another (Kilo, Codex and the kits' MCP servers run on it). A project's other Node runs
+  another (Kilo, Codex and the kits' MCP servers run on it). A repository's other Node runs
   through mise: `mise exec node@20 -- npm test`.
 - `python3` and `python` are the image's Python 3.13, the one LADO runs on, unless the
-  project's version file or `mise use -g` names another: then mise's answers. No agent can
-  change the image's Python (pip refuses it); a project's packages go into a virtual
+  repository's version file or `mise use -g` names another: then mise's answers. No agent
+  can change the image's Python (pip refuses it); a repository's packages go into a virtual
   environment (`python3 -m venv`, `uv`).
 - openspec is the image's, at the version the image pins, with its usage statistics and
   update check off (`OPENSPEC_TELEMETRY=0`, `OPENSPEC_NO_UPDATE_CHECK=1`). One installed
   through mise stays on the home volume and is shadowed by the image's; a newer openspec
   comes with a newer image.
-- A project's `mise.toml` under the workspace needs no `mise trust`.
+- A repository's `mise.toml` under the workspace needs no `mise trust`.
 - A tool the image lacks, such as `shellcheck`, comes through mise:
   `mise exec shellcheck@latest -- shellcheck script.sh`.
 - An agent's `npm install -g` and `uv tool install` go to `~/.local` on the home volume and
   stay over an update too.
-- The system libraries of Playwright's Chromium are in the image, so a project's browser
+- The system libraries of Playwright's Chromium are in the image, so a repository's browser
   tests (LADO's own `make test-ui`) run headless; the browser itself is not:
   `make browser` (`playwright install chromium`) puts it on the home volume, at the
-  project's own Playwright version.
+  repository's own Playwright version.
 - What is not covered: other system packages (`apt`) and databases (PostgreSQL, Redis, ...).
   An agent says so instead of installing them.
 - An old version takes room on the home volume until you remove it:
@@ -305,7 +313,9 @@ older file does not give the container. `.env`, `secrets/` and the home volume s
 change you made to `compose.yaml` by hand is replaced: `diff compose.yaml.bak
 compose.yaml` shows it, carry it over to the new file (your settings belong in `.env`,
 which stays). With several LADOs on this computer, update each in its own folder, with its
-own `.env`; nothing here touches another one's container or volume.
+own `.env`; nothing here touches another one's container or volume. An `.env` with
+`LADO_PROJECTS`, the workspace's name before 0.43.0, keeps working; renaming it to
+`LADO_WORKSPACE` is optional, and `LADO_WORKSPACE` wins when both are set.
 
 What happens:
 
@@ -351,7 +361,7 @@ Another folder with a copy of `compose.yaml`, a `secrets/` of its own or none, a
 COMPOSE_PROJECT_NAME=lado-2
 LADO_PORT=8766
 LADO_VERSION=<version>
-LADO_PROJECTS=/Users/ann/work
+LADO_WORKSPACE=/Users/ann/work
 ```
 
 It has its own container, home volume, logins and version: updating or removing one leaves
@@ -432,7 +442,7 @@ identity, the ssh agent, the workspace).
   `docker compose down` and `docker compose up -d`: a new container tries again.
 - **A session's folder that your computer does not see**: it is outside the
   workspace, on the container's home volume (the New session window and `lado start` warn).
-  Put the repository under `LADO_PROJECTS`. `~` in the container is `/home/lado`, not your
+  Put the repository under `LADO_WORKSPACE`. `~` in the container is `/home/lado`, not your
   home: type the full path.
 - **Another git host over ssh asks about its key**: the image knows only GitHub's. Add the
   host's key on the home volume, which trusts the first answer: compare its fingerprint
@@ -445,15 +455,20 @@ identity, the ssh agent, the workspace).
   repository's path in the container) and choose "Yes, I trust this folder"; see
   [Your first session](#your-first-session).
 - **The UI's link is lost**: `docker compose exec lado lado ui --no-open`.
-- **`No version is set for shim: go`**: neither the project's version files nor a default
-  name that tool. Add the version to the project (`.tool-versions`: `go 1.23.4`) or set a
-  default: `docker compose exec lado mise use -g go@1.23`.
+- **`No version is set for shim: go`**: neither the repository's version files nor a
+  default name that tool. Add the version to the repository (`.tool-versions`: `go 1.23.4`)
+  or set a default: `docker compose exec lado mise use -g go@1.23`.
 - **mise refuses a Python version** (an attestation or checksum it cannot check): take
-  another version, or the project's Python through uv (`uv run`). Do not switch mise's
+  another version, or the repository's Python through uv (`uv run`). Do not switch mise's
   checks off.
-- **`Config files in ... are not trusted`**: the project is outside the workspace.
-  Move it under `LADO_PROJECTS`, or trust it once:
+- **`Config files in ... are not trusted`**: the repository is outside the workspace.
+  Move it under `LADO_WORKSPACE`, or trust it once:
   `docker compose exec lado mise trust <folder>/mise.toml`.
+- **`bind source path does not exist: <path>`** at `docker compose up -d` (Docker Desktop
+  may word it otherwise, naming the same path): with
+  `/set-LADO_WORKSPACE-to-your-workspace-folder`, `.env` names no workspace: set
+  `LADO_WORKSPACE` in it to your workspace folder, a full path. With your own folder, it
+  does not exist yet: `mkdir -p <path>`, then `docker compose up -d` again.
 
 ## macOS
 
@@ -620,7 +635,7 @@ and message delivery may break with another version.
 LADO works on a git repository with at least one commit:
 
 ```bash
-cd ~/my-project
+cd ~/my-repo
 lado start .            # a supervisor in tmux; --provider NAME picks the agent CLI
 lado ui                 # the web UI in your browser
 ```
@@ -718,7 +733,7 @@ lado uninstall              # shows the same plan and asks Uninstall? [y/N]
    ```
 
    Once no worktree is left, `.lado/worktrees` and its line `/.lado/worktrees/` in
-   `.git/info/exclude` go too. Your project's own files in `.lado/` (e.g. `sdlc.md`) stay.
+   `.git/info/exclude` go too. Your repository's own files in `.lado/` (e.g. `sdlc.md`) stay.
    A repository that is gone is named and passed over.
 3. It deletes `~/.lado`: the history, artifacts, installed kits and their git cache,
    backups and logs.

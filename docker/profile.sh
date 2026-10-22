@@ -4,11 +4,11 @@
 # LADO_REPOS is the container's own (-e), so the entrypoint writes it to lado-repos.sh.
 # The image's programs first, so no mise shim shadows its Node 22 or openspec; then the
 # agents' own installs (npm -g, uv tool) and mise's shims, both on the home volume; last the
-# image's python3 and python, which a project's Python through mise comes before.
+# image's python3 and python, which a repository's Python through mise comes before.
 export PATH="/opt/uv/bin:/opt/agents/bin:/opt/tools/bin:$PATH:$HOME/.local/bin:$HOME/.local/share/mise/shims:/opt/fallback/bin"
 # `npm i -g` into ~/.local: /usr/local is root's and /opt is the image's.
 export NPM_CONFIG_PREFIX="$HOME/.local"
-# A project's mise.toml under the workspace needs no `mise trust`. LADO_REPOS is
+# A repository's mise.toml under the workspace needs no `mise trust`. LADO_REPOS is
 # lado-repos.sh's, which /etc/profile reads before this file (by name, in any locale).
 export MISE_TRUSTED_CONFIG_PATHS="$LADO_REPOS"
 export LADO_CONTAINER=1

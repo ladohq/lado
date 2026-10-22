@@ -27,7 +27,9 @@ rework.
 
 - **Workspace**: the folder LADO keeps code in. In LADO's image it is mounted from the host,
   and `LADO_REPOS` names its path (the variable keeps its name so installations do not
-  break). Without Docker it is `LADO_REPOS` too, and `~/workspace` when that is unset or
+  break). Compose takes the host's folder from `LADO_WORKSPACE` in `.env` and mounts it at
+  the same path; an installed `.env` with `LADO_PROJECTS`, the name before 0.43.0, is still
+  accepted, and `LADO_WORKSPACE` wins when both are set. Without Docker it is `LADO_REPOS` too, and `~/workspace` when that is unset or
   not an absolute path; LADO makes it at the first clone, fresh start or project. `lado
   doctor` shows which workspace is in use. The
   workspace is the human's folder: LADO owns only its subfolder `projects/`, everything

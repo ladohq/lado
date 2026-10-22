@@ -22,7 +22,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-sessions-in-
   `SessionInfo.project`, `SessionAbout.project`; `make web-types` (D6, D8, D11). Check:
   `tests/test_clone.py`, `test_scratch.py`, `test_server_launch.py`,
   `test_server_clones.py`, `test_server_session.py`, `make web`.
-- [ ] 2.2 `lado start --project/--repo`, `lado ls`, `lado project show`, `lado project
+- [x] 2.2 `lado start --project/--repo`, `lado ls`, `lado project show`, `lado project
   delete` with sessions (D3, D9, D10). Check: `tests/test_cli.py`,
   `tests/test_projects_core.py`.
 

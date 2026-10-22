@@ -520,3 +520,90 @@ def test_a_folder_not_removed_whole_keeps_the_record(home, monkeypatch):
 def test_delete_of_an_unknown_project(home):
     with pytest.raises(projects.NoSuchProject, match='unknown project "nope"'):
         projects.delete("nope", yes=True)
+
+
+# Delete with the project's sessions
+
+
+def _session(name: str, repo: Path, project: str | None, stopped: bool = True) -> None:
+    state.add_session(state.Session(name, str(repo), None, provider="claude", project=project))
+    if stopped:
+        state.stop_session(name)
+
+
+def test_delete_refuses_while_a_session_of_the_project_is_not_stopped(shop):
+    _session("shop-frontend", shop / "frontend", "shop", stopped=False)
+    _session("fix-login", shop / "frontend", "shop")
+    for yes in (False, True):
+        with pytest.raises(projects.ProjectError) as refused:
+            projects.delete("shop", yes=yes)
+        assert str(refused.value) == (
+            "project shop has sessions not stopped: shop-frontend; stop them first with "
+            "lado stop <name>"
+        )
+    assert shop.is_dir() and state.get_project("shop")
+    assert {s.name for s in state.list_sessions()} == {"shop-frontend", "fix-login"}
+
+
+def test_delete_refuses_while_a_session_runs_in_its_folder_without_the_project(shop, home):
+    """A session started there before schema 33 has no project, yet its agents work there."""
+    _session("old", shop / "frontend" / "src", None, stopped=False)
+    _session("elsewhere", home / "app", None, stopped=False)
+    with pytest.raises(projects.ProjectError, match="has sessions not stopped: old;"):
+        projects.delete("shop", yes=True)
+    assert shop.is_dir() and state.get_project("shop")
+
+
+def test_the_sessions_to_forget(shop):
+    _session("shop-frontend", shop / "frontend", "shop")
+    _session("fix-login", shop / "frontend", "shop")
+    run = state.Run("shop-frontend", "f/x", "feature", "{}", {}, "do x", "design", "/w", "b")
+    state.add_run(run, [], None)
+    assert projects.sessions_to_forget("shop") == [("fix-login", 0), ("shop-frontend", 1)]
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.delete("shop", yes=False)
+    assert str(refused.value) == (
+        f"deleting project shop removes its folder {shop} with everything in it and forgets "
+        "its 2 sessions; run again with --yes"
+    )
+    _session("acme-crm", shop / "x", None)
+    assert [name for name, _ in projects.sessions_to_forget("shop")] == [
+        "fix-login",
+        "shop-frontend",
+    ]
+
+
+def test_delete_with_yes_forgets_the_stopped_sessions(shop):
+    _session("shop-frontend", shop / "frontend", "shop")
+    _session("old", shop / "frontend", None)  # no project: kept, its folder goes
+    projects.delete("shop", yes=True)
+    assert not os.path.lexists(shop) and state.get_project("shop") is None
+    assert [s.name for s in state.list_sessions()] == ["old"]
+
+
+def test_a_folder_not_removed_keeps_the_sessions(shop, monkeypatch):
+    _session("shop-frontend", shop / "frontend", "shop")
+
+    def fail(path, *args, **kwargs):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(projects.shutil, "rmtree", fail)
+    with pytest.raises(projects.ProjectError, match="the project stays"):
+        projects.delete("shop", yes=True)
+    assert state.get_session("shop-frontend") and state.get_project("shop")
+
+
+def test_a_session_not_forgotten_keeps_the_record(shop, monkeypatch):
+    _session("shop-frontend", shop / "frontend", "shop")
+
+    def fail(name, force=False):
+        raise runtime.LadoError("the disk is gone")
+
+    monkeypatch.setattr(runtime, "forget_session", fail)
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.delete("shop", yes=True)
+    assert str(refused.value) == (
+        "could not forget session shop-frontend: the disk is gone; the project stays: run "
+        "lado project delete shop --yes again"
+    )
+    assert not os.path.lexists(shop) and state.get_project("shop")

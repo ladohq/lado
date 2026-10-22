@@ -432,17 +432,46 @@ def unpushed(project_folder: Path) -> list[str]:
     return lines
 
 
-def delete(id: str, yes: bool) -> None:
-    """Remove the project's folder whole, then its record; without `yes`, refuse (the CLI
-    shows `unpushed` first). Nothing outside <workspace>/projects is removed: a folder that
-    is a link loses the link only, and a folder whose real path is not directly in the real
-    projects/ is refused. A folder not removed whole keeps the record."""
+def sessions_to_forget(id: str) -> list[tuple[str, int]]:
+    """The sessions of the project that deleting it forgets, by name, each with its number
+    of open runs. Refused while one of them, or any session working in the project's folder
+    (one from before sessions had projects too), is not stopped: deleting would pull the
+    folder from under its agents."""
     get(id)
+    real = Path(os.path.realpath(folder(id)))
+    busy = [
+        sess.name
+        for sess in state.list_sessions()
+        if (sess.project == id or Path(os.path.realpath(sess.repo)).is_relative_to(real))
+        and runtime.session_status(sess) != runtime.SessionStatus.STOPPED
+    ]
+    if busy:
+        raise ProjectError(
+            f"project {id} has sessions not stopped: {names(busy)}; stop them first with "
+            "lado stop <name>"
+        )
+    return sorted(
+        (sess.name, len(state.list_runs(sess.name, open_only=True)))
+        for sess in state.project_sessions(id)
+    )
+
+
+def delete(id: str, yes: bool) -> None:
+    """Remove the project's folder whole, then forget its sessions (sessions_to_forget,
+    which refuses first), then remove its record; without `yes`, refuse (the CLI shows
+    `unpushed` first). Nothing outside <workspace>/projects is removed: a folder that is a
+    link loses the link only, and a folder whose real path is not directly in the real
+    projects/ is refused. A folder not removed whole keeps the sessions and the record; a
+    session not forgotten keeps the record, which the sessions' foreign key holds anyway."""
+    sessions = [name for name, _ in sessions_to_forget(id)]
     target = folder(id)
     if not yes:
+        forgets = ""
+        if sessions:
+            forgets = f" and forgets its {len(sessions)} session{'' if len(sessions) == 1 else 's'}"
         raise ProjectError(
-            f"deleting project {id} removes its folder {target} with everything in it; "
-            "run again with --yes"
+            f"deleting project {id} removes its folder {target} with everything in it"
+            f"{forgets}; run again with --yes"
         )
     if target.is_symlink():
         target.unlink()
@@ -457,5 +486,13 @@ def delete(id: str, yes: bool) -> None:
         except OSError as error:
             raise ProjectError(
                 f"could not remove {target} whole: {error}; the project stays"
+            ) from error
+    for name in sessions:
+        try:
+            runtime.forget_session(name, force=True)
+        except runtime.LadoError as error:
+            raise ProjectError(
+                f"could not forget session {name}: {error}; the project stays: run lado "
+                f"project delete {id} --yes again"
             ) from error
     state.delete_project(id)

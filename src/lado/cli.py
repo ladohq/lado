@@ -46,13 +46,31 @@ POLL = 1.0  # seconds between two checks that a gate the human is asked about is
 OPEN_ON_HOST = "Open it in your browser on the host."  # `lado ui` in a container
 
 
+def _check_project_args(args: argparse.Namespace) -> None:
+    """`--project ID --repo NAME` go together, and the folder is then the project's
+    repository: a usage error (exit 2) for anything else that names a folder."""
+    if args.project is None and args.repo is None:
+        return
+    if args.repo is None:
+        args.start_parser.error("--project needs --repo NAME")
+    if args.project is None:
+        args.start_parser.error("--repo needs --project ID")
+    if args.path is not None or args.folder or args.new or args.branch:
+        args.start_parser.error(
+            "--project takes no folder, git URL or --new: the folder is the project's repository"
+        )
+
+
 def cmd_start(args: argparse.Namespace) -> int:
     if not hasattr(args, "prompt_text"):  # once: a clone calls this again after it
+        _check_project_args(args)
         telemetry.ask_if_needed()
         args.prompt_text = _read_prompt(args)
+    if args.project is None and args.path is None:
+        args.path = "."
     if args.new:
         return _start_new(args)
-    if clone.is_url(args.path):
+    if args.path is not None and clone.is_url(args.path):
         return _start_clone(args)
     if args.branch:
         args.start_parser.error("--branch needs a git URL")
@@ -67,6 +85,8 @@ def cmd_start(args: argparse.Namespace) -> int:
             args.kit,
             args.without,
             prompt=args.prompt_text,
+            project=args.project,
+            repo_name=args.repo,
         )
     except Exception as exc:
         _sources_warning(unless_in=str(exc))  # a kit not found says it already
@@ -82,7 +102,8 @@ def cmd_start(args: argparse.Namespace) -> int:
         for problem in started.problems:
             print(f"lado: {problem}", file=sys.stderr)
     else:
-        print(f'Started session "{sess.name}" in {sess.repo}')
+        project = f" (project {sess.project})" if sess.project else ""
+        print(f'Started session "{sess.name}" in {sess.repo}{project}')
     if args.prompt_text is not None:
         print("first message: queued for the supervisor")
     if started.chosen:
@@ -123,6 +144,8 @@ def _start_clone(args: argparse.Namespace) -> int:
     target = clone.check_target(url, folder)
     if target.state not in clone.CAN_CLONE:
         print(f"lado: {target.text}", file=sys.stderr)
+        if target.hint:
+            print(f"lado: {target.hint.line()}", file=sys.stderr)
         if target.state == "same_repo":
             print(f"lado: To start a session in it as it is: lado start {folder}", file=sys.stderr)
         return 1
@@ -535,7 +558,8 @@ def cmd_ls(args: argparse.Namespace) -> int:
             ),
         }[runtime.session_status(sess)]
         title = f' "{sess.title}"' if sess.title else ""
-        print(f"{sess.name}{title}  {sess.repo}{alive}")
+        project = f"  project {sess.project}" if sess.project else ""
+        print(f"{sess.name}{title}  {sess.repo}{project}{alive}")
         since = state.status_since(sess.name)
         now = datetime.datetime.now(datetime.timezone.utc)
         reasons = runtime.status_reasons(sess.name)
@@ -1016,6 +1040,33 @@ def _project_folder(folder: Path, found: bool) -> str:
     return f"{folder}{'' if found else NOT_FOUND}"
 
 
+def _open_runs(count: int) -> str:
+    return f"{count} open run{'' if count == 1 else 's'}"
+
+
+def _print_repositories(id: str) -> None:
+    """`lado project show`'s repositories, by name, with the links of its folder, which are
+    none, marked so the human sees where such a repository went."""
+    found = projects.repositories(id)
+    links = projects.links(id)
+    if not found and not links:
+        print("  repositories: none")
+        return
+    print("  repositories:")
+    width = max(len(name) for name in [r.name for r in found] + [name for name, _ in links])
+    branches = max((len(r.branch or "(detached)") for r in found), default=0)
+    lines = [
+        (r.name, f"{r.branch or '(detached)':<{branches}}  {r.remote or '(no remote)'}")
+        for r in found
+    ]
+    lines += [
+        (name, f"(a link to {target}: clone it into {projects.folder(id)} instead)")
+        for name, target in links
+    ]
+    for name, rest in sorted(lines):
+        print(f"    {name:<{width}}  {rest}")
+
+
 def cmd_project(args: argparse.Namespace) -> int:
     """`lado project <command>`: the human's projects (lado.projects); agents only read."""
     if args.sub in ("create", "rename", "delete"):
@@ -1043,11 +1094,15 @@ def cmd_project(args: argparse.Namespace) -> int:
         print(f'{project.id} "{project.title}"' if project.title else project.id)
         print(f"  folder:  {_project_folder(folder, folder.is_dir())}")
         print(f"  made:    {made.astimezone():%Y-%m-%d %H:%M}")
+        _print_repositories(project.id)
     elif args.sub == "rename":
         title = projects.rename(args.id, args.title)
         print(f'{args.id}: title "{title}"' if title else f"{args.id}: no title")
     else:
-        projects.get(args.id)
+        forgets = projects.sessions_to_forget(args.id)  # refused while one is not stopped
+        if forgets:
+            shown = [f"{name} ({_open_runs(runs)})" if runs else name for name, runs in forgets]
+            print(f"Sessions to forget: {', '.join(shown)}")
         folder = projects.folder(args.id)
         lines = projects.unpushed(folder) if folder.is_dir() else []
         if lines:
@@ -1364,7 +1419,6 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument(
         "path",
         nargs="?",
-        default=".",
         help="repository (default: current dir), or a git URL to clone (https://, ssh://, "
         "git://, file:// or user@host:path)",
     )
@@ -1384,7 +1438,21 @@ def main(argv: list[str] | None = None) -> int:
         help="make the folder, new or empty, a git repository with an empty first commit, "
         "then start there",
     )
-    start.add_argument("--name", help="session name (default: repository folder name)")
+    start.add_argument(
+        "--project",
+        metavar="ID",
+        help="start in a repository of this project (lado project show ID lists them); "
+        "needs --repo, and takes no folder",
+    )
+    start.add_argument(
+        "--repo",
+        metavar="NAME",
+        help="with --project: the project's repository, a git folder in its folder",
+    )
+    start.add_argument(
+        "--name",
+        help="session name (default: repository folder name; in a project <project>-<repo>)",
+    )
     start.add_argument(
         "--provider",
         help=f"agent CLI for the session's agents: {', '.join(providers.names())}; without "

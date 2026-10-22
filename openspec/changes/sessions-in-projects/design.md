@@ -85,8 +85,11 @@ projects. The CLI calls `runtime.start_session(None, name, …, project=ID, repo
 `projects.get(project)` (unknown: `unknown project "<id>"`), then the repository by
 `repo` among `projects.repositories(project)`; not found: `project <id> has no repository
 <name>; its repositories: <a, b>` or `project <id> has no repositories yet: a repository
-is a git folder in <folder>` (a link, hidden or non-git entry of that name is not
-special-cased: it is not a repository). `path` is then the repository's path, checked by
+is a git folder in <folder>` (a hidden or non-git entry of that name is not
+special-cased: it is not a repository). A link of that name is named as one (the human's
+answer at design_ok): `<name> in project <id> is a link to <target>: clone it into
+<folder> instead`, and `lado project show` marks it the same way (`projects.links`). The
+keyword is `repo_name`: `repo` is the root's name inside `start_session`. `path` is then the repository's path, checked by
 `check_repo` as any (no commits: its hint). The default name is
 `slug(f"{project}-{repo}")` (#802). For an existing session of that name: same project →
 resume; another project or none → refused `session "<name>" is in project <p>` / `is not
@@ -137,9 +140,13 @@ condition); a folder inside LADO's `projects/` has no subfolders (it is refused)
 refused; a stopped session there is resumed from its own page).
 
 **D9. Delete.** `projects.delete(id, yes)`: first the sessions
-(`state.project_sessions`): any whose `runtime.session_status` is not STOPPED refuses,
-exit 1, nothing changed: `project <id> has sessions not stopped: <names>; stop them first
-with lado stop <name>`. The CLI then prints `Sessions to forget: <name> (<n> open
+(`projects.sessions_to_forget`): any of `state.project_sessions`, and any session whose
+folder's real path is inside the project's folder (a session from before S3 has no
+project, yet its agents work there: the human's answer at design_ok, #808's follow-up),
+whose `runtime.session_status` is not STOPPED refuses, exit 1, nothing changed: `project
+<id> has sessions not stopped: <names>; stop them first with lado stop <name>`. This is a
+safety check by path, never the way LADO learns a session's project: a stopped session
+from before S3 is not forgotten (its folder goes). The CLI then prints `Sessions to forget: <name> (<n> open
 run[s]), …` when there are stopped ones, then the unpushed work as in S2; without
 `--yes` the refusal names the sessions too: `deleting project <id> removes its folder
 <folder> with everything in it and forgets its <n> session[s]; run again with --yes`.

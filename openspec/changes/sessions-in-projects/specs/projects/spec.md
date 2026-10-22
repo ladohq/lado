@@ -86,16 +86,23 @@ project's repositories: `lado: project <id> has no repository <name>; its reposi
 - **THEN** it exits 1 with `lado: project shop has no repository web; its repositories:
   backend, frontend`
 
-#### Scenario: A link
-- **WHEN** `<ws>/projects/shop/docs` is a symbolic link to a repository and the human runs
-  `lado start --project shop --repo docs`
-- **THEN** it exits 1 naming the repositories of `shop`, and no session starts
-
 #### Scenario: No repositories yet
 - **WHEN** the folder of `acme` is empty and the human runs `lado start --project acme
   --repo crm`
 - **THEN** it exits 1 with `lado: project acme has no repositories yet: a repository is a
   git folder in <ws>/projects/acme`
+
+### Requirement: lado start --project --repo names a link as one
+
+`lado start --project <id> --repo <name>` SHALL refuse, exit 1, starting nothing, a name
+that is a symbolic link in the project's folder, saying so: `lado: <name> in project <id>
+is a link to <target>: clone it into <folder> instead`.
+
+#### Scenario: A link
+- **WHEN** `<ws>/projects/shop/docs` is a symbolic link to a repository and the human runs
+  `lado start --project shop --repo docs`
+- **THEN** it exits 1 with `lado: docs in project shop is a link to <target>: clone it
+  into <ws>/projects/shop instead`, and no session starts
 
 ### Requirement: A session's project never changes
 
@@ -245,13 +252,19 @@ answer 400 with the refusal's text. The New session window SHALL show it in its 
 `lado project show <id>` SHALL print, after its `made:` line, `  repositories:` and one
 line per repository, by name: `    <name>  <branch>  <remote>`, the names and branches
 padded to one width, `(detached)` for no branch and `(no remote)` for no remote; with
-none, `  repositories: none`.
+none, `  repositories: none`. A symbolic link in the project's folder SHALL be listed
+among them by name, marked `(a link to <target>: clone it into <folder> instead)`.
 
 #### Scenario: Two repositories
 - **WHEN** the project `shop` has `frontend` (branch `main`, remote
   `https://github.com/shop/frontend`) and `backend` (branch `dev`, no remote)
 - **THEN** `lado project show shop` ends with `  repositories:`, `    backend   dev
   (no remote)` and `    frontend  main  https://github.com/shop/frontend`
+
+#### Scenario: A link in the project's folder
+- **WHEN** `<ws>/projects/shop/docs` is a symbolic link to `/srv/docs`
+- **THEN** `lado project show shop` lists `    docs      (a link to /srv/docs: clone it into
+  <ws>/projects/shop instead)` between `backend` and `frontend`
 
 ### Requirement: The server gives a project with its repositories
 
@@ -316,8 +329,10 @@ id SHALL exit 1 with `lado: unknown project "<id>"`.
 ### Requirement: lado project delete shows unpushed work and needs --yes
 
 `lado project delete <id>` SHALL refuse, exit 1, changing nothing, while any session of
-the project is not stopped: `lado: project <id> has sessions not stopped: <names>; stop
-them first with lado stop <name>`. Otherwise it SHALL list the stopped sessions it will
+the project, or any session whose folder is, by its real path, inside the project's folder
+(a session with no project, started there before schema 33), is not stopped: `lado:
+project <id> has sessions not stopped: <names>; stop them first with lado stop <name>`.
+Otherwise it SHALL list the stopped sessions it will
 forget, `Sessions to forget: <name> (<n> open run[s]), …` (the count only for a session
 with open runs; no line without sessions), then the unpushed work of the project folder:
 for each git repository directly in it, and each worktree of one, its uncommitted changes
@@ -347,6 +362,12 @@ sessions, `… with everything in it and forgets its <n> session[s]; run again w
   shop --yes`
 - **THEN** it exits 1 with `lado: project shop has sessions not stopped: shop-frontend;
   stop them first with lado stop <name>`, and the sessions, the folder and the record stay
+
+#### Scenario: A running session from before projects
+- **WHEN** `site`, with no project, runs in `<ws>/projects/shop/site` and the human runs
+  `lado project delete shop --yes`
+- **THEN** it exits 1 with `lado: project shop has sessions not stopped: site; stop them
+  first with lado stop <name>`, and the folder and the record stay
 
 #### Scenario: Stopped sessions
 - **WHEN** `shop-frontend` (one open run) and `fix-login` of project `shop` are stopped and

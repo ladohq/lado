@@ -18,7 +18,8 @@ RECENT = 10  # at most this many recent folders
 
 def folder_info(path: str, has_db: bool) -> models.FolderInfo:
     path = runtime.full_path(path)
-    if refused := projects.refusal(path):  # before git: a start there is refused whatever
+    # Before git: a start there is refused whatever; a missing folder could be made one.
+    if refused := projects.refusal(path, fresh=True):
         return models.FolderInfo(
             path=path,
             ok=False,

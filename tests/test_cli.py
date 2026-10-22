@@ -2903,7 +2903,7 @@ def test_a_clone_into_a_project_is_refused_before_cloning(shop, fake_tmux, capsy
     assert main(["start", "https://h/shop/web", str(shop / "web"), "--no-attach"]) == 1
     assert capsys.readouterr().err.splitlines() == [
         f"lado: {shop / 'web'} belongs to the project Shop: start a session in the project",
-        "lado: Start a session in the project: lado start --project shop --repo web",
+        "lado: Add a repository to the project: lado project repo add shop https://h/shop/web",
     ]
     assert sorted(p.name for p in shop.iterdir()) == ["frontend"]
 
@@ -2912,7 +2912,7 @@ def test_a_fresh_start_in_a_project_is_refused(shop, fake_tmux, capsys):
     assert main(["start", "--new", str(shop / "site"), "--no-attach"]) == 1
     assert capsys.readouterr().err.splitlines() == [
         f"lado: {shop / 'site'} belongs to the project Shop: start a session in the project",
-        "lado: Start a session in the project: lado start --project shop --repo site",
+        "lado: Add a repository to the project: lado project repo add shop --new site",
     ]
     assert not (shop / "site").exists()
 

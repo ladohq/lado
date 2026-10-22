@@ -10,7 +10,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-project-repo
   (a failed and a cancelled clone leave nothing).
 - [x] 1.3 `_checkout_lines`, `removal`, `remove_repo` (D6, D7, D8). Check:
   `tests/test_project_repos.py`, `tests/test_projects_core.py` (`unpushed` unchanged).
-- [ ] 1.4 The refusal's hints and the text for a project without repositories (D10).
+- [x] 1.4 The refusal's hints and the text for a project without repositories (D10).
   Check: `tests/test_projects_core.py`, `test_clone.py`, `test_scratch.py`,
   `test_server_launch.py`, `test_runtime_projects.py`.
 

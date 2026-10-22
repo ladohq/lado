@@ -107,7 +107,7 @@ def check_target(path: str, project: str | None = None) -> Target:
 
 def _check_target(path: str, project: str | None) -> Target:
     # A new session without a project could not start there.
-    if not projects.adds_to(project, path) and (refused := projects.refusal(path)):
+    if not projects.adds_to(project, path) and (refused := projects.refusal(path, fresh=True)):
         return Target(path, "in_project", str(refused), hint=refused.hint)
     folder = Path(path)
     nearest = _nearest(folder)

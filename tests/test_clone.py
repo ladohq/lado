@@ -139,8 +139,13 @@ def test_a_folder_in_a_project_is_no_target(shop, made):
         "in_project",
         f"{web} belongs to the project Shop: start a session in the project",
     )
-    assert target.hint == runtime.Hint(
-        "Start a session in the project:", "lado start --project shop --repo web"
+    assert target.hint == (
+        runtime.Hint("See the project's repositories:", "lado project show shop")
+        if made  # a folder of the name: adding the repository is refused too
+        else runtime.Hint(
+            "Add a repository to the project:",
+            "lado project repo add shop https://github.com/shop/web",
+        )
     )
     assert "in_project" not in clone.CAN_CLONE
     assert (
@@ -153,7 +158,7 @@ def test_a_clone_into_a_project_makes_nothing(shop):
     with pytest.raises(clone.CloneError) as refused:
         clone.clone("https://github.com/shop/web", str(shop / "web"))
     assert refused.value.kind == "in_project"
-    assert refused.value.hint.command == "lado start --project shop --repo web"
+    assert refused.value.hint.command == "lado project repo add shop https://github.com/shop/web"
     assert list(shop.iterdir()) == []  # no temporary folder either
 
 

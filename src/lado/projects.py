@@ -171,11 +171,16 @@ def lados_folder() -> Path | None:
     return Path(os.path.realpath(projects_folder()))
 
 
-def refusal(path: str) -> runtime.FolderProblem | None:
+def refusal(
+    path: str, *, url: str | None = None, fresh: bool = False
+) -> runtime.FolderProblem | None:
     """Why no new session without a project may start at `path` (kind `in_project`), by its
     real path: it is inside projects/ while that folder is LADO's. The text names the
-    project, and the hint offers its session, or the projects for a folder of none. None
-    outside projects/, when projects/ is the human's own folder, and without projects."""
+    project; the hint offers the session of the project's repository the path is in, or
+    adding the repository for a clone of `url` or a fresh start (`fresh`) into a new folder
+    directly in the project's folder, else the project's repositories, or the projects for
+    a folder of none. None outside projects/, when projects/ is the human's own folder, and
+    without projects."""
     root = lados_folder()
     real = Path(os.path.realpath(path))
     if root is None or not real.is_relative_to(root):
@@ -189,19 +194,39 @@ def refusal(path: str) -> runtime.FolderProblem | None:
             runtime.Hint("See the projects:", "lado project list"),
         )
     project = get(parts[0])
-    if len(parts) == 1:
-        hint = runtime.Hint("See the project's repositories:", f"lado project show {project.id}")
-    else:
-        hint = runtime.Hint(
-            "Start a session in the project:",
-            f"lado start --project {project.id} --repo {parts[1]}",
-        )
     return runtime.FolderProblem(
         "in_project",
         f"{path} belongs to the project {project.title or project.id}: start a session in "
         "the project",
-        hint,
+        _hint(project.id, parts[1:], root, url, fresh),
     )
+
+
+def _hint(
+    id: str, below: tuple[str, ...], root: Path, url: str | None, fresh: bool
+) -> runtime.Hint:
+    """`refusal`'s hint for a path `below` the project's folder (in the real projects/
+    `root`)."""
+    if below and any(repo.name == below[0] for repo in repositories(id)):
+        return runtime.Hint(
+            "Start a session in the project:", f"lado start --project {id} --repo {below[0]}"
+        )
+    new = (
+        len(below) == 1 and _good_repo_name(below[0]) and not os.path.lexists(root / id / below[0])
+    )
+    if new and fresh:
+        return runtime.Hint(ADD_HINT, f"lado project repo add {id} --new {below[0]}")
+    if new and url:
+        from lado import clone  # lado.clone builds on this module
+
+        other = "" if clone.Address.parse(url).repo_name == below[0] else f" --name {below[0]}"
+        return runtime.Hint(
+            ADD_HINT, f"lado project repo add {id} {runtime.public_remote(url)}{other}"
+        )
+    return runtime.Hint("See the project's repositories:", f"lado project show {id}")
+
+
+ADD_HINT = "Add a repository to the project:"
 
 
 def create(id: str, title: str | None) -> state.Project:
@@ -362,8 +387,12 @@ class NoSuchRepository(ProjectError):
     pass
 
 
+def _good_repo_name(name: str) -> bool:
+    return bool(REPO_NAME.fullmatch(name)) and len(name) <= MAX_REPO_NAME
+
+
 def check_repo_name(name: str) -> None:
-    if not (REPO_NAME.fullmatch(name) and len(name) <= MAX_REPO_NAME):
+    if not _good_repo_name(name):
         raise ProjectError(
             f"the repository name {name} is not valid: Latin letters, digits, ., _ and -, "
             f"not starting with . or -, at most {MAX_REPO_NAME} characters"

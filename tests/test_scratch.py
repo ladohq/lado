@@ -100,8 +100,12 @@ def test_a_folder_in_a_project_takes_no_fresh_start(shop, made):
         "in_project",
         f"{site} belongs to the project Shop: start a session in the project",
     )
-    assert target.hint == runtime.Hint(
-        "Start a session in the project:", "lado start --project shop --repo site"
+    assert target.hint == (
+        runtime.Hint("See the project's repositories:", "lado project show shop")
+        if made  # a folder of the name: adding the repository is refused too
+        else runtime.Hint(
+            "Add a repository to the project:", "lado project repo add shop --new site"
+        )
     )
     assert "in_project" not in scratch.CAN_START
     assert scratch.check_target(str(shop.parent.parent / "site")).hint is None
@@ -111,7 +115,7 @@ def test_a_fresh_start_in_a_project_makes_nothing(shop, git_config):
     with pytest.raises(scratch.ScratchError) as refused:
         scratch.make(str(shop / "site"), "site")
     assert refused.value.kind == "in_project"
-    assert refused.value.hint.command == "lado start --project shop --repo site"
+    assert refused.value.hint.command == "lado project repo add shop --new site"
     assert list(shop.iterdir()) == []
 
 

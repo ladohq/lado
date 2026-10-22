@@ -266,6 +266,11 @@ among them by name, marked `(a link to <target>: clone it into <folder> instead)
 - **THEN** `lado project show shop` lists `    docs      (a link to /srv/docs: clone it into
   <ws>/projects/shop instead)` between `backend` and `frontend`
 
+#### Scenario: A project whose folder is gone
+- **WHEN** the folder of `acme` is gone and the human runs `lado project show acme`
+- **THEN** it prints `  folder:  <ws>/projects/acme  (folder not found)` and
+  `  repositories: none`
+
 ### Requirement: The server gives a project with its repositories
 
 `GET /api/projects/{id}` SHALL answer `{id, title, folder, found, repos}`, `repos` the
@@ -303,43 +308,46 @@ project SHALL show nothing new.
 - **WHEN** the project is renamed `Shop EU` and the human opens the session again
 - **THEN** the head shows `project Shop EU`
 
+### Requirement: lado project delete refuses while a session in the project's folder runs
+
+`lado project delete <id>`, with `--yes` or without, SHALL refuse, exit 1, changing
+nothing, while any session of the project, or any session whose folder is, by its real
+path, inside the project's folder (a session with no project, started there before schema
+33), is not stopped: `lado: project <id> has sessions not stopped: <names>; stop them first
+with lado stop <name>`.
+
+#### Scenario: A running session
+- **WHEN** `shop-frontend` of project `shop` runs and the human runs `lado project delete
+  shop --yes`
+- **THEN** it exits 1 with `lado: project shop has sessions not stopped: shop-frontend;
+  stop them first with lado stop <name>`, and the sessions, the folder and the record stay
+
+#### Scenario: A running session from before projects
+- **WHEN** `site`, with no project, runs in `<ws>/projects/shop/site` and the human runs
+  `lado project delete shop --yes`
+- **THEN** it exits 1 with `lado: project shop has sessions not stopped: site; stop them
+  first with lado stop <name>`, and the folder and the record stay
+
+### Requirement: lado project delete --yes keeps the record while a session stays
+
+When a session of the project cannot be forgotten, `lado project delete <id> --yes` SHALL
+keep the record and exit 1 naming that session: `lado: could not forget session <name>:
+<error>; the project stays: run lado project delete <id> --yes again`.
+
+#### Scenario: A session that cannot be forgotten
+- **WHEN** the folder of `shop` is removed and forgetting `shop-frontend` fails
+- **THEN** the command exits 1 naming `shop-frontend`, the record stays, and running it
+  again goes on
+
 ## MODIFIED Requirements
-
-### Requirement: lado project list and show print projects with their folders
-
-`lado project list` SHALL print one line per project, by id: the id, the title (the id
-when none) and the folder, with `  (folder not found)` when the folder does not exist; with
-no project it SHALL print `No projects. Make one with: lado project create <id>`.
-`lado project show <id>` SHALL print `<id> "<title>"` (the id alone without a title), then
-`  folder:  <folder>` (with the same mark), `  made:    <local date and time>` and the
-project's repositories (lado project show lists the project's repositories); an unknown
-id SHALL exit 1 with `lado: unknown project "<id>"`.
-
-#### Scenario: Two projects
-- **WHEN** LADO has `shop` titled `Shop` with its folder and `acme` without a title whose
-  folder is gone
-- **THEN** `lado project list` prints `acme  acme  <ws>/projects/acme  (folder not
-  found)` and `shop  Shop  <ws>/projects/shop`
-
-#### Scenario: A project whose folder is gone
-- **WHEN** the folder of `acme` is gone and the human runs `lado project show acme`
-- **THEN** it prints `  folder:  <ws>/projects/acme  (folder not found)` and
-  `  repositories: none`
 
 ### Requirement: lado project delete shows unpushed work and needs --yes
 
-`lado project delete <id>` SHALL refuse, exit 1, changing nothing, while any session of
-the project, or any session whose folder is, by its real path, inside the project's folder
-(a session with no project, started there before schema 33), is not stopped: `lado:
-project <id> has sessions not stopped: <names>; stop them first with lado stop <name>`.
-Otherwise it SHALL list the stopped sessions it will
-forget, `Sessions to forget: <name> (<n> open run[s]), …` (the count only for a session
-with open runs; no line without sessions), then the unpushed work of the project folder:
-for each git repository directly in it, and each worktree of one, its uncommitted changes
-(untracked files included) and each local branch with no upstream or ahead of it. Without
-`--yes` it SHALL then refuse, exit 1, changing nothing, with `lado: deleting project <id>
-removes its folder <folder> with everything in it; run again with --yes`, or, with
-sessions, `… with everything in it and forgets its <n> session[s]; run again with --yes`.
+`lado project delete <id>` SHALL list the project's sessions it will forget, `Sessions to
+forget: <name> (<n> open run[s]), …` (no line without sessions), then the unpushed work of
+the project folder: for each git repository directly in it, and each worktree of one, its
+uncommitted changes (untracked files included) and each local branch with no upstream or
+ahead of it. Without `--yes` it SHALL then refuse, exit 1, changing nothing.
 
 #### Scenario: Unpushed work
 - **WHEN** the project folder holds the repository `frontend` with an uncommitted file and
@@ -357,18 +365,6 @@ sessions, `… with everything in it and forgets its <n> session[s]; run again w
 - **WHEN** every repository of the folder is pushed and clean
 - **THEN** no list is printed, and without `--yes` the command still refuses
 
-#### Scenario: A running session
-- **WHEN** `shop-frontend` of project `shop` runs and the human runs `lado project delete
-  shop --yes`
-- **THEN** it exits 1 with `lado: project shop has sessions not stopped: shop-frontend;
-  stop them first with lado stop <name>`, and the sessions, the folder and the record stay
-
-#### Scenario: A running session from before projects
-- **WHEN** `site`, with no project, runs in `<ws>/projects/shop/site` and the human runs
-  `lado project delete shop --yes`
-- **THEN** it exits 1 with `lado: project shop has sessions not stopped: site; stop them
-  first with lado stop <name>`, and the folder and the record stay
-
 #### Scenario: Stopped sessions
 - **WHEN** `shop-frontend` (one open run) and `fix-login` of project `shop` are stopped and
   the human runs `lado project delete shop`
@@ -378,12 +374,10 @@ sessions, `… with everything in it and forgets its <n> session[s]; run again w
 ### Requirement: lado project delete --yes removes the folder, then the record
 
 `lado project delete <id> --yes` SHALL remove the project folder whole, then forget each
-of the project's sessions with its history, runs, gates and artifacts (as `lado forget
---force` does), then remove the record, and print `Deleted project <id>`. A project whose
-folder is not found SHALL lose its sessions and record only. When the folder cannot be
-removed whole, the sessions and the record SHALL stay and the command SHALL exit 1 naming
-what stayed; when a session cannot be forgotten, the record SHALL stay and the command
-SHALL exit 1 naming that session.
+of the sessions it listed (as `lado forget --force` does), then remove the record, and
+print `Deleted project <id>`. A project whose folder is not found SHALL lose its sessions
+and record only. When the folder cannot be removed whole, the sessions and the record
+SHALL stay and the command SHALL exit 1 naming what stayed.
 
 #### Scenario: Confirmed
 - **WHEN** the human runs `lado project delete shop --yes`

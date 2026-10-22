@@ -6,8 +6,7 @@ The server SHALL answer `GET /api/repos-folder` with `{path, made}`: the workspa
 whether it exists as a folder. The New session window's **Where** placeholder SHALL be
 `<path>/…`, **Clone into**'s `<path>/<repo>` and **Create in**'s `<path>/<name>`. With
 `made`, Where, while empty, SHALL suggest that folder's subfolders when it has the focus,
-also when it took the focus before the server's answer came, and picking one SHALL put its
-full path (`<folder>/<name>`) in the field. Without `made`
+and picking one SHALL put its full path (`<folder>/<name>`) in the field. Without `made`
 the window SHALL suggest nothing for an empty field.
 
 #### Scenario: A first session in the container

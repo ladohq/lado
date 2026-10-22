@@ -59,7 +59,7 @@ Check:
 - The session header in the UI shows the project (mockup at `design_ok`, `docs/design/ui.md`, UI e2e).
 - The project's repositories are listed from disk: git subfolders with branch and remote; a folder without git and an unfinished clone are not listed.
 - `lado project delete` refuses while a session of the project runs, and forgets the stopped ones.
-Notes: concept phase 3 without adding repositories (S4). Repositories for the check are made by hand (`git init`/`git clone` into the project folder). Trap of S2 for this L step: both external review rounds read the diff only partly; the brief asks the reviewer to name per area (core, CLI, server, UI, specs) which round read it, and an area no external round read is named at `merge_ok`.
+Notes: concept phase 3 without adding repositories (S4). Repositories for the check are made by hand (`git init`/`git clone` into the project folder). Trap of S2 for this L step: both external review rounds read the diff only partly; the brief asks the reviewer to name per area (core, CLI, server, UI, specs) which round read it, and an area no external round read is named at `merge_ok`. The trap held again in S2b (the external round read files at HEAD on a shallow checkout and skipped the spec delta and `tests/container/`): the request names the diff's files. Sessions started under `projects/<id>/` between S2 and S3 must keep working; binding them to the project is a question to the human if `resume` would refuse them.
 
 ### S4 — Adding and removing a project's repositories (M)
 Status: planned

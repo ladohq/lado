@@ -261,7 +261,14 @@ class LadoError(RuntimeError):
 
 
 FolderProblemKind = Literal[
-    "missing", "not_folder", "no_git", "git_broken", "not_repo", "git_refused", "no_commits"
+    "missing",
+    "not_folder",
+    "no_git",
+    "git_broken",
+    "not_repo",
+    "git_refused",
+    "no_commits",
+    "in_project",  # inside LADO's projects/: lado.projects.refusal
 ]
 
 

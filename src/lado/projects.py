@@ -156,6 +156,42 @@ def foreign() -> list[str]:
     return [name for name in visible if name not in ids] if ids & set(visible) else []
 
 
+def refusal(path: str) -> runtime.FolderProblem | None:
+    """Why no new session without a project may start at `path` (kind `in_project`), by its
+    real path: it is inside projects/ while that folder is LADO's. The text names the
+    project, and the hint offers its session, or the projects for a folder of none. None
+    outside projects/, when projects/ is the human's own folder, and without projects."""
+    ids = _ids()
+    if not ids or not projects_folder().is_dir() or owned_by_human() is not None:
+        return None
+    root = Path(os.path.realpath(projects_folder()))
+    real = Path(os.path.realpath(path))
+    if real != root and root not in real.parents:
+        return None
+    parts = real.relative_to(root).parts
+    if not parts or parts[0] not in ids:
+        return runtime.FolderProblem(
+            "in_project",
+            f"{path} is in {projects_folder()}, which holds LADO's projects only: start a "
+            "session in a project, or move the folder out of projects/",
+            runtime.Hint("See the projects:", "lado project list"),
+        )
+    project = get(parts[0])
+    if len(parts) == 1:
+        hint = runtime.Hint("See the project's repositories:", f"lado project show {project.id}")
+    else:
+        hint = runtime.Hint(
+            "Start a session in the project:",
+            f"lado start --project {project.id} --repo {parts[1]}",
+        )
+    return runtime.FolderProblem(
+        "in_project",
+        f"{path} belongs to the project {project.title or project.id}: start a session in "
+        "the project",
+        hint,
+    )
+
+
 def create(id: str, title: str | None) -> state.Project:
     """Make the project `id`: its record and its folder, with the workspace and projects/
     when they are missing. Refused, with nothing made, for a bad id or title, a workspace

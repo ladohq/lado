@@ -229,6 +229,104 @@ def _git(repo: Path, *args: str) -> str:
     return done.stdout
 
 
+# The refusal of a new session inside projects/
+
+
+def _refused(path) -> tuple[str, str, str | None]:
+    problem = projects.refusal(str(path))
+    assert problem is not None and problem.kind == "in_project"
+    return str(problem), problem.hint.text, problem.hint.command
+
+
+@pytest.fixture
+def shop_repo(home, git_config):
+    """The project shop titled Shop, with the repository frontend."""
+    projects.create("shop", "Shop")
+    return init_repo(projects.folder("shop") / "frontend")
+
+
+IN_SHOP = "{} belongs to the project Shop: start a session in the project"
+START_HINT = ("Start a session in the project:", "lado start --project shop --repo frontend")
+
+
+@pytest.mark.parametrize("below", ["", "src/app", "missing/deeper"])
+def test_below_a_projects_folder_is_refused_naming_the_project(shop_repo, below):
+    path = shop_repo / below if below else shop_repo
+    assert _refused(path) == (IN_SHOP.format(path), *START_HINT)
+
+
+def test_a_folder_without_git_in_a_project_is_refused_the_same(shop_repo):
+    notes = projects.folder("shop") / "notes"
+    notes.mkdir()
+    assert _refused(notes)[0] == IN_SHOP.format(notes)
+    assert _refused(notes)[2] == "lado start --project shop --repo notes"
+
+
+def test_a_project_without_a_title_is_named_by_its_id(home):
+    projects.create("acme", None)
+    path = projects.folder("acme") / "crm"
+    assert (
+        _refused(path)[0] == f"{path} belongs to the project acme: start a session in the project"
+    )
+
+
+def test_the_projects_folder_itself_points_at_its_repositories(shop_repo):
+    path = projects.folder("shop")
+    assert _refused(path) == (
+        IN_SHOP.format(path),
+        "See the project's repositories:",
+        "lado project show shop",
+    )
+
+
+@pytest.mark.parametrize("name", ["", "old", "old/deeper"])
+def test_a_folder_of_no_project_points_at_the_projects(shop_repo, name):
+    path = projects.projects_folder() / name if name else projects.projects_folder()
+    assert _refused(path) == (
+        f"{path} is in {projects.projects_folder()}, which holds LADO's projects only: start "
+        "a session in a project, or move the folder out of projects/",
+        "See the projects:",
+        "lado project list",
+    )
+
+
+def test_a_link_is_refused_as_its_target(shop_repo, home):
+    link = home / "code" / "front"
+    link.parent.mkdir()
+    link.symlink_to(shop_repo)
+    assert _refused(link) == (IN_SHOP.format(link), *START_HINT)
+
+
+def test_a_link_to_the_projects_folder_is_refused_too(shop_repo, home, monkeypatch):
+    real = home / "real-workspace"
+    (home / "workspace").rename(real)
+    (home / "workspace").symlink_to(real)
+    assert _refused(real / "projects" / "shop" / "frontend")[2] == START_HINT[1]
+
+
+def test_nothing_is_refused_outside_projects(shop_repo, home):
+    assert projects.refusal(str(home / "workspace" / "app")) is None
+    assert projects.refusal(str(home / "workspace" / "projects-old")) is None
+    assert projects.refusal(str(home)) is None
+
+
+def test_nothing_is_refused_in_the_humans_own_projects_folder(home):
+    app = init_repo(home / "workspace" / "projects" / "app")
+    assert projects.refusal(str(app)) is None
+
+
+def test_nothing_is_refused_without_a_lado_db(home):
+    (home / "workspace" / "projects").mkdir(parents=True)
+    assert projects.refusal(str(home / "workspace" / "projects")) is None
+    assert state.schema_version() is None  # asking makes none
+
+
+def test_a_project_whose_folder_lies_in_its_own_projects_folder_still_refuses(shop_repo):
+    old = projects.projects_folder() / "old"
+    old.mkdir()  # foreign beside the project: projects/ stays LADO's
+    assert _refused(shop_repo)[2] == START_HINT[1]
+
+
 # The repositories, from the disk
 
 

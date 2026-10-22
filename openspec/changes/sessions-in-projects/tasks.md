@@ -7,7 +7,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-sessions-in-
   `previous_schema` with its backup, the foreign key).
 - [x] 1.2 `projects.repositories` (D2). Check: `tests/test_projects_core.py` with real git
   (clone, init, hidden, link, plain folder, the project folder itself, detached HEAD).
-- [ ] 1.3 `projects.refusal`, kind `in_project` (D5). Check: `tests/test_projects_core.py`
+- [x] 1.3 `projects.refusal`, kind `in_project` (D5). Check: `tests/test_projects_core.py`
   (repository, deeper, non-git, missing, project folder, foreign, `projects/`, link,
   the human's own `projects/`).
 - [ ] 1.4 `start_session(…, project, repo)` and the refusal at start (D4, D6). Check:

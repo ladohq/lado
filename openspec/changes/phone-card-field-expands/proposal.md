@@ -87,6 +87,7 @@ CHANGELOG.md.
 
 - Web UI only: no API, schema, MCP or CLI change. A fix: patch level; CHANGELOG.md gets
   a line under `### Fixed` of `## 0.43.0 (unreleased)`, the version not bumped here.
-- Living specs: `phone-layout` (a requirement added, "On a phone the composer stays at
-  hand" modified) and `chat-question-card` ("The expanded card covers its page's area,
-  not the window" modified: the phone hides the session's tabs and the Team row).
+- Living specs: `phone-layout` (two requirements added, a field expands the card and an
+  expanded card hides the session's tabs and the Team row; "On a phone the composer stays
+  at hand" modified, its expanded card's scenario) and `chat-question-card` ("The
+  expanded card covers its page's area, not the window" modified: but on a phone).

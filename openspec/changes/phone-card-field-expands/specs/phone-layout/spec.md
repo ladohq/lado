@@ -7,8 +7,7 @@ scroll by itself under the top bar. The app SHALL be as high as the part of the 
 the human sees, its bottom never cut by the browser's bars. In a session's chat the feed
 SHALL scroll by itself, and the waiting card and the composer SHALL stay whole at the
 chat's bottom; the card SHALL be at most half the chat's height, its list scrolling
-inside. An expanded card SHALL fill the session's page under the top bar: the feed, the
-composer, the session's tabs and the Team row SHALL not be shown while it is expanded.
+inside.
 
 #### Scenario: Writing with a gate waiting
 - **WHEN** a gate waits and the human opens the session's chat on a phone 390×844
@@ -26,12 +25,23 @@ composer, the session's tabs and the Team row SHALL not be shown while it is exp
 - **THEN** the card fills the page under the top bar, the session's tabs and the Team row
   are not shown, and its Send button is in sight, above the browser's bottom bar
 
+## ADDED Requirements
+
+### Requirement: On a phone an expanded card hides the session's tabs and the Team row
+
+In the phone layout an expanded waiting card in a session's chat SHALL fill the session's
+page under the top bar: the feed, the composer, the session's tabs and the Team row SHALL
+not be shown while it is expanded, whether its button, a field or the phone held sideways
+expanded it, and SHALL show again when it folds.
+
+#### Scenario: Expanded by its button
+- **WHEN** the human taps Expand the card in the session's chat on a phone
+- **THEN** the session's tabs and the Team row are not shown
+
 #### Scenario: Folding the expanded card
 - **WHEN** the human taps Collapse the card on a phone
 - **THEN** the card stands above the composer again, and the session's tabs and the Team
   row show again
-
-## ADDED Requirements
 
 ### Requirement: On a phone a field of the waiting card expands it
 

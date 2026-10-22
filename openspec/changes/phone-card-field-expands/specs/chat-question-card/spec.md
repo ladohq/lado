@@ -6,10 +6,9 @@ An icon button at
 the right of the card's tabs (no text; its name and tooltip "Expand the card") SHALL show the
 card over its page's area, never over the whole window: in a session's chat over the
 chat's whole area, the feed and the composer hidden, the session's head, tabs and team
-row seen and usable, but in the phone layout (capability phone-layout), where the
-session's tabs and the team row SHALL be hidden too; on Needs you over the page's content
-area under its session's name line, the other sessions' cards and the waiting agents'
-rows hidden.
+row seen and usable (but on a phone: capability phone-layout); on Needs you over the
+page's content area under its session's name line, the other sessions' cards and the
+waiting agents' rows hidden.
 
 #### Scenario: The session around an expanded card
 - **WHEN** the human expands the card in session lad-46's chat

@@ -316,7 +316,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `workspace_source` says `LADO_REPOS`, `default` or `ignored`; `workspace_problem` the
     one probe of an existing workspace (doctor's line, `create`'s refusal). A project is a
     row of lado.db's `projects` (schema 32: `id`, `title`, `created_at`; `state.creating_project`
-    adds one in a transaction around its folder's mkdir, beside get, list, title and delete); its folder
+    adds one in a transaction around its folder's mkdir, beside get, list, title and delete;
+    from schema 33 a session refers to its project, `sessions.project`, set at its start and
+    never changed, `state.project_sessions`); its folder
     is `folder(id)`, `<workspace>/projects/<id>`, stored nowhere. `check_id` (`ID`,
     `MAX_ID`), titles by `runtime.check_title`, `owned_by_human` (a `projects/` with visible
     entries and no project's folder among them, from the disk and lado.db: no marker file),
@@ -327,7 +329,21 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (git with `clone.NO_PROMPT` and `GIT_TIMEOUT`, no network); `delete` refuses without
     `yes`, unlinks a folder that is a link, refuses one whose real path is not directly in
     the real `projects/`, removes the rest by `shutil.rmtree` (links inside as links), then
-    the record; a folder not removed whole keeps it. A refusal is a `ProjectError`
+    forgets the project's sessions (`runtime.forget_session(force=True)`), then the record;
+    a folder not removed whole keeps them, a session not forgotten keeps the record.
+    `sessions_to_forget` (asked by `delete` and the CLI first) refuses while a session of
+    the project, or any session whose folder is inside the project folder by real path, is
+    not stopped, and gives the project's sessions with their open runs (openspec change
+    sessions-in-projects). `repositories(id)` reads a project's repositories from the disk
+    each time (`Repository`: name, path, branch, remote through `runtime.public_remote`):
+    each folder directly in its folder, not hidden, not a link, whose `git rev-parse
+    --show-toplevel` is itself; `links(id)` names the links there; `repository(id, name)`
+    is a session's folder in a project, refused naming what there is. `lados_folder` is the
+    real `projects/` while it is LADO's (a folder, LADO has projects, not the human's own);
+    `refusal(path)` is the one refusal (`runtime.FolderProblem` of kind `in_project`, with
+    the project's command as its hint) of a new session without a project inside it, asked
+    by `runtime.start_session`, `clone.check_target`, `scratch.check_target` and the
+    server's folder check. A refusal is a `ProjectError`
     (`NoSuchProject` for an unknown id), a `runtime.LadoError`.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's

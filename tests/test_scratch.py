@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from lado import runtime, scratch, state
+from lado import projects, runtime, scratch, state
 
 # The spec's table: each Cyrillic letter and its Latin letters.
 TABLE = (
@@ -80,6 +80,39 @@ def git_init(path: Path) -> Path:
 def test_a_missing_folder_is_new(tmp_path):
     path = str(tmp_path / "a" / "shop")
     assert scratch.check_target(path) == scratch.Target(path, "new", "a new folder")
+
+
+@pytest.fixture
+def shop(tmp_path, monkeypatch):
+    """The workspace <tmp>/ws with the project shop titled Shop; its folder."""
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    projects.create("shop", "Shop")
+    return projects.folder("shop")
+
+
+@pytest.mark.parametrize("made", [False, True])  # checked before the other states
+def test_a_folder_in_a_project_takes_no_fresh_start(shop, made):
+    site = shop / "site"
+    if made:
+        site.mkdir()
+    target = scratch.check_target(str(site))
+    assert (target.state, target.text) == (
+        "in_project",
+        f"{site} belongs to the project Shop: start a session in the project",
+    )
+    assert target.hint == runtime.Hint(
+        "Start a session in the project:", "lado start --project shop --repo site"
+    )
+    assert "in_project" not in scratch.CAN_START
+    assert scratch.check_target(str(shop.parent.parent / "site")).hint is None
+
+
+def test_a_fresh_start_in_a_project_makes_nothing(shop, git_config):
+    with pytest.raises(scratch.ScratchError) as refused:
+        scratch.make(str(shop / "site"), "site")
+    assert refused.value.kind == "in_project"
+    assert refused.value.hint.command == "lado start --project shop --repo site"
+    assert list(shop.iterdir()) == []
 
 
 def test_an_empty_folder(tmp_path):

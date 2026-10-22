@@ -6,6 +6,9 @@
 
 - **Projects in the terminal.** `lado project create|list|show|rename|delete` keeps a
   project as a folder in your workspace's `projects/`; `lado doctor` checks them.
+- **Sessions in projects.** `lado start --project <id> --repo <name>` starts in a
+  project's repository, and its sessions stay in the project; a folder in `projects/`
+  offers that command instead of an ordinary session.
 
 ### Changed
 

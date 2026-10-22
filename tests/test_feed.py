@@ -126,6 +126,7 @@ def test_a_change_after_the_start_comes_with_its_item_in_the_form_of_the_rest_ap
             "running_since": None,
             "stopped_at": None,
             "title": None,
+            "project": None,
         },
     }
     runtime.set_title("s", "Review")
@@ -571,6 +572,7 @@ def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo,
         "running_since": None,
         "stopped_at": None,
         "title": None,
+        "project": None,
     }
     assert stream.quiet(0.3) == []  # a stopped session has nothing derived
 

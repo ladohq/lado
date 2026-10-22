@@ -19,6 +19,7 @@ import sqlite3
 import stat
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -155,6 +156,49 @@ def foreign() -> list[str]:
     return [name for name in visible if name not in ids] if ids & set(visible) else []
 
 
+def lados_folder() -> Path | None:
+    """The real path of projects/ while it is LADO's: a folder, LADO has projects, and it is
+    not the human's own folder (owned_by_human). None otherwise: nothing in it is refused."""
+    if not projects_folder().is_dir():
+        return None  # first: most checks find no projects/ at all, and need no lado.db
+    if not _ids() or owned_by_human() is not None:
+        return None
+    return Path(os.path.realpath(projects_folder()))
+
+
+def refusal(path: str) -> runtime.FolderProblem | None:
+    """Why no new session without a project may start at `path` (kind `in_project`), by its
+    real path: it is inside projects/ while that folder is LADO's. The text names the
+    project, and the hint offers its session, or the projects for a folder of none. None
+    outside projects/, when projects/ is the human's own folder, and without projects."""
+    root = lados_folder()
+    real = Path(os.path.realpath(path))
+    if root is None or not real.is_relative_to(root):
+        return None
+    parts = real.relative_to(root).parts
+    if not parts or parts[0] not in _ids():
+        return runtime.FolderProblem(
+            "in_project",
+            f"{path} is in {projects_folder()}, which holds LADO's projects only: start a "
+            "session in a project, or move the folder out of projects/",
+            runtime.Hint("See the projects:", "lado project list"),
+        )
+    project = get(parts[0])
+    if len(parts) == 1:
+        hint = runtime.Hint("See the project's repositories:", f"lado project show {project.id}")
+    else:
+        hint = runtime.Hint(
+            "Start a session in the project:",
+            f"lado start --project {project.id} --repo {parts[1]}",
+        )
+    return runtime.FolderProblem(
+        "in_project",
+        f"{path} belongs to the project {project.title or project.id}: start a session in "
+        "the project",
+        hint,
+    )
+
+
 def create(id: str, title: str | None) -> state.Project:
     """Make the project `id`: its record and its folder, with the workspace and projects/
     when they are missing. Refused, with nothing made, for a bad id or title, a workspace
@@ -249,6 +293,85 @@ class _GitFailed(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class Repository:
+    """A repository of a project, as git has it now."""
+
+    name: str
+    path: Path
+    branch: str | None  # None on a detached HEAD
+    remote: str | None  # origin without a secret (runtime.public_remote); None without one
+
+
+def _entries(id: str) -> list[os.DirEntry]:
+    """The entries of the project's folder whose names do not start with ".", by name; none
+    when the folder is not found."""
+    try:
+        with os.scandir(folder(id)) as found:
+            return sorted((e for e in found if not e.name.startswith(".")), key=lambda e: e.name)
+    except OSError:
+        return []
+
+
+def _own_root(entry: os.DirEntry) -> bool:
+    """Whether the folder `entry` is the root of a git repository of its own: not a plain
+    folder inside a repository that holds it, such as a project folder made one."""
+    try:
+        top = _git(Path(entry.path), "rev-parse", "--show-toplevel").strip()
+    except _GitFailed:
+        return False  # no repository LADO can start in
+    return os.path.realpath(top) == os.path.realpath(entry.path)
+
+
+def repositories(id: str) -> list[Repository]:
+    """The project's repositories, read from the disk each time: the folders directly in its
+    folder, not hidden and not links, that are each a git repository's root; by name."""
+    found = []
+    for entry in _entries(id):
+        if entry.is_symlink() or not entry.is_dir() or not _own_root(entry):
+            continue
+        url = runtime.remote(entry.path)
+        found.append(
+            Repository(
+                entry.name,
+                Path(entry.path),
+                runtime.branch(entry.path),
+                runtime.public_remote(url) if url else None,
+            )
+        )
+    return found
+
+
+def links(id: str) -> list[tuple[str, str]]:
+    """The symbolic links directly in the project's folder, not hidden, with their targets
+    as written: never a repository of the project, whose work would then lie outside its
+    folder; named so the human knows where such a repository went."""
+    return [(e.name, os.readlink(e.path)) for e in _entries(id) if e.is_symlink()]
+
+
+def repository(id: str, name: str) -> Repository:
+    """The repository `name` of the project `id`, a session's folder in the project; refused
+    naming what there is (a link of that name as a link)."""
+    get(id)
+    found = repositories(id)
+    for repo in found:
+        if repo.name == name:
+            return repo
+    for link, target in links(id):
+        if link == name:
+            raise ProjectError(
+                f"{name} in project {id} is a link to {target}: clone it into {folder(id)} instead"
+            )
+    if not found:
+        raise ProjectError(
+            f"project {id} has no repositories yet: a repository is a git folder in {folder(id)}"
+        )
+    raise ProjectError(
+        f"project {id} has no repository {name}; its repositories: "
+        + ", ".join(repo.name for repo in found)
+    )
+
+
 def _not_pushed(repo: Path) -> list[str]:
     """The local branches of `repo` with no upstream, a gone one, or commits ahead of it
     (the last fetch's view: no network)."""
@@ -309,17 +432,46 @@ def unpushed(project_folder: Path) -> list[str]:
     return lines
 
 
-def delete(id: str, yes: bool) -> None:
-    """Remove the project's folder whole, then its record; without `yes`, refuse (the CLI
-    shows `unpushed` first). Nothing outside <workspace>/projects is removed: a folder that
-    is a link loses the link only, and a folder whose real path is not directly in the real
-    projects/ is refused. A folder not removed whole keeps the record."""
+def sessions_to_forget(id: str) -> list[tuple[str, int]]:
+    """The sessions of the project that deleting it forgets, by name, each with its number
+    of open runs. Refused while one of them, or any session working in the project's folder
+    (one from before sessions had projects too), is not stopped: deleting would pull the
+    folder from under its agents."""
     get(id)
+    real = Path(os.path.realpath(folder(id)))
+    busy = [
+        sess.name
+        for sess in state.list_sessions()
+        if (sess.project == id or Path(os.path.realpath(sess.repo)).is_relative_to(real))
+        and runtime.session_status(sess) != runtime.SessionStatus.STOPPED
+    ]
+    if busy:
+        raise ProjectError(
+            f"project {id} has sessions not stopped: {names(busy)}; stop them first with "
+            "lado stop <name>"
+        )
+    return sorted(
+        (sess.name, len(state.list_runs(sess.name, open_only=True)))
+        for sess in state.project_sessions(id)
+    )
+
+
+def delete(id: str, yes: bool) -> None:
+    """Remove the project's folder whole, then forget its sessions (sessions_to_forget,
+    which refuses first), then remove its record; without `yes`, refuse (the CLI shows
+    `unpushed` first). Nothing outside <workspace>/projects is removed: a folder that is a
+    link loses the link only, and a folder whose real path is not directly in the real
+    projects/ is refused. A folder not removed whole keeps the sessions and the record; a
+    session not forgotten keeps the record, which the sessions' foreign key holds anyway."""
+    sessions = [name for name, _ in sessions_to_forget(id)]
     target = folder(id)
     if not yes:
+        forgets = ""
+        if sessions:
+            forgets = f" and forgets its {len(sessions)} session{'' if len(sessions) == 1 else 's'}"
         raise ProjectError(
-            f"deleting project {id} removes its folder {target} with everything in it; "
-            "run again with --yes"
+            f"deleting project {id} removes its folder {target} with everything in it"
+            f"{forgets}; run again with --yes"
         )
     if target.is_symlink():
         target.unlink()
@@ -334,5 +486,13 @@ def delete(id: str, yes: bool) -> None:
         except OSError as error:
             raise ProjectError(
                 f"could not remove {target} whole: {error}; the project stays"
+            ) from error
+    for name in sessions:
+        try:
+            runtime.forget_session(name, force=True)
+        except runtime.LadoError as error:
+            raise ProjectError(
+                f"could not forget session {name}: {error}; the project stays: run lado "
+                f"project delete {id} --yes again"
             ) from error
     state.delete_project(id)

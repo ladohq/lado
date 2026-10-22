@@ -23,6 +23,7 @@ const session = (name: string, status: SessionInfo["status"] = "running"): Sessi
   busy: 0,
   stopped_at: null,
   title: null,
+  project: null,
 });
 
 const item = (key: string): WaitingItem => ({

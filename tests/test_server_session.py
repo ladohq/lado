@@ -5,10 +5,10 @@ import shutil
 import subprocess
 
 import pytest
-from agent_helpers import install_kit
+from agent_helpers import init_repo, install_kit
 from fastapi.testclient import TestClient
 
-from lado import doctor, providers, runtime, state
+from lado import doctor, projects, providers, runtime, state
 from lado.server import app as server_app
 from lado.server import auth
 
@@ -181,6 +181,23 @@ def test_about_gives_the_repository_without_the_token_in_its_remote(
     assert about(client)["repos"] == [
         {"path": str(repo), "remote": "https://github.com/ladohq/lado.git", "branch": "main"}
     ]
+
+
+def test_a_session_in_a_project_names_it(client, tmp_path, monkeypatch, fake_tmux, statuses):
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    projects.create("shop", "Shop")
+    init_repo(projects.folder("shop") / "frontend")
+    runtime.start_session(None, "s", None, provider="claude", project="shop", repo_name="frontend")
+    [info] = client.get("/api/sessions").json()
+    assert info["project"] == "shop"
+    assert about(client)["project"] == {"id": "shop", "title": "Shop"}
+    projects.rename("shop", "Shop EU")  # read when asked: a rename shows on the next look
+    assert about(client)["project"] == {"id": "shop", "title": "Shop EU"}
+
+
+def test_a_session_without_a_project_names_none(client, session, statuses):
+    assert client.get("/api/sessions").json()[0]["project"] is None
+    assert about(client)["project"] is None
 
 
 def test_about_a_session_whose_folder_is_gone_has_no_remote_or_branch(

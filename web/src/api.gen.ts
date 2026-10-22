@@ -437,6 +437,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project
+         * @description A project with its repositories, read from its folder now (docs/design/projects.md);
+         *     404 for an unknown id.
+         */
+        get: operations["project_api_projects__id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/kits": {
         parameters: {
             query?: never;
@@ -1431,7 +1452,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "new" | "empty" | "same_repo" | "other_repo" | "not_empty" | "not_folder";
+            state: "new" | "empty" | "same_repo" | "other_repo" | "not_empty" | "not_folder" | "in_project";
             /** Text */
             text: string;
             /** Origin */
@@ -1450,6 +1471,7 @@ export interface components {
             provider: components["schemas"]["ProviderSuggestion"] | null;
             /** Warning */
             warning?: string | null;
+            hint?: components["schemas"]["HintInfo"] | null;
         };
         /** CommitInfo */
         CommitInfo: {
@@ -1524,7 +1546,7 @@ export interface components {
             /** Branch */
             branch: string | null;
             /** Problem Kind */
-            problem_kind: ("missing" | "not_folder" | "no_git" | "git_broken" | "not_repo" | "git_refused" | "no_commits") | null;
+            problem_kind: ("missing" | "not_folder" | "no_git" | "git_broken" | "not_repo" | "git_refused" | "no_commits" | "in_project") | null;
             hint: components["schemas"]["HintInfo"] | null;
             /** Subfolders */
             subfolders: string[];
@@ -2135,6 +2157,46 @@ export interface components {
             pre: boolean;
         };
         /**
+         * ProjectInfo
+         * @description A project with its repositories as the disk has them now.
+         */
+        ProjectInfo: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string | null;
+            /** Folder */
+            folder: string;
+            /** Found */
+            found: boolean;
+            /** Repos */
+            repos: components["schemas"]["ProjectRepo"][];
+        };
+        /**
+         * ProjectRef
+         * @description A project as a session's head names it.
+         */
+        ProjectRef: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string | null;
+        };
+        /**
+         * ProjectRepo
+         * @description A repository of a project, read from its folder (lado.projects.repositories).
+         */
+        ProjectRepo: {
+            /** Path */
+            path: string;
+            /** Remote */
+            remote: string | null;
+            /** Branch */
+            branch: string | null;
+            /** Name */
+            name: string;
+        };
+        /**
          * ProviderInfo
          * @description A provider of LADO's registry and whether its CLI can run here.
          */
@@ -2409,7 +2471,7 @@ export interface components {
             /** Problem */
             problem: string | null;
             /** State */
-            state: ("new" | "empty" | "inside_repo" | "not_empty" | "not_folder") | null;
+            state: ("new" | "empty" | "inside_repo" | "not_empty" | "not_folder" | "in_project") | null;
             /** Text */
             text: string | null;
             author: components["schemas"]["ScratchProblem"] | null;
@@ -2418,6 +2480,7 @@ export interface components {
             provider: components["schemas"]["ProviderSuggestion"] | null;
             /** Warning */
             warning?: string | null;
+            hint?: components["schemas"]["HintInfo"] | null;
         };
         /** Sent */
         Sent: {
@@ -2436,6 +2499,7 @@ export interface components {
             /** Kits */
             kits: components["schemas"]["SessionKitInfo"][];
             provider: components["schemas"]["ProviderInfo"];
+            project?: components["schemas"]["ProjectRef"] | null;
         };
         /** SessionCommand */
         SessionCommand: {
@@ -2481,6 +2545,8 @@ export interface components {
             stopped_at: string | null;
             /** Title */
             title: string | null;
+            /** Project */
+            project: string | null;
         };
         /**
          * SessionKitInfo
@@ -3563,6 +3629,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Workspace"];
+                };
+            };
+        };
+    };
+    project_api_projects__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

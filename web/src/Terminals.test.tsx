@@ -39,6 +39,7 @@ const SESSION: SessionInfo = {
   busy: 0,
   stopped_at: null,
   title: null,
+  project: null,
 };
 const AGENTS: AgentInfo[] = [
   { name: "supervisor", role: "supervisor", provider: "claude", status: "idle", run: null, task: null, status_reason: null, ...AGENT_REST },

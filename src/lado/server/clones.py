@@ -25,11 +25,10 @@ class Busy(runtime.LadoError):
 
 
 def refused(error: runtime.LadoError) -> models.CloneRefused:
-    hint = getattr(error, "hint", None)
     return models.CloneRefused(
         message=str(error),
         kind=getattr(error, "kind", "refused"),
-        hint=models.HintInfo(text=hint.text, command=hint.command) if hint else None,
+        hint=models.hint_info(getattr(error, "hint", None)),
     )
 
 
@@ -65,7 +64,7 @@ def target_info(url: str, path: str | None, has_db: bool) -> models.CloneTarget:
         name_state=launch.name_state(name, os.path.realpath(folder), has_db),
         provider=launch.provider_suggestion(None),  # a new folder has no last session
         warning=runtime.outside_workspace(folder),
-        hint=launch._hint(target.hint),
+        hint=models.hint_info(target.hint),
     )
 
 

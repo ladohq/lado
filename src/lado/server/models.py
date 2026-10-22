@@ -113,6 +113,10 @@ class HintInfo(BaseModel):
     command: str  # one command to copy
 
 
+def hint_info(hint: runtime.Hint | None) -> HintInfo | None:
+    return HintInfo(text=hint.text, command=hint.command) if hint else None
+
+
 class RemoteAsk(BaseModel):
     url: str  # a git URL (lado.clone.is_url)
 

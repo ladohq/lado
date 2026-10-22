@@ -95,7 +95,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     sess = started.session
     if started.resumed:
         count = len(state.list_runs(sess.name, open_only=True))
-        runs_told = f"{count} open run{'' if count == 1 else 's'}, the supervisor is told"
+        runs_told = f"{_open_runs(count)}, the supervisor is told"
         print(f'Resumed session "{sess.name}" in {sess.repo}: {runs_told}.')
         for change in started.changes:
             print(f"  changed {change}")

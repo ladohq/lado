@@ -16,10 +16,6 @@ SUBFOLDERS = 50  # at most this many subfolders of a folder
 RECENT = 10  # at most this many recent folders
 
 
-def _hint(hint: runtime.Hint | None) -> models.HintInfo | None:
-    return models.HintInfo(text=hint.text, command=hint.command) if hint else None
-
-
 def folder_info(path: str, has_db: bool) -> models.FolderInfo:
     path = runtime.full_path(path)
     if refused := projects.refusal(path):  # before git: a start there is refused whatever
@@ -30,7 +26,7 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
             root=None,
             branch=None,
             problem_kind=refused.kind,
-            hint=_hint(refused.hint),
+            hint=models.hint_info(refused.hint),
             subfolders=[],
             default_name=None,
             name_state=None,
@@ -44,7 +40,7 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         ok, problem = False, str(refused)
         if isinstance(refused, runtime.FolderProblem):
             kind = refused.kind
-            hint = _hint(refused.hint)
+            hint = models.hint_info(refused.hint)
         root = _root_or_none(path)
     name = runtime.slug(Path(root).name) if root else None
     return models.FolderInfo(
@@ -86,7 +82,7 @@ def scratch_target(text: str, path: str | None, has_db: bool) -> models.ScratchT
     if folder:
         try:
             target = scratch.check_target(folder)
-            state, text, hint = target.state, target.text, _hint(target.hint)
+            state, text, hint = target.state, target.text, models.hint_info(target.hint)
         except runtime.FolderProblem:
             pass  # no git that runs: unknown, and `author` says why with its hint
         except runtime.LadoError as refused:  # a folder LADO or git may not read
@@ -117,10 +113,8 @@ def _author(path: str) -> models.ScratchProblem | None:
         problem = refused
     if problem is None:
         return None
-    hint = getattr(problem, "hint", None)
     return models.ScratchProblem(
-        text=str(problem),
-        hint=models.HintInfo(text=hint.text, command=hint.command) if hint else None,
+        text=str(problem), hint=models.hint_info(getattr(problem, "hint", None))
     )
 
 

@@ -158,8 +158,8 @@ inside.
 
 #### Scenario: The expanded card
 - **WHEN** the human expands the waiting card on a phone
-- **THEN** the card fills the chat and its Send button is in sight, above the browser's
-  bottom bar
+- **THEN** the card fills the page under the top bar, the session's tabs and the Team row
+  are not shown, and its Send button is in sight, above the browser's bottom bar
 
 ### Requirement: On a phone the composer's text is large and shows no keys hint
 
@@ -252,3 +252,48 @@ SHALL be as high as the visible part of the window again.
 - **WHEN** the human closes the keyboard
 - **THEN** the app is as high as the visible part of the window again, the composer at its
   bottom
+
+### Requirement: On a phone an expanded card hides the session's tabs and the Team row
+
+In the phone layout an expanded waiting card in a session's chat SHALL fill the session's
+page under the top bar: the feed, the composer, the session's tabs and the Team row SHALL
+not be shown while it is expanded, whether its button, a field or the phone held sideways
+expanded it, and SHALL show again when it folds.
+
+#### Scenario: Expanded by its button
+- **WHEN** the human taps Expand the card in the session's chat on a phone
+- **THEN** the session's tabs and the Team row are not shown
+
+#### Scenario: Folding the expanded card
+- **WHEN** the human taps Collapse the card on a phone
+- **THEN** the card stands above the composer again, and the session's tabs and the Team
+  row show again
+
+### Requirement: On a phone a field of the waiting card expands it
+
+In the phone layout, in a session's chat, a field of the waiting card (a gate's comment, a
+question's own answer, a skip's comment) taking the focus SHALL expand the card; the
+field SHALL keep the focus and SHALL be shown within the card's list. The card SHALL stay
+expanded when the field loses the focus or the on-screen keyboard closes, until the human
+folds it or nothing waits. On Needs you, and outside the phone layout, a field's focus
+SHALL not expand the card.
+
+#### Scenario: A gate's comment above the keyboard
+- **WHEN** a gate waits in the session's chat on a phone 402×874, the human taps the
+  gate's comment field and the keyboard leaves 400 px of the window visible
+- **THEN** the card is expanded, the comment field has the focus, and the field and
+  Approve and Reject lie within the visible 400 px
+
+#### Scenario: An own answer
+- **WHEN** a question with a free answer waits on the same phone and the human taps
+  Other…
+- **THEN** the card is expanded with the own answer's field focused, and the field and
+  "Send answer to supervisor" lie within the visible 400 px
+
+#### Scenario: The keyboard closes
+- **WHEN** the card was expanded by its comment field and the keyboard closes
+- **THEN** the card stays expanded, and the comment typed stays in the field
+
+#### Scenario: A computer
+- **WHEN** the human clicks a gate's comment field with a mouse in a window 390 px wide
+- **THEN** the card is not expanded

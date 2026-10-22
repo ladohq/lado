@@ -81,6 +81,25 @@ SHALL print no such line. The bug report SHALL hold no project variable's name o
 
 ## MODIFIED Requirements
 
+### Requirement: Without an outside folder an agent's environment is as before
+
+With `LADO_ENV_DIR` unset or empty, with no folder at its path, or with the null device
+at its path (the character device `/dev/null` is, which compose's default binds there),
+an agent's environment SHALL be what it is without the outside folder, and no line SHALL
+name the folder.
+
+#### Scenario: No folder
+- **WHEN** `LADO_ENV_DIR` is unset
+- **THEN** an agent's environment is the login shell's with, in a session in a project,
+  the project's variables, then LADO's and its provider's variables, as before
+
+#### Scenario: The null device
+- **WHEN** `LADO_ENV_DIR` names `/dev/null` (or a path where the null device is mounted)
+  and a session starts
+- **THEN** the agents' environment is the login shell's with, in a session in a project,
+  the project's variables, then LADO's and its provider's variables, and the start's
+  warnings have no line about the folder
+
 ### Requirement: The outside folder's value wins over the login shell's
 
 A value of the folder SHALL win over the same name from the login shell, a project's

@@ -1423,8 +1423,11 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   folder inside LADO's `projects/` is such a refusal (LAD-125), before git is asked: the
   core's text naming the project, `Start a session in the project:` and `lado start
   --project <id> --repo <name>` with Copy; a clone's target (Clone into) and a fresh start's
-  (Create in) there show the same box with the same hint. Recent folders leave out folders
-  inside `projects/`. Start
+  (Create in) there show the same box with the same hint. The box shows also for a folder
+  there that already has a session, a session in the project too: the window starts no
+  session there and offers no Resume it; such a session is resumed from its own page
+  (Resume…), as its resume is never refused. Recent folders leave out folders inside
+  `projects/` for the same reason. Start
   (Clone and start, Create and start, and Resume session in the Resume mode: LAD-122,
   2026-10-21) is off while a refusal shows, and a note that does
   not keep the session from starting is not a refusal: the kits list that does not load

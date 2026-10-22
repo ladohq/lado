@@ -73,7 +73,7 @@ env | grep LADO_                       # nothing a past test left
 unset LADO_HOME LADO_REPOS LADO_TMUX_SOCKET LADO_AGENT LADO_SESSION
 export T=$(mktemp -d)
 export LADO_HOME=$T/home LADO_REPOS=$T/ws LADO_TMUX_SOCKET=lado-check-$$
-git init -q --bare $T/frontend.git
+git init -q --bare -b main $T/frontend.git
 git clone -q $T/frontend.git $T/seed && git -C $T/seed commit -q --allow-empty -m init \
   && git -C $T/seed push -q origin HEAD:main
 uv run lado project create shop --title Shop

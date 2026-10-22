@@ -19,11 +19,16 @@ import sqlite3
 import stat
 import subprocess
 import tempfile
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from lado import runtime, state
+
+if TYPE_CHECKING:
+    from lado import clone as clone_module
 
 WORKSPACE_VAR = "LADO_REPOS"  # the workspace's name in an installation (LADO's image sets it)
 DEFAULT_WORKSPACE = "~/workspace"
@@ -166,11 +171,16 @@ def lados_folder() -> Path | None:
     return Path(os.path.realpath(projects_folder()))
 
 
-def refusal(path: str) -> runtime.FolderProblem | None:
+def refusal(
+    path: str, *, url: str | None = None, fresh: bool = False
+) -> runtime.FolderProblem | None:
     """Why no new session without a project may start at `path` (kind `in_project`), by its
     real path: it is inside projects/ while that folder is LADO's. The text names the
-    project, and the hint offers its session, or the projects for a folder of none. None
-    outside projects/, when projects/ is the human's own folder, and without projects."""
+    project; the hint offers the session of the project's repository the path is in, or
+    adding the repository for a clone of `url` or a fresh start (`fresh`) into a new folder
+    directly in the project's folder, else the project's repositories, or the projects for
+    a folder of none. None outside projects/, when projects/ is the human's own folder, and
+    without projects."""
     root = lados_folder()
     real = Path(os.path.realpath(path))
     if root is None or not real.is_relative_to(root):
@@ -184,19 +194,39 @@ def refusal(path: str) -> runtime.FolderProblem | None:
             runtime.Hint("See the projects:", "lado project list"),
         )
     project = get(parts[0])
-    if len(parts) == 1:
-        hint = runtime.Hint("See the project's repositories:", f"lado project show {project.id}")
-    else:
-        hint = runtime.Hint(
-            "Start a session in the project:",
-            f"lado start --project {project.id} --repo {parts[1]}",
-        )
     return runtime.FolderProblem(
         "in_project",
         f"{path} belongs to the project {project.title or project.id}: start a session in "
         "the project",
-        hint,
+        _hint(project.id, parts[1:], root, url, fresh),
     )
+
+
+ADD_HINT = "Add a repository to the project:"
+
+
+def _hint(
+    id: str, below: tuple[str, ...], root: Path, url: str | None, fresh: bool
+) -> runtime.Hint:
+    """`refusal`'s hint for a path `below` the project's folder (in the real projects/
+    `root`)."""
+    if below and _is_repository(root / id / below[0]):
+        return runtime.Hint(
+            "Start a session in the project:", f"lado start --project {id} --repo {below[0]}"
+        )
+    new = (
+        len(below) == 1 and _good_repo_name(below[0]) and not os.path.lexists(root / id / below[0])
+    )
+    if new and fresh:
+        return runtime.Hint(ADD_HINT, f"lado project repo add {id} --new {below[0]}")
+    if new and url:
+        from lado import clone  # lado.clone builds on this module
+
+        other = "" if clone.Address.parse(url).repo_name == below[0] else f" --name {below[0]}"
+        return runtime.Hint(
+            ADD_HINT, f"lado project repo add {id} {runtime.public_remote(url)}{other}"
+        )
+    return runtime.Hint("See the project's repositories:", f"lado project show {id}")
 
 
 def create(id: str, title: str | None) -> state.Project:
@@ -313,14 +343,25 @@ def _entries(id: str) -> list[os.DirEntry]:
         return []
 
 
-def _own_root(entry: os.DirEntry) -> bool:
-    """Whether the folder `entry` is the root of a git repository of its own: not a plain
+def _own_root(path: str) -> bool:
+    """Whether the folder `path` is the root of a git repository of its own: not a plain
     folder inside a repository that holds it, such as a project folder made one."""
     try:
-        top = _git(Path(entry.path), "rev-parse", "--show-toplevel").strip()
+        top = _git(Path(path), "rev-parse", "--show-toplevel").strip()
     except _GitFailed:
         return False  # no repository LADO can start in
-    return os.path.realpath(top) == os.path.realpath(entry.path)
+    return os.path.realpath(top) == os.path.realpath(path)
+
+
+def _is_repository(path: Path) -> bool:
+    """Whether the entry `path` of a project's folder is one of its repositories: not
+    hidden, not a link, a folder that is a git repository's root (`repositories`)."""
+    return (
+        not path.name.startswith(".")
+        and not path.is_symlink()
+        and path.is_dir()
+        and _own_root(str(path))
+    )
 
 
 def repositories(id: str) -> list[Repository]:
@@ -328,7 +369,7 @@ def repositories(id: str) -> list[Repository]:
     folder, not hidden and not links, that are each a git repository's root; by name."""
     found = []
     for entry in _entries(id):
-        if entry.is_symlink() or not entry.is_dir() or not _own_root(entry):
+        if not _is_repository(Path(entry.path)):
             continue
         url = runtime.remote(entry.path)
         found.append(
@@ -349,6 +390,105 @@ def links(id: str) -> list[tuple[str, str]]:
     return [(e.name, os.readlink(e.path)) for e in _entries(id) if e.is_symlink()]
 
 
+REPO_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]*")  # the case kept, as git clone keeps it
+MAX_REPO_NAME = 100
+
+
+class NoSuchRepository(ProjectError):
+    pass
+
+
+def _good_repo_name(name: str) -> bool:
+    return bool(REPO_NAME.fullmatch(name)) and len(name) <= MAX_REPO_NAME
+
+
+def check_repo_name(name: str) -> None:
+    if not _good_repo_name(name):
+        raise ProjectError(
+            f"the repository name {name} is not valid: Latin letters, digits, ., _ and -, "
+            f"not starting with . or -, at most {MAX_REPO_NAME} characters"
+        )
+
+
+def new_repo_folder(id: str, name: str) -> Path:
+    """The folder a repository `name` added to the project `id` goes to, checked before
+    anything is cloned or made: a known project whose folder is there, the name rule, and
+    no entry of that name (any kind; the disk decides the case)."""
+    get(id)
+    where = folder(id)
+    if not where.is_dir():
+        raise ProjectError(f"the folder of project {id} is not found: {where}")
+    _check_own_folder(id)
+    check_repo_name(name)
+    target = where / name
+    if os.path.lexists(target):
+        raise ProjectError(
+            f"{target} already exists in project {id}: choose another name with --name"
+        )
+    return target
+
+
+def _own_folder(id: str) -> bool:
+    """Whether the project's folder is its own: no link, its real path `<real
+    projects/>/<id>`. A link (to another project's folder, or anywhere) would add or remove
+    repositories somewhere else."""
+    where = folder(id)
+    real = Path(os.path.realpath(projects_folder())) / id
+    return not where.is_symlink() and Path(os.path.realpath(where)) == real
+
+
+def _check_own_folder(id: str) -> None:
+    if not _own_folder(id):
+        raise ProjectError(
+            f"{folder(id)} is a link or not where project {id}'s folder belongs: LADO adds and "
+            "removes repositories only in the project's own folder"
+        )
+
+
+def adds_to(id: str | None, path: str) -> bool:
+    """Whether `path` is an entry directly in the own folder of the project `id`
+    (`_own_folder`), by real paths: the one place a clone or fresh start for that project
+    may go (`clone.clone`, `scratch.make`), past the refusal of a new session inside
+    projects/."""
+    if id is None or not _own_folder(id):
+        return False
+    return Path(os.path.realpath(path)).parent == Path(os.path.realpath(folder(id)))
+
+
+def _added(id: str, target: Path) -> Repository:
+    """The repository just made at `target`, as `repositories` reads it."""
+    return next(repo for repo in repositories(id) if repo.path == target)
+
+
+def add_clone(
+    id: str,
+    url: str,
+    name: str | None,
+    branch: str | None = None,
+    on_progress: "Callable[[clone_module.Progress], None] | None" = None,
+    cancelled: threading.Event | None = None,
+) -> Repository:
+    """Clone `branch` of `url` into the project's folder as `name` (else the URL's
+    repository name), through `clone.clone`: a failed or cancelled clone leaves nothing."""
+    from lado import clone  # lado.clone builds on this module
+
+    if name is None:
+        name = clone.default_folder(url).name  # its refusal for a URL that names none
+    target = new_repo_folder(id, name)
+    clone.clone(url, str(target), branch, on_progress, cancelled, project=id)
+    return _added(id, target)
+
+
+def add_new(id: str, name: str) -> Repository:
+    """Make `name` in the project's folder a repository with one empty commit, through
+    `scratch.make`."""
+    from lado import scratch  # lado.scratch builds on this module
+
+    target = new_repo_folder(id, name)
+    scratch.make(str(target), name, project=id)
+    return _added(id, target)
+
+
 def repository(id: str, name: str) -> Repository:
     """The repository `name` of the project `id`, a session's folder in the project; refused
     naming what there is (a link of that name as a link)."""
@@ -362,11 +502,16 @@ def repository(id: str, name: str) -> Repository:
             raise ProjectError(
                 f"{name} in project {id} is a link to {target}: clone it into {folder(id)} instead"
             )
+    raise _no_repository(id, name, found)
+
+
+def _no_repository(id: str, name: str, found: list[Repository]) -> NoSuchRepository:
     if not found:
-        raise ProjectError(
-            f"project {id} has no repositories yet: a repository is a git folder in {folder(id)}"
+        return NoSuchRepository(
+            f"project {id} has no repositories yet: add one with lado project repo add {id} "
+            "<git-url> or --new <name>"
         )
-    raise ProjectError(
+    return NoSuchRepository(
         f"project {id} has no repository {name}; its repositories: "
         + ", ".join(repo.name for repo in found)
     )
@@ -405,30 +550,35 @@ def unpushed(project_folder: Path) -> list[str]:
     each git repository directly in it and each worktree of one, with its uncommitted
     changes (untracked files too) and, for the repository, its branches not pushed."""
     lines = []
-    real = Path(os.path.realpath(project_folder))  # git names worktrees by real paths
     for entry in sorted(project_folder.iterdir()):
-        if not entry.is_dir() or not os.path.lexists(entry / ".git"):
-            continue
-        try:
-            findings = []
-            if _git(entry, "status", "--porcelain", "--untracked-files=normal").strip():
-                findings.append("uncommitted changes")
-            findings += _not_pushed(entry)
-            trees = []
-            for tree in _checkouts(entry):
-                if (
-                    tree.is_dir()
-                    and _git(tree, "status", "--porcelain", "--untracked-files=normal").strip()
-                ):
-                    trees.append(tree)
-        except _GitFailed as failed:
-            lines.append(f"{entry.name}: could not check: {failed}")
-            continue
-        if findings:
-            lines.append(f"{entry.name}: {'; '.join(findings)}")
-        for tree in trees:
-            shown = tree.relative_to(real) if tree.is_relative_to(real) else tree
-            lines.append(f"{entry.name} (worktree {shown}): uncommitted changes")
+        if entry.is_dir() and os.path.lexists(entry / ".git"):
+            lines += _checkout_lines(entry, project_folder)
+    return lines
+
+
+def _checkout_lines(entry: Path, base: Path) -> list[str]:
+    """`unpushed`'s lines of the one repository `entry`: its uncommitted changes and
+    branches not pushed, then each of its worktrees with changes, shown relative to `base`
+    when inside it."""
+    real = Path(os.path.realpath(base))  # git names worktrees by real paths
+    try:
+        findings = []
+        if _git(entry, "status", "--porcelain", "--untracked-files=normal").strip():
+            findings.append("uncommitted changes")
+        findings += _not_pushed(entry)
+        trees = []
+        for tree in _checkouts(entry):
+            if (
+                tree.is_dir()
+                and _git(tree, "status", "--porcelain", "--untracked-files=normal").strip()
+            ):
+                trees.append(tree)
+    except _GitFailed as failed:
+        return [f"{entry.name}: could not check: {failed}"]
+    lines = [f"{entry.name}: {'; '.join(findings)}"] if findings else []
+    for tree in trees:
+        shown = tree.relative_to(real) if tree.is_relative_to(real) else tree
+        lines.append(f"{entry.name} (worktree {shown}): uncommitted changes")
     return lines
 
 
@@ -496,3 +646,105 @@ def delete(id: str, yes: bool) -> None:
                 f"project delete {id} --yes again"
             ) from error
     state.delete_project(id)
+
+
+@dataclass(frozen=True)
+class Removal:
+    """What removing the entry `name` of a project's folder does: a repository's folder
+    goes with the stopped sessions of the project in it (by name, with their open runs),
+    and `unpushed` is what it loses; a link loses the link only (`target` as written)."""
+
+    name: str
+    kind: Literal["repository", "link"]
+    path: Path
+    target: str | None
+    sessions: list[tuple[str, int]]
+    unpushed: list[str]
+
+
+def removal(id: str, name: str) -> Removal:
+    """What `remove_repo` would do; refused for an unknown project, a name no visible entry
+    of the project's folder has (NoSuchRepository), an entry that is neither a repository
+    nor a link, and a repository with a session working in it (by path, one without a
+    project too) that is not stopped, and for a project folder that is not its own
+    (`_own_folder`)."""
+    get(id)
+    _check_own_folder(id)
+    entry = next((e for e in _entries(id) if e.name == name), None)
+    if entry is None:
+        raise _no_repository(id, name, repositories(id))
+    path = Path(entry.path)
+    if entry.is_symlink():
+        return Removal(name, "link", path, os.readlink(path), [], [])
+    if not _is_repository(path):
+        raise ProjectError(
+            f"{name} in project {id} is not a repository: LADO removes only repositories and links"
+        )
+    real = Path(os.path.realpath(path))
+
+    def inside(sess: state.Session) -> bool:
+        return Path(os.path.realpath(sess.repo)).is_relative_to(real)
+
+    busy = [
+        sess.name
+        for sess in state.list_sessions()
+        if inside(sess) and runtime.session_status(sess) != runtime.SessionStatus.STOPPED
+    ]
+    if busy:
+        raise ProjectError(
+            f"repository {name} of project {id} has sessions not stopped: {names(busy)}; stop "
+            "them first with lado stop <name>"
+        )
+    # The project's own only: the path is a safety check, never how LADO learns a project.
+    sessions = sorted(
+        (sess.name, len(state.list_runs(sess.name, open_only=True)))
+        for sess in state.project_sessions(id)
+        if inside(sess)
+    )
+    return Removal(name, "repository", path, None, sessions, _checkout_lines(path, folder(id)))
+
+
+def remove_repo(id: str, name: str, yes: bool) -> Removal:
+    """Remove the repository `name` of the project `id` (`removal`, which refuses first):
+    its folder whole, then its sessions forgotten; a link loses the link only. Without
+    `yes`, refuse (the CLI shows the removal first). Nothing outside the project's folder
+    is removed: a repository whose real path is not directly in the project folder's, which
+    is not directly in the real projects/, is refused. A folder not removed whole keeps the
+    sessions; a session not forgotten is named."""
+    found = removal(id, name)
+    if not yes:
+        if found.kind == "link":
+            raise ProjectError(
+                f"removing {name} of project {id} deletes the link only, not its target "
+                f"{found.target}; run again with --yes"
+            )
+        count = len(found.sessions)
+        forgets = f" and forgets its {count} session{'' if count == 1 else 's'}" if count else ""
+        raise ProjectError(
+            f"removing repository {name} of project {id} deletes its folder {found.path} with "
+            f"everything in it{forgets}; run again with --yes"
+        )
+    if found.kind == "link":
+        found.path.unlink()
+        return found
+    real = Path(os.path.realpath(found.path))
+    parent = Path(os.path.realpath(folder(id)))
+    if real.parent != parent or parent.parent != Path(os.path.realpath(projects_folder())):
+        raise ProjectError(
+            f"{found.path} is not in {projects_folder()}: LADO removes nothing outside it"
+        )
+    try:
+        shutil.rmtree(real)  # links inside are removed as links, never followed
+    except OSError as error:
+        raise ProjectError(
+            f"could not remove {found.path} whole: {error}; its sessions stay"
+        ) from error
+    for session, _ in found.sessions:
+        try:
+            runtime.forget_session(session, force=True)
+        except runtime.LadoError as error:
+            raise ProjectError(
+                f"the repository is removed, but session {session} could not be forgotten: "
+                f"{error}; forget it with lado forget {session} --force"
+            ) from error
+    return found

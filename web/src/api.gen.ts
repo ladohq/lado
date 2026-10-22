@@ -342,7 +342,8 @@ export interface paths {
         put?: never;
         /**
          * Start Clone
-         * @description Start a clone job; the window asks for it with GET until it ends.
+         * @description Start a clone job, into a project's folder with `project`; the window asks for it
+         *     with GET until it ends.
          */
         post: operations["start_clone_api_clones_post"];
         delete?: never;
@@ -453,6 +454,67 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/repos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * New Project Repo
+         * @description Make a repository of the project from scratch: one empty commit.
+         */
+        post: operations["new_project_repo_api_projects__id__repos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/repos/{name}/removal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Repo Removal
+         * @description What removing the repository (or link) does; nothing changes.
+         */
+        get: operations["project_repo_removal_api_projects__id__repos__name__removal_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/repos/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Project Repo
+         * @description Remove the repository and forget its sessions, or a link only, as `lado project
+         *     repo remove --yes` does; the project as it is after.
+         */
+        delete: operations["remove_project_repo_api_projects__id__repos__name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1440,6 +1502,10 @@ export interface components {
             path?: string | null;
             /** Branch */
             branch?: string | null;
+            /** Project */
+            project?: string | null;
+            /** Name */
+            name?: string | null;
         };
         /**
          * CloneTarget
@@ -2364,6 +2430,35 @@ export interface components {
             branch: string | null;
         };
         /**
+         * RepoNew
+         * @description A repository of a project made from scratch (lado.projects.add_new).
+         */
+        RepoNew: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * RepoRemoval
+         * @description What removing an entry of a project's folder does (lado.projects.removal).
+         */
+        RepoRemoval: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "repository" | "link";
+            /** Path */
+            path: string;
+            /** Target */
+            target: string | null;
+            /** Sessions */
+            sessions: components["schemas"]["SessionToForget"][];
+            /** Unpushed */
+            unpushed: string[];
+        };
+        /**
          * Resume
          * @description A stopped session started again; what is given replaces its stored settings.
          */
@@ -2570,6 +2665,13 @@ export interface components {
          * @enum {string}
          */
         SessionStatus: "stopped" | "running" | "tmux_gone" | "loop_down";
+        /** SessionToForget */
+        SessionToForget: {
+            /** Name */
+            name: string;
+            /** Open Runs */
+            open_runs: number;
+        };
         /** Started */
         Started: {
             session: components["schemas"]["SessionInfo"];
@@ -3482,6 +3584,13 @@ export interface operations {
                     "application/json": components["schemas"]["CloneRefused"];
                 };
             };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description a clone into that folder runs already */
             409: {
                 headers: {
@@ -3652,6 +3761,147 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProjectInfo"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    new_project_repo_api_projects__id__repos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepoNew"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepo"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such project or repository */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_repo_removal_api_projects__id__repos__name__removal_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoRemoval"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such project or repository */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_project_repo_api_projects__id__repos__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectInfo"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such project or repository */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

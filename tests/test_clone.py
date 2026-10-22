@@ -139,8 +139,13 @@ def test_a_folder_in_a_project_is_no_target(shop, made):
         "in_project",
         f"{web} belongs to the project Shop: start a session in the project",
     )
-    assert target.hint == runtime.Hint(
-        "Start a session in the project:", "lado start --project shop --repo web"
+    assert target.hint == (
+        runtime.Hint("See the project's repositories:", "lado project show shop")
+        if made  # a folder of the name: adding the repository is refused too
+        else runtime.Hint(
+            "Add a repository to the project:",
+            "lado project repo add shop https://github.com/shop/web",
+        )
     )
     assert "in_project" not in clone.CAN_CLONE
     assert (
@@ -153,8 +158,57 @@ def test_a_clone_into_a_project_makes_nothing(shop):
     with pytest.raises(clone.CloneError) as refused:
         clone.clone("https://github.com/shop/web", str(shop / "web"))
     assert refused.value.kind == "in_project"
-    assert refused.value.hint.command == "lado start --project shop --repo web"
+    assert refused.value.hint.command == "lado project repo add shop https://github.com/shop/web"
     assert list(shop.iterdir()) == []  # no temporary folder either
+
+
+def test_a_folder_directly_in_the_named_project_takes_a_clone(shop):
+    target = clone.check_target("https://github.com/shop/web", str(shop / "web"), project="shop")
+    assert (target.state, target.hint) == ("new", None)
+
+
+def test_every_other_folder_in_projects_stays_refused_with_a_project(shop):
+    projects.create("acme", None)
+    url = "https://github.com/shop/web"
+    for path, project in [
+        (shop / "web", "acme"),  # another project's
+        (shop / "web" / "sub", "shop"),  # deeper down
+        (shop, "shop"),  # the project's folder itself
+        (projects.folder("acme") / "web", "shop"),
+    ]:
+        assert clone.check_target(url, str(path), project=project).state == "in_project"
+
+
+def test_a_clone_into_a_project_lands_in_its_folder(shop):
+    url = bare_remote(shop.parent.parent.parent)
+    assert clone.clone(url, str(shop / "app"), project="shop") == str(shop / "app")
+    assert _branch(shop / "app") == "main"
+    assert sorted(p.name for p in shop.iterdir()) == ["app"]
+
+
+def test_a_failed_clone_into_a_project_leaves_nothing(shop, tmp_path):
+    with pytest.raises(clone.CloneError) as refused:
+        clone.clone((tmp_path / "nothing.git").as_uri(), str(shop / "app"), project="shop")
+    assert refused.value.kind == "not_found"
+    assert list(shop.iterdir()) == []
+
+
+def test_a_cancelled_clone_into_a_project_leaves_nothing(shop, tmp_path, monkeypatch):
+    for key, value in fake_git(tmp_path / "fake", "slow").items():
+        monkeypatch.setenv(key, value)
+    seen, cancelled = [], threading.Event()
+    with pytest.raises(clone.CloneError, match="was cancelled"):
+        clone.clone(
+            "https://github.com/shop/web",
+            str(shop / "web"),
+            None,
+            _cancel_after_first_progress(seen, cancelled),
+            cancelled,
+            project="shop",
+        )
+    [call] = fake_git_calls(tmp_path / "fake")
+    assert gone(call["pid"]) and gone(call["child"])
+    assert list(shop.iterdir()) == []
 
 
 def test_an_empty_folder(tmp_path):

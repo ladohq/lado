@@ -11,8 +11,10 @@ changes this file.
 > 0.43.0; `lado.projects`, [cli.md](../cli.md)); a session in a project (`lado start
 > --project --repo`, the reference, its inheritance, the refusal inside `projects/`, the
 > project in `lado ls` and the session's head), the repositories read from the disk, and
-> deleting a project with its sessions (step S3, 0.43.0). Everything else here is steps
-> S4–S7 and is marked **not built yet** where it is described.
+> deleting a project with its sessions (step S3, 0.43.0); adding a repository by a clone or
+> from scratch and removing one, `lado project repo add | remove` and the server's API for
+> both (step S4, 0.43.0). Everything else here is steps S5a–S7 and is marked **not built
+> yet** where it is described.
 
 ## Why
 
@@ -106,14 +108,20 @@ The special cases:
   hand.** The project shows as "folder not found", and `lado doctor` warns.
 
 Repositories are added to a project in two ways, by a clone of a git URL or from scratch
-(**not built yet**: step S4). LADO already does both for ordinary sessions; a project uses
-the same paths and puts the result in its folder. A repository no longer needed is removed
-with its folder, so the workspace is tidied up without going to the host.
+(built in step S4: `lado project repo add`, `POST /api/clones` with `project`, `POST
+/api/projects/{id}/repos`). LADO already does both for ordinary sessions; a project uses
+the same paths (`clone.clone`, `scratch.make` with the project, which lets a path directly
+in that project's folder past the refusal inside `projects/`) and puts the result in its
+folder. A repository's name is Latin letters, digits, `.`, `_` and `-`, by default the
+URL's, and is refused when any entry of the project folder has it. A repository no longer
+needed is removed with its folder (`lado project repo remove`, `DELETE
+/api/projects/{id}/repos/{name}`), so the workspace is tidied up without going to the host.
+Only the human adds or removes them: not from an agent, and no MCP tool does.
 
 ## How LADO knows a project's repositories
 
 Built in step S3 (`projects.repositories`, `lado project show`, `GET /api/projects/{id}`);
-adding one through LADO is step S4.
+adding and removing one through LADO in step S4.
 
 The list of repositories is stored nowhere: LADO reads it from the disk each time. A
 repository is a subfolder of the project folder that is the root of a git repository of its
@@ -282,8 +290,13 @@ does) and the whole project folder.
   are inside the repository).
 - Deleting is confirmed: in the UI by typing the project's id, in the CLI by `--yes`.
 
-Deleting a repository works the same way, within its folder and its sessions. LADO never
-deletes a folder outside `projects/`.
+Deleting a repository works the same way, within its folder and its sessions (built in
+step S4, `lado project repo remove`; the UI is step S7): refused while any session works in
+its folder, by path; the project's stopped sessions in it and its unpushed work, its
+workers' worktrees included, shown first; `--yes`; the folder removed, then those sessions
+forgotten. A symbolic link of the project folder loses the link only, and an entry that is
+neither a repository nor a link is refused. LADO never deletes a folder outside
+`projects/`.
 
 **`lado uninstall` deletes `LADO_HOME`, and with it the projects' secrets**, unless
 `--keep-data` is given. It never deletes the workspace or a repository in it: it removes

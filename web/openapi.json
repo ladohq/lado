@@ -598,7 +598,7 @@
     "/api/clones": {
       "post": {
         "summary": "Start Clone",
-        "description": "Start a clone job; the window asks for it with GET until it ends.",
+        "description": "Start a clone job, into a project's folder with `project`; the window asks for it\nwith GET until it ends.",
         "operationId": "start_clone_api_clones_post",
         "requestBody": {
           "content": {
@@ -630,6 +630,9 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "no such project"
           },
           "409": {
             "description": "a clone into that folder runs already"
@@ -833,6 +836,172 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/repos": {
+      "post": {
+        "summary": "New Project Repo",
+        "description": "Make a repository of the project from scratch: one empty commit.",
+        "operationId": "new_project_repo_api_projects__id__repos_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepoNew"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectRepo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such project or repository"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/repos/{name}/removal": {
+      "get": {
+        "summary": "Project Repo Removal",
+        "description": "What removing the repository (or link) does; nothing changes.",
+        "operationId": "project_repo_removal_api_projects__id__repos__name__removal_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepoRemoval"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such project or repository"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/repos/{name}": {
+      "delete": {
+        "summary": "Remove Project Repo",
+        "description": "Remove the repository and forget its sessions, or a link only, as `lado project\nrepo remove --yes` does; the project as it is after.",
+        "operationId": "remove_project_repo_api_projects__id__repos__name__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such project or repository"
           },
           "422": {
             "description": "Validation Error",
@@ -3365,6 +3534,28 @@
               }
             ],
             "title": "Branch"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
           }
         },
         "type": "object",
@@ -6180,6 +6371,76 @@
         "title": "RepoInfo",
         "description": "A repository of a session: now its one folder; a project will have several."
       },
+      "RepoNew": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "RepoNew",
+        "description": "A repository of a project made from scratch (lado.projects.add_new)."
+      },
+      "RepoRemoval": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "repository",
+              "link"
+            ],
+            "title": "Kind"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionToForget"
+            },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "unpushed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unpushed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "path",
+          "target",
+          "sessions",
+          "unpushed"
+        ],
+        "title": "RepoRemoval",
+        "description": "What removing an entry of a project's folder does (lado.projects.removal)."
+      },
       "Resume": {
         "properties": {
           "kits": {
@@ -6874,6 +7135,24 @@
         ],
         "title": "SessionStatus",
         "description": "Whether a session runs, as `lado ls` and the UI show it."
+      },
+      "SessionToForget": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "open_runs": {
+            "type": "integer",
+            "title": "Open Runs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "open_runs"
+        ],
+        "title": "SessionToForget"
       },
       "Started": {
         "properties": {

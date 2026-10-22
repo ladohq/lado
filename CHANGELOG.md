@@ -35,6 +35,9 @@
   stops the uninstall with the `kill` command for it.
 - **Resume session waits for a provider that can run.** While the window says the
   session's provider cannot run, Resume session is off, as Start is in a new session.
+- **Where suggests your workspace's folders after an early click.** Clicking into Where
+  right after the New session window opens shows them as soon as LADO knows the
+  workspace, with no second click.
 
 ## 0.42.0 (2026-10-20)
 

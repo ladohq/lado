@@ -45,6 +45,6 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_phone.py`
+- [x] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_phone.py`
   pass; `openspec validate phone-card-field-expands --strict` passes; CI green on the
   pull request's last commit (AC-6). AC-5 is the human's check on an iPhone.

@@ -85,6 +85,7 @@ from lado.server.models import (
     PlanInfo,
     PlanUpdateAsk,
     ProjectInfo,
+    ProjectRepo,
     ProviderInfo,
     RecentFolder,
     RecordView,
@@ -92,6 +93,8 @@ from lado.server.models import (
     RemoteAsk,
     RemoteInfo,
     Replies,
+    RepoNew,
+    RepoRemoval,
     Resume,
     RunEventInfo,
     RunInfo,
@@ -527,6 +530,8 @@ def create_app(
             return action(*args)
         except clones.Busy as busy:
             raise HTTPException(409, str(busy)) from busy
+        except projects.NoSuchProject as unknown:
+            raise HTTPException(404, str(unknown)) from unknown
         except runtime.LadoError as error:
             detail = clones.refused(error).model_dump(mode="json")
             raise HTTPException(400, detail) from error
@@ -549,11 +554,20 @@ def create_app(
     @app.post(
         "/api/clones",
         dependencies=[Depends(guard.changes)],
-        responses={**clone_refused, 409: {"description": "a clone into that folder runs already"}},
+        responses={
+            **clone_refused,
+            404: {"description": "no such project"},
+            409: {"description": "a clone into that folder runs already"},
+        },
     )
-    def start_clone(given: CloneStart) -> CloneJob:
-        """Start a clone job; the window asks for it with GET until it ends."""
-        return clone_core(jobs.start, given.url, given.path, given.branch).info()
+    def start_clone(given: CloneStart, has_db: bool = Depends(database)) -> CloneJob:
+        """Start a clone job, into a project's folder with `project`; the window asks for it
+        with GET until it ends."""
+        if given.project is not None and not has_db:
+            raise HTTPException(404, f'unknown project "{given.project}"')
+        return clone_core(
+            jobs.start, given.url, given.path, given.branch, given.project, given.name
+        ).info()
 
     @app.get("/api/clones/{id}", dependencies=[Depends(guard)])
     def clone_job(id: str) -> CloneJob:
@@ -599,6 +613,54 @@ def create_app(
             return launch.project_info(id)
         except projects.NoSuchProject as unknown:
             raise HTTPException(404, str(unknown)) from unknown
+
+    # A project's repositories (docs/design/projects.md): the human's, through the token;
+    # a clone into a project is a clone job (POST /api/clones with `project`).
+    project_refused = {
+        400: {"description": "refused, with the reason"},
+        404: {"description": "no such project or repository"},
+    }
+
+    def project_core(id: str, has_db: bool, action: Callable[..., T], *args) -> T:
+        """An unknown project or repository is 404, what the core refuses 400."""
+        try:
+            if not has_db:  # asking makes no lado.db
+                raise projects.NoSuchProject(f'unknown project "{id}"')
+            return action(id, *args)
+        except (projects.NoSuchProject, projects.NoSuchRepository) as unknown:
+            raise HTTPException(404, str(unknown)) from unknown
+        except runtime.LadoError as refused:
+            raise HTTPException(400, str(refused)) from refused
+
+    @app.post(
+        "/api/projects/{id}/repos",
+        dependencies=[Depends(guard.changes)],
+        responses=project_refused,
+    )
+    def new_project_repo(id: str, given: RepoNew, has_db: bool = Depends(database)) -> ProjectRepo:
+        """Make a repository of the project from scratch: one empty commit."""
+        made = project_core(id, has_db, projects.add_new, given.name)
+        return launch.project_repo(made)
+
+    @app.get(
+        "/api/projects/{id}/repos/{name}/removal",
+        dependencies=[Depends(guard)],
+        responses=project_refused,
+    )
+    def project_repo_removal(id: str, name: str, has_db: bool = Depends(database)) -> RepoRemoval:
+        """What removing the repository (or link) does; nothing changes."""
+        return launch.repo_removal(project_core(id, has_db, projects.removal, name))
+
+    @app.delete(
+        "/api/projects/{id}/repos/{name}",
+        dependencies=[Depends(guard.changes)],
+        responses=project_refused,
+    )
+    def remove_project_repo(id: str, name: str, has_db: bool = Depends(database)) -> ProjectInfo:
+        """Remove the repository and forget its sessions, or a link only, as `lado project
+        repo remove --yes` does; the project as it is after."""
+        project_core(id, has_db, projects.remove_repo, name, True)
+        return launch.project_info(id)
 
     @app.get("/api/kits", dependencies=[Depends(guard)])
     def list_kits(has_db: bool = Depends(database)) -> list[KitInfo]:

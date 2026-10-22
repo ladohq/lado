@@ -265,10 +265,24 @@ def project_info(id: str) -> models.ProjectInfo:
         title=project.title,
         folder=str(where),
         found=where.is_dir(),
-        repos=[
-            models.ProjectRepo(name=r.name, path=str(r.path), remote=r.remote, branch=r.branch)
-            for r in projects.repositories(id)
-        ],
+        repos=[project_repo(r) for r in projects.repositories(id)],
+    )
+
+
+def project_repo(repo: projects.Repository) -> models.ProjectRepo:
+    return models.ProjectRepo(
+        name=repo.name, path=str(repo.path), remote=repo.remote, branch=repo.branch
+    )
+
+
+def repo_removal(found: projects.Removal) -> models.RepoRemoval:
+    return models.RepoRemoval(
+        name=found.name,
+        kind=found.kind,
+        path=str(found.path),
+        target=found.target,
+        sessions=[models.SessionToForget(name=n, open_runs=runs) for n, runs in found.sessions],
+        unpushed=found.unpushed,
     )
 
 

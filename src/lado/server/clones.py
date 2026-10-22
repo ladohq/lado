@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from lado import clone, runtime
+from lado import clone, projects, runtime
 from lado.server import launch, models
 
 SWEEP = 1.0  # seconds between two looks for abandoned and old jobs
@@ -82,6 +82,7 @@ class Job:
     ended: float | None = None
     cancelled: threading.Event = field(default_factory=threading.Event)
     thread: threading.Thread | None = None
+    project: str | None = None  # the project it adds a repository to
 
     def info(self) -> models.CloneJob:
         progress = self.progress
@@ -109,11 +110,28 @@ class Jobs:
         self._jobs: dict[str, Job] = {}
         self._sweeper: threading.Thread | None = None
 
-    def start(self, url: str, path: str | None, branch: str | None) -> Job:
-        """A job cloning `branch` of `url` into `path`; refused (CloneError) when the folder
-        may not take a clone, Busy when another running job clones into it."""
-        folder = _folder(_url(url), path)
-        target = clone.check_target(url, folder)
+    def start(
+        self,
+        url: str,
+        path: str | None,
+        branch: str | None,
+        project: str | None = None,
+        name: str | None = None,
+    ) -> Job:
+        """A job cloning `branch` of `url` into `path`, or into the folder of `project` as
+        `name` (lado.projects.add_clone's folder, checked first); refused (CloneError, or
+        the project's ProjectError) when the folder may not take a clone, Busy when another
+        running job clones into it."""
+        _url(url)
+        if project is None and name is not None:
+            raise clone.CloneError("refused", "a clone's name goes with its project")
+        if project is not None and path is not None:
+            raise clone.CloneError("refused", "a clone into a project takes no path")
+        if project is None:
+            folder = _folder(url, path)
+        else:
+            folder = str(projects.new_repo_folder(project, name or clone.default_folder(url).name))
+        target = clone.check_target(url, folder, project)
         if target.state not in clone.CAN_CLONE:
             raise clone.CloneError(target.state, target.text, target.hint)
         real = os.path.realpath(folder)
@@ -124,7 +142,7 @@ class Jobs:
                 for job in self._jobs.values()
             ):
                 raise Busy(f"a clone into {folder} runs already")
-            job = Job(uuid.uuid4().hex, url, folder, branch, now, now)
+            job = Job(uuid.uuid4().hex, url, folder, branch, now, now, project=project)
             job.thread = threading.Thread(target=self._run, args=(job,), daemon=True)
             self._jobs[job.id] = job
             job.thread.start()
@@ -138,7 +156,9 @@ class Jobs:
             job.progress = progress
 
         try:
-            clone.clone(job.url, job.path, job.branch, on_progress, job.cancelled)
+            clone.clone(
+                job.url, job.path, job.branch, on_progress, job.cancelled, project=job.project
+            )
             outcome, error = "done", None
         except clone.CloneError as exc:
             cancelled = exc.kind == "cancelled"

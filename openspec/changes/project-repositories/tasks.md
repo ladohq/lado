@@ -17,7 +17,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-project-repo
 ## 2. CLI and server
 
 - [x] 2.1 `lado project repo add|remove`, human only (D5, D8). Check: `tests/test_cli.py`.
-- [ ] 2.2 The clone job into a project, `POST /api/projects/{id}/repos`, `GET
+- [x] 2.2 The clone job into a project, `POST /api/projects/{id}/repos`, `GET
   …/repos/{name}/removal`, `DELETE …/repos/{name}`; `make web-types` (D9). Check:
   `tests/test_server_clones.py`, `tests/test_server_projects.py` (new), `make web`.
 

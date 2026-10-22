@@ -201,6 +201,11 @@ writable); the last command prints the UI's link with its token. Then:
   you start one, is on the host at the same path, its files yours (on Linux).
 - `docker compose exec lado lado update` refuses at once, stops nothing and says a new
   image updates LADO in a container; the UI's Update does not start one either.
+- A missing workspace, on the Mac (Docker Desktop) and on Linux: `docker compose down`,
+  set `LADO_WORKSPACE` in `.env` to a folder that does not exist, `docker compose up -d`.
+  It refuses with Docker's error, the path in it is that folder's, and the folder is
+  not made on the host; the guide's troubleshooting line reads that error. Put `.env`
+  back before going on.
 
 Then remove it all, the home volume with Claude Code's login too:
 

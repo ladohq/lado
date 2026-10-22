@@ -23,7 +23,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-project-repo
 
 ## 3. End to end
 
-- [ ] 3.1 `tests/integration/test_project_repositories.py`: add by clone and from scratch,
+- [x] 3.1 `tests/integration/test_project_repositories.py`: add by clone and from scratch,
   then start in each; an ended and a failed clone leave nothing; removal refused while a
   session runs, the worker's unpushed branch shown, nothing without `--yes`, folder and
   session gone with it, the neighbours intact; both refused from an agent. Check: `uv run

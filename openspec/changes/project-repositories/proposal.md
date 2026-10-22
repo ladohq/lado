@@ -65,7 +65,7 @@ a folder not made yet under `projects/<id>/` offers `lado start --project <id> -
 ## Acceptance criteria
 
 - **AC-1** With project `shop` and a bare repository `/srv/git/frontend.git`, `lado
-  project repo add shop /srv/git/frontend.git` clones into `<ws>/projects/shop/frontend`,
+  project repo add shop file:///srv/git/frontend.git` clones into `<ws>/projects/shop/frontend`,
   prints the `Added repository` and `Start a session in it` lines, `lado project show shop`
   lists `frontend` with its branch and remote, and `lado start --project shop --repo
   frontend` starts in it.

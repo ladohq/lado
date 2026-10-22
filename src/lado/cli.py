@@ -184,12 +184,16 @@ def _cloned(
         return 130
     except _Ended as ended:
         try:  # after a SIGHUP no terminal may be left to tell
+            shown.done()
             print(f"lado: clone cancelled ({signal.Signals(ended.signum).name})", file=sys.stderr)
         except OSError:
             pass
         return 128 + ended.signum
     finally:
-        shown.done()
+        try:
+            shown.done()
+        except OSError:
+            pass
     return None
 
 

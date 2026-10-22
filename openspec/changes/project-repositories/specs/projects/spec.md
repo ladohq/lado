@@ -10,7 +10,7 @@ session in it: lado start --project <id> --repo <name>`.
 
 #### Scenario: A clone from a local bare repository
 - **WHEN** the project `shop` exists and the human runs `lado project repo add shop
-  /srv/git/frontend.git`
+  file:///srv/git/frontend.git`
 - **THEN** `<ws>/projects/shop/frontend` is a clone of it, the output has `Added repository
   frontend to project shop: <ws>/projects/shop/frontend` and `Start a session in it: lado
   start --project shop --repo frontend`, and `lado project show shop` lists `frontend` with
@@ -197,7 +197,7 @@ project as `lado project repo add` does, as a job; `POST /api/projects/{id}/repo
 be 404, a refusal 400 with its reason, a `path` with `project` 400.
 
 #### Scenario: A clone job into a project
-- **WHEN** `POST /api/clones` has `{url: "/srv/git/frontend.git", project: "shop"}`
+- **WHEN** `POST /api/clones` has `{url: "file:///srv/git/frontend.git", project: "shop"}`
 - **THEN** the job ends `done` with `path` `<ws>/projects/shop/frontend`, and `GET
   /api/projects/shop` lists `frontend`
 

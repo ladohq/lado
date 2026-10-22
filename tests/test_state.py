@@ -362,7 +362,7 @@ def test_the_migration_gives_sessions_no_project_as_a_new_database_has_it(lado_h
     assert "project" not in db.execute(SESSIONS_TABLE).fetchone()[0]
     db.close()
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (32, 33)
+    assert (migrated.before, migrated.after) == (32, state.SCHEMA_VERSION)
     assert migrated.backup == lado_home / "backups" / "lado.db.schema-32"
     with state.connect() as db:
         assert db.execute(SESSIONS_TABLE).fetchone()[0] == fresh
@@ -408,6 +408,62 @@ def test_a_project_being_made_stays_only_when_its_block_ends_well(lado_home):
     with pytest.raises(sqlite3.IntegrityError):
         with state.creating_project("acme", None):
             pass
+
+
+PROJECT_VARIABLES_TABLE = "SELECT sql FROM sqlite_master WHERE name = 'project_variables'"
+
+
+def test_the_migration_makes_the_project_variables_table_as_a_new_database_has_it(lado_home):
+    with state.creating_project("shop", "Shop"):
+        pass
+    state.add_session(state.Session("site", "/r", None, provider="claude", project="shop"))
+    with state.connect() as db:
+        fresh = db.execute(PROJECT_VARIABLES_TABLE).fetchone()[0]
+    agent_helpers.schema_before(34)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert db.execute(PROJECT_VARIABLES_TABLE).fetchone() is None
+    db.close()
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (33, 34)
+    assert migrated.backup == lado_home / "backups" / "lado.db.schema-33"
+    with state.connect() as db:
+        assert db.execute(PROJECT_VARIABLES_TABLE).fetchone()[0] == fresh
+    assert state.get_project("shop").title == "Shop"
+    assert state.get_session("site").project == "shop"
+    assert state.project_variables("shop") == {}
+
+
+def test_a_project_keeps_its_variables(lado_home):
+    for id in ("shop", "acme"):
+        with state.creating_project(id, None):
+            pass
+    state.set_project_variable("shop", "MODEL_URL", "http://localhost:11434")
+    state.set_project_variable("shop", "BOARD_URL", "https://a")
+    state.set_project_variable("acme", "BOARD_URL", "https://b")
+    assert state.project_variables("shop") == {
+        "BOARD_URL": "https://a",
+        "MODEL_URL": "http://localhost:11434",
+    }
+    assert list(state.project_variables("shop")) == ["BOARD_URL", "MODEL_URL"]  # by name
+    state.set_project_variable("shop", "BOARD_URL", "line\nx = y ü")
+    assert state.project_variables("shop")["BOARD_URL"] == "line\nx = y ü"
+    assert state.project_variables("acme") == {"BOARD_URL": "https://b"}
+    assert state.unset_project_variable("shop", "BOARD_URL") is True
+    assert state.unset_project_variable("shop", "BOARD_URL") is False
+    assert state.project_variables("shop") == {"MODEL_URL": "http://localhost:11434"}
+    assert state.project_variables("nope") == {}
+
+
+def test_a_project_s_variables_go_with_it(lado_home):
+    with state.creating_project("shop", None):
+        pass
+    state.set_project_variable("shop", "BOARD_URL", "https://a")
+    assert state.delete_project("shop") is True
+    with state.connect() as db:
+        assert db.execute("SELECT count(*) FROM project_variables").fetchone()[0] == 0
+    with state.creating_project("shop", None):
+        pass
+    assert state.project_variables("shop") == {}
 
 
 def test_the_migration_gives_agents_their_read_only_flag(lado_home):
@@ -823,8 +879,8 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
-        sessions = db.execute(SESSIONS_TABLE).fetchone()[0]
-    assert "project" not in sessions  # the content before the migration
+        variables = db.execute(PROJECT_VARIABLES_TABLE).fetchone()
+    assert variables is None  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -876,7 +932,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert "project" not in db.execute(SESSIONS_TABLE).fetchone()[0]  # rolled back
+        assert db.execute(PROJECT_VARIABLES_TABLE).fetchone() is None  # rolled back
 
 
 def test_no_pending_migration_without_a_database(lado_home):

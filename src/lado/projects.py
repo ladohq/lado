@@ -443,11 +443,16 @@ def repository(id: str, name: str) -> Repository:
             raise ProjectError(
                 f"{name} in project {id} is a link to {target}: clone it into {folder(id)} instead"
             )
+    raise _no_repository(id, name, found)
+
+
+def _no_repository(id: str, name: str, found: list[Repository]) -> NoSuchRepository:
     if not found:
-        raise ProjectError(
-            f"project {id} has no repositories yet: a repository is a git folder in {folder(id)}"
+        return NoSuchRepository(
+            f"project {id} has no repositories yet: add one with lado project repo add {id} "
+            "<git-url> or --new <name>"
         )
-    raise ProjectError(
+    return NoSuchRepository(
         f"project {id} has no repository {name}; its repositories: "
         + ", ".join(repo.name for repo in found)
     )
@@ -486,30 +491,35 @@ def unpushed(project_folder: Path) -> list[str]:
     each git repository directly in it and each worktree of one, with its uncommitted
     changes (untracked files too) and, for the repository, its branches not pushed."""
     lines = []
-    real = Path(os.path.realpath(project_folder))  # git names worktrees by real paths
     for entry in sorted(project_folder.iterdir()):
-        if not entry.is_dir() or not os.path.lexists(entry / ".git"):
-            continue
-        try:
-            findings = []
-            if _git(entry, "status", "--porcelain", "--untracked-files=normal").strip():
-                findings.append("uncommitted changes")
-            findings += _not_pushed(entry)
-            trees = []
-            for tree in _checkouts(entry):
-                if (
-                    tree.is_dir()
-                    and _git(tree, "status", "--porcelain", "--untracked-files=normal").strip()
-                ):
-                    trees.append(tree)
-        except _GitFailed as failed:
-            lines.append(f"{entry.name}: could not check: {failed}")
-            continue
-        if findings:
-            lines.append(f"{entry.name}: {'; '.join(findings)}")
-        for tree in trees:
-            shown = tree.relative_to(real) if tree.is_relative_to(real) else tree
-            lines.append(f"{entry.name} (worktree {shown}): uncommitted changes")
+        if entry.is_dir() and os.path.lexists(entry / ".git"):
+            lines += _checkout_lines(entry, project_folder)
+    return lines
+
+
+def _checkout_lines(entry: Path, base: Path) -> list[str]:
+    """`unpushed`'s lines of the one repository `entry`: its uncommitted changes and
+    branches not pushed, then each of its worktrees with changes, shown relative to `base`
+    when inside it."""
+    real = Path(os.path.realpath(base))  # git names worktrees by real paths
+    try:
+        findings = []
+        if _git(entry, "status", "--porcelain", "--untracked-files=normal").strip():
+            findings.append("uncommitted changes")
+        findings += _not_pushed(entry)
+        trees = []
+        for tree in _checkouts(entry):
+            if (
+                tree.is_dir()
+                and _git(tree, "status", "--porcelain", "--untracked-files=normal").strip()
+            ):
+                trees.append(tree)
+    except _GitFailed as failed:
+        return [f"{entry.name}: could not check: {failed}"]
+    lines = [f"{entry.name}: {'; '.join(findings)}"] if findings else []
+    for tree in trees:
+        shown = tree.relative_to(real) if tree.is_relative_to(real) else tree
+        lines.append(f"{entry.name} (worktree {shown}): uncommitted changes")
     return lines
 
 
@@ -577,3 +587,103 @@ def delete(id: str, yes: bool) -> None:
                 f"project delete {id} --yes again"
             ) from error
     state.delete_project(id)
+
+
+@dataclass(frozen=True)
+class Removal:
+    """What removing the entry `name` of a project's folder does: a repository's folder
+    goes with the stopped sessions of the project in it (by name, with their open runs),
+    and `unpushed` is what it loses; a link loses the link only (`target` as written)."""
+
+    name: str
+    kind: Literal["repository", "link"]
+    path: Path
+    target: str | None
+    sessions: list[tuple[str, int]]
+    unpushed: list[str]
+
+
+def removal(id: str, name: str) -> Removal:
+    """What `remove_repo` would do; refused for an unknown project, a name no visible entry
+    of the project's folder has (NoSuchRepository), an entry that is neither a repository
+    nor a link, and a repository with a session working in it (by path, one without a
+    project too) that is not stopped."""
+    get(id)
+    entry = next((e for e in _entries(id) if e.name == name), None)
+    if entry is None:
+        raise _no_repository(id, name, repositories(id))
+    path = Path(entry.path)
+    if entry.is_symlink():
+        return Removal(name, "link", path, os.readlink(path), [], [])
+    if not any(repo.name == name for repo in repositories(id)):
+        raise ProjectError(
+            f"{name} in project {id} is not a repository: LADO removes only repositories and links"
+        )
+    real = Path(os.path.realpath(path))
+
+    def inside(sess: state.Session) -> bool:
+        return Path(os.path.realpath(sess.repo)).is_relative_to(real)
+
+    busy = [
+        sess.name
+        for sess in state.list_sessions()
+        if inside(sess) and runtime.session_status(sess) != runtime.SessionStatus.STOPPED
+    ]
+    if busy:
+        raise ProjectError(
+            f"repository {name} of project {id} has sessions not stopped: {names(busy)}; stop "
+            "them first with lado stop <name>"
+        )
+    # The project's own only: the path is a safety check, never how LADO learns a project.
+    sessions = sorted(
+        (sess.name, len(state.list_runs(sess.name, open_only=True)))
+        for sess in state.project_sessions(id)
+        if inside(sess)
+    )
+    return Removal(name, "repository", path, None, sessions, _checkout_lines(path, folder(id)))
+
+
+def remove_repo(id: str, name: str, yes: bool) -> Removal:
+    """Remove the repository `name` of the project `id` (`removal`, which refuses first):
+    its folder whole, then its sessions forgotten; a link loses the link only. Without
+    `yes`, refuse (the CLI shows the removal first). Nothing outside the project's folder
+    is removed: a repository whose real path is not directly in the project folder's, which
+    is not directly in the real projects/, is refused. A folder not removed whole keeps the
+    sessions; a session not forgotten is named."""
+    found = removal(id, name)
+    if not yes:
+        if found.kind == "link":
+            raise ProjectError(
+                f"removing {name} of project {id} deletes the link only, not its target "
+                f"{found.target}; run again with --yes"
+            )
+        count = len(found.sessions)
+        forgets = f" and forgets its {count} session{'' if count == 1 else 's'}" if count else ""
+        raise ProjectError(
+            f"removing repository {name} of project {id} deletes its folder {found.path} with "
+            f"everything in it{forgets}; run again with --yes"
+        )
+    if found.kind == "link":
+        found.path.unlink()
+        return found
+    real = Path(os.path.realpath(found.path))
+    parent = Path(os.path.realpath(folder(id)))
+    if real.parent != parent or parent.parent != Path(os.path.realpath(projects_folder())):
+        raise ProjectError(
+            f"{found.path} is not in {projects_folder()}: LADO removes nothing outside it"
+        )
+    try:
+        shutil.rmtree(real)  # links inside are removed as links, never followed
+    except OSError as error:
+        raise ProjectError(
+            f"could not remove {found.path} whole: {error}; its sessions stay"
+        ) from error
+    for session, _ in found.sessions:
+        try:
+            runtime.forget_session(session, force=True)
+        except runtime.LadoError as error:
+            raise ProjectError(
+                f"the repository is removed, but session {session} could not be forgotten: "
+                f"{error}; forget it with lado forget {session} --force"
+            ) from error
+    return found

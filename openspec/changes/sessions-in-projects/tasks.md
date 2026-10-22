@@ -50,7 +50,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-sessions-in-
 
 ## 6. Regression
 
-- [ ] 6.1 `make lint`; `make test` (counts); the changed integration and UI files with
+- [x] 6.1 `make lint`; `make test` (counts); the changed integration and UI files with
   their markers; `make web`; `openspec validate sessions-in-projects --strict`;
   `openspec validate --specs --strict`; CI `ci-ok` green (container and smoke cells
   included).

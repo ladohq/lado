@@ -2,13 +2,13 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: S3 (LAD-125, run task/lad-125) · Next: S4 · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5)
+In work: none · Next: S4 (draft at step_ok) · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5)
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
 - Each phase task gets the label `component lado` and is linked to LAD-116; LAD-80 is not touched.
 - Questions to the human go as question cards (`ask_human`) with choices, not only as text messages (the human's remark #521, 2026-10-21).
-Last review: 2026-10-22 (after S2b), base at f99ebb7
+Last review: 2026-10-22 (after S3), base at 853ba87
 
 ## Steps
 
@@ -51,7 +51,7 @@ Notes: leftover of S2 (analyst's question #615): "project" meaning the human's r
 Result: PR #136 merged 2026-10-22 (f99ebb7), LAD-124 Done, "waiting for release" (0.43.0); change `compose-workspace-variable` archived (`container` spec changed). Compose reads `${LADO_WORKSPACE:-${LADO_PROJECTS:-/set-LADO_WORKSPACE-to-your-workspace-folder}}` for `LADO_REPOS` and a long bind with `create_host_path: false`: with neither variable `up` refuses with Docker's bind error naming that path, and a missing workspace folder is no longer made on the host (the guide makes `~/workspace` before `up`; CHANGELOG says so). No nested `:?`: Compose on GitHub's runners evaluates it even when the outer variable is set (LAD-73); the human chose the placeholder at question #694. `make test` 3688 passed; CI 23/23 incl. container amd64/arm64 and 8 smoke; 2 local rounds and 1 external round, the external one did not read the spec delta or `tests/container/` (local only). Open: F3, Docker Desktop's (macOS) text for a missing bind source, not seen; moved to the release checklist (`docs/release.md` 4.5). Container tests ran on Linux CI only.
 
 ### S3 — A session in a project (L)
-Status: in progress (LAD-125, run task/lad-125)
+Status: done (LAD-125, PR https://github.com/ladohq/lado/pull/138)
 Check:
 - Integration tests with the fake agent: `lado start --project <id> --repo <name>` starts in `<workspace>/projects/<id>/<name>`; the session's project is a reference in `lado.db`, shown by `lado ls` and in the session's API; a session from `start_session` gets the same project and repository.
 - A session without a project under `projects/` is refused on every path: `lado start <folder>`, `lado start <git-url>` with a target there, `lado start --new` there, the server's launch API (folder, clone, from scratch), and `start_session` from a session without a project; each refusal names the project and offers the session in it.
@@ -60,11 +60,12 @@ Check:
 - The project's repositories are listed from disk: git subfolders with branch and remote; a folder without git and an unfinished clone are not listed.
 - `lado project delete` refuses while a session of the project runs, and forgets the stopped ones.
 Notes: concept phase 3 without adding repositories (S4). Repositories for the check are made by hand (`git init`/`git clone` into the project folder). Trap of S2 for this L step: both external review rounds read the diff only partly; the brief asks the reviewer to name per area (core, CLI, server, UI, specs) which round read it, and an area no external round read is named at `merge_ok`. The trap held again in S2b (the external round read files at HEAD on a shallow checkout and skipped the spec delta and `tests/container/`): the request names the diff's files. Sessions started under `projects/<id>/` between S2 and S3 must keep working; binding them to the project is a question to the human if `resume` would refuse them.
+Result: PR #138 merged 2026-10-22 (853ba87), LAD-125 "waiting for release" (0.43.0); change `sessions-in-projects` archived (`projects`, `repos-folder`, `session-clone`, `session-scratch` changed). `sessions.project` references `projects(id)` (schema 33); one `projects.refusal(path)` for every start path, only while `projects/` is LADO's; default name `<project>-<repo>`, `--repo` always required (#802, #804); a symbolic link is no repository and is named as a link (#806, gate #63); sessions from before S3 keep no project (#808); head variant A (#810); `GET /api/projects/{id}` with repositories; delete refuses while any session inside the project folder runs, bound or not (gate #63). F1 found in review and fixed in the step (#824): `providers/base.agent_env` passes LADO's `LADO_REPOS` to the agents' `lado mcp`; no live run. Gates: #64 rejected for a second external round (the review trap a third time), #67 approved, then the merge step's `conflicts` (MODIFIED requirements over 500 characters fail `openspec validate --specs --strict` only after the archive; the developer split them, trial archive 45/45), #71 approved. CI 23/23 on 3e3ddf4; 4 local and 2 external rounds; texts (proposal, design, part of the specs, docs, CHANGELOG, most unit tests) read locally only. The lead's manual check on 853ba87 with a temp `LADO_HOME`/`LADO_REPOS` (no agent started): `project show` lists the git subfolder only, the refusals of a folder and of `--new` under `projects/`, an unknown `--repo`, `--project` without `--repo` (exit 2), delete without `--yes` with unpushed work, all as designed. Declined: E3 to S4, G1 to S7. Found on the way: the new UI test `tests/ui/test_launch.py::test_a_folder_in_a_project_is_refused_with_the_projects_command` flaky under load (question to the human at step_ok).
 
 ### S4 — Adding and removing a project's repositories (M)
 Status: planned
 Check: integration tests: a repository added by clone (into a temporary folder, renamed at the end) and from scratch, through LADO's existing clone and scratch paths, landing in the project folder; removing a repository refuses while its sessions run, shows unpushed work including workers' worktrees, needs `--yes`, forgets its sessions and removes its folder; nothing outside `projects/` is ever removed.
-Notes: the CLI shape (e.g. `lado project repo add/remove`) is the analyst's.
+Notes: the CLI shape (e.g. `lado project repo add/remove`) is the analyst's. Leftover of S3 (E3, ledger of LAD-125): the refusal for a folder under `projects/<id>/` that does not exist yet (a clone or fresh-start target) offers `lado start --project <id> --repo <name>`, which then refuses as an unknown repository; once S4 adds repositories that hint offers adding the repository instead. S4 reuses `projects.refusal`, `projects.repositories` and the clone's and scratch's target state `in_project`. Trap of S3: MODIFIED requirements over 500 characters pass `openspec validate <change> --strict` and fail `--specs --strict` only after the archive, which sent the merge back; the developer and the reviewer run a trial archive in a scratch copy before `merge_ok`.
 
 ### S5a — Plain project variables reach the whole session (M)
 Status: planned
@@ -73,7 +74,7 @@ Check:
 - Kit keys: `kits.ResolvedAgent.mcp_servers` checks each `${VAR}` of a kit's MCP server against the agent's environment before the agent starts (today's refusal "… environment variable X is not set"); a key set only in the project passes it and reaches the server through `mcp_exec`, the same key in a session without a project is refused.
 - `lado project set/unset` (plain); a secret-like name (`*TOKEN*`, `*KEY*`, `*SECRET*`, `*PASSWORD*`) refused as plain; reserved names (`LADO_*`, `PATH`, `HOME`, `CLAUDE_CONFIG_DIR` and the like, from one list) refused; refused from inside an agent.
 - Smoke per provider (CI, D5): a test MCP server of a kit writes whether it sees a project variable to a file the test reads (the current smoke has no such server: S5a adds it).
-Notes: concept phase 2, plain half. Minor bump (migration, new CLI). Open check after merge: one live run with models on the four CLIs before the release that ships S5a (Claude only with the human's yes) — goes to the release checklist at the review.
+Notes: concept phase 2, plain half. Minor bump (migration, new CLI). Open check after merge: one live run with models on the four CLIs before the release that ships S5a (Claude only with the human's yes) — goes to the release checklist at the review; that run also covers S3's F1 (the agents' `lado mcp` gets LADO's `LADO_REPOS`, changed in `providers/base.py` without a live run, #824).
 
 ### S5b — Project secrets (M)
 Status: planned
@@ -92,7 +93,7 @@ Notes: concept phase 4. The Projects stub goes away here.
 ### S7 — UI: project page, removing a repository and a project (M)
 Status: planned
 Check: mockups approved; UI e2e: the project page lists repositories with branch and remote, sessions, variables; renaming the title; removing a repository and a project shows the unpushed work (incl. workers' worktrees) and asks for the id typed; refused while sessions run.
-Notes: concept phase 5. Leftovers of S2 (ledger of LAD-123, declined at gate #51; the core's `projects.unpushed`, shared by the CLI and the UI): F2 — the check before deleting misses a repository at the project folder's root, commits on a detached HEAD and stashes; E3 — an unreadable project folder makes `lado project delete` end in a traceback instead of `lado: …` (nothing removed); F3 — a worktree inside the project folder listed twice; F5 — for a project folder that is a symbolic link the warning says "with everything in it" though only the link goes. The check: each of these in a unit test of the core and in the UI's delete dialog.
+Notes: concept phase 5. Leftovers of S2 (ledger of LAD-123, declined at gate #51; the core's `projects.unpushed`, shared by the CLI and the UI): F2 — the check before deleting misses a repository at the project folder's root, commits on a detached HEAD and stashes; E3 — an unreadable project folder makes `lado project delete` end in a traceback instead of `lado: …` (nothing removed); F3 — a worktree inside the project folder listed twice; F5 — for a project folder that is a symbolic link the warning says "with everything in it" though only the link goes; leftover of S3 (G1, ledger of LAD-125, declined): for such a folder a running session in the link's target blocks the delete (safe side), to be decided with F5. The check: each of these in a unit test of the core and in the UI's delete dialog.
 
 ## Open questions
 

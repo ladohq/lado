@@ -568,6 +568,19 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## On a phone the composer lies over the waiting card's tabs when its keyboard opens
+
+Size: S. Why here: the human writes to the supervisor with a card waiting and sees the
+card's tabs covered; the card's own fields were fixed by LAD-126, the composer's were not.
+
+With the keyboard opened from the composer, the session's chat keeps about 250 px (402×874
+with 400 px visible): the feed keeps its least 160 px, so the card, at most half the
+chat, is squeezed and the composer is drawn over its tabs. LAD-126 left this case out of
+its scope (proposal, Out of scope).
+Wanted: with the composer focused on a phone the card yields cleanly, e.g. minimized to
+its tabs, or the feed's least height lowered, so nothing overlaps.
+Found: 2026-10-22, hotfix/lad-126-phone-card-keyboard.
+
 ## On a phone the expanded terminal and the menu's drawer ignore the visible part of the window
 
 Size: S. Why here: LAD-109 sized the app by `window.visualViewport`, but the overlays

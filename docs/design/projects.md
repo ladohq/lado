@@ -13,8 +13,11 @@ changes this file.
 > project in `lado ls` and the session's head), the repositories read from the disk, and
 > deleting a project with its sessions (step S3, 0.43.0); adding a repository by a clone or
 > from scratch and removing one, `lado project repo add | remove` and the server's API for
-> both (step S4, 0.43.0). Everything else here is steps S5a–S7 and is marked **not built
-> yet** where it is described.
+> both (step S4, 0.43.0); a project's plain variables, `lado project set | unset`, their
+> layer in every agent of the project's sessions, the kits' checks seeing them, the
+> server's API for them and `lado doctor`'s `Project variables` line (step S5a, 0.43.0).
+> Everything else here is steps S5b–S7 and is marked **not built yet** where it is
+> described.
 
 ## Why
 
@@ -176,7 +179,16 @@ starts in the same project and repository as its parent.
 
 ## Variables and secrets
 
-**Not built yet** (steps S5a and S5b).
+Plain variables are built (step S5a: `lado project set | unset`, `lado project show`, the
+server's `PUT` and `DELETE /api/projects/{id}/variables/{name}`; [cli.md](../cli.md)); secrets
+(`--secret`, their folder, replace) are **not built yet** (step S5b), and neither is the UI's
+variables page (step S6). Until S5b a kit key whose name looks like a secret
+(`YOUGILE_API_KEY`, `GH_TOKEN`) cannot be set per project: it still comes from the login
+shell or the outside folder.
+
+Sessions made under `projects/` before step S3 have no project (`sessions.project` is
+empty), so they get no project's variables, also when their folder is a project's
+repository (#808); a session started in the project (`lado start --project --repo`) does.
 
 A project has two kinds of variables:
 - **plain** ones (a local model's address, a board's name): shown and editable;
@@ -234,11 +246,12 @@ an agent could slip every future agent, say, a model address of its own.
 
 ## Where a project's data lives
 
-The record and the folder are built (step S2); variables and secrets are not (steps S5a,
-S5b).
+The record and the folder are built (step S2), and so are plain variables (step S5a);
+secrets are not (step S5b).
 
 - **The project's record** (id, title, plain variables): in `lado.db` (the table
-  `projects`, schema 32; plain variables from S5a).
+  `projects`, schema 32; plain variables in `project_variables`, schema 34, one row per name,
+  removed with the project).
 - **Secrets**: in `~/.lado/projects/<id>/secrets/`, one file per secret. The format is that
   of Docker's outside secrets (`LADO_ENV_DIR`, `/run/secrets`): the file's name is the
   variable's, its content the value, exactly one trailing newline dropped, its size
@@ -265,7 +278,8 @@ as you keep the keys themselves.
 
 **The projects of one LADO are not isolated from each other.** They separate environments,
 not access: every agent of one LADO runs as one user of the operating system, and an agent
-of one project can technically read another project's secrets. It is a convenience, not a
+of one project can technically read another project's variables (`lado project show` works
+for agents) and, once they exist, its secrets. It is a convenience, not a
 security boundary.
 
 **For clients that must not mix, run a separate LADO.** The documentation and the UI's

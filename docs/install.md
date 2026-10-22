@@ -167,6 +167,12 @@ Others: `CLAUDE_CODE_OAUTH_TOKEN` (below), a kit's key as its MCP server names i
 `YOUGILE_API_KEY`), a model provider's key for OpenCode and Kilo. Every agent of this LADO
 can read every file of its `secrets/`.
 
+A variable only one project's agents should get, or with another value there (a board's
+address, a local model's), is set per project instead, no file needed: `docker compose exec
+lado lado project set <project> NAME VALUE` ([cli.md](cli.md)); the project's value wins
+over the folder's for that project's sessions. Names that look like a secret (`TOKEN`,
+`KEY`, `SECRET`, `PASSWORD`) are not taken there yet: they stay in `secrets/`.
+
 ### Log in to the agent CLIs
 
 Logins made inside the container stay on its home volume, through updates.

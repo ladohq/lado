@@ -54,7 +54,24 @@ YYYY-MM-DD HH:MM>` and the project's repositories read from the disk (`projects.
 the folders directly in the project folder, not hidden and not links, each a git root of its
 own): `  repositories:` and one line each by name, `    <name>  <branch>  <remote>` padded,
 `(detached)` and `(no remote)` for none, a symbolic link listed among them as `(a link to
-<target>: clone it into <folder> instead)`; with none, `  repositories: none`. `lado project
+<target>: clone it into <folder> instead)`; with none, `  repositories: none`; then the
+project's variables: `  variables:` and `    <NAME>  <value>` by name, names padded, a line
+break in a value shown as `\n` (`\r` as `\r`); with none, `  variables: none`. `lado project
+set <id> NAME VALUE` sets a plain variable of the project (over its old value) that every
+agent of the project's sessions gets from its next start ([design/agents.md](design/agents.md),
+The agent's environment); a value starting with `-` goes after `--` (`lado project set shop
+FLAGS -- -v`). It prints `Set <NAME> in project <id>.` and `Agents started from now on get
+it.`, or, while sessions of the project run, `Agents started from now on get it; running
+sessions of <id> keep the old environment until restarted: <names>`. It refuses, exit 1,
+storing nothing: a name that is no variable name (`the name <NAME> is not a variable name:
+Latin letters, digits and _, not starting with a digit`), a reserved one (the names the
+login shell and tmux keep, any `LADO_*`, and the names LADO sets for the agent CLIs:
+`<NAME> is reserved: LADO or the agent CLIs set it`), a name with `TOKEN`, `KEY`, `SECRET` or
+`PASSWORD` in it in any case (`<NAME> looks like a secret (<word>): … secrets come with lado
+project set <id> <NAME> --secret (not built yet)`), and a value over 64 KiB of UTF-8 or with
+a NUL. `lado project unset <id> NAME` removes one with `Removed <NAME> from project <id>.`
+and the same second line; a name the project lacks is exit 1 with `project <id> has no
+variable <NAME>; its variables: <names>` (`none`). `lado project
 rename <id> <title>` sets the title (`""` clears it); the id and the folder stay. `lado
 project delete <id>` refuses, exit 1, changing nothing, while a session of the project, or
 any session whose folder is inside the project folder (one started there before projects had
@@ -72,10 +89,10 @@ nothing outside `<workspace>/projects/` is removed, links inside are removed as 
 folder not removed whole keeps the sessions and the record, and a session not forgotten
 keeps the record (run it again). A stopped session from before projects had sessions is
 not forgotten: its folder goes. An unknown id is exit 1 with `unknown project
-"<id>"`. `create`, `rename`, `delete`, `repo add` and `repo remove` are the human's: inside
-an agent of LADO (`LADO_AGENT` set) they exit 1 with `lado project <command> is for the
-human; agent "<agent>" cannot use it`, while `list` and `show` work; no MCP tool changes
-projects or their repositories. `lado project` and `lado project repo` alone print their
+"<id>"`. `create`, `rename`, `delete`, `set`, `unset`, `repo add` and `repo remove` are the
+human's: inside an agent of LADO (`LADO_AGENT` set) they exit 1 with `lado project <command>
+is for the human; agent "<agent>" cannot use it`, while `list` and `show` work; no MCP tool
+changes projects, their repositories or their variables. `lado project` and `lado project repo` alone print their
 help.
 
 `lado project repo add <id> <git-url> [--name NAME] [--branch BRANCH]` clones the URL (its
@@ -159,7 +176,11 @@ warning for a `LADO_REPOS` that is not absolute (ignored: `LADO uses <home>/work
 that is not a folder, one LADO may not look at, or a folder it may not write in. Once LADO has
 a project or `projects/` exists, a `Projects` line follows: `<n> in <workspace>/projects`, or a
 warning naming projects whose folder is not found, foreign entries of `projects/` (no project's
-folder) and a `projects/` that is the human's own folder.
+folder) and a `projects/` that is the human's own folder. While a project's variable has the
+name of a variable the outside folder (`LADO_ENV_DIR`) gives, an `info` line after `Variables
+from outside` names it: `Project variables: <id> overrides <NAME>[, …] of LADO_ENV_DIR`, the
+projects by id joined by `; `, never a value; with no such name, or no lado.db, there is no
+such line.
 
 `lado kits add <git-url>[@vX.Y.Z]` installs the kit of a repository (a row in lado.db; its
 clone in the git cache): without a tag its latest release, with `--pre` its latest version

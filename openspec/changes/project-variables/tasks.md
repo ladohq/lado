@@ -32,10 +32,10 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-project-vari
 
 ## 4. Documents and version
 
-- [ ] 4.1 `docs/cli.md`, `docs/design/projects.md` (security boundary, #808),
+- [x] 4.1 `docs/cli.md`, `docs/design/projects.md` (security boundary, #808),
   `docs/design/agents.md`, `docs/design/modules.md`, `docs/install.md` (D13). Check: `uv
   run pytest tests/test_agents_md.py`.
-- [ ] 4.2 CHANGELOG: one line under `## 0.43.0 (unreleased)`.
+- [x] 4.2 CHANGELOG: one line under `## 0.43.0 (unreleased)`.
 
 ## 5. Regression
 

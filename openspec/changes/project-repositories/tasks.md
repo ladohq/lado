@@ -37,7 +37,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-project-repo
 
 ## 5. Regression
 
-- [ ] 5.1 `make lint`; `make test` (counts); the changed and neighbouring integration files
+- [x] 5.1 `make lint`; `make test` (counts); the changed and neighbouring integration files
   with `-m integration`; `make web`; `openspec validate project-repositories --strict`;
   `openspec validate --specs --strict`; the trial archive in the scratchpad; CI `ci-ok`
   green (container and smoke cells included).

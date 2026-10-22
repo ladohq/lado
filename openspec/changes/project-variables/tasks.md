@@ -13,7 +13,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-project-vari
 
 ## 2. CLI, server, doctor
 
-- [ ] 2.1 `lado project set|unset`, the variables in `show`, human only (D7). Check:
+- [x] 2.1 `lado project set|unset`, the variables in `show`, human only (D7). Check:
   the CLI tests.
 - [ ] 2.2 `variables` in `GET /api/projects/{id}`, `PUT` and `DELETE
   /api/projects/{id}/variables/{name}`; `make web-types` (D8). Check:

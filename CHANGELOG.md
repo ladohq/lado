@@ -25,6 +25,8 @@
 
 ### Fixed
 
+- **On a phone a gate's comment or your own answer has room above the keyboard.** Tapping
+  the field opens the waiting card over the chat instead of squeezing it to a strip.
 - **`lado uninstall` leaves no `~/.lado` behind.** It waits for the agents to end, so an
   agent that ends a moment later no longer makes the folder again; one that does not end
   stops the uninstall with the `kill` command for it.

@@ -2,12 +2,12 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-project-vari
 
 ## 1. Core
 
-- [ ] 1.1 The table `project_variables`, schema 34, its reads and writes,
+- [x] 1.1 The table `project_variables`, schema 34, its reads and writes,
   `previous_schema` (D1). Check: the state and migration tests.
-- [ ] 1.2 The name and value rule, `providers.base.CLI_VARIABLES`, `set_variable`,
+- [x] 1.2 The name and value rule, `providers.base.CLI_VARIABLES`, `set_variable`,
   `unset_variable`, `running` (D2, D3, D6). Check: `tests/test_project_variables.py`
   (new), the test that each provider's launch variables are reserved.
-- [ ] 1.3 The project's layer in `agent_env.resolve` and `runtime._base_env` at a start, a
+- [x] 1.3 The project's layer in `agent_env.resolve` and `runtime._base_env` at a start, a
   resume and a spawn; the launch warning for a name LADO sets (D4, D5). Check: the
   agent_env and runtime unit tests.
 

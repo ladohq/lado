@@ -470,6 +470,27 @@ def test_the_folder_wins_over_the_inherited_environment(outdir, monkeypatch):
     assert env["PATH"] == os.environ["PATH"]
 
 
+def test_the_project_wins_over_the_folder_and_the_login_shell(shell, outdir):
+    shell(rc="export BOARD_URL=shell MODEL_URL=shell-m KEEP=1")
+    write(outdir, "BOARD_URL", b"out\n")
+    write(outdir, "OTHER", b"o")
+    env = agent_env.resolve({"BOARD_URL": "proj", "MODEL_URL": "proj-m"})
+    assert (env["BOARD_URL"], env["MODEL_URL"], env["OTHER"], env["KEEP"]) == (
+        "proj",
+        "proj-m",
+        "o",
+        "1",
+    )
+    assert agent_env.resolve()["BOARD_URL"] == "out"  # no project: no layer
+
+
+def test_the_project_wins_over_the_inherited_environment(outdir, monkeypatch):
+    monkeypatch.setenv(agent_env.SOURCE_VAR, "inherit")
+    monkeypatch.setenv("BOARD_URL", "old")
+    assert agent_env.resolve({"BOARD_URL": "proj"})["BOARD_URL"] == "proj"
+    assert agent_env.resolve({})["BOARD_URL"] == "old"
+
+
 def test_read_anew_at_each_call(outdir):
     assert "NEW_KEY" not in agent_env.outside().values
     write(outdir, "NEW_KEY", b"v")

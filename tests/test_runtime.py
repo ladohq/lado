@@ -112,7 +112,7 @@ def test_a_new_session_without_a_provider_takes_the_one_on_the_agents_path(
     only = tmp_path / "only-kilo"
     only.mkdir()
     (only / "kilo").symlink_to(fake_clis / "kilo")
-    monkeypatch.setattr(agent_env, "resolve", lambda: {"PATH": str(only)})
+    monkeypatch.setattr(agent_env, "resolve", lambda project=None: {"PATH": str(only)})
     started = runtime.start_session(str(repo), "s", None)
     assert started.session.provider == "kilo"
     assert started.chosen == runtime.Suggestion("kilo", runtime.ONLY_INSTALLED)
@@ -157,7 +157,7 @@ def resolved(monkeypatch, fake_clis):
     """Make the resolved environment a known one; count how often it is resolved."""
     calls = []
 
-    def resolve():
+    def resolve(project=None):
         calls.append(1)
         return {
             "PATH": str(fake_clis),
@@ -183,7 +183,7 @@ def test_agents_get_the_resolved_environment_then_lados_then_the_providers(
     assert len(resolved) == 2  # anew for each launch
 
 
-def _broken_env():
+def _broken_env(project=None):
     raise agent_env.AgentEnvError("your shell failed with exit status 1: zsh -ilc ...")
 
 
@@ -246,7 +246,7 @@ def _path_without_clis(monkeypatch, tmp_path):
     """The resolved environment's PATH has no agent CLI on it."""
     empty = tmp_path / "empty-bin"
     empty.mkdir(exist_ok=True)
-    monkeypatch.setattr(agent_env, "resolve", lambda: {"PATH": str(empty)})
+    monkeypatch.setattr(agent_env, "resolve", lambda project=None: {"PATH": str(empty)})
 
 
 def test_a_start_whose_cli_is_not_on_the_agents_path_launches_nothing(
@@ -3226,7 +3226,9 @@ def test_kit_mcp_variables_come_from_the_agents_environment(repo, fake_tmux, tea
     runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     monkeypatch.delenv("DB_TOKEN", raising=False)  # set only by the user's shell
     path = os.environ["PATH"]
-    monkeypatch.setattr(agent_env, "resolve", lambda: {"PATH": path, "DB_TOKEN": "from-shell"})
+    monkeypatch.setattr(
+        agent_env, "resolve", lambda project=None: {"PATH": path, "DB_TOKEN": "from-shell"}
+    )
     runtime.spawn_worker("s", "review it", role="reviewer")
     env, _ = agent_helpers.launched(fake_tmux[-1])
     assert env["DB_TOKEN"] == "from-shell"  # the wrapper's CLI gets it from there
@@ -5260,7 +5262,7 @@ def agents_bin(monkeypatch, fake_clis, tmp_path):
     folder = tmp_path / "agents-bin"
     folder.mkdir()
     path = f"{folder}{os.pathsep}{fake_clis}"
-    monkeypatch.setattr(agent_env, "resolve", lambda: {"PATH": path})
+    monkeypatch.setattr(agent_env, "resolve", lambda project=None: {"PATH": path})
     return folder
 
 

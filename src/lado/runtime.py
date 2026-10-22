@@ -711,7 +711,7 @@ def start_session(
     if not provider and not old:
         # Resolved before the provider is chosen: it is the one on the agents' PATH. A
         # provider given or stored is checked first, without waiting for the login shell.
-        base_env = _base_env()
+        base_env = _base_env(project)
         chosen = _new_sessions_provider(repo, base_env)
     agent_cli = _provider(provider or (old.provider if old else chosen.provider))
     sess = state.Session(
@@ -727,7 +727,7 @@ def start_session(
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.kits, sess.without)
     if base_env is None:
-        base_env = _base_env()
+        base_env = _base_env(sess.project)
     _check_commands(env, base_env)
     agent = state.Agent(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
@@ -783,7 +783,7 @@ def start_session(
         _write_lead_skills(agent, env.lead_skills())
         launch = _launch_command(agent_cli, agent, sess, spec)
         started.warnings += launch.warnings
-        started.warnings += _outside_warnings(agent, launch, files=True)
+        started.warnings += _layer_warnings(agent, launch, sess.project, files=True)
         started.warnings += _first_hook_blocker(agent_cli, agent, base_env, launch)
         # The first new-session on a socket starts LADO's tmux server, whose audit session
         # its agents inherit (lado.gui_session).
@@ -891,7 +891,7 @@ def spawn_worker(
         agent_cli.name,
         run=run.name if run else None,
     )
-    base_env = _base_env()
+    base_env = _base_env(sess.project)
     _check_commands(env, base_env)
     spec = _spec(agent_cli, env, role_def.name, agent, instructions, base_env, without or [])
     agent.read_only = spec.read_only
@@ -905,7 +905,7 @@ def spawn_worker(
         summary = f"flow {run.name}: step {run.state}" if has_step else "your task"
         state.queue_message(session, state.LADO, worker, summary, text)
         launch = _launch_command(agent_cli, agent, sess, spec)
-        held = launch.warnings + _outside_warnings(agent, launch, files=False)
+        held = launch.warnings + _layer_warnings(agent, launch, sess.project, files=False)
         held += _first_hook_blocker(agent_cli, agent, base_env, launch)
         tmux.new_window(session, worker, str(worktree), _command(agent, base_env, launch))
     except Exception as error:
@@ -2809,10 +2809,12 @@ def _add_agent(agent: state.Agent, kit: str) -> None:
     state.add_event(agent.session, agent.name, state.SPAWNED, detail)
 
 
-def _base_env() -> dict[str, str]:
-    """The environment agents start from (lado.agent_env), resolved anew for each launch."""
+def _base_env(project: str | None) -> dict[str, str]:
+    """The environment agents start from (lado.agent_env), resolved anew for each launch,
+    with the variables of the session's `project` as lado.db holds them now."""
+    variables = state.project_variables(project) if project else None
     try:
-        return agent_env.resolve()
+        return agent_env.resolve(variables)
     except agent_env.AgentEnvError as exc:
         raise LadoError(str(exc)) from exc
 
@@ -2834,11 +2836,13 @@ def _launch_env(
     return {**base_env, **providers.agent_env(agent), **launch.env}
 
 
-def _outside_warnings(agent: state.Agent, launch: providers.Launch, *, files: bool) -> list[str]:
-    """The outside folder's lines for one launch (lado.agent_env.outside): its files not
-    used (`files`: a session's start or resume only, as the folder is the same for every
-    agent), and each of its names LADO or the provider sets for this launch, which keep
-    their value (_launch_env)."""
+def _layer_warnings(
+    agent: state.Agent, launch: providers.Launch, project: str | None, *, files: bool
+) -> list[str]:
+    """The lines of the outside folder (lado.agent_env.outside) and of the session's
+    `project` for one launch: the folder's files not used (`files`: a session's start or
+    resume only, as the folder is the same for every agent), and each name of either that
+    LADO or the provider sets for this launch, which keeps LADO's value (_launch_env)."""
     found = agent_env.outside()
     lines = list(found.unused) if files else []
     ours = {**providers.agent_env(agent), **launch.env}
@@ -2846,6 +2850,11 @@ def _outside_warnings(agent: state.Agent, launch: providers.Launch, *, files: bo
         f"variable file {name} in {found.folder} not used: LADO sets {name} for {agent.provider}"
         for name in sorted(found.values.keys() & ours.keys())
     ]
+    if project:
+        lines += [
+            f"project variable {name} of {project} not used: LADO sets {name} for {agent.provider}"
+            for name in sorted(state.project_variables(project).keys() & ours.keys())
+        ]
     return lines
 
 

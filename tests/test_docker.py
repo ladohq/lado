@@ -680,7 +680,7 @@ def test_the_compose_header_names_the_settings_for_other_devices():
     assert "every device of your network" in text and "unencrypted" in text
 
 
-def test_compose_names_no_container_and_needs_the_projects_folder(compose):
+def test_compose_names_no_container_and_keeps_home_on_its_volume(compose):
     lado = compose["services"]["lado"]
     assert "container_name" not in lado
     assert "build" not in lado
@@ -696,25 +696,45 @@ def test_compose_runs_the_published_image_of_lado_version(compose):
     )
 
 
-def test_compose_mounts_the_projects_at_the_hosts_own_path(compose):
+WORKSPACE = "${LADO_WORKSPACE:-${LADO_PROJECTS:-/set-LADO_WORKSPACE-to-your-workspace-folder}}"
+
+
+def test_compose_mounts_the_workspace_at_the_hosts_own_path(compose):
     """The same path inside as on the host, named by LADO_REPOS: git's worktree links and
-    LADO's stored paths are then right on both sides."""
+    LADO's stored paths are then right on both sides. LADO_PROJECTS, the name before
+    0.43.0, still counts; no nested `:?`, which Compose v2 on GitHub's runners evaluates
+    even when LADO_WORKSPACE is set (LAD-73). A missing workspace is never made on the
+    host: Docker refuses the bind, and its error names the placeholder's LADO_WORKSPACE."""
     lado = compose["services"]["lado"]
-    projects = "${LADO_PROJECTS:?set LADO_PROJECTS to your workspace folder}"
-    assert lado["volumes"][:2] == ["home:/home/lado", f"{projects}:{projects}"]
-    assert all(isinstance(v, dict) for v in lado["volumes"][2:])  # the binds below
-    assert lado["environment"]["LADO_REPOS"] == projects
+    assert lado["volumes"][0] == "home:/home/lado"
+    assert lado["volumes"][1] == {
+        "type": "bind",
+        "source": WORKSPACE,
+        "target": WORKSPACE,
+        "bind": {"create_host_path": False},
+    }
+    assert all(isinstance(v, dict) for v in lado["volumes"][1:])  # the binds below
+    assert lado["environment"]["LADO_REPOS"] == WORKSPACE
 
 
-def test_the_compose_headers_commands_all_have_the_projects_folder_and_the_version():
-    """Compose reads `${LADO_PROJECTS:?}` and `${LADO_VERSION:?}` for every command (exec,
-    logs, down too), so the header sets both in .env, which compose reads, before its
+def test_the_compose_headers_commands_all_have_the_workspace_and_the_version():
+    """Compose reads `${LADO_VERSION:?}` for every command (exec, logs, down too), and `up`
+    needs the workspace, so the header sets both in .env, which compose reads, before its
     first `docker compose` line."""
     header = [line.lstrip("# ").strip() for line in COMPOSE_TEXT.splitlines()]
     first = next(i for i, line in enumerate(header) if line.startswith("docker compose"))
     env = [line.split("=")[0] for line in header[:first] if re.match(r"[A-Z_]+=\S", line)]
-    assert {"LADO_PROJECTS", "LADO_VERSION"} <= set(env), env
+    assert {"LADO_WORKSPACE", "LADO_VERSION"} <= set(env), env
+    assert "LADO_PROJECTS" not in env, env
     assert "in .env next to this file" in " ".join(header[:first])
+
+
+def test_the_compose_header_still_accepts_lado_projects():
+    """An installed .env with the name before 0.43.0 keeps working, and says so."""
+    text = header_text()
+    assert "LADO_PROJECTS" in text
+    said = text.split("LADO_PROJECTS")[1][:200]
+    assert "still accepted" in said and "LADO_WORKSPACE wins" in said, said
 
 
 def header_steps(heading: str) -> list[str]:
@@ -791,7 +811,7 @@ def test_the_compose_header_says_how_to_go_back_to_the_backup():
 def test_a_second_lado_is_a_folder_with_its_own_env():
     """`-p` on each command is easy to forget; a folder's .env names the project once."""
     second = header_text().split("A second LADO beside the first")[1]
-    for name in ("COMPOSE_PROJECT_NAME", "LADO_PORT", "LADO_VERSION", "LADO_PROJECTS"):
+    for name in ("COMPOSE_PROJECT_NAME", "LADO_PORT", "LADO_VERSION", "LADO_WORKSPACE"):
         assert name in second, name
     assert " -p " not in header_text()
 
@@ -1020,8 +1040,13 @@ def test_the_guide_downloads_the_release_asset():
 
 
 def test_the_guides_env_names_every_variable_compose_reads():
-    read = set(re.findall(r"\$\{([A-Z_]+)", COMPOSE_TEXT)) - {"LADO_IMAGE", "LADO_SECRETS"}
-    assert {"LADO_VERSION", "LADO_PROJECTS", "LADO_SSH_AGENT"} <= read
+    # LADO_PROJECTS: the name before LADO_WORKSPACE, still read, not one to write.
+    read = set(re.findall(r"\$\{([A-Z_]+)", COMPOSE_TEXT)) - {
+        "LADO_IMAGE",
+        "LADO_SECRETS",
+        "LADO_PROJECTS",
+    }
+    assert {"LADO_VERSION", "LADO_WORKSPACE", "LADO_SSH_AGENT"} <= read
     envs = blocks(guide_part("Get compose.yaml and write .env"), "ini")
     assert len(envs) == 2  # a Mac's and Linux's
     for env_file in envs:
@@ -1029,6 +1054,24 @@ def test_the_guides_env_names_every_variable_compose_reads():
         lines = (line.removeprefix("# ") for line in env_file.splitlines())
         named = {line.split("=")[0] for line in lines if re.match(r"[A-Z_]+=", line)}
         assert named == read, env_file
+
+
+def test_the_guide_makes_the_workspace_before_compose_needs_it():
+    """Compose never makes a missing workspace (`create_host_path: false`), so the guide
+    makes it, and its troubleshooting reads Docker's refusal for any path, not only the
+    placeholder's."""
+    envs = blocks(guide_part("Get compose.yaml and write .env"), "ini")
+    for env_file in envs:
+        [workspace] = re.findall(r"^LADO_WORKSPACE=(\S+)", env_file, flags=re.M)
+        assert workspace.endswith("/workspace"), env_file
+    assert "mkdir -p ~/workspace" in guide_steps("Get compose.yaml and write .env")
+    said = " ".join(guide_part("Get compose.yaml and write .env").split())
+    assert "compose never makes it" in said, said
+    trouble = " ".join(guide_part("If something goes wrong in Docker").split())
+    assert "**`bind source path does not exist: <path>`**" in trouble, trouble
+    line = trouble.split("bind source path does not exist: <path>")[1][:500]
+    assert "/set-LADO_WORKSPACE-to-your-workspace-folder" in line, line
+    assert "mkdir -p" in line, line
 
 
 def test_the_guide_says_how_to_open_lado_on_a_phone():

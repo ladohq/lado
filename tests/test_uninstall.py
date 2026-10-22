@@ -5,7 +5,10 @@ import fcntl
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import agent_helpers
@@ -18,16 +21,19 @@ from lado.server import run as server_run
 
 @pytest.fixture
 def tmux_server(monkeypatch):
-    """LADO's tmux server, recorded: `left` names the sessions still on its socket."""
+    """LADO's tmux server, recorded: `left` names the sessions still on its socket, `panes`
+    the processes of a session's panes."""
 
     class Server:
         running = True
         left: list[str] = []
+        panes: dict[str, list[int]] = {}
         killed = False
 
     server = Server()
     monkeypatch.setattr(tmux, "server_running", lambda sock=None: server.running)
     monkeypatch.setattr(tmux, "sessions_with", lambda *o: [[name] for name in server.left])
+    monkeypatch.setattr(tmux, "pane_pids", lambda session: server.panes.get(session, []))
 
     def kill_server():
         server.killed = True
@@ -393,6 +399,90 @@ def test_a_loop_that_does_not_end_stops_before_the_repositories(
         "repository or file was touched: run lado uninstall again"
     )
     assert Path(dev.cwd).exists() and lado_home.exists()
+
+
+@pytest.fixture
+def agent():
+    """A process in the place of an agent's, ended at the test's end."""
+    proc = subprocess.Popen(["sleep", "60"])
+    yield proc
+    proc.kill()
+    proc.wait()
+
+
+def test_the_agents_processes_are_taken_before_the_stop_and_waited_for(
+    workers, repo, lado_home, tmux_server, fake_tmux, agent, monkeypatch
+):
+    """tmux's kill-session returns before the agents have ended: an agent that ends a
+    moment later (its session-end hook first) has ended before any file is touched."""
+    taken = []
+    tmux_server.panes = {"s": [agent.pid]}
+    monkeypatch.setattr(
+        tmux, "pane_pids", lambda session: taken.append(fake_tmux[:]) or tmux_server.panes[session]
+    )
+    ended = threading.Event()
+
+    def kill_session(session):
+        fake_tmux.append(("kill_session", session))
+
+        def hangup():
+            time.sleep(1)
+            agent.terminate()
+            agent.wait()
+            ended.set()
+
+        threading.Thread(target=hangup, daemon=True).start()
+
+    monkeypatch.setattr(tmux, "kill_session", kill_session)
+    found = uninstall.plan()
+    seen = []  # whether the agent had ended when the repositories were read after the stop
+    repos = uninstall._repos
+    monkeypatch.setattr(
+        uninstall, "_repos", lambda sessions: seen.append(ended.is_set()) or repos(sessions)
+    )
+    code, lines = run(found)
+    assert code == 0, lines
+    assert len(taken) == 1 and ("kill_session", "s") not in taken[0]
+    assert seen == [True]
+    assert not lado_home.exists()
+
+
+def test_an_agent_that_ended_but_was_not_reaped_counts_as_ended(
+    workers, lado_home, tmux_server, monkeypatch
+):
+    """A zombie: its parent, the tmux server, has ended, and init has not reaped it yet."""
+    zombie = subprocess.Popen(["true"])
+    try:
+        agent_helpers.wait_for(
+            lambda: subprocess.run(
+                ["ps", "-o", "stat=", "-p", str(zombie.pid)], capture_output=True, text=True
+            ).stdout.startswith("Z"),
+            "a zombie",
+            "s",
+        )
+        tmux_server.panes = {"s": [zombie.pid]}
+        monkeypatch.setattr(uninstall, "AGENTS_TIMEOUT", 2)
+        code, lines = run(uninstall.plan())
+        assert code == 0, lines
+        assert not lado_home.exists()
+    finally:
+        zombie.wait()
+
+
+def test_an_agent_that_does_not_end_stops_before_the_repositories(
+    workers, repo, lado_home, tmux_server, agent, monkeypatch
+):
+    dev, _ = workers
+    tmux_server.panes = {"s": [agent.pid, 4242424]}
+    monkeypatch.setattr(uninstall, "AGENTS_TIMEOUT", 0.3)
+    code, lines = run(uninstall.plan())
+    assert code == 1
+    assert lines[-1] == (
+        f'lado: the agents of session "s" did not end in 0.3s (pids {agent.pid}): end them '
+        f"with kill {agent.pid}; no repository or file was touched: run lado uninstall again"
+    )
+    assert Path(dev.cwd).exists() and "lado/s/dev" in branches(repo) and lado_home.exists()
+    assert agent.poll() is None
 
 
 def test_an_update_that_runs_refuses_the_uninstall(workers, lado_home):

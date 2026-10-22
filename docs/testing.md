@@ -174,11 +174,14 @@ through `~/.profile`, gets its supervisor to idle, the window's process is the `
 binary itself (`/proc/<pid>/exe`), and `lado doctor` run with exactly that process's
 environment (`/proc/<pid>/environ`) says `in a container`; `docker/compose.yaml` serves on
 its `LADO_PORT`, its `lado doctor` names the workspace at the host's path as `LADO_REPOS`,
-it refuses without `LADO_PROJECTS`, and its `config` refuses without `LADO_VERSION` (naming
-it), runs `ghcr.io/ladohq/lado:<LADO_VERSION>` with it and `LADO_IMAGE` when that is set.
+its `config` takes the workspace from `LADO_WORKSPACE`, else from `LADO_PROJECTS`
+(`LADO_WORKSPACE` winning), its `up` refuses without either, naming `LADO_WORKSPACE` and
+making no folder on the host, a LADO project made in it is on the host and not outside the
+workspace for the UI's folder check, its `config` refuses without `LADO_VERSION` (naming
+it), and it runs `ghcr.io/ladohq/lado:<LADO_VERSION>` with it and `LADO_IMAGE` when that is set.
 Two LADOs (`test_two_lados.py`): two compose projects, each a folder of its own with a copy
 of compose.yaml and its own `.env` (`COMPOSE_PROJECT_NAME`, `LADO_PORT`, `LADO_IMAGE` a tag
-of the run's prefix, `LADO_PROJECTS`), no `-f` or `-p`; a new image reference in the first's
+of the run's prefix, `LADO_WORKSPACE`), no `-f` or `-p`; a new image reference in the first's
 `.env` and its `up -d` leave the second's container id, start time and image as they were;
 `docker compose down` of the first leaves the second's session running, its supervisor the
 same process, and its `lado.db` with no session stopped; the update's two have each a

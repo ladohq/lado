@@ -178,7 +178,7 @@ curl -fLO https://github.com/ladohq/lado/releases/download/vX.Y.ZrcN/compose.yam
 git -C <repository> show vX.Y.ZrcN:docker/compose.yaml | cmp - compose.yaml
 cat > .env <<'EOF'
 LADO_VERSION=X.Y.ZrcN
-LADO_PROJECTS=/absolute/path/to/a/test/folder
+LADO_WORKSPACE=/absolute/path/to/a/test/folder
 LADO_PORT=8799
 EOF
 docker compose up -d
@@ -197,7 +197,7 @@ writable); the last command prints the UI's link with its token. Then:
   about a server open to the network (a note about the container's published port
   instead).
 - A session: the New session window with an empty Where offers the folders of
-  `LADO_PROJECTS`; the session starts and its supervisor answers. A worker's worktree, if
+  `LADO_WORKSPACE`; the session starts and its supervisor answers. A worker's worktree, if
   you start one, is on the host at the same path, its files yours (on Linux).
 - `docker compose exec lado lado update` refuses at once, stops nothing and says a new
   image updates LADO in a container; the UI's Update does not start one either.
@@ -215,7 +215,9 @@ On one machine, as in 4.5 (a fresh terminal, a test workspace), from the last
 final before the RC, `X.Y.Z` below, the way a user of `X.Y.Z` updates: with that
 version's own `compose.yaml` and a session running. Two LADOs, each in a folder of its
 own; the second only stands beside the first. The old files come from the tag (a release
-before 0.40.0 has no `compose.yaml` asset):
+before 0.40.0 has no `compose.yaml` asset). Both `.env` files name the workspace
+`LADO_PROJECTS` on purpose: the `compose.yaml` of a final before 0.43.0 knows only that
+name, and the update checks that an installed `.env` keeps working:
 
 ```
 mkdir -p /tmp/lado-rc-update /tmp/lado-rc-beside
@@ -290,9 +292,12 @@ cd / && rm -rf /tmp/lado-rc-update /tmp/lado-rc-beside
    the GitHub release, marked the latest (section 7).
 3. The tracker (Yougile, through LADO's skill `tracker`): each task in the status `done`
    with the label `waiting for release` whose change the release ships gets the comment
-   «Вышла в X.Y.Z», and the label is removed; a task whose change is not in the release
-   keeps it. The merge sets that label (`.lado/sdlc.md`, Tracker); its sticker is named
-   in `.lado/tracker.yaml`.
+   «Вышла в X.Y.Z» and the field `release` set to X.Y.Z (unchanged when it already holds
+   it), and the label is removed; a task whose change is not in the release keeps its
+   label and its field. The merge sets that label and the coming version in the field
+   (`.lado/sdlc.md`, After the merge), so the final corrects a planned patch that became
+   a minor and fills the field of a task merged before it existed; the label's and the
+   field's stickers are named in `.lado/tracker.yaml`.
 
 The live tests are not run again: the code is the last RC's, which they ran on. A patch
 released without an RC gets all of section 2's checks (CI, `make test-live`) on its

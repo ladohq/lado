@@ -50,7 +50,7 @@
 # ~/.local on the home volume too; the image's Node 22 stays first on PATH. The agents' base
 # tools are here too (jq, rg, unzip, zip, xz, bzip2, patch, file, rsync, sqlite3, tree, lsof,
 # nc), and openspec at its pin, its usage statistics and update check off. python3 and
-# python are the image's Python 3.13, root's, unless a project's version file or `mise use
+# python are the image's Python 3.13, root's, unless a repository's version file or `mise use
 # -g` names another. The system libraries of Playwright's Chromium are here, for the UI
 # tests; the browser itself comes from `make browser`, into the home volume. Other apt
 # packages and databases are not covered.
@@ -63,7 +63,7 @@ FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595
 # tmux 3.3a and git 2.39 from Debian 12; tini reaps what tmux and the agents leave; gh and
 # the ssh client for the agents' pushes; curl fetches gh's keyring (a binary .gpg); make,
 # gcc and g++ build the repositories' Makefiles, Go's cgo and native modules of Node and Python.
-# The agents' base tools, which the kits' scripts and the agent CLIs call before any project
+# The agents' base tools, which the kits' scripts and the agent CLIs call before any repository
 # installs a thing: jq (JSON), ripgrep (Codex, OpenCode and Kilo search with rg), archives
 # (unzip, zip, xz, bzip2), patch, file, rsync, sqlite3, tree, lsof and nc.
 RUN apt-get update \
@@ -83,7 +83,7 @@ RUN apt-get update \
 # packages `playwright install-deps chromium` installs on Debian 12 (Playwright's `chromium`
 # list), in a layer of their own. No fonts and no xvfb (the tests run headless, the UI's
 # fonts come with its bundle); the browser itself is not here: `make browser` installs it
-# into ~/.cache/ms-playwright on the home volume, at the project's own Playwright version.
+# into ~/.cache/ms-playwright on the home volume, at the repository's own Playwright version.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcairo2 libcups2 \
@@ -114,7 +114,7 @@ RUN useradd --create-home --uid 1000 --shell /bin/bash lado \
 # The Python LADO runs on (uv's 3.13), root's, /opt/uv with it: it answers every agent's
 # python3, so no agent may change it (pip refuses it too, externally managed). No uv bin
 # links (root's ~/.local/bin): python3 and python are links in /opt/fallback/bin, last on
-# PATH, after mise's shims, so a project's Python through mise answers first.
+# PATH, after mise's shims, so a repository's Python through mise answers first.
 RUN UV_PYTHON_INSTALL_DIR=/opt/uv/python uv python install 3.13 --no-bin \
  && rm -rf /root/.cache \
  && python=$(ls -d /opt/uv/python/cpython-3.13.*-linux-*-gnu/bin/python3.13) \

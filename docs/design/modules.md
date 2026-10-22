@@ -200,8 +200,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (deleted only when it is `~/.lado` by real path or holds `lado.db`, never `/`, the home
     folder or above it; such a folder is never walked). `run` holds the update's lock
     (`self_update.take_lock`), stops the UI server, `runtime.stop_all` (which migrates an
-    older `lado.db`), waits for each loop (one that does not end stops it before any
-    repository or file), closes the viewers and kills LADO's tmux server when no session is
+    older `lado.db`), waits for each loop, then for the process of each tmux pane those
+    sessions had (`tmux.pane_pids`, taken before the stop; up to `AGENTS_TIMEOUT`, 10 s for
+    all, a zombie counting as ended, as `ps -o stat=` tells: an agent's session-end hook
+    would make `LADO_HOME` again), each of which that does not end stops it before any
+    repository or file, an agent's process with its `kill <pid>`; closes the viewers and kills LADO's tmux server when no session is
     left on its socket (`tmux.kill_server`); then judges the work again, removes what
     goes (`runtime.remove_work`), drops `.lado/worktrees`, the exclude line
     (`runtime.include_worktrees`) and an empty `.lado/` once no worktree is left, deletes
@@ -1065,20 +1068,24 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `compose.yaml`: the same image, `ghcr.io/ladohq/lado:${LADO_VERSION}` (required, no
   default: the tag of a version never moves, so the image before an update keeps its name;
   `LADO_IMAGE` replaces it, `lado:local` and the tests), one `LADO_PORT` both inside and
-  published as `127.0.0.1:${LADO_PORT}:${LADO_PORT}`, `LADO_PROJECTS` (required) at that
-  same path and as `LADO_REPOS`, no container name; its header keeps the settings in
+  published as `127.0.0.1:${LADO_PORT}:${LADO_PORT}`, the workspace (`LADO_WORKSPACE`,
+  else `LADO_PROJECTS`, its name before 0.43.0) at that same path and as `LADO_REPOS`, a
+  bind that never makes a missing folder on the host (without either variable `up` refuses
+  with Docker's error on `/set-LADO_WORKSPACE-to-your-workspace-folder`; no nested `:?`,
+  which Compose v2 on GitHub's runners evaluates even when the outer variable is set), no
+  container name; its header keeps the settings in
   `.env` next to the file, updates by the version's `compose.yaml`
   (`releases/download/v<version>/compose.yaml`), a new `LADO_VERSION` and `up -d`, goes
   back by the version before, keeping the newer `compose.yaml`, with a migration's backup (`docker compose down`, the backup copied over
   lado.db by `docker compose run`, `up -d`), and runs a second LADO from a folder of its
   own with its own `.env` (`COMPOSE_PROJECT_NAME`, `LADO_PORT`, `LADO_VERSION`,
-  `LADO_PROJECTS`); the Dockerfile's header gives the same for `docker run`.
+  `LADO_WORKSPACE`); the Dockerfile's header gives the same for `docker run`.
   `tests/test_docker.py`'s `header_steps` and `way_back` read them, the container tests
   run them. The users' guide is docs/install.md's `## Docker` (compose first, `docker run`
   short; both headers link to it): `guide_steps` keeps its start, update, way back and
   `docker run` the headers', its `.env` naming every variable compose reads but
-  `LADO_IMAGE` and `LADO_SECRETS`; it removes only its own container and `<project>_home`
-  volume by name, and no `prune` is in README.md, docs/*.md or docker/. The Release
+  `LADO_IMAGE`, `LADO_SECRETS` and the old name `LADO_PROJECTS`; it removes only its own
+  container and `<project>_home` volume by name, and no `prune` is in README.md, docs/*.md or docker/. The Release
   workflow attaches the tag's `compose.yaml` to each GitHub release, which the guide
   downloads from `releases/latest/download/compose.yaml`. The research
   prototype in

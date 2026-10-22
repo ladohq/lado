@@ -254,6 +254,27 @@ def test_list_windows_names_the_windows_and_fails_for_a_gone_session(tmp_path):
         tmux.list_windows(session)
 
 
+def test_pane_pids_are_the_processes_of_every_window_and_none_for_a_gone_session(tmp_path):
+    session = f"test-{uuid.uuid4().hex[:6]}"
+    tmux.new_session(session, "supervisor", str(tmp_path), ["sleep", "60"])
+    try:
+        tmux.new_window(session, "w1", str(tmp_path), ["sleep", "60"])
+        pids = tmux.pane_pids(session)
+        listed = subprocess.run(
+            ["ps", "-o", "comm=", "-p", ",".join(map(str, pids))], capture_output=True, text=True
+        )
+        assert len(pids) == 2 and listed.stdout.split() == ["sleep", "sleep"]
+    finally:
+        tmux.kill_session(session)
+    assert tmux.pane_pids(session) == []
+
+
+def test_pane_pids_without_a_server_are_none(monkeypatch):
+    monkeypatch.setenv("LADO_TMUX_SOCKET", f"lado-test-{uuid.uuid4().hex[:8]}")
+    assert not tmux.server_running()
+    assert tmux.pane_pids("anything") == []
+
+
 def test_a_program_cannot_rename_its_window(tmp_path):
     """A window's name is its agent's: the session loop finds the agent's window by it.
     Also when the user's tmux.conf lets programs rename windows."""

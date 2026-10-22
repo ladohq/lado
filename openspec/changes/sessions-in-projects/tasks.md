@@ -44,9 +44,9 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-sessions-in-
 
 ## 5. Documents and version
 
-- [ ] 5.1 `docs/cli.md`, `docs/design/projects.md`, `docs/design/ui.md`,
+- [x] 5.1 `docs/cli.md`, `docs/design/projects.md`, `docs/design/ui.md`,
   `docs/design/modules.md` (D13). Check: `uv run pytest tests/test_agents_md.py`.
-- [ ] 5.2 CHANGELOG: one line under `## 0.43.0 (unreleased)`.
+- [x] 5.2 CHANGELOG: one line under `## 0.43.0 (unreleased)`.
 
 ## 6. Regression
 

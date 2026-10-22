@@ -1361,7 +1361,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   2026-10-14, LAD-63, mockup `task/lad-63/mockup-where-start.html` variant 2; renamed
   LAD-117; the default and `made` LAD-123, mockup `task/lad-123/mockup-workspace-where.html`)
   gives the empty field's placeholder `<folder>/…`. Once the folder exists (`made`), the
-  field's focus while empty lists its subfolders (a pick sets `<folder>/<name>`), and a row
+  field's focus while empty lists its subfolders (a pick sets `<folder>/<name>`; never
+  LADO's `projects/`, nor a folder inside it, which has none: LAD-125), and a row
   **Workspace:** with the folder as a chip, before Recent and hidden in Resume as Recent is, sets
   `<folder>/`, gives the field the focus (its keys and its blur work the list) and opens
   the list. The folder is the parent with one `/` at its end (`/` stays `/`). The folder
@@ -1418,7 +1419,12 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   an amber panel: `--warn-ground` with a 3 px `--warn` stripe on its left, text 13 px in
   `--ink`, its icon the `⚠` its text starts with. A refusal (`field-note bad`) is the same
   panel on `--danger-ground` with a `--danger` stripe and a round `!` drawn by CSS before
-  its first line (not part of its text); its hint, command and Copy stay inside it. Start
+  its first line (not part of its text); its hint, command and Copy stay inside it. A
+  folder inside LADO's `projects/` is such a refusal (LAD-125), before git is asked: the
+  core's text naming the project, `Start a session in the project:` and `lado start
+  --project <id> --repo <name>` with Copy; a clone's target (Clone into) and a fresh start's
+  (Create in) there show the same box with the same hint. Recent folders leave out folders
+  inside `projects/`. Start
   (Clone and start, Create and start, and Resume session in the Resume mode: LAD-122,
   2026-10-21) is off while a refusal shows, and a note that does
   not keep the session from starting is not a refusal: the kits list that does not load
@@ -1608,6 +1614,15 @@ layout, below).
 - The head's first items: the status dot (the session list's mark, its words in its
   tooltip; LAD-108), the title (or the name), the name when there is a title, the pencil
   **Rename session**, the run time (Session title, below).
+- A session in a project (LAD-125, the human's answer #810, mockup
+  `task/lad-125/mockup-session-project.html` variant A) has the project as the head's first
+  fact, before the folder: the muted word `project` and the project's title (its id
+  without one) in `--ink`, the tooltip `Project <id>` (a `title`, as the name's), no icon
+  (the folder's icon is the Projects section's). It wraps with the other facts. The title
+  comes with `SessionAbout.project`, read when the head opens, so a rename shows on the
+  next look; the feed's `SessionInfo.project` carries the id only. On a phone the details
+  sheet has a line **Project** `<title>` above **Folder**. A session without a project
+  shows nothing new; the project is text, not a link, until the Projects section (S6).
 - The head's facts, left to right: where (the folder, then its git: the origin
   remote short, `github.com/ladohq/lado`, without scheme, user and `.git`, and `· <branch>`),
   the kits, the CLI (its permission mode is in its tooltip, below; decided 2026-10-08,

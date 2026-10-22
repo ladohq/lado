@@ -130,8 +130,11 @@ project's folder in it, S2), nothing is refused: LADO does not own it yet.
 
 **D7. Inheritance.** `start_approved_session` passes `project=sess.project` and, when it
 is set, `repo=Path(sess.repo).name` and `path=None`, so the new session is checked as any
-session in the project (its repository must still be listed). `mcp_server.py`,
-`hooks.py` and `providers/` do not change.
+session in the project (its repository must still be listed). `mcp_server.py` and
+`hooks.py` do not change. The review found (F1, the human's answer #824: fix it in this
+step, no live tests) that `start_approved_session` runs in the supervisor's `lado mcp`,
+whose `LADO_REPOS` was its login shell's only: `providers.base.agent_env` now passes LADO's
+`LADO_REPOS` on, as it passes `LADO_ENV_DIR`.
 
 **D8. Where hints and recent folders.** `launch.folder_info`'s `subfolders` leave out
 `projects` when the folder's real path is the workspace's and `projects/` is LADO's (D5's

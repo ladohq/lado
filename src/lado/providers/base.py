@@ -229,11 +229,12 @@ def agent_env(agent: state.Agent) -> dict[str, str]:
         # Hooks and the MCP server type messages into agents' windows on the same tmux server.
         "LADO_TMUX_SOCKET": tmux.socket(),
     }
-    # A supervisor's `lado mcp` launches workers from the same outside folder; its
-    # environment is its login shell's, which may not name the folder.
-    folder = os.environ.get(outside_env.ENV_DIR_VAR)
-    if folder:
-        env[outside_env.ENV_DIR_VAR] = folder
+    # A supervisor's `lado mcp` launches workers from the same outside folder, and starts
+    # sessions in a project or refuses them inside projects/ by the same workspace
+    # (lado.projects); its environment is its login shell's, which may name neither.
+    for name in (outside_env.ENV_DIR_VAR, "LADO_REPOS"):
+        if value := os.environ.get(name):
+            env[name] = value
     return env
 
 

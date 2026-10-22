@@ -44,7 +44,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   container doctor's `[info]` for no secrets names how to give them. A launching process with `LADO_ENV_DIR` set gives
   it to the agent and its `lado mcp` among LADO's variables (`providers.agent_env`), so a
   supervisor's `spawn_worker` and `start_session` read the same folder, also when the login
-  shell does not name it. A tmux window starts with its server's environment, so the
+  shell does not name it. `LADO_REPOS`, when set, goes the same way: a supervisor's
+  `start_session` finds its project's repository and refuses a session inside `projects/`
+  by LADO's workspace, not by one its login shell names or lacks (LAD-125). A tmux window starts with its server's environment, so the
   window runs `lado.agent_env <file> <argv>` (`interpreter.run_module`): it reads that environment from a file
   in the agent's config folder (`env.json`, mode 600 also when it was there before, removed
   once read; the one file under `LADO_HOME/agents/` that holds the values of a kit's MCP

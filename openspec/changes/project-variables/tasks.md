@@ -18,7 +18,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-project-vari
 - [x] 2.2 `variables` in `GET /api/projects/{id}`, `PUT` and `DELETE
   /api/projects/{id}/variables/{name}`; `make web-types` (D8). Check:
   `tests/test_server_projects.py`, `make web`.
-- [ ] 2.3 `lado doctor`'s `Project variables` line (D9). Check: `tests/test_doctor.py`.
+- [x] 2.3 `lado doctor`'s `Project variables` line (D9). Check: `tests/test_doctor.py`.
 
 ## 3. End to end
 

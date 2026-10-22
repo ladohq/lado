@@ -173,6 +173,73 @@ def test_the_report_has_no_variable_name_or_value(tmp_path, monkeypatch):
 
 
 @pytest.fixture
+def overlap(tmp_path, monkeypatch, lado_home):
+    """The outside folder gives BOARD_URL, MODEL_URL and GH_TOKEN; project shop sets
+    BOARD_URL and MODEL_URL, acme BOARD_URL, empty none."""
+    folder = tmp_path / "s"
+    folder.mkdir()
+    for name in ("BOARD_URL", "MODEL_URL", "GH_TOKEN"):
+        (folder / name).write_text(f"out-{name}")
+    monkeypatch.setenv("LADO_ENV_DIR", str(folder))
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    for id in ("shop", "acme", "empty"):
+        projects.create(id, None)
+    projects.set_variable("shop", "MODEL_URL", "canary-m")
+    projects.set_variable("shop", "BOARD_URL", "canary-b")
+    projects.set_variable("acme", "BOARD_URL", "canary-a")
+    projects.set_variable("empty", "OTHER", "canary-o")
+    return folder
+
+
+def test_project_variables_over_the_outside_folder_are_named(overlap):
+    check = doctor.check_project_variables()
+    assert check == doctor.Check(
+        "Project variables",
+        doctor.INFO,
+        "acme overrides BOARD_URL of LADO_ENV_DIR; shop overrides BOARD_URL, MODEL_URL of "
+        "LADO_ENV_DIR",
+    )
+    names = [c.name for c in doctor.run_checks(which=lambda c: c)]
+    assert names[names.index("Variables from outside") + 1] == "Project variables"
+
+
+def test_no_project_variables_line_without_an_overlap(overlap, monkeypatch):
+    projects.unset_variable("shop", "BOARD_URL")
+    projects.unset_variable("shop", "MODEL_URL")
+    projects.unset_variable("acme", "BOARD_URL")
+    assert doctor.check_project_variables() is None
+    projects.set_variable("shop", "BOARD_URL", "x")
+    monkeypatch.delenv("LADO_ENV_DIR")
+    assert doctor.check_project_variables() is None
+    names = [c.name for c in doctor.run_checks(which=lambda c: c)]
+    assert "Project variables" not in names
+
+
+def test_no_project_variables_line_without_a_database(tmp_path, monkeypatch, lado_home):
+    folder = tmp_path / "s"
+    folder.mkdir()
+    (folder / "BOARD_URL").write_text("v")
+    monkeypatch.setenv("LADO_ENV_DIR", str(folder))
+    assert doctor.check_project_variables() is None
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_no_project_variables_line_from_an_older_schema(overlap):
+    agent_helpers.previous_schema()
+    assert doctor.check_project_variables() is None
+    assert state.schema_version() == state.SCHEMA_VERSION - 1  # nothing migrated
+
+
+def test_doctor_and_the_report_hold_no_project_variable_s_value(overlap, capsys):
+    doctor.main()
+    out = capsys.readouterr().out
+    assert "[info] Project variables: acme overrides BOARD_URL" in out
+    assert "canary-" not in out
+    text = doctor.report(doctor.system_info(which=lambda cmd: cmd), doctor.ServerState(False, 0))
+    assert "canary-" not in text and "MODEL_URL" not in text and "OTHER" not in text
+
+
+@pytest.fixture
 def default_home(home_workspace, tmp_path, monkeypatch):
     """No LADO_REPOS, HOME in tmp_path: the workspace is <tmp>/workspace."""
     monkeypatch.setenv("HOME", str(tmp_path))

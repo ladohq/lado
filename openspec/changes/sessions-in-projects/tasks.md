@@ -12,7 +12,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-sessions-in-
   the human's own `projects/`).
 - [x] 1.4 `start_session(…, project, repo_name)` and the refusal at start (D4, D6). Check:
   `tests/test_runtime_projects.py` (a module of its own beside the long `test_runtime.py`).
-- [ ] 1.5 `start_approved_session` inherits the project (D7). Check:
+- [x] 1.5 `start_approved_session` inherits the project (D7). Check:
   `tests/test_runtime_start_approved.py`.
 
 ## 2. Server and CLI

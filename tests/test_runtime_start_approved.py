@@ -1,9 +1,11 @@
 """The supervisor starts a session the human approved (runtime.start_approved_session)."""
 
-import pytest
-from agent_helpers import install_kit
+import shutil
 
-from lado import artifacts, providers, runtime, state, tmux
+import pytest
+from agent_helpers import init_repo, install_kit
+
+from lado import artifacts, projects, providers, runtime, state, tmux
 
 CHOICE_B = runtime.START_CHOICE.format(name="b")
 
@@ -240,3 +242,54 @@ def test_first_is_only_for_a_new_session(repo, fake_tmux):
             runtime.start_session(
                 str(repo), "b", None, provider="claude", resume=resume, first=first
             )
+
+
+# In a project (openspec change sessions-in-projects)
+
+
+@pytest.fixture
+def in_shop(tmp_path, monkeypatch, fake_tmux):
+    """Session "a" of the project shop (titled Shop) in its repository frontend, with a
+    brief by its supervisor; the repository's folder."""
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    projects.create("shop", "Shop")
+    frontend = init_repo(projects.folder("shop") / "frontend")
+    runtime.start_session(
+        None, "a", "plan", provider="claude", project="shop", repo_name="frontend"
+    )
+    artifacts.write("a", "supervisor", "brief-b", content="# Fix the bug\n", title="Brief")
+    return frontend
+
+
+def test_a_session_started_from_a_project_is_in_the_project(in_shop):
+    runtime.start_approved_session("a", "supervisor", "b", _approved())
+    b = state.get_session("b")
+    assert (b.project, b.repo, b.permission_mode) == ("shop", str(in_shop), "plan")
+
+
+def test_a_session_started_from_one_without_a_project_has_none(a, repo):
+    runtime.start_approved_session("a", "supervisor", "b", _approved())
+    assert state.get_session("b").project is None
+
+
+def test_from_a_session_without_a_project_inside_projects_the_start_is_refused(in_shop):
+    with state.connect() as db:  # as a session started there before schema 33
+        db.execute("UPDATE sessions SET project = NULL WHERE name = 'a'")
+    with pytest.raises(runtime.FolderProblem) as refused:
+        runtime.start_approved_session("a", "supervisor", "b", _approved())
+    assert (
+        str(refused.value)
+        == f"{in_shop} belongs to the project Shop: start a session in the project"
+    )
+    assert state.get_session("b") is None
+
+
+def test_a_repository_removed_by_hand_is_refused_naming_the_others(in_shop):
+    shutil.rmtree(in_shop)
+    init_repo(projects.folder("shop") / "backend")
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.start_approved_session("a", "supervisor", "b", _approved())
+    assert str(refused.value) == (
+        "project shop has no repository frontend; its repositories: backend"
+    )
+    assert state.get_session("b") is None

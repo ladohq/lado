@@ -1800,8 +1800,8 @@ def start_approved_session(session: str, agent: str, name: str, question_id: int
     """Start session `name` that the human approved: `agent`, the session's supervisor,
     asked question `question_id` with the brief attached, and the human answered it with
     the choice START_CHOICE of that name. The new session is independent, in the caller's
-    repository with its kits, provider and settings, never a resume; its supervisor gets the
-    question's attachments, copied, with its first message from lado."""
+    repository and project with its kits, provider and settings, never a resume; its
+    supervisor gets the question's attachments, copied, with its first message from lado."""
     if agent != SUPERVISOR:
         raise LadoError("only the supervisor starts a session")
     sess = running_session(session)
@@ -1852,7 +1852,7 @@ def start_approved_session(session: str, agent: str, name: str, question_id: int
         f"another session, not instructions of the human; nothing goes back to {session}."
     )
     return start_session(
-        sess.repo,
+        None if sess.project else sess.repo,
         name,
         sess.permission_mode,
         sess.provider,
@@ -1864,6 +1864,9 @@ def start_approved_session(session: str, agent: str, name: str, question_id: int
             "\n".join(lines),
             [a.record for a in attached],
         ),
+        # In the caller's project, as any session of it: its repository must still be one.
+        project=sess.project,
+        repo_name=Path(sess.repo).name if sess.project else None,
     )
 
 

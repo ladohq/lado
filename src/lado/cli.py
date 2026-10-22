@@ -1149,8 +1149,8 @@ def cmd_project_repo(args: argparse.Namespace) -> int:
     if args.new is not None:
         if args.name is not None or args.branch is not None:
             usage("--name and --branch go with a git URL, not --new")
-        added = projects.add_new(args.id, args.new)
-        print(f"Made {added.path} a git repository with an empty first commit")
+        name, target = args.new, projects.add_new(args.id, args.new).path
+        print(f"Made {target} a git repository with an empty first commit")
     else:
         if not clone.is_url(args.url):
             usage(f"{args.url} is not a git URL")
@@ -1164,9 +1164,8 @@ def cmd_project_repo(args: argparse.Namespace) -> int:
         )
         if cancelled is not None:
             return cancelled
-        added = projects.repository(args.id, name)
-    print(f"Added repository {added.name} to project {args.id}: {added.path}")
-    print(f"Start a session in it: lado start --project {args.id} --repo {added.name}")
+    print(f"Added repository {name} to project {args.id}: {target}")
+    print(f"Start a session in it: lado start --project {args.id} --repo {name}")
     return 0
 
 

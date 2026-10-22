@@ -207,7 +207,7 @@ def _hint(
 ) -> runtime.Hint:
     """`refusal`'s hint for a path `below` the project's folder (in the real projects/
     `root`)."""
-    if below and any(repo.name == below[0] for repo in repositories(id)):
+    if below and _is_repository(root / id / below[0]):
         return runtime.Hint(
             "Start a session in the project:", f"lado start --project {id} --repo {below[0]}"
         )
@@ -343,14 +343,25 @@ def _entries(id: str) -> list[os.DirEntry]:
         return []
 
 
-def _own_root(entry: os.DirEntry) -> bool:
-    """Whether the folder `entry` is the root of a git repository of its own: not a plain
+def _own_root(path: str) -> bool:
+    """Whether the folder `path` is the root of a git repository of its own: not a plain
     folder inside a repository that holds it, such as a project folder made one."""
     try:
-        top = _git(Path(entry.path), "rev-parse", "--show-toplevel").strip()
+        top = _git(Path(path), "rev-parse", "--show-toplevel").strip()
     except _GitFailed:
         return False  # no repository LADO can start in
-    return os.path.realpath(top) == os.path.realpath(entry.path)
+    return os.path.realpath(top) == os.path.realpath(path)
+
+
+def _is_repository(path: Path) -> bool:
+    """Whether the entry `path` of a project's folder is one of its repositories: not
+    hidden, not a link, a folder that is a git repository's root (`repositories`)."""
+    return (
+        not path.name.startswith(".")
+        and not path.is_symlink()
+        and path.is_dir()
+        and _own_root(str(path))
+    )
 
 
 def repositories(id: str) -> list[Repository]:
@@ -358,7 +369,7 @@ def repositories(id: str) -> list[Repository]:
     folder, not hidden and not links, that are each a git repository's root; by name."""
     found = []
     for entry in _entries(id):
-        if entry.is_symlink() or not entry.is_dir() or not _own_root(entry):
+        if not _is_repository(Path(entry.path)):
             continue
         url = runtime.remote(entry.path)
         found.append(
@@ -644,7 +655,7 @@ def removal(id: str, name: str) -> Removal:
     path = Path(entry.path)
     if entry.is_symlink():
         return Removal(name, "link", path, os.readlink(path), [], [])
-    if not any(repo.name == name for repo in repositories(id)):
+    if not _is_repository(path):
         raise ProjectError(
             f"{name} in project {id} is not a repository: LADO removes only repositories and links"
         )

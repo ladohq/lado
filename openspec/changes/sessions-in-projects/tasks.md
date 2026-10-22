@@ -35,7 +35,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-sessions-in-
 
 ## 4. End to end
 
-- [ ] 4.1 `tests/integration/test_project_sessions.py`: start in a project, `lado ls`,
+- [x] 4.1 `tests/integration/test_project_sessions.py`: start in a project, `lado ls`,
   `start_session` inherits, resume keeps, every refusal path, delete with a running and a
   stopped session, the upgrade of a session from before schema 33. Check: `uv run pytest
   -m integration -n auto <files>`.

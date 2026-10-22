@@ -19,6 +19,7 @@ import sqlite3
 import stat
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -247,6 +248,62 @@ def _git(checkout: Path, *args: str) -> str:
 
 class _GitFailed(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class Repository:
+    """A repository of a project, as git has it now."""
+
+    name: str
+    path: Path
+    branch: str | None  # None on a detached HEAD
+    remote: str | None  # origin without a secret (runtime.public_remote); None without one
+
+
+def _entries(id: str) -> list[os.DirEntry]:
+    """The entries of the project's folder whose names do not start with ".", by name; none
+    when the folder is not found."""
+    try:
+        with os.scandir(folder(id)) as found:
+            return sorted((e for e in found if not e.name.startswith(".")), key=lambda e: e.name)
+    except OSError:
+        return []
+
+
+def _own_root(entry: os.DirEntry) -> bool:
+    """Whether the folder `entry` is the root of a git repository of its own: not a plain
+    folder inside a repository that holds it, such as a project folder made one."""
+    try:
+        top = _git(Path(entry.path), "rev-parse", "--show-toplevel").strip()
+    except _GitFailed:
+        return False  # no repository LADO can start in
+    return os.path.realpath(top) == os.path.realpath(entry.path)
+
+
+def repositories(id: str) -> list[Repository]:
+    """The project's repositories, read from the disk each time: the folders directly in its
+    folder, not hidden and not links, that are each a git repository's root; by name."""
+    found = []
+    for entry in _entries(id):
+        if entry.is_symlink() or not entry.is_dir() or not _own_root(entry):
+            continue
+        url = runtime.remote(entry.path)
+        found.append(
+            Repository(
+                entry.name,
+                Path(entry.path),
+                runtime.branch(entry.path),
+                runtime.public_remote(url) if url else None,
+            )
+        )
+    return found
+
+
+def links(id: str) -> list[tuple[str, str]]:
+    """The symbolic links directly in the project's folder, not hidden, with their targets
+    as written: never a repository of the project, whose work would then lie outside its
+    folder; named so the human knows where such a repository went."""
+    return [(e.name, os.readlink(e.path)) for e in _entries(id) if e.is_symlink()]
 
 
 def _not_pushed(repo: Path) -> list[str]:

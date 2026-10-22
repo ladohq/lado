@@ -5,7 +5,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-sessions-in-
 - [x] 1.1 Schema 33: `sessions.project` referring to `projects(id)`, `Session.project`,
   `project_sessions`, `schema_before` (D1). Check: `tests/test_state.py` (migration from
   `previous_schema` with its backup, the foreign key).
-- [ ] 1.2 `projects.repositories` (D2). Check: `tests/test_projects_core.py` with real git
+- [x] 1.2 `projects.repositories` (D2). Check: `tests/test_projects_core.py` with real git
   (clone, init, hidden, link, plain folder, the project folder itself, detached HEAD).
 - [ ] 1.3 `projects.refusal`, kind `in_project` (D5). Check: `tests/test_projects_core.py`
   (repository, deeper, non-git, missing, project folder, foreign, `projects/`, link,

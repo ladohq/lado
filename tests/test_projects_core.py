@@ -222,14 +222,71 @@ def test_names_lists_three_then_an_ellipsis():
     assert projects.names(["d", "c", "b", "a"]) == "a, b, c, …"
 
 
-# The unpushed scan and delete
-
-
 def _git(repo: Path, *args: str) -> str:
     done = subprocess.run(
         ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
     )
     return done.stdout
+
+
+# The repositories, from the disk
+
+
+def test_repositories_with_their_branches_and_remotes(home, git_config):
+    projects.create("shop", "Shop")
+    folder = projects.folder("shop")
+    source = init_repo(home / "src" / "frontend")
+    subprocess.run(
+        ["git", "clone", "-q", str(source), str(folder / "frontend")],
+        check=True,
+        capture_output=True,
+    )
+    _git(
+        folder / "frontend", "remote", "set-url", "origin", "https://token@github.com/shop/frontend"
+    )
+    backend = init_repo(folder / "backend")
+    _git(backend, "switch", "-q", "-c", "dev")
+    _git(backend, "branch", "-q", "-D", "main")
+    assert projects.repositories("shop") == [
+        projects.Repository("backend", folder / "backend", "dev", None),
+        projects.Repository(
+            "frontend", folder / "frontend", "main", "https://github.com/shop/frontend"
+        ),
+    ]
+    assert projects.links("shop") == []
+
+
+def test_what_is_no_repository(home, git_config):
+    projects.create("shop", None)
+    folder = projects.folder("shop")
+    folder.rmdir()
+    init_repo(folder)  # the project folder itself is a repository
+    (folder / "plain").mkdir()  # inside it, but no root of its own
+    (folder / "notes").mkdir()
+    init_repo(folder / ".web.clone-x1y2")  # a clone's temporary folder
+    (folder / "readme.txt").write_text("x")
+    elsewhere = init_repo(home / "elsewhere" / "docs")
+    (folder / "docs").symlink_to(elsewhere)
+    assert projects.repositories("shop") == []
+    assert projects.links("shop") == [("docs", str(elsewhere))]
+
+
+def test_a_detached_head_has_no_branch(home, git_config):
+    projects.create("shop", None)
+    repo = init_repo(projects.folder("shop") / "frontend")
+    _git(repo, "switch", "-q", "--detach")
+    [found] = projects.repositories("shop")
+    assert (found.name, found.branch, found.remote) == ("frontend", None, None)
+
+
+def test_a_project_whose_folder_is_gone_has_no_repositories(home):
+    projects.create("shop", None)
+    projects.folder("shop").rmdir()
+    assert projects.repositories("shop") == []
+    assert projects.links("shop") == []
+
+
+# The unpushed scan and delete
 
 
 @pytest.fixture

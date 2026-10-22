@@ -114,17 +114,15 @@ agent's environment.
 ### Requirement: A name LADO sets keeps LADO's value
 
 When a file of the outside folder, or a variable of the session's project, has a name that
-LADO or the agent's provider sets for that launch (`LADO_*` is refused by name; the
-provider's own variables, such as Claude Code's or OpenCode's config variables), the
-launch SHALL keep LADO's or the provider's value and SHALL say so in its warnings (a
-start's or resume's, `spawn_worker`'s result), `variable file <name> in <folder> not
-used: LADO sets <name> for <provider>` for a file and `project variable <name> of <id>
-not used: LADO sets <name> for <provider>` for a project's variable, once per launch.
+LADO or the agent's provider sets for that launch (such as a provider's config variable),
+the launch SHALL keep LADO's or the provider's value and SHALL name the file or the
+variable once in that launch's warnings (a start's, a resume's or `spawn_worker`'s).
 
 #### Scenario: A provider's variable
 - **WHEN** the folder holds a file named after a variable the agent's provider sets for
   its launch
-- **THEN** the agent has the provider's value, and the start's warnings name the file
+- **THEN** the agent has the provider's value, and the start's warnings say `variable file
+  <name> in <folder> not used: LADO sets <name> for <provider>`
 
 #### Scenario: A project's variable stored under a name now reserved
 - **WHEN** project `shop` holds in `lado.db` a variable named after a variable the agent's

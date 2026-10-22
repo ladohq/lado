@@ -160,6 +160,32 @@ or value 400 with the refusal's text, nothing stored.
 
 ## MODIFIED Requirements
 
+### Requirement: lado project show lists the project's repositories
+
+`lado project show <id>` SHALL print, after its `made:` line, `  repositories:` and one
+line per repository, by name: `    <name>  <branch>  <remote>`, the names and branches
+padded to one width, `(detached)` for no branch and `(no remote)` for no remote; with
+none, `  repositories: none`. A symbolic link in the project's folder SHALL be listed
+among them by name, marked `(a link to <target>: clone it into <folder> instead)`. The
+project's variables follow.
+
+#### Scenario: Two repositories
+- **WHEN** the project `shop` has `frontend` (branch `main`, remote
+  `https://github.com/shop/frontend`) and `backend` (branch `dev`, no remote)
+- **THEN** `lado project show shop` prints `  repositories:`, `    backend   dev
+  (no remote)` and `    frontend  main  https://github.com/shop/frontend`, then its
+  variables
+
+#### Scenario: A link in the project's folder
+- **WHEN** `<ws>/projects/shop/docs` is a symbolic link to `/srv/docs`
+- **THEN** `lado project show shop` lists `    docs      (a link to /srv/docs: clone it into
+  <ws>/projects/shop instead)` between `backend` and `frontend`
+
+#### Scenario: A project whose folder is gone
+- **WHEN** the folder of `acme` is gone and the human runs `lado project show acme`
+- **THEN** it prints `  folder:  <ws>/projects/acme  (folder not found)` and
+  `  repositories: none`
+
 ### Requirement: Agents cannot change projects
 
 `lado project create`, `rename`, `delete`, `set`, `unset`, `repo add` and `repo remove`

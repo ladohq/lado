@@ -64,7 +64,8 @@ the human before any hook, like Claude Code's "trust this folder?": a typed "yes
 any other input exits at once with no hook. With FAKE_AGENT_HANGUP_HOOK=1 in its environment, when
 its tmux window is killed (SIGHUP) it runs its session-end hook before it exits, as Claude
 Code does, and writes {"hung_up": <what the hook printed>} to "seen" once the hook is done;
-else it exits at once. A killed terminal can also end its read (EOF, or EIO) before the
+FAKE_AGENT_HANGUP_DELAY=<seconds> waits that long before the hook, as a slow CLI. Else it
+exits at once. A killed terminal can also end its read (EOF, or EIO) before the
 signal is handled: whichever comes first ends the session, once (end_session).
 A typed "switch" is no input but a command of the CLI itself, like Claude Code's /resume: the
 agent leaves its conversation, picks another while it pauses (as `pause`), and goes on in
@@ -434,6 +435,7 @@ def end_session() -> None:
         return
     ending = True
     if os.environ.get("FAKE_AGENT_HANGUP_HOOK") == "1":
+        time.sleep(float(os.environ.get("FAKE_AGENT_HANGUP_DELAY", "0")))
         report(hung_up=hook("session_end"))
     else:
         hook("session_end")

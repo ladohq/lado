@@ -236,6 +236,18 @@ def list_windows(session: str) -> list[str]:
     return run("list-windows", "-t", f"={session}", "-F", "#{window_name}").splitlines()
 
 
+def pane_pids(session: str) -> list[int]:
+    """The process of each pane of the session, in all its windows; none when the session
+    or the tmux server is gone."""
+    try:
+        listed = run("list-panes", "-s", "-t", f"={session}", "-F", "#{pane_pid}")
+    except TmuxMissing:
+        raise
+    except TmuxError:
+        return []
+    return [int(pid) for pid in listed.split()]
+
+
 def send_text(session: str, window: str, text: str) -> None:
     """Type `text` into the program running in the window and press Enter.
 

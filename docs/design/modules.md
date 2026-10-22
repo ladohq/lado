@@ -200,8 +200,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (deleted only when it is `~/.lado` by real path or holds `lado.db`, never `/`, the home
     folder or above it; such a folder is never walked). `run` holds the update's lock
     (`self_update.take_lock`), stops the UI server, `runtime.stop_all` (which migrates an
-    older `lado.db`), waits for each loop (one that does not end stops it before any
-    repository or file), closes the viewers and kills LADO's tmux server when no session is
+    older `lado.db`), waits for each loop, then for the process of each tmux pane those
+    sessions had (`tmux.pane_pids`, taken before the stop; up to `AGENTS_TIMEOUT`, 10 s for
+    all, a zombie counting as ended, as `ps -o stat=` tells: an agent's session-end hook
+    would make `LADO_HOME` again), each of which that does not end stops it before any
+    repository or file, an agent's process with its `kill <pid>`; closes the viewers and kills LADO's tmux server when no session is
     left on its socket (`tmux.kill_server`); then judges the work again, removes what
     goes (`runtime.remove_work`), drops `.lado/worktrees`, the exclude line
     (`runtime.include_worktrees`) and an empty `.lado/` once no worktree is left, deletes

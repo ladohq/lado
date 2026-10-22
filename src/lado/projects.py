@@ -156,20 +156,27 @@ def foreign() -> list[str]:
     return [name for name in visible if name not in ids] if ids & set(visible) else []
 
 
+def lados_folder() -> Path | None:
+    """The real path of projects/ while it is LADO's: a folder, LADO has projects, and it is
+    not the human's own folder (owned_by_human). None otherwise: nothing in it is refused."""
+    if not projects_folder().is_dir():
+        return None  # first: most checks find no projects/ at all, and need no lado.db
+    if not _ids() or owned_by_human() is not None:
+        return None
+    return Path(os.path.realpath(projects_folder()))
+
+
 def refusal(path: str) -> runtime.FolderProblem | None:
     """Why no new session without a project may start at `path` (kind `in_project`), by its
     real path: it is inside projects/ while that folder is LADO's. The text names the
     project, and the hint offers its session, or the projects for a folder of none. None
     outside projects/, when projects/ is the human's own folder, and without projects."""
-    ids = _ids()
-    if not ids or not projects_folder().is_dir() or owned_by_human() is not None:
-        return None
-    root = Path(os.path.realpath(projects_folder()))
+    root = lados_folder()
     real = Path(os.path.realpath(path))
-    if real != root and root not in real.parents:
+    if root is None or not real.is_relative_to(root):
         return None
     parts = real.relative_to(root).parts
-    if not parts or parts[0] not in ids:
+    if not parts or parts[0] not in _ids():
         return runtime.FolderProblem(
             "in_project",
             f"{path} is in {projects_folder()}, which holds LADO's projects only: start a "

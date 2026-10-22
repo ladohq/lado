@@ -16,8 +16,26 @@ SUBFOLDERS = 50  # at most this many subfolders of a folder
 RECENT = 10  # at most this many recent folders
 
 
+def _hint(hint: runtime.Hint | None) -> models.HintInfo | None:
+    return models.HintInfo(text=hint.text, command=hint.command) if hint else None
+
+
 def folder_info(path: str, has_db: bool) -> models.FolderInfo:
     path = runtime.full_path(path)
+    if refused := projects.refusal(path):  # before git: a start there is refused whatever
+        return models.FolderInfo(
+            path=path,
+            ok=False,
+            problem=str(refused),
+            root=None,
+            branch=None,
+            problem_kind=refused.kind,
+            hint=_hint(refused.hint),
+            subfolders=[],
+            default_name=None,
+            name_state=None,
+            provider=None,
+        )
     kind, hint = None, None
     try:
         root = runtime.check_repo(path)
@@ -26,8 +44,7 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         ok, problem = False, str(refused)
         if isinstance(refused, runtime.FolderProblem):
             kind = refused.kind
-            if refused.hint:
-                hint = models.HintInfo(text=refused.hint.text, command=refused.hint.command)
+            hint = _hint(refused.hint)
         root = _root_or_none(path)
     name = runtime.slug(Path(root).name) if root else None
     return models.FolderInfo(
@@ -65,11 +82,11 @@ def scratch_target(text: str, path: str | None, has_db: bool) -> models.ScratchT
         folder: str | None = runtime.full_path(path)
     else:
         folder = str(scratch.default_folder(names.name)) if names else None
-    state, text = None, None
+    state, text, hint = None, None, None
     if folder:
         try:
             target = scratch.check_target(folder)
-            state, text = target.state, target.text
+            state, text, hint = target.state, target.text, _hint(target.hint)
         except runtime.FolderProblem:
             pass  # no git that runs: unknown, and `author` says why with its hint
         except runtime.LadoError as refused:  # a folder LADO or git may not read
@@ -87,6 +104,7 @@ def scratch_target(text: str, path: str | None, has_db: bool) -> models.ScratchT
         ),
         provider=provider_suggestion(None),  # a new folder has no last session
         warning=runtime.outside_workspace(folder) if folder else None,
+        hint=hint,
     )
 
 
@@ -131,10 +149,13 @@ def _root_or_none(path: str) -> str | None:
 
 
 def _subfolders(path: Path) -> list[str]:
+    """Its folders but hidden ones, and but LADO's projects/, where no folder is a start."""
     try:
-        names = sorted(p.name for p in path.iterdir() if p.is_dir() and not p.name.startswith("."))
+        found = [p for p in path.iterdir() if p.is_dir() and not p.name.startswith(".")]
     except OSError:
         return []
+    owned = projects.lados_folder()
+    names = sorted(p.name for p in found if not owned or os.path.realpath(p) != str(owned))
     return names[:SUBFOLDERS]
 
 
@@ -149,9 +170,14 @@ def name_state(name: str, root: str, has_db: bool) -> models.NameState:
 
 
 def recent_folders() -> list[models.RecentFolder]:
-    """The folders of past sessions, each with its latest started session, latest first."""
+    """The folders of past sessions, each with its latest started session, latest first;
+    none inside LADO's projects/, where a new session is refused (a session there is
+    resumed from its own page)."""
+    owned = projects.lados_folder()
     found: dict[str, state.Session] = {}
     for sess in state.sessions_by_start():
+        if owned and Path(os.path.realpath(sess.repo)).is_relative_to(owned):
+            continue
         found.setdefault(sess.repo, sess)
     return [
         models.RecentFolder(path=repo, session=models.session_info(sess))
@@ -226,10 +252,28 @@ def session_about(sess: state.Session) -> models.SessionAbout:
         remote=runtime.public_remote(remote) if remote else None,
         branch=runtime.branch(sess.repo),
     )
+    found = state.get_project(sess.project) if sess.project else None
     return models.SessionAbout(
         repos=[repo],
         kits=[_session_kit(name) for name in sess.kits],
         provider=provider_info(providers.get(sess.provider)),
+        project=models.ProjectRef(id=found.id, title=found.title) if found else None,
+    )
+
+
+def project_info(id: str) -> models.ProjectInfo:
+    """A project with its repositories as the disk has them now; NoSuchProject else."""
+    project = projects.get(id)
+    where = projects.folder(id)
+    return models.ProjectInfo(
+        id=project.id,
+        title=project.title,
+        folder=str(where),
+        found=where.is_dir(),
+        repos=[
+            models.ProjectRepo(name=r.name, path=str(r.path), remote=r.remote, branch=r.branch)
+            for r in projects.repositories(id)
+        ],
     )
 
 

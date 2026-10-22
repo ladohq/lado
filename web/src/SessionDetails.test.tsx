@@ -15,7 +15,7 @@ const NONE = { gates: 0, questions: 0, agents: 0 };
 const FOLDER = "/Users/kao/Projects/lado/.lado/worktrees/lad-95/task-lad-95";
 
 function session(more: Partial<SessionInfo> = {}): SessionInfo {
-  const settings = { kits: ["default", "uiflow"], provider: "claude", permission_mode: "auto", without: [], ran_seconds: 0, running_since: null, stopped_at: null, title: null };
+  const settings = { kits: ["default", "uiflow"], provider: "claude", permission_mode: "auto", without: [], ran_seconds: 0, running_since: null, stopped_at: null, title: null, project: null };
   return { name: "lad-95", repo: FOLDER, status: "running", agents: 1, waiting: NONE, busy: 0, ...settings, ...more };
 }
 

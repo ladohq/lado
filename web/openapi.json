@@ -807,6 +807,46 @@
         }
       }
     },
+    "/api/projects/{id}": {
+      "get": {
+        "summary": "Project",
+        "description": "A project with its repositories, read from its folder now (docs/design/projects.md);\n404 for an unknown id.",
+        "operationId": "project_api_projects__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/kits": {
       "get": {
         "summary": "List Kits",
@@ -3347,7 +3387,8 @@
               "same_repo",
               "other_repo",
               "not_empty",
-              "not_folder"
+              "not_folder",
+              "in_project"
             ],
             "title": "State"
           },
@@ -3422,6 +3463,16 @@
               }
             ],
             "title": "Warning"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HintInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3664,7 +3715,8 @@
                   "git_broken",
                   "not_repo",
                   "git_refused",
-                  "no_commits"
+                  "no_commits",
+                  "in_project"
                 ]
               },
               {
@@ -5589,6 +5641,119 @@
         "type": "object",
         "title": "PlanUpdateAsk"
       },
+      "ProjectInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "folder": {
+            "type": "string",
+            "title": "Folder"
+          },
+          "found": {
+            "type": "boolean",
+            "title": "Found"
+          },
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectRepo"
+            },
+            "type": "array",
+            "title": "Repos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "folder",
+          "found",
+          "repos"
+        ],
+        "title": "ProjectInfo",
+        "description": "A project with its repositories as the disk has them now."
+      },
+      "ProjectRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ProjectRef",
+        "description": "A project as a session's head names it."
+      },
+      "ProjectRepo": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "remote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "remote",
+          "branch",
+          "name"
+        ],
+        "title": "ProjectRepo",
+        "description": "A repository of a project, read from its folder (lado.projects.repositories)."
+      },
       "ProviderInfo": {
         "properties": {
           "name": {
@@ -6348,7 +6513,8 @@
                   "empty",
                   "inside_repo",
                   "not_empty",
-                  "not_folder"
+                  "not_folder",
+                  "in_project"
                 ]
               },
               {
@@ -6415,6 +6581,16 @@
               }
             ],
             "title": "Warning"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HintInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6463,6 +6639,16 @@
           },
           "provider": {
             "$ref": "#/components/schemas/ProviderInfo"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6604,6 +6790,17 @@
               }
             ],
             "title": "Title"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
           }
         },
         "type": "object",
@@ -6621,7 +6818,8 @@
           "ran_seconds",
           "running_since",
           "stopped_at",
-          "title"
+          "title",
+          "project"
         ],
         "title": "SessionInfo"
       },

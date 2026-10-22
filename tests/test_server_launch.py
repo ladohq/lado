@@ -10,7 +10,7 @@ import agent_helpers
 import pytest
 from fastapi.testclient import TestClient
 
-from lado import doctor, gitcache, providers, runs, runtime, state
+from lado import doctor, gitcache, projects, providers, runs, runtime, state
 from lado.server import app as server_app
 from lado.server import auth
 from lado.server import launch as server_launch
@@ -700,6 +700,7 @@ def test_a_name_checked(home_workspace, client, git_config, tmp_path, monkeypatc
         "name_state": "free",
         "provider": {"name": "kilo", "reason": "only_installed"},
         "warning": None,
+        "hint": None,
     }
 
 
@@ -878,3 +879,118 @@ def test_a_folder_that_cannot_start_from_scratch(client, git_config, tmp_path, r
     assert folder(client, tmp_path / "notes")["scratch"] is False
     assert folder(client, repo / "nope")["scratch"] is False  # missing, inside a repository
     assert folder(client, repo)["scratch"] is False
+
+
+# Projects (openspec change sessions-in-projects)
+
+
+@pytest.fixture
+def shop(tmp_path, monkeypatch, git_config):
+    """The workspace <tmp>/ws holding app, and the project shop titled Shop with its
+    repository frontend; the project's folder."""
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    agent_helpers.init_repo(tmp_path / "ws" / "app")
+    projects.create("shop", "Shop")
+    agent_helpers.init_repo(projects.folder("shop") / "frontend")
+    return projects.folder("shop")
+
+
+IN_SHOP = "{} belongs to the project Shop: start a session in the project"
+
+
+def test_a_folder_in_a_project_is_refused_before_git(client, shop):
+    (shop / "frontend" / "src").mkdir()
+    path = shop / "frontend"
+    assert folder(client, path) == {
+        "path": str(path),
+        "ok": False,
+        "problem": IN_SHOP.format(path),
+        "root": None,
+        "branch": None,
+        "problem_kind": "in_project",
+        "hint": {
+            "text": "Start a session in the project:",
+            "command": "lado start --project shop --repo frontend",
+        },
+        "subfolders": [],
+        "default_name": None,
+        "name_state": None,
+        "provider": None,
+        "warning": None,
+        "scratch": False,
+    }
+    notes = folder(client, shop / "notes")  # missing: no fresh start there either
+    assert (notes["problem_kind"], notes["scratch"]) == ("in_project", False)
+
+
+def test_the_workspace_hints_no_projects_folder_of_lados(client, shop, tmp_path):
+    assert folder(client, tmp_path / "ws")["subfolders"] == ["app"]
+
+
+def test_the_humans_own_projects_folder_is_hinted(client, tmp_path, monkeypatch, git_config):
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    agent_helpers.init_repo(tmp_path / "ws" / "projects" / "notes")
+    assert folder(client, tmp_path / "ws")["subfolders"] == ["projects"]
+    assert folder(client, tmp_path / "ws" / "projects" / "notes")["ok"] is True
+
+
+def test_recent_folders_leave_out_those_in_projects(client, shop, tmp_path, fake_tmux):
+    runtime.start_session(None, None, None, provider="claude", project="shop", repo_name="frontend")
+    runtime.start_session(str(tmp_path / "ws" / "app"), None, None, provider="claude")
+    assert [r["path"] for r in client.get("/api/folders/recent").json()] == [
+        str(tmp_path / "ws" / "app")
+    ]
+
+
+def test_a_start_in_a_project_without_it_is_400_and_starts_nothing(client, shop, fake_tmux):
+    answer = launch(client, shop / "frontend", provider="kilo")
+    assert (answer.status_code, answer.json()["detail"]) == (
+        400,
+        IN_SHOP.format(shop / "frontend"),
+    )
+    answer = start_scratch(client, shop / "site", name="site", provider="kilo")
+    assert (answer.status_code, answer.json()["detail"]) == (400, IN_SHOP.format(shop / "site"))
+    assert state.list_sessions() == [] and not (shop / "site").exists()
+
+
+def test_the_scratch_target_in_a_project(client, shop):
+    target = client.get(
+        "/api/scratch-target", params={"text": "Site", "path": str(shop / "site")}
+    ).json()
+    assert (target["state"], target["text"]) == ("in_project", IN_SHOP.format(shop / "site"))
+    assert target["hint"] == {
+        "text": "Start a session in the project:",
+        "command": "lado start --project shop --repo site",
+    }
+    other = client.get("/api/scratch-target", params={"text": "Site"}).json()
+    assert (other["state"], other["hint"]) == ("new", None)
+
+
+def test_a_project_with_its_repositories(client, shop):
+    subprocess.run(
+        ["git", "-C", str(shop / "frontend"), "remote", "add", "origin", "https://t@h.example/f"],
+        check=True,
+    )
+    (shop / "notes").mkdir()
+    answer = client.get("/api/projects/shop")
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == {
+        "id": "shop",
+        "title": "Shop",
+        "folder": str(shop),
+        "found": True,
+        "repos": [
+            {
+                "name": "frontend",
+                "path": str(shop / "frontend"),
+                "remote": "https://h.example/f",
+                "branch": "main",
+            }
+        ],
+    }
+    assert client.get("/api/projects/nope").status_code == 404
+
+
+def test_no_project_without_a_database(client, lado_home):
+    assert client.get("/api/projects/shop").status_code == 404
+    assert not (lado_home / "lado.db").exists()

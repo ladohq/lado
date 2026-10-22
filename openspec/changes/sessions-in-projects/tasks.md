@@ -17,7 +17,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-sessions-in-
 
 ## 2. Server and CLI
 
-- [ ] 2.1 `in_project` in `clone.check_target` and `scratch.check_target` with a hint; the
+- [x] 2.1 `in_project` in `clone.check_target` and `scratch.check_target` with a hint; the
   server's folder check, Where hints, recent folders; `GET /api/projects/{id}`;
   `SessionInfo.project`, `SessionAbout.project`; `make web-types` (D6, D8, D11). Check:
   `tests/test_clone.py`, `test_scratch.py`, `test_server_launch.py`,

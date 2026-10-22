@@ -59,6 +59,9 @@ class SessionInfo(BaseModel):
     # The human's label over its name (runtime.set_title), None for none: the UI shows it
     # in place of the name, the name beside it.
     title: str | None
+    # The id of the project it is in (lado.projects), None for none; it never changes, so
+    # the feed carries it, and the project's title comes with SessionAbout.
+    project: str | None
 
 
 class TitleChange(BaseModel):
@@ -138,6 +141,7 @@ class CloneTarget(BaseModel):
     name_state: NameState  # as FolderInfo's, before anything is cloned
     provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions
     warning: str | None = None  # as FolderInfo's, for the folder the clone goes to
+    hint: "HintInfo | None" = None  # what to do instead, for in_project
 
 
 ScratchTargetState = scratch.TargetState
@@ -165,6 +169,7 @@ class ScratchTarget(BaseModel):
     name_state: NameState | None  # as FolderInfo's, for the name and the folder
     provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions
     warning: str | None = None  # as FolderInfo's, for the folder
+    hint: "HintInfo | None" = None  # what to do instead, for in_project
 
 
 class CloneRefused(BaseModel):
@@ -716,6 +721,30 @@ class SessionAbout(BaseModel):
     repos: list[RepoInfo]
     kits: list[SessionKitInfo]
     provider: ProviderInfo
+    project: "ProjectRef | None" = None  # the project it is in, its title read now
+
+
+class ProjectRef(BaseModel):
+    """A project as a session's head names it."""
+
+    id: str
+    title: str | None  # None: the id is shown
+
+
+class ProjectRepo(RepoInfo):
+    """A repository of a project, read from its folder (lado.projects.repositories)."""
+
+    name: str
+
+
+class ProjectInfo(BaseModel):
+    """A project with its repositories as the disk has them now."""
+
+    id: str
+    title: str | None
+    folder: str  # <workspace>/projects/<id>, derived
+    found: bool  # whether that folder is there
+    repos: list[ProjectRepo]
 
 
 class Launch(BaseModel):
@@ -1473,6 +1502,7 @@ def session_info(sess: state.Session) -> SessionInfo:
         running_since=_iso(ran.running_since) if ran.running_since else None,
         stopped_at=_utc(sess.stopped_at) if sess.stopped_at else None,
         title=sess.title,
+        project=sess.project,
     )
 
 

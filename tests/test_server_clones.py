@@ -10,7 +10,7 @@ import uvicorn
 from agent_helpers import bare_remote, fake_git, fake_git_calls, gone, init_repo
 from fastapi.testclient import TestClient
 
-from lado import clone, runtime
+from lado import clone, projects, runtime
 from lado.server import app as server_app
 from lado.server import auth, clones, launch
 
@@ -110,7 +110,49 @@ def test_the_clone_target_by_default(home_workspace, client, tmp_path, monkeypat
         "name_state": "free",
         "provider": None,
         "warning": None,
+        "hint": None,
     }
+
+
+@pytest.fixture
+def shop(tmp_path, monkeypatch):
+    """The workspace <tmp>/ws with the project shop titled Shop; its folder."""
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    monkeypatch.setattr(launch, "_installed", lambda provider: False)
+    projects.create("shop", "Shop")
+    return projects.folder("shop")
+
+
+IN_SHOP = "{} belongs to the project Shop: start a session in the project"
+WEB_HINT = {
+    "text": "Start a session in the project:",
+    "command": "lado start --project shop --repo web",
+}
+
+
+def test_a_clone_target_in_a_project(client, shop):
+    params = {"url": "https://github.com/shop/web", "path": str(shop / "web")}
+    target = client.get("/api/clone-target", params=params).json()
+    assert (target["state"], target["text"], target["hint"]) == (
+        "in_project",
+        IN_SHOP.format(shop / "web"),
+        WEB_HINT,
+    )
+    away = client.get("/api/clone-target", params={"url": "https://github.com/shop/web"}).json()
+    assert (away["state"], away["hint"]) == ("new", None)
+
+
+def test_a_clone_into_a_project_is_400_and_starts_no_job(client, shop):
+    answer = client.post(
+        "/api/clones", json={"url": "https://github.com/shop/web", "path": str(shop / "web")}
+    )
+    assert answer.status_code == 400
+    assert answer.json()["detail"] == {
+        "message": IN_SHOP.format(shop / "web"),
+        "kind": "in_project",
+        "hint": WEB_HINT,
+    }
+    assert client.app.state.clones._jobs == {} and list(shop.iterdir()) == []
 
 
 def test_in_a_container_a_clone_target_outside_the_repositories_folder_warns(

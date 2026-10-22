@@ -30,6 +30,6 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui
+- [x] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui
   tests/ui/test_launch.py` pass; `openspec validate where-early-focus --strict` passes;
   CI green on the pull request's last commit (AC-5).

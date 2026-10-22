@@ -351,6 +351,44 @@ def test_a_folder_without_commits_shows_the_command_that_makes_one(
     shot(page)
 
 
+@pytest.fixture
+def shop(repos):
+    """The workspace of `repos` with the project shop titled Shop and its repository
+    frontend; the project's folder."""
+    from lado import projects
+
+    projects.create("shop", "Shop")
+    agent_helpers.init_repo(projects.folder("shop") / "frontend")
+    return projects.folder("shop")
+
+
+def test_a_folder_in_a_project_is_refused_with_the_projects_command(
+    page: Page, shop, server, repos, shot
+):
+    log_in(page, server)
+    page.get_by_role("button", name="New session").click()
+    dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
+    where = dialog.get_by_role("combobox", name=re.compile("Where"))
+    where.focus()
+    folders = dialog.get_by_role("listbox", name="Folders")
+    expect(folders.get_by_role("option")).to_have_text(["api/", "app/"])  # no projects/
+    shot(page, "where")
+    frontend = shop / "frontend"
+    where.fill(str(frontend))
+    refusal = dialog.locator(".field-note.bad")
+    expect(refusal).to_contain_text(
+        f"{frontend} belongs to the project Shop: start a session in the project"
+    )
+    expect(refusal).to_contain_text("Start a session in the project:")
+    expect(refusal.locator("code")).to_have_text("lado start --project shop --repo frontend")
+    expect(refusal.get_by_role("button", name="Copy command")).to_be_visible()
+    expect(dialog.get_by_role("button", name="Start session")).to_be_disabled()
+    expect(dialog.get_by_label("Provider")).to_be_enabled(timeout=30_000)
+    where.blur()
+    shot(page, "refused")
+
+
 def test_the_session_list_row_has_only_the_entrys_menu(page: Page, server, repo, shot):
     session = running_session(repo)
     log_in(page, server, f"/sessions/{session}")

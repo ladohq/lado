@@ -39,7 +39,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-sessions-in-
   `start_session` inherits, resume keeps, every refusal path, delete with a running and a
   stopped session, the upgrade of a session from before schema 33. Check: `uv run pytest
   -m integration -n auto <files>`.
-- [ ] 4.2 `tests/ui/test_session_head.py` (project in the head), `tests/ui/test_launch.py`
+- [x] 4.2 `tests/ui/test_session_head.py` (project in the head), `tests/ui/test_launch.py`
   (refusal box, Where hints), screenshots. Check: `uv run pytest -m ui <files>`.
 
 ## 5. Documents and version

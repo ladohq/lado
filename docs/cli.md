@@ -94,7 +94,14 @@ the project folder has is refused (`<folder> already exists in project <id>: cho
 name with --name`), as are an unknown project, a project whose folder is not found (`the
 folder of project <id> is not found: <folder>`) and a URL that names no repository: exit 1,
 nothing cloned or made. A URL with `--new`, neither, `--name` or `--branch` with `--new`,
-and a source that is no git URL (a local path: give it as `file://<path>`) exit 2.
+and a source that is no git URL (a local path: give it as `file://<path>`) exit 2. An
+empty `--name` is a name too, refused by the rule.
+
+Both `repo add` and `repo remove` work only in the project's own folder: one that is a
+symbolic link (to another project's folder, or anywhere), or whose real path is not
+`<real projects/>/<id>`, is refused, exit 1, with `<folder> is a link or not where project
+<id>'s folder belongs: LADO adds and removes repositories only in the project's own
+folder`, nothing added or removed.
 
 `lado project repo remove <id> <name> [--yes]` removes an entry of the project folder that
 is a repository or a symbolic link. It refuses, exit 1, changing nothing, while any session
@@ -110,8 +117,7 @@ refuses (`removing repository <name> of project <id> deletes its folder <folder>
 everything in it[ and forgets its <n> session[s]]; run again with --yes`, or for a link
 `removing <name> of project <id> deletes the link only, not its target <target>; run again
 with --yes`). With `--yes` it removes the folder whole (links inside as links; refused when
-its real path is not directly in the project folder's, itself directly in the real
-`projects/`), then forgets those sessions as `lado forget --force` does, and prints
+its real path is not directly in the project folder's), then forgets those sessions as `lado forget --force` does, and prints
 `Removed repository <name> from project <id>`; a link loses the link only (`Removed the
 link <name> from project <id>`). A folder not removed whole keeps the sessions; a session not
 forgotten is named with `lado forget <s> --force`. A stopped session there without a project

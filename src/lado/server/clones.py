@@ -130,7 +130,9 @@ class Jobs:
         if project is None:
             folder = _folder(url, path)
         else:
-            folder = str(projects.new_repo_folder(project, name or clone.default_folder(url).name))
+            if name is None:
+                name = clone.default_folder(url).name
+            folder = str(projects.new_repo_folder(project, name))
         target = clone.check_target(url, folder, project)
         if target.state not in clone.CAN_CLONE:
             raise clone.CloneError(target.state, target.text, target.hint)

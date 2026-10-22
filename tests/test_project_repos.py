@@ -358,13 +358,52 @@ def test_a_project_folder_that_is_a_link_elsewhere_is_refused(home, git_config):
     projects.folder("shop").rename(elsewhere)
     projects.folder("shop").symlink_to(elsewhere)
     init_repo(elsewhere / "frontend")
-    with pytest.raises(projects.ProjectError) as refused:
-        projects.remove_repo("shop", "frontend", yes=True)
-    assert str(refused.value) == (
-        f"{projects.folder('shop') / 'frontend'} is not in {projects.projects_folder()}: LADO "
-        "removes nothing outside it"
-    )
+    for remove in (projects.removal, lambda id, name: projects.remove_repo(id, name, yes=True)):
+        with pytest.raises(projects.ProjectError) as refused:
+            remove("shop", "frontend")
+        assert str(refused.value) == NOT_OWN.format(folder=projects.folder("shop"))
     assert (elsewhere / "frontend").is_dir()
+
+
+NOT_OWN = (
+    "{folder} is a link or not where project shop's folder belongs: LADO adds and removes "
+    "repositories only in the project's own folder"
+)
+
+
+@pytest.fixture
+def linked(home, git_config):
+    """The project acme with the repository x, and the project shop whose folder was
+    replaced by a link to acme's."""
+    projects.create("acme", None)
+    projects.create("shop", None)
+    init_repo(projects.folder("acme") / "x")
+    projects.folder("shop").rmdir()
+    projects.folder("shop").symlink_to(projects.folder("acme"))
+    return projects.folder("acme")
+
+
+def test_a_project_folder_that_is_a_link_to_another_projects_removes_nothing(linked):
+    _session("acme-x", linked / "x", "acme")
+    for remove in (projects.removal, lambda id, name: projects.remove_repo(id, name, yes=True)):
+        with pytest.raises(projects.ProjectError) as refused:
+            remove("shop", "x")
+        assert str(refused.value) == NOT_OWN.format(folder=projects.folder("shop"))
+    assert (linked / "x").is_dir() and state.get_session("acme-x")
+
+
+def test_a_project_folder_that_is_a_link_takes_no_repository(linked):
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.add_new("shop", "site")
+    assert str(refused.value) == NOT_OWN.format(folder=projects.folder("shop"))
+    assert not projects.adds_to("shop", str(projects.folder("shop") / "site"))
+    assert sorted(p.name for p in linked.iterdir()) == ["x"]
+
+
+def test_an_empty_name_is_no_name(shop):
+    with pytest.raises(projects.ProjectError, match="the repository name  is not valid"):
+        projects.add_clone("shop", "https://github.com/shop/web", "")
+    assert list(shop.iterdir()) == []
 
 
 def test_a_folder_not_removed_whole_keeps_the_sessions(pushed, monkeypatch):

@@ -202,6 +202,9 @@ def refusal(
     )
 
 
+ADD_HINT = "Add a repository to the project:"
+
+
 def _hint(
     id: str, below: tuple[str, ...], root: Path, url: str | None, fresh: bool
 ) -> runtime.Hint:
@@ -224,9 +227,6 @@ def _hint(
             ADD_HINT, f"lado project repo add {id} {runtime.public_remote(url)}{other}"
         )
     return runtime.Hint("See the project's repositories:", f"lado project show {id}")
-
-
-ADD_HINT = "Add a repository to the project:"
 
 
 def create(id: str, title: str | None) -> state.Project:
@@ -418,6 +418,7 @@ def new_repo_folder(id: str, name: str) -> Path:
     where = folder(id)
     if not where.is_dir():
         raise ProjectError(f"the folder of project {id} is not found: {where}")
+    _check_own_folder(id)
     check_repo_name(name)
     target = where / name
     if os.path.lexists(target):
@@ -427,11 +428,29 @@ def new_repo_folder(id: str, name: str) -> Path:
     return target
 
 
+def _own_folder(id: str) -> bool:
+    """Whether the project's folder is its own: no link, its real path `<real
+    projects/>/<id>`. A link (to another project's folder, or anywhere) would add or remove
+    repositories somewhere else."""
+    where = folder(id)
+    real = Path(os.path.realpath(projects_folder())) / id
+    return not where.is_symlink() and Path(os.path.realpath(where)) == real
+
+
+def _check_own_folder(id: str) -> None:
+    if not _own_folder(id):
+        raise ProjectError(
+            f"{folder(id)} is a link or not where project {id}'s folder belongs: LADO adds and "
+            "removes repositories only in the project's own folder"
+        )
+
+
 def adds_to(id: str | None, path: str) -> bool:
-    """Whether `path` is an entry directly in the folder of the project `id`, by real paths:
-    the one place a clone or fresh start for that project may go (`clone.clone`,
-    `scratch.make`), past the refusal of a new session inside projects/."""
-    if id is None:
+    """Whether `path` is an entry directly in the own folder of the project `id`
+    (`_own_folder`), by real paths: the one place a clone or fresh start for that project
+    may go (`clone.clone`, `scratch.make`), past the refusal of a new session inside
+    projects/."""
+    if id is None or not _own_folder(id):
         return False
     return Path(os.path.realpath(path)).parent == Path(os.path.realpath(folder(id)))
 
@@ -647,8 +666,10 @@ def removal(id: str, name: str) -> Removal:
     """What `remove_repo` would do; refused for an unknown project, a name no visible entry
     of the project's folder has (NoSuchRepository), an entry that is neither a repository
     nor a link, and a repository with a session working in it (by path, one without a
-    project too) that is not stopped."""
+    project too) that is not stopped, and for a project folder that is not its own
+    (`_own_folder`)."""
     get(id)
+    _check_own_folder(id)
     entry = next((e for e in _entries(id) if e.name == name), None)
     if entry is None:
         raise _no_repository(id, name, repositories(id))

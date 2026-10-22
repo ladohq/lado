@@ -82,6 +82,9 @@ def test_a_clone_job_into_a_project_refused(client, shop):
     alone = client.post("/api/clones", json={"url": url, "name": "web"})
     assert alone.status_code == 400
     assert alone.json()["detail"]["message"] == "a clone's name goes with its project"
+    empty = client.post("/api/clones", json={"url": url, "project": "shop", "name": ""})
+    assert empty.status_code == 400
+    assert "the repository name  is not valid" in empty.json()["detail"]["message"]
     unknown = client.post("/api/clones", json={"url": url, "project": "acme"})
     assert unknown.status_code == 404
     assert client.app.state.clones._jobs == {}

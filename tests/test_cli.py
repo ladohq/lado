@@ -3043,6 +3043,7 @@ def test_project_repo_add_usage(shop, capsys, argv, said):
         (["shop", "--new", "frontend"], "already exists in project shop"),
         (["shop", "--new", ".hidden"], "the repository name .hidden is not valid"),
         (["shop", "https://h/"], "names no repository"),
+        (["shop", "https://h/shop/web", "--name", ""], "the repository name  is not valid"),
         (["acme", "--new", "crm"], 'unknown project "acme"'),
     ],
 )

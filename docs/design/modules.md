@@ -352,15 +352,17 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     in the project's folder with a good name, else `lado project show` (openspec change
     project-repositories). A project's repositories are added and removed there too:
     `check_repo_name` (`REPO_NAME`, `MAX_REPO_NAME`), `new_repo_folder` (the known project,
-    its folder, the name, no entry of that name by `lexists`), `adds_to` (a path directly
-    in the project's folder, by real paths: the one place `clone.clone` and `scratch.make`
-    with `project` go past `refusal`), `add_clone` and `add_new` (through those two, so a
+    its folder, its own, the name, no entry of that name by `lexists`), `_own_folder` (the
+    project's folder is no link and its real path is `<real projects/>/<id>`: asked by the
+    add, `adds_to` and `removal`, so a link to another project's folder adds or removes
+    nothing there), `adds_to` (a path directly in the project's own folder, by real paths:
+    the one place `clone.clone` and `scratch.make` with `project` go past `refusal`), `add_clone` and `add_new` (through those two, so a
     failed or cancelled clone leaves nothing), `removal` (a `Removal`: a repository, with
     the project's stopped sessions in it and its `_checkout_lines`, the per-repository body
     of `unpushed`, or a link; refused while any session works in it by real path, for a
     name no visible entry has, `NoSuchRepository`, and for an entry that is neither) and
     `remove_repo` (refuses without `yes`; a link unlinked; a repository's real path must be
-    directly in the project folder's, itself directly in the real `projects/`; `rmtree`,
+    directly in the project folder's; `rmtree`,
     then `runtime.forget_session(force=True)` for its sessions). A refusal is a
     `ProjectError` (`NoSuchProject` for an unknown id), a `runtime.LadoError`.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,

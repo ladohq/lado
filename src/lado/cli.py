@@ -1154,7 +1154,7 @@ def cmd_project_repo(args: argparse.Namespace) -> int:
     else:
         if not clone.is_url(args.url):
             usage(f"{args.url} is not a git URL")
-        name = args.name or clone.default_folder(args.url).name
+        name = args.name if args.name is not None else clone.default_folder(args.url).name
         target = projects.new_repo_folder(args.id, name)  # refused before the clone's line
         cancelled = _cloned(
             args.url,

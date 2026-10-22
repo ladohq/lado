@@ -70,8 +70,9 @@ characters`. A name an entry of the project's folder has (any kind) SHALL exit 1
 ### Requirement: lado project repo add refuses what is no project to add to
 
 `lado project repo add` SHALL exit 1, cloning and making nothing, for an unknown project
-(`lado: unknown project "<id>"`) and for a project whose folder is not found (`lado: the
-folder of project <id> is not found: <folder>`). It SHALL exit 2 with a usage error for
+(`lado: unknown project "<id>"`), for a project whose folder is not found (`lado: the
+folder of project <id> is not found: <folder>`) and for one whose folder is a link or not
+at its place (the text of a removal's). It SHALL exit 2 with a usage error for
 both a URL and `--new`, for neither, and for `--name` or `--branch` with `--new`.
 
 #### Scenario: An unknown project
@@ -154,9 +155,17 @@ not forgotten SHALL be named.
 ### Requirement: lado project repo remove removes nothing outside the repository's folder
 
 `lado project repo remove` SHALL remove only `<workspace>/projects/<id>/<name>`, whose real
-path SHALL be a direct child of the project folder's real path, which SHALL be a direct
-child of `<workspace>/projects`'s, or else refuse. A symbolic link of that name SHALL lose
-the link only, never its target, with no session forgotten.
+path SHALL be a direct child of the project folder's real path, which SHALL be
+`<workspace>/projects`'s real path joined with `<id>`, the folder no link, or else refuse,
+removing nothing. A symbolic link of that name SHALL lose the link only, never its
+target, with no session forgotten.
+
+#### Scenario: A project folder that is a link to another project's
+- **WHEN** `<ws>/projects/shop` is a symbolic link to `<ws>/projects/acme`, which holds the
+  repository `x`, and the human runs `lado project repo remove shop x --yes`
+- **THEN** it exits 1 with `lado: <ws>/projects/shop is a link or not where project shop's
+  folder belongs: LADO adds and removes repositories only in the project's own folder`, and
+  `acme`'s `x` and its sessions stay
 
 #### Scenario: A link to a repository elsewhere
 - **WHEN** `<ws>/projects/shop/docs` is a symbolic link to `/srv/docs` and the human runs

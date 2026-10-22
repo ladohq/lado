@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: none · Next: S5a (draft at step_ok) · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5)
+In work: S5a (LAD-130, run task/lad-130) · Next: S5b · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5)
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
@@ -69,7 +69,7 @@ Notes: the CLI shape (e.g. `lado project repo add/remove`) is the analyst's. Lef
 Result: PR #141 merged 2026-10-22 (f466b90), LAD-128 "waiting for release" (0.43.0); change `project-repositories` archived (`projects`, `session-clone`, `session-scratch` changed). `lado project repo add <id> <git-url> [--name] [--branch]` / `--new <name>` and `lado project repo remove <id> <name> [--yes]` (#892: no `lado start --project` with a URL; `remove` takes repositories and links only; name rule `[A-Za-z0-9_][A-Za-z0-9._-]*` up to 100, taken checked on the disk so a case-insensitive disk refuses `Frontend` beside `frontend`); both refused inside an agent; adding goes through `clone.clone`/`scratch.make` with `project`; removal by path as S3's D9; API `POST /api/clones` with `project`/`name`, `POST /api/projects/{id}/repos`, `GET …/repos/{name}/removal`, `DELETE …/repos/{name}`; E3 closed (the hint offers `lado project repo add`). No migration, no protocol change. Review: X1 (important) — a project folder that is a link to another project's let `repo remove` delete the neighbour's repository; fixed by `projects._own_folder` for add and remove. 2 local and 2 external rounds; the external rounds (Claude Code Action) read code only even with the files named: specs, docs, tests and OpenAPI local only, the fourth time (question #949). `make test` 3869 passed; CI 23/23 on a1830c9; the trial archive passed at design and review, so no `conflicts` this time. The lead's manual check on f466b90 (temp `LADO_HOME`/`LADO_REPOS`, no agent started): clone from a `file://` bare repository and `--new`, a taken name, `show` with branch and remote, remove without `--yes` naming the unpushed branch then with `--yes`, a link removed as a link with its target kept, a plain folder refused, E3's hint — all as designed; a local path without `file://` is "not a git URL" (as `lado start`). A session with a worker in the repository: integration tests only. Declined: X2, X4, X5, Y1, L1, L2 (as `project delete` or cosmetic); X3 to S7.
 
 ### S5a — Plain project variables reach the whole session (M)
-Status: planned
+Status: in progress (LAD-130, run task/lad-130)
 Check:
 - Integration with the fake agent: two sessions of two projects with the same variable get each its own value in the supervisor, a worker, a flow run's worker and a session from `start_session`; layers login shell → `LADO_ENV_DIR` → project → LADO/CLI, the project winning over the outside folder; a name LADO or the CLI sets keeps LADO's value, with the warning as for the outside folder.
 - Kit keys: `kits.ResolvedAgent.mcp_servers` checks each `${VAR}` of a kit's MCP server against the agent's environment before the agent starts (today's refusal "… environment variable X is not set"); a key set only in the project passes it and reaches the server through `mcp_exec`, the same key in a session without a project is refused.

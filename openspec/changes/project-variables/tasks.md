@@ -28,7 +28,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-project-vari
   `unset`; a kit key only in the project passes and reaches the server through
   `mcp_exec`, refused without; the warning for a name LADO sets. Check: `uv run pytest -m
   integration -n auto tests/integration/test_project_variables.py`.
-- [ ] 3.2 The smoke's probe kit and test per provider (D10). Check: CI's smoke cells.
+- [x] 3.2 The smoke's probe kit and test per provider (D10). Check: CI's smoke cells.
 
 ## 4. Documents and version
 

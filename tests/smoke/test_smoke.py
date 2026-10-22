@@ -2,11 +2,15 @@
 SQLite, no model (tests/smoke/conftest.py). It shows that a session starts, the CLI's hooks
 run, LADO's messages reach it, a worker starts, and `lado stop` leaves no process."""
 
+import json
+import sys
+from pathlib import Path
+
 import agent_helpers
 import pytest
 from real_clis import agent_processes, answer_dialogs, check_gone, status
 
-from lado import loop, runtime, state, tmux
+from lado import loop, projects, runtime, state, tmux
 
 pytestmark = pytest.mark.smoke
 
@@ -23,12 +27,12 @@ def wait_for(check, what: str, timeout: float):
     return agent_helpers.wait_for(check, what, SESSION, timeout, interval=0.5)
 
 
-def answering(provider: str, agent: str, check):
+def answering(provider: str, agent: str, check, session: str = SESSION):
     """`check` for wait_for, answering the agent's trust dialog first (each Codex agent has a
     home of its own, so it asks about its folder)."""
 
     def answered():
-        answer_dialogs(provider, SESSION, agent)
+        answer_dialogs(provider, session, agent)
         return check()
 
     return answered
@@ -102,3 +106,56 @@ def test_a_session_starts_takes_messages_and_stops(smoke_repo, smoke_provider, f
     check_gone(processes, "stop")
     wait_for(lambda: not loop.running(SESSION), "the session loop to end", 5 * loop.INTERVAL)
     agent_helpers.check_loop_ended_by_stop(SESSION)
+
+
+PROBE = Path(__file__).with_name("probe_mcp.py")
+PROBE_VALUE = "smoke-project-value=1 ü"
+
+
+def test_a_kits_mcp_server_sees_the_project_s_variable(
+    smoke_provider, tmp_path, monkeypatch, git_config
+):
+    """The project's variable, set nowhere else, reaches a kit's MCP server that the real
+    CLI starts for a worker of a session in the project: through the kit's ${NAME}
+    (lado.mcp_exec) and in the server's own environment."""
+    provider = smoke_provider
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    monkeypatch.delenv("SMOKE_PROBE_VALUE", raising=False)
+    projects.create("shop", None)
+    projects.add_new("shop", "frontend")
+    projects.set_variable("shop", "SMOKE_PROBE_VALUE", PROBE_VALUE)
+    out = tmp_path / "probe.json"
+    kit = tmp_path / "kits" / "probe"
+    (kit / "agents").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: probe\nversion: 1.0.0\n")
+    server = {
+        "command": [sys.executable, str(PROBE)],
+        "env": {"PROBE_VALUE": "${SMOKE_PROBE_VALUE}", "PROBE_OUT": str(out)},
+    }
+    front = {"name": "prober", "description": "probes", "mcp": {"probe": server}}
+    (kit / "agents" / "prober.md").write_text(
+        f"---\n{json.dumps(front)}\n---\nYou probe.\n"  # JSON is YAML
+    )
+    agent_helpers.install_kit(kit)
+
+    session = "shop-frontend"
+    runtime.start_session(
+        None,
+        None,
+        "bypassPermissions",
+        provider,
+        ["default", "probe"],
+        project="shop",
+        repo_name="frontend",
+    )
+    if provider != "codex":  # Codex starts its session on its first input (above)
+        idle = answering(
+            provider, "supervisor", lambda: status(session, "supervisor") == "idle", session
+        )
+        agent_helpers.wait_for(idle, "the supervisor idle", session, 120, interval=0.5)
+    runtime.spawn_worker(session, TASK, name="p1", role="prober")
+    probed = answering(provider, "p1", out.exists, session)
+    agent_helpers.wait_for(probed, "the probe's file", session, 120, interval=0.5)
+    print(f"{provider}: the probe saw {out.read_text()}")
+    assert json.loads(out.read_text()) == {"template": PROBE_VALUE, "inherited": PROBE_VALUE}
+    runtime.stop_session(session)

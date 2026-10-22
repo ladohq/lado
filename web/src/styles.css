@@ -1360,6 +1360,11 @@ h3 {
   max-width: 50%;
 }
 
+/* The project's fact: the muted word "project", the title in the ink colour. */
+.session-project-title {
+  color: var(--ink);
+}
+
 .session-fact {
   overflow-wrap: anywhere;
 }

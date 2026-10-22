@@ -285,6 +285,30 @@ test("a folder the human can fix shows the reason, the hint's sentence and its c
   expect(startButton().disabled).toBe(true);
 });
 
+const IN_SHOP = "/ws/projects/shop/frontend belongs to the project Shop: start a session in the project";
+const SHOP_HINT = { text: "Start a session in the project:", command: "lado start --project shop --repo frontend" };
+
+test("a folder inside a project is refused in the refusal box with the project's command, and Start is off", async () => {
+  await openLaunch();
+  folders["/ws/projects/shop/frontend"] = folder("/ws/projects/shop/frontend", {
+    ok: false,
+    problem: IN_SHOP,
+    root: null,
+    branch: null,
+    problem_kind: "in_project",
+    hint: SHOP_HINT,
+    default_name: null,
+    name_state: null,
+  });
+  type("/ws/projects/shop/frontend");
+  const box = (await screen.findByText(IN_SHOP)).closest(".field-note.bad") as HTMLElement;
+  expect(within(box).getByText("Start a session in the project:")).toBeTruthy();
+  expect(within(box).getByText(SHOP_HINT.command).tagName).toBe("CODE");
+  expect(within(box).getByRole("button", { name: "Copy command" })).toBeTruthy();
+  expect(within(box).queryByRole("button", { name: "Start from scratch here" })).toBeNull();
+  expect(startButton().disabled).toBe(true);
+});
+
 test("when no copy works the hint's command is selected to copy by hand", async () => {
   clipboard(async () => Promise.reject(new Error("not allowed")));
   stubLegacyCopy(false);
@@ -1398,6 +1422,23 @@ test("with its about, the head's second line has the folder, the remote and bran
   expect(within(meta()).queryByRole("img", { name: "untested version" })).toBeNull();
 });
 
+test("a session in a project has the project as the first fact, its title shown and its id in the tooltip", async () => {
+  await openHead(about({ project: { id: "shop", title: "Shop" } }));
+  const [first, second] = [...meta().children];
+  expect(first.textContent).toBe("projectShop");
+  expect(first.getAttribute("title")).toBe("Project shop");
+  expect(first.querySelector(".session-project-title")?.textContent).toBe("Shop");
+  expect(second.textContent).toBe("/src/lado");
+});
+
+test("a project without a title is shown by its id; a session without one shows nothing new", async () => {
+  await openHead(about({ project: { id: "acme", title: null } }));
+  expect(meta().querySelector(".session-project")?.textContent).toBe("projectacme");
+  cleanup();
+  await openHead(about());
+  expect(meta().querySelector(".session-project")).toBeNull();
+});
+
 test("Copy URL on the git icon copies the remote's whole URL", async () => {
   const writeText = vi.fn(async () => {});
   clipboard(writeText);
@@ -1633,6 +1674,18 @@ test("a clone of another repository there says so with a free folder, and Clone 
   answers["POST /api/remote-branches"] = remote();
   await cloneSource();
   expect(await screen.findByText(text)).toBeTruthy();
+  await screen.findByText("✓ repository found · 3 branches");
+  expect(cloneButton().disabled).toBe(true);
+});
+
+test("a clone into a project's folder shows the refusal with the project's command, and Clone and start is off", async () => {
+  const text = `${INTO} belongs to the project Shop: start a session in the project`;
+  const hint = { text: "Start a session in the project:", command: "lado start --project shop --repo marketplace" };
+  answers["GET /api/clone-target"] = () => json(target({ state: "in_project", text, hint }));
+  answers["POST /api/remote-branches"] = remote();
+  await cloneSource();
+  const box = (await screen.findByText(text)).closest(".field-note.bad") as HTMLElement;
+  expect(within(box).getByText(hint.command).tagName).toBe("CODE");
   await screen.findByText("✓ repository found · 3 branches");
   expect(cloneButton().disabled).toBe(true);
 });
@@ -2099,6 +2152,23 @@ test("a folder with files under Create in is refused there, and Create in edited
     expect(calls.some((c) => c.path.startsWith("/api/scratch-target") && c.path.includes("text=cafe"))).toBe(true),
   );
   expect(createIn().value).toBe(notes);
+});
+
+test("a fresh start in a project's folder shows the refusal with the project's command under Create in", async () => {
+  const site = "/ws/projects/shop/site";
+  const text = `${site} belongs to the project Shop: start a session in the project`;
+  const hint = { text: "Start a session in the project:", command: "lado start --project shop --repo site" };
+  answers["GET /api/scratch-target"] = () => {
+    const asked = new URL(calls[calls.length - 1].path, "http://lado.test").searchParams;
+    const path = asked.get("path");
+    const more = path === site ? { state: "in_project" as const, text, hint } : {};
+    return json(scratchTarget(asked.get("text") ?? "", path, more));
+  };
+  const dialog = await scratchReady("site");
+  fireEvent.change(createIn(), { target: { value: site } });
+  const box = (await within(dialog).findByText(text)).closest(".field-note.bad") as HTMLElement;
+  expect(within(box).getByText(hint.command).tagName).toBe("CODE");
+  expect(createButton().disabled).toBe(true);
 });
 
 test("a folder the server cannot look at shows why under Create in, and Create and start stays off", async () => {

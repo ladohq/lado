@@ -28,9 +28,10 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-sessions-in-
 
 ## 3. UI
 
-- [ ] 3.1 The head's project fact (variant A), the phone's details line, the `in_project`
+- [x] 3.1 The head's project fact (variant A), the phone's details line, the `in_project`
   hint for a folder, a clone and a fresh start (D12). Check: vitest
-  (`Layout.test.tsx`, `SessionDetails.test.tsx`, `Launch.test.tsx`), `make web`.
+  (`SessionDetails.test.tsx`, `Launch.test.tsx`, where the head's facts are tested),
+  `make web`.
 
 ## 4. End to end
 

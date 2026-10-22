@@ -166,6 +166,12 @@ export function SessionDetails({
           {state}
         </p>
         <dl>
+          {about?.project && (
+            <>
+              <dt>Project</dt>
+              <dd title={`Project ${about.project.id}`}>{about.project.title ?? about.project.id}</dd>
+            </>
+          )}
           <dt>Folder</dt>
           <dd>
             <code>{repo}</code>

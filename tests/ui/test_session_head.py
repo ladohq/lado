@@ -7,12 +7,13 @@ import re
 import subprocess
 import sys
 
+import agent_helpers
 import fake_provider
 import pytest
 from playwright.sync_api import Page, expect
 from test_main_screen import log_in, running_session
 
-from lado import kits, runtime, state
+from lado import kits, projects, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -403,3 +404,45 @@ def test_tab_takes_the_name_into_the_title_and_other_text_leaves(page: Page, ser
     expect(title).to_have_text("zz")
     expect(field).to_have_count(0)
     assert state.get_session(session).title == "zz"
+
+
+@pytest.fixture
+def shop(tmp_path, monkeypatch):
+    """LADO_REPOS=<tmp>/ws with the project shop titled Shop and its repository frontend; a
+    test takes it before `server`, so the server's process has it. The repository."""
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    projects.create("shop", "Shop")
+    return agent_helpers.init_repo(projects.folder("shop") / "frontend")
+
+
+def test_a_session_in_a_project_shows_the_project_first_among_its_facts(
+    page: Page, shop, server, shot
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    runtime.start_session(None, None, None, "fake", project="shop", repo_name="frontend")
+    agent_helpers.wait_for(
+        lambda: state.get_agent("shop-frontend", "supervisor").status == state.IDLE,
+        "idle",
+        "shop-frontend",
+    )
+    try:
+        log_in(page, server)
+        page.goto(f"{server['url']}/sessions/shop-frontend")
+        facts = head(page).locator(".session-meta > *")
+        expect(facts.first).to_have_text("projectShop")
+        expect(facts.first).to_have_attribute("title", "Project shop")
+        expect(facts.nth(1)).to_have_text(str(shop))
+        color = (
+            head(page)
+            .locator(".session-project-title")
+            .evaluate("el => getComputedStyle(el).color")
+        )
+        word = (
+            head(page)
+            .locator(".session-project > span")
+            .first.evaluate("el => getComputedStyle(el).color")
+        )
+        assert color != word, (color, word)  # the title in the ink colour, the word muted
+        shot(page, "project")
+    finally:
+        runtime.stop_session("shop-frontend")

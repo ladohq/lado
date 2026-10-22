@@ -8,8 +8,10 @@
 // goes when the live lists bring its items closed. The card is at most half the chat's
 // height; expanded, it stays where it is and fills its page's area (the chat's, Needs you's
 // content; its host hides the rest, styles.css) until Esc, its fold button, or nothing
-// waits. It is no modal: an artifact panel a chip opens shows over it, and Esc closes that
-// panel first (the card's Esc waits while the address has ?view=).
+// waits. On a phone a field of the chat's card taking the focus expands it too, the focus
+// kept in the field, so the keyboard leaves room for it (LAD-126). It is no modal: an
+// artifact panel a chip opens shows over it, and Esc closes that panel first (the card's
+// Esc waits while the address has ?view=).
 // In a session's chat (`chat`; not on Needs you) the human can minimize it to its tabs and
 // one line, until they restore it or a new tab comes, and give it a height by the edge
 // above it (prefs.ts keeps both).
@@ -79,6 +81,7 @@ function pickOf(picks: Picks, question: MessageInfo): Pick | undefined {
 
 const MARKED_FOR = 1500; // ms an item asked for stays marked
 const FEED_MIN = 160; // the chat feed's least height (styles.css, .chat-feed)
+const FIELD = "textarea.waiting-field"; // an answer field (attachFiles.AnswerBox)
 const NARROW = "(max-width: 900px)"; // the window that scrolls (styles.css)
 
 // An own answer counts with its words or its files, as a message of files only does.
@@ -160,6 +163,7 @@ export function WaitingCard({
   const tabList = useRef<HTMLDivElement>(null);
   const expander = useRef<HTMLButtonElement>(null);
   const folded = useRef(false); // focus goes back to the expand button after a fold
+  const fromField = useRef(false); // expanded by a field's focus, which stays there
   const minimizer = useRef<HTMLButtonElement>(null);
   const toggled = useRef(false); // focus goes to the minimize button after the human's toggle
   const dragBelow = useRef(false); // the edge is dragged below the card's least height
@@ -239,9 +243,25 @@ export function WaitingCard({
       row.scrollLeft = on.offsetLeft + on.offsetWidth - row.clientWidth;
   }, [shown?.key, expanded]);
   // Expanded: Esc folds it, unless an artifact panel is open, whose own Esc closes it first.
-  // Opened, the focus goes to the shown tab; folded, to the expand button.
+  // Opened, the focus goes to the shown tab; folded, to the expand button. Opened by a field
+  // (a phone), the focus stays in it, so the keyboard stays open, and the field, laid out
+  // at the folded height, scrolls into the list's view; so it does again when the card is
+  // laid out anew (the keyboard opening after the tap lowers it).
+  const fieldIntoView = () => {
+    const field = document.activeElement;
+    if (field instanceof HTMLElement && field.matches(FIELD) && card.current?.contains(field))
+      field.scrollIntoView?.({ block: "nearest" });
+  };
+  useEffect(() => {
+    if (expanded && chat && phone) fieldIntoView();
+  }, [cardHeight]);
   useEffect(() => {
     if (!expanded) return;
+    if (fromField.current) {
+      fromField.current = false;
+      fieldIntoView();
+      return;
+    }
     card.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
     // A narrow window scrolls (styles.css): the card goes under the top bar. A wide one
     // scrolls nothing, nor a frame that hides its overflow, nor a phone's window.
@@ -496,6 +516,13 @@ export function WaitingCard({
           id={panelId}
           aria-labelledby={`waiting-${session}-${shown.key}`}
           style={{ "--who": colour(shown) } as CSSProperties}
+          // On a phone the keyboard leaves the chat no room for the card above the composer:
+          // a field taking the focus expands it (LAD-126); on Needs you the page scrolls.
+          onFocus={(event) => {
+            if (!chat || !phone || expanded || !(event.target as Element).matches(FIELD)) return;
+            fromField.current = true;
+            setExpanded(true);
+          }}
         >
           {"gate" in shown ? (
             <GatePanel

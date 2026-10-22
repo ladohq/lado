@@ -25,11 +25,10 @@ class Busy(runtime.LadoError):
 
 
 def refused(error: runtime.LadoError) -> models.CloneRefused:
-    hint = getattr(error, "hint", None)
     return models.CloneRefused(
         message=str(error),
         kind=getattr(error, "kind", "refused"),
-        hint=models.HintInfo(text=hint.text, command=hint.command) if hint else None,
+        hint=models.hint_info(getattr(error, "hint", None)),
     )
 
 
@@ -65,6 +64,7 @@ def target_info(url: str, path: str | None, has_db: bool) -> models.CloneTarget:
         name_state=launch.name_state(name, os.path.realpath(folder), has_db),
         provider=launch.provider_suggestion(None),  # a new folder has no last session
         warning=runtime.outside_workspace(folder),
+        hint=models.hint_info(target.hint),
     )
 
 
@@ -115,7 +115,7 @@ class Jobs:
         folder = _folder(_url(url), path)
         target = clone.check_target(url, folder)
         if target.state not in clone.CAN_CLONE:
-            raise clone.CloneError(target.state, target.text)
+            raise clone.CloneError(target.state, target.text, target.hint)
         real = os.path.realpath(folder)
         now = time.monotonic()
         with self._lock:

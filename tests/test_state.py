@@ -320,7 +320,7 @@ def test_the_migration_makes_the_projects_table_as_a_new_database_has_it(lado_ho
     assert db.execute(PROJECTS_TABLE).fetchone() is None
     db.close()
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (31, 32)
+    assert (migrated.before, migrated.after) == (31, state.SCHEMA_VERSION)
     assert migrated.backup == lado_home / "backups" / "lado.db.schema-31"
     with state.connect() as db:
         assert db.execute(PROJECTS_TABLE).fetchone()[0] == fresh
@@ -348,6 +348,52 @@ def test_projects_kept_in_lado_db(lado_home):
     assert state.delete_project("acme") is True
     assert state.delete_project("acme") is False
     assert [p.id for p in state.list_projects()] == ["shop"]
+
+
+SESSIONS_TABLE = "SELECT sql FROM sqlite_master WHERE name = 'sessions'"
+
+
+def test_the_migration_gives_sessions_no_project_as_a_new_database_has_it(lado_home):
+    state.add_session(state.Session("site", "/ws/projects/shop/site", None, provider="claude"))
+    with state.connect() as db:
+        fresh = db.execute(SESSIONS_TABLE).fetchone()[0]
+    agent_helpers.schema_before(33)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert "project" not in db.execute(SESSIONS_TABLE).fetchone()[0]
+    db.close()
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (32, 33)
+    assert migrated.backup == lado_home / "backups" / "lado.db.schema-32"
+    with state.connect() as db:
+        assert db.execute(SESSIONS_TABLE).fetchone()[0] == fresh
+    assert state.get_session("site").project is None  # never taken from the path
+
+
+def test_a_session_keeps_its_project(lado_home):
+    with state.creating_project("shop", "Shop"):
+        pass
+    state.add_session(state.Session("a", "/r/a", None, provider="claude", project="shop"))
+    state.add_session(state.Session("b", "/r/b", None, provider="claude"))
+    state.add_session(state.Session("c", "/r/c", None, provider="claude", project="shop"))
+    assert state.get_session("a").project == "shop"
+    assert state.get_session("b").project is None
+    assert [s.name for s in state.project_sessions("shop")] == ["a", "c"]
+    assert state.project_sessions("acme") == []
+    state.stop_session("a")
+    other = state.Session("a", "/r/a", None, provider="codex", project=None)
+    assert state.resume_session(other, "provider codex")
+    assert state.get_session("a").project == "shop"  # a resume never changes it
+    assert state.get_session("a").provider == "codex"
+
+
+def test_a_project_with_sessions_keeps_its_record(lado_home):
+    with state.creating_project("shop", None):
+        pass
+    state.add_session(state.Session("a", "/r/a", None, provider="claude", project="shop"))
+    with pytest.raises(sqlite3.IntegrityError):
+        state.delete_project("shop")
+    state.delete_session("a")
+    assert state.delete_project("shop") is True
 
 
 def test_a_project_being_made_stays_only_when_its_block_ends_well(lado_home):
@@ -777,8 +823,8 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
-        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
-    assert "projects" not in tables  # the content before the migration
+        sessions = db.execute(SESSIONS_TABLE).fetchone()[0]
+    assert "project" not in sessions  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -830,7 +876,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert db.execute(PROJECTS_TABLE).fetchone() is None  # the step was rolled back
+        assert "project" not in db.execute(SESSIONS_TABLE).fetchone()[0]  # rolled back
 
 
 def test_no_pending_migration_without_a_database(lado_home):

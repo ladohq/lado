@@ -84,6 +84,7 @@ from lado.server.models import (
     PlanAsk,
     PlanInfo,
     PlanUpdateAsk,
+    ProjectInfo,
     ProviderInfo,
     RecentFolder,
     RecordView,
@@ -587,6 +588,17 @@ def create_app(
         whether it exists yet."""
         folder = projects.workspace()
         return Workspace(path=str(folder), made=folder.is_dir())
+
+    @app.get("/api/projects/{id}", dependencies=[Depends(guard)])
+    def project(id: str, has_db: bool = Depends(database)) -> ProjectInfo:
+        """A project with its repositories, read from its folder now (docs/design/projects.md);
+        404 for an unknown id."""
+        try:
+            if not has_db:
+                raise projects.NoSuchProject(f'unknown project "{id}"')
+            return launch.project_info(id)
+        except projects.NoSuchProject as unknown:
+            raise HTTPException(404, str(unknown)) from unknown
 
     @app.get("/api/kits", dependencies=[Depends(guard)])
     def list_kits(has_db: bool = Depends(database)) -> list[KitInfo]:

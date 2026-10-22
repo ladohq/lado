@@ -2762,6 +2762,7 @@ def test_project_create_list_show_rename(ws, capsys):
         'shop-eu "Shop EU"',
         f"  folder:  {folder}",
         f"  made:    {utc.astimezone():%Y-%m-%d %H:%M}",
+        "  repositories: none",
     ]
     assert main(["project", "show", "a"]) == 0
     out = capsys.readouterr().out.splitlines()
@@ -2835,6 +2836,135 @@ def test_agents_cannot_change_projects(ws, capsys, monkeypatch, argv):
     assert (ws / "projects" / "shop").is_dir() and not (ws / "projects" / "acme").exists()
     assert main(["project", "list"]) == 0
     assert main(["project", "show", "shop"]) == 0
+
+
+# Sessions in projects (openspec change sessions-in-projects)
+
+
+@pytest.fixture
+def shop(ws, git_config, capsys):
+    """The project shop titled Shop with its repository frontend; its folder."""
+    assert main(["project", "create", "shop", "--title", "Shop"]) == 0
+    init_repo(ws / "projects" / "shop" / "frontend")
+    capsys.readouterr()
+    return ws / "projects" / "shop"
+
+
+def test_start_in_a_project(shop, fake_tmux, capsys):
+    argv = ["start", "--project", "shop", "--repo", "frontend", "--provider", "kilo", "--no-attach"]
+    assert main(argv) == 0
+    out = capsys.readouterr().out
+    assert f'Started session "shop-frontend" in {shop / "frontend"} (project shop)\n' in out
+    assert state.get_session("shop-frontend").project == "shop"
+    assert main(["ls"]) == 0
+    assert (
+        capsys.readouterr()
+        .out.splitlines()[0]
+        .startswith(f"shop-frontend  {shop / 'frontend'}  project shop  (session loop not running")
+    )  # the project after the folder, before the status
+
+
+@pytest.mark.parametrize(
+    ("argv", "said"),
+    [
+        (["--project", "shop"], "--project needs --repo NAME"),
+        (["--repo", "frontend"], "--repo needs --project ID"),
+        (["/src/app", "--project", "shop", "--repo", "frontend"], "--project takes no folder"),
+        (["https://h/a/app", "--project", "shop", "--repo", "frontend"], "--project takes no"),
+        (["--new", "--project", "shop", "--repo", "frontend"], "--project takes no folder"),
+        (["--branch", "dev", "--project", "shop", "--repo", "frontend"], "--project takes no"),
+    ],
+)
+def test_start_with_a_project_takes_its_repository_only(shop, fake_tmux, capsys, argv, said):
+    with pytest.raises(SystemExit) as usage:
+        main(["start", *argv, "--no-attach"])
+    assert usage.value.code == 2
+    assert said in capsys.readouterr().err
+    assert state.list_sessions() == []
+
+
+def test_start_refuses_a_repository_the_project_does_not_have(shop, fake_tmux, capsys):
+    assert main(["start", "--project", "shop", "--repo", "web", "--no-attach"]) == 1
+    assert capsys.readouterr().err == (
+        "lado: project shop has no repository web; its repositories: frontend\n"
+    )
+
+
+def test_start_without_the_project_in_its_repository_offers_it(shop, fake_tmux, capsys):
+    assert main(["start", str(shop / "frontend"), "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: {shop / 'frontend'} belongs to the project Shop: start a session in the project",
+        "lado: Start a session in the project: lado start --project shop --repo frontend",
+    ]
+    assert state.list_sessions() == []
+
+
+def test_a_clone_into_a_project_is_refused_before_cloning(shop, fake_tmux, capsys):
+    assert main(["start", "https://h/shop/web", str(shop / "web"), "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: {shop / 'web'} belongs to the project Shop: start a session in the project",
+        "lado: Start a session in the project: lado start --project shop --repo web",
+    ]
+    assert sorted(p.name for p in shop.iterdir()) == ["frontend"]
+
+
+def test_a_fresh_start_in_a_project_is_refused(shop, fake_tmux, capsys):
+    assert main(["start", "--new", str(shop / "site"), "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: {shop / 'site'} belongs to the project Shop: start a session in the project",
+        "lado: Start a session in the project: lado start --project shop --repo site",
+    ]
+    assert not (shop / "site").exists()
+
+
+def test_project_show_lists_the_repositories(shop, tmp_path, capsys):
+    frontend = shop / "frontend"
+    subprocess.run(
+        ["git", "-C", str(frontend), "remote", "add", "origin", "https://github.com/shop/frontend"],
+        check=True,
+    )
+    backend = init_repo(shop / "backend")
+    subprocess.run(["git", "-C", str(backend), "switch", "-q", "-c", "dev"], check=True)
+    docs = init_repo(tmp_path / "docs")
+    (shop / "docs").symlink_to(docs)
+    assert main(["project", "show", "shop"]) == 0
+    assert capsys.readouterr().out.splitlines()[3:] == [
+        "  repositories:",
+        "    backend   dev   (no remote)",
+        f"    docs      (a link to {docs}: clone it into {shop} instead)",
+        "    frontend  main  https://github.com/shop/frontend",
+    ]
+
+
+def test_project_show_without_repositories(shop, capsys):
+    shutil.rmtree(shop)
+    assert main(["project", "show", "shop"]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "  repositories: none"
+
+
+def test_project_delete_with_sessions(shop, capsys):
+    for name in ("shop-frontend", "fix-login"):
+        state.add_session(
+            state.Session(name, str(shop / "frontend"), None, provider="kilo", project="shop")
+        )
+    state.stop_session("fix-login")
+    assert main(["project", "delete", "shop", "--yes"]) == 1
+    assert capsys.readouterr().err == (
+        "lado: project shop has sessions not stopped: shop-frontend; stop them first with "
+        "lado stop <name>\n"
+    )
+    state.stop_session("shop-frontend")
+    run = state.Run("shop-frontend", "f/x", "feature", "{}", {}, "do x", "design", "/w", "b")
+    state.add_run(run, [], None)
+    assert main(["project", "delete", "shop"]) == 1
+    captured = capsys.readouterr()
+    assert (
+        captured.out.splitlines()[0] == "Sessions to forget: fix-login, shop-frontend (1 open run)"
+    )
+    assert captured.err.endswith(" and forgets its 2 sessions; run again with --yes\n")
+    assert main(["project", "delete", "shop", "--yes"]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "Deleted project shop"
+    assert state.list_sessions() == [] and not shop.exists()
 
 
 def test_project_alone_prints_its_help(capsys):

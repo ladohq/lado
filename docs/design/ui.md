@@ -1079,7 +1079,8 @@ Built in the chat task (2026-10-03):
   `task/lad-48/mockup-expanded-card.html`, option A; before, a dialog over the window and
   a scrim, under which an artifact panel opened from it stayed hidden): in the chat over
   the chat's whole area, the feed and the composer hidden, the session's head, tabs and
-  team row seen and usable; on Needs you over the page's content area (Needs you, above).
+  team row seen and usable (but on a phone, which hides the tabs and the team row too:
+  Phone layout, The chat); on Needs you over the page's content area (Needs you, above).
   Its host hides the rest by CSS (`:has(.waiting-card.expanded)`), so the artifact panel
   and its scrim, fixed over the page, are over the card too. On a window of 900 px or
   less, which scrolls, it is the window's height under the top bar and expanding scrolls
@@ -1361,7 +1362,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   2026-10-14, LAD-63, mockup `task/lad-63/mockup-where-start.html` variant 2; renamed
   LAD-117; the default and `made` LAD-123, mockup `task/lad-123/mockup-workspace-where.html`)
   gives the empty field's placeholder `<folder>/…`. Once the folder exists (`made`), the
-  field's focus while empty lists its subfolders (a pick sets `<folder>/<name>`), and a row
+  field's focus while empty lists its subfolders (a pick sets `<folder>/<name>`; never
+  LADO's `projects/`, nor a folder inside it, which has none: LAD-125), and a row
   **Workspace:** with the folder as a chip, before Recent and hidden in Resume as Recent is, sets
   `<folder>/`, gives the field the focus (its keys and its blur work the list) and opens
   the list. The folder is the parent with one `/` at its end (`/` stays `/`). The folder
@@ -1418,7 +1420,15 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   an amber panel: `--warn-ground` with a 3 px `--warn` stripe on its left, text 13 px in
   `--ink`, its icon the `⚠` its text starts with. A refusal (`field-note bad`) is the same
   panel on `--danger-ground` with a `--danger` stripe and a round `!` drawn by CSS before
-  its first line (not part of its text); its hint, command and Copy stay inside it. Start
+  its first line (not part of its text); its hint, command and Copy stay inside it. A
+  folder inside LADO's `projects/` is such a refusal (LAD-125), before git is asked: the
+  core's text naming the project, `Start a session in the project:` and `lado start
+  --project <id> --repo <name>` with Copy; a clone's target (Clone into) and a fresh start's
+  (Create in) there show the same box with the same hint. The box shows also for a folder
+  there that already has a session, a session in the project too: the window starts no
+  session there and offers no Resume it; such a session is resumed from its own page
+  (Resume…), as its resume is never refused. Recent folders leave out folders inside
+  `projects/` for the same reason. Start
   (Clone and start, Create and start, and Resume session in the Resume mode: LAD-122,
   2026-10-21) is off while a refusal shows, and a note that does
   not keep the session from starting is not a refusal: the kits list that does not load
@@ -1608,6 +1618,15 @@ layout, below).
 - The head's first items: the status dot (the session list's mark, its words in its
   tooltip; LAD-108), the title (or the name), the name when there is a title, the pencil
   **Rename session**, the run time (Session title, below).
+- A session in a project (LAD-125, the human's answer #810, mockup
+  `task/lad-125/mockup-session-project.html` variant A) has the project as the head's first
+  fact, before the folder: the muted word `project` and the project's title (its id
+  without one) in `--ink`, the tooltip `Project <id>` (a `title`, as the name's), no icon
+  (the folder's icon is the Projects section's). It wraps with the other facts. The title
+  comes with `SessionAbout.project`, read when the head opens, so a rename shows on the
+  next look; the feed's `SessionInfo.project` carries the id only. On a phone the details
+  sheet has a line **Project** `<title>` above **Folder**. A session without a project
+  shows nothing new; the project is text, not a link, until the Projects section (S6).
 - The head's facts, left to right: where (the folder, then its git: the origin
   remote short, `github.com/ladohq/lado`, without scheme, user and `.git`, and `· <branch>`),
   the kits, the CLI (its permission mode is in its tooltip, below; decided 2026-10-08,
@@ -1962,7 +1981,14 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   16 px (Safari zooms into a smaller field) and its keys hint is not shown; so is the text
   of the card's fields that take files (an own answer, a skip's or a gate's comment; LAD-86). A flow event's
   line starts at the feed's left edge, its actor, chips and time on the first line, its
-  text wrapped under them, whole.
+  text wrapped under them, whole. With the keyboard open the chat has no room for the
+  card above the composer (LAD-126), so a field of the card (a gate's comment, an own
+  answer, a skip's comment) taking the focus expands it, the focus kept in the field, and
+  the field scrolls into the card's view, again whenever the card is laid out anew (the
+  keyboard opening). An expanded card, by its button, a field or sideways, also hides the
+  session's tabs and the Team row: it fills the page under the top bar. It stays expanded
+  when the keyboard closes, until its fold button, Esc, or nothing waits. Needs you, which
+  scrolls as a page, keeps the card as it is.
 - **Sideways** (`short`): the chat's card is minimized by the layout (its tabs and one
   line), not by the human: `lado.waitingMinimized.<session>` is not written. A tab or the
   line shows it expanded over the chat; Esc or its fold button minimizes it again; turned

@@ -187,6 +187,7 @@ def schema_before(version: int) -> None:
     """Turn the LADO_HOME database back to the version before `version` (13 at the oldest),
     undoing the steps of state.MIGRATIONS from the latest on. Step 22 changes only data that
     cannot come back (the needs it drops): undoing it sets the version alone."""
+    assert state.MIGRATIONS[32] == [state.SESSIONS_PROJECT]
     assert state.MIGRATIONS[31] == [state.PROJECTS_TABLE]
     assert state.MIGRATIONS[30] == [state.GATES_ANSWER_NOTE]
     assert state.MIGRATIONS[29] == [state.GATES_CLOSED_EVENT, state.gates_closed_events]
@@ -212,8 +213,12 @@ def schema_before(version: int) -> None:
     assert state.MIGRATIONS[14] == state.NOTES_STEP
     assert state.MIGRATIONS[13] == state.EVENTS_JOURNAL
     assert state.MIGRATIONS[12] == state.MESSAGES_HUMAN
-    assert 13 <= version <= state.SCHEMA_VERSION == 32
+    assert 13 <= version <= state.SCHEMA_VERSION == 33
     with state.connect() as db:
+        db.execute("ALTER TABLE sessions DROP COLUMN project")
+        if version == 33:
+            db.execute("PRAGMA user_version = 32")
+            return
         db.execute("DROP TABLE projects")
         if version == 32:
             db.execute("PRAGMA user_version = 31")

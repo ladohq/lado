@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from agent_helpers import bare_remote, fake_git, fake_git_calls, gone, init_repo
 
-from lado import clone, runtime
+from lado import clone, projects, runtime
 
 
 @pytest.mark.parametrize(
@@ -119,6 +119,42 @@ def test_a_new_folder(tmp_path):
     target = clone.check_target("https://github.com/ladohq/lado", str(tmp_path / "lado"))
     assert (target.state, target.text) == ("new", "a new folder")
     assert not (tmp_path / "lado").exists()
+
+
+@pytest.fixture
+def shop(tmp_path, monkeypatch):
+    """The workspace <tmp>/ws with the project shop titled Shop; its folder."""
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    projects.create("shop", "Shop")
+    return projects.folder("shop")
+
+
+@pytest.mark.parametrize("made", [False, True])  # checked before the other states
+def test_a_folder_in_a_project_is_no_target(shop, made):
+    web = shop / "web"
+    if made:
+        web.mkdir()
+    target = clone.check_target("https://github.com/shop/web", str(web))
+    assert (target.state, target.text) == (
+        "in_project",
+        f"{web} belongs to the project Shop: start a session in the project",
+    )
+    assert target.hint == runtime.Hint(
+        "Start a session in the project:", "lado start --project shop --repo web"
+    )
+    assert "in_project" not in clone.CAN_CLONE
+    assert (
+        clone.check_target("https://github.com/shop/web", str(shop.parent.parent / "web")).hint
+        is None
+    )
+
+
+def test_a_clone_into_a_project_makes_nothing(shop):
+    with pytest.raises(clone.CloneError) as refused:
+        clone.clone("https://github.com/shop/web", str(shop / "web"))
+    assert refused.value.kind == "in_project"
+    assert refused.value.hint.command == "lado start --project shop --repo web"
+    assert list(shop.iterdir()) == []  # no temporary folder either
 
 
 def test_an_empty_folder(tmp_path):

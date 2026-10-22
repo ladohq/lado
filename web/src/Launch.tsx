@@ -659,11 +659,12 @@ function LaunchDialog({
                   setRefused(null);
                 }}
               />
-              {fresh?.text && (
-                <span className={`field-note ${CAN_START.has(fresh.state) ? "ok" : "bad"}`}>
-                  {CAN_START.has(fresh.state) ? `✓ ${fresh.text}` : fresh.text}
-                </span>
-              )}
+              {fresh?.text &&
+                (CAN_START.has(fresh.state) ? (
+                  <span className="field-note ok">✓ {fresh.text}</span>
+                ) : (
+                  <RefusedNote text={fresh.text} hint={fresh.hint ?? null} />
+                ))}
               {fresh?.warning && <span className="field-note warn">⚠ {fresh.warning}</span>}
             </div>
           )}
@@ -1270,7 +1271,19 @@ function TargetNote({ target, problem }: { target: CloneTarget | null; problem: 
   if (problem) return <span className="field-note bad">{problem}</span>;
   if (target === null || target.state === "same_repo" || target.state === "other_repo") return null;
   if (CAN_CLONE.has(target.state)) return <span className="field-note ok">✓ {target.text}</span>;
-  return <span className="field-note bad">{target.text}</span>;
+  return <RefusedNote text={target.text} hint={target.hint ?? null} />;
+}
+
+// A folder that takes no clone or fresh start, with what to do instead when the core says
+// it (a folder inside a project: its session's command).
+function RefusedNote({ text, hint }: { text: string; hint: FolderInfo["hint"] }) {
+  if (!hint) return <span className="field-note bad">{text}</span>;
+  return (
+    <div className="field-note bad">
+      <div>{text}</div>
+      <FolderHint text={hint.text} command={hint.command} />
+    </div>
+  );
 }
 
 function BranchField({

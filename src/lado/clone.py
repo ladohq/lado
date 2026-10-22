@@ -148,7 +148,9 @@ def _git_runs() -> None:
         raise CloneError(problem.kind, str(problem), problem.hint) from None
 
 
-TargetState = Literal["new", "empty", "same_repo", "other_repo", "not_empty", "not_folder"]
+TargetState = Literal[
+    "new", "empty", "same_repo", "other_repo", "not_empty", "not_folder", "in_project"
+]
 CAN_CLONE = ("new", "empty")  # the target states a clone may start in
 
 
@@ -162,6 +164,7 @@ class Target:
     origin: str | None = None  # the folder's origin, through runtime.public_remote
     branch: str | None = None  # the folder's current branch, for same_repo
     suggestion: str | None = None  # a free folder beside it, for other_repo
+    hint: runtime.Hint | None = None  # what to do instead, for in_project
 
 
 def check_target(url: str, path: str) -> Target:
@@ -175,6 +178,8 @@ def check_target(url: str, path: str) -> Target:
 
 
 def _check_target(url: str, path: str) -> Target:
+    if refused := projects.refusal(path):  # a new session without a project could not start
+        return Target(path, "in_project", str(refused), hint=refused.hint)
     folder = Path(path)
     if not folder.exists():
         return Target(path, "new", "a new folder")
@@ -432,7 +437,7 @@ def clone(
     `path` stays as it was. Returns `path`."""
     target = check_target(url, path)
     if target.state not in CAN_CLONE:
-        raise CloneError(target.state, target.text)
+        raise CloneError(target.state, target.text, target.hint)
     folder = Path(path)
     try:
         folder.parent.mkdir(parents=True, exist_ok=True)

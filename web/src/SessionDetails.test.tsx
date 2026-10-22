@@ -15,7 +15,7 @@ const NONE = { gates: 0, questions: 0, agents: 0 };
 const FOLDER = "/Users/kao/Projects/lado/.lado/worktrees/lad-95/task-lad-95";
 
 function session(more: Partial<SessionInfo> = {}): SessionInfo {
-  const settings = { kits: ["default", "uiflow"], provider: "claude", permission_mode: "auto", without: [], ran_seconds: 0, running_since: null, stopped_at: null, title: null };
+  const settings = { kits: ["default", "uiflow"], provider: "claude", permission_mode: "auto", without: [], ran_seconds: 0, running_since: null, stopped_at: null, title: null, project: null };
   return { name: "lad-95", repo: FOLDER, status: "running", agents: 1, waiting: NONE, busy: 0, ...settings, ...more };
 }
 
@@ -40,17 +40,19 @@ const ABOUT: SessionAbout = {
 
 let sessions: SessionInfo[] = [];
 let calls: { method: string; path: string; body: unknown }[] = [];
+let about: SessionAbout = ABOUT;
 
 beforeEach(() => {
   localStorage.clear();
   sessions = [session()];
+  about = ABOUT;
   calls = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (path: string, init?: RequestInit) => {
       calls.push({ method: init?.method ?? "GET", path, body: init?.body ? JSON.parse(String(init.body)) : null });
       if (path === "/api/sessions") return new Response(JSON.stringify(sessions));
-      if (path.endsWith("/about")) return new Response(JSON.stringify(ABOUT));
+      if (path.endsWith("/about")) return new Response(JSON.stringify(about));
       if (path.endsWith("/title")) {
         const saved = { ...sessions[0], title: (init?.body && JSON.parse(String(init.body)).title) ?? null };
         return new Response(JSON.stringify(saved));
@@ -123,6 +125,24 @@ test("the name opens the details: the state, the whole folder, git, the kits wit
   }
   expect(within(sheet()).getByRole("link", { name: "All sessions" }).getAttribute("href")).toBe("/sessions");
   expect(screen.getByRole("button", { name: "lad-95" }).getAttribute("aria-expanded")).toBe("true");
+});
+
+test("a session in a project has the project's title above the folder in the details", async () => {
+  about = { ...ABOUT, project: { id: "shop", title: "Shop" } };
+  FakeScreen.phone();
+  open();
+  fireEvent.click(await screen.findByRole("button", { name: "lad-95" }));
+  await waitFor(() => expect(sheet().textContent).toContain("ProjectShop"));
+  const terms = [...sheet().querySelectorAll("dt")].map((term) => term.textContent);
+  expect(terms.slice(0, 2)).toEqual(["Project", "Folder"]);
+});
+
+test("a session without a project has no Project line in the details", async () => {
+  FakeScreen.phone();
+  open();
+  fireEvent.click(await screen.findByRole("button", { name: "lad-95" }));
+  await waitFor(() => expect(sheet().textContent).toContain("uiflow 1.0.0"));
+  expect([...sheet().querySelectorAll("dt")].map((term) => term.textContent)).not.toContain("Project");
 });
 
 test("a question waits: the bar's dot and the sheet's state line say so in the mark's words", async () => {

@@ -786,6 +786,13 @@ function HeadLine({ session }: { session: SessionInfo }) {
       <Ran session={session} />
       <span className="topbar-sep meta-sep" aria-hidden="true" />
       <div className="session-meta">
+        {about?.project && (
+          // The project's title, read with the about: a rename shows on the next look.
+          <span className="session-fact session-project" title={`Project ${about.project.id}`}>
+            <span>project</span>
+            <span className="session-project-title">{about.project.title ?? about.project.id}</span>
+          </span>
+        )}
         <span className="session-folder">
           <CopyButton
             label="Copy path"

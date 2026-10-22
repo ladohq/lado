@@ -222,14 +222,169 @@ def test_names_lists_three_then_an_ellipsis():
     assert projects.names(["d", "c", "b", "a"]) == "a, b, c, …"
 
 
-# The unpushed scan and delete
-
-
 def _git(repo: Path, *args: str) -> str:
     done = subprocess.run(
         ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
     )
     return done.stdout
+
+
+# The refusal of a new session inside projects/
+
+
+def _refused(path) -> tuple[str, str, str | None]:
+    problem = projects.refusal(str(path))
+    assert problem is not None and problem.kind == "in_project"
+    return str(problem), problem.hint.text, problem.hint.command
+
+
+@pytest.fixture
+def shop_repo(home, git_config):
+    """The project shop titled Shop, with the repository frontend."""
+    projects.create("shop", "Shop")
+    return init_repo(projects.folder("shop") / "frontend")
+
+
+IN_SHOP = "{} belongs to the project Shop: start a session in the project"
+START_HINT = ("Start a session in the project:", "lado start --project shop --repo frontend")
+
+
+@pytest.mark.parametrize("below", ["", "src/app", "missing/deeper"])
+def test_below_a_projects_folder_is_refused_naming_the_project(shop_repo, below):
+    path = shop_repo / below if below else shop_repo
+    assert _refused(path) == (IN_SHOP.format(path), *START_HINT)
+
+
+def test_a_folder_without_git_in_a_project_is_refused_the_same(shop_repo):
+    notes = projects.folder("shop") / "notes"
+    notes.mkdir()
+    assert _refused(notes)[0] == IN_SHOP.format(notes)
+    assert _refused(notes)[2] == "lado start --project shop --repo notes"
+
+
+def test_a_project_without_a_title_is_named_by_its_id(home):
+    projects.create("acme", None)
+    path = projects.folder("acme") / "crm"
+    assert (
+        _refused(path)[0] == f"{path} belongs to the project acme: start a session in the project"
+    )
+
+
+def test_the_projects_folder_itself_points_at_its_repositories(shop_repo):
+    path = projects.folder("shop")
+    assert _refused(path) == (
+        IN_SHOP.format(path),
+        "See the project's repositories:",
+        "lado project show shop",
+    )
+
+
+@pytest.mark.parametrize("name", ["", "old", "old/deeper"])
+def test_a_folder_of_no_project_points_at_the_projects(shop_repo, name):
+    path = projects.projects_folder() / name if name else projects.projects_folder()
+    assert _refused(path) == (
+        f"{path} is in {projects.projects_folder()}, which holds LADO's projects only: start "
+        "a session in a project, or move the folder out of projects/",
+        "See the projects:",
+        "lado project list",
+    )
+
+
+def test_a_link_is_refused_as_its_target(shop_repo, home):
+    link = home / "code" / "front"
+    link.parent.mkdir()
+    link.symlink_to(shop_repo)
+    assert _refused(link) == (IN_SHOP.format(link), *START_HINT)
+
+
+def test_a_link_to_the_projects_folder_is_refused_too(shop_repo, home, monkeypatch):
+    real = home / "real-workspace"
+    (home / "workspace").rename(real)
+    (home / "workspace").symlink_to(real)
+    assert _refused(real / "projects" / "shop" / "frontend")[2] == START_HINT[1]
+
+
+def test_nothing_is_refused_outside_projects(shop_repo, home):
+    assert projects.refusal(str(home / "workspace" / "app")) is None
+    assert projects.refusal(str(home / "workspace" / "projects-old")) is None
+    assert projects.refusal(str(home)) is None
+
+
+def test_nothing_is_refused_in_the_humans_own_projects_folder(home):
+    app = init_repo(home / "workspace" / "projects" / "app")
+    assert projects.refusal(str(app)) is None
+
+
+def test_nothing_is_refused_without_a_lado_db(home):
+    (home / "workspace" / "projects").mkdir(parents=True)
+    assert projects.refusal(str(home / "workspace" / "projects")) is None
+    assert state.schema_version() is None  # asking makes none
+
+
+def test_a_project_whose_folder_lies_in_its_own_projects_folder_still_refuses(shop_repo):
+    old = projects.projects_folder() / "old"
+    old.mkdir()  # foreign beside the project: projects/ stays LADO's
+    assert _refused(shop_repo)[2] == START_HINT[1]
+
+
+# The repositories, from the disk
+
+
+def test_repositories_with_their_branches_and_remotes(home, git_config):
+    projects.create("shop", "Shop")
+    folder = projects.folder("shop")
+    source = init_repo(home / "src" / "frontend")
+    subprocess.run(
+        ["git", "clone", "-q", str(source), str(folder / "frontend")],
+        check=True,
+        capture_output=True,
+    )
+    _git(
+        folder / "frontend", "remote", "set-url", "origin", "https://token@github.com/shop/frontend"
+    )
+    backend = init_repo(folder / "backend")
+    _git(backend, "switch", "-q", "-c", "dev")
+    _git(backend, "branch", "-q", "-D", "main")
+    assert projects.repositories("shop") == [
+        projects.Repository("backend", folder / "backend", "dev", None),
+        projects.Repository(
+            "frontend", folder / "frontend", "main", "https://github.com/shop/frontend"
+        ),
+    ]
+    assert projects.links("shop") == []
+
+
+def test_what_is_no_repository(home, git_config):
+    projects.create("shop", None)
+    folder = projects.folder("shop")
+    folder.rmdir()
+    init_repo(folder)  # the project folder itself is a repository
+    (folder / "plain").mkdir()  # inside it, but no root of its own
+    (folder / "notes").mkdir()
+    init_repo(folder / ".web.clone-x1y2")  # a clone's temporary folder
+    (folder / "readme.txt").write_text("x")
+    elsewhere = init_repo(home / "elsewhere" / "docs")
+    (folder / "docs").symlink_to(elsewhere)
+    assert projects.repositories("shop") == []
+    assert projects.links("shop") == [("docs", str(elsewhere))]
+
+
+def test_a_detached_head_has_no_branch(home, git_config):
+    projects.create("shop", None)
+    repo = init_repo(projects.folder("shop") / "frontend")
+    _git(repo, "switch", "-q", "--detach")
+    [found] = projects.repositories("shop")
+    assert (found.name, found.branch, found.remote) == ("frontend", None, None)
+
+
+def test_a_project_whose_folder_is_gone_has_no_repositories(home):
+    projects.create("shop", None)
+    projects.folder("shop").rmdir()
+    assert projects.repositories("shop") == []
+    assert projects.links("shop") == []
+
+
+# The unpushed scan and delete
 
 
 @pytest.fixture
@@ -365,3 +520,90 @@ def test_a_folder_not_removed_whole_keeps_the_record(home, monkeypatch):
 def test_delete_of_an_unknown_project(home):
     with pytest.raises(projects.NoSuchProject, match='unknown project "nope"'):
         projects.delete("nope", yes=True)
+
+
+# Delete with the project's sessions
+
+
+def _session(name: str, repo: Path, project: str | None, stopped: bool = True) -> None:
+    state.add_session(state.Session(name, str(repo), None, provider="claude", project=project))
+    if stopped:
+        state.stop_session(name)
+
+
+def test_delete_refuses_while_a_session_of_the_project_is_not_stopped(shop):
+    _session("shop-frontend", shop / "frontend", "shop", stopped=False)
+    _session("fix-login", shop / "frontend", "shop")
+    for yes in (False, True):
+        with pytest.raises(projects.ProjectError) as refused:
+            projects.delete("shop", yes=yes)
+        assert str(refused.value) == (
+            "project shop has sessions not stopped: shop-frontend; stop them first with "
+            "lado stop <name>"
+        )
+    assert shop.is_dir() and state.get_project("shop")
+    assert {s.name for s in state.list_sessions()} == {"shop-frontend", "fix-login"}
+
+
+def test_delete_refuses_while_a_session_runs_in_its_folder_without_the_project(shop, home):
+    """A session started there before schema 33 has no project, yet its agents work there."""
+    _session("old", shop / "frontend" / "src", None, stopped=False)
+    _session("elsewhere", home / "app", None, stopped=False)
+    with pytest.raises(projects.ProjectError, match="has sessions not stopped: old;"):
+        projects.delete("shop", yes=True)
+    assert shop.is_dir() and state.get_project("shop")
+
+
+def test_the_sessions_to_forget(shop):
+    _session("shop-frontend", shop / "frontend", "shop")
+    _session("fix-login", shop / "frontend", "shop")
+    run = state.Run("shop-frontend", "f/x", "feature", "{}", {}, "do x", "design", "/w", "b")
+    state.add_run(run, [], None)
+    assert projects.sessions_to_forget("shop") == [("fix-login", 0), ("shop-frontend", 1)]
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.delete("shop", yes=False)
+    assert str(refused.value) == (
+        f"deleting project shop removes its folder {shop} with everything in it and forgets "
+        "its 2 sessions; run again with --yes"
+    )
+    _session("acme-crm", shop / "x", None)
+    assert [name for name, _ in projects.sessions_to_forget("shop")] == [
+        "fix-login",
+        "shop-frontend",
+    ]
+
+
+def test_delete_with_yes_forgets_the_stopped_sessions(shop):
+    _session("shop-frontend", shop / "frontend", "shop")
+    _session("old", shop / "frontend", None)  # no project: kept, its folder goes
+    projects.delete("shop", yes=True)
+    assert not os.path.lexists(shop) and state.get_project("shop") is None
+    assert [s.name for s in state.list_sessions()] == ["old"]
+
+
+def test_a_folder_not_removed_keeps_the_sessions(shop, monkeypatch):
+    _session("shop-frontend", shop / "frontend", "shop")
+
+    def fail(path, *args, **kwargs):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(projects.shutil, "rmtree", fail)
+    with pytest.raises(projects.ProjectError, match="the project stays"):
+        projects.delete("shop", yes=True)
+    assert state.get_session("shop-frontend") and state.get_project("shop")
+
+
+def test_a_session_not_forgotten_keeps_the_record(shop, monkeypatch):
+    _session("shop-frontend", shop / "frontend", "shop")
+
+    def fail(name, force=False):
+        raise runtime.LadoError("the disk is gone")
+
+    monkeypatch.setattr(runtime, "forget_session", fail)
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.delete("shop", yes=True)
+    assert str(refused.value) == (
+        "could not forget session shop-frontend: the disk is gone; the project stays: run "
+        "lado project delete shop --yes again"
+    )
+    assert not os.path.lexists(shop) and state.get_project("shop")

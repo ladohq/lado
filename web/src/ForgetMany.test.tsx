@@ -28,6 +28,7 @@ function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
     busy: 0,
     stopped_at: ago(2 * HOUR),
     title: null,
+    project: null,
     ...more,
   };
 }

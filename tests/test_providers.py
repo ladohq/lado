@@ -419,6 +419,21 @@ def test_lado_passes_its_outside_folder_on_to_each_agent(repo, lado_home, monkey
     assert "LADO_ENV_DIR" not in base.agent_env(agent)
 
 
+def test_lado_passes_its_workspace_on_to_each_agent(repo, lado_home, monkeypatch):
+    # A supervisor's `lado mcp` starts sessions in a project and refuses ones inside
+    # projects/ by the workspace: LADO's own, not the one its login shell may name or not.
+    agent = state.Agent(
+        "s", "supervisor", "supervisor", str(repo), None, None, state.STARTING, "kilo"
+    )
+    monkeypatch.delenv("LADO_REPOS", raising=False)
+    assert "LADO_REPOS" not in base.agent_env(agent)
+    monkeypatch.setenv("LADO_REPOS", "/srv/workspace")
+    assert base.agent_env(agent)["LADO_REPOS"] == "/srv/workspace"
+    assert base.mcp_server(agent).env["LADO_REPOS"] == "/srv/workspace"
+    monkeypatch.setenv("LADO_REPOS", "")
+    assert "LADO_REPOS" not in base.agent_env(agent)
+
+
 def _kilo_launch(repo, permission_mode=None):
     sess = state.Session("s", str(repo), permission_mode, "kilo")
     agent = state.Agent(

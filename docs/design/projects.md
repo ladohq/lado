@@ -8,8 +8,11 @@ changes this file.
 > **What is built.** The workspace's name (step S1); the workspace as one function with
 > its default `~/workspace`, the project's record and folder, `lado project list | create |
 > show | rename | delete` and `lado doctor`'s Workspace and Projects checks (step S2,
-> 0.43.0; `lado.projects`, [cli.md](../cli.md)). Everything else here is steps S3–S7 and is
-> marked **not built yet** where it is described.
+> 0.43.0; `lado.projects`, [cli.md](../cli.md)); a session in a project (`lado start
+> --project --repo`, the reference, its inheritance, the refusal inside `projects/`, the
+> project in `lado ls` and the session's head), the repositories read from the disk, and
+> deleting a project with its sessions (step S3, 0.43.0). Everything else here is steps
+> S4–S7 and is marked **not built yet** where it is described.
 
 ## Why
 
@@ -109,11 +112,15 @@ with its folder, so the workspace is tidied up without going to the host.
 
 ## How LADO knows a project's repositories
 
-**Not built yet** (steps S3 and S4).
+Built in step S3 (`projects.repositories`, `lado project show`, `GET /api/projects/{id}`);
+adding one through LADO is step S4.
 
 The list of repositories is stored nowhere: LADO reads it from the disk each time. A
-repository is a subfolder of the project folder that holds git; its branch and remote come
-from git too. So the list cannot drift from the disk:
+repository is a subfolder of the project folder that is the root of a git repository of its
+own; its branch and remote come from git too. A hidden folder (a clone's temporary one), a
+symbolic link (its work would lie outside the project folder; `lado project show` and `lado
+start --project --repo` name it as a link) and the project folder itself are never one. So
+the list cannot drift from the disk:
 - a folder deleted by hand is gone from the UI;
 - one cloned by hand appears.
 
@@ -127,7 +134,11 @@ record without its folder shows as "missing, clone again?".
 
 ## The session
 
-**Not built yet** (step S3; the New session window's way, step S6).
+Built in step S3 but for the New session window's way (step S6): `lado start --project
+--repo`, the reference (`sessions.project`, schema 33), the inheritance, the refusal on
+every start path (`projects.refusal`), and the project in `lado ls`, the session's API and
+head. The refusal holds only while `projects/` is LADO's; sessions started under
+`projects/` before S3 keep no project and still resume.
 
 A session can start **without a project**, as today: from scratch, in a folder or by a clone
 of a URL, anywhere but `projects/`. Such a session has no variables of its own; it lives in
@@ -257,9 +268,11 @@ workers and the LADO manager.
 
 ## Deleting
 
-A project without sessions is deleted by `lado project delete <id> --yes` (step S2): it
-shows its repositories' unpushed work first and removes the record and the folder. Sessions
-(step S3), secrets (step S5b) and the UI (steps S6, S7) are **not built yet**.
+`lado project delete <id> --yes` (steps S2, S3) refuses while a session of the project, or
+any session working in its folder (one from before S3 has no project), is not stopped;
+shows the stopped sessions it forgets and its repositories' unpushed work; then removes the
+folder, forgets the sessions and removes the record. Secrets (step S5b) and the UI (steps
+S6, S7) are **not built yet**.
 
 Deleting a project removes the project, its secrets, all its sessions (as `lado forget`
 does) and the whole project folder.

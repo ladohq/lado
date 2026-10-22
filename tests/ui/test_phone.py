@@ -406,6 +406,108 @@ def test_the_app_follows_safaris_pan(device, server, repo, shot):
     shot(page, full_page=False)
 
 
+# A field of the card above the keyboard (LAD-126): the keyboard leaves 400 px of 874 visible.
+
+KEYBOARD = (402, 874)
+ABOVE_KEYBOARD = 400
+
+
+def session_around_card_hidden(page: Page, hidden: bool) -> None:
+    """The session's tabs and the Team row, hidden while the card is expanded on a phone."""
+    for part in (
+        page.get_by_role("navigation", name="Session sections"),
+        page.get_by_role("group", name="Team"),
+    ):
+        (expect(part).to_be_hidden if hidden else expect(part).to_be_visible)()
+
+
+def test_a_gates_comment_expands_the_card_above_the_keyboard(device, server, repo, shot):
+    """AC-1, AC-3: a tap on the gate's comment expands the card, the field focused; with the
+    keyboard's 400 px the field and Approve / Reject are in sight, the session's tabs and the
+    Team row hidden; the keyboard closed, the card stays expanded until Collapse."""
+    session = gated_session(repo)
+    phone = device(KEYBOARD)
+    phone.add_init_script(FAKE_VIEWPORT)
+    page = opened(phone, server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    comment = card.get_by_role("textbox", name="Comment for the next step (optional)")
+    session_around_card_hidden(page, False)
+    comment.tap()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    expect(comment).to_be_focused()
+    page.evaluate(f"window.moveViewport({ABOVE_KEYBOARD}, 0)")
+    expect(page.locator(".app")).to_have_css("height", f"{ABOVE_KEYBOARD}px")
+    session_around_card_hidden(page, True)
+    expect(comment).to_be_focused()
+    comment.fill("check the migration")
+    for part in (
+        comment,
+        card.get_by_role("button", name="Approve"),
+        card.get_by_role("button", name="Reject"),
+    ):
+        within(part, 0, ABOVE_KEYBOARD)
+    shot(page, "keyboard", full_page=False)
+
+    page.evaluate(f"window.moveViewport({KEYBOARD[1]}, 0)")  # the keyboard closes
+    expect(page.locator(".app")).to_have_css("height", f"{KEYBOARD[1]}px")
+    comment.blur()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    expect(comment).to_have_value("check the migration")
+    shot(page, "closed", full_page=False)
+    card.get_by_role("button", name="Collapse the card").tap()
+    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
+    session_around_card_hidden(page, False)
+    expect(page.get_by_role("textbox", name="Write to the supervisor…")).to_be_visible()
+    assert box(card)["y"] + box(card)["height"] <= box(page.locator(".chat > .composer"))["y"] + 1
+
+
+def test_an_own_answer_expands_the_card_above_the_keyboard(device, server, repo, shot):
+    """AC-2: a tap on Other… expands the card with its field focused; the field and Send
+    are in sight with the keyboard's 400 px."""
+    session = question_session(repo)
+    phone = device(KEYBOARD)
+    phone.add_init_script(FAKE_VIEWPORT)
+    page = opened(phone, server, f"/sessions/{session}")
+    card, send = question_tab(page, session)
+    card.get_by_role("button", name="Other…").tap()
+    own = card.get_by_role("textbox", name="Your own answer")
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    expect(own).to_be_focused()
+    page.evaluate(f"window.moveViewport({ABOVE_KEYBOARD}, 0)")
+    expect(page.locator(".app")).to_have_css("height", f"{ABOVE_KEYBOARD}px")
+    session_around_card_hidden(page, True)
+    within(own, 0, ABOVE_KEYBOARD)
+    within(send, 0, ABOVE_KEYBOARD)
+    shot(page, full_page=False)
+
+
+def test_expanded_by_its_button_on_a_phone_the_card_hides_the_tabs_and_the_team(
+    device, server, repo, shot
+):
+    """AC-4: the expand button on a phone hides the session's tabs and the Team row too."""
+    session = gated_session(repo)
+    page = opened(device(KEYBOARD), server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Expand the card").tap()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    session_around_card_hidden(page, True)
+    expect(card.get_by_role("tab", name="ship/x 1")).to_be_focused()
+    shot(page, full_page=False)
+    card.get_by_role("button", name="Collapse the card").tap()
+    session_around_card_hidden(page, False)
+
+
+def test_with_a_mouse_a_gates_comment_does_not_expand_the_card(device, server, repo):
+    """AC-4: in a window as narrow as a phone with a mouse a field's focus expands nothing."""
+    session = gated_session(repo)
+    page = opened(device(KEYBOARD, touch=False), server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    comment = card.get_by_role("textbox", name="Comment for the next step (optional)")
+    comment.click()
+    expect(comment).to_be_focused()
+    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
+
+
 def test_a_flow_events_text_wraps_whole(device, server, repo, shot):
     session = gated_session(repo)
     page = opened(device(UPRIGHT), server, f"/sessions/{session}")

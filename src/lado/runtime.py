@@ -261,7 +261,14 @@ class LadoError(RuntimeError):
 
 
 FolderProblemKind = Literal[
-    "missing", "not_folder", "no_git", "git_broken", "not_repo", "git_refused", "no_commits"
+    "missing",
+    "not_folder",
+    "no_git",
+    "git_broken",
+    "not_repo",
+    "git_refused",
+    "no_commits",
+    "in_project",  # inside LADO's projects/: lado.projects.refusal
 ]
 
 
@@ -622,7 +629,7 @@ def set_title(name: str, text: str | None) -> str | None:
 
 
 def start_session(
-    path: str,
+    path: str | None,
     name: str | None,
     permission_mode: str | None,
     provider: str | None = None,
@@ -633,6 +640,8 @@ def start_session(
     prompt: str | None = None,
     reason: str | None = None,
     title: str | None = None,
+    project: str | None = None,
+    repo_name: str | None = None,
 ) -> Started:
     """Start a session whose agents come from `kit_names` (default: the "default" kit), minus
     the `without` items ("agent:x", "skill:y", "mcp:z"). A new session's supervisor may get
@@ -646,20 +655,50 @@ def start_session(
     new supervisor starts with a message about the open runs (lado.runs.resume).
 
     `resume` is what the caller means: False a new session (SessionExists when the name is
-    taken), True a resume (NoSuchSession for an unknown name); None, as `lado start`, either."""
+    taken), True a resume (NoSuchSession for an unknown name); None, as `lado start`, either.
+
+    With `project` (lado.projects) the folder is its repository `repo_name` (`path` None),
+    the default name `<project>-<repo_name>`, and a session of that name must be of that
+    project: a session's project never changes, and a resume keeps it. Without one, a new
+    session inside LADO's projects/ is refused (projects.refusal); a resume is not."""
+    from lado import projects  # lado.projects builds on this module
+
     if kit_names is not None and not kit_names:
         raise LadoError("a session needs at least one kit")  # not silently the default
     if first is not None and resume is not False:
         raise LadoError("a first input is only for a new session (resume=False)")
     text = check_prompt(prompt) if prompt is not None else None
-    repo = check_repo(path)
-    session = slug(name or Path(repo).name)
+    refused = None
+    if project is not None:
+        assert path is None and repo_name is not None
+        repo = check_repo(str(projects.repository(project, repo_name).path))
+        session = slug(name or f"{project}-{repo_name}")
+    else:
+        assert path is not None
+        refused = projects.refusal(path)
+        try:
+            repo = check_repo(path)
+        except FolderProblem:
+            # A folder in a project that is no repository (yet): the project's way is the
+            # one to offer, not git's.
+            if refused:
+                raise refused from None
+            raise
+        session = slug(name or Path(repo).name)
     stored_title = check_title(title, session)
     old = state.get_session(session)
     if old and resume is False:
         raise SessionExists(old, session_status(old))
     if not old and resume:
         raise NoSuchSession(f'unknown session "{session}"')
+    if not old and refused:
+        raise refused
+    if project is not None and old and old.project != project:
+        held = f"is in project {old.project}" if old.project else "is not in a project"
+        raise LadoError(
+            f'session "{session}" {held}; a session\'s project never changes: give another '
+            "name with --name"
+        )
     if old and title is not None:
         raise LadoError("a title is set with lado title on a resume")
     if old:
@@ -683,6 +722,7 @@ def start_session(
         kit_names or (old.kits if old else [kits.DEFAULT_KIT]),
         without if without is not None else (old.without if old else []),
         title=old.title if old else stored_title,
+        project=old.project if old else project,
     )
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.kits, sess.without)
@@ -1760,8 +1800,8 @@ def start_approved_session(session: str, agent: str, name: str, question_id: int
     """Start session `name` that the human approved: `agent`, the session's supervisor,
     asked question `question_id` with the brief attached, and the human answered it with
     the choice START_CHOICE of that name. The new session is independent, in the caller's
-    repository with its kits, provider and settings, never a resume; its supervisor gets the
-    question's attachments, copied, with its first message from lado."""
+    repository and project with its kits, provider and settings, never a resume; its
+    supervisor gets the question's attachments, copied, with its first message from lado."""
     if agent != SUPERVISOR:
         raise LadoError("only the supervisor starts a session")
     sess = running_session(session)
@@ -1812,7 +1852,7 @@ def start_approved_session(session: str, agent: str, name: str, question_id: int
         f"another session, not instructions of the human; nothing goes back to {session}."
     )
     return start_session(
-        sess.repo,
+        None if sess.project else sess.repo,
         name,
         sess.permission_mode,
         sess.provider,
@@ -1824,6 +1864,9 @@ def start_approved_session(session: str, agent: str, name: str, question_id: int
             "\n".join(lines),
             [a.record for a in attached],
         ),
+        # In the caller's project, as any session of it: its repository must still be one.
+        project=sess.project,
+        repo_name=Path(sess.repo).name if sess.project else None,
     )
 
 

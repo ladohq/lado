@@ -71,7 +71,7 @@ def names(text: str) -> Names:
     return Names(name, title if title != name else None)
 
 
-TargetState = Literal["new", "empty", "inside_repo", "not_empty", "not_folder"]
+TargetState = Literal["new", "empty", "inside_repo", "not_empty", "not_folder", "in_project"]
 CAN_START = ("new", "empty")  # the target states a fresh start may go on in
 FINDER = ".DS_Store"  # what Finder leaves in a folder it shows: no file of the human's
 
@@ -85,6 +85,7 @@ class Target:
     state: TargetState
     text: str
     root: str | None = None  # the repository it is inside, for inside_repo
+    hint: runtime.Hint | None = None  # what to do instead, for in_project
 
 
 def default_folder(name: str) -> Path:
@@ -104,6 +105,8 @@ def check_target(path: str) -> Target:
 
 
 def _check_target(path: str) -> Target:
+    if refused := projects.refusal(path):  # a new session without a project could not start
+        return Target(path, "in_project", str(refused), hint=refused.hint)
     folder = Path(path)
     nearest = _nearest(folder)
     if not nearest.is_dir():
@@ -157,7 +160,7 @@ def _refusal(target: Target) -> ScratchError:
     """A target a fresh start may not go on in, as a refusal with what the human can do:
     a folder of files is made a repository by the human (LAD-5's hint), a folder of a
     repository starts in that repository."""
-    hint = None
+    hint = target.hint
     if target.state == "not_empty":
         hint = runtime.NOT_REPO_HINT
     elif target.state == "inside_repo":

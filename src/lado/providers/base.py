@@ -224,7 +224,7 @@ def lado_command(*args: str) -> list[str]:
 # The names LADO sets for the agent CLIs (a provider's Launch.env), and those that would
 # take the CLI's login or config from LADO's: reserved, so a project's variable never takes
 # their place (lado.projects.RESERVED_NAMES). A provider that sets another name adds it here;
-# tests/test_project_variables.py fails until it does.
+# tests/test_project_variables_core.py fails until it does.
 CLI_VARIABLES = frozenset(
     {
         "CLAUDE_CONFIG_DIR",

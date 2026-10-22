@@ -349,6 +349,39 @@ def links(id: str) -> list[tuple[str, str]]:
     return [(e.name, os.readlink(e.path)) for e in _entries(id) if e.is_symlink()]
 
 
+REPO_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]*")  # the case kept, as git clone keeps it
+MAX_REPO_NAME = 100
+
+
+class NoSuchRepository(ProjectError):
+    pass
+
+
+def check_repo_name(name: str) -> None:
+    if not (REPO_NAME.fullmatch(name) and len(name) <= MAX_REPO_NAME):
+        raise ProjectError(
+            f"the repository name {name} is not valid: Latin letters, digits, ., _ and -, "
+            f"not starting with . or -, at most {MAX_REPO_NAME} characters"
+        )
+
+
+def new_repo_folder(id: str, name: str) -> Path:
+    """The folder a repository `name` added to the project `id` goes to, checked before
+    anything is cloned or made: a known project whose folder is there, the name rule, and
+    no entry of that name (any kind; the disk decides the case)."""
+    get(id)
+    where = folder(id)
+    if not where.is_dir():
+        raise ProjectError(f"the folder of project {id} is not found: {where}")
+    check_repo_name(name)
+    target = where / name
+    if os.path.lexists(target):
+        raise ProjectError(
+            f"{target} already exists in project {id}: choose another name with --name"
+        )
+    return target
+
+
 def repository(id: str, name: str) -> Repository:
     """The repository `name` of the project `id`, a session's folder in the project; refused
     naming what there is (a link of that name as a link)."""

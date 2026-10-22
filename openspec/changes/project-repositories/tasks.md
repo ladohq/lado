@@ -2,7 +2,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-project-repo
 
 ## 1. Core
 
-- [ ] 1.1 The name rule and the add target: `check_repo_name`, `new_repo_folder`,
+- [x] 1.1 The name rule and the add target: `check_repo_name`, `new_repo_folder`,
   `NoSuchRepository` (D1, D2). Check: `tests/test_project_repos.py` (new).
 - [ ] 1.2 `project` in `clone.check_target`/`clone.clone` and
   `scratch.check_target`/`scratch.make`; `projects.add_clone`, `projects.add_new` (D3,

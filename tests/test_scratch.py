@@ -115,6 +115,32 @@ def test_a_fresh_start_in_a_project_makes_nothing(shop, git_config):
     assert list(shop.iterdir()) == []
 
 
+def test_a_folder_directly_in_the_named_project_takes_a_fresh_start(shop):
+    target = scratch.check_target(str(shop / "site"), project="shop")
+    assert (target.state, target.hint) == ("new", None)
+    projects.create("acme", None)
+    for path, project in [(shop / "site", "acme"), (shop / "site" / "sub", "shop"), (shop, "shop")]:
+        assert scratch.check_target(str(path), project=project).state == "in_project"
+
+
+def test_a_fresh_start_into_a_project_asks_no_sessions_name(shop, git_config, tmp_path):
+    state.add_session(state.Session("site", str(tmp_path / "elsewhere"), None, "claude"))
+    root = scratch.make(str(shop / "site"), "site", project="shop")
+    assert os.path.realpath(root) == os.path.realpath(shop / "site")
+    log = subprocess.run(
+        ["git", "-C", root, "log", "--format=%s"], capture_output=True, text=True, check=True
+    )
+    assert log.stdout.split("\n")[0] == scratch.FIRST_COMMIT
+
+
+def test_a_fresh_start_into_a_project_needs_an_author(shop, git_config):
+    git_config.write_text("")
+    with pytest.raises(scratch.ScratchError) as refused:
+        scratch.make(str(shop / "site"), "site", project="shop")
+    assert refused.value.kind == "no_author"
+    assert list(shop.iterdir()) == []
+
+
 def test_an_empty_folder(tmp_path):
     assert scratch.check_target(str(tmp_path)).state == "empty"
     assert scratch.check_target(str(tmp_path)).text == "an empty folder"

@@ -103,3 +103,66 @@ def test_the_target_when_the_projects_folder_is_gone(shop):
 def test_the_name_is_checked_before_it_is_looked_for(shop):
     with pytest.raises(projects.ProjectError, match="is not valid"):
         projects.new_repo_folder("shop", "../acme")
+
+
+# Adding: a clone or a fresh start into the project's folder
+
+
+def test_add_clone_lists_the_repository(shop, tmp_path):
+    url = bare_remote(tmp_path)
+    seen = []
+    added = projects.add_clone("shop", url, None, "develop", seen.append)
+    assert added == projects.Repository("app", shop / "app", "develop", url)
+    assert projects.repositories("shop") == [added]
+    assert seen  # git's progress reached the caller
+
+
+def test_add_clone_under_another_name(shop, tmp_path):
+    url = bare_remote(tmp_path)
+    assert projects.add_clone("shop", url, "site").path == shop / "site"
+
+
+def test_add_clone_refuses_a_url_that_gives_no_name(shop):
+    with pytest.raises(runtime.LadoError, match="names no repository"):
+        projects.add_clone("shop", "https://github.com/", None)
+    with pytest.raises(projects.ProjectError, match="is not valid"):
+        projects.add_clone("shop", "https://github.com/shop/сайт", None)
+    assert list(shop.iterdir()) == []
+
+
+def test_add_clone_refuses_a_taken_name_before_git(shop, tmp_path, monkeypatch):
+    for key, value in fake_git(tmp_path / "fake", "ok").items():
+        monkeypatch.setenv(key, value)
+    (shop / "web").mkdir()
+    with pytest.raises(projects.ProjectError, match="already exists in project shop"):
+        projects.add_clone("shop", "https://github.com/shop/web", None)
+    assert fake_git_calls(tmp_path / "fake") == []
+
+
+def test_a_cancelled_add_clone_lists_nothing(shop, tmp_path, monkeypatch):
+    for key, value in fake_git(tmp_path / "fake", "slow").items():
+        monkeypatch.setenv(key, value)
+    cancelled = threading.Event()
+    with pytest.raises(runtime.LadoError, match="was cancelled"):
+        projects.add_clone(
+            "shop", "https://github.com/shop/web", None, None, lambda _: cancelled.set(), cancelled
+        )
+    assert list(shop.iterdir()) == [] and projects.repositories("shop") == []
+
+
+def test_add_new_makes_a_repository_with_an_empty_commit(shop):
+    added = projects.add_new("shop", "site")
+    assert (added.name, added.path, added.remote) == ("site", shop / "site", None)
+    assert projects.repositories("shop") == [added]
+    assert _git(shop / "site", "log", "--format=%s").split() == scratch.FIRST_COMMIT.split()
+
+
+def test_add_new_refuses_a_taken_or_bad_name_and_an_unknown_project(shop):
+    (shop / "site").mkdir()
+    with pytest.raises(projects.ProjectError, match="already exists"):
+        projects.add_new("shop", "site")
+    with pytest.raises(projects.ProjectError, match="is not valid"):
+        projects.add_new("shop", ".hidden")
+    with pytest.raises(projects.NoSuchProject):
+        projects.add_new("acme", "site")
+    assert [p.name for p in shop.iterdir()] == ["site"]

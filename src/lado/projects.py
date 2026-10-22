@@ -19,11 +19,16 @@ import sqlite3
 import stat
 import subprocess
 import tempfile
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from lado import runtime, state
+
+if TYPE_CHECKING:
+    from lado import clone as clone_module
 
 WORKSPACE_VAR = "LADO_REPOS"  # the workspace's name in an installation (LADO's image sets it)
 DEFAULT_WORKSPACE = "~/workspace"
@@ -380,6 +385,49 @@ def new_repo_folder(id: str, name: str) -> Path:
             f"{target} already exists in project {id}: choose another name with --name"
         )
     return target
+
+
+def adds_to(id: str | None, path: str) -> bool:
+    """Whether `path` is an entry directly in the folder of the project `id`, by real paths:
+    the one place a clone or fresh start for that project may go (`clone.clone`,
+    `scratch.make`), past the refusal of a new session inside projects/."""
+    if id is None:
+        return False
+    return Path(os.path.realpath(path)).parent == Path(os.path.realpath(folder(id)))
+
+
+def _added(id: str, target: Path) -> Repository:
+    """The repository just made at `target`, as `repositories` reads it."""
+    return next(repo for repo in repositories(id) if repo.path == target)
+
+
+def add_clone(
+    id: str,
+    url: str,
+    name: str | None,
+    branch: str | None = None,
+    on_progress: "Callable[[clone_module.Progress], None] | None" = None,
+    cancelled: threading.Event | None = None,
+) -> Repository:
+    """Clone `branch` of `url` into the project's folder as `name` (else the URL's
+    repository name), through `clone.clone`: a failed or cancelled clone leaves nothing."""
+    from lado import clone  # lado.clone builds on this module
+
+    if name is None:
+        name = clone.default_folder(url).name  # its refusal for a URL that names none
+    target = new_repo_folder(id, name)
+    clone.clone(url, str(target), branch, on_progress, cancelled, project=id)
+    return _added(id, target)
+
+
+def add_new(id: str, name: str) -> Repository:
+    """Make `name` in the project's folder a repository with one empty commit, through
+    `scratch.make`."""
+    from lado import scratch  # lado.scratch builds on this module
+
+    target = new_repo_folder(id, name)
+    scratch.make(str(target), name, project=id)
+    return _added(id, target)
 
 
 def repository(id: str, name: str) -> Repository:

@@ -52,3 +52,4 @@
 | 2026-10-22 | review after S3 | Plan revision: S3 done; E3 to S4, G1 to S7, F1 to S5a's live check; trial archive before `merge_ok` in S4's brief; S4 proposed | approve; reject | approve (lead) | approved (human) | yes |
 | 2026-10-22 | review after S3, question #883 | The new UI test `test_launch.py::…_refused_with_the_projects_command` flaky under load | 1: a task outside the epic, derived from LAD-125; 2: fix in S4; 3: no task, watch | 1 (lead) | 1: LAD-127 created, derived from LAD-125, label `component lado` (human) | yes |
 | 2026-10-22 | step_ok gate #72 | Approve the plan's revision after S3 and step S4 | approve; reject | approve (lead) | approved (human) | yes |
+| 2026-10-22 | S4 (LAD-128), design, question #892 | Scale full; CLI `lado project repo add/remove`; `remove` takes repositories and links only; repository name rule | yes, as recommended; amendments | yes, with the name taken checked case-insensitively (lead) | | |

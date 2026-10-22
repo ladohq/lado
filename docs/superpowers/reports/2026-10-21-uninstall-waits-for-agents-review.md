@@ -2,7 +2,7 @@
 
 Pull request #133 `hotfix/lad-112-uninstall-waits-for-agents` → `main`. Scale: hotfix,
 reviewed by precision with a breadth pass in round 1, as the path deletes the user's data.
-Head reviewed: `7897acb` (= the remote head). `providers/`, `hooks.py`, `mcp_server.py`,
+Head reviewed: `c468030` (= the remote head). `providers/`, `hooks.py`, `mcp_server.py`,
 `runtime.py`, `agent_env.py` and `tests/live/` did not change; the change touches
 `uninstall.py` and `tmux.py` only.
 
@@ -23,6 +23,11 @@ Head reviewed: `7897acb` (= the remote head). `providers/`, `hooks.py`, `mcp_ser
   to an added requirement of its own with its scenario; no code or test changed. A trial
   archive in a copy of `openspec/` gave `+1, ~1`, then `openspec validate --specs
   --strict` 43 of 43. No new findings. No external round: the cap of 1 was used.
+- **Round 4, local** (precision, a return from `merge` on conflicts: the merge
+  `d0815e0..c468030` of `main` at `fa94d2c`, LAD-122). The merge brings only main's
+  changes; the pull request's diff against main without CHANGELOG.md is byte for byte the
+  one reviewed before. CHANGELOG.md's `0.43.0 (unreleased)` Fixed keeps both lines
+  (LAD-112 and LAD-122). No new findings. No external round: the cap of 1 was used.
 
 External rounds used: 1 of 1.
 
@@ -38,7 +43,7 @@ External rounds used: 1 of 1.
 | F6 | 2 | external 5 | the `ps` timeout is per call, so a hung `ps` stretches the wait past 10 s | confirmed | minor | declined: a hung `ps` is not a real case; the wait stays bounded |
 | F7 | 2 | external 6 | the unit test relies on `AGENTS_TIMEOUT` = 10 against a 1 s hangup delay | confirmed | minor | declined: a tenfold margin |
 
-Metrics: 2 local rounds, 1 external, 0 substitutes. Confirmed 5 (local 2, external 3),
+Metrics: 3 local rounds, 1 external, 0 substitutes. Confirmed 5 (local 2, external 3),
 refuted 2 (external). Fixed 1 (F2); declined 4, all minor. Findings in code changed by the
 developer's cleanup: 0.
 
@@ -53,6 +58,8 @@ developer's cleanup: 0.
   green.
 - Round 3: trial archive, `openspec validate --specs --strict` 43 of 43.
 - CI on `7897acb` (run 39669395878): 23 of 23 green, `ci-ok` and smoke 8 of 8.
+- Round 4: `openspec validate --specs --strict` 45 of 45; CI on `c468030`: 23 of 23
+  green, smoke 8 of 8.
 
 ## Not checked
 

@@ -2,13 +2,13 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: S2b (LAD-124, run task/lad-124) · Next: S3 · Open checks: none
+In work: none · Next: S3 · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5)
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
 - Each phase task gets the label `component lado` and is linked to LAD-116; LAD-80 is not touched.
 - Questions to the human go as question cards (`ask_human`) with choices, not only as text messages (the human's remark #521, 2026-10-21).
-Last review: 2026-10-21 (after S2), base at e943d5a
+Last review: 2026-10-22 (after S2b), base at f99ebb7
 
 ## Steps
 
@@ -45,9 +45,10 @@ Notes: concept phase 1, plus D3. The id: `[a-z0-9][a-z0-9-]*`, 1–40 characters
 Result: PR #131 merged 2026-10-21 (e943d5a), LAD-123 Done, "waiting for release" (0.43.0); change `projects-in-core` archived (new capability `projects`; `repos-folder`, `session-clone`, `session-scratch` changed); new module `projects.py` with `projects.workspace()`, old names renamed without aliases, `GET /api/repos-folder` answers `{path, made}`; table `projects` (schema 32), no existing table changed; `lado start --new` also defaults to `~/workspace`; `make test` 3685 passed, exit 0; CI 23/23; 2 local and 2 external review rounds, both external rounds partial (`doctor`, `clone`, `scratch`, `runtime`, `server/`, `Launch.tsx` had the local pass only); the lead's manual check on acbe045 in a temp HOME passed. Declined minor findings carried to S7: F2, E3, F3, F5. In the container the "Outside the workspace" warning now covers any folder outside the workspace.
 
 ### S2b — Compose's `LADO_WORKSPACE` (S)
-Status: in progress (LAD-124, run task/lad-124)
+Status: done, check open until 0.43.0rc1 (LAD-124, PR https://github.com/ladohq/lado/pull/136)
 Check: `tests/test_docker.py` and the container tests (CI): `LADO_WORKSPACE` names the host folder; an installed `.env` with only `LADO_PROJECTS` still works; with neither, compose names `LADO_WORKSPACE` in its error; `docs/install.md`, `docs/release.md`, `docs/testing.md`, `openspec/specs/container` name `LADO_WORKSPACE` first and the old name as still accepted.
 Notes: leftover of S2 (analyst's question #615): "project" meaning the human's repository in the live spec `container` (the scenarios "A project's Go from its .tool-versions", "A project's mise.toml needs no trust", "A project's own Python", "Outside a project"; the requirements "mise reads the projects' version files…", "The image's python3 gives way to a project's Python") and in the agents' mise paragraph ("a tool the project needs…", also in `runtime.py`) say "repository". Independent of S2's core; `LADO_REPOS` inside the container keeps its name (concept). Past a compose version that cannot nest interpolation defaults, stop and ask the human. Since S2 the container warns for any folder outside `projects.workspace()` (`LADO_REPOS`): the check covers that the folder compose mounts from `LADO_WORKSPACE` is the one `LADO_REPOS` names inside, so no folder of the workspace gets the warning.
+Result: PR #136 merged 2026-10-22 (f99ebb7), LAD-124 Done, "waiting for release" (0.43.0); change `compose-workspace-variable` archived (`container` spec changed). Compose reads `${LADO_WORKSPACE:-${LADO_PROJECTS:-/set-LADO_WORKSPACE-to-your-workspace-folder}}` for `LADO_REPOS` and a long bind with `create_host_path: false`: with neither variable `up` refuses with Docker's bind error naming that path, and a missing workspace folder is no longer made on the host (the guide makes `~/workspace` before `up`; CHANGELOG says so). No nested `:?`: Compose on GitHub's runners evaluates it even when the outer variable is set (LAD-73); the human chose the placeholder at question #694. `make test` 3688 passed; CI 23/23 incl. container amd64/arm64 and 8 smoke; 2 local rounds and 1 external round, the external one did not read the spec delta or `tests/container/` (local only). Open: F3, Docker Desktop's (macOS) text for a missing bind source, not seen; moved to the release checklist (`docs/release.md` 4.5). Container tests ran on Linux CI only.
 
 ### S3 — A session in a project (L)
 Status: planned
@@ -58,7 +59,7 @@ Check:
 - The session header in the UI shows the project (mockup at `design_ok`, `docs/design/ui.md`, UI e2e).
 - The project's repositories are listed from disk: git subfolders with branch and remote; a folder without git and an unfinished clone are not listed.
 - `lado project delete` refuses while a session of the project runs, and forgets the stopped ones.
-Notes: concept phase 3 without adding repositories (S4). Repositories for the check are made by hand (`git init`/`git clone` into the project folder). Trap of S2 for this L step: both external review rounds read the diff only partly; the brief asks the reviewer to name per area (core, CLI, server, UI, specs) which round read it, and an area no external round read is named at `merge_ok`.
+Notes: concept phase 3 without adding repositories (S4). Repositories for the check are made by hand (`git init`/`git clone` into the project folder). Trap of S2 for this L step: both external review rounds read the diff only partly; the brief asks the reviewer to name per area (core, CLI, server, UI, specs) which round read it, and an area no external round read is named at `merge_ok`. The trap held again in S2b (the external round read files at HEAD on a shallow checkout and skipped the spec delta and `tests/container/`): the request names the diff's files. Sessions started under `projects/<id>/` between S2 and S3 must keep working; binding them to the project is a question to the human if `resume` would refuse them.
 
 ### S4 — Adding and removing a project's repositories (M)
 Status: planned
@@ -100,7 +101,8 @@ None open. Decided at `plan_ok` (gate #33, 2026-10-21), all as recommended: Q1 �
 ## Later
 
 - LAD-121 `make test` red with every test passed (a `sleep 60` left) — outside the epic, born in S1b; done alongside S2 (PR #130, a4762ec, 2026-10-21): the fake git ends its child, `LADO_TEST_ID` names the test of a leftover process.
-- LAD-122 the Resume window's provider refusal does not disable Resume — outside the epic, born in S1b; any time.
+- LAD-122 the Resume window's provider refusal does not disable Resume — outside the epic, born in S1b; done (PR #135, 2026-10-21).
+- The image's own mount point `/projects` for `docker run` without compose (`docker/Dockerfile`, `entrypoint.sh`) — out of S2b's frame (archived proposal `compose-workspace-variable`, "Out of scope"): with it the workspace is `/projects` and projects sit in `/projects/projects/<id>`, which works; changing it breaks installed `docker run` commands. No task; revisit if `docker run` users ask, or with the LADO manager.
 
 - Database extras for repositories (order, description, role, address to re-clone; "missing, clone again?") — concept option C — after this epic, when multi-repo sessions need them.
 - Sessions and tasks over several repositories; the "all repositories" item of the list — concept "Не сейчас".

@@ -342,6 +342,29 @@ def links(id: str) -> list[tuple[str, str]]:
     return [(e.name, os.readlink(e.path)) for e in _entries(id) if e.is_symlink()]
 
 
+def repository(id: str, name: str) -> Repository:
+    """The repository `name` of the project `id`, a session's folder in the project; refused
+    naming what there is (a link of that name as a link)."""
+    get(id)
+    found = repositories(id)
+    for repo in found:
+        if repo.name == name:
+            return repo
+    for link, target in links(id):
+        if link == name:
+            raise ProjectError(
+                f"{name} in project {id} is a link to {target}: clone it into {folder(id)} instead"
+            )
+    if not found:
+        raise ProjectError(
+            f"project {id} has no repositories yet: a repository is a git folder in {folder(id)}"
+        )
+    raise ProjectError(
+        f"project {id} has no repository {name}; its repositories: "
+        + ", ".join(repo.name for repo in found)
+    )
+
+
 def _not_pushed(repo: Path) -> list[str]:
     """The local branches of `repo` with no upstream, a gone one, or commits ahead of it
     (the last fetch's view: no network)."""

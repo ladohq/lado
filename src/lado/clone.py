@@ -167,18 +167,20 @@ class Target:
     hint: runtime.Hint | None = None  # what to do instead, for in_project
 
 
-def check_target(url: str, path: str) -> Target:
+def check_target(url: str, path: str, project: str | None = None) -> Target:
     """Whether a clone of `url` may go to the folder `path` (a full path), and what is
     there when not. Only `CAN_CLONE` states let a clone start; a folder LADO may not look
-    at is a CloneError `no_access`."""
+    at is a CloneError `no_access`. With `project`, a folder directly in that project's
+    folder is no `in_project` (`projects.adds_to`): the clone adds a repository to it."""
     try:
-        return _check_target(url, path)
+        return _check_target(url, path, project)
     except OSError as exc:
         raise CloneError("no_access", f"cannot look at {path}: {exc.strerror or exc}") from None
 
 
-def _check_target(url: str, path: str) -> Target:
-    if refused := projects.refusal(path):  # a new session without a project could not start
+def _check_target(url: str, path: str, project: str | None) -> Target:
+    # A new session without a project could not start there.
+    if not projects.adds_to(project, path) and (refused := projects.refusal(path, url=url)):
         return Target(path, "in_project", str(refused), hint=refused.hint)
     folder = Path(path)
     if not folder.exists():
@@ -429,13 +431,14 @@ def clone(
     branch: str | None = None,
     on_progress: Callable[[Progress], None] | None = None,
     cancelled: threading.Event | None = None,
+    project: str | None = None,
 ) -> str:
     """Clone `branch` of `url` (the remote's default without one) into the folder `path`
-    (a full path; `check_target` must let it): into a temporary folder beside it, renamed
-    to `path` only once git succeeded. A cancel (`cancelled` set), a failure or an
-    exception (Ctrl-C too) ends git's process group and removes the temporary folder;
-    `path` stays as it was. Returns `path`."""
-    target = check_target(url, path)
+    (a full path; `check_target` must let it, for `project` when one is given): into a
+    temporary folder beside it, renamed to `path` only once git succeeded. A cancel
+    (`cancelled` set), a failure or an exception (Ctrl-C too) ends git's process group and
+    removes the temporary folder; `path` stays as it was. Returns `path`."""
+    target = check_target(url, path, project)
     if target.state not in CAN_CLONE:
         raise CloneError(target.state, target.text, target.hint)
     folder = Path(path)
@@ -451,7 +454,7 @@ def clone(
         try:
             os.rename(temp, path)  # onto a missing or an empty folder
         except OSError as exc:
-            now = check_target(url, path)
+            now = check_target(url, path, project)
             if now.state not in CAN_CLONE:
                 raise CloneError(now.state, now.text) from None
             raise CloneError(

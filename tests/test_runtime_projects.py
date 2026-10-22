@@ -84,8 +84,8 @@ def test_a_project_without_repositories(shop):
     with pytest.raises(runtime.LadoError) as refused:
         _start(project="acme", repo_name="crm")
     assert str(refused.value) == (
-        f"project acme has no repositories yet: a repository is a git folder in "
-        f"{projects.folder('acme')}"
+        "project acme has no repositories yet: add one with lado project repo add acme "
+        "<git-url> or --new <name>"
     )
 
 

@@ -187,8 +187,11 @@ class CloneRefused(BaseModel):
 
 class CloneStart(BaseModel):
     url: str
-    path: str | None = None  # the default folder when none
+    path: str | None = None  # the default folder when none; none with a project
     branch: str | None = None  # the remote's default when none
+    # A repository added to this project, in its folder (lado.projects.add_clone)
+    project: str | None = None
+    name: str | None = None  # with a project: the repository's name, the URL's when none
 
 
 class CloneProgress(BaseModel):
@@ -749,6 +752,28 @@ class ProjectInfo(BaseModel):
     folder: str  # <workspace>/projects/<id>, derived
     found: bool  # whether that folder is there
     repos: list[ProjectRepo]
+
+
+class RepoNew(BaseModel):
+    """A repository of a project made from scratch (lado.projects.add_new)."""
+
+    name: str
+
+
+class SessionToForget(BaseModel):
+    name: str
+    open_runs: int
+
+
+class RepoRemoval(BaseModel):
+    """What removing an entry of a project's folder does (lado.projects.removal)."""
+
+    name: str
+    kind: Literal["repository", "link"]  # a link loses the link only
+    path: str
+    target: str | None  # a link's target as written
+    sessions: list[SessionToForget]  # the project's stopped sessions in it, forgotten
+    unpushed: list[str]  # what its folder loses, as `lado project repo remove` shows it
 
 
 class Launch(BaseModel):

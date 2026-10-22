@@ -255,11 +255,46 @@ def test_below_a_projects_folder_is_refused_naming_the_project(shop_repo, below)
     assert _refused(path) == (IN_SHOP.format(path), *START_HINT)
 
 
-def test_a_folder_without_git_in_a_project_is_refused_the_same(shop_repo):
+SHOW_HINT = ("See the project's repositories:", "lado project show shop")
+ADD_HINT = "Add a repository to the project:"
+
+
+def test_a_folder_without_git_in_a_project_points_at_its_repositories(shop_repo):
     notes = projects.folder("shop") / "notes"
     notes.mkdir()
-    assert _refused(notes)[0] == IN_SHOP.format(notes)
-    assert _refused(notes)[2] == "lado start --project shop --repo notes"
+    assert _refused(notes) == (IN_SHOP.format(notes), *SHOW_HINT)
+    assert _refused(notes / "deeper") == (IN_SHOP.format(notes / "deeper"), *SHOW_HINT)
+
+
+def _hint(path, **given) -> tuple[str, str]:
+    problem = projects.refusal(str(path), **given)
+    return problem.hint.text, problem.hint.command
+
+
+def test_a_new_folder_of_a_project_offers_to_add_it(shop_repo):
+    web = projects.folder("shop") / "web"
+    assert _hint(web) == SHOW_HINT  # a session's start: no way to add
+    assert _hint(web, fresh=True) == (ADD_HINT, "lado project repo add shop --new web")
+    url = "https://token@github.com/shop/web.git"
+    assert _hint(web, url=url) == (
+        ADD_HINT,
+        "lado project repo add shop https://github.com/shop/web.git",
+    )
+    site = projects.folder("shop") / "site"
+    assert _hint(site, url=url) == (
+        ADD_HINT,
+        "lado project repo add shop https://github.com/shop/web.git --name site",
+    )
+
+
+def test_only_a_new_folder_with_a_good_name_directly_in_the_project_offers_to_add(shop_repo):
+    folder = projects.folder("shop")
+    (folder / "notes").mkdir()
+    (folder / "file.txt").write_text("x")
+    for path in [folder / "notes", folder / "file.txt", folder / "web" / "sub", folder / ".web"]:
+        assert _hint(path, fresh=True) == SHOW_HINT
+    assert _hint(shop_repo, fresh=True) == START_HINT  # a repository: its session
+    assert _hint(folder, fresh=True) == SHOW_HINT
 
 
 def test_a_project_without_a_title_is_named_by_its_id(home):

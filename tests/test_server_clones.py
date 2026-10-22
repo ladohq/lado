@@ -125,8 +125,8 @@ def shop(tmp_path, monkeypatch):
 
 IN_SHOP = "{} belongs to the project Shop: start a session in the project"
 WEB_HINT = {
-    "text": "Start a session in the project:",
-    "command": "lado start --project shop --repo web",
+    "text": "Add a repository to the project:",
+    "command": "lado project repo add shop https://github.com/shop/web",
 }
 
 

@@ -94,18 +94,20 @@ def default_folder(name: str) -> Path:
     return projects.workspace() / name
 
 
-def check_target(path: str) -> Target:
+def check_target(path: str, project: str | None = None) -> Target:
     """Whether a fresh start may make the folder `path` (a full path) a repository, and
     what is there when not. Only `CAN_START` states let it go on; a folder LADO may not look
-    at is a ScratchError `no_access`."""
+    at is a ScratchError `no_access`. With `project`, a folder directly in that project's
+    folder is no `in_project` (`projects.adds_to`): it becomes a repository of it."""
     try:
-        return _check_target(path)
+        return _check_target(path, project)
     except OSError as exc:
         raise ScratchError("no_access", f"cannot look at {path}: {exc.strerror or exc}") from None
 
 
-def _check_target(path: str) -> Target:
-    if refused := projects.refusal(path):  # a new session without a project could not start
+def _check_target(path: str, project: str | None) -> Target:
+    # A new session without a project could not start there.
+    if not projects.adds_to(project, path) and (refused := projects.refusal(path, fresh=True)):
         return Target(path, "in_project", str(refused), hint=refused.hint)
     folder = Path(path)
     nearest = _nearest(folder)
@@ -173,16 +175,18 @@ def _refusal(target: Target) -> ScratchError:
 FIRST_COMMIT = "Start from scratch"
 
 
-def make(path: str, name: str) -> str:
+def make(path: str, name: str, project: str | None = None) -> str:
     """Make the folder `path` (a full path) a git repository with one empty commit, for the
     session `name`; its root. The checks first, again (the name as `runtime.check_name`, the
     target, the author), then the folder and the folders above it when it is new, `git
     init`, the branch of git's `init.defaultBranch` (else `main`) and the commit: no file,
     no signing, no hooks, no prompt. A failed step removes what this call made (the
     folders it created, or the `.git` of an empty folder it was given): a ScratchError
-    `git_failed` with git's line."""
-    runtime.check_name(name, path)
-    target = check_target(path)
+    `git_failed` with git's line. With `project` it adds a repository to that project
+    (`check_target`'s `project`), and no session's name is asked: none is made."""
+    if project is None:
+        runtime.check_name(name, path)
+    target = check_target(path, project)
     if target.state not in CAN_START:
         raise _refusal(target)
     if (problem := author_problem(path)) is not None:

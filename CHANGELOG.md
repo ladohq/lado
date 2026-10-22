@@ -9,6 +9,8 @@
 - **Sessions in projects.** `lado start --project <id> --repo <name>` starts in a
   project's repository, and its sessions stay in the project; a folder in `projects/`
   offers that command instead of an ordinary session.
+- **A project's repositories.** `lado project repo add` clones a git URL or makes one from
+  scratch in the project's folder; `lado project repo remove` shows the unpushed work first.
 
 ### Changed
 

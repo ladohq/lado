@@ -100,8 +100,12 @@ def test_a_folder_in_a_project_takes_no_fresh_start(shop, made):
         "in_project",
         f"{site} belongs to the project Shop: start a session in the project",
     )
-    assert target.hint == runtime.Hint(
-        "Start a session in the project:", "lado start --project shop --repo site"
+    assert target.hint == (
+        runtime.Hint("See the project's repositories:", "lado project show shop")
+        if made  # a folder of the name: adding the repository is refused too
+        else runtime.Hint(
+            "Add a repository to the project:", "lado project repo add shop --new site"
+        )
     )
     assert "in_project" not in scratch.CAN_START
     assert scratch.check_target(str(shop.parent.parent / "site")).hint is None
@@ -111,7 +115,33 @@ def test_a_fresh_start_in_a_project_makes_nothing(shop, git_config):
     with pytest.raises(scratch.ScratchError) as refused:
         scratch.make(str(shop / "site"), "site")
     assert refused.value.kind == "in_project"
-    assert refused.value.hint.command == "lado start --project shop --repo site"
+    assert refused.value.hint.command == "lado project repo add shop --new site"
+    assert list(shop.iterdir()) == []
+
+
+def test_a_folder_directly_in_the_named_project_takes_a_fresh_start(shop):
+    target = scratch.check_target(str(shop / "site"), project="shop")
+    assert (target.state, target.hint) == ("new", None)
+    projects.create("acme", None)
+    for path, project in [(shop / "site", "acme"), (shop / "site" / "sub", "shop"), (shop, "shop")]:
+        assert scratch.check_target(str(path), project=project).state == "in_project"
+
+
+def test_a_fresh_start_into_a_project_asks_no_sessions_name(shop, git_config, tmp_path):
+    state.add_session(state.Session("site", str(tmp_path / "elsewhere"), None, "claude"))
+    root = scratch.make(str(shop / "site"), "site", project="shop")
+    assert os.path.realpath(root) == os.path.realpath(shop / "site")
+    log = subprocess.run(
+        ["git", "-C", root, "log", "--format=%s"], capture_output=True, text=True, check=True
+    )
+    assert log.stdout.split("\n")[0] == scratch.FIRST_COMMIT
+
+
+def test_a_fresh_start_into_a_project_needs_an_author(shop, git_config):
+    git_config.write_text("")
+    with pytest.raises(scratch.ScratchError) as refused:
+        scratch.make(str(shop / "site"), "site", project="shop")
+    assert refused.value.kind == "no_author"
     assert list(shop.iterdir()) == []
 
 

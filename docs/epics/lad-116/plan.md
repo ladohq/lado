@@ -84,7 +84,7 @@ Check:
 - `lado doctor` names an unusable secret file of a project by name, never by content.
 - `lado project delete` removes `<LADO_HOME>/projects/<id>/`; delete then create with the same id: no secrets.
 - The canary test: a secret's value is in no API answer, UI feed, log, LADO's error journal, `lado log`, bug report or telemetry.
-Notes: concept phase 2, secrets half.
+Notes: concept phase 2, secrets half. Trap of S2–S4 (G1, F5, X1: a link leading a removal out of the project's folder): writing and deleting `<LADO_HOME>/projects/<id>/` and its secrets refuses a link on the way, with a test.
 
 ### S6 — UI: Projects section, variables, the Project way of New session (L)
 Status: planned

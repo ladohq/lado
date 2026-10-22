@@ -22,7 +22,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-22-project-vari
 
 ## 3. End to end
 
-- [ ] 3.1 `tests/integration/test_project_variables.py`: two projects, one name, each
+- [x] 3.1 `tests/integration/test_project_variables.py`: two projects, one name, each
   agent kind (supervisor, worker through MCP, flow run's worker, `start_session`) with its
   project's value; the layers' order with `LADO_ENV_DIR`; no project, no variable;
   `unset`; a kit key only in the project passes and reaches the server through

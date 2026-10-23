@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { SessionInfo } from "./api";
+import { setSessionTitle, type SessionInfo } from "./api";
 import { TitleEdit } from "./TitleEdit";
 
 type Call = { method: string; path: string; body: unknown };
@@ -35,7 +35,10 @@ function edit(title: string | null = "Old") {
   const onClose = vi.fn();
   render(
     <TitleEdit
-      session={session(title)}
+      name="lado-2"
+      title={title}
+      label="Session title"
+      save={(text) => setSessionTitle("lado-2", text)}
       hint="Enter to save · Esc to cancel"
       suggestionHint="Tab takes the name · Enter to save · Esc to cancel"
       onClose={onClose}

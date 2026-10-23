@@ -12,6 +12,7 @@ const projectLabel = (project: ProjectSummary) =>
 
 export function ProjectField({
   launch,
+  asked,
   asking = false,
   problem,
   head,
@@ -21,6 +22,8 @@ export function ProjectField({
   onLeave,
 }: {
   launch: ProjectLaunch | null; // null: asking the first time
+  // what `launch` answered (null: the server's choice); one it says is gone is named
+  asked: { project: string | null; repo: string | null };
   // a new choice is asked: `launch` is the last answer with the choice in it, shown as it
   // is (the select and the list keep their focus) and marked busy
   asking?: boolean;
@@ -33,6 +36,9 @@ export function ProjectField({
 }) {
   const ids = useId();
   const chosen = launch?.projects.find((one) => one.id === launch.project) ?? null;
+  // E1: what was asked and is not there any more, said over the server's choice; not
+  // while a new choice is asked, whose answer will say.
+  const gone = asking ? null : (launch?.gone ?? null);
   return (
     <>
       <div className="field launch-where">
@@ -68,6 +74,9 @@ export function ProjectField({
                 </option>
               ))}
             </select>
+            {gone === "project" && asked.project && (
+              <span className="field-note warn">{`⚠ No project ${asked.project} any more: choose one.`}</span>
+            )}
             <span className="field-note">
               {count(chosen.repos, "repository", "repositories")} ·{" "}
               {chosen.running.length > 0 ? `${count(chosen.running.length, "session")} running` : "no sessions running"} ·
@@ -80,6 +89,7 @@ export function ProjectField({
         <RepoPick
           launch={launch}
           project={chosen}
+          gone={gone === "repo" ? asked.repo : null}
           asking={asking}
           disabled={disabled}
           onRepo={onRepo}
@@ -94,6 +104,7 @@ export function ProjectField({
 function RepoPick({
   launch,
   project,
+  gone,
   asking,
   disabled,
   onRepo,
@@ -101,6 +112,7 @@ function RepoPick({
 }: {
   launch: ProjectLaunch;
   project: ProjectSummary;
+  gone: string | null; // the repository asked that the project has no more
   asking: boolean;
   disabled: boolean;
   onRepo: (name: string) => void;
@@ -165,6 +177,7 @@ function RepoPick({
           ))
         )}
       </ul>
+      {gone && <span className="field-note warn">{`⚠ No repository ${gone} in ${label} any more: choose one.`}</span>}
       {chosen && (
         <span className="field-note ok">✓ git repository{chosen.branch ? ` · branch ${chosen.branch}` : ""}</span>
       )}

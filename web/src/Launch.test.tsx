@@ -1790,6 +1790,30 @@ test("a clone into a project's folder shows the refusal with the project's comma
   expect(cloneButton().disabled).toBe(true);
 });
 
+test("a clone into a project's folder offers Open the project, which opens the project's page", async () => {
+  const text = `${INTO} belongs to the project Shop: start a session in the project`;
+  const hint = { text: "Add a repository to the project:", command: `lado project repo add shop ${URL_}` };
+  const project = { id: "shop", title: "Shop", repo: null };
+  answers["GET /api/projects/shop"] = () => json({ detail: 'unknown project "shop"' }, 404); // the page opened
+  answers["GET /api/clone-target"] = () => json(target({ state: "in_project", text, hint, project }));
+  answers["POST /api/remote-branches"] = remote();
+  const dialog = await cloneSource();
+  const box = (await screen.findByText(text)).closest(".field-note.bad") as HTMLElement;
+  expect(within(box).getByText(hint.command)).toBeTruthy(); // the command stays below
+  fireEvent.click(within(box).getByRole("button", { name: "Open the project Shop" }));
+  expect(dialog.isConnected).toBe(false);
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/projects/shop")).toBe(true));
+});
+
+test("a clone target refused outside a project offers no project", async () => {
+  const text = `${INTO} is not empty: choose another folder`;
+  answers["GET /api/clone-target"] = () => json(target({ state: "not_empty", text }));
+  answers["POST /api/remote-branches"] = remote();
+  await cloneSource();
+  await screen.findByText(text);
+  expect(screen.queryByRole("button", { name: /Open the project/ })).toBeNull();
+});
+
 test("a long branch list is a field that filters as the human types", async () => {
   const many = ["main", ...Array.from({ length: 40 }, (_, i) => `feature/f${String(i).padStart(2, "0")}`)];
   answers["GET /api/clone-target"] = () => json(target());
@@ -2270,6 +2294,26 @@ test("a fresh start in a project's folder shows the refusal with the project's c
   const box = (await within(dialog).findByText(text)).closest(".field-note.bad") as HTMLElement;
   expect(within(box).getByText(hint.command).tagName).toBe("CODE");
   expect(createButton().disabled).toBe(true);
+});
+
+test("a fresh start in a project's folder offers Open the project, which opens the project's page", async () => {
+  const site = "/ws/projects/shop/site";
+  const text = `${site} belongs to the project Shop: start a session in the project`;
+  const hint = { text: "Add a repository to the project:", command: "lado project repo add shop --new site" };
+  const project = { id: "shop", title: "Shop", repo: null };
+  answers["GET /api/projects/shop"] = () => json({ detail: 'unknown project "shop"' }, 404); // the page opened
+  answers["GET /api/scratch-target"] = () => {
+    const asked = new URL(calls[calls.length - 1].path, "http://lado.test").searchParams;
+    const path = asked.get("path");
+    const more = path === site ? { state: "in_project" as const, text, hint, project } : {};
+    return json(scratchTarget(asked.get("text") ?? "", path, more));
+  };
+  const dialog = await scratchReady("site");
+  fireEvent.change(createIn(), { target: { value: site } });
+  const box = (await within(dialog).findByText(text)).closest(".field-note.bad") as HTMLElement;
+  fireEvent.click(within(box).getByRole("button", { name: "Open the project Shop" }));
+  expect(dialog.isConnected).toBe(false);
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/projects/shop")).toBe(true));
 });
 
 test("a folder the server cannot look at shows why under Create in, and Create and start stays off", async () => {

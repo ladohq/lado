@@ -719,16 +719,6 @@ def test_a_session_starts_in_a_clone_of_a_url(page: Page, server, tmp_path, shot
     assert state.get_session("app").repo == str(into.resolve())
 
 
-@pytest.fixture
-def slow_clone(tmp_path, monkeypatch):
-    """A remote's URL, and a git whose clone prints progress and then waits, on the
-    server's PATH (before the server starts); ls-remote is the real git's."""
-    url = agent_helpers.bare_remote(tmp_path)  # by the real git
-    for key, value in agent_helpers.fake_git(tmp_path / "fake", "slow-clone").items():
-        monkeypatch.setenv(key, value)
-    return url
-
-
 def test_a_clone_shows_its_progress_and_cancel_clone_stops_it(
     page: Page, slow_clone, server, tmp_path, shot
 ):

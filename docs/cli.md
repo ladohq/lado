@@ -110,10 +110,13 @@ any session whose folder is inside the project folder (one started there before 
 sessions), is not stopped (`project <id> has sessions not stopped: <names>; stop them first
 with lado stop <name>`); it prints `Sessions to forget: <name> (<n> open run[s]), …` for the
 project's stopped sessions, then lists, under `Unpushed work in
-<folder>:`, each git repository directly in the folder and each of its worktrees with
-uncommitted changes (untracked files too) or local branches with no upstream or ahead of it,
-as of the last fetch (LADO goes to no network), and git's first line for a repository it
-cannot read; without `--yes` it then refuses (`… with everything in it and forgets its <n>
+<folder>:`, the folder itself when it is a repository's root (`the project's folder: …`,
+first), each git repository directly in the folder and each of its worktrees (one directly
+in the folder once, under its repository) with uncommitted changes (untracked files too),
+local branches with no upstream or ahead of it, as of the last fetch (LADO goes to no
+network), `detached HEAD with <n> commit[s] on no branch` (commits no local or
+remote-tracking branch holds) or `<n> stash[es]`, and git's first line for a repository it
+cannot read; `lado project repo remove` lists a repository's the same way; without `--yes` it then refuses (`… with everything in it and forgets its <n>
 session[s]; run again with --yes` when there are sessions). With `--yes` it removes the
 folder whole, then forgets the project's sessions as `lado forget --force` does, then its
 data folder `<LADO_HOME>/projects/<id>/` with its secrets, then the record (`Deleted project
@@ -164,9 +167,11 @@ whose folder is inside the repository (one without a project too) is not stopped
 lado stop <name>`), an unknown project, a name no visible entry has (`project <id> has no
 repository <name>; its repositories: <names>`, or the `no repositories yet` text), and an
 entry that is neither (`<name> in project <id> is not a repository: LADO removes only
-repositories and links`). It prints `Sessions to forget: …` for the project's stopped
-sessions in the repository and `Unpushed work in <folder>:` with the repository's lines as
-`lado project delete` gives them, its workers' worktrees included; without `--yes` it then
+repositories and links`). It prints `Sessions to forget: …` for the stopped sessions in the
+repository of the project and of none (from before projects, by their folder, each marked
+` (no project)`; a session of another project never) and `Unpushed work in <folder>:` with
+the repository's lines as `lado project delete` gives them, its workers' worktrees
+included; without `--yes` it then
 refuses (`removing repository <name> of project <id> deletes its folder <folder> with
 everything in it[ and forgets its <n> session[s]]; run again with --yes`, or for a link
 `removing <name> of project <id> deletes the link only, not its target <target>; run again
@@ -174,8 +179,8 @@ with --yes`). With `--yes` it removes the folder whole (links inside as links; r
 its real path is not directly in the project folder's), then forgets those sessions as `lado forget --force` does, and prints
 `Removed repository <name> from project <id>`; a link loses the link only (`Removed the
 link <name> from project <id>`). A folder not removed whole keeps the sessions; a session not
-forgotten is named with `lado forget <s> --force`. A stopped session there without a project
-is not forgotten. The project's record, its other entries and sessions stay.
+forgotten is named with `lado forget <s> --force`. The project's record, its other entries
+and sessions stay.
 
 `lado start --project <id> --repo <name>` starts a session in the project's repository
 `<name>` (one `lado project show` lists), named `<id>-<name>` without `--name`, and prints

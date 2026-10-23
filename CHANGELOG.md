@@ -23,6 +23,9 @@
 - **New session in a project from the browser.** New session's fourth way, Project, picks a
   project and one of its repositories and starts there as `lado start --project` does; a
   project's folder typed in Folder and the project's page lead to it.
+- **A project's page in the web UI.** It lists the project's repositories and sessions,
+  adds a repository by a clone or from scratch, deletes one after showing the work not on
+  its remote, starts a session in one, and renames the project in place.
 
 ### Changed
 
@@ -39,6 +42,9 @@
   your installation (`LADO_REPOS` stays).
 - **Warnings and refusals in the New session window stand out.** They show as amber and
   red panels; hints stay quiet.
+- **Removing a project or a repository names more of what it loses.** Commits on a
+  detached HEAD and stashes are listed too, and a repository's sessions from before
+  projects are named and forgotten with it.
 
 ### Fixed
 

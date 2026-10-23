@@ -2,7 +2,7 @@
 // only tests import this file): its projects in memory, every request recorded.
 import { vi } from "vitest";
 
-import type { ProjectInfo, ProjectSummary, SessionInfo } from "./api";
+import type { CloneJob, CloneStart, ProjectInfo, ProjectSummary, RemoteInfo, RepoRemoval, SessionInfo } from "./api";
 
 export type Asked = { method: string; path: string; body: unknown };
 
@@ -45,7 +45,27 @@ export function project(id: string, more: Partial<ProjectInfo> = {}): ProjectInf
   };
 }
 
-const repo = (name: string) => ({ name, path: `/ws/projects/shop/${name}`, remote: null, branch: "main" });
+export const repo = (name: string, more: Partial<ProjectInfo["repos"][number]> = {}) => ({
+  name,
+  path: `/ws/projects/shop/${name}`,
+  remote: null,
+  branch: "main",
+  ...more,
+});
+
+export function cloneJob(more: Partial<CloneJob> = {}): CloneJob {
+  return {
+    id: "j1",
+    url: "git@github.com:shop/admin.git",
+    path: "/ws/projects/shop/admin",
+    branch: "main",
+    state: "running",
+    progress: null,
+    error: null,
+    seconds: 0,
+    ...more,
+  };
+}
 
 // Shop (two repositories, two sessions running), ACME CRM (one) and sandbox (its folder gone).
 export function threeProjects(): Record<string, ProjectInfo> {
@@ -82,7 +102,14 @@ export class FakeProjects {
   held: Promise<void> | null = null;
   // While set, a GET of `path` answers what it read when asked, only once `release` resolves.
   stale: { path: string; release: Promise<void> } | null = null;
-  refuse: (asked: Asked) => string | null = () => null;
+  refuse: (asked: Asked) => string | object | null = () => null;
+  // A repository's removal by name, over a clean one with no sessions.
+  removals: Record<string, Partial<RepoRemoval>> = {};
+  // A remote's branches by URL; an unknown URL is refused as git's not_found.
+  remotes: Record<string, RemoteInfo> = {};
+  // The clone job's answers to its polls in turn, the last one kept; a job that is done
+  // adds its repository to its project.
+  polls: CloneJob[] = [];
   suggest: (title: string | null, id: string | null) => { id: string | null; folder: string | null; problem: string | null } = (
     title,
     id,
@@ -164,8 +191,14 @@ export class FakeProjects {
           .map(summary),
       );
     }
-    const refusal = method === "GET" ? null : this.refuse(asked);
+    if (path === "/api/remote-branches") {
+      const known = this.remotes[body.url];
+      if (known) return json(known);
+      return json({ detail: { message: `${body.url} not found`, kind: "not_found", hint: null } }, 400);
+    }
+    const refusal = method === "GET" && !path.endsWith("/removal") ? null : this.refuse(asked);
     if (refusal !== null) return json({ detail: refusal }, 400);
+    if (path.startsWith("/api/clones")) return this.clone(method, path, body);
     if (path === "/api/projects" && method === "POST") {
       const made = project(body.id, { title: body.title ?? null });
       this.projects[body.id] = made;
@@ -174,7 +207,33 @@ export class FakeProjects {
     const [, , , id, kind, name] = path.split("/").map(decodeURIComponent);
     const found = this.projects[id];
     if (!found) return json({ detail: `unknown project "${id}"` }, 404);
+    if (kind === undefined && method === "PATCH") {
+      this.projects[id] = { ...found, title: body.title?.trim() || null };
+      return json(this.projects[id]);
+    }
     if (kind === undefined) return json(found);
+    if (kind === "repos") {
+      if (name === undefined) {
+        const made = repo(body.name, { path: `${found.folder}/${body.name}` });
+        this.projects[id] = { ...found, repos: [...found.repos, made].sort((a, b) => a.name.localeCompare(b.name)) };
+        return json(made);
+      }
+      const listed = found.repos.find((one) => one.name === name);
+      if (!listed) return json({ detail: `project ${id} has no repository ${name}` }, 404);
+      if (path.endsWith("/removal")) {
+        return json({
+          name,
+          kind: "repository",
+          path: listed.path,
+          target: null,
+          sessions: [],
+          unpushed: [],
+          ...this.removals[name],
+        });
+      }
+      this.projects[id] = { ...found, repos: found.repos.filter((one) => one.name !== name) };
+      return json(this.projects[id]);
+    }
     if (kind === "variables") {
       const variables = found.variables.filter((one) => one.name !== name);
       if (method === "PUT") variables.push({ name, value: body.value });
@@ -187,5 +246,26 @@ export class FakeProjects {
     }
     this.projects[id] = { ...found };
     return json({ project: this.projects[id], running: found.running });
+  }
+
+  private started: CloneStart | null = null;
+
+  private clone(method: string, path: string, body: CloneStart): Response {
+    if (method === "POST" && path === "/api/clones") {
+      this.started = body;
+      return json(cloneJob({ url: body.url, branch: body.branch ?? null, path: `/ws/projects/${body.project}/${body.name}` }));
+    }
+    if (method === "DELETE") return json(cloneJob({ state: "cancelled" }));
+    const answer = this.polls.length > 1 ? this.polls.shift()! : this.polls[0];
+    if (!answer) return json({ detail: "no clone job j1" }, 404);
+    const start = this.started;
+    if (answer.state === "done" && start?.project && start.name) {
+      const found = this.projects[start.project];
+      if (!found.repos.some((one) => one.name === start.name)) {
+        const made = repo(start.name, { path: `${found.folder}/${start.name}`, branch: start.branch ?? "main" });
+        this.projects[start.project] = { ...found, repos: [...found.repos, made].sort((a, b) => a.name.localeCompare(b.name)) };
+      }
+    }
+    return json(answer);
   }
 }

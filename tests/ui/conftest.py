@@ -14,6 +14,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
+import agent_helpers
 import leftovers
 import pytest
 from agent_helpers import refuse_unless_isolated
@@ -87,6 +88,16 @@ def home_server(tmp_path):
     home.mkdir()
     env = {key: value for key, value in os.environ.items() if key != "LADO_REPOS"}
     yield from _serve(tmp_path, {**env, "HOME": str(home)})
+
+
+@pytest.fixture
+def slow_clone(tmp_path, monkeypatch):
+    """A remote's URL, and a git whose clone prints progress and then waits, on the
+    server's PATH (before the server starts); ls-remote is the real git's."""
+    url = agent_helpers.bare_remote(tmp_path)  # by the real git
+    for key, value in agent_helpers.fake_git(tmp_path / "fake", "slow-clone").items():
+        monkeypatch.setenv(key, value)
+    return url
 
 
 @pytest.fixture

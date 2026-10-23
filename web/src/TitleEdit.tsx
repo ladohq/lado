@@ -1,11 +1,13 @@
-// The field that edits a session's title in place, in its head and in its list row
-// (docs/design/ui.md, Session title). Enter or leaving the field saves, Esc cancels; empty
+// The field that edits a title in place: a session's, in its head and in its list row
+// (docs/design/ui.md, Session title), and a project's, in the head of its page (Projects).
+// Enter or leaving the field saves, Esc cancels; empty
 // clears the title. A text over the server's limit is said under the field and not sent; the
 // server's refusal is said there too, the field kept open with the text. The same text as
-// stored sends nothing. `onClose` gets the session as the server stored it after a save (the
-// page shows it before the feed brings it), and puts the focus back on the opener.
+// stored sends nothing; a text equal to the name clears the title. `save` sends the title
+// (null clears it); `onClose` gets what it answered after a save (the page shows it before
+// the feed brings it), and puts the focus back on the opener.
 //
-// The session's name is a suggestion (Tab takes the session's name): while the text is a
+// The name (a session's name, a project's id) is a suggestion: while the text is a
 // proper start of the name (case and all, the empty text included), the caret at its end
 // with nothing selected, no save in flight and no input method composing, the rest of the
 // name shows grey after the text (the placeholder while empty; a layer over the input,
@@ -14,21 +16,27 @@
 // and → do what they do in any field.
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
-import { ApiError, getLimits, setSessionTitle, type SessionInfo } from "./api";
+import { ApiError, getLimits } from "./api";
 import { titleLength } from "./sessionLabel";
 
-export function TitleEdit({
-  session,
+export function TitleEdit<T>({
+  name,
+  title,
+  label,
+  save: send,
   hint,
   suggestionHint,
   onClose,
 }: {
-  session: SessionInfo;
+  name: string;
+  title: string | null;
+  label: string; // the field's accessible name
+  save: (title: string | null) => Promise<T>;
   hint: string;
   suggestionHint: string;
-  onClose: (saved?: SessionInfo) => void;
+  onClose: (saved?: T) => void;
 }) {
-  const [text, setText] = useState(session.title ?? "");
+  const [text, setText] = useState(title ?? "");
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [limit, setLimit] = useState<number | null>(null);
@@ -43,8 +51,8 @@ export function TitleEdit({
   const suggests = (start: number | null, end: number | null) =>
     !saving &&
     !composing &&
-    text.length < session.name.length &&
-    session.name.startsWith(text) &&
+    text.length < name.length &&
+    name.startsWith(text) &&
     start === text.length &&
     end === text.length;
   const suggesting = suggests(...selection);
@@ -76,20 +84,20 @@ export function TitleEdit({
 
   const length = titleLength(text);
   const over = limit !== null && length > limit;
-  const close = (saved?: SessionInfo) => {
+  const close = (saved?: T) => {
     closed.current = true;
     onClose(saved);
   };
 
   const save = async () => {
     if (closed.current || saving || over) return;
-    const wanted = text.trim() === session.name ? "" : text.trim();
-    if (wanted === (session.title ?? "")) return close();
+    const wanted = text.trim() === name ? "" : text.trim();
+    if (wanted === (title ?? "")) return close();
     setSaving(true);
     setProblem(null);
-    let saved: SessionInfo;
+    let saved: T;
     try {
-      saved = await setSessionTitle(session.name, wanted || null);
+      saved = await send(wanted || null);
     } catch (error) {
       setSaving(false);
       setProblem(error instanceof ApiError ? error.message : String(error));
@@ -104,8 +112,8 @@ export function TitleEdit({
         <input
           ref={field}
           type="text"
-          aria-label="Session title"
-          placeholder={session.name}
+          aria-label={label}
+          placeholder={name}
           value={text}
           readOnly={saving}
           autoFocus
@@ -122,7 +130,7 @@ export function TitleEdit({
           onKeyDown={(event) => {
             if (takesName(event)) {
               event.preventDefault();
-              setText(session.name);
+              setText(name);
               setProblem(null);
             } else if (event.key === "Enter") {
               event.preventDefault();
@@ -138,7 +146,7 @@ export function TitleEdit({
         {suggesting && text !== "" && !scrolled && (
           <span className="title-edit-rest" aria-hidden="true">
             <span className="title-edit-typed">{text}</span>
-            {session.name.slice(text.length)}
+            {name.slice(text.length)}
           </span>
         )}
       </span>

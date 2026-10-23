@@ -55,6 +55,7 @@ def test_the_remotes_branches(client, tmp_path):
         "url": url,
         "branches": ["main", "develop", "release/1.2"],
         "default": "main",
+        "repo_name": "app",  # the name a clone takes in a project, until the human edits it
     }
 
 
@@ -111,6 +112,7 @@ def test_the_clone_target_by_default(home_workspace, client, tmp_path, monkeypat
         "provider": None,
         "warning": None,
         "hint": None,
+        "project": None,
     }
 
 
@@ -138,8 +140,9 @@ def test_a_clone_target_in_a_project(client, shop):
         IN_SHOP.format(shop / "web"),
         WEB_HINT,
     )
+    assert target["project"] == {"id": "shop", "title": "Shop", "repo": None}
     away = client.get("/api/clone-target", params={"url": "https://github.com/shop/web"}).json()
-    assert (away["state"], away["hint"]) == ("new", None)
+    assert (away["state"], away["hint"], away["project"]) == ("new", None, None)
 
 
 def test_a_clone_into_a_project_is_400_and_starts_no_job(client, shop):

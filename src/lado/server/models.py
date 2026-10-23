@@ -72,10 +72,13 @@ class TitleChange(BaseModel):
 
 class Where(BaseModel):
     """Where a session runs: a folder (a full path, `~` allowed), made a repository first
-    for "scratch" (lado.scratch.make)."""
+    for "scratch" (lado.scratch.make), or the repository `repo` of the project `project`
+    for "project" (lado.projects.repository). The route checks which fields a kind takes."""
 
-    kind: str  # "folder" or "scratch"; another kind is refused for now
-    path: str
+    kind: str  # "folder", "scratch" or "project"; another kind is refused for now
+    path: str | None = None  # "folder" and "scratch" only
+    project: str | None = None  # "project" only
+    repo: str | None = None  # "project" only
 
 
 NameState = Literal["free", "running", "stopped_here", "taken_elsewhere"]

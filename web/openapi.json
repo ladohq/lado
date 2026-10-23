@@ -1134,6 +1134,124 @@
         }
       }
     },
+    "/api/projects/{id}/secrets/{name}": {
+      "put": {
+        "summary": "Set Project Secret",
+        "description": "Set or replace the secret, as `lado project set --secret` does.",
+        "operationId": "set_project_secret_api_projects__id__secrets__name__put",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariableChange"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such project, repository or variable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Unset Project Secret",
+        "description": "Remove the secret, as `lado project unset` does for one.",
+        "operationId": "unset_project_secret_api_projects__id__secrets__name__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariableChange"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such project, repository or variable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/kits": {
       "get": {
         "summary": "List Kits",
@@ -5988,6 +6106,13 @@
             },
             "type": "array",
             "title": "Variables"
+          },
+          "secrets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Secrets"
           }
         },
         "type": "object",
@@ -5997,10 +6122,11 @@
           "folder",
           "found",
           "repos",
-          "variables"
+          "variables",
+          "secrets"
         ],
         "title": "ProjectInfo",
-        "description": "A project with its repositories as the disk has them now, and its variables."
+        "description": "A project with its repositories as the disk has them now, its variables and the\nnames of its secrets."
       },
       "ProjectRef": {
         "properties": {
@@ -7013,6 +7139,20 @@
         ],
         "title": "ScratchTarget",
         "description": "A fresh start as the core finds it (lado.scratch): the names from the text typed,\nthe folder and git's author; it changes nothing."
+      },
+      "SecretValue": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "title": "SecretValue",
+        "description": "The value a project's secret is set to; no answer gives it back."
       },
       "Sent": {
         "properties": {

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from agent_helpers import init_repo
 
-from lado import projects, runtime, state
+from lado import project_secrets, projects, runtime, state
 
 
 @pytest.fixture
@@ -550,6 +550,77 @@ def test_a_folder_not_removed_whole_keeps_the_record(home, monkeypatch):
     assert str(refused.value).startswith(f"could not remove {projects.folder('shop')} whole: ")
     assert "locked" in str(refused.value) and str(refused.value).endswith("; the project stays")
     assert state.get_project("shop")
+
+
+def test_delete_removes_the_data_folder_and_a_new_project_has_no_secrets(home):
+    projects.create("shop", None)
+    projects.create("acme", None)
+    projects.set_secret("shop", "GH_TOKEN", "g")
+    projects.set_secret("acme", "GH_TOKEN", "a")
+    projects.delete("shop", yes=True)
+    assert not os.path.lexists(project_secrets.data_folder("shop"))
+    assert projects.secrets("acme") == ["GH_TOKEN"]
+    projects.create("shop", None)
+    assert projects.secrets("shop") == []
+
+
+def test_create_refuses_a_left_data_folder(home):
+    left = project_secrets.data_folder("shop")
+    left.mkdir(parents=True)
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.create("shop", None)
+    assert (
+        str(refused.value) == f"{left} is left from a project shop: remove it or choose another id"
+    )
+    assert state.get_project("shop") is None
+    assert not projects.folder("shop").exists()
+
+
+@pytest.mark.parametrize("where", ["id", "secrets", "file"])
+def test_a_link_in_the_data_folder_makes_delete_refuse_before_anything(home, where):
+    projects.create("shop", None)
+    projects.set_secret("shop", "GH_TOKEN", "g")
+    path = {
+        "id": project_secrets.data_folder("shop"),
+        "secrets": project_secrets.folder("shop"),
+        "file": project_secrets.folder("shop") / "GH_TOKEN",
+    }[where]
+    target = home / "elsewhere"
+    os.rename(path, target)
+    path.symlink_to(target)
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.delete("shop", yes=True)
+    assert str(refused.value) == (
+        f"{path} is a symbolic link: LADO writes and removes a project's secrets only in its "
+        "own folders"
+    )
+    assert projects.folder("shop").is_dir() and state.get_project("shop")
+    assert path.is_symlink() and target.exists()
+
+
+def test_a_data_folder_not_removed_whole_keeps_the_record(home, monkeypatch):
+    projects.create("shop", None)
+    projects.set_secret("shop", "GH_TOKEN", "g")
+
+    real, failed = project_secrets.remove_all, []
+
+    def fail(id):
+        if not failed:
+            failed.append(id)
+            raise PermissionError(13, "Permission denied")
+        real(id)
+
+    monkeypatch.setattr(projects.project_secrets, "remove_all", fail)
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.delete("shop", yes=True)
+    assert str(refused.value) == (
+        f"could not remove {project_secrets.data_folder('shop')} whole: Permission denied; "
+        "the project stays: run lado project delete shop --yes again"
+    )
+    assert state.get_project("shop")
+    projects.delete("shop", yes=True)  # a rerun finishes
+    assert state.get_project("shop") is None
+    assert not os.path.lexists(project_secrets.data_folder("shop"))
 
 
 def test_delete_of_an_unknown_project(home):

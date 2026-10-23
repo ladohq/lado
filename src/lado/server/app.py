@@ -17,6 +17,8 @@ from typing import Literal, TypeVar
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (
     FileResponse,
     JSONResponse,
@@ -99,6 +101,7 @@ from lado.server.models import (
     RunEventInfo,
     RunInfo,
     ScratchTarget,
+    SecretValue,
     Sent,
     SessionAbout,
     SessionCounts,
@@ -128,6 +131,8 @@ from lado.server.run import Listening
 T = TypeVar("T")
 STATIC = Path(__file__).parent / "static"  # the built bundle (make web); not in git
 BUILD_HINT = "build it with `make web` in a LADO checkout"
+# The routes whose body is a secret's value: a 422 there repeats none of what it was given.
+SECRET_ROUTE = re.compile(r"/api/projects/[^/]+/secrets/")
 
 
 class Health(BaseModel):
@@ -357,6 +362,17 @@ def create_app(
         """lado.db changed its schema after `database` checked it: state.connect refused it
         and changed nothing. The same 503 as the check's."""
         return JSONResponse({"detail": str(error)}, status_code=503)
+
+    @app.exception_handler(RequestValidationError)
+    async def unreadable(request: Request, error: RequestValidationError) -> JSONResponse:
+        """A request the server cannot read: FastAPI's 422, which repeats what it was given
+        (`input`, `ctx`), but on a secret's route, where that may be the secret's value."""
+        if not SECRET_ROUTE.match(request.url.path):
+            return await request_validation_exception_handler(request, error)
+        detail = [
+            {k: v for k, v in item.items() if k not in ("input", "ctx")} for item in error.errors()
+        ]
+        return JSONResponse({"detail": detail}, status_code=422)
 
     @app.exception_handler(Exception)
     def unexpected(request: Request, error: Exception) -> PlainTextResponse:
@@ -692,6 +708,32 @@ def create_app(
     ) -> VariableChange:
         """Remove the variable, as `lado project unset` does."""
         running = project_core(id, has_db, projects.unset_variable, name)
+        return VariableChange(project=launch.project_info(id), running=running)
+
+    # A project's secrets: written and removed, never read back; the routes go by kind, so
+    # the variables' routes never touch a secret, nor these a plain variable.
+    @app.put(
+        "/api/projects/{id}/secrets/{name}",
+        dependencies=[Depends(guard.changes)],
+        responses=project_refused,
+    )
+    def set_project_secret(
+        id: str, name: str, given: SecretValue, has_db: bool = Depends(database)
+    ) -> VariableChange:
+        """Set or replace the secret, as `lado project set --secret` does."""
+        running = project_core(id, has_db, projects.set_secret, name, given.value)
+        return VariableChange(project=launch.project_info(id), running=running)
+
+    @app.delete(
+        "/api/projects/{id}/secrets/{name}",
+        dependencies=[Depends(guard.changes)],
+        responses=project_refused,
+    )
+    def unset_project_secret(
+        id: str, name: str, has_db: bool = Depends(database)
+    ) -> VariableChange:
+        """Remove the secret, as `lado project unset` does for one."""
+        running = project_core(id, has_db, projects.unset_secret, name)
         return VariableChange(project=launch.project_info(id), running=running)
 
     @app.get("/api/kits", dependencies=[Depends(guard)])

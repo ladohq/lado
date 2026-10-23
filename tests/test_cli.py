@@ -23,6 +23,7 @@ from lado import (
     gitcache,
     kits,
     marketplaces,
+    project_secrets,
     projects,
     runs,
     runtime,
@@ -2765,6 +2766,7 @@ def test_project_create_list_show_rename(ws, capsys):
         f"  made:    {utc.astimezone():%Y-%m-%d %H:%M}",
         "  repositories: none",
         "  variables: none",
+        "  secrets: none",
     ]
     assert main(["project", "show", "a"]) == 0
     out = capsys.readouterr().out.splitlines()
@@ -2936,13 +2938,14 @@ def test_project_show_lists_the_repositories(shop, tmp_path, capsys):
         f"    docs      (a link to {docs}: clone it into {shop} instead)",
         "    frontend  main  https://github.com/shop/frontend",
         "  variables: none",
+        "  secrets: none",
     ]
 
 
 def test_project_show_without_repositories(shop, capsys):
     shutil.rmtree(shop)
     assert main(["project", "show", "shop"]) == 0
-    assert capsys.readouterr().out.splitlines()[-2] == "  repositories: none"
+    assert capsys.readouterr().out.splitlines()[-3] == "  repositories: none"
 
 
 def test_project_delete_with_sessions(shop, capsys):
@@ -3146,21 +3149,22 @@ def test_project_set_unset_and_show(shop, capsys):
     assert main(["project", "set", "shop", "BOARD_URL", "https://a\nnext\r"]) == 0
     capsys.readouterr()
     assert main(["project", "show", "shop"]) == 0
-    assert capsys.readouterr().out.splitlines()[-3:] == [
+    assert capsys.readouterr().out.splitlines()[-4:] == [
         "  variables:",
         "    BOARD_URL  https://a\\nnext\\r",
         "    MODEL_URL  http://localhost:11434",
+        "  secrets: none",
     ]
     assert state.project_variables("shop")["BOARD_URL"] == "https://a\nnext\r"
     assert main(["project", "unset", "shop", "BOARD_URL"]) == 0
     assert capsys.readouterr().out.splitlines() == [
         "Removed BOARD_URL from project shop.",
-        "Agents started from now on get it.",
+        "Agents started from now on do not get it.",
     ]
     assert main(["project", "unset", "shop", "MODEL_URL"]) == 0
     capsys.readouterr()
     assert main(["project", "show", "shop"]) == 0
-    assert capsys.readouterr().out.splitlines()[-1] == "  variables: none"
+    assert capsys.readouterr().out.splitlines()[-2] == "  variables: none"
 
 
 def test_project_set_names_the_running_sessions(shop, capsys, monkeypatch):
@@ -3177,10 +3181,9 @@ def test_project_set_names_the_running_sessions(shop, capsys, monkeypatch):
         "until restarted: fix-login, shop-frontend",
     ]
     assert main(["project", "unset", "shop", "BOARD_URL"]) == 0
-    assert (
-        capsys.readouterr()
-        .out.splitlines()[-1]
-        .endswith("until restarted: fix-login, shop-frontend")
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "Agents started from now on do not get it; running sessions of shop keep the old "
+        "environment until restarted: fix-login, shop-frontend"
     )
 
 
@@ -3208,7 +3211,8 @@ def test_project_set_a_value_that_starts_with_a_dash(shop, capsys):
         (["show", "nope"], 'unknown project "nope"'),
         (
             ["unset", "shop", "MODEL_URL"],
-            "project shop has no variable MODEL_URL; its variables: none",
+            "project shop has no variable or secret MODEL_URL; its variables: none; its "
+            "secrets: none",
         ),
     ],
 )
@@ -3223,8 +3227,8 @@ def test_project_set_s_secret_hint(shop, capsys):
     assert main(["project", "set", "shop", "DB_PASSWORD", "x"]) == 1
     assert capsys.readouterr().err == (
         "lado: DB_PASSWORD looks like a secret (PASSWORD): a plain variable takes no name with "
-        "TOKEN, KEY, SECRET or PASSWORD; secrets come with lado project set shop DB_PASSWORD "
-        "--secret (not built yet)\n"
+        "TOKEN, KEY, SECRET or PASSWORD; set it as a secret with lado project set shop "
+        "DB_PASSWORD --secret\n"
     )
 
 
@@ -3242,13 +3246,189 @@ def test_agents_cannot_change_a_project_s_variables(shop, capsys, monkeypatch, a
     )
     assert state.project_variables("shop") == {"BOARD_URL": "https://a"}
     assert main(["project", "show", "shop"]) == 0
-    assert capsys.readouterr().out.splitlines()[-1] == "    BOARD_URL  https://a"
+    assert capsys.readouterr().out.splitlines()[-2] == "    BOARD_URL  https://a"
 
 
-def test_project_delete_takes_the_variables_along(shop, capsys):
+def test_project_delete_takes_the_variables_along(shop, capsys, monkeypatch):
     assert main(["project", "set", "shop", "BOARD_URL", "https://a"]) == 0
+    monkeypatch.setattr("sys.stdin", Stdin("ghp_1\n"))
+    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 0
     assert main(["project", "delete", "shop", "--yes"]) == 0
+    assert not os.path.lexists(project_secrets.data_folder("shop"))
     assert main(["project", "create", "shop"]) == 0
     capsys.readouterr()
     assert main(["project", "show", "shop"]) == 0
-    assert capsys.readouterr().out.splitlines()[-1] == "  variables: none"
+    assert capsys.readouterr().out.splitlines()[-2:] == ["  variables: none", "  secrets: none"]
+
+
+# A project's secrets (openspec change project-secrets)
+
+
+class Stdin(io.StringIO):
+    """stdin as a pipe (no terminal) holding `text`, or a terminal; whether it was read."""
+
+    def __init__(self, text: str = "", tty: bool = False):
+        super().__init__()
+        self.buffer = io.BytesIO(text.encode())
+        self.tty = tty
+
+    def isatty(self) -> bool:
+        return self.tty
+
+    @property
+    def touched(self) -> bool:
+        return self.buffer.tell() > 0
+
+
+def secret_file(name: str) -> Path:
+    return project_secrets.folder("shop") / name
+
+
+@pytest.mark.parametrize(
+    ("given", "stored"),
+    [
+        ("ghp_2\n", "ghp_2"),
+        ("ghp_2\r\n", "ghp_2"),
+        ("ghp_2", "ghp_2"),
+        ("line1\nline2\n", "line1\nline2"),
+        ("a=b c é\n\n", "a=b c é\n"),
+        ("x\r\n\r\n", "x\r\n"),
+        ("\n\n", "\n"),  # one line break dropped: a line break is left, a value
+    ],
+)
+def test_project_set_secret_from_a_pipe(shop, capsys, monkeypatch, given, stored):
+    """`stored` is what the agents get: one line break of stdin's end dropped, no more."""
+    monkeypatch.setattr("sys.stdin", Stdin(given))
+    monkeypatch.setattr("getpass.getpass", lambda prompt: pytest.fail("asked"))
+    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Set secret GH_TOKEN in project shop.",
+        "Agents started from now on get it.",
+    ]
+    assert project_secrets.read("shop").values == {"GH_TOKEN": stored}
+    assert state.project_variables("shop") == {}
+
+
+def test_project_set_secret_on_a_terminal_asks_without_echo(shop, capsys, monkeypatch):
+    monkeypatch.setattr("sys.stdin", Stdin(tty=True))
+    asked = []
+    monkeypatch.setattr("getpass.getpass", lambda prompt: asked.append(prompt) or "ghp_1")
+    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 0
+    assert asked == ["Value of GH_TOKEN (not shown): "]
+    assert secret_file("GH_TOKEN").read_text() == "ghp_1"
+    assert "ghp_1" not in capsys.readouterr().out
+
+
+def test_project_set_secret_ended_on_a_terminal_is_an_empty_value(shop, capsys, monkeypatch):
+    """Ctrl-D at the prompt: no value, refused as an empty one, no traceback."""
+    monkeypatch.setattr("sys.stdin", Stdin(tty=True))
+
+    def ended(prompt):
+        raise EOFError
+
+    monkeypatch.setattr("getpass.getpass", ended)
+    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 1
+    assert capsys.readouterr().err == (
+        "\n"  # the prompt's line ends first
+        "lado: the secret GH_TOKEN is empty; to remove it: lado project unset shop GH_TOKEN\n"
+    )
+    assert project_secrets.names("shop") == []
+
+
+def test_project_set_secret_with_the_value_given_is_refused_before_reading(
+    shop, capsys, monkeypatch
+):
+    stdin = Stdin("ghp_x\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    assert main(["project", "set", "shop", "GH_TOKEN", "ghp_3", "--secret"]) == 1
+    err = capsys.readouterr().err
+    assert err == (
+        "lado: a secret's value is never given on the command line (ps and the shell's history "
+        "keep it); run lado project set shop GH_TOKEN --secret and type it, or pipe it in\n"
+    )
+    assert "ghp_3" not in err
+    assert not stdin.touched
+    assert project_secrets.names("shop") == []
+
+
+@pytest.mark.parametrize(
+    ("name", "given", "said"),
+    [
+        (
+            "GH_TOKEN",
+            "\n",
+            "the secret GH_TOKEN is empty; to remove it: lado project unset shop GH_TOKEN",
+        ),
+        ("GH_TOKEN", "x" * 70000, "the value of GH_TOKEN is larger than 64 KiB"),
+        ("LADO_HOME", "x", "LADO_HOME is reserved: LADO or the agent CLIs set it"),
+        ("A-B", "x", "the name A-B is not a variable name: "),
+    ],
+)
+def test_project_set_secret_refusals(shop, capsys, monkeypatch, name, given, said):
+    monkeypatch.setattr("sys.stdin", Stdin(given))
+    assert main(["project", "set", "shop", name, "--secret"]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith(f"lado: {said}") and err.count("\n") == 1
+    assert not project_secrets.data_folder("shop").exists()
+
+
+def test_project_set_without_a_value_or_secret(shop, capsys):
+    assert main(["project", "set", "shop", "BOARD_URL"]) == 1
+    assert capsys.readouterr().err == (
+        "lado: lado project set shop BOARD_URL needs a value; for a secret: lado project set "
+        "shop BOARD_URL --secret\n"
+    )
+
+
+def test_project_set_secret_of_an_unknown_project_reads_nothing(shop, capsys, monkeypatch):
+    stdin = Stdin("x")
+    monkeypatch.setattr("sys.stdin", stdin)
+    assert main(["project", "set", "nope", "GH_TOKEN", "--secret"]) == 1
+    assert capsys.readouterr().err == 'lado: unknown project "nope"\n'
+    assert not stdin.touched
+
+
+def test_project_set_secret_needs_one_value_per_name(shop, capsys, monkeypatch):
+    assert main(["project", "set", "shop", "DATABASE_URL", "postgres://x"]) == 0
+    monkeypatch.setattr("sys.stdin", Stdin("postgres://y"))
+    assert main(["project", "set", "shop", "DATABASE_URL", "--secret"]) == 1
+    assert capsys.readouterr().err == (
+        "lado: DATABASE_URL is a plain variable of shop; remove it first with lado project "
+        "unset shop DATABASE_URL\n"
+    )
+
+
+def test_agents_cannot_set_a_secret_and_stdin_is_not_read(shop, capsys, monkeypatch):
+    stdin = Stdin("x")
+    monkeypatch.setattr("sys.stdin", stdin)
+    monkeypatch.setenv("LADO_SESSION", "s")
+    monkeypatch.setenv("LADO_AGENT", "w1")
+    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 1
+    assert capsys.readouterr().err == (
+        'lado: lado project set is for the human; agent "w1" cannot use it\n'
+    )
+    assert not stdin.touched
+    assert project_secrets.names("shop") == []
+
+
+def test_project_show_lists_secrets_by_name_only(shop, capsys, monkeypatch):
+    for name, value in [("YOUGILE_API_KEY", "canary-y"), ("GH_TOKEN", "canary-g")]:
+        monkeypatch.setattr("sys.stdin", Stdin(value))
+        assert main(["project", "set", "shop", name, "--secret"]) == 0
+    capsys.readouterr()
+    assert main(["project", "show", "shop"]) == 0
+    out = capsys.readouterr().out
+    assert out.splitlines()[-3:] == ["  secrets:", "    GH_TOKEN", "    YOUGILE_API_KEY"]
+    assert "canary" not in out
+
+
+def test_project_unset_removes_a_secret(shop, capsys, monkeypatch):
+    monkeypatch.setattr("sys.stdin", Stdin("g"))
+    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 0
+    capsys.readouterr()
+    assert main(["project", "unset", "shop", "GH_TOKEN"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Removed GH_TOKEN from project shop.",
+        "Agents started from now on do not get it.",
+    ]
+    assert not secret_file("GH_TOKEN").exists()

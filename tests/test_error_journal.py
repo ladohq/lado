@@ -4,6 +4,7 @@ logs stay bounded."""
 import asyncio
 import json
 import os
+import sqlite3
 
 import agent_helpers
 import pytest
@@ -193,6 +194,58 @@ def test_loop_journals_a_repeated_error_once(repo, fake_tmux, monkeypatch, lado_
     lines = _journal(lado_home)
     assert [line["where"] for line in lines] == ["loop", "loop"]
     assert lines[0]["session"] == "s"
+
+
+def _locked_passes(monkeypatch, failing: int, then_works: bool):
+    """A sweep whose first `failing` passes meet a locked lado.db; then one works, or the
+    session stops at once."""
+    passes = []
+
+    def sweep(session):
+        passes.append(session)
+        if len(passes) <= failing:
+            raise sqlite3.OperationalError("database is locked")
+        if not then_works or len(passes) > failing + 1:
+            runtime.stop_session(session)
+
+    monkeypatch.setattr(runtime, "sweep", sweep)
+
+
+def test_loop_does_not_journal_a_lock_that_clears_within_the_grace(
+    repo, fake_tmux, monkeypatch, lado_home
+):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    _locked_passes(monkeypatch, failing=5, then_works=True)
+    assert loop.run("s", interval=0) == 0
+    log = (lado_home / "loop.log").read_text()
+    assert "Traceback" in log and "OperationalError: database is locked" in log
+    assert "passes work again" in log
+    assert _journal(lado_home) == []
+
+
+def test_loop_journals_a_lock_that_lasts_once(repo, fake_tmux, monkeypatch, lado_home):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    monkeypatch.setattr(loop, "LOCK_GRACE", 0)
+    _locked_passes(monkeypatch, failing=5, then_works=False)
+    assert loop.run("s", interval=0) == 0
+    lines = _journal(lado_home)
+    assert [(line["where"], line["session"]) for line in lines] == [("loop", "s")]
+    assert "database is locked" in json.dumps(lines[0])
+
+
+def test_loop_journals_another_error_at_its_first_pass(repo, fake_tmux, monkeypatch, lado_home):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    passes = []
+
+    def sweep(session):
+        passes.append(session)
+        if len(passes) == 1:
+            raise sqlite3.OperationalError("database table is locked")
+        runtime.stop_session(session)
+
+    monkeypatch.setattr(runtime, "sweep", sweep)
+    assert loop.run("s", interval=0) == 0
+    assert [line["where"] for line in _journal(lado_home)] == ["loop"]
 
 
 def test_loop_log_is_bounded(lado_home, monkeypatch):

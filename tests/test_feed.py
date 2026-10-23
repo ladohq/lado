@@ -658,9 +658,9 @@ def test_a_stream_that_starts_after_the_shutdown_began_ends_at_once():
     assert asyncio.run(asyncio.wait_for(read(), 2)) == [feed.encode("reset", {}, 0)]
 
 
-def broken_journal(monkeypatch):
+def broken_journal(monkeypatch, error="disk I/O error"):
     def fail(self, *args):
-        raise sqlite3.OperationalError("disk I/O error")
+        raise sqlite3.OperationalError(error)
 
     monkeypatch.setattr(feed.Journal, "after", fail)
     monkeypatch.setattr(feed.Journal, "last", fail)
@@ -682,6 +682,21 @@ def test_a_journal_that_cannot_be_read_ends_the_streams_and_new_ones_get_503(
         r for r in caplog.records if r.name == "lado.server" and "Traceback" in r.getMessage()
     ]
     assert len(tracebacks) == 1  # the same error is not written again and again
+
+
+def test_a_locked_journal_is_logged_but_not_journaled_within_the_grace(
+    streams, monkeypatch, caplog
+):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    stream = streams()
+    stream.next()
+    broken_journal(monkeypatch, "database is locked")
+    assert stream.closed.wait(5)  # FAILED_PASSES failing reads
+    assert any(
+        r.name == "lado.server" and "database is locked" in r.getMessage()
+        for r in caplog.records
+    )
+    assert not (state.home() / "errors.jsonl").exists()
 
 
 def test_a_pass_that_keeps_failing_ends_each_new_stream_too(streams, monkeypatch):

@@ -408,3 +408,160 @@ def test_the_changes_need_the_token_and_the_servers_own_origin(client, shop):
     assert client.delete("/api/projects/shop/repos/frontend").status_code == 401
     assert client.get("/api/projects/shop/repos/frontend/removal").status_code == 401
     assert sorted(p.name for p in shop.iterdir()) == ["frontend"]
+
+
+# The Projects section (openspec change projects-section): the list, New project and the
+# facts of the project's page
+
+
+def _running(monkeypatch, shop, *names, stopped=()):
+    for name in (*names, *stopped):
+        state.add_session(state.Session(name, str(shop / "frontend"), None, "kilo", project="shop"))
+    for name in stopped:
+        state.stop_session(name)
+    monkeypatch.setattr(projects.runtime.tmux, "has_session", lambda name: True)
+    monkeypatch.setattr(projects.runtime.loop, "running", lambda name: True)
+
+
+def test_the_list_of_projects(client, shop, monkeypatch):
+    init_repo(shop / "backend")
+    projects.create("acme", "ACME CRM")
+    init_repo(projects.folder("acme") / "crm")
+    projects.create("sandbox", None)
+    projects.folder("sandbox").rmdir()
+    _running(monkeypatch, shop, "shop-frontend", stopped=["old"])
+    answer = client.get("/api/projects")
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == [
+        {
+            "id": "acme",
+            "title": "ACME CRM",
+            "folder": str(projects.folder("acme")),
+            "found": True,
+            "repos": 1,
+            "running": [],
+        },
+        {
+            "id": "sandbox",
+            "title": None,
+            "folder": str(projects.folder("sandbox")),
+            "found": False,
+            "repos": 0,
+            "running": [],
+        },
+        {
+            "id": "shop",
+            "title": "Shop",
+            "folder": str(shop),
+            "found": True,
+            "repos": 2,
+            "running": ["shop-frontend"],
+        },
+    ]
+
+
+def test_no_list_without_a_database(client, lado_home):
+    assert client.get("/api/projects").json() == []
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_new_project(client, tmp_path, monkeypatch, lado_home):
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    assert not (lado_home / "lado.db").exists()
+    answer = client.post("/api/projects", json={"id": "shop-eu", "title": "Shop EU"})
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == client.get("/api/projects/shop-eu").json()
+    assert answer.json()["title"] == "Shop EU" and answer.json()["repos"] == []
+    assert (tmp_path / "ws" / "projects" / "shop-eu").is_dir()
+    untitled = client.post("/api/projects", json={"id": "acme"})
+    assert untitled.status_code == 200, untitled.text
+    assert state.get_project("acme").title is None
+
+
+def test_new_project_refused(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    target = tmp_path / "ws" / "projects" / "shop-eu"
+    target.mkdir(parents=True)
+    answer = client.post("/api/projects", json={"id": "shop-eu", "title": "Shop EU"})
+    assert answer.status_code == 400
+    assert answer.json()["detail"] == (
+        f"{target} already exists: LADO makes a project's folder itself; choose another id "
+        "or move that folder away"
+    )
+    assert state.get_project("shop-eu") is None
+    bad = client.post("/api/projects", json={"id": "Shop"})
+    assert bad.status_code == 400
+    assert bad.json()["detail"].startswith("the project id Shop is not valid: ")
+    long = client.post("/api/projects", json={"id": "shop", "title": "x" * 81})
+    assert long.status_code == 400
+    assert long.json()["detail"].startswith("a title is at most")
+    assert state.list_projects() == []
+
+
+def test_new_project_needs_the_token_and_the_servers_own_origin(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    del client.headers["origin"]
+    assert client.post("/api/projects", json={"id": "shop"}).status_code == 403
+    client.headers["origin"] = OWN
+    client.cookies.clear()
+    assert client.post("/api/projects", json={"id": "shop"}).status_code == 401
+    assert not (tmp_path / "ws").exists()
+
+
+def test_an_id_from_a_title(client, tmp_path, monkeypatch, lado_home):
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    answer = client.get("/api/project-id", params={"title": "Магазин EU"})
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == {
+        "id": "magazin-eu",
+        "folder": str(tmp_path / "ws" / "projects" / "magazin-eu"),
+        "problem": None,
+    }
+    assert client.get("/api/project-id", params={"title": "日本"}).json() == {
+        "id": None,
+        "folder": None,
+        "problem": "the name needs a Latin letter or digit for its folder: type one",
+    }
+    assert not (tmp_path / "ws").exists()
+    assert not (lado_home / "lado.db").exists()  # asking makes nothing
+
+
+def test_an_id_taken_or_typed(client, shop):
+    assert client.get("/api/project-id", params={"title": "Shop"}).json() == {
+        "id": "shop",
+        "folder": str(shop),
+        "problem": "project shop exists",
+    }
+    typed = client.get("/api/project-id", params={"id": "Shop"}).json()
+    assert typed["id"] == "Shop" and typed["folder"] is None
+    assert typed["problem"].startswith("the project id Shop is not valid: ")
+    free = client.get("/api/project-id", params={"id": "eu-shop", "title": "Shop"}).json()
+    assert free == {"id": "eu-shop", "folder": str(shop.parent / "eu-shop"), "problem": None}
+
+
+def test_the_project_names_its_overrides_and_unused_secrets_without_values(
+    client, shop, tmp_path, monkeypatch
+):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "YOUGILE_API_KEY").write_text("canary-out")
+    (outside / "BOARD_URL").write_text("canary-out")
+    monkeypatch.setenv("LADO_ENV_DIR", str(outside))
+    projects.set_secret("shop", "YOUGILE_API_KEY", "canary-secret-1")
+    projects.set_secret("shop", "SENTRY_DSN", "canary-secret-2")
+    (project_secrets.folder("shop") / "SENTRY_DSN").chmod(0o644)
+    _running(monkeypatch, shop, "shop-frontend", stopped=["shop-backend"])
+    answer = client.get("/api/projects/shop")
+    body = answer.json()
+    assert body["secrets"] == ["SENTRY_DSN", "YOUGILE_API_KEY"]
+    assert body["overrides"] == ["YOUGILE_API_KEY"]
+    assert body["unused"] == [
+        {"name": "SENTRY_DSN", "reason": "readable or writable by others: chmod 600 it"}
+    ]
+    assert body["running"] == ["shop-frontend"]
+    assert "canary-" not in answer.text
+    project_secrets.folder("shop").chmod(0o755)
+    folder_unused = client.get("/api/projects/shop").json()["unused"]
+    assert folder_unused == [
+        {"name": None, "reason": "readable or writable by others: chmod 700 it"}
+    ]

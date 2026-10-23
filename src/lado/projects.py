@@ -389,13 +389,14 @@ def secrets(id: str) -> list[str]:
 def overrides(id: str) -> list[str]:
     """The names of the project's plain variables and secrets that the outside folder
     (LADO_ENV_DIR) gives too, sorted: its sessions' agents get the project's value. No value
-    leaves this function."""
+    leaves this function. A secret its agents do not get (project_secrets.unused) overrides
+    nothing: they get the outside value."""
     given = agent_env.outside().values
     if not given:
         return []
-    return sorted(
-        (state.project_variables(id).keys() | set(project_secrets.names(id))) & given.keys()
-    )
+    ungiven = {name for name, _ in project_secrets.unused(id)}
+    secrets = set(project_secrets.names(id)) - ungiven
+    return sorted((state.project_variables(id).keys() | secrets) & given.keys())
 
 
 def running(id: str) -> list[str]:

@@ -275,3 +275,11 @@ def test_unused_names_the_files_agents_do_not_get_without_a_value(home, tmp_path
     assert project_secrets.unused("shop") == [
         (None, "readable or writable by others: chmod 700 it")
     ]
+
+
+def test_names_hold_a_loose_file_its_agents_do_not_get(home):
+    """A loose mode is the human's to mend by a replace: the name stays a secret (the page
+    shows it with Replace), as it stays taken (`held`)."""
+    project_secrets.write("shop", "SENTRY_DSN", "s")
+    (secrets_of(home) / "SENTRY_DSN").chmod(0o644)
+    assert project_secrets.names("shop") == ["SENTRY_DSN"]

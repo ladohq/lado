@@ -408,3 +408,14 @@ def test_overrides_names_what_the_outside_folder_gives_too(shop, tmp_path, monke
     found = projects.overrides(shop)
     assert found == ["BOARD_URL", "GH_TOKEN"]
     assert "canary-" not in repr(found)
+
+
+def test_a_secret_the_agents_do_not_get_overrides_nothing(shop, tmp_path, monkeypatch):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "GH_TOKEN").write_text("canary-out")
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(outside))
+    projects.set_secret(shop, "GH_TOKEN", "canary-secret")
+    assert projects.overrides(shop) == ["GH_TOKEN"]
+    secret_file("GH_TOKEN").chmod(0o644)  # its agents get the outside value now
+    assert projects.overrides(shop) == []

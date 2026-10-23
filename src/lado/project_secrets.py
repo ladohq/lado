@@ -87,8 +87,9 @@ def unused(id: str) -> list[tuple[str | None, str]]:
 
 def names(id: str) -> list[str]:
     """The names of the project's secrets, sorted, without opening a file: the files the
-    reader takes by what needs no content (a file it still cannot give, for its size or
-    content, `lado doctor` names). None while the folder is unused (a link, loose)."""
+    reader takes by what needs no content, and a file of a loose mode, which a replace mends
+    (a file it still cannot give, for its mode, size or content, `unused` names). None while
+    the folder is unused (a link, loose)."""
     where = str(folder(id))
     if agent_env.check_own_folder(where) != "":
         return []
@@ -97,7 +98,8 @@ def names(id: str) -> list[str]:
             return sorted(
                 entry.name
                 for entry in found
-                if not entry.name.startswith(".") and not agent_env.check_entry(entry, reserved)
+                if not entry.name.startswith(".")
+                and agent_env.check_entry(entry, reserved) in ("", agent_env.LOOSE_FILE)
             )
     except OSError:
         return []

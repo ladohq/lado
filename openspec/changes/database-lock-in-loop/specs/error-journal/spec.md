@@ -6,10 +6,7 @@ An unexpected exception in a CLI command, a hook, a tool of `lado mcp`, a pass o
 session loop or a request of the UI server SHALL add one JSON line to
 `LADO_HOME/errors.jsonl` with the time, LADO's version, where it happened (`cli:<command>`,
 `hook:<event>`, `mcp:<tool>`, `loop`, `server:<route template>`), the exception's type and
-message, and its traceback; the session and agent, when known, are kept in that line. A
-pass of the session loop, or a read of the UI server's change feed, that fails on a locked
-lado.db is written only as the requirement "A short lock of lado.db is no error of the
-loop" says.
+message, and its traceback; the session and agent, when known, are kept in that line.
 
 #### Scenario: A hook fails
 - **WHEN** a hook of agent `w1` raises a `KeyError` while it handles a turn's end
@@ -30,6 +27,12 @@ loop" says.
 #### Scenario: The loop's repeated error
 - **WHEN** a pass of the session loop fails with the same error five times in a row
 - **THEN** `errors.jsonl` gets one line for it, not five
+
+#### Scenario: The loop meets a locked lado.db
+- **WHEN** a pass of the session loop, or a read of the UI server's change feed, fails
+  with "database is locked"
+- **THEN** `errors.jsonl` gets its line only as the requirement "A short lock of lado.db
+  is no error of the loop" says
 
 #### Scenario: The UI server fails a request
 - **WHEN** `GET /api/sessions/{name}/agents` raises an unexpected exception

@@ -891,7 +891,7 @@
             "description": "refused, with the reason"
           },
           "404": {
-            "description": "no such project or repository"
+            "description": "no such project, repository or variable"
           },
           "422": {
             "description": "Validation Error",
@@ -946,7 +946,7 @@
             "description": "refused, with the reason"
           },
           "404": {
-            "description": "no such project or repository"
+            "description": "no such project, repository or variable"
           },
           "422": {
             "description": "Validation Error",
@@ -1001,7 +1001,125 @@
             "description": "refused, with the reason"
           },
           "404": {
-            "description": "no such project or repository"
+            "description": "no such project, repository or variable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/variables/{name}": {
+      "put": {
+        "summary": "Set Project Variable",
+        "description": "Set the variable, as `lado project set` does.",
+        "operationId": "set_project_variable_api_projects__id__variables__name__put",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariableValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariableChange"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such project, repository or variable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Unset Project Variable",
+        "description": "Remove the variable, as `lado project unset` does.",
+        "operationId": "unset_project_variable_api_projects__id__variables__name__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariableChange"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such project, repository or variable"
           },
           "422": {
             "description": "Validation Error",
@@ -5863,6 +5981,13 @@
             },
             "type": "array",
             "title": "Repos"
+          },
+          "variables": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectVariable"
+            },
+            "type": "array",
+            "title": "Variables"
           }
         },
         "type": "object",
@@ -5871,10 +5996,11 @@
           "title",
           "folder",
           "found",
-          "repos"
+          "repos",
+          "variables"
         ],
         "title": "ProjectInfo",
-        "description": "A project with its repositories as the disk has them now."
+        "description": "A project with its repositories as the disk has them now, and its variables."
       },
       "ProjectRef": {
         "properties": {
@@ -5944,6 +6070,25 @@
         ],
         "title": "ProjectRepo",
         "description": "A repository of a project, read from its folder (lado.projects.repositories)."
+      },
+      "ProjectVariable": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "ProjectVariable",
+        "description": "A plain variable of a project (lado.projects.set_variable): its value is shown."
       },
       "ProviderInfo": {
         "properties": {
@@ -8053,6 +8198,41 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VariableChange": {
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/ProjectInfo"
+          },
+          "running": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Running"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project",
+          "running"
+        ],
+        "title": "VariableChange",
+        "description": "A project after a change of its variables, and its sessions that run: their agents\nkeep the old environment until restarted."
+      },
+      "VariableValue": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "title": "VariableValue",
+        "description": "The value a project's variable is set to."
       },
       "Waiting": {
         "properties": {

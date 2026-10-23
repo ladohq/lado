@@ -3,7 +3,7 @@
 import shutil
 
 import pytest
-from agent_helpers import init_repo, install_kit
+from agent_helpers import init_repo, install_kit, launched
 
 from lado import artifacts, projects, providers, runtime, state, tmux
 
@@ -265,6 +265,13 @@ def test_a_session_started_from_a_project_is_in_the_project(in_shop):
     runtime.start_approved_session("a", "supervisor", "b", _approved())
     b = state.get_session("b")
     assert (b.project, b.repo, b.permission_mode) == ("shop", str(in_shop), "plan")
+
+
+def test_a_session_started_from_a_project_gets_its_variables(in_shop, fake_tmux):
+    projects.set_variable("shop", "BOARD_URL", "https://a")
+    runtime.start_approved_session("a", "supervisor", "b", _approved())
+    [call] = [c for c in fake_tmux if c[:2] == ("new_session", "b")]
+    assert launched(call)[0]["BOARD_URL"] == "https://a"
 
 
 def test_a_session_started_from_one_without_a_project_has_none(a, repo):

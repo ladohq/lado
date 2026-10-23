@@ -2764,6 +2764,7 @@ def test_project_create_list_show_rename(ws, capsys):
         f"  folder:  {folder}",
         f"  made:    {utc.astimezone():%Y-%m-%d %H:%M}",
         "  repositories: none",
+        "  variables: none",
     ]
     assert main(["project", "show", "a"]) == 0
     out = capsys.readouterr().out.splitlines()
@@ -2934,13 +2935,14 @@ def test_project_show_lists_the_repositories(shop, tmp_path, capsys):
         "    backend   dev   (no remote)",
         f"    docs      (a link to {docs}: clone it into {shop} instead)",
         "    frontend  main  https://github.com/shop/frontend",
+        "  variables: none",
     ]
 
 
 def test_project_show_without_repositories(shop, capsys):
     shutil.rmtree(shop)
     assert main(["project", "show", "shop"]) == 0
-    assert capsys.readouterr().out.splitlines()[-1] == "  repositories: none"
+    assert capsys.readouterr().out.splitlines()[-2] == "  repositories: none"
 
 
 def test_project_delete_with_sessions(shop, capsys):
@@ -3129,3 +3131,124 @@ def test_project_repo_remove_refusals(shop, capsys):
     assert main(["project", "repo", "remove", "acme", "web"]) == 1
     assert capsys.readouterr().err == 'lado: unknown project "acme"\n'
     assert (shop / "notes").is_dir() and (shop / "frontend").is_dir()
+
+
+# A project's variables (openspec change project-variables)
+
+
+def test_project_set_unset_and_show(shop, capsys):
+    assert main(["project", "set", "shop", "MODEL_URL", "http://localhost:11434"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Set MODEL_URL in project shop.",
+        "Agents started from now on get it.",
+    ]
+    assert main(["project", "set", "shop", "BOARD_URL", "https://old"]) == 0
+    assert main(["project", "set", "shop", "BOARD_URL", "https://a\nnext\r"]) == 0
+    capsys.readouterr()
+    assert main(["project", "show", "shop"]) == 0
+    assert capsys.readouterr().out.splitlines()[-3:] == [
+        "  variables:",
+        "    BOARD_URL  https://a\\nnext\\r",
+        "    MODEL_URL  http://localhost:11434",
+    ]
+    assert state.project_variables("shop")["BOARD_URL"] == "https://a\nnext\r"
+    assert main(["project", "unset", "shop", "BOARD_URL"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Removed BOARD_URL from project shop.",
+        "Agents started from now on get it.",
+    ]
+    assert main(["project", "unset", "shop", "MODEL_URL"]) == 0
+    capsys.readouterr()
+    assert main(["project", "show", "shop"]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "  variables: none"
+
+
+def test_project_set_names_the_running_sessions(shop, capsys, monkeypatch):
+    for name in ("shop-frontend", "fix-login", "old"):
+        state.add_session(
+            state.Session(name, str(shop / "frontend"), None, provider="kilo", project="shop")
+        )
+    state.stop_session("old")
+    monkeypatch.setattr(runtime, "session_status", _not_stopped)
+    assert main(["project", "set", "shop", "BOARD_URL", "https://a"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Set BOARD_URL in project shop.",
+        "Agents started from now on get it; running sessions of shop keep the old environment "
+        "until restarted: fix-login, shop-frontend",
+    ]
+    assert main(["project", "unset", "shop", "BOARD_URL"]) == 0
+    assert (
+        capsys.readouterr()
+        .out.splitlines()[-1]
+        .endswith("until restarted: fix-login, shop-frontend")
+    )
+
+
+def _not_stopped(sess):
+    return runtime.SessionStatus.STOPPED if sess.stopped_at else runtime.SessionStatus.RUNNING
+
+
+def test_project_set_a_value_that_starts_with_a_dash(shop, capsys):
+    assert main(["project", "set", "shop", "FLAGS", "--", "-v"]) == 0
+    assert state.project_variables("shop") == {"FLAGS": "-v"}
+
+
+@pytest.mark.parametrize(
+    ("argv", "said"),
+    [
+        (["set", "shop", "GH_TOKEN", "x"], "GH_TOKEN looks like a secret (TOKEN): "),
+        (["set", "shop", "yougile_api_key", "x"], "yougile_api_key looks like a secret (KEY): "),
+        (["set", "shop", "PATH", "/tmp"], "PATH is reserved: LADO or the agent CLIs set it"),
+        (["set", "shop", "LADO_HOME", "/h"], "LADO_HOME is reserved: "),
+        (["set", "shop", "CLAUDE_CONFIG_DIR", "/c"], "CLAUDE_CONFIG_DIR is reserved: "),
+        (["set", "shop", "A-B", "x"], "the name A-B is not a variable name: "),
+        (["set", "shop", "BIG", "x" * 70000], "the value of BIG is larger than 64 KiB"),
+        (["set", "nope", "BOARD_URL", "x"], 'unknown project "nope"'),
+        (["unset", "nope", "BOARD_URL"], 'unknown project "nope"'),
+        (["show", "nope"], 'unknown project "nope"'),
+        (
+            ["unset", "shop", "MODEL_URL"],
+            "project shop has no variable MODEL_URL; its variables: none",
+        ),
+    ],
+)
+def test_project_set_and_unset_refusals(shop, capsys, argv, said):
+    assert main(["project", *argv]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith(f"lado: {said}") and err.count("\n") == 1
+    assert state.project_variables("shop") == {}
+
+
+def test_project_set_s_secret_hint(shop, capsys):
+    assert main(["project", "set", "shop", "DB_PASSWORD", "x"]) == 1
+    assert capsys.readouterr().err == (
+        "lado: DB_PASSWORD looks like a secret (PASSWORD): a plain variable takes no name with "
+        "TOKEN, KEY, SECRET or PASSWORD; secrets come with lado project set shop DB_PASSWORD "
+        "--secret (not built yet)\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "argv", [["set", "shop", "MODEL_URL", "http://evil"], ["unset", "shop", "BOARD_URL"]]
+)
+def test_agents_cannot_change_a_project_s_variables(shop, capsys, monkeypatch, argv):
+    assert main(["project", "set", "shop", "BOARD_URL", "https://a"]) == 0
+    capsys.readouterr()
+    monkeypatch.setenv("LADO_SESSION", "s")
+    monkeypatch.setenv("LADO_AGENT", "w1")
+    assert main(["project", *argv]) == 1
+    assert capsys.readouterr().err == (
+        f'lado: lado project {argv[0]} is for the human; agent "w1" cannot use it\n'
+    )
+    assert state.project_variables("shop") == {"BOARD_URL": "https://a"}
+    assert main(["project", "show", "shop"]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "    BOARD_URL  https://a"
+
+
+def test_project_delete_takes_the_variables_along(shop, capsys):
+    assert main(["project", "set", "shop", "BOARD_URL", "https://a"]) == 0
+    assert main(["project", "delete", "shop", "--yes"]) == 0
+    assert main(["project", "create", "shop"]) == 0
+    capsys.readouterr()
+    assert main(["project", "show", "shop"]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "  variables: none"

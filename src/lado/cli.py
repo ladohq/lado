@@ -1088,10 +1088,44 @@ def _print_repositories(id: str) -> None:
         print(f"    {name:<{width}}  {rest}")
 
 
+def _print_variables(id: str) -> None:
+    """`lado project show`'s variables, by name, each value on one line."""
+    found = projects.variables(id)
+    if not found:
+        print("  variables: none")
+        return
+    print("  variables:")
+    width = max(len(name) for name in found)
+    for name, value in found.items():
+        shown = value.replace("\n", "\\n").replace("\r", "\\r")
+        print(f"    {name:<{width}}  {shown}")
+
+
+def _print_variable_change(id: str, running: list[str]) -> None:
+    """Who gets a project variable's change: the agents started from now on."""
+    if running:
+        print(
+            f"Agents started from now on get it; running sessions of {id} keep the old "
+            f"environment until restarted: {projects.names(running)}"
+        )
+    else:
+        print("Agents started from now on get it.")
+
+
 def cmd_project(args: argparse.Namespace) -> int:
     """`lado project <command>`: the human's projects (lado.projects); agents only read."""
-    if args.sub in ("create", "rename", "delete"):
+    if args.sub in ("create", "rename", "delete", "set", "unset"):
         _human_only(f"project {args.sub}")
+    if args.sub == "set":
+        running = projects.set_variable(args.id, args.name, args.value)
+        print(f"Set {args.name} in project {args.id}.")
+        _print_variable_change(args.id, running)
+        return 0
+    if args.sub == "unset":
+        running = projects.unset_variable(args.id, args.name)
+        print(f"Removed {args.name} from project {args.id}.")
+        _print_variable_change(args.id, running)
+        return 0
     if args.sub == "list":
         listed = projects.listed()
         if not listed:
@@ -1116,6 +1150,7 @@ def cmd_project(args: argparse.Namespace) -> int:
         print(f"  folder:  {_project_folder(folder, folder.is_dir())}")
         print(f"  made:    {made.astimezone():%Y-%m-%d %H:%M}")
         _print_repositories(project.id)
+        _print_variables(project.id)
     elif args.sub == "rename":
         title = projects.rename(args.id, args.title)
         print(f'{args.id}: title "{title}"' if title else f"{args.id}: no title")
@@ -1698,7 +1733,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     project_create.add_argument("--title", help="what the human reads (default: the id)")
     project_create.set_defaults(func=cmd_project)
-    project_show = project_sub.add_parser("show", help="a project, its folder and when made")
+    project_show = project_sub.add_parser(
+        "show", help="a project: its folder, when made, its repositories and variables"
+    )
     project_show.add_argument("id")
     project_show.set_defaults(func=cmd_project)
     project_rename = project_sub.add_parser(
@@ -1715,6 +1752,19 @@ def main(argv: list[str] | None = None) -> int:
         "--yes", action="store_true", help="remove it; without, only show what would go"
     )
     project_delete.set_defaults(func=cmd_project)
+    project_set = project_sub.add_parser(
+        "set",
+        help="set a plain variable that the agents of the project's sessions get; they get it "
+        "from their next start",
+    )
+    project_set.add_argument("id")
+    project_set.add_argument("name", help="the variable's name, e.g. BOARD_URL")
+    project_set.add_argument("value", help="its value; one starting with - goes after --")
+    project_set.set_defaults(func=cmd_project)
+    project_unset = project_sub.add_parser("unset", help="remove a project's variable")
+    project_unset.add_argument("id")
+    project_unset.add_argument("name")
+    project_unset.set_defaults(func=cmd_project)
     project_repo = project_sub.add_parser(
         "repo", help="add a repository to a project (a clone or from scratch) or remove one"
     )

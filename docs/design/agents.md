@@ -25,7 +25,20 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `LADO_AGENT_ENV=inherit` takes the environment of the process that starts the agent instead
   (the tests set it). From either, `TMUX`, `TMUX_PANE`, the shell's own `PWD`, `OLDPWD`,
   `SHLVL` and `_`, and a parent Claude Code's variables are dropped; the variables of the
-  outside folder go over them, then LADO's variables, then the provider's. The outside
+  outside folder go over them, then the variables of the session's project, then LADO's
+  variables, then the provider's (`agent_env.resolve(project)`, one function for every
+  provider). The project's variables (`lado project set`, docs/design/projects.md) are read
+  from lado.db anew at each start, resume and spawn by the process that launches
+  (`runtime._base_env(project)`: the CLI, the UI server, or a supervisor's `lado mcp` for its
+  `spawn_worker`, flow runs' workers and `start_session`), so an agent launched after a
+  change gets it and a running one keeps its own; a session without a project gets none.
+  Being in the base, they reach the kits' checks and `mcp_exec` as the outside folder's do.
+  A stored project variable named as one LADO or the provider sets keeps LADO's value and is
+  named in that launch's warnings (`project variable <name> of <id> not used: LADO sets
+  <name> for <provider>`; `runtime._layer_warnings`). Under `LADO_AGENT_ENV=inherit` an
+  agent's `lado mcp` resolves from its own environment, which holds its project's values of
+  its start: a variable unset since still reaches the workers it spawns (the outside folder
+  has the same limit); the default `shell` is exact. The outside
   folder (`agent_env.outside`) is the one `LADO_ENV_DIR` names, an absolute path (LADO's
   image: `/run/secrets`), read anew at each launch, so the kits' checks (`${NAME}` of an MCP
   server, `_check_commands`) see it too: each regular file directly in it is a variable,
@@ -34,7 +47,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   (`agent_env.RESERVED`: the shell's identity, `PATH`, tmux's, and every `LADO_*`),
   unreadable, over `MAX_VALUE` (64 KiB) or not UTF-8 text without NUL is not applied and
   named with why, never with its content (`variable file <name> in <folder> not used:
-  <reason>`), in a start's and resume's warnings (`runtime._outside_warnings`) and by `lado
+  <reason>`), in a start's and resume's warnings (`runtime._layer_warnings`) and by `lado
   doctor` (`Variables from outside`: the names, never a value; the bug report has none). A
   name LADO or the provider sets for the launch keeps their value and is named in that
   launch's warnings, `spawn_worker`'s too (`LADO sets <name> for <provider>`). Unset,

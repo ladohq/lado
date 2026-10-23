@@ -4,10 +4,11 @@ LADO's projects/ (openspec change sessions-in-projects)."""
 import os
 from pathlib import Path
 
+import agent_helpers
 import pytest
 from agent_helpers import init_repo
 
-from lado import projects, runtime, state
+from lado import kits, projects, runtime, state
 
 
 @pytest.fixture
@@ -166,6 +167,106 @@ def test_nothing_is_refused_in_the_humans_own_projects_folder(tmp_path, monkeypa
     app = init_repo(tmp_path / "ws" / "projects" / "app")
     assert _start(path=str(app)).session.name == "app"
     assert state.get_session("app").project is None
+
+
+# The project's variables (openspec change project-variables)
+
+
+@pytest.fixture
+def outside(tmp_path, monkeypatch):
+    """The outside folder (LADO_ENV_DIR) with BOARD_URL=out and OTHER=o."""
+    folder = tmp_path / "secrets"
+    folder.mkdir()
+    (folder / "BOARD_URL").write_text("out\n")
+    (folder / "OTHER").write_text("o")
+    monkeypatch.setenv("LADO_ENV_DIR", str(folder))
+    return folder
+
+
+def test_the_agents_of_a_session_in_a_project_get_its_variables(shop, fake_tmux, outside):
+    projects.set_variable("shop", "BOARD_URL", "https://a b=c\nd")
+    _start(project="shop", repo_name="frontend")
+    env, _ = agent_helpers.launched(fake_tmux[0])
+    assert (env["BOARD_URL"], env["OTHER"]) == ("https://a b=c\nd", "o")
+    projects.set_variable("shop", "MODEL_URL", "http://m")  # read anew at the next launch
+    runtime.spawn_worker("shop-frontend", "task", name="w1")
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert (env["BOARD_URL"], env["MODEL_URL"]) == ("https://a b=c\nd", "http://m")
+    projects.unset_variable("shop", "BOARD_URL")
+    runtime.spawn_worker("shop-frontend", "task", name="w2")
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert env["BOARD_URL"] == "out"  # the outside folder's again
+
+
+def test_a_resume_reads_the_variables_anew(shop, fake_tmux):
+    _start(project="shop", repo_name="frontend")
+    assert "MODEL_URL" not in agent_helpers.launched(fake_tmux[0])[0]
+    runtime.stop_session("shop-frontend")
+    projects.set_variable("shop", "MODEL_URL", "http://m")
+    assert _start(project="shop", repo_name="frontend").resumed
+    assert agent_helpers.launched(fake_tmux[-1])[0]["MODEL_URL"] == "http://m"
+
+
+def test_each_project_gives_its_own_value_and_no_project_none(shop, fake_tmux, tmp_path):
+    projects.create("acme", None)
+    init_repo(projects.folder("acme") / "frontend")
+    projects.set_variable("shop", "BOARD_URL", "https://a")
+    projects.set_variable("acme", "BOARD_URL", "https://b")
+    _start(project="shop", repo_name="frontend")
+    _start(project="acme", repo_name="frontend")
+    _start(path=str(init_repo(tmp_path / "app")))
+    values = [agent_helpers.launched(call)[0].get("BOARD_URL") for call in fake_tmux]
+    assert values == ["https://a", "https://b", None]
+
+
+@pytest.fixture
+def board_kit(tmp_path):
+    """An installed kit whose worker role `boarder` has an MCP server needing ${BOARD_URL}."""
+    kit = tmp_path / "kits" / "board"
+    (kit / "agents").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: board\nversion: 1.0.0\n")
+    (kit / "agents" / "boarder.md").write_text(
+        "---\nname: boarder\ndescription: reads the board\n"
+        "mcp:\n  board:\n    command: ['${KIT_DIR}/board.sh']\n    env: {URL: '${BOARD_URL}'}\n"
+        "---\nYou read the board.\n"
+    )
+    agent_helpers.install_kit(kit)
+    return kit
+
+
+def test_a_kit_key_only_in_the_project_passes(shop, fake_tmux, board_kit, tmp_path):
+    projects.set_variable("shop", "BOARD_URL", "https://a")
+    _start(project="shop", repo_name="frontend", kit_names=["default", "board"])
+    runtime.spawn_worker("shop-frontend", "read it", role="boarder")
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert env["BOARD_URL"] == "https://a"  # lado.mcp_exec takes it from here
+    _start(path=str(init_repo(tmp_path / "app")), kit_names=["default", "board"])
+    with pytest.raises(kits.KitError, match="BOARD_URL"):
+        runtime.spawn_worker("app", "read it", role="boarder")
+
+
+def test_a_project_variable_with_a_name_lado_sets_keeps_lado_s_value(shop, fake_tmux):
+    state.set_project_variable("shop", "KILO_DISABLE_AUTOUPDATE", "0")  # stored before a rule
+    line = (
+        "project variable KILO_DISABLE_AUTOUPDATE of shop not used: LADO sets "
+        "KILO_DISABLE_AUTOUPDATE for kilo"
+    )
+    started = runtime.start_session(
+        None, None, None, provider="kilo", project="shop", repo_name="frontend"
+    )
+    assert line in started.warnings
+    assert agent_helpers.launched(fake_tmux[0])[0]["KILO_DISABLE_AUTOUPDATE"] == "1"
+    warnings = []
+    runtime.spawn_worker("shop-frontend", "task", name="w1", warnings=warnings)
+    assert line in warnings
+    warnings = []
+    runtime.spawn_worker("shop-frontend", "task", name="w2", provider="claude", warnings=warnings)
+    assert not [w for w in warnings if w.startswith("project variable")]  # not Claude's
+    runtime.stop_session("shop-frontend")
+    resumed = runtime.start_session(
+        None, None, None, provider="kilo", project="shop", repo_name="frontend"
+    )
+    assert line in resumed.warnings
 
 
 def test_a_link_from_outside_is_refused(shop, tmp_path):

@@ -626,10 +626,32 @@ def check_outside() -> Check | None:
     return Check(name, WARN, "; ".join([detail, *files]))
 
 
+def check_project_variables() -> Check | None:
+    """The projects whose variables take the place of the outside folder's (by name, never
+    a value) for their sessions' agents; none without such a name or a lado.db to read."""
+    given = agent_env.outside().values
+    if not given or state.schema_version() is None:
+        return None
+    try:
+        found = [
+            (p.id, state.project_variables(p.id).keys() & given.keys())
+            for p in state.list_projects()
+        ]
+    except state.SchemaError:  # doctor reads lado.db as it is: no migration
+        return None
+    lines = [
+        f"{id} overrides {', '.join(sorted(names))} of {agent_env.ENV_DIR_VAR}"
+        for id, names in found
+        if names
+    ]
+    return Check("Project variables", INFO, "; ".join(lines)) if lines else None
+
+
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
     graphical = check_graphical_session(which)
     projects_found = check_projects()
     outside = check_outside()
+    overridden = check_project_variables()
     author = check_git_author()
     return [
         check_lado(),
@@ -640,6 +662,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         check_workspace(),
         *([projects_found] if projects_found else []),
         *([outside] if outside else []),
+        *([overridden] if overridden else []),
         *([graphical] if graphical else []),
         *check_agent_env(),
         check_config_folders(),

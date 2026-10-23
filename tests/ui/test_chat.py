@@ -1248,12 +1248,12 @@ def test_every_time_on_the_right_ends_on_one_edge_and_copy_message_stands_before
     message = chat.get_by_role("article", name="Message from supervisor").filter(
         has_text="merged w1"
     )
-    time = message.locator(".feed-head > time")
+    time = message.locator(".feed-when > time")
     message.scroll_into_view_if_needed()
     before = time.bounding_box()
     message.hover()
     copy = message.get_by_role("button", name="Copy message")
-    expect(message.locator(".feed-head > .copy-icon-button")).to_have_css("opacity", "1")
+    expect(message.locator(".feed-when > .copy-icon-button")).to_have_css("opacity", "1")
     assert time.bounding_box() == before
     button, icon = copy.bounding_box(), copy.locator("svg").bounding_box()
     assert button is not None and icon is not None and before is not None
@@ -1274,3 +1274,34 @@ def test_every_time_on_the_right_ends_on_one_edge_and_copy_message_stands_before
         shot(phone, "390", full_page=False)
     finally:
         context.close()
+
+
+# The message's head with a name of 1 to 80 characters, one after another: where its time
+# ends against the text column's edge, and the names whose time leaves the edge.
+TIME_OFF_EDGE = """row => {
+  const who = row.querySelector('.feed-who');
+  const time = row.querySelector('.feed-head time');
+  const edge = row.querySelector('.feed-main').getBoundingClientRect().right;
+  const off = [];
+  for (let n = 1; n <= 80; n++) {
+    who.textContent = 'w'.repeat(n);
+    const right = time.getBoundingClientRect().right;
+    if (Math.abs(right - edge) > 1) off.push([n, right, edge]);
+  }
+  return off;
+}"""
+
+
+def test_a_heads_time_stays_on_the_edge_when_the_head_wraps(page: Page, server, repo, shot):
+    """A head that wraps wraps Copy message and the time together: the time never starts
+    the next line at the left (LAD-136, ledger F1)."""
+    session = running_session(repo)
+    state.queue_message(session, "supervisor", "human", "merged w1", mark=state.DELIVERED)
+    page.set_viewport_size({"width": 1200, "height": 900})  # a narrow chat by the terminal
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    message = page.get_by_role("log", name="Chat with the session").get_by_role(
+        "article", name="Message from supervisor"
+    )
+    expect(message).to_contain_text("merged w1")
+    assert message.evaluate(TIME_OFF_EDGE) == []

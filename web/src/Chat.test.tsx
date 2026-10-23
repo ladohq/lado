@@ -649,9 +649,10 @@ test("each message's head has Copy message, also a row that continues its group"
   const log = await chat();
   const [first, second] = await within(log).findAllByRole("article");
   const copier = within(first).getByRole("button", { name: "Copy message" }).closest(".copy-icon-button")!;
-  expect(copier.parentElement?.classList.contains("feed-head")).toBe(true);
+  expect(copier.parentElement?.classList.contains("feed-when")).toBe(true);
   // Right before the time, nothing after it: the time ends on the feed's edge (LAD-136).
   expect([copier.nextElementSibling?.tagName, copier.nextElementSibling?.nextElementSibling]).toEqual(["TIME", null]);
+  expect(copier.parentElement?.nextElementSibling).toBeNull(); // the block that wraps whole ends the head
   expect(second.classList.contains("continued")).toBe(true);
   expect(within(second).getByRole("button", { name: "Copy message" })).toBeTruthy();
 });

@@ -1472,15 +1472,12 @@ h3 {
   background: var(--ground);
 }
 
-/* Right before the head's time, 6px from its icon to the digits; the time ends on the
-   feed's edge whether the button shows or not (LAD-136). */
-.feed-head > .copy-icon-button {
+/* Copy message right before the head's time, 6px from its icon to the digits, the two one
+   block a wrapping head moves whole; the time ends on the feed's edge whether the button
+   shows or not (LAD-136). */
+.feed-when > .copy-icon-button {
   align-self: center;
-  margin: -4px -6px -4px auto;
-}
-
-.feed-head > .copy-icon-button + time {
-  margin-left: 0;
+  margin: -4px -6px -4px 0;
 }
 
 .feed-copy {
@@ -1503,7 +1500,7 @@ h3 {
 
   /* A message's own button: never the Copy code of a block in it. */
   .code-block:hover > .copy-icon-button,
-  .feed-row:hover :is(.feed-head, .feed-copy) > .copy-icon-button,
+  .feed-row:hover :is(.feed-when, .feed-copy) > .copy-icon-button,
   .agent-messages li:hover > .copy-icon-button,
   .copy-icon-button:focus-within {
     opacity: 1;
@@ -1511,13 +1508,13 @@ h3 {
 }
 
 @media (hover: none) {
-  .feed-row :is(.feed-head, .feed-copy) > .copy-icon-button,
+  .feed-row :is(.feed-when, .feed-copy) > .copy-icon-button,
   .agent-messages li > .copy-icon-button {
     display: none;
   }
 
-  .feed-head > .copy-icon-button + time {
-    margin-left: auto;
+  .feed-main:has(> .feed-copy) {
+    padding-right: 0;
   }
 }
 
@@ -2977,8 +2974,15 @@ h3 {
   text-decoration: underline;
 }
 
-.feed-head > time {
+.feed-when {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: 8px;
   margin-left: auto;
+}
+
+.feed-when > time {
   color: var(--muted);
   font-size: 12px;
 }

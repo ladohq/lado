@@ -1907,7 +1907,7 @@ the quote icon of variant 1; openspec change `selection-actions`).
 - **Copy code and Copy message.** Each fenced code block of Markdown the UI renders has an
   icon button **Copy code** at its top right (its code exactly); each message of the chat
   has **Copy message** right before its head's time (6 px from its icon to the digits, its
-  24 px hit area kept; LAD-136), or at a continued row's top right, and so has each
+  24 px hit area kept, the two wrapping to the next line together; LAD-136), or at a continued row's top right, and so has each
   message on an agent's page: the human's text, an agent's summary (unless its body's
   first line says it) and body after a blank line, by the chat's own rule. A closed
   question and the human's answer have none: a question is short and never folded, an

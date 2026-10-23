@@ -1,14 +1,15 @@
 ## 1. One edge for the times
 
-- [x] 1.1 `web/src/FeedRow.tsx`: the head draws Copy message before the time; the module
-  comment says so. `web/src/styles.css`: `.feed-head > .copy-icon-button` takes
-  `margin-left: auto` and `margin-right: -6px` (6 px between its icon and the time), the
-  time right after it no auto margin; a head without the button keeps the time's auto
-  margin.
-- [x] 1.2 `web/src/styles.css`: under `@media (hover: none)` Copy message is not shown
-  (`.feed-row .copy-icon-button`, `.agent-messages .copy-icon-button`: `display: none`)
-  and the head's time takes its auto margin back; Copy code stays always shown. The
-  comment over the copy buttons' rules says so.
+- [x] 1.1 `web/src/FeedRow.tsx`: the head draws Copy message before the time, the two in
+  one block `.feed-when` (`margin-left: auto`, `flex: none`) that a wrapping head never
+  splits (review F1); the module comment says so. `web/src/styles.css`:
+  `.feed-when > .copy-icon-button` takes `margin-right: -6px` (6 px between its icon and
+  the time).
+- [x] 1.2 `web/src/styles.css`: under `@media (hover: none)` the message's own Copy
+  message is not shown (`.feed-row :is(.feed-when, .feed-copy) > .copy-icon-button`,
+  `.agent-messages li > .copy-icon-button`: `display: none`) and a continued row keeps no
+  room for it (review F2); Copy code stays always shown. The comment over the copy
+  buttons' rules says so.
 - [x] 1.3 `web/src/styles.css`: `.run-event.mine` reaches 8 px past the line on both
   sides (`margin: 2px -8px`), so its time ends on the edge; its comment follows.
 - [x] 1.4 `web/src/GateCard.tsx` (`GateLine`): the chevron first in the head, before the

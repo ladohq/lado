@@ -3,7 +3,8 @@
 // wrote an entry, in the chat and on Needs you; a question's, a gate's or a message's own
 // content comes as children. A row that continues a group (Chat.tsx, feedRows) has no head
 // and no letter; its time stands where the avatar would. A message's row has Copy message,
-// right before the head's time: nothing stands after the time, so it ends on the feed's edge.
+// right before the head's time, the two in one block (.feed-when) that a wrapping head
+// never splits: nothing stands after the time, so it ends on the feed's edge.
 import type { ReactNode } from "react";
 
 import { HUMAN, LADO } from "./api";
@@ -99,8 +100,10 @@ export function FeedRow({
           <header className="feed-head">
             <span className="feed-who">{who}</span>
             {aside && <span className="feed-aside">{aside}</span>}
-            {copier}
-            {time}
+            <span className="feed-when">
+              {copier}
+              {time}
+            </span>
           </header>
         )}
         {continued && copier && <div className="feed-copy">{copier}</div>}

@@ -3,7 +3,7 @@
 // Add repository, a clone (the same clone job as New session's) or one from scratch; Delete
 // repository after its preview; the project's sessions from the change feed. Every rule is
 // the core's: the dialogs show its refusals as they come.
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import {
@@ -340,12 +340,17 @@ function AddRepoDialog({
           <div className="where-head">
             <span className="field-label">Source</span>
             <span className="segments" role="group" aria-label="Source">
-              <SourceButton on={source === "url"} disabled={off} onClick={() => setSource("url")}>
+              <button type="button" aria-pressed={source === "url"} disabled={off} onClick={() => setSource("url")}>
                 Clone from URL
-              </SourceButton>
-              <SourceButton on={source === "scratch"} disabled={off} onClick={() => setSource("scratch")}>
+              </button>
+              <button
+                type="button"
+                aria-pressed={source === "scratch"}
+                disabled={off}
+                onClick={() => setSource("scratch")}
+              >
                 From scratch
-              </SourceButton>
+              </button>
             </span>
           </div>
         </div>
@@ -429,24 +434,6 @@ function AddRepoDialog({
         </div>
       </form>
     </dialog>
-  );
-}
-
-function SourceButton({
-  on,
-  disabled,
-  onClick,
-  children,
-}: {
-  on: boolean;
-  disabled: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button type="button" aria-pressed={on} disabled={disabled} onClick={onClick}>
-      {children}
-    </button>
   );
 }
 

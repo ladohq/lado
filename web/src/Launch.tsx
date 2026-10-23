@@ -71,9 +71,8 @@ const SUGGESTED: Record<ProviderSuggestion["reason"], string> = {
 // A session of these statuses can be resumed; a running one only opened.
 const RESUMABLE = new Set<SessionInfo["status"]>(["stopped", "tmux_gone"]);
 
-// A new session's window opens in Project with `project` chosen (the project's page), else
-// in Folder (From scratch without recent folders).
-// A new session, in Project with `project` (and its repository `repo`) chosen when given.
+// A new session's window opens in Project with `project` (and its repository `repo`) chosen
+// (the project's page), else in Folder (From scratch without recent folders).
 export type LaunchMode = { kind: "new"; project?: string; repo?: string } | { kind: "resume"; session: SessionInfo };
 
 const LaunchContext = createContext<(mode?: LaunchMode) => void>(() => {});

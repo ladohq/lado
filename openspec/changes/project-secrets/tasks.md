@@ -25,7 +25,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-secr
 
 ## 3. End to end
 
-- [ ] 3.1 `tests/integration/test_project_secrets.py`: each agent kind with its project's
+- [x] 3.1 `tests/integration/test_project_secrets.py`: each agent kind with its project's
   secret, two projects, the layers' order, no project, `unset`, a kit key through
   `mcp_exec`, delete and create. Check: `uv run pytest -m integration -n auto
   tests/integration/test_project_secrets.py`.

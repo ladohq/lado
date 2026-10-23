@@ -394,17 +394,36 @@ def project_repo(repo: projects.Repository) -> models.ProjectRepo:
     )
 
 
+def _sessions_to_forget(
+    sessions: list[tuple[str, int, str | None]],
+) -> list[models.SessionToForget]:
+    return [
+        models.SessionToForget(name=name, open_runs=runs, project=project)
+        for name, runs, project in sessions
+    ]
+
+
 def repo_removal(found: projects.Removal) -> models.RepoRemoval:
     return models.RepoRemoval(
         name=found.name,
         kind=found.kind,
         path=str(found.path),
         target=found.target,
-        sessions=[
-            models.SessionToForget(name=n, open_runs=runs, project=project)
-            for n, runs, project in found.sessions
-        ],
+        sessions=_sessions_to_forget(found.sessions),
         unpushed=found.unpushed,
+    )
+
+
+def project_deletion(found: projects.Deletion) -> models.ProjectDeletion:
+    return models.ProjectDeletion(
+        id=found.id,
+        folder=str(found.path),
+        kind=found.kind,
+        target=found.target,
+        sessions=_sessions_to_forget(found.sessions),
+        unpushed=found.unpushed,
+        variables=found.variables,
+        secrets=found.secrets,
     )
 
 

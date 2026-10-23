@@ -107,17 +107,25 @@ project
 rename <id> <title>` sets the title (`""` clears it); the id and the folder stay. `lado
 project delete <id>` refuses, exit 1, changing nothing, while a session of the project, or
 any session whose folder is inside the project folder (one started there before projects had
-sessions), is not stopped (`project <id> has sessions not stopped: <names>; stop them first
-with lado stop <name>`); it prints `Sessions to forget: <name> (<n> open run[s]), …` for the
-project's stopped sessions, then lists, under `Unpushed work in
+sessions; never through a project folder that is a link), is not stopped (`project <id> has
+sessions not stopped: <names>; stop them first with lado stop <name>`); it prints the core's
+preview, the one the UI shows: `Sessions to forget: <name> (<n> open run[s]), …` for the
+project's stopped sessions and the stopped ones without a project in its folder (` (no
+project)` after such one), then lists, under `Unpushed work in
 <folder>:`, the folder itself when it is a repository's root (`the project's folder: …`,
-first), each git repository directly in the folder and each of its worktrees (one directly
+first; the repositories in it are not its changes), each git repository directly in the
+folder and each of its worktrees (one directly
 in the folder once, under its repository) with uncommitted changes (untracked files too),
 local branches with no upstream or ahead of it, as of the last fetch (LADO goes to no
 network), `detached HEAD with <n> commit[s] on no branch` (commits no local or
-remote-tracking branch holds) or `<n> stash[es]`, and git's first line for a repository it
-cannot read; `lado project repo remove` lists a repository's the same way; without `--yes` it then refuses (`… with everything in it and forgets its <n>
-session[s]; run again with --yes` when there are sessions). With `--yes` it removes the
+remote-tracking branch holds) or `<n> stash[es]`, git's first line for a repository it
+cannot read, and `the project's folder: could not check: <reason>` for a folder it cannot
+list; `lado project repo remove` lists a repository's the same way. A project folder that
+is a symbolic link lists nothing of its target. Without `--yes` it then refuses saying
+what goes: `deleting project <id> removes its folder <folder> with everything in it`, for
+a link `… removes the link <folder> only, not its target <target>`, for a folder not found
+`… removes its record (its folder <folder> is not found)`, each followed by `[ and forgets
+its <n> session[s]]; run again with --yes`. With `--yes` it removes the
 folder whole, then forgets the project's sessions as `lado forget --force` does, then its
 data folder `<LADO_HOME>/projects/<id>/` with its secrets, then the record (`Deleted project
 <id>`): a folder that is a symbolic link loses the link only, nothing outside
@@ -126,9 +134,10 @@ whole keeps the sessions and the record, and a session or a data folder not remo
 the record (run it again). A symbolic link on the way to the data folder or in it refuses
 before anything is removed, naming the link. `lado project create` refuses an id whose data
 folder `<LADO_HOME>/projects/<id>` is left from a failed deletion (`<path> is left from a
-project <id>: remove it or choose another id`): a new project never inherits its secrets. A stopped session from before projects had sessions is
-not forgotten: its folder goes. An unknown id is exit 1 with `unknown project
-"<id>"`. `create`, `rename`, `delete`, `set`, `unset`, `repo add` and `repo remove` are the
+project <id>: remove it or choose another id`): a new project never inherits its secrets. A stopped session from before projects had sessions,
+in the project's real folder, is forgotten with it; nothing in a link's target is. An
+unknown id is exit 1 with `unknown project "<id>"`, also for a project deleted while `lado
+project set` writes (no row and no secret file of it are kept). `create`, `rename`, `delete`, `set`, `unset`, `repo add` and `repo remove` are the
 human's: inside an agent of LADO (`LADO_AGENT` set) they exit 1 with `lado project <command>
 is for the human; agent "<agent>" cannot use it` (`set --secret` before it reads stdin),
 while `list` and `show` work; no MCP tool changes projects, their repositories, their

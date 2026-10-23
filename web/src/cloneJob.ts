@@ -38,6 +38,10 @@ export function useCloneJob(): CloneJobClient {
     alive.current = true; // again after StrictMode's trial unmount
     return () => {
       alive.current = false;
+      // The screen went away inside the app (Back, another section): no one follows its
+      // job any more, so it is cancelled now, not by the server's clone.ABANDONED later.
+      const running = current.current;
+      if (running?.state === "running") void cancelClone(running.id).catch(() => {});
     };
   }, []);
 

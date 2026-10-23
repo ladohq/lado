@@ -2823,6 +2823,58 @@ def test_project_delete_with_nothing_unpushed_prints_no_list(ws, capsys):
     assert capsys.readouterr().out == ""
 
 
+def test_project_delete_names_a_session_from_before_projects(ws, capsys):
+    assert main(["project", "create", "shop"]) == 0
+    folder = ws / "projects" / "shop"
+    state.add_session(state.Session("old-site", str(folder / "site"), None, "kilo"))
+    state.stop_session("old-site")
+    capsys.readouterr()
+    assert main(["project", "delete", "shop"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == ["Sessions to forget: old-site (no project)"]
+    assert captured.err.endswith(" and forgets its 1 session; run again with --yes\n")
+    assert main(["project", "delete", "shop", "--yes"]) == 0
+    assert state.list_sessions() == [] and not folder.exists()
+
+
+def test_project_delete_of_a_link_folder_lists_nothing_of_its_target(ws, git_config, capsys):
+    assert main(["project", "create", "shop"]) == 0
+    link = ws / "projects" / "shop"
+    link.rmdir()
+    target = ws.parent / "srv-shop"
+    (init_repo(target / "app") / "new.txt").write_text("x")
+    link.symlink_to(target)
+    capsys.readouterr()
+    assert main(["project", "delete", "shop"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        f"lado: deleting project shop removes the link {link} only, not its target {target}; "
+        "run again with --yes\n"
+    )
+    assert main(["project", "delete", "shop", "--yes"]) == 0
+    assert not os.path.lexists(link) and (target / "app" / "new.txt").is_file()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any folder")
+def test_project_delete_of_an_unreadable_folder_prints_no_traceback(ws, capsys):
+    assert main(["project", "create", "shop"]) == 0
+    folder = ws / "projects" / "shop"
+    folder.chmod(0)
+    capsys.readouterr()
+    try:
+        assert main(["project", "delete", "shop"]) == 1
+    finally:
+        folder.chmod(0o755)
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        f"Unpushed work in {folder}:",
+        "  the project's folder: could not check: Permission denied",
+    ]
+    assert captured.err.startswith("lado: deleting project shop removes its folder ")
+    assert "Traceback" not in captured.err
+
+
 @pytest.mark.parametrize(
     "argv",
     [["create", "acme"], ["rename", "shop", "X"], ["delete", "shop"], ["delete", "shop", "--yes"]],
@@ -3258,6 +3310,19 @@ def test_agents_cannot_change_a_project_s_variables(shop, capsys, monkeypatch, a
     assert state.project_variables("shop") == {"BOARD_URL": "https://a"}
     assert main(["project", "show", "shop"]) == 0
     assert capsys.readouterr().out.splitlines()[-2] == "    BOARD_URL  https://a"
+
+
+def test_project_set_racing_a_delete_is_an_unknown_project(shop, capsys, monkeypatch):
+    checked = projects.check_variable
+
+    def check_then_delete(id, name, value):
+        checked(id, name, value)
+        state.delete_project(id)
+
+    monkeypatch.setattr(projects, "check_variable", check_then_delete)
+    assert main(["project", "set", "shop", "BOARD_URL", "https://a"]) == 1
+    assert capsys.readouterr().err == 'lado: unknown project "shop"\n'
+    assert state.project_variables("shop") == {}
 
 
 def test_project_delete_takes_the_variables_along(shop, capsys, monkeypatch):

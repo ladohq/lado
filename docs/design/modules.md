@@ -342,15 +342,22 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     cut to `MAX_ID`), `rename`, `listed` and `get`.
     `unpushed` lists, per git repository directly in a project folder and per worktree of
     one, uncommitted changes and branches with no upstream, a gone one or commits ahead
-    (git with `clone.NO_PROMPT` and `GIT_TIMEOUT`, no network); `delete` refuses without
-    `yes`, unlinks a folder that is a link, refuses one whose real path is not directly in
-    the real `projects/`, removes the rest by `shutil.rmtree` (links inside as links), then
-    forgets the project's sessions (`runtime.forget_session(force=True)`), then the record;
-    a folder not removed whole keeps them, a session not forgotten keeps the record.
-    `sessions_to_forget` (asked by `delete` and the CLI first) refuses while a session of
-    the project, or any session whose folder is inside the project folder by real path, is
-    not stopped, and gives the project's sessions with their open runs (openspec change
-    sessions-in-projects). `repositories(id)` reads a project's repositories from the disk
+    (git with `clone.NO_PROMPT` and `GIT_TIMEOUT`, no network; a folder it cannot list is
+    the line `the project's folder: could not check: <reason>`; a project folder that is
+    a repository does not count the repositories in it as its changes). `deletion(id)` is
+    the one preview of a delete (`Deletion`: the folder's kind `folder`, `link` with its
+    target or `missing`, the sessions forgotten with their open runs and project, the
+    unpushed lines of a real folder only, the names of the variables and secrets), which
+    the CLI prints and the server's `GET /api/projects/{id}/deletion` answers; it refuses
+    while a session of the project, or, in a real folder, any session whose folder is
+    inside it by real path, is not stopped, and forgets the project's sessions and the
+    stopped ones without a project in its real folder; nothing is matched through a link
+    (openspec change project-delete). `delete` acts on it: it refuses without `yes` saying
+    what goes by the kind, unlinks a folder that is a link, refuses one whose real path is
+    not directly in the real `projects/`, removes the rest by `shutil.rmtree` (links inside
+    as links), then forgets the sessions (`runtime.forget_session(force=True)`), then the
+    data folder and the record; a folder not removed whole keeps them, a session not
+    forgotten keeps the record. `repositories(id)` reads a project's repositories from the disk
     each time (`Repository`: name, path, branch, remote through `runtime.public_remote`):
     each folder directly in its folder, not hidden, not a link, whose `git rev-parse
     --show-toplevel` is itself; `links(id)` names the links there; `repository(id, name)`
@@ -960,7 +967,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (`UnusedSecret`), names and reasons only. `app.py` has the rest of a project's repositories:
     `POST /api/projects/{id}/repos` (`RepoNew` → `ProjectRepo`, `projects.add_new`), `GET
     …/repos/{name}/removal` (`RepoRemoval`, `projects.removal`) and `DELETE
-    …/repos/{name}` (`projects.remove_repo` with yes; the `ProjectInfo` after), and a
+    …/repos/{name}` (`projects.remove_repo` with yes; the `ProjectInfo` after), the
+    project's delete: `GET /api/projects/{id}/deletion` (`ProjectDeletion`,
+    `launch.project_deletion` of `projects.deletion`, names only) and `DELETE
+    /api/projects/{id}` (under `Guard.changes`, `projects.delete` with yes; 204), and a
     project's variables: `ProjectInfo.variables` (`ProjectVariable`, by name), `PUT
     /api/projects/{id}/variables/{name}` (`VariableValue`, `projects.set_variable`) and
     `DELETE …/variables/{name}` (`projects.unset_variable`), both `VariableChange` (the

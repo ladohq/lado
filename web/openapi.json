@@ -1091,6 +1091,89 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Delete Project",
+        "description": "Delete the project as `lado project delete --yes` does: its folder, sessions,\ndata folder and record.",
+        "operationId": "delete_project_api_projects__id__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such project, repository or variable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/deletion": {
+      "get": {
+        "summary": "Project Deletion",
+        "description": "What deleting the project does, as `lado project delete` shows it; nothing\nchanges.",
+        "operationId": "project_deletion_api_projects__id__deletion_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDeletion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such project, repository or variable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/projects/{id}/repos": {
@@ -6330,6 +6413,79 @@
         },
         "type": "object",
         "title": "PlanUpdateAsk"
+      },
+      "ProjectDeletion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "folder": {
+            "type": "string",
+            "title": "Folder"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "folder",
+              "link",
+              "missing"
+            ],
+            "title": "Kind"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionToForget"
+            },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "unpushed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unpushed"
+          },
+          "variables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Variables"
+          },
+          "secrets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Secrets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "folder",
+          "kind",
+          "target",
+          "sessions",
+          "unpushed",
+          "variables",
+          "secrets"
+        ],
+        "title": "ProjectDeletion",
+        "description": "What deleting a project does (lado.projects.deletion), the preview `lado project\ndelete` prints: names only, never a value."
       },
       "ProjectId": {
         "properties": {

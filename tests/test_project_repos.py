@@ -183,6 +183,43 @@ def pushed(shop, home):
     return shop
 
 
+@pytest.fixture
+def rooted(pushed, home):
+    """pushed, its folder made a clean repository pushed to a bare remote around them."""
+    remote = home / "shop.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    _git(pushed, "init", "-q", "-b", "main")
+    _git(pushed, "commit", "-q", "--allow-empty", "-m", "init")
+    _git(pushed, "remote", "add", "origin", str(remote))
+    _git(pushed, "push", "-q", "-u", "origin", "main")
+    return pushed
+
+
+def test_a_project_folder_that_is_a_repository_does_not_count_its_repositories(rooted):
+    assert projects.unpushed(rooted) == []
+
+
+def test_a_change_of_the_root_repositorys_own_file_is_still_named(rooted):
+    (rooted / "README.md").write_text("x")
+    assert projects.unpushed(rooted) == ["the project's folder: uncommitted changes"]
+
+
+@pytest.mark.parametrize("name", ["x*", "x?", "[x]y"])
+def test_a_repository_named_like_a_glob_hides_none_of_the_roots_changes(rooted, name):
+    init_repo(rooted / name)  # a clone made by hand: LADO's names allow none of *?[
+    (rooted / "xy").write_text("x")  # the root's own change, matched by each glob
+    assert projects.unpushed(rooted)[0] == "the project's folder: uncommitted changes"
+
+
+def test_a_repository_the_root_tracks_moved_on_is_not_the_roots_change(rooted):
+    _git(rooted, "-c", "protocol.file.allow=always", "add", "frontend")  # a gitlink
+    _git(rooted, "commit", "-q", "-m", "track frontend")
+    _git(rooted, "push", "-q")
+    _git(rooted / "frontend", "commit", "-q", "--allow-empty", "-m", "on")
+    _git(rooted / "frontend", "push", "-q")
+    assert projects.unpushed(rooted) == []
+
+
 def _session(name: str, repo: Path, project: str | None, stopped: bool = True) -> None:
     state.add_session(state.Session(name, str(repo), None, provider="claude", project=project))
     if stopped:

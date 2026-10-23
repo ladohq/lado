@@ -8294,13 +8294,6 @@ del.kit-mcp-name {
   overflow-wrap: anywhere;
 }
 
-.project-page .project-later {
-  max-width: 880px;
-  margin: 0;
-  padding: 10px 14px;
-  font-size: 14px;
-}
-
 .project-notes {
   display: flex;
   flex-direction: column;
@@ -8449,6 +8442,17 @@ del.kit-mcp-name {
 
 .project-section-head .project-add {
   margin: 0 0 0 auto;
+}
+
+/* Delete project (ProjectDelete.tsx): the block at the page's bottom, its button in the
+   danger colour; its dialog is Delete repository's (.repo-delete). */
+button.quiet.danger-text {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.project-delete p {
+  margin: 4px 0 0;
 }
 
 .project-empty-repos {

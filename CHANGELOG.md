@@ -11,6 +11,9 @@
   offers that command instead of an ordinary session.
 - **A project's repositories.** `lado project repo add` clones a git URL or makes one from
   scratch in the project's folder; `lado project repo remove` shows the unpushed work first.
+- **A project's variables.** `lado project set <id> NAME VALUE` gives every agent of the
+  project's sessions a variable of its own, over `LADO_ENV_DIR`'s; `lado project unset`
+  removes it. Secret-looking names wait for the secrets.
 
 ### Changed
 
@@ -37,6 +40,9 @@
   stops the uninstall with the `kill` command for it.
 - **Resume session waits for a provider that can run.** While the window says the
   session's provider cannot run, Resume session is off, as Start is in a new session.
+- **Where suggests your workspace's folders after an early click.** Clicking into Where
+  right after the New session window opens shows them as soon as LADO knows the
+  workspace, with no second click.
 
 ## 0.42.0 (2026-10-20)
 

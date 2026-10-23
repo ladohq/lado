@@ -266,6 +266,10 @@ def project_info(id: str) -> models.ProjectInfo:
         folder=str(where),
         found=where.is_dir(),
         repos=[project_repo(r) for r in projects.repositories(id)],
+        variables=[
+            models.ProjectVariable(name=name, value=value)
+            for name, value in state.project_variables(id).items()
+        ],
     )
 
 

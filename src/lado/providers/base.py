@@ -221,6 +221,25 @@ def lado_command(*args: str) -> list[str]:
     return interpreter.run_module("lado.cli", *args)
 
 
+# The names LADO sets for the agent CLIs (a provider's Launch.env), and those that would
+# take the CLI's login or config from LADO's: reserved, so a project's variable never takes
+# their place (lado.projects.RESERVED_NAMES). A provider that sets another name adds it here;
+# tests/test_project_variables_core.py fails until it does.
+CLI_VARIABLES = frozenset(
+    {
+        "CLAUDE_CONFIG_DIR",
+        "CODEX_HOME",
+        "OPENCODE_CONFIG",
+        "OPENCODE_CONFIG_CONTENT",
+        "OPENCODE_DISABLE_AUTOUPDATE",
+        "KILO_CONFIG",
+        "KILO_CONFIG_CONTENT",
+        "KILO_DISABLE_AUTOUPDATE",
+        "KILO_NO_DAEMON",
+    }
+)
+
+
 def agent_env(agent: state.Agent) -> dict[str, str]:
     env = {
         "LADO_HOME": str(state.home()),

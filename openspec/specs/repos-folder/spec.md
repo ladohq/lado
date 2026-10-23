@@ -108,6 +108,12 @@ the window SHALL suggest nothing for an empty field.
 - **WHEN** `/Users/ann/workspace` holds `app` and the human clicks into an empty Where
 - **THEN** the list shows `app/`, and the Workspace row shows `/Users/ann/workspace`
 
+#### Scenario: The focus before the server's answer
+- **WHEN** `LADO_REPOS=/Users/me/repos` holds `app` and `api`, and the human clicks into
+  Where before `GET /api/repos-folder` has answered
+- **THEN** the list shows `api/` and `app/` as soon as the answer comes, while Where keeps
+  the focus; a Where left before the answer shows no list
+
 ### Requirement: The Workspace row puts the folder into Where
 
 When the workspace exists (`made`), under the **Where** field a row

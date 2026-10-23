@@ -118,6 +118,8 @@ from lado.server.models import (
     UpdateKit,
     UpdatePlan,
     UpdateStarted,
+    VariableChange,
+    VariableValue,
     WaitingItem,
     Workspace,
 )
@@ -618,16 +620,20 @@ def create_app(
     # a clone into a project is a clone job (POST /api/clones with `project`).
     project_refused = {
         400: {"description": "refused, with the reason"},
-        404: {"description": "no such project or repository"},
+        404: {"description": "no such project, repository or variable"},
     }
 
     def project_core(id: str, has_db: bool, action: Callable[..., T], *args) -> T:
-        """An unknown project or repository is 404, what the core refuses 400."""
+        """An unknown project, repository or variable is 404, what the core refuses 400."""
         try:
             if not has_db:  # asking makes no lado.db
                 raise projects.NoSuchProject(f'unknown project "{id}"')
             return action(id, *args)
-        except (projects.NoSuchProject, projects.NoSuchRepository) as unknown:
+        except (
+            projects.NoSuchProject,
+            projects.NoSuchRepository,
+            projects.NoSuchVariable,
+        ) as unknown:
             raise HTTPException(404, str(unknown)) from unknown
         except runtime.LadoError as refused:
             raise HTTPException(400, str(refused)) from refused
@@ -661,6 +667,32 @@ def create_app(
         repo remove --yes` does; the project as it is after."""
         project_core(id, has_db, projects.remove_repo, name, True)
         return launch.project_info(id)
+
+    # A project's variables (docs/design/projects.md): set and removed by the human only,
+    # through the token; the agents started after the change get it.
+    @app.put(
+        "/api/projects/{id}/variables/{name}",
+        dependencies=[Depends(guard.changes)],
+        responses=project_refused,
+    )
+    def set_project_variable(
+        id: str, name: str, given: VariableValue, has_db: bool = Depends(database)
+    ) -> VariableChange:
+        """Set the variable, as `lado project set` does."""
+        running = project_core(id, has_db, projects.set_variable, name, given.value)
+        return VariableChange(project=launch.project_info(id), running=running)
+
+    @app.delete(
+        "/api/projects/{id}/variables/{name}",
+        dependencies=[Depends(guard.changes)],
+        responses=project_refused,
+    )
+    def unset_project_variable(
+        id: str, name: str, has_db: bool = Depends(database)
+    ) -> VariableChange:
+        """Remove the variable, as `lado project unset` does."""
+        running = project_core(id, has_db, projects.unset_variable, name)
+        return VariableChange(project=launch.project_info(id), running=running)
 
     @app.get("/api/kits", dependencies=[Depends(guard)])
     def list_kits(has_db: bool = Depends(database)) -> list[KitInfo]:

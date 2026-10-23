@@ -744,14 +744,36 @@ class ProjectRepo(RepoInfo):
     name: str
 
 
+class ProjectVariable(BaseModel):
+    """A plain variable of a project (lado.projects.set_variable): its value is shown."""
+
+    name: str
+    value: str
+
+
 class ProjectInfo(BaseModel):
-    """A project with its repositories as the disk has them now."""
+    """A project with its repositories as the disk has them now, and its variables."""
 
     id: str
     title: str | None
     folder: str  # <workspace>/projects/<id>, derived
     found: bool  # whether that folder is there
     repos: list[ProjectRepo]
+    variables: list[ProjectVariable]  # by name
+
+
+class VariableValue(BaseModel):
+    """The value a project's variable is set to."""
+
+    value: str
+
+
+class VariableChange(BaseModel):
+    """A project after a change of its variables, and its sessions that run: their agents
+    keep the old environment until restarted."""
+
+    project: ProjectInfo
+    running: list[str]  # by name
 
 
 class RepoNew(BaseModel):

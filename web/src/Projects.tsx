@@ -21,11 +21,9 @@ import { useLive } from "./live";
 import { PLANS, projectPath, sessionPath } from "./paths";
 import { usePhone } from "./phone";
 import { ProjectVariables } from "./ProjectVariables";
-import { messageOf } from "./SessionControl";
+import { messageOf, plural as count } from "./SessionControl";
 import { labelOf } from "./sessionLabel";
 import { useTitle } from "./Shell";
-
-const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // Calls `read` when the page opens, when a session of the feed appears, starts, stops or
 // goes, and when the window gets the focus: what a project's list and page show changes

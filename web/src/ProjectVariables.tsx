@@ -7,7 +7,7 @@
 // outside any form, read when the human sends it, sent in the body of one PUT, and emptied
 // after a save, on Cancel and when the field goes. It is never put in React's state, an
 // address, the browser's storage, the console or an error the page keeps.
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 
 import {
   deleteSecret,
@@ -65,7 +65,7 @@ function useChange(onChanged: (project: ProjectInfo) => void) {
   return { busy, send };
 }
 
-function Block({ title, about, children }: { title: string; about: string; children: React.ReactNode }) {
+function Block({ title, about, children }: { title: string; about: string; children: ReactNode }) {
   const id = useId();
   return (
     <section className="project-section" aria-labelledby={id}>
@@ -255,7 +255,7 @@ function NewVariable({
     if (text === null) onClose();
     else setRefused({ text, name });
   };
-  const enter = (event: React.KeyboardEvent) => event.key === "Enter" && add();
+  const enter = (event: KeyboardEvent) => event.key === "Enter" && add();
   return (
     <div className="project-add project-edit">
       <input

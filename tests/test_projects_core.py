@@ -567,6 +567,19 @@ def test_a_project_folder_that_is_a_repository_comes_first(home, git_config):
     ]
 
 
+def test_a_worktree_of_the_project_folder_inside_it_is_listed_once(home, git_config):
+    projects.create("shop", "Shop")
+    folder = projects.folder("shop")
+    folder.rmdir()
+    init_repo(folder)
+    _git(folder, "worktree", "add", "-q", str(folder / "x"), "-b", "fix")
+    (folder / "x" / "work.txt").write_text("x")
+    assert projects.unpushed(folder) == [
+        "the project's folder: uncommitted changes; branch fix not pushed; branch main not pushed",
+        "the project's folder (worktree x): uncommitted changes",
+    ]
+
+
 def test_a_worktree_inside_the_project_folder_is_listed_once(shop, home):
     repo = shop / "frontend"
     _git(repo, "worktree", "add", "-q", str(shop / "frontend-fix"), "-b", "fix")

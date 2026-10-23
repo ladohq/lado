@@ -780,7 +780,7 @@ def _not_pushed(repo: Path) -> list[str]:
 
 def _checkouts(repo: Path) -> list[Path]:
     """The worktrees of `repo` but its own, wherever they are; for a worktree `repo`, its
-    repository's and its siblings'."""
+    siblings (its repository's other worktrees), not the repository itself."""
     listing = _git(repo, "worktree", "list", "--porcelain")
     trees = [
         Path(line.removeprefix("worktree "))
@@ -799,15 +799,16 @@ def unpushed(project_folder: Path) -> list[str]:
     repository, its branches not pushed and its stashes. A worktree directly in the folder
     of a repository listed there is its repository's line only, not one of its own."""
     lines = []
-    if _own_root(str(project_folder)):
+    own = _own_root(str(project_folder))
+    if own:
         lines += _checkout_lines(project_folder, project_folder, "the project's folder")
     entries = [
         entry
         for entry in sorted(project_folder.iterdir())
         if entry.is_dir() and os.path.lexists(entry / ".git")
     ]
-    listed = set()  # the real paths of the worktrees of the repositories among the entries
-    for entry in entries:
+    listed = set()  # the real paths of the worktrees of the folder's and its entries' repositories
+    for entry in ([project_folder] if own else []) + entries:
         if not (entry / ".git").is_dir():
             continue  # a worktree's .git is a file: its siblings are not its to list
         try:

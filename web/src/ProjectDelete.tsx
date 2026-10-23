@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { deleteProject, getProjectDeletion, type ProjectDeletion, type ProjectInfo } from "./api";
+import { ForgottenSessions } from "./ProjectRepos";
 import { messageOf } from "./SessionControl";
 
 export function ProjectDelete({ project, onDeleted }: { project: ProjectInfo; onDeleted: () => void }) {
@@ -110,25 +111,7 @@ function DeleteProjectDialog({
                 <p className="muted">All its work is on the remote.</p>
               ))}
             {deletion.sessions.length > 0 ? (
-              <>
-                <h4>Sessions that are forgotten</h4>
-                <ul>
-                  {deletion.sessions.map((one) => (
-                    <li key={one.name}>
-                      {one.name}
-                      {one.open_runs > 0 && (
-                        <span className="muted">
-                          {" "}
-                          ({one.open_runs} open run{one.open_runs === 1 ? "" : "s"})
-                        </span>
-                      )}
-                      {one.project === null && (
-                        <span className="muted"> — no project, started in this folder before projects</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </>
+              <ForgottenSessions sessions={deletion.sessions} />
             ) : (
               <p className="muted">No session is forgotten.</p>
             )}

@@ -264,7 +264,9 @@ def test_no_project_secrets_line_when_every_file_is_usable(secrets):
     assert "Project secrets" not in names
 
 
-def test_project_secret_files_not_used_are_named_without_their_value(secrets, tmp_path, capsys):
+def test_project_secret_files_not_used_are_named_without_their_value(
+    secrets, tmp_path, capsys, monkeypatch
+):
     folder = project_secrets.folder("shop")
     (folder / "GH_TOKEN").chmod(0o644)
     (tmp_path / "t").write_text("canary-link")
@@ -281,6 +283,9 @@ def test_project_secret_files_not_used_are_named_without_their_value(secrets, tm
         "shop: GH_TOKEN not used: readable or writable by others: chmod 600 it; "
         "shop: X not used: a symbolic link",
     )
+    assert "canary-" not in "\n".join(c.detail for c in doctor.run_checks(which=lambda c: c))
+    # The exit code with this check alone: a machine without agent CLIs fails others.
+    monkeypatch.setattr(doctor, "run_checks", lambda: [doctor.check_project_secrets()])
     assert doctor.main() == 0
     out = capsys.readouterr().out
     assert "[warn] Project secrets: acme: secrets folder not used" in out

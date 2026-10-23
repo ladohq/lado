@@ -87,6 +87,7 @@ from lado.server.models import (
     PlanInfo,
     PlanUpdateAsk,
     ProjectId,
+    ProjectLaunch,
     ProjectInfo,
     ProjectNew,
     ProjectRepo,
@@ -667,6 +668,15 @@ def create_app(
         """The id New project offers for `title`, or `id` as typed, with its folder and why
         `lado project create` would refuse it; asking makes nothing."""
         return launch.project_id(title, id)
+
+    @app.get("/api/project-launch", dependencies=[Depends(guard)])
+    def project_launch(
+        project: str | None = None, repo: str | None = None, has_db: bool = Depends(database)
+    ) -> ProjectLaunch:
+        """What the New session window's Project way shows: the projects, the project and
+        repository chosen (those asked, else the last used), and what a start there takes;
+        makes nothing."""
+        return core(launch.project_launch, project, repo, has_db)
 
     @app.get("/api/projects/{id}", dependencies=[Depends(guard)])
     def project(id: str, has_db: bool = Depends(database)) -> ProjectInfo:

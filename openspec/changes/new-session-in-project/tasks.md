@@ -6,7 +6,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-new-session-
   (D4, D6). Check: `tests/test_projects_core.py`, `tests/test_runtime_projects.py`.
 - [x] 1.2 `POST /api/sessions` with `where` of kind `project`: the CLI's core call, the
   refusals and the combinations (D2, D3). Check: `tests/test_server_project_launch.py`.
-- [ ] 1.3 `GET /api/project-launch`, `name_state`'s project, `FolderInfo.project`; `make
+- [x] 1.3 `GET /api/project-launch`, `name_state`'s project, `FolderInfo.project`; `make
   web-types` (D4, D5, D6, D9). Check: `tests/test_server_project_launch.py`,
   `tests/test_server_launch.py`, `make web`.
 

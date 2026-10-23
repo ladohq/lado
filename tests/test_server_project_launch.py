@@ -173,3 +173,156 @@ def test_a_start_in_a_project_needs_the_token(client, shop, fake_tmux):
     assert start(client, provider="kilo").status_code in (401, 403)
     _nothing_started(shop)
 
+
+
+# What the Project way shows
+
+
+def project_launch(client, **asked) -> dict:
+    answer = client.get("/api/project-launch", params=asked)
+    assert answer.status_code == 200, answer.text
+    return answer.json()
+
+
+@pytest.fixture
+def acme(shop, git_config):
+    """The project acme without a title, with its repository crm."""
+    projects.create("acme", None)
+    init_repo(projects.folder("acme") / "crm")
+
+
+def _in_shop(repo: str, **given) -> None:
+    runtime.start_session(None, None, None, provider="kilo", project="shop", repo_name=repo)
+
+
+def test_the_projects_by_title_and_the_first_found_chosen(client, shop, acme):
+    shown = project_launch(client)
+    assert [(p["id"], p["title"], p["repos"]) for p in shown["projects"]] == [
+        ("acme", None, 1),
+        ("shop", "Shop", 2),
+    ]
+    assert (shown["project"], shown["repo"]) == ("acme", "crm")
+    assert [r["name"] for r in shown["repos"]] == ["crm"]
+    assert shown["repos"][0]["path"] == str(projects.folder("acme") / "crm")
+    assert (shown["default_name"], shown["name_state"], shown["last"]) == (
+        "acme-crm",
+        "free",
+        None,
+    )
+
+
+def test_the_project_and_repository_last_used(client, shop, acme, fake_tmux):
+    _in_shop("backend")
+    runtime.stop_session("shop-backend")
+    shown = project_launch(client)
+    assert (shown["project"], shown["repo"], shown["default_name"]) == (
+        "shop",
+        "backend",
+        "shop-backend",
+    )
+    assert [r["name"] for r in shown["repos"]] == ["backend", "frontend"]
+    assert shown["last"]["name"] == "shop-backend"
+    assert shown["name_state"] == "stopped_here"
+    assert shown["provider"] == {"name": "kilo", "reason": "last_session"}
+
+
+def test_the_project_and_repository_asked(client, shop, acme, fake_tmux):
+    _in_shop("backend")
+    shown = project_launch(client, project="acme")
+    assert (shown["project"], shown["repo"], shown["name_state"], shown["last"]) == (
+        "acme",
+        "crm",
+        "free",
+        None,
+    )
+    shown = project_launch(client, project="shop", repo="frontend")
+    assert (shown["repo"], shown["default_name"], shown["last"]) == (
+        "frontend",
+        "shop-frontend",
+        None,
+    )
+    assert shown["provider"] is None  # no session in frontend: the human picks
+    shown = project_launch(client, project="nope", repo="docs")  # unknown: as not asked
+    assert (shown["project"], shown["repo"], shown["name_state"]) == ("shop", "backend", "running")
+
+
+def test_a_project_whose_folder_is_not_found_is_chosen_only_when_asked(client, shop, acme):
+    projects.create("aaa", "Aaa")  # first by title
+    projects.folder("aaa").rmdir()
+    shown = project_launch(client)
+    assert [p["id"] for p in shown["projects"]] == ["aaa", "acme", "shop"]
+    assert shown["projects"][0]["found"] is False
+    assert shown["project"] == "acme"
+    shown = project_launch(client, project="aaa")
+    assert (shown["project"], shown["repos"], shown["repo"]) == ("aaa", [], None)
+
+
+def test_an_empty_project(client, shop):
+    projects.create("acme", "ACME CRM")
+    shown = project_launch(client, project="acme")
+    assert (shown["project"], shown["repos"], shown["repo"]) == ("acme", [], None)
+    assert (shown["default_name"], shown["name_state"], shown["provider"], shown["last"]) == (
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+def test_no_project_without_a_database(client, lado_home):
+    assert project_launch(client) == {
+        "projects": [],
+        "project": None,
+        "repos": [],
+        "repo": None,
+        "default_name": None,
+        "name_state": None,
+        "provider": None,
+        "last": None,
+    }
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_a_name_held_outside_the_project_is_taken_elsewhere(client, shop, tmp_path, fake_tmux):
+    runtime.start_session(str(init_repo(tmp_path / "other")), "shop-frontend", None, "kilo")
+    runtime.stop_session("shop-frontend")
+    shown = project_launch(client, project="shop", repo="frontend")
+    assert shown["name_state"] == "taken_elsewhere"
+    assert shown["last"] is None
+
+
+def test_no_secret_or_variable_value_is_shown(client, shop):
+    projects.set_variable("shop", "API_URL", "https://plain-value.example")
+    projects.set_secret("shop", "API_TOKEN", "canary-secret-value")
+    body = client.get("/api/project-launch").text
+    assert "plain-value" not in body and "canary-secret-value" not in body
+
+
+def test_the_project_launch_needs_the_token(client, shop):
+    client.cookies.clear()
+    assert client.get("/api/project-launch").status_code == 401
+
+
+# The folder check's project
+
+
+def folder(client, path) -> dict:
+    answer = client.get("/api/folders", params={"path": str(path)})
+    assert answer.status_code == 200, answer.text
+    return answer.json()
+
+
+def test_the_folder_check_names_the_project_a_folder_is_in(client, shop, tmp_path):
+    (shop / "frontend" / "src").mkdir()
+    assert folder(client, shop / "frontend" / "src")["project"] == {
+        "id": "shop",
+        "title": "Shop",
+        "repo": "frontend",
+    }
+    (shop / "notes").mkdir()
+    for path in (shop, shop / "notes"):
+        assert folder(client, path)["project"] == {"id": "shop", "title": "Shop", "repo": None}
+    (projects.projects_folder() / "old").mkdir()
+    old = folder(client, projects.projects_folder() / "old")
+    assert (old["problem_kind"], old["project"]) == ("in_project", None)
+    assert folder(client, init_repo(tmp_path / "ws" / "app"))["project"] is None

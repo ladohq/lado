@@ -107,6 +107,17 @@ class FolderInfo(BaseModel):
     warning: str | None = None
     # missing or not_repo, and a fresh start may go on there (lado.scratch: new or empty)
     scratch: bool = False
+    # refused inside a project's folder: the project and the repository it is in
+    # (lado.projects.place); None for any other folder
+    project: "ProjectPlace | None" = None
+
+
+class ProjectPlace(BaseModel):
+    """The project a folder is in, and its repository the folder is in (None: none)."""
+
+    id: str
+    title: str | None
+    repo: str | None
 
 
 class HintInfo(BaseModel):
@@ -787,6 +798,21 @@ class ProjectSummary(BaseModel):
     found: bool
     repos: int  # how many repositories its folder has now (0 when it is not found)
     running: list[str]  # its sessions not stopped, by name
+
+
+class ProjectLaunch(BaseModel):
+    """What the New session window's Project way shows (server.launch.project_launch): the
+    projects, the project and repository chosen, and for that repository what a start
+    there takes, as the folder check gives it for a folder."""
+
+    projects: list[ProjectSummary]  # by title, the id without one, case aside
+    project: str | None  # None: no projects
+    repos: list[ProjectRepo]  # the chosen project's, by name
+    repo: str | None  # None: the project has none
+    default_name: str | None  # <project>-<repo> as the core makes it
+    name_state: "NameState | None"  # a session of the name in no or another project: elsewhere
+    provider: "ProviderSuggestion | None"
+    last: SessionInfo | None  # the repository's latest started session of this project
 
 
 class ProjectNew(BaseModel):

@@ -63,6 +63,7 @@ def test_a_repository_folder_is_ok_with_its_branch_name_and_subfolders(client, r
         "provider": None,
         "warning": None,
         "scratch": False,
+        "project": None,
     }
 
 
@@ -918,6 +919,7 @@ def test_a_folder_in_a_project_is_refused_before_git(client, shop):
         "provider": None,
         "warning": None,
         "scratch": False,
+        "project": {"id": "shop", "title": "Shop", "repo": "frontend"},
     }
     notes = folder(client, shop / "notes")  # missing: no fresh start there either
     assert (notes["problem_kind"], notes["scratch"]) == ("in_project", False)

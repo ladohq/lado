@@ -328,7 +328,7 @@
       },
       "post": {
         "summary": "Start",
-        "description": "Start a new session, as `lado start` does, without attaching to it; for `where`\nof kind \"scratch\" the folder is made a repository first, as `lado start --new`\ndoes. A name a session has is 409 with that session's status and folder; on an\nempty LADO_HOME the core makes lado.db.",
+        "description": "Start a new session, as `lado start` does, without attaching to it; for `where`\nof kind \"scratch\" the folder is made a repository first, as `lado start --new`\ndoes; of kind \"project\" the session is the project's repository's, as `lado start\n--project <id> --repo <name>` starts it. A name a session has is 409 with that\nsession's status and folder; on an empty LADO_HOME the core makes lado.db.",
         "operationId": "start_api_sessions_post",
         "requestBody": {
           "content": {
@@ -919,6 +919,69 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProjectId"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project-launch": {
+      "get": {
+        "summary": "Project Launch",
+        "description": "What the New session window's Project way shows: the projects, the project and\nrepository chosen (those asked, else the last used), and what a start there takes;\nmakes nothing.",
+        "operationId": "project_launch_api_project_launch_get",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectLaunch"
                 }
               }
             }
@@ -4348,6 +4411,16 @@
             "type": "boolean",
             "title": "Scratch",
             "default": false
+          },
+          "project": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectPlace"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6323,6 +6396,107 @@
         "title": "ProjectInfo",
         "description": "A project with its repositories as the disk has them now, its variables and the\nnames of its secrets."
       },
+      "ProjectLaunch": {
+        "properties": {
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectSummary"
+            },
+            "type": "array",
+            "title": "Projects"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          },
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectRepo"
+            },
+            "type": "array",
+            "title": "Repos"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "default_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Name"
+          },
+          "name_state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "free",
+                  "running",
+                  "stopped_here",
+                  "taken_elsewhere"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name State"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderSuggestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "projects",
+          "project",
+          "repos",
+          "repo",
+          "default_name",
+          "name_state",
+          "provider",
+          "last"
+        ],
+        "title": "ProjectLaunch",
+        "description": "What the New session window's Project way shows (server.launch.project_launch): the\nprojects, the project and repository chosen, and for that repository what a start\nthere takes, as the folder check gives it for a folder."
+      },
       "ProjectNew": {
         "properties": {
           "id": {
@@ -6347,6 +6521,44 @@
         ],
         "title": "ProjectNew",
         "description": "A project to make, as `lado project create` makes it."
+      },
+      "ProjectPlace": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "repo"
+        ],
+        "title": "ProjectPlace",
+        "description": "The project a folder is in, and its repository the folder is in (None: none)."
       },
       "ProjectRef": {
         "properties": {
@@ -8764,17 +8976,45 @@
             "title": "Kind"
           },
           "path": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Path"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
           }
         },
         "type": "object",
         "required": [
-          "kind",
-          "path"
+          "kind"
         ],
         "title": "Where",
-        "description": "Where a session runs: a folder (a full path, `~` allowed), made a repository first\nfor \"scratch\" (lado.scratch.make)."
+        "description": "Where a session runs: a folder (a full path, `~` allowed), made a repository first\nfor \"scratch\" (lado.scratch.make), or the repository `repo` of the project `project`\nfor \"project\" (lado.projects.repository). The route checks which fields a kind takes."
       },
       "WorkInfo": {
         "properties": {

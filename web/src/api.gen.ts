@@ -237,8 +237,9 @@ export interface paths {
          * Start
          * @description Start a new session, as `lado start` does, without attaching to it; for `where`
          *     of kind "scratch" the folder is made a repository first, as `lado start --new`
-         *     does. A name a session has is 409 with that session's status and folder; on an
-         *     empty LADO_HOME the core makes lado.db.
+         *     does; of kind "project" the session is the project's repository's, as `lado start
+         *     --project <id> --repo <name>` starts it. A name a session has is 409 with that
+         *     session's status and folder; on an empty LADO_HOME the core makes lado.db.
          */
         post: operations["start_api_sessions_post"];
         delete?: never;
@@ -476,6 +477,28 @@ export interface paths {
          *     `lado project create` would refuse it; asking makes nothing.
          */
         get: operations["project_id_api_project_id_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/project-launch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Launch
+         * @description What the New session window's Project way shows: the projects, the project and
+         *     repository chosen (those asked, else the last used), and what a start there takes;
+         *     makes nothing.
+         */
+        get: operations["project_launch_api_project_launch_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1722,6 +1745,7 @@ export interface components {
              * @default false
              */
             scratch: boolean;
+            project?: components["schemas"]["ProjectPlace"] | null;
         };
         /** ForgetPreview */
         ForgetPreview: {
@@ -2357,6 +2381,28 @@ export interface components {
             unused: components["schemas"]["UnusedSecret"][];
         };
         /**
+         * ProjectLaunch
+         * @description What the New session window's Project way shows (server.launch.project_launch): the
+         *     projects, the project and repository chosen, and for that repository what a start
+         *     there takes, as the folder check gives it for a folder.
+         */
+        ProjectLaunch: {
+            /** Projects */
+            projects: components["schemas"]["ProjectSummary"][];
+            /** Project */
+            project: string | null;
+            /** Repos */
+            repos: components["schemas"]["ProjectRepo"][];
+            /** Repo */
+            repo: string | null;
+            /** Default Name */
+            default_name: string | null;
+            /** Name State */
+            name_state: ("free" | "running" | "stopped_here" | "taken_elsewhere") | null;
+            provider: components["schemas"]["ProviderSuggestion"] | null;
+            last: components["schemas"]["SessionInfo"] | null;
+        };
+        /**
          * ProjectNew
          * @description A project to make, as `lado project create` makes it.
          */
@@ -2365,6 +2411,18 @@ export interface components {
             id: string;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * ProjectPlace
+         * @description The project a folder is in, and its repository the folder is in (None: none).
+         */
+        ProjectPlace: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string | null;
+            /** Repo */
+            repo: string | null;
         };
         /**
          * ProjectRef
@@ -3188,13 +3246,18 @@ export interface components {
         /**
          * Where
          * @description Where a session runs: a folder (a full path, `~` allowed), made a repository first
-         *     for "scratch" (lado.scratch.make).
+         *     for "scratch" (lado.scratch.make), or the repository `repo` of the project `project`
+         *     for "project" (lado.projects.repository). The route checks which fields a kind takes.
          */
         Where: {
             /** Kind */
             kind: string;
             /** Path */
-            path: string;
+            path?: string | null;
+            /** Project */
+            project?: string | null;
+            /** Repo */
+            repo?: string | null;
         };
         /**
          * WorkInfo
@@ -4014,6 +4077,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectId"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_launch_api_project_launch_get: {
+        parameters: {
+            query?: {
+                project?: string | null;
+                repo?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectLaunch"];
                 };
             };
             /** @description Validation Error */

@@ -411,14 +411,20 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   number of seconds, replaces it in the processes started with it, and a value that is none
   stops them with an error at once; only tests set it, the integration tests to 0.25 s in
   `tests/integration/conftest.py`, with `loop.INTERVAL` in the test's own process; it is
-  also how long `check_windows` leaves a new agent alone, and `loop.wait_stopped` waits
-  three of them; `loop.log` names it at the loop's start), so an unconfirmed message is
-  typed again or failed on time with no send and no hook. Before each sweep it looks at the
-  session's windows (`runtime.check_windows`, one `tmux list-windows`, no screen; the
-  pass's only tmux call): an agent
-  not stopped whose window is missing in two passes in a row, and that was added more than
-  one interval ago, has ended (`agent_ended`), so a CLI that crashed before its first hook
-  or in a turn is `stopped` within a few seconds. A failing list changes nothing: only then
+  also how long `loop.wait_stopped` waits, three of them; `loop.log` names it at the
+  loop's start), so an unconfirmed message is typed again or failed on time with no send
+  and no hook. Before each sweep it looks at the session's windows
+  (`runtime.check_windows`, one `tmux list-windows`, no screen; the pass's only tmux call):
+  an agent not stopped whose window opened and is missing in two passes in a row has ended
+  (`agent_ended`), so a CLI that crashed before its first hook or in a turn is `stopped`
+  within a few seconds. The agent's row is written before the slow part of its spawn (its
+  task queued, the launch command, the first-hook blocker, the tmux call), so the spawn
+  marks its window opened (`agents.window_at`, `state.window_opened`) right after
+  `tmux new-window` (a worker) or `new-session` (the supervisor) returns, and the check
+  leaves an agent without the mark alone however many passes miss its window, up to
+  `runtime.SPAWN_DEADLINE` (60 s) from its row: past it the spawning process died, and the
+  agent ends at once with "its start ended before its window opened" (`SPAWN_DIED`).
+  A failing list changes nothing: only then
   a `tmux has-session` tells a gone tmux session (the loop ends) from another failure (an
   error of the pass; a tmux that cannot run is one too; `loop.tmux_gone`). The supervisor's
   window, when it was the last, takes the tmux session with
@@ -430,8 +436,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   session is stopped or gone (before each pass), its tmux session is gone (as above), or `lado.db` has another schema
   version than its own (`state.SchemaError` of any connection of a pass, so it never
   migrates); an error in a pass is
-  written there too with its traceback (and once to `errors.jsonl`, `telemetry.record`),
-  and the loop goes on. While the same error
+  written there too with its traceback (and once to `errors.jsonl`, `telemetry.record`;
+  a locked `lado.db`, `loop.is_locked`, only once it has failed the passes for
+  `loop.LOCK_GRACE` seconds, 60), and the loop goes on. While the same error
   repeats, it writes one short line at most every `loop.REPEAT_NOTE` seconds (60) and the
   count when another error comes or passes work again. After a pass it kicks the
   statistics sender at most every `telemetry.KICK_EVERY` (`telemetry.kick`). `lado ls` marks a running session

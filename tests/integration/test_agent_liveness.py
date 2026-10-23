@@ -16,7 +16,7 @@ SESSION = "live"
 
 
 def found_gone() -> float:
-    """Two passes of the session loop after an agent's first loop interval, and some slack:
+    """Two passes of the session loop after an agent's window opened, and some slack:
     loop.INTERVAL is the integration tests' (conftest) only once a test runs."""
     return 5 * loop.INTERVAL + agent_helpers.TIMEOUT
 
@@ -106,6 +106,30 @@ def test_an_agent_that_crashes_before_its_first_hook_is_found_stopped(session, m
     # The way out: finish it, though its window is gone.
     runtime.finish_worker(SESSION, "w1", discard=True)
     assert status("w1") is None
+
+
+def test_a_worker_whose_spawn_stalls_before_its_window_is_not_taken_for_ended(session, monkeypatch):
+    """Its row is written before the slow part of its spawn: the session loop, in a process
+    of its own, looks four times while this one makes no window, and leaves it alone."""
+    made = tmux.new_window
+
+    def stalling(*args):
+        time.sleep(4 * loop.INTERVAL)
+        made(*args)
+
+    monkeypatch.setattr(tmux, "new_window", stalling)
+    runtime.spawn_worker(SESSION, "task", name="w1")
+    wait_status("w1", state.IDLE)
+    wait_for(
+        lambda: (
+            [m.state for m in state.list_messages(SESSION) if m.recipient == "w1"] == [state.READ]
+        ),
+        "w1 to read its task",
+    )
+    time.sleep(3 * loop.INTERVAL)  # looks after its window opened end nothing either
+    assert status("w1") == state.IDLE
+    assert [e for e in state.list_events(SESSION) if e.kind == state.ENDED] == []
+    assert about_an_end() == []
 
 
 def test_an_agent_that_dies_in_a_turn_is_found_stopped(session):

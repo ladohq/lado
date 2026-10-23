@@ -41,11 +41,17 @@
 - **`lado uninstall` leaves no `~/.lado` behind.** It waits for the agents to end, so an
   agent that ends a moment later no longer makes the folder again; one that does not end
   stops the uninstall with the `kill` command for it.
+- **A worker that is slow to start is no longer shown stopped.** On a busy machine a
+  worker could be marked stopped before its window opened, with its task dropped; LADO now
+  waits for the window.
 - **Resume session waits for a provider that can run.** While the window says the
   session's provider cannot run, Resume session is off, as Start is in a new session.
 - **Where suggests your workspace's folders after an early click.** Clicking into Where
   right after the New session window opens shows them as soon as LADO knows the
   workspace, with no second click.
+- **No more "database is locked" from the session loop on a busy disk.** LADO's database
+  no longer waits for the disk on each write, and a lock that clears within a minute is
+  no longer counted as an error.
 
 ## 0.42.0 (2026-10-20)
 

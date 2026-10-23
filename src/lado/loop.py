@@ -15,6 +15,7 @@ import contextlib
 import fcntl
 import math
 import os
+import sqlite3
 import subprocess
 import sys
 import time
@@ -40,11 +41,11 @@ def interval_from(value: str | None) -> float:
     return seconds
 
 
-# Also how long an agent's window may be in the making (runtime.check_windows), and what
-# wait_stopped waits for, in the processes started with LADO_LOOP_INTERVAL alike.
+# Also what wait_stopped waits for, in the processes started with LADO_LOOP_INTERVAL alike.
 INTERVAL = interval_from(os.environ.get("LADO_LOOP_INTERVAL"))
 LOCK_WAIT = 0.1  # seconds a starting loop tries to take the lock before it exits
 REPEAT_NOTE = 60.0  # seconds between two lines about the same repeating error
+LOCK_GRACE = 60.0  # seconds a locked lado.db may fail the passes before it is journaled
 
 # Why a loop ends after `lado stop`, which kills the tmux session, then marks it stopped.
 STOPPED = "the session is stopped"
@@ -192,8 +193,11 @@ def run(session: str, interval: float | None = None) -> int:
 class RepeatedErrors:
     """What a loop writes about failing passes (with `write`): a new error with its
     traceback; the same error again only as a short line, at most every REPEAT_NOTE seconds,
-    and as a count when passes work again or another error comes. The session loop's and
-    the UI server's change feed (lado.server.feed)."""
+    and as a count when passes work again or another error comes. Each error goes to the
+    journal (lado.telemetry) once while it repeats; a locked lado.db (is_locked) only at
+    the first repeat LOCK_GRACE seconds after it began failing the passes: a lock that
+    clears sooner is no error of LADO. The session loop's and the UI server's change feed
+    (lado.server.feed)."""
 
     def __init__(
         self, write: Callable[[str], None], where: str = "loop", session: str | None = None
@@ -203,17 +207,24 @@ class RepeatedErrors:
         self.last: str | None = None  # the error of the latest failing pass, while it repeats
         self.unlogged = 0  # repeats of it since its latest line
         self.noted_at = 0.0
+        self.locked_since: float | None = None  # a lock not journaled yet: when it began
 
     def failed(self) -> None:
         """Log the error being handled, and journal it once while it repeats."""
-        error = "".join(traceback.format_exception_only(*sys.exc_info()[:2])).strip()
+        exc = sys.exc_info()[1]
+        error = "".join(traceback.format_exception_only(type(exc), exc)).strip()
         now = time.monotonic()
         if error != self.last:
             self.flush()
             self.last, self.noted_at = error, now
             self.write(f"error in a pass, the loop goes on:\n{traceback.format_exc()}")
-            telemetry.record(self.where, sys.exc_info()[1], session=self.session)
+            self.locked_since = now if is_locked(exc) else None
+            if self.locked_since is None:
+                telemetry.record(self.where, exc, session=self.session)
             return
+        if self.locked_since is not None and now - self.locked_since >= LOCK_GRACE:
+            self.locked_since = None
+            telemetry.record(self.where, exc, session=self.session)
         self.unlogged += 1
         if now - self.noted_at >= REPEAT_NOTE:
             self.write(f"the same error again, {self.unlogged} times since its last line")
@@ -223,7 +234,7 @@ class RepeatedErrors:
         """A pass went through."""
         if self.last is not None:
             self.flush()
-            self.last = None
+            self.last, self.locked_since = None, None
             self.write("passes work again")
 
     def flush(self) -> None:
@@ -231,6 +242,12 @@ class RepeatedErrors:
         if self.unlogged:
             self.write(f"the same error repeated {self.unlogged} more times")
             self.unlogged = 0
+
+
+def is_locked(exc: BaseException | None) -> bool:
+    """Whether `exc` is lado.db write-locked by another connection past the busy timeout
+    (SQLITE_BUSY); not "database table is locked", a conflict inside one connection."""
+    return isinstance(exc, sqlite3.OperationalError) and str(exc) == "database is locked"
 
 
 def log(session: str, text: str) -> None:

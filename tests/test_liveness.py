@@ -374,9 +374,15 @@ def test_a_tmux_session_that_survives_a_stop_is_told_with_the_way_out(repo, fake
 
 
 def later() -> datetime.datetime:
-    """A minute from now: past a just spawned agent's first loop interval. Taken when the
-    test runs, not at import: a long parallel run starts a test minutes after that."""
+    """A minute from now: a pass long after a just spawned agent's row. Taken when the test
+    runs, not at import: a long parallel run starts a test minutes after that."""
     return datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60)
+
+
+def past_spawn_deadline(seconds: float) -> datetime.datetime:
+    """A pass `seconds` past the deadline of a spawn just made (before it when negative)."""
+    deadline = datetime.timedelta(seconds=runtime.SPAWN_DEADLINE + seconds)
+    return datetime.datetime.now(datetime.timezone.utc) + deadline
 
 
 GONE = "its window closed without a session-end hook"
@@ -412,13 +418,63 @@ def test_a_window_back_in_the_next_pass_ends_nothing(repo, fake_tmux, windows):
     assert state.get_agent("s", "w1").status == state.STARTING
 
 
-def test_an_agent_spawned_within_a_loop_interval_is_left_alone(repo, fake_tmux, windows):
-    """Its window may be in the making."""
+def _window_not_opened(name):
+    """The agent's spawn has not made its window yet: its row has no window mark."""
+    with state.connect() as db:
+        db.execute("UPDATE agents SET window_at = NULL WHERE session = 's' AND name = ?", (name,))
+
+
+def test_the_window_is_marked_opened_once_tmux_made_it(repo, fake_tmux, monkeypatch):
+    marks = []
+    for call in ("new_session", "new_window"):
+        made = getattr(tmux, call)
+
+        def making(session, name, *args, made=made, **kwargs):
+            marks.append((name, state.get_agent(session, name).window_at))
+            return made(session, name, *args, **kwargs)
+
+        monkeypatch.setattr(tmux, call, making)
+    _session_with_worker(repo)
+    assert marks == [("supervisor", None), ("w1", None)]
+    assert state.get_agent("s", "supervisor").window_at
+    assert state.get_agent("s", "w1").window_at
+
+
+def test_an_agent_whose_window_has_not_opened_is_left_alone(repo, fake_tmux, windows):
+    """Its spawn may be slow: no number of looks ends it within the deadline of a spawn."""
+    _session_with_worker(repo)
+    _window_not_opened("w1")
+    windows["s"] = ["supervisor"]
+    within = past_spawn_deadline(-2)
+    missing = set()
+    for _ in range(5):
+        missing = runtime.check_windows("s", missing, within)
+    assert missing == set()
+    assert state.get_agent("s", "w1").status == state.STARTING
+
+
+def test_an_agent_whose_window_never_opened_ends_past_the_deadline(repo, fake_tmux, windows):
+    """Its spawning process died: one look ends it, there was never a window to come back."""
+    _session_with_worker(repo)
+    _window_not_opened("w1")
+    windows["s"] = ["supervisor"]
+    past = past_spawn_deadline(2)
+    assert runtime.check_windows("s", set(), past) == set()
+    assert state.get_agent("s", "w1").status == state.STOPPED
+    died = "its start ended before its window opened"
+    assert runtime.status_reason("s", "w1") == died
+    assert _from_lado("supervisor")[-1].startswith(f"w1 stopped ({died})")
+
+
+def test_an_agent_whose_window_opened_is_ended_two_looks_later_however_young(
+    repo, fake_tmux, windows
+):
+    """No allowance by its age is left: the mark says its window was there."""
     _session_with_worker(repo)
     windows["s"] = ["supervisor"]
     now = datetime.datetime.now(datetime.timezone.utc)
-    assert runtime.check_windows("s", runtime.check_windows("s", set(), now), now) == set()
-    assert state.get_agent("s", "w1").status == state.STARTING
+    assert runtime.check_windows("s", runtime.check_windows("s", set(), now), now) == {"w1"}
+    assert runtime.status_reason("s", "w1") == GONE
 
 
 def test_a_failing_window_list_changes_nothing(repo, fake_tmux, monkeypatch):

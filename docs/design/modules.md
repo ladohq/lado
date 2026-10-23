@@ -689,7 +689,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     Nothing else touches the artifact tables or that folder.
   - `hooks.py`: neutral hook logic: agent status, handing over queued messages and, at a
     turn's end, the forgotten-reply check (docs/design/agents.md).
-  - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
+  - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory),
+    in WAL mode with `synchronous = NORMAL`: a commit holds the write lock without waiting
+    for an fsync, so a busy disk does not keep the other writers past their busy timeout.
     Schema changes: bump `SCHEMA_VERSION`, add a step to `MIGRATIONS` and update
     `tests/agent_helpers.previous_schema` (it undoes the last step). `state.connect()`
     never migrates: it makes a missing lado.db, and another schema version (older, newer,
@@ -849,6 +851,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     files): `update_run` stores it in the closing's transaction, and
     `runs.gate_answer_attachments` gives that note's attachments, the human's files,
     `GateInfo.answer_attachments` (LAD-86).
+    From schema 35 an agent keeps when its window opened, `agents.window_at`
+    (`AGENTS_WINDOW_AT`; NULL until `state.window_opened`, which its spawn calls right
+    after tmux made the window; the migration sets it to `created_at` for the agents there,
+    which run already; not in the API): the session loop's window check waits for it
+    (docs/design/agents.md, the session loop).
   - `fingerprint.py`: a read-only agent's git fingerprint (docs/design/agents.md, Read-only roles): `take`
     (HEAD and checked-out branch of its worktree, the session repo's current branch, tags,
     stash, each changed or new file not ignored and not under `.lado/` with its content's

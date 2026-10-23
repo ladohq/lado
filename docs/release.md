@@ -220,6 +220,14 @@ writable); the last command prints the UI's link with its token. Then:
 - A session: the New session window with an empty Where offers the folders of
   `LADO_WORKSPACE`; the session starts and its supervisor answers. A worker's worktree, if
   you start one, is on the host at the same path, its files yours (on Linux).
+- Projects in the image (from 0.43.0): with `LADO_SECRETS=./secrets` in `.env` and a file
+  `secrets/BOARD_URL` holding `outside`, `docker compose up -d`, then
+  `docker compose exec lado lado project create shop`,
+  `docker compose exec lado lado project repo add shop --new app` and
+  `docker compose exec lado lado project set shop BOARD_URL https://a`. A session in it
+  (New session → Project → Shop → `app` → "Start in Shop"): its supervisor prints
+  `$BOARD_URL` as `https://a`, and the session on the test repository above prints
+  `outside`. `<LADO_WORKSPACE>/projects/shop/app` is on the host.
 - `docker compose exec lado lado update` refuses at once, stops nothing and says a new
   image updates LADO in a container; the UI's Update does not start one either.
 - A missing workspace, on the Mac (Docker Desktop) and on Linux: `docker compose down`,

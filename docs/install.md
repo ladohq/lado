@@ -170,8 +170,20 @@ can read every file of its `secrets/`.
 A variable only one project's agents should get, or with another value there (a board's
 address, a local model's), is set per project instead, no file needed: `docker compose exec
 lado lado project set <project> NAME VALUE` ([cli.md](cli.md)); the project's value wins
-over the folder's for that project's sessions. Names that look like a secret (`TOKEN`,
-`KEY`, `SECRET`, `PASSWORD`) are not taken there yet: they stay in `secrets/`.
+over the folder's for that project's sessions. A key one project's agents should get (each
+client's own board or GitHub token) is set as the project's secret, typed without echo or
+piped in, never on the command line:
+
+```bash
+docker compose exec -it lado lado project set <project> YOUGILE_API_KEY --secret
+printf %s "$(gh auth token)" | docker compose exec -T lado lado project set <project> GH_TOKEN --secret
+```
+
+LADO keeps it in its home volume (`~/.lado/projects/<project>/secrets/`), shows only its
+name (`lado project show`), and removes it with `lado project unset` or with the project. A
+backup of the home volume holds the projects' secrets: keep it as you keep the keys. The
+projects of one LADO are no security boundary: an agent of one project can read another's
+secrets. For clients that must not mix, run a separate LADO.
 
 ### Log in to the agent CLIs
 

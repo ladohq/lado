@@ -9,7 +9,7 @@ import pytest
 from agent_helpers import bare_remote, fake_git, init_repo
 from fastapi.testclient import TestClient
 
-from lado import projects, state
+from lado import project_secrets, projects, state
 from lado.server import app as server_app
 from lado.server import auth
 
@@ -263,6 +263,138 @@ def test_the_variables_need_the_token_and_the_servers_own_origin(client, shop):
     assert client.put("/api/projects/shop/variables/X", json={"value": "x"}).status_code == 401
     assert client.delete("/api/projects/shop/variables/BOARD_URL").status_code == 401
     assert state.project_variables("shop") == {"BOARD_URL": "https://a"}
+
+
+# A project's secrets (openspec change project-secrets): set and removed, never read back.
+
+
+def test_set_replace_and_unset_a_secret(client, shop, monkeypatch):
+    state.add_session(
+        state.Session("shop-frontend", str(shop / "frontend"), None, "kilo", project="shop")
+    )
+    monkeypatch.setattr(projects.runtime.tmux, "has_session", lambda name: True)
+    monkeypatch.setattr(projects.runtime.loop, "running", lambda name: True)
+    answer = client.put("/api/projects/shop/secrets/GH_TOKEN", json={"value": "canary-5a"})
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["project"]["secrets"] == ["GH_TOKEN"]
+    assert answer.json()["running"] == ["shop-frontend"]
+    assert "canary-5a" not in answer.text
+    assert (project_secrets.folder("shop") / "GH_TOKEN").read_text() == "canary-5a"
+    answer = client.put("/api/projects/shop/secrets/GH_TOKEN", json={"value": "canary-5b"})
+    assert answer.status_code == 200 and "canary-5b" not in answer.text
+    assert (project_secrets.folder("shop") / "GH_TOKEN").read_text() == "canary-5b"
+    shown = client.get("/api/projects/shop")
+    assert shown.json()["secrets"] == ["GH_TOKEN"] and "canary" not in shown.text
+    answer = client.delete("/api/projects/shop/secrets/GH_TOKEN")
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["project"]["secrets"] == []
+    assert project_secrets.names("shop") == []
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "said"),
+    [
+        ("GH_TOKEN", "", "the secret GH_TOKEN is empty; to remove it: "),
+        ("PATH", "canary-r", "PATH is reserved: LADO or the agent CLIs set it"),
+        ("A-B", "canary-n", "the name A-B is not a variable name: "),
+        ("BIG", "canary-l" * 9000, "the value of BIG is larger than 64 KiB"),
+        ("NUL", "canary-z\0", "the value of NUL is not UTF-8 text"),
+        ("BOARD_URL", "canary-c", "BOARD_URL is a plain variable of shop; remove it first "),
+    ],
+    ids=["empty", "reserved", "no-name", "large", "nul", "plain"],
+)
+def test_a_secret_refused(client, shop, name, value, said):
+    projects.set_variable("shop", "BOARD_URL", "https://a")
+    answer = client.put(f"/api/projects/shop/secrets/{name}", json={"value": value})
+    assert answer.status_code == 400
+    assert answer.json()["detail"].startswith(said)
+    assert "canary" not in answer.text
+    assert project_secrets.names("shop") == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"secret": "canary-6"}, {"value": 5}, {"value": ["canary-6"]}, {"value": {"x": "canary-6"}}],
+)
+def test_a_body_the_server_cannot_read_is_not_echoed(client, shop, body):
+    answer = client.put("/api/projects/shop/secrets/GH_TOKEN", json=body)
+    assert answer.status_code == 422
+    assert "canary-6" not in answer.text and '"input"' not in answer.text
+    assert project_secrets.names("shop") == []
+
+
+def test_a_body_that_is_no_json_is_not_echoed(client, shop):
+    answer = client.put(
+        "/api/projects/shop/secrets/GH_TOKEN",
+        content=b'{"value": "canary-7"',
+        headers={"content-type": "application/json"},
+    )
+    assert answer.status_code == 422 and "canary-7" not in answer.text
+
+
+def test_other_routes_keep_their_422(client, shop):
+    answer = client.put("/api/projects/shop/variables/X", json={"oops": "visible"})
+    assert answer.status_code == 422 and "visible" in answer.text  # FastAPI's own answer
+
+
+def test_an_unknown_project_or_secret(client, shop):
+    assert client.put("/api/projects/acme/secrets/X", json={"value": "x"}).status_code == 404
+    assert client.delete("/api/projects/acme/secrets/X").status_code == 404
+    missing = client.delete("/api/projects/shop/secrets/X")
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "project shop has no secret X; its secrets: none"
+
+
+def test_the_variables_route_never_removes_a_secret(client, shop):
+    projects.set_secret("shop", "GH_TOKEN", "g")
+    projects.set_variable("shop", "BOARD_URL", "https://a")
+    assert client.delete("/api/projects/shop/variables/GH_TOKEN").status_code == 404
+    assert client.delete("/api/projects/shop/secrets/BOARD_URL").status_code == 404
+    assert project_secrets.names("shop") == ["GH_TOKEN"]
+    assert state.project_variables("shop") == {"BOARD_URL": "https://a"}
+
+
+def test_one_value_per_name_through_the_api(client, shop):
+    """The refusals S6 and the LADO manager rely on: the code and the whole text."""
+    projects.set_secret("shop", "DATABASE_URL", "postgres://s")
+    projects.set_variable("shop", "BOARD_URL", "https://a")
+    refused = client.put("/api/projects/shop/variables/DATABASE_URL", json={"value": "x"})
+    assert (refused.status_code, refused.json()) == (
+        400,
+        {
+            "detail": "DATABASE_URL is a secret of shop; remove it first with lado project "
+            "unset shop DATABASE_URL"
+        },
+    )
+    refused = client.put("/api/projects/shop/secrets/BOARD_URL", json={"value": "canary-d4"})
+    assert (refused.status_code, refused.json()) == (
+        400,
+        {
+            "detail": "BOARD_URL is a plain variable of shop; remove it first with lado project "
+            "unset shop BOARD_URL"
+        },
+    )
+    assert project_secrets.names("shop") == ["DATABASE_URL"]
+    assert state.project_variables("shop") == {"BOARD_URL": "https://a"}
+
+
+def test_no_secrets_without_a_database(client, lado_home):
+    assert client.put("/api/projects/shop/secrets/X", json={"value": "x"}).status_code == 404
+    assert client.delete("/api/projects/shop/secrets/X").status_code == 404
+    assert not (lado_home / "lado.db").exists()
+    assert not (lado_home / "projects").exists()
+
+
+def test_the_secrets_need_the_token_and_the_servers_own_origin(client, shop):
+    projects.set_secret("shop", "GH_TOKEN", "g")
+    del client.headers["origin"]
+    assert client.put("/api/projects/shop/secrets/X", json={"value": "x"}).status_code == 403
+    assert client.delete("/api/projects/shop/secrets/GH_TOKEN").status_code == 403
+    client.headers["origin"] = OWN
+    client.cookies.clear()
+    assert client.put("/api/projects/shop/secrets/X", json={"value": "x"}).status_code == 401
+    assert client.delete("/api/projects/shop/secrets/GH_TOKEN").status_code == 401
+    assert project_secrets.names("shop") == ["GH_TOKEN"]
 
 
 def test_the_changes_need_the_token_and_the_servers_own_origin(client, shop):

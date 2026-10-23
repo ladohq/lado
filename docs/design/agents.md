@@ -27,18 +27,26 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `SHLVL` and `_`, and a parent Claude Code's variables are dropped; the variables of the
   outside folder go over them, then the variables of the session's project, then LADO's
   variables, then the provider's (`agent_env.resolve(project)`, one function for every
-  provider). The project's variables (`lado project set`, docs/design/projects.md) are read
-  from lado.db anew at each start, resume and spawn by the process that launches
+  provider). The project's variables (`lado project set`, docs/design/projects.md), its
+  plain ones from lado.db and its secrets from their folder
+  (`<LADO_HOME>/projects/<id>/secrets/`, `project_secrets.read`, the outside folder's reader
+  with no link and no loose mode), are read anew at each start, resume and spawn by the
+  process that launches
   (`runtime._base_env(project)`: the CLI, the UI server, or a supervisor's `lado mcp` for its
   `spawn_worker`, flow runs' workers and `start_session`), so an agent launched after a
   change gets it and a running one keeps its own; a session without a project gets none.
   Being in the base, they reach the kits' checks and `mcp_exec` as the outside folder's do.
   A stored project variable named as one LADO or the provider sets keeps LADO's value and is
   named in that launch's warnings (`project variable <name> of <id> not used: LADO sets
-  <name> for <provider>`; `runtime._layer_warnings`). Under `LADO_AGENT_ENV=inherit` an
-  agent's `lado mcp` resolves from its own environment, which holds its project's values of
-  its start: a variable unset since still reaches the workers it spawns (the outside folder
-  has the same limit); the default `shell` is exact. The outside
+  <name> for <provider>`; `runtime._layer_warnings`); a secret cannot be one, as every such
+  name is reserved. A file of the project's secrets folder not given, or the folder, is
+  named in a start's and resume's warnings (`project secret <name> of <id> not used:
+  <reason>`, `project secrets folder of <id> not used: <reason>`). Under
+  `LADO_AGENT_ENV=inherit` an agent's `lado mcp` resolves from its own environment, which
+  holds its project's values of its start: a variable or a secret unset since still reaches
+  the workers it spawns (the outside folder has the same limit); the default `shell` is
+  exact. A secret's value, like every variable's, goes only into the launch file `env.json`
+  (600), never into a process's arguments or the tmux server's environment. The outside
   folder (`agent_env.outside`) is the one `LADO_ENV_DIR` names, an absolute path (LADO's
   image: `/run/secrets`), read anew at each launch, so the kits' checks (`${NAME}` of an MCP
   server, `_check_commands`) see it too: each regular file directly in it is a variable,
@@ -403,14 +411,20 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   number of seconds, replaces it in the processes started with it, and a value that is none
   stops them with an error at once; only tests set it, the integration tests to 0.25 s in
   `tests/integration/conftest.py`, with `loop.INTERVAL` in the test's own process; it is
-  also how long `check_windows` leaves a new agent alone, and `loop.wait_stopped` waits
-  three of them; `loop.log` names it at the loop's start), so an unconfirmed message is
-  typed again or failed on time with no send and no hook. Before each sweep it looks at the
-  session's windows (`runtime.check_windows`, one `tmux list-windows`, no screen; the
-  pass's only tmux call): an agent
-  not stopped whose window is missing in two passes in a row, and that was added more than
-  one interval ago, has ended (`agent_ended`), so a CLI that crashed before its first hook
-  or in a turn is `stopped` within a few seconds. A failing list changes nothing: only then
+  also how long `loop.wait_stopped` waits, three of them; `loop.log` names it at the
+  loop's start), so an unconfirmed message is typed again or failed on time with no send
+  and no hook. Before each sweep it looks at the session's windows
+  (`runtime.check_windows`, one `tmux list-windows`, no screen; the pass's only tmux call):
+  an agent not stopped whose window opened and is missing in two passes in a row has ended
+  (`agent_ended`), so a CLI that crashed before its first hook or in a turn is `stopped`
+  within a few seconds. The agent's row is written before the slow part of its spawn (its
+  task queued, the launch command, the first-hook blocker, the tmux call), so the spawn
+  marks its window opened (`agents.window_at`, `state.window_opened`) right after
+  `tmux new-window` (a worker) or `new-session` (the supervisor) returns, and the check
+  leaves an agent without the mark alone however many passes miss its window, up to
+  `runtime.SPAWN_DEADLINE` (60 s) from its row: past it the spawning process died, and the
+  agent ends at once with "its start ended before its window opened" (`SPAWN_DIED`).
+  A failing list changes nothing: only then
   a `tmux has-session` tells a gone tmux session (the loop ends) from another failure (an
   error of the pass; a tmux that cannot run is one too; `loop.tmux_gone`). The supervisor's
   window, when it was the last, takes the tmux session with
@@ -422,8 +436,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   session is stopped or gone (before each pass), its tmux session is gone (as above), or `lado.db` has another schema
   version than its own (`state.SchemaError` of any connection of a pass, so it never
   migrates); an error in a pass is
-  written there too with its traceback (and once to `errors.jsonl`, `telemetry.record`),
-  and the loop goes on. While the same error
+  written there too with its traceback (and once to `errors.jsonl`, `telemetry.record`;
+  a locked `lado.db`, `loop.is_locked`, only once it has failed the passes for
+  `loop.LOCK_GRACE` seconds, 60), and the loop goes on. While the same error
   repeats, it writes one short line at most every `loop.REPEAT_NOTE` seconds (60) and the
   count when another error comes or passes work again. After a pass it kicks the
   statistics sender at most every `telemetry.KICK_EVERY` (`telemetry.kick`). `lado ls` marks a running session

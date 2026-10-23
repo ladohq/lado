@@ -30,6 +30,7 @@ from lado import (
     gui_session,
     kits,
     loop,
+    project_secrets,
     providers,
     state,
     telemetry,
@@ -794,6 +795,7 @@ def start_session(
             _command(agent, base_env, launch),
             before_attempt=lambda: gui_session.ensure_server(tmux.socket()),
         )
+        state.window_opened(session, SUPERVISOR)
         placed += _keychain_warnings(agent_cli, base_env)
     except Exception as error:
         steps: list[tuple[str, Callable[[], object]]] = [
@@ -908,6 +910,7 @@ def spawn_worker(
         held = launch.warnings + _layer_warnings(agent, launch, sess.project, files=False)
         held += _first_hook_blocker(agent_cli, agent, base_env, launch)
         tmux.new_window(session, worker, str(worktree), _command(agent, base_env, launch))
+        state.window_opened(session, worker)
     except Exception as error:
         # The worker never ran: leave nothing that says it did, so the run's step still
         # waits for one and the name is free again. Its window first, apart from forgetting
@@ -2243,22 +2246,28 @@ def agent_ended(session: str, name: str, reason: str) -> bool:
 
 
 WINDOW_GONE = "its window closed without a session-end hook"
+SPAWN_DIED = "its start ended before its window opened"
+SPAWN_DEADLINE = 60  # seconds from an agent's row to its window: one tmux call may take 10
 
 
 def check_windows(session: str, missing: set[str], now: datetime | None = None) -> set[str]:
     """One look of the session loop at the session's windows, the only sign that an agent
     whose CLI died without a hook has ended (before its first hook, or in a turn). An agent
-    not stopped whose window is gone in this look and in the one before (`missing`, what the
-    one before returned) has ended (agent_ended); one added within a loop interval is left
-    alone, its window may be in the making. Returns the agents whose window is gone now.
-    A failing list of windows raises, and nothing changes."""
+    not stopped whose window opened and is gone in this look and in the one before
+    (`missing`, what the one before returned) has ended (agent_ended). Its row is written
+    before the slow part of its spawn, so an agent whose window has not opened (no window
+    mark, state.window_opened) is left alone however long that takes, up to SPAWN_DEADLINE:
+    past it the process that spawned it died, and it ends at once. Returns the agents whose
+    window is gone now. A failing list of windows raises, and nothing changes."""
     now = now or datetime.now(timezone.utc)
     shown = set(tmux.list_windows(session))
     gone = set()
     for agent in state.list_agents(session):
         if agent.status == state.STOPPED or agent.name in shown:
             continue
-        if (now - _utc(agent.created_at)).total_seconds() < loop.INTERVAL:
+        if agent.window_at is None:
+            if (now - _utc(agent.created_at)).total_seconds() > SPAWN_DEADLINE:
+                agent_ended(session, agent.name, SPAWN_DIED)
             continue
         if agent.name in missing:
             agent_ended(session, agent.name, WINDOW_GONE)
@@ -2811,8 +2820,14 @@ def _add_agent(agent: state.Agent, kit: str) -> None:
 
 def _base_env(project: str | None) -> dict[str, str]:
     """The environment agents start from (lado.agent_env), resolved anew for each launch,
-    with the variables of the session's `project` as lado.db holds them now."""
-    variables = state.project_variables(project) if project else None
+    with the plain variables of the session's `project` as lado.db holds them now and its
+    secrets as their folder holds them now (lado.project_secrets; a project holds one value
+    per name, and a hand-made file of a plain variable's name wins)."""
+    variables = (
+        {**state.project_variables(project), **project_secrets.read(project).values}
+        if project
+        else None
+    )
     try:
         return agent_env.resolve(variables)
     except agent_env.AgentEnvError as exc:
@@ -2855,6 +2870,13 @@ def _layer_warnings(
             f"project variable {name} of {project} not used: LADO sets {name} for {agent.provider}"
             for name in sorted(state.project_variables(project).keys() & ours.keys())
         ]
+        if files:  # a secret LADO or the provider sets cannot be: every such name is reserved
+            lines += [
+                f"project secret {name} of {project} not used: {reason}"
+                if name
+                else f"project secrets folder of {project} not used: {reason}"
+                for name, reason in project_secrets.read(project).unused
+            ]
     return lines
 
 

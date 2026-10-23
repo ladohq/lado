@@ -544,6 +544,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{id}/secrets/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Project Secret
+         * @description Set or replace the secret, as `lado project set --secret` does.
+         */
+        put: operations["set_project_secret_api_projects__id__secrets__name__put"];
+        post?: never;
+        /**
+         * Unset Project Secret
+         * @description Remove the secret, as `lado project unset` does for one.
+         */
+        delete: operations["unset_project_secret_api_projects__id__secrets__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/kits": {
         parameters: {
             query?: never;
@@ -2248,7 +2272,8 @@ export interface components {
         };
         /**
          * ProjectInfo
-         * @description A project with its repositories as the disk has them now, and its variables.
+         * @description A project with its repositories as the disk has them now, its variables and the
+         *     names of its secrets.
          */
         ProjectInfo: {
             /** Id */
@@ -2263,6 +2288,8 @@ export interface components {
             repos: components["schemas"]["ProjectRepo"][];
             /** Variables */
             variables: components["schemas"]["ProjectVariable"][];
+            /** Secrets */
+            secrets: string[];
         };
         /**
          * ProjectRef
@@ -2612,6 +2639,14 @@ export interface components {
             /** Warning */
             warning?: string | null;
             hint?: components["schemas"]["HintInfo"] | null;
+        };
+        /**
+         * SecretValue
+         * @description The value a project's secret is set to; no answer gives it back.
+         */
+        SecretValue: {
+            /** Value */
+            value: string;
         };
         /** Sent */
         Sent: {
@@ -4019,6 +4054,102 @@ export interface operations {
         };
     };
     unset_project_variable_api_projects__id__variables__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VariableChange"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such project, repository or variable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_project_secret_api_projects__id__secrets__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretValue"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VariableChange"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such project, repository or variable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unset_project_secret_api_projects__id__secrets__name__delete: {
         parameters: {
             query?: never;
             header?: never;

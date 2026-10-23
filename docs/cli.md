@@ -56,7 +56,11 @@ own): `  repositories:` and one line each by name, `    <name>  <branch>  <remot
 `(detached)` and `(no remote)` for none, a symbolic link listed among them as `(a link to
 <target>: clone it into <folder> instead)`; with none, `  repositories: none`; then the
 project's variables: `  variables:` and `    <NAME>  <value>` by name, names padded, a line
-break in a value shown as `\n` (`\r` as `\r`); with none, `  variables: none`. `lado project
+break in a value shown as `\n` (`\r` as `\r`); with none, `  variables: none`; then the
+names of its secrets, never a value: `  secrets:` and `    <NAME>` by name, or `  secrets:
+none` (listed without opening a file: each file of its secrets folder that is no link, has a
+variable name and is not reserved; one the agents still cannot take is named by `lado
+doctor`). `lado project
 set <id> NAME VALUE` sets a plain variable of the project (over its old value) that every
 agent of the project's sessions gets from its next start ([design/agents.md](design/agents.md),
 The agent's environment); a value starting with `-` goes after `--` (`lado project set shop
@@ -67,11 +71,39 @@ storing nothing: a name that is no variable name (`the name <NAME> is not a vari
 Latin letters, digits and _, not starting with a digit`), a reserved one (the names the
 login shell and tmux keep, any `LADO_*`, and the names LADO sets for the agent CLIs:
 `<NAME> is reserved: LADO or the agent CLIs set it`), a name with `TOKEN`, `KEY`, `SECRET` or
-`PASSWORD` in it in any case (`<NAME> looks like a secret (<word>): … secrets come with lado
-project set <id> <NAME> --secret (not built yet)`), and a value over 64 KiB of UTF-8 or with
-a NUL. `lado project unset <id> NAME` removes one with `Removed <NAME> from project <id>.`
-and the same second line; a name the project lacks is exit 1 with `project <id> has no
-variable <NAME>; its variables: <names>` (`none`). `lado project
+`PASSWORD` in it in any case (`<NAME> looks like a secret (<word>): … set it as a secret
+with lado project set <id> <NAME> --secret`), a name that is a secret of the project (`<NAME>
+is a secret of <id>; remove it first with lado project unset <id> <NAME>`), and a value over
+64 KiB of UTF-8 or with a NUL; `lado project set <id> NAME` with no value and no `--secret`
+is exit 1 too. `lado project set <id> NAME --secret` sets a secret of the project, stored
+in its own file `<LADO_HOME>/projects/<id>/secrets/NAME` (the folders 700, the file 600,
+written beside its name and renamed over it, so a reader finds the old value or the new
+one whole) and never shown again; every agent of the project's sessions gets it as it gets
+a plain variable. On a terminal it asks `Value of <NAME> (not shown): ` and reads one line
+without echo; otherwise it reads the whole of stdin, one line break at its end (`\n` or
+`\r\n`) dropped (`printf '%s' "$TOKEN" | lado project set shop GH_TOKEN --secret`); the
+agents get the value so read whole, its own line breaks kept (its file holds one more when
+it ends in one, as the reader drops one, so such a value counts a byte more against 64
+KiB). It
+prints `Set secret <NAME> in project <id>.` and the agents' line above. It refuses, exit 1,
+storing nothing: a value on the command line, before it reads anything (`a secret's value
+is never given on the command line (ps and the shell's history keep it); run lado project
+set <id> <NAME> --secret and type it, or pipe it in`), an empty value, Ctrl-D at the prompt
+too (`the secret <NAME> is empty; to remove it: lado project unset <id> <NAME>`), a name by the plain variables' name
+rule above but for the secret's words (any other name may be a secret), a name that is a
+plain variable of the project (`<NAME> is a plain variable of <id>; remove it first with
+lado project unset <id> <NAME>`), a value over 64 KiB or with a NUL, an unknown project
+(before it reads anything), and a symbolic link at `<LADO_HOME>/projects`, the project's
+folder there, its `secrets` or the secret's file (`<path> is a symbolic link: LADO writes
+and removes a project's secrets only in its own folders`); a write the disk refuses keeps
+the old value (`could not write the secret <NAME> of <id>: <reason>`). No refusal holds the
+value. `lado project unset <id> NAME` removes a plain variable or a secret with `Removed
+<NAME> from project <id>.` and `Agents started from now on do not get it.`, or, while
+sessions of the project run, `Agents started from now on do not get it; running sessions of
+<id> keep the old environment until restarted: <names>`; a name the project lacks is exit 1
+with `project <id> has no variable or secret <NAME>; its variables: <names>; its secrets:
+<names>` (`none`), and a symbolic link on the way to a secret is refused as for `set`. `lado
+project
 rename <id> <title>` sets the title (`""` clears it); the id and the folder stay. `lado
 project delete <id>` refuses, exit 1, changing nothing, while a session of the project, or
 any session whose folder is inside the project folder (one started there before projects had
@@ -83,16 +115,21 @@ uncommitted changes (untracked files too) or local branches with no upstream or 
 as of the last fetch (LADO goes to no network), and git's first line for a repository it
 cannot read; without `--yes` it then refuses (`… with everything in it and forgets its <n>
 session[s]; run again with --yes` when there are sessions). With `--yes` it removes the
-folder whole, then forgets the project's sessions as `lado forget --force` does, then the
-record (`Deleted project <id>`): a folder that is a symbolic link loses the link only,
-nothing outside `<workspace>/projects/` is removed, links inside are removed as links, a
-folder not removed whole keeps the sessions and the record, and a session not forgotten
-keeps the record (run it again). A stopped session from before projects had sessions is
+folder whole, then forgets the project's sessions as `lado forget --force` does, then its
+data folder `<LADO_HOME>/projects/<id>/` with its secrets, then the record (`Deleted project
+<id>`): a folder that is a symbolic link loses the link only, nothing outside
+`<workspace>/projects/` is removed, links inside are removed as links, a folder not removed
+whole keeps the sessions and the record, and a session or a data folder not removed keeps
+the record (run it again). A symbolic link on the way to the data folder or in it refuses
+before anything is removed, naming the link. `lado project create` refuses an id whose data
+folder `<LADO_HOME>/projects/<id>` is left from a failed deletion (`<path> is left from a
+project <id>: remove it or choose another id`): a new project never inherits its secrets. A stopped session from before projects had sessions is
 not forgotten: its folder goes. An unknown id is exit 1 with `unknown project
 "<id>"`. `create`, `rename`, `delete`, `set`, `unset`, `repo add` and `repo remove` are the
 human's: inside an agent of LADO (`LADO_AGENT` set) they exit 1 with `lado project <command>
-is for the human; agent "<agent>" cannot use it`, while `list` and `show` work; no MCP tool
-changes projects, their repositories or their variables. `lado project` and `lado project repo` alone print their
+is for the human; agent "<agent>" cannot use it` (`set --secret` before it reads stdin),
+while `list` and `show` work; no MCP tool changes projects, their repositories, their
+variables or their secrets. `lado project` and `lado project repo` alone print their
 help.
 
 `lado project repo add <id> <git-url> [--name NAME] [--branch BRANCH]` clones the URL (its
@@ -176,11 +213,17 @@ warning for a `LADO_REPOS` that is not absolute (ignored: `LADO uses <home>/work
 that is not a folder, one LADO may not look at, or a folder it may not write in. Once LADO has
 a project or `projects/` exists, a `Projects` line follows: `<n> in <workspace>/projects`, or a
 warning naming projects whose folder is not found, foreign entries of `projects/` (no project's
-folder) and a `projects/` that is the human's own folder. While a project's variable has the
-name of a variable the outside folder (`LADO_ENV_DIR`) gives, an `info` line after `Variables
-from outside` names it: `Project variables: <id> overrides <NAME>[, …] of LADO_ENV_DIR`, the
-projects by id joined by `; `, never a value; with no such name, or no lado.db, there is no
-such line.
+folder) and a `projects/` that is the human's own folder. While a project's variable or
+secret has the name of a variable the outside folder (`LADO_ENV_DIR`) gives, an `info` line
+after `Variables from outside` names it: `Project variables: <id> overrides <NAME>[, …] of
+LADO_ENV_DIR`, the projects by id joined by `; `, never a value; with no such name, or no
+lado.db, there is no such line. When a file of a project's secrets folder is not given to
+its agents, or the folder itself is not used, a warning follows: `Project secrets: <id>:
+<name> not used: <reason>[; …]` (`<id>: secrets folder not used: …` for the folder), by
+project and file name, never a value; the reasons are the outside folder's, and `a symbolic
+link` and `readable or writable by others: chmod 600 it` (`chmod 700 it` for the folder),
+as only LADO writes that folder. With every file usable there is no such line, and the
+warning leaves the exit code 0.
 
 `lado kits add <git-url>[@vX.Y.Z]` installs the kit of a repository (a row in lado.db; its
 clone in the git cache): without a tag its latest release, with `--pre` its latest version

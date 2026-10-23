@@ -13,7 +13,10 @@
   scratch in the project's folder; `lado project repo remove` shows the unpushed work first.
 - **A project's variables.** `lado project set <id> NAME VALUE` gives every agent of the
   project's sessions a variable of its own, over `LADO_ENV_DIR`'s; `lado project unset`
-  removes it. Secret-looking names wait for the secrets.
+  removes it.
+- **A project's secrets.** `lado project set <id> NAME --secret` asks for a key without
+  echo (or reads it from a pipe) and gives it to the project's agents only; it is kept in
+  `~/.lado/projects/<id>/secrets/` and never shown again.
 
 ### Changed
 
@@ -38,11 +41,17 @@
 - **`lado uninstall` leaves no `~/.lado` behind.** It waits for the agents to end, so an
   agent that ends a moment later no longer makes the folder again; one that does not end
   stops the uninstall with the `kill` command for it.
+- **A worker that is slow to start is no longer shown stopped.** On a busy machine a
+  worker could be marked stopped before its window opened, with its task dropped; LADO now
+  waits for the window.
 - **Resume session waits for a provider that can run.** While the window says the
   session's provider cannot run, Resume session is off, as Start is in a new session.
 - **Where suggests your workspace's folders after an early click.** Clicking into Where
   right after the New session window opens shows them as soon as LADO knows the
   workspace, with no second click.
+- **No more "database is locked" from the session loop on a busy disk.** LADO's database
+  no longer waits for the disk on each write, and a lock that clears within a minute is
+  no longer counted as an error.
 
 ## 0.42.0 (2026-10-20)
 

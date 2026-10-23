@@ -13,6 +13,7 @@ from lado import (
     artifacts_local,
     doctor,
     gui_session,
+    project_secrets,
     projects,
     providers,
     runtime,
@@ -237,6 +238,69 @@ def test_doctor_and_the_report_hold_no_project_variable_s_value(overlap, capsys)
     assert "canary-" not in out
     text = doctor.report(doctor.system_info(which=lambda cmd: cmd), doctor.ServerState(False, 0))
     assert "canary-" not in text and "MODEL_URL" not in text and "OTHER" not in text
+
+
+def test_a_project_secret_over_the_outside_folder_is_named(overlap):
+    projects.set_secret("empty", "GH_TOKEN", "canary-g")
+    check = doctor.check_project_variables()
+    assert check is not None
+    assert "empty overrides GH_TOKEN of LADO_ENV_DIR" in check.detail
+    assert "canary-" not in check.detail
+
+
+@pytest.fixture
+def secrets(tmp_path, monkeypatch, lado_home):
+    """Projects shop and acme, each with a usable secret."""
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    monkeypatch.delenv("LADO_ENV_DIR", raising=False)
+    for id in ("shop", "acme"):
+        projects.create(id, None)
+        projects.set_secret(id, "GH_TOKEN", f"canary-{id}")
+
+
+def test_no_project_secrets_line_when_every_file_is_usable(secrets):
+    assert doctor.check_project_secrets() is None
+    names = [c.name for c in doctor.run_checks(which=lambda c: c)]
+    assert "Project secrets" not in names
+
+
+def test_project_secret_files_not_used_are_named_without_their_value(
+    secrets, tmp_path, capsys, monkeypatch
+):
+    folder = project_secrets.folder("shop")
+    (folder / "GH_TOKEN").chmod(0o644)
+    (tmp_path / "t").write_text("canary-link")
+    (folder / "X").symlink_to(tmp_path / "t")
+    (folder / "BIG").write_bytes(b"canary-big" * 7000)
+    (folder / "BIG").chmod(0o600)
+    project_secrets.folder("acme").chmod(0o755)
+    check = doctor.check_project_secrets()
+    assert check == doctor.Check(
+        "Project secrets",
+        doctor.WARN,
+        "acme: secrets folder not used: readable or writable by others: chmod 700 it; "
+        "shop: BIG not used: larger than 64 KiB; "
+        "shop: GH_TOKEN not used: readable or writable by others: chmod 600 it; "
+        "shop: X not used: a symbolic link",
+    )
+    assert "canary-" not in "\n".join(c.detail for c in doctor.run_checks(which=lambda c: c))
+    # The exit code with this check alone: a machine without agent CLIs fails others.
+    monkeypatch.setattr(doctor, "run_checks", lambda: [doctor.check_project_secrets()])
+    assert doctor.main() == 0
+    out = capsys.readouterr().out
+    assert "[warn] Project secrets: acme: secrets folder not used" in out
+    assert "canary-" not in out
+
+
+def test_no_project_secrets_line_without_a_database(lado_home):
+    assert doctor.check_project_secrets() is None
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_the_report_holds_no_project_secret(secrets):
+    project_secrets.folder("shop").chmod(0o755)
+    text = doctor.report(doctor.system_info(which=lambda cmd: cmd), doctor.ServerState(False, 0))
+    assert "canary-" not in text and "GH_TOKEN" not in text
 
 
 @pytest.fixture

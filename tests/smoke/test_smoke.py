@@ -110,27 +110,34 @@ def test_a_session_starts_takes_messages_and_stops(smoke_repo, smoke_provider, f
 
 PROBE = Path(__file__).with_name("probe_mcp.py")
 PROBE_VALUE = "smoke-project-value=1 ü"
+PROBE_SECRET = "smoke-project-secret=2 ü"
 
 
 def test_a_kits_mcp_server_sees_the_project_s_variable(
     smoke_provider, tmp_path, monkeypatch, git_config
 ):
-    """The project's variable, set nowhere else, reaches a kit's MCP server that the real
-    CLI starts for a worker of a session in the project: through the kit's ${NAME}
-    (lado.mcp_exec) and in the server's own environment."""
+    """The project's variable and secret, set nowhere else, reach a kit's MCP server that
+    the real CLI starts for a worker of a session in the project: through the kit's ${NAME}
+    (lado.mcp_exec) and, the variable, in the server's own environment."""
     provider = smoke_provider
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
     monkeypatch.delenv("SMOKE_PROBE_VALUE", raising=False)
+    monkeypatch.delenv("SMOKE_PROBE_TOKEN", raising=False)
     projects.create("shop", None)
     projects.add_new("shop", "frontend")
     projects.set_variable("shop", "SMOKE_PROBE_VALUE", PROBE_VALUE)
+    projects.set_secret("shop", "SMOKE_PROBE_TOKEN", PROBE_SECRET)
     out = tmp_path / "probe.json"
     kit = tmp_path / "kits" / "probe"
     (kit / "agents").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: probe\nversion: 1.0.0\n")
     server = {
         "command": [sys.executable, str(PROBE)],
-        "env": {"PROBE_VALUE": "${SMOKE_PROBE_VALUE}", "PROBE_OUT": str(out)},
+        "env": {
+            "PROBE_VALUE": "${SMOKE_PROBE_VALUE}",
+            "PROBE_SECRET": "${SMOKE_PROBE_TOKEN}",
+            "PROBE_OUT": str(out),
+        },
     }
     front = {"name": "prober", "description": "probes", "mcp": {"probe": server}}
     (kit / "agents" / "prober.md").write_text(
@@ -157,5 +164,9 @@ def test_a_kits_mcp_server_sees_the_project_s_variable(
     probed = answering(provider, "p1", out.exists, session)
     agent_helpers.wait_for(probed, "the probe's file", session, 120, interval=0.5)
     print(f"{provider}: the probe saw {out.read_text()}")
-    assert json.loads(out.read_text()) == {"template": PROBE_VALUE, "inherited": PROBE_VALUE}
+    assert json.loads(out.read_text()) == {
+        "template": PROBE_VALUE,
+        "inherited": PROBE_VALUE,
+        "secret": PROBE_SECRET,
+    }
     runtime.stop_session(session)

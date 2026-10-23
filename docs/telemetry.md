@@ -103,6 +103,8 @@ Whatever you choose, LADO keeps each of its unexpected errors, with its full tra
 by itself. It and LADO's logs (`hooks.log`, `loop.log`, `server.log`) stay under 1 MiB each
 plus one older `.1` file. Each line also keeps the error's scrubbed form (its type, its
 causes' types, LADO's own frames, the agent CLI), the only part a bug report reads.
+A lock of LADO's database that clears within a minute is not an error: the session loop
+and the UI server write it to `loop.log` and `server.log` only.
 
 ## Reporting a bug yourself
 

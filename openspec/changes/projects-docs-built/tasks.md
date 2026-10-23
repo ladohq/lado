@@ -20,7 +20,7 @@
 
 ## 2. Going back from 0.43.0
 
-- [ ] 2.1 `docs/install.md`, Going back to an older version: the paragraph and commands of
+- [x] 2.1 `docs/install.md`, Going back to an older version: the paragraph and commands of
   the proposal. Check, each fact against its source, named in the build report:
   schema 35 and the refusal's words (`src/lado/state.py`, `SCHEMA_VERSION` and the newer
   check), the migration's backup name (`state.migrate`), `lado update` deleting the other
@@ -29,7 +29,7 @@
   folder, `src/lado/projects.py`) and doctor's "your own folder" (`src/lado/doctor.py`),
   the data folder (`project_secrets.data_folder`), and the readiness report's Upgrade from
   0.42.0. Nothing in the paragraph without a source.
-- [ ] 2.2 `CHANGELOG.md`, `## 0.43.0 (unreleased)`, `### Improved`: one item by
+- [x] 2.2 `CHANGELOG.md`, `## 0.43.0 (unreleased)`, `### Improved`: one item by
   docs/release.md's rules (bold title, at most three lines, the user's words). Check:
   `git diff CHANGELOG.md` adds only that item.
 

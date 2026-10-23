@@ -161,16 +161,11 @@ def read_folder(folder: str, *, own: Callable[[str], bool] | None = None) -> Fol
     they are links or others may use them; the outside folder follows links and keeps its
     modes (Docker's and Kubernetes' secrets are links)."""
     if own is not None:
-        try:
-            mode = os.lstat(folder).st_mode
-        except FileNotFoundError:
+        reason = check_own_folder(folder)
+        if reason is None:
             return Folder({}, [])
-        except OSError as exc:
-            return Folder({}, [("", f"cannot be listed: {exc.strerror}")])
-        if stat.S_ISLNK(mode):
-            return Folder({}, [("", LINK)])
-        if stat.S_ISDIR(mode) and mode & OTHERS:
-            return Folder({}, [("", LOOSE_FOLDER)])
+        if reason:
+            return Folder({}, [("", reason)])
     try:
         with os.scandir(folder) as found:
             entries = sorted(found, key=lambda entry: entry.name)
@@ -203,6 +198,22 @@ def null_device(path: str) -> bool:
     except OSError:
         return False
     return stat.S_ISCHR(found.st_mode) and found.st_rdev == null.st_rdev
+
+
+def check_own_folder(folder: str) -> str | None:
+    """Why a folder only LADO writes is not used ("" when it may be, None when it is
+    missing): a link, or a mode others may use."""
+    try:
+        mode = os.lstat(folder).st_mode
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        return f"cannot be listed: {exc.strerror}"
+    if stat.S_ISLNK(mode):
+        return LINK
+    if stat.S_ISDIR(mode) and mode & OTHERS:
+        return LOOSE_FOLDER
+    return ""
 
 
 def check_entry(entry: os.DirEntry, own: Callable[[str], bool] | None = None) -> str:

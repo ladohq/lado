@@ -12,6 +12,7 @@ LADO. `projects/` belongs to LADO once a project's folder is in it; before that,
 `projects/` holding anything visible is the human's own folder, and LADO makes no project
 there. The CLI (`lado project`) and `lado doctor` only print what this module says."""
 
+import contextlib
 import os
 import re
 import shutil
@@ -20,7 +21,7 @@ import stat
 import subprocess
 import tempfile
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -399,26 +400,27 @@ def set_secret(id: str, name: str, value: str) -> list[str]:
     check_secret(id, name, value)
     if name in state.project_variables(id):
         raise _held(id, name, "a plain variable")
-    try:
+    with _secrets_refused(f"could not write the secret {name} of {id}"):
         project_secrets.write(id, name, value)
-    except project_secrets.LinkRefused as error:
-        raise ProjectError(str(error)) from None
-    except OSError as error:
-        raise ProjectError(
-            f"could not write the secret {name} of {id}: {error.strerror or error}"
-        ) from None
     return running(id)
 
 
-def _remove_secret(id: str, name: str) -> bool:
+@contextlib.contextmanager
+def _secrets_refused(failed: str, then: str = "") -> Iterator[None]:
+    """The secrets store's refusals as ProjectError: a link by its own text, an OSError as
+    `failed: <reason><then>`. The OSError's text is left out: it never holds a value, but
+    its file name is no business of the human's either."""
     try:
-        return project_secrets.remove(id, name)
+        yield
     except project_secrets.LinkRefused as error:
         raise ProjectError(str(error)) from None
     except OSError as error:
-        raise ProjectError(
-            f"could not remove the secret {name} of {id}: {error.strerror or error}"
-        ) from None
+        raise ProjectError(f"{failed}: {error.strerror or error}{then}") from None
+
+
+def _remove_secret(id: str, name: str) -> bool:
+    with _secrets_refused(f"could not remove the secret {name} of {id}"):
+        return project_secrets.remove(id, name)
 
 
 def _listed(found: list[str]) -> str:
@@ -802,15 +804,9 @@ def delete(id: str, yes: bool) -> None:
             f"deleting project {id} removes its folder {target} with everything in it"
             f"{forgets}; run again with --yes"
         )
-    try:
+    data = project_secrets.data_folder(id)
+    with _secrets_refused(f"could not read {data}", "; the project stays"):
         project_secrets.check_removable(id)
-    except project_secrets.LinkRefused as error:
-        raise ProjectError(str(error)) from None
-    except OSError as error:
-        raise ProjectError(
-            f"could not read {project_secrets.data_folder(id)}: {error.strerror or error}; "
-            "the project stays"
-        ) from None
     if target.is_symlink():
         target.unlink()
     elif os.path.lexists(target):
@@ -833,14 +829,9 @@ def delete(id: str, yes: bool) -> None:
                 f"could not forget session {name}: {error}; the project stays: run lado "
                 f"project delete {id} --yes again"
             ) from error
-    try:
+    again = f"; the project stays: run lado project delete {id} --yes again"
+    with _secrets_refused(f"could not remove {data} whole", again):
         project_secrets.remove_all(id)
-    except (project_secrets.LinkRefused, OSError) as error:
-        reason = str(error) if isinstance(error, ValueError) else error.strerror or error
-        raise ProjectError(
-            f"could not remove {project_secrets.data_folder(id)} whole: {reason}; the project "
-            f"stays: run lado project delete {id} --yes again"
-        ) from None
     state.delete_project(id)
 
 

@@ -65,11 +65,7 @@ def names(id: str) -> list[str]:
     reader takes by what needs no content (a file it still cannot give, for its size or
     content, `lado doctor` names). None while the folder is unused (a link, loose)."""
     where = str(folder(id))
-    try:
-        mode = os.lstat(where).st_mode
-    except OSError:
-        return []
-    if not stat.S_ISDIR(mode) or mode & agent_env.OTHERS:
+    if agent_env.check_own_folder(where) != "":
         return []
     try:
         with os.scandir(where) as found:

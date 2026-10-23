@@ -281,6 +281,13 @@ test("on a phone the list fills the screen, and a project opens in its place", a
   expect(screen.queryByText("Select a project")).toBeNull();
 });
 
+test("a narrow desktop window shows no Select a project pane beside the list", async () => {
+  new FakeScreen("fine", 390, 800);
+  open("/projects");
+  await within(list()).findByRole("link", { name: /Shop/ });
+  expect(screen.queryByText("Select a project")).toBeNull();
+});
+
 // New project
 
 const dialog = () => screen.getByRole("dialog", { name: "New project" });
@@ -308,6 +315,22 @@ test("New project's id follows the title, with its folder, and Create makes the 
   expect(server.calls("POST", "/api/projects")[0].body).toEqual({ id: "shop-eu", title: "Shop EU" });
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(await screen.findByRole("heading", { name: "Shop EU" })).toBeTruthy();
+});
+
+test("a title that gives no id says so under Id, and Create stays off", async () => {
+  server.suggest = (_title, id) =>
+    id === null
+      ? { id: null, folder: null, problem: "the name needs a Latin letter or digit for its folder: type one" }
+      : { id, folder: `/ws/projects/${id}`, problem: null };
+  const shown = await newProject();
+  fireEvent.change(field("Title (optional)"), { target: { value: "!!!" } });
+  expect(await within(shown).findByText("The title gives no id: type one.")).toBeTruthy();
+  expect(field("Id").value).toBe("");
+  expect(create().disabled).toBe(true);
+  expect(shown.textContent).not.toContain("for its folder");
+  fireEvent.change(field("Id"), { target: { value: "bang" } });
+  await waitFor(() => expect(create().disabled).toBe(false));
+  expect(shown.textContent).not.toContain("The title gives no id");
 });
 
 test("an edited id stays when the title changes, and is checked as typed", async () => {

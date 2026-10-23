@@ -649,6 +649,7 @@ function LaunchDialog({
         ) : projecting ? (
           <ProjectField
             launch={shownProject}
+            asked={projectAsk}
             asking={inProject === null}
             problem={projectAsked !== null && "error" in projectAsked ? projectAsked.error : null}
             head={<SourceSwitch source={source} onSource={setSource} disabled={busy} />}
@@ -718,7 +719,12 @@ function LaunchDialog({
                 (CAN_START.has(fresh.state) ? (
                   <span className="field-note ok">✓ {fresh.text}</span>
                 ) : (
-                  <RefusedNote text={fresh.text} hint={fresh.hint ?? null} />
+                  <RefusedNote
+                    text={fresh.text}
+                    hint={fresh.hint ?? null}
+                    project={fresh.project ?? null}
+                    onProject={toProject}
+                  />
                 ))}
               {fresh?.warning && <span className="field-note warn">⚠ {fresh.warning}</span>}
             </div>
@@ -739,6 +745,7 @@ function LaunchDialog({
                 <TargetNote
                   target={target}
                   problem={targetAsked !== null && "error" in targetAsked ? targetAsked.error : null}
+                  onProject={toProject}
                 />
                 {target?.warning && <span className="field-note warn">⚠ {target.warning}</span>}
               </div>
@@ -1350,21 +1357,48 @@ function UrlField({
 
 // The clone's folder as the core finds it; another repository's clone or a clone of this
 // one are told under the fields, in full.
-function TargetNote({ target, problem }: { target: CloneTarget | null; problem: string | null }) {
+function TargetNote({
+  target,
+  problem,
+  onProject,
+}: {
+  target: CloneTarget | null;
+  problem: string | null;
+  onProject: (place: ProjectPlace) => void;
+}) {
   if (problem) return <span className="field-note bad">{problem}</span>;
   if (target === null || target.state === "same_repo" || target.state === "other_repo") return null;
   if (CAN_CLONE.has(target.state)) return <span className="field-note ok">✓ {target.text}</span>;
-  return <RefusedNote text={target.text} hint={target.hint ?? null} />;
+  return <RefusedNote text={target.text} hint={target.hint ?? null} project={target.project ?? null} onProject={onProject} />;
 }
 
 // A folder that takes no clone or fresh start, with what to do instead when the core says
-// it (a folder inside a project: its session's command).
-function RefusedNote({ text, hint }: { text: string; hint: FolderInfo["hint"] }) {
-  if (!hint) return <span className="field-note bad">{text}</span>;
+// it: a folder inside a project leads to the project's page, above the core's command.
+function RefusedNote({
+  text,
+  hint,
+  project,
+  onProject,
+}: {
+  text: string;
+  hint: FolderInfo["hint"];
+  project: ProjectPlace | null;
+  onProject: (place: ProjectPlace) => void;
+}) {
+  if (!hint && !project) return <span className="field-note bad">{text}</span>;
   return (
     <div className="field-note bad">
       <div>{text}</div>
-      <FolderHint text={hint.text} command={hint.command} />
+      {project && (
+        <div className="folder-hint">
+          <div className="folder-hint-command">
+            <button type="button" className="chip-button" onClick={() => onProject({ ...project, repo: null })}>
+              {`Open the project ${project.title ?? project.id}`}
+            </button>
+          </div>
+        </div>
+      )}
+      {hint && <FolderHint text={hint.text} command={hint.command} />}
     </div>
   );
 }

@@ -45,11 +45,16 @@ function launch(more: Partial<ProjectLaunch> = {}): ProjectLaunch {
   };
 }
 
-function field(shown: ProjectLaunch | null, problem: string | null = null) {
+function field(
+  shown: ProjectLaunch | null,
+  problem: string | null = null,
+  asked: { project: string | null; repo: string | null } = { project: null, repo: null },
+) {
   const calls = { project: vi.fn(), repo: vi.fn(), leave: vi.fn() };
   render(
     <ProjectField
       launch={shown}
+      asked={asked}
       problem={problem}
       head={null}
       disabled={false}
@@ -124,4 +129,29 @@ test("while asking, and when the server fails", () => {
   cleanup();
   field(null, "the server is down");
   expect(screen.getByText("the server is down")).toBeTruthy();
+});
+
+// E1 (openspec change project-page): what was asked and is gone is said under the field
+// that shows the server's choice.
+
+test("a project asked that is gone is named under the field, which shows the server's choice", () => {
+  field(launch({ project: "acme", repos: [repo("crm")], repo: "crm", gone: "project" }), null, {
+    project: "shop",
+    repo: null,
+  });
+  const warning = screen.getByText("⚠ No project shop any more: choose one.");
+  expect(warning.className).toContain("warn");
+  expect(projectSelect().value).toBe("acme");
+  expect(projectSelect().compareDocumentPosition(warning) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy(); // as the mockup
+});
+
+test("a repository asked that is gone is named with the project's title", () => {
+  field(launch({ gone: "repo" }), null, { project: "shop", repo: "admin" });
+  expect(screen.getByText("⚠ No repository admin in Shop any more: choose one.")).toBeTruthy();
+  expect(repos().map((one) => one.getAttribute("aria-checked"))).toEqual(["false", "true"]);
+});
+
+test("nothing gone, no warning", () => {
+  field(launch({ gone: null }), null, { project: "shop", repo: "frontend" });
+  expect(screen.queryByText(/any more/)).toBeNull();
 });

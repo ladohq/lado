@@ -4735,9 +4735,11 @@ h3 {
   }
 }
 
-/* A narrow window: the list over the session, the terminals under it; the page scrolls. */
+/* A narrow window: the list over the session, the terminals under it; the page scrolls.
+   Projects stack the same way: the list over the project (NoProject draws no pane). */
 @media (max-width: 900px) {
-  .sessions {
+  .sessions,
+  .projects {
     grid-template-columns: minmax(0, 1fr);
     height: auto;
   }

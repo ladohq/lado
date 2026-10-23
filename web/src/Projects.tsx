@@ -174,9 +174,21 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
   );
 }
 
+// A window no wider than this stacks the list over the project (styles.css), as Sessions does.
+const STACKED = "(max-width: 900px)";
+
 export function NoProject() {
-  const phone = usePhone(); // the list is the page: nothing to select beside it
-  return phone ? null : <p className="empty">Select a project</p>;
+  // On a phone, or in a window that stacks, the list is the page: nothing to select beside it.
+  const phone = usePhone();
+  const [stacked, setStacked] = useState(() => window.matchMedia?.(STACKED).matches ?? false);
+  useEffect(() => {
+    const list = window.matchMedia?.(STACKED);
+    const changed = () => setStacked(list?.matches ?? false);
+    list?.addEventListener?.("change", changed);
+    changed();
+    return () => list?.removeEventListener?.("change", changed);
+  }, []);
+  return phone || stacked ? null : <p className="empty">Select a project</p>;
 }
 
 type Shown = { project: ProjectInfo } | { error: string; missing: boolean } | null;
@@ -364,7 +376,8 @@ function NewProjectDialog({ onClose, onMade }: { onClose: () => void; onMade: (i
   const [edited, setEdited] = useState(false);
   const editing = useRef(false); // edited, for an answer that comes after the edit
   // The server's answer, with what it was asked: it counts only for the fields as they are.
-  const [checked, setChecked] = useState<{ asked: string; answer: ProjectId } | null>(null);
+  // `failed`: the request failed, and its problem says why.
+  const [checked, setChecked] = useState<{ asked: string; answer: ProjectId; failed: boolean } | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -382,13 +395,14 @@ function NewProjectDialog({ onClose, onMade }: { onClose: () => void; onMade: (i
       return;
     }
     let current = true;
-    const take = (answer: ProjectId) => {
+    const take = (answer: ProjectId, failed = false) => {
       if (!current || (kind === "title" && editing.current)) return; // the human took Id over
       if (kind === "title") setId(answer.id ?? "");
-      setChecked({ asked, answer });
+      setChecked({ asked, answer, failed });
     };
-    suggestProjectId(kind === "id" ? { id: text } : { title: text }).then(take, (error: unknown) =>
-      take({ id: kind === "id" ? text : null, folder: null, problem: messageOf(error) }),
+    suggestProjectId(kind === "id" ? { id: text } : { title: text }).then(
+      (answer) => take(answer),
+      (error: unknown) => take({ id: kind === "id" ? text : null, folder: null, problem: messageOf(error) }, true),
     );
     return () => {
       current = false;
@@ -397,7 +411,10 @@ function NewProjectDialog({ onClose, onMade }: { onClose: () => void; onMade: (i
 
   const answer = checked?.asked === wanted ? checked.answer : null;
   const fresh = answer !== null && answer.id === id && id !== "";
-  const note = refused ?? (answer && (fresh || answer.id === null) ? answer.problem : null);
+  // A title that gives no id (E2): said in New project's words, not the fresh start's.
+  const noId = !edited && answer !== null && answer.id === null && !checked!.failed;
+  const note =
+    refused ?? (noId ? "The title gives no id: type one." : answer && (fresh || answer.id === null) ? answer.problem : null);
   const ready = fresh && answer.problem === null && refused === null && !busy;
   const create = async () => {
     setBusy(true);

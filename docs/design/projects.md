@@ -364,8 +364,6 @@ sessions that run. The rest is **not built yet** (steps S6b and S7):
 - **A project's page** (S7):
   - its repositories with branch and remote, each with "Start session" and "Delete";
   - "+ Add repository";
-  - its variables, marked where they override an outside value, with the warning of the
-    security boundary;
   - the project's sessions;
   - renaming its title and deleting the project.
 - **The New session window** gets the way Project (S6b); the workspace hint of its folder field is

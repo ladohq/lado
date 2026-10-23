@@ -4,8 +4,10 @@ model: docs/design/projects.md).
 
 This module alone writes and removes them, and lado.projects keeps their rules. The human
 sets them (the CLI, the server); nothing reads a value back but the launch of an agent of
-a session in the project (lado.runtime._base_env) and `lado doctor`, both through the one
-reader of variable folders (lado.agent_env.read_folder). Listing them never opens a file.
+a session in the project (lado.runtime._base_env), and `lado doctor` and the server's
+answer of a project (`unused`), which read the folder to say which files the agents do not
+get and let no value out, all through the one reader of variable folders
+(lado.agent_env.read_folder). Listing them never opens a file.
 
 Every folder from `<LADO_HOME>/projects` down is opened without following a symbolic link,
 each relative to the one above, so a link anywhere on the way is refused, not followed;

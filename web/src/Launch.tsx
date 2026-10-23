@@ -73,7 +73,8 @@ const RESUMABLE = new Set<SessionInfo["status"]>(["stopped", "tmux_gone"]);
 
 // A new session's window opens in Project with `project` chosen (the project's page), else
 // in Folder (From scratch without recent folders).
-export type LaunchMode = { kind: "new"; project?: string } | { kind: "resume"; session: SessionInfo };
+// A new session, in Project with `project` (and its repository `repo`) chosen when given.
+export type LaunchMode = { kind: "new"; project?: string; repo?: string } | { kind: "resume"; session: SessionInfo };
 
 const LaunchContext = createContext<(mode?: LaunchMode) => void>(() => {});
 
@@ -222,7 +223,7 @@ function LaunchDialog({
   // Project: the project and repository asked of the server (null: its choice).
   const [projectAsk, setProjectAsk] = useState<{ project: string | null; repo: string | null }>({
     project: asksProject,
-    repo: null,
+    repo: (asksProject && mode.kind === "new" && mode.repo) || null,
   });
   const setSource = (next: Source) => {
     sourceTouched.current = true;

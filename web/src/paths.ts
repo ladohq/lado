@@ -80,5 +80,4 @@ export const PLANS = {
   flows: ui("flows", "Flows"),
   artifacts: ui("artifacts", "Artifacts"),
   providers: ui("providers-and-environment", "Providers and environment"),
-  projects: { label: "Projects, step S7", href: `${REPO}/docs/design/projects.md#how-it-is-built` },
 } satisfies Record<string, Plan>;

@@ -11,19 +11,23 @@ import {
   createProject,
   getProject,
   listProjects,
+  renameProject,
   suggestProjectId,
   type ProjectId,
   type ProjectInfo,
   type ProjectSummary,
 } from "./api";
+import { PencilIcon } from "./icons";
 import { useDebounced, useLaunch } from "./Launch";
 import { useLive } from "./live";
-import { PLANS, projectPath, sessionPath } from "./paths";
+import { projectPath, sessionPath } from "./paths";
 import { usePhone } from "./phone";
 import { ProjectVariables } from "./ProjectVariables";
 import { messageOf, plural as count } from "./SessionControl";
 import { labelOf } from "./sessionLabel";
 import { useTitle } from "./Shell";
+import { TitleEdit } from "./TitleEdit";
+import { Tooltip } from "./Tooltip";
 
 // Calls `read` when the page opens, when a session of the feed appears, starts, stops or
 // goes, and when the window gets the focus: what a project's list and page show changes
@@ -231,8 +235,13 @@ export function ProjectPage() {
     <section className="project-page" aria-label={`Project ${project.id}`}>
       {back}
       <div className="project-head">
-        <h2>{project.title ?? project.id}</h2>
+        <ProjectTitle project={project} onSaved={changed} />
         <span className="project-id">{project.id}</span>
+        <span className="project-head-actions">
+          <button type="button" className="quiet" onClick={() => launch({ kind: "new", project: project.id })}>
+            New session…
+          </button>
+        </span>
       </div>
       <p className="project-facts">
         {count(project.repos.length, "repository", "repositories")} · {count(project.running.length, "session")} running
@@ -244,17 +253,6 @@ export function ProjectPage() {
           </>
         )}
       </p>
-      <p className="placeholder project-later muted">
-        <button type="button" className="link-button" onClick={() => launch({ kind: "new", project: project.id })}>
-          New session in this project…
-        </button>{" "}
-        Not built yet: the repositories on this page (adding, removing), renaming and deleting the project.{" "}
-        <a href={PLANS.projects.href} target="_blank" rel="noreferrer">
-          Plan: {PLANS.projects.label}
-        </a>
-        . Meanwhile: <code>lado project show {project.id}</code>,{" "}
-        <code>lado project repo add {project.id} &lt;git-url&gt;</code>.
-      </p>
       <div className="project-notes">
         <span className="field-note warn">
           ⚠ Projects of one LADO are not isolated from each other: an agent of one project can read another's variables
@@ -263,7 +261,57 @@ export function ProjectPage() {
         <Running names={project.running} />
       </div>
       <ProjectVariables project={project} onChanged={changed} />
+      <p className="placeholder project-later muted">
+        Deleting the project: not built yet (Projects, step S7b). Meanwhile: <code>lado project delete {project.id}</code>.
+      </p>
     </section>
+  );
+}
+
+// The project's title, renamed in place as a session's is (TitleEdit, the id its
+// suggestion): Rename or a click on the title opens the field; the focus goes back to Rename
+// when it closes.
+function ProjectTitle({ project, onSaved }: { project: ProjectInfo; onSaved: (project: ProjectInfo) => void }) {
+  const [editing, setEditing] = useState(false);
+  const pencil = useRef<HTMLButtonElement>(null);
+  const back = useRef(false);
+  useEffect(() => {
+    if (editing || !back.current) return;
+    back.current = false;
+    pencil.current?.focus();
+  });
+  if (editing) {
+    return (
+      <TitleEdit
+        name={project.id}
+        title={project.title}
+        label="Project title"
+        save={(title) => renameProject(project.id, title)}
+        hint="Enter to save · Esc to cancel"
+        suggestionHint="Tab takes the id · Enter to save · Esc to cancel"
+        onClose={(saved) => {
+          if (saved) onSaved(saved);
+          back.current = true;
+          setEditing(false);
+        }}
+      />
+    );
+  }
+  return (
+    <span className="project-title-edit">
+      <h2 onClick={() => setEditing(true)}>{project.title ?? project.id}</h2>
+      <Tooltip tip="Rename project">
+        <button
+          ref={pencil}
+          type="button"
+          className="icon-button project-rename"
+          aria-label="Rename"
+          onClick={() => setEditing(true)}
+        >
+          <PencilIcon />
+        </button>
+      </Tooltip>
+    </span>
   );
 }
 

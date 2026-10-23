@@ -8245,6 +8245,39 @@ del.kit-mcp-name {
   font-size: 13px;
 }
 
+/* The title with its Rename (Projects.tsx, ProjectTitle); the field in its place (TitleEdit). */
+.project-title-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.project-title-edit h2 {
+  cursor: text;
+}
+
+.project-rename {
+  flex: none;
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+}
+
+.project-rename:hover {
+  color: var(--ink);
+}
+
+.project-head .title-edit {
+  flex: 0 1 420px;
+}
+
+.project-head-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
 .project-facts {
   margin: 0 0 16px;
   color: var(--muted);

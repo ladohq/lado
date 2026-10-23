@@ -174,6 +174,10 @@ export class FakeProjects {
     const [, , , id, kind, name] = path.split("/").map(decodeURIComponent);
     const found = this.projects[id];
     if (!found) return json({ detail: `unknown project "${id}"` }, 404);
+    if (kind === undefined && method === "PATCH") {
+      this.projects[id] = { ...found, title: body.title?.trim() || null };
+      return json(this.projects[id]);
+    }
     if (kind === undefined) return json(found);
     if (kind === "variables") {
       const variables = found.variables.filter((one) => one.name !== name);

@@ -149,7 +149,7 @@ back, the UI back.
   real token of a test account), a new session in `shop`: `gh auth status` in the agent's
   window is logged in with it, `lado project show shop` lists `GH_TOKEN` without a value.
 - Projects' secrets on the Mac (from 0.43.0), once, no agent needed: with
-  `LADO_HOME=$(mktemp -d)` set a secret, then replace
+  `LADO_HOME=$(mktemp -d) LADO_TELEMETRY=0` set a secret, then replace
   `$LADO_HOME/projects/<id>/secrets` with a symbolic link to another folder: `lado
   project set … --secret` and `lado project unset …` refuse, naming the link (the unit
   tests of these refusals run on Linux only).

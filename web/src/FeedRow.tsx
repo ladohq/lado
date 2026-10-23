@@ -2,7 +2,8 @@
 // head (who, a muted part, the time) and what the row holds. The one place that draws who
 // wrote an entry, in the chat and on Needs you; a question's, a gate's or a message's own
 // content comes as children. A row that continues a group (Chat.tsx, feedRows) has no head
-// and no letter; its time stands where the avatar would. A message's row has Copy message.
+// and no letter; its time stands where the avatar would. A message's row has Copy message,
+// right before the head's time: nothing stands after the time, so it ends on the feed's edge.
 import type { ReactNode } from "react";
 
 import { HUMAN, LADO } from "./api";
@@ -98,8 +99,8 @@ export function FeedRow({
           <header className="feed-head">
             <span className="feed-who">{who}</span>
             {aside && <span className="feed-aside">{aside}</span>}
-            {time}
             {copier}
+            {time}
           </header>
         )}
         {continued && copier && <div className="feed-copy">{copier}</div>}

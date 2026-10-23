@@ -1433,7 +1433,8 @@ h3 {
 
 /* Copy code and Copy message (docs/design/ui.md, Selected text and copy buttons): small,
    borderless; with a pointer that can hover, shown only over their block or message, or
-   with the focus (opacity, so Tab still reaches them); on a touch screen always. */
+   with the focus (opacity, so Tab still reaches them). On a touch screen Copy code always,
+   Copy message never: the selection copies there, and an icon by every time crowds it. */
 .copy-icon-button .icon-button {
   width: 24px;
   height: 24px;
@@ -1471,9 +1472,15 @@ h3 {
   background: var(--ground);
 }
 
+/* Right before the head's time, 6px from its icon to the digits; the time ends on the
+   feed's edge whether the button shows or not (LAD-136). */
 .feed-head > .copy-icon-button {
   align-self: center;
-  margin: -4px 0;
+  margin: -4px -6px -4px auto;
+}
+
+.feed-head > .copy-icon-button + time {
+  margin-left: 0;
 }
 
 .feed-copy {
@@ -1500,6 +1507,17 @@ h3 {
   .agent-messages li:hover > .copy-icon-button,
   .copy-icon-button:focus-within {
     opacity: 1;
+  }
+}
+
+@media (hover: none) {
+  .feed-row :is(.feed-head, .feed-copy) > .copy-icon-button,
+  .agent-messages li > .copy-icon-button {
+    display: none;
+  }
+
+  .feed-head > .copy-icon-button + time {
+    margin-left: auto;
   }
 }
 
@@ -3160,10 +3178,10 @@ h3 {
 }
 
 /* The human's own lines in a run's group (an answer's move, a flow-set), with the comment
-   under the move, on the human's ground as their messages (.feed-row.mine), 8px left of the
-   line (LAD-85, mockup-gate-line.html). */
+   under the move, on the human's ground as their messages (.feed-row.mine), 8px past the
+   line on both sides, so its time ends on the feed's edge (LAD-85, LAD-136). */
 .run-event.mine {
-  margin: 2px 0 2px -8px;
+  margin: 2px -8px;
   padding: 4px 8px 6px;
   border-radius: 8px;
   background: var(--action-ground);
@@ -3460,10 +3478,12 @@ h3 {
 }
 
 /* A closed gate (GateCard.tsx, GateLine; LAD-85, mockup-gate-line.html option 2): a folded
-   card whose head is one button, 8px left of the text's column; opened, the same frame
-   grows down. A narrow chat wraps the head's parts rather than scroll sideways. */
+   card whose head is one button, the chevron first, 8px left of the text's column; its
+   frame reaches past the right edge by the head's padding and border, so its time ends on
+   the feed's edge (LAD-136); opened, the same frame grows down. A narrow chat wraps the
+   head's parts rather than scroll sideways. */
 .chat-gate.closed {
-  padding: 2px var(--row-pad) 2px calc(var(--text-start) - 8px);
+  padding: 2px calc(var(--row-pad) - 9px) 2px calc(var(--text-start) - 8px);
   color: var(--ink);
   font-size: 14px;
 }

@@ -1,21 +1,21 @@
 ## 1. One edge for the times
 
-- [ ] 1.1 `web/src/FeedRow.tsx`: the head draws Copy message before the time; the module
+- [x] 1.1 `web/src/FeedRow.tsx`: the head draws Copy message before the time; the module
   comment says so. `web/src/styles.css`: `.feed-head > .copy-icon-button` takes
   `margin-left: auto` and `margin-right: -6px` (6 px between its icon and the time), the
   time right after it no auto margin; a head without the button keeps the time's auto
   margin.
-- [ ] 1.2 `web/src/styles.css`: under `@media (hover: none)` Copy message is not shown
+- [x] 1.2 `web/src/styles.css`: under `@media (hover: none)` Copy message is not shown
   (`.feed-row .copy-icon-button`, `.agent-messages .copy-icon-button`: `display: none`)
   and the head's time takes its auto margin back; Copy code stays always shown. The
   comment over the copy buttons' rules says so.
-- [ ] 1.3 `web/src/styles.css`: `.run-event.mine` reaches 8 px past the line on both
+- [x] 1.3 `web/src/styles.css`: `.run-event.mine` reaches 8 px past the line on both
   sides (`margin: 2px -8px`), so its time ends on the edge; its comment follows.
-- [ ] 1.4 `web/src/GateCard.tsx` (`GateLine`): the chevron first in the head, before the
+- [x] 1.4 `web/src/GateCard.tsx` (`GateLine`): the chevron first in the head, before the
   flag; `web/src/styles.css`: `.chat-gate.closed` right padding `var(--row-pad)` less the
   head's padding and border (9 px), so the gate's time ends on the edge. The rest of the
   head and the opened card unchanged.
-- [ ] 1.5 `web/src/Chat.test.tsx`: the head's order (Copy message before the time) and
+- [x] 1.5 `web/src/Chat.test.tsx`: the head's order (Copy message before the time) and
   the gate head's order (chevron first), at the unit layer (vitest; jsdom has no layout,
   so no positions here). Run `make web`.
 

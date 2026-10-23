@@ -352,8 +352,30 @@ def test_the_variables_route_never_removes_a_secret(client, shop):
     assert client.delete("/api/projects/shop/secrets/BOARD_URL").status_code == 404
     assert project_secrets.names("shop") == ["GH_TOKEN"]
     assert state.project_variables("shop") == {"BOARD_URL": "https://a"}
-    refused = client.put("/api/projects/shop/variables/GH_TOKEN", json={"value": "x"})
-    assert refused.status_code == 400
+
+
+def test_one_value_per_name_through_the_api(client, shop):
+    """The refusals S6 and the LADO manager rely on: the code and the whole text."""
+    projects.set_secret("shop", "DATABASE_URL", "postgres://s")
+    projects.set_variable("shop", "BOARD_URL", "https://a")
+    refused = client.put("/api/projects/shop/variables/DATABASE_URL", json={"value": "x"})
+    assert (refused.status_code, refused.json()) == (
+        400,
+        {
+            "detail": "DATABASE_URL is a secret of shop; remove it first with lado project "
+            "unset shop DATABASE_URL"
+        },
+    )
+    refused = client.put("/api/projects/shop/secrets/BOARD_URL", json={"value": "canary-d4"})
+    assert (refused.status_code, refused.json()) == (
+        400,
+        {
+            "detail": "BOARD_URL is a plain variable of shop; remove it first with lado project "
+            "unset shop BOARD_URL"
+        },
+    )
+    assert project_secrets.names("shop") == ["DATABASE_URL"]
+    assert state.project_variables("shop") == {"BOARD_URL": "https://a"}
 
 
 def test_no_secrets_without_a_database(client, lado_home):

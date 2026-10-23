@@ -153,8 +153,9 @@ def test_deleting_the_project_removes_its_secrets(two):
     runtime.start_session(None, None, None, "fake", project="shop", repo_name="frontend")
     environ("shop-frontend", "supervisor")
     runtime.stop_session("shop-frontend")
-    projects.delete("shop", yes=True)
+    projects.delete("shop", yes=True)  # forgets shop-frontend
     assert not os.path.lexists(project_secrets.data_folder("shop"))
+    assert sorted(state.home_path().rglob("env.json")) == []  # no launch file is left
     assert projects.secrets("acme") == [NAME]
     projects.create("shop", None)
     projects.add_new("shop", "frontend")

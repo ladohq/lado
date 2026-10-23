@@ -6,6 +6,7 @@ neither storage of the page, in no line of the server's log, and in no file unde
 but the secret's own. Every wait is for a state, never for time."""
 
 import json
+import re
 import uuid
 
 import agent_helpers
@@ -28,6 +29,9 @@ def test_new_project_and_its_variables_and_secrets(page: Page, server, tmp_path,
     page.set_viewport_size({"width": 1440, "height": 900})
     asked: list[str] = []
     page.on("request", lambda request: asked.append(request.url))
+    logged: list[str] = []  # the browser's console and the page's uncaught errors
+    page.on("console", lambda message: logged.append(message.text))
+    page.on("pageerror", lambda error: logged.append(str(error)))
     first, second = (f"canary-{uuid.uuid4().hex}" for _ in range(2))
     log_in(page, server)
     page.goto(f"{server['url']}/projects")
@@ -48,6 +52,12 @@ def test_new_project_and_its_variables_and_secrets(page: Page, server, tmp_path,
     expect(view.get_by_role("heading", name="Магазин EU")).to_be_visible()
     expect(view).to_contain_text("No session of this project is running.")
     assert folder.is_dir()
+    # Until S7 the page names the commands for the project's repositories (#1158).
+    expect(view).to_contain_text(
+        "Meanwhile: lado project show magazin-eu, lado project repo add magazin-eu <git-url>."
+    )
+    plan = view.get_by_role("link", name="Plan: Projects, step S7")
+    expect(plan).to_have_attribute("href", re.compile(r"docs/design/projects\.md#how-it-is-built$"))
 
     # A plain variable, edited in place.
     variables, secrets = section(page, "Variables"), section(page, "Secrets")
@@ -108,6 +118,7 @@ def test_new_project_and_its_variables_and_secrets(page: Page, server, tmp_path,
     for canary in (first, second):
         assert [url for url in asked if canary in url] == []
         assert canary not in page.content()
+        assert [text for text in logged if canary in text] == []
         stored = page.evaluate(
             "JSON.stringify([Object.entries(localStorage), Object.entries(sessionStorage)])"
         )

@@ -246,14 +246,15 @@ test("the list and the page are read anew when a session starts or stops", async
   server.sessions = [session("shop-backend", { project: "shop" })];
   open("/projects/shop");
   const page = await screen.findByRole("region", { name: "Project shop" });
-  await waitFor(() => expect(within(page).getByRole("link", { name: "shop-backend" })).toBeTruthy());
+  const line = () => within(page).getByText(/New values reach the agents/); // the page's read
+  await waitFor(() => expect(within(line()).getByRole("link", { name: "shop-backend" })).toBeTruthy());
   server.projects.shop = { ...server.projects.shop, running: ["shop-frontend"] };
   server.projects.acme = { ...server.projects.acme, running: ["acme-crm"] };
   const started = session("acme-crm", { project: "acme" });
   stream().send("change", { kind: "sessions", session: "acme-crm", key: "", op: "insert", item: started }, "11");
   await waitFor(() => expect(rows()[0]).toBe("ACME CRMacme · 1 repository · 1 running"));
-  await waitFor(() => expect(within(page).queryByRole("link", { name: "shop-backend" })).toBeNull());
-  expect(within(page).getByRole("link", { name: "shop-frontend" })).toBeTruthy();
+  await waitFor(() => expect(within(line()).queryByRole("link", { name: "shop-backend" })).toBeNull());
+  expect(within(line()).getByRole("link", { name: "shop-frontend" })).toBeTruthy();
 });
 
 test("the page is read anew when the window gets the focus", async () => {

@@ -523,7 +523,7 @@ const HEAD_MARKS: Record<Mark, string> = {
   loop_down: "session-dot-loop_down",
 };
 
-function StatusDot({ session }: { session: SessionInfo }) {
+export function StatusDot({ session }: { session: SessionInfo }) {
   const { mark, words } = sessionMark(session);
   return (
     <Tooltip tip={words}>

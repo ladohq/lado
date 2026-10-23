@@ -8425,6 +8425,216 @@ del.kit-mcp-name {
   margin-top: 10px;
 }
 
+/* Repositories and Sessions (ProjectRepos.tsx): a block's head with its button at the right;
+   a repository's row, its name over its branch and remote, its buttons at the right (under
+   it in a narrow window); a session's line, its time at the right. */
+.project-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.project-section-head h3 {
+  margin: 0 0 4px;
+}
+
+.project-section-head .project-add {
+  margin: 0 0 0 auto;
+}
+
+.project-empty-repos {
+  margin: 0;
+  padding: 10px 0 4px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.project-repos {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.project-repos td {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.project-repos tr:last-child td {
+  border-bottom: 0;
+}
+
+.repo-name {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.repo-about {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.repo-about code {
+  font-size: 12px;
+}
+
+.project-sessions {
+  margin: 0;
+  padding: 0;
+  font-size: 14px;
+  list-style: none;
+}
+
+.project-sessions li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.project-sessions li:last-child {
+  border-bottom: 0;
+}
+
+.project-sessions a {
+  overflow-wrap: anywhere;
+}
+
+.project-sessions .muted {
+  font-size: 13px;
+}
+
+.project-sessions .when {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .project-repos tr {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .project-repos tr:last-child {
+    border-bottom: 0;
+  }
+
+  .project-repos td {
+    padding: 4px 0;
+    border-bottom: 0;
+  }
+
+  .project-repos .project-acts {
+    padding-bottom: 9px;
+    text-align: left;
+  }
+
+  .project-repos .project-acts button:first-child {
+    margin-left: 0;
+  }
+}
+
+/* Add repository and Delete repository (ProjectRepos.tsx). */
+.add-repo,
+.repo-delete {
+  width: min(560px, calc(100vw - 32px));
+  text-align: left;
+}
+
+.add-repo .field,
+.repo-delete .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.add-repo .where-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.add-repo input,
+.add-repo select,
+.repo-delete input {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ground);
+  color: var(--ink);
+  font: 14px var(--sans);
+}
+
+.add-repo input.mono,
+.repo-delete input.mono {
+  font: 13px var(--mono);
+}
+
+.add-repo .two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.add-repo .clone-progress {
+  margin-top: 12px;
+}
+
+.repo-delete .path {
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.removal-list {
+  margin: 6px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ground);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.removal-list h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.removal-list ul {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+
+.removal-list > :last-child {
+  margin-bottom: 0;
+}
+
+.removal-list p {
+  margin: 0 0 8px;
+}
+
+@media (max-width: 560px) {
+  .add-repo .two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .project-new {
   text-align: left;
 }

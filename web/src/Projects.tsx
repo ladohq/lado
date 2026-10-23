@@ -22,6 +22,7 @@ import { useDebounced, useLaunch } from "./Launch";
 import { useLive } from "./live";
 import { projectPath, sessionPath } from "./paths";
 import { usePhone } from "./phone";
+import { ProjectRepos, ProjectSessions } from "./ProjectRepos";
 import { ProjectVariables } from "./ProjectVariables";
 import { messageOf, plural as count } from "./SessionControl";
 import { labelOf } from "./sessionLabel";
@@ -253,6 +254,15 @@ export function ProjectPage() {
           </>
         )}
       </p>
+      <ProjectRepos
+        project={project}
+        onAdded={() => {
+          read();
+          reload();
+        }}
+        onChanged={changed}
+      />
+      <ProjectSessions id={project.id} />
       <div className="project-notes">
         <span className="field-note warn">
           ⚠ Projects of one LADO are not isolated from each other: an agent of one project can read another's variables

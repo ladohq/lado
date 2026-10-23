@@ -170,7 +170,7 @@ const switchOffLabel = (item: string) => {
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((one, i) => one === b[i]);
 
 // A refusal's detail as a CloneRefused, when it is one (its hint shown with Copy).
-const cloneRefused = (detail: unknown): CloneRefused | null =>
+export const cloneRefused = (detail: unknown): CloneRefused | null =>
   detail !== null && typeof detail === "object" && "kind" in detail ? (detail as CloneRefused) : null;
 
 const elapsed = (seconds: number) => {
@@ -180,7 +180,7 @@ const elapsed = (seconds: number) => {
 
 // The branch a clone takes unless the human picks one: the remote's default, else main,
 // else master, else the first.
-const defaultBranch = (remote: RemoteInfo) =>
+export const defaultBranch = (remote: RemoteInfo) =>
   remote.default ?? ["main", "master"].find((one) => remote.branches.includes(one)) ?? remote.branches[0];
 
 function LaunchDialog({
@@ -1496,7 +1496,7 @@ function BranchCombo({
   );
 }
 
-function CloneProgress({ job }: { job: CloneJob }) {
+export function CloneProgress({ job }: { job: CloneJob }) {
   const progress = job.progress;
   const percent = progress?.percent ?? 0;
   return (
@@ -1528,7 +1528,7 @@ function CloneProgress({ job }: { job: CloneJob }) {
 
 // What the human can do about the folder (the core's hint): its sentence, then its command
 // to copy. When no copy works, the command is selected to copy by hand.
-function FolderHint({ text, command }: { text: string; command: string }) {
+export function FolderHint({ text, command }: { text: string; command: string }) {
   const { note, copy } = useCopy();
   const [byHand, setByHand] = useState(false);
   const code = useRef<HTMLElement>(null);

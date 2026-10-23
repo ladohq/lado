@@ -1,10 +1,10 @@
 ## 1. Commits do not wait for the disk
 
-- [ ] 1.1 `src/lado/state.py`, `_open`: `PRAGMA synchronous = NORMAL` after
+- [x] 1.1 `src/lado/state.py`, `_open`: `PRAGMA synchronous = NORMAL` after
   `PRAGMA journal_mode = WAL`, with a one-line comment why (WAL: a commit no longer
   fsyncs while it holds the write lock; a power cut may lose the last commits, never the
   database). Check: 1.2.
-- [ ] 1.2 `tests/test_state.py` (unit): a connection of `state.connect()` answers
+- [x] 1.2 `tests/test_state.py` (unit): a connection of `state.connect()` answers
   `PRAGMA synchronous` with 1 (NORMAL) and `PRAGMA journal_mode` with `wal`; so does the
   connection `migrate()` uses (through a migration of an older database, as the
   migration tests do, or `_open()` directly). `make test`.

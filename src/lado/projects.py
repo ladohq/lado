@@ -350,6 +350,8 @@ def check_secret(id: str, name: str, value: str) -> None:
             f"the secret {name} is empty; to remove it: lado project unset {id} {name}"
         )
     _check_value(name, value)
+    if len(project_secrets.stored(value)) > agent_env.MAX_VALUE:  # what the reader limits
+        raise ProjectError(f"the value of {name} is larger than 64 KiB")
 
 
 def variables(id: str) -> dict[str, str]:
@@ -387,7 +389,7 @@ def set_variable(id: str, name: str, value: str) -> list[str]:
     project's running sessions."""
     get(id)
     check_variable(id, name, value)
-    if name in project_secrets.names(id):
+    if project_secrets.held(id, name):
         raise _held(id, name, "a secret")
     state.set_project_variable(id, name, value)
     return running(id)
@@ -452,7 +454,7 @@ def unset(id: str, name: str) -> list[str]:
     hold a name of lado.db); the project's running sessions. The CLI's."""
     get(id)
     if state.unset_project_variable(id, name):
-        if name in project_secrets.names(id):
+        if project_secrets.held(id, name):
             _remove_secret(id, name)
     elif not _remove_secret(id, name):
         raise NoSuchVariable(

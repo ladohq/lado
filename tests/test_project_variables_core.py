@@ -232,6 +232,23 @@ def test_a_secret_of_exactly_64_kib(shop):
     assert len(secret_file("BIG").read_bytes()) == 64 * 1024
 
 
+def test_a_secret_ending_in_a_line_break_counts_its_stored_one(shop):
+    """Its file keeps one line break more (project_secrets.stored), and the file is what
+    the reader limits: a value the agents would not get is refused."""
+    projects.set_secret(shop, "EDGE", "a" * (64 * 1024 - 2) + "\n")
+    assert project_secrets.read(shop).values["EDGE"].endswith("a\n")
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.set_secret(shop, "BIG", "a" * (64 * 1024 - 1) + "\n")
+    assert str(refused.value) == "the value of BIG is larger than 64 KiB"
+    assert "BIG" not in projects.secrets(shop)
+
+
+@pytest.mark.parametrize("value", ["\n", "\r\n", "x\n", "\n\n"])
+def test_a_line_break_is_a_value_the_agents_get_whole(shop, value):
+    projects.set_secret(shop, "V", value)
+    assert project_secrets.read(shop).values == {"V": value}
+
+
 def test_a_secret_of_an_unknown_project(lado_home):
     for call in (
         lambda: projects.set_secret("nope", "GH_TOKEN", "x"),
@@ -267,6 +284,21 @@ def test_a_secret_is_not_set_as_a_plain_variable(shop):
     )
     assert state.project_variables(shop) == {}
     assert secret_file("DATABASE_URL").read_text() == "postgres://x"
+
+
+@pytest.mark.parametrize("make", ["loose", "link"])
+def test_a_secret_file_the_agents_do_not_get_still_holds_its_name(shop, tmp_path, make):
+    """One value per name by the file's presence, not by whether the agents get it now: a
+    chmod back to 600 would give the name two values."""
+    projects.set_secret(shop, "DATABASE_URL", "postgres://s")
+    if make == "loose":
+        secret_file("DATABASE_URL").chmod(0o644)
+    else:
+        os.rename(secret_file("DATABASE_URL"), tmp_path / "t")
+        secret_file("DATABASE_URL").symlink_to(tmp_path / "t")
+    with pytest.raises(projects.ProjectError, match="DATABASE_URL is a secret of shop"):
+        projects.set_variable(shop, "DATABASE_URL", "postgres://p")
+    assert state.project_variables(shop) == {}
 
 
 def test_unset_removes_either_kind(shop):

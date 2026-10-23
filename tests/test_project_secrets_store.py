@@ -60,6 +60,22 @@ def test_a_write_replaces_the_value_and_leaves_no_other_file(home):
     assert os.listdir(folder) == ["GH_TOKEN"]
 
 
+@pytest.mark.parametrize(
+    "value", ["x", "x\n", "\n", "x\n\n", "x\r\n", "x\r", "\r\n", "a\nb", " x \t"]
+)
+def test_the_reader_gives_back_exactly_the_value_written(home, value):
+    """The reader drops one line break at a file's end (the outside folder's rule): a value
+    ending in one is written with one more, so no line break of the value is lost."""
+    project_secrets.write("shop", "V", value)
+    assert project_secrets.read("shop").values == {"V": value}
+
+
+def test_the_stored_form_of_a_value(home):
+    assert project_secrets.stored("x") == b"x"
+    assert project_secrets.stored("x\n") == b"x\n\n"
+    assert project_secrets.stored("é\r") == "é\r".encode()
+
+
 def test_a_failed_write_keeps_the_old_value_and_no_temporary_file(home, monkeypatch):
     project_secrets.write("shop", "GH_TOKEN", "ghp_1")
 
@@ -135,7 +151,7 @@ def test_read_gives_the_secrets_by_the_one_reader(home):
     (secrets_of(home) / "CODEX_HOME").write_text("x")
     (secrets_of(home) / "CODEX_HOME").chmod(0o600)
     found = project_secrets.read("shop")
-    assert found == agent_env.Folder({"GH_TOKEN": "g"}, [("CODEX_HOME", "a reserved name")])
+    assert found == agent_env.Folder({"GH_TOKEN": "g\n"}, [("CODEX_HOME", "a reserved name")])
     assert project_secrets.read("acme") == agent_env.Folder({}, [])
 
 

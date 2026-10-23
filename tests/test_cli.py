@@ -3292,9 +3292,12 @@ def secret_file(name: str) -> Path:
         ("ghp_2", "ghp_2"),
         ("line1\nline2\n", "line1\nline2"),
         ("a=b c é\n\n", "a=b c é\n"),
+        ("x\r\n\r\n", "x\r\n"),
+        ("\n\n", "\n"),  # one line break dropped: a line break is left, a value
     ],
 )
 def test_project_set_secret_from_a_pipe(shop, capsys, monkeypatch, given, stored):
+    """`stored` is what the agents get: one line break of stdin's end dropped, no more."""
     monkeypatch.setattr("sys.stdin", Stdin(given))
     monkeypatch.setattr("getpass.getpass", lambda prompt: pytest.fail("asked"))
     assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 0
@@ -3302,7 +3305,7 @@ def test_project_set_secret_from_a_pipe(shop, capsys, monkeypatch, given, stored
         "Set secret GH_TOKEN in project shop.",
         "Agents started from now on get it.",
     ]
-    assert secret_file("GH_TOKEN").read_text() == stored
+    assert project_secrets.read("shop").values == {"GH_TOKEN": stored}
     assert state.project_variables("shop") == {}
 
 

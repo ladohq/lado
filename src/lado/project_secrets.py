@@ -55,6 +55,19 @@ def reserved(name: str) -> bool:
     return name in providers.base.CLI_VARIABLES
 
 
+def stored(value: str) -> bytes:
+    """A value as its file holds it: the reader drops one line break at a file's end (the
+    outside folder's rule), so a value ending in one is stored with one more and given
+    whole."""
+    return value.encode() + (b"\n" if value.endswith("\n") else b"")
+
+
+def held(id: str, name: str) -> bool:
+    """Whether the secrets folder of `id` has an entry `name`, also one the agents do not
+    get now (a link, a loose mode): the name is taken all the same."""
+    return os.path.lexists(folder(id) / name)
+
+
 def read(id: str) -> agent_env.Folder:
     """The project's secrets as an agent gets them, and each file not given with why."""
     return agent_env.read_folder(str(folder(id)), own=reserved)
@@ -137,7 +150,7 @@ def write(id: str, name: str, value: str) -> None:
         try:
             try:
                 os.fchmod(out, FILE_MODE)
-                data = memoryview(value.encode())
+                data = memoryview(stored(value))
                 while data:
                     data = data[os.write(out, data) :]
                 os.fsync(out)

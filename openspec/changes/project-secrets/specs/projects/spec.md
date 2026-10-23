@@ -30,6 +30,10 @@ whole of stdin as the value, one line break at its end (`\n` or `\r\n`) dropped.
 - **WHEN** stdin holds `line1\nline2\n`
 - **THEN** the secret is `line1\nline2`
 
+#### Scenario: Two line breaks at the end
+- **WHEN** stdin holds `x\n\n`
+- **THEN** the agents of the project's sessions get `x\n`: one line break is dropped, no more
+
 ### Requirement: A secret's value is never given on the command line
 
 `lado project set <id> NAME VALUE --secret` SHALL refuse, exit 1 with `lado: a secret's

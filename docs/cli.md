@@ -81,7 +81,10 @@ written beside its name and renamed over it, so a reader finds the old value or 
 one whole) and never shown again; every agent of the project's sessions gets it as it gets
 a plain variable. On a terminal it asks `Value of <NAME> (not shown): ` and reads one line
 without echo; otherwise it reads the whole of stdin, one line break at its end (`\n` or
-`\r\n`) dropped (`printf '%s' "$TOKEN" | lado project set shop GH_TOKEN --secret`). It
+`\r\n`) dropped (`printf '%s' "$TOKEN" | lado project set shop GH_TOKEN --secret`); the
+agents get the value so read whole, its own line breaks kept (its file holds one more when
+it ends in one, as the reader drops one, so such a value counts a byte more against 64
+KiB). It
 prints `Set secret <NAME> in project <id>.` and the agents' line above. It refuses, exit 1,
 storing nothing: a value on the command line, before it reads anything (`a secret's value
 is never given on the command line (ps and the shell's history keep it); run lado project

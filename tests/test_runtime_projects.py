@@ -295,6 +295,14 @@ def test_the_agents_of_a_session_in_a_project_get_its_secrets(shop, fake_tmux, t
     assert "MODEL_KEY" not in agent_helpers.launched(fake_tmux[-1])[0]
 
 
+def test_a_secret_ending_in_a_line_break_reaches_the_agent_whole(shop, fake_tmux):
+    projects.set_secret("shop", "SHOP_TOKEN", "x\n")
+    projects.set_secret("shop", "SHOP_KEY", "\n")
+    _start(project="shop", repo_name="frontend")
+    env, _ = agent_helpers.launched(fake_tmux[0])
+    assert (env["SHOP_TOKEN"], env["SHOP_KEY"]) == ("x\n", "\n")
+
+
 def test_a_resume_reads_the_secrets_anew(shop, fake_tmux):
     _start(project="shop", repo_name="frontend")
     runtime.stop_session("shop-frontend")

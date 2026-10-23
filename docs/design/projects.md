@@ -274,7 +274,11 @@ secrets (step S5b).
   symbolic link, or that others may read, write or enter, is not given and is named.
   Writing and removing open every folder from `<LADO_HOME>/projects` down without following
   a link: a link anywhere on the way is refused, never followed (`LADO_HOME` itself may be
-  one). A new project refuses an id whose data folder is left from a failed deletion.
+  one). A new project refuses an id whose data folder is left from a failed deletion. A
+  value ending in a line break is written with one more (`project_secrets.stored`), so the
+  reader's drop gives it back whole and a value of line breaks only is never empty for
+  the agents. Whether a name is taken goes by the file's presence, also one the agents do
+  not get now (a loose mode, a link): `chmod 600` never gives a name two values.
 - **The project folder**: in `<workspace>/projects/`.
 
 In LADO's image `~/.lado` is on the container's home volume, not in the workspace. So the

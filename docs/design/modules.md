@@ -393,7 +393,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `<LADO_HOME>/projects` down is opened relative to the one above with `O_NOFOLLOW`
     (`_chain`): a link on the way is `LinkRefused`, never followed; `LADO_HOME` itself may be
     a link. `write` makes missing folders and `fchmod`s each 700, writes `.<name>.<random>.tmp`
-    (600, `O_EXCL | O_NOFOLLOW`), `fsync`s, renames it over the name and `fsync`s the folder;
+    (600, `O_EXCL | O_NOFOLLOW`) with the value's `stored` form (one line break more when it
+    ends in one, which the reader drops), `fsync`s, renames it over the name and `fsync`s
+    the folder; `held` says a name is taken by any entry of the folder;
     a failure removes the temporary file and keeps the old value. `remove`, `check_removable`
     (no link on the way or anywhere in the data folder) and `remove_all` (by `dir_fd`). `read`
     is `agent_env.read_folder(own=reserved)`, for a launch and `lado doctor` only; `names`

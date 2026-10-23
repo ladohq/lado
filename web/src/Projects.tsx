@@ -41,16 +41,21 @@ function useReadAnew(read: () => void) {
   }, [read]);
 }
 
-// The latest of overlapping reads wins: an older answer that comes later is dropped.
+// The latest of overlapping reads wins: an older answer that comes later is dropped, and
+// so is every answer of a read begun before `drop` (a change's own answer is newer).
 function useLatest<T>(ask: () => Promise<T>, take: (result: { value: T } | { error: unknown }) => void) {
   const asked = useRef(0);
-  return useCallback(() => {
+  const read = useCallback(() => {
     const mine = ++asked.current;
     ask().then(
       (value) => mine === asked.current && take({ value }),
       (error: unknown) => mine === asked.current && take({ error }),
     );
   }, [ask, take]);
+  const drop = useCallback(() => {
+    asked.current += 1;
+  }, []);
+  return { read, drop };
 }
 
 type Listed = { projects: ProjectSummary[] } | { error: string } | null;
@@ -65,7 +70,7 @@ export function Projects() {
   const [listed, setListed] = useState<Listed>(null);
   const [query, setQuery] = useState("");
   const [making, setMaking] = useState(false);
-  const reload = useLatest(
+  const { read: reload } = useLatest(
     listProjects,
     useCallback((result) => setListed("value" in result ? { projects: result.value } : { error: messageOf(result.error) }), []),
   );
@@ -177,7 +182,7 @@ export function ProjectPage() {
   const phone = usePhone();
   const [shown, setShown] = useState<Shown>(null);
   const ask = useCallback(() => getProject(id), [id]);
-  const read = useLatest(
+  const { read, drop } = useLatest(
     ask,
     useCallback(
       (result) =>
@@ -195,6 +200,7 @@ export function ProjectPage() {
   useEffect(() => setShown(null), [id]);
   useReadAnew(read);
   const changed = (project: ProjectInfo) => {
+    drop(); // a read begun before the change would show the project as it was
     setShown({ project });
     reload();
   };

@@ -80,6 +80,8 @@ export class FakeProjects {
   asked: Asked[] = [];
   // While set, GET /api/project-id answers only once it resolves.
   held: Promise<void> | null = null;
+  // While set, a GET of `path` answers what it read when asked, only once `release` resolves.
+  stale: { path: string; release: Promise<void> } | null = null;
   refuse: (asked: Asked) => string | null = () => null;
   suggest: (title: string | null, id: string | null) => { id: string | null; folder: string | null; problem: string | null } = (
     title,
@@ -106,6 +108,13 @@ export class FakeProjects {
           this.asked.push({ method: "GET", path, body: undefined });
           await held;
           return this.answer(path, init, false);
+        }
+        // A slow read of a project: answered as the project was when asked, once `stale` lets go.
+        if (this.stale && path === this.stale.path && (init?.method ?? "GET") === "GET") {
+          const { release } = this.stale;
+          const then = this.answer(path, init);
+          await release;
+          return then;
         }
         return this.answer(path, init);
       }),

@@ -283,3 +283,27 @@ test("Create waits for the id of the title as it is now", async () => {
   await waitFor(() => expect(field("Id").value).toBe("shop-eu"));
   await waitFor(() => expect(create().disabled).toBe(false));
 });
+
+test("a read begun before a change does not bring the page back to before it", async () => {
+  open("/projects/shop");
+  const page = await screen.findByRole("region", { name: "Project shop" });
+  let release = () => {};
+  server.stale = { path: "/api/projects/shop", release: new Promise((resolve) => (release = resolve)) };
+  act(() => {
+    window.dispatchEvent(new Event("focus")); // the click that saves also focuses the window
+  });
+  await waitFor(() => expect(server.calls("GET", "/api/projects/shop").length).toBeGreaterThan(1));
+  const variables = within(page).getByRole("region", { name: "Variables" });
+  fireEvent.click(within(variables).getByRole("button", { name: "Edit" }));
+  fireEvent.change(within(variables).getByRole("textbox", { name: "Value of BOARD_URL" }), {
+    target: { value: "https://new" },
+  });
+  fireEvent.click(within(variables).getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(within(variables).getByText("https://new")).toBeTruthy());
+  server.stale = null;
+  await act(async () => release());
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(within(variables).getByText("https://new")).toBeTruthy();
+});

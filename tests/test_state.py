@@ -437,6 +437,30 @@ def test_a_project_being_made_stays_only_when_its_block_ends_well(lado_home):
             pass
 
 
+def test_the_migration_marks_the_windows_of_the_agents_there_as_opened(lado_home):
+    """They were started by an older LADO and run: the window check treats them as before."""
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "idle", "claude"))
+    agent_helpers.schema_before(35)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    columns = _agent_columns(db)
+    db.close()
+    assert "window_at" not in columns
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (34, 35)
+    agent = state.get_agent("s", "w1")
+    assert agent.window_at == agent.created_at != ""
+
+
+def test_an_agent_has_no_window_mark_until_its_window_opened(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
+    assert state.get_agent("s", "w1").window_at is None
+    state.window_opened("s", "w1")
+    assert state.get_agent("s", "w1").window_at
+    state.window_opened("s", "gone")  # a spawn that failed forgot it: no error
+
+
 PROJECT_VARIABLES_TABLE = "SELECT sql FROM sqlite_master WHERE name = 'project_variables'"
 
 
@@ -451,7 +475,7 @@ def test_the_migration_makes_the_project_variables_table_as_a_new_database_has_i
     assert db.execute(PROJECT_VARIABLES_TABLE).fetchone() is None
     db.close()
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (33, 34)
+    assert (migrated.before, migrated.after) == (33, 35)
     assert migrated.backup == lado_home / "backups" / "lado.db.schema-33"
     with state.connect() as db:
         assert db.execute(PROJECT_VARIABLES_TABLE).fetchone()[0] == fresh
@@ -886,6 +910,10 @@ def test_migrate_makes_no_database(lado_home):
     assert not (lado_home / "lado.db").exists()
 
 
+def _agent_columns(db: sqlite3.Connection) -> list[str]:
+    return [row[1] for row in db.execute("PRAGMA table_info(agents)")]
+
+
 def _schema(path: Path) -> int:
     with contextlib.closing(sqlite3.connect(path)) as db:
         return db.execute("PRAGMA user_version").fetchone()[0]
@@ -906,8 +934,8 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
-        variables = db.execute(PROJECT_VARIABLES_TABLE).fetchone()
-    assert variables is None  # the content before the migration
+        columns = _agent_columns(db)
+    assert "window_at" not in columns  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -959,7 +987,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert db.execute(PROJECT_VARIABLES_TABLE).fetchone() is None  # rolled back
+        assert "window_at" not in _agent_columns(db)  # rolled back
 
 
 def test_no_pending_migration_without_a_database(lado_home):

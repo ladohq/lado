@@ -19,7 +19,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 34
+SCHEMA_VERSION = 35
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -944,6 +944,14 @@ CREATE TABLE IF NOT EXISTS project_variables (
 SCHEMA += PROJECT_VARIABLES_TABLE + ";\n"
 MIGRATIONS[33] = [PROJECT_VARIABLES_TABLE]
 
+# From version 35: when the agent's window opened (window_opened), NULL while its spawn has
+# not made it; the session loop's window check waits for it (lado.runtime.check_windows).
+# The agents of an older LADO run already: their windows count as opened.
+AGENTS_WINDOW_AT = "ALTER TABLE agents ADD COLUMN window_at TEXT"
+AGENTS_WINDOWS_OPENED = "UPDATE agents SET window_at = created_at"
+SCHEMA += AGENTS_WINDOW_AT + ";\n"
+MIGRATIONS[34] = [AGENTS_WINDOW_AT, AGENTS_WINDOWS_OPENED]
+
 # Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
 # approval or choice gate. An override is the human's past the flow (flow-set's reason, an
 # answer at a loop limit): kept, but never taken for the state's report.
@@ -969,6 +977,7 @@ class Agent:
     resumes: int = 0  # how many times it was told so since its last other turn's end
     read_only: bool = False  # its role changes nothing in the repository (lado.kits)
     created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS", when it was added; set by the database
+    window_at: str | None = None  # UTC, when its window opened (window_opened); None before
 
 
 @dataclass
@@ -1623,6 +1632,16 @@ def add_agent(agent: Agent) -> None:
                 agent.run,
                 int(agent.read_only),
             ),
+        )
+
+
+def window_opened(session: str, name: str) -> None:
+    """Mark that tmux made the agent's window, now. A row that is gone is no error."""
+    with connect() as db:
+        db.execute(
+            "UPDATE agents SET window_at = strftime('%Y-%m-%d %H:%M:%f', 'now')"
+            " WHERE session = ? AND name = ?",
+            (session, name),
         )
 
 
@@ -3117,6 +3136,7 @@ def _agent(row: sqlite3.Row) -> Agent:
         resumes=row["resumes"],
         read_only=bool(row["read_only"]),
         created_at=row["created_at"],
+        window_at=row["window_at"],
     )
 
 

@@ -97,7 +97,8 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function useDebounced<T>(value: T, ms = DEBOUNCE): T {
+// A value as it was once it stopped changing for `ms`: one request per pause in typing.
+export function useDebounced<T>(value: T, ms = DEBOUNCE): T {
   const [settled, setSettled] = useState(value);
   useEffect(() => {
     const timer = setTimeout(() => setSettled(value), ms);

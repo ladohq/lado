@@ -4,8 +4,10 @@ model: docs/design/projects.md).
 
 This module alone writes and removes them, and lado.projects keeps their rules. The human
 sets them (the CLI, the server); nothing reads a value back but the launch of an agent of
-a session in the project (lado.runtime._base_env) and `lado doctor`, both through the one
-reader of variable folders (lado.agent_env.read_folder). Listing them never opens a file.
+a session in the project (lado.runtime._base_env), and `lado doctor` and the server's
+answer of a project (`unused`), which read the folder to say which files the agents do not
+get and let no value out, all through the one reader of variable folders
+(lado.agent_env.read_folder). Listing them never opens a file.
 
 Every folder from `<LADO_HOME>/projects` down is opened without following a symbolic link,
 each relative to the one above, so a link anywhere on the way is refused, not followed;
@@ -79,10 +81,17 @@ def read(id: str) -> agent_env.Folder:
     return agent_env.read_folder(str(folder(id)), own=reserved)
 
 
+def unused(id: str) -> list[tuple[str | None, str]]:
+    """Each entry of the project's secrets folder its agents do not get, by name with why
+    (None for the folder itself), as `read` finds them; the values it reads stay here."""
+    return [(name or None, reason) for name, reason in read(id).unused]
+
+
 def names(id: str) -> list[str]:
     """The names of the project's secrets, sorted, without opening a file: the files the
-    reader takes by what needs no content (a file it still cannot give, for its size or
-    content, `lado doctor` names). None while the folder is unused (a link, loose)."""
+    reader takes by what needs no content, and a file of a loose mode, which a replace mends
+    (a file it still cannot give, for its mode, size or content, `unused` names). None while
+    the folder is unused (a link, loose)."""
     where = str(folder(id))
     if agent_env.check_own_folder(where) != "":
         return []
@@ -91,7 +100,8 @@ def names(id: str) -> list[str]:
             return sorted(
                 entry.name
                 for entry in found
-                if not entry.name.startswith(".") and not agent_env.check_entry(entry, reserved)
+                if not entry.name.startswith(".")
+                and agent_env.check_entry(entry, reserved) in ("", agent_env.LOOSE_FILE)
             )
     except OSError:
         return []

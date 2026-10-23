@@ -135,6 +135,9 @@ test("a session in a project has the project's title above the folder in the det
   await waitFor(() => expect(sheet().textContent).toContain("ProjectShop"));
   const terms = [...sheet().querySelectorAll("dt")].map((term) => term.textContent);
   expect(terms.slice(0, 2)).toEqual(["Project", "Folder"]);
+  const link = within(sheet()).getByRole("link", { name: "Shop" });
+  expect(link.getAttribute("href")).toBe("/projects/shop");
+  expect(link.closest("dd")!.getAttribute("title")).toBe("Project shop");
 });
 
 test("a session without a project has no Project line in the details", async () => {

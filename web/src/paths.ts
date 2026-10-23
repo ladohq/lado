@@ -53,6 +53,9 @@ export const VIEW_PARAM = "view";
 // /needs-you?view=<record>&session=<name>.
 export const VIEW_SESSION_PARAM = "session";
 
+// A project's page in the Projects section (Projects.tsx).
+export const projectPath = (id: string) => `/projects/${encodeURIComponent(id)}`;
+
 // The Needs you page (NeedsYou.tsx), whose rail link counts what waits.
 export const NEEDS_YOU_PATH = "/needs-you";
 
@@ -77,5 +80,5 @@ export const PLANS = {
   flows: ui("flows", "Flows"),
   artifacts: ui("artifacts", "Artifacts"),
   providers: ui("providers-and-environment", "Providers and environment"),
-  projects: { label: "Roadmap, Later: Projects", href: `${REPO}/ROADMAP.md#later-after-stage-7` },
+  projects: { label: "Projects, step S7", href: `${REPO}/docs/design/projects.md#how-it-is-built` },
 } satisfies Record<string, Plan>;

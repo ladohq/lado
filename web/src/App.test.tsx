@@ -64,6 +64,8 @@ function serve(status = 200, body: unknown = SESSIONS, events?: { status: number
     if (path.startsWith("/api/bug-report?")) {
       return new Response(JSON.stringify({ title: "", text: "### What happened\n", url: "https://github.com/", left_out: 0 }));
     }
+    // The Projects section's list (Projects.test.tsx).
+    if (path === "/api/projects") return new Response("[]");
     // The Kits page's lists (Kits.test.tsx).
     if (path.startsWith("/api/kits/") || path === "/api/marketplaces") return new Response("[]");
     expect(path).toBe("/api/sessions");
@@ -165,10 +167,7 @@ test("following a rail link opens its section", () => {
   expect(heading()).toBe("Kits");
 });
 
-test.each([
-  ["/", "Home", /docs\/design\/ui\.md#home/],
-  ["/projects", "Projects", /ROADMAP\.md#later-after-stage-7/],
-])("%s is a placeholder that links to its plan item", (path, title, plan) => {
+test.each([["/", "Home", /docs\/design\/ui\.md#home/]])("%s is a placeholder that links to its plan item", (path, title, plan) => {
   open(path);
   const placeholder = screen.getByRole("region", { name: title });
   const link = within(placeholder).getByRole("link", { name: /plan/i });

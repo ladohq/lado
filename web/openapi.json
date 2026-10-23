@@ -810,6 +810,132 @@
         }
       }
     },
+    "/api/projects": {
+      "get": {
+        "summary": "List Projects",
+        "description": "Every project by id with its repositories counted and its sessions that run;\nnone without a lado.db, which asking does not make.",
+        "operationId": "list_projects_api_projects_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Projects Api Projects Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "New Project",
+        "description": "Make a project as `lado project create` does, lado.db with it when missing.",
+        "operationId": "new_project_api_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectNew"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project-id": {
+      "get": {
+        "summary": "Project Id",
+        "description": "The id New project offers for `title`, or `id` as typed, with its folder and why\n`lado project create` would refuse it; asking makes nothing.",
+        "operationId": "project_id_api_project_id_get",
+        "parameters": [
+          {
+            "name": "title",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectId"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{id}": {
       "get": {
         "summary": "Project",
@@ -6068,6 +6194,51 @@
         "type": "object",
         "title": "PlanUpdateAsk"
       },
+      "ProjectId": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "folder",
+          "problem"
+        ],
+        "title": "ProjectId",
+        "description": "The id New project offers for a title (or the one typed), its folder, and why\n`lado project create` would refuse it; asking makes nothing."
+      },
       "ProjectInfo": {
         "properties": {
           "id": {
@@ -6113,6 +6284,27 @@
             },
             "type": "array",
             "title": "Secrets"
+          },
+          "running": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Running"
+          },
+          "overrides": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Overrides"
+          },
+          "unused": {
+            "items": {
+              "$ref": "#/components/schemas/UnusedSecret"
+            },
+            "type": "array",
+            "title": "Unused"
           }
         },
         "type": "object",
@@ -6123,10 +6315,38 @@
           "found",
           "repos",
           "variables",
-          "secrets"
+          "secrets",
+          "running",
+          "overrides",
+          "unused"
         ],
         "title": "ProjectInfo",
         "description": "A project with its repositories as the disk has them now, its variables and the\nnames of its secrets."
+      },
+      "ProjectNew": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "ProjectNew",
+        "description": "A project to make, as `lado project create` makes it."
       },
       "ProjectRef": {
         "properties": {
@@ -6196,6 +6416,55 @@
         ],
         "title": "ProjectRepo",
         "description": "A repository of a project, read from its folder (lado.projects.repositories)."
+      },
+      "ProjectSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "folder": {
+            "type": "string",
+            "title": "Folder"
+          },
+          "found": {
+            "type": "boolean",
+            "title": "Found"
+          },
+          "repos": {
+            "type": "integer",
+            "title": "Repos"
+          },
+          "running": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Running"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "folder",
+          "found",
+          "repos",
+          "running"
+        ],
+        "title": "ProjectSummary",
+        "description": "A project in the list of the Projects section."
       },
       "ProjectVariable": {
         "properties": {
@@ -7883,6 +8152,32 @@
         ],
         "title": "Transition",
         "description": "A flow event's move, as state.transition reads its detail."
+      },
+      "UnusedSecret": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "reason"
+        ],
+        "title": "UnusedSecret",
+        "description": "An entry of a project's secrets folder its agents do not get, with why; `name` None\nfor the folder itself. Never a value."
       },
       "UpdateAsk": {
         "properties": {

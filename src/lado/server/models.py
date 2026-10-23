@@ -751,6 +751,14 @@ class ProjectVariable(BaseModel):
     value: str
 
 
+class UnusedSecret(BaseModel):
+    """An entry of a project's secrets folder its agents do not get, with why; `name` None
+    for the folder itself. Never a value."""
+
+    name: str | None
+    reason: str
+
+
 class ProjectInfo(BaseModel):
     """A project with its repositories as the disk has them now, its variables and the
     names of its secrets."""
@@ -762,6 +770,36 @@ class ProjectInfo(BaseModel):
     repos: list[ProjectRepo]
     variables: list[ProjectVariable]  # by name
     secrets: list[str]  # names only (lado.project_secrets.names): no value is ever given
+    running: list[str]  # its sessions not stopped, by name
+    overrides: list[str]  # names the outside folder gives too (lado.projects.overrides)
+    unused: list[UnusedSecret]  # what its agents do not get (lado.project_secrets.unused)
+
+
+class ProjectSummary(BaseModel):
+    """A project in the list of the Projects section."""
+
+    id: str
+    title: str | None
+    folder: str
+    found: bool
+    repos: int  # how many repositories its folder has now (0 when it is not found)
+    running: list[str]  # its sessions not stopped, by name
+
+
+class ProjectNew(BaseModel):
+    """A project to make, as `lado project create` makes it."""
+
+    id: str
+    title: str | None = None
+
+
+class ProjectId(BaseModel):
+    """The id New project offers for a title (or the one typed), its folder, and why
+    `lado project create` would refuse it; asking makes nothing."""
+
+    id: str | None
+    folder: str | None
+    problem: str | None
 
 
 class VariableValue(BaseModel):

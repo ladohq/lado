@@ -696,16 +696,13 @@ Sessions for now. The UI's texts are in English.
   own) and Usage statistics (below). New sections go below.
 - **Placeholders**: one component, with the section's name, one sentence on what it will
   hold, and a link to the plan item that builds it. A placeholder is allowed only when its
-  section has an item in ROADMAP.md or in Tasks below: Projects is ROADMAP's "Later (after
-  stage 7)", the others are Tasks here. Projects' sentence: "Each project is a folder in
-  your workspace with its repositories and its own environment variables, so sessions for
-  different clients get different keys." (LAD-117; the model, and the step S6 that
-  replaces the placeholder: [projects.md](projects.md)).
+  section has an item in ROADMAP.md or in Tasks below: they are Tasks here. Projects was
+  one until step S6a (Projects, below).
 - **Addresses**: `/` Home, `/needs-you`, `/sessions`, `/sessions/<name>/<tab>` (tab:
   activity, agents, flows, artifacts; without one, activity), a flow run's page
   `/sessions/<name>/flows/<run>` (Flows below), an agent's page
   `/sessions/<name>/agents/<agent>` (Agents below; another tab has no pages),
-  `/projects`,
+  `/projects`, a project's page `/projects/<id>` (Projects below),
   `/kits`, `/kits/<tab>` (installed, available, updates; without one, installed),
   `/settings`; `/marketplace` of earlier versions goes (replaced) to `/kits`. Anything else
   is Not found with a link to Home.
@@ -1338,7 +1335,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   URL made first (the switch **From scratch | Folder | Clone from URL** beside its label,
   below); the start's request is the same for a folder and a clone (its `where` is
   `{kind: "folder", path}`), from scratch it is `{kind: "scratch", path}`; another kind is
-  refused; a session in a project will be the window's fourth way (step S6 of
+  refused; a session in a project will be the window's fourth way (step S6b of
   [projects.md](projects.md), not built yet). The path
   is typed (`~` allowed, a relative path refused), and checked by `GET /api/folders`:
   under the field "✓ git repository · branch X", or the core's reason from
@@ -1502,7 +1499,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   LADO never clones over, fetches into or switches the branch of a folder that exists.
   The clone is a job of the server (`server/clones.py`): `POST /api/clones` (`{url, path,
   branch}`, or `{url, project, name, branch}` for a repository added to a project, which no
-  screen sends yet (steps S6, S7; docs/design/projects.md); 400 `CloneRefused`, 404 for an
+  screen sends yet (steps S6b, S7; docs/design/projects.md); 400 `CloneRefused`, 404 for an
   unknown project, 409 while another job clones into that folder) starts it,
   and the window asks `GET /api/clones/{id}` every 500 ms: a progress block with git's
   phase, its percent with a bar (`role="progressbar"`), the rest of git's line and the
@@ -1606,6 +1603,63 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   open session is among the forgotten, the page goes to `/sessions`. No API of its own:
   the core decides each session.
 
+### Projects (decided 2026-10-23, LAD-134)
+
+The Projects section (`Projects.tsx`, `ProjectVariables.tsx`; step S6a of
+[projects.md](projects.md); the mockup `task/lad-134/mockup-projects.html`, the human's
+answers #1151, #1153 and #1158) lists the projects and shows one with its variables and
+secrets. A project's repositories, sessions, rename and delete are its page's step S7; the
+Project way of New session is S6b.
+
+- **Layout**, as Sessions: the list at the left (260 px), the project at the right at
+  `/projects/<id>`; on a phone the list fills the screen and a project opens in its place
+  with `← All projects` above it. Not cards.
+- **The list** (`GET /api/projects`): a row is the title (the id without one), the mark
+  `folder not found` when its folder is missing, then `<id> · <N> repositories · <N>
+  running` (`no sessions running` when none runs). A search by title and id, and a `+`
+  labelled `New project`. With no project the section is the empty state `No projects
+  yet`, a sentence on what a project is, and `New project…`. An unknown id shows `No
+  project <id>`.
+- **No feed**: projects are not journaled and secrets are files, so the list and the page
+  are read anew (`GET /api/projects`, `GET /api/projects/{id}`) when they open, after a
+  change (the change's answer carries the project), when a session of the feed appears,
+  starts, stops or goes, and when the window gets the focus. A change in another browser
+  shows on the next of these.
+- **The page**: the title and the id; `<N> repositories · <N> sessions running · folder
+  <folder>` (`folder not found` after it); the line `Repositories, sessions, renaming and
+  deleting the project: not built yet. Plan: Projects, step S7. Meanwhile: lado project
+  show <id>, lado project repo add <id> <git-url>.`; always the warning `⚠ Projects of one
+  LADO are not isolated from each other: …`; and the line on who gets a change: `New values
+  reach the agents started after a change; running agents keep the environment they
+  started with. Running now: <sessions> — restart a session to give it the change.`, each
+  session by its title as a link (with none: `… No session of this project is running.`).
+- **Variables** and **Secrets**, two blocks of rows. A variable: its name and value,
+  **Edit** in place (Save, Cancel), **Remove**, and `+ Add variable`. A secret: its name
+  and `set · hidden`, **Replace** (an empty field, `New value (the old one is not shown)`),
+  **Remove**, and `+ Add secret`. Remove turns the row into `Remove <NAME>? Remove ·
+  Cancel`; only the second Remove sends the `DELETE`. The core's refusal shows verbatim
+  under the row or the form (`field-note bad`), the fields kept; the variable's `… looks
+  like a secret …` offers `Add <NAME> as a secret instead`, which moves the name, never the
+  value, to the secret's form. A name in `overrides` carries the mark `overrides outside
+  value`, its tooltip naming `LADO_ENV_DIR`; an outside value is never shown. A secret in
+  `unused` shows `⚠ Agents do not get it: <reason>` in place of `set · hidden`, Replace
+  (which writes the file 600) and Remove kept; an `unused` entry that is no secret's row
+  shows under the block (`⚠ <name>: agents do not get it: …`, `⚠ The secrets folder is not
+  used: …`).
+- **A secret's value** is typed into an uncontrolled `<input type="password"
+  autocomplete="off">` outside any `<form>` (form history and "save password" follow a
+  submission), read from it when the human sends it, and sent as `{value}` in the body of
+  one `PUT /api/projects/{id}/secrets/{name}`; the field is emptied after a save, on
+  Cancel and when it goes. After a refusal it stays in the open field so the name can be
+  fixed. It is never put in React's state, an address, the browser's storage, the console
+  or an error the page keeps; the server logs no request (`access_log=False`).
+- **New project**, a dialog: Title (optional), Id, the short warning, Cancel and **Create
+  project**. Until the human types in Id, Id follows the title (`GET
+  /api/project-id?title=`, one request per pause in typing, the fresh start's names:
+  Cyrillic transliterated, `_` made `-`); a typed Id is checked by `?id=`. Under Id: `Its
+  folder: <folder>. The id never changes.`, or the core's refusal, which disables Create.
+  Create sends `POST /api/projects`; a refusal shows under Id, success opens the project.
+
 ### Session head (decided 2026-10-07, feature/session-head)
 
 On a phone the head is one line and its facts are in a sheet its title opens (Phone
@@ -1629,7 +1683,8 @@ layout, below).
   comes with `SessionAbout.project`, read when the head opens, so a rename shows on the
   next look; the feed's `SessionInfo.project` carries the id only. On a phone the details
   sheet has a line **Project** `<title>` above **Folder**. A session without a project
-  shows nothing new; the project is text, not a link, until the Projects section (S6).
+  shows nothing new. The title, in the head and in the sheet, is a link to the project's
+  page `/projects/<id>` (LAD-134), the tooltip kept.
 - The head's facts, left to right: where (the folder, then its git: the origin
   remote short, `github.com/ladohq/lado`, without scheme, user and `.git`, and `· <branch>`),
   the kits, the CLI (its permission mode is in its tooltip, below; decided 2026-10-08,

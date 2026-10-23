@@ -1483,6 +1483,8 @@ test("a session in a project has the project as the first fact, its title shown 
   expect(first.getAttribute("title")).toBe("Project shop");
   expect(first.querySelector(".session-project-title")?.textContent).toBe("Shop");
   expect(second.textContent).toBe("/src/lado");
+  // The title is a link to the project's page (the Projects section).
+  expect(within(first as HTMLElement).getByRole("link", { name: "Shop" }).getAttribute("href")).toBe("/projects/shop");
 });
 
 test("a project without a title is shown by its id; a session without one shows nothing new", async () => {

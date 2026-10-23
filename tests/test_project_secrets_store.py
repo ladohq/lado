@@ -256,3 +256,30 @@ def test_lado_home_itself_may_be_a_link(tmp_path, monkeypatch):
     monkeypatch.setenv("LADO_HOME", str(tmp_path / "home"))
     project_secrets.write("shop", "GH_TOKEN", "g")
     assert (real / "projects" / "shop" / "secrets" / "GH_TOKEN").read_text() == "g"
+
+
+def test_unused_names_the_files_agents_do_not_get_without_a_value(home, tmp_path):
+    project_secrets.write("shop", "GH_TOKEN", "canary-good")
+    project_secrets.write("shop", "SENTRY_DSN", "canary-loose")
+    (secrets_of(home) / "SENTRY_DSN").chmod(0o644)
+    (tmp_path / "t").write_text("canary-link")
+    (secrets_of(home) / "LINKED").symlink_to(tmp_path / "t")
+    found = project_secrets.unused("shop")
+    assert found == [
+        ("LINKED", "a symbolic link"),
+        ("SENTRY_DSN", "readable or writable by others: chmod 600 it"),
+    ]
+    assert "canary-" not in repr(found)
+    assert project_secrets.unused("acme") == []
+    secrets_of(home).chmod(0o755)
+    assert project_secrets.unused("shop") == [
+        (None, "readable or writable by others: chmod 700 it")
+    ]
+
+
+def test_names_hold_a_loose_file_its_agents_do_not_get(home):
+    """A loose mode is the human's to mend by a replace: the name stays a secret (the page
+    shows it with Replace), as it stays taken (`held`)."""
+    project_secrets.write("shop", "SENTRY_DSN", "s")
+    (secrets_of(home) / "SENTRY_DSN").chmod(0o644)
+    assert project_secrets.names("shop") == ["SENTRY_DSN"]

@@ -86,8 +86,11 @@ from lado.server.models import (
     PlanAsk,
     PlanInfo,
     PlanUpdateAsk,
+    ProjectId,
     ProjectInfo,
+    ProjectNew,
     ProjectRepo,
+    ProjectSummary,
     ProviderInfo,
     RecentFolder,
     RecordView,
@@ -620,6 +623,32 @@ def create_app(
         whether it exists yet."""
         folder = projects.workspace()
         return Workspace(path=str(folder), made=folder.is_dir())
+
+    @app.get("/api/projects", dependencies=[Depends(guard)])
+    def list_projects(has_db: bool = Depends(database)) -> list[ProjectSummary]:
+        """Every project by id with its repositories counted and its sessions that run;
+        none without a lado.db, which asking does not make."""
+        return launch.project_summaries() if has_db else []
+
+    @app.post(
+        "/api/projects",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses={400: {"description": "refused, with the reason"}},
+    )
+    def new_project(given: ProjectNew) -> ProjectInfo:
+        """Make a project as `lado project create` does, lado.db with it when missing."""
+        try:
+            projects.create(given.id, given.title)
+        except runtime.LadoError as refused:
+            raise HTTPException(400, str(refused)) from refused
+        return launch.project_info(given.id)
+
+    # Not under /api/projects/: any word there may be a project's id.
+    @app.get("/api/project-id", dependencies=[Depends(guard), Depends(database)])
+    def project_id(title: str | None = None, id: str | None = None) -> ProjectId:
+        """The id New project offers for `title`, or `id` as typed, with its folder and why
+        `lado project create` would refuse it; asking makes nothing."""
+        return launch.project_id(title, id)
 
     @app.get("/api/projects/{id}", dependencies=[Depends(guard)])
     def project(id: str, has_db: bool = Depends(database)) -> ProjectInfo:

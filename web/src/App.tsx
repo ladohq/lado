@@ -5,7 +5,8 @@ import { Navigate, Route, Routes } from "react-router";
 import { ArtifactTabPage } from "./ArtifactTab";
 import { Kits } from "./Kits";
 import { NeedsYou } from "./NeedsYou";
-import { Home, NotFound, Projects } from "./pages";
+import { Home, NotFound } from "./pages";
+import { NoProject, ProjectPage, Projects } from "./Projects";
 import { ReportBug } from "./ReportBug";
 import { NoSession, Session, Sessions } from "./Sessions";
 import { Settings } from "./Settings";
@@ -24,7 +25,10 @@ export function App() {
           <Route path=":name/:tab" element={<Session />} />
           <Route path=":name/:tab/:item" element={<Session />} />
         </Route>
-        <Route path="projects" element={<Projects />} />
+        <Route path="projects" element={<Projects />}>
+          <Route index element={<NoProject />} />
+          <Route path=":id" element={<ProjectPage />} />
+        </Route>
         <Route path="kits/:tab?" element={<Kits />} />
         {/* The Marketplace page of earlier versions is the Kits page now. */}
         <Route path="marketplace" element={<Navigate to="/kits" replace />} />

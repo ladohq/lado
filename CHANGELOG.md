@@ -17,6 +17,9 @@
 - **A project's secrets.** `lado project set <id> NAME --secret` asks for a key without
   echo (or reads it from a pipe) and gives it to the project's agents only; it is kept in
   `~/.lado/projects/<id>/secrets/` and never shown again.
+- **Projects in the web UI.** The Projects section lists your projects, makes a new one,
+  and sets, replaces and removes a project's variables and secrets; a session's head links
+  to its project.
 
 ### Changed
 

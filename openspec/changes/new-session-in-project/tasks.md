@@ -28,6 +28,12 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-new-session-
   the page's link, the empty project, 390 px (D13). Check: `uv run pytest -m ui
   tests/ui/test_launch_project.py`.
 
+- [x] 3.3 Gate #107's conditions (the supervisor's recommendation, approved): the start
+  button reads `Start in <title>`; a UI e2e picks another project than the preselected one
+  and the session is in it (its head, `lado ls`); the longest project id and repository
+  name give a session name that starts. Check: `web/src/Launch.test.tsx`,
+  `tests/ui/test_launch_project.py`, `tests/test_runtime_projects.py`.
+
 ## 4. Docs and the regression run
 
 - [x] 4.1 `docs/design/ui.md`, `docs/design/projects.md`, CHANGELOG (D14). Check: `make

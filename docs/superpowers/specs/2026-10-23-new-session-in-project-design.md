@@ -35,8 +35,9 @@ light and dark).
   session running · folder …/projects/shop`, and the repositories as a list that is always
   there, even with one item: `frontend  main · github.com/shop/frontend`. Name reads
   `shop-frontend` until edited; Kits and Permission mode come from that repository's last
-  session; Provider is suggested as in Folder. **Start session** opens the session, whose
-  head shows `project Shop`.
+  session; Provider is suggested as in Folder. The button reads **Start in Shop**, naming
+  the project whose keys the session gets (gate #107); it opens the session, whose head
+  shows `project Shop`.
 - **A taken name** (frame 5): the note under Name and, after Start, the core's text
   `session "shop-frontend" exists already (stopped, in …); resume it, or give the new
   session another name` with `Resume it`.
@@ -80,16 +81,18 @@ make web && uv run lado server        # open the URL it prints
    by title, but no session ran yet, so `ACME CRM · acme` is chosen with `No repositories
    yet…` and Start off; its link opens `/projects/acme` and closes the window.
 2. New session → Project → `Shop`: `backend` and `frontend` listed, the first chosen; pick
-   `frontend`: Name `shop-frontend`. Start session: the session opens, its head shows
-   `project Shop`.
+   `frontend`: Name `shop-frontend`, the button `Start in Shop`. Click it: the session
+   opens, its head shows `project Shop`.
 3. Stop it; New session → Project: Shop and frontend are chosen (the last used), the note
-   under Name offers `Resume it`. Start session: the core's "exists already" text and
-   `Resume it`.
+   under Name offers `Resume it`. `Start in Shop`: the core's "exists already" text and
+   `Resume it`. Then pick `ACME CRM` (after `uv run lado project repo add acme --new crm`):
+   the button reads `Start in ACME CRM`; the session `acme-crm` starts in `acme`
+   (`uv run lado ls` shows `project acme`).
 4. Folder: type `$LADO_REPOS/projects/shop/backend`: the refusal and `Start in the project
    Shop`; click it: Project with Shop and backend. Type `$LADO_REPOS/projects/shop`: `Open
    the project Shop`.
 5. On `/projects/shop`: `New session in this project…` opens the window in Project with
    Shop.
 6. In the browser's device mode at 390 px: the switch is a 2×2 grid inside the window.
-7. At the end: `uv run lado stop shop-frontend; tmux -L lado-check-137 kill-server; rm -rf
+7. At the end: `uv run lado stop acme-crm; tmux -L lado-check-137 kill-server; rm -rf
    "$LADO_HOME" "$LADO_REPOS"; unset LADO_HOME LADO_REPOS LADO_TMUX_SOCKET`.

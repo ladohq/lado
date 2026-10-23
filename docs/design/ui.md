@@ -1551,7 +1551,10 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   (`name_state`, where a session of the name in another project or in none is
   `taken_elsewhere`); Kits and Permission mode come from the repository's last session in
   the project (`ProjectLaunch.last`), Provider from `ProjectLaunch.provider`, as Folder
-  takes them. **Start session** sends `where: {kind: "project", project, repo}`; the
+  takes them. The start button reads **Start in <title>** (the id without one): the window
+  opens on the last project used, and a quick click in another project would give the
+  session another client's keys (the supervisor's condition at gate #107). It sends
+  `where: {kind: "project", project, repo}`; the
   server calls `runtime.start_session(None, …, resume=False, project=, repo_name=)`, the
   CLI's call: an unknown project or repository is 404 with the core's text, a taken name
   409 `Taken` with Resume it or Open it as in Folder, any other refusal 400. A project

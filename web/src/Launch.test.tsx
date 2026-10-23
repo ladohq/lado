@@ -2379,6 +2379,7 @@ async function openProject() {
 }
 
 const repoRadio = (dialog: HTMLElement, name: string) => within(dialog).getByRole("radio", { name: new RegExp(`^${name}`) });
+const startIn = (title: string) => screen.getByRole("button", { name: `Start in ${title}` }) as HTMLButtonElement;
 const nameField = () => screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
 
 test("Project chooses the last used repository and takes its last session's settings", async () => {
@@ -2395,7 +2396,17 @@ test("Project chooses the last used repository and takes its last session's sett
   expect(calls.some((c) => c.path === "/api/kits?where=%2Fws%2Fprojects%2Fshop%2Fbackend")).toBe(true);
 });
 
-test("Start session starts in the project's repository chosen", async () => {
+test("Start names the project the session goes to, and follows the choice", async () => {
+  const dialog = await openProject();
+  expect(startIn("Shop")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Start session" })).toBeNull();
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "Project" }), { target: { value: "acme" } });
+  expect(await screen.findByRole("button", { name: "Start in ACME CRM" })).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Folder" }));
+  expect(startButton()).toBeTruthy(); // the other ways keep Start session
+});
+
+test("Start in starts in the project's repository chosen", async () => {
   answers["POST /api/sessions"] = () =>
     json({ session: session("shop-frontend", { repo: "/ws/projects/shop/frontend", project: "shop" }), ...STARTED });
   const dialog = await openProject();
@@ -2403,8 +2414,8 @@ test("Start session starts in the project's repository chosen", async () => {
   await waitFor(() => expect(nameField().value).toBe("shop-frontend"));
   expect(calls.some((c) => c.path === "/api/project-launch?project=shop&repo=frontend")).toBe(true);
   fireEvent.change(providerSelect(), { target: { value: "claude" } });
-  await waitFor(() => expect(startButton().disabled).toBe(false));
-  fireEvent.click(startButton());
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  fireEvent.click(startIn("Shop"));
   await screen.findByRole("region", { name: "Session shop-frontend" });
   const sent = calls.find((c) => c.method === "POST" && c.path === "/api/sessions")!;
   expect(sent.body).toEqual({
@@ -2421,8 +2432,8 @@ test("a taken name in Project shows the core's text and Resume it", async () => 
   answers["POST /api/sessions"] = () =>
     json({ detail: { message: text, status: "stopped", repo: "/ws/projects/shop/backend" } }, 409);
   const dialog = await openProject();
-  await waitFor(() => expect(startButton().disabled).toBe(false));
-  fireEvent.click(startButton());
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  fireEvent.click(startIn("Shop"));
   expect((await within(dialog).findByRole("alert")).textContent).toBe(text);
   const resume = within(dialog).getAllByRole("button", { name: "Resume it" });
   fireEvent.click(resume[resume.length - 1]);
@@ -2443,7 +2454,7 @@ test("Start is off in an empty project", async () => {
   const dialog = await openLaunch();
   fireEvent.click(within(dialog).getByRole("button", { name: "Project" }));
   await within(dialog).findByText(/No repositories yet/);
-  expect(startButton().disabled).toBe(true);
+  expect(startIn("ACME CRM").disabled).toBe(true);
   expect(nameField().value).toBe("");
 });
 

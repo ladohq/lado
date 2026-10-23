@@ -276,6 +276,10 @@ function LaunchDialog({
   });
   const inProject = valueOf(projectAsked);
   const projectRepo = inProject?.repos.find((one) => one.name === inProject.repo) ?? null;
+  // Start names the project the session goes to: the window opens on the last one used,
+  // and another project's session gets another client's keys.
+  const chosenProject = inProject?.projects.find((one) => one.id === inProject.project) ?? null;
+  const projectTitle = projecting && chosenProject ? (chosenProject.title ?? chosenProject.id) : null;
   const typedText = scratchText.trim();
   const typedScratchInto = (scratchInto ?? "").trim();
   const settledText = useDebounced(typedText);
@@ -959,7 +963,15 @@ function LaunchDialog({
             </button>
           ) : !cloning ? (
             <button type="submit" className="primary" disabled={busy || !(projecting ? projectReady : ready)}>
-              {busy ? (resuming ? "Resuming…" : "Starting…") : title === "New session" ? "Start session" : title}
+              {busy
+                ? resuming
+                  ? "Resuming…"
+                  : "Starting…"
+                : projectTitle !== null
+                  ? `Start in ${projectTitle}`
+                  : title === "New session"
+                    ? "Start session"
+                    : title}
             </button>
           ) : target?.state === "same_repo" && !busy ? (
             <button

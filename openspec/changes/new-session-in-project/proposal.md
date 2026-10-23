@@ -45,7 +45,8 @@ step S7. The concept's "+ new repository" in the window is dropped.
   folder is not found is off, marked `folder not found`), the project's facts, and its
   repositories as a list that always shows, even with one item (name, branch, remote). Name
   is `<project>-<repo>` until edited; Kits, Provider and Permission mode as in Folder, from
-  the repository's last session. **Start session** starts it. An empty project shows `No
+  the repository's last session. **Start in <title>** starts it: the button names the
+  project the session goes to (gate #107). An empty project shows `No
   repositories yet. Add one on the project's page:` with a link to the page; no project at
   all shows `No projects yet…` with a link to the Projects section. The window still opens
   in Folder (From scratch without recent folders).

@@ -1,20 +1,23 @@
 """A new session in a project from the New session window, in a browser (openspec change
 new-session-in-project; docs/design/ui.md, Launch and session control): Project chooses a
 project and one of its repositories and starts there, a taken name is the core's refusal,
-Folder's refusal inside a project leads to Project or to the project's page, the project's
+another project than the preselected one gets the session, Folder's refusal inside a
+project leads to Project or to the project's page, the project's
 page opens the window on it, an empty project leads to its page, and on a phone the switch
 is a grid of two rows. The server is `lado` with the fake providers. Every wait is for a
 state, never for time."""
 
 import re
+import subprocess
 
 import agent_helpers
+import fake_provider
 import pytest
 from playwright.sync_api import Page, expect
 from test_launch import idle, log_in
 from test_phone import no_sideways_scroll
 
-from lado import projects, runtime
+from lado import projects, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -68,7 +71,7 @@ def test_a_session_starts_in_a_projects_repository(page: Page, shop, server, sho
     shot(page, "window-dark")
     page.emulate_media(color_scheme="light")
 
-    dialog.get_by_role("button", name="Start session").click()
+    dialog.get_by_role("button", name="Start in Shop").click()
     expect(page).to_have_url(f"{server['url']}/sessions/shop-frontend/activity")
     expect(dialog).to_have_count(0)
     idle("shop-frontend")
@@ -76,6 +79,40 @@ def test_a_session_starts_in_a_projects_repository(page: Page, shop, server, sho
     expect(facts.first).to_have_text("projectShop")
     expect(facts.nth(1)).to_have_text(str(shop / "frontend"))
     shot(page, "started")
+
+
+def test_another_project_than_the_last_used_gets_the_session(page: Page, shop, server, shot):
+    agent_helpers.init_repo(projects.folder("acme") / "crm")
+    runtime.start_session(None, None, None, "fake", project="shop", repo_name="frontend")
+    idle("shop-frontend")
+    runtime.stop_session("shop-frontend")
+    page.set_viewport_size({"width": 1440, "height": 900})
+    log_in(page, server)
+    dialog = new_session(page)
+    to_project(dialog)
+    project = dialog.get_by_role("combobox", name="Project")
+    expect(project).to_have_value("shop")  # the last used, preselected
+    expect(dialog.get_by_role("button", name="Start in Shop")).to_be_visible()
+    project.select_option("acme")
+    expect(repo(dialog, "crm")).to_have_attribute("aria-checked", "true")
+    expect(dialog.get_by_role("textbox", name="Name")).to_have_value("acme-crm")
+    dialog.get_by_label("Provider").select_option("fake")
+    start = dialog.get_by_role("button", name="Start in ACME CRM")
+    expect(start).to_be_enabled()
+    shot(page, "chosen")
+    start.click()
+    expect(page).to_have_url(f"{server['url']}/sessions/acme-crm/activity")
+    idle("acme-crm")
+    facts = page.get_by_role("banner").locator(".session-meta > *")
+    expect(facts.first).to_have_text("projectACME CRM")
+    assert state.get_session("acme-crm").project == "acme"
+    listed = subprocess.run(
+        fake_provider.lado_command("ls"), capture_output=True, text=True, timeout=60
+    )
+    assert listed.returncode == 0, listed.stderr
+    row = next(line for line in listed.stdout.splitlines() if "acme-crm" in line)
+    assert "project acme" in row, listed.stdout
+    assert state.get_session("shop-frontend").stopped_at is not None  # not the preselected
 
 
 def test_the_last_repository_is_chosen_and_a_taken_name_is_refused(page: Page, shop, server, shot):
@@ -90,7 +127,7 @@ def test_the_last_repository_is_chosen_and_a_taken_name_is_refused(page: Page, s
     expect(repo(dialog, "frontend")).to_have_attribute("aria-checked", "true")
     expect(dialog).to_contain_text("a stopped session shop-frontend exists for this folder")
     expect(dialog.get_by_label("Provider")).to_have_value("fake")  # its last session's
-    dialog.get_by_role("button", name="Start session").click()
+    dialog.get_by_role("button", name="Start in Shop").click()
     alert = dialog.get_by_role("alert")
     expect(alert).to_have_text(
         f'session "shop-frontend" exists already (stopped, in {shop / "frontend"}); resume it, '
@@ -156,7 +193,7 @@ def test_an_empty_project_leads_to_its_page(page: Page, shop, server, shot):
     to_project(dialog)
     expect(dialog.get_by_role("combobox", name="Project")).to_have_value("acme")  # by title
     expect(dialog).to_contain_text("No repositories yet. Add one on the project's page:")
-    expect(dialog.get_by_role("button", name="Start session")).to_be_disabled()
+    expect(dialog.get_by_role("button", name="Start in ACME CRM")).to_be_disabled()
     shot(page, "empty")
     dialog.get_by_role("button", name="Open ACME CRM").click()
     expect(page).to_have_url(f"{server['url']}/projects/acme")

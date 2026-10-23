@@ -123,14 +123,26 @@ included, `project` SHALL be null. The refusal's text and hint SHALL stay the co
 The New session window SHALL have the source **Project** last in its switch. Project SHALL
 show a select of the projects (one whose folder is not found off, marked `folder not
 found`), the chosen project's line `<N> repositories · <N> sessions running · folder
-<folder>`, and its repositories, each with its name, branch and remote, one chosen. **Start
-session** SHALL start with `where: {kind: "project", project, repo}` and open the session's
-page. The window's first source SHALL stay as before.
+<folder>`, and its repositories, each with its name, branch and remote, one chosen. Its
+start button SHALL start with `where: {kind: "project", project, repo}` and open the
+session's page. The window's first source SHALL stay as before.
 
 #### Scenario: Start in a project's repository
-- **WHEN** the human picks Project, `Shop`, then `frontend`, and clicks Start session
+- **WHEN** the human picks Project, `Shop`, then `frontend`, and clicks `Start in Shop`
 - **THEN** the session `shop-frontend` starts in the project and its page opens, its head
   showing `project Shop`
+
+### Requirement: The Project way's start names the project
+
+In Project the start button SHALL read `Start in <title>` (the id without one) of the
+project chosen, so the human sees which project's keys the session gets before it starts;
+the other ways keep `Start session`.
+
+#### Scenario: Another project than the one last used
+- **WHEN** the window opens on `Shop`, the project last used, and the human picks `ACME CRM`
+  and its repository `crm`
+- **THEN** the button reads `Start in ACME CRM`, and the session `acme-crm` starts in the
+  project `acme`, as its head and `lado ls` show
 
 ### Requirement: The Project way only chooses a repository, from a list always shown
 
@@ -160,13 +172,13 @@ for a folder.
 
 In Project, a project with no repository SHALL show in the list's place `No repositories
 yet. Add one on the project's page:` with a link `Open <title>` to `/projects/<id>`, and
-Start session SHALL be off. With no project the field SHALL show `No projects yet. A project
+its start button SHALL be off. With no project the field SHALL show `No projects yet. A project
 keeps its repositories and the variables its sessions get.` with a link `Make one in
 Projects` to `/projects`. Each link SHALL close the window.
 
 #### Scenario: An empty project
 - **WHEN** the human picks the project `ACME CRM` without repositories
-- **THEN** the field shows the line with `Open ACME CRM`, and Start session is off
+- **THEN** the field shows the line with `Open ACME CRM`, and `Start in ACME CRM` is off
 
 #### Scenario: No project
 - **WHEN** LADO has no project and the human picks Project

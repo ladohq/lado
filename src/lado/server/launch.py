@@ -162,9 +162,7 @@ def _subfolders(path: Path) -> list[str]:
     return names[:SUBFOLDERS]
 
 
-def name_state(
-    name: str, root: str, has_db: bool, project: str | None = None
-) -> models.NameState:
+def name_state(name: str, root: str, has_db: bool, project: str | None = None) -> models.NameState:
     """Who has the name `name` of a new session in `root`; with `project`, a session of the
     name that is not of that project is elsewhere too: the core resumes none such."""
     sess = state.get_session(name) if has_db else None
@@ -307,9 +305,7 @@ def project_summaries() -> list[models.ProjectSummary]:
     ]
 
 
-def project_launch(
-    asked: str | None, asked_repo: str | None, has_db: bool
-) -> models.ProjectLaunch:
+def project_launch(asked: str | None, asked_repo: str | None, has_db: bool) -> models.ProjectLaunch:
     """What the Project way shows: the projects by title, the project `asked` (else that of
     the latest started session in a project whose folder is found, else the first found,
     else the first), its repository `asked_repo` (else that of the project's latest started

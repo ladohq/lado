@@ -174,7 +174,6 @@ def test_a_start_in_a_project_needs_the_token(client, shop, fake_tmux):
     _nothing_started(shop)
 
 
-
 # What the Project way shows
 
 

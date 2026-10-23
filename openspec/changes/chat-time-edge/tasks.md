@@ -21,15 +21,15 @@
 
 ## 2. UI tests
 
-- [ ] 2.1 `tests/ui/test_chat.py`: a session with every row kind of AC-1; at 1200 px and
+- [x] 2.1 `tests/ui/test_chat.py`: a session with every row kind of AC-1; at 1200 px and
   at 390 px the times' right edges (`bounding_box`) are equal within 1 px; hovering the
   message leaves its time's box unchanged and shows Copy message left of it, the gap 6 px
   ± 1, the button 24 × 24 (AC-1, AC-2, AC-3, AC-5). Screenshots of both widths as run
   artifacts.
-- [ ] 2.2 `tests/ui/test_selection.py`: `test_copy_buttons_always_show_on_a_touch_screen`
+- [x] 2.2 `tests/ui/test_selection.py`: `test_copy_buttons_always_show_on_a_touch_screen`
   becomes the touch rule of AC-4 (Copy code shown, no Copy message, the time on the edge);
   the hover test keeps passing with the new order.
-- [ ] 2.3 `tests/ui/test_gates.py`: the folded card's chevron before the flag, its turn on
+- [x] 2.3 `tests/ui/test_gates.py`: the folded card's chevron before the flag, its turn on
   open (AC-6).
 
 ## 3. Documents

@@ -148,6 +148,10 @@ back, the UI back.
   Then a secret: `printf %s "$GH_TOKEN" | lado project set shop GH_TOKEN --secret` (a
   real token of a test account), a new session in `shop`: `gh auth status` in the agent's
   window is logged in with it, `lado project show shop` lists `GH_TOKEN` without a value.
+- Projects in the web UI (from 0.43.0), once in Chrome and once in Safari, each with a
+  password manager on: Projects → "+" makes a project, then "+ Add secret" with a value:
+  the browser offers to save no password, the field is empty after Add, the row says
+  `set · hidden` and `lado project show <id>` lists the name without a value.
 - Projects' secrets on the Mac (from 0.43.0), once, no agent needed: with
   `LADO_HOME=$(mktemp -d) LADO_TELEMETRY=0` set a secret, then replace
   `$LADO_HOME/projects/<id>/secrets` with a symbolic link to another folder: `lado

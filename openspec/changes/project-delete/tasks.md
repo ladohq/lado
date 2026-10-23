@@ -25,7 +25,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-dele
 
 ## 3. End to end
 
-- [ ] 3.1 `tests/ui/test_project_page.py` (AC-2..AC-4, AC-9) and the canary over the
+- [x] 3.1 `tests/ui/test_project_page.py` (AC-2..AC-4, AC-9) and the canary over the
   delete (AC-12) (D12). Check: `uv run pytest -m ui tests/ui/test_project_page.py
   tests/ui/test_launch.py`; `uv run pytest -m integration -n0
   tests/integration/test_project_secrets_canary.py`.

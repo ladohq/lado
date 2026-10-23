@@ -752,7 +752,8 @@ class ProjectVariable(BaseModel):
 
 
 class ProjectInfo(BaseModel):
-    """A project with its repositories as the disk has them now, and its variables."""
+    """A project with its repositories as the disk has them now, its variables and the
+    names of its secrets."""
 
     id: str
     title: str | None
@@ -760,10 +761,17 @@ class ProjectInfo(BaseModel):
     found: bool  # whether that folder is there
     repos: list[ProjectRepo]
     variables: list[ProjectVariable]  # by name
+    secrets: list[str]  # names only (lado.project_secrets.names): no value is ever given
 
 
 class VariableValue(BaseModel):
     """The value a project's variable is set to."""
+
+    value: str
+
+
+class SecretValue(BaseModel):
+    """The value a project's secret is set to; no answer gives it back."""
 
     value: str
 

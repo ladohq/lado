@@ -503,3 +503,117 @@ def test_no_value_in_a_line(outdir):
     write(outdir, "BIG", b"canary-7f3e" * 7000)
     write(outdir, "PATH", b"canary-7f3e")
     assert "canary-7f3e" not in "\n".join(agent_env.outside().unused)
+
+
+# A project's secrets folder: the same reader, with no link and nothing others may read.
+
+
+def reserved(name):
+    return name == "CODEX_HOME"
+
+
+@pytest.fixture
+def own(tmp_path):
+    folder = tmp_path / "secrets"
+    folder.mkdir(mode=0o700)
+    folder.chmod(0o700)
+    return folder
+
+
+def own_file(folder, name, data: bytes, mode=0o600):
+    write(folder, name, data)
+    (folder / name).chmod(mode)
+
+
+def test_a_private_file_of_an_own_folder_is_given(own):
+    own_file(own, "GH_TOKEN", b"ghp_1\n")
+    found = agent_env.read_folder(str(own), own=reserved)
+    assert (found.values, found.unused) == ({"GH_TOKEN": "ghp_1"}, [])
+
+
+@pytest.mark.parametrize("mode", [0o644, 0o660, 0o604, 0o640])
+def test_a_file_others_may_read_or_write_is_not_given(own, mode):
+    own_file(own, "GH_TOKEN", b"ghp_1", mode)
+    found = agent_env.read_folder(str(own), own=reserved)
+    assert found.values == {}
+    assert found.unused == [("GH_TOKEN", agent_env.LOOSE_FILE)]
+    assert agent_env.LOOSE_FILE == "readable or writable by others: chmod 600 it"
+
+
+def test_a_link_in_an_own_folder_is_not_given_nor_opened(own, tmp_path, monkeypatch):
+    target = tmp_path / "t"
+    target.write_text("v")
+    target.chmod(0o600)
+    (own / "GH_TOKEN").symlink_to(target)
+    opened = []
+    real_open = os.open
+    monkeypatch.setattr(
+        agent_env.os, "open", lambda path, *a, **k: opened.append(path) or real_open(path, *a, **k)
+    )
+    found = agent_env.read_folder(str(own), own=reserved)
+    assert found.values == {}
+    assert found.unused == [("GH_TOKEN", agent_env.LINK)]
+    assert agent_env.LINK == "a symbolic link"
+    assert opened == []
+
+
+@pytest.mark.parametrize("mode", [0o755, 0o750, 0o701])
+def test_an_own_folder_others_may_enter_gives_nothing(own, mode):
+    own_file(own, "GH_TOKEN", b"v")
+    own.chmod(mode)
+    found = agent_env.read_folder(str(own), own=reserved)
+    assert found.values == {}
+    assert found.unused == [("", agent_env.LOOSE_FOLDER)]
+    assert agent_env.LOOSE_FOLDER == "readable or writable by others: chmod 700 it"
+
+
+def test_an_own_folder_that_is_a_link_gives_nothing(own, tmp_path):
+    own_file(own, "GH_TOKEN", b"v")
+    (tmp_path / "linked").symlink_to(own)
+    found = agent_env.read_folder(str(tmp_path / "linked"), own=reserved)
+    assert found.values == {}
+    assert found.unused == [("", agent_env.LINK)]
+
+
+def test_an_own_folders_reserved_names_add_to_the_readers(own):
+    own_file(own, "CODEX_HOME", b"/x")
+    own_file(own, "LADO_X", b"x")
+    own_file(own, "PATH", b"/x")
+    own_file(own, "OK", b"v")
+    own_file(own, ".GH_TOKEN.1a2b.tmp", b"partial")
+    found = agent_env.read_folder(str(own), own=reserved)
+    assert found.values == {"OK": "v"}
+    assert sorted(found.unused) == [
+        ("CODEX_HOME", "a reserved name"),
+        ("LADO_X", "a reserved name"),
+        ("PATH", "a reserved name"),
+    ]
+
+
+def test_an_own_folders_other_reasons_are_the_outside_folders(own):
+    own_file(own, "BIG", b"a" * 65537)
+    own_file(own, "BIN", b"a\0b")
+    own_file(own, "bad-name", b"x")
+    (own / "sub").mkdir(mode=0o700)
+    found = agent_env.read_folder(str(own), own=reserved)
+    assert sorted(found.unused) == [
+        ("BIG", "larger than 64 KiB"),
+        ("BIN", "not UTF-8 text"),
+        ("bad-name", "not a variable name"),
+        ("sub/", "in a subfolder"),
+    ]
+
+
+def test_a_missing_own_folder_is_no_layer_and_no_line(tmp_path):
+    found = agent_env.read_folder(str(tmp_path / "none"), own=reserved)
+    assert (found.values, found.unused) == ({}, [])
+
+
+def test_the_outside_folder_is_read_by_the_same_reader(outdir):
+    write(outdir, "A", b"x")
+    write(outdir, "bad-name", b"x")
+    found = agent_env.read_folder(str(outdir))
+    assert found.values == {"A": "x"}
+    assert found.unused == [("bad-name", "not a variable name")]
+    (outdir / "A").chmod(0o644)  # the outside folder keeps its modes (Docker's)
+    assert agent_env.read_folder(str(outdir)).values == {"A": "x"}

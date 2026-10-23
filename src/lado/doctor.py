@@ -16,6 +16,7 @@ from lado import (
     artifacts,
     gui_session,
     kits,
+    project_secrets,
     projects,
     providers,
     runtime,
@@ -627,14 +628,19 @@ def check_outside() -> Check | None:
 
 
 def check_project_variables() -> Check | None:
-    """The projects whose variables take the place of the outside folder's (by name, never
-    a value) for their sessions' agents; none without such a name or a lado.db to read."""
+    """The projects whose variables or secrets take the place of the outside folder's (by
+    name, never a value) for their sessions' agents; none without such a name or a lado.db
+    to read."""
     given = agent_env.outside().values
     if not given or state.schema_version() is None:
         return None
     try:
         found = [
-            (p.id, state.project_variables(p.id).keys() & given.keys())
+            (
+                p.id,
+                (state.project_variables(p.id).keys() | set(project_secrets.names(p.id)))
+                & given.keys(),
+            )
             for p in state.list_projects()
         ]
     except state.SchemaError:  # doctor reads lado.db as it is: no migration
@@ -647,11 +653,30 @@ def check_project_variables() -> Check | None:
     return Check("Project variables", INFO, "; ".join(lines)) if lines else None
 
 
+def check_project_secrets() -> Check | None:
+    """Each file of a project's secrets folder its agents do not get, and each such folder
+    not used, by project and name with why (lado.project_secrets.read), never a value; none
+    when all are used or without a lado.db to read."""
+    if state.schema_version() is None:
+        return None
+    try:
+        ids = [p.id for p in state.list_projects()]
+    except state.SchemaError:  # doctor reads lado.db as it is: no migration
+        return None
+    lines = [
+        f"{id}: {name or 'secrets folder'} not used: {reason}"
+        for id in ids
+        for name, reason in project_secrets.read(id).unused
+    ]
+    return Check("Project secrets", WARN, "; ".join(lines)) if lines else None
+
+
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
     graphical = check_graphical_session(which)
     projects_found = check_projects()
     outside = check_outside()
     overridden = check_project_variables()
+    unused_secrets = check_project_secrets()
     author = check_git_author()
     return [
         check_lado(),
@@ -663,6 +688,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         *([projects_found] if projects_found else []),
         *([outside] if outside else []),
         *([overridden] if overridden else []),
+        *([unused_secrets] if unused_secrets else []),
         *([graphical] if graphical else []),
         *check_agent_env(),
         check_config_folders(),

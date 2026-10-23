@@ -9,7 +9,7 @@ import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from lado import doctor, kits, projects, providers, runtime, scratch, state
+from lado import doctor, kits, project_secrets, projects, providers, runtime, scratch, state
 from lado.server import models
 
 SUBFOLDERS = 50  # at most this many subfolders of a folder
@@ -270,6 +270,7 @@ def project_info(id: str) -> models.ProjectInfo:
             models.ProjectVariable(name=name, value=value)
             for name, value in state.project_variables(id).items()
         ],
+        secrets=project_secrets.names(id),
     )
 
 

@@ -11,9 +11,11 @@ it cannot take is named with why, never with its content, and not applied. No fo
 or the null device (compose binds /dev/null when no secrets are given), is no layer and no
 line.
 
-Over those go the variables of the session's project (lado.projects), read from lado.db
-at each launch by whoever launches (lado.runtime._base_env); a session without a project
-has none. LADO's and the agent CLI's own variables go over all of them (lado.runtime).
+Over those go the variables of the session's project (lado.projects), its plain ones read
+from lado.db and its secrets from their folder (lado.project_secrets, by the outside
+folder's reader, `read_folder`, which refuses links and loose modes there) at each launch
+by whoever launches (lado.runtime._base_env); a session without a project has none. LADO's
+and the agent CLI's own variables go over all of them (lado.runtime).
 
 A tmux window starts with its server's environment, so the launch does not rely on it: the
 window runs the module `lado.agent_env <file> <argv>` (`interpreter.run_module`), which
@@ -34,7 +36,7 @@ import sys
 import tempfile
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import NamedTuple
 
@@ -128,29 +130,64 @@ def outside(environ: Mapping[str, str] | None = None) -> Outside:
     where = f"variable folder {folder} ({ENV_DIR_VAR}) not used"
     if not os.path.isabs(folder):
         return Outside(folder, {}, [f"{where}: not an absolute path"])
+    found = read_folder(folder)
+    unused = [
+        f"{where}: {reason}" if not name else f"variable file {name} in {folder} not used: {reason}"
+        for name, reason in found.unused
+    ]
+    return Outside(folder, found.values, unused)
+
+
+# A project's secrets folder (lado.project_secrets) is read by the same reader, which also
+# refuses there what others may read and every link: LADO alone writes that folder.
+LINK = "a symbolic link"
+LOOSE_FILE = "readable or writable by others: chmod 600 it"
+LOOSE_FOLDER = "readable or writable by others: chmod 700 it"
+OTHERS = 0o077  # the group's and the others' bits of a mode
+
+
+class Folder(NamedTuple):
+    """What a folder of variables gives: the values by name, and each file (its name, with
+    `/` for a subfolder) or the folder itself (the name "") not used, with why."""
+
+    values: dict[str, str]
+    unused: list[tuple[str, str]]
+
+
+def read_folder(folder: str, *, own: Callable[[str], bool] | None = None) -> Folder:
+    """The variables of `folder`, one file per variable, read now; missing or the null
+    device: none and no line. `own`, for a folder only LADO writes (a project's secrets),
+    says which further names are reserved, and turns the folder and its files down when
+    they are links or others may use them; the outside folder follows links and keeps its
+    modes (Docker's and Kubernetes' secrets are links)."""
+    if own is not None:
+        reason = check_own_folder(folder)
+        if reason is None:
+            return Folder({}, [])
+        if reason:
+            return Folder({}, [("", reason)])
     try:
         with os.scandir(folder) as found:
             entries = sorted(found, key=lambda entry: entry.name)
     except FileNotFoundError:
-        return Outside(folder, {}, [])
+        return Folder({}, [])
     except NotADirectoryError:
         if null_device(folder):
-            return Outside(folder, {}, [])
-        return Outside(folder, {}, [f"{where}: not a folder"])
+            return Folder({}, [])
+        return Folder({}, [("", "not a folder")])
     except OSError as exc:
-        return Outside(folder, {}, [f"{where}: cannot be listed: {exc.strerror}"])
+        return Folder({}, [("", f"cannot be listed: {exc.strerror}")])
     values: dict[str, str] = {}
-    unused: list[str] = []
+    unused: list[tuple[str, str]] = []
     for entry in entries:
         if entry.name.startswith("."):
-            continue  # Docker's and editors' own files
-        reason, value = _take(entry)
+            continue  # Docker's and editors' own files, and a secret's file being written
+        reason, value = _take(entry, own)
         if reason:
-            name = f"{entry.name}/" if reason == SUBFOLDER else entry.name
-            unused.append(f"variable file {name} in {folder} not used: {reason}")
+            unused.append((f"{entry.name}/" if reason == SUBFOLDER else entry.name, reason))
         else:
             values[entry.name] = value
-    return Outside(folder, values, unused)
+    return Folder(values, unused)
 
 
 def null_device(path: str) -> bool:
@@ -163,23 +200,61 @@ def null_device(path: str) -> bool:
     return stat.S_ISCHR(found.st_mode) and found.st_rdev == null.st_rdev
 
 
-def _take(entry: os.DirEntry) -> tuple[str, str]:
-    """("", value) for a file used, (why, "") for one not. Symbolic links are followed:
-    Docker's and Kubernetes' secrets are such links."""
+def check_own_folder(folder: str) -> str | None:
+    """Why a folder only LADO writes is not used ("" when it may be, None when it is
+    missing): a link, or a mode others may use."""
     try:
+        mode = os.lstat(folder).st_mode
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        return f"cannot be listed: {exc.strerror}"
+    if stat.S_ISLNK(mode):
+        return LINK
+    if stat.S_ISDIR(mode) and mode & OTHERS:
+        return LOOSE_FOLDER
+    return ""
+
+
+def check_entry(entry: os.DirEntry, own: Callable[[str], bool] | None = None) -> str:
+    """Why the file `entry` is not given, by what needs no content ("" when it may be):
+    its kind, its name and, in an `own` folder (read_folder), a link or a loose mode."""
+    try:
+        if own is not None and entry.is_symlink():
+            return LINK
         if entry.is_dir():
-            return SUBFOLDER, ""
+            return SUBFOLDER
         regular = entry.is_file()
     except OSError as exc:
-        return f"cannot be read: {exc.strerror}", ""
+        return f"cannot be read: {exc.strerror}"
     if not regular:
-        return "not a regular file", ""
+        return "not a regular file"
     if not VARIABLE_NAME.fullmatch(entry.name):
-        return "not a variable name", ""
+        return "not a variable name"
     if entry.name in RESERVED or entry.name.startswith(RESERVED_PREFIX):
-        return "a reserved name", ""
+        return "a reserved name"
+    if own is not None and own(entry.name):
+        return "a reserved name"
+    if own is not None:
+        try:
+            if entry.stat(follow_symlinks=False).st_mode & OTHERS:
+                return LOOSE_FILE
+        except OSError as exc:
+            return f"cannot be read: {exc.strerror}"
+    return ""
+
+
+def _take(entry: os.DirEntry, own: Callable[[str], bool] | None = None) -> tuple[str, str]:
+    """("", value) for a file used, (why, "") for one not. Outside an `own` folder symbolic
+    links are followed: Docker's and Kubernetes' secrets are such links."""
+    reason = check_entry(entry, own)
+    if reason:
+        return reason, ""
+    # In an own folder, a link put there after the check is not followed either.
+    flags = os.O_RDONLY | (os.O_NOFOLLOW if own is not None else 0)
     try:
-        with open(entry.path, "rb") as file:
+        fd = os.open(entry.path, flags)
+        with open(fd, "rb") as file:
             data = file.read(MAX_VALUE + 1)
     except OSError as exc:
         return f"cannot be read: {exc.strerror}", ""

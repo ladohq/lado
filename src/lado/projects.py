@@ -12,6 +12,7 @@ LADO. `projects/` belongs to LADO once a project's folder is in it; before that,
 `projects/` holding anything visible is the human's own folder, and LADO makes no project
 there. The CLI (`lado project`) and `lado doctor` only print what this module says."""
 
+import contextlib
 import os
 import re
 import shutil
@@ -20,12 +21,12 @@ import stat
 import subprocess
 import tempfile
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from lado import agent_env, providers, runtime, state
+from lado import agent_env, project_secrets, providers, runtime, state
 
 if TYPE_CHECKING:
     from lado import clone as clone_module
@@ -250,6 +251,9 @@ def create(id: str, title: str | None) -> state.Project:
             f"{target} already exists: LADO makes a project's folder itself; "
             "choose another id or move that folder away"
         )
+    left = project_secrets.data_folder(id)
+    if os.path.lexists(left):  # only a failed deletion leaves one: never inherit its secrets
+        raise ProjectError(f"{left} is left from a project {id}: remove it or choose another id")
     if (own := owned_by_human()) is not None:
         raise ProjectError(
             f"{projects_folder()} is your own folder (it holds {names(own)}): LADO keeps "
@@ -284,9 +288,11 @@ def get(id: str) -> state.Project:
     return project
 
 
-# A project's plain variables: the human sets them (the CLI, the server), every agent of a
-# session in the project gets them (lado.agent_env.resolve). A name the shell, LADO or an
-# agent CLI sets is reserved; a name that looks like a secret waits for the secrets.
+# A project's plain variables (lado.db) and secrets (files, lado.project_secrets): the human
+# sets them (the CLI, the server), every agent of a session in the project gets them
+# (lado.runtime._base_env). A name the shell, LADO or an agent CLI sets is reserved for
+# both; a name that looks like a secret is no plain variable; a project holds one value per
+# name.
 RESERVED_NAMES = agent_env.RESERVED | providers.base.CLI_VARIABLES
 SECRET_WORDS = ("TOKEN", "KEY", "SECRET", "PASSWORD")
 
@@ -295,9 +301,9 @@ class NoSuchVariable(ProjectError):
     pass
 
 
-def check_variable(id: str, name: str, value: str | None) -> None:
-    """Refuse a name that is no variable name, reserved or like a secret's, and a `value`
-    (when given) that is no text of at most 64 KiB; an empty value is a value."""
+def check_name(name: str) -> None:
+    """Refuse a name that is no variable name or a reserved one: the rule of a plain
+    variable's name and of a secret's."""
     if not agent_env.VARIABLE_NAME.fullmatch(name):
         raise ProjectError(
             f"the name {name} is not a variable name: Latin letters, digits and _, not "
@@ -305,15 +311,10 @@ def check_variable(id: str, name: str, value: str | None) -> None:
         )
     if name in RESERVED_NAMES or name.startswith(agent_env.RESERVED_PREFIX):
         raise ProjectError(f"{name} is reserved: LADO or the agent CLIs set it")
-    word = next((w for w in SECRET_WORDS if w in name.upper()), None)
-    if word:
-        raise ProjectError(
-            f"{name} looks like a secret ({word}): a plain variable takes no name with "
-            f"{', '.join(SECRET_WORDS[:-1])} or {SECRET_WORDS[-1]}; secrets come with lado "
-            f"project set {id} {name} --secret (not built yet)"
-        )
-    if value is None:
-        return
+
+
+def _check_value(name: str, value: str) -> None:
+    """Refuse a value that is no text of at most 64 KiB."""
     try:
         data = value.encode()
     except UnicodeEncodeError:
@@ -324,10 +325,45 @@ def check_variable(id: str, name: str, value: str | None) -> None:
         raise ProjectError(f"the value of {name} is larger than 64 KiB")
 
 
+def check_variable(id: str, name: str, value: str | None) -> None:
+    """Refuse a plain variable's name that is no variable name, reserved or like a
+    secret's, and a `value` (when given) that is no text of at most 64 KiB; an empty value
+    is a value."""
+    check_name(name)
+    word = next((w for w in SECRET_WORDS if w in name.upper()), None)
+    if word:
+        raise ProjectError(
+            f"{name} looks like a secret ({word}): a plain variable takes no name with "
+            f"{', '.join(SECRET_WORDS[:-1])} or {SECRET_WORDS[-1]}; set it as a secret with "
+            f"lado project set {id} {name} --secret"
+        )
+    if value is not None:
+        _check_value(name, value)
+
+
+def check_secret(id: str, name: str, value: str) -> None:
+    """Refuse a secret's name by check_name (any other name may be a secret), and a value
+    that is empty or no text of at most 64 KiB."""
+    check_name(name)
+    if not value:
+        raise ProjectError(
+            f"the secret {name} is empty; to remove it: lado project unset {id} {name}"
+        )
+    _check_value(name, value)
+    if len(project_secrets.stored(value)) > agent_env.MAX_VALUE:  # what the reader limits
+        raise ProjectError(f"the value of {name} is larger than 64 KiB")
+
+
 def variables(id: str) -> dict[str, str]:
-    """The project's variables, by name."""
+    """The project's plain variables, by name."""
     get(id)
     return state.project_variables(id)
+
+
+def secrets(id: str) -> list[str]:
+    """The names of the project's secrets (lado.project_secrets.names), never a value."""
+    get(id)
+    return project_secrets.names(id)
 
 
 def running(id: str) -> list[str]:
@@ -340,22 +376,92 @@ def running(id: str) -> list[str]:
     )
 
 
+def _held(id: str, name: str, kind: str) -> ProjectError:
+    """A project holds one value per name: `name` is held as `kind`. The two stores share
+    no transaction, so the human moves a name from one to the other in two commands."""
+    return ProjectError(
+        f"{name} is {kind} of {id}; remove it first with lado project unset {id} {name}"
+    )
+
+
 def set_variable(id: str, name: str, value: str) -> list[str]:
-    """Set the project's variable (check_variable first), over its old value; the
+    """Set the project's plain variable (check_variable first), over its old value; the
     project's running sessions."""
     get(id)
     check_variable(id, name, value)
+    if project_secrets.held(id, name):
+        raise _held(id, name, "a secret")
     state.set_project_variable(id, name, value)
     return running(id)
 
 
+def set_secret(id: str, name: str, value: str) -> list[str]:
+    """Set the project's secret (check_secret first) in its own file, over its old value;
+    the project's running sessions. No error holds the value."""
+    get(id)
+    check_secret(id, name, value)
+    if name in state.project_variables(id):
+        raise _held(id, name, "a plain variable")
+    with _secrets_refused(f"could not write the secret {name} of {id}"):
+        project_secrets.write(id, name, value)
+    return running(id)
+
+
+@contextlib.contextmanager
+def _secrets_refused(failed: str, then: str = "") -> Iterator[None]:
+    """The secrets store's refusals as ProjectError: a link by its own text, an OSError as
+    `failed: <reason><then>`. The OSError's text is left out: it never holds a value, but
+    its file name is no business of the human's either."""
+    try:
+        yield
+    except project_secrets.LinkRefused as error:
+        raise ProjectError(str(error)) from None
+    except OSError as error:
+        raise ProjectError(f"{failed}: {error.strerror or error}{then}") from None
+
+
+def _remove_secret(id: str, name: str) -> bool:
+    with _secrets_refused(f"could not remove the secret {name} of {id}"):
+        return project_secrets.remove(id, name)
+
+
+def _listed(found: list[str]) -> str:
+    return names(found) or "none"
+
+
 def unset_variable(id: str, name: str) -> list[str]:
-    """Remove the project's variable, by any name stored (no name rule: a row stored
-    before a rule changed can go); the project's running sessions."""
+    """Remove the project's plain variable, by any name stored (no name rule: a row stored
+    before a rule changed can go); the project's running sessions. The server's: its routes
+    go by kind."""
     get(id)
     if not state.unset_project_variable(id, name):
-        found = names(list(state.project_variables(id))) or "none"
+        found = _listed(list(state.project_variables(id)))
         raise NoSuchVariable(f"project {id} has no variable {name}; its variables: {found}")
+    return running(id)
+
+
+def unset_secret(id: str, name: str) -> list[str]:
+    """Remove the project's secret; the project's running sessions. The server's."""
+    get(id)
+    if not _remove_secret(id, name):
+        found = _listed(project_secrets.names(id))
+        raise NoSuchVariable(f"project {id} has no secret {name}; its secrets: {found}")
+    return running(id)
+
+
+def unset(id: str, name: str) -> list[str]:
+    """Remove the project's plain variable or secret `name` (both, should a hand-made file
+    hold a name of lado.db); the project's running sessions. The CLI's."""
+    get(id)
+    if state.unset_project_variable(id, name):
+        if project_secrets.held(id, name):
+            _remove_secret(id, name)
+    elif not _remove_secret(id, name):
+        raise NoSuchVariable(
+            f"project {id} has no variable or secret {name}; its variables: "
+            f"{_listed(list(state.project_variables(id)))}; its secrets: "
+            f"{_listed(project_secrets.names(id))}"
+        )
     return running(id)
 
 
@@ -683,11 +789,13 @@ def sessions_to_forget(id: str) -> list[tuple[str, int]]:
 
 def delete(id: str, yes: bool) -> None:
     """Remove the project's folder whole, then forget its sessions (sessions_to_forget,
-    which refuses first), then remove its record; without `yes`, refuse (the CLI shows
-    `unpushed` first). Nothing outside <workspace>/projects is removed: a folder that is a
-    link loses the link only, and a folder whose real path is not directly in the real
-    projects/ is refused. A folder not removed whole keeps the sessions and the record; a
-    session not forgotten keeps the record, which the sessions' foreign key holds anyway."""
+    which refuses first), then remove its data folder with its secrets, then its record;
+    without `yes`, refuse (the CLI shows `unpushed` first). Nothing outside
+    <workspace>/projects is removed: a folder that is a link loses the link only, and a
+    folder whose real path is not directly in the real projects/ is refused. A link on the
+    way to the data folder or in it refuses before anything is removed. A folder not
+    removed whole keeps the sessions and the record; a session or a data folder not removed
+    keeps the record, and a rerun finishes."""
     sessions = [name for name, _ in sessions_to_forget(id)]
     target = folder(id)
     if not yes:
@@ -698,6 +806,9 @@ def delete(id: str, yes: bool) -> None:
             f"deleting project {id} removes its folder {target} with everything in it"
             f"{forgets}; run again with --yes"
         )
+    data = project_secrets.data_folder(id)
+    with _secrets_refused(f"could not read {data}", "; the project stays"):
+        project_secrets.check_removable(id)
     if target.is_symlink():
         target.unlink()
     elif os.path.lexists(target):
@@ -720,6 +831,9 @@ def delete(id: str, yes: bool) -> None:
                 f"could not forget session {name}: {error}; the project stays: run lado "
                 f"project delete {id} --yes again"
             ) from error
+    again = f"; the project stays: run lado project delete {id} --yes again"
+    with _secrets_refused(f"could not remove {data} whole", again):
+        project_secrets.remove_all(id)
     state.delete_project(id)
 
 

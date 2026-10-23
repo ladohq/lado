@@ -30,6 +30,7 @@ import {
   type KitInfo,
   type Launch,
   type Limits,
+  type ProjectLaunch,
   type ProjectPlace,
   type ProviderInfo,
   type ProviderSuggestion,
@@ -274,11 +275,26 @@ function LaunchDialog({
     const { project, repo } = JSON.parse(key) as typeof projectAsk;
     return getProjectLaunch(project, repo);
   });
+  // What a start takes: only the answer to what is asked now.
   const inProject = valueOf(projectAsked);
   const projectRepo = inProject?.repos.find((one) => one.name === inProject.repo) ?? null;
+  // What the field shows: while a new choice is asked, the last answer with the choice in
+  // it, so the field stays (its select and list, their focus) and Start waits.
+  const [lastProject, setLastProject] = useState<ProjectLaunch | null>(null);
+  useEffect(() => {
+    if (inProject) setLastProject(inProject);
+  }, [inProject]);
+  const shownProject =
+    inProject ??
+    (lastProject && {
+      ...lastProject,
+      project: projectAsk.project ?? lastProject.project,
+      repo:
+        projectAsk.project === lastProject.project && projectAsk.repo !== null ? projectAsk.repo : lastProject.repo,
+    });
   // Start names the project the session goes to: the window opens on the last one used,
   // and another project's session gets another client's keys.
-  const chosenProject = inProject?.projects.find((one) => one.id === inProject.project) ?? null;
+  const chosenProject = shownProject?.projects.find((one) => one.id === shownProject.project) ?? null;
   const projectTitle = projecting && chosenProject ? (chosenProject.title ?? chosenProject.id) : null;
   const typedText = scratchText.trim();
   const typedScratchInto = (scratchInto ?? "").trim();
@@ -385,7 +401,7 @@ function LaunchDialog({
 
   const touch = (field: string) => setTouched((before) => new Set(before).add(field));
 
-  const named = cloning ? target : projecting ? inProject : current;
+  const named = cloning ? target : projecting ? shownProject : current;
   const shownName = name ?? named?.default_name ?? "";
   const resumable = (sessionName: string) => {
     const loaded = live.sessions;
@@ -611,6 +627,12 @@ function LaunchDialog({
 
   const title = resuming ? "Resume session" : "New session";
   const taken = refused?.status === 409 ? (refused.detail as Taken) : null;
+  // The session that has the name is this folder's (in Project: of this project too, as
+  // the core resumes none of another project or none): Resume it or Open it.
+  const takenHere =
+    taken !== null &&
+    taken.repo === root &&
+    (!projecting || (resumable(shownName)?.project ?? null) === (inProject?.project ?? null));
   const detail = refused?.status === 400 ? refused.detail : null;
   const switchOff =
     detail !== null && typeof detail === "object" && "switch_off" in detail ? (detail as Refused).switch_off : [];
@@ -666,7 +688,8 @@ function LaunchDialog({
           />
         ) : projecting ? (
           <ProjectField
-            launch={inProject}
+            launch={shownProject}
+            asking={inProject === null}
             problem={projectAsked !== null && "error" in projectAsked ? projectAsked.error : null}
             head={<SourceSwitch source={source} onSource={setSource} disabled={busy} />}
             disabled={busy}
@@ -675,7 +698,7 @@ function LaunchDialog({
               setRefused(null);
             }}
             onRepo={(repo) => {
-              setProjectAsk({ project: inProject?.project ?? null, repo });
+              setProjectAsk({ project: shownProject?.project ?? null, repo });
               setRefused(null);
             }}
             onLeave={leave}
@@ -925,12 +948,12 @@ function LaunchDialog({
                 {switchOffLabel(item)}
               </button>
             ))}
-            {taken && taken.repo === root && RESUMABLE.has(taken.status) && resumable(shownName) && (
+            {taken && takenHere && RESUMABLE.has(taken.status) && resumable(shownName) && (
               <button type="button" className="quiet" onClick={() => resumeIt(shownName)}>
                 Resume it
               </button>
             )}
-            {taken && taken.repo === root && !RESUMABLE.has(taken.status) && (
+            {taken && takenHere && !RESUMABLE.has(taken.status) && (
               <button
                 type="button"
                 className="quiet"

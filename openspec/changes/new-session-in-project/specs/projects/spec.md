@@ -146,7 +146,8 @@ the other ways keep `Start session`.
 
 ### Requirement: The Project way only chooses a repository, from a list always shown
 
-Project's list of repositories SHALL show even with one item. The window SHALL only choose
+Project's list of repositories SHALL show even with one item, and stay with its focus while
+the server answers a new choice, the start off until it has. The window SHALL only choose
 one of the project's repositories: it SHALL NOT add, clone or make one.
 
 #### Scenario: The list with one repository
@@ -159,7 +160,7 @@ In Project, Name SHALL be the default name until the human edits it, with the fo
 check's notes for a taken name; Kits and Permission mode SHALL come from the repository's
 last session, as Folder takes them from a folder's, and Provider from the server's
 suggestion. A refused start SHALL show the core's text, with `Resume it` or `Open it` as
-for a folder.
+for a folder, only when the session that has the name is of this project.
 
 #### Scenario: A taken name
 - **WHEN** a stopped `shop-frontend` of this repository exists and the human clicks `Start

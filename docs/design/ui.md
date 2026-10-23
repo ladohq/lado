@@ -1543,7 +1543,10 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   found`, with the chosen one's line `<N> repositories · <N> sessions running · folder
   <folder>`; then **Repository**, the project's repositories as a list always shown, even
   with one (`.repo-pick`, a `radiogroup`: name, branch, remote; the arrow keys move the
-  choice), and `✓ git repository · branch X` under it. The server chooses what the window
+  choice), and `✓ git repository · branch X` under it. While a new choice is asked, the
+  field shows the last answer with the choice in it (`aria-busy` on the list), so the select
+  and the list keep their focus, and the start stays off until the answer to what is asked
+  now has come (LAD-137, review X1). The server chooses what the window
   opens on: the project asked, else that of the latest started session in a project whose
   folder is found, else the first found; the repository asked, else that of the project's
   latest started session still there, else the first. **Name** is `<project>-<repo>`
@@ -1557,7 +1560,9 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   `where: {kind: "project", project, repo}`; the
   server calls `runtime.start_session(None, …, resume=False, project=, repo_name=)`, the
   CLI's call: an unknown project or repository is 404 with the core's text, a taken name
-  409 `Taken` with Resume it or Open it as in Folder (its folder compared with
+  409 `Taken` with Resume it or Open it as in Folder, only for a session of this project
+  (the feed's `SessionInfo.project`: the core resumes none of another project or none;
+  its folder compared with
   `ProjectLaunch.root`, the repository's git root with links resolved, as a session's folder
   is kept, not the listed path, which may go through a link), any other refusal 400. A project
   without repositories shows in the list's place `No repositories yet. Add one on the

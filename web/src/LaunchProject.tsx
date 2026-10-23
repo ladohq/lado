@@ -12,6 +12,7 @@ const projectLabel = (project: ProjectSummary) =>
 
 export function ProjectField({
   launch,
+  asking = false,
   problem,
   head,
   disabled,
@@ -19,7 +20,10 @@ export function ProjectField({
   onRepo,
   onLeave,
 }: {
-  launch: ProjectLaunch | null; // null: asking
+  launch: ProjectLaunch | null; // null: asking the first time
+  // a new choice is asked: `launch` is the last answer with the choice in it, shown as it
+  // is (the select and the list keep their focus) and marked busy
+  asking?: boolean;
   problem: string | null; // why the server did not answer
   head: ReactNode; // the switch of the window's ways, beside the label
   disabled: boolean;
@@ -73,7 +77,14 @@ export function ProjectField({
         )}
       </div>
       {launch !== null && chosen !== null && (
-        <RepoPick launch={launch} project={chosen} disabled={disabled} onRepo={onRepo} onLeave={onLeave} />
+        <RepoPick
+          launch={launch}
+          project={chosen}
+          asking={asking}
+          disabled={disabled}
+          onRepo={onRepo}
+          onLeave={onLeave}
+        />
       )}
     </>
   );
@@ -83,12 +94,14 @@ export function ProjectField({
 function RepoPick({
   launch,
   project,
+  asking,
   disabled,
   onRepo,
   onLeave,
 }: {
   launch: ProjectLaunch;
   project: ProjectSummary;
+  asking: boolean;
   disabled: boolean;
   onRepo: (name: string) => void;
   onLeave: (path: string) => void;
@@ -117,7 +130,14 @@ function RepoPick({
   return (
     <div className="field launch-where">
       <span className="field-label">Repository</span>
-      <ul ref={list} className="repo-pick" role="radiogroup" aria-label="Repository" aria-disabled={disabled || undefined}>
+      <ul
+        ref={list}
+        className="repo-pick"
+        role="radiogroup"
+        aria-label="Repository"
+        aria-disabled={disabled || undefined}
+        aria-busy={asking || undefined}
+      >
         {repos.length === 0 ? (
           <li className="repo-none">
             <span className="muted">

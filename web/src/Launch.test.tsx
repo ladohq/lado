@@ -2462,6 +2462,63 @@ test("Start is off in an empty project", async () => {
 
 const SHOP_PLACE = { id: "shop", title: "Shop", repo: "frontend" };
 
+test("while the server answers a new choice, the list stays, keeps the focus and Start waits", async () => {
+  const dialog = await openProject();
+  let release = () => {};
+  answers["GET /api/project-launch"] = async () => {
+    const asked = calls[calls.length - 1].path;
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const query = new URL(asked, "http://lado.test").searchParams;
+    return json(shopLaunch(query.get("project"), query.get("repo")));
+  };
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  repoRadio(dialog, "backend").focus();
+  fireEvent.keyDown(repoRadio(dialog, "backend"), { key: "ArrowDown" });
+  // Asked, not answered: the list is there, the focus on frontend, chosen at once.
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/project-launch?project=shop&repo=frontend")).toBe(true));
+  expect(document.activeElement).toBe(repoRadio(dialog, "frontend"));
+  expect(repoRadio(dialog, "frontend").getAttribute("aria-checked")).toBe("true");
+  expect(within(dialog).getByRole("combobox", { name: "Project" })).toBeTruthy();
+  expect(startIn("Shop").disabled).toBe(true); // what a start takes is not known yet
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+  expect(document.activeElement).toBe(repoRadio(dialog, "backend"));
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/project-launch?project=shop&repo=backend")).toBe(true));
+  await act(async () => release());
+  await waitFor(() => expect(nameField().value).toBe("shop-backend"));
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  expect(repoRadio(dialog, "backend").getAttribute("aria-checked")).toBe("true");
+});
+
+test("a taken name of a session of this folder in no project offers no Resume it", async () => {
+  // A session started there before the project: the core refuses the name (409), but a
+  // resume would not be one of this project's.
+  sessions = [session("shop-backend", { status: "stopped", repo: "/real/projects/shop/backend", project: null })];
+  const text = 'session "shop-backend" exists already (stopped, in /real/projects/shop/backend); resume it, or give the new session another name';
+  answers["POST /api/sessions"] = () =>
+    json({ detail: { message: text, status: "stopped", repo: "/real/projects/shop/backend" } }, 409);
+  const dialog = await openProject();
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  fireEvent.click(startIn("Shop"));
+  expect((await within(dialog).findByRole("alert")).textContent).toBe(text);
+  const refusal = dialog.querySelector(".launch-refused") as HTMLElement;
+  expect(within(refusal).queryByRole("button", { name: "Resume it" })).toBeNull();
+});
+
+test("a taken name of a running session of this folder in another project offers no Open it", async () => {
+  sessions = [session("shop-backend", { repo: "/real/projects/shop/backend", project: "acme" })];
+  const text = 'session "shop-backend" exists already (running, in /real/projects/shop/backend); resume it, or give the new session another name';
+  answers["POST /api/sessions"] = () =>
+    json({ detail: { message: text, status: "running", repo: "/real/projects/shop/backend" } }, 409);
+  const dialog = await openProject();
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  fireEvent.click(startIn("Shop"));
+  await within(dialog).findByRole("alert");
+  const refusal = dialog.querySelector(".launch-refused") as HTMLElement;
+  expect(within(refusal).queryByRole("button", { name: "Open it" })).toBeNull();
+});
+
 test("Folder's refusal of a project's repository switches to Project with it", async () => {
   folders["/ws/projects/shop/frontend"] = folder("/ws/projects/shop/frontend", {
     ok: false,

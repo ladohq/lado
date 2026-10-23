@@ -1037,6 +1037,60 @@
             }
           }
         }
+      },
+      "patch": {
+        "summary": "Rename Project",
+        "description": "Set or clear the project's title as `lado project rename` does; the id and the\nfolder stay.",
+        "operationId": "rename_project_api_projects__id__patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectTitle"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such project, repository or variable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/projects/{id}/repos": {
@@ -4089,6 +4143,16 @@
                 "type": "null"
               }
             ]
+          },
+          "project": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectPlace"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6492,6 +6556,21 @@
                 "type": "null"
               }
             ]
+          },
+          "gone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "project",
+                  "repo"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gone"
           }
         },
         "type": "object",
@@ -6689,6 +6768,24 @@
         ],
         "title": "ProjectSummary",
         "description": "A project in the list of the Projects section."
+      },
+      "ProjectTitle": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "title": "ProjectTitle",
+        "description": "A project's new title, as `lado project rename` takes it; empty or None clears it."
       },
       "ProjectVariable": {
         "properties": {
@@ -7020,6 +7117,17 @@
               }
             ],
             "title": "Default"
+          },
+          "repo_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Name"
           }
         },
         "type": "object",
@@ -7616,6 +7724,16 @@
                 "type": "null"
               }
             ]
+          },
+          "project": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectPlace"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -7923,12 +8041,24 @@
           "open_runs": {
             "type": "integer",
             "title": "Open Runs"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
           }
         },
         "type": "object",
         "required": [
           "name",
-          "open_runs"
+          "open_runs",
+          "project"
         ],
         "title": "SessionToForget"
       },

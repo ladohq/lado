@@ -23,8 +23,12 @@ changes this file.
 > project and a project's variables and secrets, and the server's list, create and id
 > routes (step S6a, 0.43.0; docs/design/ui.md, Projects); the New session window's way
 > Project, which starts a session in a project's repository through the CLI's core call
-> (step S6b, 0.43.0; docs/design/ui.md, Launch and session control). Everything else here
-> is step S7 and is marked **not built yet** where it is described.
+> (step S6b, 0.43.0; docs/design/ui.md, Launch and session control); the project's page
+> with its repositories (adding by a clone or from scratch, removing), its sessions and
+> renaming, `PATCH /api/projects/{id}`, and the unpushed check's detached HEAD, stashes and
+> project folder that is a repository (step S7a, 0.43.0; docs/design/ui.md, Projects).
+> Deleting a project in the UI is step S7b and is marked **not built yet** where it is
+> described.
 
 ## Why
 
@@ -177,8 +181,8 @@ session window do not offer `projects/` for an ordinary session. The reasons:
    the same list gets an item "all repositories".
 
 The window only chooses (the human's answer #1282, LAD-137): a repository that is not there
-yet is added on the project's page ("+ Add repository", step S7; until then `lado project
-repo add`), which the window links to when the project has none.
+yet is added on the project's page ("+ Add repository", step S7a, or `lado project repo
+add`), which the window links to when the project has none.
 
 In the CLI: `lado start --project <project> --repo <repository>`.
 
@@ -334,7 +338,15 @@ any session working in its folder (one from before S3 has no project), is not st
 shows the stopped sessions it forgets and its repositories' unpushed work; then removes the
 folder, forgets the sessions, removes its data folder with its secrets (step S5b; a link on
 the way to it or in it refuses before anything is removed) and removes the record last, so
-a rerun finishes what failed. The UI (steps S6, S7) is **not built yet**.
+a rerun finishes what failed. The UI (step S7b) is **not built yet**.
+
+What a removal would lose (the project's and a repository's alike, step S7a): each
+checkout's uncommitted changes (untracked files too), its local branches with no upstream
+or ahead of it, `detached HEAD with <n> commit[s] on no branch` when its HEAD is detached
+on commits no local or remote-tracking branch holds, and `<n> stash[es]`; the project
+folder itself when it is a repository's root (`the project's folder: …`, first); a
+worktree directly in the project folder of a repository listed there is named once, under
+its repository.
 
 Deleting a project removes the project, its secrets, all its sessions (as `lado forget`
 does) and the whole project folder.
@@ -345,10 +357,12 @@ does) and the whole project folder.
 - Deleting is confirmed: in the UI by typing the project's id, in the CLI by `--yes`.
 
 Deleting a repository works the same way, within its folder and its sessions (built in
-step S4, `lado project repo remove`; the UI is step S7): refused while any session works in
-its folder, by path; the project's stopped sessions in it and its unpushed work, its
-workers' worktrees included, shown first; `--yes`; the folder removed, then those sessions
-forgotten. A symbolic link of the project folder loses the link only, and an entry that is
+step S4, `lado project repo remove`; the UI in step S7a, the project's page): refused while
+any session works in its folder, by path; its stopped sessions of the project and those of
+no project whose folder is in it (from before S3, marked so; step S7a) and its unpushed
+work, its workers' worktrees included, shown first; `--yes` (in the UI, the repository's
+name typed when there is unpushed work); the folder removed, then those sessions
+forgotten. A session of another project is never matched by its path. A symbolic link of the project folder loses the link only, and an entry that is
 neither a repository nor a link is refused. LADO never deletes a folder outside
 `projects/`.
 
@@ -366,13 +380,12 @@ project's page with its variables and secrets, the marks of what overrides an ou
 and of a secret file its agents do not get, the warning of the security boundary, and the
 sessions that run. Built in step S6b (docs/design/ui.md, Launch and session control): the
 New session window's way Project, Folder's refusal inside a project leading to it, and the
-project's page opening the window on its project. The rest is **not built yet** (step S7):
+project's page opening the window on its project. Built in step S7a (docs/design/ui.md,
+Projects): the project's page with its repositories (branch and remote, "Start session"
+and "Delete"), "+ Add repository" by a clone or from scratch, the project's sessions, and
+renaming its title. The rest is **not built yet**:
 
-- **A project's page** (S7):
-  - its repositories with branch and remote, each with "Start session" and "Delete";
-  - "+ Add repository";
-  - the project's sessions;
-  - renaming its title and deleting the project.
+- **A project's page** (S7b, LAD-139): deleting the project, with its id typed.
 - **The New session window**: the workspace hint of its folder field is called Workspace
   (built: step S1, the row `Workspace:`, docs/design/ui.md).
 
@@ -440,6 +453,7 @@ LADO working. The steps, their checks and notes: [docs/epics/lad-116/plan.md](..
 | S5b | Secrets: their store, replace and delete, the canary test | CLI |
 | S6a | UI: the Projects section, making a project, a project's variables and secrets | UI |
 | S6b | UI: the Project way of New session, which only chooses a project's repository | UI |
-| S7 | UI: a project's page, adding and removing a repository and removing a project with the work not pushed shown | UI |
+| S7a | UI: a project's page, its sessions, adding and removing a repository with the work not pushed shown, renaming | UI |
+| S7b | UI: removing a project with the work not pushed shown | UI |
 
 The minor version goes up from the step that brings the schema migration and new commands.

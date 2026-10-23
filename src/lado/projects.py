@@ -779,50 +779,98 @@ def _not_pushed(repo: Path) -> list[str]:
 
 
 def _checkouts(repo: Path) -> list[Path]:
-    """The worktrees of `repo` but its own, wherever they are."""
+    """The worktrees of `repo` but its own, wherever they are; for a worktree `repo`, its
+    siblings (its repository's other worktrees), not the repository itself."""
     listing = _git(repo, "worktree", "list", "--porcelain")
     trees = [
         Path(line.removeprefix("worktree "))
         for line in listing.splitlines()
         if line.startswith("worktree ")
     ]
-    return trees[1:]  # the first is the repository's own
+    itself = os.path.realpath(repo)
+    return [tree for tree in trees[1:] if os.path.realpath(tree) != itself]  # [0]: the main one
 
 
 def unpushed(project_folder: Path) -> list[str]:
     """What deleting `project_folder` would lose of the human's work, one line per checkout:
-    each git repository directly in it and each worktree of one, with its uncommitted
-    changes (untracked files too) and, for the repository, its branches not pushed."""
+    the folder itself when it is a repository's root (`the project's folder`), each git
+    repository directly in it and each worktree of one, with its uncommitted changes
+    (untracked files too), commits on a detached HEAD that no branch holds, and, for the
+    repository, its branches not pushed and its stashes. A worktree directly in the folder
+    of a repository listed there is its repository's line only, not one of its own."""
     lines = []
-    for entry in sorted(project_folder.iterdir()):
-        if entry.is_dir() and os.path.lexists(entry / ".git"):
+    own = _own_root(str(project_folder))
+    if own:
+        lines += _checkout_lines(project_folder, project_folder, "the project's folder")
+    entries = [
+        entry
+        for entry in sorted(project_folder.iterdir())
+        if entry.is_dir() and os.path.lexists(entry / ".git")
+    ]
+    listed = set()  # the real paths of the worktrees of the folder's and its entries' repositories
+    for entry in ([project_folder] if own else []) + entries:
+        if not (entry / ".git").is_dir():
+            continue  # a worktree's .git is a file: its siblings are not its to list
+        try:
+            listed.update(os.path.realpath(tree) for tree in _checkouts(entry))
+        except _GitFailed:
+            pass  # its own line says so
+    for entry in entries:
+        if os.path.realpath(entry) not in listed:
             lines += _checkout_lines(entry, project_folder)
     return lines
 
 
-def _checkout_lines(entry: Path, base: Path) -> list[str]:
-    """`unpushed`'s lines of the one repository `entry`: its uncommitted changes and
-    branches not pushed, then each of its worktrees with changes, shown relative to `base`
-    when inside it."""
+def _detached(checkout: Path) -> list[str]:
+    """`detached HEAD with <n> commit[s] on no branch` when the HEAD of `checkout` is
+    detached and `n` commits reachable from it are on no local or remote-tracking branch."""
+    try:
+        _git(checkout, "symbolic-ref", "-q", "HEAD")
+        return []
+    except _GitFailed:
+        pass  # detached: no branch is checked out
+    count = int(_git(checkout, "rev-list", "--count", "HEAD", "--not", "--branches", "--remotes"))
+    if not count:
+        return []
+    return [f"detached HEAD with {count} commit{'' if count == 1 else 's'} on no branch"]
+
+
+def _stashes(repo: Path) -> list[str]:
+    """`<n> stash[es]` when `repo` has stashes."""
+    count = len(_git(repo, "stash", "list").splitlines())
+    if not count:
+        return []
+    return [f"{count} stash{'' if count == 1 else 'es'}"]
+
+
+def _checkout_lines(entry: Path, base: Path, label: str | None = None) -> list[str]:
+    """`unpushed`'s lines of the one repository `entry`, named `label` (its folder's name
+    by default): its uncommitted changes, branches not pushed, commits on a detached HEAD
+    and stashes, then each of its worktrees with changes or commits on a detached HEAD,
+    shown relative to `base` when inside it."""
+    label = label or entry.name
     real = Path(os.path.realpath(base))  # git names worktrees by real paths
     try:
         findings = []
         if _git(entry, "status", "--porcelain", "--untracked-files=normal").strip():
             findings.append("uncommitted changes")
-        findings += _not_pushed(entry)
+        findings += _not_pushed(entry) + _detached(entry) + _stashes(entry)
         trees = []
         for tree in _checkouts(entry):
-            if (
-                tree.is_dir()
-                and _git(tree, "status", "--porcelain", "--untracked-files=normal").strip()
-            ):
-                trees.append(tree)
+            if not tree.is_dir():
+                continue
+            found = []
+            if _git(tree, "status", "--porcelain", "--untracked-files=normal").strip():
+                found.append("uncommitted changes")
+            found += _detached(tree)
+            if found:
+                trees.append((tree, found))
     except _GitFailed as failed:
-        return [f"{entry.name}: could not check: {failed}"]
-    lines = [f"{entry.name}: {'; '.join(findings)}"] if findings else []
-    for tree in trees:
+        return [f"{label}: could not check: {failed}"]
+    lines = [f"{label}: {'; '.join(findings)}"] if findings else []
+    for tree, found in trees:
         shown = tree.relative_to(real) if tree.is_relative_to(real) else tree
-        lines.append(f"{entry.name} (worktree {shown}): uncommitted changes")
+        lines.append(f"{label} (worktree {shown}): {'; '.join(found)}")
     return lines
 
 
@@ -903,14 +951,15 @@ def delete(id: str, yes: bool) -> None:
 @dataclass(frozen=True)
 class Removal:
     """What removing the entry `name` of a project's folder does: a repository's folder
-    goes with the stopped sessions of the project in it (by name, with their open runs),
-    and `unpushed` is what it loses; a link loses the link only (`target` as written)."""
+    goes with the stopped sessions in it of the project and of none (by name, with their
+    open runs and their project), and `unpushed` is what it loses; a link loses the link
+    only (`target` as written)."""
 
     name: str
     kind: Literal["repository", "link"]
     path: Path
     target: str | None
-    sessions: list[tuple[str, int]]
+    sessions: list[tuple[str, int, str | None]]
     unpushed: list[str]
 
 
@@ -947,11 +996,12 @@ def removal(id: str, name: str) -> Removal:
             f"repository {name} of project {id} has sessions not stopped: {names(busy)}; stop "
             "them first with lado stop <name>"
         )
-    # The project's own only: the path is a safety check, never how LADO learns a project.
+    # The project's own, and those of no project (from before projects): the path is a
+    # safety check, never how LADO learns another project's session.
     sessions = sorted(
-        (sess.name, len(state.list_runs(sess.name, open_only=True)))
-        for sess in state.project_sessions(id)
-        if inside(sess)
+        (sess.name, len(state.list_runs(sess.name, open_only=True)), sess.project)
+        for sess in state.list_sessions()
+        if sess.project in (id, None) and inside(sess)
     )
     return Removal(name, "repository", path, None, sessions, _checkout_lines(path, folder(id)))
 
@@ -991,7 +1041,7 @@ def remove_repo(id: str, name: str, yes: bool) -> Removal:
         raise ProjectError(
             f"could not remove {found.path} whole: {error}; its sessions stay"
         ) from error
-    for session, _ in found.sessions:
+    for session, _, _ in found.sessions:
         try:
             runtime.forget_session(session, force=True)
         except runtime.LadoError as error:

@@ -141,6 +141,9 @@ class RemoteInfo(BaseModel):
     url: str  # without a secret (runtime.public_remote)
     branches: list[str]  # the default one first
     default: str | None  # None when the remote does not say
+    # the URL's repository name (clone.Address.repo_name): the name Add repository offers;
+    # None when the URL names none
+    repo_name: str | None = None
 
 
 CloneTargetState = clone.TargetState
@@ -160,6 +163,7 @@ class CloneTarget(BaseModel):
     provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions
     warning: str | None = None  # as FolderInfo's, for the folder the clone goes to
     hint: "HintInfo | None" = None  # what to do instead, for in_project
+    project: "ProjectPlace | None" = None  # for in_project: the project the folder is in
 
 
 ScratchTargetState = scratch.TargetState
@@ -188,6 +192,7 @@ class ScratchTarget(BaseModel):
     provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions
     warning: str | None = None  # as FolderInfo's, for the folder
     hint: "HintInfo | None" = None  # what to do instead, for in_project
+    project: "ProjectPlace | None" = None  # for in_project: the project the folder is in
 
 
 class CloneRefused(BaseModel):
@@ -816,12 +821,21 @@ class ProjectLaunch(BaseModel):
     name_state: "NameState | None"  # a session of the name in no or another project: elsewhere
     provider: "ProviderSuggestion | None"
     last: SessionInfo | None  # the repository's latest started session of this project
+    # what was asked and is gone: "project", no such project; "repo", no such repository
+    # in the chosen project; None: nothing asked is gone
+    gone: Literal["project", "repo"] | None = None
 
 
 class ProjectNew(BaseModel):
     """A project to make, as `lado project create` makes it."""
 
     id: str
+    title: str | None = None
+
+
+class ProjectTitle(BaseModel):
+    """A project's new title, as `lado project rename` takes it; empty or None clears it."""
+
     title: str | None = None
 
 
@@ -863,6 +877,7 @@ class RepoNew(BaseModel):
 class SessionToForget(BaseModel):
     name: str
     open_runs: int
+    project: str | None  # None: a session from before projects, matched by its folder
 
 
 class RepoRemoval(BaseModel):
@@ -872,7 +887,7 @@ class RepoRemoval(BaseModel):
     kind: Literal["repository", "link"]  # a link loses the link only
     path: str
     target: str | None  # a link's target as written
-    sessions: list[SessionToForget]  # the project's stopped sessions in it, forgotten
+    sessions: list[SessionToForget]  # its stopped sessions of the project or of none, forgotten
     unpushed: list[str]  # what its folder loses, as `lado project repo remove` shows it
 
 

@@ -92,6 +92,7 @@ from lado.server.models import (
     ProjectNew,
     ProjectRepo,
     ProjectSummary,
+    ProjectTitle,
     ProviderInfo,
     RecentFolder,
     RecordView,
@@ -710,6 +711,19 @@ def create_app(
             raise HTTPException(404, str(unknown)) from unknown
         except runtime.LadoError as refused:
             raise HTTPException(400, str(refused)) from refused
+
+    @app.patch(
+        "/api/projects/{id}",
+        dependencies=[Depends(guard.changes)],
+        responses=project_refused,
+    )
+    def rename_project(
+        id: str, given: ProjectTitle, has_db: bool = Depends(database)
+    ) -> ProjectInfo:
+        """Set or clear the project's title as `lado project rename` does; the id and the
+        folder stay."""
+        project_core(id, has_db, projects.rename, given.title)
+        return launch.project_info(id)
 
     @app.post(
         "/api/projects/{id}/repos",

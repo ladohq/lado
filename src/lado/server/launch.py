@@ -8,6 +8,7 @@ import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Literal
 
 from lado import doctor, kits, project_secrets, projects, providers, runtime, scratch, state
 from lado.server import models
@@ -32,7 +33,7 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
             default_name=None,
             name_state=None,
             provider=None,
-            project=_project_place(path),
+            project=project_place(path),
         )
     kind, hint = None, None
     try:
@@ -62,7 +63,8 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
     )
 
 
-def _project_place(path: str) -> models.ProjectPlace | None:
+def project_place(path: str) -> models.ProjectPlace | None:
+    """The project a folder refused inside one is in, for the button that leads to it."""
     place = projects.place(path)
     if place is None:
         return None
@@ -110,6 +112,7 @@ def scratch_target(text: str, path: str | None, has_db: bool) -> models.ScratchT
         provider=provider_suggestion(None),  # a new folder has no last session
         warning=runtime.outside_workspace(folder) if folder else None,
         hint=hint,
+        project=project_place(folder) if folder and state == "in_project" else None,
     )
 
 
@@ -309,14 +312,17 @@ def project_launch(asked: str | None, asked_repo: str | None, has_db: bool) -> m
     """What the Project way shows: the projects by title, the project `asked` (else that of
     the latest started session in a project whose folder is found, else the first found,
     else the first), its repository `asked_repo` (else that of the project's latest started
-    session still there, else the first), and what a start there takes; makes nothing."""
+    session still there, else the first), and what a start there takes; `gone` names what
+    was asked and is not there. Makes nothing."""
     listed = project_summaries() if has_db else []
     listed.sort(key=lambda p: (p.title or p.id).casefold())
     started = state.sessions_by_start() if listed else []
     found = [p.id for p in listed if p.found]
+    gone: Literal["project", "repo"] | None = None
     if asked in {p.id for p in listed}:
         project = asked
     else:
+        gone = "project" if asked is not None else None
         used = (s.project for s in started if s.project in found)
         project = next(used, None) or next(iter(found + [p.id for p in listed]), None)
     nothing = models.ProjectLaunch(
@@ -329,6 +335,7 @@ def project_launch(asked: str | None, asked_repo: str | None, has_db: bool) -> m
         name_state=None,
         provider=None,
         last=None,
+        gone=gone,
     )
     if project is None:
         return nothing
@@ -339,6 +346,8 @@ def project_launch(asked: str | None, asked_repo: str | None, has_db: bool) -> m
     if asked_repo in named:
         repo = named[asked_repo]
     else:
+        if asked_repo is not None and gone is None:
+            nothing = nothing.model_copy(update={"gone": "repo"})
         still_there = (by_folder.get(os.path.realpath(s.repo)) for s in in_project)
         repo = next((r for r in still_there if r), None) or next(iter(repos), None)
     if repo is None:
@@ -391,7 +400,10 @@ def repo_removal(found: projects.Removal) -> models.RepoRemoval:
         kind=found.kind,
         path=str(found.path),
         target=found.target,
-        sessions=[models.SessionToForget(name=n, open_runs=runs) for n, runs in found.sessions],
+        sessions=[
+            models.SessionToForget(name=n, open_runs=runs, project=project)
+            for n, runs, project in found.sessions
+        ],
         unpushed=found.unpushed,
     )
 

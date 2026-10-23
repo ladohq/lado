@@ -241,8 +241,13 @@ def test_the_project_and_repository_asked(client, shop, acme, fake_tmux):
         None,
     )
     assert shown["provider"] is None  # no session in frontend: the human picks
+    assert shown["gone"] is None
     shown = project_launch(client, project="nope", repo="docs")  # unknown: as not asked
     assert (shown["project"], shown["repo"], shown["name_state"]) == ("shop", "backend", "running")
+    assert shown["gone"] == "project"
+    shown = project_launch(client, project="shop", repo="docs")
+    assert (shown["project"], shown["repo"], shown["gone"]) == ("shop", "backend", "repo")
+    assert project_launch(client)["gone"] is None  # nothing asked, nothing gone
 
 
 def test_a_project_whose_folder_is_not_found_is_chosen_only_when_asked(client, shop, acme):
@@ -279,6 +284,7 @@ def test_no_project_without_a_database(client, lado_home):
         "name_state": None,
         "provider": None,
         "last": None,
+        "gone": None,
     }
     assert not (lado_home / "lado.db").exists()
 

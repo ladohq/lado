@@ -78,29 +78,115 @@ test("a row opens the project's page at the right", async () => {
   expect(at).toBe("/projects/shop");
   const page = await screen.findByRole("region", { name: "Project shop" });
   expect(within(page).getByRole("heading", { name: "Shop" })).toBeTruthy();
+  expect(page.querySelector(".project-id")!.textContent).toBe("shop");
   expect(page.textContent).toContain("2 repositories · 2 sessions running · folder /ws/projects/shop");
-  expect(page.textContent).toContain(
-    "New session in this project… Not built yet: the repositories on this page (adding, removing), " +
-      "renaming and deleting the project. Plan: Projects, step S7. Meanwhile: lado project show shop, " +
-      "lado project repo add shop <git-url>.",
+  expect(within(page).getByRole("button", { name: "New session…" })).toBeTruthy();
+  expect(within(page).getByRole("button", { name: "Rename" })).toBeTruthy();
+  expect(page.lastElementChild!.textContent).toBe(
+    "Deleting the project: not built yet (Projects, step S7b). Meanwhile: lado project delete shop.",
   );
-  expect(within(page).getByRole("link", { name: "Plan: Projects, step S7" }).getAttribute("href")).toMatch(
-    /docs\/design\/projects\.md#how-it-is-built$/,
-  );
+  expect(page.textContent).not.toContain("Not built yet: the repositories");
   expect(within(list()).getByRole("link", { name: /Shop/ }).getAttribute("aria-current")).toBe("page");
   expect(list()).toBeTruthy(); // the list stays beside it
 });
 
-test("New session in this project… opens the window in Project with the project", async () => {
+test("New session… opens the window in Project with the project", async () => {
   open("/projects/acme");
   const page = await screen.findByRole("region", { name: "Project acme" });
-  fireEvent.click(within(page).getByRole("button", { name: "New session in this project…" }));
+  fireEvent.click(within(page).getByRole("button", { name: "New session…" }));
   const dialog = await screen.findByRole("dialog", { name: "New session" });
   expect(within(dialog).getByRole("button", { name: "Project" }).getAttribute("aria-pressed")).toBe("true");
   const select = (await within(dialog).findByRole("combobox", { name: "Project" })) as HTMLSelectElement;
   expect(select.value).toBe("acme");
   expect(server.calls("GET", "/api/project-launch?project=acme")).toHaveLength(1);
   expect(within(dialog).getByRole("radio", { name: /^crm/ }).getAttribute("aria-checked")).toBe("true");
+});
+
+// Renaming (openspec change project-page): the session title's field, in the page's head.
+
+const titleField = () => screen.getByRole("textbox", { name: "Project title" }) as HTMLInputElement;
+const patches = () => server.asked.filter((one) => one.method === "PATCH");
+
+async function rename(id = "shop") {
+  open(`/projects/${id}`);
+  const page = await screen.findByRole("region", { name: `Project ${id}` });
+  fireEvent.click(within(page).getByRole("button", { name: "Rename" }));
+  return page;
+}
+
+test("Rename opens the title in place, selected; Enter saves it, the head and the list follow", async () => {
+  const page = await rename();
+  const field = titleField();
+  expect(field.value).toBe("Shop");
+  expect([field.selectionStart, field.selectionEnd]).toEqual([0, 4]);
+  expect(document.activeElement).toBe(field);
+  expect(page.textContent).toContain("Enter to save · Esc to cancel");
+  fireEvent.change(field, { target: { value: "Shop EU" } });
+  fireEvent.keyDown(field, { key: "Enter" });
+  expect(await within(page).findByRole("heading", { name: "Shop EU" })).toBeTruthy();
+  expect(patches()).toEqual([{ method: "PATCH", path: "/api/projects/shop", body: { title: "Shop EU" } }]);
+  await waitFor(() => expect(rows()[2]).toBe("Shop EUshop · 2 repositories · 2 running"));
+  expect(page.querySelector(".project-id")!.textContent).toBe("shop");
+});
+
+test("a click on the title opens the field too; leaving it saves", async () => {
+  open("/projects/acme");
+  const page = await screen.findByRole("region", { name: "Project acme" });
+  fireEvent.click(within(page).getByRole("heading", { name: "ACME CRM" }));
+  fireEvent.change(titleField(), { target: { value: "ACME" } });
+  fireEvent.blur(titleField());
+  expect(await within(page).findByRole("heading", { name: "ACME" })).toBeTruthy();
+  expect(patches()).toHaveLength(1);
+});
+
+test("Esc keeps the title and sends nothing; the same text sends nothing either", async () => {
+  const page = await rename();
+  fireEvent.change(titleField(), { target: { value: "Other" } });
+  fireEvent.keyDown(titleField(), { key: "Escape" });
+  expect(within(page).getByRole("heading", { name: "Shop" })).toBeTruthy();
+  fireEvent.click(within(page).getByRole("button", { name: "Rename" }));
+  fireEvent.keyDown(titleField(), { key: "Enter" });
+  await waitFor(() => expect(screen.queryByRole("textbox", { name: "Project title" })).toBeNull());
+  expect(patches()).toEqual([]);
+});
+
+test("an empty title clears it and the id shows", async () => {
+  const page = await rename();
+  fireEvent.change(titleField(), { target: { value: "  " } });
+  fireEvent.keyDown(titleField(), { key: "Enter" });
+  expect(await within(page).findByRole("heading", { name: "shop" })).toBeTruthy();
+  expect(patches()).toEqual([{ method: "PATCH", path: "/api/projects/shop", body: { title: null } }]);
+});
+
+test("a refused title shows the server's text under the field, the field kept", async () => {
+  server.refuse = (asked) => (asked.method === "PATCH" ? "a title is at most 80 characters" : null);
+  const page = await rename();
+  fireEvent.change(titleField(), { target: { value: "Too long" } });
+  fireEvent.keyDown(titleField(), { key: "Enter" });
+  expect((await within(page).findByRole("alert")).textContent).toBe("a title is at most 80 characters");
+  expect(titleField().value).toBe("Too long");
+});
+
+test("in an untitled project the id is the suggestion: Tab takes it, nothing sent", async () => {
+  const page = await rename("sandbox");
+  const field = titleField();
+  expect(field.value).toBe("");
+  expect(field.placeholder).toBe("sandbox");
+  fireEvent.change(field, { target: { value: "sa", selectionStart: 2, selectionEnd: 2 } });
+  field.setSelectionRange(2, 2);
+  fireEvent.select(field);
+  expect(page.textContent).toContain("Tab takes the id · Enter to save · Esc to cancel");
+  expect(page.querySelector(".title-edit-rest")!.textContent).toBe("sandbox");
+  fireEvent.keyDown(field, { key: "Tab" });
+  expect(titleField().value).toBe("sandbox");
+  expect(document.activeElement).toBe(titleField());
+  expect(patches()).toEqual([]);
+});
+
+test("a project with a title opens the field with no suggestion", async () => {
+  const page = await rename();
+  expect(page.querySelector(".title-edit-rest")).toBeNull();
+  expect(page.textContent).not.toContain("Tab takes the id");
 });
 
 test("a project whose folder is gone says so in its head", async () => {
@@ -160,14 +246,15 @@ test("the list and the page are read anew when a session starts or stops", async
   server.sessions = [session("shop-backend", { project: "shop" })];
   open("/projects/shop");
   const page = await screen.findByRole("region", { name: "Project shop" });
-  await waitFor(() => expect(within(page).getByRole("link", { name: "shop-backend" })).toBeTruthy());
+  const line = () => within(page).getByText(/New values reach the agents/); // the page's read
+  await waitFor(() => expect(within(line()).getByRole("link", { name: "shop-backend" })).toBeTruthy());
   server.projects.shop = { ...server.projects.shop, running: ["shop-frontend"] };
   server.projects.acme = { ...server.projects.acme, running: ["acme-crm"] };
   const started = session("acme-crm", { project: "acme" });
   stream().send("change", { kind: "sessions", session: "acme-crm", key: "", op: "insert", item: started }, "11");
   await waitFor(() => expect(rows()[0]).toBe("ACME CRMacme · 1 repository · 1 running"));
-  await waitFor(() => expect(within(page).queryByRole("link", { name: "shop-backend" })).toBeNull());
-  expect(within(page).getByRole("link", { name: "shop-frontend" })).toBeTruthy();
+  await waitFor(() => expect(within(line()).queryByRole("link", { name: "shop-backend" })).toBeNull());
+  expect(within(line()).getByRole("link", { name: "shop-frontend" })).toBeTruthy();
 });
 
 test("the page is read anew when the window gets the focus", async () => {
@@ -191,6 +278,13 @@ test("on a phone the list fills the screen, and a project opens in its place", a
   fireEvent.click(screen.getByRole("link", { name: "← All projects" }));
   expect(at).toBe("/projects");
   expect(await within(list()).findByRole("link", { name: /Shop/ })).toBeTruthy();
+  expect(screen.queryByText("Select a project")).toBeNull();
+});
+
+test("a narrow desktop window shows no Select a project pane beside the list", async () => {
+  new FakeScreen("fine", 390, 800);
+  open("/projects");
+  await within(list()).findByRole("link", { name: /Shop/ });
   expect(screen.queryByText("Select a project")).toBeNull();
 });
 
@@ -221,6 +315,22 @@ test("New project's id follows the title, with its folder, and Create makes the 
   expect(server.calls("POST", "/api/projects")[0].body).toEqual({ id: "shop-eu", title: "Shop EU" });
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(await screen.findByRole("heading", { name: "Shop EU" })).toBeTruthy();
+});
+
+test("a title that gives no id says so under Id, and Create stays off", async () => {
+  server.suggest = (_title, id) =>
+    id === null
+      ? { id: null, folder: null, problem: "the name needs a Latin letter or digit for its folder: type one" }
+      : { id, folder: `/ws/projects/${id}`, problem: null };
+  const shown = await newProject();
+  fireEvent.change(field("Title (optional)"), { target: { value: "!!!" } });
+  expect(await within(shown).findByText("The title gives no id: type one.")).toBeTruthy();
+  expect(field("Id").value).toBe("");
+  expect(create().disabled).toBe(true);
+  expect(shown.textContent).not.toContain("for its folder");
+  fireEvent.change(field("Id"), { target: { value: "bang" } });
+  await waitFor(() => expect(create().disabled).toBe(false));
+  expect(shown.textContent).not.toContain("The title gives no id");
 });
 
 test("an edited id stays when the title changes, and is checked as typed", async () => {

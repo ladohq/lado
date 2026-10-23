@@ -11,19 +11,24 @@ import {
   createProject,
   getProject,
   listProjects,
+  renameProject,
   suggestProjectId,
   type ProjectId,
   type ProjectInfo,
   type ProjectSummary,
 } from "./api";
+import { PencilIcon } from "./icons";
 import { useDebounced, useLaunch } from "./Launch";
 import { useLive } from "./live";
-import { PLANS, projectPath, sessionPath } from "./paths";
+import { projectPath, sessionPath } from "./paths";
 import { usePhone } from "./phone";
+import { ProjectRepos, ProjectSessions } from "./ProjectRepos";
 import { ProjectVariables } from "./ProjectVariables";
 import { messageOf, plural as count } from "./SessionControl";
 import { labelOf } from "./sessionLabel";
 import { useTitle } from "./Shell";
+import { TitleEdit } from "./TitleEdit";
+import { Tooltip } from "./Tooltip";
 
 // Calls `read` when the page opens, when a session of the feed appears, starts, stops or
 // goes, and when the window gets the focus: what a project's list and page show changes
@@ -169,9 +174,21 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
   );
 }
 
+// A window no wider than this stacks the list over the project (styles.css), as Sessions does.
+const STACKED = "(max-width: 900px)";
+
 export function NoProject() {
-  const phone = usePhone(); // the list is the page: nothing to select beside it
-  return phone ? null : <p className="empty">Select a project</p>;
+  // On a phone, or in a window that stacks, the list is the page: nothing to select beside it.
+  const phone = usePhone();
+  const [stacked, setStacked] = useState(() => window.matchMedia?.(STACKED).matches ?? false);
+  useEffect(() => {
+    const list = window.matchMedia?.(STACKED);
+    const changed = () => setStacked(list?.matches ?? false);
+    list?.addEventListener?.("change", changed);
+    changed();
+    return () => list?.removeEventListener?.("change", changed);
+  }, []);
+  return phone || stacked ? null : <p className="empty">Select a project</p>;
 }
 
 type Shown = { project: ProjectInfo } | { error: string; missing: boolean } | null;
@@ -231,8 +248,13 @@ export function ProjectPage() {
     <section className="project-page" aria-label={`Project ${project.id}`}>
       {back}
       <div className="project-head">
-        <h2>{project.title ?? project.id}</h2>
+        <ProjectTitle project={project} onSaved={changed} />
         <span className="project-id">{project.id}</span>
+        <span className="project-head-actions">
+          <button type="button" className="quiet" onClick={() => launch({ kind: "new", project: project.id })}>
+            New session…
+          </button>
+        </span>
       </div>
       <p className="project-facts">
         {count(project.repos.length, "repository", "repositories")} · {count(project.running.length, "session")} running
@@ -244,17 +266,15 @@ export function ProjectPage() {
           </>
         )}
       </p>
-      <p className="placeholder project-later muted">
-        <button type="button" className="link-button" onClick={() => launch({ kind: "new", project: project.id })}>
-          New session in this project…
-        </button>{" "}
-        Not built yet: the repositories on this page (adding, removing), renaming and deleting the project.{" "}
-        <a href={PLANS.projects.href} target="_blank" rel="noreferrer">
-          Plan: {PLANS.projects.label}
-        </a>
-        . Meanwhile: <code>lado project show {project.id}</code>,{" "}
-        <code>lado project repo add {project.id} &lt;git-url&gt;</code>.
-      </p>
+      <ProjectRepos
+        project={project}
+        onAdded={() => {
+          read();
+          reload();
+        }}
+        onChanged={changed}
+      />
+      <ProjectSessions id={project.id} />
       <div className="project-notes">
         <span className="field-note warn">
           ⚠ Projects of one LADO are not isolated from each other: an agent of one project can read another's variables
@@ -263,7 +283,57 @@ export function ProjectPage() {
         <Running names={project.running} />
       </div>
       <ProjectVariables project={project} onChanged={changed} />
+      <p className="placeholder project-later muted">
+        Deleting the project: not built yet (Projects, step S7b). Meanwhile: <code>lado project delete {project.id}</code>.
+      </p>
     </section>
+  );
+}
+
+// The project's title, renamed in place as a session's is (TitleEdit, the id its
+// suggestion): Rename or a click on the title opens the field; the focus goes back to Rename
+// when it closes.
+function ProjectTitle({ project, onSaved }: { project: ProjectInfo; onSaved: (project: ProjectInfo) => void }) {
+  const [editing, setEditing] = useState(false);
+  const pencil = useRef<HTMLButtonElement>(null);
+  const back = useRef(false);
+  useEffect(() => {
+    if (editing || !back.current) return;
+    back.current = false;
+    pencil.current?.focus();
+  });
+  if (editing) {
+    return (
+      <TitleEdit
+        name={project.id}
+        title={project.title}
+        label="Project title"
+        save={(title) => renameProject(project.id, title)}
+        hint="Enter to save · Esc to cancel"
+        suggestionHint="Tab takes the id · Enter to save · Esc to cancel"
+        onClose={(saved) => {
+          if (saved) onSaved(saved);
+          back.current = true;
+          setEditing(false);
+        }}
+      />
+    );
+  }
+  return (
+    <span className="project-title-edit">
+      <h2 onClick={() => setEditing(true)}>{project.title ?? project.id}</h2>
+      <Tooltip tip="Rename project">
+        <button
+          ref={pencil}
+          type="button"
+          className="icon-button project-rename"
+          aria-label="Rename"
+          onClick={() => setEditing(true)}
+        >
+          <PencilIcon />
+        </button>
+      </Tooltip>
+    </span>
   );
 }
 
@@ -306,7 +376,8 @@ function NewProjectDialog({ onClose, onMade }: { onClose: () => void; onMade: (i
   const [edited, setEdited] = useState(false);
   const editing = useRef(false); // edited, for an answer that comes after the edit
   // The server's answer, with what it was asked: it counts only for the fields as they are.
-  const [checked, setChecked] = useState<{ asked: string; answer: ProjectId } | null>(null);
+  // `failed`: the request failed, and its problem says why.
+  const [checked, setChecked] = useState<{ asked: string; answer: ProjectId; failed: boolean } | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -324,13 +395,14 @@ function NewProjectDialog({ onClose, onMade }: { onClose: () => void; onMade: (i
       return;
     }
     let current = true;
-    const take = (answer: ProjectId) => {
+    const take = (answer: ProjectId, failed = false) => {
       if (!current || (kind === "title" && editing.current)) return; // the human took Id over
       if (kind === "title") setId(answer.id ?? "");
-      setChecked({ asked, answer });
+      setChecked({ asked, answer, failed });
     };
-    suggestProjectId(kind === "id" ? { id: text } : { title: text }).then(take, (error: unknown) =>
-      take({ id: kind === "id" ? text : null, folder: null, problem: messageOf(error) }),
+    suggestProjectId(kind === "id" ? { id: text } : { title: text }).then(
+      (answer) => take(answer),
+      (error: unknown) => take({ id: kind === "id" ? text : null, folder: null, problem: messageOf(error) }, true),
     );
     return () => {
       current = false;
@@ -339,7 +411,10 @@ function NewProjectDialog({ onClose, onMade }: { onClose: () => void; onMade: (i
 
   const answer = checked?.asked === wanted ? checked.answer : null;
   const fresh = answer !== null && answer.id === id && id !== "";
-  const note = refused ?? (answer && (fresh || answer.id === null) ? answer.problem : null);
+  // A title that gives no id (E2): said in New project's words, not the fresh start's.
+  const noId = !edited && answer !== null && answer.id === null && !checked!.failed;
+  const note =
+    refused ?? (noId ? "The title gives no id: type one." : answer && (fresh || answer.id === null) ? answer.problem : null);
   const ready = fresh && answer.problem === null && refused === null && !busy;
   const create = async () => {
     setBusy(true);

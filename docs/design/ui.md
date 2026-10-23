@@ -1436,7 +1436,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   the window to Project with that project and repository, else **Open the project
   <title>**, which closes the window and opens the project's page (LAD-137). A clone's
   target (Clone into) and a fresh start's (Create in) there show the same box with the same
-  hint and no button: the window adds no repository to a project. The box shows also for a folder
+  hint and **Open the project <title>** (`CloneTarget.project`, `ScratchTarget.project`;
+  LAD-138): the window adds no repository to a project, the project's page does. The box shows also for a folder
   there that already has a session, a session in the project too: the window starts no
   session there and offers no Resume it; such a session is resumed from its own page
   (Resume…), as its resume is never refused. Recent folders leave out folders inside
@@ -1512,10 +1513,11 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   origin and a free folder beside it (`<parent>/<owner>-<repo>`), and the button stays off.
   LADO never clones over, fetches into or switches the branch of a folder that exists.
   The clone is a job of the server (`server/clones.py`): `POST /api/clones` (`{url, path,
-  branch}`, or `{url, project, name, branch}` for a repository added to a project, which no
-  screen sends yet (steps S6b, S7; docs/design/projects.md); 400 `CloneRefused`, 404 for an
+  branch}`, or `{url, project, name, branch}` for a repository added to a project, which the
+  project's page's Add repository sends (Projects, below); 400 `CloneRefused`, 404 for an
   unknown project, 409 while another job clones into that folder) starts it,
-  and the window asks `GET /api/clones/{id}` every 500 ms: a progress block with git's
+  and the window asks `GET /api/clones/{id}` every 500 ms (the one client of a clone job,
+  `cloneJob.ts`'s `useCloneJob`, both screens use): a progress block with git's
   phase, its percent with a bar (`role="progressbar"`), the rest of git's line and the
   time it runs; a poll that fails is asked again (the clone goes on), and one the server
   answers 404 ends the clone: when the folder now holds the clone (it ended while the
@@ -1544,7 +1546,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   `task/lad-137/mockup-project-way.html` v2; `LaunchProject.tsx`): a session in a
   project's repository, as `lado start --project <id> --repo <name>` starts it. The window
   only chooses: it adds, clones or makes no repository (the human's answer #1282); a
-  project's repositories are added on its page (step S7). Its fields come from `GET
+  project's repositories are added on its page (Projects, below). Its fields come from `GET
   /api/project-launch?project=&repo=` (`ProjectLaunch`, asked again on each choice; it makes
   nothing): **Project**, a select of the projects by title (the id without one, case
   aside), each `<title> · <id>`, one whose folder is not found off and marked `folder not
@@ -1557,7 +1559,10 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   now has come (LAD-137, review X1). The server chooses what the window
   opens on: the project asked, else that of the latest started session in a project whose
   folder is found, else the first found; the repository asked, else that of the project's
-  latest started session still there, else the first. **Name** is `<project>-<repo>`
+  latest started session still there, else the first. What was asked and is not there any
+  more (`ProjectLaunch.gone`: `project` or `repo`; LAD-138, E1) is said under its field
+  over the server's choice, `⚠ No project <id> any more: choose one.` or `⚠ No repository
+  <name> in <title> any more: choose one.`, not while a new choice is asked. **Name** is `<project>-<repo>`
   (`runtime.project_session_name`) until edited, with the folder check's notes
   (`name_state`, where a session of the name in another project or in none is
   `taken_elsewhere`); Kits and Permission mode come from the repository's last session in
@@ -1577,8 +1582,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   project's page:` with **Open <title>**, and Start stays off; without projects the field
   says `No projects yet. A project keeps its repositories and the variables its sessions
   get.` with **Make one in Projects**; each link closes the window. The window still opens
-  in Folder (#1283); `useLaunch()({kind: "new", project})` opens it in Project with that
-  project (the project's page).
+  in Folder (#1283); `useLaunch()({kind: "new", project, repo})` opens it in Project with
+  that project (and repository: the project's page's New session… and Start session).
 - **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
   mode and Advanced filled from the session (`SessionInfo` carries its settings) and
   changeable; it sends only what changed (`POST /api/sessions/{name}/resume`).
@@ -1658,15 +1663,18 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 
 ### Projects (decided 2026-10-23, LAD-134)
 
-The Projects section (`Projects.tsx`, `ProjectVariables.tsx`; step S6a of
-[projects.md](projects.md); the mockup `task/lad-134/mockup-projects.html`, the human's
-answers #1151, #1153 and #1158) lists the projects and shows one with its variables and
-secrets. A project's repositories, sessions, rename and delete are its page's step S7; the
-Project way of New session (S6b, LAD-137) is in Launch and session control.
+The Projects section (`Projects.tsx`, `ProjectRepos.tsx`, `ProjectVariables.tsx`; steps S6a
+and S7a of [projects.md](projects.md); the mockups `task/lad-134/mockup-projects.html` and
+`task/lad-138/mockup-project-page.html` v2, the human's answers #1151, #1153, #1158, #1347,
+#1350 and #1352) lists the projects and shows one with its repositories, its sessions, its
+variables and secrets. Deleting a project is step S7b (LAD-139); the Project way of New
+session (S6b, LAD-137) is in Launch and session control.
 
 - **Layout**, as Sessions: the list at the left (260 px), the project at the right at
   `/projects/<id>`; on a phone the list fills the screen and a project opens in its place
-  with `← All projects` above it. Not cards.
+  with `← All projects` above it. Not cards. A desktop window of at most 900 px stacks
+  the list over the project, as Sessions does, and shows no `Select a project` pane
+  (`NoProject`, LAD-138, M1).
 - **The list** (`GET /api/projects`): a row is the title (the id without one), the mark
   `folder not found` when its folder is missing, then `<id> · <N> repositories · <N>
   running` (`no sessions running` when none runs). A search by title and id, and a `+`
@@ -1678,16 +1686,59 @@ Project way of New session (S6b, LAD-137) is in Launch and session control.
   change (the change's answer carries the project), when a session of the feed appears,
   starts, stops or goes, and when the window gets the focus. A change in another browser
   shows on the next of these.
-- **The page**: the title and the id; `<N> repositories · <N> sessions running · folder
-  <folder>` (`folder not found` after it); the line `New session in this project… Not built
-  yet: the repositories on this page (adding, removing), renaming and deleting the project.
-  Plan: Projects, step S7. Meanwhile: lado project show <id>, lado project repo add <id>
-  <git-url>.`, where **New session in this project…** (a `link-button`, LAD-137) opens the
-  New session window in Project with this project; always the warning `⚠ Projects of one
-  LADO are not isolated from each other: …`; and the line on who gets a change: `New values
+- **The page**, top to bottom: the head, the title (the id without one) with **Rename** (a
+  pencil), the id, and **New session…**, which opens the New session window in Project with
+  this project; `<N> repositories · <N> sessions running · folder <folder>` (`folder not
+  found` after it); the blocks Repositories and Sessions; always the warning `⚠ Projects of
+  one LADO are not isolated from each other: …`; the line on who gets a change: `New values
   reach the agents started after a change; running agents keep the environment they
   started with. Running now: <sessions> — restart a session to give it the change.`, each
-  session by its title as a link (with none: `… No session of this project is running.`).
+  session by its title as a link (with none: `… No session of this project is running.`);
+  Variables and Secrets; and, until S7b, `Deleting the project: not built yet (Projects,
+  step S7b). Meanwhile: lado project delete <id>.`
+- **Rename**: the pencil or a click on the title puts the session title's field
+  (`TitleEdit`, one component for both) in the title's place, `Project title`: Enter or
+  leaving it saves through `PATCH /api/projects/{id}` (`projects.rename`, the CLI's), Esc
+  cancels, empty clears the title (the id shows), the same text sends nothing; the id is
+  the suggestion as a session's name is (grey after a start of it, Tab or → take it, the
+  hint `Tab takes the id · Enter to save · Esc to cancel`, else `Enter to save · Esc to
+  cancel`). A refusal shows under the field, the text kept. A save shows the answer and
+  reads the list anew; the id and the folder never change.
+- **Repositories** (`ProjectRepos.tsx`), as the server reads them from the disk: each its
+  name, `branch <branch>` (`detached HEAD` without one) and its remote (`no remote`), with
+  **Start session** (New session in Project with the project and this repository) and
+  **Delete**; `+ Add repository` in the block's head. An empty project says `No
+  repositories yet. A session works in one of the project's repositories: clone one or
+  start one from scratch.` with a primary `+ Add repository`. In a window of at most
+  760 px a row's buttons go under its name. Links in the project's folder are not listed.
+- **Add a repository to <title>**, a dialog with **Clone from URL | From scratch**. A clone:
+  Git URL (its branches asked by `POST /api/remote-branches` once the typing stops, the
+  listing's failure under it with its hint), Name (the URL's repository name,
+  `RemoteInfo.repo_name`, until edited; `Its folder: <folder>/<name>` under it, not
+  checked while typing) and Branch; **Clone** sends `POST /api/clones` with `{url,
+  project, name, branch}` and runs as New session's clone does (`useCloneJob`: the
+  progress block, the fields off, Esc and Cancel do nothing, **Cancel clone** → `the clone
+  was cancelled`, the beacon of a page that goes away; a job the server forgot ends as done
+  when the project lists the name). From scratch: Name and **Create**, `POST
+  /api/projects/{id}/repos` (one empty commit). A refusal shows the core's text under
+  Name (with its hint), the fields kept. On success the dialog closes and the page is read
+  anew; no session starts (#1282).
+- **Delete repository <name>?**, a dialog from `GET …/repos/{name}/removal`: `Its folder
+  <folder> is deleted with everything in it. This cannot be undone.`, then `Work that is
+  not on the remote` (each unpushed line: uncommitted changes, branches not pushed,
+  commits on a detached HEAD, stashes, its workers' worktrees) and `Sessions that are
+  forgotten` (`(<n> open runs)`; one without a project `— no project, started in this
+  folder before projects`), or `All its work is on the remote.` / `No session is
+  forgotten.`. With unpushed lines **Delete repository** is on only once `Type <name> to
+  delete it` holds the name exactly (#1352); else at once. It sends `DELETE
+  …/repos/{name}`, closes and shows the answered project. A refusal of the preview or of
+  the delete (a session started meanwhile) replaces the body with the core's text and only
+  **Close**.
+- **Sessions**: the change feed's sessions of the project (`SessionInfo.project`), running
+  ones first (the latest started first), then the stopped (the latest stopped first): each
+  its status mark, its title (its name without one) as a link, its name beside a title, its
+  repository (its folder's last part), and `running <time>` or `stopped <time> ago`; it
+  follows the feed without a read. With none: `No sessions in this project yet.`
 - **Variables** and **Secrets**, two blocks of rows. A variable: its name and value,
   **Edit** in place (Save, Cancel), **Remove**, and `+ Add variable`. A secret: its name
   and `set · hidden`, **Replace** (an empty field, `New value (the old one is not shown)`),
@@ -1712,7 +1763,8 @@ Project way of New session (S6b, LAD-137) is in Launch and session control.
   project**. Until the human types in Id, Id follows the title (`GET
   /api/project-id?title=`, one request per pause in typing, the fresh start's names:
   Cyrillic transliterated, `_` made `-`); a typed Id is checked by `?id=`. Under Id: `Its
-  folder: <folder>. The id never changes.`, or the core's refusal, which disables Create.
+  folder: <folder>. The id never changes.`, or the core's refusal, which disables Create;
+  a title that gives no id says `The title gives no id: type one.` (LAD-138, E2).
   Create sends `POST /api/projects`; a refusal shows under Id, success opens the project.
 
 ### Session head (decided 2026-10-07, feature/session-head)

@@ -19,7 +19,7 @@ import {
 import { Agents } from "./Agents";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { Artifacts } from "./ArtifactsTable";
-import { getSessionAbout, type SessionAbout, type SessionInfo, type SessionStatus } from "./api";
+import { getSessionAbout, setSessionTitle, type SessionAbout, type SessionInfo, type SessionStatus } from "./api";
 import { Chat } from "./Chat";
 import { duration } from "./ChatText";
 import { CopyButton } from "./Copy";
@@ -449,7 +449,10 @@ function SessionRow({ session }: { session: SessionInfo }) {
       <li ref={item} className="session-row">
         <div className="session-link session-row-edit">
           <TitleEdit
-            session={session}
+            name={session.name}
+            title={session.title}
+            label="Session title"
+            save={(title) => setSessionTitle(session.name, title)}
             hint={`${session.name} · Enter to save · Esc to cancel`}
             suggestionHint={`${session.name} · Tab takes the name · Enter to save · Esc to cancel`}
             onClose={closed}
@@ -520,7 +523,7 @@ const HEAD_MARKS: Record<Mark, string> = {
   loop_down: "session-dot-loop_down",
 };
 
-function StatusDot({ session }: { session: SessionInfo }) {
+export function StatusDot({ session }: { session: SessionInfo }) {
   const { mark, words } = sessionMark(session);
   return (
     <Tooltip tip={words}>
@@ -754,7 +757,10 @@ function HeadLine({ session }: { session: SessionInfo }) {
       <StatusDot session={session} />
       {editing ? (
         <TitleEdit
-          session={session}
+          name={session.name}
+          title={session.title}
+          label="Session title"
+          save={(title) => setSessionTitle(session.name, title)}
           hint="Enter to save · Esc to cancel · empty shows the name"
           suggestionHint="Tab takes the name · Enter to save · Esc to cancel"
           onClose={closed}

@@ -525,7 +525,12 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Rename Project
+         * @description Set or clear the project's title as `lado project rename` does; the id and the
+         *     folder stay.
+         */
+        patch: operations["rename_project_api_projects__id__patch"];
         trace?: never;
     };
     "/api/projects/{id}/repos": {
@@ -1655,6 +1660,7 @@ export interface components {
             /** Warning */
             warning?: string | null;
             hint?: components["schemas"]["HintInfo"] | null;
+            project?: components["schemas"]["ProjectPlace"] | null;
         };
         /** CommitInfo */
         CommitInfo: {
@@ -2403,6 +2409,8 @@ export interface components {
             name_state: ("free" | "running" | "stopped_here" | "taken_elsewhere") | null;
             provider: components["schemas"]["ProviderSuggestion"] | null;
             last: components["schemas"]["SessionInfo"] | null;
+            /** Gone */
+            gone?: ("project" | "repo") | null;
         };
         /**
          * ProjectNew
@@ -2467,6 +2475,14 @@ export interface components {
             repos: number;
             /** Running */
             running: string[];
+        };
+        /**
+         * ProjectTitle
+         * @description A project's new title, as `lado project rename` takes it; empty or None clears it.
+         */
+        ProjectTitle: {
+            /** Title */
+            title?: string | null;
         };
         /**
          * ProjectVariable
@@ -2600,6 +2616,8 @@ export interface components {
             branches: string[];
             /** Default */
             default: string | null;
+            /** Repo Name */
+            repo_name?: string | null;
         };
         /**
          * Replies
@@ -2792,6 +2810,7 @@ export interface components {
             /** Warning */
             warning?: string | null;
             hint?: components["schemas"]["HintInfo"] | null;
+            project?: components["schemas"]["ProjectPlace"] | null;
         };
         /**
          * SecretValue
@@ -2895,6 +2914,8 @@ export interface components {
             name: string;
             /** Open Runs */
             open_runs: number;
+            /** Project */
+            project: string | null;
         };
         /** Started */
         Started: {
@@ -4143,6 +4164,55 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProjectInfo"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_project_api_projects__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectTitle"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectInfo"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such project, repository or variable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

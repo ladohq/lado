@@ -702,6 +702,7 @@ def test_a_name_checked(home_workspace, client, git_config, tmp_path, monkeypatc
         "provider": {"name": "kilo", "reason": "only_installed"},
         "warning": None,
         "hint": None,
+        "project": None,
     }
 
 
@@ -968,8 +969,9 @@ def test_the_scratch_target_in_a_project(client, shop):
         "text": "Add a repository to the project:",
         "command": "lado project repo add shop --new site",
     }
+    assert target["project"] == {"id": "shop", "title": "Shop", "repo": None}
     other = client.get("/api/scratch-target", params={"text": "Site"}).json()
-    assert (other["state"], other["hint"]) == ("new", None)
+    assert (other["state"], other["hint"], other["project"]) == ("new", None, None)
 
 
 def test_a_project_with_its_repositories(client, shop):

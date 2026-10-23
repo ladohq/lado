@@ -346,6 +346,25 @@ export const getProject = (id: string) => get<ProjectInfo>(projectPath(id));
 
 export const createProject = (id: string, title: string | null) => post<ProjectInfo>("/api/projects", { id, title });
 
+// Set or clear (null) the project's title, as `lado project rename` does; the project after.
+export const renameProject = (id: string, title: string | null) =>
+  post<ProjectInfo>(projectPath(id), { title }, "PATCH");
+
+export type RepoRemoval = components["schemas"]["RepoRemoval"];
+
+const repoPath = (id: string, name: string) => `${projectPath(id)}/repos/${encodeURIComponent(name)}`;
+
+// A repository of the project from scratch: one empty commit (a clone is a clone job).
+export const addProjectRepo = (id: string, name: string) =>
+  post<ProjectRepo>(`${projectPath(id)}/repos`, { name });
+
+// What removing the repository does: its folder, the unpushed work and the sessions forgotten.
+export const getRepoRemoval = (id: string, name: string) => get<RepoRemoval>(`${repoPath(id, name)}/removal`);
+
+// Remove the repository and forget its sessions; the project after.
+export const removeProjectRepo = (id: string, name: string) =>
+  post<ProjectInfo>(repoPath(id, name), undefined, "DELETE");
+
 // The id New project offers for a title, or the id as typed, with its folder and the core's
 // refusal; asking makes nothing.
 export const suggestProjectId = (given: { title: string } | { id: string }) =>

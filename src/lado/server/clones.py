@@ -41,7 +41,10 @@ def _url(given: str) -> str:
 def remote_info(url: str) -> models.RemoteInfo:
     remote = clone.list_branches(_url(url))
     return models.RemoteInfo(
-        url=runtime.public_remote(url), branches=remote.branches, default=remote.default
+        url=runtime.public_remote(url),
+        branches=remote.branches,
+        default=remote.default,
+        repo_name=clone.Address.parse(url).repo_name or None,
     )
 
 
@@ -65,6 +68,7 @@ def target_info(url: str, path: str | None, has_db: bool) -> models.CloneTarget:
         provider=launch.provider_suggestion(None),  # a new folder has no last session
         warning=runtime.outside_workspace(folder),
         hint=models.hint_info(target.hint),
+        project=launch.project_place(folder) if target.state == "in_project" else None,
     )
 
 

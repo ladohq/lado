@@ -208,6 +208,18 @@ def test_the_removal_shows_its_unpushed_work_and_its_workers(pushed):
     ]
 
 
+def test_the_removal_shows_a_detached_head_and_stashes(pushed):
+    repo = pushed / "frontend"
+    (repo / "wip.txt").write_text("x")
+    _git(repo, "stash", "push", "-q", "--include-untracked")
+    _git(repo, "checkout", "-q", "--detach")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "one")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "two")
+    assert projects.removal("shop", "frontend").unpushed == [
+        "frontend: detached HEAD with 2 commits on no branch; 1 stash"
+    ]
+
+
 def test_the_removal_of_a_link(shop, home):
     elsewhere = init_repo(home / "elsewhere" / "docs")
     (shop / "docs").symlink_to(elsewhere)
@@ -279,12 +291,16 @@ def test_the_stopped_sessions_of_the_project_there_are_forgotten(pushed):
     _session("shop-frontend", pushed / "frontend", "shop")
     _session("fix-login", pushed / "frontend", "shop")
     _session("shop-backend", pushed / "backend", "shop")
-    _session("old", pushed / "frontend", None)  # no project: the path is no way to learn one
+    _session("old", pushed / "frontend" / "src", None)  # from before projects: by its folder
+    _session("old-backend", pushed / "backend", None)  # another repository's
+    projects.create("eu", None)
+    _session("eu-frontend", pushed / "frontend", "eu")  # another project's: never by path
     run = state.Run("shop-frontend", "f/x", "feature", "{}", {}, "do x", "design", "/w", "b")
     state.add_run(run, [], None)
     assert projects.removal("shop", "frontend").sessions == [
-        ("fix-login", 0),
-        ("shop-frontend", 1),
+        ("fix-login", 0, "shop"),
+        ("old", 0, None),
+        ("shop-frontend", 1, "shop"),
     ]
 
 
@@ -311,9 +327,13 @@ def test_remove_without_yes_and_without_sessions(pushed):
 def test_remove_with_yes_removes_the_folder_then_forgets_its_sessions(pushed, home):
     _session("shop-frontend", pushed / "frontend", "shop")
     _session("shop-backend", pushed / "backend", "shop")
+    _session("old-frontend", pushed / "frontend", None)
     (home / "beside.txt").write_text("mine")
     removed = projects.remove_repo("shop", "frontend", yes=True)
-    assert (removed.kind, removed.sessions) == ("repository", [("shop-frontend", 0)])
+    assert (removed.kind, removed.sessions) == (
+        "repository",
+        [("old-frontend", 0, None), ("shop-frontend", 0, "shop")],
+    )
     assert not os.path.lexists(pushed / "frontend")
     assert [s.name for s in state.list_sessions()] == ["shop-backend"]
     assert [r.name for r in projects.repositories("shop")] == ["backend"]

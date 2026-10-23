@@ -24,7 +24,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-new-session-
 
 - [x] 3.1 The canary starts its session through `POST /api/sessions` (D12). Check: `uv run
   pytest -m integration -n0 tests/integration/test_project_secrets_canary.py`.
-- [ ] 3.2 `tests/ui/test_launch_project.py`: the start, the taken name, Folder's refusal,
+- [x] 3.2 `tests/ui/test_launch_project.py`: the start, the taken name, Folder's refusal,
   the page's link, the empty project, 390 px (D13). Check: `uv run pytest -m ui
   tests/ui/test_launch_project.py`.
 

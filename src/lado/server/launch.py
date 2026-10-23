@@ -338,8 +338,8 @@ def project_launch(asked: str | None, asked_repo: str | None, has_db: bool) -> m
     if asked_repo in named:
         repo = named[asked_repo]
     else:
-        used = (by_folder.get(os.path.realpath(s.repo)) for s in in_project)
-        repo = next((r for r in used if r), None) or next(iter(repos), None)
+        still_there = (by_folder.get(os.path.realpath(s.repo)) for s in in_project)
+        repo = next((r for r in still_there if r), None) or next(iter(repos), None)
     if repo is None:
         return nothing
     real = os.path.realpath(repo.path)

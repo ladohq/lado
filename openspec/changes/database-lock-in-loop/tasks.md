@@ -46,7 +46,7 @@
 
 ## 4. The checks
 
-- [ ] 4.1 `make lint`; `make test` (report the counts);
+- [x] 4.1 `make lint`; `make test` (report the counts);
   `openspec validate database-lock-in-loop --strict`; `openspec validate --specs --strict`;
   grep `openspec/specs/` for `errors.jsonl` and `database is locked`: no rule left that
   says a loop's lock is journaled at once.

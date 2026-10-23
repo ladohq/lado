@@ -212,21 +212,20 @@ class RepeatedErrors:
 
     def failed(self) -> None:
         """Log the error being handled, and journal it once while it repeats."""
-        error = "".join(traceback.format_exception_only(*sys.exc_info()[:2])).strip()
+        exc = sys.exc_info()[1]
+        error = "".join(traceback.format_exception_only(type(exc), exc)).strip()
         now = time.monotonic()
         if error != self.last:
             self.flush()
             self.last, self.noted_at = error, now
             self.write(f"error in a pass, the loop goes on:\n{traceback.format_exc()}")
-            if is_locked(sys.exc_info()[1]):
-                self.locked_since = now
-            else:
-                self.locked_since = None
-                telemetry.record(self.where, sys.exc_info()[1], session=self.session)
+            self.locked_since = now if is_locked(exc) else None
+            if self.locked_since is None:
+                telemetry.record(self.where, exc, session=self.session)
             return
         if self.locked_since is not None and now - self.locked_since >= LOCK_GRACE:
             self.locked_since = None
-            telemetry.record(self.where, sys.exc_info()[1], session=self.session)
+            telemetry.record(self.where, exc, session=self.session)
         self.unlogged += 1
         if now - self.noted_at >= REPEAT_NOTE:
             self.write(f"the same error again, {self.unlogged} times since its last line")

@@ -693,8 +693,7 @@ def test_a_locked_journal_is_logged_but_not_journaled_within_the_grace(
     broken_journal(monkeypatch, "database is locked")
     assert stream.closed.wait(5)  # FAILED_PASSES failing reads
     assert any(
-        r.name == "lado.server" and "database is locked" in r.getMessage()
-        for r in caplog.records
+        r.name == "lado.server" and "database is locked" in r.getMessage() for r in caplog.records
     )
     assert not (state.home() / "errors.jsonl").exists()
 

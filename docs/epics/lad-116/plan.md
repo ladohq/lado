@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: none · Next: S6b (after step_ok) · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5); S5a, S5b and S3's F1 until 0.43.0rc1 (a live run on the four CLIs with a variable and a secret, release checklist 4.3 "Projects"); S5b's link refusals on macOS until 0.43.0rc1 (4.3 "Projects' secrets on the Mac"); S6a's secret field with password managers in Chrome and Safari until 0.43.0rc1 (4.3 "Projects in the web UI")
+In work: S6b (LAD-137, run task/lad-137) · Next: S7 · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5); S5a, S5b and S3's F1 until 0.43.0rc1 (a live run on the four CLIs with a variable and a secret, release checklist 4.3 "Projects"); S5b's link refusals on macOS until 0.43.0rc1 (4.3 "Projects' secrets on the Mac"); S6a's secret field with password managers in Chrome and Safari until 0.43.0rc1 (4.3 "Projects in the web UI")
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
@@ -97,7 +97,7 @@ Notes: concept phase 4. The Projects stub goes away here. Leftovers of S5b (ledg
 Result: PR #151 merged 2026-10-23 (be6f9bb4), LAD-134 Done; the change `projects-section` archived; split at the design on the human's word (#1151): the Project way of New session became S6b. New API `GET`/`POST /api/projects`, `GET /api/project-id`, `ProjectInfo` gained `running`, `overrides`, `unused`; the screen `/projects` and `/projects/<id>`; the secret's value only in an uncontrolled password field outside a form and in the `PUT` body; canary E6–E9 closed; UI e2e checks the value absent from the URL, storages, the console and files. Review: 3 local rounds, 2 external (the first with LAD-133's fix: `ProjectVariables.tsx`, `Projects.tsx`, `project_secrets.py` read in full; it found the stale-read race E1, fixed); declined minors F4 (Enter while busy repeats an idempotent `PUT`) and E2 (Create disabled without a reason on an absurd title). CI 23/23. The lead's manual check (temp `LADO_HOME`, API and Chromium): create, the 401 without the token, refusals verbatim, "looks like a secret" moves the name to the secret field, the value in no DOM, storage, URL or server log, the field gone after Add, phone layout; one cosmetic slip M1 (S7).
 
 ### S6b — UI: the Project way of New session (M)
-Status: planned
+Status: in progress (LAD-137, run task/lad-137)
 Check: mockup approved at `design_ok`; UI e2e: New session's Project way — a project, then its repository list (always shown); "+ new repository" by clone or from scratch through S4's routes; the start equals `lado start --project <id> --repo <name>` (`POST /api/sessions` with a project; the session's head links to the project); Folder's refusal for a folder inside `projects/` (S3) leads into Project with the project and repository chosen; the S6a placeholder's "repository" part updated. The canary extended to the start. `make check`, CI green.
 Notes: concept phase 4, split from S6 at S6a's design (#1151); the analyst's draft is in artifact `task/lad-134/design` ("Черновик задачи S6b"). `web/src/Launch.tsx` is 1585 lines: the external round reads the new Project way and the start's route in full (#949). A new tracker task derived from LAD-134 and linked to LAD-116.
 

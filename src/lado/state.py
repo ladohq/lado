@@ -1235,8 +1235,8 @@ def connect() -> Iterator[sqlite3.Connection]:
 
 def schema_version() -> int | None:
     """lado.db's schema version, None when there is no lado.db. Reads only: unlike
-    connect(), it never makes the database or refuses a schema."""
-    path = home() / "lado.db"
+    connect(), it never makes the database, LADO_HOME or refuses a schema."""
+    path = home_path() / "lado.db"
     if not path.exists():
         return None
     conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=10)

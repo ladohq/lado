@@ -393,3 +393,18 @@ def test_a_failed_write_names_the_failure_not_the_value(shop, monkeypatch):
         str(refused.value) == "could not write the secret GH_TOKEN of shop: No space left on device"
     )
     assert projects.secrets(shop) == []
+
+
+def test_overrides_names_what_the_outside_folder_gives_too(shop, tmp_path, monkeypatch):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    for name in ("BOARD_URL", "GH_TOKEN", "OTHER"):
+        (outside / name).write_text(f"canary-out-{name}")
+    projects.set_variable(shop, "BOARD_URL", "mine")
+    projects.set_variable(shop, "MODEL_URL", "mine")
+    projects.set_secret(shop, "GH_TOKEN", "canary-secret")
+    assert projects.overrides(shop) == []  # no outside folder
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(outside))
+    found = projects.overrides(shop)
+    assert found == ["BOARD_URL", "GH_TOKEN"]
+    assert "canary-" not in repr(found)

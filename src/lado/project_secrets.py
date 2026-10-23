@@ -79,6 +79,12 @@ def read(id: str) -> agent_env.Folder:
     return agent_env.read_folder(str(folder(id)), own=reserved)
 
 
+def unused(id: str) -> list[tuple[str | None, str]]:
+    """Each entry of the project's secrets folder its agents do not get, by name with why
+    (None for the folder itself), as `read` finds them; the values it reads stay here."""
+    return [(name or None, reason) for name, reason in read(id).unused]
+
+
 def names(id: str) -> list[str]:
     """The names of the project's secrets, sorted, without opening a file: the files the
     reader takes by what needs no content (a file it still cannot give, for its size or

@@ -230,20 +230,19 @@ def _hint(
     return runtime.Hint("See the project's repositories:", f"lado project show {id}")
 
 
-def create(id: str, title: str | None) -> state.Project:
-    """Make the project `id`: its record and its folder, with the workspace and projects/
-    when they are missing. Refused, with nothing made, for a bad id or title, a workspace
-    LADO cannot use, a taken id, an existing folder of the name (a dangling link too) and
-    the human's own projects/."""
+def check_new(id: str) -> None:
+    """Refuse what `create` refuses of the id `id` before it makes anything: a bad id, a
+    workspace LADO cannot use, a taken id, an existing folder of the name (a dangling link
+    too), a data folder left from a project of the id and the human's own projects/. Makes
+    nothing, a lado.db neither (New project of the UI asks it as the human types)."""
     check_id(id)
-    stored = runtime.check_title(title, id)
     try:
         problem = workspace_problem(workspace(), workspace_label())
     except FileNotFoundError:
         problem = None  # the first project makes it
     if problem:
         raise ProjectError(problem[0])
-    if state.get_project(id):
+    if id in _ids():
         raise ProjectError(f"project {id} exists")
     target = folder(id)
     if os.path.lexists(target):
@@ -259,6 +258,27 @@ def create(id: str, title: str | None) -> state.Project:
             f"{projects_folder()} is your own folder (it holds {names(own)}): LADO keeps "
             "projects there only; move it away or set LADO_REPOS to another workspace"
         )
+
+
+def suggest_id(title: str) -> str:
+    """The id New project of the UI offers for `title`: the name a fresh start makes of it
+    (lado.scratch.names: Cyrillic transliterated, accents dropped), `_` made `-`, cut to
+    MAX_ID characters and trimmed of `-`. The fresh start's ScratchError when no name is
+    left."""
+    from lado import scratch  # lado.scratch builds on this module
+
+    name = scratch.names(title).name.replace("_", "-")
+    return name[:MAX_ID].strip("-")
+
+
+def create(id: str, title: str | None) -> state.Project:
+    """Make the project `id`: its record and its folder, with the workspace and projects/
+    when they are missing. Refused, with nothing made, for a bad title and whatever
+    `check_new` refuses."""
+    check_id(id)
+    stored = runtime.check_title(title, id)
+    check_new(id)
+    target = folder(id)
     try:
         # The record stays only with its folder; exist_ok=False loses a race of two creates.
         with state.creating_project(id, stored):
@@ -364,6 +384,18 @@ def secrets(id: str) -> list[str]:
     """The names of the project's secrets (lado.project_secrets.names), never a value."""
     get(id)
     return project_secrets.names(id)
+
+
+def overrides(id: str) -> list[str]:
+    """The names of the project's plain variables and secrets that the outside folder
+    (LADO_ENV_DIR) gives too, sorted: its sessions' agents get the project's value. No value
+    leaves this function."""
+    given = agent_env.outside().values
+    if not given:
+        return []
+    return sorted(
+        (state.project_variables(id).keys() | set(project_secrets.names(id))) & given.keys()
+    )
 
 
 def running(id: str) -> list[str]:

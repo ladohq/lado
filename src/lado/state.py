@@ -948,8 +948,9 @@ MIGRATIONS[33] = [PROJECT_VARIABLES_TABLE]
 # not made it; the session loop's window check waits for it (lado.runtime.check_windows).
 # The agents of an older LADO run already: their windows count as opened.
 AGENTS_WINDOW_AT = "ALTER TABLE agents ADD COLUMN window_at TEXT"
+AGENTS_WINDOWS_OPENED = "UPDATE agents SET window_at = created_at"
 SCHEMA += AGENTS_WINDOW_AT + ";\n"
-MIGRATIONS[34] = [AGENTS_WINDOW_AT, "UPDATE agents SET window_at = created_at"]
+MIGRATIONS[34] = [AGENTS_WINDOW_AT, AGENTS_WINDOWS_OPENED]
 
 # Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
 # approval or choice gate. An override is the human's past the flow (flow-set's reason, an

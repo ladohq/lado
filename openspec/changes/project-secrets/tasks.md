@@ -20,7 +20,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-secr
 - [x] 2.2 `PUT`/`DELETE /api/projects/{id}/secrets/{name}`, `secrets` in `GET`, 422
   without the input; `make web-types` (D9). Check: `tests/test_server_projects.py`, `make
   web`.
-- [ ] 2.3 `lado doctor`'s `Project secrets` check and the override line (D11). Check:
+- [x] 2.3 `lado doctor`'s `Project secrets` check and the override line (D11). Check:
   `tests/test_doctor.py`.
 
 ## 3. End to end

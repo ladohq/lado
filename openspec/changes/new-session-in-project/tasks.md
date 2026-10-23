@@ -14,7 +14,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-new-session-
 
 - [x] 2.1 `getProjectLaunch`, the Project field `LaunchProject.tsx`, `.repo-pick`, the
   phone's grid (D7, D9, D10). Check: `web/src/LaunchProject.test.tsx`.
-- [ ] 2.2 Project wired into New session: the switch, the start, the defaults from the last
+- [x] 2.2 Project wired into New session: the switch, the start, the defaults from the last
   session, Folder's refusal's buttons, `LaunchMode`'s project (D7, D8). Check:
   `web/src/Launch.test.tsx`.
 - [ ] 2.3 The project's page: `New session in this project…` and the new line (D11).

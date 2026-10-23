@@ -122,7 +122,8 @@ def deletion(id: str) -> Deletion:
 
     every = state.list_sessions()
     busy = [
-        s.name for s in every
+        s.name
+        for s in every
         if (s.project == id or inside(s))
         and runtime.session_status(s) != runtime.SessionStatus.STOPPED
     ]
@@ -139,7 +140,11 @@ def deletion(id: str) -> Deletion:
         if s.project == id or (s.project is None and inside(s))
     )
     return Deletion(
-        id, path, kind, target, sessions,
+        id,
+        path,
+        kind,
+        target,
+        sessions,
         unpushed(path) if kind == "folder" else [],
         sorted(state.project_variables(id)),
         project_secrets.names(id) or [],
@@ -220,14 +225,18 @@ except sqlite3.IntegrityError:
   /api/projects/{id}` → 204.
 
 ```python
-@app.get("/api/projects/{id}/deletion", dependencies=[Depends(guard)],
-         responses=project_refused)
+@app.get("/api/projects/{id}/deletion", dependencies=[Depends(guard)], responses=project_refused)
 def project_deletion(id: str, has_db: bool = Depends(database)) -> ProjectDeletion:
     """What deleting the project does; nothing changes."""
     return launch.project_deletion(project_core(id, has_db, projects.deletion))
 
-@app.delete("/api/projects/{id}", dependencies=[Depends(guard.changes)],
-            responses=project_refused, status_code=204)
+
+@app.delete(
+    "/api/projects/{id}",
+    dependencies=[Depends(guard.changes)],
+    responses=project_refused,
+    status_code=204,
+)
 def delete_project(id: str, has_db: bool = Depends(database)) -> None:
     """Delete the project as `lado project delete --yes` does."""
     project_core(id, has_db, projects.delete, True)

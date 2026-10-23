@@ -26,6 +26,9 @@
 - **A project's page in the web UI.** It lists the project's repositories and sessions,
   adds a repository by a clone or from scratch, deletes one after showing the work not on
   its remote, starts a session in one, and renames the project in place.
+- **Delete a project from its page.** Delete project shows what goes (the work not on a
+  remote, the sessions, the variables and secrets by name) and deletes it once you type its
+  id, as `lado project delete` does.
 
 ### Changed
 

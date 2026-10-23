@@ -950,14 +950,15 @@ def delete(id: str, yes: bool) -> None:
 @dataclass(frozen=True)
 class Removal:
     """What removing the entry `name` of a project's folder does: a repository's folder
-    goes with the stopped sessions of the project in it (by name, with their open runs),
-    and `unpushed` is what it loses; a link loses the link only (`target` as written)."""
+    goes with the stopped sessions in it of the project and of none (by name, with their
+    open runs and their project), and `unpushed` is what it loses; a link loses the link
+    only (`target` as written)."""
 
     name: str
     kind: Literal["repository", "link"]
     path: Path
     target: str | None
-    sessions: list[tuple[str, int]]
+    sessions: list[tuple[str, int, str | None]]
     unpushed: list[str]
 
 
@@ -994,11 +995,12 @@ def removal(id: str, name: str) -> Removal:
             f"repository {name} of project {id} has sessions not stopped: {names(busy)}; stop "
             "them first with lado stop <name>"
         )
-    # The project's own only: the path is a safety check, never how LADO learns a project.
+    # The project's own, and those of no project (from before projects): the path is a
+    # safety check, never how LADO learns another project's session.
     sessions = sorted(
-        (sess.name, len(state.list_runs(sess.name, open_only=True)))
-        for sess in state.project_sessions(id)
-        if inside(sess)
+        (sess.name, len(state.list_runs(sess.name, open_only=True)), sess.project)
+        for sess in state.list_sessions()
+        if sess.project in (id, None) and inside(sess)
     )
     return Removal(name, "repository", path, None, sessions, _checkout_lines(path, folder(id)))
 
@@ -1038,7 +1040,7 @@ def remove_repo(id: str, name: str, yes: bool) -> Removal:
         raise ProjectError(
             f"could not remove {found.path} whole: {error}; its sessions stay"
         ) from error
-    for session, _ in found.sessions:
+    for session, _, _ in found.sessions:
         try:
             runtime.forget_session(session, force=True)
         except runtime.LadoError as error:

@@ -3104,6 +3104,17 @@ def test_project_repo_remove(shop, capsys):
     assert state.get_project("shop") and shop.is_dir()
 
 
+def test_project_repo_remove_names_a_session_from_before_projects(shop, capsys):
+    state.add_session(state.Session("old-frontend", str(shop / "frontend"), None, "kilo"))
+    state.stop_session("old-frontend")
+    assert main(["project", "repo", "remove", "shop", "frontend"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out.splitlines()[0] == "Sessions to forget: old-frontend (no project)"
+    assert captured.err.endswith("and forgets its 1 session; run again with --yes\n")
+    assert main(["project", "repo", "remove", "shop", "frontend", "--yes"]) == 0
+    assert not (shop / "frontend").exists() and state.list_sessions() == []
+
+
 def test_project_repo_remove_a_link(shop, tmp_path, capsys):
     target = tmp_path / "docs"
     target.mkdir()

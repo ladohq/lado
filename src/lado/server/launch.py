@@ -391,7 +391,10 @@ def repo_removal(found: projects.Removal) -> models.RepoRemoval:
         kind=found.kind,
         path=str(found.path),
         target=found.target,
-        sessions=[models.SessionToForget(name=n, open_runs=runs) for n, runs in found.sessions],
+        sessions=[
+            models.SessionToForget(name=n, open_runs=runs, project=project)
+            for n, runs, project in found.sessions
+        ],
         unpushed=found.unpushed,
     )
 

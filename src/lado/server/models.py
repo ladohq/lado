@@ -863,6 +863,7 @@ class RepoNew(BaseModel):
 class SessionToForget(BaseModel):
     name: str
     open_runs: int
+    project: str | None  # None: a session from before projects, matched by its folder
 
 
 class RepoRemoval(BaseModel):
@@ -872,7 +873,7 @@ class RepoRemoval(BaseModel):
     kind: Literal["repository", "link"]  # a link loses the link only
     path: str
     target: str | None  # a link's target as written
-    sessions: list[SessionToForget]  # the project's stopped sessions in it, forgotten
+    sessions: list[SessionToForget]  # its stopped sessions of the project or of none, forgotten
     unpushed: list[str]  # what its folder loses, as `lado project repo remove` shows it
 
 

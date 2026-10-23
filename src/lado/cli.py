@@ -1256,7 +1256,11 @@ def cmd_project_repo(args: argparse.Namespace) -> int:
 def _remove_repo(args: argparse.Namespace) -> int:
     found = projects.removal(args.id, args.name)  # refused while a session there runs
     if found.sessions:
-        shown = [f"{name} ({_open_runs(runs)})" if runs else name for name, runs in found.sessions]
+        shown = [
+            (f"{name} ({_open_runs(runs)})" if runs else name)
+            + (" (no project)" if project is None else "")
+            for name, runs, project in found.sessions
+        ]
         print(f"Sessions to forget: {', '.join(shown)}")
     if found.unpushed:
         print(f"Unpushed work in {found.path}:")

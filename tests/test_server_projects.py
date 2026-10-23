@@ -126,6 +126,8 @@ def test_the_removal_preview(client, shop):
         state.Session("shop-frontend", str(shop / "frontend"), None, "kilo", project="shop")
     )
     state.stop_session("shop-frontend")
+    state.add_session(state.Session("old-frontend", str(shop / "frontend"), None, "kilo"))
+    state.stop_session("old-frontend")
     (shop / "frontend" / "new.txt").write_text("x")
     answer = client.get("/api/projects/shop/repos/frontend/removal")
     assert answer.status_code == 200, answer.text
@@ -134,7 +136,10 @@ def test_the_removal_preview(client, shop):
         "kind": "repository",
         "path": str(shop / "frontend"),
         "target": None,
-        "sessions": [{"name": "shop-frontend", "open_runs": 0}],
+        "sessions": [
+            {"name": "old-frontend", "open_runs": 0, "project": None},
+            {"name": "shop-frontend", "open_runs": 0, "project": "shop"},
+        ],
         "unpushed": ["frontend: uncommitted changes; branch main not pushed"],
     }
     assert (shop / "frontend").is_dir() and state.get_session("shop-frontend")

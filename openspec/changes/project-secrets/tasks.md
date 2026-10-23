@@ -29,7 +29,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-secr
   secret, two projects, the layers' order, no project, `unset`, a kit key through
   `mcp_exec`, delete and create. Check: `uv run pytest -m integration -n auto
   tests/integration/test_project_secrets.py`.
-- [ ] 3.2 `tests/integration/test_project_secrets_canary.py` (D12). Check: `uv run pytest -m
+- [x] 3.2 `tests/integration/test_project_secrets_canary.py` (D12). Check: `uv run pytest -m
   integration -n auto tests/integration/test_project_secrets_canary.py`.
 - [ ] 3.3 The smoke probe sees a project's secret (D14). Check: CI's smoke cells.
 

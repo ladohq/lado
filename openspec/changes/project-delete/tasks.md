@@ -16,7 +16,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-dele
 
 ## 2. Web UI
 
-- [ ] 2.1 `ProjectDelete.tsx`: the block and the dialog, the id always typed, the list
+- [x] 2.1 `ProjectDelete.tsx`: the block and the dialog, the id always typed, the list
   after the delete (D9, D11). Check: `web/src/ProjectDelete.test.tsx`,
   `web/src/Projects.test.tsx`.
 - [ ] 2.2 F1: `useCloneJob` cancels a running job on unmount (D10). Check:

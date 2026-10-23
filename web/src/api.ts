@@ -350,6 +350,15 @@ export const createProject = (id: string, title: string | null) => post<ProjectI
 export const renameProject = (id: string, title: string | null) =>
   post<ProjectInfo>(projectPath(id), { title }, "PATCH");
 
+export type ProjectDeletion = components["schemas"]["ProjectDeletion"];
+
+// What deleting the project does: its folder, the unpushed work, the sessions forgotten, the
+// names of its variables and secrets; asking changes nothing.
+export const getProjectDeletion = (id: string) => get<ProjectDeletion>(`${projectPath(id)}/deletion`);
+
+// Delete the project as `lado project delete --yes` does; no answer but 204.
+export const deleteProject = (id: string) => post<void>(projectPath(id), undefined, "DELETE");
+
 export type RepoRemoval = components["schemas"]["RepoRemoval"];
 
 const repoPath = (id: string, name: string) => `${projectPath(id)}/repos/${encodeURIComponent(name)}`;

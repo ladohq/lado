@@ -2,7 +2,16 @@
 // only tests import this file): its projects in memory, every request recorded.
 import { vi } from "vitest";
 
-import type { CloneJob, CloneStart, ProjectInfo, ProjectSummary, RemoteInfo, RepoRemoval, SessionInfo } from "./api";
+import type {
+  CloneJob,
+  CloneStart,
+  ProjectDeletion,
+  ProjectInfo,
+  ProjectSummary,
+  RemoteInfo,
+  RepoRemoval,
+  SessionInfo,
+} from "./api";
 
 export type Asked = { method: string; path: string; body: unknown };
 
@@ -105,6 +114,11 @@ export class FakeProjects {
   refuse: (asked: Asked) => string | object | null = () => null;
   // A repository's removal by name, over a clean one with no sessions.
   removals: Record<string, Partial<RepoRemoval>> = {};
+  // A project's deletion by id, over its folder with no sessions and no unpushed work, its
+  // variables' and secrets' names.
+  deletions: Record<string, Partial<ProjectDeletion>> = {};
+  // While set, DELETE /api/projects/<id> answers only once it resolves.
+  heldDelete: Promise<void> | null = null;
   // A remote's branches by URL; an unknown URL is refused as git's not_found.
   remotes: Record<string, RemoteInfo> = {};
   // The clone job's answers to its polls in turn, the last one kept; a job that is done
@@ -142,6 +156,13 @@ export class FakeProjects {
           const then = this.answer(path, init);
           await release;
           return then;
+        }
+        // A slow delete of a project: recorded when asked, answered once `heldDelete` resolves.
+        if (this.heldDelete && init?.method === "DELETE" && /^\/api\/projects\/[^/]+$/.test(path)) {
+          const held = this.heldDelete;
+          this.asked.push({ method: "DELETE", path, body: undefined });
+          await held;
+          return this.answer(path, init, false);
         }
         return this.answer(path, init);
       }),
@@ -196,7 +217,8 @@ export class FakeProjects {
       if (known) return json(known);
       return json({ detail: { message: `${body.url} not found`, kind: "not_found", hint: null } }, 400);
     }
-    const refusal = method === "GET" && !path.endsWith("/removal") ? null : this.refuse(asked);
+    const preview = path.endsWith("/removal") || path.endsWith("/deletion");
+    const refusal = method === "GET" && !preview ? null : this.refuse(asked);
     if (refusal !== null) return json({ detail: refusal }, 400);
     if (path.startsWith("/api/clones")) return this.clone(method, path, body);
     if (path === "/api/projects" && method === "POST") {
@@ -211,7 +233,24 @@ export class FakeProjects {
       this.projects[id] = { ...found, title: body.title?.trim() || null };
       return json(this.projects[id]);
     }
+    if (kind === undefined && method === "DELETE") {
+      delete this.projects[id];
+      return new Response(null, { status: 204 });
+    }
     if (kind === undefined) return json(found);
+    if (kind === "deletion") {
+      return json({
+        id,
+        folder: found.folder,
+        kind: "folder",
+        target: null,
+        sessions: [],
+        unpushed: [],
+        variables: found.variables.map((one) => one.name),
+        secrets: found.secrets,
+        ...this.deletions[id],
+      });
+    }
     if (kind === "repos") {
       if (name === undefined) {
         const made = repo(body.name, { path: `${found.folder}/${body.name}` });

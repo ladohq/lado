@@ -4735,11 +4735,9 @@ h3 {
   }
 }
 
-/* A narrow window: the list over the session, the terminals under it; the page scrolls.
-   Projects stack the same way: the list over the project (NoProject draws no pane). */
+/* A narrow window: the list over the session, the terminals under it; the page scrolls. */
 @media (max-width: 900px) {
-  .sessions,
-  .projects {
+  .sessions {
     grid-template-columns: minmax(0, 1fr);
     height: auto;
   }
@@ -8161,6 +8159,15 @@ del.kit-mcp-name {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   height: 100%;
+}
+
+/* A narrow window stacks the list over the project, as Sessions (NoProject draws no pane);
+   the page scrolls. */
+@media (max-width: 900px) {
+  .projects {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
 }
 
 .project-list ul {

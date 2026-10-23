@@ -50,6 +50,6 @@
   `openspec validate database-lock-in-loop --strict`; `openspec validate --specs --strict`;
   grep `openspec/specs/` for `errors.jsonl` and `database is locked`: no rule left that
   says a loop's lock is journaled at once.
-- [ ] 4.2 Regression: CI green on the pull request (unit, integration, UI, smoke), as
+- [x] 4.2 Regression: CI green on the pull request (unit, integration, UI, smoke), as
   `.lado/sdlc.md`'s Checks say; `uv run pytest -m integration -n auto tests/integration/`
   is not run locally unless an integration test changes (none does).

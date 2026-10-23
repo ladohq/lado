@@ -395,7 +395,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     a link. `write` makes missing folders and `fchmod`s each 700, writes `.<name>.<random>.tmp`
     (600, `O_EXCL | O_NOFOLLOW`) with the value's `stored` form (one line break more when it
     ends in one, which the reader drops), `fsync`s, renames it over the name and `fsync`s
-    the folder; `held` says a name is taken by any entry of the folder;
+    the folder; `held` says a name is taken by any entry of the folder; a secret's file is a
+    variable name only (`_is_name`), so `write` refuses any other name and `remove` and
+    `held` find none: no path (`..`, `/`) leads out of the folder, and no file being
+    written is removed;
     a failure removes the temporary file and keeps the old value. `remove`, `check_removable`
     (no link on the way or anywhere in the data folder) and `remove_all` (by `dir_fd`). `read`
     is `agent_env.read_folder(own=reserved)`, for a launch and `lado doctor` only; `names`

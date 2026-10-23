@@ -301,6 +301,20 @@ def test_a_secret_file_the_agents_do_not_get_still_holds_its_name(shop, tmp_path
     assert state.project_variables(shop) == {}
 
 
+@pytest.mark.parametrize("name", ["../../../victim.txt", "..", ".", "../../acme/secrets/GH_TOKEN"])
+def test_unset_of_a_path_removes_nothing_outside_the_secrets_folder(shop, lado_home, name):
+    projects.create("acme", None)
+    projects.set_secret("acme", "GH_TOKEN", "a")
+    projects.set_secret(shop, "GH_TOKEN", "s")  # its secrets folder is there to start from
+    (lado_home / "victim.txt").write_text("v")
+    with pytest.raises(projects.NoSuchVariable, match="has no variable or secret"):
+        projects.unset(shop, name)
+    with pytest.raises(projects.NoSuchVariable, match="has no secret"):
+        projects.unset_secret(shop, name)
+    assert (lado_home / "victim.txt").read_text() == "v"
+    assert projects.secrets("acme") == ["GH_TOKEN"]
+
+
 def test_unset_removes_either_kind(shop):
     projects.set_variable(shop, "BOARD_URL", "b")
     projects.set_secret(shop, "GH_TOKEN", "g")

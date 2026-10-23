@@ -62,10 +62,16 @@ def stored(value: str) -> bytes:
     return value.encode() + (b"\n" if value.endswith("\n") else b"")
 
 
+def _is_name(name: str) -> bool:
+    """Whether `name` can be a secret's file: a variable name only, so no path (`..`, `/`)
+    leads out of the folder and no file being written (`.<name>.<random>.tmp`) is one."""
+    return bool(agent_env.VARIABLE_NAME.fullmatch(name))
+
+
 def held(id: str, name: str) -> bool:
     """Whether the secrets folder of `id` has an entry `name`, also one the agents do not
     get now (a link, a loose mode): the name is taken all the same."""
-    return os.path.lexists(folder(id) / name)
+    return _is_name(name) and os.path.lexists(folder(id) / name)
 
 
 def read(id: str) -> agent_env.Folder:
@@ -139,7 +145,10 @@ def _chain(id: str, *, make: bool, depth: int = 3) -> Iterator[int | None]:
 
 def write(id: str, name: str, value: str) -> None:
     """Set the secret `name` of `id` to `value` (checked by lado.projects), replacing it
-    whole. OSError when the disk refuses it, the old value then kept."""
+    whole. OSError when the disk refuses it, the old value then kept; ValueError for a name
+    that is no variable name (lado.projects refuses it first)."""
+    if not _is_name(name):
+        raise ValueError(f"{name!r} is not a variable name")
     with _chain(id, make=True) as fd:
         assert fd is not None
         _refuse_link(fd, name, folder(id) / name)
@@ -165,7 +174,10 @@ def write(id: str, name: str, value: str) -> None:
 
 
 def remove(id: str, name: str) -> bool:
-    """Remove the secret `name` of `id`; False when it has none of that name."""
+    """Remove the secret `name` of `id`; False when it has none of that name, which a name
+    that is no variable name never is (a path or a file being written is no secret)."""
+    if not _is_name(name):
+        return False
     with _chain(id, make=False) as fd:
         if fd is None:
             return False

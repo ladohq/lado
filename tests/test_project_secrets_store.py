@@ -120,6 +120,28 @@ def test_remove_removes_a_secret_and_tells_a_missing_one(home):
     assert project_secrets.remove("acme", "GH_TOKEN") is False  # no data folder
 
 
+NOT_A_SECRETS_NAME = ["../x", "../../../victim", "..", ".", "a/b", "/abs", ".GH_TOKEN.abc.tmp", ""]
+
+
+@pytest.mark.parametrize("name", NOT_A_SECRETS_NAME)
+def test_a_name_that_is_no_variable_name_touches_nothing(home, name):
+    """Only a variable name can be a secret's file: anything else is no secret, so a path
+    never leads out of the folder, and a file being written is never removed."""
+    project_secrets.write("shop", "GH_TOKEN", "g")
+    folder = secrets_of(home)
+    (folder / ".GH_TOKEN.abc.tmp").write_text("partial")
+    (folder / "x").write_text("in the folder")
+    (home / "projects" / "shop" / "x").write_text("beside")
+    (home / "victim").write_text("v")
+    (folder / "b").write_text("b")
+    before = snapshot(home)
+    assert project_secrets.remove("shop", name) is False
+    assert project_secrets.held("shop", name) is False
+    with pytest.raises(ValueError, match="not a variable name"):
+        project_secrets.write("shop", name, "new")
+    assert snapshot(home) == before
+
+
 def test_names_lists_without_opening_any_file(home, monkeypatch, tmp_path):
     project_secrets.write("shop", "YOUGILE_API_KEY", "k")
     project_secrets.write("shop", "GH_TOKEN", "g")

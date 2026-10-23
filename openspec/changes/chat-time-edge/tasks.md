@@ -43,6 +43,6 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui
+- [x] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui
   tests/ui/test_chat.py tests/ui/test_selection.py tests/ui/test_gates.py` pass;
   `openspec validate chat-time-edge --strict` passes; CI green (AC-7).

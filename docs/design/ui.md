@@ -1145,12 +1145,12 @@ Built in the chat task (2026-10-03):
   `human`, a grey "L" for `lado`), its name muted ("You" for the human), then by kind: a
   `flow` move as chips, the state it left (mono, muted) → the state it entered (mono) and
   the outcome, green (`--done`) forward and orange (`--human`) with a return icon back
-  (below); `flow_start`
-  "started", `gate_open` "waits for you" (orange; the gate's line is under it),
-  `flow_end` "ended" (green), `flow_cancel` "cancelled", `flow_set` "set by you", each with
-  the core's `detail` as it is, cut by CSS on one line (the UI parses no detail); a
+  (below); `flow_start` "started", `flow_end` "ended" (green), `flow_cancel` "cancelled",
+  `flow_set` "set by you", each with the core's `detail` as it is, cut by CSS on one line (the UI parses no detail); a
   `flow` event whose detail is no move shows its detail. The time on the right, always
-  seen. `gate_answer` is no line: the human's answer is their move. A **move's direction**
+  seen. `gate_answer` is no line: the human's answer is their move. `gate_open` is no line
+  either (LAD-135): the gate's own row, open or folded, shows it, right under the run's
+  group that ends with the move that led to it. A **move's direction**
   (LAD-62, 2026-10-14, mockup `mockup-outcome-colour.html`) is one rule for the chat and
   Flows (`flowSteps.direction`), by the run's flow alone (`RunInfo.states`, of the
   session's runs the chat watches), never by which other events are loaded: a move goes
@@ -1289,8 +1289,9 @@ Built in the layout task (2026-10-03, schema 14):
   gates as cards or lines (Flow gates above); their events as quiet lines grouped by run
   (Flow events in Look of the feed), the kinds shown as lines named in one list in the UI
   (`Chat.tsx`, `RUN_EVENT_LINES`; `gate_answer` is not in it, the human's move stands for
-  it); and behind the toggle **Messages between agents** (not pressed by default,
-  remembered in the browser) the agents' messages to each other. The toggle is an icon
+  it, nor `gate_open`, the gate's row stands for it); and behind the toggle **Messages
+  between agents** (not pressed by default, remembered in the browser) the agents'
+  messages to each other. The toggle is an icon
   button at the end of the team's row (two speech bubbles, `BetweenIcon`; 26 px, quiet and
   muted unpressed, the pressed team chip's border with the icon in the action colour when
   `aria-pressed`), its name the same in both states; the UI's tooltip says the state and

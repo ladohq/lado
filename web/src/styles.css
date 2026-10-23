@@ -3114,17 +3114,15 @@ h3 {
   font-weight: 600;
 }
 
-/* A move forward and a run's end went well; a move back (with the return icon, below) and a
-   gate's wait are orange. An outcome whose direction is not known keeps the --raised
-   ground. */
+/* A move forward and a run's end went well; a move back (with the return icon, below) is
+   orange. An outcome whose direction is not known keeps the --raised ground. */
 .run-outcome.forward,
 .run-flow_end .run-chip {
   background: var(--done-ground);
   color: var(--done);
 }
 
-.run-outcome.back,
-.run-gate_open .run-chip {
+.run-outcome.back {
   background: var(--human-ground);
   color: var(--human);
 }

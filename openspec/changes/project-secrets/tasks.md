@@ -7,7 +7,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-secr
   `tests/test_agent_env.py`.
 - [x] 1.2 `project_secrets.py`: the data folder, atomic writes, link-safe removal (D1, D2,
   D3). Check: `tests/test_project_secrets.py` (new), each link × operation.
-- [ ] 1.3 `projects`: `check_name`, `set_secret`, one value per name, `unset` of either
+- [x] 1.3 `projects`: `check_name`, `set_secret`, one value per name, `unset` of either
   kind, `create` refusing a left data folder, `delete` removing it (D4, D5, D10). Check:
   `tests/test_project_variables_core.py`, the projects' create/delete tests.
 - [ ] 1.4 The project's layer with secrets in `runtime._base_env`, the launch warnings

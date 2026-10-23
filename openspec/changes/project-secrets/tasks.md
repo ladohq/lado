@@ -6,7 +6,8 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-secr
   project's checks (no link, no loose mode, the project's reserved names) (D8). Check:
   `tests/test_agent_env.py`.
 - [x] 1.2 `project_secrets.py`: the data folder, atomic writes, link-safe removal (D1, D2,
-  D3). Check: `tests/test_project_secrets.py` (new), each link × operation.
+  D3). Check: `tests/test_project_secrets_store.py` (new; not `test_project_secrets.py`,
+  which the integration test's basename takes), each link × operation.
 - [x] 1.3 `projects`: `check_name`, `set_secret`, one value per name, `unset` of either
   kind, `create` refusing a left data folder, `delete` removing it (D4, D5, D10). Check:
   `tests/test_project_variables_core.py`, the projects' create/delete tests.

@@ -55,10 +55,13 @@ def test_new_project_and_its_variables_and_secrets(page: Page, server, tmp_path,
     variables.get_by_role("textbox", name="Name", exact=True).fill("BOARD_URL")
     variables.get_by_role("textbox", name="Value", exact=True).fill("https://a")
     variables.get_by_role("button", name="Add", exact=True).click()
+    expect(variables.get_by_role("button", name="+ Add variable")).to_be_visible()
     expect(variables.get_by_role("cell", name="https://a")).to_be_visible()
     variables.get_by_role("button", name="Edit").click()
     variables.get_by_role("textbox", name="Value of BOARD_URL").fill("https://b")
     variables.get_by_role("button", name="Save").click()
+    # Saved: the row shows the value again, the field gone (a field's cell bears its value).
+    expect(variables.get_by_role("textbox", name="Value of BOARD_URL")).to_have_count(0)
     expect(variables.get_by_role("cell", name="https://b")).to_be_visible()
     assert state.project_variables("magazin-eu") == {"BOARD_URL": "https://b"}
 

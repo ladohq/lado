@@ -24,7 +24,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-projects-sec
 
 - [x] 3.1 The canary over the new endpoints, E6–E9 (D13). Check: `uv run pytest -m
   integration -n0 tests/integration/test_project_secrets_canary.py`.
-- [x] 3.2 `tests/ui/test_projects.py`: the section, New project, variables, the secret's
+- [x] 3.2 `tests/ui/test_projects_section.py`: the section, New project, variables, the secret's
   way in the browser, the running line, the head's link, the phone (D14). Check: `make
   test-ui PYTEST_ARGS="-k projects"`.
 

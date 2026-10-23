@@ -4,7 +4,7 @@ through a real server, given to every kind of agent, is found nowhere else: not 
 process's arguments, the tmux server's environment, any file under LADO_HOME but its own,
 any output of the CLI, any answer of the API (refusals included), the change feed, or
 telemetry's payload. No browser: the UI's feed is the server's change feed; the browser's
-side is tests/ui/test_projects.py.
+side is tests/ui/test_projects_section.py.
 
 The Projects section's API (openspec change projects-section) is read too: the list, New
 project's id and create, and the project with the names the outside folder gives too and the

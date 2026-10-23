@@ -152,7 +152,7 @@ before Create, whose `POST` checks again (another browser may have taken the id)
   (`FileNotFoundError`);
 - E9: neither secret's name is in `lado bug-report`'s output nor in `GET /api/bug-report`.
 
-**D14. The browser's proof.** `tests/ui/test_projects.py` sets and replaces a secret with a
+**D14. The browser's proof.** `tests/ui/test_projects_section.py` sets and replaces a secret with a
 unique value in Chromium against a real `lado server`, records every request URL
 (`page.on("request")`), then asserts the value is in no URL, not in
 `JSON.stringify(localStorage)`/`sessionStorage`, not in the server's log and the files under

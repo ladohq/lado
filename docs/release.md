@@ -145,6 +145,14 @@ back, the UI back.
   prints it too: both print `https://a`. Then ask it to start a session from a brief
   (`start_session`): the new session is in project `shop` (`lado ls`) and its agents see
   `BOARD_URL` too, which also checks that the agents' `lado mcp` gets LADO's `LADO_REPOS`.
+  Then a secret: `printf %s "$GH_TOKEN" | lado project set shop GH_TOKEN --secret` (a
+  real token of a test account), a new session in `shop`: `gh auth status` in the agent's
+  window is logged in with it, `lado project show shop` lists `GH_TOKEN` without a value.
+- Projects' secrets on the Mac (from 0.43.0), once, no agent needed: with
+  `LADO_HOME=$(mktemp -d)` set a secret, then replace
+  `$LADO_HOME/projects/<id>/secrets` with a symbolic link to another folder: `lado
+  project set … --secret` and `lado project unset …` refuse, naming the link (the unit
+  tests of these refusals run on Linux only).
 
 There is no fixed soak time: the final follows your "ok".
 

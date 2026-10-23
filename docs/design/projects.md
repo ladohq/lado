@@ -2,34 +2,12 @@
 
 The model of projects in LADO, settled with the human on 2026-10-21 (the concept
 `projects-concept`; the epic LAD-116, its plan [docs/epics/lad-116/plan.md](../epics/lad-116/plan.md)).
-This file is the contract the epic's steps are built against; a step that changes the model
-changes this file.
+This file is the model as built in 0.43.0; a change of the model changes this file.
 
-> **What is built.** The workspace's name (step S1); the workspace as one function with
-> its default `~/workspace`, the project's record and folder, `lado project list | create |
-> show | rename | delete` and `lado doctor`'s Workspace and Projects checks (step S2,
-> 0.43.0; `lado.projects`, [cli.md](../cli.md)); a session in a project (`lado start
-> --project --repo`, the reference, its inheritance, the refusal inside `projects/`, the
-> project in `lado ls` and the session's head), the repositories read from the disk, and
-> deleting a project with its sessions (step S3, 0.43.0); adding a repository by a clone or
-> from scratch and removing one, `lado project repo add | remove` and the server's API for
-> both (step S4, 0.43.0); a project's plain variables, `lado project set | unset`, their
-> layer in every agent of the project's sessions, the kits' checks seeing them, the
-> server's API for them and `lado doctor`'s `Project variables` line (step S5a, 0.43.0);
-> a project's secrets, `lado project set --secret`, their folder with its link-safe atomic
-> writes, their layer beside the plain variables, the server's write-only API for them,
-> `lado doctor`'s `Project secrets` line, their removal with the project and the canary
-> test (step S5b, 0.43.0; `lado.project_secrets`); the UI's Projects section with making a
-> project and a project's variables and secrets, and the server's list, create and id
-> routes (step S6a, 0.43.0; docs/design/ui.md, Projects); the New session window's way
-> Project, which starts a session in a project's repository through the CLI's core call
-> (step S6b, 0.43.0; docs/design/ui.md, Launch and session control); the project's page
-> with its repositories (adding by a clone or from scratch, removing), its sessions and
-> renaming, `PATCH /api/projects/{id}`, and the unpushed check's detached HEAD, stashes and
-> project folder that is a repository (step S7a, 0.43.0; docs/design/ui.md, Projects);
-> deleting a project from its page, `GET /api/projects/{id}/deletion` and `DELETE
-> /api/projects/{id}` through the CLI's core (step S7b, 0.43.0; docs/design/ui.md,
-> Projects).
+> **What is built.** Everything in this file is built in 0.43.0 (`lado.projects`,
+> `lado.project_secrets`, [cli.md](../cli.md), docs/design/ui.md, Projects) except the
+> section Not now; which step of the epic built what is in its plan
+> ([docs/epics/lad-116/plan.md](../epics/lad-116/plan.md)).
 
 ## Why
 
@@ -95,8 +73,8 @@ secrets, below).
 
 ## The project
 
-Built in step S2 (`lado project`, [cli.md](../cli.md)), the data under `~/.lado/projects/`
-in step S5b; the UI's addresses are not built yet (step S6).
+Built: `lado project` ([cli.md](../cli.md)), the data under `~/.lado/projects/`, and the
+UI's addresses `/projects` and `/projects/<id>` (docs/design/ui.md, Projects).
 
 A project has an **id**: lowercase Latin letters, digits and `-`, starting with a letter or
 digit, at most 40 characters (lowercase, so the folder never depends on the file system's
@@ -123,7 +101,7 @@ The special cases:
   hand.** The project shows as "folder not found", and `lado doctor` warns.
 
 Repositories are added to a project in two ways, by a clone of a git URL or from scratch
-(built in step S4: `lado project repo add`, `POST /api/clones` with `project`, `POST
+(built: `lado project repo add`, `POST /api/clones` with `project`, `POST
 /api/projects/{id}/repos`). LADO already does both for ordinary sessions; a project uses
 the same paths (`clone.clone`, `scratch.make` with the project, which lets a path directly
 in that project's folder past the refusal inside `projects/`) and puts the result in its
@@ -135,8 +113,8 @@ Only the human adds or removes them: not from an agent, and no MCP tool does.
 
 ## How LADO knows a project's repositories
 
-Built in step S3 (`projects.repositories`, `lado project show`, `GET /api/projects/{id}`);
-adding and removing one through LADO in step S4.
+Built: `projects.repositories`, `lado project show`, `GET /api/projects/{id}`, and adding
+and removing one through LADO.
 
 The list of repositories is stored nowhere: LADO reads it from the disk each time. A
 repository is a subfolder of the project folder that is the root of a git repository of its
@@ -157,11 +135,11 @@ record without its folder shows as "missing, clone again?".
 
 ## The session
 
-Built in step S3, the New session window's way in step S6b: `lado start --project
---repo`, the reference (`sessions.project`, schema 33), the inheritance, the refusal on
-every start path (`projects.refusal`), and the project in `lado ls`, the session's API and
-head. The refusal holds only while `projects/` is LADO's; sessions started under
-`projects/` before S3 keep no project and still resume.
+Built: `lado start --project --repo` and the New session window's way Project, the
+reference (`sessions.project`, schema 33), the inheritance, the refusal on every start path
+(`projects.refusal`), and the project in `lado ls`, the session's API and head. The refusal
+holds only while `projects/` is LADO's; sessions started under `projects/` before 0.43.0
+keep no project and still resume.
 
 A session can start **without a project**, as today: from scratch, in a folder or by a clone
 of a URL, anywhere but `projects/`. Such a session has no variables of its own; it lives in
@@ -182,7 +160,7 @@ session window do not offer `projects/` for an ordinary session. The reasons:
    the same list gets an item "all repositories".
 
 The window only chooses (the human's answer #1282, LAD-137): a repository that is not there
-yet is added on the project's page ("+ Add repository", step S7a, or `lado project repo
+yet is added on the project's page ("+ Add repository", or `lado project repo
 add`), which the window links to when the project has none.
 
 In the CLI: `lado start --project <project> --repo <repository>`.
@@ -194,12 +172,12 @@ starts in the same project and repository as its parent.
 
 ## Variables and secrets
 
-Plain variables are built (step S5a: `lado project set | unset`, `lado project show`, the
-server's `PUT` and `DELETE /api/projects/{id}/variables/{name}`; [cli.md](../cli.md)), and so
-are secrets (step S5b: `lado project set <id> NAME --secret`, `unset`, their names in `show`,
-the server's `PUT` and `DELETE /api/projects/{id}/secrets/{name}` and their names in `GET
-/api/projects/{id}`), and so is the UI's page of them (step S6a: the project's page in the
-Projects section, docs/design/ui.md, Projects).
+Plain variables are built (`lado project set | unset`, `lado project show`, the server's
+`PUT` and `DELETE /api/projects/{id}/variables/{name}`; [cli.md](../cli.md)), and so are
+secrets (`lado project set <id> NAME --secret`, `unset`, their names in `show`, the
+server's `PUT` and `DELETE /api/projects/{id}/secrets/{name}` and their names in `GET
+/api/projects/{id}`), and so is the UI's page of them (the project's page in the Projects
+section, docs/design/ui.md, Projects).
 
 A project holds one value per name: a name is a plain variable or a secret, never both.
 Setting one kind over the other is refused with the `unset` to run first (the two stores
@@ -208,7 +186,7 @@ rule takes may be a secret, also one that does not look like one (`DATABASE_URL`
 server's routes go by kind: the variables' routes never touch a secret and the secrets'
 never a plain variable; `lado project unset` removes either.
 
-Sessions made under `projects/` before step S3 have no project (`sessions.project` is
+Sessions made under `projects/` before 0.43.0 have no project (`sessions.project` is
 empty), so they get no project's variables, also when their folder is a project's
 repository (#808); a session started in the project (`lado start --project --repo`) does.
 
@@ -270,8 +248,7 @@ an agent could slip every future agent, say, a model address of its own.
 
 ## Where a project's data lives
 
-The record and the folder are built (step S2), and so are plain variables (step S5a) and
-secrets (step S5b).
+The record and the folder are built, and so are plain variables and secrets.
 
 - **The project's record** (id, title, plain variables): in `lado.db` (the table
   `projects`, schema 32; plain variables in `project_variables`, schema 34, one row per name,
@@ -334,13 +311,12 @@ workers and the LADO manager.
 
 ## Deleting
 
-`lado project delete <id> --yes` (steps S2, S3) refuses while a session of the project, or
-any session working in its folder (one from before S3 has no project), is not stopped;
-shows the stopped sessions it forgets and its repositories' unpushed work; then removes the
-folder, forgets the sessions, removes its data folder with its secrets (step S5b; a link on
-the way to it or in it refuses before anything is removed) and removes the record last, so
-a rerun finishes what failed. One preview in the core, `projects.deletion` (step S7b),
-says what goes, and the CLI, the server (`GET /api/projects/{id}/deletion`, `DELETE
+`lado project delete <id> --yes` refuses while a session of the project, or any session
+working in its folder (one from before 0.43.0 has no project), is not stopped; shows the
+stopped sessions it forgets and its repositories' unpushed work; then removes the folder,
+forgets the sessions, removes its data folder with its secrets (a link on the way to it or
+in it refuses before anything is removed) and removes the record last, so a rerun finishes
+what failed. One preview in the core, `projects.deletion`, says what goes, and the CLI, the server (`GET /api/projects/{id}/deletion`, `DELETE
 /api/projects/{id}`) and the project's page all show it: the folder (a folder, a link with
 its target, or not found), the unpushed work, the sessions forgotten (the project's and the
 stopped ones without a project in its real folder) and the names of its variables and
@@ -349,12 +325,12 @@ through it: its target's work is not listed, and a session there neither blocks 
 nor is forgotten. The UI asks the project's id typed every time, since its variables and
 secrets are on no remote (#1375).
 
-What a removal would lose (the project's and a repository's alike, step S7a): each
+What a removal would lose (the project's and a repository's alike): each
 checkout's uncommitted changes (untracked files too), its local branches with no upstream
 or ahead of it, `detached HEAD with <n> commit[s] on no branch` when its HEAD is detached
 on commits no local or remote-tracking branch holds, and `<n> stash[es]`; the project
 folder itself when it is a repository's root (`the project's folder: …`, first; the
-repositories in it are not its changes, step S7b); a worktree directly in the project
+repositories in it are not its changes); a worktree directly in the project
 folder of a repository listed there is named once, under its repository; a folder that
 cannot be listed is `the project's folder: could not check: <reason>`.
 
@@ -366,10 +342,10 @@ does) and the whole project folder.
   are inside the repository).
 - Deleting is confirmed: in the UI by typing the project's id, in the CLI by `--yes`.
 
-Deleting a repository works the same way, within its folder and its sessions (built in
-step S4, `lado project repo remove`; the UI in step S7a, the project's page): refused while
-any session works in its folder, by path; its stopped sessions of the project and those of
-no project whose folder is in it (from before S3, marked so; step S7a) and its unpushed
+Deleting a repository works the same way, within its folder and its sessions (built:
+`lado project repo remove`, and in the UI the project's page): refused while any session
+works in its folder, by path; its stopped sessions of the project and those of no project
+whose folder is in it (from before 0.43.0, marked so) and its unpushed
 work, its workers' worktrees included, shown first; `--yes` (in the UI, the repository's
 name typed when there is unpushed work); the folder removed, then those sessions
 forgotten. A session of another project is never matched by its path. A symbolic link of the project folder loses the link only, and an entry that is
@@ -384,21 +360,19 @@ workspace on the host stays.
 
 ## The UI
 
-Built in step S6a (docs/design/ui.md, Projects): the Projects section with the list of
-projects (title, number of repositories, running sessions), making a project, and a
-project's page with its variables and secrets, the marks of what overrides an outside value
-and of a secret file its agents do not get, the warning of the security boundary, and the
-sessions that run. Built in step S6b (docs/design/ui.md, Launch and session control): the
-New session window's way Project, Folder's refusal inside a project leading to it, and the
-project's page opening the window on its project. Built in step S7a (docs/design/ui.md,
-Projects): the project's page with its repositories (branch and remote, "Start session"
-and "Delete"), "+ Add repository" by a clone or from scratch, the project's sessions, and
-renaming its title. Built in step S7b (docs/design/ui.md, Projects): deleting the project
-from its page after its preview, with its id typed. The New session window's workspace
-hint of its folder field is called Workspace (step S1, the row `Workspace:`,
-docs/design/ui.md).
+Built (docs/design/ui.md, Projects): the Projects section with the list of projects
+(title, number of repositories, running sessions), making a project, and a project's page
+with its variables and secrets, the marks of what overrides an outside value and of a
+secret file its agents do not get, the warning of the security boundary, and the sessions
+that run; the project's repositories (branch and remote, "Start session" and "Delete"),
+"+ Add repository" by a clone or from scratch, the project's sessions, and renaming its
+title; deleting the project from its page after its preview, with its id typed. Built
+(docs/design/ui.md, Launch and session control): the New session window's way Project,
+Folder's refusal inside a project leading to it, and the project's page opening the window
+on its project. The New session window's workspace hint of its folder field is called
+Workspace (the row `Workspace:`, docs/design/ui.md).
 
-The exact screens are mockups for the human's approval in the UI steps.
+The exact screens, with the mockups the human approved, are in docs/design/ui.md.
 
 ## The architectural frame
 
@@ -448,21 +422,6 @@ open question for later.
 
 ## How it is built
 
-The epic LAD-116 builds the model in steps; each merges on its own into `main` and leaves
-LADO working. The steps, their checks and notes: [docs/epics/lad-116/plan.md](../epics/lad-116/plan.md).
-
-| Step | What | Where it shows |
-|---|---|---|
-| S1 | This document; ROADMAP rewritten; the folder called the workspace in the documents, the UI and `lado doctor` | documents, UI |
-| S2 | The project in the core: id, title, folder in `<workspace>/projects/`, a schema migration; `lado project list/create/show/rename/delete`; `lado doctor`'s checks; `~/workspace` without `LADO_REPOS` | CLI |
-| S2b | Compose's `LADO_WORKSPACE`, an installed `LADO_PROJECTS` still taken | Docker |
-| S3 | A session in a project: `lado start --project --repo`, the reference and its inheritance, no session without a project in `projects/`, `lado ls` and the head, repositories from the disk | CLI, head |
-| S4 | Adding and removing a project's repositories | CLI |
-| S5a | Plain variables: the project's layer of an agent's environment, kit keys, `lado project set/unset`, protected names | CLI |
-| S5b | Secrets: their store, replace and delete, the canary test | CLI |
-| S6a | UI: the Projects section, making a project, a project's variables and secrets | UI |
-| S6b | UI: the Project way of New session, which only chooses a project's repository | UI |
-| S7a | UI: a project's page, its sessions, adding and removing a repository with the work not pushed shown, renaming | UI |
-| S7b | UI: removing a project with the work not pushed shown | UI |
-
-The minor version goes up from the step that brings the schema migration and new commands.
+The epic LAD-116 built the model in 0.43.0, in steps that each merged on their own into
+`main` and left LADO working. The steps, their checks and notes:
+[docs/epics/lad-116/plan.md](../epics/lad-116/plan.md).

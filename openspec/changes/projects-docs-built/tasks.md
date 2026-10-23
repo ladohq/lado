@@ -1,17 +1,17 @@
 ## 1. Projects built
 
-- [ ] 1.1 `ROADMAP.md`, Later → Projects: tick the item and list S1, S1b, S2, S2b, S3, S4,
+- [x] 1.1 `ROADMAP.md`, Later → Projects: tick the item and list S1, S1b, S2, S2b, S3, S4,
   S5a, S5b, S6a, S6b, S7a, S7b as ticked, one line each by `docs/epics/lad-116/plan.md`'s
   step titles; the item's text in past tense. Check: each step's line matches the plan's
   Result of that step; no `- [ ]` left under Projects.
-- [ ] 1.2 `AGENTS.md`, Read more: drop "(mostly not built yet)". Check:
+- [x] 1.2 `AGENTS.md`, Read more: drop "(mostly not built yet)". Check:
   `uv run pytest tests/test_agents_md.py -n0` passes (at most 200 lines).
-- [ ] 1.3 `docs/design/projects.md`: the intro and the box "What is built" as the
+- [x] 1.3 `docs/design/projects.md`: the intro and the box "What is built" as the
   proposal says; every "step S<n>" and "not built yet" rewritten by the proposal's rules,
   the facts in parentheses kept. Check: `grep -niE "not built yet|step S[0-9]|\bS[0-9][ab]?\b"
   docs/design/projects.md` is empty; each rewritten sentence read against the code it
   names (routes in `src/lado/server/app.py`, commands in `docs/cli.md`).
-- [ ] 1.4 `docs/design/ui.md`: lines 700, 1547, 1672 and 1842-1845 as the proposal says.
+- [x] 1.4 `docs/design/ui.md`: lines 700, 1547, 1672 and 1842-1845 as the proposal says.
   Check: `grep -niE "not built yet|step S[0-9]" docs/design/ui.md` finds only line 442's
   placeholder rule; the `repos` sentence agrees with `SessionAbout` in
   `src/lado/server/models.py`.

@@ -27,18 +27,26 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `SHLVL` and `_`, and a parent Claude Code's variables are dropped; the variables of the
   outside folder go over them, then the variables of the session's project, then LADO's
   variables, then the provider's (`agent_env.resolve(project)`, one function for every
-  provider). The project's variables (`lado project set`, docs/design/projects.md) are read
-  from lado.db anew at each start, resume and spawn by the process that launches
+  provider). The project's variables (`lado project set`, docs/design/projects.md), its
+  plain ones from lado.db and its secrets from their folder
+  (`<LADO_HOME>/projects/<id>/secrets/`, `project_secrets.read`, the outside folder's reader
+  with no link and no loose mode), are read anew at each start, resume and spawn by the
+  process that launches
   (`runtime._base_env(project)`: the CLI, the UI server, or a supervisor's `lado mcp` for its
   `spawn_worker`, flow runs' workers and `start_session`), so an agent launched after a
   change gets it and a running one keeps its own; a session without a project gets none.
   Being in the base, they reach the kits' checks and `mcp_exec` as the outside folder's do.
   A stored project variable named as one LADO or the provider sets keeps LADO's value and is
   named in that launch's warnings (`project variable <name> of <id> not used: LADO sets
-  <name> for <provider>`; `runtime._layer_warnings`). Under `LADO_AGENT_ENV=inherit` an
-  agent's `lado mcp` resolves from its own environment, which holds its project's values of
-  its start: a variable unset since still reaches the workers it spawns (the outside folder
-  has the same limit); the default `shell` is exact. The outside
+  <name> for <provider>`; `runtime._layer_warnings`); a secret cannot be one, as every such
+  name is reserved. A file of the project's secrets folder not given, or the folder, is
+  named in a start's and resume's warnings (`project secret <name> of <id> not used:
+  <reason>`, `project secrets folder of <id> not used: <reason>`). Under
+  `LADO_AGENT_ENV=inherit` an agent's `lado mcp` resolves from its own environment, which
+  holds its project's values of its start: a variable or a secret unset since still reaches
+  the workers it spawns (the outside folder has the same limit); the default `shell` is
+  exact. A secret's value, like every variable's, goes only into the launch file `env.json`
+  (600), never into a process's arguments or the tmux server's environment. The outside
   folder (`agent_env.outside`) is the one `LADO_ENV_DIR` names, an absolute path (LADO's
   image: `/run/secrets`), read anew at each launch, so the kits' checks (`${NAME}` of an MCP
   server, `_check_commands`) see it too: each regular file directly in it is a variable,

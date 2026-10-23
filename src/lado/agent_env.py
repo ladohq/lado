@@ -11,9 +11,11 @@ it cannot take is named with why, never with its content, and not applied. No fo
 or the null device (compose binds /dev/null when no secrets are given), is no layer and no
 line.
 
-Over those go the variables of the session's project (lado.projects), read from lado.db
-at each launch by whoever launches (lado.runtime._base_env); a session without a project
-has none. LADO's and the agent CLI's own variables go over all of them (lado.runtime).
+Over those go the variables of the session's project (lado.projects), its plain ones read
+from lado.db and its secrets from their folder (lado.project_secrets, by the outside
+folder's reader, `read_folder`, which refuses links and loose modes there) at each launch
+by whoever launches (lado.runtime._base_env); a session without a project has none. LADO's
+and the agent CLI's own variables go over all of them (lado.runtime).
 
 A tmux window starts with its server's environment, so the launch does not rely on it: the
 window runs the module `lado.agent_env <file> <argv>` (`interpreter.run_module`), which

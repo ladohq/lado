@@ -35,7 +35,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-secr
 
 ## 4. Docs
 
-- [ ] 4.1 `docs/cli.md`, `docs/design/projects.md`, `docs/design/agents.md` (D13),
+- [x] 4.1 `docs/cli.md`, `docs/design/projects.md`, `docs/design/agents.md` (D13),
   `docs/design/modules.md`, `docs/install.md`, the docstrings, CHANGELOG (D15). Check:
   `make lint`, `openspec validate project-secrets --strict`, `openspec validate --specs
   --strict`, the trial archive.

@@ -33,8 +33,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `projects/` that is the human's own folder or no folder; it reads lado.db as it is (no
     lado.db made, an older schema `INFO` not checked).
     `Project variables` (after `Variables from outside`, `check_project_variables`):
-    `INFO` naming each project whose variables share a name with the outside folder's, the
-    names only; none, no lado.db or an older schema: no line.
+    `INFO` naming each project whose variables or secrets share a name with the outside
+    folder's, the names only; none, no lado.db or an older schema: no line. `Project
+    secrets` (`check_project_secrets`): `WARN` naming, by project and file, each file of a
+    project's secrets folder its agents do not get and each such folder not used, with why
+    (`project_secrets.read`), never a value; all usable, no lado.db or an older schema: no
+    line.
     `Agent config folders` warns about each folder under `LADO_HOME/agents/` that no
     running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
     kit MCP secrets there. The UI's system panel (`GET /api/system`) takes its facts from
@@ -369,13 +373,31 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     then `runtime.forget_session(force=True)` for its sessions). A project's plain
     variables (openspec change project-variables): lado.db's `project_variables` (schema 34,
     `state.project_variables`, `set_project_variable`, `unset_project_variable`; gone with
-    the project by `ON DELETE CASCADE`); `check_variable` is the one name and value rule of
-    the CLI and the server (`agent_env.VARIABLE_NAME`; `RESERVED_NAMES`, the outside
-    folder's `agent_env.RESERVED` and `providers.base.CLI_VARIABLES`, plus any `LADO_*`;
-    `SECRET_WORDS` as substrings in any case; `agent_env.MAX_VALUE` bytes of UTF-8 text
-    without NUL); `set_variable` and `unset_variable` (no name rule, `NoSuchVariable`) answer
-    `running`, the project's sessions not stopped. A refusal is a
-    `ProjectError` (`NoSuchProject` for an unknown id), a `runtime.LadoError`.
+    the project by `ON DELETE CASCADE`); `check_name` is the one name rule of both kinds
+    (`agent_env.VARIABLE_NAME`; `RESERVED_NAMES`, the outside folder's `agent_env.RESERVED`
+    and `providers.base.CLI_VARIABLES`, plus any `LADO_*`), `check_variable` adds a plain
+    variable's (`SECRET_WORDS` as substrings in any case) and the value's
+    (`agent_env.MAX_VALUE` bytes of UTF-8 text without NUL), `check_secret` the value's and
+    no empty one; `set_variable` and `unset_variable` (no name rule, `NoSuchVariable`) answer
+    `running`, the project's sessions not stopped. Its secrets (openspec change
+    project-secrets) are files of `lado.project_secrets`: `set_secret`, `secrets` (names
+    only), `unset_secret` (the server's, by kind) and `unset` (the CLI's, either kind); one
+    value per name across the two stores (`_held`: refused with the `unset` hint). `create`
+    refuses an id whose data folder `<LADO_HOME>/projects/<id>` is left; `delete` asks
+    `project_secrets.check_removable` before it removes anything and `remove_all` after the
+    sessions, the record last. A refusal is a `ProjectError` (`NoSuchProject` for an unknown
+    id), a `runtime.LadoError`; no refusal holds a secret's value.
+  - `project_secrets.py`: a project's secrets, one file per secret in
+    `<LADO_HOME>/projects/<id>/secrets/` (`data_folder`, `folder`); the one module that writes
+    and removes them, so a review reads the step's security code whole. Every folder from
+    `<LADO_HOME>/projects` down is opened relative to the one above with `O_NOFOLLOW`
+    (`_chain`): a link on the way is `LinkRefused`, never followed; `LADO_HOME` itself may be
+    a link. `write` makes missing folders and `fchmod`s each 700, writes `.<name>.<random>.tmp`
+    (600, `O_EXCL | O_NOFOLLOW`), `fsync`s, renames it over the name and `fsync`s the folder;
+    a failure removes the temporary file and keeps the old value. `remove`, `check_removable`
+    (no link on the way or anywhere in the data folder) and `remove_all` (by `dir_fd`). `read`
+    is `agent_env.read_folder(own=reserved)`, for a launch and `lado doctor` only; `names`
+    lists without opening a file (`agent_env.check_entry`).
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`, `CLI_VARIABLES`,
     the names LADO sets for the agent CLIs, reserved from project variables and kept in
@@ -474,8 +496,13 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `fill` puts in the titles and hints of `Provider.keychain_login`.
   - `agent_env.py`: where an agent's environment comes from (docs/design/agents.md): `resolve`
     (the login shell's, then the outside folder's, `outside`, then the session's project's
-    variables it is given, which `runtime._base_env` reads), and `command`, the window's
-    command that runs the agent with exactly that environment.
+    variables and secrets it is given, which `runtime._base_env` reads), and `command`, the
+    window's command that runs the agent with exactly that environment. `read_folder` is
+    the one reader of a folder of variables, the outside folder's and a project's secrets
+    folder's (`Folder`: the values and each file not used with why); with `own`, for a folder
+    only LADO writes, it also refuses links (`LINK`) and modes others may use (`LOOSE_FILE`,
+    `LOOSE_FOLDER`) and reserves the names `own` says; `check_entry` is its check of a file
+    that needs no content.
   - `interpreter.py`: `run_module`, the one way LADO starts a process of its own with its
     own Python (`providers.lado_command`: hooks, `lado mcp`, `lado loop`, the popup, the
     UI server; the window command; the MCP secrets wrapper). LADO's own processes never

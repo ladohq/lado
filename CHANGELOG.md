@@ -13,7 +13,10 @@
   scratch in the project's folder; `lado project repo remove` shows the unpushed work first.
 - **A project's variables.** `lado project set <id> NAME VALUE` gives every agent of the
   project's sessions a variable of its own, over `LADO_ENV_DIR`'s; `lado project unset`
-  removes it. Secret-looking names wait for the secrets.
+  removes it.
+- **A project's secrets.** `lado project set <id> NAME --secret` asks for a key without
+  echo (or reads it from a pipe) and gives it to the project's agents only; it is kept in
+  `~/.lado/projects/<id>/secrets/` and never shown again.
 
 ### Changed
 

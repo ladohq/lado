@@ -15,9 +15,12 @@ changes this file.
 > from scratch and removing one, `lado project repo add | remove` and the server's API for
 > both (step S4, 0.43.0); a project's plain variables, `lado project set | unset`, their
 > layer in every agent of the project's sessions, the kits' checks seeing them, the
-> server's API for them and `lado doctor`'s `Project variables` line (step S5a, 0.43.0).
-> Everything else here is steps S5b–S7 and is marked **not built yet** where it is
-> described.
+> server's API for them and `lado doctor`'s `Project variables` line (step S5a, 0.43.0);
+> a project's secrets, `lado project set --secret`, their folder with its link-safe atomic
+> writes, their layer beside the plain variables, the server's write-only API for them,
+> `lado doctor`'s `Project secrets` line, their removal with the project and the canary
+> test (step S5b, 0.43.0; `lado.project_secrets`). Everything else here is steps S6–S7 and
+> is marked **not built yet** where it is described.
 
 ## Why
 
@@ -83,8 +86,8 @@ secrets, below).
 
 ## The project
 
-Built in step S2 (`lado project`, [cli.md](../cli.md)); the data under `~/.lado/projects/`
-and the UI's addresses are not built yet (steps S5b, S6).
+Built in step S2 (`lado project`, [cli.md](../cli.md)), the data under `~/.lado/projects/`
+in step S5b; the UI's addresses are not built yet (step S6).
 
 A project has an **id**: lowercase Latin letters, digits and `-`, starting with a letter or
 digit, at most 40 characters (lowercase, so the folder never depends on the file system's
@@ -180,11 +183,17 @@ starts in the same project and repository as its parent.
 ## Variables and secrets
 
 Plain variables are built (step S5a: `lado project set | unset`, `lado project show`, the
-server's `PUT` and `DELETE /api/projects/{id}/variables/{name}`; [cli.md](../cli.md)); secrets
-(`--secret`, their folder, replace) are **not built yet** (step S5b), and neither is the UI's
-variables page (step S6). Until S5b a kit key whose name looks like a secret
-(`YOUGILE_API_KEY`, `GH_TOKEN`) cannot be set per project: it still comes from the login
-shell or the outside folder.
+server's `PUT` and `DELETE /api/projects/{id}/variables/{name}`; [cli.md](../cli.md)), and so
+are secrets (step S5b: `lado project set <id> NAME --secret`, `unset`, their names in `show`,
+the server's `PUT` and `DELETE /api/projects/{id}/secrets/{name}` and their names in `GET
+/api/projects/{id}`); the UI's variables page is **not built yet** (step S6).
+
+A project holds one value per name: a name is a plain variable or a secret, never both.
+Setting one kind over the other is refused with the `unset` to run first (the two stores
+share no transaction, so the human moves a name in two commands). Any name the variables'
+rule takes may be a secret, also one that does not look like one (`DATABASE_URL`). The
+server's routes go by kind: the variables' routes never touch a secret and the secrets'
+never a plain variable; `lado project unset` removes either.
 
 Sessions made under `projects/` before step S3 have no project (`sessions.project` is
 empty), so they get no project's variables, also when their folder is a project's
@@ -246,8 +255,8 @@ an agent could slip every future agent, say, a model address of its own.
 
 ## Where a project's data lives
 
-The record and the folder are built (step S2), and so are plain variables (step S5a);
-secrets are not (step S5b).
+The record and the folder are built (step S2), and so are plain variables (step S5a) and
+secrets (step S5b).
 
 - **The project's record** (id, title, plain variables): in `lado.db` (the table
   `projects`, schema 32; plain variables in `project_variables`, schema 34, one row per name,
@@ -260,15 +269,25 @@ secrets are not (step S5b).
   files. Each secret is written atomically as its own file (a temporary file, then a
   rename), so no shared lock is needed and edits of different secrets from the UI and the
   CLI do not overwrite each other. The list of files shows which secrets are set without
-  showing their values.
+  showing their values. Only LADO writes this folder (`lado.project_secrets`), so the
+  reader is stricter there than in the outside folder: a file or a folder that is a
+  symbolic link, or that others may read, write or enter, is not given and is named.
+  Writing and removing open every folder from `<LADO_HOME>/projects` down without following
+  a link: a link anywhere on the way is refused, never followed (`LADO_HOME` itself may be
+  one). A new project refuses an id whose data folder is left from a failed deletion.
 - **The project folder**: in `<workspace>/projects/`.
 
 In LADO's image `~/.lado` is on the container's home volume, not in the workspace. So the
 secrets are not visible from the host through the mounted folder, and never land in a
 repository or a project folder.
 
-A secret's value goes nowhere: not into the API, the UI's feed, the logs, `lado log`, a bug
-report or the usage statistics. A test with a "canary" secret checks each of these places.
+A secret's value goes nowhere: not into the API (its errors included: a request the server
+cannot read on a secret's route answers 422 without what it was given), the UI's feed, the
+logs, `lado log`, a bug report or the usage statistics, a process's arguments or the tmux
+server's environment. Its only copy outside its file is the agent's launch file `env.json`
+(600, in the agent's config folder, removed by the window as it starts), as for every key
+today. The canary test (`tests/integration/test_project_secrets_canary.py`) checks each of
+these places.
 
 **LADO is not a store.** Whatever matters belongs in a git repository with a remote, or on
 a disk outside LADO. **A backup of LADO's home volume holds the projects' secrets**: keep it
@@ -279,8 +298,7 @@ as you keep the keys themselves.
 **The projects of one LADO are not isolated from each other.** They separate environments,
 not access: every agent of one LADO runs as one user of the operating system, and an agent
 of one project can technically read another project's variables (`lado project show` works
-for agents) and, once they exist, its secrets. It is a convenience, not a
-security boundary.
+for agents) and its secrets' files. It is a convenience, not a security boundary.
 
 **For clients that must not mix, run a separate LADO.** The documentation and the UI's
 variables section say so plainly. A separate operating-system user per project would cost
@@ -293,8 +311,9 @@ workers and the LADO manager.
 `lado project delete <id> --yes` (steps S2, S3) refuses while a session of the project, or
 any session working in its folder (one from before S3 has no project), is not stopped;
 shows the stopped sessions it forgets and its repositories' unpushed work; then removes the
-folder, forgets the sessions and removes the record. Secrets (step S5b) and the UI (steps
-S6, S7) are **not built yet**.
+folder, forgets the sessions, removes its data folder with its secrets (step S5b; a link on
+the way to it or in it refuses before anything is removed) and removes the record last, so
+a rerun finishes what failed. The UI (steps S6, S7) is **not built yet**.
 
 Deleting a project removes the project, its secrets, all its sessions (as `lado forget`
 does) and the whole project folder.

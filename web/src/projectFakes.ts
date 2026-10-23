@@ -78,6 +78,8 @@ const summary = (one: ProjectInfo): ProjectSummary => ({
 // GET /api/project-id.
 export class FakeProjects {
   asked: Asked[] = [];
+  // While set, GET /api/project-id answers only once it resolves.
+  held: Promise<void> | null = null;
   refuse: (asked: Asked) => string | null = () => null;
   suggest: (title: string | null, id: string | null) => { id: string | null; folder: string | null; problem: string | null } = (
     title,
@@ -97,7 +99,16 @@ export class FakeProjects {
   ) {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (path: string, init?: RequestInit) => this.answer(path, init)),
+      vi.fn(async (path: string, init?: RequestInit) => {
+        // A slow server: New project's id answers wait for `held` (asked before the wait).
+        if (path.startsWith("/api/project-id?") && this.held) {
+          const held = this.held;
+          this.asked.push({ method: "GET", path, body: undefined });
+          await held;
+          return this.answer(path, init, false);
+        }
+        return this.answer(path, init);
+      }),
     );
   }
 
@@ -105,11 +116,11 @@ export class FakeProjects {
     return this.asked.filter((one) => one.method === method && one.path === path);
   }
 
-  private answer(path: string, init?: RequestInit): Response {
+  private answer(path: string, init?: RequestInit, record = true): Response {
     const method = init?.method ?? "GET";
     const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
     const asked = { method, path, body };
-    this.asked.push(asked);
+    if (record) this.asked.push(asked);
     if (path === "/api/health") return json({ ok: true, version: "0" });
     if (path === "/api/update") return json({ current: "0", latest: null, available: null, checked_at: null });
     if (path.startsWith("/api/events")) return json("");

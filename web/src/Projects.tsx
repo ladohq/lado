@@ -294,7 +294,9 @@ function NewProjectDialog({ onClose, onMade }: { onClose: () => void; onMade: (i
   const [title, setTitle] = useState("");
   const [id, setId] = useState("");
   const [edited, setEdited] = useState(false);
-  const [checked, setChecked] = useState<ProjectId | null>(null);
+  const editing = useRef(false); // edited, for an answer that comes after the edit
+  // The server's answer, with what it was asked: it counts only for the fields as they are.
+  const [checked, setChecked] = useState<{ asked: string; answer: ProjectId } | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -302,31 +304,33 @@ function NewProjectDialog({ onClose, onMade }: { onClose: () => void; onMade: (i
     dialog.current?.showModal();
   }, []);
 
-  const asked = useDebounced(edited ? `id\0${id}` : `title\0${title}`);
+  const wanted = edited ? `id\0${id}` : `title\0${title}`;
+  const asked = useDebounced(wanted);
   useEffect(() => {
     const [kind, text] = asked.split("\0");
     if (text.trim() === "") {
       setChecked(null);
-      if (kind === "title") setId("");
+      if (kind === "title" && !editing.current) setId("");
       return;
     }
     let current = true;
-    suggestProjectId(kind === "id" ? { id: text } : { title: text }).then(
-      (answer) => {
-        if (!current) return;
-        if (kind === "title") setId(answer.id ?? "");
-        setChecked(answer);
-      },
-      (error: unknown) => current && setChecked({ id: kind === "id" ? text : null, folder: null, problem: messageOf(error) }),
+    const take = (answer: ProjectId) => {
+      if (!current || (kind === "title" && editing.current)) return; // the human took Id over
+      if (kind === "title") setId(answer.id ?? "");
+      setChecked({ asked, answer });
+    };
+    suggestProjectId(kind === "id" ? { id: text } : { title: text }).then(take, (error: unknown) =>
+      take({ id: kind === "id" ? text : null, folder: null, problem: messageOf(error) }),
     );
     return () => {
       current = false;
     };
   }, [asked]);
 
-  const fresh = checked !== null && checked.id === id && id !== "";
-  const note = refused ?? (checked && (fresh || checked.id === null) ? checked.problem : null);
-  const ready = fresh && checked.problem === null && refused === null && !busy;
+  const answer = checked?.asked === wanted ? checked.answer : null;
+  const fresh = answer !== null && answer.id === id && id !== "";
+  const note = refused ?? (answer && (fresh || answer.id === null) ? answer.problem : null);
+  const ready = fresh && answer.problem === null && refused === null && !busy;
   const create = async () => {
     setBusy(true);
     try {
@@ -373,6 +377,7 @@ function NewProjectDialog({ onClose, onMade }: { onClose: () => void; onMade: (i
           spellCheck={false}
           autoCapitalize="off"
           onChange={(event) => {
+            editing.current = true;
             setEdited(true);
             setId(event.target.value);
             setRefused(null);
@@ -382,7 +387,7 @@ function NewProjectDialog({ onClose, onMade }: { onClose: () => void; onMade: (i
           <span className="field-note bad">{note}</span>
         ) : (
           fresh &&
-          checked.folder && <span className="field-note">{`Its folder: ${checked.folder}. The id never changes.`}</span>
+          answer.folder && <span className="field-note">{`Its folder: ${answer.folder}. The id never changes.`}</span>
         )}
       </div>
       <span className="field-note warn">

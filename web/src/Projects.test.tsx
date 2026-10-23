@@ -257,3 +257,29 @@ test("the list follows a project made elsewhere on its next open", async () => {
   });
   await waitFor(() => expect(rows()).toHaveLength(4));
 });
+
+test("an id typed while the title's answer is on its way stays", async () => {
+  let release = () => {};
+  server.held = new Promise((resolve) => (release = resolve));
+  await newProject();
+  fireEvent.change(field("Title (optional)"), { target: { value: "Shop EU" } });
+  await waitFor(() => expect(server.asked.some((one) => one.path.includes("title=Shop+EU"))).toBe(true));
+  fireEvent.change(field("Id"), { target: { value: "mine" } });
+  await act(async () => release());
+  server.held = null;
+  await waitFor(() => expect(server.asked.some((one) => one.path === "/api/project-id?id=mine")).toBe(true));
+  await waitFor(() => expect(dialog().textContent).toContain("Its folder: /ws/projects/mine."));
+  expect(field("Id").value).toBe("mine");
+});
+
+test("Create waits for the id of the title as it is now", async () => {
+  server.projects = { acme: project("acme") }; // "shop" and "shop-eu" are free
+  await newProject();
+  fireEvent.change(field("Title (optional)"), { target: { value: "Shop" } });
+  await waitFor(() => expect(create().disabled).toBe(false));
+  expect(field("Id").value).toBe("shop");
+  fireEvent.change(field("Title (optional)"), { target: { value: "Shop EU" } });
+  expect(create().disabled).toBe(true);
+  await waitFor(() => expect(field("Id").value).toBe("shop-eu"));
+  await waitFor(() => expect(create().disabled).toBe(false));
+});

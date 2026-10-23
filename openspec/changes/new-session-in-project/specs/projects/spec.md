@@ -3,23 +3,27 @@
 ### Requirement: The project's page shows the project and what is not built yet
 
 The project's page SHALL show the title (the id without one), the id, the line `<N>
-repositories · <N> sessions running · folder <folder>` (`folder not found` after the folder
-when it is missing), and the line `New session in this project… Not built yet: the
+repositories · <N> sessions running · folder <folder>` (`folder not found` after it when
+it is missing), and the line `New session in this project… Not built yet: the
 repositories on this page (adding, removing), renaming and deleting the project. Plan:
 Projects, step S7. Meanwhile: lado project show <id>, lado project repo add <id>
-<git-url>.` with `New session in this project…` a button that opens the New session window
-in Project with this project chosen, and the plan a link.
+<git-url>.` with its first words a button and the plan a link.
 
 #### Scenario: The head of the page
 - **WHEN** the human opens `/projects/shop`
 - **THEN** the page shows `Shop`, `shop`, `2 repositories · 2 sessions running · folder
   <workspace>/projects/shop` and the not-built line naming `lado project show shop`
 
+## ADDED Requirements
+
+### Requirement: The project's page opens New session on its project
+
+The button `New session in this project…` of the project's page SHALL open the New session
+window in Project with this project chosen.
+
 #### Scenario: A new session from the page
 - **WHEN** the human clicks `New session in this project…` on `/projects/shop`
 - **THEN** the New session window opens in Project with `Shop` chosen
-
-## ADDED Requirements
 
 ### Requirement: The server starts a session in a project's repository
 

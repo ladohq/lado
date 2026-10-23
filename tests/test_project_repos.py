@@ -208,6 +208,18 @@ def test_the_removal_shows_its_unpushed_work_and_its_workers(pushed):
     ]
 
 
+def test_the_removal_shows_a_detached_head_and_stashes(pushed):
+    repo = pushed / "frontend"
+    (repo / "wip.txt").write_text("x")
+    _git(repo, "stash", "push", "-q", "--include-untracked")
+    _git(repo, "checkout", "-q", "--detach")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "one")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "two")
+    assert projects.removal("shop", "frontend").unpushed == [
+        "frontend: detached HEAD with 2 commits on no branch; 1 stash"
+    ]
+
+
 def test_the_removal_of_a_link(shop, home):
     elsewhere = init_repo(home / "elsewhere" / "docs")
     (shop / "docs").symlink_to(elsewhere)

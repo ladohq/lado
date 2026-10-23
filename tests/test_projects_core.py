@@ -505,6 +505,82 @@ def test_a_worktree_outside_the_folder_is_named_by_its_full_path(shop, home):
     assert projects.unpushed(shop) == [f"frontend (worktree {tree}): uncommitted changes"]
 
 
+@pytest.mark.parametrize("count, words", [(1, "1 commit"), (2, "2 commits")])
+def test_commits_on_a_detached_head(shop, count, words):
+    repo = shop / "frontend"
+    _git(repo, "checkout", "-q", "--detach")
+    for n in range(count):
+        _git(repo, "commit", "-q", "--allow-empty", "-m", f"loose {n}")
+    assert projects.unpushed(shop) == [f"frontend: detached HEAD with {words} on no branch"]
+
+
+def test_a_detached_head_on_a_pushed_commit_is_nothing(shop):
+    _git(shop / "frontend", "checkout", "-q", "--detach", "origin/main")
+    assert projects.unpushed(shop) == []
+
+
+@pytest.mark.parametrize("count, words", [(1, "1 stash"), (2, "2 stashes")])
+def test_stashes(shop, count, words):
+    repo = shop / "frontend"
+    for n in range(count):
+        (repo / f"wip{n}.txt").write_text("x")
+        _git(repo, "stash", "push", "-q", "--include-untracked")
+    assert projects.unpushed(shop) == [f"frontend: {words}"]
+
+
+def test_the_findings_of_one_repository_in_their_order(shop):
+    repo = shop / "frontend"
+    (repo / "wip.txt").write_text("x")
+    _git(repo, "stash", "push", "-q", "--include-untracked")
+    _git(repo, "branch", "feature-x")
+    _git(repo, "checkout", "-q", "--detach")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "loose")
+    (repo / "new.txt").write_text("x")
+    assert projects.unpushed(shop) == [
+        "frontend: uncommitted changes; branch feature-x not pushed; detached HEAD with 1 "
+        "commit on no branch; 1 stash"
+    ]
+
+
+def test_a_worktree_on_a_detached_head_with_a_commit_no_ref_holds(shop):
+    repo = shop / "frontend"
+    tree = repo / ".lado" / "worktrees" / "s" / "w"
+    _git(repo, "worktree", "add", "-q", "--detach", str(tree))
+    _git(tree, "commit", "-q", "--allow-empty", "-m", "loose")
+    (tree / "work.txt").write_text("x")
+    assert projects.unpushed(shop) == [
+        "frontend: uncommitted changes",  # .lado is untracked
+        "frontend (worktree frontend/.lado/worktrees/s/w): uncommitted changes; detached HEAD "
+        "with 1 commit on no branch",
+    ]
+
+
+def test_a_project_folder_that_is_a_repository_comes_first(home, git_config):
+    projects.create("shop", "Shop")
+    folder = projects.folder("shop")
+    folder.rmdir()
+    init_repo(folder)  # main has no upstream
+    init_repo(folder / "frontend")  # a repository of its own inside it, untracked there
+    assert projects.unpushed(folder) == [
+        "the project's folder: uncommitted changes; branch main not pushed",
+        "frontend: branch main not pushed",
+    ]
+
+
+def test_a_worktree_inside_the_project_folder_is_listed_once(shop, home):
+    repo = shop / "frontend"
+    _git(repo, "worktree", "add", "-q", str(shop / "frontend-fix"), "-b", "fix")
+    _git(shop / "frontend-fix", "push", "-q", "-u", "origin", "fix")
+    (shop / "frontend-fix" / "work.txt").write_text("x")
+    outside = init_repo(home / "elsewhere" / "docs")  # its worktree inside has a line of its own
+    _git(outside, "worktree", "add", "-q", "--detach", str(shop / "docs-tree"))
+    (shop / "docs-tree" / "work.txt").write_text("x")
+    assert projects.unpushed(shop) == [
+        "docs-tree: uncommitted changes; branch main not pushed",
+        "frontend (worktree frontend-fix): uncommitted changes",
+    ]
+
+
 def test_a_repository_git_cannot_read(shop):
     broken = shop / "broken"
     broken.mkdir()

@@ -6,7 +6,6 @@ neither storage of the page, in no line of the server's log, and in no file unde
 but the secret's own. Every wait is for a state, never for time."""
 
 import json
-import re
 import uuid
 
 import agent_helpers
@@ -52,12 +51,11 @@ def test_new_project_and_its_variables_and_secrets(page: Page, server, tmp_path,
     expect(view.get_by_role("heading", name="Магазин EU")).to_be_visible()
     expect(view).to_contain_text("No session of this project is running.")
     assert folder.is_dir()
-    # Until S7 the page names the commands for the project's repositories (#1158).
+    # Until S7b the page names the command that deletes the project.
     expect(view).to_contain_text(
-        "Meanwhile: lado project show magazin-eu, lado project repo add magazin-eu <git-url>."
+        "Deleting the project: not built yet (Projects, step S7b). Meanwhile: "
+        "lado project delete magazin-eu."
     )
-    plan = view.get_by_role("link", name="Plan: Projects, step S7")
-    expect(plan).to_have_attribute("href", re.compile(r"docs/design/projects\.md#how-it-is-built$"))
 
     # A plain variable, edited in place.
     variables, secrets = section(page, "Variables"), section(page, "Secrets")
@@ -147,7 +145,8 @@ def test_the_running_line_follows_a_session_and_its_head_links_back(page: Page, 
 
     runtime.start_session(None, None, None, "fake", project="shop", repo_name="frontend")
     agent_helpers.wait_for(lambda: loop.running("shop-frontend"), "the loop", "shop-frontend")
-    running = view.get_by_role("link", name="shop-frontend")
+    line = view.locator(".project-notes")  # the running line; the Sessions block links it too
+    running = line.get_by_role("link", name="shop-frontend")
     expect(running).to_be_visible()  # no reload: the sessions' feed reads the page anew
     expect(view).to_contain_text("Running now: shop-frontend — restart a session")
     expect(row).to_contain_text("1 running")

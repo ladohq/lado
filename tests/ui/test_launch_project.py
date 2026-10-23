@@ -172,12 +172,8 @@ def test_the_projects_page_opens_the_window_on_it(page: Page, shop, server, shot
     log_in(page, server)
     page.goto(f"{server['url']}/projects/shop")
     view = page.get_by_role("region", name="Project shop", exact=True)
-    expect(view).to_contain_text(
-        "New session in this project… Not built yet: the repositories on this page (adding, "
-        "removing), renaming and deleting the project."
-    )
     shot(page, "page")
-    view.get_by_role("button", name="New session in this project…").click()
+    view.get_by_role("button", name="New session…").click()
     dialog = page.get_by_role("dialog", name="New session")
     expect(dialog.get_by_role("button", name="Project", exact=True)).to_have_attribute(
         "aria-pressed", "true"

@@ -61,6 +61,33 @@ def test_version_1_database_is_migrated(lado_home):
         assert db.execute("PRAGMA user_version").fetchone()[0] == state.SCHEMA_VERSION
 
 
+def test_a_commit_does_not_wait_for_the_disk(lado_home):
+    """WAL with synchronous NORMAL (1): a commit holds the write lock without an fsync."""
+    with state.connect() as db:
+        assert db.execute("PRAGMA synchronous").fetchone()[0] == 1
+        assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+
+
+def test_the_migration_does_not_wait_for_the_disk_either(lado_home, monkeypatch):
+    lado_home.mkdir()
+    sqlite3.connect(lado_home / "lado.db").executescript(SCHEMA_V1)
+    opened, settings = state._open, []
+
+    def spied():
+        db = opened()
+        settings.append(
+            (
+                db.execute("PRAGMA synchronous").fetchone()[0],
+                db.execute("PRAGMA journal_mode").fetchone()[0],
+            )
+        )
+        return db
+
+    monkeypatch.setattr(state, "_open", spied)
+    assert state.migrate().after == state.SCHEMA_VERSION
+    assert settings and set(settings) == {(1, "wal")}
+
+
 def test_the_official_marketplace_is_in_a_new_database_and_after_the_migration(lado_home):
     official = state.Marketplace("official", None, True, None)
     assert state.list_marketplaces() == [official]

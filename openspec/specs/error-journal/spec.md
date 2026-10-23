@@ -35,6 +35,12 @@ message, and its traceback; the session and agent, when known, are kept in that 
 - **WHEN** a pass of the session loop fails with the same error five times in a row
 - **THEN** `errors.jsonl` gets one line for it, not five
 
+#### Scenario: The loop meets a locked lado.db
+- **WHEN** a pass of the session loop, or a read of the UI server's change feed, fails
+  with "database is locked"
+- **THEN** `errors.jsonl` gets its line only as the requirement "A short lock of lado.db
+  is no error of the loop" says
+
 #### Scenario: The UI server fails a request
 - **WHEN** `GET /api/sessions/{name}/agents` raises an unexpected exception
 - **THEN** `errors.jsonl` has a line with `where` `server:/api/sessions/{name}/agents`
@@ -131,3 +137,26 @@ every 10 minutes; the server keeps appending to the same file).
 #### Scenario: The server starts with a large log
 - **WHEN** `lado ui` starts a server while `server.log` is 2 MiB
 - **THEN** that file is `server.log.1` and the new server writes a new `server.log`
+
+### Requirement: A short lock of lado.db is no error of the loop
+
+A failure of a session loop's pass, or of a read of the UI server's change feed, with
+`sqlite3.OperationalError` "database is locked" SHALL be written to `errors.jsonl` only
+once that error has kept failing the passes for 60 seconds, as one line for that run of
+failures; its log (`loop.log`, `server.log`) SHALL get it as any failing pass.
+
+#### Scenario: A lock that clears within a minute
+- **WHEN** the passes of a session's loop fail with "database is locked" for 20 seconds,
+  then a pass works
+- **THEN** `loop.log` has the error with its traceback and "passes work again", and
+  `errors.jsonl` has no line for it
+
+#### Scenario: A lock that lasts
+- **WHEN** the passes of a session's loop keep failing with "database is locked" for 60
+  seconds and more
+- **THEN** `errors.jsonl` gets one line for it, with `where` `loop` and the session, once
+  the 60 seconds are over, and no second line while the failures go on
+
+#### Scenario: Another error is written at once
+- **WHEN** a pass of the session loop fails with a `RuntimeError`
+- **THEN** `errors.jsonl` gets its line at that pass, as before

@@ -1189,6 +1189,9 @@ def _open() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    # In WAL a commit then holds the write lock without an fsync (a busy disk stretched it
+    # to seconds); a power cut may lose the last commits, never the database.
+    conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 

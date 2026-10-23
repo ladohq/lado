@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -267,6 +268,13 @@ def test_a_repeating_error_is_logged_once(repo, fake_tmux, monkeypatch, lado_hom
     assert "the same error repeated 498 more times" in log
     assert "passes work again" in log
     assert len(log.splitlines()) < 60
+
+
+def test_only_a_locked_database_is_a_lock():
+    assert loop.is_locked(sqlite3.OperationalError("database is locked"))
+    assert not loop.is_locked(sqlite3.OperationalError("database table is locked"))
+    assert not loop.is_locked(sqlite3.OperationalError("disk I/O error"))
+    assert not loop.is_locked(RuntimeError("database is locked"))
 
 
 def test_a_repeating_error_gets_a_short_line_now_and_then(repo, fake_tmux, monkeypatch, lado_home):

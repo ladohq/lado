@@ -891,6 +891,20 @@ class RepoRemoval(BaseModel):
     unpushed: list[str]  # what its folder loses, as `lado project repo remove` shows it
 
 
+class ProjectDeletion(BaseModel):
+    """What deleting a project does (lado.projects.deletion), the preview `lado project
+    delete` prints: names only, never a value."""
+
+    id: str
+    folder: str
+    kind: Literal["folder", "link", "missing"]  # a link loses the link only
+    target: str | None  # a link's target as written
+    sessions: list[SessionToForget]  # its own and, in a real folder, those of none there
+    unpushed: list[str]  # what a real folder loses; none for a link or a missing folder
+    variables: list[str]  # the names of its plain variables
+    secrets: list[str]  # the names of its secrets
+
+
 class Launch(BaseModel):
     """A new session, as `lado start` takes it."""
 

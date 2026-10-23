@@ -1531,7 +1531,9 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   switches to Folder with the clone). A page that goes away during the clone (`pagehide`: its tab
   closed or reloaded) cancels it at once with `navigator.sendBeacon` to `POST
   /api/clones/{id}/cancel` (a beacon can only POST, with the cookie and the page's Origin,
-  so `Guard.changes` takes it); a job no request asked about for `clone.ABANDONED` seconds
+  so `Guard.changes` takes it), and a window that goes away inside the app while its clone
+  runs (`useCloneJob`'s unmount) sends `DELETE /api/clones/{id}` at once; a job no
+  request asked about for `clone.ABANDONED` seconds
   (150: Chrome runs the timers of a tab in the background for five minutes once a minute;
   a lost connection, a sleeping laptop) is cancelled the same way, a finished one is kept `clone.KEPT`
   seconds (60), and a server that stops cancels its running clones; jobs live in the
@@ -1667,8 +1669,9 @@ The Projects section (`Projects.tsx`, `ProjectRepos.tsx`, `ProjectVariables.tsx`
 and S7a of [projects.md](projects.md); the mockups `task/lad-134/mockup-projects.html` and
 `task/lad-138/mockup-project-page.html` v2, the human's answers #1151, #1153, #1158, #1347,
 #1350 and #1352) lists the projects and shows one with its repositories, its sessions, its
-variables and secrets. Deleting a project is step S7b (LAD-139); the Project way of New
-session (S6b, LAD-137) is in Launch and session control.
+variables and secrets, and deletes it (`ProjectDelete.tsx`, step S7b, LAD-139, the mockup
+`task/lad-139/mockup-project-delete.html` and the human's answer #1375); the Project way of
+New session (S6b, LAD-137) is in Launch and session control.
 
 - **Layout**, as Sessions: the list at the left (260 px), the project at the right at
   `/projects/<id>`; on a phone the list fills the screen and a project opens in its place
@@ -1694,8 +1697,9 @@ session (S6b, LAD-137) is in Launch and session control.
   reach the agents started after a change; running agents keep the environment they
   started with. Running now: <sessions> — restart a session to give it the change.`, each
   session by its title as a link (with none: `… No session of this project is running.`);
-  Variables and Secrets; and, until S7b, `Deleting the project: not built yet (Projects,
-  step S7b). Meanwhile: lado project delete <id>.`
+  Variables and Secrets; and last the block **Delete project**: `Deletes its folder with
+  every repository in it, its sessions, variables and secrets. Refused while a session of
+  the project runs.` and the button **Delete project…** (red text) in its head.
 - **Rename**: the pencil or a click on the title puts the session title's field
   (`TitleEdit`, one component for both) in the title's place, `Project title`: Enter or
   leaving it saves through `PATCH /api/projects/{id}` (`projects.rename`, the CLI's), Esc
@@ -1718,8 +1722,9 @@ session (S6b, LAD-137) is in Launch and session control.
   checked while typing) and Branch; **Clone** sends `POST /api/clones` with `{url,
   project, name, branch}` and runs as New session's clone does (`useCloneJob`: the
   progress block, the fields off, Esc and Cancel do nothing, **Cancel clone** → `the clone
-  was cancelled`, the beacon of a page that goes away; a job the server forgot ends as done
-  when the project lists the name). From scratch: Name and **Create**, `POST
+  was cancelled`, the beacon of a page that goes away, and a cancel at once when the
+  dialog goes away inside the app, by Back or another section, as the New session
+  window's does; a job the server forgot ends as done when the project lists the name). From scratch: Name and **Create**, `POST
   /api/projects/{id}/repos` (one empty commit). A refusal shows the core's text under
   Name (with its hint), the fields kept. On success the dialog closes and the page is read
   anew; no session starts (#1282).
@@ -1734,6 +1739,23 @@ session (S6b, LAD-137) is in Launch and session control.
   …/repos/{name}`, closes and shows the answered project. A refusal of the preview or of
   the delete (a session started meanwhile) replaces the body with the core's text and only
   **Close**.
+- **Delete project <title>?**, a dialog from `GET /api/projects/{id}/deletion` (the core's
+  `projects.deletion`, what `lado project delete` prints): by the folder's kind `Its folder
+  <folder> is deleted with everything in it, and so are its sessions, variables and
+  secrets. This cannot be undone.`, `Its folder <folder> is a link to <target>: only the
+  link is deleted, <target> and everything in it stay. Its sessions, variables and secrets
+  are deleted. This cannot be undone.` or `Its folder <folder> is not found. Its sessions,
+  variables and secrets are deleted. This cannot be undone.`; then `Work that is not on the
+  remote` (the unpushed lines of every repository, `the project's folder: could not check:
+  <reason>` for a folder it cannot read; `All its work is on the remote.`; nothing for a
+  link or a missing folder), `Sessions that are forgotten` (as Delete repository's; `No
+  session is forgotten.`) and `Variables and secrets that are deleted` (each name, a secret
+  `— secret`, never a value; `No variables or secrets.`). **Delete project** is on only once
+  `Type <id> to delete it` holds the id exactly, always: a project's variables and secrets
+  are on no remote (#1375, the concept). It sends `DELETE /api/projects/{id}` (204), reads
+  the list anew and opens `/projects`. A refusal of the preview or of the delete (a session
+  that runs or started meanwhile) replaces the body with the core's text and only
+  **Close**; Esc and Cancel do nothing while the delete is on its way.
 - **Sessions**: the change feed's sessions of the project (`SessionInfo.project`), running
   ones first (the latest started first), then the stopped (the latest stopped first): each
   its status mark, its title (its name without one) as a link, its name beside a title, its

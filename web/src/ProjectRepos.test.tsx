@@ -220,6 +220,18 @@ test("a running clone cannot be closed; Cancel clone stops it and the dialog say
   expect(inDialog("Name").disabled).toBe(false);
 });
 
+test("leaving the page while the clone runs cancels it at once", async () => {
+  await cloneReady();
+  server.polls = [cloneJob()];
+  fireEvent.click(dialogButton("Clone"));
+  await within(addDialog()).findByRole("progressbar", { name: "Clone" });
+  expect(server.calls("DELETE", "/api/clones/j1")).toEqual([]);
+  const list = screen.getByRole("navigation", { name: "Projects" });
+  fireEvent.click(within(list).getByRole("link", { name: /ACME CRM/ })); // another page in the app
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add a repository to Shop" })).toBeNull());
+  expect(server.calls("DELETE", "/api/clones/j1")).toHaveLength(1);
+});
+
 test("a failed clone shows its text and hint, the dialog kept", async () => {
   await cloneReady();
   const error = { message: "git could not read the repository", kind: "ssh_denied", hint: { text: "Add your key:", command: "ssh-add" } };

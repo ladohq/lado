@@ -1,7 +1,8 @@
 """The project's page in a browser (openspec change project-page; docs/design/ui.md,
 Projects): its repositories with Start session and Delete, Add repository by a clone (with
 progress and Cancel clone) or from scratch, Delete repository after its preview, the
-project's sessions from the feed, Rename in place, and the leftovers of earlier steps: New
+project's sessions from the feed, Rename in place, Delete project (openspec change
+project-delete), and the leftovers of earlier steps: New
 project's title without an id, a narrow window, New session for a project that is gone, and
 Clone into a project's folder. The server is `lado` with the fake providers. Every wait is
 for a state, never for time."""
@@ -15,7 +16,7 @@ from playwright.sync_api import Browser, Page, expect
 from test_launch import idle, log_in
 from test_phone import UPRIGHT, no_sideways_scroll
 
-from lado import loop, projects, runtime, state
+from lado import loop, project_secrets, projects, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -311,6 +312,81 @@ def test_clone_into_a_projects_folder_opens_the_project(page: Page, shop, server
     expect(dialog).to_have_count(0)
 
 
+def delete_dialog(view, title: str = "Shop"):
+    block(view, "Delete project").get_by_role("button", name="Delete project…").click()
+    return view.page.get_by_role("dialog", name=f"Delete project {title}?")
+
+
+def test_delete_the_project_refused_while_a_session_runs_then_deleted(
+    page: Page, shop, server, shot
+):
+    projects.set_variable("shop", "BOARD_URL", "https://board.example/shop")
+    projects.set_secret("shop", "GH_TOKEN", "canary-ui-secret")
+    runtime.start_session(None, None, None, "fake", project="shop", repo_name="frontend")
+    agent_helpers.wait_for(lambda: loop.running("shop-frontend"), "the loop", "shop-frontend")
+    view = project_page(page, server)
+    expect(block(view, "Delete project")).to_contain_text(
+        "Deletes its folder with every repository in it, its sessions, variables and secrets. "
+        "Refused while a session of the project runs."
+    )
+    shot(page, "delete-block")
+    dialog = delete_dialog(view)
+    expect(dialog.get_by_role("alert")).to_have_text(
+        "project shop has sessions not stopped: shop-frontend; stop them first with lado stop "
+        "<name>"
+    )
+    expect(dialog.get_by_role("button")).to_have_text(["Close"])
+    shot(page, "delete-refused")
+    dialog.get_by_role("button", name="Close").click()
+    expect(dialog).to_have_count(0)
+    assert shop.is_dir() and state.get_project("shop")
+
+    runtime.stop_session("shop-frontend")
+    dialog = delete_dialog(view)
+    expect(dialog).to_contain_text(
+        f"Its folder {shop} is deleted with everything in it, and so are its sessions, "
+        "variables and secrets. This cannot be undone."
+    )
+    expect(dialog.get_by_role("listitem")).to_have_text(
+        ["backend: branch main not pushed", "shop-frontend", "BOARD_URL", "GH_TOKEN — secret"]
+    )
+    expect(dialog).not_to_contain_text("canary-ui-secret")
+    remove = dialog.get_by_role("button", name="Delete project")
+    expect(remove).to_be_disabled()
+    typed = dialog.get_by_role("textbox", name="Type shop to delete it")
+    typed.fill("Shop")
+    expect(remove).to_be_disabled()
+    typed.fill("shop")
+    expect(remove).to_be_enabled()
+    shot(page, "delete-dialog")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "delete-dialog-dark")
+    page.emulate_media(color_scheme="light")
+    remove.click()
+    expect(page).to_have_url(f"{server['url']}/projects")
+    listed = page.get_by_role("navigation", name="Projects")
+    expect(listed.get_by_role("link", name="ACME CRM")).to_be_visible()
+    expect(listed.get_by_role("link", name="Shop")).to_have_count(0)
+    shot(page, "deleted")
+    assert not shop.exists()
+    assert not project_secrets.data_folder("shop").exists()
+    assert state.get_project("shop") is None and state.get_session("shop-frontend") is None
+
+
+def test_a_project_folder_that_is_a_repository_does_not_count_its_repositories(
+    page: Page, shop, server, shot
+):
+    subprocess.run(["git", "-C", str(shop), "init", "-q", "-b", "main"], check=True)
+    subprocess.run(["git", "-C", str(shop), "commit", "-q", "--allow-empty", "-m", "i"], check=True)
+    view = project_page(page, server)
+    dialog = delete_dialog(view)
+    expect(dialog.get_by_role("listitem").first).to_have_text(
+        "the project's folder: branch main not pushed"
+    )
+    expect(dialog).not_to_contain_text("the project's folder: uncommitted changes")
+    shot(page, "delete-rooted")
+
+
 @pytest.fixture
 def phone(browser: Browser):
     """A page of a touch screen upright, a phone (test_phone.py)."""
@@ -334,3 +410,20 @@ def test_on_a_phone_the_rows_buttons_go_under_the_name(phone: Page, shop, server
     shot(page, "phone", full_page=False)
     page.emulate_media(color_scheme="dark")
     shot(page, "phone-dark", full_page=False)
+
+
+def test_on_a_phone_the_delete_block_and_dialog_fit(phone: Page, shop, server, shot):
+    page = phone
+    log_in(page, server, "/projects/shop")
+    view = page.get_by_role("region", name="Project shop", exact=True)
+    deleting = block(view, "Delete project")
+    deleting.scroll_into_view_if_needed()
+    expect(deleting.get_by_role("button", name="Delete project…")).to_be_visible()
+    no_sideways_scroll(page)
+    shot(page, "phone-delete-block", full_page=False)
+    dialog = delete_dialog(view)
+    expect(dialog.get_by_role("textbox", name="Type shop to delete it")).to_be_visible()
+    no_sideways_scroll(page)
+    shot(page, "phone-delete-dialog", full_page=False)
+    page.emulate_media(color_scheme="dark")
+    shot(page, "phone-delete-dialog-dark", full_page=False)

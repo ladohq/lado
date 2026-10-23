@@ -82,10 +82,8 @@ test("a row opens the project's page at the right", async () => {
   expect(page.textContent).toContain("2 repositories · 2 sessions running · folder /ws/projects/shop");
   expect(within(page).getByRole("button", { name: "New session…" })).toBeTruthy();
   expect(within(page).getByRole("button", { name: "Rename" })).toBeTruthy();
-  expect(page.lastElementChild!.textContent).toBe(
-    "Deleting the project: not built yet (Projects, step S7b). Meanwhile: lado project delete shop.",
-  );
-  expect(page.textContent).not.toContain("Not built yet: the repositories");
+  expect(within(page).getByRole("button", { name: "Delete project…" })).toBeTruthy();
+  expect(page.textContent).not.toContain("not built yet");
   expect(within(list()).getByRole("link", { name: /Shop/ }).getAttribute("aria-current")).toBe("page");
   expect(list()).toBeTruthy(); // the list stays beside it
 });

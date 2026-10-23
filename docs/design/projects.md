@@ -26,9 +26,10 @@ changes this file.
 > (step S6b, 0.43.0; docs/design/ui.md, Launch and session control); the project's page
 > with its repositories (adding by a clone or from scratch, removing), its sessions and
 > renaming, `PATCH /api/projects/{id}`, and the unpushed check's detached HEAD, stashes and
-> project folder that is a repository (step S7a, 0.43.0; docs/design/ui.md, Projects).
-> Deleting a project in the UI is step S7b and is marked **not built yet** where it is
-> described.
+> project folder that is a repository (step S7a, 0.43.0; docs/design/ui.md, Projects);
+> deleting a project from its page, `GET /api/projects/{id}/deletion` and `DELETE
+> /api/projects/{id}` through the CLI's core (step S7b, 0.43.0; docs/design/ui.md,
+> Projects).
 
 ## Why
 
@@ -338,15 +339,24 @@ any session working in its folder (one from before S3 has no project), is not st
 shows the stopped sessions it forgets and its repositories' unpushed work; then removes the
 folder, forgets the sessions, removes its data folder with its secrets (step S5b; a link on
 the way to it or in it refuses before anything is removed) and removes the record last, so
-a rerun finishes what failed. The UI (step S7b) is **not built yet**.
+a rerun finishes what failed. One preview in the core, `projects.deletion` (step S7b),
+says what goes, and the CLI, the server (`GET /api/projects/{id}/deletion`, `DELETE
+/api/projects/{id}`) and the project's page all show it: the folder (a folder, a link with
+its target, or not found), the unpushed work, the sessions forgotten (the project's and the
+stopped ones without a project in its real folder) and the names of its variables and
+secrets. A project folder that is a link loses the link only, and nothing is matched
+through it: its target's work is not listed, and a session there neither blocks the delete
+nor is forgotten. The UI asks the project's id typed every time, since its variables and
+secrets are on no remote (#1375).
 
 What a removal would lose (the project's and a repository's alike, step S7a): each
 checkout's uncommitted changes (untracked files too), its local branches with no upstream
 or ahead of it, `detached HEAD with <n> commit[s] on no branch` when its HEAD is detached
 on commits no local or remote-tracking branch holds, and `<n> stash[es]`; the project
-folder itself when it is a repository's root (`the project's folder: …`, first); a
-worktree directly in the project folder of a repository listed there is named once, under
-its repository.
+folder itself when it is a repository's root (`the project's folder: …`, first; the
+repositories in it are not its changes, step S7b); a worktree directly in the project
+folder of a repository listed there is named once, under its repository; a folder that
+cannot be listed is `the project's folder: could not check: <reason>`.
 
 Deleting a project removes the project, its secrets, all its sessions (as `lado forget`
 does) and the whole project folder.
@@ -383,11 +393,10 @@ New session window's way Project, Folder's refusal inside a project leading to i
 project's page opening the window on its project. Built in step S7a (docs/design/ui.md,
 Projects): the project's page with its repositories (branch and remote, "Start session"
 and "Delete"), "+ Add repository" by a clone or from scratch, the project's sessions, and
-renaming its title. The rest is **not built yet**:
-
-- **A project's page** (S7b, LAD-139): deleting the project, with its id typed.
-- **The New session window**: the workspace hint of its folder field is called Workspace
-  (built: step S1, the row `Workspace:`, docs/design/ui.md).
+renaming its title. Built in step S7b (docs/design/ui.md, Projects): deleting the project
+from its page after its preview, with its id typed. The New session window's workspace
+hint of its folder field is called Workspace (step S1, the row `Workspace:`,
+docs/design/ui.md).
 
 The exact screens are mockups for the human's approval in the UI steps.
 

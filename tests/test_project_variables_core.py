@@ -115,6 +115,37 @@ def test_an_unknown_project(lado_home):
         assert str(refused.value) == 'unknown project "nope"'
 
 
+def test_a_variable_for_a_project_deleted_meanwhile_is_an_unknown_project(shop, monkeypatch):
+    checked = projects.check_variable
+
+    def check_then_delete(id, name, value):
+        checked(id, name, value)
+        state.delete_project(id)  # the delete runs between the check and the write
+
+    monkeypatch.setattr(projects, "check_variable", check_then_delete)
+    with pytest.raises(projects.NoSuchProject) as refused:
+        projects.set_variable(shop, "BOARD_URL", "https://a")
+    assert str(refused.value) == 'unknown project "shop"'
+    assert state.project_variables(shop) == {}
+
+
+def test_a_secret_for_a_project_deleted_meanwhile_is_an_unknown_project(shop, monkeypatch):
+    written = project_secrets.write
+
+    def write_then_delete(id, name, value):
+        written(id, name, value)
+        state.delete_project(id)  # the delete's record went while the file was written
+
+    monkeypatch.setattr(project_secrets, "write", write_then_delete)
+    with pytest.raises(projects.NoSuchProject) as refused:
+        projects.set_secret(shop, "GH_TOKEN", "g")
+    assert str(refused.value) == 'unknown project "shop"'
+    assert not os.path.lexists(project_secrets.data_folder(shop))
+    projects.folder(shop).rmdir()  # the rest of the delete
+    projects.create(shop, None)  # no data folder left to refuse the id
+    assert projects.secrets(shop) == []
+
+
 def test_the_project_is_checked_before_the_name(lado_home):
     with pytest.raises(projects.NoSuchProject):
         projects.set_variable("nope", "GH_TOKEN", "x")

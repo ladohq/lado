@@ -51,11 +51,10 @@ def test_new_project_and_its_variables_and_secrets(page: Page, server, tmp_path,
     expect(view.get_by_role("heading", name="Магазин EU")).to_be_visible()
     expect(view).to_contain_text("No session of this project is running.")
     assert folder.is_dir()
-    # Until S7b the page names the command that deletes the project.
-    expect(view).to_contain_text(
-        "Deleting the project: not built yet (Projects, step S7b). Meanwhile: "
-        "lado project delete magazin-eu."
-    )
+    # The page ends with the block that deletes the project.
+    expect(
+        section(page, "Delete project").get_by_role("button", name="Delete project…")
+    ).to_be_visible()
 
     # A plain variable, edited in place.
     variables, secrets = section(page, "Variables"), section(page, "Secrets")

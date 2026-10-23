@@ -172,10 +172,7 @@ def test_the_projects_page_opens_the_window_on_it(page: Page, shop, server, shot
     log_in(page, server)
     page.goto(f"{server['url']}/projects/shop")
     view = page.get_by_role("region", name="Project shop", exact=True)
-    expect(view).to_contain_text(
-        "Deleting the project: not built yet (Projects, step S7b). Meanwhile: "
-        "lado project delete shop."
-    )
+    expect(view.get_by_role("button", name="Delete project…")).to_be_visible()
     shot(page, "page")
     view.get_by_role("button", name="New session…").click()
     dialog = page.get_by_role("dialog", name="New session")

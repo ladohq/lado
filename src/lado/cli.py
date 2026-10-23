@@ -1204,16 +1204,8 @@ def cmd_project(args: argparse.Namespace) -> int:
         title = projects.rename(args.id, args.title)
         print(f'{args.id}: title "{title}"' if title else f"{args.id}: no title")
     else:
-        forgets = projects.sessions_to_forget(args.id)  # refused while one is not stopped
-        if forgets:
-            shown = [f"{name} ({_open_runs(runs)})" if runs else name for name, runs in forgets]
-            print(f"Sessions to forget: {', '.join(shown)}")
-        folder = projects.folder(args.id)
-        lines = projects.unpushed(folder) if folder.is_dir() else []
-        if lines:
-            print(f"Unpushed work in {folder}:")
-            for line in lines:
-                print(f"  {line}")
+        found = projects.deletion(args.id)  # refused while a session is not stopped
+        _print_preview(found.sessions, found.path, found.unpushed)
         projects.delete(args.id, args.yes)
         print(f"Deleted project {args.id}")
     return 0
@@ -1253,19 +1245,27 @@ def cmd_project_repo(args: argparse.Namespace) -> int:
     return 0
 
 
-def _remove_repo(args: argparse.Namespace) -> int:
-    found = projects.removal(args.id, args.name)  # refused while a session there runs
-    if found.sessions:
+def _print_preview(
+    sessions: list[tuple[str, int, str | None]], folder: Path, unpushed: list[str]
+) -> None:
+    """What deleting a project or removing a repository loses: the sessions it forgets and
+    the work in `folder` not on the remote."""
+    if sessions:
         shown = [
             (f"{name} ({_open_runs(runs)})" if runs else name)
             + (" (no project)" if project is None else "")
-            for name, runs, project in found.sessions
+            for name, runs, project in sessions
         ]
         print(f"Sessions to forget: {', '.join(shown)}")
-    if found.unpushed:
-        print(f"Unpushed work in {found.path}:")
-        for line in found.unpushed:
+    if unpushed:
+        print(f"Unpushed work in {folder}:")
+        for line in unpushed:
             print(f"  {line}")
+
+
+def _remove_repo(args: argparse.Namespace) -> int:
+    found = projects.removal(args.id, args.name)  # refused while a session there runs
+    _print_preview(found.sessions, found.path, found.unpushed)
     projects.remove_repo(args.id, args.name, args.yes)
     if found.kind == "link":
         print(f"Removed the link {args.name} from project {args.id}")

@@ -86,6 +86,7 @@ from lado.server.models import (
     PlanAsk,
     PlanInfo,
     PlanUpdateAsk,
+    ProjectDeletion,
     ProjectId,
     ProjectInfo,
     ProjectLaunch,
@@ -724,6 +725,27 @@ def create_app(
         folder stay."""
         project_core(id, has_db, projects.rename, given.title)
         return launch.project_info(id)
+
+    @app.get(
+        "/api/projects/{id}/deletion",
+        dependencies=[Depends(guard)],
+        responses=project_refused,
+    )
+    def project_deletion(id: str, has_db: bool = Depends(database)) -> ProjectDeletion:
+        """What deleting the project does, as `lado project delete` shows it; nothing
+        changes."""
+        return launch.project_deletion(project_core(id, has_db, projects.deletion))
+
+    @app.delete(
+        "/api/projects/{id}",
+        status_code=204,
+        dependencies=[Depends(guard.changes)],
+        responses=project_refused,
+    )
+    def delete_project(id: str, has_db: bool = Depends(database)) -> None:
+        """Delete the project as `lado project delete --yes` does: its folder, sessions,
+        data folder and record."""
+        project_core(id, has_db, projects.delete, True)
 
     @app.post(
         "/api/projects/{id}/repos",

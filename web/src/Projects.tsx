@@ -22,6 +22,7 @@ import { useDebounced, useLaunch } from "./Launch";
 import { useLive } from "./live";
 import { projectPath, sessionPath } from "./paths";
 import { usePhone } from "./phone";
+import { ProjectDelete } from "./ProjectDelete";
 import { ProjectRepos, ProjectSessions } from "./ProjectRepos";
 import { ProjectVariables } from "./ProjectVariables";
 import { messageOf, plural as count } from "./SessionControl";
@@ -283,9 +284,7 @@ export function ProjectPage() {
         <Running names={project.running} />
       </div>
       <ProjectVariables project={project} onChanged={changed} />
-      <p className="placeholder project-later muted">
-        Deleting the project: not built yet (Projects, step S7b). Meanwhile: <code>lado project delete {project.id}</code>.
-      </p>
+      <ProjectDelete project={project} onDeleted={reload} />
     </section>
   );
 }

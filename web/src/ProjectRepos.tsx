@@ -437,6 +437,32 @@ function AddRepoDialog({
   );
 }
 
+// The sessions a removal or a project's delete forgets, each with its open runs; one of no
+// project (from before projects) marked so. Delete repository's and Delete project's.
+export function ForgottenSessions({ sessions }: { sessions: RepoRemoval["sessions"] }) {
+  return (
+    <>
+      <h4>Sessions that are forgotten</h4>
+      <ul>
+        {sessions.map((one) => (
+          <li key={one.name}>
+            {one.name}
+            {one.open_runs > 0 && (
+              <span className="muted">
+                {" "}
+                ({one.open_runs} open run{one.open_runs === 1 ? "" : "s"})
+              </span>
+            )}
+            {one.project === null && (
+              <span className="muted"> — no project, started in this folder before projects</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 type Preview = { removal: RepoRemoval } | { refused: string } | null;
 
 // Delete a repository: the removal's preview (its folder, the work not on the remote, the
@@ -528,25 +554,7 @@ function DeleteRepoDialog({
                 <p className="muted">All its work is on the remote.</p>
               )}
               {removal.sessions.length > 0 ? (
-                <>
-                  <h4>Sessions that are forgotten</h4>
-                  <ul>
-                    {removal.sessions.map((one) => (
-                      <li key={one.name}>
-                        {one.name}
-                        {one.open_runs > 0 && (
-                          <span className="muted">
-                            {" "}
-                            ({one.open_runs} open run{one.open_runs === 1 ? "" : "s"})
-                          </span>
-                        )}
-                        {one.project === null && (
-                          <span className="muted"> — no project, started in this folder before projects</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </>
+                <ForgottenSessions sessions={removal.sessions} />
               ) : (
                 <p className="muted">No session is forgotten.</p>
               )}

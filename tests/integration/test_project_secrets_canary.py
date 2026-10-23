@@ -12,7 +12,9 @@ secret files its agents do not get. The session in the project starts through th
 New session's Project way starts it (openspec change new-session-in-project). An outside
 value of the same name and a hand-made secret file of a loose mode are canaries of their
 own. Each kind of agent's start is followed by a look at every process's arguments; every
-tmux session's environment is read, and no secret's name is in a bug report."""
+tmux session's environment is read, and no secret's name is in a bug report. The project is
+deleted through the API at the end (openspec change project-delete): its preview and its
+answers hold no value, and no file under LADO_HOME holds one after it."""
 
 import json
 import os
@@ -326,11 +328,34 @@ def test_a_project_secret_is_found_nowhere_else(shop, tmp_path, monkeypatch, fak
     wait_for(lambda: shop.requests, "a post of the statistics", "shop-frontend")
     said += [json.dumps(body) for body in shop.requests]
 
-    stop_all()
-    server_run.stop()
-    assert [text for text in said if any(c in text for c in canaries)] == []
-    for value in canaries:
-        assert files_holding(home, value.encode(), skip) == []
+    # The delete through the API (openspec change project-delete): refused while its
+    # sessions run, then previewed by names only and done; the secrets' folder goes with it.
+    status, body = api.call("DELETE", "/api/projects/shop")
+    assert status == 400 and "has sessions not stopped" in body, body
+    said.append(body)
     assert sorted(path.name for path in secrets_folder.iterdir()) == sorted(
         [API_NAME, CLI_NAME, LOOSE_NAME]
     )
+    stop_all()
+    status, body = api.call("GET", "/api/projects/shop/deletion")
+    assert status == 200, body
+    preview = json.loads(body)
+    assert API_NAME in preview["secrets"] and CLI_NAME in preview["secrets"]
+    assert {"fix-login", "shop-frontend"} <= {one["name"] for one in preview["sessions"]}
+    said.append(body)
+    status, body = api.call("DELETE", "/api/projects/shop")
+    assert status == 204, body
+    said.append(body)
+    assert not os.path.lexists(project_secrets.data_folder("shop"))
+    assert state.get_project("shop") is None
+    for args in (("log", "shop-frontend"), ("project", "list"), ("ls",)):
+        done = lado(*args)
+        said += [done.stdout, done.stderr]
+    feed = api.feed(2.0)
+    assert '"kind"' in feed
+    said.append(feed)
+
+    server_run.stop()
+    assert [text for text in said if any(c in text for c in canaries)] == []
+    for value in canaries:  # the secrets' folder is gone: nothing of LADO_HOME is skipped
+        assert files_holding(home, value.encode(), [home / "fake-agents"]) == []

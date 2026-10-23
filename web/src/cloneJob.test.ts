@@ -180,3 +180,37 @@ test("a screen that goes away stops asking", async () => {
   expect(end).toEqual({ ended: "left", job: job() });
   expect(getClone).not.toHaveBeenCalled();
 });
+
+test("a screen that goes away while its clone runs cancels it at once", async () => {
+  getClone.mockResolvedValue(job());
+  const hook = renderHook(() => useCloneJob());
+  await act(async () => {
+    void hook.result.current.run(START, async () => false);
+    await Promise.resolve();
+  });
+  expect(cancelClone).not.toHaveBeenCalled();
+  hook.unmount();
+  expect(cancelClone).toHaveBeenCalledTimes(1);
+  expect(cancelClone).toHaveBeenCalledWith("j1");
+});
+
+test("a screen that goes away after its clone ended cancels nothing", async () => {
+  const { hook } = await run([job({ state: "done" })]);
+  hook.unmount();
+  expect(cancelClone).not.toHaveBeenCalled();
+});
+
+test("a failed cancel of a screen that went away is no error", async () => {
+  cancelClone.mockRejectedValueOnce(new ApiError(0, "offline"));
+  getClone.mockResolvedValue(job());
+  const hook = renderHook(() => useCloneJob());
+  await act(async () => {
+    void hook.result.current.run(START, async () => false);
+    await Promise.resolve();
+  });
+  hook.unmount();
+  await act(async () => {
+    await Promise.resolve(); // the rejection is caught, not left unhandled
+  });
+  expect(cancelClone).toHaveBeenCalledWith("j1");
+});

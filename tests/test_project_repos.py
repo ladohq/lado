@@ -204,6 +204,13 @@ def test_a_change_of_the_root_repositorys_own_file_is_still_named(rooted):
     assert projects.unpushed(rooted) == ["the project's folder: uncommitted changes"]
 
 
+@pytest.mark.parametrize("name", ["x*", "x?", "[x]y"])
+def test_a_repository_named_like_a_glob_hides_none_of_the_roots_changes(rooted, name):
+    init_repo(rooted / name)  # a clone made by hand: LADO's names allow none of *?[
+    (rooted / "xy").write_text("x")  # the root's own change, matched by each glob
+    assert projects.unpushed(rooted)[0] == "the project's folder: uncommitted changes"
+
+
 def test_a_repository_the_root_tracks_moved_on_is_not_the_roots_change(rooted):
     _git(rooted, "-c", "protocol.file.allow=always", "add", "frontend")  # a gitlink
     _git(rooted, "commit", "-q", "-m", "track frontend")

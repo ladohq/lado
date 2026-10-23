@@ -865,7 +865,8 @@ def _checkout_lines(
     or commits on a detached HEAD, shown relative to `base` when inside it."""
     label = label or entry.name
     real = Path(os.path.realpath(base))  # git names worktrees by real paths
-    excluded = [f":(exclude){name}" for name in skip or []]
+    # literal: a folder named x* excludes itself, not the root's own files that match it
+    excluded = [f":(exclude,literal){name}" for name in skip or []]
     try:
         findings = []
         status = ["status", "--porcelain", "--untracked-files=normal", "--", ".", *excluded]

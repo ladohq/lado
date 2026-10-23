@@ -522,7 +522,12 @@ export interface paths {
         get: operations["project_api_projects__id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Project
+         * @description Delete the project as `lado project delete --yes` does: its folder, sessions,
+         *     data folder and record.
+         */
+        delete: operations["delete_project_api_projects__id__delete"];
         options?: never;
         head?: never;
         /**
@@ -531,6 +536,27 @@ export interface paths {
          *     folder stay.
          */
         patch: operations["rename_project_api_projects__id__patch"];
+        trace?: never;
+    };
+    "/api/projects/{id}/deletion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Deletion
+         * @description What deleting the project does, as `lado project delete` shows it; nothing
+         *     changes.
+         */
+        get: operations["project_deletion_api_projects__id__deletion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/projects/{id}/repos": {
@@ -2345,6 +2371,32 @@ export interface components {
              * @default false
              */
             pre: boolean;
+        };
+        /**
+         * ProjectDeletion
+         * @description What deleting a project does (lado.projects.deletion), the preview `lado project
+         *     delete` prints: names only, never a value.
+         */
+        ProjectDeletion: {
+            /** Id */
+            id: string;
+            /** Folder */
+            folder: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "folder" | "link" | "missing";
+            /** Target */
+            target: string | null;
+            /** Sessions */
+            sessions: components["schemas"]["SessionToForget"][];
+            /** Unpushed */
+            unpushed: string[];
+            /** Variables */
+            variables: string[];
+            /** Secrets */
+            secrets: string[];
         };
         /**
          * ProjectId
@@ -4176,6 +4228,49 @@ export interface operations {
             };
         };
     };
+    delete_project_api_projects__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such project, repository or variable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     rename_project_api_projects__id__patch: {
         parameters: {
             query?: never;
@@ -4198,6 +4293,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectInfo"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such project, repository or variable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_deletion_api_projects__id__deletion_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectDeletion"];
                 };
             };
             /** @description refused, with the reason */

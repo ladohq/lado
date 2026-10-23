@@ -967,7 +967,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (`UnusedSecret`), names and reasons only. `app.py` has the rest of a project's repositories:
     `POST /api/projects/{id}/repos` (`RepoNew` → `ProjectRepo`, `projects.add_new`), `GET
     …/repos/{name}/removal` (`RepoRemoval`, `projects.removal`) and `DELETE
-    …/repos/{name}` (`projects.remove_repo` with yes; the `ProjectInfo` after), and a
+    …/repos/{name}` (`projects.remove_repo` with yes; the `ProjectInfo` after), the
+    project's delete: `GET /api/projects/{id}/deletion` (`ProjectDeletion`,
+    `launch.project_deletion` of `projects.deletion`, names only) and `DELETE
+    /api/projects/{id}` (under `Guard.changes`, `projects.delete` with yes; 204), and a
     project's variables: `ProjectInfo.variables` (`ProjectVariable`, by name), `PUT
     /api/projects/{id}/variables/{name}` (`VariableValue`, `projects.set_variable`) and
     `DELETE …/variables/{name}` (`projects.unset_variable`), both `VariableChange` (the

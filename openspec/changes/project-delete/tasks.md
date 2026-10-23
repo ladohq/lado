@@ -10,7 +10,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-dele
   S5a's F5: a set racing a delete is an unknown project (D6, D7). Check:
   `tests/test_project_repos.py`, `tests/test_projects_core.py`,
   `tests/test_project_variables_core.py`.
-- [ ] 1.3 `GET /api/projects/{id}/deletion`, `DELETE /api/projects/{id}`,
+- [x] 1.3 `GET /api/projects/{id}/deletion`, `DELETE /api/projects/{id}`,
   `ProjectDeletion`; `make web-types` (D8). Check: `tests/test_server_projects.py`,
   `make web`.
 

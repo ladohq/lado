@@ -1,8 +1,11 @@
 """The UI server's API for a project's repositories: a clone job into a project, one from
-scratch, the removal's preview and the removal (openspec change project-repositories). In
-process, with FastAPI's test client; git clones `file://` repositories."""
+scratch, the removal's preview and the removal (openspec change project-repositories), and
+the project's deletion (openspec change project-delete). In process, with FastAPI's test
+client; git clones `file://` repositories."""
 
 import os
+import shutil
+import subprocess
 import time
 
 import pytest
@@ -614,3 +617,135 @@ def test_the_project_names_its_overrides_and_unused_secrets_without_values(
     assert folder_unused == [
         {"name": None, "reason": "readable or writable by others: chmod 700 it"}
     ]
+
+
+# Deleting the project (openspec change project-delete)
+
+
+@pytest.fixture
+def doomed(shop, tmp_path):
+    """shop, frontend removed, with backend pushed but for the branch feature/checkout, the
+    stopped session shop-backend, the variable BOARD_URL and the secret GH_TOKEN."""
+    shutil.rmtree(shop / "frontend")
+    remote = tmp_path / "backend.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    repo = init_repo(shop / "backend")
+    for args in (
+        ["remote", "add", "origin", str(remote)],
+        ["push", "-q", "-u", "origin", "main"],
+        ["switch", "-q", "-c", "feature/checkout"],
+    ):
+        subprocess.run(["git", "-C", str(repo), *args], check=True)
+    state.add_session(state.Session("shop-backend", str(repo), None, "kilo", project="shop"))
+    state.stop_session("shop-backend")
+    projects.set_variable("shop", "BOARD_URL", "https://board.example/canary-plain")
+    projects.set_secret("shop", "GH_TOKEN", "canary-secret")
+    return shop
+
+
+def test_the_deletion_preview(client, doomed):
+    answer = client.get("/api/projects/shop/deletion")
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == {
+        "id": "shop",
+        "folder": str(doomed),
+        "kind": "folder",
+        "target": None,
+        "sessions": [{"name": "shop-backend", "open_runs": 0, "project": "shop"}],
+        "unpushed": ["backend: branch feature/checkout not pushed"],
+        "variables": ["BOARD_URL"],
+        "secrets": ["GH_TOKEN"],
+    }
+    assert "canary" not in answer.text
+    assert doomed.is_dir() and state.get_session("shop-backend") and state.get_project("shop")
+
+
+def test_the_deletion_preview_of_a_link_and_of_a_missing_folder(client, shop, tmp_path):
+    shutil.rmtree(shop)
+    shop.symlink_to(tmp_path)
+    linked = client.get("/api/projects/shop/deletion").json()
+    assert (linked["kind"], linked["target"], linked["unpushed"]) == ("link", str(tmp_path), [])
+    shop.unlink()
+    missing = client.get("/api/projects/shop/deletion").json()
+    assert (missing["kind"], missing["target"]) == ("missing", None)
+
+
+def test_the_delete_removes_the_project(client, doomed):
+    answer = client.delete("/api/projects/shop")
+    assert answer.status_code == 204, answer.text
+    assert answer.content == b""
+    assert not os.path.lexists(doomed)
+    assert not os.path.lexists(project_secrets.data_folder("shop"))
+    assert state.list_sessions() == [] and state.get_project("shop") is None
+    assert client.get("/api/projects/shop").status_code == 404
+
+
+def test_the_deletion_refused_while_a_session_runs(client, doomed, monkeypatch):
+    _running(monkeypatch, doomed, "shop-frontend")
+    for ask in (client.get, client.delete):
+        path = "/api/projects/shop/deletion" if ask == client.get else "/api/projects/shop"
+        answer = ask(path)
+        assert answer.status_code == 400
+        assert answer.json()["detail"] == (
+            "project shop has sessions not stopped: shop-frontend; stop them first with "
+            "lado stop <name>"
+        )
+    assert doomed.is_dir() and state.get_project("shop") and len(state.list_sessions()) == 2
+
+
+def test_the_deletion_of_an_unknown_project(client, shop, lado_home):
+    assert client.get("/api/projects/nope/deletion").status_code == 404
+    assert client.delete("/api/projects/nope").status_code == 404
+
+
+def test_no_deletion_without_a_database(client, lado_home):
+    assert client.get("/api/projects/shop/deletion").status_code == 404
+    assert client.delete("/api/projects/shop").status_code == 404
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_the_delete_needs_the_token_and_the_servers_own_origin(client, shop):
+    del client.headers["origin"]
+    assert client.delete("/api/projects/shop").status_code == 403
+    assert client.get("/api/projects/shop/deletion").status_code == 200
+    client.headers["origin"] = OWN
+    client.cookies.clear()
+    assert client.delete("/api/projects/shop").status_code == 401
+    assert client.get("/api/projects/shop/deletion").status_code == 401
+    assert shop.is_dir() and state.get_project("shop")
+
+
+def test_the_routes_preview_and_delete_through_the_core(client, shop, monkeypatch):
+    called = []
+    deletion, delete = projects.deletion, projects.delete
+    monkeypatch.setattr(projects, "deletion", lambda id: called.append("deletion") or deletion(id))
+    monkeypatch.setattr(
+        projects, "delete", lambda id, yes: called.append(("delete", yes)) or delete(id, yes)
+    )
+    assert client.get("/api/projects/shop/deletion").status_code == 200
+    assert called == ["deletion"]
+    assert client.delete("/api/projects/shop").status_code == 204
+    assert called[1:] == [("delete", True), "deletion"]  # delete acts on the one preview
+
+
+def test_a_change_to_a_project_deleted_meanwhile_is_404(client, shop, monkeypatch):
+    checked, written = projects.check_variable, project_secrets.write
+
+    def check_then_delete(id, name, value):
+        checked(id, name, value)
+        state.delete_project(id)
+
+    def write_then_delete(id, name, value):
+        written(id, name, value)
+        state.delete_project(id)
+
+    projects.create("acme", None)
+    monkeypatch.setattr(projects, "check_variable", check_then_delete)
+    variable = client.put("/api/projects/shop/variables/BOARD_URL", json={"value": "https://a"})
+    assert variable.status_code == 404
+    assert variable.json()["detail"] == 'unknown project "shop"'
+    monkeypatch.setattr(project_secrets, "write", write_then_delete)
+    secret = client.put("/api/projects/acme/secrets/GH_TOKEN", json={"value": "g"})
+    assert secret.status_code == 404
+    assert secret.json()["detail"] == 'unknown project "acme"'
+    assert not os.path.lexists(project_secrets.data_folder("acme"))

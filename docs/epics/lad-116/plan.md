@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: none · Next: S5b (on the human's yes at step_ok) · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5); S5a and S3's F1 until 0.43.0rc1 (a live run on the four CLIs, release checklist 4.3 "Projects")
+In work: S5b (LAD-132, run task/lad-132) · Next: S6 · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5); S5a and S3's F1 until 0.43.0rc1 (a live run on the four CLIs, release checklist 4.3 "Projects")
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
@@ -79,7 +79,7 @@ Notes: concept phase 2, plain half. Minor bump (migration, new CLI). Open check 
 Result: PR #144 merged 2026-10-23 (d11c543), LAD-130 "waiting for release" (0.43.0); change `project-variables` archived (`agent-variables`, `projects` changed). Table `project_variables` (schema 34, deleted with the project); one name rule `projects.check_variable` (reserved: `agent_env.RESERVED | providers.base.CLI_VARIABLES` and `LADO_*`; secret words matched as substrings, so `MONKEY_MODE` is refused, #966); the layer in `agent_env.resolve(project=…)`, read by `runtime._base_env` at every start, resume and spawn; `lado project set/unset`, variables in `show`; `lado doctor` names project variables over `LADO_ENV_DIR`; `variables` in `GET /api/projects/{id}`, `PUT`/`DELETE /api/projects/{id}/variables/{name}`; a smoke probe kit's MCP server per provider. Under `LADO_AGENT_ENV=inherit` an unset does not reach workers a running supervisor spawns (D12, documented). Review: 2 local rounds and 1 external round (code of core/CLI, agent environment and server read by it, texts local, as #949); F1 (a live spec scenario left without the project layer) and F2 (the PR's manual check without clearing LADO's variables) fixed; F3–F6 minor declined at gate #85 (F5 to S7). Trial archive passed (+17 ~7, specs 45/45). `make test` 3954 passed; CI 23/23 on 8ae2c75. The live run moved to the release checklist (`docs/release.md` 4.3, "Projects"). The lead's manual check on d11c543 (temp `LADO_HOME`/`LADO_REPOS`, no agent started): set in two projects, `show`, unset, the refusals of `GH_TOKEN`, `MONKEY_MODE`, `PATH`, `LADO_FOO`, an unknown name and from inside an agent, all as designed; one text slip: `unset` prints "Agents started from now on get it." (`cli.py:1112`), to S5b. Found on the way: LAD-131 (flaky `test_agent_liveness`, #1001).
 
 ### S5b — Project secrets (M)
-Status: planned
+Status: in progress (LAD-132, run task/lad-132)
 Check:
 - `lado project set <id> NAME --secret` reads the value hidden; one file per secret in `<LADO_HOME>/projects/<id>/secrets/`, 700/600, written atomically; read by the same function as `LADO_ENV_DIR` with its limits; a secret reaches the agents as in S5a; replace and delete, never read back.
 - `lado doctor` names an unusable secret file of a project by name, never by content.

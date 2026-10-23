@@ -10,7 +10,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-secr
 - [x] 1.3 `projects`: `check_name`, `set_secret`, one value per name, `unset` of either
   kind, `create` refusing a left data folder, `delete` removing it (D4, D5, D10). Check:
   `tests/test_project_variables_core.py`, the projects' create/delete tests.
-- [ ] 1.4 The project's layer with secrets in `runtime._base_env`, the launch warnings
+- [x] 1.4 The project's layer with secrets in `runtime._base_env`, the launch warnings
   (D7). Check: the runtime unit tests.
 
 ## 2. CLI, server, doctor

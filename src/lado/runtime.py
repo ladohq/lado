@@ -30,6 +30,7 @@ from lado import (
     gui_session,
     kits,
     loop,
+    project_secrets,
     providers,
     state,
     telemetry,
@@ -2811,8 +2812,14 @@ def _add_agent(agent: state.Agent, kit: str) -> None:
 
 def _base_env(project: str | None) -> dict[str, str]:
     """The environment agents start from (lado.agent_env), resolved anew for each launch,
-    with the variables of the session's `project` as lado.db holds them now."""
-    variables = state.project_variables(project) if project else None
+    with the plain variables of the session's `project` as lado.db holds them now and its
+    secrets as their folder holds them now (lado.project_secrets; a project holds one value
+    per name, and a hand-made file of a plain variable's name wins)."""
+    variables = (
+        {**state.project_variables(project), **project_secrets.read(project).values}
+        if project
+        else None
+    )
     try:
         return agent_env.resolve(variables)
     except agent_env.AgentEnvError as exc:
@@ -2855,6 +2862,13 @@ def _layer_warnings(
             f"project variable {name} of {project} not used: LADO sets {name} for {agent.provider}"
             for name in sorted(state.project_variables(project).keys() & ours.keys())
         ]
+        if files:  # a secret LADO or the provider sets cannot be: every such name is reserved
+            lines += [
+                f"project secret {name} of {project} not used: {reason}"
+                if name
+                else f"project secrets folder of {project} not used: {reason}"
+                for name, reason in project_secrets.read(project).unused
+            ]
     return lines
 
 

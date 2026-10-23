@@ -274,3 +274,93 @@ def test_a_link_from_outside_is_refused(shop, tmp_path):
     os.symlink(shop / "frontend", link)
     with pytest.raises(runtime.FolderProblem, match="belongs to the project Shop"):
         _start(path=str(link))
+
+
+# The project's secrets (openspec change project-secrets)
+
+
+def test_the_agents_of_a_session_in_a_project_get_its_secrets(shop, fake_tmux, tmp_path):
+    projects.set_secret("shop", "SHOP_TOKEN", "ghp_a\nline2")
+    projects.set_variable("shop", "BOARD_URL", "https://a")
+    _start(project="shop", repo_name="frontend")
+    env, _ = agent_helpers.launched(fake_tmux[0])
+    assert (env["SHOP_TOKEN"], env["BOARD_URL"]) == ("ghp_a\nline2", "https://a")
+    projects.set_secret("shop", "MODEL_KEY", "m")  # read anew at the next launch
+    runtime.spawn_worker("shop-frontend", "task", name="w1")
+    assert agent_helpers.launched(fake_tmux[-1])[0]["MODEL_KEY"] == "m"
+    projects.unset("shop", "SHOP_TOKEN")
+    runtime.spawn_worker("shop-frontend", "task", name="w2")
+    assert "SHOP_TOKEN" not in agent_helpers.launched(fake_tmux[-1])[0]
+    _start(path=str(init_repo(tmp_path / "app")))  # no project: none of its secrets
+    assert "MODEL_KEY" not in agent_helpers.launched(fake_tmux[-1])[0]
+
+
+def test_a_resume_reads_the_secrets_anew(shop, fake_tmux):
+    _start(project="shop", repo_name="frontend")
+    runtime.stop_session("shop-frontend")
+    projects.set_secret("shop", "SHOP_TOKEN", "g")
+    assert _start(project="shop", repo_name="frontend").resumed
+    assert agent_helpers.launched(fake_tmux[-1])[0]["SHOP_TOKEN"] == "g"
+
+
+def test_two_projects_one_secret_name(shop, fake_tmux):
+    projects.create("acme", None)
+    init_repo(projects.folder("acme") / "frontend")
+    projects.set_secret("shop", "SHOP_TOKEN", "a")
+    projects.set_secret("acme", "SHOP_TOKEN", "b")
+    _start(project="shop", repo_name="frontend")
+    _start(project="acme", repo_name="frontend")
+    assert [agent_helpers.launched(call)[0]["SHOP_TOKEN"] for call in fake_tmux] == ["a", "b"]
+
+
+def test_a_secret_wins_over_the_outside_folder(shop, fake_tmux, outside, tmp_path):
+    (outside / "SHOP_TOKEN").write_text("out\n")
+    projects.set_secret("shop", "SHOP_TOKEN", "a")
+    _start(project="shop", repo_name="frontend")
+    _start(path=str(init_repo(tmp_path / "app")))
+    assert [agent_helpers.launched(call)[0]["SHOP_TOKEN"] for call in fake_tmux] == ["a", "out"]
+
+
+def test_a_kit_key_only_a_secret_passes_and_stays_out_of_the_config(
+    shop, fake_tmux, board_kit, tmp_path
+):
+    projects.set_secret("shop", "BOARD_URL", "canary-5b1d")
+    _start(project="shop", repo_name="frontend", kit_names=["default", "board"])
+    runtime.spawn_worker("shop-frontend", "read it", role="boarder")
+    env, argv = agent_helpers.launched(fake_tmux[-1])
+    assert env["BOARD_URL"] == "canary-5b1d"  # lado.mcp_exec takes it from here
+    assert not [arg for arg in argv if "canary-5b1d" in arg]
+    configs = state.home_path() / "agents"
+    for path in configs.rglob("*"):
+        if path.is_file() and path.name != "env.json":
+            assert b"canary-5b1d" not in path.read_bytes(), path
+    _start(path=str(init_repo(tmp_path / "app")), kit_names=["default", "board"])
+    with pytest.raises(kits.KitError, match="BOARD_URL"):
+        runtime.spawn_worker("app", "read it", role="boarder")
+
+
+def test_a_secret_file_not_given_is_named_at_a_start_and_a_resume(shop, fake_tmux):
+    projects.set_secret("shop", "SHOP_TOKEN", "g")
+    (projects.project_secrets.folder("shop") / "SHOP_TOKEN").chmod(0o644)
+    line = (
+        "project secret SHOP_TOKEN of shop not used: readable or writable by others: chmod 600 it"
+    )
+    started = _start(project="shop", repo_name="frontend")
+    assert line in started.warnings
+    assert "SHOP_TOKEN" not in agent_helpers.launched(fake_tmux[0])[0]
+    warnings = []
+    runtime.spawn_worker("shop-frontend", "task", name="w1", warnings=warnings)
+    assert line not in warnings  # the folder is the same for every agent: said at the start
+    runtime.stop_session("shop-frontend")
+    assert line in _start(project="shop", repo_name="frontend").warnings
+
+
+def test_a_loose_secrets_folder_is_named(shop, fake_tmux):
+    projects.set_secret("shop", "SHOP_TOKEN", "g")
+    projects.project_secrets.folder("shop").chmod(0o755)
+    started = _start(project="shop", repo_name="frontend")
+    assert (
+        "project secrets folder of shop not used: readable or writable by others: chmod 700 it"
+        in started.warnings
+    )
+    assert "SHOP_TOKEN" not in agent_helpers.launched(fake_tmux[0])[0]

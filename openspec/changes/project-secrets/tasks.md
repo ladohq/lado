@@ -2,7 +2,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-secr
 
 ## 1. Core
 
-- [ ] 1.1 One reader for the outside folder and a project's secrets folder, with the
+- [x] 1.1 One reader for the outside folder and a project's secrets folder, with the
   project's checks (no link, no loose mode, the project's reserved names) (D8). Check:
   `tests/test_agent_env.py`.
 - [ ] 1.2 `project_secrets.py`: the data folder, atomic writes, link-safe removal (D1, D2,

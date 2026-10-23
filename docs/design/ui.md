@@ -776,11 +776,13 @@ reaches the feed. LADO takes the model and builds it on what it has:
   `task/lad-85/mockup-gate-comment.html` A, `mockup-gate-expanded.html` 2 and
   `mockup-gate-line.html` 2) is a folded card, 8 px left of the text's column, whose head
   is one button the card's width (`GateLine`, `.gate-head`: the panel's ground and a
-  frame, `--raised` on hover): the flag avatar, "Gate #id" in 600, "run · state" muted,
-  the answer's chip (by the move that closed it: its direction's colour and icon, as on
-  the move's line; without that move, `overridden` by `lado flow-set`, `cancelled`, or an
-  older gate, the word on the neutral ground), "by you" or "by <agent>", the time and a
-  chevron that turns up while it is open. Its accessible name is the title sentence
+  frame, `--raised` on hover): a chevron that turns up while it is open, the flag avatar,
+  "Gate #id" in 600, "run · state" muted, the answer's chip (by the move that closed it:
+  its direction's colour and icon, as on the move's line; without that move, `overridden`
+  by `lado flow-set`, `cancelled`, or an older gate, the word on the neutral ground), "by
+  you" or "by <agent>" and the time, last (LAD-136: the chevron first, as an agents'
+  folded message has it; the frame reaches past the feed's edge by the head's padding and
+  border, so the time ends on that edge). Its accessible name is the title sentence
   "Gate #id · run · state: <answer> by <who>" (`gateTitle`, also the title on a run's page
   in Flows), with `aria-expanded`; Enter and Space open and fold it. No comment under it,
   whoever closed it: the comment stands once, under the move it made, and an override's
@@ -1177,10 +1179,16 @@ Built in the chat task (2026-10-03):
   finds its move the same way, `moveOf`; before LAD-85 a guess by run, state and time).
   Without that gate loaded, the move alone. The closed gate's card stays where it opened.
   The human's own lines of a group (an answer's move with its comment, a `flow_set`)
-  stand on the human's ground (`.run-event.mine`, `--action-ground`, 8 px left of the
-  line), as their messages do; the agents' lines have none (LAD-85).
+  stand on the human's ground (`.run-event.mine`, `--action-ground`, 8 px past the line on
+  both sides, so the time stays on the feed's edge, LAD-136), as their messages do; the
+  agents' lines have none (LAD-85).
 - **Quiet lines** (run events, an open question or gate, a closed gate, a late reply, a
   dismissal) start at the text's column.
+- **One edge for the times** (LAD-136): every time on the right of a chat row (a head's,
+  a run line's, a closed gate's, a quiet line's) ends on the right edge of the text
+  column; no button or chevron stands after it, and showing Copy message moves none. A
+  continued row's time (in the avatar's column) and the times inside a card (a question's
+  reply block, an opened gate's answer) are not on that edge.
 - **The composer** (shared with an agent's page in Agents): one frame, the field without a
   resize handle growing with its text from 1 to 8 lines (by its `scrollHeight`), then
   scrolling; Send inside at the bottom right (`--raised` / `--muted` while off); on focus
@@ -2001,12 +2009,18 @@ the quote icon of variant 1; openspec change `selection-actions`).
   (`quotes.ts`). An expanded waiting card of the session folds.
 - **Copy code and Copy message.** Each fenced code block of Markdown the UI renders has an
   icon button **Copy code** at its top right (its code exactly); each message of the chat
-  has **Copy message** at the end of its head, or at a continued row's top right, and so
-  has each message on an agent's page: the human's text, an agent's summary (unless its
-  body's first line says it) and body after a blank line, by the chat's own rule. Both say
-  "Copied" for 2 s, and fall back to the text to copy by hand as Copy link does. With a
-  pointer that can hover they show only over their block or message, or with the focus;
-  on a touch screen always.
+  has **Copy message** right before its head's time (6 px from its icon to the digits, its
+  24 px hit area kept, the two wrapping to the next line together; LAD-136), or at a continued row's top right, and so has each
+  message on an agent's page: the human's text, an agent's summary (unless its body's
+  first line says it) and body after a blank line, by the chat's own rule. A closed
+  question and the human's answer have none: a question is short and never folded, an
+  answer is the human's own text. Copy message is there because the selection copies the
+  rendered text without its Markdown and cannot reach the part of a long message folded
+  under Show more. Both say "Copied" for 2 s, and fall back to the text to copy by hand as
+  Copy link does. With a pointer that can hover they show only over their block or
+  message, or with the focus. On a touch screen (`hover: none`) Copy code always shows and
+  Copy message never does: the selection copies there, and the head's time takes its
+  place on the edge.
 
 ### Notifications (decided 2026-10-03, task Needs you and notifications)
 

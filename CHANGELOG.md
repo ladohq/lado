@@ -42,6 +42,9 @@
 
 ### Fixed
 
+- **The chat's times stand on one line.** Messages, run lines and closed gates end their
+  times on the same edge; Copy message sits right before a message's time, and a touch
+  screen, where you copy by selecting, no longer shows it.
 - **On a phone a gate's comment or your own answer has room above the keyboard.** Tapping
   the field opens the waiting card over the chat instead of squeezing it to a strip.
 - **The chat shows a flow gate once.** The gate's own row stands under the move that led to

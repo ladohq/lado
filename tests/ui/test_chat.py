@@ -8,7 +8,7 @@ import re
 
 import agent_helpers
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Browser, Page, expect
 from test_artifacts_tab import MANY, MEASURE_TABLES
 from test_flows_tab import BACK, FORWARD, STAY, read_out, reviewed_session, tone, tooltip_lines
 from test_gates import (
@@ -1163,3 +1163,151 @@ def test_a_narrow_window_has_no_edge_and_needs_you_neither_minimizes_nor_resizes
     ).to_have_count(0)
     expect(card.get_by_role("separator")).to_have_count(0)
     shot(page, "needs-you")
+
+
+# Every time that stands on the right of a chat row, with its row's name: not a continued
+# row's (in the avatar's column) and not a card's own (a question's reply block, an opened
+# gate's answer), which end elsewhere (docs/design/ui.md, Quiet lines).
+RIGHT_TIMES = """feed => [...feed.querySelectorAll('time')]
+  .filter(time => !time.closest('.feed-side, .question-answer, .gate-closed-card'))
+  .map(time => {
+    const row = time.closest('article, li');
+    return [row.getAttribute('aria-label') || row.className, time.getBoundingClientRect().right];
+  })"""
+
+
+def every_row_kind(repo) -> str:
+    """A session whose chat has every kind of row with a time on the right: a message and
+    one continuing it, the human's message, the human's answer to a question out of the
+    window, a closed question answered late, a run's group with the agents' lines and the
+    human's own, a closed gate and an open gate's line."""
+    session = gated_session(repo)
+    say = functools.partial(state.queue_message, session, mark=state.DELIVERED)
+    runtime.ask_human(session, "supervisor", "Old question?", None, ["yes", "no"])
+    for n in range(1, 121):  # the old question leaves the chat's first page
+        say("supervisor", "human", f"note {n}")
+    old = [m for m in state.list_messages(session) if m.kind == state.QUESTION][0]
+    runtime.answer_question(session, old.id, choice="yes")
+    runtime.ask_human(session, "supervisor", "Font of the chat?", None, ["Plex", "Inter"])
+    say("human", "supervisor", "Looks good")
+    say("supervisor", "human", "merged w1", "All checks pass.")
+    say("supervisor", "human", "next: the chat")
+    font = [m for m in state.list_messages(session) if m.kind == state.QUESTION][-1]
+    runtime.answer_question(session, font.id, choice="Inter")  # late: after two messages
+    second_gate(session)  # a gate shows where it opened: #1 is out of the window
+    runs.answer(session, "2", "reject", "split the form first")
+    runs.start(session, "ship", "Add a profile page", name="z")
+    artifacts.write(session, "supervisor", "ship/z/plan", "# The plan\n\nOne step.", title="Plan")
+    runs.advance(session, "supervisor", "ship/z", "ready", "planned")
+    runs.advance(session, "supervisor", "ship/z", "done", "the plan is reviewed")
+    return session
+
+
+def assert_one_edge(chat) -> None:
+    """Every row kind of every_row_kind has its time on the right, and their right edges are
+    one within 1 px."""
+    times = chat.evaluate(RIGHT_TIMES)
+    rows = [name for name, _ in times]
+    for kind in (
+        "Message from supervisor",
+        "Question from supervisor",
+        "Gate #2",
+        "Gate #3 waits",
+        "run-event run-flow",
+        "run-event run-flow mine",
+    ):
+        assert kind in rows, (kind, rows)
+    assert any(name.startswith("You answered question #") for name in rows), rows
+    assert rows.count("Message from you") == 2, rows  # the message and the answer's row
+    edges = [right for _, right in times]
+    assert max(edges) - min(edges) <= 1, [one for one in times if abs(one[1] - edges[0]) > 1]
+
+
+def test_every_time_on_the_right_ends_on_one_edge_and_copy_message_stands_before_it(
+    page: Page, browser: Browser, server, repo, shot
+):
+    """In a wide chat and on a phone the right edges of the rows' times are one within 1 px;
+    over a message Copy message shows 6 px before its time and moves nothing; no other row
+    has it (AC-1, AC-2, AC-3, AC-5; LAD-136)."""
+    session = every_row_kind(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    chat = page.get_by_role("log", name="Chat with the session")
+    expect(chat.get_by_role("article", name="Gate #3 waits")).to_be_visible()
+    for width in (1800, 1200):  # 1800: the chat at its own width beside the terminal
+        page.set_viewport_size({"width": width, "height": 900})
+        page.mouse.move(0, 0)
+        assert_one_edge(chat)
+        chat.evaluate("feed => { feed.scrollTop = feed.scrollHeight }")
+        for theme in ("light", "dark"):
+            page.emulate_media(color_scheme=theme)
+            shot(page, f"{width}-{theme}", full_page=False)
+        page.emulate_media(color_scheme="light")
+    # Copy message only on the messages: the human's, the agent's, not on the answer's row.
+    copied = chat.locator("article:has(> .feed-main .copy-icon-button)")
+    assert sorted(set(copied.evaluate_all("rows => rows.map(row => row.ariaLabel)"))) == [
+        "Message from supervisor",
+        "Message from you",
+    ]
+    answer = chat.get_by_role("article", name="Message from you").filter(has_text="answer to")
+    expect(answer.locator(".copy-icon-button")).to_have_count(0)
+    message = chat.get_by_role("article", name="Message from supervisor").filter(
+        has_text="merged w1"
+    )
+    time = message.locator(".feed-when > time")
+    message.scroll_into_view_if_needed()
+    before = time.bounding_box()
+    message.hover()
+    copy = message.get_by_role("button", name="Copy message")
+    expect(message.locator(".feed-when > .copy-icon-button")).to_have_css("opacity", "1")
+    assert time.bounding_box() == before
+    button, icon = copy.bounding_box(), copy.locator("svg").bounding_box()
+    assert button is not None and icon is not None and before is not None
+    assert (button["width"], button["height"]) == (24, 24), button
+    assert abs(before["x"] - (icon["x"] + icon["width"]) - 6) <= 1, (icon, before)
+    shot(page, "hover", full_page=False)
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
+    )
+    try:
+        phone = context.new_page()
+        log_in(phone, server)
+        phone.goto(f"{server['url']}/sessions/{session}")
+        chat = phone.get_by_role("log", name="Chat with the session")
+        expect(chat.get_by_role("article", name="Gate #3 waits")).to_be_visible()
+        assert_one_edge(chat)
+        chat.evaluate("feed => { feed.scrollTop = feed.scrollHeight }")
+        shot(phone, "390", full_page=False)
+    finally:
+        context.close()
+
+
+# The message's head with a name of 1 to 80 characters, one after another: where its time
+# ends against the text column's edge, and the names whose time leaves the edge.
+TIME_OFF_EDGE = """row => {
+  const who = row.querySelector('.feed-who');
+  const time = row.querySelector('.feed-head time');
+  const edge = row.querySelector('.feed-main').getBoundingClientRect().right;
+  const off = [];
+  for (let n = 1; n <= 80; n++) {
+    who.textContent = 'w'.repeat(n);
+    const right = time.getBoundingClientRect().right;
+    if (Math.abs(right - edge) > 1) off.push([n, right, edge]);
+  }
+  return off;
+}"""
+
+
+def test_a_heads_time_stays_on_the_edge_when_the_head_wraps(page: Page, server, repo, shot):
+    """A head that wraps wraps Copy message and the time together: the time never starts
+    the next line at the left (LAD-136, ledger F1)."""
+    session = running_session(repo)
+    state.queue_message(session, "supervisor", "human", "merged w1", mark=state.DELIVERED)
+    page.set_viewport_size({"width": 1200, "height": 900})  # a narrow chat by the terminal
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    message = page.get_by_role("log", name="Chat with the session").get_by_role(
+        "article", name="Message from supervisor"
+    )
+    expect(message).to_contain_text("merged w1")
+    assert message.evaluate(TIME_OFF_EDGE) == []

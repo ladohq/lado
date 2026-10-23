@@ -2,14 +2,11 @@
 // rail's Launch, the session list's "+", and in its Resume mode from a stopped session's
 // Resume. What a folder is, which kits and providers there are and whether a name is taken
 // all come from the server; the window decides nothing the core decides.
-import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 
 import {
   ApiError,
-  cancelClone,
-  cancelCloneOnLeave,
-  getClone,
   getCloneTarget,
   getFolder,
   getKits,
@@ -21,7 +18,6 @@ import {
   getRemoteBranches,
   getScratchTarget,
   resumeSession,
-  startClone,
   startSession,
   type CloneJob,
   type CloneRefused,
@@ -43,6 +39,7 @@ import {
   type Taken,
   type Workspace,
 } from "./api";
+import { useCloneJob } from "./cloneJob";
 import { useCopy } from "./Copy";
 import { ProjectField } from "./LaunchProject";
 import { useLive } from "./live";
@@ -52,8 +49,6 @@ import { projectPath, sessionPath } from "./paths";
 export const DEBOUNCE = 200;
 // The same before it asks a remote for its branches, which goes to the network.
 export const BRANCHES_DEBOUNCE = 500;
-// How often the window asks for its clone job; the server cancels one no one asks about.
-export const CLONE_POLL = 500;
 // Up to this many branches the Branch field is a list; more, a field that filters them.
 export const BRANCH_LIST = 30;
 // The target states a clone may start in (lado.clone.CAN_CLONE).
@@ -187,8 +182,6 @@ const elapsed = (seconds: number) => {
 const defaultBranch = (remote: RemoteInfo) =>
   remote.default ?? ["main", "master"].find((one) => remote.branches.includes(one)) ?? remote.branches[0];
 
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 function LaunchDialog({
   mode,
   onMode,
@@ -241,32 +234,14 @@ function LaunchDialog({
   const [url, setUrl] = useState("");
   const [into, setInto] = useState<string | null>(null);
   const [picked, setPicked] = useState<{ url: string; branch: string } | null>(null);
-  const [job, setJob] = useState<CloneJob | null>(null);
+  const clone = useCloneJob(); // its beacon cancels the clone of a page that goes away
+  const job = clone.job;
   const [cloneEnd, setCloneEnd] = useState<{ note: string } | { refused: CloneRefused } | null>(null);
   const branchesAsked = useRef(new Map<string, Promise<RemoteInfo>>());
-  const alive = useRef(true);
-  const cancelPressed = useRef(false);
 
   useEffect(() => {
-    alive.current = true; // again after StrictMode's trial unmount
     dialog.current?.showModal();
-    return () => {
-      alive.current = false;
-    };
   }, []);
-
-  // A page that goes away (tab closed or reloaded) cancels its running clone at once; the
-  // server's clone.ABANDONED is only the fallback for a window that could not say so. A
-  // layout effect: the listener is there in the very commit that shows the clone running
-  // and gone in the one that shows its end; a passive effect runs a task later, when a
-  // page that went away in between has cancelled nothing.
-  const runningId = job?.state === "running" ? job.id : null;
-  useLayoutEffect(() => {
-    if (runningId === null) return;
-    const leave = () => cancelCloneOnLeave(runningId);
-    window.addEventListener("pagehide", leave);
-    return () => window.removeEventListener("pagehide", leave);
-  }, [runningId]);
 
   const cloning = source === "url";
   const scratching = source === "scratch";
@@ -533,56 +508,40 @@ function LaunchDialog({
     setBusy(true);
     setRefused(null);
     setCloneEnd(null);
-    cancelPressed.current = false;
     const refuse = (error: unknown) => {
       const given = error instanceof ApiError ? error : new ApiError(0, String(error));
       const why = cloneRefused(given.detail);
       setCloneEnd({ refused: why ?? { message: given.message, kind: "refused", hint: null } });
-      setJob(null);
       setBusy(false);
     };
     const asked = typedUrl; // its field is off while the clone runs
-    let running: CloneJob;
+    // A job the server dropped (clone.KEPT) ended while this window did not ask: the clone
+    // is there when the folder is now a clone of the URL.
+    const isThere = async (lost: CloneJob) =>
+      (await getCloneTarget(asked, lost.path)).state === "same_repo";
+    let end;
     try {
-      running = await startClone({ url: asked, path: target.path, branch });
+      end = await clone.run({ url: asked, path: target.path, branch }, isThere);
     } catch (error) {
       refuse(error);
       return;
     }
-    setJob(running);
-    while (running.state === "running") {
-      await pause(CLONE_POLL);
-      if (!alive.current) return;
-      try {
-        running = await getClone(running.id);
-      } catch (error) {
-        // A job the server no longer knows (it restarted) has ended; any other failure is
-        // asked again, as the clone goes on and only Cancel clone ends it.
-        if (error instanceof ApiError && error.status === 404) {
-          // The server dropped a job that ended while this window did not ask (clone.KEPT):
-          // if the clone is there, it is offered as a folder; else the job's end is unknown.
-          const now = await getCloneTarget(asked, running.path).catch(() => null);
-          if (now?.state === "same_repo") {
-            setJob(null);
-            toFolder(running.path);
-            setCloneEnd({ note: `the clone ended while this window was away; it is in ${running.path}` });
-            setBusy(false);
-          } else {
-            refuse(error);
-          }
-          return;
-        }
-        continue;
+    if ("ended" in end) {
+      if (end.ended === "left") return;
+      if (end.ended === "gone") {
+        refuse(end.error); // the job's end is unknown
+      } else if (end.ended === "away") {
+        toFolder(end.job.path); // offered as a folder
+        setCloneEnd({ note: `the clone ended while this window was away; it is in ${end.job.path}` });
+        setBusy(false);
+      } else {
+        setCloneEnd(end.job.error ? { refused: end.job.error } : { note: "the clone was cancelled" });
+        setBusy(false);
       }
-      setJob(running);
-    }
-    setJob(null);
-    if (running.state !== "done") {
-      setCloneEnd(running.error ? { refused: running.error } : { note: "the clone was cancelled" });
-      setBusy(false);
       return;
     }
-    if (cancelPressed.current) {
+    const running = end.done;
+    if (end.late) {
       // Cancel clone came too late: the clone is there, and it is offered as a folder.
       toFolder(running.path);
       setCloneEnd({ note: `the clone ended before Cancel clone; it is in ${running.path}` });
@@ -970,10 +929,7 @@ function LaunchDialog({
 
         <div className="launch-buttons">
           {job ? (
-            <button type="button" className="quiet" onClick={() => {
-                cancelPressed.current = true;
-                void cancelClone(job.id).catch(() => {});
-              }}>
+            <button type="button" className="quiet" onClick={clone.cancel}>
               Cancel clone
             </button>
           ) : (

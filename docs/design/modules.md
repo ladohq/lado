@@ -976,7 +976,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (`ProjectLaunch`, `launch.project_launch`: what the Project way shows, the projects by
     title, the project and repository asked or last used, the default name by
     `runtime.project_session_name`, its state, where a session of the name in no or another
-    project is `taken_elsewhere`, the provider and the repository's last session in the
+    project is `taken_elsewhere`, `root` (the repository's git root, links resolved, the
+    folder its sessions have), the provider and the repository's last session in the
     project; it makes nothing), `GET /api/scratch-target` (`ScratchTarget`: `lado.scratch`'s
     names, folder state and author, the name's state and a provider), `/api/folders/recent`,
     `/api/repos-folder` (in `app.py`; `Workspace`, `projects.workspace` and whether it is

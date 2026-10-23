@@ -338,7 +338,8 @@ function LaunchDialog({
     sourceTouched.current = true; // decided once
     if (recentAsked.length === 0) setSourceState("scratch");
   }, [recentAsked]);
-  const root = resuming?.repo ?? (scratching ? null : projecting ? projectRepo?.path : folder?.root) ?? null;
+  // In Project the repository's git root (links resolved), as a session's folder is given.
+  const root = resuming?.repo ?? (scratching ? null : projecting ? inProject?.root : folder?.root) ?? null;
   const kitList = useAsked(root ?? "", (where) => getKits(where || null));
   const providerList = useOnce(getProviders);
   const providers = valueOf(providerList);

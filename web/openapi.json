@@ -6434,6 +6434,17 @@
             ],
             "title": "Repo"
           },
+          "root": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          },
           "default_name": {
             "anyOf": [
               {
@@ -6489,6 +6500,7 @@
           "project",
           "repos",
           "repo",
+          "root",
           "default_name",
           "name_state",
           "provider",

@@ -324,6 +324,7 @@ def project_launch(asked: str | None, asked_repo: str | None, has_db: bool) -> m
         project=project,
         repos=[],
         repo=None,
+        root=None,
         default_name=None,
         name_state=None,
         provider=None,
@@ -350,6 +351,7 @@ def project_launch(asked: str | None, asked_repo: str | None, has_db: bool) -> m
         update={
             "repos": [project_repo(r) for r in repos],
             "repo": repo.name,
+            "root": root,
             "default_name": name,
             "name_state": name_state(name, root, has_db, project=project),
             "provider": provider_suggestion(root),

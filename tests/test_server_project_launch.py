@@ -274,6 +274,7 @@ def test_no_project_without_a_database(client, lado_home):
         "project": None,
         "repos": [],
         "repo": None,
+        "root": None,
         "default_name": None,
         "name_state": None,
         "provider": None,
@@ -288,6 +289,20 @@ def test_a_name_held_outside_the_project_is_taken_elsewhere(client, shop, tmp_pa
     shown = project_launch(client, project="shop", repo="frontend")
     assert shown["name_state"] == "taken_elsewhere"
     assert shown["last"] is None
+
+
+def test_the_root_is_gits_through_a_linked_workspace(client, tmp_path, monkeypatch, git_config):
+    # The session's folder is git's root, links resolved: the window compares a 409's
+    # folder with it (Resume it), so it is not the listed path through the link.
+    (tmp_path / "real").mkdir()
+    (tmp_path / "ws").symlink_to(tmp_path / "real")
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    projects.create("shop", "Shop")
+    init_repo(projects.folder("shop") / "frontend")
+    shown = project_launch(client, project="shop")
+    assert shown["repos"][0]["path"] == str(tmp_path / "ws" / "projects" / "shop" / "frontend")
+    assert shown["root"] == str(tmp_path / "real" / "projects" / "shop" / "frontend")
+    assert shown["root"] == runtime.check_repo(shown["repos"][0]["path"])
 
 
 def test_no_secret_or_variable_value_is_shown(client, shop):

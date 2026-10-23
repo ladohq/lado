@@ -1557,7 +1557,9 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   `where: {kind: "project", project, repo}`; the
   server calls `runtime.start_session(None, …, resume=False, project=, repo_name=)`, the
   CLI's call: an unknown project or repository is 404 with the core's text, a taken name
-  409 `Taken` with Resume it or Open it as in Folder, any other refusal 400. A project
+  409 `Taken` with Resume it or Open it as in Folder (its folder compared with
+  `ProjectLaunch.root`, the repository's git root with links resolved, as a session's folder
+  is kept, not the listed path, which may go through a link), any other refusal 400. A project
   without repositories shows in the list's place `No repositories yet. Add one on the
   project's page:` with **Open <title>**, and Start stays off; without projects the field
   says `No projects yet. A project keeps its repositories and the variables its sessions

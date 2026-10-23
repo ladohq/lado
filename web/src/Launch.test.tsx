@@ -113,13 +113,13 @@ function shopLaunch(project: string | null, repo: string | null): ProjectLaunch 
   ];
   if (project === "acme") {
     const none = { default_name: null, name_state: null, provider: null, last: null };
-    return { projects, project: "acme", repos: [], repo: null, ...none };
+    return { projects, project: "acme", repos: [], repo: null, root: null, ...none };
   }
   const chosen = repo ?? "backend";
   const last =
     chosen === "backend"
       ? session("shop-backend", {
-          repo: "/ws/projects/shop/backend",
+          repo: "/real/projects/shop/backend",
           status: "stopped",
           kits: ["team"],
           provider: "kilo",
@@ -132,6 +132,8 @@ function shopLaunch(project: string | null, repo: string | null): ProjectLaunch 
     project: "shop",
     repos: [shopRepo("backend"), shopRepo("frontend")],
     repo: chosen,
+    // git's root, links resolved: the workspace /ws is a link to /real
+    root: `/real/projects/shop/${chosen}`,
     default_name: `shop-${chosen}`,
     name_state: last ? "stopped_here" : "free",
     provider: last ? { name: "kilo", reason: "last_session" } : null,
@@ -2393,7 +2395,7 @@ test("Project chooses the last used repository and takes its last session's sett
   await waitFor(() => expect(providerSelect().value).toBe("kilo"));
   expect((screen.getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement).value).toBe("plan");
   expect(within(dialog).getByText(/a stopped session shop-backend exists for this folder/)).toBeTruthy();
-  expect(calls.some((c) => c.path === "/api/kits?where=%2Fws%2Fprojects%2Fshop%2Fbackend")).toBe(true);
+  expect(calls.some((c) => c.path === "/api/kits?where=%2Freal%2Fprojects%2Fshop%2Fbackend")).toBe(true);
 });
 
 test("Start names the project the session goes to, and follows the choice", async () => {
@@ -2426,17 +2428,17 @@ test("Start in starts in the project's repository chosen", async () => {
   });
 });
 
-test("a taken name in Project shows the core's text and Resume it", async () => {
-  sessions = [session("shop-backend", { status: "stopped", repo: "/ws/projects/shop/backend", project: "shop" })];
-  const text = 'session "shop-backend" exists already (stopped, in /ws/projects/shop/backend); resume it, or give the new session another name';
+test("a taken name in Project shows the core's text and Resume it, its folder git's root through a link", async () => {
+  sessions = [session("shop-backend", { status: "stopped", repo: "/real/projects/shop/backend", project: "shop" })];
+  const text = 'session "shop-backend" exists already (stopped, in /real/projects/shop/backend); resume it, or give the new session another name';
   answers["POST /api/sessions"] = () =>
-    json({ detail: { message: text, status: "stopped", repo: "/ws/projects/shop/backend" } }, 409);
+    json({ detail: { message: text, status: "stopped", repo: "/real/projects/shop/backend" } }, 409);
   const dialog = await openProject();
   await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
   fireEvent.click(startIn("Shop"));
   expect((await within(dialog).findByRole("alert")).textContent).toBe(text);
-  const resume = within(dialog).getAllByRole("button", { name: "Resume it" });
-  fireEvent.click(resume[resume.length - 1]);
+  const refusal = dialog.querySelector(".launch-refused") as HTMLElement;
+  fireEvent.click(within(refusal).getByRole("button", { name: "Resume it" }));
   expect(await screen.findByRole("dialog", { name: "Resume session" })).toBeTruthy();
 });
 

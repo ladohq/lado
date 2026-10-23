@@ -36,6 +36,7 @@ function launch(more: Partial<ProjectLaunch> = {}): ProjectLaunch {
     project: "shop",
     repos: [repo("backend", { branch: "develop" }), repo("frontend")],
     repo: "frontend",
+    root: "/ws/projects/shop/frontend",
     default_name: "shop-frontend",
     name_state: "free",
     provider: null,

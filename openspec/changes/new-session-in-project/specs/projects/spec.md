@@ -162,11 +162,11 @@ suggestion. A refused start SHALL show the core's text, with `Resume it` or `Ope
 for a folder.
 
 #### Scenario: A taken name
-- **WHEN** a stopped `shop-frontend` of this repository exists and the human clicks Start
-  session
+- **WHEN** a stopped `shop-frontend` of this repository exists and the human clicks `Start
+  in Shop`
 - **THEN** the window shows `session "shop-frontend" exists already (stopped, in
   <workspace>/projects/shop/frontend); resume it, or give the new session another name`
-  and `Resume it`
+  and `Resume it`, also when the workspace's path goes through a link
 
 ### Requirement: The Project way sends the human to the project when nothing can be chosen
 

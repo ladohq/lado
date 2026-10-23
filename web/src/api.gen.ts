@@ -2395,6 +2395,8 @@ export interface components {
             repos: components["schemas"]["ProjectRepo"][];
             /** Repo */
             repo: string | null;
+            /** Root */
+            root: string | null;
             /** Default Name */
             default_name: string | null;
             /** Name State */

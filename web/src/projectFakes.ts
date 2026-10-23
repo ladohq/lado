@@ -150,6 +150,7 @@ export class FakeProjects {
         project: chosen?.id ?? null,
         repos: chosen?.repos ?? [],
         repo: repo?.name ?? null,
+        root: repo?.path ?? null,
         default_name: repo ? `${chosen.id}-${repo.name}` : null,
         name_state: repo ? "free" : null,
         provider: null,

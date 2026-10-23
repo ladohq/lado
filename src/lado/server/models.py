@@ -809,6 +809,9 @@ class ProjectLaunch(BaseModel):
     project: str | None  # None: no projects
     repos: list[ProjectRepo]  # the chosen project's, by name
     repo: str | None  # None: the project has none
+    # the chosen repository's git root, links resolved: the folder its sessions have
+    # (SessionInfo.repo, Taken.repo); its listed path may go through a link
+    root: str | None
     default_name: str | None  # <project>-<repo> as the core makes it
     name_state: "NameState | None"  # a session of the name in no or another project: elsewhere
     provider: "ProviderSuggestion | None"

@@ -6,17 +6,27 @@
 secrets, running, overrides, unused}`, `repos` the project's repositories as `{name, path,
 remote, branch}`, `variables` its variables as `{name, value}` by name, `secrets` the names
 of its secrets (as `lado project show` lists them, never a value), `running` the names of
-its sessions that are not stopped, `overrides` the names of its variables and secrets that
-the outside folder (`LADO_ENV_DIR`) gives too, sorted, and `unused` the entries of its
-secrets folder its agents do not get as `{name, reason}` (`name` null for the folder
-itself), as `lado doctor` names them; and 404 for an unknown id. No field SHALL hold a value
-of a secret or of the outside folder. The answers of the routes that change a project
-(`{project, running}` and the project itself) SHALL carry the project in this form.
+its sessions that are not stopped, and 404 for an unknown id. The routes that change a
+project SHALL answer it in this form.
 
 #### Scenario: A project
 - **WHEN** the UI asks `GET /api/projects/shop`
 - **THEN** the answer has `id: "shop"`, its title, its folder, `found: true`, its
   repositories as `lado project show` lists them, its variables and its secrets' names
+
+#### Scenario: Running sessions
+- **WHEN** `shop-frontend` of `shop` runs and `shop-backend` is stopped
+- **THEN** `running` is `["shop-frontend"]`
+
+## ADDED Requirements
+
+### Requirement: The server's project names what overrides and what its agents do not get
+
+A project's `overrides` SHALL be the names of its variables, and of its secrets its agents
+get, that the outside folder (`LADO_ENV_DIR`) gives too, sorted; its `unused` the entries
+of its secrets folder its agents do not get as `{name, reason}` (`name` null for the folder
+itself), as `lado doctor` names them. No field SHALL hold a value of a secret or of the
+outside folder.
 
 #### Scenario: A name the outside folder gives too
 - **WHEN** `LADO_ENV_DIR` holds `YOUGILE_API_KEY` with `yk-out`, `shop` has the secret
@@ -27,36 +37,16 @@ of a secret or of the outside folder. The answers of the routes that change a pr
 #### Scenario: A secret file the agents do not get
 - **WHEN** `<LADO_HOME>/projects/shop/secrets/SENTRY_DSN` has mode 644
 - **THEN** `secrets` holds `SENTRY_DSN` and `unused` holds `{name: "SENTRY_DSN", reason:
-  "readable or writable by others: chmod 600 it"}`
+  "readable or writable by others: chmod 600 it"}`, and `overrides` does not name it
 
-#### Scenario: Running sessions
-- **WHEN** `shop-frontend` of `shop` runs and `shop-backend` is stopped
-- **THEN** `running` is `["shop-frontend"]`
+### Requirement: The session's project links to the project's page
 
-### Requirement: The session's API and head show its project
-
-`SessionInfo` SHALL carry `project`, the project's id or null. `SessionAbout` SHALL carry
-`project`, `{id, title}` read when asked, or null. The session's head SHALL show, for a
-session in a project, as the first of its facts before the folder, the word `project` and
-the project's title (its id when it has none), with the tooltip `Project <id>`, the title a
-link to the project's page `/projects/<id>`; on a phone the session's details SHALL show
-`Project <title>` above the folder, the title a link to the same page. A session without a
-project SHALL show nothing new.
-
-#### Scenario: The head of a session in a project
-- **WHEN** the human opens `shop-frontend` of project `shop` titled `Shop`
-- **THEN** the head's facts begin with `project Shop`, whose tooltip is `Project shop`,
-  then the folder
-
-#### Scenario: Renamed project
-- **WHEN** the project is renamed `Shop EU` and the human opens the session again
-- **THEN** the head shows `project Shop EU`
+In the session's head and in a phone's session details, the project's title SHALL be a
+link to the project's page `/projects/<id>`, its tooltip kept.
 
 #### Scenario: From the head to the project
 - **WHEN** the human clicks `Shop` in the head of `shop-frontend`
 - **THEN** the Projects section opens at `/projects/shop`
-
-## ADDED Requirements
 
 ### Requirement: The server lists the projects
 

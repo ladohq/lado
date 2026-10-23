@@ -15,7 +15,7 @@
   Check: `grep -niE "not built yet|step S[0-9]" docs/design/ui.md` finds only line 442's
   placeholder rule; the `repos` sentence agrees with `SessionAbout` in
   `src/lado/server/models.py`.
-- [ ] 1.5 The whole grep of the proposal's Scope finds nothing about projects. Check: its
+- [x] 1.5 The whole grep of the proposal's Scope finds nothing about projects. Check: its
   output pasted into the build report and the pull request (the manual check).
 
 ## 2. Going back from 0.43.0
@@ -35,8 +35,8 @@
 
 ## 3. Checks
 
-- [ ] 3.1 `make lint`, `make test` (counts in the build report), `openspec validate
+- [x] 3.1 `make lint`, `make test` (counts in the build report), `openspec validate
   projects-docs-built --strict`, `openspec validate --specs --strict`; no code changed,
   so no integration or UI run.
-- [ ] 3.2 The pull request's manual check: the branch and folder, `env | grep LADO_` and
+- [x] 3.2 The pull request's manual check: the branch and folder, `env | grep LADO_` and
   `unset` of what it finds, the grep of 1.5 with its expected empty result about projects.

@@ -40,12 +40,10 @@ loop" says.
 
 ### Requirement: A short lock of lado.db is no error of the loop
 
-When a pass of the session loop, or a read of the UI server's change feed, fails with
-`sqlite3.OperationalError` "database is locked", the failure SHALL be written to its log
-(`loop.log`, `server.log`) as any failing pass is, and SHALL be written to `errors.jsonl`
-(and queued for telemetry while sending is on) only when that same error has kept failing
-the passes for 60 seconds since the first of them: one line for that run of failures. A
-lock that clears sooner SHALL leave `errors.jsonl` as it was.
+A failure of a session loop's pass, or of a read of the UI server's change feed, with
+`sqlite3.OperationalError` "database is locked" SHALL be written to `errors.jsonl` only
+once that error has kept failing the passes for 60 seconds, as one line for that run of
+failures; its log (`loop.log`, `server.log`) SHALL get it as any failing pass.
 
 #### Scenario: A lock that clears within a minute
 - **WHEN** the passes of a session's loop fail with "database is locked" for 20 seconds,

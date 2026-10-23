@@ -820,12 +820,12 @@ test("a run's events in a row are one group under the run's name, which links to
   const log = await chat();
   await within(log).findAllByRole("listitem");
   const groups = runGroups(log);
-  expect(groups.map((one) => within(one).getAllByRole("listitem").length)).toEqual([3, 4]);
+  expect(groups.map((one) => within(one).getAllByRole("listitem").length)).toEqual([3, 3]);
   const group = groups[0].closest(".run-group") as HTMLElement;
   const link = within(group).getByRole("link", { name: "feature/x" });
   expect(link.getAttribute("href")).toBe("/sessions/lado/flows/feature%2Fx");
   expect(within(log).queryByRole("link", { name: "Flows" })).toBeNull();
-  const [started, ready, changes, odd, waits, set, cancelled] = within(log).getAllByRole("listitem");
+  const [started, ready, changes, odd, set, cancelled] = within(log).getAllByRole("listitem");
   expect([kept(started, "run-actor"), kept(started, "run-chip"), kept(started, "run-detail")]).toEqual([
     "supervisor",
     "started",
@@ -840,17 +840,12 @@ test("a run's events in a row are one group under the run's name, which links to
   expect(changes.querySelector(".run-outcome")?.className).toContain("back"); // the flow declares design first
   expect(kept(changes, "run-actor")).toBe("architect");
   expect([odd.querySelector(".run-state"), kept(odd, "run-detail")]).toEqual([null, "moved somehow"]);
-  expect([kept(waits, "run-chip"), kept(waits, "run-detail"), kept(waits, "run-actor")]).toEqual([
-    "waits for you",
-    "#2 approval at check: Ship it?",
-    "lado",
-  ]);
   expect([kept(set, "run-chip"), kept(set, "run-actor")]).toEqual(["set by you", "You"]);
   expect([kept(cancelled, "run-chip"), kept(cancelled, "run-detail")]).toEqual(["cancelled", "no longer needed"]);
   expect(within(ready).getByText(clock("2026-10-03T11:59:30Z")).tagName).toBe("TIME");
-  expect(within(log).queryByText(/not a line|#1 approve/)).toBeNull();
+  expect(within(log).queryByText(/not a line|#1 approve|#2 approval/)).toBeNull(); // a gate's opening is no line
   const order = Array.from(log.querySelectorAll("li, article")).map((one) => one.tagName);
-  expect(order).toEqual(["LI", "LI", "LI", "ARTICLE", "LI", "LI", "LI", "LI"]);
+  expect(order).toEqual(["LI", "LI", "LI", "ARTICLE", "LI", "LI", "LI"]);
   stream().send(
     "change",
     { kind: "events", session: "lado", key: "14", op: "insert", item: event(14, "flow_end", "at done", "2026-10-03T12:01:00Z", { actor: "lado" }) },
@@ -1167,7 +1162,7 @@ test("the human rejects with a comment: the chat shows it once, under the move; 
 test("the human's move and its comment stand on the human's ground, the agents' lines do not", async () => {
   rejected();
   await gateCard();
-  await waitFor(async () => expect((await moves()).map((one) => one.classList.contains("mine"))).toEqual([false, false, true]));
+  await waitFor(async () => expect((await moves()).map((one) => one.classList.contains("mine"))).toEqual([false, true]));
 });
 
 test("a rejected gate, folded: a card with the flag, its title, the answer's chip by the move's direction, by you, the time and a chevron", async () => {
@@ -1357,7 +1352,7 @@ test("a gate with no note and no recommendation opens to its question and answer
   expect([card.querySelector(".gate-head .run-outcome")?.className, kept(card, "answer-target")]).toEqual(["run-outcome", undefined]);
 });
 
-test("gates are in time order among messages and run events; its waiting is a line of the run, the gate's line under it", async () => {
+test("gates are in time order among messages and run events; the gate's line stands under the move that led to it", async () => {
   serve(
     [message(1, "human", "supervisor", "start it", { created_at: "2026-10-03T12:00:00Z" })],
     undefined,
@@ -1376,7 +1371,40 @@ test("gates are in time order among messages and run events; its waiting is a li
   const order = Array.from(log.querySelectorAll(":scope > article, :scope > .run-group li")).map(
     (one) => one.getAttribute("aria-label") ?? one.querySelector(".run-chip, .run-outcome")?.textContent,
   );
-  expect(order).toEqual(["Message from you", "done", "waits for you", "Gate #1 waits", "ended"]);
+  expect(order).toEqual(["Message from you", "done", "Gate #1 waits", "ended"]);
+});
+
+test("a gate shows once, in its own row: its opening is no line, open or answered", async () => {
+  const at = "2026-10-03T12:05:00.123Z";
+  serve(
+    [],
+    undefined,
+    [
+      event(4, "flow", "build -ready-> check", "2026-10-03T12:00:00.250Z"),
+      event(5, "gate_open", "#1 approval at check: Ship it?", "2026-10-03T12:00:00.250Z", { actor: "lado" }),
+      event(6, "gate_answer", "#1 approve", at, { actor: "human" }),
+      event(7, "flow", "check -approved-> ship", at, { actor: "human" }),
+      event(8, "flow", "ship -ready-> check", "2026-10-03T12:06:00Z", { actor: "w1" }),
+      event(9, "gate_open", "#2 approval at check: Ship it again?", "2026-10-03T12:06:00Z", { actor: "lado" }),
+    ],
+    [closed(1, "approve", { answered_at: at, closed_by_event: 7 }), gate(2, { question: "Ship it again?", created_at: "2026-10-03T12:06:00Z" })],
+    [flowRun("feature/x", GATED)],
+  );
+  open();
+  const log = await chat();
+  await gateCard();
+  await gateLine(2);
+  expect(log.querySelector("li.run-gate_open")).toBeNull();
+  expect(within(log).queryByText(/waits for you|approval at check/)).toBeNull();
+  // Each gate's row right after the group whose last line is the move that led to it.
+  const rows = Array.from(log.querySelectorAll(":scope > article, :scope > .run-group")).map((one) =>
+    one.tagName === "ARTICLE"
+      ? one.getAttribute("aria-label")
+      : Array.from(one.querySelectorAll("li")).map((line) => kept(line as HTMLElement, "run-outcome")),
+  );
+  expect(rows).toEqual([["ready"], "Gate #1", ["approved", "ready"], "Gate #2 waits"]);
+  // The question only in the open gate's row.
+  expect(log.textContent?.split("Ship it again?")).toHaveLength(2);
 });
 
 // The human's answer to a gate is the run's move from "You", the comment under it.

@@ -392,12 +392,15 @@ def test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment(
     page.goto(f"{server['url']}/sessions/{session}")
     feed = page.get_by_role("log", name="Chat with the session")
     card = waiting_card(page, session).get_by_role("tabpanel")
+    # The gate shows once, in its own row: its opening is no line, open or answered (LAD-135).
+    expect(feed.get_by_role("article", name="Gate #1 waits")).to_be_visible()
+    expect(feed.locator("li.run-gate_open")).to_have_count(0)
+    shot(page, "open")
     card.get_by_role("textbox", name="Comment for the next step (optional)").fill("ship it\nnow")
     card.get_by_role("button", name="Approve", exact=True).click()
     # One line: the run's move from You, the comment under it; the run's end may follow it.
-    # The gate's opening stays above, with the gate: its line says "waits for you".
     last = feed.locator(":scope > .run-group").last
-    expect(last.locator("li.run-gate_open")).to_have_count(0)
+    expect(feed.locator("li.run-gate_open")).to_have_count(0)
     you = page.locator(".run-actor", has_text=re.compile(r"^You$"))
     move = last.get_by_role("listitem").filter(has=you)
     expect(move.locator(".run-state")).to_have_text(["check", "end"])

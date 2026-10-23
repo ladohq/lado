@@ -34,11 +34,11 @@
 
 ## 3. Documents
 
-- [ ] 3.1 `docs/design/ui.md`: Copy code and Copy message (before the time; not on a touch
+- [x] 3.1 `docs/design/ui.md`: Copy code and Copy message (before the time; not on a touch
   screen, and why the button is there: Markdown and folded text), the closed gate (chevron
   first), Flow events (the human's ground 8 px past the line on both sides), Quiet lines
   (every time on the right ends on one edge, nothing after it).
-- [ ] 3.2 CHANGELOG.md under `## 0.43.0 (unreleased)`, `### Fixed`: the chat's times
+- [x] 3.2 CHANGELOG.md under `## 0.43.0 (unreleased)`, `### Fixed`: the chat's times
   stand on one line; Copy message sits by the time and is not shown on a touch screen.
 
 ## 4. Checks

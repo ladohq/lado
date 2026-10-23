@@ -34,10 +34,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     lado.db made, an older schema `INFO` not checked).
     `Project variables` (after `Variables from outside`, `check_project_variables`):
     `INFO` naming each project whose variables or secrets share a name with the outside
-    folder's, the names only; none, no lado.db or an older schema: no line. `Project
+    folder's (`projects.overrides`, which the project's page shows too), the names only;
+    none, no lado.db or an older schema: no line. `Project
     secrets` (`check_project_secrets`): `WARN` naming, by project and file, each file of a
     project's secrets folder its agents do not get and each such folder not used, with why
-    (`project_secrets.read`), never a value; all usable, no lado.db or an older schema: no
+    (`project_secrets.unused`, which the project's page shows too), never a value; all usable, no lado.db or an older schema: no
     line.
     `Agent config folders` warns about each folder under `LADO_HOME/agents/` that no
     running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
@@ -333,8 +334,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     is `folder(id)`, `<workspace>/projects/<id>`, stored nowhere. `check_id` (`ID`,
     `MAX_ID`), titles by `runtime.check_title`, `owned_by_human` (a `projects/` with visible
     entries and no project's folder among them, from the disk and lado.db: no marker file),
-    `foreign`, `create` (id, title, workspace, record, folder by `lexists`, the human's
-    `projects/`, then record and mkdir in one transaction), `rename`, `listed` and `get`.
+    `foreign`, `check_new` (what `create` refuses of an id before it makes anything: id,
+    workspace, a taken id, a folder by `lexists`, a left data folder, the human's
+    `projects/`; it makes nothing, a lado.db neither, so New project of the UI asks it as
+    the human types), `create` (id, title, `check_new`, then record and mkdir in one
+    transaction), `suggest_id` (New project's id of a title: `scratch.names`, `_` made `-`,
+    cut to `MAX_ID`), `rename`, `listed` and `get`.
     `unpushed` lists, per git repository directly in a project folder and per worktree of
     one, uncommitted changes and branches with no upstream, a gone one or commits ahead
     (git with `clone.NO_PROMPT` and `GIT_TIMEOUT`, no network); `delete` refuses without
@@ -379,7 +384,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     variable's (`SECRET_WORDS` as substrings in any case) and the value's
     (`agent_env.MAX_VALUE` bytes of UTF-8 text without NUL), `check_secret` the value's and
     no empty one; `set_variable` and `unset_variable` (no name rule, `NoSuchVariable`) answer
-    `running`, the project's sessions not stopped. Its secrets (openspec change
+    `running`, the project's sessions not stopped. `overrides(id)` is the one answer to which
+    of a project's names the outside folder gives too (a secret its agents do not get
+    overrides nothing), for `lado doctor` and the project's page, never a value. Its secrets (openspec change
     project-secrets) are files of `lado.project_secrets`: `set_secret`, `secrets` (names
     only), `unset_secret` (the server's, by kind) and `unset` (the CLI's, either kind); one
     value per name across the two stores (`_held`: refused with the `unset` hint). `create`
@@ -401,8 +408,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     written is removed;
     a failure removes the temporary file and keeps the old value. `remove`, `check_removable`
     (no link on the way or anywhere in the data folder) and `remove_all` (by `dir_fd`). `read`
-    is `agent_env.read_folder(own=reserved)`, for a launch and `lado doctor` only; `names`
-    lists without opening a file (`agent_env.check_entry`).
+    is `agent_env.read_folder(own=reserved)`, for a launch only; `unused` is what it does
+    not give, by name with why (None for the folder), its values left inside, for `lado
+    doctor` and the project's page; `names` lists without opening a file
+    (`agent_env.check_entry`), a file of a loose mode too, which a replace mends.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`, `CLI_VARIABLES`,
     the names LADO sets for the agent CLIs, reserved from project variables and kept in
@@ -935,7 +944,16 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     running job (`Jobs.close`). A refusal is 400 `CloneRefused` (`message`, `kind`, `hint`);
     a cancelled job has no `error`. With `project` (and `name`, else the URL's) and no
     `path`, `POST /api/clones` clones into the project's folder (`projects.new_repo_folder`
-    first; an unknown project 404). `app.py` has the rest of a project's repositories:
+    first; an unknown project 404). `app.py` has the Projects section's routes
+    (docs/design/ui.md, Projects): `GET /api/projects` (`ProjectSummary`s by id,
+    `launch.project_summaries`: the repositories counted from the disk, the sessions
+    running; `[]` without lado.db, none made), `POST /api/projects` (`ProjectNew`, under
+    `Guard.changes`: `projects.create`, lado.db made when missing; a refusal 400) and `GET
+    /api/project-id?title=|id=` (`ProjectId`, `launch.project_id`: `projects.suggest_id`
+    or the typed id, its folder and `projects.check_new`'s refusal; makes nothing; not under
+    `/api/projects/`, where any word is an id); `ProjectInfo` (`launch.project_info`, every
+    route that answers a project) carries `running`, `overrides` and `unused`
+    (`UnusedSecret`), names and reasons only. `app.py` has the rest of a project's repositories:
     `POST /api/projects/{id}/repos` (`RepoNew` → `ProjectRepo`, `projects.add_new`), `GET
     …/repos/{name}/removal` (`RepoRemoval`, `projects.removal`) and `DELETE
     …/repos/{name}` (`projects.remove_repo` with yes; the `ProjectInfo` after), and a

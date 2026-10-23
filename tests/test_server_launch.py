@@ -993,6 +993,9 @@ def test_a_project_with_its_repositories(client, shop):
         ],
         "variables": [],
         "secrets": [],
+        "running": [],
+        "overrides": [],
+        "unused": [],
     }
     assert client.get("/api/projects/nope").status_code == 404
 

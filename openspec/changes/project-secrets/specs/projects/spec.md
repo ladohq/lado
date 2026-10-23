@@ -308,7 +308,7 @@ and print `Removed <NAME> from project <id>.` and then `Agents started from now 
 get it; running sessions of <id> keep the old environment until restarted: <names>`, or
 `Agents started from now on do not get it.` when no session of the project runs. A name
 the project lacks SHALL exit 1 with `lado: project <id> has no variable or secret <NAME>;
-its variables: <names>; its secrets: <names>` (`none` without any).
+its variables: <names>; its secrets: <names>`.
 
 #### Scenario: Unset
 - **WHEN** `shop` has `BOARD_URL` and no session of it runs, and the human runs `lado

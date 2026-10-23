@@ -20,6 +20,9 @@
 - **Projects in the web UI.** The Projects section lists your projects, makes a new one,
   and sets, replaces and removes a project's variables and secrets; a session's head links
   to its project.
+- **New session in a project from the browser.** New session's fourth way, Project, picks a
+  project and one of its repositories and starts there as `lado start --project` does; a
+  project's folder typed in Folder and the project's page lead to it.
 
 ### Changed
 

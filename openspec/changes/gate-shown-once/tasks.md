@@ -31,6 +31,6 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test`, `make web`, the UI tests of 2.2,
+- [x] 4.1 `make lint`, `make test`, `make web`, the UI tests of 2.2,
   `openspec validate gate-shown-once --strict`, `openspec validate --specs --strict`;
   CI green on the last commit (AC-3).

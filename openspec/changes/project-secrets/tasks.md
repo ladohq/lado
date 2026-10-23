@@ -5,7 +5,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-secr
 - [x] 1.1 One reader for the outside folder and a project's secrets folder, with the
   project's checks (no link, no loose mode, the project's reserved names) (D8). Check:
   `tests/test_agent_env.py`.
-- [ ] 1.2 `project_secrets.py`: the data folder, atomic writes, link-safe removal (D1, D2,
+- [x] 1.2 `project_secrets.py`: the data folder, atomic writes, link-safe removal (D1, D2,
   D3). Check: `tests/test_project_secrets.py` (new), each link × operation.
 - [ ] 1.3 `projects`: `check_name`, `set_secret`, one value per name, `unset` of either
   kind, `create` refusing a left data folder, `delete` removing it (D4, D5, D10). Check:

@@ -3,10 +3,19 @@ stay out of LADO's records"): a unique value set as a project's secret through t
 through a real server, given to every kind of agent, is found nowhere else: not in any
 process's arguments, the tmux server's environment, any file under LADO_HOME but its own,
 any output of the CLI, any answer of the API (refusals included), the change feed, or
-telemetry's payload. No browser: the UI's feed is the server's change feed."""
+telemetry's payload. No browser: the UI's feed is the server's change feed; the browser's
+side is tests/ui/test_projects.py.
+
+The Projects section's API (openspec change projects-section) is read too: the list, New
+project's id and create, and the project with the names the outside folder gives too and the
+secret files its agents do not get. An outside value of the same name and a hand-made secret
+file of a loose mode are canaries of their own. Each kind of agent's start is followed by a
+look at every process's arguments; every tmux session's environment is read, and no secret's
+name is in a bug report."""
 
 import json
 import os
+import stat
 import subprocess
 import threading
 import time
@@ -27,7 +36,7 @@ from lado.server import run as server_run
 
 pytestmark = pytest.mark.integration
 
-CLI_NAME, API_NAME = "IT_CANARY_TOKEN", "IT_CANARY_API_KEY"
+CLI_NAME, API_NAME, LOOSE_NAME = "IT_CANARY_TOKEN", "IT_CANARY_API_KEY", "IT_CANARY_LOOSE"
 
 
 def lado(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
@@ -85,19 +94,49 @@ class Api:
 
 
 def files_holding(root: Path, value: bytes, skip: list[Path]) -> list[Path]:
-    """Every file under `root` holding `value`, but under `skip`."""
+    """Every file under `root` holding `value`, but under `skip`; a link to a file is read
+    through (a link to a folder is not followed: no loop). A read that fails fails the
+    canary, but for a socket or a pipe, which hold no file's content, and a file gone
+    meanwhile."""
     found = []
     for folder, _, names in os.walk(root):
         for name in names:
             path = Path(folder) / name
-            if any(path.is_relative_to(s) for s in skip) or path.is_symlink():
+            if any(path.is_relative_to(s) for s in skip):
                 continue
             try:
+                kind = os.stat(path).st_mode
+                if stat.S_ISSOCK(kind) or stat.S_ISFIFO(kind):
+                    continue
                 if value in path.read_bytes():
                     found.append(path)
-            except OSError:
-                pass  # a socket or a file gone meanwhile
+            except FileNotFoundError:
+                pass  # gone meanwhile, or a link to nothing
     return found
+
+
+def no_canary_in_processes(*canaries: str) -> None:
+    """No process's arguments hold a canary: looked at after each kind of agent starts."""
+    processes = subprocess.run(["ps", "-ww", "-eo", "args"], capture_output=True, text=True)
+    assert processes.returncode == 0 and "lado" in processes.stdout
+    assert [c for c in canaries if c in processes.stdout] == []
+
+
+def tmux_environments() -> str:
+    """The global environment of LADO's tmux server and each of its sessions'."""
+    socket = ["tmux", "-L", tmux.socket()]
+    listed = subprocess.run(
+        [*socket, "list-sessions", "-F", "#{session_name}"], capture_output=True, text=True
+    )
+    assert listed.returncode == 0 and listed.stdout.split(), listed.stderr
+    texts = []
+    for target in (["-g"], *(["-t", name] for name in listed.stdout.split())):
+        shown = subprocess.run(
+            [*socket, "show-environment", *target], capture_output=True, text=True
+        )
+        assert shown.returncode == 0 and shown.stdout, (target, shown.stderr)
+        texts.append(shown.stdout)
+    return "\n".join(texts)
 
 
 @pytest.fixture
@@ -120,9 +159,32 @@ def shop(tmp_path, monkeypatch, git_config, telemetry_endpoint):
         server_run.stop()
 
 
-def test_a_project_secret_is_found_nowhere_else(shop):
+def test_files_holding_reads_links_and_fails_on_a_read_error(tmp_path):
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "file").write_bytes(b"canary-x")
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "link").symlink_to(tmp_path / "out" / "file")
+    (root / "folder-link").symlink_to(tmp_path / "out")
+    (root / "gone").symlink_to(tmp_path / "nothing")
+    assert files_holding(root, b"canary-x", []) == [root / "link"]
+    (root / "closed").write_bytes(b"x")
+    (root / "closed").chmod(0)
+    if os.geteuid() != 0:  # root reads it all the same
+        with pytest.raises(PermissionError):
+            files_holding(root, b"canary-x", [])
+
+
+def test_a_project_secret_is_found_nowhere_else(shop, tmp_path, monkeypatch):
     canary = f"canary-{uuid.uuid4().hex}"
+    outside, loose = f"outside-{uuid.uuid4().hex}", f"loose-{uuid.uuid4().hex}"
+    canaries = (canary, outside, loose)
     said: list[str] = []  # every output and answer
+    # The outside folder gives CLI_NAME too: the project's value goes over it.
+    given = tmp_path / "outside"
+    given.mkdir()
+    (given / CLI_NAME).write_text(outside)
+    monkeypatch.setenv("LADO_ENV_DIR", str(given))
 
     # The CLI: set from stdin; refused with the value as an argument and on a plain name.
     done = lado("project", "set", "shop", CLI_NAME, "--secret", stdin=f"{canary}\n")
@@ -154,14 +216,41 @@ def test_a_project_secret_is_found_nowhere_else(shop):
         assert status == expected, answer
         said.append(answer)
     assert project_secrets.names("shop") == [API_NAME, CLI_NAME]
+    # A secret file made by hand and left readable by others: its agents do not get it.
+    (project_secrets.folder("shop") / LOOSE_NAME).write_text(loose)
+    (project_secrets.folder("shop") / LOOSE_NAME).chmod(0o644)
+
+    # The Projects section's API: the list, New project's id and create, and the project
+    # with the names the outside folder gives too and the files its agents do not get.
+    for method, path, body, expected in [
+        ("GET", "/api/projects", None, 200),
+        ("GET", "/api/project-id?title=Shop", None, 200),
+        ("GET", "/api/project-id?id=acme", None, 200),
+        ("POST", "/api/projects", {"id": "acme", "title": "ACME"}, 200),
+        ("POST", "/api/projects", {"id": "shop"}, 400),
+    ]:
+        status, answer = api.call(method, path, body)
+        assert status == expected, answer
+        said.append(answer)
+    status, body = api.call("GET", "/api/projects/shop")
+    assert status == 200, body
+    page = json.loads(body)
+    assert page["overrides"] == [CLI_NAME]
+    assert page["unused"] == [
+        {"name": LOOSE_NAME, "reason": "readable or writable by others: chmod 600 it"}
+    ]
+    said.append(body)
 
     # Every kind of agent of a session in the project gets the secrets.
     kits = ["default", "itcanary"]
     runtime.start_session(None, None, None, "fake", kits, project="shop", repo_name="frontend")
     assert environ("shop-frontend", "supervisor")[CLI_NAME] == canary
+    assert LOOSE_NAME not in environ("shop-frontend", "supervisor")
+    no_canary_in_processes(*canaries)
     wait_idle("shop-frontend")
     tell("shop-frontend", "supervisor", "spawn sleep 0")
     assert environ("shop-frontend", "worker")[API_NAME] == f"{canary}-api"
+    no_canary_in_processes(*canaries)
     run = runs.start("shop-frontend", "tiny", "build it", notices=[])
     wait_idle("shop-frontend")
     tell("shop-frontend", "supervisor", f"spawnrun {run.name}")
@@ -171,19 +260,15 @@ def test_a_project_secret_is_found_nowhere_else(shop):
         "shop-frontend",
     )
     assert environ("shop-frontend", runner.name)[CLI_NAME] == canary
+    no_canary_in_processes(*canaries)
     (projects.folder("shop") / "frontend" / "brief.md").write_text("# Fix the login\n")
     _approve_and_start("shop-frontend", "fix-login")
     assert environ("fix-login", "supervisor")[CLI_NAME] == canary
+    no_canary_in_processes(*canaries)
 
-    # While the agents run: no process's arguments, not the tmux server's environment.
-    processes = subprocess.run(["ps", "-ww", "-eo", "args"], capture_output=True, text=True)
-    assert processes.returncode == 0 and "lado" in processes.stdout
-    assert canary not in processes.stdout
-    server_env = subprocess.run(
-        ["tmux", "-L", tmux.socket(), "show-environment", "-g"], capture_output=True, text=True
-    )
-    assert server_env.returncode == 0 and server_env.stdout
-    assert canary not in server_env.stdout
+    # While the agents run: not the tmux server's environment, nor any session's.
+    environments = tmux_environments()
+    assert [c for c in canaries if c in environments] == []
     home = state.home_path()
     # The launch files were read and removed by the windows that run.
     assert sorted(home.rglob("env.json")) == []
@@ -191,13 +276,22 @@ def test_a_project_secret_is_found_nowhere_else(shop):
     # fake-agents/ is the fake agent's own report of its environment, as a real CLI's
     # memory: not LADO's record.
     skip = [secrets_folder, home / "fake-agents"]
-    assert files_holding(home, canary.encode(), skip) == []
+    for value in canaries:
+        assert files_holding(home, value.encode(), skip) == []
+
+    # A bug report names no secret: neither the CLI's nor the UI's.
+    report = lado("bug-report")
+    assert report.returncode == 0, report.stderr
+    status, ui_report = api.call("GET", "/api/bug-report")
+    assert status == 200, ui_report
+    for text in (report.stdout, report.stderr, ui_report):
+        assert [name for name in (CLI_NAME, API_NAME, LOOSE_NAME) if name in text] == []
+    said += [report.stdout, report.stderr, ui_report]
 
     # What the human runs and reads.
     for args in (
         ("project", "show", "shop"),
         ("doctor",),
-        ("bug-report",),
         ("log", "shop-frontend"),
         ("log", "fix-login"),
         ("ls",),
@@ -219,6 +313,9 @@ def test_a_project_secret_is_found_nowhere_else(shop):
 
     stop_all()
     server_run.stop()
-    assert [text for text in said if canary in text] == []
-    assert files_holding(home, canary.encode(), skip) == []
-    assert sorted(path.name for path in secrets_folder.iterdir()) == [API_NAME, CLI_NAME]
+    assert [text for text in said if any(c in text for c in canaries)] == []
+    for value in canaries:
+        assert files_holding(home, value.encode(), skip) == []
+    assert sorted(path.name for path in secrets_folder.iterdir()) == sorted(
+        [API_NAME, CLI_NAME, LOOSE_NAME]
+    )

@@ -38,5 +38,5 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-page
 
 - [x] 4.1 `docs/design/ui.md`, `docs/design/projects.md`, `docs/cli.md`, CHANGELOG (D17).
   Check: `make lint`, `openspec validate project-page --strict`.
-- [ ] 4.2 The settings' Checks, the trial archive and `openspec validate --specs --strict`;
+- [x] 4.2 The settings' Checks, the trial archive and `openspec validate --specs --strict`;
   CI's `ci-ok`.

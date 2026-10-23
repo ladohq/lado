@@ -782,31 +782,161 @@ def test_delete_refuses_while_a_session_runs_in_its_folder_without_the_project(s
     assert shop.is_dir() and state.get_project("shop")
 
 
-def test_the_sessions_to_forget(shop):
+def test_the_deletion_names_the_sessions_it_forgets(shop):
     _session("shop-frontend", shop / "frontend", "shop")
     _session("fix-login", shop / "frontend", "shop")
     run = state.Run("shop-frontend", "f/x", "feature", "{}", {}, "do x", "design", "/w", "b")
     state.add_run(run, [], None)
-    assert projects.sessions_to_forget("shop") == [("fix-login", 0), ("shop-frontend", 1)]
+    found = projects.deletion("shop")
+    assert (found.id, found.path, found.kind, found.target) == ("shop", shop, "folder", None)
+    assert found.sessions == [("fix-login", 0, "shop"), ("shop-frontend", 1, "shop")]
+    assert found.unpushed == []
     with pytest.raises(projects.ProjectError) as refused:
         projects.delete("shop", yes=False)
     assert str(refused.value) == (
         f"deleting project shop removes its folder {shop} with everything in it and forgets "
         "its 2 sessions; run again with --yes"
     )
-    _session("acme-crm", shop / "x", None)
-    assert [name for name, _ in projects.sessions_to_forget("shop")] == [
+    projects.create("acme", None)
+    _session("acme-crm", shop / "x", "acme")  # another project's: never matched by its path
+    assert [name for name, _, _ in projects.deletion("shop").sessions] == [
         "fix-login",
         "shop-frontend",
     ]
 
 
-def test_delete_with_yes_forgets_the_stopped_sessions(shop):
+def test_the_deletion_names_the_variables_and_secrets_without_values(shop):
+    projects.set_variable("shop", "BOARD_URL", "https://board.example/value-1")
+    projects.set_secret("shop", "GH_TOKEN", "secret-value-2")
+    projects.set_secret("shop", "API_KEY", "secret-value-3")
+    found = projects.deletion("shop")
+    assert (found.variables, found.secrets) == (["BOARD_URL"], ["API_KEY", "GH_TOKEN"])
+    assert "value-" not in repr(found)
+
+
+def test_the_deletion_lists_the_unpushed_work(shop):
+    (shop / "frontend" / "new.txt").write_text("x")
+    assert projects.deletion("shop").unpushed == ["frontend: uncommitted changes"]
+
+
+def test_a_stopped_session_without_a_project_in_the_folder_is_forgotten(shop, home):
     _session("shop-frontend", shop / "frontend", "shop")
-    _session("old", shop / "frontend", None)  # no project: kept, its folder goes
+    _session("old-site", shop / "site", None)  # from before projects: its folder goes
+    _session("elsewhere", home / "app", None)
+    assert projects.deletion("shop").sessions == [
+        ("old-site", 0, None),
+        ("shop-frontend", 0, "shop"),
+    ]
+    with pytest.raises(projects.ProjectError, match="and forgets its 2 sessions; run again"):
+        projects.delete("shop", yes=False)
+    projects.delete("shop", yes=True)
+    assert not os.path.lexists(shop) and state.get_project("shop") is None
+    assert [s.name for s in state.list_sessions()] == ["elsewhere"]
+
+
+def test_delete_with_yes_forgets_the_stopped_sessions(shop, home):
+    _session("shop-frontend", shop / "frontend", "shop")
+    _session("old", home / "app", None)  # no project, elsewhere: kept
     projects.delete("shop", yes=True)
     assert not os.path.lexists(shop) and state.get_project("shop") is None
     assert [s.name for s in state.list_sessions()] == ["old"]
+
+
+@pytest.fixture
+def linked(home, git_config):
+    """The project shop whose folder is a link to <tmp>/srv-shop, which holds a repository
+    with work not pushed."""
+    projects.create("shop", None)
+    link = projects.folder("shop")
+    link.rmdir()
+    target = home / "srv-shop"
+    repo = init_repo(target / "app")
+    (repo / "new.txt").write_text("x")
+    link.symlink_to(target)
+    return link, target
+
+
+def test_a_link_folder_is_announced_as_a_link(linked):
+    link, target = linked
+    found = projects.deletion("shop")
+    assert (found.path, found.kind, found.target) == (link, "link", str(target))
+    assert found.unpushed == []  # its target is not deleted: nothing of it is lost
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.delete("shop", yes=False)
+    assert str(refused.value) == (
+        f"deleting project shop removes the link {link} only, not its target {target}; run "
+        "again with --yes"
+    )
+    assert link.is_symlink() and state.get_project("shop")
+
+
+def test_a_session_in_a_link_folders_target_is_neither_in_the_way_nor_forgotten(linked):
+    link, target = linked
+    _session("srv", target / "app", None, stopped=False)
+    _session("srv-old", target / "app", None)
+    _session("shop-app", link / "app", "shop")
+    assert [name for name, _, _ in projects.deletion("shop").sessions] == ["shop-app"]
+    projects.delete("shop", yes=True)
+    assert not os.path.lexists(link) and (target / "app" / "new.txt").is_file()
+    assert sorted(s.name for s in state.list_sessions()) == ["srv", "srv-old"]
+
+
+def test_a_link_folders_own_running_session_still_refuses(linked):
+    link, _ = linked
+    _session("shop-app", link / "app", "shop", stopped=False)
+    with pytest.raises(projects.ProjectError, match="has sessions not stopped: shop-app;"):
+        projects.deletion("shop")
+    with pytest.raises(projects.ProjectError, match="has sessions not stopped: shop-app;"):
+        projects.delete("shop", yes=True)
+    assert link.is_symlink() and state.get_project("shop")
+
+
+def test_a_link_to_another_projects_folder_leaves_that_project_whole(home, git_config):
+    projects.create("acme", None)
+    acme = projects.folder("acme")
+    init_repo(acme / "crm")
+    _session("acme-crm", acme / "crm", "acme", stopped=False)
+    projects.create("shop", None)
+    link = projects.folder("shop")
+    link.rmdir()
+    link.symlink_to(acme)
+    assert projects.deletion("shop").sessions == []
+    projects.delete("shop", yes=True)
+    assert not os.path.lexists(link) and state.get_project("shop") is None
+    assert (acme / "crm" / ".git").is_dir() and state.get_project("acme")
+    assert [s.name for s in state.list_sessions()] == ["acme-crm"]
+
+
+def test_a_missing_folder_is_announced_as_missing(home):
+    projects.create("shop", None)
+    where = projects.folder("shop")
+    where.rmdir()
+    _session("shop-x", where / "x", "shop")
+    found = projects.deletion("shop")
+    assert (found.kind, found.target, found.unpushed) == ("missing", None, [])
+    assert found.sessions == [("shop-x", 0, "shop")]
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.delete("shop", yes=False)
+    assert str(refused.value) == (
+        f"deleting project shop removes its record (its folder {where} is not found) and "
+        "forgets its 1 session; run again with --yes"
+    )
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any folder")
+def test_an_unreadable_project_folder_is_a_line_not_a_traceback(shop):
+    shop.chmod(0)
+    try:
+        assert projects.deletion("shop").unpushed == [
+            "the project's folder: could not check: Permission denied"
+        ]
+    finally:
+        shop.chmod(0o755)
+
+
+def test_the_deletion_of_an_unknown_project(home):
+    with pytest.raises(projects.NoSuchProject, match='unknown project "nope"'):
+        projects.deletion("nope")
 
 
 def test_a_folder_not_removed_keeps_the_sessions(shop, monkeypatch):

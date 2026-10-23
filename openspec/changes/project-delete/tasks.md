@@ -2,7 +2,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-dele
 
 ## 1. Core and server
 
-- [ ] 1.1 `projects.deletion` and `delete` acting on it: the sessions without a project
+- [x] 1.1 `projects.deletion` and `delete` acting on it: the sessions without a project
   in a real folder, a link folder announced and matched as a link, a missing folder's
   text, an unreadable folder's line; the CLI prints the preview (D1–D5). Check:
   `tests/test_projects_core.py`, `tests/test_cli.py`.

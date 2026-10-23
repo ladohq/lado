@@ -797,16 +797,21 @@ def unpushed(project_folder: Path) -> list[str]:
     repository directly in it and each worktree of one, with its uncommitted changes
     (untracked files too), commits on a detached HEAD that no branch holds, and, for the
     repository, its branches not pushed and its stashes. A worktree directly in the folder
-    of a repository listed there is its repository's line only, not one of its own."""
+    of a repository listed there is its repository's line only, not one of its own. A
+    folder that cannot be listed is the line `the project's folder: could not check:
+    <reason>`."""
     lines = []
     own = _own_root(str(project_folder))
     if own:
         lines += _checkout_lines(project_folder, project_folder, "the project's folder")
-    entries = [
-        entry
-        for entry in sorted(project_folder.iterdir())
-        if entry.is_dir() and os.path.lexists(entry / ".git")
-    ]
+    try:
+        entries = [
+            entry
+            for entry in sorted(project_folder.iterdir())
+            if entry.is_dir() and os.path.lexists(entry / ".git")
+        ]
+    except OSError as error:
+        return [*lines, f"the project's folder: could not check: {error.strerror or error}"]
     listed = set()  # the real paths of the worktrees of the folder's and its entries' repositories
     for entry in ([project_folder] if own else []) + entries:
         if not (entry / ".git").is_dir():
@@ -874,17 +879,49 @@ def _checkout_lines(entry: Path, base: Path, label: str | None = None) -> list[s
     return lines
 
 
-def sessions_to_forget(id: str) -> list[tuple[str, int]]:
-    """The sessions of the project that deleting it forgets, by name, each with its number
-    of open runs. Refused while one of them, or any session working in the project's folder
-    (one from before sessions had projects too), is not stopped: deleting would pull the
-    folder from under its agents."""
+@dataclass(frozen=True)
+class Deletion:
+    """What deleting the project `id` does, the one preview the CLI, the API and the UI
+    show: its folder `path` goes whole (`kind` "folder"), or only the link (`kind` "link",
+    `target` as written), or nothing is there ("missing"); the sessions forgotten (by name,
+    with their open runs and their project), the work not on the remote `unpushed` (a real
+    folder's only), and the names of its variables and secrets, never a value."""
+
+    id: str
+    path: Path
+    kind: Literal["folder", "link", "missing"]
+    target: str | None
+    sessions: list[tuple[str, int, str | None]]
+    unpushed: list[str]
+    variables: list[str]
+    secrets: list[str]
+
+
+def deletion(id: str) -> Deletion:
+    """What `delete` would do; refused for an unknown project and while a session of the
+    project, or any session working in its real folder (one from before sessions had
+    projects too), is not stopped: deleting would pull the folder from under its agents.
+    Nothing is matched through a link: its target is not deleted."""
     get(id)
-    real = Path(os.path.realpath(folder(id)))
+    path = folder(id)
+    target = None
+    if path.is_symlink():
+        kind: Literal["folder", "link", "missing"] = "link"
+        target = os.readlink(path)
+    elif os.path.lexists(path):
+        kind = "folder"
+    else:
+        kind = "missing"
+    real = Path(os.path.realpath(path))
+
+    def inside(sess: state.Session) -> bool:
+        return kind == "folder" and Path(os.path.realpath(sess.repo)).is_relative_to(real)
+
+    every = state.list_sessions()
     busy = [
         sess.name
-        for sess in state.list_sessions()
-        if (sess.project == id or Path(os.path.realpath(sess.repo)).is_relative_to(real))
+        for sess in every
+        if (sess.project == id or inside(sess))
         and runtime.session_status(sess) != runtime.SessionStatus.STOPPED
     ]
     if busy:
@@ -892,31 +929,47 @@ def sessions_to_forget(id: str) -> list[tuple[str, int]]:
             f"project {id} has sessions not stopped: {names(busy)}; stop them first with "
             "lado stop <name>"
         )
-    return sorted(
-        (sess.name, len(state.list_runs(sess.name, open_only=True)))
-        for sess in state.project_sessions(id)
+    # The project's own, and those of no project (from before projects) in its folder: the
+    # path is a safety check, never how LADO learns another project's session.
+    sessions = sorted(
+        (sess.name, len(state.list_runs(sess.name, open_only=True)), sess.project)
+        for sess in every
+        if sess.project == id or (sess.project is None and inside(sess))
+    )
+    return Deletion(
+        id,
+        path,
+        kind,
+        target,
+        sessions,
+        unpushed(path) if kind == "folder" else [],
+        sorted(state.project_variables(id)),
+        project_secrets.names(id),
     )
 
 
 def delete(id: str, yes: bool) -> None:
-    """Remove the project's folder whole, then forget its sessions (sessions_to_forget,
-    which refuses first), then remove its data folder with its secrets, then its record;
-    without `yes`, refuse (the CLI shows `unpushed` first). Nothing outside
+    """Remove the project's folder whole, then forget the sessions `deletion` names (it
+    refuses first), then remove its data folder with its secrets, then its record; without
+    `yes`, refuse saying what goes (the CLI shows the deletion first). Nothing outside
     <workspace>/projects is removed: a folder that is a link loses the link only, and a
     folder whose real path is not directly in the real projects/ is refused. A link on the
     way to the data folder or in it refuses before anything is removed. A folder not
     removed whole keeps the sessions and the record; a session or a data folder not removed
     keeps the record, and a rerun finishes."""
-    sessions = [name for name, _ in sessions_to_forget(id)]
-    target = folder(id)
+    found = deletion(id)
+    sessions = [name for name, _, _ in found.sessions]
+    target = found.path
     if not yes:
         forgets = ""
         if sessions:
             forgets = f" and forgets its {len(sessions)} session{'' if len(sessions) == 1 else 's'}"
-        raise ProjectError(
-            f"deleting project {id} removes its folder {target} with everything in it"
-            f"{forgets}; run again with --yes"
-        )
+        what = {
+            "folder": f"its folder {target} with everything in it",
+            "link": f"the link {target} only, not its target {found.target}",
+            "missing": f"its record (its folder {target} is not found)",
+        }[found.kind]
+        raise ProjectError(f"deleting project {id} removes {what}{forgets}; run again with --yes")
     data = project_secrets.data_folder(id)
     with _secrets_refused(f"could not read {data}", "; the project stays"):
         project_secrets.check_removable(id)

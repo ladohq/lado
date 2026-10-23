@@ -17,7 +17,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-new-session-
 - [x] 2.2 Project wired into New session: the switch, the start, the defaults from the last
   session, Folder's refusal's buttons, `LaunchMode`'s project (D7, D8). Check:
   `web/src/Launch.test.tsx`.
-- [ ] 2.3 The project's page: `New session in this project…` and the new line (D11).
+- [x] 2.3 The project's page: `New session in this project…` and the new line (D11).
   Check: `web/src/Projects.test.tsx`.
 
 ## 3. End to end

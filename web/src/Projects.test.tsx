@@ -80,14 +80,27 @@ test("a row opens the project's page at the right", async () => {
   expect(within(page).getByRole("heading", { name: "Shop" })).toBeTruthy();
   expect(page.textContent).toContain("2 repositories · 2 sessions running · folder /ws/projects/shop");
   expect(page.textContent).toContain(
-    "Repositories, sessions, renaming and deleting the project: not built yet. Plan: Projects, step " +
-      "S7. Meanwhile: lado project show shop, lado project repo add shop <git-url>.",
+    "New session in this project… Not built yet: the repositories on this page (adding, removing), " +
+      "renaming and deleting the project. Plan: Projects, step S7. Meanwhile: lado project show shop, " +
+      "lado project repo add shop <git-url>.",
   );
   expect(within(page).getByRole("link", { name: "Plan: Projects, step S7" }).getAttribute("href")).toMatch(
     /docs\/design\/projects\.md#how-it-is-built$/,
   );
   expect(within(list()).getByRole("link", { name: /Shop/ }).getAttribute("aria-current")).toBe("page");
   expect(list()).toBeTruthy(); // the list stays beside it
+});
+
+test("New session in this project… opens the window in Project with the project", async () => {
+  open("/projects/acme");
+  const page = await screen.findByRole("region", { name: "Project acme" });
+  fireEvent.click(within(page).getByRole("button", { name: "New session in this project…" }));
+  const dialog = await screen.findByRole("dialog", { name: "New session" });
+  expect(within(dialog).getByRole("button", { name: "Project" }).getAttribute("aria-pressed")).toBe("true");
+  const select = (await within(dialog).findByRole("combobox", { name: "Project" })) as HTMLSelectElement;
+  expect(select.value).toBe("acme");
+  expect(server.calls("GET", "/api/project-launch?project=acme")).toHaveLength(1);
+  expect(within(dialog).getByRole("radio", { name: /^crm/ }).getAttribute("aria-checked")).toBe("true");
 });
 
 test("a project whose folder is gone says so in its head", async () => {

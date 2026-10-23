@@ -16,7 +16,7 @@ import {
   type ProjectInfo,
   type ProjectSummary,
 } from "./api";
-import { useDebounced } from "./Launch";
+import { useDebounced, useLaunch } from "./Launch";
 import { useLive } from "./live";
 import { PLANS, projectPath, sessionPath } from "./paths";
 import { usePhone } from "./phone";
@@ -180,6 +180,7 @@ export function ProjectPage() {
   const id = useParams().id!;
   const { reload } = useOutletContext<Context>();
   const phone = usePhone();
+  const launch = useLaunch();
   const [shown, setShown] = useState<Shown>(null);
   const ask = useCallback(() => getProject(id), [id]);
   const { read, drop } = useLatest(
@@ -244,7 +245,10 @@ export function ProjectPage() {
         )}
       </p>
       <p className="placeholder project-later muted">
-        Repositories, sessions, renaming and deleting the project: not built yet.{" "}
+        <button type="button" className="link-button" onClick={() => launch({ kind: "new", project: project.id })}>
+          New session in this project…
+        </button>{" "}
+        Not built yet: the repositories on this page (adding, removing), renaming and deleting the project.{" "}
         <a href={PLANS.projects.href} target="_blank" rel="noreferrer">
           Plan: {PLANS.projects.label}
         </a>

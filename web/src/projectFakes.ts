@@ -139,6 +139,23 @@ export class FakeProjects {
       const query = new URLSearchParams(path.split("?")[1]);
       return json(this.suggest(query.get("title"), query.get("id")));
     }
+    if (path.startsWith("/api/project-launch")) {
+      // New session's Project way: the project asked, else the first; its first repository.
+      const asked = new URLSearchParams(path.split("?")[1] ?? "").get("project");
+      const listed = Object.values(this.projects).sort((a, b) => a.id.localeCompare(b.id));
+      const chosen = (asked && this.projects[asked]) || listed[0];
+      const repo = chosen?.repos[0] ?? null;
+      return json({
+        projects: listed.map(summary),
+        project: chosen?.id ?? null,
+        repos: chosen?.repos ?? [],
+        repo: repo?.name ?? null,
+        default_name: repo ? `${chosen.id}-${repo.name}` : null,
+        name_state: repo ? "free" : null,
+        provider: null,
+        last: null,
+      });
+    }
     if (path === "/api/projects" && method === "GET") {
       return json(
         Object.values(this.projects)

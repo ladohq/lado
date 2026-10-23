@@ -19,8 +19,10 @@ changes this file.
 > a project's secrets, `lado project set --secret`, their folder with its link-safe atomic
 > writes, their layer beside the plain variables, the server's write-only API for them,
 > `lado doctor`'s `Project secrets` line, their removal with the project and the canary
-> test (step S5b, 0.43.0; `lado.project_secrets`). Everything else here is steps S6–S7 and
-> is marked **not built yet** where it is described.
+> test (step S5b, 0.43.0; `lado.project_secrets`); the UI's Projects section with making a
+> project and a project's variables and secrets, and the server's list, create and id
+> routes (step S6a, 0.43.0; docs/design/ui.md, Projects). Everything else here is steps
+> S6b–S7 and is marked **not built yet** where it is described.
 
 ## Why
 
@@ -186,7 +188,8 @@ Plain variables are built (step S5a: `lado project set | unset`, `lado project s
 server's `PUT` and `DELETE /api/projects/{id}/variables/{name}`; [cli.md](../cli.md)), and so
 are secrets (step S5b: `lado project set <id> NAME --secret`, `unset`, their names in `show`,
 the server's `PUT` and `DELETE /api/projects/{id}/secrets/{name}` and their names in `GET
-/api/projects/{id}`); the UI's variables page is **not built yet** (step S6).
+/api/projects/{id}`), and so is the UI's page of them (step S6a: the project's page in the
+Projects section, docs/design/ui.md, Projects).
 
 A project holds one value per name: a name is a plain variable or a secret, never both.
 Setting one kind over the other is refused with the `unset` to run first (the two stores
@@ -234,7 +237,9 @@ login shell → outside (Docker: /run/secrets) → project variables → LADO an
 - **A name set in both** takes the project's value: overriding is the point. A session
   without a project gets the outside value, a session in a project the project's.
 - **What is shown.** The project's variables page shows which outside values the project
-  overrides.
+  overrides (`ProjectInfo.overrides`, `projects.overrides`, the names `lado doctor`'s
+  `Project variables` line names too), never an outside value. A secret its agents do not
+  get overrides nothing: they get the outside value.
 
 One function of the core builds the environment, so it works alike with Claude Code,
 Codex, OpenCode and Kilo, with Docker and without.
@@ -278,7 +283,14 @@ secrets (step S5b).
   value ending in a line break is written with one more (`project_secrets.stored`), so the
   reader's drop gives it back whole and a value of line breaks only is never empty for
   the agents. Whether a name is taken goes by the file's presence, also one the agents do
-  not get now (a loose mode, a link): `chmod 600` never gives a name two values.
+  not get now (a loose mode, a link): `chmod 600` never gives a name two values. A file of
+  a loose mode is still listed among the secrets' names (`lado project show`, the API), with
+  why its agents do not get it beside it (`project_secrets.unused`, the page's `⚠ Agents do
+  not get it`), so a replace, which writes it 600, mends it.
+  Reading and writing differ in the links they take (F3/E5): an agent's launch reads a
+  secret through links above `secrets/` (`projects/`, `<id>/`, and `LADO_HOME` itself),
+  while the reader refuses a `secrets/` folder or a file that is a link, and writing and
+  removing refuse a link at `projects/`, `<id>/`, `secrets/` or the file.
 - **The project folder**: in `<workspace>/projects/`.
 
 In LADO's image `~/.lado` is on the container's home volume, not in the workspace. So the
@@ -343,18 +355,20 @@ workspace on the host stays.
 
 ## The UI
 
-**Not built yet** (steps S6 and S7), but for the workspace's name.
+Built in step S6a (docs/design/ui.md, Projects): the Projects section with the list of
+projects (title, number of repositories, running sessions), making a project, and a
+project's page with its variables and secrets, the marks of what overrides an outside value
+and of a secret file its agents do not get, the warning of the security boundary, and the
+sessions that run. The rest is **not built yet** (steps S6b and S7):
 
-- **The Projects section** (a placeholder now): the list of projects with their title,
-  number of repositories and running sessions.
-- **A project's page**:
+- **A project's page** (S7):
   - its repositories with branch and remote, each with "Start session" and "Delete";
   - "+ Add repository";
   - its variables, marked where they override an outside value, with the warning of the
     security boundary;
   - the project's sessions;
   - renaming its title and deleting the project.
-- **The New session window** gets the way Project; the workspace hint of its folder field is
+- **The New session window** gets the way Project (S6b); the workspace hint of its folder field is
   called Workspace (built: step S1, the row `Workspace:`, docs/design/ui.md).
 
 The exact screens are mockups for the human's approval in the UI steps.
@@ -419,7 +433,8 @@ LADO working. The steps, their checks and notes: [docs/epics/lad-116/plan.md](..
 | S4 | Adding and removing a project's repositories | CLI |
 | S5a | Plain variables: the project's layer of an agent's environment, kit keys, `lado project set/unset`, protected names | CLI |
 | S5b | Secrets: their store, replace and delete, the canary test | CLI |
-| S6 | UI: the Projects section, making a project, variables, the Project way of New session | UI |
+| S6a | UI: the Projects section, making a project, a project's variables and secrets | UI |
+| S6b | UI: the Project way of New session, "+ new repository" by clone or from scratch | UI |
 | S7 | UI: a project's page, removing a repository and a project with the work not pushed shown | UI |
 
 The minor version goes up from the step that brings the schema migration and new commands.

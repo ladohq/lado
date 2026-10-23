@@ -1361,8 +1361,15 @@ h3 {
 }
 
 /* The project's fact: the muted word "project", the title in the ink colour. */
+/* The project's title links to its page (the Projects section). */
 .session-project-title {
   color: var(--ink);
+  text-decoration: none;
+}
+
+.session-project-title:hover,
+.session-project-title:focus-visible {
+  text-decoration: underline;
 }
 
 .session-fact {

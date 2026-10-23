@@ -15,9 +15,9 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-secr
 
 ## 2. CLI, server, doctor
 
-- [ ] 2.1 `lado project set --secret` (prompt, stdin, refusals), `unset`'s fixed text,
+- [x] 2.1 `lado project set --secret` (prompt, stdin, refusals), `unset`'s fixed text,
   `show`'s secrets (D6). Check: the CLI tests.
-- [ ] 2.2 `PUT`/`DELETE /api/projects/{id}/secrets/{name}`, `secrets` in `GET`, 422
+- [x] 2.2 `PUT`/`DELETE /api/projects/{id}/secrets/{name}`, `secrets` in `GET`, 422
   without the input; `make web-types` (D9). Check: `tests/test_server_projects.py`, `make
   web`.
 - [ ] 2.3 `lado doctor`'s `Project secrets` check and the override line (D11). Check:

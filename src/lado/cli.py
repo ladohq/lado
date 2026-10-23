@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import datetime
+import getpass
 import json
 import os
 import select
@@ -1101,30 +1102,73 @@ def _print_variables(id: str) -> None:
         print(f"    {name:<{width}}  {shown}")
 
 
-def _print_variable_change(id: str, running: list[str]) -> None:
+def _print_secrets(id: str) -> None:
+    """`lado project show`'s secrets, by name only: no file is opened."""
+    found = projects.secrets(id)
+    if not found:
+        print("  secrets: none")
+        return
+    print("  secrets:")
+    for name in found:
+        print(f"    {name}")
+
+
+def _print_variable_change(id: str, running: list[str], gets: str = "get it") -> None:
     """Who gets a project variable's change: the agents started from now on."""
     if running:
         print(
-            f"Agents started from now on get it; running sessions of {id} keep the old "
+            f"Agents started from now on {gets}; running sessions of {id} keep the old "
             f"environment until restarted: {projects.names(running)}"
         )
     else:
-        print("Agents started from now on get it.")
+        print(f"Agents started from now on {gets}.")
+
+
+def _secret_value(args: argparse.Namespace) -> str:
+    """The value of `lado project set --secret`: asked once without echo on a terminal,
+    else the whole of stdin with one line break at its end dropped. Never from argv, where
+    ps and the shell's history keep it; nothing read for an unknown project."""
+    if args.value is not None:
+        raise runtime.LadoError(
+            "a secret's value is never given on the command line (ps and the shell's history "
+            f"keep it); run lado project set {args.id} {args.name} --secret and type it, or "
+            "pipe it in"
+        )
+    projects.get(args.id)
+    if sys.stdin.isatty():
+        return getpass.getpass(f"Value of {args.name} (not shown): ")
+    # Over the limit by more than a line break is refused whole (projects.check_secret).
+    data = sys.stdin.buffer.read(agent_env.MAX_VALUE + 3)
+    for end in (b"\r\n", b"\n"):
+        if data.endswith(end):
+            data = data[: -len(end)]
+            break
+    return data.decode("utf-8", "surrogateescape")  # no UTF-8: refused by its rule
 
 
 def cmd_project(args: argparse.Namespace) -> int:
     """`lado project <command>`: the human's projects (lado.projects); agents only read."""
     if args.sub in ("create", "rename", "delete", "set", "unset"):
         _human_only(f"project {args.sub}")
+    if args.sub == "set" and args.secret:
+        running = projects.set_secret(args.id, args.name, _secret_value(args))
+        print(f"Set secret {args.name} in project {args.id}.")
+        _print_variable_change(args.id, running)
+        return 0
     if args.sub == "set":
+        if args.value is None:
+            raise runtime.LadoError(
+                f"lado project set {args.id} {args.name} needs a value; for a secret: lado "
+                f"project set {args.id} {args.name} --secret"
+            )
         running = projects.set_variable(args.id, args.name, args.value)
         print(f"Set {args.name} in project {args.id}.")
         _print_variable_change(args.id, running)
         return 0
     if args.sub == "unset":
-        running = projects.unset_variable(args.id, args.name)
+        running = projects.unset(args.id, args.name)
         print(f"Removed {args.name} from project {args.id}.")
-        _print_variable_change(args.id, running)
+        _print_variable_change(args.id, running, "do not get it")
         return 0
     if args.sub == "list":
         listed = projects.listed()
@@ -1151,6 +1195,7 @@ def cmd_project(args: argparse.Namespace) -> int:
         print(f"  made:    {made.astimezone():%Y-%m-%d %H:%M}")
         _print_repositories(project.id)
         _print_variables(project.id)
+        _print_secrets(project.id)
     elif args.sub == "rename":
         title = projects.rename(args.id, args.title)
         print(f'{args.id}: title "{title}"' if title else f"{args.id}: no title")
@@ -1734,7 +1779,8 @@ def main(argv: list[str] | None = None) -> int:
     project_create.add_argument("--title", help="what the human reads (default: the id)")
     project_create.set_defaults(func=cmd_project)
     project_show = project_sub.add_parser(
-        "show", help="a project: its folder, when made, its repositories and variables"
+        "show",
+        help="a project: its folder, when made, its repositories, variables and secrets' names",
     )
     project_show.add_argument("id")
     project_show.set_defaults(func=cmd_project)
@@ -1754,14 +1800,21 @@ def main(argv: list[str] | None = None) -> int:
     project_delete.set_defaults(func=cmd_project)
     project_set = project_sub.add_parser(
         "set",
-        help="set a plain variable that the agents of the project's sessions get; they get it "
-        "from their next start",
+        help="set a plain variable or a secret that the agents of the project's sessions get; "
+        "they get it from their next start",
     )
     project_set.add_argument("id")
     project_set.add_argument("name", help="the variable's name, e.g. BOARD_URL")
-    project_set.add_argument("value", help="its value; one starting with - goes after --")
+    project_set.add_argument(
+        "value", nargs="?", help="its value; one starting with - goes after --; none for a secret"
+    )
+    project_set.add_argument(
+        "--secret",
+        action="store_true",
+        help="a secret: asked without echo, or read from stdin; never shown again",
+    )
     project_set.set_defaults(func=cmd_project)
-    project_unset = project_sub.add_parser("unset", help="remove a project's variable")
+    project_unset = project_sub.add_parser("unset", help="remove a project's variable or secret")
     project_unset.add_argument("id")
     project_unset.add_argument("name")
     project_unset.set_defaults(func=cmd_project)

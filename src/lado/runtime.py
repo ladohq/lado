@@ -372,6 +372,11 @@ def slug(value: str) -> str:
     return re.sub(r"[^a-z0-9_-]+", "-", value.lower()).strip("-") or "lado"
 
 
+def project_session_name(project: str, repo_name: str) -> str:
+    """The default name of a session in the repository `repo_name` of `project`."""
+    return slug(f"{project}-{repo_name}")
+
+
 def _run_git(
     repo: str, *args: str, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess:
@@ -673,7 +678,7 @@ def start_session(
     if project is not None:
         assert path is None and repo_name is not None
         repo = check_repo(str(projects.repository(project, repo_name).path))
-        session = slug(name or f"{project}-{repo_name}")
+        session = slug(name) if name else project_session_name(project, repo_name)
     else:
         assert path is not None
         refused = projects.refusal(path)

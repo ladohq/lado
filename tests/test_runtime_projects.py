@@ -36,6 +36,11 @@ def test_a_session_in_a_project_takes_its_repository_and_name(shop, fake_tmux):
     assert (kind, session, cwd) == ("new_session", "shop-frontend", str(shop / "frontend"))
 
 
+def test_the_default_name_of_a_session_in_a_project():
+    assert runtime.project_session_name("shop", "Front.End") == "shop-front-end"
+    assert runtime.project_session_name("shop", "frontend") == "shop-frontend"
+
+
 def test_a_given_name_is_kept(shop):
     assert _start(project="shop", repo_name="frontend", name="Fix Login").session.name == (
         "fix-login"

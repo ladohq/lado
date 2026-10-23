@@ -172,6 +172,35 @@ def lados_folder() -> Path | None:
     return Path(os.path.realpath(projects_folder()))
 
 
+@dataclass(frozen=True)
+class Place:
+    """Where a path is among LADO's projects: the project `id`, and `repo` the project's
+    repository the path is in (None for the project's folder itself or another entry)."""
+
+    id: str
+    repo: str | None
+
+
+def _place(real: Path, root: Path) -> Place | None:
+    """`place` of the real path `real` inside the real projects/ `root`."""
+    parts = real.relative_to(root).parts
+    if not parts or parts[0] not in _ids():
+        return None
+    repo = parts[1] if len(parts) > 1 and _is_repository(root / parts[0] / parts[1]) else None
+    return Place(parts[0], repo)
+
+
+def place(path: str) -> Place | None:
+    """The project the path is in, by its real path, while projects/ is LADO's
+    (`lados_folder`); None outside it, in a folder of projects/ that is no project's, and in
+    projects/ itself."""
+    root = lados_folder()
+    real = Path(os.path.realpath(path))
+    if root is None or not real.is_relative_to(root):
+        return None
+    return _place(real, root)
+
+
 def refusal(
     path: str, *, url: str | None = None, fresh: bool = False
 ) -> runtime.FolderProblem | None:
@@ -186,20 +215,20 @@ def refusal(
     real = Path(os.path.realpath(path))
     if root is None or not real.is_relative_to(root):
         return None
-    parts = real.relative_to(root).parts
-    if not parts or parts[0] not in _ids():
+    where = _place(real, root)
+    if where is None:
         return runtime.FolderProblem(
             "in_project",
             f"{path} is in {projects_folder()}, which holds LADO's projects only: start a "
             "session in a project, or move the folder out of projects/",
             runtime.Hint("See the projects:", "lado project list"),
         )
-    project = get(parts[0])
+    project = get(where.id)
     return runtime.FolderProblem(
         "in_project",
         f"{path} belongs to the project {project.title or project.id}: start a session in "
         "the project",
-        _hint(project.id, parts[1:], root, url, fresh),
+        _hint(where, real.relative_to(root).parts[1:], root, url, fresh),
     )
 
 
@@ -207,13 +236,14 @@ ADD_HINT = "Add a repository to the project:"
 
 
 def _hint(
-    id: str, below: tuple[str, ...], root: Path, url: str | None, fresh: bool
+    where: Place, below: tuple[str, ...], root: Path, url: str | None, fresh: bool
 ) -> runtime.Hint:
-    """`refusal`'s hint for a path `below` the project's folder (in the real projects/
-    `root`)."""
-    if below and _is_repository(root / id / below[0]):
+    """`refusal`'s hint for a path `below` the folder of the project `where` (in the real
+    projects/ `root`)."""
+    id = where.id
+    if where.repo:
         return runtime.Hint(
-            "Start a session in the project:", f"lado start --project {id} --repo {below[0]}"
+            "Start a session in the project:", f"lado start --project {id} --repo {where.repo}"
         )
     new = (
         len(below) == 1 and _good_repo_name(below[0]) and not os.path.lexists(root / id / below[0])

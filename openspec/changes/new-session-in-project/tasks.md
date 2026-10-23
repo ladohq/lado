@@ -2,7 +2,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-new-session-
 
 ## 1. Core and server
 
-- [ ] 1.1 `runtime.project_session_name`, `projects.place` (the refusal's hint uses it)
+- [x] 1.1 `runtime.project_session_name`, `projects.place` (the refusal's hint uses it)
   (D4, D6). Check: `tests/test_projects_core.py`, `tests/test_runtime_projects.py`.
 - [ ] 1.2 `POST /api/sessions` with `where` of kind `project`: the CLI's core call, the
   refusals and the combinations (D2, D3). Check: `tests/test_server_project_launch.py`.

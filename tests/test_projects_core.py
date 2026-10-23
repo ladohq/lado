@@ -713,3 +713,79 @@ def test_a_session_not_forgotten_keeps_the_record(shop, monkeypatch):
         "lado project delete shop --yes again"
     )
     assert not os.path.lexists(shop) and state.get_project("shop")
+
+
+# check_new and suggest_id: what New project of the UI asks before it makes anything
+
+
+def _taken(home):
+    projects.create("shop", None)
+
+
+def _folder_of_the_name(home):
+    (home / "workspace" / "projects" / "shop").mkdir(parents=True)
+
+
+def _left_data_folder(home):
+    project_secrets.data_folder("shop").mkdir(parents=True)
+
+
+def _humans_folder(home):
+    (home / "workspace" / "projects" / "notes").mkdir(parents=True)
+
+
+def _workspace_a_file(home):
+    (home / "workspace").write_text("")
+
+
+@pytest.mark.parametrize(
+    "make", [_taken, _folder_of_the_name, _left_data_folder, _humans_folder, _workspace_a_file]
+)
+def test_check_new_refuses_as_create_does_and_makes_nothing(home, make):
+    make(home)
+    before = sorted(os.listdir(home))
+    with pytest.raises(projects.ProjectError) as checked:
+        projects.check_new("shop")
+    assert sorted(os.listdir(home)) == before
+    with pytest.raises(projects.ProjectError) as created:
+        projects.create("shop", None)
+    assert str(checked.value) == str(created.value)
+
+
+def test_check_new_refuses_a_bad_id_and_passes_a_free_one_making_nothing(home, lado_home):
+    with pytest.raises(projects.ProjectError) as refused:
+        projects.check_new("Shop")
+    assert str(refused.value) == BAD_ID.format("Shop")
+    projects.check_new("shop")
+    assert not (home / "workspace").exists()
+    assert not (lado_home / "lado.db").exists()
+
+
+@pytest.mark.parametrize(
+    ("title", "id"),
+    [
+        ("Магазин EU", "magazin-eu"),
+        ("ACME_crm", "acme-crm"),
+        ("  Shop  ", "shop"),
+        ("Crème brûlée", "creme-brulee"),
+        ("a" * 39 + "-b" + "c" * 19, "a" * 39),
+        ("_x_", "x"),
+    ],
+)
+def test_suggest_id_makes_an_id_of_a_title(title, id):
+    assert projects.suggest_id(title) == id
+    projects.check_id(id)
+
+
+@pytest.mark.parametrize(
+    ("title", "problem"),
+    [
+        ("日本", "the name needs a Latin letter or digit for its folder: type one"),
+        ("", "type a name"),
+        ("x" * 81, "a name is at most 80 characters"),
+    ],
+)
+def test_suggest_id_refuses_with_the_fresh_starts_text(title, problem):
+    with pytest.raises(runtime.LadoError) as refused:
+        projects.suggest_id(title)
+    assert str(refused.value) == problem

@@ -332,6 +332,41 @@ export const getProviders = () => get<ProviderInfo[]>("/api/providers");
 // provider's versions as installed now; read anew by the server each time.
 export const getSessionAbout = (session: string) => get<SessionAbout>(`${sessionPath(session)}/about`);
 
+export type ProjectSummary = components["schemas"]["ProjectSummary"];
+export type ProjectInfo = components["schemas"]["ProjectInfo"];
+export type ProjectId = components["schemas"]["ProjectId"];
+export type VariableChange = components["schemas"]["VariableChange"];
+
+// The Projects section (docs/design/ui.md, Projects): read anew, no feed.
+export const listProjects = () => get<ProjectSummary[]>("/api/projects");
+
+const projectPath = (id: string) => `/api/projects/${encodeURIComponent(id)}`;
+
+export const getProject = (id: string) => get<ProjectInfo>(projectPath(id));
+
+export const createProject = (id: string, title: string | null) => post<ProjectInfo>("/api/projects", { id, title });
+
+// The id New project offers for a title, or the id as typed, with its folder and the core's
+// refusal; asking makes nothing.
+export const suggestProjectId = (given: { title: string } | { id: string }) =>
+  get<ProjectId>(`/api/project-id?${query(given)}`);
+
+const variablePath = (id: string, kind: "variables" | "secrets", name: string) =>
+  `${projectPath(id)}/${kind}/${encodeURIComponent(name)}`;
+
+export const putVariable = (id: string, name: string, value: string) =>
+  post<VariableChange>(variablePath(id, "variables", name), { value }, "PUT");
+
+export const deleteVariable = (id: string, name: string) =>
+  post<VariableChange>(variablePath(id, "variables", name), undefined, "DELETE");
+
+// A secret's value goes in this request's body only: never in its address, never kept.
+export const putSecret = (id: string, name: string, value: string) =>
+  post<VariableChange>(variablePath(id, "secrets", name), { value }, "PUT");
+
+export const deleteSecret = (id: string, name: string) =>
+  post<VariableChange>(variablePath(id, "secrets", name), undefined, "DELETE");
+
 export const startSession = (launch: Launch) => post<Started>("/api/sessions", launch);
 
 export const resumeSession = (session: string, resume: Resume) =>

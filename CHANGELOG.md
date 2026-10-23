@@ -17,6 +17,9 @@
 - **A project's secrets.** `lado project set <id> NAME --secret` asks for a key without
   echo (or reads it from a pipe) and gives it to the project's agents only; it is kept in
   `~/.lado/projects/<id>/secrets/` and never shown again.
+- **Projects in the web UI.** The Projects section lists your projects, makes a new one,
+  and sets, replaces and removes a project's variables and secrets; a session's head links
+  to its project.
 
 ### Changed
 
@@ -41,6 +44,8 @@
   screen, where you copy by selecting, no longer shows it.
 - **On a phone a gate's comment or your own answer has room above the keyboard.** Tapping
   the field opens the waiting card over the chat instead of squeezing it to a strip.
+- **The chat shows a flow gate once.** The gate's own row stands under the move that led to
+  it; the extra "waits for you" line above it, which stayed after you answered, is gone.
 - **`lado uninstall` leaves no `~/.lado` behind.** It waits for the agents to end, so an
   agent that ends a moment later no longer makes the folder again; one that does not end
   stops the uninstall with the `kill` command for it.

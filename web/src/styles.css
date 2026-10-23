@@ -1361,8 +1361,15 @@ h3 {
 }
 
 /* The project's fact: the muted word "project", the title in the ink colour. */
+/* The project's title links to its page (the Projects section). */
 .session-project-title {
   color: var(--ink);
+  text-decoration: none;
+}
+
+.session-project-title:hover,
+.session-project-title:focus-visible {
+  text-decoration: underline;
 }
 
 .session-fact {
@@ -3129,17 +3136,15 @@ h3 {
   font-weight: 600;
 }
 
-/* A move forward and a run's end went well; a move back (with the return icon, below) and a
-   gate's wait are orange. An outcome whose direction is not known keeps the --raised
-   ground. */
+/* A move forward and a run's end went well; a move back (with the return icon, below) is
+   orange. An outcome whose direction is not known keeps the --raised ground. */
 .run-outcome.forward,
 .run-flow_end .run-chip {
   background: var(--done-ground);
   color: var(--done);
 }
 
-.run-outcome.back,
-.run-gate_open .run-chip {
+.run-outcome.back {
   background: var(--human-ground);
   color: var(--human);
 }
@@ -8069,6 +8074,280 @@ del.kit-mcp-name {
   padding: 16px 18px 24px;
 }
 
+/* Projects (Projects.tsx, docs/design/ui.md, Projects): the list and the project's page side
+   by side, as Sessions; a project's variables and secrets in two blocks of rows. */
+
+.content:has(> .projects) {
+  padding: 0;
+  overflow: hidden;
+}
+
+.projects {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  height: 100%;
+}
+
+.project-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.project-link:hover,
+.project-link:focus-visible,
+.project-link[aria-current="page"] {
+  background: var(--raised);
+}
+
+.project-link[aria-current="page"] {
+  box-shadow: inset 3px 0 0 var(--action);
+}
+
+.project-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.project-about {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.project-running {
+  color: var(--done);
+}
+
+.project-detail {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.project-page {
+  padding: 20px 28px 40px;
+}
+
+.project-page > * {
+  max-width: 880px;
+}
+
+.project-back {
+  display: inline-block;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.project-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 4px;
+}
+
+.project-head h2 {
+  margin: 0;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+.project-id {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.project-facts {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.project-page .project-later {
+  max-width: 880px;
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.project-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 16px 0 0;
+}
+
+.project-section {
+  margin-top: 16px;
+  padding: 16px 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.project-section h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.project-section > p.muted {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.project-section .project-notes {
+  margin-top: 10px;
+}
+
+.project-vars {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  table-layout: fixed;
+}
+
+.project-vars th:first-child {
+  width: 34%;
+}
+
+.project-vars th:last-child {
+  width: 170px;
+}
+
+.project-vars th {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.project-vars td {
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.project-vars tr:last-child td {
+  border-bottom: 0;
+}
+
+.project-name,
+.project-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.project-mark {
+  display: inline-block;
+  margin-left: 6px;
+  font-family: var(--sans);
+  cursor: help;
+}
+
+.project-hidden {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.project-value {
+  white-space: pre-wrap;
+}
+
+.project-acts {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.project-acts button {
+  margin-left: 4px;
+}
+
+.project-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-edit input {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ground);
+  color: var(--ink);
+  font: 13px var(--mono);
+}
+
+.project-edit .project-in-name {
+  width: 200px;
+}
+
+.project-edit .project-in-value {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.project-edit .field-note {
+  flex-basis: 100%;
+}
+
+.project-ask {
+  font-size: 14px;
+}
+
+.project-add {
+  margin-top: 10px;
+}
+
+.project-new {
+  text-align: left;
+}
+
+.project-new .field {
+  margin-bottom: 12px;
+}
+
+.project-new .field input.mono {
+  font: 13px var(--mono);
+}
+
+.project-new > .field-note.warn {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.projects-empty {
+  max-width: 520px;
+  margin: 60px auto;
+  color: var(--muted);
+  text-align: center;
+}
+
+.projects-empty h2 {
+  color: var(--ink);
+  font-size: 18px;
+}
+
 /* Phone layout (docs/design/ui.md, Phone layout; decided 2026-10-18, LAD-95): a touch
    screen no wider than 600 px or no higher than 500 px. Every rule of the phone is here and
    starts with :root[data-phone], which the Shell sets from phone.ts's one query: a computer,
@@ -8453,4 +8732,62 @@ del.kit-mcp-name {
 
 :root[data-phone] .chat > .waiting-card.minimized {
   flex: none;
+}
+
+/* Projects (Projects.tsx): the list or a project, one at a time; a variable's row is a card
+   of its lines. */
+:root[data-phone] .content:has(> .projects) {
+  padding: 0;
+  overflow: hidden;
+}
+
+:root[data-phone] .projects {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+:root[data-phone] .project-page {
+  padding: 14px 14px 32px;
+}
+
+:root[data-phone] .project-section {
+  padding: 12px;
+}
+
+:root[data-phone] .project-vars thead {
+  display: none;
+}
+
+:root[data-phone] .project-vars,
+:root[data-phone] .project-vars tbody,
+:root[data-phone] .project-vars tr,
+:root[data-phone] .project-vars td {
+  display: block;
+  width: auto;
+}
+
+:root[data-phone] .project-vars tr {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+:root[data-phone] .project-vars tr:last-child {
+  border-bottom: 0;
+}
+
+:root[data-phone] .project-vars td {
+  padding: 2px 0;
+  border: 0;
+}
+
+:root[data-phone] .project-acts {
+  text-align: left;
+}
+
+:root[data-phone] .project-acts button:first-child {
+  margin-left: 0;
+}
+
+:root[data-phone] .project-edit .project-in-name {
+  width: 100%;
 }

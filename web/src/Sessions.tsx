@@ -49,7 +49,7 @@ import { label } from "./sessionLabel";
 import { SessionRowMenu } from "./SessionRowMenu";
 import { MAIN_MIN, TerminalPanel } from "./Terminals";
 import { NotFound } from "./pages";
-import { FIND_PARAM, isTab, sessionLink, sessionPath, TABS, VIEW_PARAM, type Tab } from "./paths";
+import { FIND_PARAM, isTab, projectPath, sessionLink, sessionPath, TABS, VIEW_PARAM, type Tab } from "./paths";
 import {
   PANEL_WIDTH,
   SESSIONS_WIDTH,
@@ -787,10 +787,13 @@ function HeadLine({ session }: { session: SessionInfo }) {
       <span className="topbar-sep meta-sep" aria-hidden="true" />
       <div className="session-meta">
         {about?.project && (
-          // The project's title, read with the about: a rename shows on the next look.
+          // The project's title, read with the about: a rename shows on the next look; a link to
+          // the project's page.
           <span className="session-fact session-project" title={`Project ${about.project.id}`}>
             <span>project</span>
-            <span className="session-project-title">{about.project.title ?? about.project.id}</span>
+            <Link className="session-project-title" to={projectPath(about.project.id)}>
+              {about.project.title ?? about.project.id}
+            </Link>
           </span>
         )}
         <span className="session-folder">

@@ -35,11 +35,10 @@ import { agentTab, gateTab, WaitingCard, type Focus } from "./WaitingCard";
 
 // The run events the feed shows as lines, and the word each kind's line says: the one list.
 // A flow event's line shows its move instead (a gate's answer is the human's move, so
-// gate_answer is no line); a gate's opening is a line of its run, its card a row under it.
+// gate_answer is no line); a gate's opening is no line either: the gate's own row shows it.
 export const RUN_EVENT_LINES: Record<string, string> = {
   flow_start: "started",
   flow: "",
-  gate_open: "waits for you",
   flow_set: "set by you",
   flow_end: "ended",
   flow_cancel: "cancelled",

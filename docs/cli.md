@@ -59,8 +59,8 @@ project's variables: `  variables:` and `    <NAME>  <value>` by name, names pad
 break in a value shown as `\n` (`\r` as `\r`); with none, `  variables: none`; then the
 names of its secrets, never a value: `  secrets:` and `    <NAME>` by name, or `  secrets:
 none` (listed without opening a file: each file of its secrets folder that is no link, has a
-variable name and is not reserved; one the agents still cannot take is named by `lado
-doctor`). `lado project
+variable name and is not reserved, also one readable by others, which a new value through
+`--secret` writes 600; one the agents still cannot take is named by `lado doctor`). `lado project
 set <id> NAME VALUE` sets a plain variable of the project (over its old value) that every
 agent of the project's sessions gets from its next start ([design/agents.md](design/agents.md),
 The agent's environment); a value starting with `-` goes after `--` (`lado project set shop
@@ -214,7 +214,7 @@ that is not a folder, one LADO may not look at, or a folder it may not write in.
 a project or `projects/` exists, a `Projects` line follows: `<n> in <workspace>/projects`, or a
 warning naming projects whose folder is not found, foreign entries of `projects/` (no project's
 folder) and a `projects/` that is the human's own folder. While a project's variable or
-secret has the name of a variable the outside folder (`LADO_ENV_DIR`) gives, an `info` line
+secret its agents get has the name of a variable the outside folder (`LADO_ENV_DIR`) gives, an `info` line
 after `Variables from outside` names it: `Project variables: <id> overrides <NAME>[, …] of
 LADO_ENV_DIR`, the projects by id joined by `; `, never a value; with no such name, or no
 lado.db, there is no such line. When a file of a project's secrets folder is not given to

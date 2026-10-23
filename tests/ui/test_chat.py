@@ -658,7 +658,13 @@ def test_each_message_says_its_text_once_runs_are_groups_and_replies_are_in_the_
     expect(long).to_contain_text("line 12 of")
     expect(long).not_to_contain_text("line 13 of")
     group = chat.get_by_role("list", name="Flow run ship/x")
-    expect(group.get_by_role("listitem").last).to_contain_text("waits for you")
+    # The gate shows once: the group ends with the move that led to it, the gate's row under
+    # it; its opening is no line (LAD-135).
+    expect(group.get_by_role("listitem").last.locator(".run-outcome")).to_have_text("done")
+    expect(chat.locator(":scope > .run-group + article")).to_have_attribute(
+        "aria-label", "Gate #1 waits"
+    )
+    expect(chat.get_by_text("waits for you")).to_have_count(0)
     late = chat.get_by_role("article", name=f"You answered question #{first_q.id}")
     expect(late).to_contain_text("Inter · closest to Slack")
     cards = chat.get_by_role("article", name="Question from supervisor")

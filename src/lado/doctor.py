@@ -631,22 +631,14 @@ def check_project_variables() -> Check | None:
     """The projects whose variables or secrets take the place of the outside folder's (by
     name, never a value) for their sessions' agents; none without such a name or a lado.db
     to read."""
-    given = agent_env.outside().values
-    if not given or state.schema_version() is None:
+    if not agent_env.outside().values or state.schema_version() is None:
         return None
     try:
-        found = [
-            (
-                p.id,
-                (state.project_variables(p.id).keys() | set(project_secrets.names(p.id)))
-                & given.keys(),
-            )
-            for p in state.list_projects()
-        ]
+        found = [(p.id, projects.overrides(p.id)) for p in state.list_projects()]
     except state.SchemaError:  # doctor reads lado.db as it is: no migration
         return None
     lines = [
-        f"{id} overrides {', '.join(sorted(names))} of {agent_env.ENV_DIR_VAR}"
+        f"{id} overrides {', '.join(names)} of {agent_env.ENV_DIR_VAR}"
         for id, names in found
         if names
     ]
@@ -666,7 +658,7 @@ def check_project_secrets() -> Check | None:
     lines = [
         f"{id}: {name or 'secrets folder'} not used: {reason}"
         for id in ids
-        for name, reason in project_secrets.read(id).unused
+        for name, reason in project_secrets.unused(id)
     ]
     return Check("Project secrets", WARN, "; ".join(lines)) if lines else None
 

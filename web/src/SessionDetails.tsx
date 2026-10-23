@@ -11,7 +11,7 @@ import { Link } from "react-router";
 import type { ProviderInfo, RepoInfo, SessionAbout, SessionInfo, SessionKitInfo } from "./api";
 import { CopyButton } from "./Copy";
 import { FolderIcon, GitIcon, LinkIcon, PencilIcon } from "./icons";
-import { sessionLink } from "./paths";
+import { projectPath, sessionLink } from "./paths";
 import { shortRemote } from "./remote";
 import { label } from "./sessionLabel";
 import { TitleEdit } from "./TitleEdit";
@@ -169,7 +169,9 @@ export function SessionDetails({
           {about?.project && (
             <>
               <dt>Project</dt>
-              <dd title={`Project ${about.project.id}`}>{about.project.title ?? about.project.id}</dd>
+              <dd title={`Project ${about.project.id}`}>
+                <Link to={projectPath(about.project.id)}>{about.project.title ?? about.project.id}</Link>
+              </dd>
             </>
           )}
           <dt>Folder</dt>

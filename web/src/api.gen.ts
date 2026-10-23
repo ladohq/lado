@@ -438,6 +438,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Projects
+         * @description Every project by id with its repositories counted and its sessions that run;
+         *     none without a lado.db, which asking does not make.
+         */
+        get: operations["list_projects_api_projects_get"];
+        put?: never;
+        /**
+         * New Project
+         * @description Make a project as `lado project create` does, lado.db with it when missing.
+         */
+        post: operations["new_project_api_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/project-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Id
+         * @description The id New project offers for `title`, or `id` as typed, with its folder and why
+         *     `lado project create` would refuse it; asking makes nothing.
+         */
+        get: operations["project_id_api_project_id_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{id}": {
         parameters: {
             query?: never;
@@ -2271,6 +2317,19 @@ export interface components {
             pre: boolean;
         };
         /**
+         * ProjectId
+         * @description The id New project offers for a title (or the one typed), its folder, and why
+         *     `lado project create` would refuse it; asking makes nothing.
+         */
+        ProjectId: {
+            /** Id */
+            id: string | null;
+            /** Folder */
+            folder: string | null;
+            /** Problem */
+            problem: string | null;
+        };
+        /**
          * ProjectInfo
          * @description A project with its repositories as the disk has them now, its variables and the
          *     names of its secrets.
@@ -2290,6 +2349,22 @@ export interface components {
             variables: components["schemas"]["ProjectVariable"][];
             /** Secrets */
             secrets: string[];
+            /** Running */
+            running: string[];
+            /** Overrides */
+            overrides: string[];
+            /** Unused */
+            unused: components["schemas"]["UnusedSecret"][];
+        };
+        /**
+         * ProjectNew
+         * @description A project to make, as `lado project create` makes it.
+         */
+        ProjectNew: {
+            /** Id */
+            id: string;
+            /** Title */
+            title?: string | null;
         };
         /**
          * ProjectRef
@@ -2314,6 +2389,24 @@ export interface components {
             branch: string | null;
             /** Name */
             name: string;
+        };
+        /**
+         * ProjectSummary
+         * @description A project in the list of the Projects section.
+         */
+        ProjectSummary: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string | null;
+            /** Folder */
+            folder: string;
+            /** Found */
+            found: boolean;
+            /** Repos */
+            repos: number;
+            /** Running */
+            running: string[];
         };
         /**
          * ProjectVariable
@@ -2897,6 +2990,17 @@ export interface components {
             outcome: string;
             /** To State */
             to_state: string;
+        };
+        /**
+         * UnusedSecret
+         * @description An entry of a project's secrets folder its agents do not get, with why; `name` None
+         *     for the folder itself. Never a value.
+         */
+        UnusedSecret: {
+            /** Name */
+            name: string | null;
+            /** Reason */
+            reason: string;
         };
         /** UpdateAsk */
         UpdateAsk: {
@@ -3827,6 +3931,98 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Workspace"];
+                };
+            };
+        };
+    };
+    list_projects_api_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSummary"][];
+                };
+            };
+        };
+    };
+    new_project_api_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectNew"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectInfo"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_id_api_project_id_get: {
+        parameters: {
+            query?: {
+                title?: string | null;
+                id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectId"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

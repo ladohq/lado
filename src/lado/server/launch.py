@@ -271,7 +271,47 @@ def project_info(id: str) -> models.ProjectInfo:
             for name, value in state.project_variables(id).items()
         ],
         secrets=project_secrets.names(id),
+        running=projects.running(id),
+        overrides=projects.overrides(id),
+        unused=[
+            models.UnusedSecret(name=name, reason=reason)
+            for name, reason in project_secrets.unused(id)
+        ],
     )
+
+
+def project_summaries() -> list[models.ProjectSummary]:
+    """Every project by id for the Projects section's list."""
+    return [
+        models.ProjectSummary(
+            id=project.id,
+            title=project.title,
+            folder=str(where),
+            found=found,
+            repos=len(projects.repositories(project.id)) if found else 0,
+            running=projects.running(project.id),
+        )
+        for project, where, found in projects.listed()
+    ]
+
+
+def project_id(title: str | None, typed: str | None) -> models.ProjectId:
+    """The id New project offers for `title`, or `typed` as the human typed it, with its
+    folder and the core's refusal of it (projects.check_new); makes nothing."""
+    try:
+        id = typed if typed is not None else projects.suggest_id(title or "")
+    except runtime.LadoError as error:  # the fresh start's: no name for a folder
+        return models.ProjectId(id=None, folder=None, problem=str(error))
+    try:
+        projects.check_id(id)
+    except projects.ProjectError as error:
+        return models.ProjectId(id=id, folder=None, problem=str(error))
+    try:
+        projects.check_new(id)
+        problem = None
+    except runtime.LadoError as error:
+        problem = str(error)
+    return models.ProjectId(id=id, folder=str(projects.folder(id)), problem=problem)
 
 
 def project_repo(repo: projects.Repository) -> models.ProjectRepo:

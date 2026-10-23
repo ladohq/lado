@@ -150,30 +150,51 @@ def _start_clone(args: argparse.Namespace) -> int:
             print(f"lado: To start a session in it as it is: lado start {folder}", file=sys.stderr)
         return 1
     runtime.check_name(runtime.slug(args.name or Path(folder).name), folder)
-    which = f"branch {args.branch}" if args.branch else "the default branch"
-    print(f"Cloning {which} of {runtime.public_remote(url)} into {folder}", file=sys.stderr)
-    shown = _CloneProgress(sys.stderr)
-    try:
-        with _ended_by_signals():
-            clone.clone(url, folder, args.branch, shown)
-    except KeyboardInterrupt:
-        shown.done()  # before the line below, not after it
-        print("lado: clone cancelled", file=sys.stderr)
-        return 130
-    except _Ended as ended:
-        try:  # after a SIGHUP no terminal may be left to tell
-            print(f"lado: clone cancelled ({signal.Signals(ended.signum).name})", file=sys.stderr)
-        except OSError:
-            pass
-        return 128 + ended.signum
-    finally:
-        shown.done()
+    cancelled = _cloned(
+        url, folder, args.branch, lambda shown: clone.clone(url, folder, args.branch, shown)
+    )
+    if cancelled is not None:
+        return cancelled
     args.path, args.folder, args.branch = folder, None, None
     try:
         return cmd_start(args)
     except Exception as exc:
         exc.__notes__ = [*getattr(exc, "__notes__", []), f"the clone stays in {folder}"]
         raise
+
+
+def _cloned(
+    url: str,
+    folder: str | Path,
+    branch: str | None,
+    run: Callable[["_CloneProgress"], object],
+) -> int | None:
+    """Run a clone of `url` into `folder` (`run`, given the progress to show) with its
+    line and git's progress on stderr; the exit code when Ctrl-C, SIGTERM or SIGHUP ended
+    it, None once it is done."""
+    which = f"branch {branch}" if branch else "the default branch"
+    print(f"Cloning {which} of {runtime.public_remote(url)} into {folder}", file=sys.stderr)
+    shown = _CloneProgress(sys.stderr)
+    try:
+        with _ended_by_signals():
+            run(shown)
+    except KeyboardInterrupt:
+        shown.done()  # before the line below, not after it
+        print("lado: clone cancelled", file=sys.stderr)
+        return 130
+    except _Ended as ended:
+        try:  # after a SIGHUP no terminal may be left to tell
+            shown.done()
+            print(f"lado: clone cancelled ({signal.Signals(ended.signum).name})", file=sys.stderr)
+        except OSError:
+            pass
+        return 128 + ended.signum
+    finally:
+        try:
+            shown.done()
+        except OSError:
+            pass
+    return None
 
 
 def _start_new(args: argparse.Namespace) -> int:
@@ -1114,6 +1135,57 @@ def cmd_project(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_project_repo(args: argparse.Namespace) -> int:
+    """`lado project repo add|remove`: the human adds a repository to a project by a clone
+    or from scratch, or removes one (lado.projects); never an agent."""
+    _human_only(f"project repo {args.repo_sub}")
+    if args.repo_sub == "remove":
+        return _remove_repo(args)
+    usage = args.repo_parser.error
+    if args.url is not None and args.new is not None:
+        usage("a git URL or --new, not both")
+    if args.url is None and args.new is None:
+        usage("give a git URL or --new NAME")
+    if args.new is not None:
+        if args.name is not None or args.branch is not None:
+            usage("--name and --branch go with a git URL, not --new")
+        name, target = args.new, projects.add_new(args.id, args.new).path
+        print(f"Made {target} a git repository with an empty first commit")
+    else:
+        if not clone.is_url(args.url):
+            usage(f"{args.url} is not a git URL")
+        name = args.name if args.name is not None else clone.default_folder(args.url).name
+        target = projects.new_repo_folder(args.id, name)  # refused before the clone's line
+        cancelled = _cloned(
+            args.url,
+            target,
+            args.branch,
+            lambda shown: projects.add_clone(args.id, args.url, name, args.branch, shown),
+        )
+        if cancelled is not None:
+            return cancelled
+    print(f"Added repository {name} to project {args.id}: {target}")
+    print(f"Start a session in it: lado start --project {args.id} --repo {name}")
+    return 0
+
+
+def _remove_repo(args: argparse.Namespace) -> int:
+    found = projects.removal(args.id, args.name)  # refused while a session there runs
+    if found.sessions:
+        shown = [f"{name} ({_open_runs(runs)})" if runs else name for name, runs in found.sessions]
+        print(f"Sessions to forget: {', '.join(shown)}")
+    if found.unpushed:
+        print(f"Unpushed work in {found.path}:")
+        for line in found.unpushed:
+            print(f"  {line}")
+    projects.remove_repo(args.id, args.name, args.yes)
+    if found.kind == "link":
+        print(f"Removed the link {args.name} from project {args.id}")
+    else:
+        print(f"Removed repository {args.name} from project {args.id}")
+    return 0
+
+
 def cmd_artifacts_list(args: argparse.Namespace) -> int:
     rows = [
         (
@@ -1643,6 +1715,36 @@ def main(argv: list[str] | None = None) -> int:
         "--yes", action="store_true", help="remove it; without, only show what would go"
     )
     project_delete.set_defaults(func=cmd_project)
+    project_repo = project_sub.add_parser(
+        "repo", help="add a repository to a project (a clone or from scratch) or remove one"
+    )
+    project_repo.set_defaults(func=lambda _: project_repo.print_help() or 0)
+    repo_sub = project_repo.add_subparsers(dest="repo_sub", metavar="<command>")
+    repo_add = repo_sub.add_parser(
+        "add", help="clone a git URL, or make a repository from scratch, in the project's folder"
+    )
+    repo_add.add_argument("id")
+    repo_add.add_argument("url", nargs="?", help="the git URL to clone")
+    repo_add.add_argument(
+        "--new", metavar="NAME", help="make NAME a repository with an empty first commit instead"
+    )
+    repo_add.add_argument(
+        "--name",
+        help="the repository's folder name (default: the URL's); Latin letters, digits, ., _ "
+        "and -, at most 100",
+    )
+    repo_add.add_argument("--branch", help="the branch to clone (default: the remote's)")
+    repo_add.set_defaults(func=cmd_project_repo, repo_parser=repo_add)
+    repo_remove = repo_sub.add_parser(
+        "remove",
+        help="remove a repository and forget its sessions, after showing its unpushed work",
+    )
+    repo_remove.add_argument("id")
+    repo_remove.add_argument("name")
+    repo_remove.add_argument(
+        "--yes", action="store_true", help="remove it; without, only show what would go"
+    )
+    repo_remove.set_defaults(func=cmd_project_repo)
 
     artifacts_cmd = commands.add_parser(
         "artifacts", help="list a session's artifacts, show or get one (also when stopped)"

@@ -921,6 +921,10 @@ def test_a_folder_in_a_project_is_refused_before_git(client, shop):
     }
     notes = folder(client, shop / "notes")  # missing: no fresh start there either
     assert (notes["problem_kind"], notes["scratch"]) == ("in_project", False)
+    assert notes["hint"] == {
+        "text": "Add a repository to the project:",
+        "command": "lado project repo add shop --new notes",
+    }
 
 
 def test_the_workspace_hints_no_projects_folder_of_lados(client, shop, tmp_path):
@@ -959,8 +963,8 @@ def test_the_scratch_target_in_a_project(client, shop):
     ).json()
     assert (target["state"], target["text"]) == ("in_project", IN_SHOP.format(shop / "site"))
     assert target["hint"] == {
-        "text": "Start a session in the project:",
-        "command": "lado start --project shop --repo site",
+        "text": "Add a repository to the project:",
+        "command": "lado project repo add shop --new site",
     }
     other = client.get("/api/scratch-target", params={"text": "Site"}).json()
     assert (other["state"], other["hint"]) == ("new", None)

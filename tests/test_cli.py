@@ -23,6 +23,7 @@ from lado import (
     gitcache,
     kits,
     marketplaces,
+    projects,
     runs,
     runtime,
     state,
@@ -2903,7 +2904,7 @@ def test_a_clone_into_a_project_is_refused_before_cloning(shop, fake_tmux, capsy
     assert main(["start", "https://h/shop/web", str(shop / "web"), "--no-attach"]) == 1
     assert capsys.readouterr().err.splitlines() == [
         f"lado: {shop / 'web'} belongs to the project Shop: start a session in the project",
-        "lado: Start a session in the project: lado start --project shop --repo web",
+        "lado: Add a repository to the project: lado project repo add shop https://h/shop/web",
     ]
     assert sorted(p.name for p in shop.iterdir()) == ["frontend"]
 
@@ -2912,7 +2913,7 @@ def test_a_fresh_start_in_a_project_is_refused(shop, fake_tmux, capsys):
     assert main(["start", "--new", str(shop / "site"), "--no-attach"]) == 1
     assert capsys.readouterr().err.splitlines() == [
         f"lado: {shop / 'site'} belongs to the project Shop: start a session in the project",
-        "lado: Start a session in the project: lado start --project shop --repo site",
+        "lado: Add a repository to the project: lado project repo add shop --new site",
     ]
     assert not (shop / "site").exists()
 
@@ -2970,5 +2971,161 @@ def test_project_delete_with_sessions(shop, capsys):
 def test_project_alone_prints_its_help(capsys):
     assert main(["project"]) == 0
     out = capsys.readouterr().out
-    for command in ("list", "create", "show", "rename", "delete"):
+    for command in ("list", "create", "show", "rename", "delete", "repo"):
         assert command in out
+
+
+# A project's repositories (openspec change project-repositories)
+
+
+def test_project_repo_alone_prints_its_help(capsys):
+    assert main(["project", "repo"]) == 0
+    out = capsys.readouterr().out
+    assert "add" in out and "remove" in out
+
+
+def _added(folder: Path, name: str) -> list[str]:
+    return [
+        f"Added repository {name} to project shop: {folder / name}",
+        f"Start a session in it: lado start --project shop --repo {name}",
+    ]
+
+
+def test_project_repo_add_clones_into_the_project(shop, tmp_path, capsys):
+    url = agent_helpers.bare_remote(tmp_path)
+    assert main(["project", "repo", "add", "shop", url]) == 0
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == _added(shop, "app")
+    assert captured.err.splitlines()[0] == (
+        f"Cloning the default branch of {url} into {shop / 'app'}"
+    )
+    assert (
+        main(["project", "repo", "add", "shop", url, "--name", "dev", "--branch", "develop"]) == 0
+    )
+    captured = capsys.readouterr()
+    assert captured.err.splitlines()[0] == f"Cloning branch develop of {url} into {shop / 'dev'}"
+    assert main(["project", "show", "shop"]) == 0
+    listed = capsys.readouterr().out
+    assert f"    app       main     {url}" in listed
+    assert f"    dev       develop  {url}" in listed
+
+
+def test_project_repo_add_new(shop, capsys):
+    assert main(["project", "repo", "add", "shop", "--new", "site"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"Made {shop / 'site'} a git repository with an empty first commit",
+        *_added(shop, "site"),
+    ]
+    assert [r.name for r in projects.repositories("shop")] == ["frontend", "site"]
+
+
+@pytest.mark.parametrize(
+    ("argv", "said"),
+    [
+        (["https://h/shop/web", "--new", "web"], "a git URL or --new, not both"),
+        ([], "a git URL or --new NAME"),
+        (["--new", "web", "--name", "x"], "--name and --branch go with a git URL"),
+        (["--new", "web", "--branch", "dev"], "--name and --branch go with a git URL"),
+        (["./web"], "./web is not a git URL"),
+    ],
+)
+def test_project_repo_add_usage(shop, capsys, argv, said):
+    with pytest.raises(SystemExit) as usage:
+        main(["project", "repo", "add", "shop", *argv])
+    assert usage.value.code == 2
+    assert said in capsys.readouterr().err
+    assert sorted(p.name for p in shop.iterdir()) == ["frontend"]
+
+
+@pytest.mark.parametrize(
+    ("argv", "said"),
+    [
+        (["shop", "--new", "frontend"], "already exists in project shop"),
+        (["shop", "--new", ".hidden"], "the repository name .hidden is not valid"),
+        (["shop", "https://h/"], "names no repository"),
+        (["shop", "https://h/shop/web", "--name", ""], "the repository name  is not valid"),
+        (["acme", "--new", "crm"], 'unknown project "acme"'),
+    ],
+)
+def test_project_repo_add_refusals(shop, capsys, argv, said):
+    assert main(["project", "repo", "add", *argv]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("lado: ") and said in err
+    assert sorted(p.name for p in shop.iterdir()) == ["frontend"]
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["add", "shop", "--new", "site"], ["remove", "shop", "frontend"], ["remove", "shop", "x"]],
+)
+def test_agents_cannot_change_a_projects_repositories(shop, capsys, monkeypatch, argv):
+    monkeypatch.setenv("LADO_SESSION", "s")
+    monkeypatch.setenv("LADO_AGENT", "w1")
+    assert main(["project", "repo", *argv]) == 1
+    assert capsys.readouterr().err == (
+        f'lado: lado project repo {argv[0]} is for the human; agent "w1" cannot use it\n'
+    )
+    assert sorted(p.name for p in shop.iterdir()) == ["frontend"]
+
+
+def test_project_repo_remove(shop, capsys):
+    state.add_session(
+        state.Session("shop-frontend", str(shop / "frontend"), None, "kilo", project="shop")
+    )
+    assert main(["project", "repo", "remove", "shop", "frontend", "--yes"]) == 1
+    assert capsys.readouterr().err == (
+        "lado: repository frontend of project shop has sessions not stopped: shop-frontend; "
+        "stop them first with lado stop <name>\n"
+    )
+    state.stop_session("shop-frontend")
+    assert main(["project", "repo", "remove", "shop", "frontend"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        "Sessions to forget: shop-frontend",
+        f"Unpushed work in {shop / 'frontend'}:",
+        "  frontend: branch main not pushed",
+    ]
+    assert captured.err == (
+        f"lado: removing repository frontend of project shop deletes its folder "
+        f"{shop / 'frontend'} with everything in it and forgets its 1 session; run again with "
+        "--yes\n"
+    )
+    assert (shop / "frontend").is_dir()
+    assert main(["project", "repo", "remove", "shop", "frontend", "--yes"]) == 0
+    assert (
+        capsys.readouterr().out.splitlines()[-1] == "Removed repository frontend from project shop"
+    )
+    assert not (shop / "frontend").exists() and state.list_sessions() == []
+    assert state.get_project("shop") and shop.is_dir()
+
+
+def test_project_repo_remove_a_link(shop, tmp_path, capsys):
+    target = tmp_path / "docs"
+    target.mkdir()
+    (shop / "docs").symlink_to(target)
+    assert main(["project", "repo", "remove", "shop", "docs"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        f"lado: removing docs of project shop deletes the link only, not its target {target}; "
+        "run again with --yes\n"
+    )
+    assert main(["project", "repo", "remove", "shop", "docs", "--yes"]) == 0
+    assert capsys.readouterr().out == "Removed the link docs from project shop\n"
+    assert target.is_dir() and not os.path.lexists(shop / "docs")
+
+
+def test_project_repo_remove_refusals(shop, capsys):
+    (shop / "notes").mkdir()
+    assert main(["project", "repo", "remove", "shop", "notes", "--yes"]) == 1
+    assert capsys.readouterr().err == (
+        "lado: notes in project shop is not a repository: LADO removes only repositories and "
+        "links\n"
+    )
+    assert main(["project", "repo", "remove", "shop", "web"]) == 1
+    assert capsys.readouterr().err == (
+        "lado: project shop has no repository web; its repositories: frontend\n"
+    )
+    assert main(["project", "repo", "remove", "acme", "web"]) == 1
+    assert capsys.readouterr().err == 'lado: unknown project "acme"\n'
+    assert (shop / "notes").is_dir() and (shop / "frontend").is_dir()

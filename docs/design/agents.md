@@ -422,8 +422,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   session is stopped or gone (before each pass), its tmux session is gone (as above), or `lado.db` has another schema
   version than its own (`state.SchemaError` of any connection of a pass, so it never
   migrates); an error in a pass is
-  written there too with its traceback (and once to `errors.jsonl`, `telemetry.record`),
-  and the loop goes on. While the same error
+  written there too with its traceback (and once to `errors.jsonl`, `telemetry.record`;
+  a locked `lado.db`, `loop.is_locked`, only once it has failed the passes for
+  `loop.LOCK_GRACE` seconds, 60), and the loop goes on. While the same error
   repeats, it writes one short line at most every `loop.REPEAT_NOTE` seconds (60) and the
   count when another error comes or passes work again. After a pass it kicks the
   statistics sender at most every `telemetry.KICK_EVERY` (`telemetry.kick`). `lado ls` marks a running session

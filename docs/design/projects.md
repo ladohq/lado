@@ -21,8 +21,10 @@ changes this file.
 > `lado doctor`'s `Project secrets` line, their removal with the project and the canary
 > test (step S5b, 0.43.0; `lado.project_secrets`); the UI's Projects section with making a
 > project and a project's variables and secrets, and the server's list, create and id
-> routes (step S6a, 0.43.0; docs/design/ui.md, Projects). Everything else here is steps
-> S6b–S7 and is marked **not built yet** where it is described.
+> routes (step S6a, 0.43.0; docs/design/ui.md, Projects); the New session window's way
+> Project, which starts a session in a project's repository through the CLI's core call
+> (step S6b, 0.43.0; docs/design/ui.md, Launch and session control). Everything else here
+> is step S7 and is marked **not built yet** where it is described.
 
 ## Why
 
@@ -150,7 +152,7 @@ record without its folder shows as "missing, clone again?".
 
 ## The session
 
-Built in step S3 but for the New session window's way (step S6): `lado start --project
+Built in step S3, the New session window's way in step S6b: `lado start --project
 --repo`, the reference (`sessions.project`, schema 33), the inheritance, the refusal on
 every start path (`projects.refusal`), and the project in `lado ls`, the session's API and
 head. The refusal holds only while `projects/` is LADO's; sessions started under
@@ -162,7 +164,8 @@ LADO's environment.
 
 **Inside `projects/` a session without a project does not start.** The New session window
 and `lado start` refuse ("this folder belongs to the project Shop: start a session in the
-project") and offer the session in the project at once. The workspace hints of the New
+project") and offer the session in the project at once (the window: a button that switches
+it to Project with that repository, or opens the project's page). The workspace hints of the New
 session window do not offer `projects/` for an ordinary session. The reasons:
 - one repository would get two sets of keys;
 - deleting the project would delete the folder under another session.
@@ -172,8 +175,10 @@ session window do not offer `projects/` for an ordinary session. The reasons:
 2. Pick a repository from the list. The list always shows, even with one item, so it is
    clear the session works in one repository. When sessions over the whole project come,
    the same list gets an item "all repositories".
-3. When the repository is not there yet, the same list has "+ new repository": a clone or
-   from scratch. It becomes part of the project at once, and the session starts in it.
+
+The window only chooses (the human's answer #1282, LAD-137): a repository that is not there
+yet is added on the project's page ("+ Add repository", step S7; until then `lado project
+repo add`), which the window links to when the project has none.
 
 In the CLI: `lado start --project <project> --repo <repository>`.
 
@@ -359,15 +364,17 @@ Built in step S6a (docs/design/ui.md, Projects): the Projects section with the l
 projects (title, number of repositories, running sessions), making a project, and a
 project's page with its variables and secrets, the marks of what overrides an outside value
 and of a secret file its agents do not get, the warning of the security boundary, and the
-sessions that run. The rest is **not built yet** (steps S6b and S7):
+sessions that run. Built in step S6b (docs/design/ui.md, Launch and session control): the
+New session window's way Project, Folder's refusal inside a project leading to it, and the
+project's page opening the window on its project. The rest is **not built yet** (step S7):
 
 - **A project's page** (S7):
   - its repositories with branch and remote, each with "Start session" and "Delete";
   - "+ Add repository";
   - the project's sessions;
   - renaming its title and deleting the project.
-- **The New session window** gets the way Project (S6b); the workspace hint of its folder field is
-  called Workspace (built: step S1, the row `Workspace:`, docs/design/ui.md).
+- **The New session window**: the workspace hint of its folder field is called Workspace
+  (built: step S1, the row `Workspace:`, docs/design/ui.md).
 
 The exact screens are mockups for the human's approval in the UI steps.
 
@@ -432,7 +439,7 @@ LADO working. The steps, their checks and notes: [docs/epics/lad-116/plan.md](..
 | S5a | Plain variables: the project's layer of an agent's environment, kit keys, `lado project set/unset`, protected names | CLI |
 | S5b | Secrets: their store, replace and delete, the canary test | CLI |
 | S6a | UI: the Projects section, making a project, a project's variables and secrets | UI |
-| S6b | UI: the Project way of New session, "+ new repository" by clone or from scratch | UI |
-| S7 | UI: a project's page, removing a repository and a project with the work not pushed shown | UI |
+| S6b | UI: the Project way of New session, which only chooses a project's repository | UI |
+| S7 | UI: a project's page, adding and removing a repository and removing a project with the work not pushed shown | UI |
 
 The minor version goes up from the step that brings the schema migration and new commands.

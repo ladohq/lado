@@ -648,7 +648,11 @@ test("each message's head has Copy message, also a row that continues its group"
   open();
   const log = await chat();
   const [first, second] = await within(log).findAllByRole("article");
-  expect(within(first).getByRole("button", { name: "Copy message" }).closest(".feed-head")).toBeTruthy();
+  const copier = within(first).getByRole("button", { name: "Copy message" }).closest(".copy-icon-button")!;
+  expect(copier.parentElement?.classList.contains("feed-when")).toBe(true);
+  // Right before the time, nothing after it: the time ends on the feed's edge (LAD-136).
+  expect([copier.nextElementSibling?.tagName, copier.nextElementSibling?.nextElementSibling]).toEqual(["TIME", null]);
+  expect(copier.parentElement?.nextElementSibling).toBeNull(); // the block that wraps whole ends the head
   expect(second.classList.contains("continued")).toBe(true);
   expect(within(second).getByRole("button", { name: "Copy message" })).toBeTruthy();
 });
@@ -1181,6 +1185,8 @@ test("a rejected gate, folded: a card with the flag, its title, the answer's chi
   expect([chip.textContent, chip.querySelector("svg") !== null]).toEqual(["reject", true]);
   expect(head.querySelector("time")?.getAttribute("dateTime")).toBe("2026-10-03T12:05:00.123Z");
   expect(head.querySelector(".gate-chevron svg")).toBeTruthy();
+  // The chevron first, the time last: the time ends on the feed's edge (LAD-136).
+  expect([head.firstElementChild?.className, head.lastElementChild?.tagName]).toEqual(["gate-chevron", "TIME"]);
   fireEvent.click(head);
   expect(head.getAttribute("aria-expanded")).toBe("true");
   expect(card.classList.contains("expanded")).toBe(true);

@@ -776,11 +776,13 @@ reaches the feed. LADO takes the model and builds it on what it has:
   `task/lad-85/mockup-gate-comment.html` A, `mockup-gate-expanded.html` 2 and
   `mockup-gate-line.html` 2) is a folded card, 8 px left of the text's column, whose head
   is one button the card's width (`GateLine`, `.gate-head`: the panel's ground and a
-  frame, `--raised` on hover): the flag avatar, "Gate #id" in 600, "run · state" muted,
-  the answer's chip (by the move that closed it: its direction's colour and icon, as on
-  the move's line; without that move, `overridden` by `lado flow-set`, `cancelled`, or an
-  older gate, the word on the neutral ground), "by you" or "by <agent>", the time and a
-  chevron that turns up while it is open. Its accessible name is the title sentence
+  frame, `--raised` on hover): a chevron that turns up while it is open, the flag avatar,
+  "Gate #id" in 600, "run · state" muted, the answer's chip (by the move that closed it:
+  its direction's colour and icon, as on the move's line; without that move, `overridden`
+  by `lado flow-set`, `cancelled`, or an older gate, the word on the neutral ground), "by
+  you" or "by <agent>" and the time, last (LAD-136: the chevron first, as an agents'
+  folded message has it; the frame reaches past the feed's edge by the head's padding and
+  border, so the time ends on that edge). Its accessible name is the title sentence
   "Gate #id · run · state: <answer> by <who>" (`gateTitle`, also the title on a run's page
   in Flows), with `aria-expanded`; Enter and Space open and fold it. No comment under it,
   whoever closed it: the comment stands once, under the move it made, and an override's
@@ -1177,10 +1179,16 @@ Built in the chat task (2026-10-03):
   finds its move the same way, `moveOf`; before LAD-85 a guess by run, state and time).
   Without that gate loaded, the move alone. The closed gate's card stays where it opened.
   The human's own lines of a group (an answer's move with its comment, a `flow_set`)
-  stand on the human's ground (`.run-event.mine`, `--action-ground`, 8 px left of the
-  line), as their messages do; the agents' lines have none (LAD-85).
+  stand on the human's ground (`.run-event.mine`, `--action-ground`, 8 px past the line on
+  both sides, so the time stays on the feed's edge, LAD-136), as their messages do; the
+  agents' lines have none (LAD-85).
 - **Quiet lines** (run events, an open question or gate, a closed gate, a late reply, a
   dismissal) start at the text's column.
+- **One edge for the times** (LAD-136): every time on the right of a chat row (a head's,
+  a run line's, a closed gate's, a quiet line's) ends on the right edge of the text
+  column; no button or chevron stands after it, and showing Copy message moves none. A
+  continued row's time (in the avatar's column) and the times inside a card (a question's
+  reply block, an opened gate's answer) are not on that edge.
 - **The composer** (shared with an agent's page in Agents): one frame, the field without a
   resize handle growing with its text from 1 to 8 lines (by its `scrollHeight`), then
   scrolling; Send inside at the bottom right (`--raised` / `--muted` while off); on focus
@@ -1331,12 +1339,13 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 `forget_session`), so the decisions and their texts are the core's; the UI shows them.
 
 - **New session window** (`Launch.tsx`, a modal `<dialog>`; the rail's Launch and the
-  list's "+"): **Where** is a new folder made from scratch, a folder, or a clone of a git
-  URL made first (the switch **From scratch | Folder | Clone from URL** beside its label,
-  below); the start's request is the same for a folder and a clone (its `where` is
-  `{kind: "folder", path}`), from scratch it is `{kind: "scratch", path}`; another kind is
-  refused; a session in a project will be the window's fourth way (step S6b of
-  [projects.md](projects.md), not built yet). The path
+  list's "+"): **Where** is a new folder made from scratch, a folder, a clone of a git
+  URL made first, or a project's repository (the switch **From scratch | Folder | Clone
+  from URL | Project** beside its label, below; on a screen of at most 760 px its four
+  buttons are a grid of two rows); the start's request is the same for a folder and a
+  clone (its `where` is `{kind: "folder", path}`), from scratch it is `{kind: "scratch",
+  path}`, in a project `{kind: "project", project, repo}`; another kind, or a field the
+  kind does not take, is refused (400). The path
   is typed (`~` allowed, a relative path refused), and checked by `GET /api/folders`:
   under the field "✓ git repository · branch X", or the core's reason from
   `runtime.check_repo` (`FolderInfo.problem_kind`: does not exist, a file, git not
@@ -1421,8 +1430,13 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   its first line (not part of its text); its hint, command and Copy stay inside it. A
   folder inside LADO's `projects/` is such a refusal (LAD-125), before git is asked: the
   core's text naming the project, `Start a session in the project:` and `lado start
-  --project <id> --repo <name>` with Copy; a clone's target (Clone into) and a fresh start's
-  (Create in) there show the same box with the same hint. The box shows also for a folder
+  --project <id> --repo <name>` with Copy; above the hint, Folder's box has a button from
+  `FolderInfo.project` (`ProjectPlace{id, title, repo}`, the core's `projects.place`):
+  **Start in the project <title>** for a folder in a project's repository, which switches
+  the window to Project with that project and repository, else **Open the project
+  <title>**, which closes the window and opens the project's page (LAD-137). A clone's
+  target (Clone into) and a fresh start's (Create in) there show the same box with the same
+  hint and no button: the window adds no repository to a project. The box shows also for a folder
   there that already has a session, a session in the project too: the window starts no
   session there and offers no Resume it; such a session is resumed from its own page
   (Resume…), as its resume is never refused. Recent folders leave out folders inside
@@ -1526,6 +1540,45 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   server's machine has (ssh keys, `gh auth`, a credential helper): a server started where
   the human's ssh-agent is not reachable cannot use its keys, and the hints point at the
   command to check that.
+- **Project** (decided 2026-10-23, LAD-137, step S6b of [projects.md](projects.md); mockup
+  `task/lad-137/mockup-project-way.html` v2; `LaunchProject.tsx`): a session in a
+  project's repository, as `lado start --project <id> --repo <name>` starts it. The window
+  only chooses: it adds, clones or makes no repository (the human's answer #1282); a
+  project's repositories are added on its page (step S7). Its fields come from `GET
+  /api/project-launch?project=&repo=` (`ProjectLaunch`, asked again on each choice; it makes
+  nothing): **Project**, a select of the projects by title (the id without one, case
+  aside), each `<title> · <id>`, one whose folder is not found off and marked `folder not
+  found`, with the chosen one's line `<N> repositories · <N> sessions running · folder
+  <folder>`; then **Repository**, the project's repositories as a list always shown, even
+  with one (`.repo-pick`, a `radiogroup`: name, branch, remote; the arrow keys move the
+  choice), and `✓ git repository · branch X` under it. While a new choice is asked, the
+  field shows the last answer with the choice in it (`aria-busy` on the list), so the select
+  and the list keep their focus, and the start stays off until the answer to what is asked
+  now has come (LAD-137, review X1). The server chooses what the window
+  opens on: the project asked, else that of the latest started session in a project whose
+  folder is found, else the first found; the repository asked, else that of the project's
+  latest started session still there, else the first. **Name** is `<project>-<repo>`
+  (`runtime.project_session_name`) until edited, with the folder check's notes
+  (`name_state`, where a session of the name in another project or in none is
+  `taken_elsewhere`); Kits and Permission mode come from the repository's last session in
+  the project (`ProjectLaunch.last`), Provider from `ProjectLaunch.provider`, as Folder
+  takes them. The start button reads **Start in <title>** (the id without one): the window
+  opens on the last project used, and a quick click in another project would give the
+  session another client's keys (the supervisor's condition at gate #107). It sends
+  `where: {kind: "project", project, repo}`; the
+  server calls `runtime.start_session(None, …, resume=False, project=, repo_name=)`, the
+  CLI's call: an unknown project or repository is 404 with the core's text, a taken name
+  409 `Taken` with Resume it or Open it as in Folder, only for a session of this project
+  (the feed's `SessionInfo.project`: the core resumes none of another project or none;
+  its folder compared with
+  `ProjectLaunch.root`, the repository's git root with links resolved, as a session's folder
+  is kept, not the listed path, which may go through a link), any other refusal 400. A project
+  without repositories shows in the list's place `No repositories yet. Add one on the
+  project's page:` with **Open <title>**, and Start stays off; without projects the field
+  says `No projects yet. A project keeps its repositories and the variables its sessions
+  get.` with **Make one in Projects**; each link closes the window. The window still opens
+  in Folder (#1283); `useLaunch()({kind: "new", project})` opens it in Project with that
+  project (the project's page).
 - **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
   mode and Advanced filled from the session (`SessionInfo` carries its settings) and
   changeable; it sends only what changed (`POST /api/sessions/{name}/resume`).
@@ -1609,7 +1662,7 @@ The Projects section (`Projects.tsx`, `ProjectVariables.tsx`; step S6a of
 [projects.md](projects.md); the mockup `task/lad-134/mockup-projects.html`, the human's
 answers #1151, #1153 and #1158) lists the projects and shows one with its variables and
 secrets. A project's repositories, sessions, rename and delete are its page's step S7; the
-Project way of New session is S6b.
+Project way of New session (S6b, LAD-137) is in Launch and session control.
 
 - **Layout**, as Sessions: the list at the left (260 px), the project at the right at
   `/projects/<id>`; on a phone the list fills the screen and a project opens in its place
@@ -1626,9 +1679,11 @@ Project way of New session is S6b.
   starts, stops or goes, and when the window gets the focus. A change in another browser
   shows on the next of these.
 - **The page**: the title and the id; `<N> repositories · <N> sessions running · folder
-  <folder>` (`folder not found` after it); the line `Repositories, sessions, renaming and
-  deleting the project: not built yet. Plan: Projects, step S7. Meanwhile: lado project
-  show <id>, lado project repo add <id> <git-url>.`; always the warning `⚠ Projects of one
+  <folder>` (`folder not found` after it); the line `New session in this project… Not built
+  yet: the repositories on this page (adding, removing), renaming and deleting the project.
+  Plan: Projects, step S7. Meanwhile: lado project show <id>, lado project repo add <id>
+  <git-url>.`, where **New session in this project…** (a `link-button`, LAD-137) opens the
+  New session window in Project with this project; always the warning `⚠ Projects of one
   LADO are not isolated from each other: …`; and the line on who gets a change: `New values
   reach the agents started after a change; running agents keep the environment they
   started with. Running now: <sessions> — restart a session to give it the change.`, each
@@ -1954,12 +2009,18 @@ the quote icon of variant 1; openspec change `selection-actions`).
   (`quotes.ts`). An expanded waiting card of the session folds.
 - **Copy code and Copy message.** Each fenced code block of Markdown the UI renders has an
   icon button **Copy code** at its top right (its code exactly); each message of the chat
-  has **Copy message** at the end of its head, or at a continued row's top right, and so
-  has each message on an agent's page: the human's text, an agent's summary (unless its
-  body's first line says it) and body after a blank line, by the chat's own rule. Both say
-  "Copied" for 2 s, and fall back to the text to copy by hand as Copy link does. With a
-  pointer that can hover they show only over their block or message, or with the focus;
-  on a touch screen always.
+  has **Copy message** right before its head's time (6 px from its icon to the digits, its
+  24 px hit area kept, the two wrapping to the next line together; LAD-136), or at a continued row's top right, and so has each
+  message on an agent's page: the human's text, an agent's summary (unless its body's
+  first line says it) and body after a blank line, by the chat's own rule. A closed
+  question and the human's answer have none: a question is short and never folded, an
+  answer is the human's own text. Copy message is there because the selection copies the
+  rendered text without its Markdown and cannot reach the part of a long message folded
+  under Show more. Both say "Copied" for 2 s, and fall back to the text to copy by hand as
+  Copy link does. With a pointer that can hover they show only over their block or
+  message, or with the focus. On a touch screen (`hover: none`) Copy code always shows and
+  Copy message never does: the selection copies there, and the head's time takes its
+  place on the edge.
 
 ### Notifications (decided 2026-10-03, task Needs you and notifications)
 

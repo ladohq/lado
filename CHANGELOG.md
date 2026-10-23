@@ -20,6 +20,9 @@
 - **Projects in the web UI.** The Projects section lists your projects, makes a new one,
   and sets, replaces and removes a project's variables and secrets; a session's head links
   to its project.
+- **New session in a project from the browser.** New session's fourth way, Project, picks a
+  project and one of its repositories and starts there as `lado start --project` does; a
+  project's folder typed in Folder and the project's page lead to it.
 
 ### Changed
 
@@ -39,6 +42,9 @@
 
 ### Fixed
 
+- **The chat's times stand on one line.** Messages, run lines and closed gates end their
+  times on the same edge; Copy message sits right before a message's time, and a touch
+  screen, where you copy by selecting, no longer shows it.
 - **On a phone a gate's comment or your own answer has room above the keyboard.** Tapping
   the field opens the waiting card over the chat instead of squeezing it to a strip.
 - **The chat shows a flow gate once.** The gate's own row stands under the move that led to

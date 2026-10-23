@@ -362,6 +362,39 @@ def test_a_project_whose_folder_lies_in_its_own_projects_folder_still_refuses(sh
     assert _refused(shop_repo)[2] == START_HINT[1]
 
 
+# The project a path is in
+
+
+def test_place_names_the_project_and_its_repository(shop_repo):
+    assert projects.place(str(shop_repo / "src")) == projects.Place("shop", "frontend")
+    assert projects.place(str(shop_repo)) == projects.Place("shop", "frontend")
+    folder = projects.folder("shop")
+    (folder / "notes").mkdir()
+    assert projects.place(str(folder)) == projects.Place("shop", None)
+    assert projects.place(str(folder / "notes")) == projects.Place("shop", None)  # no git
+    assert projects.place(str(folder / "web")) == projects.Place("shop", None)  # missing
+
+
+def test_place_follows_a_link_to_its_target(shop_repo, home):
+    link = home / "code" / "front"
+    link.parent.mkdir()
+    link.symlink_to(shop_repo)
+    assert projects.place(str(link)) == projects.Place("shop", "frontend")
+
+
+def test_place_is_none_outside_a_projects_folder(shop_repo, home):
+    old = projects.projects_folder() / "old"
+    old.mkdir()
+    assert projects.place(str(old)) is None  # a foreign folder of projects/
+    assert projects.place(str(projects.projects_folder())) is None
+    assert projects.place(str(home / "workspace" / "app")) is None
+
+
+def test_place_is_none_in_the_humans_own_projects_folder(home):
+    app = init_repo(home / "workspace" / "projects" / "app")
+    assert projects.place(str(app)) is None
+
+
 # The repositories, from the disk
 
 

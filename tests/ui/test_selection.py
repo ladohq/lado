@@ -318,7 +318,7 @@ def test_copy_buttons_show_on_hover(page: Page, server, repo, shot):
     page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=server["url"])
     # Over the message but not its code block: its Copy message, not Copy code.
     first.get_by_text("Run it:").hover()
-    expect(first.locator(".feed-head > .copy-icon-button")).to_have_css("opacity", "1")
+    expect(first.locator(".feed-when > .copy-icon-button")).to_have_css("opacity", "1")
     expect(code_box).to_have_css("opacity", "0")
     first.locator(".code-block").hover()
     expect(code_box).to_have_css("opacity", "1")
@@ -333,7 +333,11 @@ def test_copy_buttons_show_on_hover(page: Page, server, repo, shot):
     assert page.evaluate("navigator.clipboard.readText()") == "Раунд 1\n\n1. Какие действия?"
 
 
-def test_copy_buttons_always_show_on_a_touch_screen(browser: Browser, server, repo, shot):
+def test_on_a_touch_screen_copy_code_always_shows_and_copy_message_never(
+    browser: Browser, server, repo, shot
+):
+    """The selection copies on a touch screen: no Copy message by the times, which stay on
+    the feed's edge; Copy code without a hover (AC-4; LAD-136)."""
     session = coded_session(repo)
     context = browser.new_context(
         viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
@@ -343,11 +347,23 @@ def test_copy_buttons_always_show_on_a_touch_screen(browser: Browser, server, re
         log_in(phone, server)
         phone.goto(f"{server['url']}/sessions/{session}")
         chat = phone.get_by_role("log", name="Chat with the session")
+        copy_code = chat.locator(".code-block > .copy-icon-button")
+        expect(copy_code).to_have_css("opacity", "1")
         expect(chat.get_by_role("button", name="Copy code")).to_be_visible()
-        boxes = chat.locator(".copy-icon-button")
-        expect(boxes).to_have_count(3)  # Copy code, and Copy message of each message
-        for box in boxes.all():
-            expect(box).to_have_css("opacity", "1")
+        expect(chat.get_by_role("article")).to_have_count(2)
+        expect(chat.get_by_role("button", name="Copy message")).to_have_count(0)
+        # The time ends on the text column's edge, as the run lines' times do.
+        first = chat.get_by_role("article").first
+        time, text = (
+            first.locator(".feed-head time").bounding_box(),
+            first.locator(".feed-main").bounding_box(),
+        )
+        assert time is not None and text is not None
+        assert abs(time["x"] + time["width"] - (text["x"] + text["width"])) <= 1, (time, text)
+        # A continued row keeps no room for the button it does not show (ledger F2).
+        expect(chat.get_by_role("article").last.locator(".feed-main")).to_have_css(
+            "padding-right", "0px"
+        )
         shot(phone, full_page=False)
     finally:
         context.close()

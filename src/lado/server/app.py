@@ -88,6 +88,7 @@ from lado.server.models import (
     PlanUpdateAsk,
     ProjectId,
     ProjectInfo,
+    ProjectLaunch,
     ProjectNew,
     ProjectRepo,
     ProjectSummary,
@@ -127,6 +128,7 @@ from lado.server.models import (
     VariableChange,
     VariableValue,
     WaitingItem,
+    Where,
     Workspace,
 )
 from lado.server.run import Listening
@@ -178,6 +180,23 @@ def stored(name: str, file_name: str, data: bytes, has_db: bool) -> ArtifactInfo
     known(name, has_db)
     written = core(artifacts.upload, name, file_name, data)
     return models.artifact_info(written.artifact, written.record)
+
+
+def _where(where: Where) -> Where:
+    """`where` of a start, refused with 400 unless its kind is known and it has the fields
+    its kind takes, and no other: a path for "folder" and "scratch", a project and its
+    repository for "project"."""
+    if where.kind not in ("folder", "scratch", "project"):
+        raise HTTPException(400, f'where of kind "{where.kind}" is not supported yet')
+    in_project = where.kind == "project"
+    given = {"path": where.path, "project": where.project, "repo": where.repo}
+    wanted = {"project", "repo"} if in_project else {"path"}
+    for field, value in given.items():
+        if field in wanted and value is None:
+            raise HTTPException(400, f'where of kind "{where.kind}" needs {field}')
+        if field not in wanted and value is not None:
+            raise HTTPException(400, f'where of kind "{where.kind}" takes no {field}')
+    return where
 
 
 def _kits_refused(refused: kits.KitError) -> HTTPException:
@@ -650,6 +669,15 @@ def create_app(
         `lado project create` would refuse it; asking makes nothing."""
         return launch.project_id(title, id)
 
+    @app.get("/api/project-launch", dependencies=[Depends(guard)])
+    def project_launch(
+        project: str | None = None, repo: str | None = None, has_db: bool = Depends(database)
+    ) -> ProjectLaunch:
+        """What the New session window's Project way shows: the projects, the project and
+        repository chosen (those asked, else the last used), and what a start there takes;
+        makes nothing."""
+        return core(launch.project_launch, project, repo, has_db)
+
     @app.get("/api/projects/{id}", dependencies=[Depends(guard)])
     def project(id: str, has_db: bool = Depends(database)) -> ProjectInfo:
         """A project with its repositories, read from its folder now (docs/design/projects.md);
@@ -1118,14 +1146,16 @@ def create_app(
     def start(given: Launch) -> Started:
         """Start a new session, as `lado start` does, without attaching to it; for `where`
         of kind "scratch" the folder is made a repository first, as `lado start --new`
-        does. A name a session has is 409 with that session's status and folder; on an
-        empty LADO_HOME the core makes lado.db."""
-        if given.where.kind not in ("folder", "scratch"):
-            raise HTTPException(400, f'where of kind "{given.where.kind}" is not supported yet')
+        does; of kind "project" the session is the project's repository's, as `lado start
+        --project <id> --repo <name>` starts it. A name a session has is 409 with that
+        session's status and folder; on an empty LADO_HOME the core makes lado.db."""
+        where = _where(given.where)
         try:
-            path = runtime.full_path(given.where.path)
-            if given.where.kind == "scratch":
-                scratch.make(path, runtime.slug(given.name or Path(path).name))
+            path = None
+            if where.path is not None:
+                path = runtime.full_path(where.path)
+                if where.kind == "scratch":
+                    scratch.make(path, runtime.slug(given.name or Path(path).name))
             done = runtime.start_session(
                 path,
                 given.name,
@@ -1136,10 +1166,14 @@ def create_app(
                 resume=False,
                 prompt=given.prompt,
                 title=given.title,
+                project=where.project,
+                repo_name=where.repo,
             )
         except runtime.SessionExists as taken:
             detail = Taken(message=str(taken), status=taken.status, repo=taken.repo)
             raise HTTPException(409, detail.model_dump(mode="json")) from taken
+        except (projects.NoSuchProject, projects.NoSuchRepository) as unknown:
+            raise HTTPException(404, str(unknown)) from unknown
         except kits.KitError as refused:
             raise _kits_refused(refused) from refused
         except runtime.LadoError as refused:

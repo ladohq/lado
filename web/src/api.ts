@@ -367,6 +367,17 @@ export const putSecret = (id: string, name: string, value: string) =>
 export const deleteSecret = (id: string, name: string) =>
   post<VariableChange>(variablePath(id, "secrets", name), undefined, "DELETE");
 
+export type ProjectLaunch = components["schemas"]["ProjectLaunch"];
+export type ProjectPlace = components["schemas"]["ProjectPlace"];
+export type ProjectRepo = components["schemas"]["ProjectRepo"];
+
+// What New session's Project way shows: the projects, the project and repository chosen
+// (those asked, else the last used), and what a start there takes; asking makes nothing.
+export const getProjectLaunch = (project: string | null, repo: string | null) => {
+  const asked = { ...(project ? { project } : {}), ...(repo ? { repo } : {}) };
+  return get<ProjectLaunch>(`/api/project-launch${Object.keys(asked).length ? `?${query(asked)}` : ""}`);
+};
+
 export const startSession = (launch: Launch) => post<Started>("/api/sessions", launch);
 
 export const resumeSession = (session: string, resume: Resume) =>

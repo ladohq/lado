@@ -261,8 +261,8 @@ function Reads({ session, names }: { session: string; names: string[] }) {
 }
 
 // A closed gate (docs/design/ui.md, Flow gates): a folded card, its head one button that
-// opens it down in the same frame. The head: the gate's flag, "Gate #<id>", run and state,
-// the answer's chip, who answered, the time and a chevron; no comment, whoever closed it:
+// opens it down in the same frame. The head: a chevron, the gate's flag, "Gate #<id>", run
+// and state, the answer's chip, who answered and the time, last; no comment, whoever closed it:
 // the comment stands under the move it made, and an override's or a cancel's reason on its
 // event's line. Opened: the question, the answer on the human's ground (an agent's quieter)
 // with its files' chips (their previews stand under the move), and the note and the
@@ -304,6 +304,9 @@ export function GateLine({
         aria-expanded={shown}
         onClick={() => setShown(!shown)}
       >
+        <span className="gate-chevron" aria-hidden="true">
+          <ChevronIcon />
+        </span>
         <span className="avatar mini avatar-gate" aria-hidden="true">
           <GateIcon />
         </span>
@@ -314,9 +317,6 @@ export function GateLine({
         {chip}
         <span className="gate-head-by">by {by === HUMAN ? "you" : by}</span>
         {time}
-        <span className="gate-chevron" aria-hidden="true">
-          <ChevronIcon />
-        </span>
       </button>
       {shown && (
         <div className="gate-closed-card">

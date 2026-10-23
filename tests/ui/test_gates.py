@@ -335,8 +335,13 @@ def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
     expect(move).to_have_css("background-color", line_ground(page))
     expect(head.locator(".run-outcome.back")).to_have_text("reject")
     expect(head.locator(".gate-head-by")).to_have_text("by you")
-    expect(head.locator(".gate-chevron svg")).to_be_visible()
+    chevron = head.locator(".gate-chevron")
+    expect(chevron.locator("svg")).to_be_visible()
     expect(head).to_have_attribute("aria-expanded", "false")
+    # The chevron first, before the flag; the time last (LAD-136).
+    flag, turn = head.locator(".avatar-gate").bounding_box(), chevron.bounding_box()
+    assert flag is not None and turn is not None and turn["x"] + turn["width"] <= flag["x"]
+    expect(chevron).to_have_css("transform", "none")
     for theme in ("light", "dark"):
         page.emulate_media(color_scheme=theme)
         line.scroll_into_view_if_needed()
@@ -345,6 +350,7 @@ def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
     head.focus()
     page.keyboard.press("Enter")
     expect(head).to_have_attribute("aria-expanded", "true")
+    expect(chevron).to_have_css("transform", "matrix(-1, 0, 0, -1, 0, 0)")  # turned up
     opened = line.locator(".gate-closed-card")
     expect(opened.locator(".gate-question")).to_have_text("Build it as planned?")
     plaque = opened.locator(".question-answer")

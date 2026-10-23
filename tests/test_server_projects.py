@@ -9,7 +9,7 @@ import pytest
 from agent_helpers import bare_remote, fake_git, init_repo
 from fastapi.testclient import TestClient
 
-from lado import project_secrets, projects, state
+from lado import project_secrets, projects, runtime, state
 from lado.server import app as server_app
 from lado.server import auth
 
@@ -400,6 +400,50 @@ def test_the_secrets_need_the_token_and_the_servers_own_origin(client, shop):
     assert client.put("/api/projects/shop/secrets/X", json={"value": "x"}).status_code == 401
     assert client.delete("/api/projects/shop/secrets/GH_TOKEN").status_code == 401
     assert project_secrets.names("shop") == ["GH_TOKEN"]
+
+
+# Renaming (openspec change project-page)
+
+
+def test_a_project_renamed(client, shop):
+    answer = client.patch("/api/projects/shop", json={"title": "Shop EU"})
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == client.get("/api/projects/shop").json()
+    assert (answer.json()["id"], answer.json()["title"]) == ("shop", "Shop EU")
+    assert projects.get("shop").title == "Shop EU"
+    assert projects.folder("shop") == shop and (shop / "frontend").is_dir()
+
+
+@pytest.mark.parametrize("title", ["", "   ", None, "shop"])
+def test_a_project_renamed_to_nothing_has_no_title(client, shop, title):
+    answer = client.patch("/api/projects/shop", json={"title": title})
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["title"] is None and projects.get("shop").title is None
+
+
+def test_a_rename_refused(client, shop):
+    answer = client.patch("/api/projects/shop", json={"title": "x" * (runtime.MAX_TITLE + 1)})
+    assert (answer.status_code, answer.json()["detail"]) == (
+        400,
+        f"a title is at most {runtime.MAX_TITLE} characters",
+    )
+    assert projects.get("shop").title == "Shop"
+    answer = client.patch("/api/projects/acme", json={"title": "ACME"})
+    assert (answer.status_code, answer.json()["detail"]) == (404, 'unknown project "acme"')
+
+
+def test_a_rename_without_a_database_makes_none(client, lado_home):
+    assert client.patch("/api/projects/shop", json={"title": "Shop"}).status_code == 404
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_a_rename_needs_the_token_and_the_servers_own_origin(client, shop):
+    del client.headers["origin"]
+    assert client.patch("/api/projects/shop", json={"title": "X"}).status_code == 403
+    client.headers["origin"] = OWN
+    client.cookies.clear()
+    assert client.patch("/api/projects/shop", json={"title": "X"}).status_code == 401
+    assert projects.get("shop").title == "Shop"
 
 
 def test_the_changes_need_the_token_and_the_servers_own_origin(client, shop):

@@ -297,7 +297,14 @@ Every `uses:` of every workflow, GitHub's own actions too, is a full commit SHA 
 the base images of `docker/Dockerfile` (pinned by digest) weekly, minor and patch in one
 pull request per ecosystem, a release once it is 7 days old.
 `claude.yml` (the `@claude` reviewer) starts its job only for an author who is the
-repository's `OWNER`, `MEMBER` or `COLLABORATOR`. Vulnerability reports: SECURITY.md.
+repository's `OWNER`, `MEMBER` or `COLLABORATOR`. It checks out the full history and lets
+Claude run `git diff`, `git log` and `gh pr diff` besides the Action's own tools, nothing
+else; a standing instruction in its `claude_args` (not `prompt`, which would leave the
+comment mode and its "Claude finished") has a review read `origin/main...HEAD`, risky code
+first (security and secrets, deleting data, agents' environment, the server's API), and end
+with the lists `Files read` and `Files not read` (`tests/test_workflow_security.py`). An
+`issue_comment` runs the workflow of the default branch, so a change to it takes effect
+after its merge. Vulnerability reports: SECURITY.md.
 Live tests are not in CI: they run locally, at release only, every provider (Claude Code with
 the human's yes).
 

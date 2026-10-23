@@ -2,6 +2,7 @@
 pinned to a commit, Claude only for the repository's people, Dependabot."""
 
 import re
+import shlex
 from pathlib import Path
 
 import pytest
@@ -86,6 +87,70 @@ def test_the_people_guard_is_the_jobs_own_condition(claude):
     (job,) = claude["jobs"].values()
     assert "author_association" in job["if"]
     assert all("author_association" not in str(step.get("if", "")) for step in job["steps"])
+
+
+READING = {"Bash(git diff:*)", "Bash(git log:*)", "Bash(gh pr diff:*)"}
+
+
+def claude_step(claude: dict, name: str) -> dict:
+    (step,) = [s for s in claude["jobs"]["claude"]["steps"] if s.get("name") == name]
+    return step
+
+
+def claude_flags(claude: dict) -> dict[str, list[str]]:
+    """Each flag of the Action's `claude_args` with the values it was given, in order."""
+    args = shlex.split(claude_step(claude, "Run Claude Code")["with"]["claude_args"])
+    flags: dict[str, list[str]] = {}
+    for arg in args:
+        if arg.startswith("--"):
+            flag = arg
+            flags.setdefault(flag, [])
+        else:
+            flags[flag].append(arg)
+    return flags
+
+
+def test_claude_checks_out_the_full_history(claude):
+    """`git diff origin/main...HEAD` needs the merge base, which a shallow checkout lacks."""
+    assert claude_step(claude, "Checkout repository")["with"]["fetch-depth"] == 0
+
+
+def test_claude_is_allowed_only_the_three_reading_commands(claude):
+    flags = claude_flags(claude)
+    assert sorted(flags) == ["--allowedTools", "--append-system-prompt"]
+    tools = {t.strip() for value in flags["--allowedTools"] for t in value.split(",")}
+    assert tools - READING == set(), "extra tools"
+    assert tools == READING
+
+
+def test_claude_has_no_prompt_input(claude):
+    """A `prompt` switches the pinned Action to its automation mode: no "Claude finished"."""
+    assert "prompt" not in claude_step(claude, "Run Claude Code")["with"]
+
+
+def test_claude_job_permissions_stay_at_reading(claude):
+    assert claude["jobs"]["claude"]["permissions"] == {
+        "contents": "read",
+        "pull-requests": "read",
+        "issues": "read",
+        "id-token": "write",
+        "actions": "read",
+    }
+
+
+def test_claude_review_instruction_names_the_diff_and_the_lists(claude):
+    (instruction,) = claude_flags(claude)["--append-system-prompt"]
+    for needed in (
+        "origin/main...HEAD",
+        "Files read",
+        "Files not read",
+        "Risky code not fully read",
+        "security and secrets",
+        "deleting data",
+        "agents' environment",
+        "the server's API",
+    ):
+        assert needed in instruction, needed
 
 
 def test_dependabot_keeps_actions_and_dependencies_current():

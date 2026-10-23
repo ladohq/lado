@@ -29,7 +29,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 1
+          # The full history: the review reads `git diff origin/main...HEAD`.
+          fetch-depth: 0
 
       - name: Run Claude Code
         id: claude
@@ -41,11 +42,35 @@ jobs:
           additional_permissions: |
             actions: read
 
-          # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
-          # prompt: 'Update the pull request description to include a summary of changes.'
+          # No `prompt` input: with one, the Action leaves its comment mode, the comment's
+          # request is no longer the task and no "Claude finished" comment ends the round.
+          # The standing review instruction is appended to the system prompt instead, and
+          # Claude may run three reading commands besides the mode's own tools.
+          claude_args: |
+            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(gh pr diff:*)"
+            --append-system-prompt "When the request is a review of a pull request, follow
+            these rules; on an issue, or a request that is not a review, ignore them. The
+            request in the comment may narrow them (for example to one delta of commits) or
+            extend them, and where it does, the request wins.
 
-          # Optional: Add claude_args to customize behavior and configuration
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
-          # claude_args: '--allowed-tools Bash(gh pr *)'
+            1. Find the changed files with git diff --stat origin/main...HEAD (or gh pr diff).
+            2. Read risky code first: every changed line of it, and enough around it to
+               judge it. Code is risky by its kind; the paths are examples from this
+               repository:
+               - security and secrets: src/lado/server/auth.py, src/lado/mcp_exec.py,
+                 .github/workflows/, docker/;
+               - deleting data: src/lado/uninstall.py, src/lado/self_update.py, the
+                 migrations of src/lado/state.py, removals in src/lado/projects.py and
+                 src/lado/runtime.py;
+               - agents' environment: src/lado/agent_env.py, src/lado/providers/,
+                 src/lado/hooks.py, src/lado/runtime.py;
+               - the server's API: src/lado/server/.
+            3. Then read the rest of the code as far as the run allows. Texts (specs, docs,
+               tests, web/openapi.json, generated files) are read locally by the project;
+               read them only when the request asks for it.
+            4. End the answer with two lists of paths under the headings Files read and
+               Files not read; each changed file is in exactly one of them. When a risky
+               file was not read in full, start the answer with the line
+               Risky code not fully read
+               and put those files first under Files not read, each marked (risky)."
 

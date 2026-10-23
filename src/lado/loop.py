@@ -40,8 +40,7 @@ def interval_from(value: str | None) -> float:
     return seconds
 
 
-# Also how long an agent's window may be in the making (runtime.check_windows), and what
-# wait_stopped waits for, in the processes started with LADO_LOOP_INTERVAL alike.
+# Also what wait_stopped waits for, in the processes started with LADO_LOOP_INTERVAL alike.
 INTERVAL = interval_from(os.environ.get("LADO_LOOP_INTERVAL"))
 LOCK_WAIT = 0.1  # seconds a starting loop tries to take the lock before it exits
 REPEAT_NOTE = 60.0  # seconds between two lines about the same repeating error

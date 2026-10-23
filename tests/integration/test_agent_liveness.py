@@ -16,7 +16,7 @@ SESSION = "live"
 
 
 def found_gone() -> float:
-    """Two passes of the session loop after an agent's first loop interval, and some slack:
+    """Two passes of the session loop after an agent's window opened, and some slack:
     loop.INTERVAL is the integration tests' (conftest) only once a test runs."""
     return 5 * loop.INTERVAL + agent_helpers.TIMEOUT
 

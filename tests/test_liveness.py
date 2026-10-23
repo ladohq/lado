@@ -374,9 +374,15 @@ def test_a_tmux_session_that_survives_a_stop_is_told_with_the_way_out(repo, fake
 
 
 def later() -> datetime.datetime:
-    """A minute from now: past a just spawned agent's first loop interval. Taken when the
-    test runs, not at import: a long parallel run starts a test minutes after that."""
+    """A minute from now: a pass long after a just spawned agent's row. Taken when the test
+    runs, not at import: a long parallel run starts a test minutes after that."""
     return datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60)
+
+
+def past_spawn_deadline(seconds: float) -> datetime.datetime:
+    """A pass `seconds` past the deadline of a spawn just made (before it when negative)."""
+    deadline = datetime.timedelta(seconds=runtime.SPAWN_DEADLINE + seconds)
+    return datetime.datetime.now(datetime.timezone.utc) + deadline
 
 
 GONE = "its window closed without a session-end hook"
@@ -439,7 +445,7 @@ def test_an_agent_whose_window_has_not_opened_is_left_alone(repo, fake_tmux, win
     _session_with_worker(repo)
     _window_not_opened("w1")
     windows["s"] = ["supervisor"]
-    within = later() - datetime.timedelta(seconds=2)
+    within = past_spawn_deadline(-2)
     missing = set()
     for _ in range(5):
         missing = runtime.check_windows("s", missing, within)
@@ -452,7 +458,7 @@ def test_an_agent_whose_window_never_opened_ends_past_the_deadline(repo, fake_tm
     _session_with_worker(repo)
     _window_not_opened("w1")
     windows["s"] = ["supervisor"]
-    past = later() + datetime.timedelta(seconds=2)
+    past = past_spawn_deadline(2)
     assert runtime.check_windows("s", set(), past) == set()
     assert state.get_agent("s", "w1").status == state.STOPPED
     died = "its start ended before its window opened"

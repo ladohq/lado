@@ -8,7 +8,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
-import type { ProviderInfo, RepoInfo, SessionAbout, SessionInfo, SessionKitInfo } from "./api";
+import {
+  setSessionTitle,
+  type ProviderInfo,
+  type RepoInfo,
+  type SessionAbout,
+  type SessionInfo,
+  type SessionKitInfo,
+} from "./api";
 import { CopyButton } from "./Copy";
 import { FolderIcon, GitIcon, LinkIcon, PencilIcon } from "./icons";
 import { projectPath, sessionLink } from "./paths";
@@ -145,7 +152,10 @@ export function SessionDetails({
         <header className="session-details-head">
           {editing ? (
             <TitleEdit
-              session={session}
+              name={session.name}
+              title={session.title}
+              label="Session title"
+              save={(title) => setSessionTitle(session.name, title)}
               hint="Enter to save · Esc to cancel · empty shows the name"
               suggestionHint="Tab takes the name · Enter to save · Esc to cancel"
               onClose={(saved) => {

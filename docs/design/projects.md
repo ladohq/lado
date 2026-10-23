@@ -316,8 +316,9 @@ working in its folder (one from before 0.43.0 has no project), is not stopped; s
 stopped sessions it forgets and its repositories' unpushed work; then removes the folder,
 forgets the sessions, removes its data folder with its secrets (a link on the way to it or
 in it refuses before anything is removed) and removes the record last, so a rerun finishes
-what failed. One preview in the core, `projects.deletion`, says what goes, and the CLI, the server (`GET /api/projects/{id}/deletion`, `DELETE
-/api/projects/{id}`) and the project's page all show it: the folder (a folder, a link with
+what failed. One preview in the core, `projects.deletion`, says what goes, and the CLI,
+the server (`GET /api/projects/{id}/deletion`, `DELETE /api/projects/{id}`) and the
+project's page all show it: the folder (a folder, a link with
 its target, or not found), the unpushed work, the sessions forgotten (the project's and the
 stopped ones without a project in its real folder) and the names of its variables and
 secrets. A project folder that is a link loses the link only, and nothing is matched

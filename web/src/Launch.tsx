@@ -1037,7 +1037,9 @@ function WhereField({
             setActive(-1);
           }}
           onFocus={() => {
-            if (empty && made) setOpen(true);
+            // Also before the workspace is known: a focus that comes first lists its
+            // subfolders once it is, and until then nothing is asked (no parent).
+            if (empty) setOpen(true);
           }}
           onBlur={() => setOpen(false)}
           onKeyDown={(event) => {

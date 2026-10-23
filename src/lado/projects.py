@@ -454,7 +454,10 @@ def set_variable(id: str, name: str, value: str) -> list[str]:
     check_variable(id, name, value)
     if project_secrets.held(id, name):
         raise _held(id, name, "a secret")
-    state.set_project_variable(id, name, value)
+    try:
+        state.set_project_variable(id, name, value)
+    except sqlite3.IntegrityError:  # its record went since get(id): a delete ran meanwhile
+        raise NoSuchProject(f'unknown project "{id}"') from None
     return running(id)
 
 
@@ -467,6 +470,10 @@ def set_secret(id: str, name: str, value: str) -> list[str]:
         raise _held(id, name, "a plain variable")
     with _secrets_refused(f"could not write the secret {name} of {id}"):
         project_secrets.write(id, name, value)
+    if state.get_project(id) is None:  # a delete ran meanwhile: its data folder is no one's
+        with _secrets_refused(f"could not remove the secret {name} of {id}"):
+            project_secrets.remove_all(id)
+        raise NoSuchProject(f'unknown project "{id}"')
     return running(id)
 
 
@@ -802,8 +809,6 @@ def unpushed(project_folder: Path) -> list[str]:
     <reason>`."""
     lines = []
     own = _own_root(str(project_folder))
-    if own:
-        lines += _checkout_lines(project_folder, project_folder, "the project's folder")
     try:
         entries = [
             entry
@@ -811,7 +816,10 @@ def unpushed(project_folder: Path) -> list[str]:
             if entry.is_dir() and os.path.lexists(entry / ".git")
         ]
     except OSError as error:
-        return [*lines, f"the project's folder: could not check: {error.strerror or error}"]
+        return [f"the project's folder: could not check: {error.strerror or error}"]
+    if own:  # the repositories in it are their own lines, not the root's changes
+        skip = [entry.name for entry in entries]
+        lines += _checkout_lines(project_folder, project_folder, "the project's folder", skip)
     listed = set()  # the real paths of the worktrees of the folder's and its entries' repositories
     for entry in ([project_folder] if own else []) + entries:
         if not (entry / ".git").is_dir():
@@ -848,16 +856,20 @@ def _stashes(repo: Path) -> list[str]:
     return [f"{count} stash{'' if count == 1 else 'es'}"]
 
 
-def _checkout_lines(entry: Path, base: Path, label: str | None = None) -> list[str]:
+def _checkout_lines(
+    entry: Path, base: Path, label: str | None = None, skip: list[str] | None = None
+) -> list[str]:
     """`unpushed`'s lines of the one repository `entry`, named `label` (its folder's name
-    by default): its uncommitted changes, branches not pushed, commits on a detached HEAD
-    and stashes, then each of its worktrees with changes or commits on a detached HEAD,
-    shown relative to `base` when inside it."""
+    by default): its uncommitted changes (but in the entries named `skip`), branches not
+    pushed, commits on a detached HEAD and stashes, then each of its worktrees with changes
+    or commits on a detached HEAD, shown relative to `base` when inside it."""
     label = label or entry.name
     real = Path(os.path.realpath(base))  # git names worktrees by real paths
+    excluded = [f":(exclude){name}" for name in skip or []]
     try:
         findings = []
-        if _git(entry, "status", "--porcelain", "--untracked-files=normal").strip():
+        status = ["status", "--porcelain", "--untracked-files=normal", "--", ".", *excluded]
+        if _git(entry, *status).strip():
             findings.append("uncommitted changes")
         findings += _not_pushed(entry) + _detached(entry) + _stashes(entry)
         trees = []

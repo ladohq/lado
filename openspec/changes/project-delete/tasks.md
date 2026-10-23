@@ -6,7 +6,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-project-dele
   in a real folder, a link folder announced and matched as a link, a missing folder's
   text, an unreadable folder's line; the CLI prints the preview (D1–D5). Check:
   `tests/test_projects_core.py`, `tests/test_cli.py`.
-- [ ] 1.2 F2: a project folder that is a repository does not count its repositories;
+- [x] 1.2 F2: a project folder that is a repository does not count its repositories;
   S5a's F5: a set racing a delete is an unknown project (D6, D7). Check:
   `tests/test_project_repos.py`, `tests/test_projects_core.py`,
   `tests/test_project_variables_core.py`.

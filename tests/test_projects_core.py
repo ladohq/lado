@@ -561,6 +561,7 @@ def test_a_project_folder_that_is_a_repository_comes_first(home, git_config):
     folder.rmdir()
     init_repo(folder)  # main has no upstream
     init_repo(folder / "frontend")  # a repository of its own inside it, untracked there
+    (folder / "README.md").write_text("x")  # the root's own change
     assert projects.unpushed(folder) == [
         "the project's folder: uncommitted changes; branch main not pushed",
         "frontend: branch main not pushed",
@@ -574,8 +575,8 @@ def test_a_worktree_of_the_project_folder_inside_it_is_listed_once(home, git_con
     init_repo(folder)
     _git(folder, "worktree", "add", "-q", str(folder / "x"), "-b", "fix")
     (folder / "x" / "work.txt").write_text("x")
-    assert projects.unpushed(folder) == [
-        "the project's folder: uncommitted changes; branch fix not pushed; branch main not pushed",
+    assert projects.unpushed(folder) == [  # x is the worktree's line, not the root's change
+        "the project's folder: branch fix not pushed; branch main not pushed",
         "the project's folder (worktree x): uncommitted changes",
     ]
 

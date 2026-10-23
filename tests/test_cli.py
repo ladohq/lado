@@ -3312,6 +3312,19 @@ def test_agents_cannot_change_a_project_s_variables(shop, capsys, monkeypatch, a
     assert capsys.readouterr().out.splitlines()[-2] == "    BOARD_URL  https://a"
 
 
+def test_project_set_racing_a_delete_is_an_unknown_project(shop, capsys, monkeypatch):
+    checked = projects.check_variable
+
+    def check_then_delete(id, name, value):
+        checked(id, name, value)
+        state.delete_project(id)
+
+    monkeypatch.setattr(projects, "check_variable", check_then_delete)
+    assert main(["project", "set", "shop", "BOARD_URL", "https://a"]) == 1
+    assert capsys.readouterr().err == 'lado: unknown project "shop"\n'
+    assert state.project_variables("shop") == {}
+
+
 def test_project_delete_takes_the_variables_along(shop, capsys, monkeypatch):
     assert main(["project", "set", "shop", "BOARD_URL", "https://a"]) == 0
     monkeypatch.setattr("sys.stdin", Stdin("ghp_1\n"))

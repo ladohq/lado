@@ -32,4 +32,6 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-23-projects-sec
 
 - [x] 4.1 `docs/design/ui.md`, `docs/design/projects.md` (with F3/E5 and S6a/S6b),
   CHANGELOG (D15). Check: `make lint`, `openspec validate projects-section --strict`.
-- [ ] 4.2 `make check`; the trial archive and `openspec validate --specs --strict`.
+- [x] 4.2 `make check`; the trial archive and `openspec validate --specs --strict`.
+  `make check` ran as CI's `ci-ok` on PR #151 (the project's settings keep the whole run out
+  of a local round); locally the settings' Checks and the trial archive.

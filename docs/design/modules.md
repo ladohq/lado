@@ -356,6 +356,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     --show-toplevel` is itself; `links(id)` names the links there; `repository(id, name)`
     is a session's folder in a project, refused naming what there is. `lados_folder` is the
     real `projects/` while it is LADO's (a folder, LADO has projects, not the human's own);
+    `place(path)` is the project a path is in (a `Place(id, repo)`, `repo` the project's
+    repository the path is in or None) by its real path while `projects/` is LADO's, None
+    elsewhere and in a folder of `projects/` that is no project's: the refusal's hint and the
+    server's `FolderInfo.project` both take it (openspec change new-session-in-project);
     `refusal(path, url=, fresh=)` is the one refusal (`runtime.FolderProblem` of kind
     `in_project`) of a new session without a project inside it, asked by
     `runtime.start_session`, `clone.check_target` (with its `url`), `scratch.check_target`
@@ -967,7 +971,14 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     default name and whether a session has it, and `provider`, the core's
     `runtime.suggested_provider` with the server's `shutil.which`, a
     `ProviderSuggestion` of name and reason or none; `scratch` for a missing or not-repo
-    folder a fresh start may take), `GET /api/scratch-target` (`ScratchTarget`: `lado.scratch`'s
+    folder a fresh start may take; `project`, a `ProjectPlace` from `projects.place`, for a
+    folder refused inside a project), `GET /api/project-launch?project=&repo=`
+    (`ProjectLaunch`, `launch.project_launch`: what the Project way shows, the projects by
+    title, the project and repository asked or last used, the default name by
+    `runtime.project_session_name`, its state, where a session of the name in no or another
+    project is `taken_elsewhere`, `root` (the repository's git root, links resolved, the
+    folder its sessions have), the provider and the repository's last session in the
+    project; it makes nothing), `GET /api/scratch-target` (`ScratchTarget`: `lado.scratch`'s
     names, folder state and author, the name's state and a provider), `/api/folders/recent`,
     `/api/repos-folder` (in `app.py`; `Workspace`, `projects.workspace` and whether it is
     made: where an empty Where starts once it exists),
@@ -978,7 +989,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (path, public remote, branch; one now), each kit by `kits.find` with its version and
     `source` (`Found.source` when it does not load), and the provider's `ProviderInfo`
     (`launch.provider_info`, also `/api/providers`'s), never in the feed; `app.py` has the session control: `POST /api/sessions` (a new
-    session, 409 `Taken` for a taken name), `POST …/{name}/resume`, `GET …/stop-preview`,
+    session, 409 `Taken` for a taken name; `where` of kind `folder`, `scratch` or `project`,
+    each with only its fields (`_where`), the last the CLI's `start_session(None, …,
+    project=, repo_name=)` with an unknown project or repository 404), `POST …/{name}/resume`, `GET …/stop-preview`,
     `POST …/stop`, `GET …/forget-preview`, `DELETE /api/sessions/{name}?force=`, all
     through the core, the changing ones under `Guard.changes`; `SessionInfo` carries the
     session's kits, provider, permission mode and without, and how long it ran

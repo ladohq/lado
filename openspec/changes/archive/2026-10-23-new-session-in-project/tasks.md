@@ -1,0 +1,42 @@
+The plan with each task's tests: `docs/superpowers/plans/2026-10-23-new-session-in-project.md`.
+
+## 1. Core and server
+
+- [x] 1.1 `runtime.project_session_name`, `projects.place` (the refusal's hint uses it)
+  (D4, D6). Check: `tests/test_projects_core.py`, `tests/test_runtime_projects.py`.
+- [x] 1.2 `POST /api/sessions` with `where` of kind `project`: the CLI's core call, the
+  refusals and the combinations (D2, D3). Check: `tests/test_server_project_launch.py`.
+- [x] 1.3 `GET /api/project-launch`, `name_state`'s project, `FolderInfo.project`; `make
+  web-types` (D4, D5, D6, D9). Check: `tests/test_server_project_launch.py`,
+  `tests/test_server_launch.py`, `make web`.
+
+## 2. Web UI
+
+- [x] 2.1 `getProjectLaunch`, the Project field `LaunchProject.tsx`, `.repo-pick`, the
+  phone's grid (D7, D9, D10). Check: `web/src/LaunchProject.test.tsx`.
+- [x] 2.2 Project wired into New session: the switch, the start, the defaults from the last
+  session, Folder's refusal's buttons, `LaunchMode`'s project (D7, D8). Check:
+  `web/src/Launch.test.tsx`.
+- [x] 2.3 The project's page: `New session in this project…` and the new line (D11).
+  Check: `web/src/Projects.test.tsx`.
+
+## 3. End to end
+
+- [x] 3.1 The canary starts its session through `POST /api/sessions` (D12). Check: `uv run
+  pytest -m integration -n0 tests/integration/test_project_secrets_canary.py`.
+- [x] 3.2 `tests/ui/test_launch_project.py`: the start, the taken name, Folder's refusal,
+  the page's link, the empty project, 390 px (D13). Check: `uv run pytest -m ui
+  tests/ui/test_launch_project.py`.
+
+- [x] 3.3 Gate #107's conditions (the supervisor's recommendation, approved): the start
+  button reads `Start in <title>`; a UI e2e picks another project than the preselected one
+  and the session is in it (its head, `lado ls`); the longest project id and repository
+  name give a session name that starts. Check: `web/src/Launch.test.tsx`,
+  `tests/ui/test_launch_project.py`, `tests/test_runtime_projects.py`.
+
+## 4. Docs and the regression run
+
+- [x] 4.1 `docs/design/ui.md`, `docs/design/projects.md`, CHANGELOG (D14). Check: `make
+  lint`, `openspec validate new-session-in-project --strict`.
+- [x] 4.2 The settings' Checks, the trial archive and `openspec validate --specs --strict`;
+  CI's `ci-ok`.

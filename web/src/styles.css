@@ -5029,7 +5029,69 @@ h3 {
   position: relative;
 }
 
-/* The Where field's label and its switch, Folder | Clone from URL. */
+/* Project's label under the switch. */
+.launch-where .field-sub {
+  margin-top: 8px;
+}
+
+/* Project's repositories: a list always shown, one chosen (LaunchProject.tsx). */
+.repo-pick {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.repo-pick li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.repo-pick li + li {
+  border-top: 1px solid var(--line);
+}
+
+.repo-pick li:hover {
+  background: var(--raised);
+}
+
+.repo-pick li.on {
+  background: var(--action-ground);
+}
+
+.repo-pick .dot {
+  flex: none;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--muted);
+  border-radius: 50%;
+}
+
+.repo-pick li.on .dot {
+  border-color: var(--action);
+  background: radial-gradient(var(--action) 0 3px, transparent 3.5px);
+}
+
+.repo-pick li.repo-none {
+  cursor: default;
+}
+
+.repo-pick li.repo-none:hover {
+  background: none;
+}
+
+.repo-pick .muted {
+  font-size: 13px;
+}
+
+/* The Where field's label and its switch, From scratch | Folder | Clone from URL | Project. */
 .where-head {
   display: flex;
   flex-wrap: wrap;
@@ -5550,6 +5612,17 @@ h3 {
 
   .launch-dialog {
     padding: 18px 16px;
+  }
+
+  /* The four ways in two rows, none cut off. */
+  .where-head .segments {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .where-head .segments button {
+    text-align: center;
   }
 }
 

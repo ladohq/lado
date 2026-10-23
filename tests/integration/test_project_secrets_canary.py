@@ -8,10 +8,11 @@ side is tests/ui/test_projects_section.py.
 
 The Projects section's API (openspec change projects-section) is read too: the list, New
 project's id and create, and the project with the names the outside folder gives too and the
-secret files its agents do not get. An outside value of the same name and a hand-made secret
-file of a loose mode are canaries of their own. Each kind of agent's start is followed by a
-look at every process's arguments; every tmux session's environment is read, and no secret's
-name is in a bug report."""
+secret files its agents do not get. The session in the project starts through the server, as
+New session's Project way starts it (openspec change new-session-in-project). An outside
+value of the same name and a hand-made secret file of a loose mode are canaries of their
+own. Each kind of agent's start is followed by a look at every process's arguments; every
+tmux session's environment is read, and no secret's name is in a bug report."""
 
 import json
 import os
@@ -30,7 +31,7 @@ from agent_helpers import install_kit, wait_for
 from test_project_sessions import _approve_and_start, stop_all
 from test_project_variables import TINY, environ, tell, wait_idle
 
-from lado import project_secrets, projects, runs, runtime, state, tmux
+from lado import project_secrets, projects, runs, state, tmux
 from lado.server import auth
 from lado.server import run as server_run
 
@@ -175,7 +176,7 @@ def test_files_holding_reads_links_and_fails_on_a_read_error(tmp_path):
             files_holding(root, b"canary-x", [])
 
 
-def test_a_project_secret_is_found_nowhere_else(shop, tmp_path, monkeypatch):
+def test_a_project_secret_is_found_nowhere_else(shop, tmp_path, monkeypatch, fakes_known_to_lado):
     canary = f"canary-{uuid.uuid4().hex}"
     outside, loose = f"outside-{uuid.uuid4().hex}", f"loose-{uuid.uuid4().hex}"
     canaries = (canary, outside, loose)
@@ -241,9 +242,23 @@ def test_a_project_secret_is_found_nowhere_else(shop, tmp_path, monkeypatch):
     ]
     said.append(body)
 
-    # Every kind of agent of a session in the project gets the secrets.
-    kits = ["default", "itcanary"]
-    runtime.start_session(None, None, None, "fake", kits, project="shop", repo_name="frontend")
+    # Every kind of agent of a session in the project gets the secrets; the session starts
+    # through the server, as New session's Project way starts it (what it shows first).
+    status, body = api.call("GET", "/api/project-launch?project=shop")
+    assert status == 200 and json.loads(body)["repo"] == "frontend", body
+    said.append(body)
+    status, body = api.call(
+        "POST",
+        "/api/sessions",
+        {
+            "where": {"kind": "project", "project": "shop", "repo": "frontend"},
+            "kits": ["default", "itcanary"],
+            "provider": "fake",
+        },
+    )
+    assert status == 200, body
+    assert json.loads(body)["session"]["project"] == "shop"
+    said.append(body)
     assert environ("shop-frontend", "supervisor")[CLI_NAME] == canary
     assert LOOSE_NAME not in environ("shop-frontend", "supervisor")
     no_canary_in_processes(*canaries)

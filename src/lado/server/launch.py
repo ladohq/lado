@@ -32,6 +32,7 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
             default_name=None,
             name_state=None,
             provider=None,
+            project=_project_place(path),
         )
     kind, hint = None, None
     try:
@@ -59,6 +60,13 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         warning=runtime.outside_workspace(root or path),  # a start judges the root
         scratch=kind in ("missing", "not_repo") and _can_start_from_scratch(path),
     )
+
+
+def _project_place(path: str) -> models.ProjectPlace | None:
+    place = projects.place(path)
+    if place is None:
+        return None
+    return models.ProjectPlace(id=place.id, title=projects.get(place.id).title, repo=place.repo)
 
 
 def _can_start_from_scratch(path: str) -> bool:
@@ -154,11 +162,13 @@ def _subfolders(path: Path) -> list[str]:
     return names[:SUBFOLDERS]
 
 
-def name_state(name: str, root: str, has_db: bool) -> models.NameState:
+def name_state(name: str, root: str, has_db: bool, project: str | None = None) -> models.NameState:
+    """Who has the name `name` of a new session in `root`; with `project`, a session of the
+    name that is not of that project is elsewhere too: the core resumes none such."""
     sess = state.get_session(name) if has_db else None
     if sess is None:
         return "free"
-    if sess.repo != root:
+    if sess.repo != root or (project is not None and sess.project != project):
         return "taken_elsewhere"
     running = (runtime.SessionStatus.RUNNING, runtime.SessionStatus.LOOP_DOWN)
     return "running" if runtime.session_status(sess) in running else "stopped_here"
@@ -293,6 +303,61 @@ def project_summaries() -> list[models.ProjectSummary]:
         )
         for project, where, found in projects.listed()
     ]
+
+
+def project_launch(asked: str | None, asked_repo: str | None, has_db: bool) -> models.ProjectLaunch:
+    """What the Project way shows: the projects by title, the project `asked` (else that of
+    the latest started session in a project whose folder is found, else the first found,
+    else the first), its repository `asked_repo` (else that of the project's latest started
+    session still there, else the first), and what a start there takes; makes nothing."""
+    listed = project_summaries() if has_db else []
+    listed.sort(key=lambda p: (p.title or p.id).casefold())
+    started = state.sessions_by_start() if listed else []
+    found = [p.id for p in listed if p.found]
+    if asked in {p.id for p in listed}:
+        project = asked
+    else:
+        used = (s.project for s in started if s.project in found)
+        project = next(used, None) or next(iter(found + [p.id for p in listed]), None)
+    nothing = models.ProjectLaunch(
+        projects=listed,
+        project=project,
+        repos=[],
+        repo=None,
+        root=None,
+        default_name=None,
+        name_state=None,
+        provider=None,
+        last=None,
+    )
+    if project is None:
+        return nothing
+    repos = projects.repositories(project)
+    in_project = [s for s in started if s.project == project]
+    by_folder = {os.path.realpath(r.path): r for r in repos}
+    named = {r.name: r for r in repos}
+    if asked_repo in named:
+        repo = named[asked_repo]
+    else:
+        still_there = (by_folder.get(os.path.realpath(s.repo)) for s in in_project)
+        repo = next((r for r in still_there if r), None) or next(iter(repos), None)
+    if repo is None:
+        return nothing
+    real = os.path.realpath(repo.path)
+    last = next((s for s in in_project if os.path.realpath(s.repo) == real), None)
+    root = _root_or_none(str(repo.path)) or str(repo.path)
+    name = runtime.project_session_name(project, repo.name)
+    return nothing.model_copy(
+        update={
+            "repos": [project_repo(r) for r in repos],
+            "repo": repo.name,
+            "root": root,
+            "default_name": name,
+            "name_state": name_state(name, root, has_db, project=project),
+            "provider": provider_suggestion(root),
+            "last": models.session_info(last) if last else None,
+        }
+    )
 
 
 def project_id(title: str | None, typed: str | None) -> models.ProjectId:

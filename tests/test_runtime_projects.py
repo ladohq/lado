@@ -2,6 +2,7 @@
 LADO's projects/ (openspec change sessions-in-projects)."""
 
 import os
+import subprocess
 from pathlib import Path
 
 import agent_helpers
@@ -34,6 +35,23 @@ def test_a_session_in_a_project_takes_its_repository_and_name(shop, fake_tmux):
     assert (stored.repo, stored.project) == (str(shop / "frontend"), "shop")
     [(kind, session, _window, cwd, *_)] = fake_tmux
     assert (kind, session, cwd) == ("new_session", "shop-frontend", str(shop / "frontend"))
+
+
+def test_the_default_name_of_a_session_in_a_project():
+    assert runtime.project_session_name("shop", "Front.End") == "shop-front-end"
+    assert runtime.project_session_name("shop", "frontend") == "shop-frontend"
+
+
+def test_the_longest_project_and_repository_give_a_session_name_that_starts(shop, fake_tmux):
+    id, repo = "p" * projects.MAX_ID, "Repo.Name_" + "x" * (projects.MAX_REPO_NAME - 10)
+    name = runtime.project_session_name(id, repo)
+    assert name == runtime.slug(name) and len(name) == projects.MAX_ID + 1 + projects.MAX_REPO_NAME
+    branch = f"lado/{name}/worker"  # the worktrees' branches carry the session's name
+    assert subprocess.run(["git", "check-ref-format", "--branch", branch]).returncode == 0
+    projects.create(id, None)
+    init_repo(projects.folder(id) / repo)
+    assert _start(project=id, repo_name=repo).session.name == name
+    assert state.get_session(name).project == id
 
 
 def test_a_given_name_is_kept(shop):

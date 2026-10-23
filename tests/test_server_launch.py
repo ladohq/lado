@@ -63,6 +63,7 @@ def test_a_repository_folder_is_ok_with_its_branch_name_and_subfolders(client, r
         "provider": None,
         "warning": None,
         "scratch": False,
+        "project": None,
     }
 
 
@@ -509,10 +510,10 @@ def test_a_kit_not_found_says_how_to_move_from_sources_yaml(client, repo, fake_t
 
 
 def test_only_a_folder_and_a_full_path_are_taken(client, repo, fake_tmux):
-    answer = client.post("/api/sessions", json={"where": {"kind": "project", "path": "x"}})
+    answer = client.post("/api/sessions", json={"where": {"kind": "remote", "path": "x"}})
     assert (answer.status_code, answer.json()["detail"]) == (
         400,
-        'where of kind "project" is not supported yet',
+        'where of kind "remote" is not supported yet',
     )
     answer = launch(client, "some/where")
     assert answer.status_code == 400 and "full path" in answer.json()["detail"]
@@ -918,6 +919,7 @@ def test_a_folder_in_a_project_is_refused_before_git(client, shop):
         "provider": None,
         "warning": None,
         "scratch": False,
+        "project": {"id": "shop", "title": "Shop", "repo": "frontend"},
     }
     notes = folder(client, shop / "notes")  # missing: no fresh start there either
     assert (notes["problem_kind"], notes["scratch"]) == ("in_project", False)

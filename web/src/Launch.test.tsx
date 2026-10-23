@@ -11,6 +11,7 @@ import type {
   CloneTarget,
   FolderInfo,
   KitInfo,
+  ProjectLaunch,
   ProviderInfo,
   RecentFolder,
   ScratchTarget,
@@ -100,6 +101,45 @@ let abouts: Record<string, SessionAbout>; // by session; none: 404
 let providers: () => Promise<ProviderInfo[]>;
 let answers: Record<string, () => Response | Promise<Response>>; // "METHOD path" -> the server's answer
 let calls: Call[];
+// GET /api/project-launch: Shop with backend and frontend, its last session in backend
+let projectLaunch: (project: string | null, repo: string | null) => ProjectLaunch;
+
+const shopRepo = (name: string) => ({ name, path: `/ws/projects/shop/${name}`, branch: "main", remote: null });
+
+function shopLaunch(project: string | null, repo: string | null): ProjectLaunch {
+  const projects = [
+    { id: "acme", title: "ACME CRM", folder: "/ws/projects/acme", found: true, repos: 0, running: [] },
+    { id: "shop", title: "Shop", folder: "/ws/projects/shop", found: true, repos: 2, running: [] },
+  ];
+  if (project === "acme") {
+    const none = { default_name: null, name_state: null, provider: null, last: null };
+    return { projects, project: "acme", repos: [], repo: null, root: null, ...none };
+  }
+  const chosen = repo ?? "backend";
+  const last =
+    chosen === "backend"
+      ? session("shop-backend", {
+          repo: "/real/projects/shop/backend",
+          status: "stopped",
+          kits: ["team"],
+          provider: "kilo",
+          permission_mode: "plan",
+          project: "shop",
+        })
+      : null;
+  return {
+    projects,
+    project: "shop",
+    repos: [shopRepo("backend"), shopRepo("frontend")],
+    repo: chosen,
+    // git's root, links resolved: the workspace /ws is a link to /real
+    root: `/real/projects/shop/${chosen}`,
+    default_name: `shop-${chosen}`,
+    name_state: last ? "stopped_here" : "free",
+    provider: last ? { name: "kilo", reason: "last_session" } : null,
+    last,
+  };
+}
 
 const HOME_WORKSPACE = "/Users/ann/workspace"; // the default, not made unless a test says so
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
@@ -116,6 +156,7 @@ beforeEach(() => {
   providers = async () => [provider("claude"), provider("kilo")];
   answers = {};
   calls = [];
+  projectLaunch = shopLaunch;
   vi.stubGlobal("matchMedia", (query: string) => ({
     matches: false,
     media: query,
@@ -142,6 +183,9 @@ beforeEach(() => {
         return json(scratchTarget(url.searchParams.get("text") ?? "", url.searchParams.get("path")));
       }
       if (url.pathname === "/api/repos-folder") return json(workspace);
+      if (url.pathname === "/api/project-launch") {
+        return json(projectLaunch(url.searchParams.get("project"), url.searchParams.get("repo")));
+      }
       if (url.pathname === "/api/kits") return json(kits);
       if (url.pathname === "/api/providers") return json(await providers());
       const about = /^\/api\/sessions\/([^/]+)\/about$/.exec(url.pathname);
@@ -2105,13 +2149,14 @@ async function scratchReady(text = "Сайт кофейни") {
   return dialog;
 }
 
-test("the switch has From scratch first, then Folder and Clone from URL", async () => {
+test("the switch has From scratch first, then Folder, Clone from URL and Project", async () => {
   const dialog = await openLaunch(false);
   const group = within(dialog).getByRole("group", { name: "Source" });
   expect(within(group).getAllByRole("button").map((one) => one.textContent)).toEqual([
     "From scratch",
     "Folder",
     "Clone from URL",
+    "Project",
   ]);
 });
 
@@ -2324,4 +2369,205 @@ test("a folder with files keeps LAD-5's command and no Start from scratch here",
   type("/home/ann/notes");
   expect(await within(dialog).findByText("git init")).toBeTruthy();
   expect(within(dialog).queryByRole("button", { name: "Start from scratch here" })).toBeNull();
+});
+
+// Project (openspec change new-session-in-project)
+
+async function openProject() {
+  const dialog = await openLaunch();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Project" }));
+  await within(dialog).findByRole("radiogroup", { name: "Repository" });
+  return dialog;
+}
+
+const repoRadio = (dialog: HTMLElement, name: string) => within(dialog).getByRole("radio", { name: new RegExp(`^${name}`) });
+const startIn = (title: string) => screen.getByRole("button", { name: `Start in ${title}` }) as HTMLButtonElement;
+const nameField = () => screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
+
+test("Project chooses the last used repository and takes its last session's settings", async () => {
+  const dialog = await openProject();
+  expect((within(dialog).getByRole("combobox", { name: "Project" }) as HTMLSelectElement).value).toBe("shop");
+  expect(repoRadio(dialog, "backend").getAttribute("aria-checked")).toBe("true");
+  await waitFor(() => expect(nameField().value).toBe("shop-backend"));
+  const kitsField = screen.getByRole("group", { name: "Kits" });
+  await waitFor(() => expect(within(kitsField).getByText("team")).toBeTruthy());
+  expect(screen.getByText("from the last session of this folder")).toBeTruthy();
+  await waitFor(() => expect(providerSelect().value).toBe("kilo"));
+  expect((screen.getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement).value).toBe("plan");
+  expect(within(dialog).getByText(/a stopped session shop-backend exists for this folder/)).toBeTruthy();
+  expect(calls.some((c) => c.path === "/api/kits?where=%2Freal%2Fprojects%2Fshop%2Fbackend")).toBe(true);
+});
+
+test("Start names the project the session goes to, and follows the choice", async () => {
+  const dialog = await openProject();
+  expect(startIn("Shop")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Start session" })).toBeNull();
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "Project" }), { target: { value: "acme" } });
+  expect(await screen.findByRole("button", { name: "Start in ACME CRM" })).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Folder" }));
+  expect(startButton()).toBeTruthy(); // the other ways keep Start session
+});
+
+test("Start in starts in the project's repository chosen", async () => {
+  answers["POST /api/sessions"] = () =>
+    json({ session: session("shop-frontend", { repo: "/ws/projects/shop/frontend", project: "shop" }), ...STARTED });
+  const dialog = await openProject();
+  fireEvent.click(repoRadio(dialog, "frontend"));
+  await waitFor(() => expect(nameField().value).toBe("shop-frontend"));
+  expect(calls.some((c) => c.path === "/api/project-launch?project=shop&repo=frontend")).toBe(true);
+  fireEvent.change(providerSelect(), { target: { value: "claude" } });
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  fireEvent.click(startIn("Shop"));
+  await screen.findByRole("region", { name: "Session shop-frontend" });
+  const sent = calls.find((c) => c.method === "POST" && c.path === "/api/sessions")!;
+  expect(sent.body).toEqual({
+    where: { kind: "project", project: "shop", repo: "frontend" },
+    name: "shop-frontend",
+    kits: ["default"], // frontend has no last session: LADO's defaults, as in Folder
+    provider: "claude",
+  });
+});
+
+test("a taken name in Project shows the core's text and Resume it, its folder git's root through a link", async () => {
+  sessions = [session("shop-backend", { status: "stopped", repo: "/real/projects/shop/backend", project: "shop" })];
+  const text = 'session "shop-backend" exists already (stopped, in /real/projects/shop/backend); resume it, or give the new session another name';
+  answers["POST /api/sessions"] = () =>
+    json({ detail: { message: text, status: "stopped", repo: "/real/projects/shop/backend" } }, 409);
+  const dialog = await openProject();
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  fireEvent.click(startIn("Shop"));
+  expect((await within(dialog).findByRole("alert")).textContent).toBe(text);
+  const refusal = dialog.querySelector(".launch-refused") as HTMLElement;
+  fireEvent.click(within(refusal).getByRole("button", { name: "Resume it" }));
+  expect(await screen.findByRole("dialog", { name: "Resume session" })).toBeTruthy();
+});
+
+test("an empty project leaves Start off and leads to its page", async () => {
+  answers["GET /api/projects/acme"] = () => json({ detail: 'unknown project "acme"' }, 404);
+  const dialog = await openProject();
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "Project" }), { target: { value: "acme" } });
+  fireEvent.click(await within(dialog).findByRole("button", { name: "Open ACME CRM" }));
+  expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull();
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/projects/acme")).toBe(true));
+});
+
+test("Start is off in an empty project", async () => {
+  projectLaunch = () => shopLaunch("acme", null);
+  const dialog = await openLaunch();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Project" }));
+  await within(dialog).findByText(/No repositories yet/);
+  expect(startIn("ACME CRM").disabled).toBe(true);
+  expect(nameField().value).toBe("");
+});
+
+const SHOP_PLACE = { id: "shop", title: "Shop", repo: "frontend" };
+
+test("while the server answers a new choice, the list stays, keeps the focus and Start waits", async () => {
+  const dialog = await openProject();
+  let release = () => {};
+  answers["GET /api/project-launch"] = async () => {
+    const asked = calls[calls.length - 1].path;
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const query = new URL(asked, "http://lado.test").searchParams;
+    return json(shopLaunch(query.get("project"), query.get("repo")));
+  };
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  repoRadio(dialog, "backend").focus();
+  fireEvent.keyDown(repoRadio(dialog, "backend"), { key: "ArrowDown" });
+  // Asked, not answered: the list is there, the focus on frontend, chosen at once.
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/project-launch?project=shop&repo=frontend")).toBe(true));
+  expect(document.activeElement).toBe(repoRadio(dialog, "frontend"));
+  expect(repoRadio(dialog, "frontend").getAttribute("aria-checked")).toBe("true");
+  expect(within(dialog).getByRole("combobox", { name: "Project" })).toBeTruthy();
+  expect(startIn("Shop").disabled).toBe(true); // what a start takes is not known yet
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+  expect(document.activeElement).toBe(repoRadio(dialog, "backend"));
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/project-launch?project=shop&repo=backend")).toBe(true));
+  await act(async () => release());
+  await waitFor(() => expect(nameField().value).toBe("shop-backend"));
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  expect(repoRadio(dialog, "backend").getAttribute("aria-checked")).toBe("true");
+});
+
+test("a taken name of a session of this folder in no project offers no Resume it", async () => {
+  // A session started there before the project: the core refuses the name (409), but a
+  // resume would not be one of this project's.
+  sessions = [session("shop-backend", { status: "stopped", repo: "/real/projects/shop/backend", project: null })];
+  const text = 'session "shop-backend" exists already (stopped, in /real/projects/shop/backend); resume it, or give the new session another name';
+  answers["POST /api/sessions"] = () =>
+    json({ detail: { message: text, status: "stopped", repo: "/real/projects/shop/backend" } }, 409);
+  const dialog = await openProject();
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  fireEvent.click(startIn("Shop"));
+  expect((await within(dialog).findByRole("alert")).textContent).toBe(text);
+  const refusal = dialog.querySelector(".launch-refused") as HTMLElement;
+  expect(within(refusal).queryByRole("button", { name: "Resume it" })).toBeNull();
+});
+
+test("a taken name of a running session of this folder in another project offers no Open it", async () => {
+  sessions = [session("shop-backend", { repo: "/real/projects/shop/backend", project: "acme" })];
+  const text = 'session "shop-backend" exists already (running, in /real/projects/shop/backend); resume it, or give the new session another name';
+  answers["POST /api/sessions"] = () =>
+    json({ detail: { message: text, status: "running", repo: "/real/projects/shop/backend" } }, 409);
+  const dialog = await openProject();
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  fireEvent.click(startIn("Shop"));
+  await within(dialog).findByRole("alert");
+  const refusal = dialog.querySelector(".launch-refused") as HTMLElement;
+  expect(within(refusal).queryByRole("button", { name: "Open it" })).toBeNull();
+});
+
+test("Folder's refusal of a project's repository switches to Project with it", async () => {
+  folders["/ws/projects/shop/frontend"] = folder("/ws/projects/shop/frontend", {
+    ok: false,
+    problem: IN_SHOP,
+    root: null,
+    branch: null,
+    problem_kind: "in_project",
+    hint: SHOP_HINT,
+    default_name: null,
+    name_state: null,
+    project: SHOP_PLACE,
+  });
+  const dialog = await openLaunch();
+  type("/ws/projects/shop/frontend");
+  const box = (await screen.findByText(IN_SHOP)).closest(".field-note.bad") as HTMLElement;
+  expect(within(box).getByText(SHOP_HINT.command)).toBeTruthy(); // the command stays below
+  fireEvent.click(within(box).getByRole("button", { name: "Start in the project Shop" }));
+  expect(pressed(dialog, "Project")).toBe("true");
+  await waitFor(() => expect(repoRadio(dialog, "frontend").getAttribute("aria-checked")).toBe("true"));
+  expect(nameField().value).toBe("shop-frontend");
+  expect(calls.some((c) => c.path === "/api/project-launch?project=shop&repo=frontend")).toBe(true);
+});
+
+test("Folder's refusal of another folder of a project opens the project", async () => {
+  const notes = "/ws/projects/shop/notes";
+  answers["GET /api/projects/shop"] = () => json({ detail: 'unknown project "shop"' }, 404);
+  folders[notes] = folder(notes, {
+    ok: false,
+    problem: `${notes} belongs to the project Shop: start a session in the project`,
+    root: null,
+    branch: null,
+    problem_kind: "in_project",
+    hint: { text: "See the project's repositories:", command: "lado project show shop" },
+    default_name: null,
+    name_state: null,
+    project: { ...SHOP_PLACE, repo: null },
+  });
+  const dialog = await openLaunch();
+  type(notes);
+  expect(within(dialog).queryByRole("button", { name: "Start in the project Shop" })).toBeNull();
+  fireEvent.click(await within(dialog).findByRole("button", { name: "Open the project Shop" }));
+  expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull();
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/projects/shop")).toBe(true));
+});
+
+test("a refusal outside a project offers no project", async () => {
+  await openLaunch();
+  folders["/tmp/x"] = folder("/tmp/x", { ok: false, problem: "/tmp/x does not exist", problem_kind: "missing", root: null });
+  type("/tmp/x");
+  await screen.findByText("/tmp/x does not exist");
+  expect(screen.queryByRole("button", { name: /in the project|Open the project/ })).toBeNull();
 });

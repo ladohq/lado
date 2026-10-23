@@ -14,6 +14,7 @@ import {
   getFolder,
   getKits,
   getLimits,
+  getProjectLaunch,
   getProviders,
   getRecentFolders,
   getWorkspace,
@@ -27,7 +28,10 @@ import {
   type CloneTarget,
   type FolderInfo,
   type KitInfo,
+  type Launch,
   type Limits,
+  type ProjectLaunch,
+  type ProjectPlace,
   type ProviderInfo,
   type ProviderSuggestion,
   type RecentFolder,
@@ -40,8 +44,9 @@ import {
   type Workspace,
 } from "./api";
 import { useCopy } from "./Copy";
+import { ProjectField } from "./LaunchProject";
 import { useLive } from "./live";
-import { sessionPath } from "./paths";
+import { projectPath, sessionPath } from "./paths";
 
 // How long the window waits after a keystroke before it asks the server about the folder.
 export const DEBOUNCE = 200;
@@ -56,8 +61,9 @@ const CAN_CLONE = new Set<CloneTarget["state"]>(["new", "empty"]);
 // The folder states a fresh start may go on in (lado.scratch.CAN_START).
 const CAN_START = new Set<ScratchTarget["state"]>(["new", "empty"]);
 
-// Where a new session's folder comes from: made from scratch, one there is, or a clone.
-type Source = "scratch" | "folder" | "url";
+// Where a new session's folder comes from: made from scratch, one there is, a clone, or a
+// project's repository.
+type Source = "scratch" | "folder" | "url" | "project";
 
 const DEFAULT_KIT = "default";
 const DEFAULT_MODE = "default"; // also "no mode given": the provider's own default
@@ -70,7 +76,9 @@ const SUGGESTED: Record<ProviderSuggestion["reason"], string> = {
 // A session of these statuses can be resumed; a running one only opened.
 const RESUMABLE = new Set<SessionInfo["status"]>(["stopped", "tmux_gone"]);
 
-export type LaunchMode = { kind: "new" } | { kind: "resume"; session: SessionInfo };
+// A new session's window opens in Project with `project` chosen (the project's page), else
+// in Folder (From scratch without recent folders).
+export type LaunchMode = { kind: "new"; project?: string } | { kind: "resume"; session: SessionInfo };
 
 const LaunchContext = createContext<(mode?: LaunchMode) => void>(() => {});
 
@@ -215,8 +223,14 @@ function LaunchDialog({
   // for which URL, the running job, and what the last clone ended in.
   // The source starts in Folder and becomes From scratch once the recent folders are none,
   // unless the human picked one or typed a folder or URL before (sourceTouched).
-  const [source, setSourceState] = useState<Source>("folder");
-  const sourceTouched = useRef(false);
+  const asksProject = mode.kind === "new" ? (mode.project ?? null) : null;
+  const [source, setSourceState] = useState<Source>(asksProject ? "project" : "folder");
+  const sourceTouched = useRef(asksProject !== null);
+  // Project: the project and repository asked of the server (null: its choice).
+  const [projectAsk, setProjectAsk] = useState<{ project: string | null; repo: string | null }>({
+    project: asksProject,
+    repo: null,
+  });
   const setSource = (next: Source) => {
     sourceTouched.current = true;
     setSourceState(next);
@@ -256,6 +270,32 @@ function LaunchDialog({
 
   const cloning = source === "url";
   const scratching = source === "scratch";
+  const projecting = source === "project";
+  const projectAsked = useAsked(projecting && !resuming ? JSON.stringify(projectAsk) : null, (key) => {
+    const { project, repo } = JSON.parse(key) as typeof projectAsk;
+    return getProjectLaunch(project, repo);
+  });
+  // What a start takes: only the answer to what is asked now.
+  const inProject = valueOf(projectAsked);
+  const projectRepo = inProject?.repos.find((one) => one.name === inProject.repo) ?? null;
+  // What the field shows: while a new choice is asked, the last answer with the choice in
+  // it, so the field stays (its select and list, their focus) and Start waits.
+  const [lastProject, setLastProject] = useState<ProjectLaunch | null>(null);
+  useEffect(() => {
+    if (inProject) setLastProject(inProject);
+  }, [inProject]);
+  const shownProject =
+    inProject ??
+    (lastProject && {
+      ...lastProject,
+      project: projectAsk.project ?? lastProject.project,
+      repo:
+        projectAsk.project === lastProject.project && projectAsk.repo !== null ? projectAsk.repo : lastProject.repo,
+    });
+  // Start names the project the session goes to: the window opens on the last one used,
+  // and another project's session gets another client's keys.
+  const chosenProject = shownProject?.projects.find((one) => one.id === shownProject.project) ?? null;
+  const projectTitle = projecting && chosenProject ? (chosenProject.title ?? chosenProject.id) : null;
   const typedText = scratchText.trim();
   const typedScratchInto = (scratchInto ?? "").trim();
   const settledText = useDebounced(typedText);
@@ -314,7 +354,8 @@ function LaunchDialog({
     sourceTouched.current = true; // decided once
     if (recentAsked.length === 0) setSourceState("scratch");
   }, [recentAsked]);
-  const root = resuming?.repo ?? (scratching ? null : folder?.root) ?? null;
+  // In Project the repository's git root (links resolved), as a session's folder is given.
+  const root = resuming?.repo ?? (scratching ? null : projecting ? inProject?.root : folder?.root) ?? null;
   const kitList = useAsked(root ?? "", (where) => getKits(where || null));
   const providerList = useOnce(getProviders);
   const providers = valueOf(providerList);
@@ -328,33 +369,39 @@ function LaunchDialog({
   const providerInfo = providers?.find((one) => one.name === chosenProvider) ?? null;
   const modes = providerInfo?.permission_modes ?? [];
 
-  // M5: kits, provider and mode of a new session come from the folder's last session.
-  const last = resuming ? null : (recent.find((one) => one.path === folder?.root)?.session ?? null);
+  // M5: kits, provider and mode of a new session come from the folder's last session; in
+  // Project, from the repository's last session in the project.
+  const last = resuming
+    ? null
+    : projecting
+      ? (inProject?.last ?? null)
+      : (recent.find((one) => one.path === folder?.root)?.session ?? null);
   useEffect(() => {
-    if (resuming || (folder === null && source === "folder")) return;
+    if (resuming || (folder === null && source === "folder") || (inProject === null && projecting)) return;
     // A clone's or a fresh start's folder has no last session: LADO's defaults, not a
     // folder's typed before.
-    const from = source === "folder" ? last : null;
+    const from = source === "folder" || projecting ? last : null;
     if (!touched.has("kits")) setKits(from?.kits ?? [DEFAULT_KIT]);
     if (!touched.has("mode")) setPermissionMode(from?.permission_mode ?? DEFAULT_MODE);
     setFromLast(from !== null);
     // Again only when the folder's last session is another one, or the source changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [last?.name, folder?.root, source]);
+  }, [last?.name, folder?.root, projectRepo?.path, source]);
 
   // No provider is the default: the folder's suggestion (a clone's or a fresh start's
-  // folder's), with its reason, or none.
-  const suggesting = cloning ? target : scratching ? fresh : folder;
+  // folder's, a project's repository's), with its reason, or none.
+  const suggesting = cloning ? target : scratching ? fresh : projecting ? inProject : folder;
+  const suggestingPath = suggesting && "path" in suggesting ? suggesting.path : (projectRepo?.path ?? null);
   useEffect(() => {
     if (resuming || suggesting === null || touched.has("provider")) return;
     setProvider(suggesting.provider?.name ?? null);
     setSuggested(suggesting.provider?.reason ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggesting?.path, suggesting?.provider?.name, suggesting?.provider?.reason, source]);
+  }, [suggestingPath, suggesting?.provider?.name, suggesting?.provider?.reason, source]);
 
   const touch = (field: string) => setTouched((before) => new Set(before).add(field));
 
-  const named = cloning ? target : current;
+  const named = cloning ? target : projecting ? shownProject : current;
   const shownName = name ?? named?.default_name ?? "";
   const resumable = (sessionName: string) => {
     const loaded = live.sessions;
@@ -404,15 +451,17 @@ function LaunchDialog({
     fresh.name_state === "free" &&
     providerInfo?.installed === true &&
     kits.length > 0;
+  const projectReady =
+    !promptOver && projectRepo !== null && providerInfo?.installed === true && kits.length > 0 && shownName !== "";
 
   // A new session in `where`, as the window's fields say; from scratch, its folder is made
   // a repository first, and the session takes the name and title of the name typed.
-  const startIn = (where: string, kind: "folder" | "scratch" = "folder") => {
+  const startIn = (where: Launch["where"]) => {
     const off = splitWithout(without);
     const scratchNames =
-      kind === "scratch" ? { name: fresh?.name, ...(fresh?.title ? { title: fresh.title } : {}) } : null;
+      where.kind === "scratch" ? { name: fresh?.name, ...(fresh?.title ? { title: fresh.title } : {}) } : null;
     return startSession({
-      where: { kind, path: where },
+      where,
       ...(scratchNames ?? (shownName ? { name: shownName } : {})),
       kits,
       ...(chosenProvider !== null ? { provider: chosenProvider } : {}),
@@ -441,6 +490,22 @@ function LaunchDialog({
     setRefused(null);
   };
 
+  // Folder's refusal inside a project: Project with its repository, or the project's page.
+  const toProject = (place: ProjectPlace) => {
+    if (place.repo === null) {
+      leave(projectPath(place.id));
+      return;
+    }
+    setSource("project");
+    setProjectAsk({ project: place.id, repo: place.repo });
+    setRefused(null);
+  };
+
+  const leave = (to: string) => {
+    onClose();
+    navigate(to);
+  };
+
   // Make the folder a repository and start there; a start refused after the repository
   // was made leaves the window in Folder with it and the refusal, as after a clone.
   const createAndStart = async () => {
@@ -449,7 +514,7 @@ function LaunchDialog({
     setBusy(true);
     setRefused(null);
     try {
-      opened(await startIn(where, "scratch"));
+      opened(await startIn({ kind: "scratch", path: where }));
     } catch (error) {
       const given = error instanceof ApiError ? error : new ApiError(0, String(error));
       if (given.status === 400 || given.status === 409) {
@@ -525,7 +590,7 @@ function LaunchDialog({
       return;
     }
     try {
-      opened(await startIn(running.path));
+      opened(await startIn({ kind: "folder", path: running.path }));
     } catch (error) {
       toFolder(running.path);
       setRefused(error instanceof ApiError ? error : new ApiError(0, String(error)));
@@ -547,7 +612,11 @@ function LaunchDialog({
         if (!sameList(off, resuming.without)) changed.without = off;
         started = await resumeSession(resuming.name, { ...changed, ...withPrompt });
       } else {
-        started = await startIn(path.trim());
+        started = await startIn(
+          projecting && inProject?.project && projectRepo
+            ? { kind: "project", project: inProject.project, repo: projectRepo.name }
+            : { kind: "folder", path: path.trim() },
+        );
       }
       opened(started);
     } catch (error) {
@@ -558,6 +627,12 @@ function LaunchDialog({
 
   const title = resuming ? "Resume session" : "New session";
   const taken = refused?.status === 409 ? (refused.detail as Taken) : null;
+  // The session that has the name is this folder's (in Project: of this project too, as
+  // the core resumes none of another project or none): Resume it or Open it.
+  const takenHere =
+    taken !== null &&
+    taken.repo === root &&
+    (!projecting || (resumable(shownName)?.project ?? null) === (inProject?.project ?? null));
   const detail = refused?.status === 400 ? refused.detail : null;
   const switchOff =
     detail !== null && typeof detail === "object" && "switch_off" in detail ? (detail as Refused).switch_off : [];
@@ -587,6 +662,7 @@ function LaunchDialog({
           event.preventDefault();
           if (busy) return;
           if (source === "folder" && ready) void submit();
+          if (projecting && projectReady) void submit();
           if (cloning && cloneReady) void cloneAndStart();
           if (scratching && scratchReady) void createAndStart();
         }}
@@ -609,6 +685,23 @@ function LaunchDialog({
             problem={scratchAsked !== null && "error" in scratchAsked ? scratchAsked.error : null}
             head={<SourceSwitch source={source} onSource={setSource} disabled={busy} />}
             disabled={busy}
+          />
+        ) : projecting ? (
+          <ProjectField
+            launch={shownProject}
+            asking={inProject === null}
+            problem={projectAsked !== null && "error" in projectAsked ? projectAsked.error : null}
+            head={<SourceSwitch source={source} onSource={setSource} disabled={busy} />}
+            disabled={busy}
+            onProject={(project) => {
+              setProjectAsk({ project, repo: null });
+              setRefused(null);
+            }}
+            onRepo={(repo) => {
+              setProjectAsk({ project: shownProject?.project ?? null, repo });
+              setRefused(null);
+            }}
+            onLeave={leave}
           />
         ) : cloning ? (
           <UrlField
@@ -634,6 +727,7 @@ function LaunchDialog({
               setRefused(null);
             }}
             onScratch={toScratch}
+            onProject={toProject}
             folder={current}
             checking={!resuming && toCheck(path.trim()) !== null && current === null}
             problem={checked !== null && "error" in checked ? checked.error : null}
@@ -854,12 +948,12 @@ function LaunchDialog({
                 {switchOffLabel(item)}
               </button>
             ))}
-            {taken && taken.repo === root && RESUMABLE.has(taken.status) && resumable(shownName) && (
+            {taken && takenHere && RESUMABLE.has(taken.status) && resumable(shownName) && (
               <button type="button" className="quiet" onClick={() => resumeIt(shownName)}>
                 Resume it
               </button>
             )}
-            {taken && taken.repo === root && !RESUMABLE.has(taken.status) && (
+            {taken && takenHere && !RESUMABLE.has(taken.status) && (
               <button
                 type="button"
                 className="quiet"
@@ -892,8 +986,16 @@ function LaunchDialog({
               {busy ? "Starting…" : "Create and start"}
             </button>
           ) : !cloning ? (
-            <button type="submit" className="primary" disabled={busy || !ready}>
-              {busy ? (resuming ? "Resuming…" : "Starting…") : title === "New session" ? "Start session" : title}
+            <button type="submit" className="primary" disabled={busy || !(projecting ? projectReady : ready)}>
+              {busy
+                ? resuming
+                  ? "Resuming…"
+                  : "Starting…"
+                : projectTitle !== null
+                  ? `Start in ${projectTitle}`
+                  : title === "New session"
+                    ? "Start session"
+                    : title}
             </button>
           ) : target?.state === "same_repo" && !busy ? (
             <button
@@ -970,6 +1072,7 @@ function WhereField({
   path,
   onPath,
   onScratch,
+  onProject,
   folder,
   checking,
   problem,
@@ -981,6 +1084,7 @@ function WhereField({
   path: string;
   onPath: (path: string) => void;
   onScratch: (path: string) => void; // Start from scratch here
+  onProject: (place: ProjectPlace) => void; // the refused folder's project
   folder: FolderInfo | null;
   checking: boolean;
   problem: string | null;
@@ -1127,7 +1231,23 @@ function WhereField({
               </div>
             </div>
           ) : (
-            folder.hint && <FolderHint text={folder.hint.text} command={folder.hint.command} />
+            <>
+              {folder.project && (
+                <div className="folder-hint">
+                  <div className="folder-hint-command">
+                    <button
+                      type="button"
+                      className="chip-button"
+                      disabled={disabled}
+                      onClick={() => onProject(folder.project!)}
+                    >
+                      {`${folder.project.repo ? "Start in" : "Open"} the project ${folder.project.title ?? folder.project.id}`}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {folder.hint && <FolderHint text={folder.hint.text} command={folder.hint.command} />}
+            </>
           )}
         </div>
       )}
@@ -1137,8 +1257,8 @@ function WhereField({
   );
 }
 
-// Where a session's folder comes from: a new one made from scratch, one there is, or a
-// clone of a git URL.
+// Where a session's folder comes from: a new one made from scratch, one there is, a clone
+// of a git URL, or a project's repository.
 function SourceSwitch({
   source,
   onSource,
@@ -1158,6 +1278,9 @@ function SourceSwitch({
       </button>
       <button type="button" aria-pressed={source === "url"} disabled={disabled} onClick={() => onSource("url")}>
         Clone from URL
+      </button>
+      <button type="button" aria-pressed={source === "project"} disabled={disabled} onClick={() => onSource("project")}>
+        Project
       </button>
     </span>
   );

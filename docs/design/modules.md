@@ -643,7 +643,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     Nothing else touches the artifact tables or that folder.
   - `hooks.py`: neutral hook logic: agent status, handing over queued messages and, at a
     turn's end, the forgotten-reply check (docs/design/agents.md).
-  - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
+  - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory),
+    in WAL mode with `synchronous = NORMAL`: a commit holds the write lock without waiting
+    for an fsync, so a busy disk does not keep the other writers past their busy timeout.
     Schema changes: bump `SCHEMA_VERSION`, add a step to `MIGRATIONS` and update
     `tests/agent_helpers.previous_schema` (it undoes the last step). `state.connect()`
     never migrates: it makes a missing lado.db, and another schema version (older, newer,

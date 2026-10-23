@@ -37,6 +37,9 @@
   stops the uninstall with the `kill` command for it.
 - **Resume session waits for a provider that can run.** While the window says the
   session's provider cannot run, Resume session is off, as Start is in a new session.
+- **No more "database is locked" from the session loop on a busy disk.** LADO's database
+  no longer waits for the disk on each write, and a lock that clears within a minute is
+  no longer counted as an error.
 
 ## 0.42.0 (2026-10-20)
 

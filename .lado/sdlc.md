@@ -101,6 +101,9 @@ Into an epic branch:
   comment of `review-loop`
 - Finished: Claude's progress comment on the pull request, newer than the request, says
   `Claude finished`; its findings are in that comment
+- Coverage: taken from the lists `Files read` and `Files not read` at the end of Claude's
+  comment; a risky file of the diff that is not under `Files read` was not reviewed
+  externally (and `Risky code not fully read` at the top of the comment says so)
 - Time ceiling: 25 minutes
 - Round cap: 2 for a full change, 1 for a hotfix or tweak
 - It is the same model family as this kit's agents: weigh "nothing found" accordingly

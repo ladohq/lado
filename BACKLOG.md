@@ -1909,6 +1909,18 @@ Wanted: when the test fails again, read its record in the ui job's log and file 
 with it.
 Found: 2026-10-18, CI of e859751.
 
+## The `@claude` reviewer may edit files and commit by the Action's own default
+
+Size: S. Why here: only the repository's people can start it, and a push depends on the
+GitHub App's rights, but a reviewer that can write is more than a review needs.
+In its comment mode the pinned `anthropics/claude-code-action` grants Claude file edits
+(`--permission-mode acceptEdits`), `git add`/`commit`/`rm` and its push script by itself,
+whatever `claude_args` of `.github/workflows/claude.yml` allows; LAD-133 only added three
+reading commands. Closing it would also stop `@claude` from making a change asked for in a
+comment. Wanted: a decision whether `@claude` is a reviewer only, and if so, the write
+tools refused (e.g. `--disallowedTools`) with a test in `tests/test_workflow_security.py`.
+Found: 2026-10-23, fix/lad-133-review-reads-risky-code.
+
 # P3: maybe never
 
 ## A field that grows with its text keeps its height when its width changes

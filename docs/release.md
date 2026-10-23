@@ -138,6 +138,13 @@ back, the UI back.
 - The UI: the chat, a gate's card, the System panel with its `pre-release` pill.
 - Each line of CHANGELOG.md's `## X.Y.Z (unreleased)` tried once (both commands above
   print them as a checklist).
+- Projects (from 0.43.0), once with each provider (Claude Code with the human's yes):
+  `lado project create shop`, `lado project repo add shop --new app`,
+  `lado project set shop BOARD_URL https://a`, then `lado start --project shop --repo app
+  --provider <p>`. Ask the supervisor to print `$BOARD_URL` and to spawn a worker that
+  prints it too: both print `https://a`. Then ask it to start a session from a brief
+  (`start_session`): the new session is in project `shop` (`lado ls`) and its agents see
+  `BOARD_URL` too, which also checks that the agents' `lado mcp` gets LADO's `LADO_REPOS`.
 
 There is no fixed soak time: the final follows your "ok".
 

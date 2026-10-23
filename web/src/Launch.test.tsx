@@ -405,6 +405,60 @@ test("an empty Where suggests the workspace's subfolders on focus, and a pick is
   expect(where().value).toBe(`${REPOS}/app`);
 });
 
+// The answer about the workspace held back until the test lets it go.
+function holdWorkspace() {
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  answers["GET /api/repos-folder"] = async () => {
+    await held;
+    return json(workspace);
+  };
+  return async () => {
+    release();
+    await waitFor(() => expect(where().placeholder).toBe(`${withSlash(workspace.path)}…`));
+  };
+}
+
+const withSlash = (path: string) => (path.endsWith("/") ? path : `${path}/`);
+
+test("an empty Where focused before the workspace is known lists its subfolders once it is", async () => {
+  workspace = { path: REPOS, made: true };
+  folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem: "no", subfolders: ["api", "app", "site"] });
+  const release = holdWorkspace();
+  await openLaunch();
+  expect(where().placeholder).toBe("");
+  fireEvent.focus(where());
+  await release();
+  const list = await screen.findByRole("listbox", { name: "Folders" });
+  expect(within(list).getAllByRole("option").map((o) => o.textContent)).toEqual(["api/", "app/", "site/"]);
+});
+
+test("a Where left before the workspace is known shows no list once it is", async () => {
+  workspace = { path: REPOS, made: true };
+  folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem: "no", subfolders: ["api", "app", "site"] });
+  const release = holdWorkspace();
+  await openLaunch();
+  fireEvent.focus(where());
+  fireEvent.blur(where());
+  await release();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 400))); // past the list's debounce
+  expect(screen.queryByRole("listbox", { name: "Folders" })).toBeNull();
+  expect(calls.some((c) => c.path.startsWith("/api/folders?"))).toBe(false);
+});
+
+test("an early focus suggests nothing when the workspace is not made", async () => {
+  folders[`${HOME_WORKSPACE}/`] = folder(`${HOME_WORKSPACE}/`, { ok: false, problem: "no", subfolders: ["app"] });
+  const release = holdWorkspace();
+  await openLaunch();
+  fireEvent.focus(where());
+  await release();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 400))); // past the list's debounce
+  expect(screen.queryByRole("listbox", { name: "Folders" })).toBeNull();
+  expect(calls.some((c) => c.path.startsWith("/api/folders?"))).toBe(false);
+});
+
 test("the Workspace row puts the folder in Where and lists it", async () => {
   workspace = { path: REPOS, made: true };
   folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem: "no", subfolders: ["api", "app", "site"] });

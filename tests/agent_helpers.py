@@ -187,7 +187,10 @@ def schema_before(version: int) -> None:
     """Turn the LADO_HOME database back to the version before `version` (13 at the oldest),
     undoing the steps of state.MIGRATIONS from the latest on. Step 22 changes only data that
     cannot come back (the needs it drops): undoing it sets the version alone."""
-    assert state.MIGRATIONS[34] == [state.AGENTS_WINDOW_AT, "UPDATE agents SET window_at = created_at"]
+    assert state.MIGRATIONS[34] == [
+        state.AGENTS_WINDOW_AT,
+        "UPDATE agents SET window_at = created_at",
+    ]
     assert state.MIGRATIONS[33] == [state.PROJECT_VARIABLES_TABLE]
     assert state.MIGRATIONS[32] == [state.SESSIONS_PROJECT]
     assert state.MIGRATIONS[31] == [state.PROJECTS_TABLE]

@@ -187,6 +187,84 @@ def test_no_project_without_a_database(client, lado_home):
     assert not (lado_home / "lado.db").exists()
 
 
+# A project's variables (openspec change project-variables)
+
+
+def test_a_project_gives_its_variables_by_name(client, shop):
+    projects.set_variable("shop", "MODEL_URL", "http://m")
+    projects.set_variable("shop", "BOARD_URL", "https://a\nb")
+    assert client.get("/api/projects/shop").json()["variables"] == [
+        {"name": "BOARD_URL", "value": "https://a\nb"},
+        {"name": "MODEL_URL", "value": "http://m"},
+    ]
+
+
+def test_set_and_unset_a_variable(client, shop, monkeypatch):
+    for name in ("shop-frontend", "old"):
+        state.add_session(state.Session(name, str(shop / "frontend"), None, "kilo", project="shop"))
+    state.stop_session("old")
+    monkeypatch.setattr(projects.runtime.tmux, "has_session", lambda name: True)
+    monkeypatch.setattr(projects.runtime.loop, "running", lambda name: True)
+    answer = client.put("/api/projects/shop/variables/BOARD_URL", json={"value": "https://a"})
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["running"] == ["shop-frontend"]
+    assert answer.json()["project"]["id"] == "shop"
+    assert answer.json()["project"]["variables"] == [{"name": "BOARD_URL", "value": "https://a"}]
+    client.put("/api/projects/shop/variables/BOARD_URL", json={"value": ""})
+    assert state.project_variables("shop") == {"BOARD_URL": ""}
+    answer = client.delete("/api/projects/shop/variables/BOARD_URL")
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == {
+        "project": client.get("/api/projects/shop").json(),
+        "running": ["shop-frontend"],
+    }
+    assert answer.json()["project"]["variables"] == []
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "said"),
+    [
+        ("GH_TOKEN", "x", "GH_TOKEN looks like a secret (TOKEN): "),
+        ("PATH", "x", "PATH is reserved: LADO or the agent CLIs set it"),
+        ("A-B", "x", "the name A-B is not a variable name: "),
+        ("BIG", "x" * 70000, "the value of BIG is larger than 64 KiB"),
+        ("NUL", "a\0b", "the value of NUL is not UTF-8 text"),
+    ],
+    ids=["secret", "reserved", "no-name", "large", "nul"],
+)
+def test_a_variable_refused(client, shop, name, value, said):
+    answer = client.put(f"/api/projects/shop/variables/{name}", json={"value": value})
+    assert answer.status_code == 400
+    assert answer.json()["detail"].startswith(said)
+    assert state.project_variables("shop") == {}
+
+
+def test_an_unknown_project_or_variable(client, shop):
+    assert client.put("/api/projects/acme/variables/X", json={"value": "x"}).status_code == 404
+    assert client.delete("/api/projects/acme/variables/X").status_code == 404
+    missing = client.delete("/api/projects/shop/variables/X")
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "project shop has no variable X; its variables: none"
+
+
+def test_no_variables_without_a_database(client, lado_home):
+    assert client.put("/api/projects/shop/variables/X", json={"value": "x"}).status_code == 404
+    assert client.delete("/api/projects/shop/variables/X").status_code == 404
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_the_variables_need_the_token_and_the_servers_own_origin(client, shop):
+    projects.set_variable("shop", "BOARD_URL", "https://a")
+    del client.headers["origin"]
+    assert client.put("/api/projects/shop/variables/X", json={"value": "x"}).status_code == 403
+    assert client.delete("/api/projects/shop/variables/BOARD_URL").status_code == 403
+    client.headers["origin"] = OWN
+    client.cookies.clear()
+    assert client.put("/api/projects/shop/variables/X", json={"value": "x"}).status_code == 401
+    assert client.delete("/api/projects/shop/variables/BOARD_URL").status_code == 401
+    assert state.project_variables("shop") == {"BOARD_URL": "https://a"}
+
+
 def test_the_changes_need_the_token_and_the_servers_own_origin(client, shop):
     del client.headers["origin"]
     assert client.post("/api/projects/shop/repos", json={"name": "x"}).status_code == 403

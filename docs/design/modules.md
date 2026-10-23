@@ -32,6 +32,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `; `: a project whose folder is not found, foreign entries of `projects/`, a
     `projects/` that is the human's own folder or no folder; it reads lado.db as it is (no
     lado.db made, an older schema `INFO` not checked).
+    `Project variables` (after `Variables from outside`, `check_project_variables`):
+    `INFO` naming each project whose variables share a name with the outside folder's, the
+    names only; none, no lado.db or an older schema: no line.
     `Agent config folders` warns about each folder under `LADO_HOME/agents/` that no
     running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
     kit MCP secrets there. The UI's system panel (`GET /api/system`) takes its facts from
@@ -363,10 +366,20 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     name no visible entry has, `NoSuchRepository`, and for an entry that is neither) and
     `remove_repo` (refuses without `yes`; a link unlinked; a repository's real path must be
     directly in the project folder's; `rmtree`,
-    then `runtime.forget_session(force=True)` for its sessions). A refusal is a
+    then `runtime.forget_session(force=True)` for its sessions). A project's plain
+    variables (openspec change project-variables): lado.db's `project_variables` (schema 34,
+    `state.project_variables`, `set_project_variable`, `unset_project_variable`; gone with
+    the project by `ON DELETE CASCADE`); `check_variable` is the one name and value rule of
+    the CLI and the server (`agent_env.VARIABLE_NAME`; `RESERVED_NAMES`, the outside
+    folder's `agent_env.RESERVED` and `providers.base.CLI_VARIABLES`, plus any `LADO_*`;
+    `SECRET_WORDS` as substrings in any case; `agent_env.MAX_VALUE` bytes of UTF-8 text
+    without NUL); `set_variable` and `unset_variable` (no name rule, `NoSuchVariable`) answer
+    `running`, the project's sessions not stopped. A refusal is a
     `ProjectError` (`NoSuchProject` for an unknown id), a `runtime.LadoError`.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
-    `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's
+    `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`, `CLI_VARIABLES`,
+    the names LADO sets for the agent CLIs, reserved from project variables and kept in
+    step with every provider's `Launch.env` by a test; each provider's
     `EVENTS` maps its native events; `claude.py`: Claude Code, its role in `prompt.md` of
     its config folder (`--append-system-prompt-file`); `opencode_family.py`: the
     base of OpenCode and its fork Kilo, holding only what is checked on both (each claim
@@ -460,7 +473,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     here instead. The texts (`OUTSIDE_GUI`, `NO_GUI`, `PLAN_REMOTE`) name no provider:
     `fill` puts in the titles and hints of `Provider.keychain_login`.
   - `agent_env.py`: where an agent's environment comes from (docs/design/agents.md): `resolve`
-    (the login shell's, then the outside folder's, `outside`), and `command`, the window's
+    (the login shell's, then the outside folder's, `outside`, then the session's project's
+    variables it is given, which `runtime._base_env` reads), and `command`, the window's
     command that runs the agent with exactly that environment.
   - `interpreter.py`: `run_module`, the one way LADO starts a process of its own with its
     own Python (`providers.lado_command`: hooks, `lado mcp`, `lado loop`, the popup, the
@@ -887,8 +901,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     first; an unknown project 404). `app.py` has the rest of a project's repositories:
     `POST /api/projects/{id}/repos` (`RepoNew` → `ProjectRepo`, `projects.add_new`), `GET
     …/repos/{name}/removal` (`RepoRemoval`, `projects.removal`) and `DELETE
-    …/repos/{name}` (`projects.remove_repo` with yes; the `ProjectInfo` after), an unknown
-    project or name 404, a refusal 400; the server is the human's and asks no `LADO_AGENT`;
+    …/repos/{name}` (`projects.remove_repo` with yes; the `ProjectInfo` after), and a
+    project's variables: `ProjectInfo.variables` (`ProjectVariable`, by name), `PUT
+    /api/projects/{id}/variables/{name}` (`VariableValue`, `projects.set_variable`) and
+    `DELETE …/variables/{name}` (`projects.unset_variable`), both `VariableChange` (the
+    project after, the running sessions); an unknown project, name or variable 404, a
+    refusal 400; the server is the human's and asks no `LADO_AGENT`;
     `launch.py`: what the New session window asks (docs/design/ui.md, Launch and session
     control): `GET /api/folders` (`FolderInfo`: the core's `check_repo`, its `problem_kind` and `hint`, subfolders, the
     default name and whether a session has it, and `provider`, the core's

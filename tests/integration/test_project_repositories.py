@@ -96,7 +96,7 @@ def test_a_failed_clone_leaves_nothing(shop, tmp_path):
     assert failed.returncode == 1
     assert failed.stderr.splitlines()[-1].startswith(f"lado: cannot clone {url}: ")
     assert _entries(shop) == []
-    assert lado("project", "show", "shop").stdout.splitlines()[-1] == "  repositories: none"
+    assert "  repositories: none" in lado("project", "show", "shop").stdout.splitlines()
 
 
 def test_a_clone_ended_by_sigterm_leaves_nothing(shop, tmp_path):

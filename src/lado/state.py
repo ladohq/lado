@@ -19,7 +19,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 33
+SCHEMA_VERSION = 34
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -931,6 +931,18 @@ MIGRATIONS[31] = [PROJECTS_TABLE]
 SESSIONS_PROJECT = "ALTER TABLE sessions ADD COLUMN project TEXT REFERENCES projects(id)"
 SCHEMA += SESSIONS_PROJECT + ";\n"
 MIGRATIONS[32] = [SESSIONS_PROJECT]
+
+# From version 34: a project's plain variables (lado.projects.set_variable), given to the
+# agents of its sessions (lado.agent_env.resolve); they go with their project.
+PROJECT_VARIABLES_TABLE = """
+CREATE TABLE IF NOT EXISTS project_variables (
+    project TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (project, name)
+)"""
+SCHEMA += PROJECT_VARIABLES_TABLE + ";\n"
+MIGRATIONS[33] = [PROJECT_VARIABLES_TABLE]
 
 # Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
 # approval or choice gate. An override is the human's past the flow (flow-set's reason, an
@@ -3438,3 +3450,33 @@ def delete_project(id: str) -> bool:
     """False when there was no such project."""
     with connect() as db:
         return db.execute("DELETE FROM projects WHERE id = ?", (id,)).rowcount == 1
+
+
+def project_variables(id: str) -> dict[str, str]:
+    """The project's variables, by name; none for an unknown project."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT name, value FROM project_variables WHERE project = ? ORDER BY name", (id,)
+        ).fetchall()
+    return {row["name"]: row["value"] for row in rows}
+
+
+def set_project_variable(id: str, name: str, value: str) -> None:
+    """Set the project's variable, over its old value."""
+    with connect() as db:
+        db.execute(
+            "INSERT INTO project_variables (project, name, value) VALUES (?, ?, ?)"
+            " ON CONFLICT(project, name) DO UPDATE SET value = excluded.value",
+            (id, name, value),
+        )
+
+
+def unset_project_variable(id: str, name: str) -> bool:
+    """False when the project had no such variable."""
+    with connect() as db:
+        return (
+            db.execute(
+                "DELETE FROM project_variables WHERE project = ? AND name = ?", (id, name)
+            ).rowcount
+            == 1
+        )

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from lado import runtime, state
+from lado import agent_env, providers, runtime, state
 
 if TYPE_CHECKING:
     from lado import clone as clone_module
@@ -282,6 +282,81 @@ def get(id: str) -> state.Project:
     if project is None:
         raise NoSuchProject(f'unknown project "{id}"')
     return project
+
+
+# A project's plain variables: the human sets them (the CLI, the server), every agent of a
+# session in the project gets them (lado.agent_env.resolve). A name the shell, LADO or an
+# agent CLI sets is reserved; a name that looks like a secret waits for the secrets.
+RESERVED_NAMES = agent_env.RESERVED | providers.base.CLI_VARIABLES
+SECRET_WORDS = ("TOKEN", "KEY", "SECRET", "PASSWORD")
+
+
+class NoSuchVariable(ProjectError):
+    pass
+
+
+def check_variable(id: str, name: str, value: str | None) -> None:
+    """Refuse a name that is no variable name, reserved or like a secret's, and a `value`
+    (when given) that is no text of at most 64 KiB; an empty value is a value."""
+    if not agent_env.VARIABLE_NAME.fullmatch(name):
+        raise ProjectError(
+            f"the name {name} is not a variable name: Latin letters, digits and _, not "
+            "starting with a digit"
+        )
+    if name in RESERVED_NAMES or name.startswith(agent_env.RESERVED_PREFIX):
+        raise ProjectError(f"{name} is reserved: LADO or the agent CLIs set it")
+    word = next((w for w in SECRET_WORDS if w in name.upper()), None)
+    if word:
+        raise ProjectError(
+            f"{name} looks like a secret ({word}): a plain variable takes no name with "
+            f"{', '.join(SECRET_WORDS[:-1])} or {SECRET_WORDS[-1]}; secrets come with lado "
+            f"project set {id} {name} --secret (not built yet)"
+        )
+    if value is None:
+        return
+    try:
+        data = value.encode()
+    except UnicodeEncodeError:
+        data = None  # lone surrogates, as argv gives bytes that are no UTF-8
+    if data is None or "\0" in value:
+        raise ProjectError(f"the value of {name} is not UTF-8 text")
+    if len(data) > agent_env.MAX_VALUE:
+        raise ProjectError(f"the value of {name} is larger than 64 KiB")
+
+
+def variables(id: str) -> dict[str, str]:
+    """The project's variables, by name."""
+    get(id)
+    return state.project_variables(id)
+
+
+def running(id: str) -> list[str]:
+    """The project's sessions that are not stopped, by name: their agents keep the
+    environment they started with."""
+    return sorted(
+        sess.name
+        for sess in state.project_sessions(id)
+        if runtime.session_status(sess) != runtime.SessionStatus.STOPPED
+    )
+
+
+def set_variable(id: str, name: str, value: str) -> list[str]:
+    """Set the project's variable (check_variable first), over its old value; the
+    project's running sessions."""
+    get(id)
+    check_variable(id, name, value)
+    state.set_project_variable(id, name, value)
+    return running(id)
+
+
+def unset_variable(id: str, name: str) -> list[str]:
+    """Remove the project's variable, by any name stored (no name rule: a row stored
+    before a rule changed can go); the project's running sessions."""
+    get(id)
+    if not state.unset_project_variable(id, name):
+        found = names(list(state.project_variables(id))) or "none"
+        raise NoSuchVariable(f"project {id} has no variable {name}; its variables: {found}")
+    return running(id)
 
 
 def listed() -> list[tuple[state.Project, Path, bool]]:

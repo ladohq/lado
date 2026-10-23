@@ -3316,6 +3316,22 @@ def test_project_set_secret_on_a_terminal_asks_without_echo(shop, capsys, monkey
     assert "ghp_1" not in capsys.readouterr().out
 
 
+def test_project_set_secret_ended_on_a_terminal_is_an_empty_value(shop, capsys, monkeypatch):
+    """Ctrl-D at the prompt: no value, refused as an empty one, no traceback."""
+    monkeypatch.setattr("sys.stdin", Stdin(tty=True))
+
+    def ended(prompt):
+        raise EOFError
+
+    monkeypatch.setattr("getpass.getpass", ended)
+    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 1
+    assert capsys.readouterr().err == (
+        "\n"  # the prompt's line ends first
+        "lado: the secret GH_TOKEN is empty; to remove it: lado project unset shop GH_TOKEN\n"
+    )
+    assert project_secrets.names("shop") == []
+
+
 def test_project_set_secret_with_the_value_given_is_refused_before_reading(
     shop, capsys, monkeypatch
 ):

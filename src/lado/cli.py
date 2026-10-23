@@ -1136,7 +1136,11 @@ def _secret_value(args: argparse.Namespace) -> str:
         )
     projects.get(args.id)
     if sys.stdin.isatty():
-        return getpass.getpass(f"Value of {args.name} (not shown): ")
+        try:
+            return getpass.getpass(f"Value of {args.name} (not shown): ")
+        except EOFError:  # Ctrl-D at the prompt: no value, refused as an empty one
+            print(file=sys.stderr)  # the prompt's line ends
+            return ""
     # Over the limit by more than a line break is refused whole (projects.check_secret).
     data = sys.stdin.buffer.read(agent_env.MAX_VALUE + 3)
     for end in (b"\r\n", b"\n"):

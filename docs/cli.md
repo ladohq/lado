@@ -85,8 +85,8 @@ without echo; otherwise it reads the whole of stdin, one line break at its end (
 prints `Set secret <NAME> in project <id>.` and the agents' line above. It refuses, exit 1,
 storing nothing: a value on the command line, before it reads anything (`a secret's value
 is never given on the command line (ps and the shell's history keep it); run lado project
-set <id> <NAME> --secret and type it, or pipe it in`), an empty value (`the secret <NAME> is
-empty; to remove it: lado project unset <id> <NAME>`), a name by the plain variables' name
+set <id> <NAME> --secret and type it, or pipe it in`), an empty value, Ctrl-D at the prompt
+too (`the secret <NAME> is empty; to remove it: lado project unset <id> <NAME>`), a name by the plain variables' name
 rule above but for the secret's words (any other name may be a secret), a name that is a
 plain variable of the project (`<NAME> is a plain variable of <id>; remove it first with
 lado project unset <id> <NAME>`), a value over 64 KiB or with a NUL, an unknown project

@@ -8297,6 +8297,10 @@ del.kit-mcp-name {
   margin-top: 10px;
 }
 
+.project-new {
+  text-align: left;
+}
+
 .project-new .field {
   margin-bottom: 12px;
 }
@@ -8710,6 +8714,11 @@ del.kit-mcp-name {
 
 /* Projects (Projects.tsx): the list or a project, one at a time; a variable's row is a card
    of its lines. */
+:root[data-phone] .content:has(> .projects) {
+  padding: 0;
+  overflow: hidden;
+}
+
 :root[data-phone] .projects {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);

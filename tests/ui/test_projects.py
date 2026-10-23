@@ -94,6 +94,9 @@ def test_new_project_and_its_variables_and_secrets(page: Page, server, tmp_path,
     secret = project_secrets.folder("magazin-eu") / "STRIPE_KEY"
     assert secret.read_text() == second
     shot(page, "variables")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "variables-dark")
+    page.emulate_media(color_scheme="light")
 
     # Remove asks in the row first.
     variables.get_by_role("button", name="Remove").click()
@@ -173,6 +176,8 @@ def test_on_a_phone_the_list_and_a_project_in_turns(phone: Page, server, shop, s
     expect(page.get_by_role("navigation", name="Projects")).to_have_count(0)
     no_sideways_scroll(page)
     shot(page, "project", full_page=False)
+    page.emulate_media(color_scheme="dark")
+    shot(page, "project-dark", full_page=False)
     page.get_by_role("link", name="← All projects").click()
     expect(page.get_by_role("navigation", name="Projects")).to_be_visible()
     expect(page.get_by_text("Select a project")).to_have_count(0)

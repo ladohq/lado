@@ -173,6 +173,12 @@ final the copy in `~/.lado-rc/` was taken from, and, when the RC moved the datab
 schema, put that copy back (what was done on the RC is then lost: it says so). Then it
 starts your sessions and the UI again on the final.
 
+Once per RC that moved the schema, also the user's own way back, on a test home (a
+temp `LADO_HOME` and `LADO_TMUX_SOCKET`, never yours): `lado update <the final before>`
+from the RC with a session in it, as `docs/install.md` "Going back" says. The old final
+starts with that session and the database of before the RC; `~/.lado/backups/` still
+holds the migration's copy until then (from 0.43.0, LAD-143).
+
 ### 4.5 The image (every RC)
 
 On a Mac and on Linux, each in a fresh terminal with no `LADO_*` variable in its

@@ -136,20 +136,23 @@ settings for its tracker are in its `.lado/tracker.yaml`, read only by that skil
 Shown in the UI's menu as sections to come (docs/design/ui.md, Structure); designed when
 their time comes.
 
-- [ ] Projects: a project is a folder `<workspace>/projects/<id>` with its repositories and
+- [x] Projects: a project is a folder `<workspace>/projects/<id>` with its repositories and
   its own environment variables, so sessions for different clients get different keys.
   The workspace is the folder LADO keeps code in (`LADO_REPOS`). The model:
-  [docs/design/projects.md](docs/design/projects.md); the epic LAD-116 builds it in steps
-  that each merge on their own ([plan](docs/epics/lad-116/plan.md)):
+  [docs/design/projects.md](docs/design/projects.md); the epic LAD-116 built it in 0.43.0
+  in steps that each merged on their own ([plan](docs/epics/lad-116/plan.md)):
   - [x] S1: the documents, and the folder called the workspace in the UI and `lado doctor`
-  - [ ] S2: the project in the core (`lado project`), and `~/workspace` without `LADO_REPOS`
+  - [x] S1b: warnings and refusals in the New session window stand out
+  - [x] S2: the project in the core (`lado project`), and `~/workspace` without `LADO_REPOS`
   - [x] S2b: compose's `LADO_WORKSPACE`, with `LADO_PROJECTS` still taken
-  - [ ] S3: a session in a project (`lado start --project <id> --repo <name>`)
-  - [ ] S4: adding and removing a project's repositories
-  - [ ] S5a: a project's plain variables reach the whole session
-  - [ ] S5b: a project's secrets
-  - [ ] S6: the UI's Projects section, its variables, and New session's Project way
-  - [ ] S7: the UI's project page, removing a repository and a project
+  - [x] S3: a session in a project (`lado start --project <id> --repo <name>`)
+  - [x] S4: adding and removing a project's repositories
+  - [x] S5a: a project's plain variables reach the whole session
+  - [x] S5b: a project's secrets
+  - [x] S6a: the UI's Projects section, the project's variables and secrets
+  - [x] S6b: the UI's Project way of New session
+  - [x] S7a: the UI's project page, adding and removing a repository, renaming the project
+  - [x] S7b: the UI: deleting the project
   Lessons kept from a study of another orchestrator (2026-10-03):
   - a session refers to its project by a real reference, not by a name found in its path;
   - the CLI can do what the UI does (`lado start --project`);

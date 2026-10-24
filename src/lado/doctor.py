@@ -324,14 +324,15 @@ def check_database() -> Check | None:
     doctor never migrates (cli.NOT_MIGRATING) and this reads only: an older lado.db is
     upgraded by the next `lado ls` or `lado start`, unless sessions run on it
     (runtime.migration_due, by which those commands refuse)."""
+    name = "lado.db"
     refused = state.read_schema_refusal()
     if refused is None:
         return None
     kind, text = refused
     if kind == state.NEWER:
-        return Check("lado.db", WARN, text)
+        return Check(name, WARN, text)
     if kind == state.INCOMPATIBLE:
-        return Check("lado.db", FAIL, text)
+        return Check(name, FAIL, text)
     due = runtime.migration_due()
     if due is None:  # upgraded since by another lado command
         return None
@@ -339,13 +340,13 @@ def check_database() -> Check | None:
     schemas = f"schema {version}, this LADO knows {state.SCHEMA_VERSION}"
     if not running:
         return Check(
-            "lado.db",
+            name,
             INFO,
             f"{schemas}: lado ls or lado start upgrades it (its backup goes to backups/)",
         )
     names = ", ".join(f'"{s}"' for s in running)
     return Check(
-        "lado.db",
+        name,
         WARN,
         f"{schemas}, and the sessions {names} run on it",
         "stop them with lado stop --all (it upgrades lado.db), then lado start",

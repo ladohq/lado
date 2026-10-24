@@ -1244,11 +1244,11 @@ def connect() -> Iterator[sqlite3.Connection]:
     SchemaError, so no process opening it upgrades the database under a running session
     (only migrate() does, which the CLI calls when no session runs)."""
     conn = _open()
-    refused = schema_refusal(conn)
-    if refused is not None:
-        conn.close()
-        raise SchemaError(refused[1])
     if conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+        refused = schema_refusal(conn)
+        if refused is not None:
+            conn.close()
+            raise SchemaError(refused[1])
         conn.executescript(SCHEMA)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     try:

@@ -127,9 +127,11 @@ once as before), which shows its plan and asks as usual. A LADO on a final relea
 never offered an RC, so this one named update is the way onto it; after it, the next RCs
 and the final are offered as usual (the UI's Update, or `lado update`).
 
-Coming from a final, it then keeps a copy of that final's database backup in
-`~/.lado-rc/`: `lado update` keeps only one backup, and the next update would replace
-it. Check what the update printed: the migration when the schema moved, your sessions
+Then it runs `lado ls` once, which upgrades the database when no session resumed. Coming
+from a final whose schema the RC moved, it keeps a copy of the migration's backup of that
+final's database (`~/.lado/backups/lado.db.schema-<N>`) in `~/.lado-rc/`: the migration
+keeps only one, and the next RC's migration would replace it. Without a schema change it
+keeps nothing and says that `lado update <final>` alone goes back. Check what the update printed: the migration when the schema moved, your sessions
 back, the UI back.
 
 ### 4.3 By hand, on your own LADO
@@ -170,14 +172,16 @@ python3 scripts/rc_check.py rollback
 
 It says what it will do and asks first: stop your sessions and the UI, install the
 final the copy in `~/.lado-rc/` was taken from, and, when the RC moved the database's
-schema, put that copy back (what was done on the RC is then lost: it says so). Then it
-starts your sessions and the UI again on the final.
+schema, put that copy back (what was done on the RC is then lost: it says so). It puts
+the copy into `~/.lado/backups/lado.db.schema-<N>` and leaves the restore to the RC's own
+`lado update <final>`, which warns, asks and restores, the way users go back too. Then it
+starts again the sessions the copy has, and the UI, on the final.
 
 Once per RC that moved the schema, also the user's own way back, on a test home (a
 temp `LADO_HOME` and `LADO_TMUX_SOCKET`, never yours): `lado update <the final before>`
-from the RC with a session in it, as `docs/install.md` "Going back" says. The old final
-starts with that session and the database of before the RC; `~/.lado/backups/` still
-holds the migration's copy until then (from 0.43.0, LAD-143).
+from the RC with a session in it, as `docs/install.md` "Going back to an older version"
+says. It warns before it asks, and the old final starts with that session and the
+database of before the RC.
 
 ### 4.5 The image (every RC)
 

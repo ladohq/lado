@@ -40,6 +40,6 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-24-one-database
 
 ## 5. Regression
 
-- [ ] 5.1 `make lint`, `make test`, the integration file with `-m integration`,
+- [x] 5.1 `make lint`, `make test`, the integration file with `-m integration`,
   `openspec validate one-database-backup --strict`, `openspec validate --specs --strict`,
   a trial archive in a scratch copy, CI green.

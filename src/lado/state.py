@@ -19,6 +19,8 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
+# `lado update` of a later LADO reads this line from this release's wheel to learn the schema
+# it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
 SCHEMA_VERSION = 35
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.

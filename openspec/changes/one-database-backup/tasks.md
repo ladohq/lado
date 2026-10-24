@@ -23,7 +23,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-24-one-database
 
 ## 3. Release candidates
 
-- [ ] 3.1 `scripts/rc_check.py`: `upgrade` keeps the migration's copy when the schema
+- [x] 3.1 `scripts/rc_check.py`: `upgrade` keeps the migration's copy when the schema
   moved (after one `lado ls`); `rollback` puts it into `backups/` and leaves the restore
   to `lado update <final>`, starting only the copy's sessions; the docstring (D10, D11).
   Check: `uv run pytest tests/test_rc_check.py -n0`.

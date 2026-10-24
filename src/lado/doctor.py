@@ -333,7 +333,15 @@ def check_database() -> Check | None:
         return Check(name, WARN, text)
     if kind == state.INCOMPATIBLE:
         return Check(name, FAIL, text)
-    due = runtime.migration_due()
+    try:
+        due = runtime.migration_due()
+    except tmux.TmuxError as exc:  # no tmux: the tmux line says so; the rest is reported
+        return Check(
+            name,
+            WARN,
+            f"schema {state.schema_version()}, this LADO knows {state.SCHEMA_VERSION}; the "
+            f"sessions running on it not checked: {exc}",
+        )
     if due is None:  # upgraded since by another lado command
         return None
     version, running = due

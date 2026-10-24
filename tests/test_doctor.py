@@ -823,6 +823,31 @@ def test_lado_db_names_the_running_sessions_that_keep_it_older(repo, fake_tmux, 
     _unchanged(lado_home, OLDER)
 
 
+def test_without_tmux_the_doctor_still_reports_an_older_lado_db(lado_home, monkeypatch, capsys):
+    from lado import tmux
+
+    state.add_session(state.Session("s", "/r", None, provider="claude"))  # not stopped
+    agent_helpers.previous_schema()
+
+    def missing(session):
+        raise tmux.TmuxMissing("tmux is not installed or not on PATH (/nowhere)")
+
+    monkeypatch.setattr(tmux, "has_session", missing)
+    _versions(monkeypatch)
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+    checks = doctor.run_checks
+    no_tmux = lambda cmd: None if cmd == "tmux" else cmd  # noqa: E731
+    monkeypatch.setattr(doctor, "run_checks", lambda: checks(which=no_tmux))
+    assert doctor.main() == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert (
+        f"[warn] lado.db: schema {OLDER}, this LADO knows {state.SCHEMA_VERSION}; the "
+        "sessions running on it not checked: tmux is not installed or not on PATH (/nowhere)"
+    ) in lines
+    assert "[FAIL] tmux: `tmux` not found on PATH" in lines
+    _unchanged(lado_home, OLDER)
+
+
 def test_lado_db_of_a_newer_lado(lado_home):
     lado_home.mkdir()
     sqlite3.connect(lado_home / "lado.db").execute(

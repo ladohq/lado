@@ -227,7 +227,9 @@ lado.db, there is none. Older with no session running: `info`, `schema <n>, this
 <m>: lado ls or lado start upgrades it (its backup goes to backups/)`. Older with sessions
 running in tmux (those that keep `lado ls` from migrating, `runtime.migration_due`): a
 warning, `schema <n>, this LADO knows <m>, and the sessions "<a>", … run on it`, with
-`stop them with lado stop --all (it upgrades lado.db), then lado start`. Newer: a warning
+`stop them with lado stop --all (it upgrades lado.db), then lado start`; when tmux cannot
+run, a warning `schema <n>, this LADO knows <m>; the sessions running on it not checked:
+<tmux's error>`, and the rest of the report follows. Newer: a warning
 with the newer-LADO refusal's words; incompatible: `FAIL` with that refusal's words, and the
 doctor exits 1. The checks that read lado.db (`Projects`, `Artifacts`, `Agent config
 folders`) then say `not checked: lado.db is not at this LADO's schema (see lado.db)`.

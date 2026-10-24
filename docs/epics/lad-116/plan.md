@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: none · Next: S9 (LAD-143) on the human's yes at step_ok, then readiness again; 0.43.0rc1 after it · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5); S5a, S5b and S3's F1 until 0.43.0rc1 (a live run on the four CLIs with a variable and a secret, release checklist 4.3 "Projects"); S5b's link refusals on macOS until 0.43.0rc1 (4.3 "Projects' secrets on the Mac"); S6a's secret field with password managers in Chrome and Safari until 0.43.0rc1 (4.3 "Projects in the web UI"); the readiness check's "Projects in the image" until 0.43.0rc1 (release checklist 4.5)
+In work: S9 (LAD-143, run task/lad-143) · Next: readiness again; 0.43.0rc1 after it · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5); S5a, S5b and S3's F1 until 0.43.0rc1 (a live run on the four CLIs with a variable and a secret, release checklist 4.3 "Projects"); S5b's link refusals on macOS until 0.43.0rc1 (4.3 "Projects' secrets on the Mac"); S6a's secret field with password managers in Chrome and Safari until 0.43.0rc1 (4.3 "Projects in the web UI"); the readiness check's "Projects in the image" until 0.43.0rc1 (release checklist 4.5)
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
@@ -121,7 +121,7 @@ Notes: the readiness check's gap G1 (`delivery-report`, 2026-10-23): the brief's
 Result: PR #161 merged 2026-10-24 (8eeb850a), LAD-142 Done, "waiting for release" (0.43.0); the change `projects-docs-built` archived without a spec delta. The human's answers #1408 (no step numbers in the product's documents) and #1410 (the manual path in install.md, LAD-143 created in Backlog). Built: ROADMAP's Projects and every step done; AGENTS.md (195 lines), `projects.md` and `ui.md` describe projects as built; `docs/install.md` "Going back" from 0.43.0 to 0.42.0: copy `backups/lado.db.schema-31` aside before `lado update 0.42.0`, put it back after, the Docker path, what stays (`projects/`, the refusal of `lado project create` for a left folder, secrets removed by hand), run literally and checked against `state.py`, `self_update.py`, `projects.py`, `doctor.py`; a CHANGELOG line. Review: 1 local and 1 external round; F1, E1 minor declined, E2 refuted (gate #118). CI green. The lead's grep on 8eeb850a: one hit, `ui.md:442`, the placeholder rule, not about projects. No manual UI check: texts only.
 
 ### S9 — One database backup: the migration's (S)
-Status: planned (LAD-143)
+Status: in progress (LAD-143, run task/lad-143)
 Check:
 - `lado update` makes no backup of its own and deletes nothing in `~/.lado/backups/`; `lado.db.schema-<N>` of the last migration survives every update (unit).
 - An update that fails after the new version migrated rolls back with `lado.db.schema-<N>` (unit; the existing rollback tests reworked, none dropped).

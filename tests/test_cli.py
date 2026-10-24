@@ -1790,6 +1790,12 @@ def test_a_command_does_not_migrate_the_database_under_a_running_session(repo, f
     assert f"old  {repo}  (stopped)" in capsys.readouterr().out
 
 
+def test_the_commands_lado_doctor_names_for_an_upgrade_migrate():
+    """lado doctor's line on an older lado.db says `lado ls` or `lado start` upgrades it."""
+    assert "ls" not in cli.NOT_MIGRATING and "start" not in cli.NOT_MIGRATING
+    assert "doctor" in cli.NOT_MIGRATING
+
+
 def test_stop_all_stops_every_running_session(repo, fake_tmux, capsys):
     for name in ("a", "b"):
         main(["start", str(repo), "--provider", "claude", "--name", name, "--no-attach"])

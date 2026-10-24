@@ -805,21 +805,23 @@ def unpushed(project_folder: Path) -> list[str]:
     (untracked files too), commits on a detached HEAD that no branch holds, and, for the
     repository, its branches not pushed and its stashes. A worktree directly in the folder
     of a repository listed there is its repository's line only, not one of its own. A
-    folder that cannot be listed is the line `the project's folder: could not check:
-    <reason>`."""
+    symbolic link in the folder is not scanned: removing the folder removes the link, never
+    its target. A folder that cannot be listed is the line `the project's folder: could not
+    check: <reason>`."""
     lines = []
     own = _own_root(str(project_folder))
     try:
-        entries = [
+        repos = [
             entry
             for entry in sorted(project_folder.iterdir())
             if entry.is_dir() and os.path.lexists(entry / ".git")
         ]
     except OSError as error:
         return [f"the project's folder: could not check: {error.strerror or error}"]
-    if own:  # the repositories in it are their own lines, not the root's changes
-        skip = [entry.name for entry in entries]
+    if own:  # the repositories in it and links to one are not the root's changes
+        skip = [entry.name for entry in repos]
         lines += _checkout_lines(project_folder, project_folder, "the project's folder", skip)
+    entries = [entry for entry in repos if not entry.is_symlink()]
     listed = set()  # the real paths of the worktrees of the folder's and its entries' repositories
     for entry in ([project_folder] if own else []) + entries:
         if not (entry / ".git").is_dir():

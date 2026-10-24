@@ -56,6 +56,9 @@
 
 - **`lado update` no longer deletes the database's backup.** The copy LADO made before
   upgrading the database stays in `~/.lado/backups/`, so you can go back with it.
+- **`lado doctor` after an upgrade tells the truth about the database.** It no longer says
+  LADO was upgraded under a running session: a `lado.db` line says `lado ls` or `lado start`
+  upgrades it, or names the sessions to stop first. An incompatible database now fails it.
 - **The chat's times stand on one line.** Messages, run lines and closed gates end their
   times on the same edge; Copy message sits right before a message's time, and a touch
   screen, where you copy by selecting, no longer shows it.

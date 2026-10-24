@@ -637,6 +637,40 @@ def test_cli_refuses_to_migrate_under_running_sessions_and_stop_all_migrates(rep
     assert all(state.get_session(s).stopped_at for s in (SESSION, "other"))
 
 
+def doctor_line(name: str) -> str | None:
+    out = lado_cli("doctor").stdout
+    assert "upgraded under a running session" not in out
+    return next((line for line in out.splitlines() if f"] {name}: " in line), None)
+
+
+def test_doctor_on_an_older_schema_says_what_upgrades_it_and_changes_nothing(repo):
+    """lado doctor never migrates: on an older lado.db it says `lado ls` or `lado start`
+    upgrades it, or names the session running in tmux that keeps it from that."""
+    start(repo)
+    runtime.start_session(str(repo), "gone", None, "fake")
+    agent_helpers.wait_for(
+        lambda: state.get_agent("gone", "supervisor").status == state.IDLE,
+        "gone's supervisor to be idle",
+        "gone",
+    )
+    tmux.kill_session("gone")  # its tmux died without `lado stop`
+    agent_helpers.previous_schema()
+    before = database()
+    older, known = state.SCHEMA_VERSION - 1, state.SCHEMA_VERSION
+    assert doctor_line("lado.db") == (
+        f'[warn] lado.db: schema {older}, this LADO knows {known}, and the sessions "{SESSION}" '
+        "run on it"
+    )
+    assert database() == before
+    tmux.kill_session(SESSION)
+    assert doctor_line("lado.db") == (
+        f"[info] lado.db: schema {older}, this LADO knows {known}: lado ls or lado start "
+        "upgrades it (its backup goes to backups/)"
+    )
+    assert database() == before
+    assert not (state.home() / "backups").exists()
+
+
 def test_a_running_agent_on_an_older_schema_changes_nothing_and_is_told_why(repo):
     """LADO upgraded in place under a running session: its agent's hooks, its `lado mcp`
     and its session loop run the new code, and none of them migrates."""

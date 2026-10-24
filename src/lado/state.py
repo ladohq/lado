@@ -1197,36 +1197,60 @@ def _open() -> sqlite3.Connection:
     return conn
 
 
+OLDER, NEWER, INCOMPATIBLE = "older", "newer", "incompatible"  # schema_refusal's kinds
+
+
+def schema_refusal(conn: sqlite3.Connection) -> tuple[str, str] | None:
+    """Why this LADO refuses the lado.db open in `conn`: OLDER, NEWER or INCOMPATIBLE and
+    the refusal's text, which connect() raises and `lado doctor` shows. None at this
+    LADO's schema, or for an empty database (connect() makes its tables). Reads only."""
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version == SCHEMA_VERSION:
+        return None
+    where = home_path() / "lado.db"
+    if version in MIGRATIONS:
+        return OLDER, (
+            f"{where} has schema version {version} and this LADO knows "
+            f"{SCHEMA_VERSION}: LADO was upgraded under a running session. Run "
+            "`lado stop --all`, then `lado start`; with no session running, any `lado` "
+            "command upgrades the database"
+        )
+    if version > SCHEMA_VERSION:
+        return NEWER, (
+            f"{where} has schema version {version}, made by a newer LADO "
+            f"(this one knows up to {SCHEMA_VERSION}); upgrade LADO, and restart a "
+            "session that runs on this version with `lado stop` and `lado start`"
+        )
+    tables = conn.execute("SELECT count(*) FROM sqlite_master WHERE type = 'table'").fetchone()
+    if version or tables[0]:
+        return INCOMPATIBLE, (
+            f"{where} has an incompatible schema (version {version}); "
+            "stop all LADO sessions and delete it"
+        )
+    return None
+
+
+def read_schema_refusal() -> tuple[str, str] | None:
+    """schema_refusal of lado.db, None when there is none. Reads only: unlike connect(), it
+    never makes the database or LADO_HOME."""
+    path = home_path() / "lado.db"
+    if not path.exists():
+        return None
+    with closing(sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=10)) as conn:
+        return schema_refusal(conn)
+
+
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
     """lado.db, made when there is none. It never migrates: another schema version is a
     SchemaError, so no process opening it upgrades the database under a running session
     (only migrate() does, which the CLI calls when no session runs)."""
     conn = _open()
-    version = conn.execute("PRAGMA user_version").fetchone()[0]
-    if version != SCHEMA_VERSION:
-        tables = conn.execute("SELECT count(*) FROM sqlite_master WHERE type = 'table'").fetchone()
-        if version in MIGRATIONS:
+    if conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+        refused = schema_refusal(conn)
+        if refused is not None:
             conn.close()
-            raise SchemaError(
-                f"{home() / 'lado.db'} has schema version {version} and this LADO knows "
-                f"{SCHEMA_VERSION}: LADO was upgraded under a running session. Run "
-                "`lado stop --all`, then `lado start`; with no session running, any `lado` "
-                "command upgrades the database"
-            )
-        if version > SCHEMA_VERSION:
-            conn.close()
-            raise SchemaError(
-                f"{home() / 'lado.db'} has schema version {version}, made by a newer LADO "
-                f"(this one knows up to {SCHEMA_VERSION}); upgrade LADO, and restart a "
-                "session that runs on this version with `lado stop` and `lado start`"
-            )
-        if version or tables[0]:
-            conn.close()
-            raise SchemaError(
-                f"{home() / 'lado.db'} has an incompatible schema (version {version}); "
-                "stop all LADO sessions and delete it"
-            )
+            raise SchemaError(refused[1])
         conn.executescript(SCHEMA)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     try:

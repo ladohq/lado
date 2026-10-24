@@ -711,6 +711,34 @@ update**.
 `lado update 0.20.0` installs an older version the same way, as far as that version
 accepts your database: an older LADO refuses a newer `lado.db` and says so when it starts.
 
+**From 0.43.0 to 0.42.x.** 0.43.0 moved `lado.db` to schema 35, and 0.42.x refuses it
+(`… has schema version 35, made by a newer LADO (this one knows up to 31)`). It needs the
+copy the upgrade made, `~/.lado/backups/lado.db.schema-31`. `lado update 0.42.x` keeps only
+its own new backup in `~/.lado/backups/` and deletes the rest, that copy too, so copy it
+out first. Everything LADO recorded since the upgrade is lost:
+
+```bash
+lado stop --all
+lado server stop
+cp ~/.lado/backups/lado.db.schema-31 ~/lado.db.schema-31
+lado update 0.42.0    # installed otherwise: pip install lado==0.42.0 (below)
+cd ~/.lado && rm -f lado.db-wal lado.db-shm && cp ~/lado.db.schema-31 lado.db
+```
+
+Then start your sessions and `lado ui` again on 0.42.x.
+
+In Docker it is [Go back to the version before](#go-back-to-the-version-before) with
+`<N>` = 31; nothing deletes that backup there.
+
+What stays: the projects, their variables and which session is in which project are
+forgotten with the database, but `<workspace>/projects/` stays with every repository in
+it, and so does each project's data folder `~/.lado/projects/<id>/` with its secrets in
+`secrets/`: remove it by hand when you no longer need them. Upgrading again, `lado doctor`
+calls `projects/` "your own folder" and `lado project create` refuses until you move it
+away; after that, `lado project create` with an id whose `~/.lado/projects/<id>/` is left
+refuses (`… is left from a project <id>: remove it or choose another id`), so an old secret
+is never taken over silently.
+
 ### The check for a newer version
 
 `lado ls`, `lado doctor` and the web UI look on PyPI at most once a day and say

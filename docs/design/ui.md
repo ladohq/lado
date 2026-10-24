@@ -697,7 +697,7 @@ Sessions for now. The UI's texts are in English.
 - **Placeholders**: one component, with the section's name, one sentence on what it will
   hold, and a link to the plan item that builds it. A placeholder is allowed only when its
   section has an item in ROADMAP.md or in Tasks below: they are Tasks here. Projects was
-  one until step S6a (Projects, below).
+  one before 0.43.0 (Projects, below).
 - **Addresses**: `/` Home, `/needs-you`, `/sessions`, `/sessions/<name>/<tab>` (tab:
   activity, agents, flows, artifacts; without one, activity), a flow run's page
   `/sessions/<name>/flows/<run>` (Flows below), an agent's page
@@ -1544,7 +1544,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   server's machine has (ssh keys, `gh auth`, a credential helper): a server started where
   the human's ssh-agent is not reachable cannot use its keys, and the hints point at the
   command to check that.
-- **Project** (decided 2026-10-23, LAD-137, step S6b of [projects.md](projects.md); mockup
+- **Project** (decided 2026-10-23, LAD-137, [projects.md](projects.md); mockup
   `task/lad-137/mockup-project-way.html` v2; `LaunchProject.tsx`): a session in a
   project's repository, as `lado start --project <id> --repo <name>` starts it. The window
   only chooses: it adds, clones or makes no repository (the human's answer #1282); a
@@ -1665,13 +1665,13 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 
 ### Projects (decided 2026-10-23, LAD-134)
 
-The Projects section (`Projects.tsx`, `ProjectRepos.tsx`, `ProjectVariables.tsx`; steps S6a
-and S7a of [projects.md](projects.md); the mockups `task/lad-134/mockup-projects.html` and
+The Projects section (`Projects.tsx`, `ProjectRepos.tsx`, `ProjectVariables.tsx`;
+[projects.md](projects.md); the mockups `task/lad-134/mockup-projects.html` and
 `task/lad-138/mockup-project-page.html` v2, the human's answers #1151, #1153, #1158, #1347,
 #1350 and #1352) lists the projects and shows one with its repositories, its sessions, its
-variables and secrets, and deletes it (`ProjectDelete.tsx`, step S7b, LAD-139, the mockup
+variables and secrets, and deletes it (`ProjectDelete.tsx`, LAD-139, the mockup
 `task/lad-139/mockup-project-delete.html` and the human's answer #1375); the Project way of
-New session (S6b, LAD-137) is in Launch and session control.
+New session (LAD-137) is in Launch and session control.
 
 - **Layout**, as Sessions: the list at the left (260 px), the project at the right at
   `/projects/<id>`; on a phone the list fills the screen and a project opens in its place
@@ -1839,10 +1839,10 @@ layout, below).
 - The remote reaches the API only through `runtime.public_remote`: no userinfo for a URL
   scheme but ssh (a token alone too), a password dropped from `ssh://`, the scp form and a
   local path as they are.
-- `repos` is a list of one item: the session's repository. A session in a project (step S3
-  of [projects.md](projects.md), not built yet) shows its project there too; how it looks
-  is decided with a mockup at S3. More than one item comes only with sessions over several
-  repositories, which the projects model leaves for later (projects.md, Not now).
+- `repos` is a list of one item: the session's repository. The project a session is in is
+  not one of them: it comes as `SessionAbout.project` (above). More than one item comes
+  only with sessions over several repositories, which the projects model leaves for later
+  ([projects.md](projects.md), Not now).
 - Known limit: the server finds the CLI on its own PATH (`shutil.which`), as
   `/api/providers` and the folder check do; agents get their login shell's PATH, so the
   version shown may differ from theirs.

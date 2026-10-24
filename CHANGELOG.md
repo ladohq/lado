@@ -48,6 +48,9 @@
 - **Removing a project or a repository names more of what it loses.** Commits on a
   detached HEAD and stashes are listed too, and a repository's sessions from before
   projects are named and forgotten with it.
+- **The guide says how to go back from 0.43.0 to 0.42.0.** Copy the database's backup out
+  of `~/.lado/backups/` before `lado update 0.42.0`, which deletes it; projects' folders
+  and secrets stay on disk until you remove them.
 
 ### Fixed
 

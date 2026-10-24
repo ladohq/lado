@@ -31,7 +31,7 @@
 
 ## 3. End to end
 
-- [ ] 3.1 `tests/integration/` (the module that runs the CLI against a real tmux server;
+- [x] 3.1 `tests/integration/` (the module that runs the CLI against a real tmux server;
   the doctor's file if there is one): `agent_helpers.previous_schema()`, no session, `lado
   doctor` as a process: the `[info] lado.db:` line, no `upgraded under a running
   session`, schema unchanged (AC-1); then a session started with the fake agent and the

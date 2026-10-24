@@ -155,7 +155,7 @@ def release(data: dict, version: str) -> Release | None:
 _SCHEMA = re.compile(r"^SCHEMA_VERSION = (\d+)$", re.M)
 
 
-def release_schema(data: dict, version: str, timeout: float = INDEX_TIMEOUT) -> int:
+def release_schema(data: dict, version: str) -> int:
     """The lado.db schema the release `version` knows: `SCHEMA_VERSION` in lado/state.py of
     its wheel, downloaded from the URL the index `data` gives and checked against its
     sha256. OSError (download) or ValueError (no such wheel, another digest, no such line),
@@ -178,7 +178,7 @@ def release_schema(data: dict, version: str, timeout: float = INDEX_TIMEOUT) -> 
     )
     if found is None or not found.get("url"):
         raise ValueError(f"PyPI has no wheel of LADO {version}")
-    with urllib.request.urlopen(found["url"], timeout=timeout) as answer:
+    with urllib.request.urlopen(found["url"], timeout=INDEX_TIMEOUT) as answer:
         body = answer.read()
     expected = (found.get("digests") or {}).get("sha256")
     if not expected or hashlib.sha256(body).hexdigest() != expected:

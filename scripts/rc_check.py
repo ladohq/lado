@@ -556,7 +556,7 @@ def _schema(path: Path) -> int:
         return db.execute("PRAGMA user_version").fetchone()[0]
 
 
-def _hand_over(copy: Path, schema: int) -> Path:
+def _hand_over(copy: Path, schema: int) -> None:
     """The copy where `lado update` looks for it, backups/lado.db.schema-<schema>: written
     beside it, then renamed over a file of that name; the other files stay."""
     target = lado_home() / "backups" / f"lado.db.schema-{schema}"
@@ -564,7 +564,6 @@ def _hand_over(copy: Path, schema: int) -> Path:
     written = target.with_name(f"{target.name}.tmp")
     shutil.copy2(copy, written)
     written.replace(target)
-    return target
 
 
 def _alive(pid: object) -> bool:

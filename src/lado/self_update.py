@@ -503,21 +503,17 @@ class _Update:
         database = "kept"
         back = self.plan.restore
         if back:
-            live = state.home() / "lado.db"
             try:
-                restore(back.copy, live)
+                restore(back.copy, state.home() / "lado.db")
                 now_schema = state.schema_version()
             except sqlite3.Error as exc:
-                return self._roll_back(
-                    f"lado.db not restored from {back.copy}: {exc}", stopped, [], False
-                )
+                why = f"lado.db not restored from {back.copy}: {exc}"
+                return self._roll_back(why, stopped, [], started_server=False)
             if now_schema != back.schema:
-                return self._roll_back(
-                    f"lado.db restored from {back.copy} has schema {now_schema}, not {back.schema}",
-                    stopped,
-                    [],
-                    False,
+                why = (
+                    f"lado.db restored from {back.copy} has schema {now_schema}, not {back.schema}"
                 )
+                return self._roll_back(why, stopped, [], started_server=False)
             database = "restored"
             say(f"Restored lado.db from {back.copy} (schema {back.schema})")
             # The sessions the copy lacks are not in lado.db now: not started again.

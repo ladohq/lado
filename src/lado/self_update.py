@@ -2,7 +2,9 @@
 (stop the sessions and the UI server, install, check, resume, and roll back when the new
 version itself is bad). It keeps no copy of lado.db of its own and touches nothing in
 LADO_HOME/backups/: the copy its rollback restores is the migration's
-(backups/lado.db.schema-<N>, state.migrate). lado.update is its pure part: the index, the
+(backups/lado.db.schema-<N>, state.migrate). An update to a release with an older schema
+(its wheel says which, update.release_schema) warns in its plan, refuses without that
+schema's copy, and puts the copy back after the installer. lado.update is its pure part: the index, the
 installer, the marks and the result file.
 
 One update at a time per LADO_HOME: it holds an exclusive flock on LADO_HOME/update.lock
@@ -122,6 +124,19 @@ def refusal(installer: update.Installer | None) -> Refusal | None:
     return None
 
 
+@dataclass(frozen=True)
+class Restore:
+    """How an update to a release with an older lado.db schema goes back: lado.db becomes
+    the migration's `copy` of `schema` (made at `made`, local `YYYY-MM-DD HH:MM`) in place
+    of the schema `live`; the planned sessions the copy lacks (`missing`) are not resumed."""
+
+    copy: Path
+    schema: int
+    live: int
+    made: str
+    missing: list[str]
+
+
 @dataclass
 class Plan:
     """What an update to `to` would do: the sessions it stops and resumes (those
@@ -138,6 +153,7 @@ class Plan:
     # On a Mac outside the graphical session: where the resumed agents' tmux server starts,
     # or why they cannot read their login from the keychain (lado.gui_session); else None.
     agents_note: str | None = None
+    restore: Restore | None = None  # lado.db goes back to an older schema's copy
 
     @property
     def command(self) -> str | None:
@@ -157,7 +173,12 @@ class Plan:
         return lines
 
 
-def plan(to: update.Release) -> Plan:
+def plan(to: update.Release, index: dict | None = None) -> Plan:
+    """The plan of an update to `to`; `index` is PyPI's JSON, read again when None and an
+    older release's schema is needed. runtime.LadoError, before anything is stopped, when
+    `to` is older and its lado.db schema cannot be learned, or is older than lado.db's
+    without the migration's copy of it to go back to."""
+    live = state.schema_version()  # before list_sessions(), which makes a lado.db
     found = Plan(lado.__version__, to, update.installer(), [], [], server_run.running())
     found.agents_note = agents_note()
     for sess in state.list_sessions():
@@ -166,7 +187,43 @@ def plan(to: update.Release) -> Plan:
             found.sessions.append(sess)
         elif status == runtime.SessionStatus.TMUX_GONE:
             found.gone.append(sess)
+    if found.downgrade and live is not None:
+        found.restore = _way_back(to.version, live, index, found.sessions)
     return found
+
+
+def _way_back(
+    version: str, live: int, index: dict | None, sessions: list[state.Session]
+) -> Restore | None:
+    """The Restore of an update to the older `version` from lado.db at schema `live`; None
+    when that version knows this schema."""
+    try:
+        schema = update.release_schema(update.fetch_index() if index is None else index, version)
+    except (OSError, ValueError) as exc:
+        raise runtime.LadoError(
+            f"cannot learn which lado.db schema LADO {version} needs: {exc}; nothing was stopped"
+        ) from exc
+    if schema >= live:
+        return None
+    copy = backups() / f"lado.db.schema-{schema}"
+    if not copy.is_file():
+        raise runtime.LadoError(
+            f"LADO {version} needs lado.db at schema {schema}, and lado.db has schema {live}; "
+            f"{backups()} holds no {copy.name} to go back to (docs/install.md, Going back to "
+            "an older version); nothing was stopped"
+        )
+    try:
+        # immutable: a read-only look at a WAL file may leave -wal and -shm in backups/.
+        db = sqlite3.connect(f"{copy.as_uri()}?mode=ro&immutable=1", uri=True, timeout=10)
+        try:
+            names = {row[0] for row in db.execute("SELECT name FROM sessions")}
+        finally:
+            db.close()
+    except sqlite3.Error as exc:
+        raise runtime.LadoError(f"cannot read {copy}: {exc}; nothing was stopped") from exc
+    made = datetime.datetime.fromtimestamp(copy.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+    missing = [s.name for s in sessions if s.name not in names]
+    return Restore(copy, schema, live, made, missing)
 
 
 def agents_note() -> str | None:
@@ -206,12 +263,22 @@ def print_plan(found: Plan, say: Say = print) -> None:
                 f"lado: WARNING: {found.command} does not keep {lost} of this install",
                 file=sys.stderr,
             )
-    if found.downgrade:
-        say(
-            f"lado: WARNING: an older LADO may refuse lado.db (schema {state.SCHEMA_VERSION}); "
-            "it says so when it starts",
-            file=sys.stderr,
-        )
+    back = found.restore
+    if back:
+        lines = [
+            f"lado: WARNING: LADO {found.to.version} knows lado.db up to schema {back.schema}; "
+            f"lado.db has schema {back.live}.",
+            f"  lado.db goes back to {back.copy}, made {back.made}",
+            f"  by the upgrade from schema {back.schema}. Everything LADO recorded since then "
+            "is lost: sessions,",
+            "  runs, gates, messages, projects. Repositories, worktrees and project folders "
+            "stay on disk.",
+        ]
+        if back.missing:
+            lines.append(
+                f"  Sessions not in that copy are not started again: {', '.join(back.missing)}"
+            )
+        say("\n".join(lines), file=sys.stderr)
     if found.sessions or found.server:
         say("Restarts:")
     for sess in found.sessions:
@@ -433,6 +500,28 @@ class _Update:
             why = f"LADO {self.new} did not install right: --version says {now or 'nothing'}"
             say(f"The installer finished, but LADO is {now or 'unknown'}, not {self.new}.")
             return self._roll_back(why, stopped, [], started_server=False)
+        database = "kept"
+        back = self.plan.restore
+        if back:
+            live = state.home() / "lado.db"
+            try:
+                restore(back.copy, live)
+                now_schema = state.schema_version()
+            except sqlite3.Error as exc:
+                return self._roll_back(
+                    f"lado.db not restored from {back.copy}: {exc}", stopped, [], False
+                )
+            if now_schema != back.schema:
+                return self._roll_back(
+                    f"lado.db restored from {back.copy} has schema {now_schema}, not {back.schema}",
+                    stopped,
+                    [],
+                    False,
+                )
+            database = "restored"
+            say(f"Restored lado.db from {back.copy} (schema {back.schema})")
+            # The sessions the copy lacks are not in lado.db now: not started again.
+            stopped = [s for s in stopped if s.name not in back.missing]
         say(f"Resuming on LADO {self.new}:", flush=True)
         resumed = self._resume(stopped, None)
         if self.address:
@@ -442,12 +531,12 @@ class _Update:
         if self.failed:
             count = len(self.failed)
             self.end(
-                "partial", f"{count} session{'' if count == 1 else 's'} did not resume", "kept"
+                "partial", f"{count} session{'' if count == 1 else 's'} did not resume", database
             )
             return 1
         update.clear_pending()
         say(f"LADO {self.new} is ready." + (" Reload open UI tabs." if self.address else ""))
-        self.end("ok", None, "kept")
+        self.end("ok", None, database)
         return 0
 
     def _server(self, version: str) -> str | None:

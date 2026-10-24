@@ -9,7 +9,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-24-one-database
   rollback checks the migration's copy first and restores only a newer schema from it
   (D1, D8, D9). Check: `tests/test_self_update.py`, the rollback tests reworked, none
   dropped, each asserting `backups/` unchanged.
-- [ ] 1.3 `self_update.plan(to, index)` with `Restore` or a refusal, the warning in
+- [x] 1.3 `self_update.plan(to, index)` with `Restore` or a refusal, the warning in
   `print_plan`, the restore after the version check, the resume of the copy's sessions
   only; `cli._update` passes the index (D3-D7). Check: `tests/test_self_update.py`.
 

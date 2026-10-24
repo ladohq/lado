@@ -458,15 +458,18 @@ def test_update_without_a_terminal_needs_yes(installed, capsys, monkeypatch):
     assert capsys.readouterr().err == "lado: not updated: confirm with --yes\n"
 
 
-def test_update_to_an_older_version_warns_about_the_database(installed, capsys, monkeypatch):
+def test_update_to_an_older_version_without_lado_db_says_nothing_of_it(
+    installed, capsys, monkeypatch
+):
+    """Its release has no wheel in the index: none is asked for (the warning of an older
+    schema: test_self_update)."""
     no_terminal(monkeypatch)
+    assert state.schema_version() is None
     assert main(["update", "0.1.0"]) == 1
     captured = capsys.readouterr()
     assert captured.out.startswith(f"LADO {__version__} -> 0.1.0 (PyPI, released 2026-01-01)\n")
-    assert (
-        f"lado: WARNING: an older LADO may refuse lado.db (schema {state.SCHEMA_VERSION})"
-        in captured.err
-    )
+    assert "lado.db" not in captured.err
+    assert captured.err == "lado: not updated: confirm with --yes\n"
 
 
 def test_update_to_a_version_pypi_does_not_have_stops_nothing(installed, repo, fake_tmux, capsys):

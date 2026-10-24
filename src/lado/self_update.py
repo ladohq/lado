@@ -4,8 +4,8 @@ version itself is bad). It keeps no copy of lado.db of its own and touches nothi
 LADO_HOME/backups/: the copy its rollback restores is the migration's
 (backups/lado.db.schema-<N>, state.migrate). An update to a release with an older schema
 (its wheel says which, update.release_schema) warns in its plan, refuses without that
-schema's copy, and puts the copy back after the installer. lado.update is its pure part: the index, the
-installer, the marks and the result file.
+schema's copy, and puts the copy back after the installer. lado.update is its pure part:
+the index, the installer, the marks and the result file.
 
 One update at a time per LADO_HOME: it holds an exclusive flock on LADO_HOME/update.lock
 (its pid in the file) for its whole run, and only then writes LADO_HOME/update.log (each

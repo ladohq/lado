@@ -30,7 +30,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-24-one-database
 
 ## 4. Documents
 
-- [ ] 4.1 `docs/install.md` (What it does, When something goes wrong, Going back to an
+- [x] 4.1 `docs/install.md` (What it does, When something goes wrong, Going back to an
   older version; Docker unchanged; old `lado.db.<version>` files may be removed),
   `docs/design/modules.md` (`self_update.py`, `update.py`, `state.py`'s migration),
   `docs/release.md` 4.4 (D12). Check: read against the spec; `make lint`.

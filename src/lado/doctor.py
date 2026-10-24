@@ -236,7 +236,9 @@ def check_config_folders() -> Check:
     name = "Agent config folders"
     try:
         stray = runtime.stray_config_dirs()
-    except (state.SchemaError, tmux.TmuxError) as exc:
+    except state.SchemaError:
+        return Check(name, INFO, NOT_AT_SCHEMA)
+    except tmux.TmuxError as exc:
         return Check(name, INFO, f"not checked: {exc}")
     if not stray:
         return Check(name, OK, "only those of running agents")
@@ -287,8 +289,8 @@ def check_artifacts() -> Check:
         return Check(name, OK, "none")  # no lado.db: the check makes none
     try:
         usage = artifacts.store().usage()
-    except state.SchemaError as exc:
-        return Check(name, INFO, f"not checked: {exc}")
+    except state.SchemaError:
+        return Check(name, INFO, NOT_AT_SCHEMA)
     detail = (
         f"{_count(usage.artifacts, 'artifact')}, {_count(usage.records, 'record')}, "
         f"{_megabytes(usage.bytes)}"
@@ -310,6 +312,44 @@ def _count(n: int, what: str) -> str:
 
 def _megabytes(size: int) -> str:
     return f"{size / 2**20:.1f} MB"
+
+
+# A check that cannot read lado.db for its schema; the line `lado.db` (check_database) says
+# why and what to do, once.
+NOT_AT_SCHEMA = "not checked: lado.db is not at this LADO's schema (see lado.db)"
+
+
+def check_database() -> Check | None:
+    """lado.db when it is not at this LADO's schema, None when it is or there is none.
+    doctor never migrates (cli.NOT_MIGRATING) and this reads only: an older lado.db is
+    upgraded by the next `lado ls` or `lado start`, unless sessions run on it
+    (runtime.migration_due, by which those commands refuse)."""
+    refused = state.read_schema_refusal()
+    if refused is None:
+        return None
+    kind, text = refused
+    if kind == state.NEWER:
+        return Check("lado.db", WARN, text)
+    if kind == state.INCOMPATIBLE:
+        return Check("lado.db", FAIL, text)
+    due = runtime.migration_due()
+    if due is None:  # upgraded since by another lado command
+        return None
+    version, running = due
+    schemas = f"schema {version}, this LADO knows {state.SCHEMA_VERSION}"
+    if not running:
+        return Check(
+            "lado.db",
+            INFO,
+            f"{schemas}: lado ls or lado start upgrades it (its backup goes to backups/)",
+        )
+    names = ", ".join(f'"{s}"' for s in running)
+    return Check(
+        "lado.db",
+        WARN,
+        f"{schemas}, and the sessions {names} run on it",
+        "stop them with lado stop --all (it upgrades lado.db), then lado start",
+    )
 
 
 def check_lado() -> Check:
@@ -573,8 +613,8 @@ def check_projects() -> Check | None:
     where = projects.projects_folder()
     try:
         listed = projects.listed()
-    except state.SchemaError as exc:  # doctor checks lado.db as it is: no migration
-        return Check(name, INFO, f"not checked: {exc}")
+    except state.SchemaError:  # doctor checks lado.db as it is: no migration
+        return Check(name, INFO, NOT_AT_SCHEMA)
     if not listed and not os.path.lexists(where):
         return None
     if not where.is_dir():
@@ -670,8 +710,10 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
     overridden = check_project_variables()
     unused_secrets = check_project_secrets()
     author = check_git_author()
+    database = check_database()
     return [
         check_lado(),
+        *([database] if database else []),
         Check("Python", OK, platform.python_version()),
         check_tmux(which),
         check_git(),

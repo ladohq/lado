@@ -14,14 +14,14 @@
 
 ## 2. The doctor
 
-- [ ] 2.1 `src/lado/doctor.py`: `check_database()` (name `lado.db`) by the delta's three
+- [x] 2.1 `src/lado/doctor.py`: `check_database()` (name `lado.db`) by the delta's three
   requirements: reads only (`state.schema_version`, the function of 1.1), None at the current schema or with no
   `lado.db`; the newer and incompatible lines take their words from 1.3; incompatible
   is `FAIL`. `run_checks` puts it right after `check_lado()`.
-- [ ] 2.2 `check_projects` and `check_artifacts`: on a `SchemaError` they say `not
+- [x] 2.2 `check_projects` and `check_artifacts`: on a `SchemaError` they say `not
   checked: lado.db is not at this LADO's schema (see lado.db)`; `check_config_folders`
   likewise for a `SchemaError` (its tmux error keeps its text); one constant (D5).
-- [ ] 2.3 `tests/test_doctor.py` (unit, tmux replaced as in the module's other tests):
+- [x] 2.3 `tests/test_doctor.py` (unit, tmux replaced as in the module's other tests):
   older schema with no session, with two running and one gone from tmux, newer (36),
   incompatible (`FAIL`, `doctor.main()` returns 1), current, no `lado.db` (AC-1 to
   AC-4); each asserts `lado.db`'s schema is unchanged and `backups/` empty, and the first that no line of `doctor.main()`'s output

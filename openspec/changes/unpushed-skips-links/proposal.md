@@ -40,7 +40,8 @@ Options weighed:
 - When the project's folder is itself a repository's root, a link directly in it stays out
   of the root's `uncommitted changes`, as the project's repositories do (no new false
   line).
-- The living spec `projects` says so in two requirements, with a scenario each.
+- The living spec `projects` says so in a new requirement for the scan's links, with two
+  scenarios, and in the root's requirement, with one.
 - `docs/design/projects.md`, "Deleting": a link in the folder is not scanned.
 
 ## Scope

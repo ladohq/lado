@@ -10,8 +10,8 @@
   before 1.3.
 - [x] 1.2 `tests/test_project_repos.py`, beside the `rooted` tests: the clean, pushed root
   holding a link `docs` to a repository elsewhere with an uncommitted file gives
-  `projects.unpushed(rooted) == []` (AC-3); it must hold before and after 1.3 (it guards
-  D1).
+  `projects.unpushed(rooted) == []` (AC-3). It fails before 1.3 on the link's own line,
+  and guards D1 after it: it fails when the root's `skip` leaves links out.
 - [x] 1.3 `src/lado/projects.py`, `unpushed`: the entries scanned are the folder's
   repositories that are no symbolic link; the root's `skip` keeps every entry with a
   `.git`, links included (design D1, D2). Its docstring says a link is not scanned:

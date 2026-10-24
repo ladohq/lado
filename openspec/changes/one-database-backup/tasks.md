@@ -15,7 +15,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-24-one-database
 
 ## 2. End to end
 
-- [ ] 2.1 `tests/integration/test_update_process.py`: the older-version test with a
+- [x] 2.1 `tests/integration/test_update_process.py`: the older-version test with a
   wheel of the same schema; a downgrade across a schema with an "old" install that
   really refuses the newer schema, the old `lado ls` seeing its session; a downgrade
   without the copy stopping nothing. Check: `uv run pytest -m integration -n auto

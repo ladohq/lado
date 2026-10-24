@@ -738,9 +738,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     line), names them and asks for `lado stop --all`,
     and by `runtime.stop_session` and `stop_all` (`lado stop`, docs/cli.md), all through
     `runtime._migrate`. Before its first step, inside its write lock, `migrate` copies
-    lado.db by SQLite's backup API (`state.copy_db`, also `self_update.restore`'s; a
-    connection of its own reads it) to `backups/lado.db.schema-<N>` (N the schema before;
-    `.tmp`, then a rename), then removes every other `lado.db.schema-*` (one it cannot
+    lado.db by SQLite's backup API (`state.copy_db`; a connection of its own reads it;
+    `self_update.restore` does the same from a read-only, immutable source) to
+    `backups/lado.db.schema-<N>` (N the schema before; `.tmp`, then a rename), then removes every other `lado.db.schema-*` (one it cannot
     stays, no failure) and leaves files of other names (the `lado.db.<version>` of a `lado
     update` of 0.42 and older); it is the only copy LADO makes. It returns a `Migrated`
     (before, after, backup), which `_migrate` says on stderr (`lado: upgraded lado.db from schema N to M; its backup is

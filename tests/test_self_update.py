@@ -708,3 +708,61 @@ def test_an_old_version_that_fails_after_the_restore_is_rolled_back_restoring_no
     assert install.version_file.read_text().strip() == __version__
     assert state.schema_version() == OLD_SCHEMA  # the version before migrates it on resume
     assert listing() == before
+
+
+def test_a_copy_gone_before_the_restore_leaves_lado_db_and_backups_as_they_were(
+    install, older, two_sessions
+):
+    """The plan saw the copy; it is gone by the restore: lado.db is not replaced by an empty
+    database, and no empty file is made where the copy was."""
+    found = plan_to(OLD)
+    two_sessions.unlink()
+    before = listing()
+    kept = schema_of(state.home() / "lado.db")
+    assert self_update.run(found, lambda *a, **k: None) == 1
+    done = result()
+    assert (done.outcome, done.database) == ("rolled_back", "kept")
+    assert state.schema_version() == kept == state.SCHEMA_VERSION
+    with contextlib.closing(sqlite3.connect(state.home() / "lado.db")) as db:
+        assert db.execute("SELECT name FROM sessions ORDER BY name").fetchall() == [
+            ("app",),
+            ("web2",),
+        ]
+    assert listing() == before
+
+
+def test_a_copy_gone_before_the_rollbacks_restore_is_a_failed_rollback(
+    install, session, monkeypatch
+):
+    monkeypatch.setattr(
+        self_update.server_run, "running", lambda: {"host": "127.0.0.1", "port": 8123, "url": "u"}
+    )
+    monkeypatch.setattr(self_update.server_run, "stop", lambda: None)
+    # The new version migrates; reinstalling the old one, the copy goes.
+    install.installs(
+        migrate_like_the_new_version()
+        + f'\nif [ "$1" = "{__version__}" ]; then rm -f "{copy_path()}"; fi'
+    )
+    install.fails("ui")
+    assert run()[0] == 1
+    done = result()
+    assert done.outcome == "rollback_failed"
+    assert "lado.db not restored: " in done.reason
+    assert state.schema_version() == 999  # not an empty database
+    assert not copy_path().exists()
+
+
+def test_a_loop_that_does_not_end_in_a_rollback_with_nothing_to_restore_names_no_backup(
+    install, session, monkeypatch
+):
+    monkeypatch.setattr(
+        self_update.server_run, "running", lambda: {"host": "127.0.0.1", "port": 8123, "url": "u"}
+    )
+    monkeypatch.setattr(self_update.server_run, "stop", lambda: None)
+    waits = iter([True, False])
+    monkeypatch.setattr(self_update.loop, "wait_stopped", lambda s, timeout=None: next(waits))
+    install.fails("ui")
+    assert run()[0] == 1
+    done = result()
+    assert done.outcome == "rollback_failed"
+    assert done.reason.endswith("lado.db not restored: the session loop of s did not end")

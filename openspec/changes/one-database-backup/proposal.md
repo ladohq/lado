@@ -85,8 +85,9 @@ In: `src/lado/self_update.py`, `src/lado/update.py` (the schema of a release),
 - AC-5 After X is installed and checked, `lado.db` holds the copy's content and schema,
   the copy stays in `backups/`, the sessions the copy has resume on X and the others do
   not, and the result's `database` is `restored`.
-- AC-6 An update to an older version of the same schema, or with no `lado.db`, restores
-  nothing and fetches no wheel.
+- AC-6 An update to an older version of the same schema restores nothing and warns of
+  nothing about `lado.db` (its wheel is read to learn that schema); with no `lado.db`, or
+  to a newer version, it fetches no wheel.
 - AC-7 `rc_check.py upgrade` keeps `~/.lado-rc/lado.db.<final>` from the migration's copy
   when the RC moved the schema; `rollback` goes back with `lado update <final>` restoring
   it; their tests are green.

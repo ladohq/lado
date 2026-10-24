@@ -17,6 +17,7 @@ package under it may be another version, or broken. Everything the rollback, the
 and the result need is imported here at the top.
 """
 
+import contextlib
 import datetime
 import fcntl
 import os
@@ -620,7 +621,7 @@ class _Update:
                 self.end(
                     "rollback_failed",
                     f"{why}; lado.db not restored: the session loop of {sess.name} did not "
-                    f"end; its backup is {copy}",
+                    "end" + (f"; its backup is {copy}" if copy else ""),
                 )
                 return 1
         code = _install(self.installer, self.old, say, "Reinstalling")
@@ -662,8 +663,14 @@ class _Update:
 
 
 def restore(source: Path, target: Path) -> None:
-    """`source` into `target`, the live file too (state.copy_db)."""
-    state.copy_db(source, target)
+    """The copy `source` into `target`, the live file too, by SQLite's backup API (as
+    state.copy_db). `source` is opened read-only and immutable: a copy gone since the plan
+    is an sqlite3.Error before anything is written, never an empty database made in its
+    place and copied over `target`; and no -wal or -shm is left beside it in backups/."""
+    uri = f"{source.as_uri()}?mode=ro&immutable=1"
+    with contextlib.closing(sqlite3.connect(uri, uri=True, timeout=10)) as src:
+        with contextlib.closing(sqlite3.connect(target, timeout=10)) as dst:
+            src.backup(dst)
 
 
 def _install(installer: update.Installer, version: str, say: Say, verb: str = "Upgrading") -> int:

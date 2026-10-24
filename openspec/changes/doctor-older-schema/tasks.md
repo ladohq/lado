@@ -39,9 +39,9 @@
 
 ## 4. Documents
 
-- [ ] 4.1 `docs/cli.md`, the `lado doctor` paragraphs: the `lado.db` line, when it shows,
+- [x] 4.1 `docs/cli.md`, the `lado doctor` paragraphs: the `lado.db` line, when it shows,
   and that doctor never migrates.
-- [ ] 4.2 CHANGELOG.md, `### Fixed` under `## 0.43.0 (unreleased)`: `lado doctor` after
+- [x] 4.2 CHANGELOG.md, `### Fixed` under `## 0.43.0 (unreleased)`: `lado doctor` after
   an upgrade no longer says LADO was upgraded under a running session; it says the
   database waits for its upgrade and what to do; on an incompatible `lado.db` it now
   fails (exit 1).

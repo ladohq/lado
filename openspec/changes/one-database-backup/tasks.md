@@ -34,7 +34,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-24-one-database
   older version; Docker unchanged; old `lado.db.<version>` files may be removed),
   `docs/design/modules.md` (`self_update.py`, `update.py`, `state.py`'s migration),
   `docs/release.md` 4.4 (D12). Check: read against the spec; `make lint`.
-- [ ] 4.2 CHANGELOG.md under `## 0.43.0 (unreleased)`: the Improved item on going back
+- [x] 4.2 CHANGELOG.md under `## 0.43.0 (unreleased)`: the Improved item on going back
   rewritten, a Fixed item for the deleted backup (D13). Check: docs/release.md's rules
   for items.
 

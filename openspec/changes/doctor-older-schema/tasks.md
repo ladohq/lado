@@ -1,15 +1,15 @@
 ## 1. The sessions that block a migration
 
-- [ ] 1.1 `src/lado/runtime.py`: one function gives the schema version of an older
+- [x] 1.1 `src/lado/runtime.py`: one function gives the schema version of an older
   `lado.db` and the sessions that keep it from being migrated (`state.pending_migration`'s
   sessions that `tmux.has_session` finds), None when nothing is to migrate;
   `migrate_if_safe` uses it, its refusal unchanged. The existing `migrate_if_safe` tests
   in `tests/test_runtime.py` stay green unchanged (AC-5); a unit test of the new function:
   a session marked running but gone from tmux is not among them (D1).
-- [ ] 1.2 `src/lado/cli.py`: the tuple of commands that do not migrate becomes a named
+- [x] 1.2 `src/lado/cli.py`: the tuple of commands that do not migrate becomes a named
   module constant, used where it is today; a unit test asserts `ls` and `start` are not
   in it (AC-6, D4).
-- [ ] 1.3 `src/lado/state.py`: the newer and incompatible refusals' text comes from one
+- [x] 1.3 `src/lado/state.py`: the newer and incompatible refusals' text comes from one
   helper that `connect()` and the doctor use (D3); `connect()`'s messages unchanged.
 
 ## 2. The doctor

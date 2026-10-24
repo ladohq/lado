@@ -204,6 +204,32 @@ def test_newer_database_is_reported(lado_home):
     assert "delete" not in message
 
 
+@pytest.mark.parametrize(
+    ("setup", "kind"),
+    [
+        ("PRAGMA user_version = 99", state.NEWER),
+        ("CREATE TABLE sessions (name TEXT)", state.INCOMPATIBLE),
+        (f"PRAGMA user_version = {min(state.MIGRATIONS)}", state.OLDER),
+    ],
+)
+def test_the_refusal_of_a_schema_is_read_without_a_change(lado_home, setup, kind):
+    lado_home.mkdir()
+    sqlite3.connect(lado_home / "lado.db").execute(setup)
+    before = (lado_home / "lado.db").read_bytes()
+    found, text = state.read_schema_refusal()
+    assert (lado_home / "lado.db").read_bytes() == before
+    with pytest.raises(state.SchemaError) as refused:
+        state.list_sessions()
+    assert (found, text) == (kind, str(refused.value))  # connect()'s words
+
+
+def test_no_refusal_of_this_schema_or_no_database(lado_home):
+    assert state.read_schema_refusal() is None
+    assert not lado_home.exists()  # read only: LADO_HOME not made
+    state.list_sessions()
+    assert state.read_schema_refusal() is None
+
+
 def test_the_migration_gives_messages_their_channel(lado_home):
     _session_with(_agent(status=state.IDLE))
     old = state.queue_message("s", "supervisor", "w1", "before")

@@ -6,6 +6,7 @@ import json
 import sqlite3
 import stat
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -80,11 +81,42 @@ def session(repo, fake_tmux):
     return "s"
 
 
-def bump_schema() -> str:
-    """Installer lines that move lado.db's schema on, as a new LADO's migration would."""
+def migrate_like_the_new_version(copy: bool = True) -> str:
+    """Installer lines that move lado.db's schema on as a new LADO's migration would: first
+    its copy backups/lado.db.schema-<the schema before> (none without `copy`), then the
+    schema."""
     db = state.home() / "lado.db"
-    code = f"import sqlite3; c = sqlite3.connect('{db}'); c.execute('PRAGMA user_version = 999')"
+    folder = state.home() / "backups"
+    code = (
+        "import os, sqlite3; "
+        f"c = sqlite3.connect('{db}'); "
+        f"v = c.execute('PRAGMA user_version').fetchone()[0]; "
+        + (
+            f"os.makedirs('{folder}', exist_ok=True); "
+            f"b = sqlite3.connect(os.path.join('{folder}', 'lado.db.schema-%d' % v)); "
+            "c.backup(b); b.close(); "
+            if copy
+            else ""
+        )
+        + "c.execute('PRAGMA user_version = 999'); c.close()"
+    )
     return f'if [ "$1" = "{NEW}" ]; then "{sys.executable}" -c "{code}"; fi'
+
+
+def copy_path() -> Path:
+    """The copy the migration of the new version writes (migrate_like_the_new_version)."""
+    return state.home() / "backups" / f"lado.db.schema-{state.SCHEMA_VERSION}"
+
+
+def listing() -> dict[str, bytes]:
+    """backups/ by name and content: equal listings mean nothing was written there."""
+    folder = state.home() / "backups"
+    return {p.name: p.read_bytes() for p in folder.iterdir()} if folder.exists() else {}
+
+
+def migrated(before: dict[str, bytes]) -> dict[str, bytes]:
+    """backups/ as `before`, with only the copy the new version's migration wrote added."""
+    return {**before, copy_path().name: copy_path().read_bytes()}
 
 
 def plan_to(version: str = NEW) -> self_update.Plan:
@@ -221,25 +253,27 @@ def test_lado_update_inside_an_agent_in_a_container_is_the_agents_refusal(
     assert 'agent "w1" cannot use it' in capsys.readouterr().err
 
 
-def test_lado_db_is_backed_up_before_the_installer_and_only_one_backup_is_kept(install, session):
+def test_the_update_writes_and_removes_nothing_in_backups(install, session):
     backups = state.home() / "backups"
     backups.mkdir()
-    (backups / "lado.db.0.0.1").write_text("an older backup")
+    (backups / "lado.db.0.0.1").write_text("an older update's backup")
+    (backups / f"lado.db.schema-{state.SCHEMA_VERSION - 1}").write_text("a migration's")
+    before = listing()
     seen = install.prefix.parent / "seen"
     install.installs(f'ls "{backups}" > "{seen}"')
     code, said = run()
     assert code == 0
-    assert seen.read_text().split() == [f"lado.db.{__version__}"]
-    assert [p.name for p in backups.iterdir()] == [f"lado.db.{__version__}"]
-    assert f"Backed up lado.db to {backups / f'lado.db.{__version__}'}" in said
-    with sqlite3.connect(backups / f"lado.db.{__version__}") as db:
-        assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
+    assert seen.read_text().split() == sorted(before)  # nothing written before the installer
+    assert listing() == before
+    assert not any(line.startswith("Backed up") for line in said)
 
 
 def test_a_wrong_version_rolls_back_and_restores_lado_db_when_its_schema_moved(install, session):
-    install.installs(bump_schema(), version=BROKEN_NEW)
+    install.installs(migrate_like_the_new_version(), version=BROKEN_NEW)
+    before = listing()
     code, said = run()
     assert code == 1
+    assert listing() == migrated(before)  # the copy stays
     # The old version again, with the same installer, then resumed on it.
     assert [c.split()[0] for c in install.called()] == ["--version", "--version", "start"]
     assert install.version_file.read_text().strip() == __version__
@@ -249,18 +283,52 @@ def test_a_wrong_version_rolls_back_and_restores_lado_db_when_its_schema_moved(i
     assert done.reason == f"LADO {NEW} did not install right: --version says {NEW}-broken"
     assert state.schema_version() == state.SCHEMA_VERSION
     assert f"Rolling back to LADO {__version__}: {done.reason}" in said
+    assert f"Restored lado.db from {copy_path()}" in said
+    with sqlite3.connect(state.home() / "lado.db") as db:
+        assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
+
+
+def test_a_rollback_without_the_migrations_copy_keeps_the_new_version(
+    install, session, monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        self_update.server_run, "running", lambda: {"host": "127.0.0.1", "port": 8123, "url": "u"}
+    )
+    monkeypatch.setattr(self_update.server_run, "stop", lambda: None)
+    install.installs(migrate_like_the_new_version(copy=False))
+    install.fails("ui")
+    before = listing()
+    code = self_update.run(plan_to(), print)
+    assert code == 1
+    done = result()
+    assert done.outcome == "rollback_failed"
+    assert done.reason == (
+        f"the UI server did not start on LADO {NEW} (exit code 1); not rolled back: lado.db "
+        f"has schema 999 and backups/ holds no lado.db.schema-{state.SCHEMA_VERSION} for "
+        f"LADO {__version__}, so LADO {NEW} stays installed"
+    )
+    assert done.reason in capsys.readouterr().err
+    # Installed once; the resumed session is not stopped and nothing is reinstalled.
+    assert [c.split()[0] for c in install.called()] == ["--version", "start", "ui"]
+    assert install.version_file.read_text().strip() == NEW
+    assert state.schema_version() == 999
+    assert listing() == before
 
 
 def test_a_rollback_keeps_lado_db_when_its_schema_did_not_move(install, session):
     install.installs("", version=BROKEN_NEW)
+    before = listing()
     assert run()[0] == 1
     done = result()
     assert (done.outcome, done.database) == ("rolled_back", "kept")
+    assert listing() == before
 
 
 def test_a_failed_reinstall_of_the_old_version_is_a_failed_rollback(install, session):
     install.installs(f'if [ "$1" = "{__version__}" ]; then exit 1; fi', version=BROKEN_NEW)
+    before = listing()
     assert run()[0] == 1
+    assert listing() == before
     done = result()
     assert done.outcome == "rollback_failed"
     assert done.reason.startswith(
@@ -272,7 +340,9 @@ def test_a_failed_reinstall_of_the_old_version_is_a_failed_rollback(install, ses
 
 def test_a_failed_installer_rolls_nothing_back_and_keeps_lado_db(install, session):
     install.installs("exit 3")
+    before = listing()
     assert run()[0] == 1
+    assert listing() == before
     done = result()
     assert (done.outcome, done.database) == ("failed", "kept")
     assert done.reason == "the installer failed (exit code 3)"
@@ -281,8 +351,10 @@ def test_a_failed_installer_rolls_nothing_back_and_keeps_lado_db(install, sessio
 
 def test_a_session_that_does_not_resume_is_partial_and_rolls_nothing_back(install, session):
     install.fails("start")
+    before = listing()
     code, said = run()
     assert code == 1
+    assert listing() == before
     done = result()
     assert done.outcome == "partial"
     sess = state.get_session(session)
@@ -298,10 +370,12 @@ def test_a_server_that_does_not_come_up_on_the_new_version_rolls_back(
         self_update.server_run, "running", lambda: {"host": "127.0.0.1", "port": 8123, "url": "u"}
     )
     monkeypatch.setattr(self_update.server_run, "stop", lambda: None)
-    install.installs(bump_schema())
+    install.installs(migrate_like_the_new_version())
     install.fails("ui")
+    before = listing()
     code, said = run()
     assert code == 1
+    assert listing() == migrated(before)
     done = result()
     assert done.outcome == "rolled_back"
     assert done.reason == f"the UI server did not start on LADO {NEW} (exit code 1)"
@@ -318,7 +392,9 @@ def test_a_new_server_that_answers_with_another_version_rolls_back(install, sess
     )
     monkeypatch.setattr(self_update.server_run, "stop", lambda: None)
     monkeypatch.setattr(self_update.server_run, "health", lambda url: {"version": __version__})
+    before = listing()
     assert run()[0] == 1
+    assert listing() == before
     assert result().reason == (
         f"the UI server did not come up on LADO {NEW}: /api/health says {__version__}"
     )
@@ -333,15 +409,16 @@ def test_a_loop_that_does_not_end_in_the_rollback_leaves_lado_db_as_it_is(
     monkeypatch.setattr(self_update.server_run, "stop", lambda: None)
     waits = iter([True, False])  # the update's own wait, then the rollback's
     monkeypatch.setattr(self_update.loop, "wait_stopped", lambda s, timeout=None: next(waits))
-    install.installs(bump_schema())
+    install.installs(migrate_like_the_new_version())
     install.fails("ui")
+    before = listing()
     assert run()[0] == 1
+    assert listing() == migrated(before)
     done = result()
-    backup = state.home() / "backups" / f"lado.db.{__version__}"
     assert done.outcome == "rollback_failed"
     assert done.database is None
     assert done.reason.endswith(
-        f"lado.db not restored: the session loop of s did not end; its backup is {backup}"
+        f"lado.db not restored: the session loop of s did not end; its backup is {copy_path()}"
     )
     assert state.schema_version() == 999
 
@@ -380,7 +457,7 @@ def test_nothing_is_imported_after_the_installer(install, session, monkeypatch):
         return done
 
     monkeypatch.setattr(self_update, "_install", install_then_forbid)
-    install.installs(bump_schema(), version=BROKEN_NEW)
+    install.installs(migrate_like_the_new_version(), version=BROKEN_NEW)
     try:
         assert run()[0] == 1
     finally:

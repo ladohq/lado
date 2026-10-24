@@ -5,7 +5,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-24-one-database
 - [x] 1.1 `update.release_schema`: a release's schema from its wheel on the index, the
   sha256 checked; `agent_helpers.wheel` and wheel files in `pypi_index`; the comment on
   `state.SCHEMA_VERSION` (D2). Check: `tests/test_update.py`.
-- [ ] 1.2 `self_update`: no `_back_up`, the schema read before the installer; the
+- [x] 1.2 `self_update`: no `_back_up`, the schema read before the installer; the
   rollback checks the migration's copy first and restores only a newer schema from it
   (D1, D8, D9). Check: `tests/test_self_update.py`, the rollback tests reworked, none
   dropped, each asserting `backups/` unchanged.

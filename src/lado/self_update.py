@@ -1,6 +1,8 @@
 """`lado update` from the CLI and the UI alike: the plan, the refusals, and the update itself
-(stop the sessions and the UI server, back up lado.db, install, check, resume, and roll back
-when the new version itself is bad). lado.update is its pure part: the index, the
+(stop the sessions and the UI server, install, check, resume, and roll back when the new
+version itself is bad). It keeps no copy of lado.db of its own and touches nothing in
+LADO_HOME/backups/: the copy its rollback restores is the migration's
+(backups/lado.db.schema-<N>, state.migrate). lado.update is its pure part: the index, the
 installer, the marks and the result file.
 
 One update at a time per LADO_HOME: it holds an exclusive flock on LADO_HOME/update.lock
@@ -13,7 +15,6 @@ package under it may be another version, or broken. Everything the rollback, the
 and the result need is imported here at the top.
 """
 
-import contextlib
 import datetime
 import fcntl
 import os
@@ -364,8 +365,7 @@ class _Update:
         self.new = found.to.version
         server = found.server
         self.address = (server["host"], server["port"]) if server else None
-        self.backup: Path | None = None
-        self.schema: int | None = None  # lado.db's before the installer
+        self.schema: int | None = None  # lado.db's before the installer, None without one
         self.failed: list[state.Session] = []
 
     def end(self, outcome: str, reason: str | None, database: str | None = None) -> None:
@@ -415,7 +415,8 @@ class _Update:
                 server_run.stop()
                 server_stopped = True
                 say("stopped")
-            self._back_up()
+            # Nothing writes lado.db now; its copy is the migration's (state.migrate).
+            self.schema = state.schema_version()
         except (runtime.LadoError, tmux.TmuxError, OSError, sqlite3.Error) as exc:
             say(f"lado: {exc}; nothing was upgraded. Resuming the sessions:", file=sys.stderr)
             self._resume(stopped, self.address if server_stopped else None)
@@ -448,25 +449,6 @@ class _Update:
         say(f"LADO {self.new} is ready." + (" Reload open UI tabs." if self.address else ""))
         self.end("ok", None, "kept")
         return 0
-
-    def _back_up(self) -> None:
-        """lado.db by SQLite's backup API, in place of the backup before."""
-        live = state.home() / "lado.db"
-        if not live.exists():
-            return
-        folder = backups()
-        folder.mkdir(exist_ok=True)
-        self.backup = folder / f"lado.db.{self.old}"
-        written = self.backup.with_suffix(".tmp")
-        written.unlink(missing_ok=True)
-        restore(live, written)
-        written.replace(self.backup)
-        for other in folder.iterdir():
-            if other != self.backup:
-                other.unlink()
-        with contextlib.closing(sqlite3.connect(self.backup)) as db:
-            self.schema = db.execute("PRAGMA user_version").fetchone()[0]
-        self.say(f"Backed up lado.db to {self.backup}")
 
     def _server(self, version: str) -> str | None:
         """Why the UI server did not come up on `version` where it ran before; None when it
@@ -528,9 +510,20 @@ class _Update:
         started_server: bool,
     ) -> int:
         """Back to the old version: stop what the new one started, wait for those loops,
-        reinstall the old version and check it, restore lado.db only when its schema moved,
-        resume on the old version."""
+        reinstall the old version and check it, restore lado.db from the migration's copy
+        only when its schema is newer than before, resume on the old version. Without that
+        copy it changes nothing: the new version can open lado.db, the old one could not."""
         say = self.say
+        copy = self._copy_needed()
+        if copy and not copy.exists():
+            reason = (
+                f"{why}; not rolled back: lado.db has schema {state.schema_version()} and "
+                f"backups/ holds no {copy.name} for LADO {self.old}, so LADO {self.new} "
+                "stays installed"
+            )
+            say(f"lado: {reason}", file=sys.stderr)
+            self.end("rollback_failed", reason)
+            return 1
         say(f"Rolling back to LADO {self.old}: {why}", flush=True)
         for sess in resumed:
             _run(self.binary, say, "stop", sess.name)
@@ -542,7 +535,7 @@ class _Update:
                 self.end(
                     "rollback_failed",
                     f"{why}; lado.db not restored: the session loop of {sess.name} did not "
-                    f"end; its backup is {self.backup}",
+                    f"end; its backup is {copy}",
                 )
                 return 1
         code = _install(self.installer, self.old, say, "Reinstalling")
@@ -559,21 +552,28 @@ class _Update:
             )
             return 1
         database = "kept"
-        if self.backup and state.schema_version() != self.schema:
+        if copy:
             try:
-                restore(self.backup, state.home() / "lado.db")
+                restore(copy, state.home() / "lado.db")
             except sqlite3.Error as exc:
                 self.end(
-                    "rollback_failed",
-                    f"{why}; lado.db not restored: {exc}; its backup is {self.backup}",
+                    "rollback_failed", f"{why}; lado.db not restored: {exc}; its backup is {copy}"
                 )
                 return 1
             database = "restored"
-            say(f"Restored lado.db from {self.backup}")
+            say(f"Restored lado.db from {copy}")
         say(f"Resuming on LADO {self.old}:", flush=True)
         self._resume(stopped, self.address)
         self.end("rolled_back", why, database)
         return 1
+
+    def _copy_needed(self) -> Path | None:
+        """The migration's copy a rollback restores: when lado.db's schema is newer than
+        before the update, backups/lado.db.schema-<the schema before>; else None."""
+        now = state.schema_version()
+        if self.schema is None or now is None or now <= self.schema:
+            return None
+        return backups() / f"lado.db.schema-{self.schema}"
 
 
 def restore(source: Path, target: Path) -> None:

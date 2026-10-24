@@ -48,6 +48,6 @@
 
 ## 5. Checks
 
-- [ ] 5.1 `make lint`, `make test`, `uv run pytest -m integration -n auto <the changed
+- [x] 5.1 `make lint`, `make test`, `uv run pytest -m integration -n auto <the changed
   integration file>` pass; `openspec validate doctor-older-schema --strict` passes; CI
   green on the pull request's last commit (AC-7).

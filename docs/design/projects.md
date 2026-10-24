@@ -332,8 +332,10 @@ or ahead of it, `detached HEAD with <n> commit[s] on no branch` when its HEAD is
 on commits no local or remote-tracking branch holds, and `<n> stash[es]`; the project
 folder itself when it is a repository's root (`the project's folder: …`, first; the
 repositories in it are not its changes); a worktree directly in the project
-folder of a repository listed there is named once, under its repository; a folder that
-cannot be listed is `the project's folder: could not check: <reason>`.
+folder of a repository listed there is named once, under its repository; a symbolic link
+in the folder is not scanned, as the removal loses the link only, and is no change of a
+root repository either; a folder that cannot be listed is `the project's folder: could
+not check: <reason>`.
 
 Deleting a project removes the project, its secrets, all its sessions (as `lado forget`
 does) and the whole project folder.

@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: none · Next: LAD-143's place (question #1428), then readiness again; 0.43.0rc1 after it · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5); S5a, S5b and S3's F1 until 0.43.0rc1 (a live run on the four CLIs with a variable and a secret, release checklist 4.3 "Projects"); S5b's link refusals on macOS until 0.43.0rc1 (4.3 "Projects' secrets on the Mac"); S6a's secret field with password managers in Chrome and Safari until 0.43.0rc1 (4.3 "Projects in the web UI"); the readiness check's "Projects in the image" until 0.43.0rc1 (release checklist 4.5)
+In work: none · Next: S9 (LAD-143) on the human's yes at step_ok, then readiness again; 0.43.0rc1 after it · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5); S5a, S5b and S3's F1 until 0.43.0rc1 (a live run on the four CLIs with a variable and a secret, release checklist 4.3 "Projects"); S5b's link refusals on macOS until 0.43.0rc1 (4.3 "Projects' secrets on the Mac"); S6a's secret field with password managers in Chrome and Safari until 0.43.0rc1 (4.3 "Projects in the web UI"); the readiness check's "Projects in the image" until 0.43.0rc1 (release checklist 4.5)
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
@@ -12,7 +12,7 @@ Last review: 2026-10-24 (after S8), base at 8eeb850a
 
 ## Steps
 
-The concept's phases 0–5 map to S1–S7 (phase 2 split into S5a and S5b, phase 4 into S6a and S6b, phase 5 into S7a and S7b). One change against
+The concept's phases 0–5 map to S1–S7 (phase 2 split into S5a and S5b, phase 4 into S6a and S6b, phase 5 into S7a and S7b); S8 and S9 came from the readiness check and its follow-up (docs; the backups of LAD-143). One change against
 the concept's order, for the human's explicit yes (Q1): the session in a project (concept
 phase 3, S3) comes before variables and secrets (phase 2, S5a/S5b), so S5a's check is end to
 end. No two steps run at once: S3–S5b all change `runtime.py` and `state.py`.
@@ -119,6 +119,17 @@ Status: done (LAD-142, PR https://github.com/ladohq/lado/pull/161)
 Check: no text says projects or their UI are "not built yet": `ROADMAP.md` "Later → Projects" (lines 139–152 at d467359c) done with every step, `AGENTS.md` "Read more" (projects.md "mostly not built yet"), `docs/design/projects.md` ("the UI's addresses are not built yet (step S6)"), `docs/design/ui.md` ("A session in a project (step S3 …, not built yet)"); `grep -rniE "not built yet|step S[0-9]"` over `docs/`, `ROADMAP.md`, `AGENTS.md` (outside `docs/epics/`, `openspec/changes/archive/`) leaves no line about projects; `docs/install.md` "Going back" says what stays after going back from 0.43.0: the projects forgotten, the `projects/` folder refusing new projects, the secrets in `~/.lado/projects/<id>/` to remove by hand; `make lint`, `make test` (`tests/test_agents_md.py`), `openspec validate --specs --strict`, CI green.
 Notes: the readiness check's gap G1 (`delivery-report`, 2026-10-23): the brief's "done" item "the documents describe only the new model" and the checklist's Documentation topic. The human's answer #1402: a step before 0.43.0rc1, with "Going back". Patch-level; the CHANGELOG line under `## 0.43.0 (unreleased)` only if `install.md` changes what users read (it does: one line). Texts only, no code.
 Result: PR #161 merged 2026-10-24 (8eeb850a), LAD-142 Done, "waiting for release" (0.43.0); the change `projects-docs-built` archived without a spec delta. The human's answers #1408 (no step numbers in the product's documents) and #1410 (the manual path in install.md, LAD-143 created in Backlog). Built: ROADMAP's Projects and every step done; AGENTS.md (195 lines), `projects.md` and `ui.md` describe projects as built; `docs/install.md` "Going back" from 0.43.0 to 0.42.0: copy `backups/lado.db.schema-31` aside before `lado update 0.42.0`, put it back after, the Docker path, what stays (`projects/`, the refusal of `lado project create` for a left folder, secrets removed by hand), run literally and checked against `state.py`, `self_update.py`, `projects.py`, `doctor.py`; a CHANGELOG line. Review: 1 local and 1 external round; F1, E1 minor declined, E2 refuted (gate #118). CI green. The lead's grep on 8eeb850a: one hit, `ui.md:442`, the placeholder rule, not about projects. No manual UI check: texts only.
+
+### S9 — One database backup: the migration's (S)
+Status: planned (LAD-143)
+Check:
+- `lado update` makes no backup of its own and deletes nothing in `~/.lado/backups/`; `lado.db.schema-<N>` of the last migration survives every update (unit).
+- An update that fails after the new version migrated rolls back with `lado.db.schema-<N>` (unit; the existing rollback tests reworked, none dropped).
+- `lado update` to a version with an older schema (0.43.0 → 0.42.0) puts `lado.db.schema-<N>` back as `lado.db` itself, after saying that what was done on the newer version is lost; the old version then starts with its sessions (integration, with a wheel of an older schema or an equal fake).
+- `scripts/rc_check.py` keeps working (it copies `lado.db.<version>` today): its tests green, `rollback` checked against the new naming.
+- `docs/install.md` "Going back" without the manual copy for the `lado update` path; Docker's manual path unchanged; `docs/cli.md`, `docs/release.md` 4.4, CHANGELOG.
+- `make lint`, `make test`, `make test-integration`, `openspec validate --specs --strict`, CI green.
+Notes: the human's answers #1428–#1434 (2026-10-24): the update's backup (d37407b4, 2026-10-09) is restored only when the schema moved, exactly when the migration's backup (LAD-71, 2026-10-15, added for Docker where `lado update` is forbidden) holds the same content; the update's cleanup deletes the migration's copy, so going back from 0.43.0 loses it (LAD-143). The deleting code is the version gone back from, so only a fix inside 0.43.0 helps: before 0.43.0rc1. One copy is kept (the last migration's); going back over two schema changes stays uncovered, as now. Docker's going back stays manual (the old image's code cannot know the new schema). Outside the epic's feature, inside its release; patch-sized behaviour inside 0.43.0.
 
 ## Open questions
 

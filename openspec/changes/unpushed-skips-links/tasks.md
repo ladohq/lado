@@ -25,5 +25,5 @@
 
 ## 3. Checks
 
-- [ ] 3.1 `make lint`, `make test` pass; `openspec validate unpushed-skips-links --strict`
+- [x] 3.1 `make lint`, `make test` pass; `openspec validate unpushed-skips-links --strict`
   passes; CI green on the pull request's last commit (AC-5).

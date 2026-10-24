@@ -1,6 +1,7 @@
 import dataclasses
 import os
 import re
+import sqlite3
 import time
 
 import agent_helpers
@@ -764,7 +765,115 @@ def test_artifacts_are_not_checked_on_another_schema(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
     agent_helpers.previous_schema()
     check = doctor.check_artifacts()
-    assert (check.level, check.detail[:13]) == (doctor.INFO, "not checked: ")
+    assert check == doctor.Check("Artifacts", doctor.INFO, doctor.NOT_AT_SCHEMA)
+
+
+OLDER = state.SCHEMA_VERSION - 1
+
+
+def _unchanged(lado_home, version: int) -> None:
+    """lado doctor read lado.db as it is: its schema `version`, no backup made."""
+    assert state.schema_version() == version
+    backups = lado_home / "backups"
+    assert not backups.exists() or not any(backups.iterdir())
+
+
+def _doctor_on_linux(monkeypatch, capsys) -> tuple[int, str]:
+    _versions(monkeypatch)
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+    return _doctor_output(monkeypatch, capsys)
+
+
+def test_the_first_doctor_after_an_upgrade_says_what_upgrades_lado_db(
+    repo, fake_tmux, lado_home, monkeypatch, capsys
+):
+    runtime.start_session(str(repo), "old", None, provider="claude")
+    runtime.stop_session("old")
+    status_before, _ = _doctor_on_linux(monkeypatch, capsys)
+    agent_helpers.previous_schema()
+    status = doctor.main()
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    lado_line = next(i for i, line in enumerate(lines) if line.startswith("[ok  ] LADO: "))
+    assert lines[lado_line + 1] == (
+        f"[info] lado.db: schema {OLDER}, this LADO knows {state.SCHEMA_VERSION}: lado ls or "
+        "lado start upgrades it (its backup goes to backups/)"
+    )
+    assert f"[info] Artifacts: {doctor.NOT_AT_SCHEMA}" in lines
+    assert f"[info] Agent config folders: {doctor.NOT_AT_SCHEMA}" in lines
+    assert "upgraded under a running session" not in out
+    assert status == status_before
+    _unchanged(lado_home, OLDER)
+
+
+def test_lado_db_names_the_running_sessions_that_keep_it_older(repo, fake_tmux, lado_home):
+    from lado import tmux
+
+    for name in ("a", "b", "c"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    tmux.kill_session("c")  # not stopped, but gone from tmux
+    agent_helpers.previous_schema()
+    assert doctor.check_database() == doctor.Check(
+        "lado.db",
+        doctor.WARN,
+        f'schema {OLDER}, this LADO knows {state.SCHEMA_VERSION}, and the sessions "a", "b" '
+        "run on it",
+        "stop them with lado stop --all (it upgrades lado.db), then lado start",
+    )
+    _unchanged(lado_home, OLDER)
+
+
+def test_without_tmux_the_doctor_still_reports_an_older_lado_db(lado_home, monkeypatch, capsys):
+    from lado import tmux
+
+    state.add_session(state.Session("s", "/r", None, provider="claude"))  # not stopped
+    agent_helpers.previous_schema()
+
+    def missing(session):
+        raise tmux.TmuxMissing("tmux is not installed or not on PATH (/nowhere)")
+
+    monkeypatch.setattr(tmux, "has_session", missing)
+    _versions(monkeypatch)
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+    checks = doctor.run_checks
+    no_tmux = lambda cmd: None if cmd == "tmux" else cmd  # noqa: E731
+    monkeypatch.setattr(doctor, "run_checks", lambda: checks(which=no_tmux))
+    assert doctor.main() == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert (
+        f"[warn] lado.db: schema {OLDER}, this LADO knows {state.SCHEMA_VERSION}; the "
+        "sessions running on it not checked: tmux is not installed or not on PATH (/nowhere)"
+    ) in lines
+    assert "[FAIL] tmux: `tmux` not found on PATH" in lines
+    _unchanged(lado_home, OLDER)
+
+
+def test_lado_db_of_a_newer_lado(lado_home):
+    lado_home.mkdir()
+    sqlite3.connect(lado_home / "lado.db").execute(
+        f"PRAGMA user_version = {state.SCHEMA_VERSION + 1}"
+    )
+    check = doctor.check_database()
+    assert (check.name, check.level) == ("lado.db", doctor.WARN)
+    assert "newer LADO" in check.detail and "upgrade LADO" in check.detail
+    _unchanged(lado_home, state.SCHEMA_VERSION + 1)
+
+
+def test_an_incompatible_lado_db_fails_the_doctor(lado_home, monkeypatch, capsys):
+    lado_home.mkdir()
+    sqlite3.connect(lado_home / "lado.db").execute("CREATE TABLE sessions (name TEXT)")
+    status, out = _doctor_on_linux(monkeypatch, capsys)
+    assert status == 1
+    assert "[FAIL] lado.db: " in out and "incompatible schema" in out
+    _unchanged(lado_home, 0)
+
+
+def test_no_lado_db_line_at_this_schema_or_with_no_lado_db(lado_home):
+    assert doctor.check_database() is None
+    assert not (lado_home / "lado.db").exists()
+    state.list_sessions()
+    assert doctor.check_database() is None
+    _unchanged(lado_home, state.SCHEMA_VERSION)
 
 
 @pytest.fixture
@@ -1121,6 +1230,5 @@ def test_the_projects_check_makes_no_lado_db(ws, lado_home):
 def test_the_projects_check_on_an_older_lado_db(ws, lado_home):
     projects.create("shop", None)
     agent_helpers.previous_schema()
-    check = doctor.check_projects()
-    assert (check.level, check.detail[:13]) == (doctor.INFO, "not checked: ")
-    assert f"schema version {state.SCHEMA_VERSION - 1}" in check.detail
+    assert doctor.check_projects() == doctor.Check("Projects", doctor.INFO, doctor.NOT_AT_SCHEMA)
+    assert state.schema_version() == state.SCHEMA_VERSION - 1  # nothing migrated

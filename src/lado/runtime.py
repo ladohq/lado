@@ -984,16 +984,27 @@ def _undo(
             loop.log(session, note)
 
 
+def migration_due() -> tuple[int, list[str]] | None:
+    """When lado.db is older than this LADO: its schema version and the sessions that keep
+    it from being migrated (those not marked stopped whose tmux session runs); None when
+    nothing is to migrate. Reads only: migrate_if_safe refuses by it, `lado doctor` shows
+    it."""
+    pending = state.pending_migration()
+    if pending is None:
+        return None
+    version, sessions = pending
+    return version, [s for s in sessions if tmux.has_session(s)]
+
+
 def migrate_if_safe() -> None:
     """Upgrade an older lado.db (state.migrate), refused while a session runs: its agents,
     hooks and MCP servers may be an older LADO, which refuses the newer schema. The CLI
     calls this before a command; state.py knows no tmux, so the check lives here. It sees
     the sessions of this LADO_TMUX_SOCKET only."""
-    pending = state.pending_migration()
-    if pending is None:
+    due = migration_due()
+    if due is None:
         return
-    version, sessions = pending
-    running = [s for s in sessions if tmux.has_session(s)]
+    version, running = due
     if running:
         names = ", ".join(f'"{s}"' for s in running)
         raise LadoError(

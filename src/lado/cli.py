@@ -45,6 +45,14 @@ if TYPE_CHECKING:
 PAGER = ["less", "-R"]  # for a gate's full note
 POLL = 1.0  # seconds between two checks that a gate the human is asked about is open
 OPEN_ON_HOST = "Open it in your browser on the host."  # `lado ui` in a container
+# The commands that do not upgrade an older lado.db first (runtime.migrate_if_safe):
+# `lado stop` is what the refusal asks for: it migrates once no session runs.
+# `lado doctor` checks the environment as it is, a migration due included; its line on an
+# older lado.db names `lado ls` and `lado start`, which must not be here.
+# `lado telemetry` keeps its files outside lado.db and reads it only.
+# `lado uninstall` shows an older lado.db as it is and stops (so migrates) itself.
+# `lado bug-report` reports lado.db's schema as it is, as `lado doctor`.
+NOT_MIGRATING = ("stop", "doctor", "telemetry", "uninstall", "bug-report")
 
 
 def _check_project_args(args: argparse.Namespace) -> None:
@@ -2028,12 +2036,7 @@ def main(argv: list[str] | None = None) -> int:
     kicks = args.command not in ("update", "stats") and not removes and not serves
     kicks = kicks and not (args.command == "telemetry" and args.sub == "send")
     try:
-        # `lado stop` is what the refusal asks for: it migrates once no session runs.
-        # `lado doctor` checks the environment as it is, a migration due included.
-        # `lado telemetry` keeps its files outside lado.db and reads it only.
-        # `lado uninstall` shows an older lado.db as it is and stops (so migrates) itself.
-        # `lado bug-report` reports lado.db's schema as it is, as `lado doctor`.
-        if args.command not in ("stop", "doctor", "telemetry", "uninstall", "bug-report"):
+        if args.command not in NOT_MIGRATING:
             runtime.migrate_if_safe()
         return args.func(args)
     except (

@@ -716,10 +716,13 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `tests/agent_helpers.previous_schema` (it undoes the last step). `state.connect()`
     never migrates: it makes a missing lado.db, and another schema version (older, newer,
     incompatible) is a `state.SchemaError` with nothing changed, so no hook, `lado mcp`,
-    session loop or UI server can migrate under a running session. Only `state.migrate()`
-    applies `MIGRATIONS`, called by `runtime.migrate_if_safe` (the CLI before each command
-    but `doctor`, `mcp`, `hook`, `loop` and `stop`), which refuses while a session runs (not
-    stopped, tmux session alive on this socket), names them and asks for `lado stop --all`,
+    session loop or UI server can migrate under a running session; its text comes from
+    `state.schema_refusal` (kind and words), which `lado doctor` reads too
+    (`read_schema_refusal`, read-only). Only `state.migrate()` applies `MIGRATIONS`, called
+    by `runtime.migrate_if_safe` (the CLI before each command but `mcp`, `hook`, `loop` and
+    those of `cli.NOT_MIGRATING`), which refuses while a session runs (not stopped, tmux
+    session alive on this socket: `runtime.migration_due`, also the doctor's `lado.db`
+    line), names them and asks for `lado stop --all`,
     and by `runtime.stop_session` and `stop_all` (`lado stop`, docs/cli.md), all through
     `runtime._migrate`. Before its first step, inside its write lock, `migrate` copies
     lado.db by SQLite's backup API (`state.copy_db`, also `self_update.restore`'s; a

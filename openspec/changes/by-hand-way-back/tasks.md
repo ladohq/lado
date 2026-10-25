@@ -42,5 +42,5 @@
 
 ## 3. Checks
 
-- [ ] 3.1 `make lint`, `make test` pass; `openspec validate by-hand-way-back --strict`
+- [x] 3.1 `make lint`, `make test` pass; `openspec validate by-hand-way-back --strict`
   passes; CI green on the pull request's last commit (AC-7).

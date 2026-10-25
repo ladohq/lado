@@ -16,7 +16,7 @@
 
 ## 2. The image's checklist names git's identity
 
-- [ ] 2.1 docs/release.md, 4.5: the `.env` heredoc gains `LADO_GIT_NAME="RC Check"` and
+- [x] 2.1 docs/release.md, 4.5: the `.env` heredoc gains `LADO_GIT_NAME="RC Check"` and
   `LADO_GIT_EMAIL=rc-check@example.com` (after `LADO_PORT`), and the sentence on
   `docker compose logs lado` says it has no warning about `LADO_REPOS` nor about git's
   identity.

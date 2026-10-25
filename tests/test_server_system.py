@@ -173,7 +173,9 @@ def test_update_says_whether_this_lado_can_update_itself(client, installed, monk
     info = ok(client.get("/api/update"))
     assert info["can_update"] is False
     assert "not a uv tool or pipx install" in info["why_not"]
-    assert info["by_hand"][-1] == f"{update.prefix() / 'bin' / 'pip'} install lado=={NEW}"
+    assert info["by_hand"][-1] == (
+        f"# install lado=={NEW} with the installer of {update.prefix()}: LADO does not know it"
+    )
 
 
 def test_update_in_a_container_says_why_and_names_no_command(client, installed, monkeypatch):

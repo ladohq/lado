@@ -165,13 +165,48 @@ class Plan:
         return update.newer(self.current, self.to.version)
 
     def by_hand(self) -> list[str]:
-        """The commands that do it without an installer."""
+        """The commands that do it without an installer, paths shell-quoted: stop every
+        planned session and the UI server, install with what the prefix holds (its pip,
+        else uv tool, else pipx, else a comment that LADO does not know the installer),
+        put the migration's copy back into lado.db for an older schema, and start again
+        the sessions the copy has."""
+        q = shlex.quote
         lines = [f"lado stop {s.name}" for s in self.sessions]
         lines += ["lado server stop"] if self.server else []
-        lines.append(f"{update.prefix() / 'bin' / 'pip'} install lado=={self.to.version}")
-        lines += [f"lado start {s.repo} --name {s.name}" for s in self.sessions]
+        lines.append(by_hand_install(self.to.version))
+        missing = []
+        if self.restore:
+            db = state.home() / "lado.db"
+            lines.append(
+                f"rm -f {q(f'{db}-wal')} {q(f'{db}-shm')} && cp {q(str(self.restore.copy))} "
+                f"{q(str(db))}"
+            )
+            missing = self.restore.missing
+        lines += [
+            f"lado start {q(s.repo)} --name {s.name}"
+            for s in self.sessions
+            if s.name not in missing
+        ]
         lines += ["lado ui"] if self.server else []
         return lines
+
+
+def by_hand_install(version: str) -> str:
+    """The install line of the commands by hand, by the files of the prefix only (as
+    update.installer); its pip first, since a venv made by hand may hold another tool's
+    file too."""
+    where, requirement = update.prefix(), f"lado=={version}"
+    pip = where / "bin" / "pip"
+    if pip.is_file():
+        return f"{shlex.quote(str(pip))} install {requirement}"
+    if (where / "uv-receipt.toml").is_file():
+        return f"uv tool install {requirement}"
+    if (where / "pipx_metadata.json").is_file():
+        return f"pipx install --force {requirement}"
+    return (
+        f"# install {requirement} with the installer of {shlex.quote(str(where))}: "
+        "LADO does not know it"
+    )
 
 
 def plan(to: update.Release, index: dict | None = None) -> Plan:

@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import shlex
 import sys
 import zipfile
 
@@ -490,7 +491,11 @@ def test_update_inside_an_agent_is_refused(installed, repo, fake_tmux, capsys, m
 def test_update_of_another_install_prints_the_commands_and_stops_nothing(
     installed, tmp_path, repo, fake_tmux, capsys, monkeypatch
 ):
-    monkeypatch.setenv("LADO_UPDATE_PREFIX", str(tmp_path / "venv"))
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin" / "pip").write_text("#!/bin/sh\n")
+    (venv / "bin" / "pip").chmod(0o755)
+    monkeypatch.setenv("LADO_UPDATE_PREFIX", str(venv))
     assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
     monkeypatch.setattr(
         server_run, "running", lambda: {"url": "http://127.0.0.1:8123", "port": 8123}
@@ -498,7 +503,6 @@ def test_update_of_another_install_prints_the_commands_and_stops_nothing(
     capsys.readouterr()
     assert main(["update", "--yes"]) == 1
     out = capsys.readouterr().out
-    venv = tmp_path / "venv"
     assert out.endswith(
         f"LADO runs from {venv}, not a uv tool or pipx install of lado from PyPI; "
         "lado update does not "
@@ -506,8 +510,59 @@ def test_update_of_another_install_prints_the_commands_and_stops_nothing(
         "  lado stop s\n"
         "  lado server stop\n"
         f"  {venv}/bin/pip install lado==99.0.0\n"
-        f"  lado start {repo} --name s\n"
+        f"  lado start {shlex.quote(str(repo))} --name s\n"  # "My Repo"
         "  lado ui\n"
+    )
+    assert not state.get_session("s").stopped_at
+
+
+WHEEL_RECEIPT = """\
+[tool]
+requirements = [{ name = "lado", path = "/home/u/lado-0.42.0-py3-none-any.whl" }]
+entrypoints = []
+"""
+
+
+def pipx_of_a_folder(tmp_path):
+    prefix = tmp_path / "pipx" / "venvs" / "lado"
+    prefix.mkdir(parents=True)
+    metadata = {"main_package": {"package": "lado", "package_or_url": "/src/lado"}}
+    (prefix / "pipx_metadata.json").write_text(json.dumps(metadata))
+    return prefix
+
+
+def nothing_known(tmp_path):
+    prefix = tmp_path / "some env"
+    prefix.mkdir(parents=True)
+    return prefix
+
+
+@pytest.mark.parametrize(
+    "make, line",
+    [
+        (lambda tmp_path: uv_tool(tmp_path, WHEEL_RECEIPT), "uv tool install lado==99.0.0"),
+        (pipx_of_a_folder, "pipx install --force lado==99.0.0"),
+        (
+            nothing_known,
+            "# install lado==99.0.0 with the installer of '{prefix}': LADO does not know it",
+        ),
+    ],
+)
+def test_the_commands_by_hand_name_the_installer_the_prefix_holds(
+    installed, tmp_path, repo, fake_tmux, capsys, monkeypatch, make, line
+):
+    """Not from an index, so installer() is None, and the prefix has no pip."""
+    prefix = make(tmp_path / "other")
+    monkeypatch.setenv("LADO_UPDATE_PREFIX", str(prefix))
+    assert update.installer() is None
+    assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
+    capsys.readouterr()
+    assert main(["update", "--yes"]) == 1
+    assert capsys.readouterr().out.endswith(
+        "upgrade it. By hand:\n"
+        "  lado stop s\n"
+        f"  {line.format(prefix=prefix)}\n"
+        f"  lado start {shlex.quote(str(repo))} --name s\n"
     )
     assert not state.get_session("s").stopped_at
 

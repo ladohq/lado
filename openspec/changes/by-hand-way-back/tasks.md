@@ -1,6 +1,6 @@
 ## 1. The commands by hand
 
-- [ ] 1.1 `tests/test_update.py`, beside `test_update_of_another_install_prints_the_commands_and_stops_nothing`
+- [x] 1.1 `tests/test_update.py`, beside `test_update_of_another_install_prints_the_commands_and_stops_nothing`
   (unit: the CLI with the fake tmux and a published index, the lowest layer that prints
   the list): that test's venv gets an executable `bin/pip` and keeps its expected output
   (AC-3); new tests, each failing before 1.3: a prefix with a `uv-receipt.toml` of lado
@@ -8,7 +8,7 @@
   with `pipx_metadata.json` of a folder prints `pipx install --force lado==99.0.0` (AC-4);
   an empty prefix prints `# install lado==99.0.0 with the installer of <prefix>: LADO does
   not know it` (AC-5).
-- [ ] 1.2 `tests/test_self_update.py`, beside
+- [x] 1.2 `tests/test_self_update.py`, beside
   `test_a_plan_to_an_older_schema_says_what_it_loses` (unit, its fixtures `older` and
   `two_sessions`: the wheel of schema 31, a copy that has one session only), with a venv
   prefix that has `bin/pip` and a UI server: `plan(...).by_hand()` is exactly the list of
@@ -18,11 +18,11 @@
   `tests/test_update.py` (or there, as the fixtures allow) that `lado update 0.42.0
   --yes` with no installer prints that list and stops nothing (AC-1). They fail before
   1.3.
-- [ ] 1.3 `src/lado/self_update.py`, `Plan.by_hand`: the install line by the prefix's
+- [x] 1.3 `src/lado/self_update.py`, `Plan.by_hand`: the install line by the prefix's
   installer (D1), shell-quoted paths; with `self.restore`, the restore command after it
   (D2) and `lado start` only for the sessions not in `restore.missing` (D3). Its docstring
   says so.
-- [ ] 1.4 `tests/test_server_system.py`, `test_update_says_whether_this_lado_can_update_itself`:
+- [x] 1.4 `tests/test_server_system.py`, `test_update_says_whether_this_lado_can_update_itself`:
   the fixture's prefix (`tmp_path / "prefix"`, empty) now gives the comment line
   `# install lado==<NEW> with the installer of <prefix>: LADO does not know it`, which the
   assertion names (or the test makes `bin/pip` there and keeps its assertion); `make web` is not needed (no API model
@@ -30,12 +30,12 @@
 
 ## 2. Documents
 
-- [ ] 2.1 `docs/install.md`, "Installed otherwise": the install line names the installer
+- [x] 2.1 `docs/install.md`, "Installed otherwise": the install line names the installer
   found in the environment (`pip` there, else `uv tool install`, else `pipx install
   --force`, else a comment), and for a way back to an older schema the list holds the
   copy's restore and leaves out the sessions the copy lacks.
-- [ ] 2.2 `docs/design/modules.md`, `self_update.py`: `by_hand` as in 1.3.
-- [ ] 2.3 `CHANGELOG.md`, `## 0.43.0 (unreleased)`, Fixed: a line in the user's words,
+- [x] 2.2 `docs/design/modules.md`, `self_update.py`: `by_hand` as in 1.3.
+- [x] 2.3 `CHANGELOG.md`, `## 0.43.0 (unreleased)`, Fixed: a line in the user's words,
   e.g. **The commands `lado update` shows to run by hand go back to an older version
   too.** They put the database's backup back, skip the sessions it lacks, and name the
   installer you have instead of a `pip` that is not there.

@@ -56,6 +56,9 @@
 
 - **`lado update` no longer deletes the database's backup.** The copy LADO made before
   upgrading the database stays in `~/.lado/backups/`, so you can go back with it.
+- **The commands `lado update` shows to run by hand go back to an older version too.**
+  They put the database's backup back, skip the sessions it lacks, and name the installer
+  you have instead of a `pip` that is not there.
 - **`lado doctor` after an upgrade tells the truth about the database.** It no longer says
   LADO was upgraded under a running session: a `lado.db` line says `lado ls` or `lado start`
   upgrades it, or names the sessions to stop first. An incompatible database now fails it.

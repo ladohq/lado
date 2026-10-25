@@ -170,20 +170,18 @@ class Plan:
         else uv tool, else pipx, else a comment that LADO does not know the installer),
         put the migration's copy back into lado.db for an older schema, and start again
         the sessions the copy has."""
-        q = shlex.quote
         lines = [f"lado stop {s.name}" for s in self.sessions]
         lines += ["lado server stop"] if self.server else []
-        lines.append(by_hand_install(self.to.version))
-        missing = []
+        lines.append(_install_by_hand(self.to.version))
         if self.restore:
-            db = state.home() / "lado.db"
+            db = str(state.home() / "lado.db")
             lines.append(
-                f"rm -f {q(f'{db}-wal')} {q(f'{db}-shm')} && cp {q(str(self.restore.copy))} "
-                f"{q(str(db))}"
+                f"{shlex.join(['rm', '-f', f'{db}-wal', f'{db}-shm'])} && "
+                f"{shlex.join(['cp', str(self.restore.copy), db])}"
             )
-            missing = self.restore.missing
+        missing = self.restore.missing if self.restore else []
         lines += [
-            f"lado start {q(s.repo)} --name {s.name}"
+            f"lado start {shlex.quote(s.repo)} --name {s.name}"
             for s in self.sessions
             if s.name not in missing
         ]
@@ -191,7 +189,7 @@ class Plan:
         return lines
 
 
-def by_hand_install(version: str) -> str:
+def _install_by_hand(version: str) -> str:
     """The install line of the commands by hand, by the files of the prefix only (as
     update.installer); its pip first, since a venv made by hand may hold another tool's
     file too."""

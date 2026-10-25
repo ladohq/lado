@@ -1921,7 +1921,34 @@ comment. Wanted: a decision whether `@claude` is a reviewer only, and if so, the
 tools refused (e.g. `--disallowedTools`) with a test in `tests/test_workflow_security.py`.
 Found: 2026-10-23, fix/lad-133-review-reads-risky-code.
 
+## `lado update` installs a uv tool or pipx lado into the default folders
+
+Size: S. Why here: only an install made with `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR` or
+`PIPX_HOME` set for that command and not in the environment `lado update` (or `lado ui`)
+runs in; the commands by hand name these folders since LAD-144.
+
+`update._uv_tool` and `update._pipx` give the installer no folders, so it inherits
+LADO's environment. Without those variables there, uv and pipx install a second lado into
+their default folders (checked by hand, uv 0.13.1, pipx 1.18.4), uv also moves the
+executable out of its bin folder, and the update's version check runs the old one.
+Wanted: the installer run with `UV_TOOL_DIR` (the prefix's parent) and `UV_TOOL_BIN_DIR`
+(the receipt's install-path), or `PIPX_HOME` (`<home>/venvs/<name>`), as
+`self_update._install_by_hand` names them.
+Found: 2026-10-25, hotfix/lad-144-by-hand-way-back.
+
 # P3: maybe never
+
+## A relative LADO_HOME breaks the reads of lado.db
+
+Size: S. Why here: LADO_HOME is absolute in every documented setup; a relative one is a
+hand-made test setup, and it fails loudly, not silently.
+
+`state.home_path()` keeps LADO_HOME as given, and the read-only opens of lado.db and its
+copies (`state.schema_version`, `state.pending_migration`, `self_update._way_back`,
+`uninstall`, `server.feed`) build a `file:` URI with `Path.as_uri()`, which raises
+`ValueError: relative path can't be expressed as a file URI`. Wanted: `home_path()` made
+absolute once, with a test of a relative LADO_HOME.
+Found: 2026-10-25, hotfix/lad-144-by-hand-way-back (review finding F1).
 
 ## A field that grows with its text keeps its height when its width changes
 

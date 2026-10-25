@@ -345,6 +345,20 @@ def remover(where: Path | None = None) -> list[str] | None:
     return None
 
 
+def uv_bin_dir(where: Path) -> Path | None:
+    """The folder of the `lado` executable a uv tool in `where` installed (its receipt's
+    install-path); None when the receipt cannot be read or names none."""
+    try:
+        with open(where / "uv-receipt.toml", "rb") as file:
+            entrypoints = tomllib.load(file).get("tool", {}).get("entrypoints", [])
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    for entry in entrypoints:
+        if isinstance(entry, dict) and entry.get("name") == "lado" and entry.get("install-path"):
+            return Path(entry["install-path"]).parent
+    return None
+
+
 _FROM_INDEX = {"name", "extras", "specifier", "marker"}  # a uv receipt's requirement keys
 _PIPX_SPEC = re.compile(r"lado\s*(\[[^\]]*\])?\s*([<>=!~][^/]*)?", re.IGNORECASE)
 

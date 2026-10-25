@@ -772,7 +772,16 @@ LADO updates itself only when it was installed from PyPI with `uv tool install l
 `pipx install lado`. Installed with pip (e.g. in a virtual environment), from a working
 copy or from a git address (also through uv tool or pipx), `lado update` and the web UI
 show the commands to run by hand instead: stop the sessions and the UI server, install
-the version with that environment's `pip install lado==X.Y.Z`, then start them again.
+the version, then start them again. The install line names the installer it finds in the
+environment: its `pip install lado==X.Y.Z` when it has `bin/pip`, else
+`uv tool install lado==X.Y.Z` for a uv tool, else `pipx install --force lado==X.Y.Z` for
+pipx; when it finds none, it is a comment saying LADO does not know the installer. The uv
+and pipx lines set the folders your install uses, so the new version replaces it rather
+than landing in the default ones: `UV_TOOL_DIR` and, when uv's receipt names it, the
+executable's `UV_TOOL_BIN_DIR`; pipx's `PIPX_HOME`. For a
+version with an older database schema, the list also puts the copy back into `lado.db`
+right after the install line (as [above](#going-back-to-an-older-version) by hand), and
+starts again only the sessions the copy has.
 
 ## Uninstall
 

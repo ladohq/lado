@@ -165,13 +165,54 @@ class Plan:
         return update.newer(self.current, self.to.version)
 
     def by_hand(self) -> list[str]:
-        """The commands that do it without an installer."""
+        """The commands that do it without an installer, paths shell-quoted: stop every
+        planned session and the UI server, install with what the prefix holds (its pip,
+        else uv tool, else pipx, else a comment that LADO does not know the installer),
+        put the migration's copy back into lado.db for an older schema, and start again
+        the sessions the copy has."""
         lines = [f"lado stop {s.name}" for s in self.sessions]
         lines += ["lado server stop"] if self.server else []
-        lines.append(f"{update.prefix() / 'bin' / 'pip'} install lado=={self.to.version}")
-        lines += [f"lado start {s.repo} --name {s.name}" for s in self.sessions]
+        lines.append(_install_by_hand(self.to.version))
+        if self.restore:
+            db = str(state.home().absolute() / "lado.db")
+            lines.append(
+                f"{shlex.join(['rm', '-f', f'{db}-wal', f'{db}-shm'])} && "
+                f"{shlex.join(['cp', str(self.restore.copy.absolute()), db])}"
+            )
+        missing = self.restore.missing if self.restore else []
+        lines += [
+            f"lado start {shlex.quote(s.repo)} --name {s.name}"
+            for s in self.sessions
+            if s.name not in missing
+        ]
         lines += ["lado ui"] if self.server else []
         return lines
+
+
+def _install_by_hand(version: str) -> str:
+    """The install line of the commands by hand, by the files of the prefix only (as
+    update.installer); its pip first, since a venv made by hand may hold another tool's
+    file too. uv and pipx get the folders of the install in `where`, else they install
+    a second lado into their default ones: uv's tool folder and the executable's folder
+    (uv moves it), pipx's home when `where` is `<home>/venvs/<name>` (pipx links its
+    executable into the venv, so the old link runs the new version)."""
+    where, requirement = update.prefix(), f"lado=={version}"
+    q = shlex.quote
+    pip = where / "bin" / "pip"
+    if pip.is_file():
+        return f"{q(str(pip))} install {requirement}"
+    if (where / "uv-receipt.toml").is_file():
+        bin_dir = update.uv_bin_dir(where)
+        folders = f"UV_TOOL_DIR={q(str(where.parent))} "
+        folders += f"UV_TOOL_BIN_DIR={q(str(bin_dir))} " if bin_dir else ""
+        return f"{folders}uv tool install {requirement}"
+    if (where / "pipx_metadata.json").is_file():
+        home = f"PIPX_HOME={q(str(where.parent.parent))} " if where.parent.name == "venvs" else ""
+        return f"{home}pipx install --force {requirement}"
+    return (
+        f"# install {requirement} with the installer of {shlex.quote(str(where))}: "
+        "LADO does not know it"
+    )
 
 
 def plan(to: update.Release, index: dict | None = None) -> Plan:

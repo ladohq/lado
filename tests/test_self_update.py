@@ -2,10 +2,12 @@
 with a fake install (its `bin/lado` a shell script) and tmux replaced by a recorder."""
 
 import contextlib
+import dataclasses
 import datetime
 import fcntl
 import json
 import os
+import shlex
 import sqlite3
 import stat
 import sys
@@ -610,6 +612,61 @@ def test_a_plan_to_an_older_schema_says_what_it_loses(older, two_sessions, capsy
     assert "may refuse" not in err
 
 
+def by_hand_back(install, repo, copy) -> list[str]:
+    """The commands by hand of the way back to OLD with sessions app and web2 (the copy
+    has app only) and the UI server, from a venv with pip."""
+    home = state.home().absolute()
+    return [
+        "lado stop app",
+        "lado stop web2",
+        "lado server stop",
+        f"{install.prefix}/bin/pip install lado=={OLD}",
+        f"rm -f {home}/lado.db-wal {home}/lado.db-shm && cp {copy} {home}/lado.db",
+        f"lado start {shlex.quote(str(repo))} --name app",  # "My Repo"
+        "lado ui",
+    ]
+
+
+@pytest.fixture
+def by_hand(install, monkeypatch):
+    """A venv's pip in the install's prefix, and a UI server."""
+    pip = install.prefix / "bin" / "pip"
+    pip.write_text("#!/bin/sh\n")
+    pip.chmod(0o755)
+    monkeypatch.setattr(self_update.server_run, "running", lambda: {"url": "u", "port": 8123})
+
+
+@pytest.mark.parametrize("relative", [False, True])
+def test_the_commands_by_hand_of_an_older_schema_put_the_copy_back(
+    install, older, two_sessions, by_hand, repo, monkeypatch, relative
+):
+    """With paths absolute, also for a LADO_HOME relative to the folder LADO runs in (set
+    after the plan: reading lado.db needs an absolute one, state.schema_version)."""
+    expected = by_hand_back(install, repo, two_sessions)
+    found = plan_to(OLD)
+    if relative:
+        home = state.home()
+        monkeypatch.chdir(home.parent)
+        monkeypatch.setenv("LADO_HOME", home.name)
+        copy = Path(home.name) / "backups" / two_sessions.name
+        found.restore = dataclasses.replace(found.restore, copy=copy)
+    assert found.by_hand() == expected
+
+
+def test_an_update_by_hand_to_an_older_schema_prints_the_way_back_and_stops_nothing(
+    install, older, two_sessions, by_hand, repo, capsys, monkeypatch
+):
+    monkeypatch.delenv("LADO_UPDATE_INSTALLER")
+    capsys.readouterr()
+    assert main(["update", "--yes", OLD]) == 1
+    out = capsys.readouterr().out
+    lines = "".join(f"  {line}\n" for line in by_hand_back(install, repo, two_sessions))
+    assert out.endswith("By hand:\n" + lines)
+    assert install.called() == []
+    assert not state.get_session("app").stopped_at
+    assert schema_of(state.home() / "lado.db") == state.SCHEMA_VERSION
+
+
 def test_a_plan_to_an_older_version_of_the_same_schema_warns_of_nothing(older, session, capsys):
     older(state.SCHEMA_VERSION)
     found = plan_to(OLD)
@@ -617,6 +674,18 @@ def test_a_plan_to_an_older_version_of_the_same_schema_warns_of_nothing(older, s
     capsys.readouterr()
     self_update.print_plan(found)
     assert "lado.db" not in capsys.readouterr().err
+
+
+def test_the_commands_by_hand_of_the_same_schema_restore_nothing_and_start_all(
+    install, older, two_sessions, by_hand, repo
+):
+    older(state.SCHEMA_VERSION)
+    lines = plan_to(OLD).by_hand()
+    assert not any(" cp " in line for line in lines)
+    assert [line for line in lines if line.startswith("lado start")] == [
+        f"lado start {shlex.quote(str(repo))} --name app",
+        f"lado start {shlex.quote(str(repo))} --name web2",
+    ]
 
 
 def test_no_wheel_is_fetched_without_lado_db_or_for_an_update_forward(older, tmp_path):

@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import shlex
 import sys
 import zipfile
 
@@ -8,7 +9,7 @@ import pytest
 from agent_helpers import init_repo, wheel
 from agent_helpers import pypi_index as index
 
-from lado import __version__, loop, runtime, state, tmux, update
+from lado import __version__, loop, runtime, self_update, state, tmux, update
 from lado.cli import main
 from lado.server import run as server_run
 
@@ -490,7 +491,11 @@ def test_update_inside_an_agent_is_refused(installed, repo, fake_tmux, capsys, m
 def test_update_of_another_install_prints_the_commands_and_stops_nothing(
     installed, tmp_path, repo, fake_tmux, capsys, monkeypatch
 ):
-    monkeypatch.setenv("LADO_UPDATE_PREFIX", str(tmp_path / "venv"))
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin" / "pip").write_text("#!/bin/sh\n")
+    (venv / "bin" / "pip").chmod(0o755)
+    monkeypatch.setenv("LADO_UPDATE_PREFIX", str(venv))
     assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
     monkeypatch.setattr(
         server_run, "running", lambda: {"url": "http://127.0.0.1:8123", "port": 8123}
@@ -498,7 +503,6 @@ def test_update_of_another_install_prints_the_commands_and_stops_nothing(
     capsys.readouterr()
     assert main(["update", "--yes"]) == 1
     out = capsys.readouterr().out
-    venv = tmp_path / "venv"
     assert out.endswith(
         f"LADO runs from {venv}, not a uv tool or pipx install of lado from PyPI; "
         "lado update does not "
@@ -506,10 +510,103 @@ def test_update_of_another_install_prints_the_commands_and_stops_nothing(
         "  lado stop s\n"
         "  lado server stop\n"
         f"  {venv}/bin/pip install lado==99.0.0\n"
-        f"  lado start {repo} --name s\n"
+        f"  lado start {shlex.quote(str(repo))} --name s\n"  # "My Repo"
         "  lado ui\n"
     )
     assert not state.get_session("s").stopped_at
+
+
+WHEEL = '{ name = "lado", path = "/home/u/lado-0.42.0-py3-none-any.whl" }'
+WHEEL_RECEIPT = f"[tool]\nrequirements = [{WHEEL}]\nentrypoints = []\n"
+# uv tool installed with UV_TOOL_BIN_DIR="/home/u/my bin"
+WHEEL_RECEIPT_WITH_BIN = f"""\
+[tool]
+requirements = [{WHEEL}]
+entrypoints = [
+    {{ name = "lado", install-path = "/home/u/my bin/lado", from = "lado" }},
+]
+"""
+
+
+def uv_of_a_wheel(receipt: str):
+    return lambda tmp_path: uv_tool(tmp_path / "tool dir", receipt)
+
+
+def pipx_of_a_folder(prefix):
+    prefix.mkdir(parents=True)
+    metadata = {"main_package": {"package": "lado", "package_or_url": "/src/lado"}}
+    (prefix / "pipx_metadata.json").write_text(json.dumps(metadata))
+    return prefix
+
+
+def pip_beside_a_receipt(tmp_path):
+    prefix = uv_tool(tmp_path, WHEEL_RECEIPT)
+    (prefix / "bin").mkdir()
+    (prefix / "bin" / "pip").write_text("#!/bin/sh\n")
+    return prefix
+
+
+def nothing_known(tmp_path):
+    prefix = tmp_path / "some env"
+    prefix.mkdir(parents=True)
+    return prefix
+
+
+@pytest.mark.parametrize(
+    "make, line",
+    [
+        (
+            uv_of_a_wheel(WHEEL_RECEIPT_WITH_BIN),
+            lambda p: (
+                f"UV_TOOL_DIR='{p.parent}' UV_TOOL_BIN_DIR='/home/u/my bin' "
+                "uv tool install lado==99.0.0"
+            ),
+        ),
+        (
+            uv_of_a_wheel(WHEEL_RECEIPT),  # no install-path: no UV_TOOL_BIN_DIR guessed
+            lambda p: f"UV_TOOL_DIR='{p.parent}' uv tool install lado==99.0.0",
+        ),
+        (
+            lambda tmp_path: pipx_of_a_folder(tmp_path / "pipx home" / "venvs" / "lado"),
+            lambda p: f"PIPX_HOME='{p.parent.parent}' pipx install --force lado==99.0.0",
+        ),
+        (
+            # not <PIPX_HOME>/venvs/<name>: no PIPX_HOME guessed
+            lambda tmp_path: pipx_of_a_folder(tmp_path / "pipx" / "lado"),
+            lambda p: "pipx install --force lado==99.0.0",
+        ),
+        (pip_beside_a_receipt, lambda p: f"{p}/bin/pip install lado==99.0.0"),  # pip first
+        (
+            nothing_known,
+            lambda p: f"# install lado==99.0.0 with the installer of '{p}': LADO does not know it",
+        ),
+    ],
+)
+def test_the_commands_by_hand_name_the_installer_the_prefix_holds(
+    installed, tmp_path, repo, fake_tmux, capsys, monkeypatch, make, line
+):
+    """Not from an index, so installer() is None."""
+    prefix = make(tmp_path / "other")
+    monkeypatch.setenv("LADO_UPDATE_PREFIX", str(prefix))
+    assert update.installer() is None
+    assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
+    capsys.readouterr()
+    assert main(["update", "--yes"]) == 1
+    assert capsys.readouterr().out.endswith(
+        "upgrade it. By hand:\n"
+        "  lado stop s\n"
+        f"  {line(prefix)}\n"
+        f"  lado start {shlex.quote(str(repo))} --name s\n"
+    )
+    assert not state.get_session("s").stopped_at
+
+
+def test_a_receipt_that_cannot_be_read_gives_no_uv_tool_bin_dir(tmp_path, monkeypatch):
+    prefix = uv_tool(tmp_path, "[tool\n")
+    monkeypatch.setenv("LADO_UPDATE_PREFIX", str(prefix))
+    assert self_update._install_by_hand("99.0.0") == (
+        f"UV_TOOL_DIR={prefix.parent} uv tool install lado==99.0.0"
+    )
 
 
 def test_a_loop_that_does_not_end_stops_the_update_before_the_installer(

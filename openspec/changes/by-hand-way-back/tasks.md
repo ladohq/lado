@@ -44,3 +44,16 @@
 
 - [x] 3.1 `make lint`, `make test` pass; `openspec validate by-hand-way-back --strict`
   passes; CI green on the pull request's last commit (AC-7).
+
+## 4. The install's folders and review round 1
+
+- [x] 4.1 The uv line sets `UV_TOOL_DIR` to the prefix's parent, and `UV_TOOL_BIN_DIR` to
+  the folder of the receipt's install-path of `lado` (`update.uv_bin_dir`), none for a
+  receipt that cannot be read or names none; the pipx line sets `PIPX_HOME` for a prefix
+  `<home>/venvs/<name>`, none otherwise (requirement "The uv and pipx lines by hand
+  install where LADO is"); unit tests in `tests/test_update.py`, red first.
+- [x] 4.2 The restore line's paths are absolute also for a relative `LADO_HOME` (review
+  F1); `tests/test_self_update.py`, red first.
+- [x] 4.3 A test that pip goes first beside a `uv-receipt.toml` (review F2), shown to
+  fail with the order swapped.
+- [x] 4.4 CI green on the pull request's last commit.

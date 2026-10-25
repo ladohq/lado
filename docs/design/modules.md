@@ -101,7 +101,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     docstring, which only grows (a reader passes over unknown keys and names a higher
     format as a newer LADO's). `remover` is the argv that removes this install, whatever
     its source (`uv tool uninstall lado` by `uv-receipt.toml`, `pipx uninstall
-    lado<suffix>` by `pipx_metadata.json`, else None), for `lado uninstall`. Tests:
+    lado<suffix>` by `pipx_metadata.json`, else None), for `lado uninstall`. `uv_bin_dir`
+    is the folder of a uv tool's `lado` executable from its receipt's install-path (None
+    when it cannot be read or names none), for `self_update`'s commands by hand. Tests:
     `LADO_UPDATE_INDEX` (a local file instead of PyPI), `LADO_UPDATE_INSTALLER` (an
     installer's argv, given the version as its last argument), `LADO_UNINSTALL_REMOVER`
     (the remover's argv) and `LADO_UPDATE_PREFIX` (the install's prefix instead of
@@ -169,9 +171,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     with the loop down, those whose tmux is gone, the UI server; `print_plan`,
     `print_by_hand`, the API's `UpdatePlan`). `Plan.by_hand`, the one list of commands by
     hand for the CLI and the API, paths shell-quoted: the install line by the prefix's
-    files (its `bin/pip`, else `uv tool install` with `UV_TOOL_DIR` the prefix's parent, else `pipx install
-    --force`, else a comment that LADO does not know the installer), and with `restore` the
-    copy's `rm -f … && cp …` into `lado.db` after it and `lado start` only for the sessions
+    files (its `bin/pip`; else `uv tool install` with `UV_TOOL_DIR`, the prefix's parent,
+    and `UV_TOOL_BIN_DIR` from the receipt's install-path, `update.uv_bin_dir`; else `pipx
+    install --force` with `PIPX_HOME` for a prefix `<home>/venvs/<name>`; else a comment
+    that LADO does not know the installer), and with `restore` the copy's
+    `rm -f … && cp …` into `lado.db` after it, paths absolute, and `lado start` only for the sessions
     the copy has. `run` holds an exclusive flock on
     `LADO_HOME/update.lock` (its pid in it; `take_lock`, which `lado uninstall` takes too)
     for the whole update, so a second one, from the CLI or the UI, is refused at once; only

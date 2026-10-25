@@ -4,7 +4,8 @@ model: docs/design/projects.md).
 
 This module alone writes and removes them, and lado.projects keeps their rules. The human
 sets them (the CLI, the server); nothing reads a value back but the launch of an agent of
-a session in the project (lado.runtime._base_env), and `lado doctor` and the server's
+a session in the project (lado.runtime._base_env), LADO's git of a clone into the project
+(lado.clone, both through `layer`), and `lado doctor` and the server's
 answer of a project (`unused`), which read the folder to say which files the agents do not
 get and let no value out, all through the one reader of variable folders
 (lado.agent_env.read_folder). Listing them never opens a file.
@@ -79,6 +80,14 @@ def held(id: str, name: str) -> bool:
 def read(id: str) -> agent_env.Folder:
     """The project's secrets as an agent gets them, and each file not given with why."""
     return agent_env.read_folder(str(folder(id)), own=reserved)
+
+
+def layer(id: str) -> dict[str, str]:
+    """The project's layer of variables, read now: its plain variables from lado.db with its
+    secrets over them (a project holds one value per name, and a hand-made file of a plain
+    variable's name wins). The one source of both the agents' layer
+    (lado.runtime._base_env) and that of a clone into the project (lado.clone)."""
+    return {**state.project_variables(id), **read(id).values}
 
 
 def unused(id: str) -> list[tuple[str | None, str]]:

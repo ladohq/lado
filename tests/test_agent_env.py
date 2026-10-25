@@ -491,6 +491,27 @@ def test_the_project_wins_over_the_inherited_environment(outdir, monkeypatch):
     assert agent_env.resolve({})["BOARD_URL"] == "old"
 
 
+# LADO's own git calls (for_git): the process's environment, never the login shell's.
+
+
+def test_lados_git_lays_the_folder_then_the_project_over_the_process(shell, outdir, monkeypatch):
+    shell(rc="export FROM_SHELL=1")
+    monkeypatch.setenv("BOARD_URL", "proc")
+    monkeypatch.setenv("KEEP", "1")
+    write(outdir, "BOARD_URL", b"out\n")
+    write(outdir, "PATH", b"/evil")  # a file the folder does not give
+    env = agent_env.for_git({"BOARD_URL": "proj"})
+    assert (env["BOARD_URL"], env["KEEP"], env["PATH"]) == ("proj", "1", os.environ["PATH"])
+    assert "FROM_SHELL" not in env
+    assert agent_env.for_git()["BOARD_URL"] == "out"  # no project: no layer
+
+
+def test_lados_git_reads_the_folder_anew_at_each_call(outdir):
+    assert "LATE_TOKEN" not in agent_env.for_git()
+    write(outdir, "LATE_TOKEN", b"t")
+    assert agent_env.for_git()["LATE_TOKEN"] == "t"
+
+
 def test_read_anew_at_each_call(outdir):
     assert "NEW_KEY" not in agent_env.outside().values
     write(outdir, "NEW_KEY", b"v")

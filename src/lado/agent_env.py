@@ -17,6 +17,10 @@ folder's reader, `read_folder`, which refuses links and loose modes there) at ea
 by whoever launches (lado.runtime._base_env); a session without a project has none. LADO's
 and the agent CLI's own variables go over all of them (lado.runtime).
 
+LADO's own network git calls (kits, skill packs, marketplaces, a clone of a URL) get the
+same layers over LADO's process environment instead of the login shell's (`for_git`), so
+they reach what the agents reach: the outside folder's GH_TOKEN, a project's secrets.
+
 A tmux window starts with its server's environment, so the launch does not rely on it: the
 window runs the module `lado.agent_env <file> <argv>` (`interpreter.run_module`), which
 replaces its environment with the one in the file and runs the agent's command.
@@ -109,6 +113,15 @@ def resolve(project: Mapping[str, str] | None = None) -> dict[str, str]:
     dropped = (*EXCLUDED, *SHELL_OWN)
     base = {k: v for k, v in tmux.without_agent_vars(env).items() if k not in dropped}
     return {**base, **outside().values, **(project or {})}
+
+
+def for_git(project: Mapping[str, str] | None = None) -> dict[str, str]:
+    """The environment of LADO's own network git calls (lado.gitcache, lado.clone): LADO's
+    process environment, then the outside folder's variables read now, then `project`, a
+    project's layer for a clone into it (lado.project_secrets.layer). No login shell: it
+    would cost a shell's start per call; the folder's unused files are named by `lado
+    doctor` and each launch, not here."""
+    return {**os.environ, **outside().values, **(project or {})}
 
 
 class Outside(NamedTuple):

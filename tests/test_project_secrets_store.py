@@ -177,6 +177,17 @@ def test_read_gives_the_secrets_by_the_one_reader(home):
     assert project_secrets.read("acme") == agent_env.Folder({}, [])
 
 
+def test_the_layer_is_the_plain_variables_with_the_secrets_over_them(lado_home):
+    from lado import projects, state
+
+    projects.create("shop", None)
+    state.set_project_variable("shop", "BOARD_URL", "plain")
+    state.set_project_variable("shop", "GH_TOKEN", "plain")
+    project_secrets.write("shop", "GH_TOKEN", "secret")
+    assert project_secrets.layer("shop") == {"BOARD_URL": "plain", "GH_TOKEN": "secret"}
+    assert project_secrets.layer("acme") == {}
+
+
 def test_remove_all_removes_the_data_folder_and_nothing_else(home):
     project_secrets.write("shop", "GH_TOKEN", "g")
     project_secrets.write("acme", "GH_TOKEN", "a")

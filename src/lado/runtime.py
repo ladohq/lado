@@ -2836,16 +2836,9 @@ def _add_agent(agent: state.Agent, kit: str) -> None:
 
 def _base_env(project: str | None) -> dict[str, str]:
     """The environment agents start from (lado.agent_env), resolved anew for each launch,
-    with the plain variables of the session's `project` as lado.db holds them now and its
-    secrets as their folder holds them now (lado.project_secrets; a project holds one value
-    per name, and a hand-made file of a plain variable's name wins)."""
-    variables = (
-        {**state.project_variables(project), **project_secrets.read(project).values}
-        if project
-        else None
-    )
+    with the layer of the session's `project` as it is now (lado.project_secrets.layer)."""
     try:
-        return agent_env.resolve(variables)
+        return agent_env.resolve(project_secrets.layer(project) if project else None)
     except agent_env.AgentEnvError as exc:
         raise LadoError(str(exc)) from exc
 

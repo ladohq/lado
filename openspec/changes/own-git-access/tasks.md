@@ -1,14 +1,14 @@
 ## 1. The environment of LADO's own git
 
-- [ ] 1.1 `tests/test_agent_env.py` (unit): `agent_env.for_git()` holds the process's
+- [x] 1.1 `tests/test_agent_env.py` (unit): `agent_env.for_git()` holds the process's
   variables, an outside folder's file over the same name, and a project mapping over both
   (requirement "One core function builds the environment of LADO's own git calls",
   scenario "The order of the layers"); a file added after a first call is in the next one;
   a file the folder does not give is not in it. Fails before 1.3.
-- [ ] 1.2 `tests/test_project_secrets_store.py` (unit): `project_secrets.layer`
+- [x] 1.2 `tests/test_project_secrets_store.py` (unit): `project_secrets.layer`
   gives plain variables with secrets over them; a session's agents still get the same
   layer (the existing `_base_env` tests stay green).
-- [ ] 1.3 `src/lado/agent_env.py` `for_git` (design D1), `src/lado/project_secrets.py`
+- [x] 1.3 `src/lado/agent_env.py` `for_git` (design D1), `src/lado/project_secrets.py`
   `layer` and `runtime._base_env` calling it (D2); docstrings say who uses them.
 
 ## 2. Clones and listings

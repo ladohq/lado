@@ -181,6 +181,33 @@ def test_a_base_tool_left_out_of_the_first_apt_layer_is_named():
     assert missing_tools(first + "\n" + later) == ["jq"]
 
 
+def missing_uv_binaries(text: str) -> list[str]:
+    """Which of uv and uvx the `COPY --from=uv` lines of `text` leave out of /usr/local/bin."""
+    copied = set()
+    for line in lines(text):
+        words = line.split()
+        if words[:2] != ["COPY", "--from=uv"]:
+            continue
+        sources, target = words[2:-1], words[-1]
+        if target.rstrip("/") == "/usr/local/bin":
+            copied.update(Path(source).name for source in sources)
+        elif str(Path(target).parent) == "/usr/local/bin" and len(sources) == 1:
+            copied.add(Path(target).name)
+    return sorted({"uv", "uvx"} - copied)
+
+
+def test_the_image_carries_uvx_beside_uv():
+    """uvx runs `uv tool run` through the uv beside it; kits' MCP servers call it."""
+    assert missing_uv_binaries(DOCKERFILE) == []
+
+
+def test_a_uv_copy_without_uvx_is_named():
+    assert missing_uv_binaries("COPY --from=uv /uv /usr/local/bin/uv\n") == ["uvx"]
+    assert missing_uv_binaries("COPY --from=uv /uv /usr/local/bin/\n") == ["uvx"]
+    assert missing_uv_binaries("COPY --from=mise /uvx /usr/local/bin/\n") == ["uv", "uvx"]
+    assert missing_uv_binaries("COPY --from=uv /uv /uvx /usr/local/bin/\n") == []
+
+
 PYTHON_FALLBACK = "/opt/fallback/bin"
 
 

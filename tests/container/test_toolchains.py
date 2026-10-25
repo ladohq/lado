@@ -1,7 +1,8 @@
 """The repositories' toolchains in LADO's image (openspec capability container): mise at its pin,
 its tools on the home volume kept over a new container, the workspace trusted, the
 image's Node 22 first; make, gcc and g++; the agents' `npm i -g` and `uv tool install` under
-~/.local at another uid and on an older home volume; the agents' base tools, openspec at its
+~/.local at another uid and on an older home volume; the agents' base tools, uvx at uv's
+version, openspec at its
 pin with its statistics off, python3 the image's 3.13 unless a project names its own, and
 that Python closed to the agents. Each command runs in a login shell started from a clean
 environment, as LADO starts an agent's (agent_env.resolve)."""
@@ -258,6 +259,22 @@ def test_the_base_tools_and_openspec_answer_on_a_clean_home(start, projects_volu
     assert login(c, "command -v openspec").stdout.strip() == "/opt/tools/bin/openspec"
     for env in (environment(login(c, "env").stdout), environment(c.exec("env").stdout)):
         assert {key: env.get(key) for key in OPENSPEC_OFF} == OPENSPEC_OFF
+
+
+def test_uvx_answers_at_uvs_version_and_runs_a_package(start, projects_volume):
+    c = served(start, projects_volume(1000, 1000))
+    assert login(c, "command -v uvx").stdout.strip() == "/usr/local/bin/uvx"
+    uvx = login(c, "uvx --version").stdout.split()
+    assert uvx[0] == "uvx" and uvx[1] == login(c, "uv --version").stdout.split()[1], uvx
+    whl = base64.b64encode(wheel()).decode()
+    c.sh(f"echo {whl} | base64 -d > /tmp/hello_uv-1.0-py3-none-any.whl")
+    ran = login(
+        c,
+        "uvx --offline --python /opt/uv/python/cpython-3.13-*/bin/python3.13 "
+        "--from /tmp/hello_uv-1.0-py3-none-any.whl hello-uv",
+    )
+    assert ran.stdout == "uv ok\n"
+    assert c.sh("ls /opt/uv/tools").stdout.count("hello") == 0
 
 
 def test_an_older_openspec_through_mise_does_not_shadow_the_images(start, projects_volume):

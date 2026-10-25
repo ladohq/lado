@@ -101,8 +101,9 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # The user lado (uid 1000, as the prototype). Programs live under /opt, outside the home
 # volume, so a new image replaces them; the home volume keeps state (LADO_HOME, Claude
 # Code's login) and what the agents install (mise's tools, npm -g, uv tool). /projects is
-# LADO_REPOS, the human's workspace.
-COPY --from=uv /uv /usr/local/bin/uv
+# LADO_REPOS, the human's workspace. uvx beside uv, as uv's installers put it: it runs
+# `uv tool run` through the uv next to it, and kits' MCP servers and tools are started with it.
+COPY --from=uv /uv /uvx /usr/local/bin/
 COPY docker/profile.sh /etc/profile.d/lado.sh
 # mise, root's so no agent replaces it, with the image's settings (docker/mise.toml); the
 # toolchains it installs, its config and cache stay at its defaults on the home volume.

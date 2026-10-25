@@ -91,6 +91,23 @@ def no_maintenance_env(environ: dict[str, str]) -> dict[str, str]:
     return env
 
 
+PRIVATE_URL = "https://example.invalid/acme/private"  # reached only through private_access
+
+
+def private_access(local: str, url: str = PRIVATE_URL) -> dict[str, str]:
+    """Variables that let git reach the https `url` (which resolves nowhere) as the local
+    repository `local`, by a url.<local>.insteadOf entry numbered after the process's own
+    GIT_CONFIG_* entries: put in a layer of variables (the outside folder, a project's
+    secrets), they stand for the access a token gives, so a git call reaches `url` only
+    when it got that layer."""
+    count = int(os.environ.get("GIT_CONFIG_COUNT", "0"))
+    return {
+        "GIT_CONFIG_COUNT": str(count + 1),
+        f"GIT_CONFIG_KEY_{count}": f"url.{local}.insteadOf",
+        f"GIT_CONFIG_VALUE_{count}": url,
+    }
+
+
 def install_kit(folder: Path) -> str:
     """Install the kit in `folder` as `lado kits add <folder>` would, in the test's LADO_HOME
     (read in place, no question); its name, from its kit.yaml. The same folder again is no

@@ -13,17 +13,17 @@
 
 ## 2. Clones and listings
 
-- [ ] 2.1 `tests/test_clone.py` (unit, real git, design D6): with the outside folder's
+- [x] 2.1 `tests/test_clone.py` (unit, real git, design D6): with the outside folder's
   `GIT_CONFIG_*` mapping `https://example.invalid/acme/private` to a local bare repository,
   `clone.list_branches` lists its branches and `clone.clone` clones it; without the folder
   both fail (AC-1). A project's secret holding the same entries makes
   `projects.add_clone("shop", url, None)` and `list_branches(url, project="shop")` pass,
   and a clone without a project fails (AC-2, scenarios "A project's own token", "Another
   project's token is not used").
-- [ ] 2.2 `tests/test_clone.py` (unit): `failure("clone", "https://github.com/acme/private",
+- [x] 2.2 `tests/test_clone.py` (unit): `failure("clone", "https://github.com/acme/private",
   <could not read Username>)` gives the three `login_needed` hints of the delta: with
   `project="shop"`, with `LADO_ENV_DIR` naming a folder, with it unset or `/dev/null` (AC-3).
-- [ ] 2.3 `src/lado/gitcache.py` `NO_PROMPT` (D3), `src/lado/clone.py` `_start_git` with
+- [x] 2.3 `src/lado/gitcache.py` `NO_PROMPT` (D3), `src/lado/clone.py` `_start_git` with
   `for_git` and the project's layer, `list_branches(url, project=None)`, `clone` passing its
   project, the login hint's choice in `_reason`/`failure` (D4, D5); `projects._git` takes
   `gitcache.NO_PROMPT`.

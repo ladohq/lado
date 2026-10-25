@@ -1,14 +1,23 @@
 """lado.clone: a repository from its git URL (openspec change clone-from-url)."""
 
+import os
 import subprocess
 import threading
 import time
 from pathlib import Path
 
 import pytest
-from agent_helpers import bare_remote, fake_git, fake_git_calls, gone, init_repo
+from agent_helpers import (
+    PRIVATE_URL,
+    bare_remote,
+    fake_git,
+    fake_git_calls,
+    gone,
+    init_repo,
+    private_access,
+)
 
-from lado import clone, projects, runtime
+from lado import agent_env, clone, project_secrets, projects, runtime
 
 
 @pytest.mark.parametrize(
@@ -363,6 +372,37 @@ def test_a_private_https_repository_without_a_login():
     assert other.hint is None
 
 
+def test_a_login_asked_for_in_a_projects_clone_names_its_secret(tmp_path, monkeypatch):
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(tmp_path))  # the project's hint wins
+    error = clone.failure(
+        "clone", "https://github.com/acme/private", KIND_LINES[2][0], project="shop"
+    )
+    assert error.hint == runtime.Hint(
+        "Give the project a GitHub token:", "lado project set shop GH_TOKEN --secret"
+    )
+
+
+def test_a_login_asked_for_with_an_outside_folder_names_its_file(tmp_path, monkeypatch):
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(tmp_path))
+    error = clone.failure("clone", "https://github.com/acme/private", KIND_LINES[2][0])
+    assert error.hint == runtime.Hint(
+        f"Log in with GitHub's CLI, or put a token into the file GH_TOKEN of {tmp_path} "
+        "(LADO_ENV_DIR):",
+        "gh auth login",
+    )
+    assert clone.failure("clone", "https://git.example.com/a/b", KIND_LINES[2][0]).hint is None
+
+
+@pytest.mark.parametrize("folder", [None, os.devnull, "missing"])
+def test_a_login_asked_for_with_no_outside_folder(folder, tmp_path, monkeypatch):
+    if folder is None:
+        monkeypatch.delenv(agent_env.ENV_DIR_VAR, raising=False)
+    else:
+        monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(tmp_path / folder))
+    error = clone.failure("list", "https://github.com/acme/private", KIND_LINES[2][0])
+    assert error.hint == runtime.Hint("Log in with GitHub's CLI on this machine:", "gh auth login")
+
+
 def test_a_repository_github_does_not_show():
     error = clone.failure("list", "git@github.com:acme/app.git", KIND_LINES[4][0])
     assert str(error) == (
@@ -431,6 +471,51 @@ def test_branches_and_the_default_one(tmp_path):
     remote = clone.list_branches(bare_remote(tmp_path))
     assert remote.branches == ["main", "develop", "release/1.2"]
     assert remote.default == "main"
+
+
+def _write_layer(folder: Path, variables: dict[str, str]) -> None:
+    folder.mkdir(exist_ok=True)
+    for name, value in variables.items():
+        (folder / name).write_text(value)
+
+
+def test_the_outside_folder_gives_the_listing_and_the_clone_their_access(tmp_path, monkeypatch):
+    access = private_access(bare_remote(tmp_path))
+    monkeypatch.delenv(agent_env.ENV_DIR_VAR, raising=False)
+    with pytest.raises(clone.CloneError) as refused:
+        clone.list_branches(PRIVATE_URL)
+    assert refused.value.kind == "unreachable"
+    with pytest.raises(clone.CloneError):
+        clone.clone(PRIVATE_URL, str(tmp_path / "none"))
+    _write_layer(tmp_path / "secrets", access)  # after the first calls: read anew
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(tmp_path / "secrets"))
+    assert clone.list_branches(PRIVATE_URL).default == "main"
+    clone.clone(PRIVATE_URL, str(tmp_path / "copy"))
+    assert _branch(tmp_path / "copy") == "main"
+
+
+def test_a_projects_secrets_give_its_clone_their_access(shop, tmp_path, monkeypatch):
+    monkeypatch.delenv(agent_env.ENV_DIR_VAR, raising=False)
+    for name, value in private_access(bare_remote(tmp_path)).items():
+        project_secrets.write("shop", name, value)
+    assert clone.list_branches(PRIVATE_URL, project="shop").default == "main"
+    projects.add_clone("shop", PRIVATE_URL, None)
+    assert _branch(shop / "private") == "main"
+    with pytest.raises(clone.CloneError) as refused:  # no project: none of a project's
+        clone.list_branches(PRIVATE_URL)
+    assert refused.value.kind == "unreachable"
+    with pytest.raises(clone.CloneError):
+        clone.clone(PRIVATE_URL, str(tmp_path / "other"))
+
+
+def test_the_project_wins_over_the_outside_folder(shop, tmp_path, monkeypatch):
+    remote = bare_remote(tmp_path / "theirs", branches=("theirs",))
+    _write_layer(tmp_path / "secrets", private_access(remote))
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(tmp_path / "secrets"))
+    for name, value in private_access(bare_remote(tmp_path / "ours", branches=())).items():
+        project_secrets.write("shop", name, value)
+    assert clone.list_branches(PRIVATE_URL, project="shop").branches == ["main"]
+    assert clone.list_branches(PRIVATE_URL).branches == ["main", "theirs"]
 
 
 def test_an_empty_repository(tmp_path):

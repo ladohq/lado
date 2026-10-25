@@ -32,6 +32,16 @@ from urllib.parse import quote, unquote
 
 from lado import state
 
+# Each of LADO's network git processes (here, lado.clone, lado.projects): no prompt, git's
+# words in English (lado.clone.KINDS). An empty GIT_ASKPASS stops git before core.askPass and
+# SSH_ASKPASS: no askpass program either.
+NO_PROMPT = {
+    "GIT_TERMINAL_PROMPT": "0",
+    "GIT_ASKPASS": "",
+    "SSH_ASKPASS_REQUIRE": "never",
+    "GCM_INTERACTIVE": "never",
+    "LC_ALL": "C",
+}
 VERSION_TAG = re.compile(r"v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)")
 # git@host:owner/repo: an scp-like git address.
 SCP_LIKE = re.compile(r"[\w.-]+@[\w.-]+:")

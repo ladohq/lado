@@ -71,5 +71,5 @@
 
 ## 6. Checks
 
-- [ ] 6.1 `make lint`, `make test`, `make web` pass; `openspec validate own-git-access
+- [x] 6.1 `make lint`, `make test`, `make web` pass; `openspec validate own-git-access
   --strict` passes; CI green on the pull request's last commit, its container job included.

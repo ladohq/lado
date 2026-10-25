@@ -17,7 +17,10 @@ only network use besides cloning: the latest version (latest, by semver preceden
 whether a tag was moved since its clone was made.
 
 The clone of a marketplace (lado.marketplaces) follows its main branch instead:
-clone_branch makes it, refresh brings it up to date. All of LADO's git commands run here.
+clone_branch makes it, refresh brings it up to date. All of LADO's git commands for kits
+run here, with no prompt; the network ones in the outside folder's variables over LADO's
+process environment (lado.agent_env.for_git: a GH_TOKEN of /run/secrets reaches gh's
+credential helper), their failures told by a clone's kinds (lado.clone.explain).
 """
 
 import hashlib
@@ -30,8 +33,18 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-from lado import state
+from lado import agent_env, state
 
+# Each git process of this module, lado.clone and lado.projects: no prompt, git's words in
+# English (lado.clone.KINDS). An empty GIT_ASKPASS stops git before core.askPass and
+# SSH_ASKPASS: no askpass program either.
+NO_PROMPT = {
+    "GIT_TERMINAL_PROMPT": "0",
+    "GIT_ASKPASS": "",
+    "SSH_ASKPASS_REQUIRE": "never",
+    "GCM_INTERACTIVE": "never",
+    "LC_ALL": "C",
+}
 VERSION_TAG = re.compile(r"v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)")
 # git@host:owner/repo: an scp-like git address.
 SCP_LIKE = re.compile(r"[\w.-]+@[\w.-]+:")
@@ -96,7 +109,7 @@ def fetch_pinned(address: str, ref: str) -> Path:
 
 
 def _clone(address: str, ref: str, folder: Path) -> None:
-    _git(None, "clone", "--quiet", "--no-checkout", address, str(folder))
+    _git(None, "clone", "--quiet", "--no-checkout", address, str(folder), remote=address)
     if _git(folder, "branch", "--remotes", "--list", f"origin/{ref}"):
         raise GitError(f"{ref} is a branch of {address}; pin a tag or a commit")
     try:
@@ -161,7 +174,7 @@ def remote_tags(address: str) -> dict[str, str]:
     """Each tag of the repository at `address` with the commit it points to (an annotated
     tag's commit, not its tag object). Uses the network."""
     try:
-        output = _git(None, "ls-remote", "--tags", address)
+        output = _git(None, "ls-remote", "--tags", address, remote=address)
     except GitError as exc:
         raise GitError(f"cannot read the tags of {address}: {exc}") from None
     tags: dict[str, str] = {}
@@ -181,7 +194,7 @@ def clone_branch(address: str, folder: Path) -> None:
     folder.parent.mkdir(parents=True, exist_ok=True)
     temp = Path(tempfile.mkdtemp(prefix=f".{folder.name}-", dir=folder.parent))
     try:
-        _git(None, "clone", "--quiet", address, str(temp))
+        _git(None, "clone", "--quiet", address, str(temp), remote=address)
         os.rename(temp, folder)
     except (GitError, OSError) as exc:
         shutil.rmtree(temp, ignore_errors=True)
@@ -191,8 +204,9 @@ def clone_branch(address: str, folder: Path) -> None:
 def refresh(folder: Path) -> None:
     """Bring a clone made by clone_branch to its remote's main branch now."""
     try:
-        _git(folder, "fetch", "--quiet", "--prune", "origin")
-        _git(folder, "remote", "set-head", "origin", "--auto")
+        origin = address(folder)
+        _git(folder, "fetch", "--quiet", "--prune", "origin", remote=origin)
+        _git(folder, "remote", "set-head", "origin", "--auto", remote=origin)
         _git(folder, "checkout", "--quiet", "--detach", "origin/HEAD")
     except GitError as exc:
         raise GitError(f"cannot update {folder}: {exc}") from None
@@ -203,9 +217,13 @@ def commit(clone: Path) -> str:
     return _git(clone, "rev-parse", "HEAD")
 
 
-def _git(cwd: Path | None, *args: str) -> str:
+def _git(cwd: Path | None, *args: str, remote: str | None = None) -> str:
+    """git's output, with no prompt (NO_PROMPT). A network call names its `remote`: it runs
+    in the environment of LADO's own git (lado.agent_env.for_git: the outside folder's
+    variables, never a project's), and its failure is told by a clone's kinds
+    (lado.clone.explain); a local one runs in LADO's process environment."""
     where = ["-C", str(cwd)] if cwd else []
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}  # fail instead of asking for a password
+    env = {**(agent_env.for_git() if remote else os.environ), **NO_PROMPT}
     try:
         result = subprocess.run(
             ["git", *where, *args], capture_output=True, text=True, check=False, env=env
@@ -215,5 +233,9 @@ def _git(cwd: Path | None, *args: str) -> str:
     except OSError as exc:
         raise GitError(f"cannot run git: {exc}") from None
     if result.returncode != 0:
+        if remote and result.stderr.strip():
+            from lado import clone  # lado.clone builds on this module
+
+            raise GitError(clone.explain(remote, result.stderr))
         raise GitError(result.stderr.strip() or f"git {' '.join(args)} failed")
     return result.stdout.strip()

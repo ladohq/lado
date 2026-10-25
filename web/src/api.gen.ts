@@ -302,7 +302,8 @@ export interface paths {
         put?: never;
         /**
          * Remote Branches
-         * @description A remote's branches and its default one, by one `git ls-remote`.
+         * @description A remote's branches and its default one, by one `git ls-remote`; for a clone into
+         *     `project` in that project's variables and secrets.
          */
         post: operations["remote_branches_api_remote_branches_post"];
         delete?: never;
@@ -2656,6 +2657,8 @@ export interface components {
         RemoteAsk: {
             /** Url */
             url: string;
+            /** Project */
+            project?: string | null;
         };
         /**
          * RemoteInfo
@@ -3831,6 +3834,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CloneRefused"];
                 };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -4,9 +4,11 @@ progress and cancellation (openspec change clone-from-url). `lado start <git-url
 UI server's clone jobs (`server/clones.py`) both call it, and print only what it says.
 
 LADO uses only the access git already has on this machine (ssh keys, `gh auth`, a
-credential helper): its git calls run with no terminal and no prompt, so a missing
-credential is a failure, never a wait. A URL reaches a text only through
-`runtime.public_remote`."""
+credential helper, a token in the outside folder or, for a clone into a project, in the
+project's variables and secrets: lado.agent_env.for_git): its git calls run with no
+terminal and no prompt, so a missing credential is a failure, never a wait. The kinds of a
+failure here also tell those of LADO's git for kits (`explain`, lado.gitcache). A URL
+reaches a text only through `runtime.public_remote`."""
 
 import codecs
 import os
@@ -22,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from lado import projects, runtime
+from lado import agent_env, gitcache, project_secrets, projects, runtime
 
 URL = re.compile(r"(https?|ssh|git|file)://(.+)", re.IGNORECASE)
 # user@host:path, git's scp form; a bare host:path would take a folder with a colon.
@@ -30,15 +32,6 @@ SCP = re.compile(r"([^\s@/:]+)@([^\s@/:]+):(.+)")
 
 
 LIST_TIMEOUT = 20  # seconds a listing of the remote's branches may take
-# Each git process of a clone or listing: no prompt, git's words in English (KINDS). An empty
-# GIT_ASKPASS stops git before core.askPass and SSH_ASKPASS: no askpass program either.
-NO_PROMPT = {
-    "GIT_TERMINAL_PROMPT": "0",
-    "GIT_ASKPASS": "",
-    "SSH_ASKPASS_REQUIRE": "never",
-    "GCM_INTERACTIVE": "never",
-    "LC_ALL": "C",
-}
 STOP_WAIT = 2  # seconds git's process group gets after SIGTERM, before SIGKILL
 # A clone job of the UI server (server/clones.py): one no request asked about for ABANDONED
 # seconds is cancelled (its window went away without its beacon: a lost connection, a
@@ -274,7 +267,26 @@ def _ssh_check(address: Address) -> str:
     return f"ssh -T {port}{address.user or 'git'}@{address.host}"
 
 
-def _reason(kind: str, address: Address, branch: str | None) -> tuple[str, runtime.Hint | None]:
+def _github_login(project: str | None) -> runtime.Hint:
+    """Where LADO's git can take a GitHub login from: the project's secret for a clone into
+    it, else the outside folder's file when that folder is a folder, else gh's own."""
+    if project:
+        return runtime.Hint(
+            "Give the project a GitHub token:", f"lado project set {project} GH_TOKEN --secret"
+        )
+    folder = os.environ.get(agent_env.ENV_DIR_VAR, "")
+    if os.path.isabs(folder) and os.path.isdir(folder):
+        return runtime.Hint(
+            f"Log in with GitHub's CLI, or put a token into the file GH_TOKEN of {folder} "
+            f"({agent_env.ENV_DIR_VAR}):",
+            "gh auth login",
+        )
+    return runtime.Hint("Log in with GitHub's CLI on this machine:", "gh auth login")
+
+
+def _reason(
+    kind: str, address: Address, branch: str | None, project: str | None = None
+) -> tuple[str, runtime.Hint | None]:
     host, github = address.host, address.host == GITHUB
     if kind == "ssh_denied":
         hint = f"Check that this machine's ssh key is added to your account on {host}:"
@@ -286,8 +298,7 @@ def _reason(kind: str, address: Address, branch: str | None) -> tuple[str, runti
         return f"this machine does not know {host}'s ssh host key yet", hint
     if kind == "login_needed":
         if github:
-            hint = runtime.Hint("Log in with GitHub's CLI on this machine:", "gh auth login")
-            return f"{host} asks for a login", hint
+            return f"{host} asks for a login", _github_login(project)
         return (
             f"{host} asks for a login; set up a git credential helper for it on this machine",
             None,
@@ -304,21 +315,50 @@ def _reason(kind: str, address: Address, branch: str | None) -> tuple[str, runti
     return f"no branch {branch}", None  # no_branch
 
 
-def failure(op: str, url: str, stderr: str, branch: str | None = None) -> CloneError:
-    """git's failure of a listing (`op` "list") or a clone as LADO tells it: `cannot read
-    <url>: <reason> (<git's line>)` or `cannot clone ...`, with a hint by its kind."""
+def failure(
+    op: str, url: str, stderr: str, branch: str | None = None, project: str | None = None
+) -> CloneError:
+    """git's failure of a listing (`op` "list") or a clone, into `project` when given, as
+    LADO tells it: `cannot read <url>: <reason> (<git's line>)` or `cannot clone ...`, with
+    a hint by its kind."""
     verb = "read" if op == "list" else "clone"
+    kind, text, hint = _told(url, stderr, branch, project)
+    return CloneError(kind, f"cannot {verb} {runtime.public_remote(url)}: {text}", hint)
+
+
+def explain(url: str, stderr: str) -> str:
+    """git's failure of a network call for kits, skill packs or marketplaces
+    (lado.gitcache), by the kinds of a clone's, on one line after LADO's head: `<reason>
+    (<git's line>)` and `. <hint>` when the kind has one; git's line alone for no known
+    kind."""
+    _, text, hint = _told(url, stderr, None, None)
+    return text + (f". {hint.line()}" if hint else "")
+
+
+def _told(
+    url: str, stderr: str, branch: str | None, project: str | None
+) -> tuple[str, str, runtime.Hint | None]:
+    """git's failure by its kind: the kind, `<reason> (<git's line>)` (git's line alone
+    for no known kind) and the hint."""
     line, kind = _gits_line(stderr), kind_of(stderr)
-    head = f"cannot {verb} {runtime.public_remote(url)}"
     if kind == GIT_FAILED:
-        return CloneError(kind, f"{head}: {line}")
-    reason, hint = _reason(kind, Address.parse(url), branch)
-    return CloneError(kind, f"{head}: {reason} ({line})", hint)
+        return kind, line, None
+    reason, hint = _reason(kind, Address.parse(url), branch, project)
+    return kind, f"{reason} ({line})", hint
 
 
-def _start_git(*args: str, stdout: int | None = subprocess.DEVNULL) -> subprocess.Popen:
-    """A git process with no terminal and no prompt, in a process group of its own (Ctrl-C
-    reaches LADO, which then ends the group: `_stop`)."""
+def _environment(project: str | None) -> dict[str, str]:
+    """The environment of a clone's or listing's git: LADO's own git's
+    (lado.agent_env.for_git), into `project` with its layer, and no prompt over it."""
+    layer = project_secrets.layer(project) if project else None
+    return {**agent_env.for_git(layer), **gitcache.NO_PROMPT}
+
+
+def _start_git(
+    *args: str, env: dict[str, str], stdout: int | None = subprocess.DEVNULL
+) -> subprocess.Popen:
+    """A git process with no terminal and no prompt (`_environment`), in a process group of
+    its own (Ctrl-C reaches LADO, which then ends the group: `_stop`)."""
     _git_runs()
     try:
         return subprocess.Popen(
@@ -326,7 +366,7 @@ def _start_git(*args: str, stdout: int | None = subprocess.DEVNULL) -> subproces
             stdin=subprocess.DEVNULL,
             stdout=stdout,
             stderr=subprocess.PIPE,
-            env={**os.environ, **NO_PROMPT},
+            env=env,
             start_new_session=True,
         )
     except OSError:
@@ -358,11 +398,18 @@ class Remote:
     default: str | None
 
 
-def list_branches(url: str) -> Remote:
-    """The remote's branches and its default one, by one `git ls-remote`, within
-    LIST_TIMEOUT seconds; a CloneError else."""
+def list_branches(url: str, project: str | None = None) -> Remote:
+    """The remote's branches and its default one, by one `git ls-remote` (for a clone into
+    `project` when given: in its layer), within LIST_TIMEOUT seconds; a CloneError else."""
     process = _start_git(
-        "ls-remote", "--symref", "--", url, "HEAD", "refs/heads/*", stdout=subprocess.PIPE
+        "ls-remote",
+        "--symref",
+        "--",
+        url,
+        "HEAD",
+        "refs/heads/*",
+        env=_environment(project),
+        stdout=subprocess.PIPE,
     )
     try:
         out, err = process.communicate(timeout=LIST_TIMEOUT)
@@ -380,7 +427,7 @@ def list_branches(url: str) -> Remote:
         raise
     stderr = err.decode(errors="replace")
     if process.returncode != 0:
-        raise failure("list", url, stderr)
+        raise failure("list", url, stderr, project=project)
     default, branches = None, []
     for line in out.decode(errors="replace").splitlines():
         value, _, ref = line.partition("\t")
@@ -434,7 +481,8 @@ def clone(
     project: str | None = None,
 ) -> str:
     """Clone `branch` of `url` (the remote's default without one) into the folder `path`
-    (a full path; `check_target` must let it, for `project` when one is given): into a
+    (a full path; `check_target` must let it, for `project` when one is given, whose layer
+    the git then runs in): into a
     temporary folder beside it, renamed to `path` only once git succeeded. A cancel
     (`cancelled` set), a failure or an exception (Ctrl-C too) ends git's process group and
     removes the temporary folder; `path` stays as it was. Returns `path`."""
@@ -450,7 +498,7 @@ def clone(
             "no_access", f"cannot make a folder in {folder.parent}: {exc.strerror or exc}"
         ) from None
     try:
-        _run_clone(url, temp, branch, on_progress, cancelled)
+        _run_clone(url, temp, branch, on_progress, cancelled, project)
         try:
             os.rename(temp, path)  # onto a missing or an empty folder
         except OSError as exc:
@@ -472,9 +520,19 @@ def _run_clone(
     branch: str | None,
     on_progress: Callable[[Progress], None] | None,
     cancelled: threading.Event | None,
+    project: str | None,
 ) -> None:
     chosen = ["--branch", branch] if branch else []
-    process = _start_git("clone", "--progress", "--no-recurse-submodules", *chosen, "--", url, temp)
+    process = _start_git(
+        "clone",
+        "--progress",
+        "--no-recurse-submodules",
+        *chosen,
+        "--",
+        url,
+        temp,
+        env=_environment(project),
+    )
     assert process.stderr is not None
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
     pending, kept = "", []
@@ -507,4 +565,4 @@ def _run_clone(
     if pending.strip():
         kept.append(pending)
     if process.returncode != 0:
-        raise failure("clone", url, "\n".join(kept), branch)
+        raise failure("clone", url, "\n".join(kept), branch, project)

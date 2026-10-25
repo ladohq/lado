@@ -189,6 +189,11 @@ async function cloneReady() {
   return page;
 }
 
+test("Clone lists the branches for the project, in its variables and secrets", async () => {
+  await cloneReady();
+  expect(server.calls("POST", "/api/remote-branches").map((c) => c.body)).toEqual([{ url: URL_, project: "shop" }]);
+});
+
 test("Clone lists the branches, takes the URL's name until edited, and clones into the project", async () => {
   const page = await cloneReady();
   const branch = within(addDialog()).getByRole("combobox", { name: "Branch" }) as HTMLSelectElement;

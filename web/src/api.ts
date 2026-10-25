@@ -303,8 +303,10 @@ export type CloneRefused = components["schemas"]["CloneRefused"];
 export type CloneStart = components["schemas"]["CloneStart"];
 export type CloneJob = components["schemas"]["CloneJob"];
 
-// A remote's branches, its default one first (400 CloneRefused: why it cannot be read).
-export const getRemoteBranches = (url: string) => post<RemoteInfo>("/api/remote-branches", { url });
+// A remote's branches, its default one first (400 CloneRefused: why it cannot be read); for a
+// clone into `project`, listed in that project's variables and secrets (404: no such project).
+export const getRemoteBranches = (url: string, project?: string) =>
+  post<RemoteInfo>("/api/remote-branches", project === undefined ? { url } : { url, project });
 
 // The folder a clone of `url` would go to (`path`, else the default one), as the core finds it.
 export const getCloneTarget = (url: string, path: string | null) =>

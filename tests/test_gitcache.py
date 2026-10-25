@@ -2,9 +2,9 @@ import subprocess
 from urllib.parse import quote
 
 import pytest
-from agent_helpers import init_repo, publish
+from agent_helpers import fake_git, fake_git_calls, init_repo, private_access, publish
 
-from lado import gitcache
+from lado import agent_env, gitcache
 
 SKILL = "---\nname: {0}\ndescription: use {0}\n---\nDo {0}.\n"
 
@@ -173,3 +173,66 @@ def test_no_git_is_a_git_error_not_a_crash(tmp_path, monkeypatch):
         gitcache.GitError, match=rf"git is not installed or not on PATH \({tmp_path}\)"
     ):
         gitcache.remote_tags("https://example.invalid/kit.git")
+
+
+# LADO's git for kits takes the outside folder's variables (lado.agent_env.for_git).
+KIT_URL = "https://example.invalid/acme/kit.git"
+
+
+@pytest.fixture
+def private_kit(work, tmp_path, monkeypatch):
+    """A kit repository with the tag v1.0.0 that git reaches at KIT_URL only through the
+    outside folder; that folder, not yet named by LADO_ENV_DIR."""
+    url = publish(work, {"kit.yaml": "name: k\n"}, tag="v1.0.0")
+    folder = tmp_path / "secrets"
+    folder.mkdir()
+    for name, value in private_access(url, KIT_URL).items():
+        (folder / name).write_text(value)
+    monkeypatch.delenv(agent_env.ENV_DIR_VAR, raising=False)
+    return folder
+
+
+def test_kits_git_reaches_a_remote_through_the_outside_folder(
+    private_kit, lado_home, tmp_path, monkeypatch
+):
+    with pytest.raises(gitcache.GitError, match="cannot read the tags of"):
+        gitcache.remote_tags(KIT_URL)
+    with pytest.raises(gitcache.GitError, match="cannot get"):
+        gitcache.fetch_pinned(KIT_URL, "v1.0.0")
+    with pytest.raises(gitcache.GitError, match="cannot clone"):
+        gitcache.clone_branch(KIT_URL, tmp_path / "market")
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(private_kit))  # read anew at each call
+    assert list(gitcache.remote_tags(KIT_URL)) == ["v1.0.0"]
+    assert (gitcache.fetch_pinned(KIT_URL, "v1.0.0") / "kit.yaml").exists()
+    gitcache.clone_branch(KIT_URL, tmp_path / "market")
+    gitcache.refresh(tmp_path / "market")
+    monkeypatch.delenv(agent_env.ENV_DIR_VAR)
+    with pytest.raises(gitcache.GitError, match="cannot update"):
+        gitcache.refresh(tmp_path / "market")
+
+
+def test_a_kits_login_failure_is_told_by_the_clones_kinds(tmp_path, monkeypatch):
+    for key, value in fake_git(tmp_path / "fake", "fail").items():
+        monkeypatch.setenv(key, value)
+    login = "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+    monkeypatch.setenv("FAKE_GIT_STDERR", login)
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(tmp_path))
+    url = "https://github.com/ladohq/kit-epic.git"
+    with pytest.raises(gitcache.GitError) as failed:
+        gitcache.remote_tags(url)
+    assert str(failed.value) == (
+        f"cannot read the tags of {url}: github.com asks for a login ({login}). Log in with "
+        f"GitHub's CLI, or put a token into the file GH_TOKEN of {tmp_path} (LADO_ENV_DIR): "
+        "gh auth login"
+    )
+    [call] = fake_git_calls(tmp_path / "fake")
+    assert (call["env"]["GIT_ASKPASS"], call["env"]["LC_ALL"]) == ("", "C")
+
+
+def test_a_kits_failure_of_no_known_kind_keeps_gits_line(tmp_path, lado_home, monkeypatch):
+    for key, value in fake_git(tmp_path / "fake", "fail").items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("FAKE_GIT_STDERR", "fatal: bad object")
+    with pytest.raises(gitcache.GitError) as failed:
+        gitcache.fetch_pinned(KIT_URL, "v1.0.0")
+    assert str(failed.value) == f"cannot get {KIT_URL}@v1.0.0: fatal: bad object"

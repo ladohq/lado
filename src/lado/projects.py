@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from lado import agent_env, project_secrets, providers, runtime, state
+from lado import agent_env, gitcache, project_secrets, providers, runtime, state
 
 if TYPE_CHECKING:
     from lado import clone as clone_module
@@ -550,15 +550,13 @@ GIT_TIMEOUT = 20  # seconds one git command of the unpushed scan may take
 def _git(checkout: Path, *args: str) -> str:
     """git's output in `checkout`, with no prompt and git's words in English; _GitFailed
     with git's first line when it fails or takes too long."""
-    from lado import clone  # lado.clone builds on this module
-
     try:
         done = subprocess.run(
             ["git", "-C", str(checkout), *args],
             capture_output=True,
             text=True,
             timeout=GIT_TIMEOUT,
-            env={**os.environ, **clone.NO_PROMPT},
+            env={**os.environ, **gitcache.NO_PROMPT},
         )
     except subprocess.TimeoutExpired as error:
         raise _GitFailed(f"git took more than {GIT_TIMEOUT} s") from error

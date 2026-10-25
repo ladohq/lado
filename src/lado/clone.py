@@ -322,12 +322,8 @@ def failure(
     LADO tells it: `cannot read <url>: <reason> (<git's line>)` or `cannot clone ...`, with
     a hint by its kind."""
     verb = "read" if op == "list" else "clone"
-    line, kind = _gits_line(stderr), kind_of(stderr)
-    head = f"cannot {verb} {runtime.public_remote(url)}"
-    if kind == GIT_FAILED:
-        return CloneError(kind, f"{head}: {line}")
-    reason, hint = _reason(kind, Address.parse(url), branch, project)
-    return CloneError(kind, f"{head}: {reason} ({line})", hint)
+    kind, text, hint = _told(url, stderr, branch, project)
+    return CloneError(kind, f"cannot {verb} {runtime.public_remote(url)}: {text}", hint)
 
 
 def explain(url: str, stderr: str) -> str:
@@ -335,11 +331,20 @@ def explain(url: str, stderr: str) -> str:
     (lado.gitcache), by the kinds of a clone's, on one line after LADO's head: `<reason>
     (<git's line>)` and `. <hint>` when the kind has one; git's line alone for no known
     kind."""
+    _, text, hint = _told(url, stderr, None, None)
+    return text + (f". {hint.line()}" if hint else "")
+
+
+def _told(
+    url: str, stderr: str, branch: str | None, project: str | None
+) -> tuple[str, str, runtime.Hint | None]:
+    """git's failure by its kind: the kind, `<reason> (<git's line>)` (git's line alone
+    for no known kind) and the hint."""
     line, kind = _gits_line(stderr), kind_of(stderr)
     if kind == GIT_FAILED:
-        return line
-    reason, hint = _reason(kind, Address.parse(url), None)
-    return f"{reason} ({line})" + (f". {hint.line()}" if hint else "")
+        return kind, line, None
+    reason, hint = _reason(kind, Address.parse(url), branch, project)
+    return kind, f"{reason} ({line})", hint
 
 
 def _environment(project: str | None) -> dict[str, str]:

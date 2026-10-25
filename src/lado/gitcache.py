@@ -35,8 +35,8 @@ from urllib.parse import quote, unquote
 
 from lado import agent_env, state
 
-# Each of LADO's network git processes (here, lado.clone, lado.projects): no prompt, git's
-# words in English (lado.clone.KINDS). An empty GIT_ASKPASS stops git before core.askPass and
+# Each git process of this module, lado.clone and lado.projects: no prompt, git's words in
+# English (lado.clone.KINDS). An empty GIT_ASKPASS stops git before core.askPass and
 # SSH_ASKPASS: no askpass program either.
 NO_PROMPT = {
     "GIT_TERMINAL_PROMPT": "0",

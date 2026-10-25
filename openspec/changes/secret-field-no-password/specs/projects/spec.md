@@ -3,7 +3,8 @@
 ### Requirement: A secret's value is typed into a hidden field emptied after use
 
 A secret's value SHALL be typed into a masked text field (`type="text"`, no
-autocomplete, drawn as dots by `-webkit-text-security: disc`, copy and cut refused) that
+autocomplete, autocorrect, autocapitalize or spellcheck, drawn as dots by
+`-webkit-text-security: disc`, copy and cut refused) that
 is empty after a save, after Cancel and after the page is left; the Secrets block SHALL
 hold no password field (`type="password"`), so that no browser's password manager offers
 to save a secret. Replace SHALL open an empty field with the placeholder `New value (the

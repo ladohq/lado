@@ -50,7 +50,10 @@ const variables = () => screen.getByRole("region", { name: "Variables" });
 const secrets = () => screen.getByRole("region", { name: "Secrets" });
 const button = (where: HTMLElement, name: string) => within(where).getByRole("button", { name });
 const row = (where: HTMLElement, name: string) => within(where).getByText(name).closest("tr") as HTMLElement;
-const secretField = () => secrets().querySelector<HTMLInputElement>("input[type=password]")!;
+// The secret's value field, by its label: Value in the Add form, New value of <name> in Replace.
+const secretField = () =>
+  (within(secrets()).queryByRole("textbox", { name: "Value" }) ??
+    within(secrets()).getByRole("textbox", { name: /^New value of / })) as HTMLInputElement;
 
 // Plain variables
 
@@ -170,7 +173,7 @@ test("Replace opens an empty hidden field and closes it emptied", async () => {
   fireEvent.change(field, { target: { value: "canary-replace" } });
   expect((button(secrets(), "Replace") as HTMLButtonElement).disabled).toBe(false);
   fireEvent.click(button(secrets(), "Replace"));
-  await waitFor(() => expect(secrets().querySelector("input[type=password]")).toBeNull());
+  await waitFor(() => expect(within(secrets()).queryByRole("textbox", { name: "New value of GH_TOKEN" })).toBeNull());
   expect(field.value).toBe("");
   expect(server.calls("PUT", "/api/projects/shop/secrets/GH_TOKEN")[0].body).toEqual({ value: "canary-replace" });
 });
@@ -182,6 +185,30 @@ test("the value field is emptied when the page goes away", () => {
   fireEvent.change(field, { target: { value: "canary-leave" } });
   unmount();
   expect(field.value).toBe("");
+});
+
+// LAD-149: Chrome and Safari offer to save a password field whatever its autocomplete.
+function expectMaskedTextField(field: HTMLInputElement) {
+  expect(secrets().querySelector("input[type=password]")).toBeNull();
+  expect(field.getAttribute("type")).toBe("text");
+  expect(field.getAttribute("autocomplete")).toBe("off");
+  expect(field.getAttribute("spellcheck")).toBe("false");
+  expect(field.getAttribute("autocorrect")).toBe("off");
+  expect(field.getAttribute("autocapitalize")).toBe("off");
+  expect(field.classList.contains("project-in-secret")).toBe(true);
+  fireEvent.change(field, { target: { value: "canary-copy" } });
+  expect(fireEvent.copy(field)).toBe(false); // default prevented: nothing goes to the clipboard
+  expect(fireEvent.cut(field)).toBe(false);
+  expect(field.value).toBe("canary-copy");
+}
+
+test("the value field is a masked text field that refuses copy and cut, no password field", () => {
+  open();
+  fireEvent.click(button(secrets(), "+ Add secret"));
+  expectMaskedTextField(secretField());
+  fireEvent.click(button(secrets(), "Cancel"));
+  fireEvent.click(button(row(secrets(), "GH_TOKEN"), "Replace"));
+  expectMaskedTextField(secretField());
 });
 
 test("removing a secret asks in its row", async () => {

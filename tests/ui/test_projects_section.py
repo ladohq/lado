@@ -24,6 +24,15 @@ def section(page: Page, name: str):
     return page.get_by_role("region", name=name, exact=True)
 
 
+def masked(page: Page, field):
+    """A secret's field is a text field drawn as dots, and the page holds no password field:
+    Chrome and Safari offer to save a password field whatever its autocomplete (LAD-149)."""
+    expect(page.locator("input[type=password]")).to_have_count(0)
+    expect(field).to_have_attribute("type", "text")
+    style = "field => getComputedStyle(field).getPropertyValue('-webkit-text-security')"
+    assert field.evaluate(style) == "disc"
+
+
 def test_new_project_and_its_variables_and_secrets(page: Page, server, tmp_path, lado_home, shot):
     page.set_viewport_size({"width": 1440, "height": 900})
     asked: list[str] = []
@@ -81,23 +90,25 @@ def test_new_project_and_its_variables_and_secrets(page: Page, server, tmp_path,
     shot(page, "looks-like-a-secret")
     variables.get_by_role("button", name="Add STRIPE_KEY as a secret instead").click()
     expect(secrets.get_by_role("textbox", name="Name", exact=True)).to_have_value("STRIPE_KEY")
-    value = secrets.locator("input[type=password]")
+    value = secrets.get_by_role("textbox", name="Value", exact=True)
     expect(value).to_have_value("")
     expect(value).to_have_attribute("autocomplete", "off")
     assert value.evaluate("field => field.closest('form')") is None
+    masked(page, value)
 
     # The secret: added, then replaced; the field empty after each.
     value.fill(first)
     secrets.get_by_role("button", name="Add", exact=True).click()
     expect(secrets.get_by_role("row", name="STRIPE_KEY")).to_contain_text("set · hidden")
-    expect(secrets.locator("input[type=password]")).to_have_count(0)
+    expect(value).to_have_count(0)
     secrets.get_by_role("row", name="STRIPE_KEY").get_by_role("button", name="Replace").click()
     replaced = secrets.get_by_role("textbox", name="New value of STRIPE_KEY")
     expect(replaced).to_have_attribute("placeholder", "New value (the old one is not shown)")
+    masked(page, replaced)
     replaced.fill(second)
     shot(page, "replace")
     replaced.press("Enter")
-    expect(secrets.locator("input[type=password]")).to_have_count(0)
+    expect(replaced).to_have_count(0)
     secret = project_secrets.folder("magazin-eu") / "STRIPE_KEY"
     assert secret.read_text() == second
     shot(page, "variables")

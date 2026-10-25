@@ -39,9 +39,10 @@ Options weighed:
 ## What Changes
 
 - `SecretField` is an `<input type="text">` with `autocomplete="off"`, the class that
-  masks it with `-webkit-text-security: disc`, and copy and cut prevented; everything else
-  of the field stays (uncontrolled, outside any form, emptied after a save, on Cancel and
-  when it goes, `spellCheck` off).
+  masks it with `-webkit-text-security: disc`, `autocorrect` and `autocapitalize` off (a
+  text field gets them on a phone's keyboard, a password field did not), and copy and cut
+  prevented; everything else of the field stays (uncontrolled, outside any form, emptied
+  after a save, on Cancel and when it goes, `spellCheck` off).
 - The UI's tests find the field by its role and label instead of `input[type=password]`;
   the vitest tests check the field's type and attributes and that copy and cut are
   refused; the UI e2e test checks in Chromium that the page has no password field and

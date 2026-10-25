@@ -8415,6 +8415,11 @@ del.kit-mcp-name {
   min-width: 0;
 }
 
+/* A secret's value: dots drawn by CSS on a text field, so no password manager offers to save it (LAD-149). */
+.project-edit .project-in-secret {
+  -webkit-text-security: disc;
+}
+
 .project-edit .field-note {
   flex-basis: 100%;
 }

@@ -152,8 +152,8 @@ back, the UI back.
   window is logged in with it, `lado project show shop` lists `GH_TOKEN` without a value.
   Once more from the web UI: New session → Project → Shop → `app` → "Start in Shop": its
   supervisor prints `$BOARD_URL` as `https://a`.
-- Projects in the web UI (from 0.43.0), once in Chrome and once in Safari, each with a
-  password manager on: Projects → "+" makes a project, then "+ Add secret" with a value:
+- Projects in the web UI (from 0.43.0), once in Chrome, once in Safari and once in
+  Firefox, each with a password manager on: Projects → "+" makes a project, then "+ Add secret" with a value:
   the browser offers to save no password, the field is empty after Add, the row says
   `set · hidden` and `lado project show <id>` lists the name without a value.
 - Projects' secrets on the Mac (from 0.43.0), once, no agent needed: with

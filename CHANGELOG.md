@@ -87,6 +87,11 @@
   no longer waits for the disk on each write, and a lock that clears within a minute is
   no longer counted as an error.
 
+### Docker image
+
+- **uvx works in the image.** MCP servers and tools started with `uvx` run in the
+  container, at the image's uv version.
+
 ## 0.42.0 (2026-10-20)
 
 ### Fixed

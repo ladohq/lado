@@ -272,7 +272,7 @@ restart; this browser stays in.
 
 ### The repositories' toolchains
 
-The image has git, Node.js 22, uv, `make`, `gcc` and `g++`, the agents' everyday tools
+The image has git, Node.js 22, uv and uvx, `make`, `gcc` and `g++`, the agents' everyday tools
 (`jq`, `rg`, `unzip`, `zip`, `xz`, `bzip2`, `patch`, `file`, `rsync`, `sqlite3`, `tree`,
 `lsof`, `nc`), openspec, `python3` and `python`, and [mise](https://mise.jdx.dev) for the
 rest. An agent that needs a tool the repository lacks (Go,

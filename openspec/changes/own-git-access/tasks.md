@@ -52,7 +52,7 @@
 
 ## 4. The image
 
-- [ ] 4.1 `tests/container/test_access.py` (container, not run locally: CI runs it): the
+- [x] 4.1 `tests/container/test_access.py` (container, not run locally: CI runs it): the
   image with a secrets folder holding the D6 `GIT_CONFIG_*` entries for a bare repository
   made inside the container; `POST /api/remote-branches` of the served server lists its
   branches, and `lado kits add` of the mapped https URL of a tagged kit repository passes

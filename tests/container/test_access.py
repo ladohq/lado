@@ -5,7 +5,10 @@ LADO_GIT_EMAIL, github.com's https credentials from gh, and the host's ssh agent
 root's group, through a socket of root's (Docker Desktop's) or of the workspace's owner.
 Only fake values."""
 
+import json
 import time
+import urllib.error
+import urllib.request
 
 import pytest
 from container_helpers import (
@@ -124,6 +127,49 @@ def test_gh_gives_github_its_token(start, tmp_path):
     assert f"password={FAKE_GH}" in out.splitlines(), out
     assert out.splitlines()[-1] == FAKE_GH, out
     assert FAKE_GH not in docker("inspect", c.name).stdout
+
+
+PRIVATE = "https://example.invalid/acme/kit.git"  # resolves nowhere
+REMOTE = "/home/lado/remote/kit.git"  # where the secrets folder's insteadOf sends PRIVATE
+
+
+def remote_branches(port: int, token: str, url: str) -> dict:
+    """The served server's listing of `url` (`POST /api/remote-branches`)."""
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/remote-branches",
+        data=json.dumps({"url": url}).encode(),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as answer:
+            return json.load(answer)
+    except urllib.error.HTTPError as refused:
+        return {"refused": refused.code, "detail": json.load(refused)}
+
+
+def test_lados_own_git_takes_the_secrets_folders_access(start, tmp_path):
+    """The access a token in /run/secrets gives, stood for by git config entries there that
+    send PRIVATE to a repository in the container: the server's listing and `lado kits add`
+    reach PRIVATE only through LADO's own git getting the folder's variables (AC-5)."""
+    c = served(start, *with_secrets(tmp_path, GIT_CONFIG_COUNT="1",
+                                    GIT_CONFIG_KEY_0=f"url.file://{REMOTE}.insteadOf",
+                                    GIT_CONFIG_VALUE_0=PRIVATE))  # fmt: skip
+    c.write("/home/lado/kit/kit.yaml", "name: private-kit\nversion: 1.0.0\n")
+    c.write(
+        "/home/lado/kit/agents/reviewer.md",
+        "---\nname: reviewer\ndescription: reviews\n---\nYou review.\n",
+    )
+    c.sh(
+        "cd /home/lado/kit && git init -q -b main && git add -A && "
+        "git -c user.name=lado -c user.email=lado@example.com commit -q -m kit && "
+        f"git tag v1.0.0 && git clone -q --bare . {REMOTE}"
+    )
+    token = c.exec("lado", "ui", "--no-open").stdout.strip().partition("?token=")[2]
+    listed = remote_branches(c.port, token, PRIVATE)
+    assert listed.get("branches") == ["main"], listed
+    added = c.exec("lado", "kits", "add", PRIVATE, "--yes", check=False)
+    assert added.returncode == 0, added.stdout + added.stderr
+    assert f"from {PRIVATE}" in c.exec("lado", "kits").stdout
 
 
 AGENT_SOCKET = "/agent/ssh-agent.sock"  # the sidecar's path of the same socket

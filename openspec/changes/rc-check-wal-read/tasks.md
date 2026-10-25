@@ -26,5 +26,5 @@
 
 ## 3. Regression
 
-- [ ] 3.1 `make lint`, `make test`, `openspec validate rc-check-wal-read --strict`,
+- [x] 3.1 `make lint`, `make test`, `openspec validate rc-check-wal-read --strict`,
   `openspec validate --specs --strict`; the pull request's CI.

@@ -2,13 +2,13 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: S9 (LAD-143, run task/lad-143) · Next: readiness again; 0.43.0rc1 after it · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5); S5a, S5b and S3's F1 until 0.43.0rc1 (a live run on the four CLIs with a variable and a secret, release checklist 4.3 "Projects"); S5b's link refusals on macOS until 0.43.0rc1 (4.3 "Projects' secrets on the Mac"); S6a's secret field with password managers in Chrome and Safari until 0.43.0rc1 (4.3 "Projects in the web UI"); the readiness check's "Projects in the image" until 0.43.0rc1 (release checklist 4.5)
+In work: none · Next: M3's place (question #1500), then readiness again; 0.43.0rc1 after it · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5); S5a, S5b and S3's F1 until 0.43.0rc1 (a live run on the four CLIs with a variable and a secret, release checklist 4.3 "Projects"); S5b's link refusals on macOS until 0.43.0rc1 (4.3 "Projects' secrets on the Mac"); S6a's secret field with password managers in Chrome and Safari until 0.43.0rc1 (4.3 "Projects in the web UI"); the readiness check's "Projects in the image" until 0.43.0rc1 (release checklist 4.5)
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).
 - Each phase task gets the label `component lado` and is linked to LAD-116; LAD-80 is not touched.
 - Questions to the human go as question cards (`ask_human`) with choices, not only as text messages (the human's remark #521, 2026-10-21).
-Last review: 2026-10-24 (after S8), base at 8eeb850a
+Last review: 2026-10-25 (after S9), base at e230e2dd
 
 ## Steps
 
@@ -121,7 +121,7 @@ Notes: the readiness check's gap G1 (`delivery-report`, 2026-10-23): the brief's
 Result: PR #161 merged 2026-10-24 (8eeb850a), LAD-142 Done, "waiting for release" (0.43.0); the change `projects-docs-built` archived without a spec delta. The human's answers #1408 (no step numbers in the product's documents) and #1410 (the manual path in install.md, LAD-143 created in Backlog). Built: ROADMAP's Projects and every step done; AGENTS.md (195 lines), `projects.md` and `ui.md` describe projects as built; `docs/install.md` "Going back" from 0.43.0 to 0.42.0: copy `backups/lado.db.schema-31` aside before `lado update 0.42.0`, put it back after, the Docker path, what stays (`projects/`, the refusal of `lado project create` for a left folder, secrets removed by hand), run literally and checked against `state.py`, `self_update.py`, `projects.py`, `doctor.py`; a CHANGELOG line. Review: 1 local and 1 external round; F1, E1 minor declined, E2 refuted (gate #118). CI green. The lead's grep on 8eeb850a: one hit, `ui.md:442`, the placeholder rule, not about projects. No manual UI check: texts only.
 
 ### S9 — One database backup: the migration's (S)
-Status: in progress (LAD-143, run task/lad-143)
+Status: done (LAD-143, PR https://github.com/ladohq/lado/pull/165)
 Check:
 - `lado update` makes no backup of its own and deletes nothing in `~/.lado/backups/`; `lado.db.schema-<N>` of the last migration survives every update (unit).
 - An update that fails after the new version migrated rolls back with `lado.db.schema-<N>` (unit; the existing rollback tests reworked, none dropped).
@@ -130,6 +130,7 @@ Check:
 - `docs/install.md` "Going back" without the manual copy for the `lado update` path; Docker's manual path unchanged; `docs/cli.md`, `docs/release.md` 4.4, CHANGELOG.
 - `make lint`, `make test`, `make test-integration`, `openspec validate --specs --strict`, CI green.
 Notes: the human's answers #1428–#1434 (2026-10-24): the update's backup (d37407b4, 2026-10-09) is restored only when the schema moved, exactly when the migration's backup (LAD-71, 2026-10-15, added for Docker where `lado update` is forbidden) holds the same content; the update's cleanup deletes the migration's copy, so going back from 0.43.0 loses it (LAD-143). The deleting code is the version gone back from, so only a fix inside 0.43.0 helps: before 0.43.0rc1. One copy is kept (the last migration's); going back over two schema changes stays uncovered, as now. Docker's going back stays manual (the old image's code cannot know the new schema). Outside the epic's feature, inside its release; patch-sized behaviour inside 0.43.0.
+Result: PR #165 merged 2026-10-25 (e230e2dd), LAD-143 Done, "waiting for release" (0.43.0); the change `one-database-backup` archived (new spec `update-database`; `schema-migration`, `release-candidates` changed). The human's answers #1457 (all five as recommended) and gates #122, #126, #127 (the second merge gate after main moved with LAD-140/LAD-141). Built: `lado update` writes nothing in `backups/`; X's schema from its wheel's `state.py` text with sha256 (`update.release_schema`); a downgrade to an older schema warns before it asks, restores `lado.db.schema-<N>` read-only after the install and does not resume sessions the copy lacks; no copy → refused before stopping anything; the rollback restores only a newer schema and keeps the new version without a copy; `rc_check` restores through `lado update`; install.md without copying by hand. Review: 3 local and 2 external rounds; F1 (important: a copy gone after the plan overwrote `lado.db` with an empty one) fixed; F5 fixed; F3/E1, E4, E5, E6 minor declined (Later). CI 23/23. The lead's manual check on e230e2dd (temp `LADO_HOME`, uv tool in the scratchpad, the real 0.42.0 from PyPI, the fake provider): 0.42.0 → main migrated 31 → 35 with `schema-31`; `lado update 0.42.0` warned before `Update? [y/N]` (schemas, the copy's time, the loss, `web2` not in the copy), installed 0.42.0 from PyPI, restored schema 31, `backups/` untouched; 0.42.0 lists `app`, `web2` not started; the refusal without a copy before stopping anything — as designed. The result was `partial` only because 0.42.0 knows no fake provider. Found: M3 — with no known installer (a local wheel or folder) the by-hand plan lacks the restore, restarts sessions the copy lacks and names `pip` in a uv tool environment (question #1500).
 
 ## Open questions
 

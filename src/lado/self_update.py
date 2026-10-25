@@ -174,10 +174,10 @@ class Plan:
         lines += ["lado server stop"] if self.server else []
         lines.append(_install_by_hand(self.to.version))
         if self.restore:
-            db = str(state.home() / "lado.db")
+            db = str(state.home().absolute() / "lado.db")
             lines.append(
                 f"{shlex.join(['rm', '-f', f'{db}-wal', f'{db}-shm'])} && "
-                f"{shlex.join(['cp', str(self.restore.copy), db])}"
+                f"{shlex.join(['cp', str(self.restore.copy.absolute()), db])}"
             )
         missing = self.restore.missing if self.restore else []
         lines += [
@@ -192,16 +192,23 @@ class Plan:
 def _install_by_hand(version: str) -> str:
     """The install line of the commands by hand, by the files of the prefix only (as
     update.installer); its pip first, since a venv made by hand may hold another tool's
-    file too."""
+    file too. uv and pipx get the folders of the install in `where`, else they install
+    a second lado into their default ones: uv's tool folder and the executable's folder
+    (uv moves it), pipx's home when `where` is `<home>/venvs/<name>` (pipx links its
+    executable into the venv, so the old link runs the new version)."""
     where, requirement = update.prefix(), f"lado=={version}"
+    q = shlex.quote
     pip = where / "bin" / "pip"
     if pip.is_file():
-        return f"{shlex.quote(str(pip))} install {requirement}"
+        return f"{q(str(pip))} install {requirement}"
     if (where / "uv-receipt.toml").is_file():
-        # Without it uv installs into its default tool folder, beside the one of `where`.
-        return f"UV_TOOL_DIR={shlex.quote(str(where.parent))} uv tool install {requirement}"
+        bin_dir = update.uv_bin_dir(where)
+        folders = f"UV_TOOL_DIR={q(str(where.parent))} "
+        folders += f"UV_TOOL_BIN_DIR={q(str(bin_dir))} " if bin_dir else ""
+        return f"{folders}uv tool install {requirement}"
     if (where / "pipx_metadata.json").is_file():
-        return f"pipx install --force {requirement}"
+        home = f"PIPX_HOME={q(str(where.parent.parent))} " if where.parent.name == "venvs" else ""
+        return f"{home}pipx install --force {requirement}"
     return (
         f"# install {requirement} with the installer of {shlex.quote(str(where))}: "
         "LADO does not know it"

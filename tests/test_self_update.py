@@ -2,6 +2,7 @@
 with a fake install (its `bin/lado` a shell script) and tmux replaced by a recorder."""
 
 import contextlib
+import dataclasses
 import datetime
 import fcntl
 import json
@@ -614,7 +615,7 @@ def test_a_plan_to_an_older_schema_says_what_it_loses(older, two_sessions, capsy
 def by_hand_back(install, repo, copy) -> list[str]:
     """The commands by hand of the way back to OLD with sessions app and web2 (the copy
     has app only) and the UI server, from a venv with pip."""
-    home = state.home()
+    home = state.home().absolute()
     return [
         "lado stop app",
         "lado stop web2",
@@ -635,10 +636,21 @@ def by_hand(install, monkeypatch):
     monkeypatch.setattr(self_update.server_run, "running", lambda: {"url": "u", "port": 8123})
 
 
+@pytest.mark.parametrize("relative", [False, True])
 def test_the_commands_by_hand_of_an_older_schema_put_the_copy_back(
-    install, older, two_sessions, by_hand, repo
+    install, older, two_sessions, by_hand, repo, monkeypatch, relative
 ):
-    assert plan_to(OLD).by_hand() == by_hand_back(install, repo, two_sessions)
+    """With paths absolute, also for a LADO_HOME relative to the folder LADO runs in (set
+    after the plan: reading lado.db needs an absolute one, state.schema_version)."""
+    expected = by_hand_back(install, repo, two_sessions)
+    found = plan_to(OLD)
+    if relative:
+        home = state.home()
+        monkeypatch.chdir(home.parent)
+        monkeypatch.setenv("LADO_HOME", home.name)
+        copy = Path(home.name) / "backups" / two_sessions.name
+        found.restore = dataclasses.replace(found.restore, copy=copy)
+    assert found.by_hand() == expected
 
 
 def test_an_update_by_hand_to_an_older_schema_prints_the_way_back_and_stops_nothing(

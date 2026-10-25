@@ -4,11 +4,9 @@
 
 LADO's git calls of a clone or listing SHALL run with no terminal and no prompt (no
 controlling terminal, stdin closed, `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS` empty, `SSH_ASKPASS_REQUIRE=never`,
-`GCM_INTERACTIVE=never`, `LC_ALL=C`), in the environment of LADO's own git calls (LADO's
-process environment with the outside folder's variables over it, and a project's for a
-clone into a project: capability `agent-variables`), so a missing credential is a
-failure, never a wait. LADO SHALL neither ask for nor keep a password, passphrase or
-token.
+`GCM_INTERACTIVE=never`, `LC_ALL=C`), in the environment of LADO's own git calls
+(capability `agent-variables`), so a missing credential is a failure, never a wait. LADO
+SHALL neither ask for nor keep a password, passphrase or token.
 
 #### Scenario: A private https repository without a login
 - **WHEN** the URL is `https://github.com/acme/private` and git cannot read a username
@@ -20,12 +18,22 @@ The login and access kinds SHALL be:
 
 | Kind | Reason | Hint (sentence: command) |
 |---|---|---|
-| `login_needed` | `<host> asks for a login` (other hosts: `…; set up a git credential helper for it on this machine`) | github.com, a clone or listing into project `<id>`: `Give the project a GitHub token:` `lado project set <id> GH_TOKEN --secret`; github.com otherwise, when the outside folder `<folder>` (`LADO_ENV_DIR`) is a folder: `Log in with GitHub's CLI, or put a token into the file GH_TOKEN of <folder> (LADO_ENV_DIR):` `gh auth login`; github.com otherwise: `Log in with GitHub's CLI on this machine:` `gh auth login`; other hosts none |
+| `login_needed` | `<host> asks for a login` (other hosts: `…; set up a git credential helper for it on this machine`) | github.com: where LADO can take a token (below); other hosts none |
 | `not_found` | `no repository there, or this machine's account cannot read it` | github.com: `See which GitHub account this machine uses:` `gh auth status`; other hosts none |
 
 #### Scenario: A repository GitHub does not show
 - **WHEN** git prints `ERROR: Repository not found.`
 - **THEN** the kind is `not_found` with the hint `gh auth status`
+
+## ADDED Requirements
+
+### Requirement: A GitHub login hint names where LADO can take a token
+
+The hint of `login_needed` on github.com SHALL be, the first that holds: for a clone or
+listing into project `<id>`, `Give the project a GitHub token:` `lado project set <id>
+GH_TOKEN --secret`; when the outside folder `<folder>` (`LADO_ENV_DIR`) is a folder, `Log
+in with GitHub's CLI, or put a token into the file GH_TOKEN of <folder> (LADO_ENV_DIR):`
+`gh auth login`; otherwise `Log in with GitHub's CLI on this machine:` `gh auth login`.
 
 #### Scenario: A login asked for in a project's clone
 - **WHEN** `lado project repo add shop https://github.com/acme/private` fails because git
@@ -44,8 +52,6 @@ The login and access kinds SHALL be:
 - **WHEN** `LADO_ENV_DIR` is unset, or names the null device, and the same clone fails
   the same way
 - **THEN** the hint is `Log in with GitHub's CLI on this machine:` `gh auth login`
-
-## ADDED Requirements
 
 ### Requirement: A kit's or marketplace's git failure is told by the clone's kinds
 

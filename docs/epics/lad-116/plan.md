@@ -1,8 +1,8 @@
 # Plan: Projects in LADO (LAD-116)
 
 ## State
-Phase: steps · Epic run: epic/epic-projects · Branch: base (`main`)
-In work: none · Next: readiness again; 0.43.0rc1 after it, LAD-144 as an RC fix; 0.43.0rc1 after it · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5); S5a, S5b and S3's F1 until 0.43.0rc1 (a live run on the four CLIs with a variable and a secret, release checklist 4.3 "Projects"); S5b's link refusals on macOS until 0.43.0rc1 (4.3 "Projects' secrets on the Mac"); S6a's secret field with password managers in Chrome and Safari until 0.43.0rc1 (4.3 "Projects in the web UI"); the readiness check's "Projects in the image" until 0.43.0rc1 (release checklist 4.5)
+Phase: closed 2026-10-25 (gate #128) · Epic run: epic/epic-projects · Branch: base (`main`) · Report: [report.md](report.md)
+In work: none · Next: the human's release: 0.43.0rc1, LAD-144 as an RC fix · Open checks: S2b until 0.43.0rc1 (Docker Desktop's refusal for a missing workspace, release checklist 4.5); S5a, S5b and S3's F1 until 0.43.0rc1 (a live run on the four CLIs with a variable and a secret, release checklist 4.3 "Projects"); S5b's link refusals on macOS until 0.43.0rc1 (4.3 "Projects' secrets on the Mac"); S6a's secret field with password managers in Chrome and Safari until 0.43.0rc1 (4.3 "Projects in the web UI"); the readiness check's "Projects in the image" until 0.43.0rc1 (release checklist 4.5)
 Standing rules of the human:
 - The concept `projects-concept` (2026-10-21) is the only source of decisions; where anything else differs, the concept wins.
 - Every step merges into `main` on its own and leaves the product working (D2).

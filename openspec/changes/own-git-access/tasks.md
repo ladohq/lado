@@ -27,10 +27,10 @@
   `for_git` and the project's layer, `list_branches(url, project=None)`, `clone` passing its
   project, the login hint's choice in `_reason`/`failure` (D4, D5); `projects._git` takes
   `gitcache.NO_PROMPT`.
-- [ ] 2.4 `tests/test_server_clones.py` (unit, TestClient):
+- [x] 2.4 `tests/test_server_clones.py` (unit, TestClient):
   `POST /api/remote-branches` with `project` lists in the project's layer (the 2.1 set-up);
   an unknown project is 404 and runs no git (AC-2).
-- [ ] 2.5 `src/lado/server/models.py` `RemoteAsk.project`, `server/clones.py`
+- [x] 2.5 `src/lado/server/models.py` `RemoteAsk.project`, `server/clones.py`
   `remote_info(url, project)`, `server/app.py`; `make web-types`, both files committed.
 - [ ] 2.6 `web/src` vitest: the project page's Add repository posts `{url, project}` to
   `/api/remote-branches`; New session → Clone still posts `{url}` alone (the existing

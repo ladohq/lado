@@ -38,8 +38,13 @@ def _url(given: str) -> str:
     return given
 
 
-def remote_info(url: str) -> models.RemoteInfo:
-    remote = clone.list_branches(_url(url))
+def remote_info(url: str, project: str | None = None) -> models.RemoteInfo:
+    """The remote's branches, for a clone into `project` when given: a known project
+    (NoSuchProject before git runs), in its layer of variables."""
+    _url(url)
+    if project is not None:
+        projects.get(project)
+    remote = clone.list_branches(url, project)
     return models.RemoteInfo(
         url=runtime.public_remote(url),
         branches=remote.branches,

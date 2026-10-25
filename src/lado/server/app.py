@@ -579,11 +579,16 @@ def create_app(
             raise HTTPException(400, detail) from error
 
     @app.post(
-        "/api/remote-branches", dependencies=[Depends(guard.changes)], responses=clone_refused
+        "/api/remote-branches",
+        dependencies=[Depends(guard.changes)],
+        responses={**clone_refused, 404: {"description": "no such project"}},
     )
-    def remote_branches(given: RemoteAsk) -> RemoteInfo:
-        """A remote's branches and its default one, by one `git ls-remote`."""
-        return clone_core(clones.remote_info, given.url)
+    def remote_branches(given: RemoteAsk, has_db: bool = Depends(database)) -> RemoteInfo:
+        """A remote's branches and its default one, by one `git ls-remote`; for a clone into
+        `project` in that project's variables and secrets."""
+        if given.project is not None and not has_db:
+            raise HTTPException(404, f'unknown project "{given.project}"')
+        return clone_core(clones.remote_info, given.url, given.project)
 
     @app.get("/api/clone-target", dependencies=[Depends(guard)], responses=clone_refused)
     def clone_target(

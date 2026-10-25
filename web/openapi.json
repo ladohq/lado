@@ -483,7 +483,7 @@
     "/api/remote-branches": {
       "post": {
         "summary": "Remote Branches",
-        "description": "A remote's branches and its default one, by one `git ls-remote`.",
+        "description": "A remote's branches and its default one, by one `git ls-remote`; for a clone into\n`project` in that project's variables and secrets.",
         "operationId": "remote_branches_api_remote_branches_post",
         "requestBody": {
           "content": {
@@ -515,6 +515,9 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "no such project"
           },
           "422": {
             "description": "Validation Error",
@@ -7242,6 +7245,17 @@
           "url": {
             "type": "string",
             "title": "Url"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
           }
         },
         "type": "object",

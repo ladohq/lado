@@ -7,10 +7,18 @@ import time
 
 import pytest
 import uvicorn
-from agent_helpers import bare_remote, fake_git, fake_git_calls, gone, init_repo
+from agent_helpers import (
+    PRIVATE_URL,
+    bare_remote,
+    fake_git,
+    fake_git_calls,
+    gone,
+    init_repo,
+    private_access,
+)
 from fastapi.testclient import TestClient
 
-from lado import clone, projects, runtime
+from lado import agent_env, clone, project_secrets, projects, runtime
 from lado.server import app as server_app
 from lado.server import auth, clones, launch
 
@@ -130,6 +138,31 @@ WEB_HINT = {
     "text": "Add a repository to the project:",
     "command": "lado project repo add shop https://github.com/shop/web",
 }
+
+
+def test_a_listing_for_a_project_runs_in_its_layer(client, shop, tmp_path, monkeypatch):
+    monkeypatch.delenv(agent_env.ENV_DIR_VAR, raising=False)
+    for name, value in private_access(bare_remote(tmp_path)).items():
+        project_secrets.write("shop", name, value)
+    answer = client.post("/api/remote-branches", json={"url": PRIVATE_URL, "project": "shop"})
+    assert answer.status_code == 200
+    assert answer.json()["default"] == "main"
+    alone = client.post("/api/remote-branches", json={"url": PRIVATE_URL})
+    assert (alone.status_code, alone.json()["detail"]["kind"]) == (400, "unreachable")
+
+
+@pytest.mark.parametrize("made", [False, True])  # with lado.db and without one
+def test_a_listing_for_an_unknown_project_is_404_and_runs_no_git(
+    made, client, tmp_path, monkeypatch
+):
+    if made:
+        projects.create("shop", None)
+    for key, value in fake_git(tmp_path / "fake", "fail").items():
+        monkeypatch.setenv(key, value)
+    url = "https://github.com/acme/app"
+    answer = client.post("/api/remote-branches", json={"url": url, "project": "nope"})
+    assert (answer.status_code, answer.json()["detail"]) == (404, 'unknown project "nope"')
+    assert fake_git_calls(tmp_path / "fake") == []
 
 
 def test_a_clone_target_in_a_project(client, shop):

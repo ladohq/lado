@@ -133,6 +133,7 @@ def hint_info(hint: runtime.Hint | None) -> HintInfo | None:
 
 class RemoteAsk(BaseModel):
     url: str  # a git URL (lado.clone.is_url)
+    project: str | None = None  # a listing for a clone into it, in its layer of variables
 
 
 class RemoteInfo(BaseModel):

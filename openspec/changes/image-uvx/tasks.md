@@ -23,5 +23,5 @@
   `### Docker image` group (after `### Fixed`, as 0.42.0 has it) with
   `- **uvx works in the image.** MCP servers and tools started with \`uvx\` run in the
   container, at the image's uv version.`
-- [ ] 1.5 Regression: `make lint`, `make test`, `openspec validate image-uvx --strict`,
+- [x] 1.5 Regression: `make lint`, `make test`, `openspec validate image-uvx --strict`,
   `openspec validate --specs --strict`; the pull request's CI (container cell green).

@@ -1,11 +1,11 @@
 ## 1. uvx in the image
 
-- [ ] 1.1 `tests/test_docker.py`, beside `test_the_image_carries_the_agents_base_tools`
+- [x] 1.1 `tests/test_docker.py`, beside `test_the_image_carries_the_agents_base_tools`
   (unit: the Dockerfile's text, the lowest layer that sees the copy): a test that the
   image's `COPY --from=uv` lines put both `/uv` and `/uvx` into `/usr/local/bin`, with a
   helper that returns what is missing, checked on the real Dockerfile and on a sample
   that copies `/uv` alone (it names `uvx`). Fails before 1.2 (AC-3).
-- [ ] 1.2 `docker/Dockerfile`: `COPY --from=uv /uv /uvx /usr/local/bin/` in place of the
+- [x] 1.2 `docker/Dockerfile`: `COPY --from=uv /uv /uvx /usr/local/bin/` in place of the
   one-file copy, the comment above it saying that uvx runs through the uv beside it and is
   what kits' MCP servers call. 1.1 passes; `make lint`, `make test`.
 - [ ] 1.3 `tests/container/test_toolchains.py` (container: only the built image proves

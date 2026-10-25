@@ -60,12 +60,12 @@
 
 ## 5. Documents
 
-- [ ] 5.1 `docs/design/modules.md` (agent_env, project_secrets, gitcache, clone, the server's
+- [x] 5.1 `docs/design/modules.md` (agent_env, project_secrets, gitcache, clone, the server's
   clones), `docs/design/ui.md` (Clone from URL: the server's git takes the outside folder's
   and, on a project's page, the project's variables), `docs/marketplaces.md` ("A private
   repository"), `docs/install.md` (the folder's `GH_TOKEN` and a project's `GH_TOKEN`
   secret also serve LADO's own clones and kits).
-- [ ] 5.2 CHANGELOG.md, 0.43.0 (unreleased), Fixed: a private repository's kit or clone
+- [x] 5.2 CHANGELOG.md, 0.43.0 (unreleased), Fixed: a private repository's kit or clone
   in Docker uses the token of `/run/secrets`, and a clone into a project the project's
   secret.
 

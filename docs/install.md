@@ -163,6 +163,9 @@ https and `gh` with your GitHub token:
 printf %s "$(gh auth token)" > secrets/GH_TOKEN
 ```
 
+LADO's own git uses it as well, read at each call: a kit, skill pack or marketplace of a
+private repository, and a clone by URL from the UI (New session → Clone).
+
 Others: `CLAUDE_CODE_OAUTH_TOKEN` (below), a kit's key as its MCP server names it (e.g.
 `YOUGILE_API_KEY`), a model provider's key for OpenCode and Kilo. Every agent of this LADO
 can read every file of its `secrets/`.
@@ -178,6 +181,9 @@ piped in, never on the command line:
 docker compose exec -it lado lado project set <project> YOUGILE_API_KEY --secret
 printf %s "$(gh auth token)" | docker compose exec -T lado lado project set <project> GH_TOKEN --secret
 ```
+
+A project's `GH_TOKEN` (and its other variables) also serve LADO's own clone into the
+project: `lado project repo add` and the project page's Add repository with its branch list.
 
 LADO keeps it in its home volume (`~/.lado/projects/<project>/secrets/`), shows only its
 name (`lado project show`), and removes it with `lado project unset` or with the project. A

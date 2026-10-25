@@ -1541,7 +1541,9 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   finished clone starts the session as Start does for a folder; a start refused then
   switches the window to Folder with the cloned folder and shows the refusal there (the
   clone stays). The server's git runs with no terminal and no prompt, with the access the
-  server's machine has (ssh keys, `gh auth`, a credential helper): a server started where
+  server's machine has (ssh keys, `gh auth`, a credential helper) and the outside folder's
+  variables (`LADO_ENV_DIR`: in the image a `GH_TOKEN` in `/run/secrets`), read at each
+  call; on a project's page also the project's variables and secrets: a server started where
   the human's ssh-agent is not reachable cannot use its keys, and the hints point at the
   command to check that.
 - **Project** (decided 2026-10-23, LAD-137, [projects.md](projects.md); mockup
@@ -1716,7 +1718,8 @@ New session (LAD-137) is in Launch and session control.
   start one from scratch.` with a primary `+ Add repository`. In a window of at most
   760 px a row's buttons go under its name. Links in the project's folder are not listed.
 - **Add a repository to <title>**, a dialog with **Clone from URL | From scratch**. A clone:
-  Git URL (its branches asked by `POST /api/remote-branches` once the typing stops, the
+  Git URL (its branches asked by `POST /api/remote-branches` with `{url, project}`, in the
+  project's variables and secrets, once the typing stops, the
   listing's failure under it with its hint), Name (the URL's repository name,
   `RemoteInfo.repo_name`, until edited; `Its folder: <folder>/<name>` under it, not
   checked while typing) and Branch; **Clone** sends `POST /api/clones` with `{url,

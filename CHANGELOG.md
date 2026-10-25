@@ -54,6 +54,9 @@
 
 ### Fixed
 
+- **Private repositories in Docker use the token of `/run/secrets`.** Adding a kit or a
+  marketplace and cloning by URL from the web UI now take `GH_TOKEN` from the secrets
+  folder, as the agents do; a clone into a project takes the project's own secret.
 - **`lado update` no longer deletes the database's backup.** The copy LADO made before
   upgrading the database stays in `~/.lado/backups/`, so you can go back with it.
 - **`lado doctor` after an upgrade tells the truth about the database.** It no longer says

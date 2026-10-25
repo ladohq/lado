@@ -300,12 +300,18 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     once git succeeded; a cancel, a failure or an exception, Ctrl-C too, ends git's process
     group, SIGTERM then SIGKILL after `STOP_WAIT`, and removes the temporary folder;
     `Progress` from git's `\r` lines). Each git process of a listing or a clone runs with
-    no terminal and no prompt (`start_new_session`, stdin closed, `NO_PROMPT`:
+    no terminal and no prompt (`start_new_session`, stdin closed, `gitcache.NO_PROMPT`:
     `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS` empty, `SSH_ASKPASS_REQUIRE=never`, `GCM_INTERACTIVE=never`,
-    `LC_ALL=C`): a missing credential is a failure, never a wait; LADO uses the access the
-    machine has and keeps no password or token. A failure is a `CloneError` (a `LadoError`
+    `LC_ALL=C`), in the environment of LADO's own git (`_environment`:
+    `agent_env.for_git`, with `project_secrets.layer` of the `project` that
+    `list_branches` and `clone` take for a clone into it): a missing credential is a
+    failure, never a wait; LADO uses the access the machine, the outside folder and the
+    project give and keeps no password or token. A failure is a `CloneError` (a `LadoError`
     with `kind` and a `runtime.Hint`) by git's words, `KINDS`, the first that matches
-    (`failure`: `cannot read|clone <url>: <reason> (<git's line>)`), a URL in any text only
+    (`failure`: `cannot read|clone <url>: <reason> (<git's line>)`; github.com's login hint
+    names the project's `GH_TOKEN` secret for a clone into a project, else the outside
+    folder's `GH_TOKEN` file when that folder is a folder, else `gh auth login`; `explain`
+    tells gitcache's failures by the same kinds on one line), a URL in any text only
     through `runtime.public_remote`; git missing or not running is LAD-5's `no_git` /
     `git_broken`, a folder LADO may not look at or write in `no_access`, a URL that names
     no repository (no default folder) `no_repo_name`. `ABANDONED` and `KEPT` are the server's clone jobs' times.
@@ -432,7 +438,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     written is removed;
     a failure removes the temporary file and keeps the old value. `remove`, `check_removable`
     (no link on the way or anywhere in the data folder) and `remove_all` (by `dir_fd`). `read`
-    is `agent_env.read_folder(own=reserved)`, for a launch only; `unused` is what it does
+    is `agent_env.read_folder(own=reserved)`; `layer`, the project's plain variables with
+    its secrets over them, is what a launch (`runtime._base_env`) and a clone into the
+    project (`clone`) get, its one builder; `unused` is what it does
     not give, by name with why (None for the folder), its values left inside, for `lado
     doctor` and the project's page; `names` lists without opening a file
     (`agent_env.check_entry`), a file of a loose mode too, which a replace mends.
@@ -534,8 +542,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `fill` puts in the titles and hints of `Provider.keychain_login`.
   - `agent_env.py`: where an agent's environment comes from (docs/design/agents.md): `resolve`
     (the login shell's, then the outside folder's, `outside`, then the session's project's
-    variables and secrets it is given, which `runtime._base_env` reads), and `command`, the
-    window's command that runs the agent with exactly that environment. `read_folder` is
+    variables and secrets it is given, which `runtime._base_env` reads), `for_git` (the
+    environment of LADO's own network git, gitcache's and clone's: the process's, the
+    outside folder's over it, then a project's layer when given; no login shell), and
+    `command`, the window's command that runs the agent with exactly that environment. `read_folder` is
     the one reader of a folder of variables, the outside folder's and a project's secrets
     folder's (`Folder`: the values and each file not used with why); with `own`, for a folder
     only LADO writes, it also refuses links (`LINK`) and modes others may use (`LOOSE_FILE`,
@@ -646,7 +656,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     ls-remote`, an annotated tag's commit) is the one look at a remote's tags per add,
     update or outdated; `latest` sorts `VERSION_TAG`s by semver precedence (a pre-release
     only with `pre`). `clone_branch` and `refresh` keep a marketplace's clone on its main
-    branch. All of LADO's git commands for kits and marketplaces are here.
+    branch. All of LADO's git commands for kits and marketplaces are here, with `NO_PROMPT`
+    (also clone's and `projects._git`'s); the network ones (`_git(..., remote=)`) run in
+    `agent_env.for_git()`, never a project's layer, and their failures are told by
+    `clone.explain` after gitcache's own heads.
   - `marketplaces.py`: kit marketplaces, git repositories with `marketplace.yaml` at the
     root (`kits:` kit name -> git address), kept in the `marketplaces` table (`list_`,
     `add`, `remove`, `set_enabled`, `update`); the official one is a row made with the
@@ -957,7 +970,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `status_reasons` uses too (`lado ls`, `list_agents`);
     `clones.py`: the New session window's Clone from URL (docs/design/ui.md, Launch and
     session control): `POST /api/remote-branches` (`RemoteInfo`; under `Guard.changes`, as
-    it goes to the network with the machine's credentials), `GET /api/clone-target`
+    it goes to the network with the machine's credentials; `remote_info` with
+    `RemoteAsk.project` lists in that project's layer, an unknown project 404 before git
+    runs), `GET /api/clone-target`
     (`CloneTarget`: `clone.check_target` of the folder, by default the URL's default
     folder, with the name a session there gets, its `name_state` and the server's provider
     suggestion), and clone jobs: `Jobs`, one per app (`app.state.clones`), each a thread

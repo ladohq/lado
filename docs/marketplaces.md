@@ -55,8 +55,9 @@ Why a team makes its own:
 3. Commit and push it to the repository's default branch: LADO reads that branch.
 
 **A private repository** works as any other: LADO runs `git` with your own access (ssh
-keys, a credential helper). It never asks for a password; a clone git refuses is an error
-that says so. The same holds for the kits it lists.
+keys, a credential helper, and the variables of `LADO_ENV_DIR`'s folder, such as the
+image's `/run/secrets/GH_TOKEN`). It never asks for a password; a clone git refuses is an
+error that says so, with where to give a token. The same holds for the kits it lists.
 
 **Your team adds it once** (a marketplace's name is lowercase letters, digits and `-`):
 

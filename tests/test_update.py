@@ -540,7 +540,10 @@ def nothing_known(tmp_path):
 @pytest.mark.parametrize(
     "make, line",
     [
-        (lambda tmp_path: uv_tool(tmp_path, WHEEL_RECEIPT), "uv tool install lado==99.0.0"),
+        (
+            lambda tmp_path: uv_tool(tmp_path / "tool dir", WHEEL_RECEIPT),
+            "UV_TOOL_DIR='{prefix.parent}' uv tool install lado==99.0.0",
+        ),
         (pipx_of_a_folder, "pipx install --force lado==99.0.0"),
         (
             nothing_known,

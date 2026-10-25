@@ -198,7 +198,8 @@ def _install_by_hand(version: str) -> str:
     if pip.is_file():
         return f"{shlex.quote(str(pip))} install {requirement}"
     if (where / "uv-receipt.toml").is_file():
-        return f"uv tool install {requirement}"
+        # Without it uv installs into its default tool folder, beside the one of `where`.
+        return f"UV_TOOL_DIR={shlex.quote(str(where.parent))} uv tool install {requirement}"
     if (where / "pipx_metadata.json").is_file():
         return f"pipx install --force {requirement}"
     return (

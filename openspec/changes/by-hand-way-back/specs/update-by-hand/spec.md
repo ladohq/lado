@@ -4,8 +4,9 @@
 
 When LADO knows no installer of its prefix (`update.installer()` is None), the install
 line of the commands by hand (printed by `lado update`, the API's `by_hand`) SHALL name,
-in this order, the prefix's `bin/pip` when it exists, `uv tool install` when the prefix
-holds `uv-receipt.toml`, `pipx install --force` when it holds `pipx_metadata.json`, and
+in this order, the prefix's `bin/pip` when it exists, `uv tool install` with
+`UV_TOOL_DIR` set to the prefix's parent folder when the prefix holds `uv-receipt.toml`,
+`pipx install --force` when it holds `pipx_metadata.json`, and
 otherwise a comment line saying LADO does not know the installer. Paths SHALL be
 shell-quoted.
 
@@ -17,7 +18,8 @@ shell-quoted.
 #### Scenario: A uv tool from a local wheel
 - **WHEN** LADO's prefix holds `uv-receipt.toml` whose `lado` comes from a wheel file, and
   no `bin/pip`
-- **THEN** the commands by hand have `uv tool install lado==99.0.0` and no `pip`
+- **THEN** the commands by hand have `UV_TOOL_DIR=<prefix's parent> uv tool install
+  lado==99.0.0` and no `pip`
 
 #### Scenario: A pipx install from a folder
 - **WHEN** LADO's prefix holds `pipx_metadata.json` whose package is a folder, and no

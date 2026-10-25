@@ -19,6 +19,14 @@ those of `update._uv_tool` and `update._pipx` without the receipt's options: the
 is not from an index, so which options still apply is the human's to say. A comment line
 keeps the list safe to paste into a shell whole. Paths are quoted with `shlex.quote`.
 
+The uv line carries `UV_TOOL_DIR=<the prefix's parent>`: without it uv installs into its
+default tool folder, a second lado beside the one in a folder set by `UV_TOOL_DIR`
+(checked by hand with uv 0.13.1). It is there always, not only when the folder differs
+from uv's default, so LADO keeps no copy of uv's rule for that default. Over an installed
+lado of another version, from a wheel or an index, `uv tool install lado==X` reinstalls
+without `--force` (checked by hand); it answers "already installed" only for the same
+version, which `lado update` never asks for.
+
 ### D2. The restore command after the installer
 
 `rm -f <home>/lado.db-wal <home>/lado.db-shm && cp <copy> <home>/lado.db`, `<home>` =

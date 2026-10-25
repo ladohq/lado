@@ -169,7 +169,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     with the loop down, those whose tmux is gone, the UI server; `print_plan`,
     `print_by_hand`, the API's `UpdatePlan`). `Plan.by_hand`, the one list of commands by
     hand for the CLI and the API, paths shell-quoted: the install line by the prefix's
-    files (its `bin/pip`, else `uv tool install`, else `pipx install
+    files (its `bin/pip`, else `uv tool install` with `UV_TOOL_DIR` the prefix's parent, else `pipx install
     --force`, else a comment that LADO does not know the installer), and with `restore` the
     copy's `rm -f … && cp …` into `lado.db` after it and `lado start` only for the sessions
     the copy has. `run` holds an exclusive flock on

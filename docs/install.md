@@ -774,7 +774,8 @@ copy or from a git address (also through uv tool or pipx), `lado update` and the
 show the commands to run by hand instead: stop the sessions and the UI server, install
 the version, then start them again. The install line names the installer it finds in the
 environment: its `pip install lado==X.Y.Z` when it has `bin/pip`, else
-`uv tool install lado==X.Y.Z` for a uv tool, else `pipx install --force lado==X.Y.Z` for
+`uv tool install lado==X.Y.Z` for a uv tool (with `UV_TOOL_DIR` set to its tool folder),
+else `pipx install --force lado==X.Y.Z` for
 pipx; when it finds none, it is a comment saying LADO does not know the installer. For a
 version with an older database schema, the list also puts the copy back into `lado.db`
 right after the install line (as [above](#going-back-to-an-older-version) by hand), and

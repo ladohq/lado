@@ -47,7 +47,8 @@ Options weighed:
 - They start again only the planned sessions the copy has; the sessions it lacks are still
   stopped.
 - The install line names an installer that is there: `<prefix>/bin/pip install lado==X`
-  when that `pip` exists; else `uv tool install lado==X` when the prefix holds
+  when that `pip` exists; else `UV_TOOL_DIR=<prefix's parent> uv tool install lado==X`
+  when the prefix holds
   `uv-receipt.toml`; else `pipx install --force lado==X` when it holds
   `pipx_metadata.json`; else the comment line
   `# install lado==X with the installer of <prefix>: LADO does not know it`.

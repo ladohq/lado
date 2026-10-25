@@ -684,11 +684,16 @@ update**.
    command, the sessions and the UI server it restarts) and asks `Update? [y/N]`. The web
    UI shows the same plan in its window.
 2. It stops your running sessions and the UI server.
-3. It backs up `lado.db` to `~/.lado/backups/` (one backup, of the version before).
-4. It installs exactly that version with the installer LADO came with:
+3. It installs exactly that version with the installer LADO came with:
    `uv tool install lado==X.Y.Z`, or `pipx install --force lado==X.Y.Z`.
-5. It checks that the installed `lado --version` is that version.
-6. It starts the sessions and the UI server again, on the new version.
+4. It checks that the installed `lado --version` is that version.
+5. It starts the sessions and the UI server again, on the new version.
+
+`lado update` keeps no copy of `lado.db` of its own and changes nothing in
+`~/.lado/backups/`. The copy it relies on is the one a schema upgrade makes:
+`~/.lado/backups/lado.db.schema-<N>`, `<N>` the schema before, written when the new
+version first upgrades `lado.db` (its first `lado start`, `lado ui` or other command with
+no session running).
 
 `--yes` skips the question. Without a terminal (in a script) it is required: there
 `lado update` refuses to go on without it. What happens to your sessions' work:
@@ -698,8 +703,11 @@ update**.
 
 - The new version reports another version than the one asked for, or the UI server does
   not come up on it: LADO rolls back. It stops what the new version started, installs
-  the old version again and starts your sessions on it. It restores `lado.db` from the
-  backup only when the new version changed its schema.
+  the old version again and starts your sessions on it. When the new version upgraded
+  `lado.db`'s schema, it restores `lado.db` from `~/.lado/backups/lado.db.schema-<N>`. That
+  copy missing (removed by hand), it rolls nothing back: the new version stays installed,
+  as it can open `lado.db` and the old one could not, and the result names the schema and
+  the missing copy.
 - The installer fails: nothing changed; the sessions start again on the old version.
 - Everything the update said and every command it ran, with their output, is in
   `~/.lado/update.log`.
@@ -708,27 +716,40 @@ update**.
 
 ### Going back to an older version
 
-`lado update 0.20.0` installs an older version the same way, as far as that version
-accepts your database: an older LADO refuses a newer `lado.db` and says so when it starts.
+`lado update 0.42.0` installs an older version the same way. First it learns which
+`lado.db` schema that version knows, from its wheel on PyPI. When it is the schema of your
+`lado.db`, nothing changes about the database. When it is older (0.42.x knows schema 31,
+0.43.0 moved `lado.db` to 35), the older LADO would refuse `lado.db`, so:
 
-**From 0.43.0 to 0.42.x.** 0.43.0 moved `lado.db` to schema 35, and 0.42.x refuses it
-(`… has schema version 35, made by a newer LADO (this one knows up to 31)`). It needs the
-copy the upgrade made, `~/.lado/backups/lado.db.schema-31`. `lado update 0.42.x` keeps only
-its own new backup in `~/.lado/backups/` and deletes the rest, that copy too, so copy it
-out first. Everything LADO recorded since the upgrade is lost:
+- The plan warns before it asks: `lado.db` goes back to the copy
+  `~/.lado/backups/lado.db.schema-31`, made when 0.43.0 upgraded it; everything LADO
+  recorded since then is lost (sessions, runs, gates, messages, projects); repositories,
+  worktrees and project folders stay on disk. It names the running sessions the copy does
+  not have: they are not started again. `Update? [y/N]`, or `--yes`, is your yes to that.
+- After the installer and the version check it puts the copy back into `lado.db`, keeps
+  the copy, says `Restored lado.db from … (schema 31)` and starts the sessions the copy
+  has on 0.42.x.
+- Without that copy (no upgrade wrote it, two upgrades since, removed by hand), or when it
+  cannot read the version's schema from PyPI, it refuses before it stops anything and
+  says why. Going back then means starting from an empty database, by hand: move
+  `~/.lado/lado.db` away and update.
+
+`lado update` of 0.42.x and older kept its own copies, `lado.db.<version>`, in
+`~/.lado/backups/`; nothing uses or removes them now: remove them by hand.
+
+Installed otherwise (pip, below), do by hand what `lado update` does:
 
 ```bash
 lado stop --all
 lado server stop
-cp ~/.lado/backups/lado.db.schema-31 ~/lado.db.schema-31
-lado update 0.42.0    # installed otherwise: pip install lado==0.42.0 (below)
-cd ~/.lado && rm -f lado.db-wal lado.db-shm && cp ~/lado.db.schema-31 lado.db
+pip install lado==0.42.0
+cd ~/.lado && rm -f lado.db-wal lado.db-shm && cp backups/lado.db.schema-31 lado.db
 ```
 
 Then start your sessions and `lado ui` again on 0.42.x.
 
 In Docker it is [Go back to the version before](#go-back-to-the-version-before) with
-`<N>` = 31; nothing deletes that backup there.
+`<N>` = 31.
 
 What stays: the projects, their variables and which session is in which project are
 forgotten with the database, but `<workspace>/projects/` stays with every repository in

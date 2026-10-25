@@ -659,7 +659,7 @@ def _update(args: argparse.Namespace) -> int:
             return _nothing_to_do(args, f"LADO {current} is the latest version.")
     if update.same(to.version, current):
         return _nothing_to_do(args, f"LADO {current} is installed already.")
-    plan = self_update.plan(to)
+    plan = self_update.plan(to, index)
     say = _quiet if args.id else print
     self_update.print_plan(plan, say)
     if installer is None:

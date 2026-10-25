@@ -1,9 +1,11 @@
+import hashlib
 import json
 import os
 import sys
+import zipfile
 
 import pytest
-from agent_helpers import init_repo
+from agent_helpers import init_repo, wheel
 from agent_helpers import pypi_index as index
 
 from lado import __version__, loop, runtime, state, tmux, update
@@ -456,15 +458,18 @@ def test_update_without_a_terminal_needs_yes(installed, capsys, monkeypatch):
     assert capsys.readouterr().err == "lado: not updated: confirm with --yes\n"
 
 
-def test_update_to_an_older_version_warns_about_the_database(installed, capsys, monkeypatch):
+def test_update_to_an_older_version_without_lado_db_says_nothing_of_it(
+    installed, capsys, monkeypatch
+):
+    """Its release has no wheel in the index: none is asked for (the warning of an older
+    schema: test_self_update)."""
     no_terminal(monkeypatch)
+    assert state.schema_version() is None
     assert main(["update", "0.1.0"]) == 1
     captured = capsys.readouterr()
     assert captured.out.startswith(f"LADO {__version__} -> 0.1.0 (PyPI, released 2026-01-01)\n")
-    assert (
-        f"lado: WARNING: an older LADO may refuse lado.db (schema {state.SCHEMA_VERSION})"
-        in captured.err
-    )
+    assert "lado.db" not in captured.err
+    assert captured.err == "lado: not updated: confirm with --yes\n"
 
 
 def test_update_to_a_version_pypi_does_not_have_stops_nothing(installed, repo, fake_tmux, capsys):
@@ -586,3 +591,42 @@ def test_no_result_without_the_file_or_with_one_that_is_no_json():
     assert update.read_result() is None
     update.result_path().write_text("{not json")
     assert update.read_result() is None
+
+
+def test_the_schema_of_a_release_is_read_from_its_wheel(tmp_path):
+    sdist = {"packagetype": "sdist", "filename": "lado-0.42.0.tar.gz", "url": "file:///nope"}
+    data = index(**{"0.42.0": [sdist, wheel(tmp_path, 31, "0.42.0")]})
+    assert update.release_schema(data, "0.42.0") == 31
+
+
+@pytest.mark.parametrize(
+    "files, reason",
+    [
+        (lambda p: [wheel(p, 31, digests={"sha256": "0" * 64})], "sha256"),
+        (lambda p: [{"packagetype": "sdist", "filename": "lado-0.42.0.tar.gz"}], "no wheel"),
+        (lambda p: [wheel(p, None)], "SCHEMA_VERSION"),
+        (lambda p: [wheel(p, 31, yanked=True)], "no wheel"),
+        (lambda p: [wheel(p, 31, url=(p / "gone.whl").as_uri())], "gone.whl"),
+        (lambda p: [], "no wheel"),
+    ],
+)
+def test_a_wheel_that_cannot_give_the_schema_says_why(tmp_path, files, reason):
+    data = index(**{"0.42.0": files(tmp_path)})
+    with pytest.raises((OSError, ValueError)) as raised:
+        update.release_schema(data, "0.42.0")
+    assert reason in str(raised.value)
+
+
+def test_a_release_the_index_does_not_have_has_no_schema(tmp_path):
+    with pytest.raises(ValueError, match="no release 0.41.0"):
+        update.release_schema(index(**{"0.42.0": [wheel(tmp_path, 31)]}), "0.41.0")
+
+
+def test_a_wheel_without_its_state_module_says_why(tmp_path):
+    file = wheel(tmp_path, 31)
+    path = tmp_path / file["filename"]
+    with zipfile.ZipFile(path, "w") as zipped:
+        zipped.writestr("lado/__init__.py", "")
+    file["digests"] = {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    with pytest.raises(ValueError, match="lado/state.py"):
+        update.release_schema(index(**{"0.42.0": [file]}), "0.42.0")

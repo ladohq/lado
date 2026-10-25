@@ -48,12 +48,14 @@
 - **Removing a project or a repository names more of what it loses.** Commits on a
   detached HEAD and stashes are listed too, and a repository's sessions from before
   projects are named and forgotten with it.
-- **The guide says how to go back from 0.43.0 to 0.42.0.** Copy the database's backup out
-  of `~/.lado/backups/` before `lado update 0.42.0`, which deletes it; projects' folders
-  and secrets stay on disk until you remove them.
+- **`lado update` back to an older version puts the database back itself.** Going from
+  0.43.0 to 0.42.0, it warns what is lost before it asks, refuses without the upgrade's
+  backup, and restores it; projects' folders and secrets stay on disk.
 
 ### Fixed
 
+- **`lado update` no longer deletes the database's backup.** The copy LADO made before
+  upgrading the database stays in `~/.lado/backups/`, so you can go back with it.
 - **`lado doctor` after an upgrade tells the truth about the database.** It no longer says
   LADO was upgraded under a running session: a `lado.db` line says `lado ls` or `lado start`
   upgrades it, or names the sessions to stop first. An incompatible database now fails it.

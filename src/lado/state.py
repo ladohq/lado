@@ -19,6 +19,8 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
+# `lado update` of a later LADO reads this line from this release's wheel to learn the schema
+# it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
 SCHEMA_VERSION = 35
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
@@ -1292,7 +1294,8 @@ def pending_migration() -> tuple[int, list[str]] | None:
 
 
 def backups() -> Path:
-    """Where copies of lado.db go: a migration's and `lado update`'s."""
+    """Where a migration's copy of lado.db goes, the only copy LADO makes (`lado update` of
+    0.42 and older left its own there too)."""
     return home() / "backups"
 
 
@@ -1334,9 +1337,9 @@ class MigrationFailed(MigrationError):
 def migrate() -> Migrated | None:
     """Upgrade an older lado.db to SCHEMA_VERSION in one transaction: the only place that
     applies MIGRATIONS, so every path that migrates backs lado.db up first, to
-    backups/lado.db.schema-<the version before> (an earlier lado.db.schema-* goes; the
-    copies `lado update` keeps stay). None when there was nothing to migrate (no lado.db,
-    or not an older schema). Its caller makes sure no session runs (lado.runtime).
+    backups/lado.db.schema-<the version before> (an earlier lado.db.schema-* goes; files of
+    other names stay). None when there was nothing to migrate (no lado.db, or not an older
+    schema). Its caller makes sure no session runs (lado.runtime).
     BackupFailed and MigrationFailed leave lado.db as it was."""
     live = home() / "lado.db"
     if not live.exists():

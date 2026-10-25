@@ -225,14 +225,14 @@ function AddRepoDialog({
   useEffect(() => {
     if (source !== "url" || asked === "") return;
     let current = true;
-    getRemoteBranches(asked).then(
+    getRemoteBranches(asked, project.id).then(
       (remote) => current && setListed({ url: asked, remote }),
       (error: unknown) => current && setListed({ url: asked, failed: refusalOf(error) }),
     );
     return () => {
       current = false;
     };
-  }, [asked, source]);
+  }, [asked, source, project.id]);
   const shown = listed?.url === typedUrl ? listed : null;
   const remote = shown && "remote" in shown ? shown.remote : null;
   useEffect(() => {

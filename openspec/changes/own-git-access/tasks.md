@@ -32,7 +32,7 @@
   an unknown project is 404 and runs no git (AC-2).
 - [x] 2.5 `src/lado/server/models.py` `RemoteAsk.project`, `server/clones.py`
   `remote_info(url, project)`, `server/app.py`; `make web-types`, both files committed.
-- [ ] 2.6 `web/src` vitest: the project page's Add repository posts `{url, project}` to
+- [x] 2.6 `web/src` vitest: the project page's Add repository posts `{url, project}` to
   `/api/remote-branches`; New session → Clone still posts `{url}` alone (the existing
   `Launch.test.tsx` check). Then `web/src/api.ts` `getRemoteBranches(url, project?)` and
   `ProjectRepos.tsx` (D4). `make web` passes.

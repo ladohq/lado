@@ -1,6 +1,6 @@
 ## 1. rc_check reads a WAL database at rest
 
-- [ ] 1.1 `tests/test_rc_check.py` (unit: the script's own reads, no LADO needed):
+- [x] 1.1 `tests/test_rc_check.py` (unit: the script's own reads, no LADO needed):
   `make_db(..., wal=True)` sets `PRAGMA journal_mode=WAL` and, after close, asserts no
   `-wal` / `-shm` is left beside it (a database at rest). Two tests:
   `upgrade` over a WAL `lado.db` at rest reads its schema (the existing `final`
@@ -8,7 +8,7 @@
   at rest names both schemas and the sessions, after which `~/.lado-rc/` holds only
   `lado.db.0.37.1` and `LADO_HOME` no `lado.db-wal` / `lado.db-shm`. Red before 1.2: on
   Linux `mode=ro` leaves the side files behind (macOS raises instead, the bug as seen).
-- [ ] 1.2 `scripts/rc_check.py`: `_read_only()` becomes `_reading()`, an ordinary
+- [x] 1.2 `scripts/rc_check.py`: `_read_only()` becomes `_reading()`, an ordinary
   `sqlite3.connect(path)` in `contextlib.closing`, its docstring saying why not
   `mode=ro` (a WAL database at rest has no `-shm`, and macOS's SQLite will not make one
   read-only) and why not `immutable=1` (it ignores the WAL of a running LADO); callers

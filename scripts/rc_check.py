@@ -547,12 +547,17 @@ def _terminal() -> bool:
     return sys.stdin.isatty()
 
 
-def _read_only(path: Path) -> contextlib.closing:
-    return contextlib.closing(sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True))
+def _reading(path: Path) -> contextlib.closing:
+    """An ordinary connection to `path`, used for reads only. Not `mode=ro`: lado.db is in
+    WAL mode, and at rest (no LADO holds it, as after `lado update`, and always the copy in
+    ~/.lado-rc) it has no -shm, which a read-only connection must make: macOS's SQLite
+    refuses to, Linux's leaves -wal and -shm behind. Not `immutable=1`: it ignores the WAL
+    of a running LADO. As the last connection, this one removes the files it made."""
+    return contextlib.closing(sqlite3.connect(path))
 
 
 def _schema(path: Path) -> int:
-    with _read_only(path) as db:
+    with _reading(path) as db:
         return db.execute("PRAGMA user_version").fetchone()[0]
 
 
@@ -641,7 +646,7 @@ def plan() -> Plan:
     live_schema = 0
     if live.exists():
         live_schema = _schema(live)
-        with _read_only(live) as db:
+        with _reading(live) as db:
             rows = db.execute(
                 "SELECT name, repo FROM sessions WHERE stopped_at IS NULL ORDER BY name"
             ).fetchall()
@@ -657,7 +662,7 @@ def plan() -> Plan:
         info = None
     if isinstance(info, dict) and _alive(info.get("pid")) and "port" in info:
         server = info
-    with _read_only(copy) as db:
+    with _reading(copy) as db:
         copy_sessions = [row[0] for row in db.execute("SELECT name FROM sessions")]
     return Plan(
         lado, now, final, copy, live, sessions, server, live_schema, _schema(copy), copy_sessions

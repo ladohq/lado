@@ -548,12 +548,15 @@ def _terminal() -> bool:
 
 
 def _reading(path: Path) -> contextlib.closing:
-    """An ordinary connection to `path`, used for reads only. Not `mode=ro`: lado.db is in
-    WAL mode, and at rest (no LADO holds it, as after `lado update`, and always the copy in
-    ~/.lado-rc) it has no -shm, which a read-only connection must make: macOS's SQLite
-    refuses to, Linux's leaves -wal and -shm behind. Not `immutable=1`: it ignores the WAL
-    of a running LADO. As the last connection, this one removes the files it made."""
-    return contextlib.closing(sqlite3.connect(path))
+    """An ordinary connection to `path` that refuses writes (`query_only`). Not `mode=ro`:
+    lado.db is in WAL mode, and at rest (no LADO holds it, as after `lado update`, and
+    always the copy in ~/.lado-rc) it has no -shm, which a read-only connection must make:
+    macOS's SQLite refuses to, Linux's leaves -wal and -shm behind. Not `immutable=1`: it
+    ignores the WAL of a running LADO. As the last connection, this one removes the files
+    it made."""
+    db = sqlite3.connect(path)
+    db.execute("PRAGMA query_only = ON")
+    return contextlib.closing(db)
 
 
 def _schema(path: Path) -> int:

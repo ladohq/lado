@@ -875,6 +875,15 @@ def test_the_plan_reads_wal_databases_at_rest_and_leaves_no_side_file(recorder, 
     assert side_files(homes.live) == []
 
 
+def test_the_scripts_reads_cannot_write(homes):
+    copy = homes.keep / "lado.db.0.37.1"  # what a rollback goes back to
+    make_db(copy, 26, [("app", "/r/app", None)], wal=True)
+    with rc._reading(copy) as db:
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            db.execute("DELETE FROM sessions")
+    assert names(copy) == ["app"] and side_files(copy) == []
+
+
 def test_without_a_terminal_rollback_refuses(recorder, homes, on_rc, monkeypatch, capsys):
     monkeypatch.setattr(rc, "_terminal", lambda: False)
     assert rc.main(["rollback"]) == 1

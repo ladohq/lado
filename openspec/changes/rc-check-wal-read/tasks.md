@@ -13,6 +13,9 @@
   `mode=ro` (a WAL database at rest has no `-shm`, and macOS's SQLite will not make one
   read-only) and why not `immutable=1` (it ignores the WAL of a running LADO); callers
   renamed. 1.1 passes; `make lint`, `make test`.
+- [x] 1.3 `_reading()` sets `PRAGMA query_only = ON` after connect (the supervisor's
+  note at the gate): a unit test that a write through it to the kept copy is refused and
+  the copy keeps its sessions, red before.
 
 ## 2. The image's checklist names git's identity
 

@@ -26,8 +26,9 @@ example has them, the checklist was written before 4.5 gained `project repo add 
 
 Options weighed for the first:
 
-- A (taken): read with an ordinary connection (`sqlite3.connect(path)`), issuing only
-  reads. It opens a WAL database in any state on every platform, sees what a running
+- A (taken): read with an ordinary connection (`sqlite3.connect(path)`) that refuses
+  writes (`PRAGMA query_only = ON`: the kept copy is what a rollback goes back to). It
+  opens a WAL database in any state on every platform, sees what a running
   LADO has in its WAL (the live `lado.db` while sessions run), and, as the last
   connection of a database no one else holds, removes the `-wal` and `-shm` it made on
   close, so nothing is left in `~/.lado-rc/`. The fix the report names, and the

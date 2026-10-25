@@ -1,115 +1,126 @@
 # Readiness report: Projects in LADO (LAD-116)
 
-Checked 2026-10-23 by `delivery`, first visit, on `origin/main` at d467359c (no epic
-branch: every step merged into `main` on its own, D2). Previous release: v0.42.0.
+Second visit, 2026-10-25, by `delivery`, on `origin/main` at e230e2dd (no epic branch:
+every step merged into `main` on its own, D2). Previous release: v0.42.0. The first
+visit (2026-10-23, on d467359c) reported one gap; the review added S8 and S9.
+
+## Gaps of the previous report
+
+| Gap | Now | Evidence |
+|---|---|---|
+| G1 — documents still said projects were not built | **RESOLVED** by S8 (LAD-142, PR #161) | `ROADMAP.md:139` `- [x] Projects`, no open step under it; `AGENTS.md:193` "projects and the workspace."; `docs/design/ui.md:1842-1845` names `SessionAbout.project`; `grep -rniE "not built yet\|step S[0-9]"` over `docs/`, `ROADMAP.md`, `AGENTS.md`, `README.md` (outside `docs/epics/`, archives, `docs/superpowers/`, `docs/research/`) leaves only `docs/design/ui.md:442`, the general placeholder rule, not about projects |
+| Question 2 — what going back from 0.43.0 leaves | **RESOLVED** by S8 and S9 (LAD-143, PR #165) | `docs/install.md` "Going back to an older version": the restore of `lado.db.schema-31` by `lado update 0.42.0`, the manual path, Docker, and "What stays" (`projects/`, the data folder with its secrets, both refusals) — checked against the run below |
 
 ## Verdict
 
-**Gaps: 1.** The code is ready (every step done, checks and CI green, the upgrade from
-0.42.0 keeps the user's state), but the documents are not true to it yet:
-
-- **G1 — documents still say projects are not built.** `ROADMAP.md:144-152` leaves S2,
-  S3, S4, S5a, S5b, S6 and S7 unchecked and the Projects item open; `AGENTS.md:193-194`
-  says projects are "mostly not built yet"; `docs/design/projects.md:98-99` says "the UI's
-  addresses are not built yet (step S6)"; `docs/design/ui.md:1842-1844` says a session in a
-  project is "not built yet" and "decided with a mockup at S3". The brief's "done" asks
-  that the docs describe the new model; the readiness topic Documentation is not met.
-  A small docs step (patch-sized, under 0.43.0) closes it; see Questions for the human for
-  one more line it could carry.
-
-Nothing else is a gap. Open checks are all in the release checklist (`docs/release.md`),
-one added by this report (Open checks).
+**Ready.** No gap: every step done, the product's checks and CI green on what will be
+released, the upgrade from 0.42.0 and the way back to it keep the user's state and say
+what they drop, every checklist topic covered. Open checks until 0.43.0rc1 are in the
+release checklist; LAD-144 is a known fix during the RC (the human, #1500).
 
 ## Results of all steps
 
 | Step | Task | Pull request | Check | Evidence |
 |---|---|---|---|---|
-| S1 — docs rewrite, rename to Workspace | LAD-117 | #126 (6c2336e) | grep of old names, places rewritten, BACKLOG entry, checks, the human reads `projects.md` at merge | plan.md S1 Result: CI 23/23, `make test` 3614; one merge_ok rejection (F1) fixed |
-| S1b — warnings and refusals stand out | LAD-120 | #128 (0fadd64) | mockup, UI e2e of three levels | plan.md S1b Result; tokens with contrast ≥ 5.4:1 |
+| S1 — docs rewrite, rename to Workspace | LAD-117 | #126 (6c2336e) | grep of old names, places rewritten, BACKLOG entry, the human reads `projects.md` at merge | plan.md S1 Result: CI 23/23, `make test` 3614; one merge_ok rejection (F1) fixed |
+| S1b — warnings and refusals stand out | LAD-120 | #128 (0fadd64) | mockup, UI e2e of three levels | plan.md S1b Result |
 | S2 — project in the core, `~/workspace` | LAD-123 | #131 (e943d5a) | integration of `lado project`, doctor lines, D3, migration (schema 32) | plan.md S2 Result: `make test` 3685, CI 23/23, lead's manual check |
-| S2b — compose's `LADO_WORKSPACE` | LAD-124 | #136 (f99ebb7) | `tests/test_docker.py`, container tests on CI | plan.md S2b Result: CI 23/23 incl. container amd64/arm64; Docker Desktop's text open → `docs/release.md` 4.5 |
+| S2b — compose's `LADO_WORKSPACE` | LAD-124 | #136 (f99ebb7) | `tests/test_docker.py`, container tests on CI | plan.md S2b Result: CI 23/23 incl. container amd64/arm64; Docker Desktop open → 4.5 |
 | S3 — a session in a project | LAD-125 | #138 (853ba87) | integration with the fake agent, refusals on every start path, UI head | plan.md S3 Result: schema 33, CI 23/23, lead's manual check |
-| S4 — a project's repositories | LAD-128 | #141 (f466b90) | integration of `repo add/remove` | plan.md S4 Result: `make test` 3869, CI 23/23, X1 fixed, lead's manual check |
-| S5a — plain variables | LAD-130 | #144 (d11c543) | integration of layers in two projects, kit keys, smoke probe per provider | plan.md S5a Result: schema 34, `make test` 3954, CI 23/23; live run open → 4.3 "Projects" |
-| S5b — secrets | LAD-132 | #148 (63627cbb) | files 700/600, doctor, delete, canary integration test | plan.md S5b Result: `make test` 4110, CI green incl. smoke Linux/macOS; macOS link refusals open → 4.3 |
-| S6a — UI Projects section, variables, secrets | LAD-134 | #151 (be6f9bb4) | mockups, UI e2e, canary over API and feed | plan.md S6a Result: CI 23/23; password managers open → 4.3 "Projects in the web UI" |
-| S6b — New session's Project way | LAD-137 | #155 (f8b4a0c9) | mockup, UI e2e of the start in a project | plan.md S6b Result: CI 23/23, lead's manual check with the fake provider |
+| S4 — a project's repositories | LAD-128 | #141 (f466b90) | integration of `repo add/remove` | plan.md S4 Result: `make test` 3869, CI 23/23, lead's manual check |
+| S5a — plain variables | LAD-130 | #144 (d11c543) | integration of layers in two projects, kit keys, smoke probe per provider | plan.md S5a Result: schema 34, `make test` 3954, CI 23/23; live run open → 4.3 |
+| S5b — secrets | LAD-132 | #148 (63627cbb) | files 700/600, doctor, delete, canary | plan.md S5b Result: `make test` 4110, CI green incl. smoke Linux/macOS; macOS links open → 4.3 |
+| S6a — UI Projects, variables, secrets | LAD-134 | #151 (be6f9bb4) | mockups, UI e2e, canary over API and feed | plan.md S6a Result: CI 23/23; password managers open → 4.3 |
+| S6b — New session's Project way | LAD-137 | #155 (f8b4a0c9) | mockup, UI e2e of the start in a project | plan.md S6b Result: CI 23/23, lead's manual check |
 | S7a — project page, repositories, rename | LAD-138 | #157 (c0b17375) | mockups, UI e2e | plan.md S7a Result: `make test` 4204, vitest 1089, CI green |
 | S7b — deleting the project | LAD-139 | #159 (d467359c) | mockup, UI e2e, core and server tests, canary over the delete | plan.md S7b Result: `make test` 4235, vitest 1104, CI 23/23 |
+| S8 — docs: projects are built | LAD-142 | #161 (8eeb850a) | the grep above; `install.md` "Going back" | plan.md S8 Result: CI green, the lead's grep: one hit, `ui.md:442` |
+| S9 — one database backup, the migration's | LAD-143 | #165 (e230e2dd) | unit and integration of `lado update` to an older schema, `rc_check.py`, docs | plan.md S9 Result: CI green; the lead's check with the real 0.42.0 from PyPI; M3 → LAD-144 |
 
-All twelve steps are done; no step is planned, in progress or dropped.
+All fourteen steps are done; none planned, in progress or dropped. Outside the epic's
+runs, LAD-140 (PR #163) and LAD-141 (PR #164) were hotfixes of items in Later.
 
-### The product's checks on what will be released (`origin/main`, d467359c)
+### The product's checks on what will be released (`origin/main`, e230e2dd)
 
 | Command | Result |
 |---|---|
-| `make lint` | exit 0: 881 files already formatted, `All checks passed!` |
-| `make test` | exit 0: **4235 passed, 2 skipped** in 39.8 s (the first run stopped at collection on a truncated `.pyc` of `tests/test_error_journal.py`, `EOFError: marshal data too short`, written by a concurrent run in the shared worktree; the rerun passed: outside the work) |
-| `make web` | exit 0: stale-types check, tsc, vitest **59 files, 1104 tests passed**, build |
-| `openspec validate --specs --strict` | exit 0: **47 passed, 0 failed** |
-| CI on the push of d467359c to `main` (run 40028483018) | **success, 23/23 jobs** (lint, unit and integration on 3.10 and 3.13, Node, `make dist`, UI e2e, smoke, container) |
+| `make lint` | exit 0: `All checks passed!` |
+| `make test` | exit 0: **4278 passed, 2 skipped** in 40.8 s |
+| `make web` | exit 0: stale-types check, tsc, vitest **1104 passed (1104)**, build |
+| `openspec validate --specs --strict` | exit 0: **48 passed, 0 failed** |
+| CI on the push of e230e2dd to `main` (run 40162990683) | **success, 23/23 jobs** (lint, unit and integration on 3.10 and 3.13, Node, `make dist`, UI e2e, smoke, container) |
 
-Integration and UI tests as a whole were not run locally (settings, Checks: CI runs
-them on every push); CI's run above is their evidence.
+Integration and UI tests as a whole were not run locally (settings, Checks: CI runs them
+on every push); CI's run above is their evidence.
 
 ## Checked by hand
 
 | Step | Checked by hand | By whom |
 |---|---|---|
-| S1 | `docs/design/projects.md` read against the concept at merge_ok (gates #35, #37) | the human |
+| S1, S8 | `docs/design/projects.md` against the concept at merge_ok (gates #35, #37); S8's texts at its gates | the human |
 | S1b, S3, S6a, S6b, S7a, S7b | mockups approved at design_ok | the human |
 | S2 | temp HOME on acbe045: workspace, doctor lines, create/delete | the lead |
-| S3 | on 853ba87: `project show`, refusals of a folder and `--new` under `projects/`, unknown `--repo`, delete without `--yes` | the lead |
-| S4 | on f466b90: clone from `file://` and `--new`, taken name, remove with unpushed branch, link removed as link | the lead |
-| S5a | on d11c543: set in two projects, show, unset, refusals (`GH_TOKEN`, `MONKEY_MODE`, `PATH`, `LADO_FOO`, inside an agent) | the lead |
+| S3 | on 853ba87: `project show`, refusals under `projects/`, unknown `--repo`, delete without `--yes` | the lead |
+| S4 | on f466b90: clone from `file://` and `--new`, taken name, remove with an unpushed branch, a link removed as a link | the lead |
+| S5a | on d11c543: set in two projects, show, unset, the name refusals, inside an agent | the lead |
 | S5b | on 63627cbb: secret from stdin 600/700, refusals, `show` names only, doctor names a 644 file, canary after unset | the lead |
-| S6a | API and Chromium: create, 401 without token, value in no DOM, storage, URL or log, phone layout | the lead |
-| S6b | fake provider, Chromium: start in Acme gets Acme's `BOARD_URL` and not Shop's `GH_TOKEN`; Folder refusal leads into Project | the lead |
+| S6a | API and Chromium: create, 401 without the token, the value in no DOM, storage, URL or log, phone layout | the lead |
+| S6b | fake provider, Chromium: the start in Acme gets Acme's `BOARD_URL`, not Shop's `GH_TOKEN` | the lead |
 | S7a | fake provider, Chromium: repositories, rename, Add by clone with Cancel, delete pushed/unpushed/running | the lead |
-| S7b | fake provider, Chromium and CLI: refusal while running, three lists, id typed, both folders gone, link target kept | the lead |
-| readiness | the upgrade from 0.42.0 below | `delivery` |
+| S7b | fake provider, Chromium and CLI: refusal while running, three lists, the id typed, both folders gone, a link's target kept | the lead |
+| S8 | the grep on 8eeb850a; no UI check (texts only) | the lead |
+| S9 | the real 0.42.0 from PyPI, fake provider: warning before the question, schema 31 restored, `backups/` untouched, refusal without a copy before any stop; found M3 (LAD-144) | the lead |
+| readiness | the upgrade and the way back below, with real agent CLIs waiting at their trust question | `delivery` |
 
 **Never checked by hand** (all in the release checklist, Open checks): a real agent CLI
-with a project variable or secret (all hand checks used the fake provider or no agent);
-`gh auth status` with a project secret; Docker Desktop's refusal for a missing workspace;
-a project in LADO's image; the secrets' link refusals on macOS; the secret field with a
-password manager in Chrome and Safari.
+answering with a project variable or secret (hand checks used the fake provider, or real
+CLIs that never got past their trust question); `gh auth status` with a project secret;
+Docker Desktop's refusal for a missing workspace; a project in LADO's image; the secrets'
+link refusals on macOS; the secret field with a password manager in Chrome and Safari;
+the way back from a published RC (4.4).
 
-## Upgrade from 0.42.0
+## Upgrade from 0.42.0, and back
 
-Done in `/tmp/lado-upgrade-u7Gh` (removed by name afterwards): `uv tool install
-lado==0.42.0` from PyPI with `UV_TOOL_DIR`/`UV_TOOL_BIN_DIR` in that folder, `HOME`,
-`LADO_HOME` and the tmux socket (`lado-upg-u7Gh`) of its own, `LADO_TELEMETRY=0`,
-`LADO_REPOS` and `LADO_CONTAINER` unset (as on a computer), `LADO_ENV_DIR` a folder with
-`BOARD_URL=outside`. The new build is a wheel of d467359c (`uv build --wheel` after `make
-web`). The upgrade is the docs' "Installed otherwise" path (`docs/install.md`, Update):
-stop the sessions, install the new build over the old (`uv tool install --force
---reinstall <wheel>`), start them again; `lado update` itself installs only from PyPI, so
-it could not take an unreleased build. Real agent CLIs started, waiting at their trust
-question; no model was called.
+Done in `/tmp/lado-upgrade-PsmI` (removed by name afterwards, with its tmux server
+`lado-upg-PsmI`): `uv tool install lado==0.42.0` from PyPI with `UV_TOOL_DIR` and
+`UV_TOOL_BIN_DIR` there, `HOME`, `LADO_HOME` and the tmux socket of its own,
+`LADO_TELEMETRY=0`, `LADO_REPOS` and `LADO_CONTAINER` unset (as on a computer),
+`LADO_ENV_DIR` a folder with `BOARD_URL=outside`. The new build: a wheel of e230e2dd built
+in a copy of the tree (`git archive` plus the web bundle of `make web`) with the version
+set to `0.43.0rc0` in the copy only, so it stands for the RC; installed with `uv tool
+install --force lado==0.43.0rc0 --find-links <dist>`, which leaves a uv receipt as an
+index install does, so `lado update 0.42.0` takes its normal path to PyPI. Agents were
+the real Claude Code, waiting at its trust question; no model was called.
 
-State made on 0.42.0: schema 31; session `app` on a repository in `src/`, session
-`remote` cloned from a `file://` URL into the old default `~/lado/remote`, session
-`mine` in `~/workspace/projects/mine` (a user's own folder named `projects`).
+State made on 0.42.0 (schema 31): session `app` on a repository in `src/`, session `remote`
+cloned from a `file://` URL into the old default `~/lado/remote`.
 
 | What | Result |
 |---|---|
-| Migration | first command: `lado: upgraded lado.db from schema 31 to 35; its backup is …/backups/lado.db.schema-31` |
-| Old sessions | `lado ls` lists all three (stopped); `lado start <folder>` resumes each under its old name; `remote` in `~/lado` works (CHANGELOG: "sessions in `~/lado` keep working") |
-| Workspace without `LADO_REPOS` | `lado doctor`: `Workspace: ~/workspace (default)` |
-| A user's own `~/workspace/projects/` | `[warn] Projects: … is your own folder (it holds mine): LADO cannot make projects there`; `lado project create shop` refuses naming the way out; the session `mine` there still resumes — loud, nothing changed or removed |
-| Outside variables | doctor `Variables from outside: …: BOARD_URL`, unchanged |
-| A project after the upgrade (folder moved away) | `create`, `repo add --new`, `set`, `set --secret` from a pipe, `show` (secret by name only); `lado start --project shop --repo app2` → session `shop-app2`, `lado ls` says `project shop`; its agent process has `BOARD_URL=https://project` and `GH_TOKEN`, session `app` without a project has `BOARD_URL=outside` |
-| Going back to 0.42.0 | 0.42.0 refuses schema 35 by name (`made by a newer LADO … knows up to 31`); with the backup put back (as `lado update`'s rollback does) it works, sessions listed, the project unknown, `projects/shop` and `~/.lado/projects/shop/` left on disk (the brief, Data and migrations) |
-| Up again on the restored database | migrates 31 → 35 again; doctor: `projects/` is "your own folder (it holds shop)"; after moving it away, `lado project create shop` refuses: `…/.lado/projects/shop is left from a project shop: remove it or choose another id` — the old secret is not taken over silently |
-| `lado uninstall --yes` (new build) | deleted `LADO_HOME` with the secrets, removed the program, left `~/workspace` and its folders |
+| Up: migration | first command: `lado: upgraded lado.db from schema 31 to 35; its backup is …/backups/lado.db.schema-31` |
+| Old sessions | `lado ls` lists both (stopped); `lado start <folder>` → `Resumed session "app" …` and `"remote"` in `~/lado` (CHANGELOG: sessions in `~/lado` keep working) |
+| A project after the upgrade | `create`, `repo add --new`, `set`, `set --secret` from a pipe; `lado start --project shop --repo app2` → `(project shop)`; its agent's process has `BOARD_URL=https://project` and `GH_TOKEN`, the session without a project `BOARD_URL=outside`; doctor `[info] Project variables: shop overrides BOARD_URL of LADO_ENV_DIR` |
+| Back: `lado update 0.42.0 --yes` | warns before it acts: `lado.db goes back to …/lado.db.schema-31 … Everything LADO recorded since then is lost: sessions, runs, gates, messages, projects. Repositories, worktrees and project folders stay on disk. Sessions not in that copy are not started again: shop-app2`; stops the three, installs 0.42.0 from PyPI, `Restored lado.db from …schema-31 (schema 31)`, resumes `app` and `remote`, `LADO 0.42.0 is ready.`; `backups/` keeps the copy; `projects/shop` and `~/.lado/projects/shop/` stay on disk — all as `docs/install.md` "Going back" says |
+| Up again | `lado doctor` before any other command: `[info] lado.db: schema 31, this LADO knows 35: lado ls or lado start upgrades it` (LAD-141's fix); after `lado ls` migrates: `[warn] Projects: …/projects is your own folder (it holds shop)`; `lado project create shop` refuses (folder exists), and after moving `projects/` away refuses again: `…/.lado/projects/shop is left from a project shop: remove it or choose another id` — the old secret is never taken over |
+| `lado uninstall --yes` | `Deleted …/.lado` (with the secrets), `Uninstalled lado`; `~/workspace` and its folders stay |
 
-Nothing was lost or silently changed. Not run here: **the image's upgrade** (`LADO_PROJECTS`
-→ `LADO_WORKSPACE` in an installed `.env`, the home volume's migration): there is no
-Docker in LADO's container. The human runs `docs/release.md` 4.6 (the image's update from
-the last final, with `LADO_PROJECTS` on purpose) and 4.5; CI's container tests
-(`tests/container/test_migration.py`, `tests/test_docker.py`) cover the old `.env` and the
-volume migration on Linux. `lado update` from PyPI is checked by 4.2 on the RC.
+Nothing was lost or changed silently. Two remarks:
+- `lado update 0.42.0` warned `uv tool install lado==0.42.0 --refresh-package lado does not
+  keep options of this install`: the `--find-links` of this emulation; a PyPI install has
+  no such option.
+- **Not a gap, found on the way:** on the manual path ("Installed otherwise": `lado stop
+  --all`, install, `lado start` within two seconds), the resumed sessions got no session
+  loop: 0.42.0's loops were still alive at the resume and ended at their next pass on the
+  new schema (`loop.log`: `loop ended: … schema version 35, made by a newer LADO`). Loud —
+  `lado ls` says `session loop not running … run lado attach app to restart it` — and a
+  `lado stop`/`lado start` a few seconds later started the loops. Older than the epic;
+  `lado update` itself was not affected here.
+
+Not run here: **the image's upgrade** (`LADO_PROJECTS` → `LADO_WORKSPACE` in an installed
+`.env`, the home volume's migration): there is no Docker in LADO's container. The human
+runs `docs/release.md` 4.6 and 4.5; CI's container tests (`tests/container/test_migration.py`,
+`tests/test_docker.py`) cover the old `.env` and the volume migration on Linux. The way
+back from the published RC on the human's own LADO is 4.4.
 
 ## Missing
 
@@ -117,9 +128,9 @@ Against the brief's "done":
 
 | "Done" item | Covered by |
 |---|---|
-| docs describe the new model only | S1, kept by each step — **except G1** (four stale places) |
-| `lado project list/create/show/rename/delete/set/unset`, `--project --repo`, doctor, `lado ls`, the head | S2, S3, S5a, S5b; seen in the upgrade above |
-| two projects, different values, four CLIs, with and without Docker, kit keys | S5a integration (two projects) and smoke per provider; live four CLIs → 4.3; in the image → 4.5 (added now) |
+| docs describe the new model only | S1, kept by each step; S8 closed the stale places (G1) |
+| `lado project list/create/show/rename/delete/set/unset`, `--project --repo`, doctor, `lado ls`, the head | S2, S3, S5a, S5b; seen in the run above |
+| two projects, different values, four CLIs, with and without Docker, kit keys | S5a integration (two projects) and smoke per provider; live four CLIs → 4.3; in the image → 4.5 "Projects in the image" |
 | the canary test | S5b, extended in S6a, S6b, S7b |
 | UI: Projects, page, variables, Project way, removal with unpushed work, token API | S6a, S6b, S7a, S7b |
 
@@ -128,64 +139,52 @@ Readiness checklist:
 | Topic | Verdict |
 |---|---|
 | Goal and "done" | covered (above) |
-| Users and how they use it | covered: CLI (S2–S5b), UI (S6a–S7b), API documented in OpenAPI |
+| Users and how they use it | covered: CLI (S2–S5b), UI (S6a–S7b), the API in OpenAPI |
 | Scope and what is out | covered: concept "Не сейчас" in `docs/design/projects.md`; Later below |
-| Data and migrations | covered: schema 31 → 35 (S2, S3, S5a), seen above; rollback restores `lado.db` |
-| Secrets and credentials | covered: S5b files 700/600, write-only, canary; agents cannot change projects |
-| Update and rollback | covered: upgrade and going back above; image update → 4.6 |
+| Data and migrations | covered: schema 31 → 35 (S2, S3, S5a), seen above |
+| Secrets and credentials | covered: S5b, the canary; agents cannot change projects |
+| Update and rollback | covered: S9's way back, seen above; `docs/install.md` "Going back"; image → 4.6 |
 | Removal | covered: S4, S7a (repository), S2/S7b (project), `lado uninstall` above |
 | Platforms | covered: four CLIs by smoke on Linux and macOS (CI); live → 4.3; macOS links → 4.3; image → 4.5 |
-| Observability | covered: doctor lines (workspace, own `projects/`, foreign folders, missing folders, project variables, unusable secrets), refusals by name |
-| Tests and what only a human can check | covered: unit, integration, UI e2e, smoke, container in CI; the human's checks in 4.3/4.5 |
-| Documentation | **missing: G1** |
+| Observability | covered: doctor lines (workspace, own `projects/`, foreign and missing folders, project variables, unusable secrets, an older schema), refusals by name |
+| Tests and what only a human can check | covered: unit, integration, UI e2e, smoke, container in CI; the human's checks in 4.3–4.6 |
+| Documentation | covered: S8 (G1 resolved) |
 
 ### Later (moved by the human or the plan, not missing)
 
-From `plan.md`, Later: LAD-140 (S7b's E6, a link inside a project folder listed as work
-that goes); S7b's E3 (`DELETE` not bound to the preview); the lead's M2 (ragged refusal
-background); S7a's F3, F4, X3, X5; the image's own `/projects` mount point; database
-extras for repositories; sessions over several repositories; tracker integration and kit
-settings per project; project artifacts; isolation and per-project outside secrets;
-workspace folders outside projects (BACKLOG). Done outside the epic: LAD-121, LAD-122,
-LAD-131, LAD-133; LAD-127 open (flaky UI test).
+From `plan.md`, Later: **LAD-144** (the lead's M3: with no known installer the by-hand
+plan of a downgrade lacks the restore of `schema-<N>`; a fix during the 0.43.0 RC, not
+blocking rc1, #1500); S9's declined minors (F3/E1, E4, E5, E6); S7b's E3 and the lead's
+M2; S7a's F3, F4, X3, X5; the image's own `/projects` mount point; database extras for
+repositories; sessions over several repositories; tracker integration and kit settings
+per project; project artifacts; isolation and per-project outside secrets; workspace
+folders outside projects. Done: LAD-121, LAD-122, LAD-131, LAD-133, LAD-140 (PR #163),
+LAD-141 (PR #164); LAD-127 open (flaky UI test).
 
 ## Open checks
 
-Each check open until 0.43.0rc1 is in the release checklist `docs/release.md`:
+Each check open until 0.43.0rc1 is in the release checklist `docs/release.md`; this visit
+moves none (S8 and S9 added no new one; S9 extended 4.4 itself):
 
 | Check | Step | Where | What to run, what to expect |
 |---|---|---|---|
-| Docker Desktop's refusal for a missing workspace | S2b | 4.5, "A missing workspace" | `LADO_WORKSPACE` to a missing folder, `up -d` refuses with that path, nothing made |
-| live run on four CLIs with a variable and a secret, `start_session`, the UI's start (incl. S3's F1, agents' `lado mcp` gets `LADO_REPOS`) | S5a, S5b, S3 | 4.3, "Projects" | both supervisor and worker print `https://a`; `gh auth status` logged in; `show` without the value |
+| Docker Desktop's refusal for a missing workspace | S2b | 4.5, "A missing workspace" | `LADO_WORKSPACE` to a missing folder: `up -d` refuses with that path, nothing made |
+| live run on four CLIs with a variable and a secret, `start_session`, the UI's start (incl. S3's F1) | S5a, S5b, S3 | 4.3, "Projects" | supervisor and worker print `https://a`; `gh auth status` logged in; `show` without the value |
 | secrets' link refusals on macOS | S5b | 4.3, "Projects' secrets on the Mac" | `set --secret` and `unset` refuse naming the link |
 | secret field with password managers, Chrome and Safari | S6a | 4.3, "Projects in the web UI" | no offer to save, field empty, `set · hidden` |
-| **a project in LADO's image** (new, this report) | S5a, S6b ("with Docker" of the brief's done) | 4.5, "Projects in the image" | project `BOARD_URL=https://a` over `/run/secrets/BOARD_URL=outside` in a project session; `outside` in a session without a project; the project folder on the host |
-
-## Found on the way (not gaps)
-
-- `lado doctor` run first after an upgrade (before any other command migrated the
-  database) says `Projects: not checked: … LADO was upgraded under a running session`
-  though no session runs (`src/lado/state.py:1211`, since 4b1bc039, 2026-10-06, older than
-  the epic); the line itself tells to run any `lado` command. A BACKLOG candidate.
-- `decisions.md` row of question #1283 (S6b) still says "pending", though `plan.md` S6b
-  records the human's answer (adding repositories in S7).
+| a project in LADO's image | readiness (first visit) | 4.5, "Projects in the image" | the project's `BOARD_URL=https://a` over `/run/secrets`; `outside` without a project; the project folder on the host |
+| the user's own way back from the RC | S9 | 4.4 | `lado update <the final before>` from the RC on a test home warns before it asks, the old final starts with the session and the database of before the RC |
 
 ## Questions for the human
 
-1. **G1:** a docs step before 0.43.0rc1 that ticks ROADMAP's Projects and fixes the three
-   stale sentences (recommended), or leave them for the release task?
-2. Should that step also tell, in `docs/install.md` "Going back to an older version", what
-   going back from 0.43.0 leaves: projects made on 0.43.0 are forgotten, their folders stay
-   in `<workspace>/projects/` (doctor then calls `projects/` "your own folder" and refuses
-   new projects until it is moved) and their secrets stay in `~/.lado/projects/<id>/`
-   until removed by hand? Recommended: yes, one paragraph.
+None.
 
 ## Decisions
 
-99 rows. With a decision: 93; the recommendation was taken in 89 (one in a changed form,
-#1031), not in 4 (#523, #631, #1273 — a change to the concept, #1314). Without a decision
-outcome: the lead's five review records and #1283 (pending in the file, see Found on the
-way).
+112 rows. With a decision: 107; the recommendation was taken in 102 (one in a changed form,
+#1031), partly in 1 (#1410: the manual path and the task, the timing not answered), not in
+4 (#523, #631, #1273 — a change to the concept, #1314). Without a decision outcome: the
+lead's five review records.
 
 | Date | Where (step, gate) | Question | Options | Recommended (by whom) | Decided (by whom) | Taken? |
 |---|---|---|---|---|---|---|
@@ -270,7 +269,7 @@ way).
 | 2026-10-23 | review after S6a | S6 split recorded: S6a done, S6b (the Project way of New session) added as the next step; E2 and the lead's M1 (narrow desktop window) to S7; a release check of the secret field with password managers (4.3 "Projects in the web UI"); LAD-133 done | — | (lead) | — | — |
 | 2026-10-23 | step_ok gate #105 | Approve the plan's revision after S6a and step S6b (the Project way of New session, M) | approve; reject | approve; S6b before S7 closes the UI's gap (a session in a project starts only from the CLI) (lead) | approved (human) | yes |
 | 2026-10-23 | S6b (LAD-137), design, question #1273 of the analyst | The Project way's recommendations: the button last (2×2 on a phone); the window still opens in Folder/From scratch; preselect the last project and repository; no projects → a link to Projects; widen to the refusal's button in Folder, Clone into and Create in, and a "New session in this project" link on the project's page | accept all; accept with changes; discuss | accept all; notes: the chosen project plainly visible at Start (wrong project = another client's keys), checked by UI e2e; the default name `<project>-<repo>` passes the session name's rule with long ids (lead) | "the dialog is too complex: repositories are managed only on the project's page; New session only picks one of the project's repositories" (human, #1282) | no: a change to the concept, "+ new repository" leaves New session |
-| 2026-10-23 | S6b (LAD-137), design, question #1283 of the analyst | After #1282: adding repositories on the project's page in S6b or in S7; the button last; the window's default way unchanged; preselect the last project and repository; no projects → a link to Projects; the Folder refusal → "Start in the project …" or "Open the project …", Clone into and Create in keep the CLI command; "New session in this project…" on the project's page | in S7; in this step; changes | in S7, S7 right after S6b and no 0.43.0rc1 between them (the UI cannot add a repository until S7); after S7 the Clone into / Create in refusals link the project's page (lead) | pending | |
+| 2026-10-23 | S6b (LAD-137), design, question #1283 of the analyst | After #1282: adding repositories on the project's page in S6b or in S7; the button last; the window's default way unchanged; preselect the last project and repository; no projects → a link to Projects; the Folder refusal → "Start in the project …" or "Open the project …", Clone into and Create in keep the CLI command; "New session in this project…" on the project's page | in S7; in this step; changes | in S7, S7 right after S6b and no 0.43.0rc1 between them (the UI cannot add a repository until S7); after S7 the Clone into / Create in refusals link the project's page (lead) | all as recommended (adding in S7) | yes |
 | 2026-10-23 | S6b (LAD-137), design_ok gate #107 | The design `new-session-in-project` (D1–D15): `Where` with optional `path`/`project`/`repo`, the start is `runtime.start_session` as the CLI's, `GET /api/project-launch`, `projects.place`, `LaunchProject.tsx`, the canary starts through the API; "+ new repository" gone from the window (#1282) | approve; reject | approve; for the build: the chosen project plainly visible at Start and UI e2e that a changed choice starts there; a test of long ids' session name; the external round reads the start's route, `project-launch`, `place` and `LaunchProject.tsx` in full (lead) | approved (human) | yes |
 | 2026-10-23 | S6b (LAD-137), build, question #1314 of the developer | A task for the flaky container test `test_the_first_ssh_to_github_knows_its_host_key` (port 22 timed out on the runner, PR #155's CI, run 39972297968)? | create; no | create: skip loudly only on an unreachable port 22 (maybe one retry first), a wrong host key still fails; derived from LAD-137; outside the epic, to "Later" (lead) | no (human) | no |
 | 2026-10-23 | S6b (LAD-137), review, question #1332 (from the reviewer's report) | External rounds spent (2/2) with X1 (important: the repository list blinks and loses focus while a choice is checked) and X2 (minor: "Resume it" offered for a session without a project) open | fix + a third external round on the delta; fix + local check only (the reviewer's); accept and merge | fix + a third external round on the delta: X2 changes the start's Resume logic in `launch.py` (#949) (lead) | fix + third external round (human) | yes |
@@ -288,3 +287,16 @@ way).
 | 2026-10-23 | S7b (LAD-139), merge_ok gate #115 | PR #159 at 9e5af5ff: review converged in 2 rounds (E1 important — literal pathspec excludes — and L1 fixed; external 2/2 read the delete path in full; CI 23/23); declined L2 (a narrow set_secret/delete race, loud), E2 (full preview in delete, D1), E3 (DELETE not bound to the preview), E6 (a link inside the project folder shown as unpushed work, older than the change) | approve; reject | approve; E3 and E6 to Later, E6 offered as a task at the epic review; the lead's manual check after the merge (lead) | approved | yes |
 | 2026-10-23 | After S7b, question #1397 (lead) | E6 of LAD-139's review: a link inside a project's folder listed as unpushed work (a false alarm, older than the epic) — a task? | a task in Later; none; fix before 0.43.0rc1 | a task in Later (lead) | a task in Later: LAD-140 | yes |
 | 2026-10-23 | Review after S7b (LAD-139) | Every step S1–S7b done; E3, E6 (LAD-140) and the lead's M2 in Later; the next is the readiness check | finish; next | finish → readiness (lead) | — | |
+| 2026-10-23 | Readiness gap G1, question #1402 (lead) | Stale docs say projects are not built (ROADMAP, AGENTS.md, projects.md, ui.md): a step before 0.43.0rc1 or the release's task; "Going back" in install.md; the doctor's false "upgraded under a running session" a task? | S8 docs + Going back, doctor a task in Later; without Going back; no doctor task; docs to the release | S8 docs + Going back; doctor a task in Later (lead) | as recommended: S8; LAD-141 | yes |
+| 2026-10-23 | step_ok gate #116 (after readiness) | S8: docs say projects are built (ROADMAP, AGENTS.md, projects.md, ui.md, a grep over the docs) and install.md's Going back from 0.43.0 | approve; reject | approve; at review the grep empty and every "Going back" fact checked against the readiness report and the code (lead) | approved | yes |
+| 2026-10-23 | S8 (LAD-142), question #1408 of analyst-142 | Step mentions in projects.md and ui.md: remove all (history to the plan, "built in 0.43.0", task keys in ui.md) or only the false ones | 1 all; 2 only false | 1: the docs describe the product, the history is in the plan and the archive; "Not now" stays named; ROADMAP's checklist may keep its steps (lead) | 1 | yes |
+| 2026-10-23 | S8 (LAD-142), question #1410 of analyst-142 | `lado update 0.42.0` deletes the schema-31 backups before installing (`self_update._back_up`), so 0.42.0 is left without a working database: the manual path in "Going back" and a task? | 1 manual path + task; 2 without task; 3 fix the code in S8 | 1, but the task as a fix for 0.43.0 (RC freeze allows fixes), not Later; not blocking rc1 (lead) | 1: manual path + task (LAD-143, Backlog; the timing not answered) | partly |
+| 2026-10-23 | S8 (LAD-142), design_ok gate #117 | The design `projects-docs-built` (D1–D6): Projects stays ticked in ROADMAP's Later, S1b added, S6/S7 split into a/b; "Built in step Sx" → "Built: …"; rollback via `lado update` with the backup copied first; no spec delta; the backup deletion checked by code only | approve; reject | approve; the developer runs the rollback paragraph literally once in a temp HOME (0.42.0 → this build → back); LAD-143 proposed as a fix before 0.43.0 final at the review (lead) | approved | yes |
+| 2026-10-23 | S8 (LAD-142), merge_ok gate #118 | PR #161 at 6ba078b9: converged in 1 round (0 blockers, 0 important; F1, E1 minor declined; E2 refuted); the rollback paragraph run literally and checked against the code; CI green | approve; reject | approve; the real `lado update 0.42.0` from a published 0.43.0 goes to the release checklist with LAD-143 (lead) | approved | yes |
+| 2026-10-24 | Review after S8: LAD-143's place, questions #1428, #1430, #1432, #1434 | `lado update X` deletes every other file of `backups/`, `lado.db.schema-31` too; the deleting code is the version gone back from, so only a fix inside 0.43.0 helps going back from it; a workaround is in install.md (S8) | 1: step S9 before rc1; 2: a fix during the RC; 3: Later, the workaround only | 1 (S9 before rc1) | S9 one backup, before rc1 (#1428 answered with a question: why the update deletes the backup; explained in #1430: the update's backup and the migration's share `backups/`, the update deletes all else; #1430 answered with a question: why two backups; #1432: the migration's backup (LAD-71, for Docker) made the update's redundant, proposed S9 one backup; #1434: it covers every upgrade path (`state.migrate`), three caveats) | yes |
+| 2026-10-24 | Review after S8, step_ok gate #119 | S8 done (PR #161); S9 one backup (LAD-143, #1434) before rc1; release 4.4 gains the user's way back | approve; reject | approve; the target's schema before installing is the design's point to watch (a table in code is a second truth) | approved | yes |
+| 2026-10-24 | S9 (LAD-143), question #1457 of analyst-143 | Five design points: the target's schema from its wheel on PyPI (`SCHEMA_VERSION` in `state.py`); one `Update? [y/N]` with the loss named; sessions not in the copy not restarted; no copy of that schema → refused before stopping anything; the failed update's rollback keeps the new version when no copy | accept all; amendments | accept all; the wheel from the installer's index with its sha256, read as text, not imported | accept all | yes |
+| 2026-10-24 | S9 (LAD-143), design_ok gate #122 | `one-database-backup` (D1–D13, scale full): no update backup; the target's schema from its wheel's `state.py` text with sha256; the restore by `lado update` itself; no copy → refused; `rc_check` restores through `lado update` | approve; reject | approve; the risk: going back needs PyPI's files (refused with the reason offline); the lead's manual check with a real 0.42.0 after the merge | approved | yes |
+| 2026-10-24 | S9 (LAD-143), merge_ok gate #126 | PR #165 at 759b0664: converged (2 local, 1 external round; F1 important fixed; F3, F5, E1, E4, E5 minor declined; E2 refuted); CI 23/23 | approve; reject | approve; F5 fixed in the archive commit if the human says so; F3/E1 (`database: kept` after a restore) to Later | approved, no comment (F5 not fixed at the merge: Later) | yes |
+| 2026-10-24 | S9 (LAD-143), merge_ok gate #127 (again after main moved: LAD-141 merged) | PR #165 at 4668c824: main merged without touching the PR's code, CHANGELOG conflict right; F5 fixed; E6 minor (an unwrapped line); external rounds 2 of 2; CI 23/23 | approve; reject | approve; F3/E1 to Later | approved | yes |
+| 2026-10-25 | Review after S9: the lead's M3, question #1500 | The manual check with the real 0.42.0 passed; M3: with no known installer the by-hand plan lacks the restore of `schema-<N>`, restarts sessions the copy lacks, names `pip` in a uv tool environment (installs not from the index only; install.md's manual path right) | 1: a task, fixed during the RC; 2: Later, no task; 3: step S10 before rc1 | 1 | 1: a task, fixed during the RC (LAD-144) | yes |

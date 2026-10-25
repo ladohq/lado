@@ -39,15 +39,15 @@
 
 ## 3. Kits, skill packs and marketplaces
 
-- [ ] 3.1 `tests/test_gitcache.py` (unit, real git, D6): with the outside folder's
+- [x] 3.1 `tests/test_gitcache.py` (unit, real git, D6): with the outside folder's
   `GIT_CONFIG_*` mapping an https URL to a local kit repository with a tag `v1.0.0`,
   `gitcache.remote_tags` and `fetch_pinned` pass, and `clone_branch` / `refresh` of a
   marketplace pass; without the folder they fail (AC-1, scenario "A kit added through the
   server" at the core).
-- [ ] 3.2 `tests/test_gitcache.py` (unit): a `remote_tags` failure with git's `could not
+- [x] 3.2 `tests/test_gitcache.py` (unit): a `remote_tags` failure with git's `could not
   read Username` line for a github.com address gives the delta's one-line text with the
   outside folder's hint; a failure of no known kind keeps `<head>: <git's line>` (AC-4).
-- [ ] 3.3 `src/lado/gitcache.py` `_git` with `for_git()` and `NO_PROMPT`, its network
+- [x] 3.3 `src/lado/gitcache.py` `_git` with `for_git()` and `NO_PROMPT`, its network
   calls' texts through `clone.explain` (D5); the module docstring says so.
 
 ## 4. The image

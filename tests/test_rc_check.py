@@ -555,6 +555,17 @@ def test_upgrade_to_an_rc_of_the_same_schema_keeps_nothing(recorder, final, caps
     assert "lado.db keeps schema 26: nothing kept; `lado update 0.37.1` alone goes back" in out
 
 
+def test_upgrade_reads_a_wal_lado_db_at_rest_and_leaves_no_side_file(recorder, homes, capsys):
+    make_db(homes.live, 26, [("app", "/r/app", None)], wal=True)  # as after `lado update`
+    recorder.version("0.37.1", "0.38.0rc1")
+    recorder.answer("update", 0, then=lambda: homes.migrate(27))
+    assert rc.upgrade(rc.parse("0.38.0rc1")) == 0
+    assert side_files(homes.live) == []
+    assert sorted(p.name for p in homes.keep.iterdir()) == ["lado.db.0.37.1"]
+    kept = homes.keep / "lado.db.0.37.1"
+    assert schema(kept) == 26 and names(kept) == ["app"]
+
+
 def test_a_refused_lado_ls_is_only_printed(recorder, final, capsys):
     recorder.version("0.37.1", "0.38.0rc1")
     recorder.answer("update", 0, then=lambda: final.migrate(27))
@@ -652,14 +663,25 @@ def test_upgrade_and_rollback_inside_an_agent_are_refused(monkeypatch, capsys, r
     assert recorder.calls == []
 
 
-def make_db(path: Path, schema: int, sessions: list[tuple[str, str, str | None]]) -> None:
-    """A lado.db as far as rollback reads it: its sessions and its schema."""
+def make_db(
+    path: Path, schema: int, sessions: list[tuple[str, str, str | None]], wal: bool = False
+) -> None:
+    """A lado.db as far as rollback reads it: its sessions and its schema; with `wal`, in
+    WAL mode as LADO's own, and at rest: no -wal or -shm beside it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with contextlib.closing(sqlite3.connect(path)) as db:
+        if wal:
+            db.execute("PRAGMA journal_mode=WAL")
         db.execute("CREATE TABLE sessions (name TEXT PRIMARY KEY, repo TEXT, stopped_at TEXT)")
         db.executemany("INSERT INTO sessions VALUES (?, ?, ?)", sessions)
         db.execute(f"PRAGMA user_version = {schema}")
         db.commit()
+    if wal:
+        assert side_files(path) == []
+
+
+def side_files(path: Path) -> list[str]:
+    return sorted(p.name for p in path.parent.glob(f"{path.name}-*"))
 
 
 def schema(path: Path) -> int:
@@ -839,6 +861,27 @@ def test_answer_no_changes_nothing(recorder, homes, on_rc, monkeypatch, capsys):
     assert "Not rolled back." in capsys.readouterr().out
     assert "stop --all" not in recorder.verbs()
     assert schema(homes.lado / "lado.db") == 27
+
+
+def test_the_plan_reads_wal_databases_at_rest_and_leaves_no_side_file(recorder, homes):
+    make_db(homes.live, 27, [("app", "/r/app", None)], wal=True)
+    make_db(homes.keep / "lado.db.0.37.1", 26, [("app", "/r/app", None)], wal=True)
+    recorder.version("0.38.0rc1")
+    recorder.alive = {"app"}
+    plan = rc.plan()
+    assert (plan.live_schema, plan.copy_schema) == (27, 26)
+    assert plan.sessions == [("app", "/r/app")] and plan.copy_sessions == ["app"]
+    assert [entry.name for entry in homes.keep.iterdir()] == ["lado.db.0.37.1"]
+    assert side_files(homes.live) == []
+
+
+def test_the_scripts_reads_cannot_write(homes):
+    copy = homes.keep / "lado.db.0.37.1"  # what a rollback goes back to
+    make_db(copy, 26, [("app", "/r/app", None)], wal=True)
+    with rc._reading(copy) as db:
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            db.execute("DELETE FROM sessions")
+    assert names(copy) == ["app"] and side_files(copy) == []
 
 
 def test_without_a_terminal_rollback_refuses(recorder, homes, on_rc, monkeypatch, capsys):

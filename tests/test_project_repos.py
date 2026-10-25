@@ -204,6 +204,13 @@ def test_a_change_of_the_root_repositorys_own_file_is_still_named(rooted):
     assert projects.unpushed(rooted) == ["the project's folder: uncommitted changes"]
 
 
+def test_a_link_in_a_clean_root_is_not_the_roots_change(rooted, home):
+    target = init_repo(home / "elsewhere" / "docs")
+    (target / "new.txt").write_text("x")
+    (rooted / "docs").symlink_to(target)
+    assert projects.unpushed(rooted) == []
+
+
 @pytest.mark.parametrize("name", ["x*", "x?", "[x]y"])
 def test_a_repository_named_like_a_glob_hides_none_of_the_roots_changes(rooted, name):
     init_repo(rooted / name)  # a clone made by hand: LADO's names allow none of *?[

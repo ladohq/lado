@@ -3836,6 +3836,18 @@ def test_no_migration_under_a_running_session(repo, fake_tmux):
     assert state.pending_migration() is not None  # nothing migrated
 
 
+def test_a_migration_due_names_the_sessions_that_keep_it_from_running(repo, fake_tmux):
+    assert runtime.migration_due() is None  # no lado.db
+    runtime.start_session(str(repo), "old", None, provider="claude")
+    runtime.start_session(str(repo), "other", None, provider="claude")
+    assert runtime.migration_due() is None  # this LADO's schema
+    tmux.kill_session("other")  # marked running in lado.db, gone from tmux
+    agent_helpers.previous_schema()
+    assert runtime.migration_due() == (state.SCHEMA_VERSION - 1, ["old"])
+    runtime.stop_session("old")
+    assert runtime.migration_due() is None  # migrated by the stop
+
+
 def test_migration_goes_ahead_with_no_session_running(repo, fake_tmux):
     runtime.start_session(str(repo), "old", None, provider="claude")
     runtime.stop_session("old")

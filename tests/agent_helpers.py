@@ -2,6 +2,7 @@
 `launched` also for unit tests."""
 
 import atexit
+import hashlib
 import json
 import os
 import re
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -150,6 +152,31 @@ def pypi_index(**releases) -> dict:
         for version, day in releases.items()
     }
     return {"info": {"name": "lado"}, "releases": files}
+
+
+def wheel(path: Path, schema: int | None, version: str = "0.1.0", **file) -> dict:
+    """A wheel of lado in the folder `path` whose lado/state.py holds `SCHEMA_VERSION =
+    <schema>` (no such line with None), and its file as PyPI's index lists it (a `file://`
+    URL, its sha256); `file` sets or overrides keys of that dict."""
+    path.mkdir(parents=True, exist_ok=True)
+    name = f"lado-{version}-py3-none-any.whl"
+    written = path / name
+    source = '"""lado.db."""\n\n'
+    if schema is not None:
+        source += f"SCHEMA_VERSION = {schema}\n"
+    with zipfile.ZipFile(written, "w") as zipped:
+        zipped.writestr("lado/__init__.py", f'__version__ = "{version}"\n')
+        zipped.writestr("lado/state.py", source)
+    digest = hashlib.sha256(written.read_bytes()).hexdigest()
+    return {
+        "packagetype": "bdist_wheel",
+        "filename": name,
+        "url": written.as_uri(),
+        "digests": {"sha256": digest},
+        "upload_time_iso_8601": "2026-10-01T10:00:00.000Z",
+        "yanked": False,
+        **file,
+    }
 
 
 def write_index(path: Path, **releases) -> Path:

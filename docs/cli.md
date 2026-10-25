@@ -221,6 +221,19 @@ lado project list`. A resume is never refused by it: a session started there bef
 projects had sessions keeps no project and resumes. `lado ls` prints `  project <id>` after
 a session's folder.
 
+`lado doctor` never migrates or writes lado.db (`cli.NOT_MIGRATING`). When lado.db is not at
+this LADO's schema, a `lado.db` line follows the `LADO` line; at this schema, or with no
+lado.db, there is none. Older with no session running: `info`, `schema <n>, this LADO knows
+<m>: lado ls or lado start upgrades it (its backup goes to backups/)`. Older with sessions
+running in tmux (those that keep `lado ls` from migrating, `runtime.migration_due`): a
+warning, `schema <n>, this LADO knows <m>, and the sessions "<a>", … run on it`, with
+`stop them with lado stop --all (it upgrades lado.db), then lado start`; when tmux cannot
+run, a warning `schema <n>, this LADO knows <m>; the sessions running on it not checked:
+<tmux's error>`, and the rest of the report follows. Newer: a warning
+with the newer-LADO refusal's words; incompatible: `FAIL` with that refusal's words, and the
+doctor exits 1. The checks that read lado.db (`Projects`, `Artifacts`, `Agent config
+folders`) then say `not checked: lado.db is not at this LADO's schema (see lado.db)`.
+
 `lado doctor` always has a `Workspace` line: `<path> (LADO_REPOS)` or `<path> (default)`, `info`
 with `, not made yet: the first clone or project makes it` while the folder is missing, and a
 warning for a `LADO_REPOS` that is not absolute (ignored: `LADO uses <home>/workspace`), a path

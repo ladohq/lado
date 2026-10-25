@@ -65,7 +65,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `DISPLAY`, `WAYLAND_DISPLAY` or `BROWSER`. It sends nothing.
   - `update.py`: upgrading LADO, no tmux, providers or UI: PyPI's JSON of the package
     (`fetch_index`; `latest` skips pre-releases and yanked ones, with `pre` it takes the
-    newest of all; `release` finds a named one), what an update of this LADO is offered
+    newest of all; `release` finds a named one; `release_schema` reads `SCHEMA_VERSION` of
+    a release's `lado/state.py` from its `py3-none-any` wheel, checked against the index's
+    sha256), what an update of this LADO is offered
     (`offered`, the one rule for the check, `lado update` and the UI's plan: the newest
     final release, for a LADO that is itself a pre-release, a release candidate, the newest
     of all; docs/release.md), the one PEP 440 comparison (`newer`, `same`, `prerelease`;
@@ -175,18 +177,29 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     at once never see each other as an update. It writes update.json, stops
     each session with `runtime.stop_session` and waits for its loop's lock
     (`loop.wait_stopped`; one that does not end stops the update before the installer, and
-    the sessions are resumed), stops the server, backs up lado.db with SQLite's backup API
-    to `LADO_HOME/backups/lado.db.<old version>` (one backup kept), runs the installer,
-    checks `<prefix>/bin/lado --version` and resumes with that binary's public commands
+    the sessions are resumed), stops the server, reads lado.db's schema (it keeps no copy of
+    lado.db of its own and writes nothing in `LADO_HOME/backups/`: the copy it relies on is
+    the migration's `lado.db.schema-<N>`), runs the installer, checks
+    `<prefix>/bin/lado --version`, for a plan with a `Restore` puts that copy back
+    (`restore`, then the schema checked; a failure rolls back with lado.db as it was) and
+    resumes only the sessions the copy has, with that binary's public commands
     (`lado start <repo> --name <s> --no-attach`, `lado ui --no-open [--host H] --port P`;
     `--host` only for another than 127.0.0.1, which a LADO before 0.20 lacks). It rolls
     back only when the new version itself is bad: a wrong `--version`, or the UI server,
     when one ran before, does not come up on it (`lado ui` fails, or `/api/health` names
-    another version). The rollback stops what the new version started, waits for those
-    loops (one that does not end: `rollback_failed`, lado.db untouched), reinstalls the old
-    version with the same installer and checks its `--version`, only then restores lado.db
-    into the live file by the backup API, only when its `user_version` moved, and resumes on
-    the old version. A session that does not resume is `partial`, never a rollback; a failed
+    another version). The rollback first looks for the copy it needs: when lado.db's schema
+    is newer than before the update, `backups/lado.db.schema-<the schema before>`; without
+    it, it changes nothing more (`rollback_failed`, the new version stays installed). Then
+    it stops what the new version started, waits for those loops (one that does not end:
+    `rollback_failed`, lado.db untouched), reinstalls the old version with the same
+    installer and checks its `--version`, only then restores that copy into the live file
+    by the backup API, and resumes on the old version. After a downgrade's own restore the
+    schema is older than before, so its rollback restores nothing: the version before
+    migrates it again. `plan(to, index)` of an older `to` with a lado.db learns the
+    release's schema (`update.release_schema`) and, when it is older, builds `Restore`
+    (the copy, its schema and time, the planned sessions it lacks) that `print_plan` warns
+    of; no such copy, or no schema to learn, is a `runtime.LadoError` before anything
+    stops. A session that does not resume is `partial`, never a rollback; a failed
     installer resumes on the old version (`failed`). After the installer the old process
     starts nothing of its own (`providers.lado_command`) and imports nothing more (all its
     imports at its top; a test forbids imports after the installer). update.json is removed
@@ -716,18 +729,21 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `tests/agent_helpers.previous_schema` (it undoes the last step). `state.connect()`
     never migrates: it makes a missing lado.db, and another schema version (older, newer,
     incompatible) is a `state.SchemaError` with nothing changed, so no hook, `lado mcp`,
-    session loop or UI server can migrate under a running session. Only `state.migrate()`
-    applies `MIGRATIONS`, called by `runtime.migrate_if_safe` (the CLI before each command
-    but `doctor`, `mcp`, `hook`, `loop` and `stop`), which refuses while a session runs (not
-    stopped, tmux session alive on this socket), names them and asks for `lado stop --all`,
+    session loop or UI server can migrate under a running session; its text comes from
+    `state.schema_refusal` (kind and words), which `lado doctor` reads too
+    (`read_schema_refusal`, read-only). Only `state.migrate()` applies `MIGRATIONS`, called
+    by `runtime.migrate_if_safe` (the CLI before each command but `mcp`, `hook`, `loop` and
+    those of `cli.NOT_MIGRATING`), which refuses while a session runs (not stopped, tmux
+    session alive on this socket: `runtime.migration_due`, also the doctor's `lado.db`
+    line), names them and asks for `lado stop --all`,
     and by `runtime.stop_session` and `stop_all` (`lado stop`, docs/cli.md), all through
     `runtime._migrate`. Before its first step, inside its write lock, `migrate` copies
-    lado.db by SQLite's backup API (`state.copy_db`, also `self_update.restore`'s; a
-    connection of its own reads it) to `backups/lado.db.schema-<N>` (N the schema before;
-    `.tmp`, then a rename), then removes every other `lado.db.schema-*` (one it cannot
-    stays, no failure) and leaves `lado
-    update`'s `lado.db.<version>`; it returns a `Migrated` (before, after, backup), which
-    `_migrate` says on stderr (`lado: upgraded lado.db from schema N to M; its backup is
+    lado.db by SQLite's backup API (`state.copy_db`; a connection of its own reads it;
+    `self_update.restore` does the same from a read-only, immutable source) to
+    `backups/lado.db.schema-<N>` (N the schema before; `.tmp`, then a rename), then removes every other `lado.db.schema-*` (one it cannot
+    stays, no failure) and leaves files of other names (the `lado.db.<version>` of a `lado
+    update` of 0.42 and older); it is the only copy LADO makes. It returns a `Migrated`
+    (before, after, backup), which `_migrate` says on stderr (`lado: upgraded lado.db from schema N to M; its backup is
     <path>`, a container's `docker logs`). A backup it cannot write is `BackupFailed`,
     nothing migrated, a `LadoError`; a step that fails is `MigrationFailed`, the
     transaction rolled back, `runtime.MigrationFailed`: one message with the backup and the

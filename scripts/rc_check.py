@@ -16,11 +16,13 @@ Enter, then removes everything with the RC's own `lado uninstall`. A failed chec
 the folder and prints the command that removes it, with the failed command's `[FAIL]`
 lines (`lado doctor`'s form) or else its last lines; Ctrl-C removes it. The RC's image is
 not checked here (docs/release.md, 4.5 and 4.6). `upgrade` runs the human's `lado update
-X.Y.ZrcN` and, coming from a final, keeps a copy of that final's database backup in
-`~/.lado-rc/`, as `lado update` keeps only one backup. `rollback` goes
-back to the final of that copy: it asks first, stops the sessions and the UI server, runs
-`lado update <final>`, puts the copy back when the RC moved the schema, and starts the
-sessions and the UI again. `sandbox` and `upgrade` end with what is left by hand, the items
+X.Y.ZrcN`, then one `lado ls` (which migrates lado.db when no session resumed) and, coming
+from a final whose schema the RC moved, keeps a copy of the migration's backup of that
+final's database (`backups/lado.db.schema-<N>`) in `~/.lado-rc/`, as the migration keeps
+only one. `rollback` goes back to the final of that copy: it asks first, stops the sessions
+and the UI server, puts the copy into `backups/lado.db.schema-<N>` when the RC moved the
+schema, runs `lado update <final>`, which restores it, and starts again the sessions the
+copy has and the UI. `sandbox` and `upgrade` end with what is left by hand, the items
 of CHANGELOG.md's `## X.Y.Z (unreleased)` among them (`release_notes.section`).
 
 Exit 0 when every check passed, 1 for a failed check or a refusal, 2 for a usage error, 130
@@ -474,14 +476,17 @@ def _copy(source: Path, target: Path) -> None:
 
 
 def upgrade(version: Version) -> int:
-    """`upgrade`: the human's `lado update <version>`, then, coming from a final, a copy
-    of that final's database backup in keep_dir()."""
+    """`upgrade`: the human's `lado update <version>`, then, coming from a final whose
+    schema the RC moved, a copy of the migration's backup of that final's database in
+    keep_dir()."""
     lado = own_lado()
     before = installed(lado)
+    live = lado_home() / "lado.db"
+    schema_before = _schema(live) if live.exists() else None
     print(f"Your LADO is {before}; running lado update {version}:", flush=True)
     code = run([lado, "update", str(version)], terminal=True).code
     # By the version, not the exit code: an update that installed the RC exits 1 when a
-    # session did not resume on it (`partial`), and its backup is the final's all the same.
+    # session did not resume on it (`partial`), and the final's database is there all the same.
     after = installed(lado)
     if after != version:
         if code:
@@ -491,17 +496,12 @@ def upgrade(version: Version) -> int:
             )
             return code
         raise RcError(f"lado --version says lado {after} after the update, not {version}")
+    # With no session resumed nothing has migrated lado.db yet: any command of the RC does.
+    listed = run([lado, "ls"])
+    if listed.code:
+        print(listed.output, end="")
     if before.final:
-        backup = lado_home() / "backups" / f"lado.db.{before}"
-        if backup.is_file():
-            target = keep_dir() / backup.name
-            _copy(backup, target)
-            print(f"Kept a copy of LADO {before}'s database: {target} (for rollback)")
-        else:
-            print(
-                f"warning: no backup {backup} (no lado.db to back up?): rollback has no copy, "
-                f"and `lado update {before}` alone goes back"
-            )
+        _keep(before, live, schema_before)
     else:
         copies = kept()
         if copies:
@@ -522,6 +522,27 @@ def upgrade(version: Version) -> int:
     return code
 
 
+def _keep(final: Version, live: Path, schema_before: int | None) -> None:
+    """The final's database for rollback: the migration's backup of it, when the RC moved
+    the schema."""
+    if schema_before is None:
+        print(f"no lado.db: nothing kept; `lado update {final}` alone goes back")
+        return
+    if _schema(live) == schema_before:
+        print(
+            f"lado.db keeps schema {schema_before}: nothing kept; `lado update {final}` "
+            "alone goes back"
+        )
+        return
+    backup = lado_home() / "backups" / f"lado.db.schema-{schema_before}"
+    if not backup.is_file():
+        print(f"warning: no backup {backup}: rollback has no copy of LADO {final}'s database")
+        return
+    target = keep_dir() / f"lado.db.{final}"
+    _copy(backup, target)
+    print(f"Kept a copy of LADO {final}'s database: {target} (for rollback)")
+
+
 def _terminal() -> bool:
     return sys.stdin.isatty()
 
@@ -535,11 +556,14 @@ def _schema(path: Path) -> int:
         return db.execute("PRAGMA user_version").fetchone()[0]
 
 
-def _restore(copy: Path, live: Path) -> None:
-    """lado.db's content replaced by the copy's, by SQLite's backup API."""
-    with contextlib.closing(sqlite3.connect(copy)) as source:
-        with contextlib.closing(sqlite3.connect(live)) as target:
-            source.backup(target)
+def _hand_over(copy: Path, schema: int) -> None:
+    """The copy where `lado update` looks for it, backups/lado.db.schema-<schema>: written
+    beside it, then renamed over a file of that name; the other files stay."""
+    target = lado_home() / "backups" / f"lado.db.schema-{schema}"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    written = target.with_name(f"{target.name}.tmp")
+    shutil.copy2(copy, written)
+    written.replace(target)
 
 
 def _alive(pid: object) -> bool:
@@ -567,10 +591,18 @@ class Plan:
     server: dict | None  # server.json of a UI server that runs
     live_schema: int
     copy_schema: int
+    copy_sessions: list[str]  # the names the copy has
 
     @property
     def restore(self) -> bool:
         return self.live_schema > self.copy_schema
+
+    @property
+    def started(self) -> list[tuple[str, str]]:
+        """The sessions started again: after a restore only those the copy has."""
+        if not self.restore:
+            return self.sessions
+        return [(name, repo) for name, repo in self.sessions if name in self.copy_sessions]
 
     def resume_lines(self) -> list[str]:
         """The commands that start the sessions and the UI server again by hand."""
@@ -625,7 +657,11 @@ def plan() -> Plan:
         info = None
     if isinstance(info, dict) and _alive(info.get("pid")) and "port" in info:
         server = info
-    return Plan(lado, now, final, copy, live, sessions, server, live_schema, _schema(copy))
+    with _read_only(copy) as db:
+        copy_sessions = [row[0] for row in db.execute("SELECT name FROM sessions")]
+    return Plan(
+        lado, now, final, copy, live, sessions, server, live_schema, _schema(copy), copy_sessions
+    )
 
 
 def print_plan(p: Plan) -> None:
@@ -644,8 +680,12 @@ def print_plan(p: Plan) -> None:
     if p.restore:
         print(
             f"- restore lado.db from {p.copy}: its schema {p.copy_schema} is older than "
-            f"lado.db's {p.live_schema}, so everything done on the RC since the upgrade is lost"
+            f"lado.db's {p.live_schema}, so everything done on the RC since the upgrade is lost;"
+            f" lado update {p.final} restores it from backups/lado.db.schema-{p.copy_schema}"
         )
+        lost = [name for name, repo in p.sessions if (name, repo) not in p.started]
+        if lost:
+            print(f"- not started again, not in the copy: {', '.join(lost)}")
     else:
         print(f"- lado.db is kept: its schema {p.live_schema} is the copy's")
 
@@ -681,6 +721,8 @@ def rollback() -> int:
     code = run([p.lado, "server", "stop"], terminal=True).code
     if code:
         return _stopped(p, f"lado server stop exited {code}")
+    if p.restore:  # lado update <final> warns, asks and restores it (docs/install.md)
+        _hand_over(p.copy, p.copy_schema)
     code = run([p.lado, "update", str(p.final)], terminal=True).code
     if code:
         return _stopped(p, f"lado update {p.final} did not update (exit {code})")
@@ -689,13 +731,12 @@ def rollback() -> int:
         return _stopped(p, f"lado --version says lado {after}, not {p.final}")
     report = Report()
     if p.restore:
-        _restore(p.copy, p.live)
         restored = _schema(p.live)
         if restored != p.copy_schema:
             report.fail("lado.db restored", f"its schema is {restored}, not {p.copy_schema}")
             return _stopped(p, "the restore did not take")
         report.ok(f"lado.db restored: schema {restored}, from {p.copy}")
-    for name, repo in p.sessions:
+    for name, repo in p.started:
         started = run([p.lado, "start", repo, "--name", name, "--no-attach"])
         if started.code:
             report.fail(f"session {name}", f"lado start exited {started.code}", started.output)

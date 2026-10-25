@@ -595,6 +595,34 @@ def test_a_worktree_inside_the_project_folder_is_listed_once(shop, home):
     ]
 
 
+@pytest.fixture
+def docs_link(shop, home):
+    """shop holding docs, a link to a repository elsewhere with an uncommitted file and a
+    branch not pushed."""
+    target = init_repo(home / "elsewhere" / "docs")
+    (target / "new.txt").write_text("x")
+    _git(target, "branch", "draft")
+    (shop / "docs").symlink_to(target)
+    return target
+
+
+def test_a_link_to_a_repository_is_not_scanned(shop, docs_link):
+    assert projects.unpushed(shop) == []  # the delete removes the link, never its target
+    assert projects.deletion("shop").unpushed == []
+
+
+def test_a_repository_beside_a_link_is_still_named(shop, docs_link):
+    _git(shop / "frontend", "branch", "feature-x")
+    assert projects.unpushed(shop) == ["frontend: branch feature-x not pushed"]
+
+
+def test_a_worktree_of_the_links_repository_has_a_line_of_its_own(shop, docs_link):
+    _git(docs_link, "worktree", "add", "-q", "--detach", str(shop / "docs-fix"))
+    (shop / "docs-fix" / "work.txt").write_text("x")
+    [line] = projects.unpushed(shop)
+    assert line.startswith("docs-fix: ") and "uncommitted changes" in line
+
+
 def test_a_repository_git_cannot_read(shop):
     broken = shop / "broken"
     broken.mkdir()

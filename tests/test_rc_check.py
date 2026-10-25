@@ -483,13 +483,23 @@ class Homes:
         self.lado = lado  # LADO_HOME
         self.keep = user / ".lado-rc"
         self.backups = lado / "backups"
+        self.live = lado / "lado.db"
 
-    def back_up(self, version: str, content: bytes = b"backup") -> None:
-        """What `lado update` leaves: one backup, of the version it updated from."""
-        self.backups.mkdir(parents=True, exist_ok=True)
-        for old in self.backups.iterdir():
-            old.unlink()
-        (self.backups / f"lado.db.{version}").write_bytes(content)
+    def migrate(self, to: int, copy: bool = True) -> None:
+        """What a migration of the RC does: lado.db's copy into backups/lado.db.schema-<its
+        schema> (none without `copy`), the other lado.db.schema-* gone, then the schema."""
+        before = schema(self.live)
+        if copy:
+            self.backups.mkdir(parents=True, exist_ok=True)
+            for old in self.backups.glob("lado.db.schema-*"):
+                old.unlink()
+            with contextlib.closing(sqlite3.connect(self.live)) as live:
+                with contextlib.closing(
+                    sqlite3.connect(self.backups / f"lado.db.schema-{before}")
+                ) as copied:
+                    live.backup(copied)
+        with contextlib.closing(sqlite3.connect(self.live)) as db:
+            db.execute(f"PRAGMA user_version = {to}")
 
 
 @pytest.fixture
@@ -502,27 +512,64 @@ def homes(tmp_path, lado_home, monkeypatch):
     return Homes(user, lado_home)
 
 
-def test_upgrade_from_a_final_keeps_its_backup(recorder, homes, capsys):
-    homes.back_up("0.36.0")  # an older update's
-    (homes.keep).mkdir()
-    (homes.keep / "lado.db.0.36.0").write_bytes(b"an older cycle's")
+@pytest.fixture
+def final(homes):
+    """lado.db of the final 0.37.1, schema 26, with session `app`."""
+    make_db(homes.live, 26, [("app", "/r/app", None)])
+    return homes
+
+
+def test_upgrade_from_a_final_keeps_the_migrations_copy(recorder, final, capsys):
+    final.backups.mkdir()
+    (final.backups / "lado.db.0.36.0").write_bytes(b"an older update's")
+    final.keep.mkdir()
+    (final.keep / "lado.db.0.36.0").write_bytes(b"an older cycle's")
     recorder.version("0.37.1", "0.38.0rc1")
-    recorder.answer("update", 0, then=lambda: homes.back_up("0.37.1", b"the final's"))
+    recorder.answer("update", 0, then=lambda: final.migrate(27))  # a resumed session's start
     assert rc.upgrade(rc.parse("0.38.0rc1")) == 0
     updates = [(argv, terminal) for argv, _, terminal in recorder.calls if verb(argv) == "update"]
     assert updates == [([LADO, "update", "0.38.0rc1"], True)]  # its own question, no --yes
-    assert [p.name for p in homes.keep.iterdir()] == ["lado.db.0.37.1"]
-    assert (homes.keep / "lado.db.0.37.1").read_bytes() == b"the final's"
+    assert recorder.verbs() == ["--version", "update", "--version", "ls"]
+    assert [p.name for p in final.keep.iterdir()] == ["lado.db.0.37.1"]
+    kept = final.keep / "lado.db.0.37.1"
+    assert kept.read_bytes() == (final.backups / "lado.db.schema-26").read_bytes()
+    assert schema(kept) == 26 and names(kept) == ["app"]
+    assert (final.backups / "lado.db.0.36.0").read_bytes() == b"an older update's"
     out = capsys.readouterr().out
-    assert f"Kept a copy of LADO 0.37.1's database: {homes.keep / 'lado.db.0.37.1'}" in out
+    assert f"Kept a copy of LADO 0.37.1's database: {kept} (for rollback)" in out
     assert "Left to check by hand on LADO 0.38.0rc1:" in out
 
 
+def test_upgrade_with_no_session_running_migrates_by_its_lado_ls(recorder, final, capsys):
+    recorder.version("0.37.1", "0.38.0rc1")
+    recorder.answer("ls", 0, then=lambda: final.migrate(27))
+    assert rc.upgrade(rc.parse("0.38.0rc1")) == 0
+    assert schema(final.keep / "lado.db.0.37.1") == 26
+
+
+def test_upgrade_to_an_rc_of_the_same_schema_keeps_nothing(recorder, final, capsys):
+    recorder.version("0.37.1", "0.38.0rc1")
+    assert rc.upgrade(rc.parse("0.38.0rc1")) == 0
+    assert not final.keep.exists()
+    out = capsys.readouterr().out
+    assert "lado.db keeps schema 26: nothing kept; `lado update 0.37.1` alone goes back" in out
+
+
+def test_a_refused_lado_ls_is_only_printed(recorder, final, capsys):
+    recorder.version("0.37.1", "0.38.0rc1")
+    recorder.answer("update", 0, then=lambda: final.migrate(27))
+    recorder.answer("ls", 1, "lado: lado.db has schema version 26 and this LADO would ...\n")
+    assert rc.upgrade(rc.parse("0.38.0rc1")) == 0
+    assert "this LADO would" in capsys.readouterr().out
+    assert (final.keep / "lado.db.0.37.1").exists()
+
+
 def test_upgrade_from_an_rc_leaves_the_copy(recorder, homes, capsys):
+    make_db(homes.live, 27, [])
     homes.keep.mkdir()
     (homes.keep / "lado.db.0.37.1").write_bytes(b"final")
     recorder.version("0.38.0rc1", "0.38.0rc2")
-    recorder.answer("update", 0, then=lambda: homes.back_up("0.38.0rc1"))
+    recorder.answer("update", 0, then=lambda: homes.migrate(28))
     assert rc.upgrade(rc.parse("0.38.0rc2")) == 0
     assert [p.name for p in homes.keep.iterdir()] == ["lado.db.0.37.1"]
     assert (homes.keep / "lado.db.0.37.1").read_bytes() == b"final"
@@ -535,40 +582,49 @@ def test_upgrade_from_an_rc_without_a_copy_warns(recorder, homes, capsys):
     assert "warning: ~/.lado-rc holds no copy of a final's database" in capsys.readouterr().out
 
 
-def test_upgrade_from_a_final_without_a_backup_warns(recorder, homes, capsys):
+def test_upgrade_from_a_final_without_the_migrations_copy_warns(recorder, final, capsys):
+    recorder.version("0.37.1", "0.38.0rc1")
+    recorder.answer("update", 0, then=lambda: final.migrate(27, copy=False))
+    assert rc.upgrade(rc.parse("0.38.0rc1")) == 0
+    assert not final.keep.exists()
+    out = capsys.readouterr().out
+    assert f"warning: no backup {final.backups / 'lado.db.schema-26'}" in out
+
+
+def test_upgrade_from_a_final_without_lado_db_keeps_nothing(recorder, homes, capsys):
     recorder.version("0.37.1", "0.38.0rc1")
     assert rc.upgrade(rc.parse("0.38.0rc1")) == 0
     assert not homes.keep.exists()
-    out = capsys.readouterr().out
-    assert f"warning: no backup {homes.backups / 'lado.db.0.37.1'}" in out
+    assert "no lado.db: nothing kept; `lado update 0.37.1` alone goes back" in (
+        capsys.readouterr().out
+    )
 
 
-def test_an_update_that_installed_the_rc_but_failed_after_keeps_the_copy(recorder, homes, capsys):
+def test_an_update_that_installed_the_rc_but_failed_after_keeps_the_copy(recorder, final, capsys):
     """`lado update` exits 1 for a session that did not resume (`partial`), after it
-    installed the RC: its backup is the final's all the same, and the next update drops it."""
+    installed the RC: the migration's copy is the final's all the same."""
     recorder.version("0.37.1", "0.38.0rc1")
-    recorder.answer("update", 1, then=lambda: homes.back_up("0.37.1", b"the final's"))
+    recorder.answer("update", 1, then=lambda: final.migrate(27))
     assert rc.upgrade(rc.parse("0.38.0rc1")) == 1
-    assert (homes.keep / "lado.db.0.37.1").read_bytes() == b"the final's"
+    assert schema(final.keep / "lado.db.0.37.1") == 26
     err = capsys.readouterr().err
     assert "lado update 0.38.0rc1 exited 1, but LADO is 0.38.0rc1 now" in err
     assert "nothing kept" not in err
 
 
-def test_a_failed_update_copies_nothing(recorder, homes, capsys):
-    homes.back_up("0.37.0")
+def test_a_failed_update_copies_nothing(recorder, final, capsys):
     recorder.version("0.37.1")
     recorder.answer("update", 1)
     assert rc.upgrade(rc.parse("0.38.0rc1")) == 1
-    assert not homes.keep.exists()
+    assert not final.keep.exists()
+    assert "ls" not in recorder.verbs()
     assert "lado update 0.38.0rc1 did not update (exit 1): nothing kept" in capsys.readouterr().err
 
 
-def test_an_update_that_left_another_version_is_a_failure(recorder, homes, capsys):
+def test_an_update_that_left_another_version_is_a_failure(recorder, final, capsys):
     recorder.version("0.37.1", "0.37.1")
-    recorder.answer("update", 0, then=lambda: homes.back_up("0.37.1"))
     assert rc.main(["upgrade", "0.38.0rc1"]) == 1
-    assert not homes.keep.exists()
+    assert not final.keep.exists()
     assert "lado --version says lado 0.37.1 after the update" in capsys.readouterr().err
 
 
@@ -624,13 +680,31 @@ def on_rc(recorder, homes, monkeypatch):
     make_db(homes.keep / "lado.db.0.37.1", 26, [("app", "/r/app", "2026"), ("old", "/r/old", None)])
     recorder.version("0.38.0rc1", "0.37.1")
     recorder.alive = {"app"}
+    recorder.answer("update", 0, then=lambda: restored_by_lado_update(homes))
     asked = []
     monkeypatch.setattr(rc, "_terminal", lambda: True)
     monkeypatch.setattr("builtins.input", lambda prompt: asked.append(prompt) or "y")
     return asked
 
 
-def test_rollback_restores_a_newer_schema_and_resumes(recorder, homes, on_rc, capsys):
+def restored_by_lado_update(homes: Homes) -> None:
+    """What the final's `lado update` does, as the RC runs it: the copy of backups/ back."""
+    with contextlib.closing(sqlite3.connect(homes.backups / "lado.db.schema-26")) as copy:
+        with contextlib.closing(sqlite3.connect(homes.live)) as live:
+            copy.backup(live)
+
+
+def test_rollback_hands_the_copy_to_lado_update_and_resumes(recorder, homes, on_rc, capsys):
+    homes.backups.mkdir()
+    (homes.backups / "lado.db.schema-27").write_bytes(b"the RC's own migration's")
+    (homes.backups / "lado.db.schema-26").write_bytes(b"an older one, replaced")
+    seen = {}
+
+    def look():
+        seen.update({p.name: p.read_bytes() for p in homes.backups.iterdir()})
+        restored_by_lado_update(homes)
+
+    recorder.answer("update", 0, then=look)
     assert rc.rollback() == 0
     out = capsys.readouterr().out
     assert on_rc == ["Roll back? [y/N] "]
@@ -647,6 +721,11 @@ def test_rollback_restores_a_newer_schema_and_resumes(recorder, homes, on_rc, ca
         "start",
     ]
     assert [LADO, "update", "0.37.1"] in recorder.argvs("update")
+    # Before lado update: the copy where it looks, the other file as it was, nothing else.
+    assert seen == {
+        "lado.db.schema-26": (homes.keep / "lado.db.0.37.1").read_bytes(),
+        "lado.db.schema-27": b"the RC's own migration's",
+    }
     terminal = {verb(argv): t for argv, _, t in recorder.calls}
     assert terminal["update"] and terminal["stop --all"]
     assert schema(homes.lado / "lado.db") == 26
@@ -655,6 +734,22 @@ def test_rollback_restores_a_newer_schema_and_resumes(recorder, homes, on_rc, ca
     assert (homes.keep / "lado.db.0.37.1").exists()  # kept for a second rollback
     assert "[ok  ] lado.db restored: schema 26" in out
     assert "[ok  ] session app started on 0.37.1" in out
+
+
+def test_a_session_the_copy_lacks_is_not_started_again(recorder, homes, on_rc, capsys):
+    (homes.lado / "lado.db").unlink()
+    make_db(homes.lado / "lado.db", 27, [("app", "/r/app", None), ("web2", "/r/web2", None)])
+    recorder.alive = {"app", "web2"}
+    assert rc.rollback() == 0
+    assert "- not started again, not in the copy: web2\n" in capsys.readouterr().out
+    assert recorder.argvs("start") == [[LADO, "start", "/r/app", "--name", "app", "--no-attach"]]
+
+
+def test_a_restore_lado_update_did_not_make_is_a_failure(recorder, homes, on_rc, capsys):
+    recorder.answer("update", 0)
+    assert rc.rollback() == 1
+    assert "[FAIL] lado.db restored: its schema is 27, not 26" in capsys.readouterr().out
+    assert "start" not in recorder.verbs()
 
 
 def test_the_has_session_check_names_the_session_exactly(recorder, homes, on_rc, monkeypatch):
@@ -667,11 +762,14 @@ def test_the_has_session_check_names_the_session_exactly(recorder, homes, on_rc,
 def test_same_schema_restores_nothing(recorder, homes, on_rc, capsys):
     (homes.keep / "lado.db.0.37.1").unlink()
     make_db(homes.keep / "lado.db.0.37.1", 27, [("old", "/r/old", None)])
+    recorder.answer("update", 0)
     assert rc.rollback() == 0
     out = capsys.readouterr().out
     assert "lado.db is kept: its schema 27 is the copy's" in out
     assert names(homes.lado / "lado.db") == ["app", "done"]
     assert "restored" not in out
+    assert not homes.backups.exists()  # nothing handed to lado update
+    assert recorder.argvs("start") == [[LADO, "start", "/r/app", "--name", "app", "--no-attach"]]
 
 
 def test_a_session_whose_tmux_is_gone_is_not_resumed(recorder, homes, on_rc, capsys):
@@ -778,6 +876,7 @@ def test_a_failed_stop_does_not_say_the_sessions_are_stopped(recorder, homes, on
 
 def test_an_update_to_another_version_stops_before_the_restore(recorder, homes, on_rc, capsys):
     recorder.version("0.38.0rc1", "0.38.0rc1")
+    recorder.answer("update", 0)  # it installed another version, and restored nothing
     assert rc.rollback() == 1
     assert schema(homes.lado / "lado.db") == 27
     assert "start" not in recorder.verbs()
@@ -787,6 +886,8 @@ def test_an_update_to_another_version_stops_before_the_restore(recorder, homes, 
 def test_a_failing_resume_goes_on_with_the_others(recorder, homes, on_rc, capsys):
     (homes.lado / "lado.db").unlink()
     make_db(homes.lado / "lado.db", 27, [("app", "/r/gone", None), ("web", "/r/web", None)])
+    (homes.keep / "lado.db.0.37.1").unlink()
+    make_db(homes.keep / "lado.db.0.37.1", 26, [("app", "/r/gone", None), ("web", "/r/web", None)])
     recorder.alive = {"app", "web"}
     # The first start (app's, by name) fails, the next one works.
     recorder.answers["start"] = [(1, "lado: /r/gone does not exist\n", None), (0, "", None)]

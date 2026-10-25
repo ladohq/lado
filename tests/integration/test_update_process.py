@@ -24,6 +24,7 @@ from lado.server import run as server_run
 pytestmark = pytest.mark.integration
 
 NEW = "99.0.0"
+OLD = "0.1.0"
 
 
 @pytest.fixture
@@ -48,14 +49,21 @@ class Install:
         self.version_file.write_text(__version__)
         self.calls = folder / "calls"
         # The processes of the installed lado say the version it was installed as (the UI
-        # server's /api/health too): a sitecustomize on their PYTHONPATH sets it.
-        site = folder / "site"
+        # server's /api/health too): a sitecustomize on their PYTHONPATH sets it. Under
+        # LADO_TEST_SCHEMA (newer_schema) a process is a later LADO, whose migrations to that
+        # schema change nothing but the version; installed as OLD it is this one again.
+        self.site = site = folder / "site"
         site.mkdir()
         (site / "sitecustomize.py").write_text(
             "import os\n"
             "if os.environ.get('LADO_TEST_VERSION'):\n"
             "    import lado\n"
             "    lado.__version__ = os.environ['LADO_TEST_VERSION']\n"
+            "if os.environ.get('LADO_TEST_SCHEMA'):\n"
+            "    from lado import state\n"
+            "    for version in range(state.SCHEMA_VERSION, int(os.environ['LADO_TEST_SCHEMA'])):\n"
+            "        state.MIGRATIONS[version] = []\n"
+            "    state.SCHEMA_VERSION = int(os.environ['LADO_TEST_SCHEMA'])\n"
         )
         lado = self.prefix / "bin" / "lado"
         # Every call of the installed lado is written down; `start` and `ui` run this working
@@ -67,10 +75,22 @@ class Install:
             f'  echo "lado $(cat "{self.version_file}")"; exit 0\n'
             "fi\n"
             f'export LADO_TEST_VERSION="$(cat "{self.version_file}")" PYTHONPATH="{site}"\n'
+            f'[ "$LADO_TEST_VERSION" = "{OLD}" ] && unset LADO_TEST_SCHEMA\n'
             f'exec "{sys.executable}" "{fake_provider.LADO}" "$@"\n'
         )
         lado.chmod(0o755)
         self.installer = folder / "installer"
+
+    def run(self, *args: str) -> subprocess.CompletedProcess:
+        """The installed lado itself."""
+        return subprocess.run(
+            [str(self.prefix / "bin" / "lado"), *args],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            check=False,
+            timeout=120,
+        )
 
     def installs(self, script: str) -> None:
         """The installer: a shell script given the version as $1."""
@@ -81,13 +101,18 @@ class Install:
         return self.calls.read_text().splitlines() if self.calls.exists() else []
 
 
+def publish(folder, old_schema: int = state.SCHEMA_VERSION) -> None:
+    """The index: NEW, this version, and OLD with a wheel that says `old_schema`."""
+    old = agent_helpers.wheel(folder / "wheels", old_schema, OLD)
+    agent_helpers.write_index(
+        folder / "index.json", **{NEW: "2026-10-04", __version__: "2026-10-01", OLD: [old]}
+    )
+
+
 @pytest.fixture
 def install(tmp_path, monkeypatch):
     found = Install(tmp_path)
-    agent_helpers.write_index(
-        tmp_path / "index.json",
-        **{NEW: "2026-10-04", __version__: "2026-10-01", "0.1.0": "2026-01-01"},
-    )
+    publish(tmp_path)
     monkeypatch.setenv("LADO_UPDATE_INDEX", str(tmp_path / "index.json"))
     monkeypatch.setenv("LADO_UPDATE_PREFIX", str(found.prefix))
     monkeypatch.setenv("LADO_UPDATE_INSTALLER", str(found.installer))
@@ -229,13 +254,88 @@ def test_update_back_to_an_older_lado_resumes_with_its_public_commands(repo, ses
     """The older lado knows no `lado update`: only `start` and `ui` are asked of it."""
     start(repo, session)
     server()
-    done = lado_cli("update", "0.1.0", "--yes")
+    backups = state.home() / "backups"
+    done = lado_cli("update", OLD, "--yes")
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "an older LADO may refuse lado.db" in done.stderr
-    assert "Resuming on LADO 0.1.0:" in done.stdout
+    assert "lado.db" not in done.stderr + done.stdout  # the same schema: nothing to restore
+    assert f"Resuming on LADO {OLD}:" in done.stdout
     assert [call.split()[0] for call in install.called()] == ["--version", "start", "ui"]
     assert resumed(session) == 1
     assert server_run.running()
+    assert not backups.exists()
+
+
+def stopped(session: str) -> None:
+    runtime.stop_session(session)
+    agent_helpers.wait_for(lambda: not loops(session), "the loop gone", session)
+
+
+def newer_schema(install, monkeypatch) -> int:
+    """From now on this LADO, the processes it starts and the installed lado but OLD are a
+    later LADO whose schema is one past this one's, reached by a step that changes nothing
+    but the version: OLD then knows lado.db up to this one's schema only, and refuses the
+    newer one as a real older release does. Its schema."""
+    newer = state.SCHEMA_VERSION + 1
+    monkeypatch.setenv("PYTHONPATH", str(install.site))
+    monkeypatch.setenv("LADO_TEST_SCHEMA", str(newer))
+    monkeypatch.setitem(state.MIGRATIONS, state.SCHEMA_VERSION, [])
+    monkeypatch.setattr(state, "SCHEMA_VERSION", newer)
+    return newer
+
+
+def test_update_to_an_older_schema_restores_the_migrations_copy_and_the_old_lado_sees_its_session(
+    tmp_path, repo, session, install, monkeypatch
+):
+    old, new = session, f"{session}-new"
+    before = state.SCHEMA_VERSION
+    start(repo, old)
+    stopped(old)
+    after = newer_schema(install, monkeypatch)
+    migrated = install.run("ls")  # OLD is not installed yet: the later LADO
+    assert migrated.returncode == 0, migrated.stderr  # no session runs: it migrates, copy first
+    assert state.schema_version() == after
+    install.version_file.write_text(OLD)  # OLD really refuses this lado.db
+    assert "made by a newer LADO" in install.run("ls").stderr
+    install.version_file.write_text(__version__)
+    copy = state.home() / "backups" / f"lado.db.schema-{before}"
+    kept = copy.read_bytes()
+    start(repo, old)
+    start(agent_helpers.init_repo(tmp_path / "other"), new)  # not in the copy
+    publish(tmp_path, before)
+    done = lado_cli("update", OLD, "--yes")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert (
+        f"lado: WARNING: LADO {OLD} knows lado.db up to schema {before}; lado.db has schema "
+        f"{after}.\n  lado.db goes back to {copy}, made "
+    ) in done.stderr
+    assert f"  Sessions not in that copy are not started again: {new}\n" in done.stderr
+    assert f"Restored lado.db from {copy} (schema {before})" in done.stdout
+    starts = [call for call in install.called() if call.startswith("start")]
+    assert starts == [f"start {repo} --name {old} --no-attach"]
+    assert state.schema_version() == before
+    listed = install.run("ls")  # OLD now, which refuses schema `after`
+    assert listed.returncode == 0, listed.stderr
+    assert old in listed.stdout and new not in listed.stdout
+    assert [p.name for p in copy.parent.iterdir()] == [copy.name]
+    assert copy.read_bytes() == kept
+    result = json.loads((state.home() / "update-result.json").read_text())
+    assert (result["outcome"], result["database"]) == ("ok", "restored")
+
+
+def test_update_to_an_older_schema_without_its_copy_stops_nothing(tmp_path, repo, session, install):
+    start(repo, session)
+    publish(tmp_path, state.SCHEMA_VERSION - 1)
+    done = lado_cli("update", OLD, "--yes")
+    assert done.returncode == 1
+    assert done.stderr == (
+        f"lado: LADO {OLD} needs lado.db at schema {state.SCHEMA_VERSION - 1}, and lado.db has "
+        f"schema {state.SCHEMA_VERSION}; {state.home() / 'backups'} holds no "
+        f"lado.db.schema-{state.SCHEMA_VERSION - 1} to go back to (docs/install.md, Going back "
+        "to an older version); nothing was stopped\n"
+    )
+    assert install.called() == []
+    assert not state.get_session(session).stopped_at
+    assert loops(session)
 
 
 def test_a_session_that_does_not_resume_is_named_and_the_others_resume(

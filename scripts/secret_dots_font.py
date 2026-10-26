@@ -26,6 +26,7 @@ import math
 from pathlib import Path
 
 from fontTools.fontBuilder import FontBuilder
+from fontTools.misc.timeTools import timestampFromString
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
 
@@ -34,9 +35,11 @@ OUT = Path(__file__).resolve().parent.parent / "web" / "src" / "secret-dots.woff
 
 UNITS_PER_EM = 1000
 ADVANCE = 600
-CENTRE = (300, 300)  # the disc sits on the baseline's x-height, as a bullet does
+CENTRE = (300, 300)  # about the middle of a lowercase letter's height, as a bullet
 RADIUS = 200
 ASCENT, DESCENT = 800, -200
+# The head table's dates, fixed so that a run writes the same bytes: 2026-10-26, LAD-155.
+DATE = timestampFromString("Mon Oct 26 00:00:00 2026")
 
 
 def disc():
@@ -66,6 +69,7 @@ def subtable(fmt: int, platform: int, encoding: int, cmap: dict[int, str]):
 
 def build() -> FontBuilder:
     builder = FontBuilder(UNITS_PER_EM, isTTF=True)
+    builder.setupHead(unitsPerEm=UNITS_PER_EM, created=DATE, modified=DATE)
     builder.setupGlyphOrder([".notdef", "dot"])
     bmp = {0x20: "dot", 0x2022: "dot"}
     builder.setupCharacterMap(bmp)
@@ -96,6 +100,7 @@ def build() -> FontBuilder:
 def main() -> None:
     font = build().font
     font.flavor = "woff2"
+    font.recalcTimestamp = False
     font.save(OUT)
     print(f"{OUT}: {OUT.stat().st_size} bytes")
 

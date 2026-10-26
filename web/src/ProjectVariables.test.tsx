@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ProjectInfo } from "./api";
 import { FakeProjects, project } from "./projectFakes";
 import { ProjectVariables } from "./ProjectVariables";
+import styles from "./styles.css?raw";
 
 let server: FakeProjects;
 
@@ -187,7 +188,8 @@ test("the value field is emptied when the page goes away", () => {
   expect(field.value).toBe("");
 });
 
-// LAD-149: Chrome and Safari offer to save a password field whatever its autocomplete.
+// LAD-149: Chrome and Safari offer to save a password field whatever its autocomplete;
+// LAD-155: Safari a text field masked by -webkit-text-security too.
 function expectMaskedTextField(field: HTMLInputElement) {
   expect(secrets().querySelector("input[type=password]")).toBeNull();
   expect(field.getAttribute("type")).toBe("text");
@@ -209,6 +211,11 @@ test("the value field is a masked text field that refuses copy and cut, no passw
   fireEvent.click(button(secrets(), "Cancel"));
   fireEvent.click(button(row(secrets(), "GH_TOKEN"), "Replace"));
   expectMaskedTextField(secretField());
+});
+
+test("no style masks a field with -webkit-text-security: the dots come from a font", () => {
+  expect(styles).not.toMatch(/-webkit-text-security/);
+  expect(styles).toMatch(/\.project-in-secret \{\s*font-family: LadoSecretDots;/);
 });
 
 test("removing a secret asks in its row", async () => {

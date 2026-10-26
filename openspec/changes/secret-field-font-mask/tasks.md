@@ -42,7 +42,7 @@
 
 ## 3. Regression
 
-- [ ] 3.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui
+- [x] 3.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui
   tests/ui/test_projects_section.py`, `openspec validate secret-field-font-mask
   --strict`, `openspec validate --specs --strict`; the pull request's CI green. The
   manual check in Safari, Chrome and Firefox with a password manager on stays the human's

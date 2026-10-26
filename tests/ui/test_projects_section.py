@@ -25,12 +25,26 @@ def section(page: Page, name: str):
 
 
 def masked(page: Page, field):
-    """A secret's field is a text field drawn as dots, and the page holds no password field:
-    Chrome and Safari offer to save a password field whatever its autocomplete (LAD-149)."""
+    """A secret's field is a text field drawn as dots by a font of dots, and the page holds
+    no password field and no field styled as one: Chrome and Safari offer to save a password
+    field whatever its autocomplete (LAD-149), and Safari a field with -webkit-text-security
+    too (LAD-155). Every character, the space too, is one dot of one width."""
     expect(page.locator("input[type=password]")).to_have_count(0)
     expect(field).to_have_attribute("type", "text")
-    style = "field => getComputedStyle(field).getPropertyValue('-webkit-text-security')"
-    assert field.evaluate(style) == "disc"
+    style = "(field, name) => getComputedStyle(field).getPropertyValue(name)"
+    assert field.evaluate(style, "-webkit-text-security") == "none"
+    assert field.evaluate(style, "font-family") == "LadoSecretDots"
+    assert page.evaluate("document.fonts.load('16px LadoSecretDots').then(f => f.length)") == 1
+    assert page.evaluate("document.fonts.check('16px LadoSecretDots')")
+    widths = page.evaluate(
+        """text => {
+            const context = document.createElement('canvas').getContext('2d');
+            context.font = '16px LadoSecretDots';
+            return [...text].map(one => context.measureText(one).width);
+        }""",
+        "sk_live Пароль 秘密 🔑",
+    )
+    assert len(set(widths)) == 1 and widths[0] > 0, widths
 
 
 def test_new_project_and_its_variables_and_secrets(page: Page, server, tmp_path, lado_home, shot):
@@ -95,6 +109,7 @@ def test_new_project_and_its_variables_and_secrets(page: Page, server, tmp_path,
     expect(value).to_have_attribute("autocomplete", "off")
     assert value.evaluate("field => field.closest('form')") is None
     masked(page, value)
+    shot(page, "add-secret")  # the placeholder in the UI's font, not in dots
 
     # The secret: added, then replaced; the field empty after each.
     value.fill(first)

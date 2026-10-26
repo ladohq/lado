@@ -8415,9 +8415,20 @@ del.kit-mcp-name {
   min-width: 0;
 }
 
-/* A secret's value: dots drawn by CSS on a text field, so no password manager offers to save it (LAD-149). */
+/* A secret's value: a text field drawn in a font of dots, not a password field (LAD-149) nor
+   one masked by CSS, which Safari also offers to save (LAD-155). */
+@font-face {
+  font-family: LadoSecretDots;
+  src: url("./secret-dots.woff2") format("woff2");
+  font-display: block;
+}
+
 .project-edit .project-in-secret {
-  -webkit-text-security: disc;
+  font-family: LadoSecretDots;
+}
+
+.project-edit .project-in-secret::placeholder {
+  font-family: var(--sans);
 }
 
 .project-edit .field-note {

@@ -54,6 +54,9 @@
 
 ### Fixed
 
+- **An agent stopped by a temporary API error is resumed again on an older LADO home.**
+  On a `~/.lado` made before LADO 0.7.0 the planned resume never came, and the session
+  loop stalled for every agent of the session; now the agent goes on as planned.
 - **Private repositories in Docker use the token of `/run/secrets`.** Adding a kit or a
   marketplace and cloning by URL from the web UI now take `GH_TOKEN` from the secrets
   folder, as the agents do; a clone into a project takes the project's own secret.

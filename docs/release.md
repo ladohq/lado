@@ -157,10 +157,11 @@ back, the UI back.
   the browser offers to save no password, the field is empty after Add, the row says
   `set · hidden` and `lado project show <id>` lists the name without a value.
 - Projects' secrets on the Mac (from 0.43.0), once, no agent needed: with
-  `LADO_HOME=$(mktemp -d) LADO_TELEMETRY=0` set a secret, then replace
-  `$LADO_HOME/projects/<id>/secrets` with a symbolic link to another folder: `lado
-  project set … --secret` and `lado project unset …` refuse, naming the link (the unit
-  tests of these refusals run on Linux only).
+  `LADO_HOME=$(mktemp -d) LADO_REPOS=$(mktemp -d) LADO_TELEMETRY=0` set a secret, then
+  replace `$LADO_HOME/projects/<id>/secrets` with a symbolic link to another folder:
+  `lado project set … --secret` and `lado project unset …` refuse, naming the link (the
+  unit tests of these refusals run on Linux only). `LADO_REPOS` keeps your own workspace
+  out: `lado` refuses when its `projects/` holds a project.
 
 There is no fixed soak time: the final follows your "ok".
 

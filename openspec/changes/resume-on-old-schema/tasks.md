@@ -17,20 +17,20 @@
 
 ## 2. Documents
 
-- [ ] 2.1 CHANGELOG.md, `## 0.43.0 (unreleased)` → `### Fixed`: a bold-titled line (at
+- [x] 2.1 CHANGELOG.md, `## 0.43.0 (unreleased)` → `### Fixed`: a bold-titled line (at
   most three lines, the user's words) that an agent whose turn ended on a temporary API
   error is resumed again on a LADO home made before 0.7.0, and the session loop no
   longer stalls on it.
-- [ ] 2.2 docs/release.md, 4.3, the item "Projects' secrets on the Mac": the recipe
+- [x] 2.2 docs/release.md, 4.3, the item "Projects' secrets on the Mac": the recipe
   reads `LADO_HOME=$(mktemp -d) LADO_REPOS=$(mktemp -d) LADO_TELEMETRY=0`, with a short
   reason (without `LADO_REPOS` `lado` refuses when your own workspace's `projects/`
   holds a project).
-- [ ] 2.3 BACKLOG.md, the entry "Agents may be asked to read kit files outside their
+- [x] 2.3 BACKLOG.md, the entry "Agents may be asked to read kit files outside their
   allowed folders": a line that 0.43.0rc2 confirmed it live (2026-10-26: a developer of
   kit sdlc 0.7.0 on Claude Code in mode default stopped on a permission dialog for
   `review-loop/references/lenses.md`, reached through the skill's link into
   `~/.lado/cache`), and "Wanted" no longer asks for the live check, only for the fix.
-- [ ] 2.4 BACKLOG.md, P1, a new entry by the file's template (`Size:`, `Why here:`,
+- [x] 2.4 BACKLOG.md, P1, a new entry by the file's template (`Size:`, `Why here:`,
   `Found:` 2026-10-26, manual check of 0.43.0rc2, LAD-156): "One failing step of the
   session loop's sweep stops the whole session's pass": an exception in `runtime.sweep`
   for one agent (as `take_resume` raised) ends the pass, so no agent of the session gets

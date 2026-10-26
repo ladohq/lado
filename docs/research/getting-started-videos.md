@@ -212,6 +212,12 @@ LADO before recording (Open decisions).
   for repeatable takes is open.
 - Made-up data (CVs, a vacancy, a tracker board, quarterly numbers) is written once and kept
   with the scripts, so a video can be recorded again.
+- **Where it is kept** (decided): the private repository `ladohq/lado-videos`, so LADO's
+  repository carries no large binary files. Its git holds what the videos are made from,
+  all of it text: the scripts, the subtitles, the made-up data, the build. Raw recordings
+  stay out of git, since the scripts make them again. Finished videos are the assets of that
+  repository's GitHub Releases, out of Git LFS and its quota. This plan stays here because
+  its pain points and open decisions are about LADO itself.
 
 ## Before recording
 
@@ -239,7 +245,8 @@ LADO before recording (Open decisions).
 4. **Which tracker** video 4 shows (YouGile or Jira).
 5. **The first video to make**: the writer suggests video 1, since installation is where
    people stop today; the human wants to start with something simple.
-6. **Where the videos and companion pages live** (YouTube, the site, the repository).
+6. **Where the videos and companion pages are published** (YouTube, the site); until then
+   they are kept in `ladohq/lado-videos`.
 7. **The managers' real tasks**: the human checks the three tasks with them; the series
    follows what they say.
 8. **When**: after the next release (decided); which version the videos show.
@@ -251,4 +258,4 @@ LADO before recording (Open decisions).
 
 After the human's answers to the open decisions: a script for the first video (captions,
 steps, the made-up data, the scenes), a test recording of one minute to judge the look, then
-the video. Scripts and made-up data go next to this file, in `getting-started-videos/`.
+the video. Scripts and made-up data go to `ladohq/lado-videos`.

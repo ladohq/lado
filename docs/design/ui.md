@@ -1778,11 +1778,15 @@ New session (LAD-137) is in Launch and session control.
   shows under the block (`⚠ <name>: agents do not get it: …`, `⚠ The secrets folder is not
   used: …`).
 - **A secret's value** is typed into an uncontrolled `<input type="text"
-  autocomplete="off">` drawn as dots by `-webkit-text-security: disc` (the class
-  `project-in-secret`), with autocorrect, autocapitalize and spellcheck off and copy and cut
-  refused, outside any `<form>` (form history follows a submission). It is no
-  `type="password"`: Chrome and Safari offer to save a password field's value whatever its
-  autocomplete, and a name field beside it reads to them as a sign-in (LAD-149). The value
+  autocomplete="off">` drawn as dots by the font `LadoSecretDots` (the class
+  `project-in-secret`; `web/src/secret-dots.woff2`, made by `scripts/secret_dots_font.py`,
+  every character one dot of one width, the placeholder in the UI's font), with
+  autocorrect, autocapitalize and spellcheck off and copy and cut refused, outside any
+  `<form>` (form history follows a submission). It is no `type="password"`: Chrome and
+  Safari offer to save a password field's value whatever its autocomplete, and a name field
+  beside it reads to them as a sign-in (LAD-149). Nor is it masked by
+  `-webkit-text-security`: Safari's password manager takes a field with that style for a
+  password field and offers to save it too (LAD-155). The value
   is read from the field when the human sends it, and sent as `{value}` in the body of
   one `PUT /api/projects/{id}/secrets/{name}`; the field is emptied after a save, on
   Cancel and when it goes. After a refusal it stays in the open field so the name can be

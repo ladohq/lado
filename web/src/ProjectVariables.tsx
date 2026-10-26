@@ -3,12 +3,13 @@
 // shown. Remove asks in the row. The core's refusals show verbatim under the row or the form,
 // its fields kept.
 //
-// A secret's value lives only in its field (SecretField): an uncontrolled text field masked
-// by CSS, no password field (a browser offers to save a password field's value whatever its
-// autocomplete), copy and cut refused, outside any form, read when the human sends it, sent
-// in the body of one PUT, and emptied after a save, on Cancel and when the field goes. It is
-// never put in React's state, an address, the browser's storage, the console or an error the
-// page keeps.
+// A secret's value lives only in its field (SecretField): an uncontrolled text field drawn as
+// dots by a font of dots, neither a password field nor one styled as such (a browser offers
+// to save a password field's value whatever its autocomplete, and Safari a field masked by
+// -webkit-text-security too), copy and cut refused, outside any form, read when the human
+// sends it, sent in the body of one PUT, and emptied after a save, on Cancel and when the
+// field goes. It is never put in React's state, an address, the browser's storage, the
+// console or an error the page keeps.
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 
 import {

@@ -1133,6 +1133,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   after), `upgrade` (the human's `lado update X.Y.ZrcN`, keeping the final's database in
   `~/.lado-rc/`) and `rollback`; run with `python3`, never `uv run`; standard library
   only, nothing of `lado` imported (its CHANGELOG items through `release_notes.section`).
+  `scripts/secret_dots_font.py`: writes `web/src/secret-dots.woff2`, the font of dots of the
+  UI's secret field (docs/design/ui.md, Projects); a PEP 723 script with its own
+  dependencies (fonttools, brotli), run as `uv run --script`; the font is committed and the
+  web build never runs it.
 - `tests/real_clis.py`: what the live and the smoke tests share (isolation, `with_model`,
   the trust dialogs, the agents' processes, the evidence of a failed test).
   `tests/fake_endpoint.py`: the 401 model API of the smoke and container tests.

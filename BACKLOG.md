@@ -12,6 +12,19 @@ No entry is open.
 
 # P1: next
 
+## One failing step of the session loop's sweep stops the whole session's pass
+
+Size: M. Why here: one agent's error leaves every agent of the session without the loop's
+retries and hand-overs, silently, until its cause goes.
+
+An exception in `runtime.sweep` for one agent ends the session loop's whole pass, as
+`state.take_resume` raised on every pass for a database from before 0.7.0 (LAD-156): no
+agent of the session gets its unconfirmed messages retried or its queue handed over while
+the cause stays, and the UI shows nothing; only `~/.lado/loop.log` has the traceback.
+Wanted: each agent's steps of the pass guarded, the error journaled and the pass going on
+to the other agents, with an integration test.
+Found: 2026-10-26, manual check of 0.43.0rc2, LAD-156.
+
 ## `make check` fails on timeouts when the machine is under heavy load
 
 Size: M. Why here: a red `make check` with no real error hits every flow run; this entry holds the timeout flakes below as sub-items.
@@ -390,8 +403,11 @@ kit is outside LADO_HOME and outside every `--add-dir`; and the skills LADO link
 `.claude/skills` (`base.link_skills`) point to their folders in the kit or the git cache, so
 reading a skill's other files (not loading it) goes to a path outside `--add-dir`. Kilo
 allows reads under LADO_HOME only, so a linked local kit is outside there too.
-Wanted: a live check of both in mode default; if a dialog shows, give the agent its kits'
-folders to read (`AgentSpec.read`) or copy what it reads, as the lead's lead-files are.
+Confirmed live at the manual check of 0.43.0rc2 (2026-10-26): a developer of kit sdlc 0.7.0
+on Claude Code in mode default stopped on a permission dialog for
+`review-loop/references/lenses.md`, reached through the skill's link into `~/.lado/cache`.
+Wanted: give the agent its kits' folders to read (`AgentSpec.read`) or copy what it reads,
+as the lead's lead-files are.
 Found: 2026-10-04, design and architect's review of feature/lead-skills.
 
 ## A failed `_add_agent` in spawn_worker leaves the worktree and branch

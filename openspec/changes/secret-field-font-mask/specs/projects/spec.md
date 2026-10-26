@@ -2,13 +2,12 @@
 
 ### Requirement: A secret's value is typed into a hidden field emptied after use
 
-A secret's value SHALL be typed into a masked text field (`type="text"`, no
-autocomplete, autocorrect, autocapitalize or spellcheck, drawn as dots by a font in which
-every character is a dot, copy and cut refused) that is empty after a save, after Cancel
-and after the page is left; the Secrets block SHALL hold no password field
-(`type="password"`) and no field styled as one (`-webkit-text-security`), so that no
-browser's password manager offers to save a secret. Replace SHALL open an empty field with
-the placeholder `New value (the old one is not shown)`, shown in the UI's font.
+A secret's value SHALL be typed into a text field drawn as dots by a font of dots (no
+autocomplete, autocorrect, autocapitalize or spellcheck, copy and cut refused) that is
+empty after a save, after Cancel and after the page is left; the Secrets block SHALL hold
+no password field and no field styled as one, so that no browser offers to save a secret.
+Replace SHALL open an empty field with the placeholder `New value (the old one is not
+shown)`.
 
 #### Scenario: Replace
 - **WHEN** the human replaces `GH_TOKEN` with `ghp_2`
@@ -29,6 +28,11 @@ the placeholder `New value (the old one is not shown)`, shown in the UI's font.
 - **WHEN** the human types `sk_live Пароль 秘密 🔑` into the field
 - **THEN** the field shows only dots, one per character and all of one size (the space
   too), and no letter
+
+#### Scenario: The placeholder is in letters
+- **WHEN** the human opens `+ Add secret` or a secret's Replace and has typed nothing
+- **THEN** the placeholder (`value (not shown after saving)`, `New value (the old one is
+  not shown)`) shows in the UI's font, not as dots
 
 #### Scenario: Copy takes nothing out
 - **WHEN** the human types a value into the field, selects it and copies or cuts it

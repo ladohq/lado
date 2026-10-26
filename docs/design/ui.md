@@ -1777,9 +1777,13 @@ New session (LAD-137) is in Launch and session control.
   (which writes the file 600) and Remove kept; an `unused` entry that is no secret's row
   shows under the block (`⚠ <name>: agents do not get it: …`, `⚠ The secrets folder is not
   used: …`).
-- **A secret's value** is typed into an uncontrolled `<input type="password"
-  autocomplete="off">` outside any `<form>` (form history and "save password" follow a
-  submission), read from it when the human sends it, and sent as `{value}` in the body of
+- **A secret's value** is typed into an uncontrolled `<input type="text"
+  autocomplete="off">` drawn as dots by `-webkit-text-security: disc` (the class
+  `project-in-secret`), with autocorrect, autocapitalize and spellcheck off and copy and cut
+  refused, outside any `<form>` (form history follows a submission). It is no
+  `type="password"`: Chrome and Safari offer to save a password field's value whatever its
+  autocomplete, and a name field beside it reads to them as a sign-in (LAD-149). The value
+  is read from the field when the human sends it, and sent as `{value}` in the body of
   one `PUT /api/projects/{id}/secrets/{name}`; the field is emptied after a save, on
   Cancel and when it goes. After a refusal it stays in the open field so the name can be
   fixed. It is never put in React's state, an address, the browser's storage, the console

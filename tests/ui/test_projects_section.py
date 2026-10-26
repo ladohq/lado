@@ -34,7 +34,12 @@ def masked(page: Page, field):
     style = "(field, name) => getComputedStyle(field).getPropertyValue(name)"
     assert field.evaluate(style, "-webkit-text-security") == "none"
     assert field.evaluate(style, "font-family") == "LadoSecretDots"
+    # The face itself loaded: without it a browser falls back to its default font after the
+    # block period and shows letters; check() alone is true when no face matches at all.
     assert page.evaluate("document.fonts.load('16px LadoSecretDots').then(f => f.length)") == 1
+    faces = """() => document.fonts.ready.then(fonts =>
+        [...fonts].filter(f => f.family === 'LadoSecretDots').map(f => f.status))"""
+    assert page.evaluate(faces) == ["loaded"]
     assert page.evaluate("document.fonts.check('16px LadoSecretDots')")
     widths = page.evaluate(
         """text => {

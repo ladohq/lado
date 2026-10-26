@@ -40,5 +40,5 @@
 
 ## 3. Regression
 
-- [ ] 3.1 `make lint`, `make test`, `openspec validate resume-on-old-schema --strict`,
+- [x] 3.1 `make lint`, `make test`, `openspec validate resume-on-old-schema --strict`,
   `openspec validate --specs --strict`; the pull request's CI.

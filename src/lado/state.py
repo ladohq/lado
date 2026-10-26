@@ -1898,8 +1898,8 @@ def take_resume(
             "UPDATE agents SET resume_at = NULL WHERE session = ? AND name = ?", (session, name)
         )
         message = db.execute(
-            "INSERT INTO messages (session, sender, recipient, summary, created_at)"
-            " VALUES (?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+            "INSERT INTO messages (session, sender, recipient, summary, body, created_at)"
+            " VALUES (?, ?, ?, ?, '', strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             (session, LADO, name, summary(row["resumes"], error["detail"] if error else "")),
         ).lastrowid
         db.execute("COMMIT")

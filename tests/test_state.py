@@ -912,6 +912,38 @@ def test_a_due_resume_is_queued_once_also_while_the_agent_stays_idle(lado_home):
     assert state.get_agent("s", "w1").resume_at is None
 
 
+def test_a_due_resume_is_queued_on_a_database_from_before_0_7(lado_home):
+    """Its messages.body is the old text column, renamed: NOT NULL without a DEFAULT."""
+    lado_home.mkdir()
+    sqlite3.connect(lado_home / "lado.db").executescript(SCHEMA_V1)
+    state.migrate()
+    state.add_agent(_agent(status=state.BUSY))
+    state.add_event("s", "w1", state.TURN_ERROR, "server_error")
+    state.schedule_resume("s", "w1", 100.0, (30.0,))
+    state.set_status("s", "w1", state.IDLE)
+    message = state.take_resume("s", "w1", 130.0, lambda n, error: f"resume {n}: {error}")
+    queued = state.get_message("s", message)
+    assert (queued.sender, queued.summary, queued.body, queued.state) == (
+        "lado",
+        "resume 1: server_error",
+        "",
+        "pending",
+    )
+    assert state.get_agent("s", "w1").resume_at is None
+
+
+def test_every_insert_into_messages_names_its_body():
+    """A database made before LADO 0.7.0 (schema below 5) has messages.body without the
+    DEFAULT '' of a new one (SQLite cannot add one to an existing column): an insert that
+    leaves body out fails there with NOT NULL constraint failed."""
+    source = Path(state.__file__).read_text(encoding="utf-8")
+    joined = re.sub(r'"\s*\n\s*"', "", source)  # the literals the code writes over lines
+    inserts = re.findall(r"INSERT INTO messages \(([^)]*)\)", joined)
+    assert inserts
+    without = [c for c in inserts if "body" not in [n.strip() for n in c.split(",")]]
+    assert without == []
+
+
 def test_connect_refuses_an_older_schema_and_changes_nothing(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
     agent_helpers.previous_schema()

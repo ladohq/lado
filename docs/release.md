@@ -211,6 +211,8 @@ cat > .env <<'EOF'
 LADO_VERSION=X.Y.ZrcN
 LADO_WORKSPACE=/absolute/path/to/a/test/folder
 LADO_PORT=8799
+LADO_GIT_NAME="RC Check"
+LADO_GIT_EMAIL=rc-check@example.com
 EOF
 docker compose up -d
 docker compose logs lado
@@ -218,7 +220,7 @@ docker compose exec lado lado ui --no-open
 ```
 
 `docker compose logs lado` has no warning about `LADO_REPOS` (not mounted, not
-writable); the last command prints the UI's link with its token. Then:
+writable) nor about git's identity (`user.name`, `user.email`); the last command prints the UI's link with its token. Then:
 
 - Log in to Claude Code once: `docker compose exec -it lado claude`, log in, exit. The
   login stays in the home volume.

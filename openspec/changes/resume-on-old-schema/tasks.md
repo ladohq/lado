@@ -1,15 +1,15 @@
 ## 1. A resume is queued on a database from before 0.7.0
 
-- [ ] 1.1 `tests/test_state.py` (unit: one insert against one schema, no process
+- [x] 1.1 `tests/test_state.py` (unit: one insert against one schema, no process
   crossed): a test that writes `SCHEMA_V1` into a fresh `LADO_HOME`, runs
   `state.migrate()`, makes the agent `w1` of session `s` busy, adds a `TURN_ERROR` event,
   `schedule_resume`, sets it idle and calls `take_resume` once the resume is due: it
   returns a message id, the message is `lado`'s, pending, with its summary and body `''`,
   and the agent's `resume_at` is None. Red before 1.2 with `NOT NULL constraint failed:
   messages.body`.
-- [ ] 1.2 `src/lado/state.py`, `take_resume`: the insert names `body` and passes `''`.
+- [x] 1.2 `src/lado/state.py`, `take_resume`: the insert names `body` and passes `''`.
   1.1 passes.
-- [ ] 1.3 `tests/test_state.py`: a guard test that reads `src/lado/state.py` and finds
+- [x] 1.3 `tests/test_state.py`: a guard test that reads `src/lado/state.py` and finds
   every `INSERT INTO messages (` column list (the string literals joined, as the code
   writes them over several lines), asserts there is at least one, and that each names
   `body`; its docstring says why (databases from before 0.7.0 have `messages.body`

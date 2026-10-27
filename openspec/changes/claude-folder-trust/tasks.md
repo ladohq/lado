@@ -1,12 +1,12 @@
 ## 1. Tests never reach the user's Claude Code config
 
-- [ ] 1.1 `tests/conftest.py`: `claude_config` becomes `autouse=True` (D5); `fake_clis` keeps
+- [x] 1.1 `tests/conftest.py`: `claude_config` becomes `autouse=True` (D5); `fake_clis` keeps
   taking it. `make test` stays green (a test that reached the user's config would now write
   there). Check: `grep -n "autouse" tests/conftest.py` shows it; `make test`.
 
 ## 2. The careful writer and the trust (unit: pure file logic, the lowest layer)
 
-- [ ] 2.1 `tests/test_providers.py`, beside the `_trusted` tests, with `claude_home`
+- [x] 2.1 `tests/test_providers.py`, beside the `_trusted` tests, with `claude_home`
   (requirements "LADO records Claude Code's trust…", "…one careful writer", "A missing
   config…", "A config LADO cannot understand…", "The trust question stays the fallback…"):
   - untrusted repo: `_blocker` returns `Blocker(note=...)` with no reason; the file's
@@ -36,7 +36,7 @@
   The test `test_claude_blocks_the_first_hook_in_a_folder_it_does_not_trust` and
   `test_claude_reads_only_the_projects_of_its_config` change to these expectations. All
   fail before 2.2.
-- [ ] 2.2 `src/lado/providers/base.py`: `Blocker.note: str | None = None` (what the provider
+- [x] 2.2 `src/lado/providers/base.py`: `Blocker.note: str | None = None` (what the provider
   did so that nothing holds the agent, told and logged as the reason is);
   `first_hook_blocker`'s docstring says it may first settle what LADO answers itself.
   `src/lado/providers/claude.py`: `_config_path(env)` shared by `_trusted` and the writer;
@@ -52,19 +52,19 @@
 
 ## 3. The runtime tells and logs the note (unit)
 
-- [ ] 3.1 `tests/test_runtime.py` with `fake_tmux` and an untrusted `claude_config`
+- [x] 3.1 `tests/test_runtime.py` with `fake_tmux` and an untrusted `claude_config`
   (`config.trust()` with no folder): `start_session(..., provider="claude")` returns the
   note in `Started.warnings`, loop.log holds it once, the supervisor is not `waiting`;
   `spawn_worker` returns it in its warnings and loop.log holds it once (scenarios "The
   session's start", "A worker's spawn"); a resume does the same. `tests/test_cli.py`:
   `lado start` prints it on stderr as `lado: <note>`. Fail before 3.2.
-- [ ] 3.2 `src/lado/runtime.py`: `_first_hook_blocker` returns the note with the reason
+- [x] 3.2 `src/lado/runtime.py`: `_first_hook_blocker` returns the note with the reason
   and the warning; start and resume write the blocker's lines to loop.log as the spawn
   does (each line once). 3.1 passes.
 
 ## 4. Across processes (integration, the fake agent)
 
-- [ ] 4.1 `tests/integration/fake_provider.py`: under `FAKE_AGENT_TRUST=1` the fake
+- [x] 4.1 `tests/integration/fake_provider.py`: under `FAKE_AGENT_TRUST=1` the fake
   provider's `first_hook_blocker` uses `claude.first_hook_blocker`'s trust logic on the
   test's `CLAUDE_CONFIG_DIR` (the fake agent's title in the reason), and
   `tests/integration/fake_agent.py`, under the same variable, asks first (as
@@ -78,30 +78,30 @@
 
 ## 5. Real CLIs
 
-- [ ] 5.1 `tests/smoke/conftest.py`: the Claude config drops its `projects` entry (D6),
+- [x] 5.1 `tests/smoke/conftest.py`: the Claude config drops its `projects` entry (D6),
   keeping `hasCompletedOnboarding` and `bypassPermissionsModeAccepted`, and its comment
   says LADO records the trust; `tests/smoke/test_smoke.py` (Claude) asserts the config
   then trusts the repo. Run by CI (needs the real CLI); locally `make test-smoke
   PROVIDER=claude` when Claude Code is on PATH.
-- [ ] 5.2 `tests/real_clis.py` `answer_dialogs` and `tests/live/conftest.py`'s docstring:
+- [x] 5.2 `tests/real_clis.py` `answer_dialogs` and `tests/live/conftest.py`'s docstring:
   Claude Code's trust dialog is no longer expected (LADO records the trust in the live
   config); if it shows, the test fails with the reason. Written, not run (live: Claude
   only with the human's yes).
 
 ## 6. Docs
 
-- [ ] 6.1 `tests/test_docker.py` `test_the_first_session_names_claude_codes_trust_question`:
+- [x] 6.1 `tests/test_docker.py` `test_the_first_session_names_claude_codes_trust_question`:
   the reason comes from a read-only home (the fallback); the guide also names that LADO
   trusts the repository and that its `.claude/` settings and `.mcp.json` run. Fails before
   6.2.
-- [ ] 6.2 docs/install.md, Docker "Your first session": LADO records Claude Code's trust in
+- [x] 6.2 docs/install.md, Docker "Your first session": LADO records Claude Code's trust in
   the repository a session starts in, so it does not ask; the repository's own Claude Code
   settings (`.claude/`) and MCP servers (`.mcp.json`) run without a question, so start
   sessions only in repositories whose settings you accept; when LADO cannot record it, the
   old text (Needs you, the two answers, the reason says why). "If something goes wrong in
   Docker": the entry on "No, exit" says it happens only when LADO could not record the
   trust. 6.1 passes.
-- [ ] 6.3 AGENTS.md, Design principles: "Never touch the user's global agent config"
+- [x] 6.3 AGENTS.md, Design principles: "Never touch the user's global agent config"
   gains its one exception (Claude Code's trust in the session's repository, through
   `claude.edit_config`, LAD-106); `tests/test_agents_md.py` passes (at most 200 lines).
   docs/design/agents.md (the paragraph on the CLI that asks before any hook: Claude Code
@@ -109,12 +109,12 @@
   (`claude.py`: "only `projects` is read, nothing written" becomes what is written and
   how; `Blocker.note`). docs/testing.md: the smoke's Claude config without the trust, the
   live test without the dialog, `claude_config` autouse.
-- [ ] 6.4 CHANGELOG.md: `## 0.44.0 (unreleased)` on top, `### Added`: **Claude Code trusts
+- [x] 6.4 CHANGELOG.md: `## 0.44.0 (unreleased)` on top, `### Added`: **Claude Code trusts
   the session's repository.** LADO records Claude Code's folder trust itself, so a session
   started from the UI or a phone no longer waits for "Yes, I trust this folder"; the
   repository's own Claude Code settings run (docs/release.md's rules: at most three lines).
 
 ## 7. Checks
 
-- [ ] 7.1 `make lint`, `make test`, the integration file of 4.1 with its marker,
+- [x] 7.1 `make lint`, `make test`, the integration file of 4.1 with its marker,
   `openspec validate claude-folder-trust --strict`, `openspec validate --specs --strict`.

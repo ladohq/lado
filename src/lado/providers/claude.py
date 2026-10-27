@@ -264,13 +264,14 @@ class ClaudeProvider(base.Provider):
         # "No, exit", ends it. So LADO records the trust of the session's repository itself
         # in Claude Code's global config (see _trusted and _record_trust); the question in
         # Needs you is left for when it cannot.
-        repo = gitpaths.main_root(Path(cwd))
         try:
             trusted = _trusted(Path(cwd), env)
         except (OSError, ValueError) as error:
+            repo = gitpaths.main_root(Path(cwd))
             return base.Blocker(warning=f"cannot tell whether {self.title} trusts {repo}: {error}")
         if trusted:
             return base.Blocker()
+        repo = gitpaths.main_root(Path(cwd))
         try:
             path = _record_trust(repo, env)
         except (OSError, ValueError) as error:

@@ -280,14 +280,18 @@ def loop_starts(monkeypatch):
     return started
 
 
-@pytest.fixture
-def claude_config(tmp_path, monkeypatch):
-    """Claude Code's global config for the agents (CLAUDE_CONFIG_DIR), never the user's: it
+@pytest.fixture(autouse=True)
+def claude_config(tmp_path, tmp_path_factory, monkeypatch):
+    """Claude Code's global config for the agents (CLAUDE_CONFIG_DIR), never the user's, in
+    every test, since LADO writes its trust there (outside tmp_path, which tests list): it
     trusts the folder of the `repo` fixture, as Claude Code would after the human said yes
-    there. trust(*folders) replaces what it trusts."""
-    folder = tmp_path / "claude-config"
-    folder.mkdir()
+    there. trust(*folders) replaces what it trusts (none: LADO records the trust of the
+    folder an agent starts in, note(repo) its line); refuse(): it trusts none and LADO cannot
+    record the trust in `repo`'s folder, whose entry is no JSON object, so a Claude agent
+    waits there with reason(repo)."""
+    folder = tmp_path_factory.mktemp("claude-config")
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(folder))
+    repo = tmp_path / "My Repo"
 
     class Config:
         path = folder / ".claude.json"
@@ -295,6 +299,20 @@ def claude_config(tmp_path, monkeypatch):
         def trust(self, *folders):
             projects = {str(f): {"hasTrustDialogAccepted": True} for f in folders}
             self.path.write_text(json.dumps({"projects": projects}))
+
+        def refuse(self):
+            self.path.write_text(json.dumps({"projects": {str(repo): None}}))
+
+        def note(self, repo):
+            return f"LADO recorded Claude Code's trust in {repo} in {self.path}"
+
+        def reason(self, repo):
+            return (
+                f"Claude Code asks whether to trust {repo}: LADO could not record the trust "
+                f"({self.path}: the entry of {repo} in its projects is not a JSON object); in "
+                'its terminal choose "Yes, I trust this folder" (Enter alone answers "No, '
+                'exit" and closes the agent)'
+            )
 
     config = Config()
     config.trust(tmp_path / "My Repo")

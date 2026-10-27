@@ -410,15 +410,21 @@ def test_a_session_starts_from_the_api(client, repo, fake_tmux):
 def test_a_start_says_who_leads_and_what_holds_the_supervisor(
     client, repo, fake_tmux, claude_config
 ):
-    claude_config.trust()  # Claude Code trusts no folder
+    claude_config.refuse()  # Claude Code trusts no folder, and LADO cannot record it
     answer = launch(client, repo, name="s", provider="claude")
     assert answer.status_code == 200, answer.text
     started = answer.json()
     assert started["lead"] == "lead: supervisor of kit default"
-    assert started["warnings"] == [
-        f'Claude Code asks whether to trust {repo}: in its terminal choose "Yes, I trust '
-        'this folder" (Enter alone answers "No, exit" and closes the agent)'
-    ]
+    assert started["warnings"] == [claude_config.reason(repo)]
+
+
+def test_a_start_says_that_lado_recorded_claude_codes_trust(
+    client, repo, fake_tmux, claude_config
+):
+    claude_config.trust()  # Claude Code trusts no folder
+    answer = launch(client, repo, name="s", provider="claude")
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["warnings"] == [claude_config.note(repo)]
 
 
 def test_the_first_start_makes_the_database(client, repo, fake_tmux, lado_home):

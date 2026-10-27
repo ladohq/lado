@@ -1441,13 +1441,6 @@ def test_a_waiting_agent_works_again_once_the_human_answered_its_dialog(repo, fa
     assert state.get_agent("s", "w1").status == state.IDLE
 
 
-def _trust_reason(repo):
-    return (
-        f'Claude Code asks whether to trust {repo}: in its terminal choose "Yes, I trust '
-        'this folder" (Enter alone answers "No, exit" and closes the agent)'
-    )
-
-
 def _seen_at_launch(monkeypatch, call, agent):
     """Record the agent's status and status_reason when tmux's `call` starts its window."""
     seen, launch = [], getattr(tmux, call)
@@ -1463,10 +1456,10 @@ def _seen_at_launch(monkeypatch, call, agent):
 def test_an_agent_held_before_its_first_hook_waits_for_the_human_from_its_start(
     repo, fake_tmux, claude_config, monkeypatch
 ):
-    claude_config.trust()  # Claude Code trusts no folder: it asks before any hook
+    claude_config.refuse()  # Claude Code trusts no folder: it asks before any hook
     seen = _seen_at_launch(monkeypatch, "new_session", "supervisor")
     started = runtime.start_session(str(repo), "s", None, provider="claude")
-    reason = _trust_reason(repo)
+    reason = claude_config.reason(repo)
     assert seen == [(state.WAITING, reason)]  # waiting before its window starts
     assert reason in started.warnings
     assert runtime.status_reasons("s") == {"supervisor": reason}
@@ -1483,7 +1476,7 @@ def test_an_agent_held_before_its_first_hook_waits_for_the_human_from_its_start(
 
 
 def test_the_reason_an_agent_was_held_goes_with_its_next_status(repo, fake_tmux, claude_config):
-    claude_config.trust()
+    claude_config.refuse()
     runtime.start_session(str(repo), "s", None, provider="claude")
     _hook("SessionStart", "supervisor", {"source": "startup"})
     # Later it waits for a permission: the folder's trust is not why.
@@ -1502,7 +1495,7 @@ def test_a_session_start_ends_no_other_wait(repo, fake_tmux):
 
 
 def test_a_conversation_start_of_a_held_agent_is_as_before(repo, fake_tmux, claude_config):
-    claude_config.trust()
+    claude_config.refuse()
     runtime.start_session(str(repo), "s", None, provider="claude")
     _hook("SessionStart", "supervisor", {"source": "clear"})
     assert state.get_agent("s", "supervisor").status == state.IDLE
@@ -1511,7 +1504,7 @@ def test_a_conversation_start_of_a_held_agent_is_as_before(repo, fake_tmux, clau
 def test_a_held_agent_of_an_earlier_launch_is_no_reason_for_the_next(
     repo, fake_tmux, claude_config
 ):
-    claude_config.trust()
+    claude_config.refuse()
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.stop_session("s")
     claude_config.trust(repo)
@@ -1525,7 +1518,7 @@ def test_a_held_agent_of_an_earlier_launch_is_no_reason_for_the_next(
 def test_a_failed_start_of_a_held_agent_leaves_nothing_waiting(
     repo, fake_tmux, claude_config, monkeypatch
 ):
-    claude_config.trust()
+    claude_config.refuse()
     monkeypatch.setattr(tmux, "new_session", _fail)
     with pytest.raises(tmux.TmuxError):
         runtime.start_session(str(repo), "s", None, provider="claude")
@@ -1535,16 +1528,60 @@ def test_a_failed_start_of_a_held_agent_leaves_nothing_waiting(
 def test_a_worker_held_before_its_first_hook_says_so_to_its_spawner(
     repo, fake_tmux, claude_config, monkeypatch
 ):
-    claude_config.trust()
+    claude_config.refuse()
     runtime.start_session(str(repo), "s", None, provider="kilo")
     seen = _seen_at_launch(monkeypatch, "new_window", "w1")
     warnings = []
     runtime.spawn_worker("s", "task", name="w1", provider="claude", warnings=warnings)
-    reason = _trust_reason(repo)
+    reason = claude_config.reason(repo)
     assert seen == [(state.WAITING, reason)]
     assert warnings == [reason]
     assert f"s: w1: {reason}" in (state.home() / "loop.log").read_text()
     assert runtime.status_reasons("s") == {"w1": reason}
+
+
+def _logged(line):
+    return (state.home() / "loop.log").read_text().count(line)
+
+
+def test_lado_records_claude_codes_trust_and_tells_the_starter(repo, fake_tmux, claude_config):
+    claude_config.trust()  # Claude Code trusts no folder
+    note = claude_config.note(repo)
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings == [note]
+    assert _logged(f"s: supervisor: {note}") == 1
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+    assert runtime.status_reasons("s") == {}
+    projects = json.loads(claude_config.path.read_text())["projects"]
+    assert projects == {str(repo): {"hasTrustDialogAccepted": True}}
+    # Trusted now: the worker's spawn writes nothing and says nothing.
+    warnings = []
+    runtime.spawn_worker("s", "task", name="w1", warnings=warnings)
+    assert warnings == []
+    assert _logged(note) == 1
+
+
+def test_lado_records_claude_codes_trust_at_a_resume(repo, fake_tmux, claude_config):
+    runtime.start_session(str(repo), "s", None, provider="claude")  # trusted
+    runtime.stop_session("s")
+    claude_config.trust()
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.warnings == [claude_config.note(repo)]
+    assert _logged(f"s: supervisor: {claude_config.note(repo)}") == 1
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+
+
+def test_lado_records_claude_codes_trust_for_a_worker(repo, fake_tmux, claude_config):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    claude_config.trust()
+    warnings = []
+    worker = runtime.spawn_worker("s", "task", name="w1", provider="claude", warnings=warnings)
+    note = claude_config.note(repo)  # the main repo's root, not the worktree's
+    assert warnings == [note]
+    assert _logged(f"s: w1: {note}") == 1
+    assert state.get_agent("s", "w1").status == state.STARTING
+    assert list(json.loads(claude_config.path.read_text())["projects"]) == [str(repo)]
+    assert worker.cwd != str(repo)
 
 
 def test_a_claude_config_that_cannot_be_read_is_a_warning(repo, fake_tmux, claude_config):

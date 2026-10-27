@@ -145,6 +145,9 @@ class Blocker:
     reason: str | None = None
     # Why the provider cannot tell whether something holds it; None when it can.
     warning: str | None = None
+    # What the provider did so that nothing holds it (e.g. recorded an answer in the CLI's
+    # config), told and logged as the reason is; None when it did nothing.
+    note: str | None = None
 
 
 class Provider(ABC):
@@ -193,7 +196,8 @@ class Provider(ABC):
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> Blocker:
         """What the CLI, started in `cwd` with `env`, will ask the human before any hook
         runs (e.g. whether to trust the folder), read from the CLI's own files; by default
-        nothing. Called before the agent's window starts."""
+        nothing. It may first settle what LADO answers itself (Blocker.note). Called before
+        the agent's window starts."""
         return Blocker()
 
     def keychain_login(self, env: dict[str, str]) -> str | None:

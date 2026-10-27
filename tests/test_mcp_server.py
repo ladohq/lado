@@ -406,13 +406,13 @@ def test_spawn_worker_says_what_holds_the_worker_before_its_first_hook(
     else:
         args["task"] = "t"
     worker = _call("s", "supervisor", "spawn_worker", args)
-    assert worker["warnings"] == [
-        f'Claude Code asks whether to trust {repo}: in its terminal choose "Yes, I trust '
-        'this folder" (Enter alone answers "No, exit" and closes the agent)'
-    ]
-    claude_config.trust(repo)
+    # LADO recorded the trust: the next worker is trusted.
+    assert worker["warnings"] == [claude_config.note(repo)]
     worker = _call("s", "supervisor", "spawn_worker", {**args, "task": "t", "name": "w2"})
     assert worker["warnings"] == []
+    claude_config.refuse()
+    worker = _call("s", "supervisor", "spawn_worker", {**args, "task": "t", "name": "w3"})
+    assert worker["warnings"] == [claude_config.reason(repo)]
 
 
 SHORT = {

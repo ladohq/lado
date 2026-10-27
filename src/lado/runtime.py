@@ -790,7 +790,8 @@ def start_session(
         launch = _launch_command(agent_cli, agent, sess, spec)
         started.warnings += launch.warnings
         started.warnings += _layer_warnings(agent, launch, sess.project, files=True)
-        started.warnings += _first_hook_blocker(agent_cli, agent, base_env, launch)
+        blocker = _first_hook_blocker(agent_cli, agent, base_env, launch)
+        started.warnings += blocker
         # The first new-session on a socket starts LADO's tmux server, whose audit session
         # its agents inherit (lado.gui_session).
         placed = tmux.new_session(
@@ -821,7 +822,7 @@ def start_session(
         _undo(session, f"the start of {session}", error, steps)
         raise
     started.warnings += placed
-    for line in placed:
+    for line in blocker + placed:
         loop.log(session, f"{SUPERVISOR}: {line}")
     # It ends by itself when the tmux session is gone, so not before that exists.
     loop.start(session)
@@ -2907,12 +2908,13 @@ def _first_hook_blocker(
 ) -> list[str]:
     """Ask the provider what its CLI will ask the human before any hook runs, before the
     agent's window starts: if something will, the agent waits from now on, so its first
-    hook always comes after that. Returns the lines to tell whoever starts it: why it will
-    wait, or why the provider cannot tell."""
+    hook always comes after that. Returns the lines to tell whoever starts it: what the
+    provider did so that nothing holds it, why it will wait, or why the provider cannot
+    tell."""
     blocker = agent_cli.first_hook_blocker(agent.cwd, _launch_env(agent, base_env, launch))
     if blocker.reason:
         state.block(agent.session, agent.name, blocker.reason)
-    return [line for line in (blocker.reason, blocker.warning) if line]
+    return [line for line in (blocker.note, blocker.reason, blocker.warning) if line]
 
 
 def _keychain_warnings(agent_cli: providers.Provider, base_env: dict[str, str]) -> list[str]:

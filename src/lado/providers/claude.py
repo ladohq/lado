@@ -1,9 +1,15 @@
 """Claude Code as a LADO provider."""
 
+import contextlib
+import fcntl
 import hashlib
 import json
+import os
 import shutil
+import stat
 import sys
+import tempfile
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from lado import state
@@ -255,20 +261,27 @@ class ClaudeProvider(base.Provider):
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
         # Claude Code asks whether to trust a folder it does not trust before any hook runs,
         # and no flag, permission mode or setting skips the question; its default answer,
-        # "No, exit", ends it. LADO only reads whether it trusts the folder: recording the
-        # trust is the human's, in Claude Code's global config (see _trusted).
+        # "No, exit", ends it. So LADO records the trust of the session's repository itself
+        # in Claude Code's global config (see _trusted and _record_trust); the question in
+        # Needs you is left for when it cannot.
+        repo = gitpaths.main_root(Path(cwd))
         try:
             trusted = _trusted(Path(cwd), env)
         except (OSError, ValueError) as error:
-            repo = gitpaths.main_root(Path(cwd))
             return base.Blocker(warning=f"cannot tell whether {self.title} trusts {repo}: {error}")
         if trusted:
             return base.Blocker()
-        return base.Blocker(
-            reason=f"{self.title} asks whether to trust {gitpaths.main_root(Path(cwd))}: in its "
-            'terminal choose "Yes, I trust this folder" (Enter alone answers "No, exit" and '
-            "closes the agent)"
-        )
+        try:
+            path = _record_trust(repo, env)
+        except (OSError, ValueError) as error:
+            return base.Blocker(
+                reason=f"{self.title} asks whether to trust {repo}: LADO could not record the "
+                f'trust ({error}); in its terminal choose "Yes, I trust this folder" (Enter '
+                'alone answers "No, exit" and closes the agent)'
+            )
+        if path is None:  # another LADO recorded it meanwhile
+            return base.Blocker()
+        return base.Blocker(note=f"LADO recorded {self.title}'s trust in {repo} in {path}")
 
 
 # Background work after a turn's end. Seen live with 2.1.295 (haiku): every Stop payload has
@@ -309,15 +322,107 @@ def _request_key(data: dict) -> str:
 # $CLAUDE_CONFIG_DIR or the home folder; the config home is $CLAUDE_CONFIG_DIR or
 # ~/.claude. A folder is trusted by its git repository's main root (the main repo of a
 # worktree), or by itself or a folder above it up to its git root, each by its real path.
-def _trusted(cwd: Path, env: dict[str, str]) -> bool:
-    """Whether Claude Code, started in `cwd` with `env`, trusts the folder. Reads only the
-    config's projects; ValueError, naming the file, when it cannot be read. No config:
-    none."""
+#
+# LADO writes that flag for the session's repository (_record_trust), the one exception to
+# "Never touch the user's global agent config" (AGENTS.md, LAD-106): there is no other way
+# to start Claude Code in a new folder without a human at its terminal. Checked by hand
+# with 2.1.295: the entry of the repository's main root covers its linked worktrees;
+# hasTrustDialogAccepted alone lets the repository's own hooks run
+# (hasTrustDialogHooksAccepted is not needed); an entry written into the file by another
+# process (temporary file and rename) while Claude Code ran survived Claude Code's own
+# rewrite of the file at its exit, as it watches the file and re-reads it. A missing
+# config is made with the entry alone: Claude Code adds the rest at its start.
+def _config_path(env: dict[str, str]) -> Path:
+    """The global config Claude Code, started with `env`, reads its trust from."""
     home = Path(env.get("HOME") or Path.home())
     config_dir = env.get("CLAUDE_CONFIG_DIR")
     path = Path(config_dir or home / ".claude") / ".config.json"
     if not path.exists():
         path = Path(config_dir or home) / ".claude.json"
+    return path
+
+
+@contextlib.contextmanager
+def _config_lock() -> Iterator[None]:
+    """LADO's own changes of Claude Code's config one at a time (two agents started at once
+    would lose each other's change). Claude Code's own lock is an internal detail of its
+    binary, not used."""
+    with open(state.home() / "claude-config.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def edit_config(env: dict[str, str], change: Callable[[dict], bool]) -> Path | None:
+    """Change Claude Code's global config, the one it reads with `env`, by `change`, which
+    gets the config, read again now, and returns whether it changed it; the file written, or
+    None when nothing changed (nothing is written then). Every key `change` leaves is kept.
+    The file is written as Claude Code writes it (JSON, indent 2) to a temporary file in its
+    folder, then put in its place in one step, with the old file's mode (a new one 600: it
+    holds the login); a symlinked config is written through to its target. ValueError,
+    naming the file, for a file that is not a JSON object, or that `change` refuses: the
+    file is left as it is; OSError for a file that cannot be read or written."""
+    with _config_lock():
+        path = _config_path(env)
+        target = path.resolve()
+        try:
+            text = target.read_text()
+        except FileNotFoundError:
+            config: object = {}
+            mode = 0o600
+        except UnicodeDecodeError as error:
+            raise ValueError(f"{path}: {error}") from error
+        else:
+            try:
+                config = json.loads(text)
+            except ValueError as error:
+                raise ValueError(f"{path}: {error}") from error
+            mode = stat.S_IMODE(target.stat().st_mode)
+        if not isinstance(config, dict):
+            raise ValueError(f"{path} is not a JSON object")
+        try:
+            if not change(config):
+                return None
+        except ValueError as error:
+            raise ValueError(f"{path}: {error}") from error
+        fd, temp = tempfile.mkstemp(prefix=f"{target.name}.", suffix=".tmp", dir=target.parent)
+        try:
+            with os.fdopen(fd, "w") as file:
+                json.dump(config, file, indent=2, ensure_ascii=False)
+                file.flush()
+                os.fsync(file.fileno())
+            os.chmod(temp, mode)
+            os.replace(temp, target)
+        except BaseException:
+            Path(temp).unlink(missing_ok=True)
+            raise
+        return path
+
+
+def _record_trust(repo: Path, env: dict[str, str]) -> Path | None:
+    """Set hasTrustDialogAccepted in the entry of `repo`, a real path, in Claude Code's
+    config (edit_config), keeping the entry's other keys; the file written, or None when it
+    trusted `repo` already. ValueError for projects or an entry that is not an object."""
+
+    def trust(config: dict) -> bool:
+        projects = config.setdefault("projects", {})
+        if not isinstance(projects, dict):
+            raise ValueError("its projects are not a JSON object")
+        entry = projects.setdefault(str(repo), {})
+        if not isinstance(entry, dict):
+            raise ValueError(f"the entry of {repo} in its projects is not a JSON object")
+        if entry.get("hasTrustDialogAccepted") is True:
+            return False
+        entry["hasTrustDialogAccepted"] = True
+        return True
+
+    return edit_config(env, trust)
+
+
+def _trusted(cwd: Path, env: dict[str, str]) -> bool:
+    """Whether Claude Code, started in `cwd` with `env`, trusts the folder. Reads only the
+    config's projects; ValueError, naming the file, when it cannot be read. No config:
+    none."""
+    path = _config_path(env)
     try:
         config = json.loads(path.read_text())
     except FileNotFoundError:

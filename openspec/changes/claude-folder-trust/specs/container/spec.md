@@ -2,13 +2,11 @@
 
 ### Requirement: The guide's first session names Claude Code's trust question
 
-The guide's "Your first session"
-SHALL say that LADO records Claude Code's trust in the repository a session is started in,
-before its first agent starts, so Claude Code does not ask; that a trusted repository's own
-Claude Code settings and MCP servers then run without a question; and that when LADO cannot
-record it, Claude Code asks before its first answer, the agent waits in Needs you meanwhile,
-and the answer is "Yes, I trust this folder" in the agent's terminal while Enter alone
-answers "No, exit" and closes the agent; the trust is remembered on the home volume.
+The guide's "Your first session" SHALL say that LADO records Claude Code's trust in the
+repository a session is started in, so Claude Code does not ask; that the repository's own
+Claude Code settings and MCP servers then run without a question; and that when LADO
+cannot record it, the agent waits in Needs you for Claude Code's question, whose answers
+the scenario names.
 
 #### Scenario: The guide on the trust question
 - **WHEN** the human reads the guide's Docker "Your first session"

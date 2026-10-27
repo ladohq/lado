@@ -63,11 +63,11 @@ CLI that fails at once (a bad flag). With FAKE_AGENT_ASKS_FIRST=1 in its environ
 the human before any hook, like Claude Code's "trust this folder?": a typed "yes" goes on,
 any other input exits at once with no hook. With FAKE_AGENT_TRUST=1 it asks so only when
 $CLAUDE_CONFIG_DIR/.claude.json does not trust its repository's main root, read here as
-Claude Code reads it, not through LADO (trusted). With FAKE_AGENT_HANGUP_HOOK=1 in its environment, when
-its tmux window is killed (SIGHUP) it runs its session-end hook before it exits, as Claude
-Code does, and writes {"hung_up": <what the hook printed>} to "seen" once the hook is done;
-FAKE_AGENT_HANGUP_DELAY=<seconds> waits that long before the hook, as a slow CLI. Else it
-exits at once. A killed terminal can also end its read (EOF, or EIO) before the
+Claude Code reads it, not through LADO (trusted). With FAKE_AGENT_HANGUP_HOOK=1 in its
+environment, when its tmux window is killed (SIGHUP) it runs its session-end hook before it
+exits, as Claude Code does, and writes {"hung_up": <what the hook printed>} to "seen" once
+the hook is done; FAKE_AGENT_HANGUP_DELAY=<seconds> waits that long before the hook, as a
+slow CLI. Else it exits at once. A killed terminal can also end its read (EOF, or EIO) before the
 signal is handled: whichever comes first ends the session, once (end_session).
 A typed "switch" is no input but a command of the CLI itself, like Claude Code's /resume: the
 agent leaves its conversation, picks another while it pauses (as `pause`), and goes on in

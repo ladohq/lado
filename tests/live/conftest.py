@@ -7,9 +7,11 @@ In short: Codex, OpenCode and Kilo run on LM Studio's `local_models.MODEL`, one 
 the model per provider in the environment every LADO process of the test inherits; Claude
 Code on haiku (`--model`), paid: only with the human's yes.
 
-Claude Code asks whether to trust a new workspace and records the answer in its own config;
-no option skips that. So the Claude test always uses the same repo path, and the test answers
-the dialog like the human would (see real_clis.answer_dialogs): Claude Code keeps one entry for it.
+Claude Code asks whether to trust a new workspace and keeps the answer in its own config; no
+option skips that, so LADO records the trust of the session's repo there before it starts
+a Claude agent. The Claude test always uses the same repo path, so the human's config keeps
+one entry for it; if Claude Code asks all the same, the test fails (see
+real_clis.answer_dialogs).
 
 A failed test keeps its evidence in a folder under EVIDENCE, named in the failure report.
 """
@@ -111,6 +113,10 @@ def live_provider(request, monkeypatch, codex_home, tmp_path) -> str:
     name = request.param
     if shutil.which(CLASSES[name].command) is None:
         pytest.skip(f"{CLASSES[name].command} not installed")
+    if name == "claude":
+        # Claude Code with the human's own login, so with their own config, not the test's
+        # (tests/conftest.py's claude_config): LADO records the trust of the repo there.
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     if reason := UNUSABLE[name]():
         pytest.skip(reason)
     if name == "claude":

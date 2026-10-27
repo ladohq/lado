@@ -418,9 +418,7 @@ def test_a_start_says_who_leads_and_what_holds_the_supervisor(
     assert started["warnings"] == [claude_config.reason(repo)]
 
 
-def test_a_start_says_that_lado_recorded_claude_codes_trust(
-    client, repo, fake_tmux, claude_config
-):
+def test_a_start_says_that_lado_recorded_claude_codes_trust(client, repo, fake_tmux, claude_config):
     claude_config.trust()  # Claude Code trusts no folder
     answer = launch(client, repo, name="s", provider="claude")
     assert answer.status_code == 200, answer.text

@@ -3,6 +3,7 @@ SQLite, no model (tests/smoke/conftest.py). It shows that a session starts, the 
 run, LADO's messages reach it, a worker starts, and `lado stop` leaves no process."""
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -63,6 +64,13 @@ def test_a_session_starts_takes_messages_and_stops(smoke_repo, smoke_provider, f
     # 1. The session starts: its window, the agents' environment and PATH, the CLI.
     started = runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", provider)
     print(f"{provider}: started, warnings {started.warnings}")
+    if provider == "claude":
+        # The smoke's config trusted no folder: LADO recorded the repo's trust, so the CLI
+        # starts without the question (answer_dialogs fails if it asks).
+        config = Path(os.environ["CLAUDE_CONFIG_DIR"], ".claude.json")
+        repo = str(smoke_repo.resolve())
+        assert json.loads(config.read_text())["projects"][repo] == {"hasTrustDialogAccepted": True}
+        assert f"LADO recorded Claude Code's trust in {repo} in {config}" in started.warnings
 
     # 2. The supervisor's session-start hook ran: it is idle. Codex starts its session only
     # on its first input, LADO's FIRST_INPUT, which its prompt-submit hook confirms.

@@ -61,7 +61,9 @@ Every input line is a command, after an optional "[from <name>] ":
 With FAKE_AGENT_CRASH_AT_START=1 in its environment it exits before its first hook, as a
 CLI that fails at once (a bad flag). With FAKE_AGENT_ASKS_FIRST=1 in its environment it asks
 the human before any hook, like Claude Code's "trust this folder?": a typed "yes" goes on,
-any other input exits at once with no hook. With FAKE_AGENT_HANGUP_HOOK=1 in its environment, when
+any other input exits at once with no hook. With FAKE_AGENT_TRUST=1 it asks so only when
+$CLAUDE_CONFIG_DIR/.claude.json does not trust its repository's main root, read here as
+Claude Code reads it, not through LADO (trusted). With FAKE_AGENT_HANGUP_HOOK=1 in its environment, when
 its tmux window is killed (SIGHUP) it runs its session-end hook before it exits, as Claude
 Code does, and writes {"hung_up": <what the hook printed>} to "seen" once the hook is done;
 FAKE_AGENT_HANGUP_DELAY=<seconds> waits that long before the hook, as a slow CLI. Else it
@@ -452,6 +454,23 @@ def hung_up(*_) -> None:
     os._exit(0)
 
 
+def trusted() -> bool:
+    """Whether Claude Code's config in $CLAUDE_CONFIG_DIR trusts the main root of the
+    repository the agent runs in."""
+    common = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    root = os.path.dirname(os.path.realpath(common))
+    try:
+        with open(os.path.join(os.environ["CLAUDE_CONFIG_DIR"], ".claude.json")) as file:
+            entry = json.load(file).get("projects", {}).get(root)
+    except (OSError, ValueError, KeyError):
+        return False
+    return isinstance(entry, dict) and entry.get("hasTrustDialogAccepted") is True
+
+
 def main() -> None:
     global turn_error, lose_output, in_background
     if os.environ.get("FAKE_AGENT_CRASH_AT_START") == "1":
@@ -461,7 +480,8 @@ def main() -> None:
     report(
         prompt=config["prompt"], skills=load_skills(), mcp=config["mcp"], environ=dict(os.environ)
     )
-    if os.environ.get("FAKE_AGENT_ASKS_FIRST") == "1":
+    asks = os.environ.get("FAKE_AGENT_ASKS_FIRST") == "1"
+    if asks or (os.environ.get("FAKE_AGENT_TRUST") == "1" and not trusted()):
         print("Go on? Type yes; Enter alone exits", flush=True)
         if read_input() != "yes":
             os._exit(1)

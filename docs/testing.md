@@ -127,12 +127,14 @@ live test fails when a `repo_changed` event names it; the test merges only while
 Each Codex agent asks whether to trust the test's repo, answered by the test after checking
 the wait.
 Unit tests get a `CODEX_HOME` of their own (`codex_home`, `tests/conftest.py`), never the
-user's `~/.codex`. The Claude test uses a fixed
-repo path and answers Claude Code's workspace trust dialog, so Claude Code records one trusted
-folder for it; when it shows, the test first checks that the supervisor waits with its reason
-(a run in a repo trusted already prints that it does not check that). Unit tests that start
-Claude agents get a Claude config of their own (`claude_config` in `tests/conftest.py`,
-`CLAUDE_CONFIG_DIR`), which trusts the `repo` fixture's folder, never the user's.
+user's `~/.codex`. The Claude test runs Claude Code with the human's own config (it
+unsets the tests' `CLAUDE_CONFIG_DIR`) and a fixed repo path, so LADO records one trusted
+folder for it there; if Claude Code's workspace trust dialog shows all the same, the test
+fails with LADO's reason. Every unit, integration and UI test gets a Claude config of its
+own (`claude_config` in `tests/conftest.py`, autouse, `CLAUDE_CONFIG_DIR` outside
+`tmp_path`), which trusts the `repo` fixture's folder, never the user's: LADO writes the
+trust there; `trust()` with no folder lets a test see the write, `refuse()` the fallback
+question.
 
 Smoke tests (`tests/smoke/`, marker `smoke`) run each provider's real CLI with the live
 tests' isolation and helpers (`tests/real_clis.py`, shared by both) but no model: each CLI
@@ -142,7 +144,8 @@ a server on `127.0.0.1` that answers every request with 401 (Anthropic's or Open
 body) and keeps each request. Claude Code: `ANTHROPIC_BASE_URL`, a fake
 `ANTHROPIC_AUTH_TOKEN` (an `ANTHROPIC_API_KEY` it has not seen is a question),
 `CLAUDE_CODE_MAX_RETRIES=0` (it retries every 401 ten times), and a `.claude.json` that has
-the onboarding, the bypass permissions disclaimer and the repo's trust done; Codex: a
+the onboarding and the bypass permissions disclaimer done but not the repo's trust, which
+LADO records (the test checks the entry and the start's line); Codex: a
 `model_provider` at the endpoint (`wire_api = "responses"`, a fake `env_key`); OpenCode and
 Kilo: a global config with an OpenAI-compatible provider at it, the model given as
 `--model`. One test, per installed provider (a missing CLI skips): the session starts and

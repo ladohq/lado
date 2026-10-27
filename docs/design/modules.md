@@ -479,13 +479,26 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `lado forget` and a start or resume (what is left of the session's) remove it
     (`base.remove_config_dir`, `remove_session_config_dirs`); nothing of the CLI's own goes
     there but Codex's, whose home it is. `first_hook_blocker(cwd, env)` (a `Blocker`:
-    `reason`, `warning`) says what its CLI will ask the human before any hook (How agents
-    talk). Claude Code asks whether
-    to trust the folder, read from `projects[<folder>].hasTrustDialogAccepted` in its global
-    config (`$CLAUDE_CONFIG_DIR/.claude.json` or `~/.claude.json`, an older
-    `<config home>/.config.json` first), by the repo's main root (a worktree's main repo) or
-    a folder from `cwd` up to its git root, each by real path; only `projects` is read,
-    nothing written; a config it cannot read is a `warning`. Codex CLI (`codex.py`): each
+    `reason`, `warning`, `note`) says what its CLI will ask the human before any hook (How
+    agents talk), after it settled what LADO answers itself (`note`: what it did). Claude
+    Code asks whether to trust the folder, read from
+    `projects[<folder>].hasTrustDialogAccepted` in its global config
+    (`$CLAUDE_CONFIG_DIR/.claude.json` or `~/.claude.json`, an older
+    `<config home>/.config.json` first; `_config_path`), by the repo's main root (a
+    worktree's main repo) or a folder from `cwd` up to its git root, each by real path; a
+    config it cannot read is a `warning`, and the file is left alone. A folder it does not
+    trust: LADO sets the flag in the entry of the repo's main root (`_record_trust`; the
+    entry's other keys kept, `false` made `true`) and returns the `note` "LADO recorded
+    Claude Code's trust in <repo> in <file>"; when that fails (an `OSError`, an entry that
+    is not an object), the `reason` with why. Every change of that file goes through
+    `edit_config(env, change)`: under an exclusive `flock` on
+    `LADO_HOME/claude-config.lock` it reads the file again, gives `change` the parsed object
+    (no file: `{}`), writes nothing when `change` changed nothing, else JSON with indent 2
+    to `<name>.<random>.tmp` in the target's folder, fsynced, the old mode (a new file 600)
+    and `os.replace` (a symlinked config is written through to its target); the temporary
+    file goes on any failure; a top level that is not an object is a `ValueError` naming
+    the file. The one exception to "Never touch the user's global agent config" (AGENTS.md,
+    LAD-106). Codex CLI (`codex.py`): each
     agent's `CODEX_HOME` is its config folder, with a `config.toml` (mode 600) LADO writes
     with a small TOML writer (`toml_text`; a value it cannot write is left out with a
     launch warning): the role as `developer_instructions` (the base prompt stays), Codex's

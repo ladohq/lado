@@ -52,9 +52,9 @@ delta specs `provider-logins`, `claude-folder-trust`, `agent-variables`, `contai
 | Requirement (delta) | Layer | Tests |
 |---|---|---|
 | LADO reads each CLI's login with the CLI's own command | unit, smoke | `tests/test_providers.py` (recorded outputs per CLI, exit codes, timeout, odd output); `tests/smoke/` status in fresh homes |
-| Settings shows the login of each agent CLI | API, vitest, UI e2e | `tests/test_server_providers.py` (`GET /api/providers`: states, source layer, waiting, projects, doctor checks); `Providers.test.tsx`; `tests/ui/test_providers.py` |
+| Settings shows the login of each agent CLI | API, vitest, UI e2e | `tests/test_server_providers.py` (`GET /api/providers`: states, source layer, waiting, projects, doctor checks); `Providers.test.tsx`; `tests/ui/test_providers_section.py` |
 | Codex's row says that its agents do not get the login | unit, vitest | `test_providers.py` (note, no actions); `Providers.test.tsx` |
-| The login window runs the CLI's own login command | unit, integration, UI e2e | `tests/test_logins.py` (one per provider, label, end by label); `tests/integration/test_provider_logins.py` (the window's command has the agents' environment and ends by itself; `lado stop --all` ends it; `lado ls` ignores it); `tests/ui/test_providers.py` |
+| The login window runs the CLI's own login command | unit, integration, UI e2e | `tests/test_logins.py` (one per provider, label, end by label); `tests/integration/test_provider_logins.py` (the window's command has the agents' environment and ends by itself; `lado stop --all` ends it; `lado ls` ignores it); `tests/ui/test_providers_section.py` |
 | The login window works from a phone | vitest, UI e2e | `Providers.test.tsx` (Send sends text + `\r` in one frame; the keys' sequences; web links addon loaded); UI e2e at 390 px: the fake login reads the line and ends |
 | Logging out of Claude Code asks first | API, vitest | `test_server_providers.py` (logout runs `logout_argv`, 400 without); `Providers.test.tsx` (the confirmation names the running agents) |
 | A CLI's login variables can be set as LADO's secrets | unit, API, integration | `tests/test_project_secrets_store.py` (the store over LADO's folder); `test_server_providers.py` (PUT/DELETE, 400 for other names, 422 without input); `tests/integration/test_project_secrets_canary.py` (a LADO secret's value nowhere) |
@@ -90,7 +90,7 @@ delta specs `provider-logins`, `claude-folder-trust`, `agent-variables`, `contai
 
 `make lint`; `make test`; `uv run pytest -m integration -n auto
 tests/integration/test_provider_logins.py tests/integration/test_project_secrets_canary.py
-tests/integration/test_agent_liveness.py`; `uv run pytest -m ui tests/ui/test_providers.py`
+tests/integration/test_agent_liveness.py`; `uv run pytest -m ui tests/ui/test_providers_section.py`
 and the Needs you and Settings UI tests; `make web`; `openspec validate provider-logins
 --strict`; `openspec validate --specs --strict`. CI runs the whole `make check` and the
 smoke cells (this change touches files off the skip list).

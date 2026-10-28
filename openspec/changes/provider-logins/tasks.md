@@ -61,7 +61,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-28-provider-log
   integration -n auto tests/integration/test_project_secrets_canary.py`.
 - [x] 5.3 UI e2e: the section, the window with a fake login command, Needs you's "Log
   in…", a phone's width; screenshots (D12). Check: `uv run pytest -m ui
-  tests/ui/test_providers.py`.
+  tests/ui/test_providers_section.py` (named apart from the unit tests' test_providers.py).
 - [x] 5.4 Smoke: each real CLI's status in a fresh home, and a Claude agent with a token in
   a fresh config past the first run (D12). Check: CI's smoke cells.
 

@@ -528,9 +528,19 @@ def test_claude_writes_no_first_run_without_a_login(repo, claude_home, cli_login
     before = config.path.read_bytes()
     cli_logins.logged_out()
     assert _blocker(repo, env) == base.Blocker()
-    cli_logins.answer("claude", "`claude auth status --json` timed out after 10 s")
-    assert _blocker(repo, env) == base.Blocker()
     assert config.path.read_bytes() == before
+
+
+def test_claude_records_its_first_run_when_its_login_cannot_be_read(
+    repo, claude_home, cli_logins
+):
+    """An unknown login holds no agent (lado.runtime): it starts, and without the record it
+    would stand on the theme screen with no hook and no reason."""
+    env, config = claude_home
+    config.trust(repo)
+    cli_logins.answer("claude", "`claude auth status --json` timed out after 10 s")
+    assert _blocker(repo, env) == base.Blocker(notes=(_onboarded(config.path),))
+    assert _config(config.path)["hasCompletedOnboarding"] is True
 
 
 def test_claude_fresh_config_with_a_login_gets_the_trust_then_the_first_run(

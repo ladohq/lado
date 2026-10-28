@@ -351,8 +351,9 @@ class ClaudeProvider(base.Provider):
         # A logged-in Claude Code still shows its first-run screens before any hook: the
         # theme, then for a key in its environment whether to use it (default "No"). Not
         # while it is not logged in: those agents wait for a login (lado.login_wait), which
-        # calls this again once there is one.
-        if self.login_status(env).state != base.YES:
+        # calls this again once there is one. A login LADO cannot read holds no agent, so
+        # its first run is recorded too, or it would stand on the theme with no reason.
+        if self.login_status(env).state == base.NO:
             return base.Blocker(notes=tuple(notes))
         try:
             if path := _record_first_run(env):

@@ -277,7 +277,7 @@ def _blocker(cwd, env):
 
 
 def _recorded(repo, config_path):
-    return base.Blocker(note=f"LADO recorded Claude Code's trust in {repo} in {config_path}")
+    return base.Blocker(notes=(f"LADO recorded Claude Code's trust in {repo} in {config_path}",))
 
 
 def _fallback(repo, why):
@@ -385,7 +385,7 @@ def test_claude_trust_entry_that_is_no_object_is_left_alone(repo, claude_home, e
     config.raw(json.dumps({"projects": {str(repo): entry}}))
     before = config.path.read_bytes()
     blocker = _blocker(repo, env)
-    assert blocker.note is None and blocker.warning is None
+    assert blocker.notes == () and blocker.warning is None
     assert blocker.reason.startswith(_fallback(repo, "").split("(")[0] + "(")
     assert str(config.path) in blocker.reason and "not a JSON object" in blocker.reason
     assert config.path.read_bytes() == before
@@ -402,7 +402,7 @@ def test_claude_trust_it_cannot_write_waits_with_why(repo, claude_home):
         assert sorted(p.name for p in home.iterdir()) == listing
     finally:
         home.chmod(0o700)
-    assert blocker.note is None
+    assert blocker.notes == ()
     assert blocker.reason.startswith(f"Claude Code asks whether to trust {repo}: LADO could not ")
     assert "Permission denied" in blocker.reason and str(home) in blocker.reason
     assert blocker.reason.endswith(_fallback(repo, "").split(")", 1)[1])
@@ -477,7 +477,7 @@ def test_claude_config_it_cannot_read_is_a_warning(repo, claude_home, text, erro
     env, config = claude_home
     config.raw(text)
     blocker = _blocker(repo, env)
-    assert blocker.reason is None and blocker.note is None
+    assert blocker.reason is None and blocker.notes == ()
     assert blocker.warning.startswith(f"cannot tell whether Claude Code trusts {repo}: ")
     assert str(config.path) in blocker.warning and error in blocker.warning
     assert config.path.read_text() == text
@@ -487,11 +487,128 @@ def test_claude_reads_only_the_projects_of_its_config(repo, claude_home):
     env, config = claude_home
     # Other keys may hold anything; only projects is read, and only the trust written.
     config.raw(json.dumps({"oauthAccount": None, "projects": {str(repo): {"x": 1}}}))
-    assert _blocker(repo, env).note
+    assert _blocker(repo, env).notes
     assert _config(config.path) == {
         "oauthAccount": None,
         "projects": {str(repo): {"x": 1, "hasTrustDialogAccepted": True}},
     }
+
+
+# Claude Code's first run (2.1.295, checked by hand): the theme screen until
+# hasCompletedOnboarding, and "Detected a custom API key" until the key's last 20
+# characters are in customApiKeyResponses.approved.
+KEY = "sk-ant-api03-" + "k" * 30 + "abcdefghijklmnopqrst"
+TAIL = KEY[-20:]
+
+
+def _onboarded(path):
+    return f"LADO recorded Claude Code's first run in {path}"
+
+
+def _approved(path):
+    return f"LADO recorded the approval of ANTHROPIC_API_KEY in {path}"
+
+
+def test_claude_records_its_first_run_for_a_logged_in_agent(repo, claude_home, cli_logins):
+    env, config = claude_home
+    config.trust(repo)
+    cli_logins.logged_in()
+    env = {**env, "CLAUDE_CODE_OAUTH_TOKEN": "t"}
+    assert _blocker(repo, env) == base.Blocker(notes=(_onboarded(config.path),))
+    assert _config(config.path)["hasCompletedOnboarding"] is True
+    assert _config(config.path)["numStartups"] == 3  # the rest kept
+    assert "customApiKeyResponses" not in _config(config.path)  # no key, no approval
+    assert _blocker(repo, env) == base.Blocker()  # once
+
+
+def test_claude_writes_no_first_run_without_a_login(repo, claude_home, cli_logins):
+    env, config = claude_home
+    config.trust(repo)
+    before = config.path.read_bytes()
+    cli_logins.logged_out()
+    assert _blocker(repo, env) == base.Blocker()
+    cli_logins.answer("claude", "`claude auth status --json` timed out after 10 s")
+    assert _blocker(repo, env) == base.Blocker()
+    assert config.path.read_bytes() == before
+
+
+def test_claude_fresh_config_with_a_login_gets_the_trust_then_the_first_run(
+    repo, claude_home, cli_logins
+):
+    env, config = claude_home
+    cli_logins.logged_in()
+    assert _blocker(repo, env).notes == (
+        _recorded(repo, config.path).notes[0],
+        _onboarded(config.path),
+    )
+    assert _config(config.path) == {
+        "projects": {str(repo): {"hasTrustDialogAccepted": True}},
+        "hasCompletedOnboarding": True,
+    }
+    assert config.path.stat().st_mode & 0o777 == 0o600
+
+
+def test_claude_approves_the_api_key_it_gives(repo, claude_home, cli_logins):
+    env, config = claude_home
+    keep = {"approved": ["x" * 20], "rejected": ["y" * 20]}
+    config.raw(
+        json.dumps(
+            {
+                "hasCompletedOnboarding": True,
+                "customApiKeyResponses": keep,
+                "projects": {str(repo): {"hasTrustDialogAccepted": True}},
+            }
+        )
+    )
+    cli_logins.logged_in("api_key")
+    env = {**env, "ANTHROPIC_API_KEY": KEY}
+    blocker = _blocker(repo, env)
+    assert blocker == base.Blocker(notes=(_approved(config.path),))
+    assert _config(config.path)["customApiKeyResponses"] == {
+        "approved": ["x" * 20, TAIL],
+        "rejected": ["y" * 20],
+    }
+    assert TAIL not in repr(blocker) and KEY[:10] not in repr(blocker)
+    assert _blocker(repo, env) == base.Blocker()  # approved already
+
+
+def test_claude_leaves_a_rejected_key_and_waits_with_why(repo, claude_home, cli_logins):
+    env, config = claude_home
+    text = json.dumps(
+        {
+            "hasCompletedOnboarding": True,
+            "customApiKeyResponses": {"approved": [], "rejected": [TAIL]},
+            "projects": {str(repo): {"hasTrustDialogAccepted": True}},
+        }
+    )
+    config.raw(text)
+    cli_logins.logged_in("api_key")
+    blocker = _blocker(repo, {**env, "ANTHROPIC_API_KEY": KEY})
+    assert config.path.read_text() == text
+    assert blocker.notes == ()
+    assert blocker.reason == (
+        "Claude Code asks whether to use ANTHROPIC_API_KEY, which you rejected before (in "
+        f"{config.path}): in its terminal choose to use it, or remove the key from "
+        "customApiKeyResponses.rejected there"
+    )
+    assert TAIL not in blocker.reason
+
+
+def test_claude_api_key_responses_that_are_no_object_are_a_warning(repo, claude_home, cli_logins):
+    env, config = claude_home
+    text = json.dumps(
+        {
+            "hasCompletedOnboarding": True,
+            "customApiKeyResponses": [],
+            "projects": {str(repo): {"hasTrustDialogAccepted": True}},
+        }
+    )
+    config.raw(text)
+    cli_logins.logged_in("api_key")
+    blocker = _blocker(repo, {**env, "ANTHROPIC_API_KEY": KEY})
+    assert config.path.read_text() == text
+    assert blocker.reason is None and blocker.notes == ()
+    assert "customApiKeyResponses" in blocker.warning and str(config.path) in blocker.warning
 
 
 def test_other_providers_never_block_the_first_hook(repo):

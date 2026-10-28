@@ -2914,7 +2914,7 @@ def _first_hook_blocker(
     blocker = agent_cli.first_hook_blocker(agent.cwd, _launch_env(agent, base_env, launch))
     if blocker.reason:
         state.block(agent.session, agent.name, blocker.reason)
-    return [line for line in (blocker.note, blocker.reason, blocker.warning) if line]
+    return [line for line in (*blocker.notes, blocker.reason, blocker.warning) if line]
 
 
 def _keychain_warnings(agent_cli: providers.Provider, base_env: dict[str, str]) -> list[str]:

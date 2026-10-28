@@ -328,6 +328,53 @@ def codex_home(tmp_path, monkeypatch):
     return folder
 
 
+class CliLogins:
+    """What the agent CLIs' login status commands answer in a test (base.run_status): by
+    default nothing runs and each is unknown, so no login holds an agent and no first-run
+    key is written; `answer(command, code, stdout, stderr="")` or `answer(command,
+    problem)` sets one, `logged_in()` logs Claude Code in with a token. `calls` keeps the
+    (argv, env) asked."""
+
+    UNREAD = "LADO's tests run no agent CLI's status command"
+
+    def __init__(self):
+        self.answers: dict[str, object] = {}
+        self.calls: list[tuple[list[str], dict]] = []
+
+    def answer(self, command, code_or_problem, stdout="", stderr=""):
+        if isinstance(code_or_problem, str):
+            self.answers[command] = code_or_problem
+        else:
+            self.answers[command] = (code_or_problem, stdout, stderr)
+
+    def logged_in(self, method="oauth_token"):
+        data = {"loggedIn": True, "authMethod": method, "configDirectory": "/c"}
+        if method == "api_key":
+            data["apiKeySource"] = "ANTHROPIC_API_KEY"
+        self.answer("claude", 0, json.dumps(data))
+
+    def logged_out(self):
+        self.answer("claude", 1, json.dumps({"loggedIn": False, "authMethod": "none"}))
+
+    def run(self, argv, env):
+        self.calls.append((list(argv), dict(env)))
+        answer = self.answers.get(os.path.basename(argv[0]), self.UNREAD)
+        if isinstance(answer, str):
+            return answer
+        code, out, err = answer
+        return subprocess.CompletedProcess(argv, code, out, err)
+
+
+@pytest.fixture(autouse=True)
+def cli_logins(monkeypatch):
+    """The agent CLIs' login status in every unit test (CliLogins), never the user's."""
+    from lado.providers import base
+
+    logins = CliLogins()
+    monkeypatch.setattr(base, "run_status", logins.run)
+    return logins
+
+
 @pytest.fixture
 def fake_clis(tmp_path, monkeypatch, claude_config):
     """Stand-ins for the agent CLIs on PATH, which a launch looks its CLI up on; the folder."""

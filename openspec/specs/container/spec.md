@@ -982,18 +982,18 @@ with `env | grep -E '^(LADO|COMPOSE)_'` and `unset`, as the guide does.
 
 ### Requirement: The guide's first session names Claude Code's trust question
 
-The guide's "Your first session"
-SHALL say that Claude Code asks whether to trust a repository it has not seen
-before its first answer, that the agent waits in Needs you meanwhile, that the answer is
-"Yes, I trust this folder" in the agent's terminal while Enter alone answers "No, exit" and
-closes the agent, that it is asked once per repository and remembered on the home volume,
-and that a trusted repository's own Claude Code settings and MCP servers run.
+The guide's "Your first session" SHALL say that LADO records Claude Code's trust in the
+repository a session is started in, so Claude Code does not ask; that the repository's own
+Claude Code settings and MCP servers then run without a question; and that when LADO
+cannot record it, the agent waits in Needs you for Claude Code's question, whose answers
+the scenario names.
 
 #### Scenario: The guide on the trust question
 - **WHEN** the human reads the guide's Docker "Your first session"
-- **THEN** it says that Claude Code asks once per repository whether to trust it, that the
-  agent waits in Needs you meanwhile, and that "Yes, I trust this folder" answers it while
-  Enter alone answers "No, exit" and closes the agent
+- **THEN** it says that LADO trusts the repository for Claude Code itself and that the
+  repository's own Claude Code settings and MCP servers run, and that when LADO cannot,
+  the agent waits in Needs you and "Yes, I trust this folder" answers it while Enter alone
+  answers "No, exit" and closes the agent
 
 ### Requirement: The guide quotes the trust answers as LADO's reason words them
 
@@ -1004,7 +1004,8 @@ reason for that wait words them.
 - **WHEN** `tests/test_docker.py` reads the guide's Docker "Your first session"
 - **THEN** it names Needs you and quotes "Yes, I trust this folder" and "No, exit", and
   each quoted answer is in the reason `ClaudeProvider.first_hook_blocker` gives for a folder
-  Claude Code does not trust
+  Claude Code does not trust when LADO cannot record the trust (a config folder it cannot
+  write)
 
 ### Requirement: README and the guide present Docker first, then PyPI
 

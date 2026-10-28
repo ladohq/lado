@@ -234,14 +234,18 @@ empty git repository there (no GitHub needed). A folder outside the
 workspace lives only in the container: the window warns about it. Choose the agent
 CLI and press **Start session**.
 
-The container's Claude Code has trusted no folder yet, so on a repository it has not seen
-it asks whether to trust it before its first answer, in every permission mode. Meanwhile
-the agent waits in **Needs you**, which says what to answer: open its terminal and choose "Yes, I trust this folder"; Enter alone answers
-"No, exit" and closes the agent. It is asked once per repository (the workers' worktrees
-are covered) and remembered on the home volume, so restarts and updates do not ask again;
-another LADO container has its own home volume and asks once more. A trusted repository's
-own Claude Code settings (`.claude/`) and MCP servers (`.mcp.json`) run, so trust only a
-repository whose settings you accept.
+Claude Code asks whether to trust a repository it has not seen before its first answer, in
+every permission mode. So LADO records Claude Code's trust in the repository a session
+starts in, before its first agent starts, and Claude Code does not ask; the session's log
+and the start's warnings say so. The workers' worktrees are covered, and the trust is
+remembered on the home volume. A trusted repository's own Claude Code settings
+(`.claude/`) and MCP servers (`.mcp.json`) run without a question, so start sessions only
+in repositories whose settings you accept.
+
+When LADO cannot record the trust (Claude Code's config cannot be written or read), Claude
+Code asks, and the agent waits in **Needs you** meanwhile, which says why and what to
+answer: open its terminal and choose "Yes, I trust this folder"; Enter alone answers "No,
+exit" and closes the agent.
 
 ### Open LADO on your phone
 
@@ -472,8 +476,9 @@ identity, the ssh agent, the workspace).
   host's key on the home volume, which trusts the first answer: compare its fingerprint
   with the one the host publishes.
   `docker compose exec lado sh -c 'mkdir -p -m 700 ~/.ssh && ssh-keyscan gitlab.com >> ~/.ssh/known_hosts && ssh-keygen -lf ~/.ssh/known_hosts'`.
-- **An agent closed right after the session started**: Enter on Claude Code's trust
-  question answered "No, exit". Stop the session and resume it in the UI (or
+- **An agent closed right after the session started**: LADO could not record Claude
+  Code's trust (Needs you said why), and Enter on Claude Code's trust question answered
+  "No, exit". Stop the session and resume it in the UI (or
   `docker compose exec lado lado stop <session>`, then
   `docker compose exec lado lado start <repository> --name <session>` with the
   repository's path in the container) and choose "Yes, I trust this folder"; see
@@ -843,11 +848,11 @@ It refuses, changing nothing: inside an agent, while `lado update` runs, and whe
 - Repositories `lado start <git-url>` cloned into the workspace (`~/workspace/` by default,
   `~/lado/` before 0.43.0), and projects' folders: they are yours.
 - tmux, uv, git and the agent CLIs.
-- The agent CLIs' own records of the folders they ran in. LADO never writes to them, and
-  removes nothing there:
-  - Claude Code: the folder's entry in `~/.claude.json` (`projects`, with the trust you
-    gave it; so a LADO installed again is not asked again) and its conversations in
-    `~/.claude/projects/`.
+- The agent CLIs' own records of the folders they ran in. LADO removes nothing there, and
+  writes only Claude Code's trust:
+  - Claude Code: the folder's entry in `~/.claude.json` (`projects`, with the trust LADO
+    recorded for a session's repository; so a LADO installed again is not asked again) and
+    its conversations in `~/.claude/projects/`.
   - Codex: nothing of LADO's agents; their Codex home was LADO's own, under `~/.lado`.
   - OpenCode and Kilo: their sessions in their data folders, `~/.local/share/opencode/`
     and `~/.local/share/kilo/`.

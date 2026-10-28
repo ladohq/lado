@@ -1143,13 +1143,21 @@ def test_the_guide_says_to_check_the_shells_variables_first():
 
 
 def test_the_first_session_names_claude_codes_trust_question(tmp_path):
-    """The container's Claude Code has trusted no folder yet: the guide quotes the answers
-    as LADO's own reason for the wait words them, so Needs you and the guide agree."""
+    """The container's Claude Code has trusted no folder yet: LADO records the trust, and
+    the guide says so and what that runs. When it cannot (here a home it cannot write), the
+    guide quotes the answers as LADO's own reason for the wait words them, so Needs you and
+    the guide agree."""
     repo, home = tmp_path / "repo", tmp_path / "home"
-    home.mkdir()
+    home.mkdir(mode=0o500)
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    reason = ClaudeProvider().first_hook_blocker(str(repo), {"HOME": str(home)}).reason
+    try:
+        reason = ClaudeProvider().first_hook_blocker(str(repo), {"HOME": str(home)}).reason
+    finally:
+        home.chmod(0o700)
+    assert "LADO could not record the trust" in reason
     text = " ".join(guide_part("Your first session").split())
+    assert "LADO records Claude Code's trust" in text
+    assert "`.claude/`" in text and "`.mcp.json`" in text
     assert "Needs you" in text
     for answer in ('"Yes, I trust this folder"', '"No, exit"'):
         assert answer in text and answer in reason, answer

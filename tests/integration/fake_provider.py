@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from lado import cli, providers, state
-from lado.providers import base
+from lado.providers import base, claude
 
 LADO = Path(__file__).resolve()
 AGENT = LADO.with_name("fake_agent.py")
@@ -113,9 +113,13 @@ class FakeProvider(base.Provider):
         )
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
-        # The fake agent asks first when its environment says so (fake_agent.py).
+        # The fake agent asks first when its environment says so (fake_agent.py); under
+        # FAKE_AGENT_TRUST it asks as Claude Code does, so LADO records the trust as for
+        # Claude Code, in the test's CLAUDE_CONFIG_DIR, and its lines name the fake agent.
         if env.get("FAKE_AGENT_ASKS_FIRST") == "1":
             return base.Blocker(reason=ASKS_FIRST)
+        if env.get("FAKE_AGENT_TRUST") == "1":
+            return claude.ClaudeProvider.first_hook_blocker(self, cwd, env)
         return base.Blocker()
 
     def continue_output(self, text: str) -> str | None:

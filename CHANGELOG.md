@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.44.0 (unreleased)
+
+### Added
+
+- **Claude Code trusts the session's repository.** LADO records Claude Code's folder trust
+  itself, so a session started from the UI or a phone no longer waits for "Yes, I trust
+  this folder"; the repository's own Claude Code settings run.
+
 ## 0.43.0 (2026-10-26)
 
 ### Added

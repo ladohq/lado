@@ -79,17 +79,11 @@ def smoke_provider(request, monkeypatch, tmp_path, fake_endpoint, codex_home) ->
         config = tmp_path / "claude-config"
         config.mkdir()
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
-        # What a human answers once, ahead: the first-run screens, the bypass permissions
-        # mode's disclaimer (a fresh home shows it before any hook; 2.1.296), and the trust of
-        # the smoke's repo.
+        # What a human answers once, ahead: the first-run screens and the bypass permissions
+        # mode's disclaimer (a fresh home shows it before any hook; 2.1.296). Not the trust
+        # of the smoke's repo: LADO records it, and the test checks that it did.
         (config / ".claude.json").write_text(
-            json.dumps(
-                {
-                    "hasCompletedOnboarding": True,
-                    "bypassPermissionsModeAccepted": True,
-                    "projects": {str(tmp_path / "My Repo"): {"hasTrustDialogAccepted": True}},
-                }
-            )
+            json.dumps({"hasCompletedOnboarding": True, "bypassPermissionsModeAccepted": True})
         )
         monkeypatch.setenv("ANTHROPIC_BASE_URL", fake_endpoint.url)
         # A token, which Claude Code takes without asking (an ANTHROPIC_API_KEY it has not

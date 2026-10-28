@@ -153,6 +153,7 @@ LADO borrows ideas from other orchestrators but must not repeat their mistakes:
 - **No hardcoded paths.** Resources refer to each other by relative paths or `${KIT_DIR}` /
   `${SKILL_DIR}`, never by absolute or home-directory paths.
 - **Never touch the user's global agent config.** Configure each agent process on its own.
+  One exception: Claude Code's trust in the session's repo (`claude.edit_config`, LAD-106).
 - **Native over injected.** Use each CLI's own way of loading skills, MCP servers and hooks
   instead of pasting their text into the prompt.
 - **Explicit lookup.** No hidden fallbacks to global locations; show where each resolved

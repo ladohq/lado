@@ -180,9 +180,14 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   starts it as a blocker's reason is (`Started.warnings`, `spawn_worker`'s warnings,
   `loop.log`); the agent runs anyway. `lado doctor` (Graphical session), the system panel
   (`SystemInfo.gui_session`) and the update's plan (`agents_note`) say the same.
-- An agent whose CLI asks the human before any hook (Claude Code's "trust this folder?" in a
-  repo it does not trust; `Provider.first_hook_blocker`) waits from its start: after
-  `launch_command` and before its window starts (`runtime._first_hook_blocker`, for start,
+- Claude Code's "trust this folder?" in a repo it does not trust is answered by LADO ahead:
+  `first_hook_blocker` records the trust of the repo's main root in Claude Code's global
+  config (`claude.edit_config`) and returns a `note`, told and logged as a reason is
+  (below), and nothing holds the agent. Only when that fails does the agent wait for the
+  question, the reason saying why LADO could not record it.
+- An agent whose CLI asks the human before any hook (Claude Code's "trust this folder?"
+  when LADO could not record it, Codex's; `Provider.first_hook_blocker`) waits from its
+  start: after `launch_command` and before its window starts (`runtime._first_hook_blocker`, for start,
   resume and spawn), `state.block` sets it `waiting` with a `blocked` event, whose detail
   is why and what to answer. That reason holds while no `status` or `spawned` event came
   after it (`state.block_reasons`, read by `_Reasons`: `lado ls`, `list_agents`,
@@ -190,9 +195,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `SESSION_START` ends that wait (also only that one: a compaction's session start leaves
   any other wait), and its queue is handed over as after any start; an answer that ends
   the CLI ("No, exit") is an end like any other (`agent_ended`, the window check). Who
-  starts it is told the reason, or the provider's `warning` when it cannot tell: `lado
-  start` on stderr, the UI's start in `Started.warnings`, `spawn_worker` in its result's
-  `warnings` and in `loop.log`.
+  starts it is told the `note`, the reason, or the provider's `warning` when it cannot
+  tell: `lado start` on stderr, the UI's start in `Started.warnings`, `spawn_worker` in its
+  result's `warnings`, and each once in `loop.log` (start, resume and spawn).
 - An agent `waiting` for the human (a dialog in its terminal) is `busy` again as soon as the
   human answers there: the neutral `WAITING` and `RESUMED` come in pairs with the same key
   (`Event.key`, the provider's id of the request), and only `RESUMED` with the key it waits

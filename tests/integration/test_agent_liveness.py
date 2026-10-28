@@ -253,6 +253,7 @@ def test_lado_records_the_trust_so_the_cli_does_not_ask(session, repo, claude_co
 def test_the_cli_asks_when_lado_cannot_record_the_trust(session, repo, claude_config, monkeypatch):
     monkeypatch.setenv("FAKE_AGENT_TRUST", "1")
     claude_config.trust()
+    before = claude_config.path.read_text()
     folder = claude_config.path.parent
     folder.chmod(0o500)
     try:
@@ -263,7 +264,7 @@ def test_the_cli_asks_when_lado_cannot_record_the_trust(session, repo, claude_co
     assert status("w1") == state.WAITING
     assert reason.startswith(f"Fake agent asks whether to trust {repo.resolve()}: LADO could not")
     assert "Permission denied" in reason
-    assert json.loads(claude_config.path.read_text()) == {"projects": {}}
+    assert claude_config.path.read_text() == before  # it trusts no folder, unchanged
     tmux.send_text(SESSION, "w1", "yes")  # the human answers
     wait_status("w1", state.IDLE)
     wait_for(w1_read_its_task, "w1 to read its task")

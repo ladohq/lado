@@ -922,9 +922,7 @@ def create_app(
         after it, and those that wait for a login, get it."""
         provider = provider_named(name)
         try:
-            logins.check_variable(provider, variable)
-            if not given.value:
-                raise ValueError(f"{variable} needs a value")
+            logins.check_secret(provider, variable, given.value)
             project_secrets.write_lado(variable, given.value)
         except (ValueError, OSError) as error:
             raise HTTPException(400, str(error)) from None

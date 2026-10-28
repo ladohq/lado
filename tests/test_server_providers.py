@@ -124,6 +124,22 @@ def test_only_a_login_variable_may_be_set(client, windows):
     assert not (state.home() / "secrets").exists()
 
 
+@pytest.mark.parametrize(
+    ("value", "why"),
+    [
+        pytest.param("canary\0x", "is not UTF-8 text", id="nul"),
+        pytest.param("x" * (64 * 1024 + 1), "is larger than 64 KiB", id="too-large"),
+    ],
+)
+def test_a_value_the_agents_could_not_get_is_refused(client, value, why):
+    """The reader of LADO's secrets drops such a file, which the row would show as set."""
+    answer = client.put(f"/api/providers/claude/variables/{TOKEN}", json={"value": value})
+    assert answer.status_code == 400
+    assert answer.json()["detail"] == f"the value of {TOKEN} {why}"
+    assert "canary" not in answer.text
+    assert project_secrets.lado_names() == []
+
+
 @pytest.mark.parametrize("body", [{"secret": "canary-3"}, {"value": 5}, {"value": ["canary-3"]}])
 def test_a_body_the_server_cannot_read_is_not_echoed(client, body):
     answer = client.put(f"/api/providers/claude/variables/{TOKEN}", json=body)

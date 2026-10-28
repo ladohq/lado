@@ -204,6 +204,21 @@ def read_folder(folder: str, *, own: Callable[[str], bool] | None = None) -> Fol
     return Folder(values, unused)
 
 
+def value_problem(name: str, value: str) -> str | None:
+    """Why `value` cannot be the variable `name` that a folder of variables gives (no text of
+    at most 64 KiB: the reader would not give it), for a project's secret or LADO's; None
+    when it can."""
+    try:
+        data = value.encode()
+    except UnicodeEncodeError:
+        data = None  # lone surrogates, as argv gives bytes that are no UTF-8
+    if data is None or "\0" in value:
+        return f"the value of {name} is not UTF-8 text"
+    if len(data) > MAX_VALUE:
+        return f"the value of {name} is larger than 64 KiB"
+    return None
+
+
 def nothing_more(name: str) -> bool:
     """`own` of a folder only LADO writes whose names have no further reservation."""
     return False

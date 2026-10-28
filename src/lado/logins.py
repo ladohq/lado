@@ -107,13 +107,21 @@ class Login:
     window: bool = False  # a login window of it is open
 
 
-def read(provider: base.Provider, env: Mapping[str, str]) -> Login:
-    """`provider`'s login read now in `env` (`environment`), with the agents and projects
-    that concern it (lado.db read as it is)."""
-    status = provider.login_status(dict(env))
+def read(
+    provider: base.Provider,
+    env: Mapping[str, str],
+    full: bool = True,
+    status: base.LoginStatus | None = None,
+) -> Login:
+    """`provider`'s login read now in `env` (`environment`), unless `status` is given
+    (e.g. why it cannot be read), with the agents and projects that concern it (lado.db
+    read as it is) unless not `full`."""
+    status = status or provider.login_status(dict(env))
     found = Login(provider, status, layer(status.variable, env) if status.variable else "")
     held = set(project_secrets.lado_names())
     found.variables = [Variable(n, n in held, layer(n, env)) for n in provider.login_variables]
+    if not full:
+        return found
     if state.schema_version() is not None:
         try:
             found.waiting, found.running = agents(provider)
@@ -122,6 +130,31 @@ def read(provider: base.Provider, env: Mapping[str, str]) -> Login:
             pass  # lado.db of another schema: no agents to name
     found.window = provider.name in open_windows()
     return found
+
+
+def source(found: Login) -> str:
+    """Where a login comes from, for humans: the variable and its layer, else the CLI's
+    file; "" when the CLI names neither."""
+    if found.status.variable:
+        return (
+            f"{found.status.variable} from {found.layer}" if found.layer else found.status.variable
+        )
+    return found.status.file
+
+
+def logout(provider: base.Provider) -> None:
+    """Run `provider`'s logout that asks nothing (Provider.logout_argv) with the agents'
+    environment: ValueError when it has none, RuntimeError with why when it fails."""
+    argv = provider.logout_argv()
+    if argv is None:
+        raise ValueError(f"{provider.title} logs out in its login window")
+    found = base.run_status(argv, environment())
+    if isinstance(found, str):
+        raise RuntimeError(found)
+    if found.returncode != 0:
+        command = " ".join(argv)
+        why = base.error_line(f"exit status {found.returncode}", found.stderr or found.stdout)
+        raise RuntimeError(f"`{command}` failed with {why}")
 
 
 def agents(provider: base.Provider) -> tuple[list[AgentRef], list[AgentRef]]:

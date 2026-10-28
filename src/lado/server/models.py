@@ -15,6 +15,7 @@ from lado import (
     gitcache,
     gui_session,
     kits,
+    logins,
     marketplaces,
     runs,
     runtime,
@@ -450,6 +451,86 @@ class ProviderInfo(BaseModel):
     detail: str  # its `--version` line, or why there is none
     tested_version: str
     warning: str  # "" unless its version is not the tested one
+
+
+class LoginItemInfo(BaseModel):
+    """One login of a CLI that keeps several (OpenCode's and Kilo's)."""
+
+    name: str  # the model provider it is for
+    kind: str  # api, oauth, ...; "variable" for one a variable gives
+    variable: str  # that variable's name; "" for a credential
+
+
+class LoginInfo(BaseModel):
+    """A CLI's login as its own status command says (Provider.login_status); no value."""
+
+    state: Literal["yes", "no", "unknown"]
+    method: str  # for humans: "Claude subscription (Max)", "token", "2 credentials"
+    file: str  # the CLI's own login file, when it names one
+    variable: str  # the variable that logs it in, when one does
+    layer: str  # where that variable comes from (lado.logins.layer); "" for none
+    source: str  # the two above, or the file, in words (lado.logins.source)
+    items: list[LoginItemInfo]
+    problem: str  # why unknown
+
+
+class LoginActionInfo(BaseModel):
+    """A command the login window can run (Provider.login_actions)."""
+
+    id: str
+    label: str
+
+
+class LoginVariableInfo(BaseModel):
+    """A variable that logs the CLI in: whether LADO's secrets hold it (never its value),
+    and which layer gives it now."""
+
+    name: str
+    secret: bool
+    layer: str  # "" when no layer sets it
+
+
+class AgentRefInfo(BaseModel):
+    session: str
+    agent: str
+
+
+class CheckInfo(BaseModel):
+    """A line of `lado doctor` (doctor.Check)."""
+
+    name: str
+    level: Literal["ok", "info", "warn", "fail"]
+    detail: str
+    hint: str
+
+
+class ProviderLogins(BaseModel):
+    """One agent CLI in Settings → Providers and environment (lado.logins)."""
+
+    cli: ProviderInfo
+    login: LoginInfo
+    needs_login: bool  # its agents wait for a login (Capabilities.needs_login)
+    actions: list[LoginActionInfo]  # the login window's commands
+    can_logout: bool  # a logout that asks nothing (Provider.logout_argv)
+    variables: list[LoginVariableInfo]
+    note: str  # Provider.login_note
+    waiting: list[AgentRefInfo]  # live agents that wait for its login
+    running: list[AgentRefInfo]  # its live agents, for Log out's and Remove's confirmation
+    projects: list[str]  # projects that set a login variable of their own, by id
+    window: bool  # its login window is open
+
+
+class ProvidersPage(BaseModel):
+    """The section's data: each CLI's login, and `lado doctor`'s provider checks."""
+
+    providers: list[ProviderLogins]
+    checks: list[CheckInfo]
+
+
+class LoginOpen(BaseModel):
+    """The login action a window runs (LoginActionInfo.id)."""
+
+    action: str
 
 
 class SessionCommand(BaseModel):
@@ -996,6 +1077,9 @@ class AgentInfo(BaseModel):
     # it waits after failed messages and what the human can do (None when it waits for the
     # human in its terminal, a prompt); in `stopped`, why its process ended. Else None.
     status_reason: str | None
+    # The provider whose CLI's login it waits for (lado.logins.waits_for), so the UI offers
+    # "Log in…" without reading the reason; None for any other status or reason.
+    login_wait: str | None
     branch: str | None  # a worker's; None for the supervisor, which works in the repo
     worktree: str | None  # a worker's folder; None for the supervisor
     spawned_at: str  # UTC, ISO 8601: its latest spawn
@@ -1445,6 +1529,11 @@ def agent_info(agent: state.Agent) -> AgentInfo:
     spawned, since = state.agent_times(agent.session, agent.name)
     added = _utc(agent.created_at)  # an agent written without LADO's runtime has no events
     worker = agent.branch is not None
+    reason = (
+        runtime.status_reason(agent.session, agent.name)
+        if agent.status in (state.WAITING, state.STOPPED)
+        else None
+    )
     return AgentInfo(
         name=agent.name,
         role=agent.role,
@@ -1452,11 +1541,8 @@ def agent_info(agent: state.Agent) -> AgentInfo:
         status=agent.status,
         run=agent.run,
         task=_first_line(agent.task),
-        status_reason=(
-            runtime.status_reason(agent.session, agent.name)
-            if agent.status in (state.WAITING, state.STOPPED)
-            else None
-        ),
+        status_reason=reason,
+        login_wait=logins.waits_for(agent, reason) if agent.status == state.WAITING else None,
         branch=agent.branch,
         worktree=agent.cwd if worker else None,
         spawned_at=_iso(spawned) if spawned else added,

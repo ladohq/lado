@@ -30,7 +30,7 @@ import subprocess
 import termios
 import uuid
 
-from lado import state, tmux
+from lado import logins, state, tmux
 
 VIEW, CONTROL = "view", "control"
 MODES = (VIEW, CONTROL)
@@ -141,9 +141,11 @@ class Terminal:
         process: subprocess.Popen,
         fd: int,
         size: tuple[int, int],
+        keep: bool = False,
     ):
         self.session, self.agent, self.viewer, self.mode = session, agent, viewer, mode
         self.process, self.fd, self.size = process, fd, size
+        self.keep = keep  # the session attached to is not the terminal's own (a login window)
         self.closed = False
 
     def read(self, timeout: float = 0.25) -> bytes | None:
@@ -194,7 +196,31 @@ class Terminal:
             self.process.kill()
             self.process.wait()
         os.close(self.fd)
-        _kill(self.viewer)
+        if not self.keep:
+            _kill(self.viewer)
+
+
+def open_login(provider: str) -> Terminal:
+    """The terminal of `provider`'s login window (lado.logins), in CONTROL: a client
+    attached to the window's own session, which nobody else owns, so no viewer; closing it
+    leaves the window and its command running."""
+    name = logins.open_windows().get(provider)
+    if name is None:
+        raise NoTerminal(f"no login window of {provider} is open")
+    try:
+        size = tmux.window_size(f"={name}:")
+        process, fd = _attach(name, CONTROL, size)
+    except tmux.TmuxError as error:
+        raise NoTerminal(f"the login window of {provider} ended: {error}") from error
+    return Terminal(name, provider, name, CONTROL, process, fd, size, keep=True)
+
+
+def login_ended(provider: str) -> NoTerminal | None:
+    """Why `provider`'s login terminal ended for good: its window is gone (its command
+    ended, or Close); None while it is open."""
+    if provider in logins.open_windows():
+        return None
+    return NoTerminal(f"the login window of {provider} ended")
 
 
 def ended(session: str, agent: str) -> NoTerminal | None:

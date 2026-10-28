@@ -252,9 +252,10 @@ def test_claude_continues_with_queued_messages():
 # Claude Code's trust of a folder: projects[<folder>].hasTrustDialogAccepted in its global
 # config, $CLAUDE_CONFIG_DIR/.claude.json or ~/.claude.json (2.1.291, read in its binary).
 @pytest.fixture
-def claude_home(tmp_path):
-    """The agent's environment with an empty home for Claude Code, and a writer of its
-    config: trust(*folders) or raw(text)."""
+def claude_home(tmp_path, cli_logins):
+    """The agent's environment with an empty home for Claude Code, not logged in (its first
+    run is the tests' below), and a writer of its config: trust(*folders) or raw(text)."""
+    cli_logins.logged_out()
     home = tmp_path / "home"
     home.mkdir()
     env = {"HOME": str(home)}

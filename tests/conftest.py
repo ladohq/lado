@@ -280,6 +280,10 @@ def loop_starts(monkeypatch):
     return started
 
 
+# Claude Code's first run, recorded (lado.providers.claude): no logged-in agent stops there.
+ONBOARDED = {"hasCompletedOnboarding": True}
+
+
 @pytest.fixture(autouse=True)
 def claude_config(tmp_path, tmp_path_factory, monkeypatch):
     """Claude Code's global config for the agents (CLAUDE_CONFIG_DIR), never the user's, in
@@ -298,10 +302,10 @@ def claude_config(tmp_path, tmp_path_factory, monkeypatch):
 
         def trust(self, *folders):
             projects = {str(f): {"hasTrustDialogAccepted": True} for f in folders}
-            self.path.write_text(json.dumps({"projects": projects}))
+            self.path.write_text(json.dumps({**ONBOARDED, "projects": projects}))
 
         def refuse(self):
-            self.path.write_text(json.dumps({"projects": {str(repo): None}}))
+            self.path.write_text(json.dumps({**ONBOARDED, "projects": {str(repo): None}}))
 
         def note(self, repo):
             return f"LADO recorded Claude Code's trust in {repo} in {self.path}"
@@ -329,17 +333,19 @@ def codex_home(tmp_path, monkeypatch):
 
 
 class CliLogins:
-    """What the agent CLIs' login status commands answer in a test (base.run_status): by
-    default nothing runs and each is unknown, so no login holds an agent and no first-run
-    key is written; `answer(command, code, stdout, stderr="")` or `answer(command,
-    problem)` sets one, `logged_in()` logs Claude Code in with a token. `calls` keeps the
-    (argv, env) asked."""
+    """What the agent CLIs' login status commands answer in a test (base.run_status): no
+    command runs; Claude Code is logged in with a token (`claude_config` has its first run
+    recorded, so no agent waits and nothing is written), the others unknown.
+    `answer(command, code, stdout, stderr="")` or `answer(command, problem)` sets one,
+    `logged_in(method)` and `logged_out()` Claude Code's. `calls` keeps the (argv, env)
+    asked."""
 
     UNREAD = "LADO's tests run no agent CLI's status command"
 
     def __init__(self):
         self.answers: dict[str, object] = {}
         self.calls: list[tuple[list[str], dict]] = []
+        self.logged_in()
 
     def answer(self, command, code_or_problem, stdout="", stderr=""):
         if isinstance(code_or_problem, str):

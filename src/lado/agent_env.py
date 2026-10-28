@@ -491,14 +491,25 @@ def command(file: Path, env: Mapping[str, str], argv: list[str]) -> list[str]:
     """The window's command that runs `argv` with exactly `env` (and tmux's own variables
     of the window). `env` goes into `file`, readable by the user only, until the window
     reads it. Fails when `argv[0]` is not on `env`'s PATH: the window would close at once."""
+    check_program(argv[0], env)
+    write_private(file, dict(env))
+    return interpreter.run_module("lado.agent_env", str(file), *argv)
+
+
+def check_program(program: str, env: Mapping[str, str]) -> None:
+    """AgentEnvError when `program` is not on `env`'s PATH."""
     path = env.get("PATH", os.defpath)
-    if shutil.which(argv[0], path=path) is None:
-        raise AgentEnvError(f"`{argv[0]}` is not on the agents' PATH ({path}): {PATH_ADVICE}")
+    if shutil.which(program, path=path) is None:
+        raise AgentEnvError(f"`{program}` is not on the agents' PATH ({path}): {PATH_ADVICE}")
+
+
+def write_private(file: Path, data: object) -> None:
+    """Write `data` as JSON to `file`, readable by the user only: it holds the user's keys
+    until the window reads and removes it."""
     fd = os.open(file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     os.fchmod(fd, 0o600)  # the mode above is only for a new file
     with os.fdopen(fd, "w") as f:
-        json.dump(dict(env), f)
-    return interpreter.run_module("lado.agent_env", str(file), *argv)
+        json.dump(data, f)
 
 
 def main(args: list[str]) -> None:

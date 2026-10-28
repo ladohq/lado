@@ -2008,6 +2008,9 @@ def main(argv: list[str] | None = None) -> int:
     # Internal: started by `lado start`, one per session (lado.loop).
     loop_cmd = commands.add_parser("loop")
     loop_cmd.add_argument("session")
+    # Internal: the window of an agent that waits for its CLI's login (lado.login_wait).
+    login_wait_cmd = commands.add_parser("login-wait")
+    login_wait_cmd.add_argument("args", nargs=argparse.REMAINDER)
 
     args = parser.parse_args(argv)
     if args.command == "mcp":
@@ -2018,6 +2021,11 @@ def main(argv: list[str] | None = None) -> int:
         from lado import hooks
 
         return hooks.main(args.event, args.session, args.agent, args.instance)
+    if args.command == "login-wait":
+        from lado import login_wait
+
+        login_wait.main(args.args)
+        return 0  # not reached: it becomes the agent's CLI
     if args.command == "loop":
         # Never migrates: on another schema state.connect refuses, and the loop ends.
         return loop.run(args.session)

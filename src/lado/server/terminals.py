@@ -39,14 +39,21 @@ OPEN: set[WebSocket] = set()  # the sockets accepted with a terminal, until they
 log = logging.getLogger("lado.server")
 
 
-async def serve(ws: WebSocket, guard: Guard, session: str, agent: str, mode: str) -> None:
+async def _admitted(ws: WebSocket, guard: Guard) -> bool:
+    """Whether the token and the Origin let the socket in; else it is refused, saying why."""
     try:
         guard.check(ws, changes=True)
     except Refused as refused:
         if refused.status == 403:
             await ws.close(1008)  # before the upgrade: another page gets nothing
-            return
+            return False
         await _end(ws, DENIED, refused.detail)
+        return False
+    return True
+
+
+async def serve(ws: WebSocket, guard: Guard, session: str, agent: str, mode: str) -> None:
+    if not await _admitted(ws, guard):
         return
     if mode not in terminal.MODES:
         await _end(ws, BAD_MODE, f"mode is {' or '.join(terminal.MODES)}, not {mode}")
@@ -65,15 +72,8 @@ async def serve(ws: WebSocket, guard: Guard, session: str, agent: str, mode: str
 async def serve_login(ws: WebSocket, guard: Guard, provider: str) -> None:
     """A provider's login window (lado.logins), always in control; it ends for good once
     the window is gone (its command ended, or Close)."""
-    try:
-        guard.check(ws, changes=True)
-    except Refused as refused:
-        if refused.status == 403:
-            await ws.close(1008)
-            return
-        await _end(ws, DENIED, refused.detail)
-        return
-    await _serve(ws, guard, lambda: terminal.open_login(provider))
+    if await _admitted(ws, guard):
+        await _serve(ws, guard, lambda: terminal.open_login(provider))
 
 
 async def _serve(ws: WebSocket, guard: Guard, opener) -> None:
@@ -151,7 +151,7 @@ async def _run(ws: WebSocket, term) -> None:
 
 
 def _why_ended(term) -> terminal.NoTerminal | None:
-    if getattr(term, "keep", False):
+    if term.keep:  # a login window's
         return terminal.login_ended(term.agent)
     return terminal.ended(term.session, term.agent)
 

@@ -25,6 +25,8 @@ URL = "/api/sessions/s/agents/supervisor/terminal"
 class FakeTerminal:
     """A terminal whose output the test gives (None ends it) and whose window it sizes."""
 
+    keep = False  # an agent's; a login window's keeps its session (terminal.open_login)
+
     def __init__(self, session: str, agent: str, mode: str):
         self.session, self.agent, self.mode = session, agent, mode
         self.output: queue.Queue[bytes | None] = queue.Queue()

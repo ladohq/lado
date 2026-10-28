@@ -1564,8 +1564,10 @@ def test_a_claude_agent_without_a_login_waits_for_it(
     seen = _seen_at_launch(monkeypatch, "new_session", "supervisor")
     started = runtime.start_session(str(repo), "s", None, provider="claude")
     assert seen == [(state.WAITING, LOGIN_REASON)]  # waiting before its window starts
-    assert started.warnings == [LOGIN_REASON]
+    # The trust is recorded now and told whoever starts it; the first run once logged in.
+    assert started.warnings == [LOGIN_REASON, claude_config.note(repo)]
     assert _logged(f"s: supervisor: {LOGIN_REASON}") == 1
+    assert _logged(f"s: supervisor: {claude_config.note(repo)}") == 1
     assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
     [call] = [c for c in fake_tmux if c[0] == "new_session"]
     cmd = call[-1]
@@ -1576,11 +1578,38 @@ def test_a_claude_agent_without_a_login_waits_for_it(
     assert held["project"] is None
     assert {"LADO_HOME", "LADO_SESSION", "LADO_AGENT", "LADO_TMUX_SOCKET"} <= set(held["ours"])
     assert held["env"]["LADO_AGENT"] == "supervisor"
-    # What the CLI asks first is settled by the window once logged in, not now.
-    assert json.loads(claude_config.path.read_text())["projects"] == {}
+    config = json.loads(claude_config.path.read_text())
+    assert config["projects"] == {str(repo): {"hasTrustDialogAccepted": True}}
     # The status was read in the agent's own launch environment.
-    [(argv, env)] = [c for c in cli_logins.calls if c[0][0] == "claude"]
+    argv, env = next(c for c in cli_logins.calls if c[0][0] == "claude")
     assert argv == ["claude", "auth", "status", "--json"] and env["LADO_AGENT"] == "supervisor"
+
+
+def test_a_claude_agent_without_a_login_in_a_fresh_home_gets_the_trust_alone(
+    repo, fake_tmux, claude_config, cli_logins
+):
+    claude_config.path.unlink()
+    cli_logins.logged_out()
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings == [LOGIN_REASON, claude_config.note(repo)]
+    assert json.loads(claude_config.path.read_text()) == {
+        "projects": {str(repo): {"hasTrustDialogAccepted": True}}
+    }
+    assert claude_config.path.stat().st_mode & 0o777 == 0o600
+    # It waits for its login, not for the trust question.
+    assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
+
+
+def test_a_trust_lado_cannot_record_waits_for_the_login_first(
+    repo, fake_tmux, claude_config, cli_logins
+):
+    """The trust's fallback question comes once the login is there: the window asks again
+    (lado.login_wait); meanwhile the agent waits for the login."""
+    claude_config.refuse()
+    cli_logins.logged_out()
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings == [LOGIN_REASON]
+    assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
 
 
 def test_a_logged_in_claude_agent_starts_as_before(repo, fake_tmux):

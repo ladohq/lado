@@ -92,7 +92,9 @@ with the agent's launch environment. When the state is `no`:
   `LOGIN_POLL` (3 s) lays the file layers read anew (outside folder, LADO's secrets, the
   session's project) over the environment it holds, never over LADO's and the provider's
   own variables, and asks `login_status` again; at `yes` it runs the provider's
-  `first_hook_blocker` (D6) with that environment and execs the CLI. A login shell's change
+  `first_hook_blocker` (D6) with that environment and execs the CLI. What needs no login
+  (Claude Code's trust) is recorded at the launch already and told whoever starts the
+  agent; the window's lines go to its terminal and loop.log. A login shell's change
   needs a new agent (said in docs/design/agents.md).
 - `unknown` never holds an agent: the launch goes on, with the problem as a warning (AC-10).
 
@@ -137,7 +139,8 @@ answers without the input, as `SECRET_ROUTE`).
 ### D6. Claude Code's first-run keys through `edit_config`
 
 `ClaudeProvider.first_hook_blocker` keeps recording the trust and, when the agent's
-environment logs Claude Code in (its `login_status` is `yes`):
+environment does not leave Claude Code without a login (its `login_status` is not `no`:
+an unknown login holds no agent, which would stand on the theme screen):
 
 - sets `hasCompletedOnboarding: true` when it is not `true`;
 - when `ANTHROPIC_API_KEY` is set, adds its last 20 characters to

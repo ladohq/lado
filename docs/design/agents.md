@@ -187,7 +187,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   config (`claude.edit_config`) and returns a `note`, told and logged as a reason is
   (below), and nothing holds the agent. Only when that fails does the agent wait for the
   question, the reason saying why LADO could not record it. For an agent whose environment
-  logs Claude Code in (its `login_status`), it also records Claude Code's first run
+  logs Claude Code in, or whose login it cannot read (`login_status` not `no`: an unknown
+  login holds no agent), it also records Claude Code's first run
   (`hasCompletedOnboarding`, else the theme screen holds it) and approves the
   `ANTHROPIC_API_KEY` LADO gives it (its last 20 characters in
   `customApiKeyResponses.approved`, else "Detected a custom API key" holds it): one write
@@ -198,12 +199,15 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   resume and spawn) LADO asks the provider's `login_status` with the agent's launch
   environment; at `no` the agent is `waiting` with `logins.wait_reason` (`<CLI> is not
   logged in: log in in Settings → Providers and environment, or set <variable>; the agent
-  starts by itself once you do`), told and logged as a blocker's reason is, and its window
+  starts by itself once you do`), told and logged as a blocker's reason is, with the lines of
+  what needs no login, settled at once (`first_hook_blocker`: Claude Code's trust; a
+  question it would still ask waits for the window), and its window
   runs `lado login-wait` (`lado.login_wait`) instead of `lado.agent_env`: it reads and
   removes the launch file, and every `logins.POLL` seconds lays the file layers read anew
   (the outside folder, LADO's secrets, the session's project) over the environment it
   holds, never over LADO's and the provider's own variables, and asks again. Once logged
-  in it runs `first_hook_blocker` there (the trust and first run above), puts the agent
+  in it runs `first_hook_blocker` there (the first run above, printed in the agent's
+  terminal and logged in loop.log: whoever started it is gone), puts the agent
   back to `starting` (or waits with that blocker's reason) and execs the CLI: the agent
   reaches its first hook with no restart. A login shell's change needs a new agent. A
   login LADO cannot read (`unknown`: a failure, a timeout, odd output) never holds an

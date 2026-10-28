@@ -2957,15 +2957,19 @@ def _before_window(
     project: str | None,
 ) -> tuple[list[str], list[str]]:
     """What holds the agent before its first hook, settled before its window starts: its
-    CLI's login (_held_for_login), else what the CLI asks first (_first_hook_blocker),
-    which the waiting window settles itself once logged in (lado.login_wait). The lines to
-    tell whoever starts it, and the window's command."""
+    CLI's login (_held_for_login), else what the CLI asks first (_first_hook_blocker). An
+    agent that waits for its login gets now what needs no login (Claude Code's trust),
+    told whoever starts it; what does (the first run), and a question the CLI would still
+    ask, its waiting window settles once logged in (lado.login_wait), in loop.log. The
+    lines to tell whoever starts it, and the window's command."""
     waits, lines = _held_for_login(agent_cli, agent, base_env, launch)
     if not waits:
         return lines + _first_hook_blocker(agent_cli, agent, base_env, launch), _command(
             agent, base_env, launch
         )
     env = _launch_env(agent, base_env, launch)
+    early = agent_cli.first_hook_blocker(agent.cwd, env)  # its reason: the window's, later
+    lines += [line for line in (*early.notes, early.warning) if line]
     ours = sorted({**providers.agent_env(agent), **launch.env})
     file = providers.base.config_dir(agent) / "env.json"
     try:

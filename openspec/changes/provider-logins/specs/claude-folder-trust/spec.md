@@ -2,12 +2,11 @@
 
 ### Requirement: LADO records Claude Code's first run for a logged-in agent
 
-Before it starts a Claude agent whose environment logs Claude Code in, LADO SHALL set
-`hasCompletedOnboarding` to `true` in the global config Claude Code reads when it is not
-`true`, through the one careful writer, so the agent does not stop at Claude Code's
+Before it starts a Claude agent that is logged in, or whose login it cannot read (which
+holds no agent), LADO SHALL set `hasCompletedOnboarding` to `true` in Claude Code's global
+config when it is not, through the one careful writer, so the agent does not stop at the
 first-run screen; it SHALL tell whoever starts the agent `LADO recorded Claude Code's
-first run in <config file>` and log it in the session's loop.log, once per write. It SHALL
-NOT write it while Claude Code is not logged in.
+first run in <config file>` and log it in loop.log, once per write.
 
 #### Scenario: A fresh config with a token
 - **WHEN** a Claude agent starts with `CLAUDE_CODE_OAUTH_TOKEN` and a config without
@@ -15,9 +14,23 @@ NOT write it while Claude Code is not logged in.
 - **THEN** the config has `hasCompletedOnboarding: true`, the line is told and logged, and
   the agent reaches its first hook with no human
 
+#### Scenario: A login LADO cannot read
+- **WHEN** a Claude agent starts while Claude Code's status command times out, and the
+  config has no `hasCompletedOnboarding`
+- **THEN** the agent starts with the warning, and the config has `hasCompletedOnboarding:
+  true`
+
+### Requirement: The first run of an agent that waits for its login is recorded by its window
+
+LADO SHALL NOT write `hasCompletedOnboarding` while Claude Code is not logged in. Whoever
+starts an agent that waits for its login is told the wait; the agent's waiting window
+SHALL write the first run once the login is there, print the line in the agent's terminal
+and log it in loop.log, then start the CLI.
+
 #### Scenario: Not logged in
 - **WHEN** a Claude agent waits for a login
-- **THEN** `hasCompletedOnboarding` is not written until the login is there
+- **THEN** `hasCompletedOnboarding` is not written until the login is there; then its
+  window writes it, prints the line and logs it in loop.log, and the CLI starts
 
 ### Requirement: LADO approves the API key it gives Claude Code
 
@@ -43,14 +56,22 @@ key in `rejected` SHALL be left as it is, and the agent SHALL wait with a reason
 When Claude Code's config file does not exist, LADO SHALL create it holding only
 `projects["<repo>"].hasTrustDialogAccepted: true`, with mode 600; the first-run keys LADO
 records for a logged-in agent (`hasCompletedOnboarding`, an approved API key) SHALL then
-be added by their own writes, and nothing else.
+be added by their own writes, and nothing else. The trust needs no login: an agent that
+waits for its login gets it at its start, told whoever starts it.
 
 #### Scenario: A fresh home
 
 - **WHEN** a Claude agent is started, Claude Code is not logged in, and no config file
   exists
 - **THEN** the file exists afterwards as `{"projects": {"<repo>": {"hasTrustDialogAccepted":
-  true}}}` with mode 600, and the agent does not wait for the trust question
+  true}}}` with mode 600, whoever started the agent is told the trust's line, and the
+  agent waits for its login, not for the trust question
+
+#### Scenario: The login arrives in a fresh home
+
+- **WHEN** that agent's login is there
+- **THEN** its window adds `hasCompletedOnboarding: true` to the file, logs the line in
+  loop.log and starts the CLI
 
 #### Scenario: A fresh home with a login
 

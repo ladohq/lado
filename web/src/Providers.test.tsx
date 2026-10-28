@@ -136,6 +136,36 @@ test("each CLI's login as its status says, with the agents that wait and the not
   expect(within(doctor).getByText(/Claude Code login: not logged in/)).toBeTruthy();
 });
 
+test("a logout in the window is offered only with a login to log out of", async () => {
+  const kilo = (state: "yes" | "no"): ProviderLogins => ({
+    ...codex(),
+    cli: cli("kilo", "Kilo CLI"),
+    login: { ...LOGIN, state, method: state === "yes" ? "1 credential" : "" },
+    note: "",
+    actions: [
+      { id: "login", label: "Add a login…" },
+      { id: "logout", label: "Log out of one…" },
+    ],
+  });
+  page.providers = [kilo("no")];
+  render(
+    <MemoryRouter>
+      <Providers />
+    </MemoryRouter>,
+  );
+  const row = await screen.findByRole("listitem", { name: "Kilo CLI" });
+  expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(["Add a login…"]);
+  cleanup();
+  page.providers = [kilo("yes")];
+  render(
+    <MemoryRouter>
+      <Providers />
+    </MemoryRouter>,
+  );
+  const logged = await screen.findByRole("listitem", { name: "Kilo CLI" });
+  expect(within(logged).getAllByRole("button").map((b) => b.textContent)).toEqual(["Add a login…", "Log out of one…"]);
+});
+
 test("the state in words, unknown with why, never as not logged in", () => {
   expect(stateText(claude({ login: { ...LOGIN, state: "unknown", problem: "timed out" } }))).toBe("Unknown: timed out");
   expect(stateText({ ...codex(), login: { ...LOGIN, state: "no" } })).toBe("No login");

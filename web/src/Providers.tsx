@@ -156,6 +156,8 @@ function ProviderRow({
     }
   };
   const missing = login.state === "no" && row.needs_login;
+  // A logout in the window needs a login to log out of.
+  const actions = row.actions.filter((action) => action.id !== "logout" || login.state !== "no");
   const dot = login.state === "yes" ? "ok-dot" : missing ? "dot-waiting" : "off-dot";
   const items = login.items.map((i) => (i.variable ? `${i.name} (${i.variable})` : `${i.name} (${i.kind})`));
 
@@ -201,9 +203,9 @@ function ProviderRow({
             </p>
           )}
           {row.note && <p className="pv-warn">{row.note}</p>}
-          {(row.actions.length > 0 || (row.can_logout && login.state === "yes")) && (
+          {(actions.length > 0 || (row.can_logout && login.state === "yes")) && (
             <div className="pv-actions">
-              {row.actions.map((action, i) => (
+              {actions.map((action, i) => (
                 <button
                   key={action.id}
                   type="button"

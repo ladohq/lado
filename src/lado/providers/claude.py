@@ -291,11 +291,15 @@ class ClaudeProvider(base.Provider):
             words = f"Claude subscription ({plan.capitalize()})" if plan else "Claude subscription"
             return base.LoginStatus(base.YES, words, file=credentials)
         if method == "oauth_token":
-            return base.LoginStatus(base.YES, "token", variable="CLAUDE_CODE_OAUTH_TOKEN")
+            # CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_AUTH_TOKEN (also "oauth_token", 2.1.295).
+            given = [n for n in ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN") if env.get(n)]
+            return base.LoginStatus(base.YES, "token", variable=given[0] if given else "")
         if method == "api_key":
             if isinstance(source, str) and ENV_NAME.fullmatch(source):
                 return base.LoginStatus(base.YES, "API key", variable=source)
             return base.LoginStatus(base.YES, "Anthropic Console", file=credentials)
+        if method == "third_party":  # Bedrock, Vertex, ... by their CLAUDE_CODE_USE_* variable
+            return base.LoginStatus(base.YES, str(data.get("apiProvider") or method).capitalize())
         return base.LoginStatus(base.YES, str(method))
 
     def login_actions(self) -> tuple[base.LoginAction, ...]:

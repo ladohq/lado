@@ -74,7 +74,25 @@ def test_claude_subscription_on_macos_is_in_the_keychain(answers, monkeypatch):
 
 def test_claude_token(answers):
     data = {"loggedIn": True, "authMethod": "oauth_token", **CONFIG}
-    assert _claude(answers, data) == LoginStatus(YES, "token", variable="CLAUDE_CODE_OAUTH_TOKEN")
+    env = {"CLAUDE_CODE_OAUTH_TOKEN": "t"}
+    assert _claude(answers, data, env=env) == LoginStatus(
+        YES, "token", variable="CLAUDE_CODE_OAUTH_TOKEN"
+    )
+
+
+def test_claude_token_names_the_variable_that_gives_it(answers):
+    # ANTHROPIC_AUTH_TOKEN is an "oauth_token" too (2.1.295, checked by hand).
+    data = {"loggedIn": True, "authMethod": "oauth_token", **CONFIG}
+    assert _claude(answers, data, env={"ANTHROPIC_AUTH_TOKEN": "t"}) == LoginStatus(
+        YES, "token", variable="ANTHROPIC_AUTH_TOKEN"
+    )
+    both = {"ANTHROPIC_AUTH_TOKEN": "t", "CLAUDE_CODE_OAUTH_TOKEN": "c"}
+    assert _claude(answers, data, env=both).variable == "CLAUDE_CODE_OAUTH_TOKEN"
+
+
+def test_claude_through_another_api_provider(answers):
+    data = {"loggedIn": True, "authMethod": "third_party", "apiProvider": "bedrock", **CONFIG}
+    assert _claude(answers, data) == LoginStatus(YES, "Bedrock")
 
 
 def test_claude_api_key_from_a_variable(answers):

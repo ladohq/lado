@@ -11,7 +11,7 @@ import agent_helpers
 import pytest
 from real_clis import agent_processes, answer_dialogs, check_gone, status
 
-from lado import loop, projects, runtime, state, tmux
+from lado import logins, loop, projects, providers, runtime, state, tmux
 
 pytestmark = pytest.mark.smoke
 
@@ -178,3 +178,58 @@ def test_a_kits_mcp_server_sees_the_project_s_variable(
         "secret": PROBE_SECRET,
     }
     runtime.stop_session(session)
+
+
+# Each CLI's own status command in a fresh home (openspec change provider-logins): what
+# LADO's parser reads of the real CLI's output, at the tested version.
+LOGINS = {
+    # A token LADO's tests give it (ANTHROPIC_AUTH_TOKEN, "oauth_token" too); none: no login.
+    "claude": (("yes", "token", "ANTHROPIC_AUTH_TOKEN"), "no"),
+    "codex": (None, "no"),
+    "kilo": (None, "no"),
+    "opencode": (None, "no"),
+}
+
+
+def test_each_clis_login_is_read_from_its_own_command(smoke_provider, tmp_path, monkeypatch):
+    provider = providers.get(smoke_provider)
+    given, none = LOGINS[smoke_provider]
+    if given:
+        found = provider.login_status(logins.environment())
+        print(f"{smoke_provider}: {found}")
+        assert (found.state, found.method, found.variable) == given
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN")
+    found = provider.login_status(logins.environment())
+    print(f"{smoke_provider}: without a login {found}")
+    assert found.state == none, found.problem
+    if smoke_provider in ("kilo", "opencode"):
+        # A credential in the CLI's own file, and a key in the environment.
+        data = Path(os.environ["XDG_DATA_HOME"]) / smoke_provider
+        data.mkdir(parents=True, exist_ok=True)
+        (data / "auth.json").write_text(json.dumps({"anthropic": {"type": "api", "key": "k"}}))
+        monkeypatch.setenv("OPENAI_API_KEY", "smoke-key")
+        found = provider.login_status(logins.environment())
+        print(f"{smoke_provider}: with logins {found}")
+        assert found.state == "yes"
+        assert [(i.name, i.kind, i.variable) for i in found.items] == [
+            ("Anthropic", "api", ""),
+            ("OpenAI", "variable", "OPENAI_API_KEY"),
+        ]
+
+
+def test_a_claude_agent_with_a_token_passes_the_first_run_with_no_human(
+    smoke_provider, smoke_repo, fake_endpoint
+):
+    """A fresh Claude Code config (no hasCompletedOnboarding: the theme screen would hold
+    the agent before any hook): LADO records the first run, and the agent is idle."""
+    if smoke_provider != "claude":
+        pytest.skip("Claude Code's first-run screens")
+    config = Path(os.environ["CLAUDE_CONFIG_DIR"], ".claude.json")
+    config.write_text(json.dumps({"bypassPermissionsModeAccepted": True}))
+    started = runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", "claude")
+    print(f"claude: started, warnings {started.warnings}")
+    assert f"LADO recorded Claude Code's first run in {config}" in started.warnings
+    assert json.loads(config.read_text())["hasCompletedOnboarding"] is True
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor idle with no human", 120)
+    runtime.stop_session(SESSION)

@@ -55,10 +55,16 @@ def with_model(provider_class: type[base.Provider], model: str) -> base.Provider
     return provider
 
 
+# The real CLIs' login status commands (lado.providers.base.run_status), taken before
+# tests/conftest.py's cli_logins stands in for them in each test.
+RUN_STATUS = base.run_status
+
+
 @pytest.fixture(autouse=True)
-def isolated(lado_home, monkeypatch, kill_tmux_server):
+def isolated(lado_home, monkeypatch, kill_tmux_server, cli_logins):
     if shutil.which("tmux") is None:
         pytest.skip("tmux not installed")
+    monkeypatch.setattr(base, "run_status", RUN_STATUS)  # the real CLIs answer
     socket = f"lado-test-{uuid.uuid4().hex[:8]}"  # a tmux server of its own for each test
     monkeypatch.setenv("LADO_TMUX_SOCKET", socket)
     refuse_unless_isolated()

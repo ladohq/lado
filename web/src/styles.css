@@ -9079,8 +9079,9 @@ button.quiet.danger-text {
   flex: none;
 }
 
-/* Projects (Projects.tsx): the list or a project, one at a time; a variable's row is a card
-   of its lines. */
+/* Projects (Projects.tsx): the list or a project, one at a time, each scrolling by itself
+   under the top bar, as on Sessions; the height takes back the narrow window's auto
+   (LAD-159). A variable's row is a card of its lines. */
 :root[data-phone] .content:has(> .projects) {
   padding: 0;
   overflow: hidden;
@@ -9089,6 +9090,7 @@ button.quiet.danger-text {
 :root[data-phone] .projects {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
+  height: 100%;
 }
 
 :root[data-phone] .project-page {

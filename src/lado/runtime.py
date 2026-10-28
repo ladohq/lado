@@ -29,6 +29,7 @@ from lado import (
     gitcache,
     gui_session,
     kits,
+    logins,
     loop,
     project_secrets,
     providers,
@@ -2496,6 +2497,10 @@ def stop_all(report: Callable[[str, Stopped], object]) -> None:
             stopped.append(f'"{name}"')
         except Exception as error:
             failed.append(f'could not stop session "{name}": {type(error).__name__}: {error}')
+    try:
+        logins.end_windows()  # the login windows go with LADO's sessions (lado.logins)
+    except Exception as error:
+        failed.append(f"could not end the login windows: {type(error).__name__}: {error}")
     if failed:
         raise LadoError("; ".join([*failed, f"stopped: {', '.join(stopped) or 'none'}"]))
 

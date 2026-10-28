@@ -3972,6 +3972,7 @@ def test_stop_all_on_an_older_schema_kills_all_then_migrates_then_marks(
         ("close_viewers", "a"),
         ("close_viewers", "b"),
         ("close_viewers", "gone"),
+        ("end_login_windows",),  # they go with LADO's sessions (lado.logins)
     ]
     assert state.pending_migration() is None
     assert all(state.get_session(n).stopped_at for n in ("a", "b", "gone"))

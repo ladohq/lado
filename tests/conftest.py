@@ -390,7 +390,7 @@ def fake_clis(tmp_path, monkeypatch, claude_config):
 @pytest.fixture
 def fake_tmux(monkeypatch, loop_starts, fake_clis):
     """Record tmux calls instead of running them; no session loop is started either."""
-    from lado import gui_session, terminal, tmux
+    from lado import gui_session, logins, terminal, tmux
 
     calls = []
     # The hook it is given (runtime passes gui_session.ensure_server) is not called.
@@ -429,4 +429,5 @@ def fake_tmux(monkeypatch, loop_starts, fake_clis):
     monkeypatch.setattr(tmux, "kill_window", lambda *a: calls.append(("kill_window", *a)))
     monkeypatch.setattr(tmux, "popup", lambda *a: calls.append(("popup", *a)))
     monkeypatch.setattr(terminal, "close_viewers", lambda s: calls.append(("close_viewers", s)))
+    monkeypatch.setattr(logins, "end_windows", lambda: calls.append(("end_login_windows",)) or [])
     return calls

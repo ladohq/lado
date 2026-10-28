@@ -217,13 +217,14 @@ def test_each_clis_login_is_read_from_its_own_command(smoke_provider, tmp_path, 
         ]
 
 
-def test_a_claude_agent_with_a_token_passes_the_first_run_with_no_human(
+# Claude Code's only: a parameter, not a skip, since CI's smoke cell counts a skip as a
+# failure (scripts/smoke_ci.py) and picks a provider's tests by `-k <provider>`.
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_a_logged_in_agent_passes_the_clis_first_run_with_no_human(
     smoke_provider, smoke_repo, fake_endpoint
 ):
     """A fresh Claude Code config (no hasCompletedOnboarding: the theme screen would hold
     the agent before any hook): LADO records the first run, and the agent is idle."""
-    if smoke_provider != "claude":
-        pytest.skip("Claude Code's first-run screens")
     config = Path(os.environ["CLAUDE_CONFIG_DIR"], ".claude.json")
     config.write_text(json.dumps({"bypassPermissionsModeAccepted": True}))
     started = runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", "claude")

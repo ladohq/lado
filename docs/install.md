@@ -195,6 +195,15 @@ secrets. For clients that must not mix, run a separate LADO.
 
 Logins made inside the container stay on its home volume, through updates.
 
+The easiest way is the UI, also from a phone: **Settings → Providers and environment**
+shows whether each CLI is logged in. **Log in with your Claude account…** opens a window
+with Claude Code's own login: open the link it prints, sign in, and send the code with
+**Text to send**. Or paste a token from `claude setup-token` in the
+`CLAUDE_CODE_OAUTH_TOKEN` field: LADO keeps it as its own secret and gives it to every
+agent. OpenCode and Kilo log in there with **Add a login…**. A session started before the
+login waits in **Needs you** ("Claude Code is not logged in") and starts by itself once
+you log in. The terminal ways:
+
 - **Claude Code**: log in once inside, as on your computer (it prints a link to open in
   your browser and asks for the code it shows):
 

@@ -85,7 +85,9 @@ with the agent's launch environment. When the state is `no`:
   the provider: `<title> is not logged in: log in in Settings → Providers and environment,
   or set <first login variable>; the agent starts by itself once you do`; the line is told
   whoever starts it and logged in loop.log, as the trust note is;
-- the window's command is `lado.login_wait` instead of `lado.agent_env`: it reads and
+- the window's command is `lado login-wait` (a hidden command of `lado.login_wait`, run
+  through `providers.lado_command`, so the fake providers of the tests are known to it as
+  to the hooks) instead of `lado.agent_env`: it reads and
   removes `env.json` as `agent_env.main` does, prints what it waits for, and every
   `LOGIN_POLL` (3 s) lays the file layers read anew (outside folder, LADO's secrets, the
   session's project) over the environment it holds, never over LADO's and the provider's
@@ -124,7 +126,7 @@ label, never by name; `lado ls` and the runtime ignore them (they are no LADO se
 (no viewer: nobody else owns it). When its command ends the session ends; the socket
 closes with a code "for good" and the UI reads the status again.
 
-API (under `guard.changes` for changes, in OpenAPI): `GET /api/providers` (the page's data,
+API (under `guard.changes` for changes, in OpenAPI): `GET /api/providers/logins` (the page's data,
 D9), `POST /api/providers/{name}/login {action}` (opens the window, 400 for an action the
 provider lacks), `DELETE /api/providers/{name}/login` (closes it),
 `WS /api/providers/{name}/login/terminal` (the terminal protocol of `server/terminals.py`,
@@ -159,9 +161,9 @@ state, the source line, the waiting agents as links to their terminals, the proj
 their own login, the note, the actions (the window's actions, Log out, and the login
 variables' secret fields with Save and Remove, the `SecretField` of the project page made
 shared). Under the rows `lado doctor`'s provider checks (D10) and "Check again". The page
-reads `GET /api/providers` when it opens, after a window closes, after a Save, Remove or
-Log out, and on "Check again"; not from the change feed (the CLIs' files change outside
-LADO), except that the waiting agents follow the feed's agents.
+reads `GET /api/providers/logins` when it opens, after a window closes, after a Save,
+Remove or Log out, and on "Check again"; not from the change feed (the CLIs' files change
+outside LADO), the waiting agents with it.
 
 ### D8. The login window in the UI: a sheet with the terminal and phone helpers
 
@@ -174,8 +176,10 @@ field is a plain text field (a code is no secret worth a font), cleared after se
 
 ### D9. What the server gives the page and the agents' rows
 
-`GET /api/providers` → `ProviderLogins[]`: the `ProviderInfo` fields of the System panel,
-`login` (D1's status), `actions` (id, label), `can_logout`, `variables` (each login
+`GET /api/providers/logins` → `ProvidersPage`: `providers`, a `ProviderLogins` each, with
+the System panel's `ProviderInfo` as `cli`, and `checks` (D10). `GET /api/providers` stays
+the System panel's and New session's list, which runs no CLI's status command (the build
+moved the page to its own path for that). A row has `login` (D1's status), `actions` (id, label), `can_logout`, `variables` (each login
 variable: `set` in LADO's secrets or not, and the layer that gives it now), `note`,
 `waiting` (session, agent: the live agents whose block reason is `logins.wait_reason` of
 this provider), `projects` (ids), `running` (session, agent: live agents of this provider,
@@ -186,9 +190,9 @@ agent waits for its login, else null), so Needs you shows "Log in…" without pa
 ### D10. `lado doctor`: a login line per installed CLI; the page shows the provider checks
 
 `check_logins` adds `[ok] <title> login: <method>` / `[warn] Claude Code login: not
-logged in: Claude agents wait for a login (Settings → Providers and environment)` /
+logged in: its agents wait for a login (Settings → Providers and environment)` /
 `[info] <title> login: none` for a CLI that does not need one / `[warn] … unknown: <why>`;
-the exit code stays as it was (a warning). `GET /api/providers` carries the checks the page
+the exit code stays as it was (a warning). `GET /api/providers/logins` carries the checks the page
 shows: the providers' version checks, the graphical session (Mac), the agents' environment
 and the login lines, from the same functions as `lado doctor` (no second list).
 

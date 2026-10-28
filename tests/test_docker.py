@@ -900,6 +900,7 @@ def test_the_headers_say_how_agents_get_variables_access_and_logins(name):
         "claude setup-token",
         "opencode auth login",
         "kilo auth login",
+        "Providers and environment",  # the UI's login first (openspec provider-logins)
         "Every agent of the container can read every variable given to it",
         "LADO_SECRETS=./secrets" if name == "compose.yaml" else '-v "$PWD/secrets:/run/secrets:ro"',
     ):

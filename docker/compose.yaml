@@ -19,6 +19,10 @@
 #   docker compose up -d
 #   docker compose exec lado lado ui --no-open               # the UI's link with its token
 #
+# The agent CLIs' logins: first the UI's Settings → Providers and environment, which logs
+# Claude Code, OpenCode and Kilo in from the page (a phone too) and keeps Claude Code's
+# token; the ways below are for the terminal. Codex's login is not covered yet.
+#
 # The agents' variables (tokens, keys), optional: files in a folder secrets/ next to this
 # file, one per variable. To give them, add LADO_SECRETS=./secrets to .env, then:
 #

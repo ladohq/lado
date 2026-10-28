@@ -8,6 +8,11 @@
   itself, so a session started from the UI or a phone no longer waits for "Yes, I trust
   this folder"; the repository's own Claude Code settings run.
 
+### Fixed
+
+- **A project's page scrolls on a phone.** Its variables, secrets and Delete project were
+  cut off below the screen; the project list scrolls too.
+
 ## 0.43.0 (2026-10-26)
 
 ### Added

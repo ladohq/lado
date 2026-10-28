@@ -676,6 +676,22 @@ def check_outside() -> Check | None:
     return Check(name, WARN, "; ".join([detail, *files]))
 
 
+def check_lado_secrets() -> Check | None:
+    """LADO's secrets (the login variables set in Settings) by name, never a value: each
+    file the agents do not get with why, else the names that take the place of the outside
+    folder's; none without either."""
+    found = agent_env.lado_secrets()
+    name = "LADO secrets"
+    if found.unused:
+        where = agent_env.lado_secrets_folder()
+        lines = [f"{file or 'the folder'} not used: {reason}" for file, reason in found.unused]
+        return Check(name, WARN, f"{'; '.join(lines)} ({where})")
+    over = sorted(found.values.keys() & agent_env.outside().values.keys())
+    if not over:
+        return None
+    return Check(name, INFO, f"{', '.join(over)} overrides {agent_env.ENV_DIR_VAR}")
+
+
 def check_project_variables() -> Check | None:
     """The projects whose variables or secrets take the place of the outside folder's (by
     name, never a value) for their sessions' agents; none without such a name or a lado.db
@@ -716,6 +732,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
     graphical = check_graphical_session(which)
     projects_found = check_projects()
     outside = check_outside()
+    lado_secrets = check_lado_secrets()
     overridden = check_project_variables()
     unused_secrets = check_project_secrets()
     author = check_git_author()
@@ -730,6 +747,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         check_workspace(),
         *([projects_found] if projects_found else []),
         *([outside] if outside else []),
+        *([lado_secrets] if lado_secrets else []),
         *([overridden] if overridden else []),
         *([unused_secrets] if unused_secrets else []),
         *([graphical] if graphical else []),

@@ -193,6 +193,41 @@ def overlap(tmp_path, monkeypatch, lado_home):
     return folder
 
 
+def test_lados_secrets_over_the_outside_folder_are_named(tmp_path, monkeypatch):
+    from lado import project_secrets
+
+    assert doctor.check_lado_secrets() is None  # no folder, no line
+    folder = tmp_path / "s"
+    folder.mkdir()
+    (folder / "CLAUDE_CODE_OAUTH_TOKEN").write_text("out")
+    (folder / "ANTHROPIC_API_KEY").write_text("out")
+    monkeypatch.setenv("LADO_ENV_DIR", str(folder))
+    project_secrets.write_lado("CLAUDE_CODE_OAUTH_TOKEN", "canary-lado")
+    project_secrets.write_lado("OTHER", "x")
+    check = doctor.check_lado_secrets()
+    assert check == doctor.Check(
+        "LADO secrets", doctor.INFO, "CLAUDE_CODE_OAUTH_TOKEN overrides LADO_ENV_DIR"
+    )
+    names = [c.name for c in doctor.run_checks(which=lambda c: c)]
+    assert names[names.index("Variables from outside") + 1] == "LADO secrets"
+    monkeypatch.delenv("LADO_ENV_DIR")
+    assert doctor.check_lado_secrets() is None
+
+
+def test_lados_secrets_not_used_are_named_without_a_value(lado_home):
+    folder = lado_home / "secrets"
+    folder.mkdir(parents=True, mode=0o700)
+    (folder / "ANTHROPIC_API_KEY").write_text("canary-1")
+    (folder / "ANTHROPIC_API_KEY").chmod(0o644)
+    check = doctor.check_lado_secrets()
+    assert check == doctor.Check(
+        "LADO secrets",
+        doctor.WARN,
+        f"ANTHROPIC_API_KEY not used: readable or writable by others: chmod 600 it ({folder})",
+    )
+    assert "canary" not in repr(check)
+
+
 def test_project_variables_over_the_outside_folder_are_named(overlap):
     check = doctor.check_project_variables()
     assert check == doctor.Check(

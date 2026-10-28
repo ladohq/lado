@@ -298,9 +298,9 @@ function NewVariable({
   );
 }
 
-// The one field a secret's value is typed in. `filled` says whether it holds text (Replace
-// needs some), never what.
-function SecretField({
+// The one field a secret's value is typed in, also a login variable's in Settings
+// (Providers.tsx). `filled` says whether it holds text (Replace needs some), never what.
+export function SecretField({
   field,
   label,
   placeholder,

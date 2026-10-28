@@ -1967,6 +1967,257 @@ h3 {
   border: 0;
 }
 
+/* Settings → Providers and environment (Providers.tsx): a row per agent CLI. */
+
+.pv-list {
+  display: flex;
+  flex-direction: column;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pv {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.setting .pv p {
+  margin: 0;
+}
+
+.pv-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.pv-head strong {
+  font-size: 15px;
+}
+
+.pv-head .ver {
+  color: var(--muted);
+  font: 13px var(--mono);
+}
+
+.pv-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.ok-dot {
+  background: var(--done);
+}
+
+.off-dot {
+  border: 1.5px solid var(--muted);
+}
+
+.setting .pv-src {
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.pv-src code {
+  font-size: 12px;
+}
+
+.setting .pv-warn {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--human);
+  background: var(--human-ground);
+  font-size: 13px;
+}
+
+.pv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.pv-again {
+  margin-top: 12px;
+}
+
+.pv-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.setting .pv-keys > p {
+  font-size: 13px;
+}
+
+.pv-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 13px;
+}
+
+.pv-key .pv-field {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.pv-set {
+  font-size: 12px;
+}
+
+.pv-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-basis: 100%;
+  font-size: 13px;
+}
+
+.pv-doctor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 14px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.pv-mark {
+  font: 12px var(--mono);
+}
+
+.pv-level-warn .pv-mark,
+.pv-level-fail .pv-mark {
+  color: var(--human);
+}
+
+.pv-level-ok .pv-mark {
+  color: var(--done);
+}
+
+/* The login window (LoginWindow.tsx): a sheet over the page; the whole screen on a phone. */
+
+.login-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
+}
+
+.login-window {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 100%);
+  max-height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.login-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.login-top h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+}
+
+.login-link {
+  font-size: 12px;
+}
+
+.login-term {
+  height: 340px;
+  min-height: 0;
+  padding: 8px;
+  background: var(--ground);
+  color: var(--ink);
+}
+
+.login-help {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  font-size: 13px;
+}
+
+.login-help p {
+  margin: 0;
+}
+
+.login-send {
+  display: flex;
+  gap: 6px;
+}
+
+.login-send input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 13px var(--mono);
+}
+
+.login-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.login-keys .quiet {
+  min-width: 44px;
+  height: 32px;
+}
+
+@media (max-width: 600px) {
+  .login-sheet {
+    padding: 0;
+  }
+
+  .login-window {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .login-term {
+    flex: 1;
+    height: auto;
+  }
+}
+
 .choice legend {
   margin-bottom: 6px;
   padding: 0;

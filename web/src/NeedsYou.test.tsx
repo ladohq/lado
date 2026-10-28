@@ -297,6 +297,28 @@ test("Open terminal goes to the agent's terminal in its session, and the address
   await waitFor(() => expect(address()).toBe("/sessions/lado/activity"));
 });
 
+test("an agent that waits for its CLI's login offers Log in…, which leads to Settings' section", async () => {
+  const reason =
+    "Claude Code is not logged in: log in in Settings → Providers and environment, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do";
+  const waits_ = { ...agent("supervisor", reason), login_wait: "claude" };
+  waiting = [waits.agent("lado", waits_)];
+  open();
+  const lado = await group("lado");
+  expect(within(lado).getByText(reason)).toBeTruthy();
+  const logIn = within(lado).getByRole("button", { name: "Log in for supervisor" });
+  expect(logIn.className).toBe("primary");
+  expect(within(lado).getByRole("button", { name: "Open supervisor's terminal" }).className).toBe("quiet");
+  fireEvent.click(logIn);
+  await waitFor(() => expect(address()).toBe("/settings#providers-and-environment"));
+});
+
+test("an agent that waits for anything else offers no Log in…", async () => {
+  waiting = [waits.agent("lado", agent("w2", "did not take 2 messages"))];
+  open();
+  const lado = await group("lado");
+  expect(within(lado).queryByRole("button", { name: /^Log in/ })).toBeNull();
+});
+
 test("with nothing waiting the page says so", async () => {
   open();
   expect(await screen.findByText("Nothing waits for you")).toBeTruthy();

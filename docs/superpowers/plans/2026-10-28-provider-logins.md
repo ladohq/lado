@@ -64,7 +64,7 @@ delta specs `provider-logins`, `claude-folder-trust`, `agent-variables`, `contai
 | LADO approves the API key it gives Claude Code | unit | `test_providers.py` (new key added, already approved, rejected → reason, the key never in a note) |
 | A missing config is created with the trust alone (modified) | unit | `test_providers.py` (no login: trust alone; with a login: trust and `hasCompletedOnboarding`, mode 600) |
 | One core function lays the project's layer (modified) | unit, integration | `tests/test_agent_env.py` (order: outside < LADO's secrets < project); `tests/integration/test_provider_logins.py` (a supervisor with and without a project) |
-| The headers say how the agent CLIs log in (modified) | unit | `tests/test_docker.py` (both headers name `Providers and environment`) |
+| The headers name the UI's login first (container) | unit | `tests/test_docker.py` (both headers name `Providers and environment`) |
 
 ## Steps
 

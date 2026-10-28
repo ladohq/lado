@@ -1,3 +1,9 @@
+## Purpose
+The agent CLIs' logins: LADO reads whether each CLI is logged in by the CLI's own status
+command, shows it in Settings → Providers and environment and `lado doctor`, logs Claude
+Code, OpenCode and Kilo in from the UI (a phone too), keeps their login variables as LADO's
+secrets, and holds an agent whose CLI needs a login until there is one.
+
 ## ADDED Requirements
 
 ### Requirement: LADO reads each CLI's login with the CLI's own command

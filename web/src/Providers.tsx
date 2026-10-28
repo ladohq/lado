@@ -158,6 +158,8 @@ function ProviderRow({
   const missing = login.state === "no" && row.needs_login;
   // A logout in the window needs a login to log out of.
   const actions = row.actions.filter((action) => action.id !== "logout" || login.state !== "no");
+  // The CLI's logout removes its own login, not a variable's, which would log it in again.
+  const canLogOut = row.can_logout && login.state === "yes" && !login.variable;
   const dot = login.state === "yes" ? "ok-dot" : missing ? "dot-waiting" : "off-dot";
   const items = login.items.map((i) => (i.variable ? `${i.name} (${i.variable})` : `${i.name} (${i.kind})`));
 
@@ -203,7 +205,7 @@ function ProviderRow({
             </p>
           )}
           {row.note && <p className="pv-warn">{row.note}</p>}
-          {(actions.length > 0 || (row.can_logout && login.state === "yes")) && (
+          {(actions.length > 0 || canLogOut) && (
             <div className="pv-actions">
               {actions.map((action, i) => (
                 <button
@@ -216,7 +218,7 @@ function ProviderRow({
                   {action.label}
                 </button>
               ))}
-              {row.can_logout && login.state === "yes" && (
+              {canLogOut && (
                 <button type="button" className="quiet" disabled={busy} onClick={() => setAsking("logout")}>
                   Log out…
                 </button>
@@ -227,6 +229,7 @@ function ProviderRow({
             <Confirm
               text={`Log out of ${cli.title}?`}
               running={row.running}
+              then="share this login and may stop being able to answer"
               yes="Log out"
               busy={busy}
               onYes={() => void act(() => logOut(cli.name))}
@@ -313,6 +316,7 @@ function VariableField({
         <Confirm
           text={`Remove ${variable.name} from LADO's secrets?`}
           running={row.running}
+          then="keep it until they start again; new agents go without it"
           yes="Remove"
           busy={busy}
           onYes={() => void act(() => deleteLoginVariable(row.cli.name, variable.name))}
@@ -323,10 +327,12 @@ function VariableField({
   );
 }
 
-// Asks before a change that takes the login from the CLI's running agents, naming them.
+// Asks before a change of the CLI's login, naming its running agents and what `then`
+// happens to them.
 function Confirm({
   text,
   running,
+  then,
   yes,
   busy,
   onYes,
@@ -334,6 +340,7 @@ function Confirm({
 }: {
   text: string;
   running: Ref[];
+  then: string;
   yes: string;
   busy: boolean;
   onYes: () => void;
@@ -342,10 +349,7 @@ function Confirm({
   return (
     <div className="pv-confirm" role="group" aria-label={text}>
       <span>
-        {text}{" "}
-        {running.length > 0
-          ? `${who(running)} will stop being able to answer.`
-          : "No agent of it runs now."}
+        {text} {running.length > 0 ? `${who(running)} ${then}.` : "No agent of it runs now."}
       </span>
       <button type="button" className="danger" disabled={busy} onClick={onYes}>
         {yes}

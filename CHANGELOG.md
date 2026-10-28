@@ -8,8 +8,8 @@
   itself, so a session started from the UI or a phone no longer waits for "Yes, I trust
   this folder"; the repository's own Claude Code settings run.
 - **Agent CLI logins in Settings.** Providers and environment shows whether Claude Code,
-  Codex, OpenCode and Kilo are logged in, logs them in from the page (a phone too) and keeps
-  Claude Code's token; a Claude agent without a login waits and starts once there is one.
+  Codex, OpenCode and Kilo are logged in; Claude Code, OpenCode and Kilo log in from the page
+  (a phone too). A Claude agent without a login waits and starts once there is one.
 
 ## 0.43.0 (2026-10-26)
 

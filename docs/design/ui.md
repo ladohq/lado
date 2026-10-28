@@ -2297,11 +2297,14 @@ checks (LAD-157, openspec change provider-logins; built in `web/src/Providers.ts
   login yet, GitHub #113; no login action).
 - **Actions**: the CLI's own login commands (Claude Code: "Log in with your Claude
   account…", "Log in with Anthropic Console…"; OpenCode and Kilo: "Add a login…" and, with a
-  login, "Log out of one…") open the login window; "Log out…" (Claude Code) asks first,
-  naming the CLI's running agents, then runs `claude auth logout`.
+  login, "Log out of one…") open the login window; "Log out…" (Claude Code, for a login of
+  its own file: a variable's login stays whatever its logout does) asks first, naming the
+  CLI's running agents, which share that login, then runs `claude auth logout`.
 - **Login variables** (Claude Code's `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`): the
   project page's secret field (written, never shown or returned), Save; a saved one says
-  "set · LADO's secret" and has Remove…, which asks first as Log out does. They go to
+  "set · LADO's secret" and has Remove…, which asks first, naming the running agents, which
+  keep it until they start again. A value the agents could not get (a NUL, over 64 KiB) is
+  refused. They go to
   `<LADO_HOME>/secrets/`, a layer of every agent between the outside folder and a project's.
 - **lado doctor** about the providers under the rows (each CLI's version and login, the
   graphical session on macOS, the agents' environment: the same lines as `lado doctor`),

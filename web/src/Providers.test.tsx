@@ -192,15 +192,28 @@ test("a token is sent in the body once, the field emptied, never shown", async (
   expect(document.body.textContent).not.toContain("canary-tok");
 });
 
-test("Log out asks first, naming the running agents", async () => {
-  page.providers[0] = claude({ login: { ...LOGIN, state: "yes", method: "token" }, waiting: [] });
+const SUBSCRIPTION = { ...LOGIN, state: "yes" as const, method: "Claude subscription (Max)", file: "/h/.credentials.json" };
+
+test("Log out asks first, naming the running agents that share the login file", async () => {
+  page.providers[0] = claude({ login: SUBSCRIPTION, waiting: [] });
   const row = await show();
   fireEvent.click(within(row).getByRole("button", { name: "Log out…" }));
   const ask = within(row).getByRole("group", { name: "Log out of Claude Code?" });
-  expect(ask.textContent).toContain("supervisor of my-app, developer of my-app will stop being able to answer");
+  expect(ask.textContent).toContain(
+    "supervisor of my-app, developer of my-app share this login and may stop being able to answer",
+  );
   expect(calls.some((c) => c.path.endsWith("/logout"))).toBe(false);
   fireEvent.click(within(ask).getByRole("button", { name: "Log out" }));
   await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/providers/claude/logout")).toBe(true));
+});
+
+test("no Log out for a login a variable gives: the CLI's logout would not remove it", async () => {
+  page.providers[0] = claude({
+    login: { ...LOGIN, state: "yes", method: "token", variable: "CLAUDE_CODE_OAUTH_TOKEN", layer: "LADO's secret" },
+    waiting: [],
+  });
+  const row = await show();
+  expect(within(row).queryByRole("button", { name: "Log out…" })).toBeNull();
 });
 
 test("Remove of a saved token asks first", async () => {
@@ -211,7 +224,11 @@ test("Remove of a saved token asks first", async () => {
   expect(within(row).getByText("set · LADO's secret")).toBeTruthy();
   fireEvent.click(within(row).getByRole("button", { name: "Remove…" }));
   const ask = within(row).getByRole("group", { name: "Remove CLAUDE_CODE_OAUTH_TOKEN from LADO's secrets?" });
-  expect(ask.textContent).toContain("supervisor of my-app");
+  // Running agents keep the environment they started with.
+  expect(ask.textContent).toContain(
+    "supervisor of my-app, developer of my-app keep it until they start again; new agents go without it",
+  );
+  expect(ask.textContent).not.toContain("stop being able to answer");
   fireEvent.click(within(ask).getByRole("button", { name: "Remove" }));
   await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.path.endsWith("/CLAUDE_CODE_OAUTH_TOKEN"))).toBe(true));
 });

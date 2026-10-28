@@ -4,6 +4,7 @@ The fake agent (fake_agent.py) runs its hooks and MCP server in their own proces
 must know the fake providers too. So run as a script, this file is `lado` with them registered.
 """
 
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -128,16 +129,46 @@ class FakeProvider(base.Provider):
 
 ASKS_FIRST = 'Fake agent asks a question first: type "yes" in its terminal'
 
+# The login of "fake-login" (lado.logins, lado.login_wait): logged in while the file
+# FAKE_AGENT_LOGIN names exists, or with FAKE_AGENT_TOKEN; unknown with
+# FAKE_AGENT_LOGIN_STATUS=unknown. Its login action (fake_login.py) prints a link, reads one
+# line and writes that file.
+LOGIN_SCRIPT = LADO.with_name("fake_login.py")
+TOKEN = "FAKE_AGENT_TOKEN"
+
+
+class FakeLoginProvider(FakeProvider):
+    login_variables = (TOKEN,)
+
+    def __init__(self, name: str):
+        super().__init__(name, True)
+        self.capabilities = dataclasses.replace(self.capabilities, needs_login=True)
+
+    def login_status(self, env: dict[str, str]) -> base.LoginStatus:
+        if env.get("FAKE_AGENT_LOGIN_STATUS") == "unknown":
+            return base.LoginStatus(base.UNKNOWN, problem="`fake auth status` timed out")
+        if env.get(TOKEN):
+            return base.LoginStatus(base.YES, "token", variable=TOKEN)
+        marker = env.get("FAKE_AGENT_LOGIN")
+        if marker and Path(marker).exists():
+            return base.LoginStatus(base.YES, "fake login", file=marker)
+        return base.LoginStatus(base.NO)
+
+    def login_actions(self) -> tuple[base.LoginAction, ...]:
+        return (base.LoginAction("login", "Log in…", (sys.executable, str(LOGIN_SCRIPT))),)
+
 
 # "fake" gets queued messages from its turn-end hook and confirms them by its prompt-submit
 # hook, like OpenCode and Kilo; "fake-stop" by the next turn's end, like Claude Code;
 # "fake-paste" has them typed into its window; "fake-printed" as "fake-stop", and its CLI
-# takes what the hook printed (output_taken_when_printed), like Claude Code and Codex.
+# takes what the hook printed (output_taken_when_printed), like Claude Code and Codex;
+# "fake-login" as "fake", and its agents need a login, like Claude Code's.
 FAKES = (
     FakeProvider("fake", True),
     FakeProvider("fake-stop", True, says_continued=True),
     FakeProvider("fake-printed", True, says_continued=True, output_taken_when_printed=True),
     FakeProvider("fake-paste", False),
+    FakeLoginProvider("fake-login"),
 )
 
 

@@ -1544,6 +1544,131 @@ def _logged(line):
     return (state.home() / "loop.log").read_text().count(line)
 
 
+# An agent whose CLI needs a login (Claude Code) and has none waits for it in its window
+# (lado.login_wait), with lado.logins.wait_reason.
+LOGIN_REASON = (
+    "Claude Code is not logged in: log in in Settings → Providers and environment, or set "
+    "CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do"
+)
+
+
+def _waits_for_login(cmd):
+    return "login-wait" in cmd
+
+
+def test_a_claude_agent_without_a_login_waits_for_it(
+    repo, fake_tmux, claude_config, cli_logins, monkeypatch
+):
+    claude_config.trust()  # and trusts no folder yet
+    cli_logins.logged_out()
+    seen = _seen_at_launch(monkeypatch, "new_session", "supervisor")
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert seen == [(state.WAITING, LOGIN_REASON)]  # waiting before its window starts
+    # The trust is recorded now and told whoever starts it; the first run once logged in.
+    assert started.warnings == [LOGIN_REASON, claude_config.note(repo)]
+    assert _logged(f"s: supervisor: {LOGIN_REASON}") == 1
+    assert _logged(f"s: supervisor: {claude_config.note(repo)}") == 1
+    assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    cmd = call[-1]
+    assert _waits_for_login(cmd)
+    i = cmd.index("login-wait")
+    assert cmd[i + 1] == "claude" and cmd[i + 3] == "claude"
+    held = json.loads(Path(cmd[i + 2]).read_text())
+    assert held["project"] is None
+    assert {"LADO_HOME", "LADO_SESSION", "LADO_AGENT", "LADO_TMUX_SOCKET"} <= set(held["ours"])
+    assert held["env"]["LADO_AGENT"] == "supervisor"
+    config = json.loads(claude_config.path.read_text())
+    assert config["projects"] == {str(repo): {"hasTrustDialogAccepted": True}}
+    # The status was read in the agent's own launch environment.
+    argv, env = next(c for c in cli_logins.calls if c[0][0] == "claude")
+    assert argv == ["claude", "auth", "status", "--json"] and env["LADO_AGENT"] == "supervisor"
+
+
+def test_a_claude_agent_without_a_login_in_a_fresh_home_gets_the_trust_alone(
+    repo, fake_tmux, claude_config, cli_logins
+):
+    claude_config.path.unlink()
+    cli_logins.logged_out()
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings == [LOGIN_REASON, claude_config.note(repo)]
+    assert json.loads(claude_config.path.read_text()) == {
+        "projects": {str(repo): {"hasTrustDialogAccepted": True}}
+    }
+    assert claude_config.path.stat().st_mode & 0o777 == 0o600
+    # It waits for its login, not for the trust question.
+    assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
+
+
+def test_a_trust_lado_cannot_record_waits_for_the_login_first(
+    repo, fake_tmux, claude_config, cli_logins
+):
+    """The trust's fallback question comes once the login is there: the window asks again
+    (lado.login_wait); meanwhile the agent waits for the login."""
+    claude_config.refuse()
+    cli_logins.logged_out()
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings == [LOGIN_REASON]
+    assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
+
+
+def test_a_logged_in_claude_agent_starts_as_before(repo, fake_tmux):
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings == []
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    assert not _waits_for_login(call[-1])
+
+
+def test_an_unknown_login_never_holds_an_agent(repo, fake_tmux, cli_logins):
+    cli_logins.answer("claude", "`claude auth status --json` timed out after 10 s")
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    warning = (
+        "cannot tell whether Claude Code is logged in: `claude auth status --json` timed out "
+        "after 10 s; the agent starts all the same"
+    )
+    assert started.warnings == [warning]
+    assert _logged(f"s: supervisor: {warning}") == 1
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    assert not _waits_for_login(call[-1])
+
+
+@pytest.mark.parametrize("provider", ["codex", "kilo", "opencode"])
+def test_other_clis_are_never_held_for_a_login(repo, fake_tmux, cli_logins, provider):
+    runtime.start_session(str(repo), "s", None, provider=provider)
+    assert runtime.status_reason("s", "supervisor") != LOGIN_REASON
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    assert not _waits_for_login(call[-1])
+    assert [c for c in cli_logins.calls if c[0][0] == provider] == []
+
+
+def test_a_claude_worker_without_a_login_waits_and_says_so(repo, fake_tmux, cli_logins):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    cli_logins.logged_out()
+    warnings = []
+    runtime.spawn_worker("s", "task", name="w1", provider="claude", warnings=warnings)
+    assert warnings == [LOGIN_REASON]
+    assert runtime.status_reasons("s") == {"w1": LOGIN_REASON}
+    assert _logged(f"s: w1: {LOGIN_REASON}") == 1
+    [call] = [c for c in fake_tmux if c[0] == "new_window"]
+    assert _waits_for_login(call[-1])
+
+
+def test_a_project_session_waits_with_its_project(fake_tmux, cli_logins, tmp_path, monkeypatch):
+    from lado import projects
+
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    projects.create("shop", None)
+    agent_helpers.init_repo(projects.folder("shop") / "app")
+    cli_logins.logged_out()
+    runtime.start_session(None, None, None, provider="claude", project="shop", repo_name="app")
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    cmd = call[-1]
+    held = json.loads(Path(cmd[cmd.index("login-wait") + 2]).read_text())
+    assert held["project"] == "shop"
+
+
 def test_lado_records_claude_codes_trust_and_tells_the_starter(repo, fake_tmux, claude_config):
     claude_config.trust()  # Claude Code trusts no folder
     note = claude_config.note(repo)
@@ -3972,6 +4097,7 @@ def test_stop_all_on_an_older_schema_kills_all_then_migrates_then_marks(
         ("close_viewers", "a"),
         ("close_viewers", "b"),
         ("close_viewers", "gone"),
+        ("end_login_windows",),  # they go with LADO's sessions (lado.logins)
     ]
     assert state.pending_migration() is None
     assert all(state.get_session(n).stopped_at for n in ("a", "b", "gone"))

@@ -29,7 +29,13 @@ export function terminalUrl(
   return `${scheme}//${where.host}${path}/terminal?mode=${mode}`;
 }
 
-export const forGood = (code: number) => code >= 4400 && code < 4500;
+// A provider's login window (docs/design/ui.md, Providers and environment): always in control.
+export function loginTerminalUrl(where: { protocol: string; host: string }, provider: string): string {
+  const scheme = where.protocol === "https:" ? "wss:" : "ws:";
+  return `${scheme}//${where.host}/api/providers/${encodeURIComponent(provider)}/login/terminal`;
+}
+
+export const forGood =(code: number) => code >= 4400 && code < 4500;
 
 export class TermLink {
   private socket: WebSocket | null = null;

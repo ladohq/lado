@@ -369,6 +369,7 @@ export class FakeNotification {
 // The fields of an AgentInfo a test that is not about them leaves as they are: an agent
 // without a branch of its own, spawned and in its status since 10:00.
 export const AGENT_REST = {
+  login_wait: null,
   branch: null,
   worktree: null,
   spawned_at: "2026-10-04T10:00:00.000Z",

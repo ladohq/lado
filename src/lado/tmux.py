@@ -183,6 +183,29 @@ def new_session(
     return said
 
 
+def new_labelled_session(
+    session: str,
+    cwd: str,
+    cmd: list[str],
+    options: dict[str, str],
+    before_attempt: Callable[[], str | None] | None = None,
+) -> list[str]:
+    """A detached session running `cmd`, its `options` (labels among them) set in the same
+    tmux call, so it never exists without them (a login window, lado.logins); it ends with
+    `cmd`. `before_attempt` as for new_session."""
+    said: list[str] = []
+
+    def attempt() -> None:
+        line = before_attempt() if before_attempt else None
+        if line and line not in said:
+            said.append(line)
+
+    made = ["new-session", "-d", "-s", session, "-c", cwd, *cmd]
+    labelled = (["set-option", "-t", f"={session}:", k, v] for k, v in options.items())
+    run_chain(EXIT_EMPTY, made, *labelled, NO_RENAME, before_attempt=attempt)
+    return said
+
+
 def new_window(session: str, window: str, cwd: str, cmd: list[str]) -> None:
     run_chain(["new-window", "-d", "-t", f"{session}:", "-n", window, "-c", cwd, *cmd], NO_RENAME)
 

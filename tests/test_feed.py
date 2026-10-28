@@ -445,6 +445,7 @@ def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(stream
         "run": None,
         "task": None,
         "status_reason": None,
+        "login_wait": None,
         "branch": None,
         "worktree": None,
     }

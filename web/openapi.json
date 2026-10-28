@@ -1627,6 +1627,283 @@
         }
       }
     },
+    "/api/providers/logins": {
+      "get": {
+        "summary": "Provider Logins",
+        "description": "Each provider's CLI and login, and `lado doctor`'s provider checks, read now.",
+        "operationId": "provider_logins_api_providers_logins_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvidersPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers/{name}/login": {
+      "post": {
+        "summary": "Open Login",
+        "description": "Open the provider's login window running the action; the one open is kept.",
+        "operationId": "open_login_api_providers__name__login_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginOpen"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderLogins"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such provider"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Close Login",
+        "description": "End the provider's login window and its command, if one is open.",
+        "operationId": "close_login_api_providers__name__login_delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderLogins"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers/{name}/logout": {
+      "post": {
+        "summary": "Logout",
+        "description": "Run the provider's logout that asks nothing (Provider.logout_argv).",
+        "operationId": "logout_api_providers__name__logout_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderLogins"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such provider"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers/{name}/variables/{variable}": {
+      "put": {
+        "summary": "Set Login Variable",
+        "description": "Keep one of the provider's login variables as LADO's secret; the agents started\nafter it, and those that wait for a login, get it.",
+        "operationId": "set_login_variable_api_providers__name__variables__variable__put",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "variable",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Variable"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderLogins"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such provider"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove Login Variable",
+        "description": "Remove one of the provider's login variables from LADO's secrets.",
+        "operationId": "remove_login_variable_api_providers__name__variables__variable__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "variable",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Variable"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderLogins"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such provider"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/kits/installed": {
       "get": {
         "summary": "Installed Kits",
@@ -3758,6 +4035,17 @@
             ],
             "title": "Status Reason"
           },
+          "login_wait": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login Wait"
+          },
           "branch": {
             "anyOf": [
               {
@@ -3798,12 +4086,31 @@
           "run",
           "task",
           "status_reason",
+          "login_wait",
           "branch",
           "worktree",
           "spawned_at",
           "since"
         ],
         "title": "AgentInfo"
+      },
+      "AgentRefInfo": {
+        "properties": {
+          "session": {
+            "type": "string",
+            "title": "Session"
+          },
+          "agent": {
+            "type": "string",
+            "title": "Agent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session",
+          "agent"
+        ],
+        "title": "AgentRefInfo"
       },
       "ArtifactInfo": {
         "properties": {
@@ -3944,6 +4251,41 @@
         ],
         "title": "BugReport",
         "description": "The Report a bug page (lado.bug_report.Report): the whole report to show and copy,\nand GitHub's new issue form with it, the oldest kinds of errors left out until the link\nfits."
+      },
+      "CheckInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "info",
+              "warn",
+              "fail"
+            ],
+            "title": "Level"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "hint": {
+            "type": "string",
+            "title": "Hint"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "level",
+          "detail",
+          "hint"
+        ],
+        "title": "CheckInfo",
+        "description": "A line of `lado doctor` (doctor.Check)."
       },
       "CloneJob": {
         "properties": {
@@ -5563,6 +5905,144 @@
         "title": "Limits",
         "description": "What the composer checks before an upload and how it marks a file, all the core's\n(lado.artifacts, lado.runtime): the UI keeps no copy."
       },
+      "LoginActionInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "LoginActionInfo",
+        "description": "A command the login window can run (Provider.login_actions)."
+      },
+      "LoginInfo": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "State"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "variable": {
+            "type": "string",
+            "title": "Variable"
+          },
+          "layer": {
+            "type": "string",
+            "title": "Layer"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LoginItemInfo"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "problem": {
+            "type": "string",
+            "title": "Problem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "method",
+          "file",
+          "variable",
+          "layer",
+          "source",
+          "items",
+          "problem"
+        ],
+        "title": "LoginInfo",
+        "description": "A CLI's login as its own status command says (Provider.login_status); no value."
+      },
+      "LoginItemInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "variable": {
+            "type": "string",
+            "title": "Variable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "variable"
+        ],
+        "title": "LoginItemInfo",
+        "description": "One login of a CLI that keeps several (OpenCode's and Kilo's)."
+      },
+      "LoginOpen": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "title": "Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "LoginOpen",
+        "description": "The login action a window runs (LoginActionInfo.id)."
+      },
+      "LoginVariableInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "secret": {
+            "type": "boolean",
+            "title": "Secret"
+          },
+          "layer": {
+            "type": "string",
+            "title": "Layer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "secret",
+          "layer"
+        ],
+        "title": "LoginVariableInfo",
+        "description": "A variable that logs the CLI in: whether LADO's secrets hold it (never its value),\nand which layer gives it now."
+      },
       "MarketplaceChange": {
         "properties": {
           "enabled": {
@@ -7022,6 +7502,83 @@
         "title": "ProviderInfo",
         "description": "A provider of LADO's registry and whether its CLI can run here."
       },
+      "ProviderLogins": {
+        "properties": {
+          "cli": {
+            "$ref": "#/components/schemas/ProviderInfo"
+          },
+          "login": {
+            "$ref": "#/components/schemas/LoginInfo"
+          },
+          "needs_login": {
+            "type": "boolean",
+            "title": "Needs Login"
+          },
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/LoginActionInfo"
+            },
+            "type": "array",
+            "title": "Actions"
+          },
+          "can_logout": {
+            "type": "boolean",
+            "title": "Can Logout"
+          },
+          "variables": {
+            "items": {
+              "$ref": "#/components/schemas/LoginVariableInfo"
+            },
+            "type": "array",
+            "title": "Variables"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          },
+          "waiting": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRefInfo"
+            },
+            "type": "array",
+            "title": "Waiting"
+          },
+          "running": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRefInfo"
+            },
+            "type": "array",
+            "title": "Running"
+          },
+          "projects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Projects"
+          },
+          "window": {
+            "type": "boolean",
+            "title": "Window"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cli",
+          "login",
+          "needs_login",
+          "actions",
+          "can_logout",
+          "variables",
+          "note",
+          "waiting",
+          "running",
+          "projects",
+          "window"
+        ],
+        "title": "ProviderLogins",
+        "description": "One agent CLI in Settings \u2192 Providers and environment (lado.logins)."
+      },
       "ProviderSuggestion": {
         "properties": {
           "name": {
@@ -7043,6 +7600,31 @@
           "reason"
         ],
         "title": "ProviderSuggestion"
+      },
+      "ProvidersPage": {
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderLogins"
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckInfo"
+            },
+            "type": "array",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "providers",
+          "checks"
+        ],
+        "title": "ProvidersPage",
+        "description": "The section's data: each CLI's login, and `lado doctor`'s provider checks."
       },
       "RecentFolder": {
         "properties": {

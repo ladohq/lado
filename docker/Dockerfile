@@ -9,6 +9,9 @@
 #     ghcr.io/ladohq/lado:<version>
 #   docker exec lado lado ui --no-open            # the UI's link with its token
 #
+# The agent CLIs' logins: first the UI's Settings → Providers and environment (Claude
+# Code, OpenCode and Kilo, from a phone too; it keeps Claude Code's token).
+#
 # The agents' variables, optional, are files in a folder, one per variable (its name the
 # file's, its value the content): `mkdir -m 700 secrets`, then add
 # `-v "$PWD/secrets:/run/secrets:ro"` to the `docker run`. Without it there are none and

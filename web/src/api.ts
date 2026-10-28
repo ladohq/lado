@@ -397,6 +397,30 @@ export const putSecret = (id: string, name: string, value: string) =>
 export const deleteSecret = (id: string, name: string) =>
   post<VariableChange>(variablePath(id, "secrets", name), undefined, "DELETE");
 
+// Settings → Providers and environment: each agent CLI's login (docs/design/ui.md).
+export type ProvidersPage = components["schemas"]["ProvidersPage"];
+export type ProviderLogins = components["schemas"]["ProviderLogins"];
+export type CheckInfo = components["schemas"]["CheckInfo"];
+
+const providerPath = (name: string) => `/api/providers/${encodeURIComponent(name)}`;
+
+export const getProviderLogins = () => get<ProvidersPage>("/api/providers/logins");
+
+// Open the CLI's login window running `action` (the one open is kept), or end it.
+export const openLogin = (name: string, action: string) =>
+  post<ProviderLogins>(`${providerPath(name)}/login`, { action });
+
+export const closeLogin = (name: string) => post<ProviderLogins>(`${providerPath(name)}/login`, undefined, "DELETE");
+
+export const logOut = (name: string) => post<ProviderLogins>(`${providerPath(name)}/logout`);
+
+// A login variable's value goes in this request's body only, kept as LADO's secret.
+export const putLoginVariable = (name: string, variable: string, value: string) =>
+  post<ProviderLogins>(`${providerPath(name)}/variables/${encodeURIComponent(variable)}`, { value }, "PUT");
+
+export const deleteLoginVariable = (name: string, variable: string) =>
+  post<ProviderLogins>(`${providerPath(name)}/variables/${encodeURIComponent(variable)}`, undefined, "DELETE");
+
 export type ProjectLaunch = components["schemas"]["ProjectLaunch"];
 export type ProjectPlace = components["schemas"]["ProjectPlace"];
 export type ProjectRepo = components["schemas"]["ProjectRepo"];

@@ -2,9 +2,8 @@
 import { useId, useState } from "react";
 
 import { NotificationsSetting } from "./Notifications";
-import { PLANS } from "./paths";
-import { Placeholder } from "./Placeholder";
 import { chooseTheme, storedTheme, type Theme } from "./prefs";
+import { Providers } from "./Providers";
 import { useTitle } from "./Shell";
 import { StatisticsSetting } from "./Telemetry";
 
@@ -20,9 +19,7 @@ export function Settings() {
     <div className="settings">
       <Appearance />
       <Notifications />
-      <Placeholder title="Providers and environment" plan={PLANS.providers}>
-        The agent CLIs LADO can run, their versions and logins, and what <code>lado doctor</code> checks.
-      </Placeholder>
+      <Providers />
       <StatisticsSetting />
     </div>
   );

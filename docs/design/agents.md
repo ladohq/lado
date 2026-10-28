@@ -25,9 +25,11 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `LADO_AGENT_ENV=inherit` takes the environment of the process that starts the agent instead
   (the tests set it). From either, `TMUX`, `TMUX_PANE`, the shell's own `PWD`, `OLDPWD`,
   `SHLVL` and `_`, and a parent Claude Code's variables are dropped; the variables of the
-  outside folder go over them, then the variables of the session's project, then LADO's
+  outside folder go over them, then LADO's secrets (the agent CLIs' login variables the
+  human sets in Settings, `<LADO_HOME>/secrets/`, read as a project's secrets folder is:
+  `agent_env.lado_secrets`), then the variables of the session's project, then LADO's
   variables, then the provider's (`agent_env.resolve(project)`, one function for every
-  provider). The project's variables (`lado project set`, docs/design/projects.md), its
+  provider). LADO's own git calls (`for_git`) do not get LADO's secrets. The project's variables (`lado project set`, docs/design/projects.md), its
   plain ones from lado.db and its secrets from their folder
   (`<LADO_HOME>/projects/<id>/secrets/`, `project_secrets.read`, the outside folder's reader
   with no link and no loose mode), are read anew at each start, resume and spawn by the
@@ -184,7 +186,32 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `first_hook_blocker` records the trust of the repo's main root in Claude Code's global
   config (`claude.edit_config`) and returns a `note`, told and logged as a reason is
   (below), and nothing holds the agent. Only when that fails does the agent wait for the
-  question, the reason saying why LADO could not record it.
+  question, the reason saying why LADO could not record it. For an agent whose environment
+  logs Claude Code in, or whose login it cannot read (`login_status` not `no`: an unknown
+  login holds no agent), it also records Claude Code's first run
+  (`hasCompletedOnboarding`, else the theme screen holds it) and approves the
+  `ANTHROPIC_API_KEY` LADO gives it (its last 20 characters in
+  `customApiKeyResponses.approved`, else "Detected a custom API key" holds it): one write
+  and one note each, never any part of the key; a key the human rejected there is left,
+  and the agent waits with a reason saying so.
+- An agent whose CLI needs a login (`Capabilities.needs_login`: Claude Code) waits for it
+  before anything else: before its window starts (`runtime._held_for_login`, for start,
+  resume and spawn) LADO asks the provider's `login_status` with the agent's launch
+  environment; at `no` the agent is `waiting` with `logins.wait_reason` (`<CLI> is not
+  logged in: log in in Settings → Providers and environment, or set <variable>; the agent
+  starts by itself once you do`), told and logged as a blocker's reason is, with the lines of
+  what needs no login, settled at once (`first_hook_blocker`: Claude Code's trust; a
+  question it would still ask waits for the window), and its window
+  runs `lado login-wait` (`lado.login_wait`) instead of `lado.agent_env`: it reads and
+  removes the launch file, and every `logins.POLL` seconds lays the file layers read anew
+  (the outside folder, LADO's secrets, the session's project) over the environment it
+  holds, never over LADO's and the provider's own variables, and asks again. Once logged
+  in it runs `first_hook_blocker` there (the first run above, printed in the agent's
+  terminal and logged in loop.log: whoever started it is gone), puts the agent
+  back to `starting` (or waits with that blocker's reason) and execs the CLI: the agent
+  reaches its first hook with no restart. A login shell's change needs a new agent. A
+  login LADO cannot read (`unknown`: a failure, a timeout, odd output) never holds an
+  agent: the launch goes on with a warning. The UI shows the wait by `AgentInfo.login_wait`.
 - An agent whose CLI asks the human before any hook (Claude Code's "trust this folder?"
   when LADO could not record it, Codex's; `Provider.first_hook_blocker`) waits from its
   start: after `launch_command` and before its window starts (`runtime._first_hook_blocker`, for start,

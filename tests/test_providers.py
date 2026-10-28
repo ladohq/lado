@@ -531,9 +531,7 @@ def test_claude_writes_no_first_run_without_a_login(repo, claude_home, cli_login
     assert config.path.read_bytes() == before
 
 
-def test_claude_records_its_first_run_when_its_login_cannot_be_read(
-    repo, claude_home, cli_logins
-):
+def test_claude_records_its_first_run_when_its_login_cannot_be_read(repo, claude_home, cli_logins):
     """An unknown login holds no agent (lado.runtime): it starts, and without the record it
     would stand on the theme screen with no hook and no reason."""
     env, config = claude_home

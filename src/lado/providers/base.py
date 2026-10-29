@@ -1,8 +1,11 @@
 """The provider interface: what LADO needs from an agent CLI (Claude Code, Codex, ...)."""
 
+import contextlib
 import os
 import shlex
 import shutil
+import signal
+import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,6 +59,10 @@ class Capabilities:
     # by hand on the CLI's tested version, as its provider's comment says; LADO refuses to
     # launch a read-only agent on a CLI that cannot (lado.runtime).
     deny_edit_tools: bool = False
+    # An agent of this CLI cannot work without a login: LADO holds it, waiting, until the
+    # CLI's login_status says there is one (lado.runtime, lado.login_wait). False for a CLI
+    # that also works with models that need no login.
+    needs_login: bool = False
 
 
 @dataclass(frozen=True)
@@ -146,8 +153,80 @@ class Blocker:
     # Why the provider cannot tell whether something holds it; None when it can.
     warning: str | None = None
     # What the provider did so that nothing holds it (e.g. recorded an answer in the CLI's
-    # config), told and logged as the reason is; None when it did nothing.
-    note: str | None = None
+    # config), one line per write, told and logged as the reason is.
+    notes: tuple[str, ...] = ()
+
+
+# A CLI's login, as its own status command says (Provider.login_status).
+YES, NO, UNKNOWN = "yes", "no", "unknown"
+LOGIN_TIMEOUT = 10  # seconds a status command may take; then it is killed
+NO_LOGIN_READER = "LADO cannot read this CLI's login"
+
+
+@dataclass(frozen=True)
+class LoginItem:
+    """One login of a CLI that keeps several (OpenCode's and Kilo's credentials): the model
+    provider it is for, and its kind (`api`, `oauth`, ...) or, for one a variable gives,
+    that variable."""
+
+    name: str
+    kind: str
+    variable: str = ""
+
+
+@dataclass(frozen=True)
+class LoginStatus:
+    """Whether a CLI is logged in and how; never a secret's value."""
+
+    state: str  # YES, NO or UNKNOWN
+    method: str = ""  # for humans: "Claude subscription (Max)", "token", "2 credentials"
+    file: str = ""  # the CLI's own login file (or "the login keychain"), when it names one
+    variable: str = ""  # the variable that logs it in, when one does
+    items: tuple[LoginItem, ...] = ()
+    problem: str = ""  # why UNKNOWN
+
+
+@dataclass(frozen=True)
+class LoginAction:
+    """A command of the login window (lado.logins): its id in the API, its label, its argv."""
+
+    id: str
+    label: str
+    argv: tuple[str, ...]
+
+
+def run_status(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess | str:
+    """Run a CLI's login status command with `env` within LOGIN_TIMEOUT, from the home
+    folder (no repository's config is read): its result, or why it has none, for an
+    UNKNOWN status. Never prints or keeps the output."""
+    path = env.get("PATH", os.defpath)
+    found = shutil.which(argv[0], path=path)
+    if found is None:
+        return f"`{argv[0]}` is not on the agents' PATH"
+    home = env.get("HOME")
+    try:
+        process = subprocess.Popen(
+            [found, *argv[1:]],
+            env=env,
+            cwd=home if home and os.path.isdir(home) else None,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            # Its own group: a timeout kills what it started too, which holds its outputs.
+            start_new_session=True,
+        )
+    except OSError as error:
+        return f"`{shlex.join(argv)}` failed: {error.strerror or error}"
+    try:
+        out, err = process.communicate(timeout=LOGIN_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.communicate()
+        return f"`{shlex.join(argv)}` timed out after {LOGIN_TIMEOUT:g} s"
+    return subprocess.CompletedProcess(argv, process.returncode, out, err)
 
 
 class Provider(ABC):
@@ -199,6 +278,29 @@ class Provider(ABC):
         nothing. It may first settle what LADO answers itself (Blocker.note). Called before
         the agent's window starts."""
         return Blocker()
+
+    # A line about the login for the human, shown under its state in Settings (e.g. that
+    # the CLI's agents do not get it); "" for none.
+    login_note: str = ""
+    # The variables that log the CLI in, which the human may set as LADO's secrets in
+    # Settings (lado.project_secrets, LADO's folder); the first one is named in the reason
+    # of an agent that waits for a login.
+    login_variables: tuple[str, ...] = ()
+
+    def login_status(self, env: dict[str, str]) -> LoginStatus:
+        """Whether the CLI, started with `env`, is logged in, as its own status command says
+        (run_status); a failure, a timeout or output it cannot read is UNKNOWN with why,
+        never NO. By default UNKNOWN."""
+        return LoginStatus(UNKNOWN, problem=NO_LOGIN_READER)
+
+    def login_actions(self) -> tuple[LoginAction, ...]:
+        """The commands the login window runs for the human (the CLI's own login and, where
+        it asks which one, logout); by default none."""
+        return ()
+
+    def logout_argv(self) -> list[str] | None:
+        """A logout that asks nothing, run without a window; None when there is none."""
+        return None
 
     def keychain_login(self, env: dict[str, str]) -> str | None:
         """None when the CLI, started with `env`, does not read its login from the macOS

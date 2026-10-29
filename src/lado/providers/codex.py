@@ -103,6 +103,7 @@ CARRIED = (
     "model_reasoning_effort",
 )
 PROFILE = "lado"  # LADO's permission profile (see _git_profile)
+USING = "Logged in using "  # the start of `codex login status`'s line for a login
 
 
 class CodexProvider(base.Provider):
@@ -139,6 +140,35 @@ class CodexProvider(base.Provider):
     # No mode: Codex's own approvals (on-request in a trusted folder) and LADO's permission
     # profile. `default` asks for approvals as Codex's on-request does.
     permission_modes = ("default", "bypassPermissions")
+    # Each agent has a Codex home of its own (its config folder), where no login is: the
+    # user's login is not carried over (GitHub #113), so no login action either.
+    login_note = (
+        "Codex agents do not get this login yet: each has a Codex home of its own (GitHub "
+        "#113); they work only with a model that needs no login"
+    )
+
+    def login_status(self, env: dict[str, str]) -> base.LoginStatus:
+        # `codex login status` (0.162.0) reads CODEX_HOME/auth.json (~/.codex without it;
+        # an OPENAI_API_KEY in the environment does not count) and prints, on stderr after
+        # warnings of its own, `Not logged in` (exit 1) or `Logged in using <how>`, for a
+        # key with ` - ` and the key masked: nothing after ` - ` is kept.
+        found = base.run_status([self.command, "login", "status"], env)
+        if isinstance(found, str):
+            return base.LoginStatus(base.UNKNOWN, problem=found)
+        lines = [line.strip() for line in f"{found.stdout}\n{found.stderr}".splitlines()]
+        home = Path(env.get("CODEX_HOME") or Path(env.get("HOME") or Path.home()) / ".codex")
+        for line in lines:
+            if line == "Not logged in":
+                return base.LoginStatus(base.NO)
+            if line.startswith(USING):
+                how = line[len(USING) :].split(" - ", 1)[0].strip()
+                for article in ("an ", "a "):
+                    how = how.removeprefix(article)
+                return base.LoginStatus(base.YES, how, file=str(home / "auth.json"))
+        last = next((line for line in reversed(lines) if line), "")
+        return base.LoginStatus(
+            base.UNKNOWN, problem=base.error_line("cannot read `codex login status`", last)
+        )
 
     def launch_command(
         self,

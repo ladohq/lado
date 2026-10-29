@@ -484,6 +484,42 @@ def test_the_project_wins_over_the_folder_and_the_login_shell(shell, outdir):
     assert agent_env.resolve()["BOARD_URL"] == "out"  # no project: no layer
 
 
+def test_lados_secrets_go_between_the_outside_folder_and_the_project(outdir, monkeypatch):
+    from lado import project_secrets
+
+    monkeypatch.setenv(agent_env.SOURCE_VAR, "inherit")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "shell")
+    assert agent_env.resolve()["CLAUDE_CODE_OAUTH_TOKEN"] == "shell"
+    write(outdir, "CLAUDE_CODE_OAUTH_TOKEN", b"out\n")
+    assert agent_env.resolve()["CLAUDE_CODE_OAUTH_TOKEN"] == "out"
+    project_secrets.write_lado("CLAUDE_CODE_OAUTH_TOKEN", "lado")
+    assert agent_env.resolve()["CLAUDE_CODE_OAUTH_TOKEN"] == "lado"
+    env = agent_env.resolve({"CLAUDE_CODE_OAUTH_TOKEN": "proj"})
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "proj"
+    # LADO's own git calls do not get them: an agent CLI's login means nothing to git.
+    assert agent_env.for_git()["CLAUDE_CODE_OAUTH_TOKEN"] == "out"
+
+
+def test_lados_secrets_folder_is_read_as_lados_own(lado_home, monkeypatch):
+    monkeypatch.setenv(agent_env.SOURCE_VAR, "inherit")
+    folder = lado_home / "secrets"
+    folder.mkdir(mode=0o700, parents=True)
+    write(folder, "ANTHROPIC_API_KEY", b"k\n")
+    (folder / "ANTHROPIC_API_KEY").chmod(0o600)
+    write(folder, "LOOSE", b"x")
+    (folder / "LOOSE").chmod(0o644)
+    (folder / "LINKED").symlink_to(folder / "ANTHROPIC_API_KEY")
+    found = agent_env.lado_secrets()
+    assert found.values == {"ANTHROPIC_API_KEY": "k"}
+    assert dict(found.unused) == {"LINKED": agent_env.LINK, "LOOSE": agent_env.LOOSE_FILE}
+    assert agent_env.resolve()["ANTHROPIC_API_KEY"] == "k"
+    assert "LOOSE" not in agent_env.resolve()
+
+
+def test_no_lado_secrets_folder_is_no_layer(lado_home):
+    assert agent_env.lado_secrets() == agent_env.Folder({}, [])
+
+
 def test_the_project_wins_over_the_inherited_environment(outdir, monkeypatch):
     monkeypatch.setenv(agent_env.SOURCE_VAR, "inherit")
     monkeypatch.setenv("BOARD_URL", "old")

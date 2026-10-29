@@ -67,12 +67,17 @@ def test_all_checks_pass_when_tools_are_on_path(tmp_path, monkeypatch):
         "Agent config folders",
         "Artifacts",
         "Claude Code",
+        "Claude Code login",
         "Codex CLI",
+        "Codex CLI login",
         "Kilo CLI",
+        "Kilo CLI login",
         "OpenCode",
+        "OpenCode login",
     ]
     assert [c.name for c in checks] == names
-    assert all(c.level == doctor.OK for c in checks)
+    # The logins are their own tests' (test_a_login_line_per_installed_cli).
+    assert all(c.level == doctor.OK for c in checks if not c.name.endswith(" login"))
 
 
 def test_outside_lists_names_and_files_not_used(tmp_path, monkeypatch):
@@ -191,6 +196,113 @@ def overlap(tmp_path, monkeypatch, lado_home):
     projects.set_variable("acme", "BOARD_URL", "canary-a")
     projects.set_variable("empty", "OTHER", "canary-o")
     return folder
+
+
+def test_lados_secrets_over_the_outside_folder_are_named(tmp_path, monkeypatch):
+    from lado import project_secrets
+
+    assert doctor.check_lado_secrets() is None  # no folder, no line
+    folder = tmp_path / "s"
+    folder.mkdir()
+    (folder / "CLAUDE_CODE_OAUTH_TOKEN").write_text("out")
+    (folder / "ANTHROPIC_API_KEY").write_text("out")
+    monkeypatch.setenv("LADO_ENV_DIR", str(folder))
+    project_secrets.write_lado("CLAUDE_CODE_OAUTH_TOKEN", "canary-lado")
+    project_secrets.write_lado("OTHER", "x")
+    check = doctor.check_lado_secrets()
+    assert check == doctor.Check(
+        "LADO secrets", doctor.INFO, "CLAUDE_CODE_OAUTH_TOKEN overrides LADO_ENV_DIR"
+    )
+    names = [c.name for c in doctor.run_checks(which=lambda c: c)]
+    assert names[names.index("Variables from outside") + 1] == "LADO secrets"
+    monkeypatch.delenv("LADO_ENV_DIR")
+    assert doctor.check_lado_secrets() is None
+
+
+def test_lados_secrets_not_used_are_named_without_a_value(lado_home):
+    folder = lado_home / "secrets"
+    folder.mkdir(parents=True, mode=0o700)
+    (folder / "ANTHROPIC_API_KEY").write_text("canary-1")
+    (folder / "ANTHROPIC_API_KEY").chmod(0o644)
+    check = doctor.check_lado_secrets()
+    assert check == doctor.Check(
+        "LADO secrets",
+        doctor.WARN,
+        f"ANTHROPIC_API_KEY not used: readable or writable by others: chmod 600 it ({folder})",
+    )
+    assert "canary" not in repr(check)
+
+
+# One login line per installed agent CLI (lado.logins), by its own status command
+# (tests/conftest.py's cli_logins answers it).
+
+
+def _only(*names):
+    return lambda command: command if command in names else None
+
+
+def test_a_login_line_per_installed_cli(cli_logins, monkeypatch):
+    monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "canary-tok")
+    cli_logins.answer("codex", 1, "", "Not logged in\n")
+    cli_logins.answer("kilo", "`kilo auth list` timed out after 10 s")
+    checks = doctor.check_logins(_only("claude", "codex", "kilo"))
+    assert checks == [
+        doctor.Check(
+            "Claude Code login",
+            doctor.OK,
+            "token (CLAUDE_CODE_OAUTH_TOKEN from the process that starts LADO)",
+        ),
+        doctor.Check("Codex CLI login", doctor.INFO, "none"),
+        doctor.Check(
+            "Kilo CLI login", doctor.WARN, "unknown: `kilo auth list` timed out after 10 s"
+        ),
+    ]
+    assert "canary" not in repr(checks)
+
+
+def test_claude_not_logged_in_warns_where_to_log_in(cli_logins, capsys, monkeypatch):
+    monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
+    cli_logins.logged_out()
+    [check] = doctor.check_logins(_only("claude"))
+    assert check == doctor.Check(
+        "Claude Code login",
+        doctor.WARN,
+        "not logged in: its agents wait for a login (Settings → Providers and environment)",
+    )
+    monkeypatch.setattr(doctor, "run_checks", lambda: [check])
+    assert doctor.main() == 0  # a warning: the exit code stays
+    assert (
+        "[warn] Claude Code login: not logged in: its agents wait for a login (Settings → "
+        "Providers and environment)" in capsys.readouterr().out
+    )
+
+
+def test_a_login_from_a_file_names_the_file(cli_logins, monkeypatch):
+    monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
+    cli_logins.answer(
+        "opencode", 0, "┌  Credentials ~/.local/share/opencode/auth.json\n●  Anthropic api\n"
+    )
+    [check] = doctor.check_logins(_only("opencode"))
+    assert check == doctor.Check(
+        "OpenCode login", doctor.OK, "1 credential (~/.local/share/opencode/auth.json)"
+    )
+
+
+def test_no_agent_environment_makes_every_login_unknown(monkeypatch):
+    def fail(project=None):
+        raise agent_env.AgentEnvError("your shell failed")
+
+    monkeypatch.setattr(agent_env, "resolve", fail)
+    [check] = doctor.check_logins(_only("claude"))
+    assert check == doctor.Check("Claude Code login", doctor.WARN, "unknown: your shell failed")
+
+
+def test_the_login_lines_follow_the_providers(monkeypatch):
+    monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
+    names = [c.name for c in doctor.run_checks(which=_only("claude", "tmux", "git"))]
+    assert names[names.index("Claude Code") + 1] == "Claude Code login"
+    assert "Codex CLI login" not in names
 
 
 def test_project_variables_over_the_outside_folder_are_named(overlap):
@@ -438,7 +550,7 @@ def test_old_tmux_warns_about_gate_popups_and_terminals(monkeypatch, version, hi
 def test_a_missing_provider_is_info_when_another_is_installed(monkeypatch, capsys, installed):
     _versions(monkeypatch)
     checks = doctor.run_checks(which=lambda cmd: cmd if cmd in (installed, "tmux") else None)
-    by_name = {c.name: c for c in checks[-4:]}
+    by_name = {c.name: c for c in checks if not c.name.endswith(" login")}
     for name in ("claude", "codex", "kilo", "opencode"):
         provider = providers.get(name)
         check = by_name[provider.title]

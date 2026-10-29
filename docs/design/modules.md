@@ -452,9 +452,33 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     project (`clone`) get, its one builder; `unused` is what it does
     not give, by name with why (None for the folder), its values left inside, for `lado
     doctor` and the project's page; `names` lists without opening a file
-    (`agent_env.check_entry`), a file of a loose mode too, which a replace mends.
+    (`agent_env.check_entry`), a file of a loose mode too, which a replace mends. The same
+    store keeps LADO's secrets in `<LADO_HOME>/secrets/` (`write_lado`, `remove_lado`,
+    `read_lado`, `lado_names`, `lado_folder`; `_open_chain` over the folder's parts): the
+    agent CLIs' login variables the human sets in Settings (lado.logins checks the names).
+  - `logins.py`: the agent CLIs' logins (docs/design/ui.md, Providers and environment):
+    `read` asks a provider's `login_status` in the agents' environment without a project
+    (`environment`), says the layer of the variable that logs it in (`layer`: LADO's
+    secret, the outside folder, the login shell), and names the live agents that wait for
+    it and that run (`agents`, by `wait_reason`, the one text of that wait) and the
+    projects with a login variable of their own; `source` is where a login comes from in
+    words, also `lado doctor`'s; `check_variable` the only names LADO's secrets take;
+    `logout` runs a provider's `logout_argv`. The login windows: `open_window` (a tmux
+    session `lado-login-<provider>` with the labels `@lado-login`, `@lado-home`, running the
+    action's argv through `agent_env.command`; one per provider), `close_window`,
+    `open_windows`, and `end_windows`, which `lado stop --all` and the UI server's start and
+    stop use, by the labels only.
+  - `login_wait.py`: the window of an agent whose CLI needs a login and has none (`lado
+    login-wait`, hidden): `command` writes the launch file with LADO's and the provider's
+    own names, which no layer replaces, and the session's project; `main` polls
+    `login_status` every `logins.POLL` seconds with the file layers read anew (`layers`),
+    then settles `first_hook_blocker`, logs what it did and execs the CLI.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
-    `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`, `CLI_VARIABLES`,
+    `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`, the login's
+    questions (`login_status` → `LoginStatus`, by the CLI's own status command through
+    `run_status`, with a time limit, unknown with why on any failure; `login_actions`,
+    `logout_argv`, `login_variables`, `login_note`, `Capabilities.needs_login`), each
+    provider parsing its own CLI's output, `CLI_VARIABLES`,
     the names LADO sets for the agent CLIs, reserved from project variables and kept in
     step with every provider's `Launch.env` by a test; each provider's
     `EVENTS` maps its native events; `claude.py`: Claude Code, its role in `prompt.md` of
@@ -563,8 +587,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     here instead. The texts (`OUTSIDE_GUI`, `NO_GUI`, `PLAN_REMOTE`) name no provider:
     `fill` puts in the titles and hints of `Provider.keychain_login`.
   - `agent_env.py`: where an agent's environment comes from (docs/design/agents.md): `resolve`
-    (the login shell's, then the outside folder's, `outside`, then the session's project's
-    variables and secrets it is given, which `runtime._base_env` reads), `for_git` (the
+    (the login shell's, then the outside folder's, `outside`, then LADO's secrets,
+    `lado_secrets`, then the session's project's variables and secrets it is given, which
+    `runtime._base_env` reads), `for_git` (the
     environment of LADO's own network git, gitcache's and clone's: the process's, the
     outside folder's over it, then a project's layer when given; no login shell), and
     `command`, the window's command that runs the agent with exactly that environment. `read_folder` is
@@ -613,7 +638,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     uploaded file's title. No other copy of the check. Only the standard library.
   - `terminal.py`: an agent's terminal for the UI (design in
     [docs/design/ui.md](ui.md), section Terminal): `open` (a viewer tmux session
-    with the agent's window linked in and a `tmux attach` on a pty), `NoTerminal`,
+    with the agent's window linked in and a `tmux attach` on a pty), `open_login` (a login
+    window's own session attached in control, kept at close; `login_ended`), `NoTerminal`,
     and `close_viewers`, which `lado stop` and the UI server's start use; viewers are found
     by their tmux labels (`@lado-viewer`, `@lado-home`, `@lado-session`) only. Never a
     read-only tmux client: tmux would refuse LADO's own `send-keys` while one is attached.

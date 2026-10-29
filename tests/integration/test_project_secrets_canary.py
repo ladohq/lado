@@ -181,7 +181,8 @@ def test_files_holding_reads_links_and_fails_on_a_read_error(tmp_path):
 def test_a_project_secret_is_found_nowhere_else(shop, tmp_path, monkeypatch, fakes_known_to_lado):
     canary = f"canary-{uuid.uuid4().hex}"
     outside, loose = f"outside-{uuid.uuid4().hex}", f"loose-{uuid.uuid4().hex}"
-    canaries = (canary, outside, loose)
+    lados = f"lado-secret-{uuid.uuid4().hex}"  # LADO's secret (openspec provider-logins)
+    canaries = (canary, outside, loose, lados)
     said: list[str] = []  # every output and answer
     # The outside folder gives CLI_NAME too: the project's value goes over it.
     given = tmp_path / "outside"
@@ -239,6 +240,21 @@ def test_a_project_secret_is_found_nowhere_else(shop, tmp_path, monkeypatch, fak
     assert status == 200, body
     page = json.loads(body)
     assert page["overrides"] == [CLI_NAME]
+    # A login variable kept as LADO's secret in Settings → Providers and environment: every
+    # agent gets it (the project does not set it), no answer gives it back.
+    token = f"/api/providers/fake-login/variables/{fake_provider.TOKEN}"
+    for method, path, sent, expected in [
+        ("PUT", token, {"value": f"{lados}-old"}, 200),
+        ("PUT", token, {"value": lados}, 200),
+        ("PUT", "/api/providers/fake-login/variables/GH_TOKEN", {"value": lados}, 400),
+        ("PUT", token, {"secret": lados}, 422),
+        ("PUT", token, {"value": [lados]}, 422),
+        ("GET", "/api/providers/logins", None, 200),
+    ]:
+        status, answer = api.call(method, path, sent)
+        assert status == expected, answer
+        said.append(answer)
+    assert project_secrets.lado_names() == [fake_provider.TOKEN]
     assert page["unused"] == [
         {"name": LOOSE_NAME, "reason": "readable or writable by others: chmod 600 it"}
     ]
@@ -262,6 +278,7 @@ def test_a_project_secret_is_found_nowhere_else(shop, tmp_path, monkeypatch, fak
     assert json.loads(body)["session"]["project"] == "shop"
     said.append(body)
     assert environ("shop-frontend", "supervisor")[CLI_NAME] == canary
+    assert environ("shop-frontend", "supervisor")[fake_provider.TOKEN] == lados
     assert LOOSE_NAME not in environ("shop-frontend", "supervisor")
     no_canary_in_processes(*canaries)
     wait_idle("shop-frontend")
@@ -292,7 +309,7 @@ def test_a_project_secret_is_found_nowhere_else(shop, tmp_path, monkeypatch, fak
     secrets_folder = project_secrets.folder("shop")
     # fake-agents/ is the fake agent's own report of its environment, as a real CLI's
     # memory: not LADO's record.
-    skip = [secrets_folder, home / "fake-agents"]
+    skip = [secrets_folder, project_secrets.lado_folder(), home / "fake-agents"]
     for value in canaries:
         assert files_holding(home, value.encode(), skip) == []
 
@@ -357,5 +374,7 @@ def test_a_project_secret_is_found_nowhere_else(shop, tmp_path, monkeypatch, fak
 
     server_run.stop()
     assert [text for text in said if any(c in text for c in canaries)] == []
-    for value in canaries:  # the secrets' folder is gone: nothing of LADO_HOME is skipped
-        assert files_holding(home, value.encode(), [home / "fake-agents"]) == []
+    # The project's secrets' folder is gone: of LADO_HOME only LADO's secrets are skipped.
+    for value in canaries:
+        kept = [project_secrets.lado_folder(), home / "fake-agents"]
+        assert files_holding(home, value.encode(), kept) == []

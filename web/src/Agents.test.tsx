@@ -35,6 +35,7 @@ function agent(name: string, more: Partial<AgentInfo> = {}): AgentInfo {
     run: null,
     task: name === "supervisor" ? null : `Task of ${name}`,
     status_reason: null,
+    login_wait: null,
     branch: name === "supervisor" ? null : `lado/lado/${name}`,
     worktree: name === "supervisor" ? null : `/src/lado/.lado/worktrees/lado/${name}`,
     spawned_at: "2026-10-04T10:40:00.000Z",

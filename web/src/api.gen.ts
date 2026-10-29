@@ -710,6 +710,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/providers/logins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Provider Logins
+         * @description Each provider's CLI and login, and `lado doctor`'s provider checks, read now.
+         */
+        get: operations["provider_logins_api_providers_logins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{name}/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Login
+         * @description Open the provider's login window running the action; the one open is kept.
+         */
+        post: operations["open_login_api_providers__name__login_post"];
+        /**
+         * Close Login
+         * @description End the provider's login window and its command, if one is open.
+         */
+        delete: operations["close_login_api_providers__name__login_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{name}/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Logout
+         * @description Run the provider's logout that asks nothing (Provider.logout_argv).
+         */
+        post: operations["logout_api_providers__name__logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{name}/variables/{variable}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Login Variable
+         * @description Keep one of the provider's login variables as LADO's secret; the agents started
+         *     after it, and those that wait for a login, get it.
+         */
+        put: operations["set_login_variable_api_providers__name__variables__variable__put"];
+        post?: never;
+        /**
+         * Remove Login Variable
+         * @description Remove one of the provider's login variables from LADO's secrets.
+         */
+        delete: operations["remove_login_variable_api_providers__name__variables__variable__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/kits/installed": {
         parameters: {
             query?: never;
@@ -1531,6 +1620,8 @@ export interface components {
             task: string | null;
             /** Status Reason */
             status_reason: string | null;
+            /** Login Wait */
+            login_wait: string | null;
             /** Branch */
             branch: string | null;
             /** Worktree */
@@ -1539,6 +1630,13 @@ export interface components {
             spawned_at: string;
             /** Since */
             since: string;
+        };
+        /** AgentRefInfo */
+        AgentRefInfo: {
+            /** Session */
+            session: string;
+            /** Agent */
+            agent: string;
         };
         /**
          * ArtifactInfo
@@ -1599,6 +1697,23 @@ export interface components {
             url: string;
             /** Left Out */
             left_out: number;
+        };
+        /**
+         * CheckInfo
+         * @description A line of `lado doctor` (doctor.Check).
+         */
+        CheckInfo: {
+            /** Name */
+            name: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "ok" | "info" | "warn" | "fail";
+            /** Detail */
+            detail: string;
+            /** Hint */
+            hint: string;
         };
         /**
          * CloneJob
@@ -2084,6 +2199,74 @@ export interface components {
             max_message: number;
             /** Max Title */
             max_title: number;
+        };
+        /**
+         * LoginActionInfo
+         * @description A command the login window can run (Provider.login_actions).
+         */
+        LoginActionInfo: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+        };
+        /**
+         * LoginInfo
+         * @description A CLI's login as its own status command says (Provider.login_status); no value.
+         */
+        LoginInfo: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "yes" | "no" | "unknown";
+            /** Method */
+            method: string;
+            /** File */
+            file: string;
+            /** Variable */
+            variable: string;
+            /** Layer */
+            layer: string;
+            /** Source */
+            source: string;
+            /** Items */
+            items: components["schemas"]["LoginItemInfo"][];
+            /** Problem */
+            problem: string;
+        };
+        /**
+         * LoginItemInfo
+         * @description One login of a CLI that keeps several (OpenCode's and Kilo's).
+         */
+        LoginItemInfo: {
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Variable */
+            variable: string;
+        };
+        /**
+         * LoginOpen
+         * @description The login action a window runs (LoginActionInfo.id).
+         */
+        LoginOpen: {
+            /** Action */
+            action: string;
+        };
+        /**
+         * LoginVariableInfo
+         * @description A variable that logs the CLI in: whether LADO's secrets hold it (never its value),
+         *     and which layer gives it now.
+         */
+        LoginVariableInfo: {
+            /** Name */
+            name: string;
+            /** Secret */
+            secret: boolean;
+            /** Layer */
+            layer: string;
         };
         /** MarketplaceChange */
         MarketplaceChange: {
@@ -2571,6 +2754,32 @@ export interface components {
             /** Warning */
             warning: string;
         };
+        /**
+         * ProviderLogins
+         * @description One agent CLI in Settings → Providers and environment (lado.logins).
+         */
+        ProviderLogins: {
+            cli: components["schemas"]["ProviderInfo"];
+            login: components["schemas"]["LoginInfo"];
+            /** Needs Login */
+            needs_login: boolean;
+            /** Actions */
+            actions: components["schemas"]["LoginActionInfo"][];
+            /** Can Logout */
+            can_logout: boolean;
+            /** Variables */
+            variables: components["schemas"]["LoginVariableInfo"][];
+            /** Note */
+            note: string;
+            /** Waiting */
+            waiting: components["schemas"]["AgentRefInfo"][];
+            /** Running */
+            running: components["schemas"]["AgentRefInfo"][];
+            /** Projects */
+            projects: string[];
+            /** Window */
+            window: boolean;
+        };
         /** ProviderSuggestion */
         ProviderSuggestion: {
             /** Name */
@@ -2580,6 +2789,16 @@ export interface components {
              * @enum {string}
              */
             reason: "last_session" | "only_installed";
+        };
+        /**
+         * ProvidersPage
+         * @description The section's data: each CLI's login, and `lado doctor`'s provider checks.
+         */
+        ProvidersPage: {
+            /** Providers */
+            providers: components["schemas"]["ProviderLogins"][];
+            /** Checks */
+            checks: components["schemas"]["CheckInfo"][];
         };
         /** RecentFolder */
         RecentFolder: {
@@ -4744,6 +4963,247 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderInfo"][];
+                };
+            };
+        };
+    };
+    provider_logins_api_providers_logins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvidersPage"];
+                };
+            };
+        };
+    };
+    open_login_api_providers__name__login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginOpen"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLogins"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such provider */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_login_api_providers__name__login_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLogins"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_providers__name__logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLogins"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such provider */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_login_variable_api_providers__name__variables__variable__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                variable: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretValue"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLogins"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such provider */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_login_variable_api_providers__name__variables__variable__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                variable: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLogins"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such provider */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

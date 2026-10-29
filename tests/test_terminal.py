@@ -94,6 +94,26 @@ def test_no_terminal_for_an_unknown_agent_or_a_stopped_session(agent_session, co
     assert commands == []  # nothing made in tmux
 
 
+def test_a_login_window_is_attached_as_it_is_and_kept_at_close(monkeypatch, commands):
+    from lado import logins
+
+    windows = {"claude": "lado-login-claude"}
+    monkeypatch.setattr(logins, "open_windows", lambda: dict(windows))
+    attached = []
+    monkeypatch.setattr(
+        terminal, "_attach", lambda name, mode, size: attached.append((name, mode)) or (None, -1)
+    )
+    term = terminal.open_login("claude")
+    assert attached == [("lado-login-claude", terminal.CONTROL)]  # its own session, no viewer
+    assert commands == []
+    assert (term.mode, term.keep) == (terminal.CONTROL, True)
+    assert terminal.login_ended("claude") is None
+    windows.clear()
+    assert "ended" in str(terminal.login_ended("claude"))
+    with pytest.raises(terminal.NoTerminal, match="no login window of kilo"):
+        terminal.open_login("kilo")
+
+
 def test_cleanup_takes_only_viewers_labelled_with_this_lado_home(monkeypatch, commands):
     home = str(state.home().resolve())
     listed = [

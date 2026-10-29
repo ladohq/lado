@@ -22,7 +22,7 @@ import errno
 import os
 import secrets
 import stat
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from lado import agent_env, providers, state
@@ -101,7 +101,11 @@ def names(id: str) -> list[str]:
     reader takes by what needs no content, and a file of a loose mode, which a replace mends
     (a file it still cannot give, for its mode, size or content, `unused` names). None while
     the folder is unused (a link, loose)."""
-    where = str(folder(id))
+    return _names(str(folder(id)), reserved)
+
+
+def _names(where: str, own: Callable[[str], bool]) -> list[str]:
+    """The names in the own folder `where`, as `names` says."""
     if agent_env.check_own_folder(where) != "":
         return []
     try:
@@ -110,7 +114,7 @@ def names(id: str) -> list[str]:
                 entry.name
                 for entry in found
                 if not entry.name.startswith(".")
-                and agent_env.check_entry(entry, reserved) in ("", agent_env.LOOSE_FILE)
+                and agent_env.check_entry(entry, own) in ("", agent_env.LOOSE_FILE)
             )
     except OSError:
         return []
@@ -133,16 +137,21 @@ def _open_folder(fd: int, name: str, path: Path) -> int:
         raise
 
 
+def _chain(id: str, *, make: bool, depth: int = 3) -> contextlib.AbstractContextManager:
+    """The folder `depth` levels down `projects/<id>/secrets` (_open_chain)."""
+    return _open_chain((DATA, id, SECRETS)[:depth], make=make)
+
+
 @contextlib.contextmanager
-def _chain(id: str, *, make: bool, depth: int = 3) -> Iterator[int | None]:
-    """The folder `depth` levels down `projects/<id>/secrets` opened from LADO_HOME, no link
-    followed on the way (LinkRefused); a missing one is made 700 with `make`, else None.
-    `make` makes every folder of the chain 700."""
+def _open_chain(parts: tuple[str, ...], *, make: bool) -> Iterator[int | None]:
+    """The folder `parts` down from LADO_HOME, opened with no link followed on the way
+    (LinkRefused); a missing one is made 700 with `make`, else None. `make` makes every
+    folder of the chain 700."""
     home = state.home_path()
     path = home
     fd = os.open(home, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        for name in (DATA, id, SECRETS)[:depth]:
+        for name in parts:
             path = path / name
             try:
                 child = _open_folder(fd, name, path)
@@ -166,11 +175,16 @@ def write(id: str, name: str, value: str) -> None:
     """Set the secret `name` of `id` to `value` (checked by lado.projects), replacing it
     whole. OSError when the disk refuses it, the old value then kept; ValueError for a name
     that is no variable name (lado.projects refuses it first)."""
+    _write((DATA, id, SECRETS), folder(id), name, value)
+
+
+def _write(parts: tuple[str, ...], where: Path, name: str, value: str) -> None:
+    """Set `name` in the folder `parts` (at `where`) to `value`, as `write` says."""
     if not _is_name(name):
         raise ValueError(f"{name!r} is not a variable name")
-    with _chain(id, make=True) as fd:
+    with _open_chain(parts, make=True) as fd:
         assert fd is not None
-        _refuse_link(fd, name, folder(id) / name)
+        _refuse_link(fd, name, where / name)
         temporary = f".{name}.{secrets.token_hex(6)}.tmp"
         out = os.open(
             temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, FILE_MODE, dir_fd=fd
@@ -195,18 +209,53 @@ def write(id: str, name: str, value: str) -> None:
 def remove(id: str, name: str) -> bool:
     """Remove the secret `name` of `id`; False when it has none of that name, which a name
     that is no variable name never is (a path or a file being written is no secret)."""
+    return _remove((DATA, id, SECRETS), folder(id), name)
+
+
+def _remove(parts: tuple[str, ...], where: Path, name: str) -> bool:
+    """Remove `name` from the folder `parts` (at `where`), as `remove` says."""
     if not _is_name(name):
         return False
-    with _chain(id, make=False) as fd:
+    with _open_chain(parts, make=False) as fd:
         if fd is None:
             return False
-        _refuse_link(fd, name, folder(id) / name)
+        _refuse_link(fd, name, where / name)
         try:
             os.unlink(name, dir_fd=fd)
         except FileNotFoundError:
             return False
         os.fsync(fd)
         return True
+
+
+# LADO's secrets: `<LADO_HOME>/secrets/`, the same store over LADO's own folder, for the
+# agent CLIs' login variables the human sets in Settings (lado.logins checks the names);
+# agent_env.resolve lays them between the outside folder and a project's layer.
+
+
+def lado_folder() -> Path:
+    return agent_env.lado_secrets_folder()
+
+
+def write_lado(name: str, value: str) -> None:
+    """Set LADO's secret `name` to `value`, as `write` does for a project's."""
+    state.home()  # made when missing, as for lado.db
+    _write((agent_env.LADO_SECRETS,), lado_folder(), name, value)
+
+
+def remove_lado(name: str) -> bool:
+    """Remove LADO's secret `name`, as `remove` does for a project's."""
+    return _remove((agent_env.LADO_SECRETS,), lado_folder(), name)
+
+
+def read_lado() -> agent_env.Folder:
+    """LADO's secrets as the agents get them, and each file not given with why."""
+    return agent_env.lado_secrets()
+
+
+def lado_names() -> list[str]:
+    """The names of LADO's secrets the agents get, sorted, without a value."""
+    return _names(str(lado_folder()), agent_env.nothing_more)
 
 
 def _links(fd: int, path: Path) -> Iterator[Path]:

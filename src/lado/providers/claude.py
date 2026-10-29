@@ -5,6 +5,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import shutil
 import stat
 import sys
@@ -107,6 +108,11 @@ LOGINS = (
 )
 
 
+# An apiKeySource that is a variable (ANTHROPIC_API_KEY), not Claude Code's own login's key
+# ("/login managed key") or its apiKeyHelper.
+ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
+
+
 class ClaudeProvider(base.Provider):
     name = "claude"
     title = "Claude Code"
@@ -121,6 +127,7 @@ class ClaudeProvider(base.Provider):
         hold_first_turn=True,
         output_taken_when_printed=True,
         deny_edit_tools=True,
+        needs_login=True,
     )
     # Passed on as --permission-mode: the choices of Claude Code 2.1.287, which also takes
     # "default" without listing it.
@@ -250,6 +257,65 @@ class ClaudeProvider(base.Provider):
         # sweep types it in then (lado.runtime._plan).
         return json.dumps({"decision": "block", "reason": text})
 
+    login_variables = ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
+
+    def login_status(self, env: dict[str, str]) -> base.LoginStatus:
+        # `claude auth status --json` (2.1.295, about 0.1 s): loggedIn, authMethod
+        # (claude.ai, oauth_token, api_key, none), subscriptionType for claude.ai,
+        # apiKeySource for a key, configDirectory; exit 1 when not logged in. It does not
+        # check a token with the server: a made-up one is loggedIn.
+        argv = [self.command, "auth", "status", "--json"]
+        found = base.run_status(argv, env)
+        if isinstance(found, str):
+            return base.LoginStatus(base.UNKNOWN, problem=found)
+        command = " ".join(argv)
+        try:
+            data = json.loads(found.stdout)
+        except ValueError:
+            data = None
+        if not isinstance(data, dict) or not isinstance(data.get("loggedIn"), bool):
+            if found.returncode not in (0, 1):
+                why = base.error_line(f"exit status {found.returncode}", found.stderr)
+                return base.LoginStatus(base.UNKNOWN, problem=f"`{command}` failed with {why}")
+            return base.LoginStatus(base.UNKNOWN, problem=f"cannot read `{command}`'s output")
+        if not data["loggedIn"]:
+            return base.LoginStatus(base.NO)
+        method, source = data.get("authMethod"), data.get("apiKeySource")
+        credentials = (
+            "the login keychain"
+            if sys.platform == "darwin"
+            else str(Path(str(data.get("configDirectory") or "")) / ".credentials.json")
+        )
+        if method == "claude.ai":
+            plan = data.get("subscriptionType")
+            words = f"Claude subscription ({plan.capitalize()})" if plan else "Claude subscription"
+            return base.LoginStatus(base.YES, words, file=credentials)
+        if method == "oauth_token":
+            # CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_AUTH_TOKEN (also "oauth_token", 2.1.295).
+            given = [n for n in ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN") if env.get(n)]
+            return base.LoginStatus(base.YES, "token", variable=given[0] if given else "")
+        if method == "api_key":
+            if isinstance(source, str) and ENV_NAME.fullmatch(source):
+                return base.LoginStatus(base.YES, "API key", variable=source)
+            return base.LoginStatus(base.YES, "Anthropic Console", file=credentials)
+        if method == "third_party":  # Bedrock, Vertex, ... by their CLAUDE_CODE_USE_* variable
+            return base.LoginStatus(base.YES, str(data.get("apiProvider") or method).capitalize())
+        return base.LoginStatus(base.YES, str(method))
+
+    def login_actions(self) -> tuple[base.LoginAction, ...]:
+        # Without a browser it prints `If the browser didn't open, visit: <url>` and `Paste
+        # code here if prompted >`, and waits for the code (2.1.295).
+        login = (self.command, "auth", "login")
+        return (
+            base.LoginAction("login", "Log in with your Claude account…", (*login, "--claudeai")),
+            base.LoginAction(
+                "login-console", "Log in with Anthropic Console…", (*login, "--console")
+            ),
+        )
+
+    def logout_argv(self) -> list[str] | None:
+        return [self.command, "auth", "logout"]
+
     def keychain_login(self, env: dict[str, str]) -> str | None:
         # On macOS Claude Code keeps its OAuth login in the login keychain ("Claude
         # Code-credentials"). It needs none with one of LOGINS. apiKeyHelper in its settings
@@ -269,20 +335,46 @@ class ClaudeProvider(base.Provider):
         except (OSError, ValueError) as error:
             repo = gitpaths.main_root(Path(cwd))
             return base.Blocker(warning=f"cannot tell whether {self.title} trusts {repo}: {error}")
-        if trusted:
-            return base.Blocker()
-        repo = gitpaths.main_root(Path(cwd))
+        notes: list[str] = []
+        if not trusted:
+            repo = gitpaths.main_root(Path(cwd))
+            try:
+                path = _record_trust(repo, env)
+            except (OSError, ValueError) as error:
+                return base.Blocker(
+                    reason=f"{self.title} asks whether to trust {repo}: LADO could not record "
+                    f'the trust ({error}); in its terminal choose "Yes, I trust this folder" '
+                    '(Enter alone answers "No, exit" and closes the agent)'
+                )
+            if path is not None:  # else another LADO recorded it meanwhile
+                notes.append(f"LADO recorded {self.title}'s trust in {repo} in {path}")
+        # A logged-in Claude Code still shows its first-run screens before any hook: the
+        # theme, then for a key in its environment whether to use it (default "No"). Not
+        # while it is not logged in: those agents wait for a login (lado.login_wait), which
+        # calls this again once there is one. A login LADO cannot read holds no agent, so
+        # its first run is recorded too, or it would stand on the theme with no reason.
+        if self.login_status(env).state == base.NO:
+            return base.Blocker(notes=tuple(notes))
         try:
-            path = _record_trust(repo, env)
+            if path := _record_first_run(env):
+                notes.append(f"LADO recorded {self.title}'s first run in {path}")
+            key = env.get("ANTHROPIC_API_KEY")
+            if key:
+                path, rejected = _approve_key(env, key)
+                if rejected:
+                    return base.Blocker(
+                        reason=f"{self.title} asks whether to use ANTHROPIC_API_KEY, which you "
+                        f"rejected before (in {rejected}): in its terminal choose to use it, or "
+                        "remove the key from customApiKeyResponses.rejected there",
+                        notes=tuple(notes),
+                    )
+                if path:
+                    notes.append(f"LADO recorded the approval of ANTHROPIC_API_KEY in {path}")
         except (OSError, ValueError) as error:
             return base.Blocker(
-                reason=f"{self.title} asks whether to trust {repo}: LADO could not record the "
-                f'trust ({error}); in its terminal choose "Yes, I trust this folder" (Enter '
-                'alone answers "No, exit" and closes the agent)'
+                warning=f"cannot record {self.title}'s first run: {error}", notes=tuple(notes)
             )
-        if path is None:  # another LADO recorded it meanwhile
-            return base.Blocker()
-        return base.Blocker(note=f"LADO recorded {self.title}'s trust in {repo} in {path}")
+        return base.Blocker(notes=tuple(notes))
 
 
 # Background work after a turn's end. Seen live with 2.1.295 (haiku): every Stop payload has
@@ -417,6 +509,57 @@ def _record_trust(repo: Path, env: dict[str, str]) -> Path | None:
         return True
 
     return edit_config(env, trust)
+
+
+# Claude Code's first-run keys, LADO's other exception to the same rule (AGENTS.md,
+# LAD-157), written the same way, only for an agent whose environment logs it in (checked
+# by hand with 2.1.295): with hasCompletedOnboarding true it starts straight away with a
+# token; with ANTHROPIC_API_KEY it asks "Detected a custom API key in your environment… Do
+# you want to use this API key?" until the key's last 20 characters are in
+# customApiKeyResponses.approved, as Claude Code itself stores the answer there. The key
+# itself goes nowhere else.
+KEY_TAIL = 20
+
+
+def _record_first_run(env: dict[str, str]) -> Path | None:
+    """Set hasCompletedOnboarding (edit_config); the file written, or None when it was set."""
+
+    def onboard(config: dict) -> bool:
+        if config.get("hasCompletedOnboarding") is True:
+            return False
+        config["hasCompletedOnboarding"] = True
+        return True
+
+    return edit_config(env, onboard)
+
+
+def _approve_key(env: dict[str, str], key: str) -> tuple[Path | None, Path | None]:
+    """Add the key's last characters to customApiKeyResponses.approved (edit_config) when
+    they are in neither list: (the file written, None); (None, the config) when the human
+    rejected them, which is left as it is; (None, None) when they were approved. ValueError
+    for responses or a list that is not what Claude Code writes."""
+    tail = key[-KEY_TAIL:]
+    rejected = False
+
+    def approve(config: dict) -> bool:
+        nonlocal rejected
+        responses = config.setdefault("customApiKeyResponses", {})
+        if not isinstance(responses, dict):
+            raise ValueError("its customApiKeyResponses are not a JSON object")
+        approved = responses.setdefault("approved", [])
+        refused = responses.get("rejected", [])
+        if not isinstance(approved, list) or not isinstance(refused, list):
+            raise ValueError("its customApiKeyResponses are not lists")
+        if tail in refused:
+            rejected = True
+            return False
+        if tail in approved:
+            return False
+        approved.append(tail)
+        return True
+
+    path = edit_config(env, approve)
+    return path, (_config_path(env) if rejected else None)
 
 
 def _trusted(cwd: Path, env: dict[str, str]) -> bool:

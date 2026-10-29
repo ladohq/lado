@@ -16,6 +16,7 @@ from lado import (
     artifacts,
     gui_session,
     kits,
+    logins,
     project_secrets,
     projects,
     providers,
@@ -109,7 +110,13 @@ def check_providers(which: Callable[[str], str | None]) -> list[Check]:
     """No provider is required, but one is: a missing one is only `info`; with none
     installed there is one failed check with how to install each."""
     registry = [providers.get(name) for name in providers.names()]
-    statuses = [provider_status(provider, which) for provider in registry]
+    return version_checks(registry, [provider_status(provider, which) for provider in registry])
+
+
+def version_checks(
+    registry: list[providers.Provider], statuses: list[ProviderStatus]
+) -> list[Check]:
+    """check_providers' lines from the providers' statuses, checked already."""
     if not any(status.installed for status in statuses):
         hints = "; ".join(f"{p.title}: {p.install_hint}" for p in registry)
         return [Check("Agent CLI", FAIL, "no agent CLI installed", hints)]
@@ -118,6 +125,63 @@ def check_providers(which: Callable[[str], str | None]) -> list[Check]:
         if not s.installed
         else Check(p.title, WARN if s.warning else OK, s.detail, s.warning)
         for p, s in zip(registry, statuses, strict=True)
+    ]
+
+
+def login_check(found: logins.Login) -> Check:
+    """`lado doctor`'s line of one CLI's login, which Settings shows too."""
+    provider, status = found.provider, found.status
+    name = f"{provider.title} login"
+    if status.state == providers.base.YES:
+        source = logins.source(found)
+        return Check(name, OK, f"{status.method} ({source})" if source else status.method)
+    if status.state == providers.base.NO:
+        if provider.capabilities.needs_login:
+            return Check(
+                name, WARN, f"not logged in: its agents wait for a login ({logins.SETTINGS})"
+            )
+        return Check(name, INFO, "none")
+    return Check(name, WARN, f"unknown: {status.problem}")
+
+
+def check_logins(which: Callable[[str], str | None]) -> list[Check]:
+    """A login line per installed agent CLI, read by its own status command in the agents'
+    environment (lado.logins); none is a failure."""
+    installed = [providers.get(n) for n in providers.names()]
+    installed = [p for p in installed if which(p.command)]
+    if not installed:
+        return []
+    try:
+        env = logins.environment()
+    except agent_env.AgentEnvError as error:
+        return [Check(f"{p.title} login", WARN, f"unknown: {error}") for p in installed]
+    with ThreadPoolExecutor(len(installed)) as pool:
+        found = list(pool.map(lambda p: logins.read(p, env, full=False), installed))
+    return [login_check(f) for f in found]
+
+
+def with_logins(versions: list[Check], login_lines: list[Check]) -> list[Check]:
+    """Each CLI's login line right after its version's."""
+    by_name = {check.name: check for check in login_lines}
+    return [
+        line
+        for check in versions
+        for line in (check, by_name.get(f"{check.name} login"))
+        if line is not None
+    ]
+
+
+def provider_checks(
+    versions: list[Check], login_lines: list[Check], which: Callable[[str], str | None]
+) -> list[Check]:
+    """The checks Settings → Providers and environment shows (lado.server.launch): each
+    CLI's version and login, the graphical session (macOS) and the agents' environment, as
+    `lado doctor` prints them."""
+    graphical = check_graphical_session(which)
+    return [
+        *with_logins(versions, login_lines),
+        *([graphical] if graphical else []),
+        *check_agent_env(),
     ]
 
 
@@ -676,6 +740,22 @@ def check_outside() -> Check | None:
     return Check(name, WARN, "; ".join([detail, *files]))
 
 
+def check_lado_secrets() -> Check | None:
+    """LADO's secrets (the login variables set in Settings) by name, never a value: each
+    file the agents do not get with why, else the names that take the place of the outside
+    folder's; none without either."""
+    found = agent_env.lado_secrets()
+    name = "LADO secrets"
+    if found.unused:
+        where = agent_env.lado_secrets_folder()
+        lines = [f"{file or 'the folder'} not used: {reason}" for file, reason in found.unused]
+        return Check(name, WARN, f"{'; '.join(lines)} ({where})")
+    over = sorted(found.values.keys() & agent_env.outside().values.keys())
+    if not over:
+        return None
+    return Check(name, INFO, f"{', '.join(over)} overrides {agent_env.ENV_DIR_VAR}")
+
+
 def check_project_variables() -> Check | None:
     """The projects whose variables or secrets take the place of the outside folder's (by
     name, never a value) for their sessions' agents; none without such a name or a lado.db
@@ -716,6 +796,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
     graphical = check_graphical_session(which)
     projects_found = check_projects()
     outside = check_outside()
+    lado_secrets = check_lado_secrets()
     overridden = check_project_variables()
     unused_secrets = check_project_secrets()
     author = check_git_author()
@@ -730,13 +811,14 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         check_workspace(),
         *([projects_found] if projects_found else []),
         *([outside] if outside else []),
+        *([lado_secrets] if lado_secrets else []),
         *([overridden] if overridden else []),
         *([unused_secrets] if unused_secrets else []),
         *([graphical] if graphical else []),
         *check_agent_env(),
         check_config_folders(),
         check_artifacts(),
-        *check_providers(which),
+        *with_logins(check_providers(which), check_logins(which)),
     ]
 
 

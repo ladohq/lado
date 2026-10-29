@@ -234,6 +234,23 @@ with the newer-LADO refusal's words; incompatible: `FAIL` with that refusal's wo
 doctor exits 1. The checks that read lado.db (`Projects`, `Artifacts`, `Agent config
 folders`) then say `not checked: lado.db is not at this LADO's schema (see lado.db)`.
 
+`lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
+own status command in the agents' environment without a project (`claude auth status
+--json`, `codex login status`, `opencode auth list`, `kilo auth list`): `[ok] <CLI> login:
+<how> (<variable> from <layer>|<file>)`; `[warn] Claude Code login: not logged in: its agents
+wait for a login (Settings → Providers and environment)` for a CLI whose agents need one;
+`[info] <CLI> login: none` for the others; `[warn] <CLI> login: unknown: <why>` when the
+command fails, times out (10 s) or prints what LADO cannot read. None of them changes the exit
+code. LADO's secrets (the login variables set in Settings, `<LADO_HOME>/secrets/`) get a line
+after `Variables from outside` only when one takes the place of the outside folder's (`[info]
+LADO secrets: <NAME>[, …] overrides LADO_ENV_DIR`) or a file there is not used (a warning, by
+name with why, never a value). A Claude agent started without a login waits, and `lado ls`
+prints under it `waiting: Claude Code is not logged in: log in in Settings → Providers and
+environment, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do`; it
+starts by itself once there is one. A login that cannot be read holds no agent: `lado start`
+warns `cannot tell whether Claude Code is logged in: <why>; the agent starts all the same`.
+There is no `lado login`: in a terminal the CLIs' own commands log in.
+
 `lado doctor` always has a `Workspace` line: `<path> (LADO_REPOS)` or `<path> (default)`, `info`
 with `, not made yet: the first clone or project makes it` while the folder is missing, and a
 warning for a `LADO_REPOS` that is not absolute (ignored: `LADO uses <home>/workspace`), a path

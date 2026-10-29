@@ -2283,7 +2283,52 @@ time. Each task is one `feature` run, useful on its own.
 ### Providers and environment
 
 Settings: the agent CLIs LADO can run, their versions and logins, and what `lado doctor`
-checks.
+checks (LAD-157, openspec change provider-logins; built in `web/src/Providers.tsx` and
+`web/src/LoginWindow.tsx`). Its anchor `#providers-and-environment` scrolls the page to it.
+
+- **A row per CLI**: its name and version (or how to install it); a dot and its login as
+  the CLI's own status command says it, read by the server in the environment the agents
+  of a session without a project get (lado.logins): "Logged in · <how>", "Not logged in"
+  (bold, orange, for a CLI whose agents wait for a login: Claude Code), "No login" (the
+  others), or "Unknown: <why>", never shown as not logged in. Then where the login comes
+  from (the CLI's file, or a variable and its layer: the login shell, the outside folder,
+  LADO's secret), OpenCode's and Kilo's logins one by one, the agents that wait for this
+  login as links to their terminals, the projects with a login variable of their own (their
+  sessions use it instead), and the provider's note (Codex: its agents do not get this
+  login yet, GitHub #113; no login action).
+- **Actions**: the CLI's own login commands (Claude Code: "Log in with your Claude
+  account…", "Log in with Anthropic Console…"; OpenCode and Kilo: "Add a login…" and, with a
+  login, "Log out of one…") open the login window; "Log out…" (Claude Code, for a login of
+  its own file: a variable's login stays whatever its logout does) asks first, naming the
+  CLI's running agents, which share that login, then runs `claude auth logout`.
+- **Login variables** (Claude Code's `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`): the
+  project page's secret field (written, never shown or returned), Save; a saved one says
+  "set · LADO's secret" and has Remove…, which asks first, naming the running agents, which
+  keep it until they start again. A value the agents could not get (a NUL, over 64 KiB) is
+  refused. They go to
+  `<LADO_HOME>/secrets/`, a layer of every agent between the outside folder and a project's.
+- **lado doctor** about the providers under the rows (each CLI's version and login, the
+  graphical session on macOS, the agents' environment: the same lines as `lado doctor`),
+  and "Check again". The section is read when it opens, after each action, when a login
+  window ends and on Check again; not from the change feed (the CLIs' files change outside
+  LADO).
+- **The login window**: a sheet over the page, the whole screen on a phone, "Log in: <CLI>"
+  and Close (which ends the command), the terminal of the CLI's command (a tmux session of
+  its own, `lado-login-<provider>`, labelled; one per CLI: choosing an action again shows the
+  one open), always in control. A link in it, also one wrapped over lines, opens in a new
+  tab (xterm's web links addon); under it "Text to send" with "Send ⏎" (its text and Enter
+  as one input) and the keys ↑ ↓ Enter Esc. When the command ends, the sheet closes and the
+  section is read again. The windows end with `lado stop --all` and the server's start and
+  stop.
+- **Needs you**: an agent that waits for its CLI's login (`AgentInfo.login_wait`, the
+  provider's name) has "Log in…" first, which leads here; Open terminal stays beside it.
+- **API**: `GET /api/providers/logins` (`ProvidersPage`: a `ProviderLogins` per provider,
+  with the System panel's `ProviderInfo` as `cli`, and the checks); `POST
+  /api/providers/{name}/login {action}` and `DELETE …/login` (the window), `WS
+  …/login/terminal` (the agents' terminal protocol, control only); `POST …/logout`; `PUT`
+  and `DELETE …/variables/{variable}` (400 for a name the provider does not name as its
+  login; a 422 there repeats none of its input). `GET /api/providers` stays the System
+  panel's and New session's list, with no CLI's status command run.
 
 ### Activity
 

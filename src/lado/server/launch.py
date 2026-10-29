@@ -4,13 +4,25 @@ the providers. The decisions stay in the core: whether a folder will do is
 runtime.check_repo, a fresh start is lado.scratch, a kit is the one kits.find takes, a
 provider's state is doctor.provider_status."""
 
+import dataclasses
 import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal
 
-from lado import doctor, kits, project_secrets, projects, providers, runtime, scratch, state
+from lado import (
+    agent_env,
+    doctor,
+    kits,
+    logins,
+    project_secrets,
+    projects,
+    providers,
+    runtime,
+    scratch,
+    state,
+)
 from lado.server import models
 
 SUBFOLDERS = 50  # at most this many subfolders of a folder
@@ -249,6 +261,90 @@ def provider_info(
         tested_version=status.tested_version,
         warning=status.warning,
     )
+
+
+def providers_page() -> models.ProvidersPage:
+    """Settings → Providers and environment: each provider's CLI and login, read now (each
+    CLI's commands at once), and `lado doctor`'s provider checks (lado.logins, doctor)."""
+    registry = [providers.get(name) for name in providers.names()]
+    with ThreadPoolExecutor(len(registry)) as pool:
+        statuses = list(pool.map(lambda p: doctor.provider_status(p, shutil.which), registry))
+    env, problem = _environment()
+    with ThreadPoolExecutor(len(registry)) as pool:
+        found = list(pool.map(lambda p, s: _read(p, s, env, problem), registry, statuses))
+    installed = [f for f, s in zip(found, statuses, strict=True) if s.installed]
+    checks = doctor.provider_checks(
+        doctor.version_checks(registry, statuses),
+        [doctor.login_check(f) for f in installed],
+        shutil.which,
+    )
+    return models.ProvidersPage(
+        providers=[
+            provider_logins(f, provider_info(f.provider, s))
+            for f, s in zip(found, statuses, strict=True)
+        ],
+        checks=[models.CheckInfo(**dataclasses.asdict(c)) for c in checks],
+    )
+
+
+def provider_logins(found: logins.Login, cli: models.ProviderInfo) -> models.ProviderLogins:
+    provider, status = found.provider, found.status
+    return models.ProviderLogins(
+        cli=cli,
+        login=models.LoginInfo(
+            state=status.state,
+            method=status.method,
+            file=status.file,
+            variable=status.variable,
+            layer=found.layer,
+            source=logins.source(found),
+            items=[
+                models.LoginItemInfo(name=i.name, kind=i.kind, variable=i.variable)
+                for i in status.items
+            ],
+            problem=status.problem,
+        ),
+        needs_login=provider.capabilities.needs_login,
+        actions=[models.LoginActionInfo(id=a.id, label=a.label) for a in provider.login_actions()],
+        can_logout=provider.logout_argv() is not None,
+        variables=[
+            models.LoginVariableInfo(name=v.name, secret=v.secret, layer=v.layer)
+            for v in found.variables
+        ],
+        note=provider.login_note,
+        waiting=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in found.waiting],
+        running=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in found.running],
+        projects=found.projects,
+        window=found.window,
+    )
+
+
+def provider_login(name: str) -> models.ProviderLogins:
+    """One provider's row, read now (after an action on it); ValueError for no such."""
+    provider = providers.get(name)
+    status = doctor.provider_status(provider, shutil.which)
+    env, problem = _environment()
+    return provider_logins(_read(provider, status, env, problem), provider_info(provider, status))
+
+
+def _environment() -> tuple[dict[str, str], str]:
+    """The agents' environment (lado.logins.environment), or none and why."""
+    try:
+        return logins.environment(), ""
+    except agent_env.AgentEnvError as error:
+        return {}, str(error)
+
+
+def _read(
+    provider: providers.Provider, status: doctor.ProviderStatus, env: dict[str, str], problem: str
+) -> logins.Login:
+    """The provider's login; unknown with why when its CLI is not installed or the agents'
+    environment cannot be had (`problem`)."""
+    why = problem if status.installed else "not installed"
+    if why:
+        unknown = providers.base.LoginStatus(providers.base.UNKNOWN, problem=why)
+        return logins.read(provider, env, status=unknown)
+    return logins.read(provider, env)
 
 
 def session_about(sess: state.Session) -> models.SessionAbout:

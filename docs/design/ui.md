@@ -1677,7 +1677,8 @@ New session (LAD-137) is in Launch and session control.
 
 - **Layout**, as Sessions: the list at the left (260 px), the project at the right at
   `/projects/<id>`; on a phone the list fills the screen and a project opens in its place
-  with `← All projects` above it. Not cards. A desktop window of at most 900 px stacks
+  with `← All projects` above it; the list and the project each scroll by themselves
+  under the top bar, the window still (LAD-159). Not cards. A desktop window of at most 900 px stacks
   the list over the project, as Sessions does, and shows no `Select a project` pane
   (`NoProject`, LAD-138, M1).
 - **The list** (`GET /api/projects`): a row is the title (the id without one), the mark

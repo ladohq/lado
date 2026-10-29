@@ -11,6 +11,11 @@
   Codex, OpenCode and Kilo are logged in; Claude Code, OpenCode and Kilo log in from the page
   (a phone too). A Claude agent without a login waits and starts once there is one.
 
+### Fixed
+
+- **A project's page scrolls on a phone.** Its variables, secrets and Delete project were
+  cut off below the screen; the project list scrolls too.
+
 ## 0.43.0 (2026-10-26)
 
 ### Added

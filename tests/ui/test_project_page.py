@@ -14,7 +14,7 @@ import agent_helpers
 import pytest
 from playwright.sync_api import Browser, Page, expect
 from test_launch import idle, log_in
-from test_phone import UPRIGHT, no_sideways_scroll
+from test_phone import UPRIGHT, no_sideways_scroll, wheel_to_the_end
 
 from lado import loop, project_secrets, projects, runtime, state
 
@@ -412,12 +412,26 @@ def test_on_a_phone_the_rows_buttons_go_under_the_name(phone: Page, shop, server
     shot(page, "phone-dark", full_page=False)
 
 
+def test_on_a_phone_a_long_project_page_scrolls_to_its_end(phone: Page, shop, server, shot):
+    page = phone
+    log_in(page, server, "/projects/shop")
+    view = page.get_by_role("region", name="Project shop", exact=True)
+    deleting = block(view, "Delete project")
+    expect(deleting).to_be_attached()
+    assert deleting.bounding_box()["y"] > page.viewport_size["height"]  # below the screen
+    wheel_to_the_end(page, deleting)
+    shot(page, "phone-end", full_page=False)
+    page.emulate_media(color_scheme="dark")
+    shot(page, "phone-end-dark", full_page=False)
+
+
 def test_on_a_phone_the_delete_block_and_dialog_fit(phone: Page, shop, server, shot):
     page = phone
     log_in(page, server, "/projects/shop")
     view = page.get_by_role("region", name="Project shop", exact=True)
     deleting = block(view, "Delete project")
-    deleting.scroll_into_view_if_needed()
+    expect(deleting).to_be_attached()
+    wheel_to_the_end(page, deleting)
     expect(deleting.get_by_role("button", name="Delete project…")).to_be_visible()
     no_sideways_scroll(page)
     shot(page, "phone-delete-block", full_page=False)

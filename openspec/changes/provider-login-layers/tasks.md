@@ -9,7 +9,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-30-provider-log
 
 - [x] 2.1 `base.py`: `LoginChoice`, `login_question`, `login_choices`,
   `LoginStatus.choice`, the file's words; `logout_argv` removed (D4, D5). Check:
-  `tests/test_providers.py`.
+  `tests/test_login_status.py`.
 - [x] 2.2 Claude: no login actions, the choices, the method words; `fake-login` with two
   variables and two choices (D3, D4, D5). Check: `tests/test_login_status.py`.
 

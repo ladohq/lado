@@ -1,11 +1,13 @@
 """The agent CLIs' logins: what Settings → Providers and environment and `lado doctor` show,
 the agents that wait for one, and the login windows.
 
-Each provider reads its own CLI's login (Provider.login_status) and names its login and
-logout commands and the variables that log it in; nothing here knows any CLI's output. The
-state is read in the environment LADO's agents get without a project (`environment`):
-the login shell's, the outside folder's and LADO's secrets (lado.agent_env.resolve). Where
-the variable that logs a CLI in comes from is the core's to say (`layer`).
+Each provider reads its own CLI's login (Provider.login_status) and names its login
+commands, the choices Settings offers and the variables that log it in; nothing here knows
+any CLI's output. The state is read in the environment LADO's agents of that CLI get
+without a project (`environment`): the login shell's, the outside folder's and LADO's
+secrets, with the CLI's login taken whole from one layer (lado.agent_env.merge). Which
+layer gives the login is the core's to say (`layer`); a login of the CLI's own file, the
+provider's (LoginStatus.file_words).
 
 An agent whose CLI needs a login (Capabilities.needs_login) and has none waits from its
 start with `wait_reason` (lado.runtime, lado.login_wait); the server finds the agents that
@@ -13,14 +15,14 @@ wait by that reason, so the text lives here alone.
 
 A login window is a tmux session of its own on LADO's server, one per provider, named
 `lado-login-<provider>` and labelled with user options (LOGIN, HOME): it runs the CLI's
-login or logout command with the agents' environment (lado.agent_env.command) and ends
+login or logout command (OpenCode's, Kilo's) with the agents' environment (lado.agent_env.command) and ends
 with it. `lado stop --all` and the UI server's start and stop end the windows by their
 labels, never by name; they are no LADO session, so `lado ls` and the runtime never see
 them. The UI streams one through lado.terminal (`open_login`).
 """
 
 import os
-from collections.abc import Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -32,8 +34,8 @@ POLL = 3.0  # seconds between two looks of an agent that waits for a login (lado
 
 # The layers a login variable comes from, as the page and `lado doctor` name them.
 SECRET = "LADO's secret"
-OUTSIDE = f"the outside folder ({agent_env.ENV_DIR_VAR})"
-SHELL = "the login shell"
+OUTSIDE = "outside folder"
+SHELL = "login shell"
 INHERITED = "the process that starts LADO"
 
 LOGIN, HOME = "@lado-login", "@lado-home"  # a login window's labels
@@ -60,22 +62,30 @@ def waits_for(agent: state.Agent, reason: str | None) -> str | None:
     return provider.name if reason == wait_reason(provider) else None
 
 
-def environment(project: Mapping[str, str] | None = None) -> dict[str, str]:
-    """The environment the agents of a session without a project get, before LADO's and
-    their provider's own variables (AgentEnvError when the login shell fails)."""
-    return agent_env.resolve(project)
+def environment(
+    provider: base.Provider | None = None, found: agent_env.Layers | None = None
+) -> dict[str, str]:
+    """The environment the agents of `provider` in a session without a project get, before
+    LADO's and their provider's own variables: `found` (the layers, read now when None;
+    AgentEnvError when the login shell fails) merged with its login taken whole from one
+    layer; name by name without a provider."""
+    login = provider.login_variables if provider else ()
+    return agent_env.merge(agent_env.layers() if found is None else found, login)
 
 
-def layer(name: str, env: Mapping[str, str]) -> str:
-    """Which layer gives `name` in `env` (built by `environment`): LADO's secrets, the
-    outside folder, or the login shell (or the starting process); "" when unset."""
-    if not env.get(name):
+def layer(name: str, found: agent_env.Layers, login: Iterable[str] = ()) -> str:
+    """Which of `found`'s layers (a session's without a project) gives `name` to an agent
+    whose CLI's login variables are `login`: LADO's secrets, the outside folder, or the
+    login shell (or the starting process); "" when it gets none."""
+    login = tuple(login)
+    if not agent_env.merge(found, login).get(name):
         return ""
-    if name in agent_env.lado_secrets().values:
-        return SECRET
-    if name in agent_env.outside().values:
-        return OUTSIDE
-    return INHERITED if agent_env.source() == agent_env.INHERIT else SHELL
+    names = login if name in login else (name,)
+    shell = INHERITED if agent_env.source() == agent_env.INHERIT else SHELL
+    for words, values in ((SECRET, found.secrets), (OUTSIDE, found.outside), (shell, found.shell)):
+        if any(values.get(n) for n in names):
+            return words
+    return ""
 
 
 @dataclass(frozen=True)
@@ -100,6 +110,9 @@ class Login:
     provider: base.Provider
     status: base.LoginStatus
     layer: str  # of status.variable; "" for none
+    # Where the login comes from, for the state line: `layer`, else the CLI's own file in
+    # the provider's words (LoginStatus.file_words); "" when neither says.
+    where: str = ""
     variables: list[Variable] = field(default_factory=list)
     waiting: list[AgentRef] = field(default_factory=list)
     running: list[AgentRef] = field(default_factory=list)
@@ -109,17 +122,19 @@ class Login:
 
 def read(
     provider: base.Provider,
-    env: Mapping[str, str],
+    layers: agent_env.Layers,
     full: bool = True,
     status: base.LoginStatus | None = None,
 ) -> Login:
-    """`provider`'s login read now in `env` (`environment`), unless `status` is given
-    (e.g. why it cannot be read), with the agents and projects that concern it (lado.db
-    read as it is) unless not `full`."""
-    status = status or provider.login_status(dict(env))
-    found = Login(provider, status, layer(status.variable, env) if status.variable else "")
+    """`provider`'s login read now in the environment its agents get of `layers`
+    (`environment`), unless `status` is given (e.g. why it cannot be read), with the agents
+    and projects that concern it (lado.db read as it is) unless not `full`."""
+    login = provider.login_variables
+    status = status or provider.login_status(environment(provider, layers))
+    given = layer(status.variable, layers, login) if status.variable else ""
+    found = Login(provider, status, given, given or (status.file_words if status.file else ""))
     held = set(project_secrets.lado_names())
-    found.variables = [Variable(n, n in held, layer(n, env)) for n in provider.login_variables]
+    found.variables = [Variable(n, n in held, layer(n, layers, login)) for n in login]
     if not full:
         return found
     if state.schema_version() is not None:
@@ -130,31 +145,6 @@ def read(
             pass  # lado.db of another schema: no agents to name
     found.window = provider.name in open_windows()
     return found
-
-
-def source(found: Login) -> str:
-    """Where a login comes from, for humans: the variable and its layer, else the CLI's
-    file; "" when the CLI names neither."""
-    if found.status.variable:
-        return (
-            f"{found.status.variable} from {found.layer}" if found.layer else found.status.variable
-        )
-    return found.status.file
-
-
-def logout(provider: base.Provider) -> None:
-    """Run `provider`'s logout that asks nothing (Provider.logout_argv) with the agents'
-    environment: ValueError when it has none, RuntimeError with why when it fails."""
-    argv = provider.logout_argv()
-    if argv is None:
-        raise ValueError(f"{provider.title} logs out in its login window")
-    found = base.run_status(argv, environment())
-    if isinstance(found, str):
-        raise RuntimeError(found)
-    if found.returncode != 0:
-        command = " ".join(argv)
-        why = base.error_line(f"exit status {found.returncode}", found.stderr or found.stdout)
-        raise RuntimeError(f"`{command}` failed with {why}")
 
 
 def agents(provider: base.Provider) -> tuple[list[AgentRef], list[AgentRef]]:
@@ -246,7 +236,7 @@ def open_window(provider: base.Provider, id: str) -> str:
     if running := open_windows().get(provider.name):
         return running
     name = tmux_name(provider)
-    env = environment()
+    env = environment(provider)
     folder = state.home() / "logins"
     folder.mkdir(mode=0o700, exist_ok=True)
     command = agent_env.command(folder / f"{provider.name}.json", env, list(chosen.argv))

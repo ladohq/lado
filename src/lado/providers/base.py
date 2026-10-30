@@ -179,11 +179,26 @@ class LoginStatus:
     """Whether a CLI is logged in and how; never a secret's value."""
 
     state: str  # YES, NO or UNKNOWN
-    method: str = ""  # for humans: "Claude subscription (Max)", "token", "2 credentials"
+    method: str = ""  # for humans: "Subscription (Max)", "Pay per use (API key)", "2 credentials"
     file: str = ""  # the CLI's own login file (or "the login keychain"), when it names one
+    # Where a login of `file` is, for the state line ("Claude Code's login file"); "" when
+    # the line names no place for it.
+    file_words: str = ""
     variable: str = ""  # the variable that logs it in, when one does
     items: tuple[LoginItem, ...] = ()
     problem: str = ""  # why UNKNOWN
+    choice: str = ""  # the id of the LoginChoice this login is; "" for none
+
+
+@dataclass(frozen=True)
+class LoginChoice:
+    """A way to log the CLI in that Settings offers (Provider.login_choices): a value of
+    `variable`, one of the provider's login variables, pasted and kept as LADO's secret."""
+
+    id: str
+    title: str
+    detail: str  # where the value comes from
+    variable: str
 
 
 @dataclass(frozen=True)
@@ -286,6 +301,10 @@ class Provider(ABC):
     # Settings (lado.project_secrets, LADO's folder); the first one is named in the reason
     # of an agent that waits for a login.
     login_variables: tuple[str, ...] = ()
+    # What Settings asks to log the CLI in by a pasted value, and its answers; none for a
+    # CLI that logs in by its own command (login_actions) or not from the page.
+    login_question: str = ""
+    login_choices: tuple[LoginChoice, ...] = ()
 
     def login_status(self, env: dict[str, str]) -> LoginStatus:
         """Whether the CLI, started with `env`, is logged in, as its own status command says
@@ -297,10 +316,6 @@ class Provider(ABC):
         """The commands the login window runs for the human (the CLI's own login and, where
         it asks which one, logout); by default none."""
         return ()
-
-    def logout_argv(self) -> list[str] | None:
-        """A logout that asks nothing, run without a window; None when there is none."""
-        return None
 
     def keychain_login(self, env: dict[str, str]) -> str | None:
         """None when the CLI, started with `env`, does not read its login from the macOS

@@ -1,4 +1,4 @@
-"""Each provider's login (Provider.login_status, login_actions, logout_argv, login_variables,
+"""Each provider's login (Provider.login_status, login_actions, login_choices, login_variables,
 needs_login, login_note), on outputs recorded from the real CLIs in throwaway homes: Claude
 Code 2.1.295, Codex CLI 0.162.0, OpenCode 1.18.35, Kilo 7.8.8 (2026-10-28)."""
 
@@ -60,7 +60,11 @@ def test_claude_subscription(answers, monkeypatch):
     monkeypatch.setattr(sys, "platform", "linux")
     data = {"loggedIn": True, "authMethod": "claude.ai", "subscriptionType": "max", **CONFIG}
     assert _claude(answers, data) == LoginStatus(
-        YES, "Claude subscription (Max)", file="/h/.claude/.credentials.json"
+        YES,
+        "Subscription (Max)",
+        file="/h/.claude/.credentials.json",
+        file_words="Claude Code's login file",
+        choice="subscription",
     )
 
 
@@ -68,7 +72,11 @@ def test_claude_subscription_on_macos_is_in_the_keychain(answers, monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     data = {"loggedIn": True, "authMethod": "claude.ai", **CONFIG}
     assert _claude(answers, data) == LoginStatus(
-        YES, "Claude subscription", file="the login keychain"
+        YES,
+        "Subscription",
+        file="the login keychain",
+        file_words="the login keychain",
+        choice="subscription",
     )
 
 
@@ -76,15 +84,16 @@ def test_claude_token(answers):
     data = {"loggedIn": True, "authMethod": "oauth_token", **CONFIG}
     env = {"CLAUDE_CODE_OAUTH_TOKEN": "t"}
     assert _claude(answers, data, env=env) == LoginStatus(
-        YES, "token", variable="CLAUDE_CODE_OAUTH_TOKEN"
+        YES, "Subscription (token)", variable="CLAUDE_CODE_OAUTH_TOKEN", choice="subscription"
     )
 
 
 def test_claude_token_names_the_variable_that_gives_it(answers):
     # ANTHROPIC_AUTH_TOKEN is an "oauth_token" too (2.1.295, checked by hand).
     data = {"loggedIn": True, "authMethod": "oauth_token", **CONFIG}
+    # A gateway's token: no way to pay the sheet offers.
     assert _claude(answers, data, env={"ANTHROPIC_AUTH_TOKEN": "t"}) == LoginStatus(
-        YES, "token", variable="ANTHROPIC_AUTH_TOKEN"
+        YES, "Token", variable="ANTHROPIC_AUTH_TOKEN"
     )
     both = {"ANTHROPIC_AUTH_TOKEN": "t", "CLAUDE_CODE_OAUTH_TOKEN": "c"}
     assert _claude(answers, data, env=both).variable == "CLAUDE_CODE_OAUTH_TOKEN"
@@ -98,14 +107,18 @@ def test_claude_through_another_api_provider(answers):
 def test_claude_api_key_from_a_variable(answers):
     data = {"loggedIn": True, "authMethod": "api_key", "apiKeySource": "ANTHROPIC_API_KEY"}
     assert _claude(answers, {**data, **CONFIG}) == LoginStatus(
-        YES, "API key", variable="ANTHROPIC_API_KEY"
+        YES, "Pay per use (API key)", variable="ANTHROPIC_API_KEY", choice="usage"
     )
 
 
 def test_claude_api_key_of_its_own_login(answers):
     data = {"loggedIn": True, "authMethod": "api_key", "apiKeySource": "/login managed key"}
     assert _claude(answers, {**data, **CONFIG}) == LoginStatus(
-        YES, "Anthropic Console", file="/h/.claude/.credentials.json"
+        YES,
+        "Pay per use (Console)",
+        file="/h/.claude/.credentials.json",
+        file_words="Claude Code's login file",
+        choice="usage",
     )
 
 
@@ -131,17 +144,25 @@ def test_claude_status_it_cannot_read_is_unknown_never_no(answers, answer, probl
     assert problem in found.problem
 
 
-def test_claude_login_actions_logout_and_variables():
+def test_claude_asks_how_the_human_pays_and_runs_no_login_command():
     claude = providers.get("claude")
-    assert [(a.id, a.label, a.argv) for a in claude.login_actions()] == [
-        ("login", "Log in with your Claude account…", ("claude", "auth", "login", "--claudeai")),
+    assert claude.login_actions() == ()
+    assert claude.login_question == "How do you pay for Claude?"
+    assert [(c.id, c.title, c.detail, c.variable) for c in claude.login_choices] == [
         (
-            "login-console",
-            "Log in with Anthropic Console…",
-            ("claude", "auth", "login", "--console"),
+            "subscription",
+            "Subscription — Claude Pro or Max",
+            "Run `claude setup-token` on any computer where Claude Code is installed and "
+            "paste the token it prints.",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+        ),
+        (
+            "usage",
+            "Pay per use — API billing",
+            "Paste an API key from console.anthropic.com.",
+            "ANTHROPIC_API_KEY",
         ),
     ]
-    assert claude.logout_argv() == ["claude", "auth", "logout"]
     assert claude.login_variables == ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
     assert claude.capabilities.needs_login
     assert claude.login_note == ""
@@ -190,7 +211,7 @@ def test_codex_error_is_unknown(answers):
 def test_codex_offers_no_login_and_says_why():
     codex = providers.get("codex")
     assert codex.login_actions() == ()
-    assert codex.logout_argv() is None
+    assert codex.login_choices == ()
     assert codex.login_variables == ()
     assert "#113" in codex.login_note and "do not get" in codex.login_note
 
@@ -246,7 +267,7 @@ def test_family_login_and_logout_go_in_the_window(cli):
         ("login", "Add a login…", (cli, "auth", "login")),
         ("logout", "Log out of one…", (cli, "auth", "logout")),
     ]
-    assert provider.logout_argv() is None
+    assert provider.login_choices == ()
     assert provider.login_variables == ()
 
 
@@ -269,3 +290,10 @@ def test_run_status_gives_the_output(tmp_path):
     script.chmod(0o755)
     found = RUN_STATUS(["say"], {"PATH": str(tmp_path), "HOME": str(tmp_path)})
     assert (found.returncode, found.stdout, found.stderr) == (3, "out\n", "err\n")
+
+
+@pytest.mark.parametrize("name", ["claude", "codex", "kilo", "opencode"])
+def test_each_choice_logs_in_by_one_of_the_providers_login_variables(name):
+    provider = providers.get(name)
+    assert {c.variable for c in provider.login_choices} <= set(provider.login_variables)
+    assert bool(provider.login_choices) == bool(provider.login_question)

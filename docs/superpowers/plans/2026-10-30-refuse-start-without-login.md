@@ -293,7 +293,9 @@ def test_start_from_a_git_url_without_the_login_refuses_before_cloning(
     cloned = []
     monkeypatch.setattr(clone, "clone", lambda *a, **k: cloned.append(a))
     target = tmp_path / "shop"
-    code = cli.main(["start", "https://example.invalid/shop.git", str(target), "--provider", "claude"])
+    code = cli.main(
+        ["start", "https://example.invalid/shop.git", str(target), "--provider", "claude"]
+    )
     assert code == 1 and cloned == [] and not target.exists()
     assert "so the session was not started" in capsys.readouterr().err
 
@@ -310,8 +312,14 @@ def test_start_new_without_the_login_makes_no_folder(tmp_path, cli_logins, capsy
 def test_from_scratch_without_the_login_is_400_and_makes_no_folder(client, tmp_path, cli_logins):
     cli_logins.logged_out()
     target = tmp_path / "fresh"
-    answer = client.post("/api/sessions", json={
-        "where": {"kind": "scratch", "path": str(target)}, "kits": ["default"], "provider": "claude"})
+    answer = client.post(
+        "/api/sessions",
+        json={
+            "where": {"kind": "scratch", "path": str(target)},
+            "kits": ["default"],
+            "provider": "claude",
+        },
+    )
     assert answer.status_code == 400
     assert "so the session was not started" in answer.json()["detail"]
     assert not target.exists()
@@ -319,8 +327,14 @@ def test_from_scratch_without_the_login_is_400_and_makes_no_folder(client, tmp_p
 
 def test_a_new_session_without_the_login_is_400(client, repo, cli_logins, fake_tmux):
     cli_logins.logged_out()
-    answer = client.post("/api/sessions", json={
-        "where": {"kind": "folder", "path": str(repo)}, "kits": ["default"], "provider": "claude"})
+    answer = client.post(
+        "/api/sessions",
+        json={
+            "where": {"kind": "folder", "path": str(repo)},
+            "kits": ["default"],
+            "provider": "claude",
+        },
+    )
     assert answer.status_code == 400 and state.get_session(repo.name) is None
 ```
 
@@ -392,7 +406,9 @@ def test_providers_for_a_project_with_its_own_login(client, installed, cli_login
 
 def test_an_unreadable_login_is_not_missing(client, installed, cli_logins):
     cli_logins.answer("claude", "timed out")
-    assert {p["name"]: p for p in client.get("/api/providers").json()}["claude"]["login_missing"] is False
+    assert {p["name"]: p for p in client.get("/api/providers").json()}["claude"][
+        "login_missing"
+    ] is False
 ```
 
 - [ ] **Step 2: Run them to see them fail**
@@ -541,7 +557,9 @@ def test_a_new_session_without_a_login_is_refused_by_lado_start(repo, marker):
     marker.unlink(missing_ok=True)
     found = subprocess.run(
         fake_provider.lado_command("start", str(repo), "--name", SESSION, "--provider", PROVIDER),
-        capture_output=True, text=True, timeout=60,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     assert found.returncode == 1
     assert "Fake agent is not logged in, so the session was not started" in found.stderr

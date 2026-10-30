@@ -1395,7 +1395,10 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   **Provider** (`/api/providers`: each provider of the registry with
   `doctor.provider_status`; "checking…" while the CLIs answer, one not installed is off,
   a version warning shows under it; a chosen name the list lacks, a resumed session's, is
-  an option of its own, `<name> · unknown`, off, so the select shows it: LAD-122) and **Permission mode** (the provider's modes; a mode
+  an option of its own, `<name> · unknown`, off, so the select shows it: LAD-122; a CLI
+  whose agents need a login and have none, `ProviderInfo.login_missing`, is off as `<name> ·
+  not logged in`, asked with `?project=` for the Project way's project, whose secrets may
+  log it in: LAD-161) and **Permission mode** (the provider's modes; a mode
   the new provider lacks goes back to `default`, and the window says so). Kits and mode
   of a new session come from the folder's last session ("from the last session of this
   folder"), else LADO's defaults; only the UI does this, `lado start` is unchanged. No
@@ -1405,7 +1408,11 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   reason in `lado start`'s words under it ("from the folder's last session", "the only
   one installed"); without a suggestion none is chosen ("choose…", "choose the agent CLI
   for this session") and Start stays off until the human picks one; a suggested one that
-  is not installed stays off too, with its install hint. The human's own pick is kept
+  is not installed stays off too, with its install hint. A suggested one without its login
+  is not taken: the field stays at "choose…" with the red note `<CLI> is not logged in: its
+  agents cannot start.` and **Log in first**, which closes the window and opens Settings →
+  Providers and environment; Start stays off, as the start would be refused (lado.logins).
+  The human's own pick is kept
   when the folder changes. **Advanced** (folded): the `--without` items, `kind:name` or `kind:name@kit`
   (placeholder `agent:reviewer@kit-b, skill:style`). Start shows "Starting…" with
   the fields off; a refusal is shown whole (`role="alert"`) and the window stays; a name
@@ -1590,7 +1597,9 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   that project (and repository: the project's page's New session… and Start session).
 - **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
   mode and Advanced filled from the session (`SessionInfo` carries its settings) and
-  changeable; it sends only what changed (`POST /api/sessions/{name}/resume`).
+  changeable; it sends only what changed (`POST /api/sessions/{name}/resume`). A provider
+  without its login is not off here: a resumed agent waits for it, and the amber note `⚠
+  <CLI> is not logged in: the supervisor waits until you log in.` with **Log in…** says so.
 - **Actions by status** (`SessionControl.tsx`; task feature/session-controls, 2026-10-05:
   a Stop in the list row was too easy to hit), only in the session's head, as icons with a
   tooltip and the same accessible name (Stop a square filled with the text's colour, dark
@@ -2289,7 +2298,7 @@ checks (LAD-157, openspec change provider-logins; built in `web/src/Providers.ts
 - **A row per CLI**: its name and version (or how to install it); a dot and its login as
   the CLI's own status command says it, read by the server in the environment the agents
   of a session without a project get (lado.logins): "Logged in · <how>", "Not logged in"
-  (bold, orange, for a CLI whose agents wait for a login: Claude Code), "No login" (the
+  (bold, orange, for a CLI whose agents need a login: Claude Code), "No login" (the
   others), or "Unknown: <why>", never shown as not logged in. Then where the login comes
   from (the CLI's file, or a variable and its layer: the login shell, the outside folder,
   LADO's secret), OpenCode's and Kilo's logins one by one, the agents that wait for this
@@ -2328,7 +2337,9 @@ checks (LAD-157, openspec change provider-logins; built in `web/src/Providers.ts
   …/login/terminal` (the agents' terminal protocol, control only); `POST …/logout`; `PUT`
   and `DELETE …/variables/{variable}` (400 for a name the provider does not name as its
   login; a 422 there repeats none of its input). `GET /api/providers` stays the System
-  panel's and New session's list, with no CLI's status command run.
+  panel's and New session's list; it runs the status command of the CLIs whose agents need
+  a login (`login_missing`), in the environment of the agents of `?project=` (404 for an
+  unknown one) or of none.
 
 ### Activity
 

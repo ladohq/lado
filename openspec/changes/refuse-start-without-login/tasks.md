@@ -36,7 +36,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-30-refuse-start
 
 ## 5. Docs
 
-- [ ] 5.1 `lado doctor`'s line (D7) with its test; docs/design/ui.md, docs/cli.md,
+- [x] 5.1 `lado doctor`'s line (D7) with its test; docs/design/ui.md, docs/cli.md,
   docs/design/agents.md, docs/design/modules.md; CHANGELOG.md `## 0.44.0 (unreleased)`,
   Changed. Check: `make lint`, `make test`, `openspec validate refuse-start-without-login
   --strict`, `openspec validate --specs --strict`.

@@ -243,7 +243,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     stdout only, no log; exit 0 when each step of the plan was done. `--keep-data` stops
     and removes the program only.
   - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
-    messages to them. Whether a folder can hold a session is `check_repo` (its repository's
+    messages to them. A new session or worker of a CLI that needs a login and has none is
+    refused first (`check_login`, `NotLoggedIn`; `check_start_login` before a clone or a new
+    folder), in `agents_env(project)`, the environment agents start from; a resumed agent
+    waits for it instead (`_held_for_login`). Whether a folder can hold a session is `check_repo` (its repository's
     root, or why not: a `FolderProblem`, a `LadoError` with a `kind`, `missing`,
     `not_folder`, `no_git`, `git_broken`, `not_repo`, `git_refused`, `no_commits`, the
     first that holds in that order, and a `Hint`, a sentence and one command, for `no_git`,
@@ -457,7 +460,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `read_lado`, `lado_names`, `lado_folder`; `_open_chain` over the folder's parts): the
     agent CLIs' login variables the human sets in Settings (lado.logins checks the names).
   - `logins.py`: the agent CLIs' logins (docs/design/ui.md, Providers and environment):
-    `read` asks a provider's `login_status` in the agents' environment without a project
+    `refusal` is why a new session or worker (`SESSION`, `WORKER`) of a CLI that needs a
+    login and has none is not started (lado.runtime.check_login raises it), `wait_reason`
+    why a resumed agent waits; `read` asks a provider's `login_status` in the agents' environment without a project
     (`environment`), says the layer of the variable that logs it in (`layer`: LADO's
     secret, the outside folder, the login shell), and names the live agents that wait for
     it and that run (`agents`, by `wait_reason`, the one text of that wait) and the
@@ -1072,7 +1077,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `/api/repos-folder` (in `app.py`; `Workspace`, `projects.workspace` and whether it is
     made: where an empty Where starts once it exists),
     `/api/kits` (the kit of each name the lookup takes, the same for every folder; a
-    `where` the page still sends is ignored; an invalid one `valid: false`) and `/api/providers` (no provider is marked the default);
+    `where` the page still sends is ignored; an invalid one `valid: false`) and `/api/providers` (no provider is marked the default;
+    `launch.provider_infos(project)` sets `login_missing` by `logins.refusal` in
+    `runtime.agents_env(project)`, false when that environment cannot be had; `?project=`
+    unknown is 404);
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
     Session head) is what the session's head shows besides its settings, read anew: `repos`
     (path, public remote, branch; one now), each kit by `kits.find` with its version and

@@ -513,7 +513,7 @@ class ProviderLogins(BaseModel):
 
     cli: ProviderInfo
     login: LoginInfo
-    needs_login: bool  # its agents wait for a login (Capabilities.needs_login)
+    needs_login: bool  # its agents need a login (Capabilities.needs_login)
     actions: list[LoginActionInfo]  # the login window's commands
     can_logout: bool  # a logout that asks nothing (Provider.logout_argv)
     variables: list[LoginVariableInfo]

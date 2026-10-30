@@ -9,7 +9,13 @@
   this folder"; the repository's own Claude Code settings run.
 - **Agent CLI logins in Settings.** Providers and environment shows whether Claude Code,
   Codex, OpenCode and Kilo are logged in; Claude Code, OpenCode and Kilo log in from the page
-  (a phone too). A Claude agent without a login waits and starts once there is one.
+  (a phone too). A resumed Claude agent without a login waits and starts once there is one.
+
+### Changed
+
+- **No Claude session or worker starts without a login.** The New session window greys
+  Claude Code out with "Log in first"; `lado start` and a supervisor's new worker are refused
+  with the reason. A resumed session still waits for the login.
 
 ### Fixed
 

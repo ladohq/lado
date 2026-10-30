@@ -237,18 +237,31 @@ folders`) then say `not checked: lado.db is not at this LADO's schema (see lado.
 `lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
 own status command in the agents' environment without a project (`claude auth status
 --json`, `codex login status`, `opencode auth list`, `kilo auth list`): `[ok] <CLI> login:
-<how> (<variable> from <layer>|<file>)`; `[warn] Claude Code login: not logged in: its agents
-wait for a login (Settings → Providers and environment)` for a CLI whose agents need one;
+<how> (<variable> from <layer>|<file>)`; `[warn] Claude Code login: not logged in: new
+sessions and workers of it are refused, a resumed agent waits (Settings → Providers and
+environment)` for a CLI whose agents need one;
 `[info] <CLI> login: none` for the others; `[warn] <CLI> login: unknown: <why>` when the
 command fails, times out (10 s) or prints what LADO cannot read. None of them changes the exit
 code. LADO's secrets (the login variables set in Settings, `<LADO_HOME>/secrets/`) get a line
 after `Variables from outside` only when one takes the place of the outside folder's (`[info]
 LADO secrets: <NAME>[, …] overrides LADO_ENV_DIR`) or a file there is not used (a warning, by
-name with why, never a value). A Claude agent started without a login waits, and `lado ls`
-prints under it `waiting: Claude Code is not logged in: log in in Settings → Providers and
-environment, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do`; it
-starts by itself once there is one. A login that cannot be read holds no agent: `lado start`
-warns `cannot tell whether Claude Code is logged in: <why>; the agent starts all the same`.
+name with why, never a value).
+
+A new session of a CLI that needs a login and has none, read in the environment its agents
+would get (with the project's secrets for `--project`), is refused with exit 1 before
+anything is stored: `lado: Claude Code is not logged in, so the session was not started: log
+in in LADO's UI (Settings → Providers and environment, `lado ui`), or set
+CLAUDE_CODE_OAUTH_TOKEN as LADO's secret or a project secret`. `lado start <git-url>` and
+`lado start --new` say so before the clone or the new folder when the provider is known
+(`--provider`, or the only one installed). A supervisor's `spawn_worker` of such a CLI gets
+`… so the worker was not started: ask the human to log in in Settings → Providers and
+environment, or start the worker with another provider`; each worker is checked by its own
+provider, so a Claude session's supervisor can still start Kilo workers. A resume is never
+refused: its Claude agent waits, and `lado ls` prints under it `waiting: Claude Code is not
+logged in: log in in Settings → Providers and environment, or set CLAUDE_CODE_OAUTH_TOKEN;
+the agent starts by itself once you do`; it starts by itself once there is one. A login
+that cannot be read refuses nothing and holds no agent: `lado start` warns `cannot tell
+whether Claude Code is logged in: <why>; the agent starts all the same`.
 There is no `lado login`: in a terminal the CLIs' own commands log in.
 
 `lado doctor` always has a `Workspace` line: `<path> (LADO_REPOS)` or `<path> (default)`, `info`

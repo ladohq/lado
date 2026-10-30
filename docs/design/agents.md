@@ -194,10 +194,18 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `customApiKeyResponses.approved`, else "Detected a custom API key" holds it): one write
   and one note each, never any part of the key; a key the human rejected there is left,
   and the agent waits with a reason saying so.
-- An agent whose CLI needs a login (`Capabilities.needs_login`: Claude Code) waits for it
-  before anything else: before its window starts (`runtime._held_for_login`, for start,
-  resume and spawn) LADO asks the provider's `login_status` with the agent's launch
-  environment; at `no` the agent is `waiting` with `logins.wait_reason` (`<CLI> is not
+- A new session or worker whose CLI needs a login (`Capabilities.needs_login`: Claude
+  Code) and has none is refused before anything of it is stored or made
+  (`runtime.check_login`, `lado.logins.refusal`): `start_session` checks a new session,
+  never a resume, and `spawn_worker` each worker by its own provider, both in
+  `runtime.agents_env(project)`, the environment the agent would start from, so a project's
+  secret that logs the CLI in counts; `lado start <git-url>`, `--new` and the UI's From
+  scratch check before the clone or the folder (`runtime.check_start_login`). Only `no`
+  refuses; an unreadable login goes on as below.
+- A resumed agent whose CLI needs a login waits for it before anything else, as does a new
+  one whose login went between the check and its launch: before its window starts
+  (`runtime._held_for_login`, at every launch) LADO asks the provider's `login_status` with
+  the agent's launch environment; at `no` the agent is `waiting` with `logins.wait_reason` (`<CLI> is not
   logged in: log in in Settings → Providers and environment, or set <variable>; the agent
   starts by itself once you do`), told and logged as a blocker's reason is, with the lines of
   what needs no login, settled at once (`first_hook_blocker`: Claude Code's trust; a

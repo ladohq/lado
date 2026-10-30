@@ -72,6 +72,19 @@ def _serve(tmp_path, env):
 
 
 @pytest.fixture
+def logins(tmp_path, monkeypatch):
+    """The fake provider "fake-login"'s login file (absent: not logged in), taken before
+    `server`, in the environment of the server and of the agents; the waiting window knows
+    the fake providers; the real CLIs' status commands read nothing of the user's."""
+    marker = tmp_path / "fake-login"
+    monkeypatch.setenv("FAKE_AGENT_LOGIN", str(marker))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
+    monkeypatch.setattr(providers, "lado_command", fake_provider.lado_command)
+    return marker
+
+
+@pytest.fixture
 def server(tmp_path):
     """A real `lado server` on a free port; its server.json. It is `lado` with the fake
     providers (fake_provider.py), so a session it starts runs the fake agent. Stopped after

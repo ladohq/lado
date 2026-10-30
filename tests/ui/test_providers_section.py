@@ -13,29 +13,22 @@ import pytest
 from playwright.sync_api import Browser, Page, expect
 from test_main_screen import log_in
 
-from lado import loop, providers, runtime, state
+from lado import loop, runtime, state
 
 pytestmark = pytest.mark.ui
 
 TITLE = "Fake agent"  # the fake providers' title
 
 
-@pytest.fixture
-def logins(tmp_path, monkeypatch):
-    """The fake CLI's login file (absent: not logged in), in the environment of the server
-    and of the agents; the waiting window knows the fake providers; the real CLIs' status
-    commands read nothing of the user's."""
-    marker = tmp_path / "fake-login"
-    monkeypatch.setenv("FAKE_AGENT_LOGIN", str(marker))
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
-    monkeypatch.setattr(providers, "lado_command", fake_provider.lado_command)
-    return marker
-
-
-def waiting_session(repo) -> str:
+def waiting_session(repo, marker) -> str:
+    """A session of "fake-login" resumed without its login: a new one would be refused, a
+    resumed one waits (openspec change refuse-start-without-login)."""
     session = f"ui-{uuid.uuid4().hex[:6]}"
+    marker.write_text("logged in")
     runtime.start_session(str(repo), session, None, "fake-login")
+    runtime.stop_session(session)
+    marker.unlink()
+    runtime.start_session(str(repo), session, None)
     assert state.get_agent(session, "supervisor").status == state.WAITING
     agent_helpers.wait_for(lambda: loop.running(session), "the session loop", session)
     return session
@@ -63,7 +56,7 @@ def test_a_waiting_agent_leads_to_the_login_and_starts_by_itself(
     page: Page, logins, server, repo, shot
 ):
     page.set_viewport_size({"width": 1280, "height": 900})
-    session = waiting_session(repo)
+    session = waiting_session(repo, logins)
     log_in(page, server)
     page.goto(f"{server['url']}/needs-you")
     group = page.get_by_role("region", name=f"Session {session}")
@@ -94,7 +87,7 @@ def test_the_login_window_at_a_phones_width(browser: Browser, logins, server, re
     )
     try:
         page = context.new_page()
-        session = waiting_session(repo)
+        session = waiting_session(repo, logins)
         log_in(page, server)
         page.goto(f"{server['url']}/settings#providers-and-environment")
         fake = row(page)
@@ -121,7 +114,7 @@ def test_a_token_saved_on_the_page_reaches_the_waiting_agent(
     page: Page, logins, server, repo, shot
 ):
     page.set_viewport_size({"width": 1280, "height": 900})
-    session = waiting_session(repo)
+    session = waiting_session(repo, logins)
     log_in(page, server)
     page.goto(f"{server['url']}/settings#providers-and-environment")
     fake = row(page)

@@ -30,7 +30,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-30-refuse-start
 
 ## 4. Integration
 
-- [ ] 4.1 `lado start` refused with nothing left; `spawn_worker` through `lado mcp` refused
+- [x] 4.1 `lado start` refused with nothing left; `spawn_worker` through `lado mcp` refused
   with no worktree or branch; the LAD-157 wait tests reworked to a resume. Check: `uv run
   pytest -m integration tests/integration/test_provider_logins.py`.
 

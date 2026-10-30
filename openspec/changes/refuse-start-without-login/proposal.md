@@ -54,7 +54,7 @@ on the providers list, one query parameter).
 ## What Changes
 
 - **The core refuses** a new session (`start_session` with no stored session of that name)
-  whose provider needs a login and is not logged in in `_base_env(project)`, before the
+  whose provider needs a login and is not logged in in `agents_env(project)` (`_base_env` before), before the
   session is stored: `lado start`, `POST /api/sessions`, the approved `start_session` MCP
   tool. `lado start <git-url>` and `lado start --new` (and the UI's From scratch) check
   before they clone or make the folder.
@@ -69,6 +69,8 @@ on the providers list, one query parameter).
   disabled. The Project way reads the list with the chosen project. The Resume window
   shows an amber note instead and lets the resume go on.
 - `lado doctor`'s warning line says that new sessions and workers of the CLI are refused.
+- The living spec `claude-folder-trust`'s "A fresh home" scenario starts its agent by a
+  resume, the only start that still waits for a login (a delta of that capability).
 - docs/design/ui.md (New session window, Providers and environment), docs/cli.md (`lado
   start`, `lado doctor`), docs/design/agents.md (the login at launch), CHANGELOG.md
   (`## 0.44.0 (unreleased)`, Changed).

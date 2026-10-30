@@ -98,10 +98,6 @@ def test_read_gives_the_status_where_it_comes_from_and_the_variables(
         base.YES, "Subscription (token)", variable=TOKEN, choice="subscription"
     )
     assert (found.layer, found.where) == (logins.SECRET, logins.SECRET)
-    assert found.variables == [
-        logins.Variable(TOKEN, True, logins.SECRET),
-        logins.Variable(KEY, False, ""),
-    ]
     assert (found.waiting, found.running, found.projects, found.window) == ([], [], [], False)
     # The status command got the agents' environment: the token, not the shell's key.
     [(argv, given)] = cli_logins.calls

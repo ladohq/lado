@@ -95,15 +95,6 @@ class AgentRef:
     agent: str
 
 
-@dataclass(frozen=True)
-class Variable:
-    """A login variable: whether LADO's secrets hold it, and which layer gives it now."""
-
-    name: str
-    secret: bool
-    layer: str
-
-
 @dataclass
 class Login:
     """One provider's login as Settings shows it; no value of any variable."""
@@ -114,7 +105,6 @@ class Login:
     # Where the login comes from, for the state line: `layer`, else the CLI's own file in
     # the provider's words (LoginStatus.file_words); "" when neither says.
     where: str = ""
-    variables: list[Variable] = field(default_factory=list)
     waiting: list[AgentRef] = field(default_factory=list)
     running: list[AgentRef] = field(default_factory=list)
     projects: list[str] = field(default_factory=list)
@@ -130,12 +120,9 @@ def read(
     """`provider`'s login read now in the environment its agents get of `layers`
     (`environment`), unless `status` is given (e.g. why it cannot be read), with the agents
     and projects that concern it (lado.db read as it is) unless not `full`."""
-    login = provider.login_variables
     status = status or provider.login_status(environment(provider, layers))
-    given = layer(status.variable, layers, login) if status.variable else ""
-    found = Login(provider, status, given, given or (status.file_words if status.file else ""))
-    held = set(project_secrets.lado_names())
-    found.variables = [Variable(n, n in held, layer(n, layers, login)) for n in login]
+    given = layer(status.variable, layers, provider.login_variables) if status.variable else ""
+    found = Login(provider, status, given, given or status.file_words)
     if not full:
         return found
     if state.schema_version() is not None:

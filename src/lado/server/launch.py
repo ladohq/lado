@@ -294,15 +294,8 @@ def provider_logins(found: logins.Login, cli: models.ProviderInfo) -> models.Pro
         login=models.LoginInfo(
             state=status.state,
             method=status.method,
-            file=status.file,
-            variable=status.variable,
-            layer=found.layer,
             where=found.where,
             choice=status.choice,
-            items=[
-                models.LoginItemInfo(name=i.name, kind=i.kind, variable=i.variable)
-                for i in status.items
-            ],
             problem=status.problem,
         ),
         needs_login=provider.capabilities.needs_login,
@@ -313,10 +306,6 @@ def provider_logins(found: logins.Login, cli: models.ProviderInfo) -> models.Pro
             for c in provider.login_choices
         ],
         from_lado=found.layer == logins.SECRET,
-        variables=[
-            models.LoginVariableInfo(name=v.name, secret=v.secret, layer=v.layer)
-            for v in found.variables
-        ],
         note=provider.login_note,
         waiting=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in found.waiting],
         running=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in found.running],

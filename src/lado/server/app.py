@@ -934,21 +934,6 @@ def create_app(
             raise HTTPException(400, str(error)) from None
         return launch.provider_login(name)
 
-    @app.delete(
-        "/api/providers/{name}/variables/{variable}",
-        dependencies=[Depends(guard.changes)],
-        responses=login_refused,
-    )
-    def remove_login_variable(name: str, variable: str) -> ProviderLogins:
-        """Remove one of the provider's login variables from LADO's secrets."""
-        provider = provider_named(name)
-        try:
-            logins.check_variable(provider, variable)
-            project_secrets.remove_lado(variable)
-        except (ValueError, OSError) as error:
-            raise HTTPException(400, str(error)) from None
-        return launch.provider_login(name)
-
     # The Kits page (docs/design/ui.md, Kits): what `lado kits` and `lado marketplaces` do.
     # A request that goes to the network or writes the git cache is a change too.
 

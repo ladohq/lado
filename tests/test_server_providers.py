@@ -68,10 +68,13 @@ def test_the_page_lists_each_cli_with_its_login(client, cli_logins, windows):
     assert claude["choices"][0]["title"] == "Subscription — Claude Pro or Max"
     assert "claude setup-token" in claude["choices"][0]["detail"]
     assert claude["from_lado"] is False
-    assert claude["variables"] == [
-        {"name": TOKEN, "secret": False, "layer": ""},
-        {"name": KEY, "secret": False, "layer": ""},
-    ]
+    assert claude["login"] == {
+        "state": "no",
+        "method": "",
+        "where": "",
+        "choice": "",
+        "problem": "",
+    }
     codex = _row(page, "codex")
     assert codex["login"]["state"] == "yes" and codex["login"]["method"] == "ChatGPT"
     assert (codex["actions"], codex["choices"], codex["question"]) == ([], [], "")
@@ -99,7 +102,6 @@ def test_a_saved_token_is_lados_secret_and_never_given_back(client, cli_logins, 
     assert (folder / TOKEN).stat().st_mode & 0o777 == 0o600
     assert folder.stat().st_mode & 0o777 == 0o700
     row = answer.json()
-    assert row["variables"][0] == {"name": TOKEN, "secret": True, "layer": "LADO's secret"}
     assert row["login"]["method"] == "Subscription (token)"
     assert (row["login"]["where"], row["login"]["choice"]) == ("LADO's secret", "subscription")
     assert row["from_lado"] is True
@@ -107,10 +109,9 @@ def test_a_saved_token_is_lados_secret_and_never_given_back(client, cli_logins, 
     assert "canary-1" not in page.text
     # The status command got it, as every agent would.
     assert any(env.get(TOKEN) == "canary-1" for argv, env in cli_logins.calls)
-    answer = client.delete(f"/api/providers/claude/variables/{TOKEN}")
-    assert answer.status_code == 200
-    assert answer.json()["variables"][0]["secret"] is False
-    assert project_secrets.lado_names() == []
+    # One variable alone is not removed: Log out removes the provider's login.
+    assert client.delete(f"/api/providers/claude/variables/{TOKEN}").status_code == 405
+    assert project_secrets.lado_names() == [TOKEN]
 
 
 def test_a_saved_key_replaces_lados_token_and_beats_the_outside_folders(
@@ -167,7 +168,6 @@ def test_only_a_login_variable_may_be_set(client, windows):
         client.put("/api/providers/codex/variables/OPENAI_API_KEY", json={"value": "x"}).status_code
         == 400
     )
-    assert client.delete("/api/providers/claude/variables/GH_TOKEN").status_code == 400
     assert (
         client.put(f"/api/providers/nope/variables/{TOKEN}", json={"value": "x"}).status_code == 404
     )

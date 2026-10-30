@@ -1,4 +1,5 @@
-// The login window of Settings → Providers and environment (docs/design/ui.md): a sheet over
+// The login window of Settings → Providers and environment (docs/design/ui.md), for a CLI that
+// logs in by its own command (OpenCode, Kilo; LoginSheet.tsx opens it): a sheet over
 // the page (the whole screen on a phone) with the terminal of the CLI's own login command,
 // always in control, over the agents' terminal protocol (terminalLink.ts). A link in it,
 // also one wrapped over lines, opens in a new tab (xterm's web links addon). Under it "Text
@@ -9,7 +10,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { closeLogin } from "./api";
 import { loginTerminalUrl, TermLink, type LinkState } from "./terminalLink";
@@ -25,10 +26,12 @@ export const KEYS: { label: string; name: string; data: string }[] = [
 export function LoginWindow({
   provider,
   title,
+  extra,
   onEnded,
 }: {
   provider: string;
   title: string;
+  extra?: ReactNode; // in the header, before Close (LoginSheet's "Log out of one…")
   onEnded: () => void;
 }) {
   const id = useId();
@@ -100,6 +103,7 @@ export function LoginWindow({
         <div className="login-top">
           <h3 id={id}>{`Log in: ${title}`}</h3>
           {state.phase !== "open" && <span className="muted login-link">{state.reason ?? "connecting…"}</span>}
+          {extra}
           <button type="button" className="quiet" disabled={closing} onClick={close}>
             Close
           </button>

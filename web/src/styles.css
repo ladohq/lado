@@ -2049,34 +2049,6 @@ h3 {
   margin-top: 12px;
 }
 
-.pv-keys {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.setting .pv-keys > p {
-  font-size: 13px;
-}
-
-.pv-key {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-  font-size: 13px;
-}
-
-.pv-key .pv-field {
-  flex: 1 1 100%;
-  margin: 0;
-}
-
-.pv-set {
-  font-size: 12px;
-}
-
 .pv-confirm {
   display: flex;
   flex-wrap: wrap;
@@ -2111,7 +2083,8 @@ h3 {
   color: var(--done);
 }
 
-/* The login window (LoginWindow.tsx): a sheet over the page; the whole screen on a phone. */
+/* The login sheet and window (LoginSheet.tsx, LoginWindow.tsx): a sheet over the page; the
+   whole screen on a phone. */
 
 .login-sheet {
   position: fixed;
@@ -2187,6 +2160,52 @@ h3 {
   background: var(--panel);
   color: var(--ink);
   font: 13px var(--mono);
+}
+
+/* The login sheet's choices (LoginSheet.tsx): one box per way to log in, the chosen one in
+   the action colour with its field. */
+
+.login-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.login-chosen {
+  border-color: var(--action);
+}
+
+.login-choice label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.login-choice .muted {
+  margin: 0 0 0 24px;
+  font-size: 13px;
+}
+
+.login-choice .login-send {
+  margin: 4px 0 0 24px;
+}
+
+.login-current {
+  padding: 0 5px;
+  border: 1px solid var(--action);
+  border-radius: 4px;
+  color: var(--action);
+  font-size: 11px;
+}
+
+.login-out {
+  justify-content: flex-end;
 }
 
 .login-keys {

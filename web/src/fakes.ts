@@ -3,7 +3,7 @@
 import { act } from "@testing-library/react";
 import { vi } from "vitest";
 
-import type { ArtifactInfo, AttachmentInfo } from "./api";
+import type { ArtifactInfo, AttachmentInfo, ProviderLogins } from "./api";
 
 // A WebSocket the test drives: it opens, sends frames and closes as the server would.
 export class FakeSocket {
@@ -423,4 +423,77 @@ export function setVisible(visible: boolean) {
     configurable: true,
     get: () => (visible ? "visible" : "hidden"),
   });
+}
+
+// Rows of Settings → Providers and environment (Providers.tsx, LoginSheet.tsx).
+
+export function cli(name: string, title: string) {
+  return {
+    name,
+    title,
+    permission_modes: [],
+    install_hint: `install ${name}`,
+    installed: true,
+    version: "1.0.0",
+    detail: `${name} 1.0.0`,
+    tested_version: "",
+    warning: "",
+  };
+}
+
+export const LOGIN = { method: "", where: "", choice: "", problem: "" };
+
+export const CHOICES = [
+  {
+    id: "subscription",
+    title: "Subscription — Claude Pro or Max",
+    detail: "Run `claude setup-token` on any computer where Claude Code is installed and paste the token it prints.",
+    variable: "CLAUDE_CODE_OAUTH_TOKEN",
+  },
+  {
+    id: "usage",
+    title: "Pay per use — API billing",
+    detail: "Paste an API key from console.anthropic.com.",
+    variable: "ANTHROPIC_API_KEY",
+  },
+];
+
+// Claude Code without a login, a supervisor waiting for it.
+export function claudeRow(more: Partial<ProviderLogins> = {}): ProviderLogins {
+  return {
+    cli: cli("claude", "Claude Code"),
+    login: { ...LOGIN, state: "no" },
+    needs_login: true,
+    actions: [],
+    question: "How do you pay for Claude?",
+    choices: CHOICES,
+    from_lado: false,
+    note: "",
+    waiting: [{ session: "my-app", agent: "supervisor" }],
+    running: [
+      { session: "my-app", agent: "supervisor" },
+      { session: "my-app", agent: "developer" },
+    ],
+    projects: [],
+    window: false,
+    ...more,
+  };
+}
+
+// OpenCode, which logs in by its own command in the login window.
+export function opencodeRow(state: "yes" | "no" = "yes"): ProviderLogins {
+  return {
+    ...claudeRow(),
+    cli: cli("opencode", "OpenCode"),
+    login: { ...LOGIN, state, method: state === "yes" ? "2 credentials, 1 variable" : "" },
+    needs_login: false,
+    actions: [
+      { id: "login", label: "Add a login…" },
+      { id: "logout", label: "Log out of one…" },
+    ],
+    question: "",
+    choices: [],
+    waiting: [],
+    running: [],
+  };
 }

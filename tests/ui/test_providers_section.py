@@ -91,6 +91,7 @@ def test_a_waiting_agent_leads_to_the_sheet_and_starts_with_the_pasted_token(
     expect(row(page).get_by_text("Logged in · token · LADO's secret")).to_be_visible()
     idle(session)
     assert "canary-ui-token" not in page.content()
+    row(page).scroll_into_view_if_needed()
     shot(page, "logged-in")
 
     # Log out asks first, naming the running agent, and removes the token.
@@ -165,6 +166,7 @@ def test_a_cli_with_its_own_login_command_opens_its_window(page: Page, logins, s
         window_row(page).get_by_text("Logged in · fake login · the fake CLI's login file")
     ).to_be_visible()
     expect(window_row(page).get_by_role("button", name="Change login…")).to_be_visible()
+    window_row(page).scroll_into_view_if_needed()
     shot(page, "logged-in")
 
 

@@ -78,8 +78,6 @@ def test_the_layer_of_a_login_is_the_one_that_gives_it_whole(inherit, monkeypatc
     assert logins.layer(KEY, found, CLAUDE.login_variables) == ""  # the agents do not get it
     assert logins.layer(KEY, found) == logins.INHERITED  # name by name, as another CLI's
     assert logins.layer(TOKEN, found, CLAUDE.login_variables) == logins.SECRET
-    # Without a provider, name by name: the page's other uses of the environment.
-    assert logins.environment(found=found)[KEY] == "shell-key"
 
 
 @pytest.fixture

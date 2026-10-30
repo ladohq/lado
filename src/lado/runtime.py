@@ -15,7 +15,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -793,7 +793,9 @@ def start_session(
         launch = _launch_command(agent_cli, agent, sess, spec)
         started.warnings += launch.warnings
         started.warnings += _layer_warnings(agent, launch, sess.project, files=True)
-        blocker, command = _before_window(agent_cli, agent, layers, launch, sess.project)
+        blocker, command = _before_window(
+            agent_cli, agent, base_env, layers.shell, launch, sess.project
+        )
         started.warnings += blocker
         # The first new-session on a socket starts LADO's tmux server, whose audit session
         # its agents inherit (lado.gui_session).
@@ -918,7 +920,9 @@ def spawn_worker(
         state.queue_message(session, state.LADO, worker, summary, text)
         launch = _launch_command(agent_cli, agent, sess, spec)
         held = launch.warnings + _layer_warnings(agent, launch, sess.project, files=False)
-        before, command = _before_window(agent_cli, agent, layers, launch, sess.project)
+        before, command = _before_window(
+            agent_cli, agent, base_env, layers.shell, launch, sess.project
+        )
         held += before
         tmux.new_window(session, worker, str(worktree), command)
         state.window_opened(session, worker)
@@ -2961,7 +2965,8 @@ def _held_for_login(
 def _before_window(
     agent_cli: providers.Provider,
     agent: state.Agent,
-    layers: agent_env.Layers,
+    base_env: dict[str, str],
+    shell: Mapping[str, str],
     launch: providers.Launch,
     project: str | None,
 ) -> tuple[list[str], list[str]]:
@@ -2969,9 +2974,9 @@ def _before_window(
     CLI's login (_held_for_login), else what the CLI asks first (_first_hook_blocker). An
     agent that waits for its login gets now what needs no login (Claude Code's trust),
     told whoever starts it; what does (the first run), and a question the CLI would still
-    ask, its waiting window settles once logged in (lado.login_wait), in loop.log. The
-    lines to tell whoever starts it, and the window's command."""
-    base_env = _base_env(layers, agent_cli)
+    ask, its waiting window settles once logged in (lado.login_wait), in loop.log; `shell`
+    is the login shell's layer, the lowest its window lays the login from. The lines to
+    tell whoever starts it, and the window's command."""
     waits, lines = _held_for_login(agent_cli, agent, base_env, launch)
     if not waits:
         return lines + _first_hook_blocker(agent_cli, agent, base_env, launch), _command(
@@ -2982,7 +2987,7 @@ def _before_window(
     lines += [line for line in (*early.notes, early.warning) if line]
     ours = sorted({**providers.agent_env(agent), **launch.env})
     file = providers.base.config_dir(agent) / "env.json"
-    shell_login = {n: layers.shell[n] for n in agent_cli.login_variables if n in layers.shell}
+    shell_login = {n: shell[n] for n in agent_cli.login_variables if n in shell}
     try:
         command = login_wait.command(
             file, agent_cli.name, env, ours, project, shell_login, launch.argv

@@ -49,15 +49,15 @@ def layers(
     env: dict[str, str],
     ours: list[str],
     project: str | None,
-    login: tuple[str, ...] = (),
-    shell_login: Mapping[str, str] | None = None,
+    login: tuple[str, ...],
+    shell_login: Mapping[str, str],
 ) -> dict[str, str]:
     """`env` with the file layers read now over it, and its own `ours` over those; the
     login variables `login` taken whole from one layer, of which `shell_login` (the login
     shell's) is the lowest."""
     base = {name: value for name, value in env.items() if name not in login}
     found = agent_env.Layers(
-        {**base, **(shell_login or {})},
+        {**base, **shell_login},
         agent_env.outside(env).values,
         agent_env.lado_secrets().values,
         project_secrets.layer(project) if project else {},
@@ -70,12 +70,8 @@ def main(args: list[str]) -> None:
     name, file, *argv = args
     data = json.loads(Path(file).read_text())
     Path(file).unlink()  # it holds the user's keys
-    env, ours, project, shell_login = (
-        data["env"],
-        data["ours"],
-        data["project"],
-        data["shell_login"],
-    )
+    env, ours, project = data["env"], data["ours"], data["project"]
+    shell_login = data["shell_login"]
     # This process's own LADO (lado.db, loop.log, LADO's secrets) is the agent's.
     for key in ("LADO_HOME", "LADO_TMUX_SOCKET"):
         if key in env:

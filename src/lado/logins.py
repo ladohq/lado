@@ -17,9 +17,9 @@ A login window is a tmux session of its own on LADO's server, one per provider, 
 `lado-login-<provider>` and labelled with user options (LOGIN, HOME): it runs the CLI's
 login or logout command (OpenCode's, Kilo's) with the agents' environment
 (lado.agent_env.command) and ends with it. `lado stop --all` and the UI server's start and
-stop end the windows by their
-labels, never by name; they are no LADO session, so `lado ls` and the runtime never see
-them. The UI streams one through lado.terminal (`open_login`).
+stop end the windows by their labels, never by name; they are no LADO session, so `lado
+ls` and the runtime never see them. The UI streams one through lado.terminal
+(`open_login`).
 """
 
 import os
@@ -63,15 +63,12 @@ def waits_for(agent: state.Agent, reason: str | None) -> str | None:
     return provider.name if reason == wait_reason(provider) else None
 
 
-def environment(
-    provider: base.Provider | None = None, found: agent_env.Layers | None = None
-) -> dict[str, str]:
+def environment(provider: base.Provider, found: agent_env.Layers | None = None) -> dict[str, str]:
     """The environment the agents of `provider` in a session without a project get, before
     LADO's and their provider's own variables: `found` (the layers, read now when None;
     AgentEnvError when the login shell fails) merged with its login taken whole from one
-    layer; name by name without a provider."""
-    login = provider.login_variables if provider else ()
-    return agent_env.merge(agent_env.layers() if found is None else found, login)
+    layer."""
+    return agent_env.merge(agent_env.layers() if found is None else found, provider.login_variables)
 
 
 def layer(name: str, found: agent_env.Layers, login: Iterable[str] = ()) -> str:

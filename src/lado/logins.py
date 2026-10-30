@@ -15,8 +15,9 @@ wait by that reason, so the text lives here alone.
 
 A login window is a tmux session of its own on LADO's server, one per provider, named
 `lado-login-<provider>` and labelled with user options (LOGIN, HOME): it runs the CLI's
-login or logout command (OpenCode's, Kilo's) with the agents' environment (lado.agent_env.command) and ends
-with it. `lado stop --all` and the UI server's start and stop end the windows by their
+login or logout command (OpenCode's, Kilo's) with the agents' environment
+(lado.agent_env.command) and ends with it. `lado stop --all` and the UI server's start and
+stop end the windows by their
 labels, never by name; they are no LADO session, so `lado ls` and the runtime never see
 them. The UI streams one through lado.terminal (`open_login`).
 """

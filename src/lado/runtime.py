@@ -742,6 +742,8 @@ def start_session(
     if base_env is None:
         base_env = _base_env(sess.project)
     _check_commands(env, base_env)
+    if not old:  # a resume waits for the login instead (_held_for_login)
+        check_login(agent_cli, base_env, logins.SESSION)
     agent = state.Agent(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
@@ -908,6 +910,7 @@ def spawn_worker(
     )
     base_env = _base_env(sess.project)
     _check_commands(env, base_env)
+    check_login(agent_cli, base_env, logins.WORKER)
     spec = _spec(agent_cli, env, role_def.name, agent, instructions, base_env, without or [])
     agent.read_only = spec.read_only
     if not run:

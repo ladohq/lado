@@ -5,7 +5,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-30-refuse-start
 - [x] 1.1 `logins.refusal` (SESSION, WORKER texts; NO only; `needs_login` only) and
   `runtime.NotLoggedIn`, `check_login`, `check_start_login` (D1, D4). Check:
   `tests/test_logins.py`.
-- [ ] 1.2 `start_session` refuses a new session (never a resume), `spawn_worker` a worker by
+- [x] 1.2 `start_session` refuses a new session (never a resume), `spawn_worker` a worker by
   its own provider, before anything is stored or made; the existing tests of a new start
   without a login reworked to a resume (D2, D3). Check: `tests/test_runtime.py`,
   `tests/test_runtime_projects.py` (project secret), `tests/test_runtime_start_approved.py`,

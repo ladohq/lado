@@ -337,8 +337,8 @@ class CliLogins:
     command runs; Claude Code is logged in with a token (`claude_config` has its first run
     recorded, so no agent waits and nothing is written), the others unknown.
     `answer(command, code, stdout, stderr="")` or `answer(command, problem)` sets one,
-    `logged_in(method)` and `logged_out()` Claude Code's. `calls` keeps the (argv, env)
-    asked."""
+    `logged_in(method)` and `logged_out()` Claude Code's, `logged_in_with(name)` logged in
+    only where the environment asked holds `name`. `calls` keeps the (argv, env) asked."""
 
     UNREAD = "LADO's tests run no agent CLI's status command"
 
@@ -362,9 +362,18 @@ class CliLogins:
     def logged_out(self):
         self.answer("claude", 1, json.dumps({"loggedIn": False, "authMethod": "none"}))
 
+    def logged_in_with(self, name):
+        self.answers["claude"] = lambda env: (
+            (0, json.dumps({"loggedIn": True, "authMethod": "oauth_token"}), "")
+            if env.get(name)
+            else (1, json.dumps({"loggedIn": False, "authMethod": "none"}), "")
+        )
+
     def run(self, argv, env):
         self.calls.append((list(argv), dict(env)))
         answer = self.answers.get(os.path.basename(argv[0]), self.UNREAD)
+        if callable(answer):
+            answer = answer(env)
         if isinstance(answer, str):
             return answer
         code, out, err = answer

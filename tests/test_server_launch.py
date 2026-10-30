@@ -372,12 +372,20 @@ def test_providers_are_lados_registry_with_their_status(client, monkeypatch):
     )
 
 
+@pytest.fixture
+def clis_run(monkeypatch):
+    """Every provider's CLI answers `--version`, whatever this machine has installed: only
+    an installed CLI's login is read."""
+    found = doctor.ProviderStatus(True, "1.0.0", "1.0.0", "1.0.0", "")
+    monkeypatch.setattr(doctor, "provider_status", lambda p, which: found)
+
+
 def _by_name(answer) -> dict:
     assert answer.status_code == 200, answer.text
     return {p["name"]: p for p in answer.json()}
 
 
-def test_providers_say_which_cli_lacks_the_login_it_needs(client, cli_logins):
+def test_providers_say_which_cli_lacks_the_login_it_needs(client, cli_logins, clis_run):
     """openspec change refuse-start-without-login: the window greys such a CLI out."""
     assert {n: p["login_missing"] for n, p in _by_name(client.get("/api/providers")).items()} == {
         n: False for n in providers.names()
@@ -401,7 +409,7 @@ def test_a_cli_not_installed_lacks_no_login(client, installed, cli_logins, monke
 
 
 def test_providers_for_a_project_read_its_login(
-    client, cli_logins, tmp_path, monkeypatch, git_config
+    client, cli_logins, clis_run, tmp_path, monkeypatch, git_config
 ):
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
@@ -416,7 +424,9 @@ def test_providers_for_a_project_read_its_login(
     assert (answer.status_code, answer.json()["detail"]) == (404, 'unknown project "nope"')
 
 
-def test_an_environment_that_cannot_be_had_lacks_no_login(client, cli_logins, monkeypatch):
+def test_an_environment_that_cannot_be_had_lacks_no_login(
+    client, cli_logins, clis_run, monkeypatch
+):
     def broken(project):
         raise runtime.LadoError("the login shell failed")
 

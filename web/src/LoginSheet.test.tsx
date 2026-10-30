@@ -131,14 +131,19 @@ test("OpenCode's sheet opens its own login window at once, with Log out of one�
   const window_ = screen.getByRole("dialog", { name: "Log in: OpenCode" });
   expect(calls[0]).toEqual({ method: "POST", path: "/api/providers/opencode/login", body: { action: "login" } });
   expect(lastSocket().url).toBe("ws://localhost:3000/api/providers/opencode/login/terminal");
+  const first = lastSocket();
+  act(() => first.open());
+  // Ending the login command closes its socket while the sheet still shows it.
+  answer = () => {
+    if (calls.at(-1)?.method === "DELETE") first.end(4404, "the login window of opencode ended");
+    return new Response(JSON.stringify(opencode()), { status: 200 });
+  };
   // Log out of one…: the login command ends, the logout one runs in its place.
   fireEvent.click(within(window_).getByRole("button", { name: "Log out of one…" }));
   await waitFor(() => expect(calls.at(-1)?.body).toEqual({ action: "logout" }));
   expect(calls.slice(1).map((c) => c.method)).toEqual(["DELETE", "POST"]);
-  const first = FakeSocket.all[0];
-  act(() => first.end(4404, "the login window of opencode ended"));
-  expect(closed).not.toHaveBeenCalled(); // the old window's end closes nothing
   await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+  expect(closed).not.toHaveBeenCalled(); // the old window's end closes nothing
   const second = lastSocket();
   act(() => second.open());
   act(() => second.end(4404, "the login window of opencode ended"));

@@ -196,13 +196,21 @@ secrets. For clients that must not mix, run a separate LADO.
 Logins made inside the container stay on its home volume, through updates.
 
 The easiest way is the UI, also from a phone: **Settings → Providers and environment**
-shows whether each CLI is logged in. **Log in with your Claude account…** opens a window
-with Claude Code's own login: open the link it prints, sign in, and send the code with
-**Text to send**. Or paste a token from `claude setup-token` in the
-`CLAUDE_CODE_OAUTH_TOKEN` field: LADO keeps it as its own secret and gives it to every
-agent. OpenCode and Kilo log in there with **Add a login…**. A session started before the
-login waits in **Needs you** ("Claude Code is not logged in") and starts by itself once
-you log in. The terminal ways:
+shows for each CLI whether it is logged in, how and from where ("Logged in · Subscription
+(token) · LADO's secret"). For Claude Code, **Log in…** asks how you pay for Claude:
+**Subscription** (Claude Pro or Max): run `claude setup-token` on any computer where
+Claude Code is installed and paste the token it prints; **Pay per use**: paste an API key
+from console.anthropic.com. LADO keeps it as its own secret, in place of the other one,
+and gives it to every agent; **Log out…** there removes it. LADO runs no Claude Code login
+itself. OpenCode and Kilo open their own login there. A session started before the login
+waits in **Needs you** ("Claude Code is not logged in") and starts by itself once you log
+in.
+
+Each place a login can come from overrides the one before: Claude Code's own login file,
+then the login shell, the outside folder (`secrets/`), LADO's secrets (the page), and a
+project's own. The one that sets a token or a key gives the whole login: a key in
+`secrets/` and a token pasted on the page give the agents the token only. The terminal
+ways:
 
 - **Claude Code**: log in once inside, as on your computer (it prints a link to open in
   your browser and asks for the code it shows):
@@ -211,9 +219,11 @@ you log in. The terminal ways:
   docker compose exec -it lado claude
   ```
 
-  Then `/exit`. Or, instead, a long-lived token: run `claude setup-token` on your computer
-  and put what it prints in `secrets/CLAUDE_CODE_OAUTH_TOKEN` (`printf %s '<token>' >
-  secrets/CLAUDE_CODE_OAUTH_TOKEN`, with [the folder](#the-agents-variables) given).
+  Then `/exit`. Any token or key overrides that login; `docker compose exec -it lado claude
+  auth logout` removes it. Or, instead, a long-lived token: run `claude setup-token` on your
+  computer and put what it prints in `secrets/CLAUDE_CODE_OAUTH_TOKEN` (`printf %s
+  '<token>' > secrets/CLAUDE_CODE_OAUTH_TOKEN`, with [the folder](#the-agents-variables)
+  given).
 - **OpenCode and Kilo**: `docker compose exec -it lado opencode auth login` or
   `docker compose exec -it lado kilo auth login`, or the model provider's key in `secrets/`.
 - **Codex**: not covered in the container yet.

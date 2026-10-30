@@ -71,8 +71,9 @@ would show a login the human did not set).
 secret", "outside folder", "login shell" (or "the process that starts LADO"); a project is
 never the page's (the page has no project; its projects are listed). With a login and no
 variable (`LoginStatus.file`), "Claude Code's login file" comes from the provider:
-`LoginStatus.file_words` ("Claude Code's login file", "the login keychain"). `source()`
-stays for Details-free texts (`lado doctor`).
+`LoginStatus.file_words` ("Claude Code's login file", "the login keychain"). The words
+are `Login.where`, the state line's and `lado doctor`'s (which shows the file's path when
+the provider gives no words, as OpenCode's); `source()` goes with its only uses.
 
 ### D3. Claude Code's words say how the human pays
 
@@ -93,8 +94,9 @@ gains `choice: str` ("" for none). Claude:
   `CLAUDE_CODE_OAUTH_TOKEN`;
 - `usage`: "Pay per use — API billing", "Paste an API key from console.anthropic.com.",
   `ANTHROPIC_API_KEY`;
-- `choice` from `authMethod`: `claude.ai`, `oauth_token` → `subscription`; `api_key`,
-  Console → `usage`.
+- `choice` from `authMethod`: `claude.ai`, `oauth_token` of `CLAUDE_CODE_OAUTH_TOKEN` →
+  `subscription`; `api_key`, Console → `usage`. A gateway's `ANTHROPIC_AUTH_TOKEN` (also
+  `oauth_token`) is no way to pay the sheet offers: "Token", no choice.
 
 Each choice's variable must be one of `login_variables` (a unit test). OpenCode and Kilo
 name none; Codex has no login action and no choice, so no button.
@@ -114,8 +116,9 @@ and Kilo's `login`/`logout` actions stay.
   sheet's choice is the login (otherwise a saved key would beat the token just saved).
 - `DELETE /api/providers/{name}/login-secrets` (new, replaces the logout route) removes
   every login variable of the provider from LADO's secrets; the sheet's "Log out…" calls
-  it after its confirmation. `DELETE …/variables/{variable}` stays for the API (one
-  variable).
+  it after its confirmation. `DELETE …/variables/{variable}` goes with the row's Remove…:
+  nothing uses it (the human's comment at the approval: remove the code of the agents'
+  login that is left over).
 - Both answer the row read anew, never a value; a 422 repeats no input (`SECRET_ROUTE`).
 
 ### D7. The API
@@ -123,8 +126,10 @@ and Kilo's `login`/`logout` actions stay.
 `ProviderLogins` gains `question: str`, `choices: list[LoginChoiceInfo]` (`id`, `title`,
 `detail`, `variable`), `from_lado: bool` (the login comes from LADO's secrets, so Log out
 is offered); `LoginInfo` gains `choice: str` and `where: str` (D2's words); `can_logout`
-goes. `variables` stays (`secret`, `layer`) for the API and tests; the UI no longer lists
-them. `make web-types` renews `web/openapi.json` and `web/src/api.gen.ts`.
+goes, and so does what the row no longer shows (the human's comment at the approval):
+`variables` (`LoginVariableInfo`, `logins.Variable`), and `LoginInfo`'s `file`,
+`variable`, `layer`, `source` and `items` (`LoginItemInfo`). `make web-types` renews
+`web/openapi.json` and `web/src/api.gen.ts`.
 
 ### D8. The UI: a row and one sheet
 

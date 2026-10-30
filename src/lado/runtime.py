@@ -369,6 +369,11 @@ class SessionExists(LadoError):
         )
 
 
+class NotLoggedIn(LadoError):
+    """A new session or worker refused: its CLI needs a login and has none
+    (lado.logins.refusal)."""
+
+
 def slug(value: str) -> str:
     """A name that is safe for tmux targets, git branches and paths."""
     return re.sub(r"[^a-z0-9_-]+", "-", value.lower()).strip("-") or "lado"
@@ -2922,6 +2927,30 @@ def _first_hook_blocker(
     if blocker.reason:
         state.block(agent.session, agent.name, blocker.reason)
     return [line for line in (*blocker.notes, blocker.reason, blocker.warning) if line]
+
+
+def check_login(agent_cli: providers.Provider, base_env: dict[str, str], what: str) -> None:
+    """Refuse a new session or worker (`what`, logins.SESSION or WORKER) of `agent_cli`
+    whose CLI needs a login and has none in `base_env`, the environment it would start
+    from; called before anything of it is stored or made. A resumed agent waits instead
+    (_held_for_login)."""
+    if reason := logins.refusal(agent_cli, base_env, what):
+        raise NotLoggedIn(reason)
+
+
+def check_start_login(provider: str | None, project: str | None) -> None:
+    """Before a clone or a new folder for a new session (`lado start <git-url>`, `--new`,
+    the UI's From scratch): refuse as start_session would, when the provider is known now:
+    given, or the only one installed on the agents' PATH. Otherwise start_session decides
+    once the folder is there."""
+    base_env = _base_env(project)
+    if provider is None:
+        path = base_env.get("PATH", os.defpath)
+        found = suggested_provider(None, lambda p: shutil.which(p.command, path=path) is not None)
+        if found is None:
+            return
+        provider = found.provider
+    check_login(_provider(provider), base_env, logins.SESSION)
 
 
 def _held_for_login(

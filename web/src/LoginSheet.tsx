@@ -150,9 +150,9 @@ function Confirm({
     <div className="pv-confirm" role="group" aria-label={text}>
       <span>
         {text}{" "}
-        {running.length > 0
-          ? `${who(running)} keep it until they start again; new agents go without it.`
-          : "No agent of it runs now."}
+        {running.length === 0
+          ? "No agent of it runs now."
+          : `${who(running)} ${running.length === 1 ? "keeps it until it starts" : "keep it until they start"} again; new agents go without it.`}
       </span>
       <button type="button" className="danger" disabled={busy} onClick={onYes}>
         Log out

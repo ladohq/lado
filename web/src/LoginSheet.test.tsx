@@ -119,6 +119,14 @@ test("Log out asks first, naming the running agents, then removes LADO's login",
   expect(calls).toEqual([{ method: "DELETE", path: "/api/providers/claude/login-secrets", body: undefined }]);
 });
 
+test("Log out names one running agent in the singular", () => {
+  sheet(claude({ login: TOKEN_LOGIN, from_lado: true, running: [{ session: "my-app", agent: "supervisor" }] }));
+  fireEvent.click(screen.getByRole("button", { name: "Log out…" }));
+  expect(screen.getByRole("group").textContent).toContain(
+    "supervisor of my-app keeps it until it starts again; new agents go without it",
+  );
+});
+
 test("no Log out for a login of another layer", () => {
   sheet(claude({ login: { ...TOKEN_LOGIN, where: "outside folder" }, from_lado: false }));
   expect(screen.queryByRole("button", { name: "Log out…" })).toBeNull();

@@ -30,6 +30,7 @@ function cli(name: string, title: string) {
     detail: `${name} 1.0.0`,
     tested_version: "",
     warning: "",
+    login_missing: false,
   };
 }
 

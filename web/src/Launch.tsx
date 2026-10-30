@@ -43,7 +43,7 @@ import { useCloneJob } from "./cloneJob";
 import { useCopy } from "./Copy";
 import { ProjectField } from "./LaunchProject";
 import { useLive } from "./live";
-import { projectPath, sessionPath } from "./paths";
+import { projectPath, PROVIDERS_PATH, sessionPath } from "./paths";
 
 // How long the window waits after a keystroke before it asks the server about the folder.
 export const DEBOUNCE = 200;
@@ -332,7 +332,10 @@ function LaunchDialog({
   // In Project the repository's git root (links resolved), as a session's folder is given.
   const root = resuming?.repo ?? (scratching ? null : projecting ? inProject?.root : folder?.root) ?? null;
   const kitList = useAsked(root ?? "", (where) => getKits(where || null));
-  const providerList = useOnce(getProviders);
+  // Asked again for each project chosen: a project's secrets may log a CLI in. A resumed
+  // session's are its project's; the other ways' none.
+  const loginsOf = resuming ? (resuming.project ?? "") : projecting ? (inProject?.project ?? null) : "";
+  const providerList = useAsked(loginsOf, (project) => getProviders(project || null));
   const providers = valueOf(providerList);
   // Without the limits the server checks the first message's length alone.
   const maxMessage = valueOf(useOnce<Limits>(getLimits))?.max_message ?? null;
@@ -340,8 +343,14 @@ function LaunchDialog({
   const promptOver = maxMessage !== null && promptText.length > maxMessage;
   const withPrompt = promptText ? { prompt: promptText } : {};
 
-  const chosenProvider = provider;
-  const providerInfo = providers?.find((one) => one.name === chosenProvider) ?? null;
+  // A new session's suggestion of a CLI without its login is not taken (held): the field
+  // stays at "choose…" and says why. A resume goes on: its agent waits for the login.
+  const inList = providers?.find((one) => one.name === provider) ?? null;
+  const held = !resuming && !touched.has("provider") && inList?.login_missing === true;
+  const chosenProvider = held ? null : provider;
+  const providerInfo = held ? null : inList;
+  const noLogin = inList?.login_missing ? inList : null;
+  const canStart = providerInfo?.installed === true && (resuming !== null || !providerInfo.login_missing);
   const modes = providerInfo?.permission_modes ?? [];
 
   // M5: kits, provider and mode of a new session come from the folder's last session; in
@@ -405,7 +414,7 @@ function LaunchDialog({
   // shows no refusal. Resume does not check its folder.
   const ready =
     (resuming !== null || (current?.ok ?? false)) &&
-    providerInfo?.installed === true &&
+    canStart &&
     kits.length > 0 &&
     !promptOver;
   const cloneReady =
@@ -413,7 +422,7 @@ function LaunchDialog({
     remote !== null &&
     target !== null &&
     CAN_CLONE.has(target.state) &&
-    providerInfo?.installed === true &&
+    canStart &&
     kits.length > 0 &&
     shownName !== "";
   const scratchReady =
@@ -424,10 +433,10 @@ function LaunchDialog({
     CAN_START.has(fresh.state) &&
     fresh.author === null &&
     fresh.name_state === "free" &&
-    providerInfo?.installed === true &&
+    canStart &&
     kits.length > 0;
   const projectReady =
-    !promptOver && projectRepo !== null && providerInfo?.installed === true && kits.length > 0 && shownName !== "";
+    !promptOver && projectRepo !== null && canStart && kits.length > 0 && shownName !== "";
 
   // A new session in `where`, as the window's fields say; from scratch, its folder is made
   // a repository first, and the session takes the name and title of the name typed.
@@ -809,15 +818,29 @@ function LaunchDialog({
                     </option>
                   )}
                   {providers.map((one) => (
-                    <option key={one.name} value={one.name} disabled={!one.installed}>
-                      {one.installed ? `${one.name} · ${one.title} ${one.version}`.trim() : `${one.name} · not installed`}
+                    <option key={one.name} value={one.name} disabled={!one.installed || (one.login_missing && !resuming)}>
+                      {!one.installed
+                        ? `${one.name} · not installed`
+                        : one.login_missing && !resuming
+                          ? `${one.name} · not logged in`
+                          : `${one.name} · ${one.title} ${one.version}`.trim()}
                     </option>
                   ))}
                 </>
               )}
             </select>
-            <ProviderNote asked={providerList} info={providerInfo} chosen={chosenProvider} />
-            {providers !== null && chosenProvider === null && (
+            <ProviderNote
+              asked={providerList}
+              info={providerInfo}
+              chosen={chosenProvider}
+              noLogin={noLogin}
+              resuming={resuming !== null}
+              onLogIn={() => {
+                onClose();
+                navigate(PROVIDERS_PATH);
+              }}
+            />
+            {providers !== null && chosenProvider === null && !held && (
               <span className="field-note">choose the agent CLI for this session</span>
             )}
             {suggested !== null && providerInfo?.installed && (
@@ -1685,13 +1708,37 @@ function ProviderNote({
   asked,
   info,
   chosen,
+  noLogin,
+  resuming,
+  onLogIn,
 }: {
   asked: Asked<ProviderInfo[]>;
   info: ProviderInfo | null;
   chosen: string | null;
+  noLogin: ProviderInfo | null; // the provider chosen or suggested, when it lacks its login
+  resuming: boolean;
+  onLogIn: () => void;
 }) {
   if (asked !== null && "error" in asked) return <span className="field-note bad">{asked.error}</span>;
   if (asked === null) return <span className="field-note">checking the agent CLIs…</span>;
+  if (noLogin?.installed) {
+    // A new session of it is refused; a resumed one waits for the login (lado.logins).
+    return resuming ? (
+      <span className="field-note warn">
+        ⚠ {noLogin.title} is not logged in: the supervisor waits until you log in.{" "}
+        <button type="button" className="link-button" onClick={onLogIn}>
+          Log in…
+        </button>
+      </span>
+    ) : (
+      <span className="field-note bad">
+        {noLogin.title} is not logged in: its agents cannot start.{" "}
+        <button type="button" className="link-button" onClick={onLogIn}>
+          Log in first
+        </button>
+      </span>
+    );
+  }
   if (info === null) return chosen ? <span className="field-note bad">unknown provider {chosen}</span> : null;
   if (!info.installed) return <span className="field-note bad">{`${info.detail}; ${info.install_hint}`}</span>;
   if (info.warning) return <span className="field-note warn">⚠ {info.warning}</span>;

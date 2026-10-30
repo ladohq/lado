@@ -35,6 +35,7 @@ const ABOUT: SessionAbout = {
     detail: "",
     tested_version: "2.1.0",
     warning: "",
+    login_missing: false,
   },
 };
 

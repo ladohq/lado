@@ -21,7 +21,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-30-refuse-start
 
 ## 3. Web UI
 
-- [ ] 3.1 New session window: the greyed option, no preselection, the red note with "Log in
+- [x] 3.1 New session window: the greyed option, no preselection, the red note with "Log in
   first", Start disabled, the Project way's project, the Resume window's amber note (D6).
   Check: `web/src/Launch.test.tsx`, `make web`.
 - [ ] 3.2 UI e2e with `fake-login`: greyed option and note, the link to Settings, enabled

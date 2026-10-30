@@ -448,7 +448,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     a failure removes the temporary file and keeps the old value. `remove`, `check_removable`
     (no link on the way or anywhere in the data folder) and `remove_all` (by `dir_fd`). `read`
     is `agent_env.read_folder(own=reserved)`; `layer`, the project's plain variables with
-    its secrets over them, is what a launch (`runtime._base_env`) and a clone into the
+    its secrets over them, is what a launch (`runtime.agents_env`) and a clone into the
     project (`clone`) get, its one builder; `unused` is what it does
     not give, by name with why (None for the folder), its values left inside, for `lado
     doctor` and the project's page; `names` lists without opening a file
@@ -589,7 +589,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   - `agent_env.py`: where an agent's environment comes from (docs/design/agents.md): `resolve`
     (the login shell's, then the outside folder's, `outside`, then LADO's secrets,
     `lado_secrets`, then the session's project's variables and secrets it is given, which
-    `runtime._base_env` reads), `for_git` (the
+    `runtime.agents_env` reads), `for_git` (the
     environment of LADO's own network git, gitcache's and clone's: the process's, the
     outside folder's over it, then a project's layer when given; no login shell), and
     `command`, the window's command that runs the agent with exactly that environment. `read_folder` is

@@ -237,11 +237,27 @@ def kit_infos(has_db: bool) -> list[models.KitInfo]:
     return infos
 
 
-def provider_infos() -> list[models.ProviderInfo]:
-    """Each provider of the registry, its CLI checked anew (`<cli> --version`), all at once."""
+def provider_infos(project: str | None = None) -> list[models.ProviderInfo]:
+    """Each provider of the registry, its CLI checked anew (`<cli> --version`), all at once,
+    and whether it lacks the login its agents need in the environment the agents of
+    `project` (or of no project) start from, as a new session's start reads it
+    (runtime.check_login); NoSuchProject for an unknown `project`."""
+    if project is not None:
+        projects.get(project)
     registry = [providers.get(name) for name in providers.names()]
+    try:
+        env: dict[str, str] | None = runtime.agents_env(project)
+    except runtime.LadoError:
+        env = None  # the start says why itself
+
+    def one(provider: providers.Provider) -> models.ProviderInfo:
+        info = provider_info(provider)
+        if env is not None and info.installed:
+            info.login_missing = logins.refusal(provider, env, logins.SESSION) is not None
+        return info
+
     with ThreadPoolExecutor(len(registry)) as pool:
-        return list(pool.map(provider_info, registry))
+        return list(pool.map(one, registry))
 
 
 def provider_info(

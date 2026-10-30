@@ -36,7 +36,7 @@ artifact `mockup-start-without-login.html`.
   asserts nothing is left (lado.db, tmux calls, worktree, branch, config dir, folder).
 - `lado start` of a stopped session without a login: must resume and wait, not refuse
   (`resume=None` path with `old` set).
-- A project's secret that logs in: the check must read `_base_env(project)` with the
+- A project's secret that logs in: the check must read `agents_env(project)` with the
   project's layer, not `logins.environment()` without it.
 - Mixed sessions: `spawn_worker(provider="kilo")` in a Claude session without a login must
   start; `spawn_worker(provider="claude")` in a Kilo session must refuse.
@@ -144,7 +144,7 @@ def check_start_login(provider: str | None, project: str | None) -> None:
     """Before a clone or a new folder for a new session (lado start <git-url>, --new, the
     UI's From scratch): refuse as start_session would, when the provider is known now:
     given, or the only one installed on the agents' PATH. Otherwise start_session decides."""
-    base_env = _base_env(project)
+    base_env = agents_env(project)
     if provider is None:
         path = base_env.get("PATH", os.defpath)
         found = suggested_provider(None, lambda p: shutil.which(p.command, path=path) is not None)
@@ -413,7 +413,7 @@ def provider_infos(project: str | None = None) -> list[models.ProviderInfo]:
     of `project` (or of none)."""
     registry = [providers.get(name) for name in providers.names()]
     try:
-        env = runtime._base_env(project) if project is None or projects.exists(project) else None
+        env = runtime.agents_env(project) if project is None or projects.exists(project) else None
     except runtime.LadoError:
         env = None  # the login shell failed: the start says so itself
     ...
@@ -427,7 +427,7 @@ def provider_infos(project: str | None = None) -> list[models.ProviderInfo]:
 ```
 
 Raise `projects.NoSuchProject` for an unknown `project` and turn it into 404 in
-`list_providers(project: str | None = None)`; give `runtime._base_env` a public name
+`list_providers(project: str | None = None)`; give `runtime.agents_env` a public name
 (`runtime.base_env`) if the server needs it, rather than reaching for a private one. Then
 `make web-types` and commit both generated files.
 

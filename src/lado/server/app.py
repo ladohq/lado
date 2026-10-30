@@ -848,10 +848,21 @@ def create_app(
         the same for every folder."""
         return core(launch.kit_infos, has_db)
 
-    @app.get("/api/providers", dependencies=[Depends(guard)])
-    def list_providers() -> list[ProviderInfo]:
-        """LADO's providers and whether each one's CLI can run here, checked anew."""
-        return launch.provider_infos()
+    @app.get(
+        "/api/providers",
+        dependencies=[Depends(guard)],
+        responses={404: {"description": "no such project"}},
+    )
+    def list_providers(project: str | None = None) -> list[ProviderInfo]:
+        """LADO's providers and whether each one's CLI can run here, checked anew, and
+        whether it lacks the login its agents need, read for the agents of `project` (404
+        for an unknown one) or of no project."""
+        try:
+            if project is not None and not database():  # asking makes no lado.db
+                raise projects.NoSuchProject(f'unknown project "{project}"')
+            return launch.provider_infos(project)
+        except projects.NoSuchProject as unknown:
+            raise HTTPException(404, str(unknown)) from unknown
 
     # Settings → Providers and environment (docs/design/ui.md): each agent CLI's login, read
     # by its own command (lado.logins), its login window, and the login variables kept as
@@ -1294,6 +1305,7 @@ def create_app(
             if where.path is not None:
                 path = runtime.full_path(where.path)
                 if where.kind == "scratch":
+                    runtime.check_start_login(given.provider, None)
                     scratch.make(path, runtime.slug(given.name or Path(path).name))
             done = runtime.start_session(
                 path,

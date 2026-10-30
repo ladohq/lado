@@ -451,6 +451,10 @@ class ProviderInfo(BaseModel):
     detail: str  # its `--version` line, or why there is none
     tested_version: str
     warning: str  # "" unless its version is not the tested one
+    # Its agents need a login and it has none, in the environment of the agents of the
+    # project asked for (or of none): a new session or worker of it is refused
+    # (lado.logins.refusal). False when the login cannot be read.
+    login_missing: bool = False
 
 
 class LoginItemInfo(BaseModel):

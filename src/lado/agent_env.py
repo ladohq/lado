@@ -14,7 +14,7 @@ line.
 Over those go the variables of the session's project (lado.projects), its plain ones read
 from lado.db and its secrets from their folder (lado.project_secrets, by the outside
 folder's reader, `read_folder`, which refuses links and loose modes there) at each launch
-by whoever launches (lado.runtime._base_env); a session without a project has none. LADO's
+by whoever launches (lado.runtime.agents_env); a session without a project has none. LADO's
 and the agent CLI's own variables go over all of them (lado.runtime).
 
 LADO's own network git calls (kits, skill packs, marketplaces, a clone of a URL) get the

@@ -34,7 +34,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   (`<LADO_HOME>/projects/<id>/secrets/`, `project_secrets.read`, the outside folder's reader
   with no link and no loose mode), are read anew at each start, resume and spawn by the
   process that launches
-  (`runtime._base_env(project)`: the CLI, the UI server, or a supervisor's `lado mcp` for its
+  (`runtime.agents_env(project)`: the CLI, the UI server, or a supervisor's `lado mcp` for its
   `spawn_worker`, flow runs' workers and `start_session`), so an agent launched after a
   change gets it and a running one keeps its own; a session without a project gets none.
   Being in the base, they reach the kits' checks and `mcp_exec` as the outside folder's do.

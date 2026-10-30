@@ -13,10 +13,10 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-30-refuse-start
 
 ## 2. CLI and server
 
-- [ ] 2.1 `lado start <git-url>`, `lado start --new` and `POST /api/sessions` From scratch
+- [x] 2.1 `lado start <git-url>`, `lado start --new` and `POST /api/sessions` From scratch
   check before the clone or the folder (D2). Check: `tests/test_cli.py`,
   `tests/test_server_launch.py` (400, no folder).
-- [ ] 2.2 `ProviderInfo.login_missing`, `GET /api/providers?project=` (404 unknown),
+- [x] 2.2 `ProviderInfo.login_missing`, `GET /api/providers?project=` (404 unknown),
   `make web-types` (D5). Check: `tests/test_server_launch.py`, `make web`.
 
 ## 3. Web UI

@@ -67,7 +67,7 @@ Scale full, review breadth first; minor version (0.44.0, already unreleased).
 
 - One check in the core (`logins.refusal`, raised by `runtime.check_login`) before anything
   is stored; the CLI, the server and the MCP tools pass the `LadoError` on as they do.
-- The check reads `_base_env(project)`, the environment the agent starts from, so a later
+- The check reads `agents_env(project)`, the environment the agent starts from, so a later
   LAD-160 rule about the chosen login method is followed without a second rule.
 - The launch-time wait of LAD-157 stays unchanged for a resume and for a login lost between
   the check and the launch; the status is read twice for a new Claude agent (≈0.1 s).

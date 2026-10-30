@@ -2359,6 +2359,25 @@ def test_a_start_refused_after_the_clone_keeps_the_clone(tmp_path, fake_tmux, ca
     assert _branch_of(folder) == "main"
 
 
+def test_a_git_url_without_the_login_is_refused_before_the_clone(
+    tmp_path, fake_tmux, capsys, monkeypatch, cli_logins
+):
+    for key, value in agent_helpers.fake_git(tmp_path / "fake", "ok").items():
+        monkeypatch.setenv(key, value)
+    cli_logins.logged_out()
+    folder = tmp_path / "work" / "app"
+    argv = ["start", "https://h/a/app", str(folder), "--provider", "claude", "--no-attach"]
+    assert main(argv) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "lado: Claude Code is not logged in, so the session was not started: log in in LADO's "
+        "UI (Settings → Providers and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN "
+        "as LADO's secret or a project secret"
+    ]
+    assert agent_helpers.fake_git_calls(tmp_path / "fake") == []
+    assert not (tmp_path / "work").exists()
+    assert state.list_sessions() == []
+
+
 def test_ctrl_c_during_the_clone(tmp_path, fake_tmux, capsys, monkeypatch):
     def interrupted(*args, **kwargs):
         raise KeyboardInterrupt
@@ -2686,6 +2705,15 @@ def test_a_new_folder_from_the_terminal(tmp_path, git_config, fake_tmux, capsys)
         ["git", "-C", str(folder), "log", "--format=%s"], capture_output=True, text=True
     )
     assert log.stdout == "Start from scratch\n"
+
+
+def test_new_without_the_login_makes_no_folder(tmp_path, git_config, fake_tmux, capsys, cli_logins):
+    cli_logins.logged_out()
+    folder = tmp_path / "lado" / "shop"
+    assert main(["start", "--new", str(folder), "--provider", "claude", "--no-attach"]) == 1
+    assert "so the session was not started" in capsys.readouterr().err
+    assert not folder.exists()
+    assert state.list_sessions() == []
 
 
 def test_new_takes_the_name_given_and_a_relative_folder(

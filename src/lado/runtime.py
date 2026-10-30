@@ -724,7 +724,7 @@ def start_session(
     if not provider and not old:
         # Resolved before the provider is chosen: it is the one on the agents' PATH. A
         # provider given or stored is checked first, without waiting for the login shell.
-        base_env = _base_env(project)
+        base_env = agents_env(project)
         chosen = _new_sessions_provider(repo, base_env)
     agent_cli = _provider(provider or (old.provider if old else chosen.provider))
     sess = state.Session(
@@ -740,7 +740,7 @@ def start_session(
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.kits, sess.without)
     if base_env is None:
-        base_env = _base_env(sess.project)
+        base_env = agents_env(sess.project)
     _check_commands(env, base_env)
     if not old:  # a resume waits for the login instead (_held_for_login)
         check_login(agent_cli, base_env, logins.SESSION)
@@ -908,7 +908,7 @@ def spawn_worker(
         agent_cli.name,
         run=run.name if run else None,
     )
-    base_env = _base_env(sess.project)
+    base_env = agents_env(sess.project)
     _check_commands(env, base_env)
     check_login(agent_cli, base_env, logins.WORKER)
     spec = _spec(agent_cli, env, role_def.name, agent, instructions, base_env, without or [])
@@ -2850,7 +2850,7 @@ def _add_agent(agent: state.Agent, kit: str) -> None:
     state.add_event(agent.session, agent.name, state.SPAWNED, detail)
 
 
-def _base_env(project: str | None) -> dict[str, str]:
+def agents_env(project: str | None) -> dict[str, str]:
     """The environment agents start from (lado.agent_env), resolved anew for each launch,
     with the layer of the session's `project` as it is now (lado.project_secrets.layer)."""
     try:
@@ -2946,14 +2946,16 @@ def check_start_login(provider: str | None, project: str | None) -> None:
     the UI's From scratch): refuse as start_session would, when the provider is known now:
     given, or the only one installed on the agents' PATH. Otherwise start_session decides
     once the folder is there."""
-    base_env = _base_env(project)
+    base_env = agents_env(project)
     if provider is None:
         path = base_env.get("PATH", os.defpath)
         found = suggested_provider(None, lambda p: shutil.which(p.command, path=path) is not None)
         if found is None:
             return
         provider = found.provider
-    check_login(_provider(provider), base_env, logins.SESSION)
+    elif provider not in providers.names():
+        return  # start_session refuses it as it refuses any
+    check_login(providers.get(provider), base_env, logins.SESSION)
 
 
 def _held_for_login(

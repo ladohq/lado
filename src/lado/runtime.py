@@ -539,13 +539,15 @@ def suggested_provider(
     return Suggestion(found[0], ONLY_INSTALLED) if len(found) == 1 else None
 
 
+def _on_agents_path(base_env: dict[str, str]) -> Callable[[providers.Provider], bool]:
+    """Whether a provider's CLI is on the agents' PATH (suggested_provider's `installed`)."""
+    path = base_env.get("PATH", os.defpath)
+    return lambda provider: shutil.which(provider.command, path=path) is not None
+
+
 def _new_sessions_provider(repo: str, base_env: dict[str, str]) -> Suggestion:
     """The suggested provider of a new session, its CLI looked for on the agents' PATH."""
-    path = base_env.get("PATH", os.defpath)
-
-    def installed(provider: providers.Provider) -> bool:
-        return shutil.which(provider.command, path=path) is not None
-
+    installed = _on_agents_path(base_env)
     suggestion = suggested_provider(repo, installed)
     if suggestion:
         return suggestion
@@ -2948,8 +2950,7 @@ def check_start_login(provider: str | None, project: str | None) -> None:
     once the folder is there."""
     base_env = agents_env(project)
     if provider is None:
-        path = base_env.get("PATH", os.defpath)
-        found = suggested_provider(None, lambda p: shutil.which(p.command, path=path) is not None)
+        found = suggested_provider(None, _on_agents_path(base_env))
         if found is None:
             return
         provider = found.provider

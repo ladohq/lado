@@ -312,7 +312,8 @@ def test_update_to_an_older_schema_restores_the_migrations_copy_and_the_old_lado
     assert f"  Sessions not in that copy are not started again: {new}\n" in done.stderr
     assert f"Restored lado.db from {copy} (schema {before})" in done.stdout
     starts = [call for call in install.called() if call.startswith("start")]
-    assert starts == [f"start {repo} --name {old} --no-attach --wait-for-login"]
+    # OLD, before 0.44, has no --wait-for-login.
+    assert starts == [f"start {repo} --name {old} --no-attach"]
     assert state.schema_version() == before
     listed = install.run("ls")  # OLD now, which refuses schema `after`
     assert listed.returncode == 0, listed.stderr

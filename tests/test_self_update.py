@@ -750,8 +750,9 @@ def test_an_update_to_an_older_schema_puts_the_copy_back_and_resumes_what_it_has
     with sqlite3.connect(live) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("app",)]
     assert two_sessions.read_bytes() == kept  # the copy stays
-    starts = [c.split()[-3] for c in install.called() if c.startswith("start")]
-    assert starts == ["app"]
+    # A LADO before 0.44 has no --wait-for-login (argparse would refuse it with exit 2).
+    starts = [c for c in install.called() if c.startswith("start")]
+    assert [c.split()[-2:] for c in starts] == [["app", "--no-attach"]]
     done = result()
     assert (done.outcome, done.database) == ("ok", "restored")
 

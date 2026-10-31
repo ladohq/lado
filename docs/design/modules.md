@@ -193,9 +193,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (`restore`, then the schema checked; a failure rolls back with lado.db as it was) and
     resumes only the sessions the copy has, with that binary's commands (`lado start <repo>
     --name <s> --no-attach --wait-for-login`, the hidden flag of LADO's own resume, whose
-    supervisor waits for a missing login where a resume by hand is refused (LAD-163; a LADO
-    before 0.44 that updates runs its own `_resume` without it, so a session whose login is
-    missing lands in `failed` once), `lado ui --no-open [--host H] --port P`;
+    supervisor waits for a missing login where a resume by hand is refused (LAD-163; left
+    out on an update to a LADO before 0.44, `WAIT_FOR_LOGIN_SINCE`, whose argparse refuses
+    it; a LADO before 0.44 that updates runs its own `_resume` without it, so a session
+    whose login is missing lands in `failed` once), `lado ui --no-open [--host H] --port P`;
     `--host` only for another than 127.0.0.1, which a LADO before 0.20 lacks). It rolls
     back only when the new version itself is bad: a wrong `--version`, or the UI server,
     when one ran before, does not come up on it (`lado ui` fails, or `/api/health` names

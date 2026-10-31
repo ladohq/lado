@@ -249,9 +249,9 @@ rows in place while ↻ turns.
 
 #### Scenario: The API
 - **WHEN** the UI asks `POST /api/providers/check` and then `GET /api/providers/logins`
-- **THEN** the POST starts a check unless one runs, and the GET answers at once with the
-  rows kept, `checking: true` while the check runs, and `ready: false` on each row not
-  read yet
+- **THEN** the POST starts a check unless one runs (then one more runs once after it, so
+  what changed meanwhile is read), and the GET answers at once with the rows kept,
+  `checking: true` while a check runs, and `ready: false` on each row not read yet
 
 #### Scenario: A check that fails
 - **WHEN** reading a CLI raises

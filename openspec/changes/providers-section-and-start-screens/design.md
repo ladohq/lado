@@ -57,7 +57,9 @@ Non-goals: see the proposal's Out of scope.
 A new module `lado/server/provider_check.py` keeps, under one lock, the last row of each
 provider, the agents' environment's problem and whether a check runs:
 
-- `start() -> bool`: starts a daemon thread unless one runs; False when one ran already.
+- `start() -> bool`: starts a daemon thread unless one runs; False when one runs already,
+  and then one more pass runs once after it (built: a login window that ended during a
+  check was read before its login, and no later check came).
 - `snapshot() -> models.ProvidersPage`: the rows kept (a provider never read: a row with
   `ready: false`, its name and title only), `checking`, `environment`.
 - `put(row)`: replaces one provider's row (an action's fresh row).

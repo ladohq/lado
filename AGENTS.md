@@ -87,7 +87,8 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `log.py`: `lado log`; `stats.py`: `lado stats`.
   - `loop.py`: the session loop, `lado loop <session>`.
   - `server/`: the UI server (`lado server`, `lado ui`): `app.py`, `auth.py`, `feed.py`,
-    `models.py`, `terminals.py`, `clones.py`, `launch.py`, `run.py`; `static/` the bundle.
+    `models.py`, `terminals.py`, `clones.py`, `launch.py`, `provider_check.py`, `run.py`;
+    `static/` the bundle.
 - `web/`: the web UI (React, TypeScript, Vite). `openapi.json` and `src/api.gen.ts` are made
   by `make web-types` and committed.
 - `tests/`: unit tests; `integration/` (fake agent), `ui/` (browser), `live/` (real CLIs),

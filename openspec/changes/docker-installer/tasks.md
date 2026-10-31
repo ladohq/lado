@@ -31,7 +31,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-31-docker-insta
 
 ## 4. Container
 
-- [ ] 4.1 A real install, a rerun of the same version, an update from `0.0.1`, the phone's
+- [x] 4.1 A real install, a rerun of the same version, an update from `0.0.1`, the phone's
   link, with `lado:local`. Check: `make docker`, `uv run pytest -m container -n0
   tests/container/test_install.py`.
 
@@ -47,5 +47,5 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-31-docker-insta
 
 ## 6. Regression
 
-- [ ] 6.1 `make lint`, `make test`, the container test, `openspec validate
+- [x] 6.1 `make lint`, `make test`, the container test, `openspec validate
   docker-installer --strict`, `openspec validate --specs --strict`.

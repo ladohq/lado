@@ -37,7 +37,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-31-docker-insta
 
 ## 5. Docs
 
-- [ ] 5.1 README (Install → Docker, Update → Docker), docs/install.md (the table, `##
+- [x] 5.1 README (Install → Docker, Update → Docker), docs/install.md (the table, `##
   Docker` led by the installer with the download-read-run way and the PowerShell
   download-and-run form, "By hand", "Update the container", Windows), the compose header,
   docs/release.md 4.5 (the RC's `install.sh` on a Mac with `--dir`, `install.ps1` on

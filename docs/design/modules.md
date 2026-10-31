@@ -1184,6 +1184,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   release, checked before PyPI too, with the release's `docker pull` (docs/release.md);
   standard library only, so it holds the image's name as its own `IMAGE`, kept equal to
   `update.IMAGE` by a test.
+  `scripts/stamp_installers.py`: the GitHub release's `install.sh` and `install.ps1`,
+  `docker/`'s with their version placeholder line replaced by the tag's version (exactly
+  one such line each, a release's version, or it fails and the release is not created);
+  standard library only.
   `scripts/rc_check.py`: the human's checks of a release candidate (docs/release.md,
   section 4): `sandbox` (a clean install in a temporary folder, statistics off, removed
   after), `upgrade` (the human's `lado update X.Y.ZrcN`, keeping the final's database in
@@ -1330,4 +1334,35 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   downloads from `releases/latest/download/compose.yaml`. The research
   prototype in
   `docs/research/docker-install/` is evidence only.
+  `install.sh`, the one-line installer (`curl -fsSL …/releases/latest/download/install.sh
+  | sh`), POSIX sh run by dash and bash, every step in a `main` called on its last line:
+  the version stamped in it (`LADO_INSTALL_VERSION=`, by `scripts/stamp_installers.py` at
+  release; `--version` for the repository's unstamped copy, which refuses otherwise); the
+  shell's `LADO_*` and `COMPOSE_*` unset before compose and named at the end; Docker checked
+  (missing, no compose, permission denied, a stopped daemon: each its own stop; on macOS
+  Docker Desktop started and waited for 120 s; never Docker installed, never `sudo`); the
+  folder `~/lado-docker` (`--dir`: `COMPOSE_PROJECT_NAME=lado-<folder>`), refused when a
+  container of its compose project was made from another folder (compose's
+  `working_dir` label). A fresh install asks from `/dev/tty` (the defaults with `--yes` or
+  no terminal) for the workspace and only the git identity `git config --global` lacks,
+  picks the first port of 8765–8799 nothing listens on (`nc`, else `lsof`), takes Docker
+  Desktop's or `$SSH_AUTH_SOCK`'s ssh agent, asks about the phone after its warning (Enter
+  no; `--phone`/`--no-phone`) and then writes `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST`
+  (macOS LocalHostName, WSL's Windows name, avahi's hostname, else the address with a
+  warning), all `.local`; `.env` holds only variables this header names. A rerun compares
+  `.env`'s `LADO_VERSION` with its own (`X.Y.Z[rcN]`, an RC before its final): older,
+  `compose.yaml.bak` and only every `LADO_VERSION` line changed; the same, no file
+  rewritten; newer or another form, a refusal naming the guide. Files are written as
+  `.new` and moved in place when complete. Then `docker compose up -d`, a wait of up to
+  180 s for `/api/health` inside the container (before `lado ui`, which would otherwise
+  start a server of its own), `lado ui --no-open`'s link printed and opened (`open`,
+  `xdg-open` with a display, `wslview` or `cmd.exe /c start` from WSL). Every stop is a
+  line `lado install: <what>: <what to do>`. `install.ps1`, Windows PowerShell 5.1 and 7,
+  ASCII only, `$LadoVersion = ''` stamped the same way: Docker Desktop checked and
+  started, the first `Ubuntu*` WSL distribution (`wsl -l -q` read as UTF-16; never
+  `docker-desktop*`) or `wsl --install -d Ubuntu` offered, Docker checked inside it (WSL
+  integration), then its release's `install.sh` run there by `wsl.exe -d <distro> -- sh
+  -c 'curl … | sh -s -- <flags>'` (`-Yes`, `-Phone`, `-NoPhone`), with the console for
+  its questions; it exits only when run as a file, since `exit` would close the window of
+  `irm | iex`. The Dockerfile's allowlist leaves both out of the image.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

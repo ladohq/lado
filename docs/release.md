@@ -256,6 +256,40 @@ docker compose down -v
 cd / && rm -rf /tmp/lado-rc-image
 ```
 
+The installer, on the Mac, with Docker Desktop quit first: the RC's own `install.sh` (its
+release stamps it with the RC's version) in a folder of its own, so it meets no LADO of
+yours:
+
+```
+curl -fsSL https://github.com/ladohq/lado/releases/download/vX.Y.ZrcN/install.sh | sh -s -- --dir /tmp/lado-rc-install
+```
+
+It starts Docker Desktop and waits for it, asks for the workspace (give the test folder)
+and about the phone after its warning (answer `y`); `/tmp/lado-rc-install/.env` has
+`LADO_VERSION=X.Y.ZrcN` and `COMPOSE_PROJECT_NAME=lado-lado-rc-install`; the link opens
+in the browser, the UI answers, and the link it prints for the phone opens on a phone of
+the same Wi-Fi. Run the same line again: it says the RC is installed, rewrites nothing and
+opens the same link. Then remove it:
+
+```
+cd /tmp/lado-rc-install && docker compose down -v
+cd / && rm -rf /tmp/lado-rc-install
+```
+
+On Windows 11 with Docker Desktop (the human, by hand: CI has no Windows with Linux
+containers), in PowerShell:
+
+```
+irm https://github.com/ladohq/lado/releases/download/vX.Y.ZrcN/install.ps1 | iex
+```
+
+With no Ubuntu in WSL it offers `wsl --install -d Ubuntu` and says to run it again after
+Ubuntu's first start; with Docker Desktop's WSL integration off for Ubuntu it names
+Settings → Resources → WSL integration; with it on, it asks install.sh's questions in
+PowerShell, LADO's link opens in Windows' browser and the UI answers; the phone's link
+(`<windows name>.local`) opens on a phone of the same Wi-Fi. Then, in Ubuntu: `cd
+~/lado-docker && docker compose down -v`, and `rm -rf ~/lado-docker`.
+
 ### 4.6 The image's update (the first RC of a cycle)
 
 On one machine, as in 4.5 (a fresh terminal, a test workspace), from the last
@@ -417,6 +451,12 @@ GitHub release with `gh release create` (the runner's own `gh`, the job's token 
 - it attaches the tag's `docker/compose.yaml` as the asset `compose.yaml`, which the
   install guide downloads from `releases/latest/download/compose.yaml` (docs/install.md,
   Docker): the newest final's file. An RC's is on its own release page.
+- it attaches the Docker installers `install.sh` and `install.ps1`: the tag's
+  `docker/install.sh` and `docker/install.ps1` with their version placeholder replaced by
+  the tag's version (`scripts/stamp_installers.py`, a step before, which fails the job when
+  a placeholder is lost or doubled). Each installs its own version's `compose.yaml` and
+  image, so README's `releases/latest/download/install.sh` installs the newest final, and
+  an RC's installs the RC.
 
 Run `python3 scripts/release_notes.py <tag>` in the repository's root to see the notes
 before tagging. When the job fails after PyPI took the release (GitHub down), rerun the

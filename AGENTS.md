@@ -95,7 +95,8 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   `agent_helpers.py`, `real_clis.py`, `fake_endpoint.py`, `leftovers.py` shared helpers.
 - `scripts/`: the test-run lock and groups, CI's smoke and container cells, release checks,
   the secret field's font.
-- `docker/`: LADO's image (`Dockerfile`, `compose.yaml`, entrypoint, profile).
+- `docker/`: LADO's image (`Dockerfile`, `compose.yaml`, entrypoint, profile) and its
+  one-line installers (`install.sh`, `install.ps1` for Windows).
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
 ## How agents talk

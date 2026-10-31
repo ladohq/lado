@@ -11,7 +11,7 @@
 #
 #   & ([scriptblock]::Create((irm https://github.com/ladohq/lado/releases/latest/download/install.ps1))) -Yes
 #
-# The guide: https://github.com/ladohq/lado/blob/main/docs/install.md#windows. The release
+# The guide: https://github.com/ladohq/lado/blob/main/docs/install.md#docker-on-windows. The release
 # stamps its version below (scripts/stamp_installers.py); the repository's copy has none.
 param([switch]$Yes, [switch]$Phone, [switch]$NoPhone)
 

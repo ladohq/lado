@@ -657,6 +657,7 @@ def start_session(
     title: str | None = None,
     project: str | None = None,
     repo_name: str | None = None,
+    wait_for_login: bool = False,
 ) -> Started:
     """Start a session whose agents come from `kit_names` (default: the "default" kit), minus
     the `without` items ("agent:x", "skill:y", "mcp:z"). A new session's supervisor may get
@@ -675,7 +676,12 @@ def start_session(
     With `project` (lado.projects) the folder is its repository `repo_name` (`path` None),
     the default name `<project>-<repo_name>`, and a session of that name must be of that
     project: a session's project never changes, and a resume keeps it. Without one, a new
-    session inside LADO's projects/ is refused (projects.refusal); a resume is not."""
+    session inside LADO's projects/ is refused (projects.refusal); a resume is not.
+
+    A new session, and a resume by hand, whose supervisor's CLI needs a login and has none
+    are refused (check_login); a resume LADO makes by itself (`reason` AT_START, or
+    `wait_for_login`: lado update's `lado start --wait-for-login`) starts the supervisor
+    waiting for the login."""
     from lado import projects  # lado.projects builds on this module
 
     if kit_names is not None and not kit_names:
@@ -745,8 +751,12 @@ def start_session(
         layers = agent_layers(sess.project)
     base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
-    if not old:  # a resume waits for the login instead (_held_for_login)
+    if not old:
         check_login(agent_cli, base_env, logins.SESSION)
+    elif not (wait_for_login or reason == AT_START):
+        # A resume by hand; LADO's own (the container's start, lado update) waits for the
+        # login instead (_held_for_login).
+        check_login(agent_cli, base_env, logins.RESUME)
     agent = state.Agent(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
@@ -2990,10 +3000,10 @@ def _log_notes(agent: state.Agent, notes: Iterable[str]) -> None:
 
 
 def check_login(agent_cli: providers.Provider, base_env: dict[str, str], what: str) -> None:
-    """Refuse a new session or worker (`what`, logins.SESSION or WORKER) of `agent_cli`
-    whose CLI needs a login and has none in `base_env`, the environment it would start
-    from; called before anything of it is stored or made. A resumed agent waits instead
-    (_held_for_login)."""
+    """Refuse a new session or worker, or a resume by hand (`what`, logins.SESSION, WORKER
+    or RESUME) of `agent_cli` whose CLI needs a login and has none in `base_env`, the
+    environment it would start from; called before anything of it is stored or made. An
+    agent LADO resumes by itself waits instead (_held_for_login)."""
     if reason := logins.refusal(agent_cli, base_env, what):
         raise NotLoggedIn(reason)
 

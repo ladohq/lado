@@ -602,12 +602,15 @@ class _Update:
     def _resume(
         self, sessions: list[state.Session], server: tuple[str, int] | None
     ) -> list[state.Session]:
-        """Resume the sessions, then the UI server, with the installed `lado`'s public
-        commands; the sessions that resumed (the others go to `failed`)."""
+        """Resume the sessions, then the UI server, with the installed `lado`'s commands;
+        the sessions that resumed (the others go to `failed`). A supervisor whose CLI has
+        no login waits for it (`--wait-for-login`), as at the container's start."""
         resumed, self.failed = [], []
         for sess in sessions:
             code = _run(
-                self.binary, self.say, "start", sess.repo, "--name", sess.name, "--no-attach"
+                self.binary,
+                self.say,
+                *("start", sess.repo, "--name", sess.name, "--no-attach", "--wait-for-login"),
             )
             if code:
                 self.say(

@@ -76,6 +76,29 @@ def test_start_logs_that_lado_recorded_claude_codes_trust_and_says_nothing(
     assert log.count(f"s: supervisor: {claude_config.note(repo)}") == 1
 
 
+def test_start_refuses_a_resume_by_hand_without_the_login(repo, fake_tmux, cli_logins, capsys):
+    start = ["start", str(repo), "--name", "s", "--provider", "claude", "--no-attach"]
+    assert main(start) == 0
+    assert main(["stop", "s"]) == 0
+    cli_logins.logged_out()
+    capsys.readouterr()
+    assert main(["start", str(repo), "--name", "s", "--no-attach"]) == 1
+    assert "Claude Code is not logged in, so the session was not resumed: " in (
+        capsys.readouterr().err
+    )
+    assert state.get_session("s").stopped_at
+    # LADO's own resume (lado update) waits for the login instead.
+    assert main(["start", str(repo), "--name", "s", "--no-attach", "--wait-for-login"]) == 0
+    assert "Claude Code is not logged in: " in capsys.readouterr().err
+    assert state.get_agent("s", "supervisor").status == state.WAITING
+
+
+def test_start_does_not_list_the_wait_for_login(capsys):
+    with pytest.raises(SystemExit):
+        main(["start", "--help"])
+    assert "--wait-for-login" not in capsys.readouterr().out
+
+
 def test_start_without_provider_says_which_it_took_and_why(repo, fake_tmux, capsys):
     assert main(["start", str(repo), "--name", "a", "--provider", "opencode", "--no-attach"]) == 0
     assert "provider:" not in capsys.readouterr().out  # given, not chosen

@@ -96,6 +96,7 @@ def cmd_start(args: argparse.Namespace) -> int:
             prompt=args.prompt_text,
             project=args.project,
             repo_name=args.repo,
+            wait_for_login=args.wait_for_login,
         )
     except Exception as exc:
         _sources_warning(unless_in=str(exc))  # a kit not found says it already
@@ -1659,6 +1660,9 @@ def main(argv: list[str] | None = None) -> int:
         help="the first message from a file; - reads it from stdin",
     )
     start.add_argument("--no-attach", action="store_true", help="do not attach to the session")
+    # LADO's own resume (lado update): the supervisor waits for its CLI's login, where a
+    # resume by hand is refused. Not for the human, so not listed.
+    start.add_argument("--wait-for-login", action="store_true", help=argparse.SUPPRESS)
     start.set_defaults(func=cmd_start, start_parser=start)
 
     kits_cmd = commands.add_parser(

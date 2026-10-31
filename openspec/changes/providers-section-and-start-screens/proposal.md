@@ -41,7 +41,8 @@ On the way: the screenshot of item 4 shows "session loop not running" for that s
 The loop starts right after the agent's window and waits for no hook, and nothing an agent
 does before its first hook ends it; the status is read anew every 3 s. So it is not a
 consequence of the bypass screen but a separate fault of the loop's process on the
-human's Mac (its reason is in `~/.lado/loop.log`); named to the human in question #2078.
+human's Mac (its reason is in `~/.lado/loop.log`); named to the human in question #2078
+and filed as LAD-165.
 
 The human's decisions:
 
@@ -140,8 +141,8 @@ only what is used (no new setting, no schema change).
 
 - Answering the CLIs' permission requests and questions during work from the UI: the
   human decided not to take it and not to file a task.
-- "session loop not running" on the human's Mac: a separate fault (see Why); a task for it
-  only on the human's yes (question #2078).
+- "session loop not running" on the human's Mac: a separate fault (see Why), filed as
+  LAD-165 on the human's yes (question #2078).
 - `lado doctor` and the System panel: they keep their full text, which the section no
   longer copies.
 - The New session window's `GET /api/providers`, which reads the CLIs anew too: not named

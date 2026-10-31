@@ -52,7 +52,8 @@ an inline notice only.
 "session loop not running" on the screenshot is not caused by the agent stuck on the
 bypass screen: the loop starts right after the window and waits for no hook; nothing an
 agent does before its first hook ends it, and the status is read anew every 3 s. It is a
-separate fault on the human's Mac (its reason in `~/.lado/loop.log`), out of this change.
+separate fault on the human's Mac (its reason in `~/.lado/loop.log`), out of this change:
+LAD-165.
 
 ## How it is built
 

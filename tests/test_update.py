@@ -626,9 +626,7 @@ def test_a_loop_that_does_not_end_stops_the_update_before_the_installer(
         f"lado: the session loop of s did not end; see {state.home() / 'loop.log'}; nothing "
         "was upgraded. Resuming the sessions:\n"
     )
-    assert calls.read_text().splitlines() == [
-        f"start {repo} --name s --no-attach --wait-for-login"
-    ]
+    assert calls.read_text().splitlines() == [f"start {repo} --name s --no-attach --wait-for-login"]
 
 
 def test_ls_and_update_name_the_sessions_an_unfinished_update_left_stopped(

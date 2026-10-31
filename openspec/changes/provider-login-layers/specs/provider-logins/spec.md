@@ -7,9 +7,7 @@ command run in the environment LADO's agents of that CLI get without a project
 (`claude auth status --json`, `codex login status`, `opencode auth list`, `kilo auth
 list`), within a time limit, and SHALL NOT read the screen of any agent. A command that
 fails, times out or prints what LADO cannot read SHALL give the state `unknown` with why,
-never "not logged in". Claude Code's method SHALL be named by how the human pays:
-"Subscription (<Plan>)" for its account login, "Subscription (token)", "Pay per use (API
-key)", "Pay per use (Console)".
+never "not logged in".
 
 #### Scenario: Claude Code with a subscription
 - **WHEN** `claude auth status --json` prints `loggedIn: true`, `authMethod: "claude.ai"`
@@ -22,11 +20,6 @@ key)", "Pay per use (Console)".
   `authMethod: "oauth_token"`
 - **THEN** the state is logged in, the method "Subscription (token)", and the source the
   variable `CLAUDE_CODE_OAUTH_TOKEN` from LADO's secrets
-
-#### Scenario: Claude Code with an API key
-- **WHEN** the status prints `authMethod: "api_key"` and `apiKeySource:
-  "ANTHROPIC_API_KEY"`
-- **THEN** the state is logged in and the method "Pay per use (API key)"
 
 #### Scenario: Claude Code not logged in
 - **WHEN** the status prints `loggedIn: false` and exits 1
@@ -46,14 +39,10 @@ key)", "Pay per use (Console)".
 
 Settings' section Providers and environment SHALL show, for each agent CLI LADO knows, its
 name, its version, a dot and one state line ("Logged in · <method> · <where from>",
-"Not logged in", "No login" or "Unknown: <why>"), where "where from" is the layer of the
-login variable (LADO's secret, the outside folder, the login shell) or the CLI's own
-login file; then the live agents that wait for its login, the projects that set one of
-its login variables (by id), the provider's note, and at most one button: "Log in…"
-without a login (the primary button when its agents need one), "Change login…" with one,
-none for a CLI with no way to log in from the page. It SHALL be read when it opens, after
-each of its actions and on "Check again", with `lado doctor`'s provider checks under the
-rows.
+"Not logged in", "No login" or "Unknown: <why>"), then the live agents that wait for its
+login, the projects that set a login variable of it and the provider's note.
+It SHALL be read when it opens, after each of its actions and on "Check again", with
+`lado doctor`'s provider checks under the rows.
 
 #### Scenario: A new user in Docker
 - **WHEN** Claude Code is installed and not logged in, and a session's supervisor waits for
@@ -127,13 +116,10 @@ Log out.
 
 ### Requirement: A CLI's login variables can be set as LADO's secrets
 
-Claude Code's sheet SHALL ask "How do you pay for Claude?" with the provider's choices,
-the current one marked: "Subscription — Claude Pro or Max" (a token made with `claude
-setup-token`, `CLAUDE_CODE_OAUTH_TOKEN`) and "Pay per use — API billing" (an API key,
-`ANTHROPIC_API_KEY`), each with a secret field. Save SHALL write the value to
-`<LADO_HOME>/secrets/<NAME>` (folder 700, file 600, atomically) and remove the provider's
-other login variables from LADO's secrets. No answer of LADO SHALL contain the value, and
-the server SHALL refuse a name no provider names as its login.
+The sheet's Save SHALL write a login variable's value to `<LADO_HOME>/secrets/<NAME>`
+(folder 700, file 600, atomically) and remove the provider's other login variables from
+LADO's secrets. No answer of LADO SHALL contain the value, and the server SHALL refuse a
+name no provider names as its login.
 
 #### Scenario: A token saved
 - **WHEN** the human saves a token under Subscription
@@ -198,3 +184,39 @@ it comes from when logged in, `warn` for a CLI whose agents need a login and hav
 - **WHEN** LADO's secrets hold `CLAUDE_CODE_OAUTH_TOKEN`
 - **THEN** `lado doctor` prints `[ok] Claude Code login: Subscription (token) · LADO's
   secret`
+
+## ADDED Requirements
+
+### Requirement: Claude Code's login method says how the human pays
+
+Claude Code's method SHALL be named by how the human pays: "Subscription (<Plan>)" for
+its account login, "Subscription (token)", "Pay per use (API key)", "Pay per use
+(Console)".
+
+#### Scenario: Claude Code with an API key
+- **WHEN** the status prints `authMethod: "api_key"` and `apiKeySource:
+  "ANTHROPIC_API_KEY"`
+- **THEN** the state is logged in and the method "Pay per use (API key)"
+
+### Requirement: Each CLI's row has at most one login button
+
+Each CLI's row in Providers and environment SHALL have at most one button: "Log in…"
+without a login (the primary button when its agents need one), "Change login…" with one,
+none for a CLI with no way to log in from the page; the secret fields and the actions are
+in the sheet it opens.
+
+#### Scenario: Logged in
+- **WHEN** Claude Code is logged in by a token of LADO's secrets
+- **THEN** its row has the one button "Change login…" and no field
+
+### Requirement: Claude Code's sheet asks how the human pays
+
+Claude Code's sheet SHALL ask "How do you pay for Claude?" with the provider's choices,
+the current one marked: "Subscription — Claude Pro or Max" (a token made with `claude
+setup-token`, `CLAUDE_CODE_OAUTH_TOKEN`) and "Pay per use — API billing" (an API key,
+`ANTHROPIC_API_KEY`), each with a secret field.
+
+#### Scenario: The current choice
+- **WHEN** `CLAUDE_CODE_OAUTH_TOKEN` is LADO's secret and the human chooses "Change login…"
+- **THEN** the sheet asks "How do you pay for Claude?" with "Subscription — Claude Pro or
+  Max" chosen and marked current, and a secret field for the token

@@ -402,11 +402,13 @@ export const deleteSecret = (id: string, name: string) =>
 // Settings → Providers and environment: each agent CLI's login (docs/design/ui.md).
 export type ProvidersPage = components["schemas"]["ProvidersPage"];
 export type ProviderLogins = components["schemas"]["ProviderLogins"];
-export type CheckInfo = components["schemas"]["CheckInfo"];
-
 const providerPath = (name: string) => `/api/providers/${encodeURIComponent(name)}`;
 
+// The rows of the server's last check of the CLIs, at once; a check runs while `checking`.
 export const getProviderLogins = () => get<ProvidersPage>("/api/providers/logins");
+
+// Start a check of every CLI unless one runs; the rows kept meanwhile.
+export const checkProviders = () => post<ProvidersPage>("/api/providers/check");
 
 // Open the CLI's login window running `action` (the one open is kept), or end it.
 export const openLogin = (name: string, action: string) =>

@@ -477,6 +477,7 @@ export function claudeRow(more: Partial<ProviderLogins> = {}): ProviderLogins {
     ],
     projects: [],
     window: false,
+    ready: true,
     ...more,
   };
 }

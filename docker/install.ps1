@@ -15,6 +15,10 @@
 # stamps its version below (scripts/stamp_installers.py); the repository's copy has none.
 param([switch]$Yes, [switch]$Phone, [switch]$NoPhone)
 
+# The rest runs in a scope of its own (the block below, not indented): `irm | iex` runs
+# this text in the human's own scope, where its strict mode, its 'Stop' and its functions
+# would stay in their window after the install.
+& {
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
@@ -23,21 +27,21 @@ $LadoVersion = ''
 $Desktop = 'https://www.docker.com/products/docker-desktop/'
 $Again = 'irm https://github.com/ladohq/lado/releases/latest/download/install.ps1 | iex'
 $Arrow = [char]0x2192
-$script:ExitCode = 0
-$script:Output = @()
+# Shared by the functions below: the exit code, and the last Test-Native's output.
+$State = @{ ExitCode = 0; Output = @() }
 
 function Stop-Install([string]$Message) {
     throw "lado install: $Message"
 }
 
-# Runs a program quietly: its output in $script:Output, whether it succeeded. Its stderr is
+# Runs a program quietly: its output in $State.Output, whether it succeeded. Its stderr is
 # dropped with 'Continue', since Windows PowerShell 5.1 turns a redirected native stderr
 # line into an error, which 'Stop' would throw.
 function Test-Native([string]$Exe, [string[]]$Arguments) {
     $old = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $script:Output = @(& $Exe @Arguments 2>$null)
+        $State.Output = @(& $Exe @Arguments 2>$null)
         return ($LASTEXITCODE -eq 0)
     } finally {
         $ErrorActionPreference = $old
@@ -79,7 +83,7 @@ function Find-Ubuntu {
     if (-not $listed) {
         Stop-Install 'WSL does not answer, and Docker Desktop needs WSL 2: run wsl --install in an administrator PowerShell, restart, then run this again'
     }
-    $names = @($script:Output | ForEach-Object { ([string]$_ -replace "`0", '').Trim() })
+    $names = @($State.Output | ForEach-Object { ([string]$_ -replace "`0", '').Trim() })
     $found = @($names | Where-Object { $_ -notlike 'docker-desktop*' -and $_ -like 'Ubuntu*' })
     if ($found.Count -gt 0) { return $found[0] }
     return $null
@@ -121,15 +125,16 @@ function Install-Lado {
     Write-Host "Installing LADO $LadoVersion in $Distro..."
     # Not captured: install.sh asks its questions on this console.
     & wsl.exe -d $Distro --cd '~' -- sh -c $Line
-    $script:ExitCode = $LASTEXITCODE
+    $State.ExitCode = $LASTEXITCODE
 }
 
 try {
     Install-Lado
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
-    $script:ExitCode = 1
+    $State.ExitCode = 1
 }
-$global:LASTEXITCODE = $script:ExitCode
+$global:LASTEXITCODE = $State.ExitCode
 # Under irm | iex an exit would close this PowerShell window: only a file run exits.
-if ($PSCommandPath) { exit $script:ExitCode }
+if ($PSCommandPath) { exit $State.ExitCode }
+}

@@ -6,9 +6,12 @@ before a release (docs/release.md)."""
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -62,7 +65,7 @@ def test_it_never_calls_exit_under_iex():
     """`exit` under `irm | iex` would close the human's PowerShell window: only a file run
     (PSCommandPath) exits with the code."""
     exits = [line.strip() for line in code().splitlines() if re.search(r"\bexit\b", line)]
-    assert exits == ["if ($PSCommandPath) { exit $script:ExitCode }"]
+    assert exits == ["if ($PSCommandPath) { exit $State.ExitCode }"]
 
 
 def test_it_uses_no_script_root():
@@ -126,7 +129,101 @@ def test_no_integration_names_the_setting():
     assert "'docker', 'version', '--format', '{{.Server.Version}}'" in TEXT
 
 
-@pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh is not on PATH")
+needs_pwsh = pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh is not on PATH")
+
+
+def pwsh(command: str, *args: str) -> subprocess.CompletedProcess:
+    """`command` in pwsh with a PATH of pwsh alone: no docker, no wsl.exe, as on a Windows
+    without Docker Desktop."""
+    env = {**os.environ, "PATH": str(Path(shutil.which("pwsh")).resolve().parent)}
+    return subprocess.run(
+        ["pwsh", "-NoProfile", "-NonInteractive", *args, "-Command", command],
+        capture_output=True, text=True, timeout=120, env=env,
+    )  # fmt: skip
+
+
+def stamped(tmp_path: Path) -> Path:
+    stamp = ROOT / "scripts" / "stamp_installers.py"
+    subprocess.run([sys.executable, str(stamp), "0.44.0", str(tmp_path)], check=True)
+    return tmp_path / "install.ps1"
+
+
+@needs_pwsh
+def test_iex_leaves_the_humans_powershell_as_it_was():
+    """`irm | iex` runs the text in the caller's own scope: its strict mode, its 'Stop'
+    and its functions would stay in the human's window after the install."""
+    done = pwsh(
+        f"Get-Content -Raw '{SCRIPT}' | Invoke-Expression; "
+        "'EAP=' + $ErrorActionPreference; $x = $undefinedVar; 'STRICT=off'; "
+        "'FUNCTIONS=' + [bool](Get-Command Install-Lado -ErrorAction SilentlyContinue); "
+        "'VARIABLES=' + [bool](Get-Variable LadoVersion -ErrorAction SilentlyContinue)"
+    )
+    out = done.stdout
+    assert "this install.ps1 carries no version" in out, out + done.stderr
+    assert "EAP=Continue" in out and "STRICT=off" in out, out + done.stderr
+    assert "FUNCTIONS=False" in out and "VARIABLES=False" in out, out
+    assert "LASTEXITCODE" not in done.stderr
+
+
+@needs_pwsh
+def test_the_scriptblock_form_takes_the_switches(tmp_path):
+    script = stamped(tmp_path)
+    done = pwsh(
+        f"& ([scriptblock]::Create((Get-Content -Raw '{script}'))) -Yes; 'CODE=' + $LASTEXITCODE"
+    )
+    assert "lado install: Docker Desktop is not installed" in done.stdout, done.stdout + done.stderr
+    assert "CODE=1" in done.stdout
+
+
+FAKE_WSL = r"""
+import json, sys
+args = sys.argv[1:]
+if args == ["-l", "-q"]:  # as WSL answers: UTF-16, Docker Desktop's own first
+    sys.stdout.buffer.write("docker-desktop\r\nUbuntu-24.04\r\n".encode("utf-16-le"))
+elif "docker" in args:
+    print("27.0.0")
+else:
+    with open(LOG, "a") as log:
+        log.write(json.dumps(args) + "\n")
+"""
+
+
+@needs_pwsh
+def test_it_runs_its_install_sh_in_ubuntu_with_the_switches(tmp_path):
+    """On a fake Windows (fake docker and wsl.exe on PATH): Ubuntu is taken, never
+    docker-desktop, and install.sh of its version runs there with the switches' flags."""
+    script, fakes, log = stamped(tmp_path), tmp_path / "fakes", tmp_path / "wsl.jsonl"
+    fakes.mkdir()
+    for name, body in (("docker", "pass"), ("wsl.exe", FAKE_WSL)):
+        (fakes / name).write_text(f"#!{sys.executable}\nLOG = {str(log)!r}\n{body}\n")
+        (fakes / name).chmod(0o755)
+    path = f"{Path(shutil.which('pwsh')).resolve().parent}{os.pathsep}{fakes}"
+    done = subprocess.run(
+        ["pwsh", "-NoProfile", "-NonInteractive", "-Command",
+         f"& ([scriptblock]::Create((Get-Content -Raw '{script}'))) -Yes -Phone"],
+        capture_output=True, text=True, timeout=120, env={**os.environ, "PATH": path},
+    )  # fmt: skip
+    assert "Installing LADO 0.44.0 in Ubuntu-24.04" in done.stdout, done.stdout + done.stderr
+    url = "https://github.com/ladohq/lado/releases/download/v0.44.0/install.sh"
+    assert [json.loads(line) for line in log.read_text().splitlines()] == [
+        ["-d", "Ubuntu-24.04", "--cd", "~", "--", "sh", "-c",
+         f"curl -fsSL '{url}' | sh -s -- --yes --phone"],
+    ]  # fmt: skip
+
+
+@needs_pwsh
+def test_a_file_run_exits_with_the_code(tmp_path):
+    script = stamped(tmp_path)
+    env = {**os.environ, "PATH": str(Path(shutil.which("pwsh")).resolve().parent)}
+    done = subprocess.run(
+        ["pwsh", "-NoProfile", "-NonInteractive", "-File", str(script), "-Yes"],
+        capture_output=True, text=True, timeout=120, env=env,
+    )  # fmt: skip
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "Docker Desktop is not installed" in done.stdout
+
+
+@needs_pwsh
 def test_it_parses():
     check = (
         "$errors = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile("

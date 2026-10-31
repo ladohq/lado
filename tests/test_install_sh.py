@@ -203,10 +203,13 @@ def test_no_docker_on_macos_names_docker_desktop(tmp_path):
     nothing_made(host)
 
 
-def test_no_docker_in_wsl_names_docker_desktop(tmp_path):
+def test_no_docker_in_wsl_names_docker_desktop_and_its_wsl_integration(tmp_path):
+    """In WSL `docker` is there only with Docker Desktop's WSL integration on for this
+    distribution: the usual cause, so it is named beside the download."""
     host = Host(tmp_path / "host", without=("docker",), kernel="5.15.1-microsoft-standard-WSL2")
     done = fails(install(host))
     assert "https://www.docker.com/products/docker-desktop/" in done.err
+    assert "Settings → Resources → WSL integration" in done.err
     nothing_made(host)
 
 
@@ -408,6 +411,13 @@ def test_image_is_written(host):
     found = env_file(host)
     assert found["LADO_IMAGE"] == "lado:local"
     assert found["LADO_VERSION"] == VERSION
+
+
+def test_a_trailing_slash_is_still_the_default_folder(host):
+    assert install(host, "--dir", f"{host.home}/lado-docker/").code == 0
+    assert "COMPOSE_PROJECT_NAME" not in env_file(host)
+    (up,) = host.compose_calls("up")
+    assert up["cwd"] == str(host.home / "lado-docker")
 
 
 def test_the_env_says_who_wrote_it(host):
@@ -721,6 +731,30 @@ def test_phone_added_on_a_rerun(host):
     assert found["LADO_LISTEN"] == "0.0.0.0" and found["LADO_PUBLIC_HOST"] == "192.168.1.23"
     assert found["LADO_VERSION"] == VERSION
     assert "# mine" in (host.home / "lado-docker" / ".env").read_text()
+
+
+def test_image_on_a_rerun_is_written(host):
+    """--image is never dropped: a rerun adds it, its other lines kept."""
+    installed(host, VERSION, "# mine")
+    assert install(host, "--image", "lado:local").code == 0
+    found = env_file(host)
+    assert found["LADO_IMAGE"] == "lado:local" and found["LADO_VERSION"] == VERSION
+    assert "# mine" in (host.home / "lado-docker" / ".env").read_text()
+
+
+def test_image_on_a_rerun_replaces_the_one_there(host):
+    installed(host, "0.43.0", "LADO_IMAGE=old:1")
+    assert install(host, "--image", "new:2").code == 0
+    text = (host.home / "lado-docker" / ".env").read_text()
+    assert "old:1" not in text and text.count("LADO_IMAGE=") == 1
+    assert env_file(host)["LADO_IMAGE"] == "new:2"
+
+
+def test_the_same_image_on_a_rerun_rewrites_nothing(host):
+    folder = installed(host, VERSION, "LADO_IMAGE=lado:local", "# mine")
+    before = (folder / ".env").read_bytes()
+    assert install(host, "--image", "lado:local").code == 0
+    assert (folder / ".env").read_bytes() == before
 
 
 def test_no_phone_removes_both_lines(host):

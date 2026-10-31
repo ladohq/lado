@@ -1363,6 +1363,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `docker-desktop*`) or `wsl --install -d Ubuntu` offered, Docker checked inside it (WSL
   integration), then its release's `install.sh` run there by `wsl.exe -d <distro> -- sh
   -c 'curl … | sh -s -- <flags>'` (`-Yes`, `-Phone`, `-NoPhone`), with the console for
-  its questions; it exits only when run as a file, since `exit` would close the window of
-  `irm | iex`. The Dockerfile's allowlist leaves both out of the image.
+  its questions. All but its `param` runs in a script block of its own (`& { … }`), so
+  under `irm | iex`, which runs the text in the human's scope, its strict mode, its
+  'Stop' and its functions do not stay in their window; it exits only when run as a file,
+  since `exit` would close that window. `install.sh`'s rerun writes `--image` too
+  (`LADO_IMAGE` replaced or added), and `--dir` drops a trailing `/`. The Dockerfile's
+  allowlist leaves both out of the image.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

@@ -116,6 +116,9 @@ check_docker() {
         if [ "$platform" = linux ]; then
             die "Docker is not installed: install Docker Engine (https://docs.docker.com/engine/install/, or curl -fsSL https://get.docker.com | sh), then run this again"
         fi
+        if [ "$platform" = wsl ]; then
+            die "docker is not here in WSL: in Docker Desktop turn on Settings → Resources → WSL integration for this distribution (or install Docker Desktop, $DESKTOP), then run this again"
+        fi
         die "Docker is not installed: install Docker Desktop ($DESKTOP), start it, then run this again"
     fi
     docker compose version >/dev/null 2>&1 ||
@@ -398,17 +401,20 @@ Warning: the agents cannot commit until LADO_GIT_NAME and LADO_GIT_EMAIL are set
     say "Wrote $dir/.env and $dir/compose.yaml for LADO $version."
 }
 
-# .env again in .env.new: every LADO_VERSION line set to $1 (none when empty), and the
-# phone's two lines dropped and, for --phone, added anew; every other line kept.
+# .env again in .env.new: every LADO_VERSION line set to $1 (none when empty); with $2
+# the phone's two lines dropped and, for --phone, added anew; with an image $3 every
+# LADO_IMAGE line replaced by its one; every other line kept.
 rewrite_env() {
-    awk -v ver="$1" -v drop="$2" '
+    awk -v ver="$1" -v drop="$2" -v img="$3" '
         ver != "" && /^[ \t]*LADO_VERSION[ \t]*=/ { print "LADO_VERSION=" ver; next }
         drop && /^[ \t]*LADO_(LISTEN|PUBLIC_HOST)[ \t]*=/ { next }
+        img != "" && /^[ \t]*LADO_IMAGE[ \t]*=/ { next }
         { print }' "$dir/.env" >"$dir/.env.new"
     if [ "$phone" = yes ]; then
         say "LADO_LISTEN=0.0.0.0" >>"$dir/.env.new"
         say "LADO_PUBLIC_HOST=$public_host" >>"$dir/.env.new"
     fi
+    if [ -n "$3" ]; then say "LADO_IMAGE=$(quoted "$3")" >>"$dir/.env.new"; fi
 }
 
 rerun() {
@@ -429,10 +435,12 @@ rerun() {
     if [ -n "$new" ] || [ ! -f "$dir/compose.yaml" ]; then
         fetch_compose
     fi
-    if [ -n "$new" ] || [ -n "$phone" ]; then
+    new_image=''
+    if [ -n "$image" ] && [ "$(env_value LADO_IMAGE)" != "$image" ]; then new_image=$image; fi
+    if [ -n "$new" ] || [ -n "$phone" ] || [ -n "$new_image" ]; then
         drop=0
         if [ -n "$phone" ]; then drop=1; fi
-        rewrite_env "$new" $drop
+        rewrite_env "$new" $drop "$new_image"
     fi
     if [ -n "$new" ] && [ -f "$dir/compose.yaml" ]; then
         cp "$dir/compose.yaml" "$dir/compose.yaml.bak"
@@ -519,6 +527,8 @@ main() {
     notes='' warned=''
     dir=${dir:-$HOME/lado-docker}
     case $dir in /*) ;; *) dir=$PWD/$dir ;; esac
+    # ~/lado-docker/ is ~/lado-docker, not a second LADO's folder.
+    while [ "$dir" != / ] && [ "${dir%/}" != "$dir" ]; do dir=${dir%/}; done
     trap 'rm -f "$dir/.env.new" "$dir/compose.yaml.new"' EXIT
     find_project
     check_other_folder

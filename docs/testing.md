@@ -203,7 +203,12 @@ links to the base tools and fake `docker`, `curl`, `git`, `uname` and friends th
 their argv and `LADO_*`/`COMPOSE_*` and answer from per-test settings; `sleep` returns at
 once), its questions through a pty driven by a process of its own (forking a
 multi-threaded pytest worker may deadlock); `tests/test_install_ps1.py` reads
-`install.ps1` and, with `pwsh` on PATH, parses it.
+`install.ps1` and, with `pwsh` on PATH (GitHub's Ubuntu runners), parses it and runs it:
+under `Invoke-Expression` it leaves the caller's `$ErrorActionPreference`, strict mode and
+functions as they were, its script-block form takes the switches, a file run exits with its
+code, and with fake `docker` and `wsl.exe` on PATH it runs its version's `install.sh` in
+Ubuntu (never `docker-desktop`) with the switches' flags. Its behaviour on a real Windows
+is checked by hand (docs/release.md).
 The secrets folder (`test_secrets.py`; only fake values): compose with no `LADO_SECRETS`
 and no folder starts, `lado doctor` exits 0 with `[info] … /run/secrets: none` and the hint
 naming `LADO_SECRETS=./secrets`, a Claude Code session reaches idle, and `docker compose

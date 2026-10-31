@@ -101,13 +101,36 @@ def test_the_login_shell_runs_once_per_check(reads):
     assert len(reads.shells) == 1
 
 
-def test_start_twice_runs_one_check(reads):
+def test_start_twice_runs_one_check_at_a_time_and_one_more_after_it(reads):
+    """What changed while a check ran (a login window's end) is read by the next one: a
+    check asked for meanwhile runs once after it, however often it was asked."""
     assert provider_check.start()
     assert not provider_check.start()
+    assert not provider_check.start()
+    _until(lambda: len(reads.shells) == 1, "the first check's shell")
+    reads.release()
+    _until(_done, "the checks' end")
+    assert len(reads.shells) == 2
+    assert provider_check.start()  # the next one, once they ended
+    _until(_done, "the last check's end")
+    assert len(reads.shells) == 3
+
+
+def test_a_row_put_during_a_check_is_not_replaced_by_its_older_read(reads):
+    """A saved token's row, read after the running check read that CLI, stays."""
+    provider_check.start()
+    _until(lambda: len(reads.shells) == 1, "the check's start")
+    saved = provider_check._row(
+        provider_check._bare_info(providers.get("claude"), True),
+        providers.get("claude"),
+        "saved",
+        ready=True,
+    )
+    provider_check.put(saved)
     reads.release()
     _until(_done, "the check's end")
-    assert len(reads.shells) == 1
-    assert provider_check.start()  # the next one, once it ended
+    assert _rows()["claude"].login.problem == "saved"
+    assert _rows()["codex"].login.problem == "read codex"
 
 
 def test_a_failing_provider_does_not_stop_the_check(reads, monkeypatch):

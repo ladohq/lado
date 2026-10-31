@@ -146,8 +146,9 @@ def _read_prompt(args: argparse.Namespace) -> str | None:
 
 
 def _start_clone(args: argparse.Namespace) -> int:
-    """`lado start <git-url> [<folder>] [--branch NAME]`: check the folder and the name,
-    clone, then start in the clone as `lado start <folder>` does."""
+    """`lado start <git-url> [<folder>] [--branch NAME]`: check the folder, the name and
+    the login of the provider when it is known (runtime.check_start_login), clone, then
+    start in the clone as `lado start <folder>` does."""
     url = args.path
     folder = runtime.full_path(args.folder) if args.folder else str(clone.default_folder(url))
     target = clone.check_target(url, folder)
@@ -159,6 +160,7 @@ def _start_clone(args: argparse.Namespace) -> int:
             print(f"lado: To start a session in it as it is: lado start {folder}", file=sys.stderr)
         return 1
     runtime.check_name(runtime.slug(args.name or Path(folder).name), folder)
+    runtime.check_start_login(args.provider, None)
     cancelled = _cloned(
         url, folder, args.branch, lambda shown: clone.clone(url, folder, args.branch, shown)
     )
@@ -208,10 +210,12 @@ def _cloned(
 
 def _start_new(args: argparse.Namespace) -> int:
     """`lado start --new [<folder>]`: make a new or empty folder a repository with an empty
-    first commit (lado.scratch), then start in it as `lado start <folder>` does."""
+    first commit (lado.scratch), then start in it as `lado start <folder>` does; refused
+    first, as the clone is, for a provider without its login."""
     if clone.is_url(args.path) or args.folder or args.branch:
         args.start_parser.error("--new takes a folder, not a git URL or a second folder")
     folder = os.path.abspath(os.path.expanduser(args.path))
+    runtime.check_start_login(args.provider, None)
     scratch.make(folder, runtime.slug(args.name or Path(folder).name))
     print(f"Made {folder} a git repository with an empty first commit")
     args.path, args.new = folder, False

@@ -699,7 +699,9 @@ export interface paths {
         };
         /**
          * List Providers
-         * @description LADO's providers and whether each one's CLI can run here, checked anew.
+         * @description LADO's providers and whether each one's CLI can run here, checked anew, and
+         *     whether it lacks the login its agents need, read for the agents of `project` (404
+         *     for an unknown one) or of no project.
          */
         get: operations["list_providers_api_providers_get"];
         put?: never;
@@ -2735,6 +2737,11 @@ export interface components {
             tested_version: string;
             /** Warning */
             warning: string;
+            /**
+             * Login Missing
+             * @default false
+             */
+            login_missing: boolean;
         };
         /**
          * ProviderLogins
@@ -4933,7 +4940,9 @@ export interface operations {
     };
     list_providers_api_providers_get: {
         parameters: {
-            query?: never;
+            query?: {
+                project?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4947,6 +4956,22 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderInfo"][];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

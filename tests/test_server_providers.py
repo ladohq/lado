@@ -242,8 +242,10 @@ def test_a_login_window_needs_a_known_action(client, windows):
 def test_the_row_names_waiting_and_running_agents_and_projects(
     client, cli_logins, windows, repo, fake_tmux, tmp_path, monkeypatch
 ):
-    cli_logins.logged_out()
     runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.stop_session("s")
+    cli_logins.logged_out()
+    runtime.start_session(str(repo), "s", None)  # a resume waits for the login
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
     projects.create("shop", None)
     projects.set_secret("shop", TOKEN, "canary-4")

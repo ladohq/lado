@@ -451,6 +451,10 @@ class ProviderInfo(BaseModel):
     detail: str  # its `--version` line, or why there is none
     tested_version: str
     warning: str  # "" unless its version is not the tested one
+    # Its agents need a login and it has none, in the environment of the agents of the
+    # project asked for (or of none): a new session or worker of it is refused
+    # (lado.logins.refusal). False when the login cannot be read.
+    login_missing: bool = False
 
 
 class LoginInfo(BaseModel):
@@ -502,7 +506,7 @@ class ProviderLogins(BaseModel):
 
     cli: ProviderInfo
     login: LoginInfo
-    needs_login: bool  # its agents wait for a login (Capabilities.needs_login)
+    needs_login: bool  # its agents need a login (Capabilities.needs_login)
     actions: list[LoginActionInfo]  # the login window's commands
     question: str  # what the login sheet asks (Provider.login_question); "" for none
     choices: list[LoginChoiceInfo]  # its answers, each a value to paste

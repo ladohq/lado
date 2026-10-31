@@ -327,8 +327,10 @@ export const cancelCloneOnLeave = (id: string) =>
 export const getKits = (where: string | null) =>
   get<KitInfo[]>(where ? `/api/kits?${query({ where })}` : "/api/kits");
 
-// LADO's providers, each one's CLI checked anew.
-export const getProviders = () => get<ProviderInfo[]>("/api/providers");
+// LADO's providers, each one's CLI checked anew, and whether it lacks the login its agents
+// need, read for the agents of `project` (or of none).
+export const getProviders = (project: string | null = null) =>
+  get<ProviderInfo[]>(project ? `/api/providers?${query({ project })}` : "/api/providers");
 
 // What the session's head shows besides its settings: its repository, its kits' and its
 // provider's versions as installed now; read anew by the server each time.

@@ -24,6 +24,33 @@ def test_the_wait_reason_names_settings_and_the_first_login_variable():
     )
 
 
+def test_a_cli_that_needs_a_login_and_has_none_is_refused(cli_logins):
+    cli_logins.logged_out()
+    assert logins.refusal(CLAUDE, {}, logins.SESSION) == (
+        "Claude Code is not logged in, so the session was not started: log in in LADO's UI "
+        "(Settings → Providers and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN "
+        "as LADO's secret or a project secret"
+    )
+    assert logins.refusal(CLAUDE, {}, logins.WORKER) == (
+        "Claude Code is not logged in, so the worker was not started: ask the human to log "
+        "in in Settings → Providers and environment, or start the worker with another provider"
+    )
+    # Read in the environment given, the one the agent would start from.
+    cli_logins.calls.clear()
+    logins.refusal(CLAUDE, {"MARK": "1"}, logins.SESSION)
+    assert [env["MARK"] for _, env in cli_logins.calls] == ["1"]
+
+
+def test_a_login_an_unknown_one_or_no_need_refuses_nothing(cli_logins):
+    cli_logins.logged_in()
+    assert logins.refusal(CLAUDE, {}, logins.SESSION) is None
+    cli_logins.answer("claude", "`claude auth status --json` timed out after 10 s")
+    assert logins.refusal(CLAUDE, {}, logins.SESSION) is None
+    cli_logins.logged_out()
+    for name in ("codex", "kilo", "opencode"):
+        assert logins.refusal(providers.get(name), {}, logins.WORKER) is None
+
+
 def _agent(session, name, provider="claude", status=state.STARTING):
     return state.Agent(session, name, "role", "/r", None, None, status, provider)
 

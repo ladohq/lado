@@ -24,7 +24,7 @@ Every input line is a command, after an optional "[from <name>] ":
                        as {"sh": {command, code}} in "seen")
     tools              write the names of the LADO MCP tools it listed at start to "seen"
                        ("tools")
-    spawn <task>       call the LADO MCP tool spawn_worker
+    spawn <task>       call the LADO MCP tool spawn_worker; "seen" gets its text ("spawn_text")
     finish <name> [discard]  call the LADO MCP tool finish_worker
     flow_start <flow> <task>  call the LADO MCP tool flow_start
     spawnrun <run>     call the LADO MCP tool spawn_worker for a flow run
@@ -388,6 +388,7 @@ def work(text: str) -> bool:
             report(tools=lado_mcp.tools)
         elif command[0] == "spawn":
             call_tool("spawn_worker", {"task": " ".join(command[1:])})
+            report(spawn_text=[c.get("text") for c in lado_mcp.last_content])
         elif command[0] == "finish":
             call_tool("finish_worker", {"name": command[1], "discard": command[2:] == ["discard"]})
         elif command[0] == "flow_start":

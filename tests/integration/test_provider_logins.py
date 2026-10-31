@@ -45,9 +45,13 @@ def wait_status(expected: str, agent: str = "supervisor") -> None:
     agent_helpers.wait_for(lambda: status(agent) == expected, f"{agent} {expected}", SESSION)
 
 
-def environ(agent: str = "supervisor") -> dict[str, str]:
+def seen(agent: str = "supervisor") -> dict:
     path = agent_helpers.fake_logs(SESSION, agent) / "seen.json"
-    return json.loads(path.read_text()).get("environ", {}) if path.exists() else {}
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def environ(agent: str = "supervisor") -> dict[str, str]:
+    return seen(agent).get("environ", {})
 
 
 def lado_ls() -> str:
@@ -56,8 +60,61 @@ def lado_ls() -> str:
     ).stdout
 
 
+def stopped_logged_out(repo, marker) -> None:
+    """SESSION of PROVIDER started while logged in, stopped, its login gone since: a new one
+    is refused, a resume waits for the login (openspec change refuse-start-without-login)."""
+    marker.write_text("logged in")
+    runtime.start_session(str(repo), SESSION, None, PROVIDER)
+    runtime.stop_session(SESSION)
+    marker.unlink()
+
+
+def test_a_new_session_without_a_login_is_refused_by_lado_start(repo, marker):
+    found = subprocess.run(
+        fake_provider.lado_command(
+            "start", str(repo), "--name", SESSION, "--provider", PROVIDER, "--no-attach"
+        ),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert found.returncode == 1, found.stderr
+    assert found.stderr.splitlines() == [
+        "lado: Fake agent is not logged in, so the session was not started: log in in LADO's UI "
+        "(Settings → Providers and environment, `lado ui`), or set FAKE_AGENT_TOKEN as LADO's "
+        "secret or a project secret"
+    ]
+    assert state.get_session(SESSION) is None
+    assert not tmux.has_session(SESSION)
+    assert not (state.home() / "agents" / SESSION).exists()
+
+
+def test_a_supervisor_spawning_a_worker_without_a_login_gets_the_refusal(repo, marker):
+    marker.write_text("logged in")
+    runtime.start_session(str(repo), SESSION, None, PROVIDER)
+    wait_status(state.IDLE)
+    marker.unlink()
+    runtime.send_message(SESSION, "human", "supervisor", "spawn sleep 0")
+    agent_helpers.wait_for(
+        lambda: "spawn_text" in seen(),
+        "the spawn's answer",
+        SESSION,
+    )
+    [text] = seen()["spawn_text"]
+    assert text.endswith(
+        "Fake agent is not logged in, so the worker was not started: ask the human to log in "
+        "in Settings → Providers and environment, or start the worker with another provider"
+    ), text
+    assert [a.name for a in state.list_agents(SESSION)] == ["supervisor"]
+    assert runtime.git(str(repo), "branch", "--list", f"lado/{SESSION}/*") == ""
+    assert not (repo / ".lado" / "worktrees" / SESSION).exists()
+    runtime.stop_session(SESSION)
+
+
 def test_an_agent_without_a_login_waits_then_starts_by_itself(repo, marker):
-    started = runtime.start_session(str(repo), SESSION, None, PROVIDER)
+    stopped_logged_out(repo, marker)
+    started = runtime.start_session(str(repo), SESSION, None)  # a resume
+    assert started.resumed
     assert started.warnings == [reason()]
     assert status() == state.WAITING
     assert runtime.status_reasons(SESSION) == {"supervisor": reason()}
@@ -65,8 +122,9 @@ def test_an_agent_without_a_login_waits_then_starts_by_itself(repo, marker):
     info = models.agent_info(state.get_agent(SESSION, "supervisor"))
     assert info.login_wait == PROVIDER
     # Its window waits: it checks every few seconds, and nothing else happens meanwhile.
+    seen_before = environ()
     time.sleep(logins.POLL + 0.5)
-    assert status() == state.WAITING and environ() == {}
+    assert status() == state.WAITING and environ() == seen_before
 
     marker.write_text("logged in")
     wait_status(state.IDLE)  # its first hook came, with no restart
@@ -78,7 +136,8 @@ def test_an_agent_without_a_login_waits_then_starts_by_itself(repo, marker):
 
 
 def test_a_lado_secret_saved_meanwhile_reaches_the_waiting_agent(repo, marker):
-    runtime.start_session(str(repo), SESSION, None, PROVIDER)
+    stopped_logged_out(repo, marker)
+    runtime.start_session(str(repo), SESSION, None)
     assert status() == state.WAITING
     project_secrets.write_lado(fake_provider.TOKEN, VALUE)
     wait_status(state.IDLE)
@@ -137,13 +196,15 @@ def test_a_projects_login_wins_whole(repo, marker, tmp_path, monkeypatch):
 
 def test_a_login_it_cannot_read_never_holds_the_agent(repo, marker, monkeypatch):
     monkeypatch.setenv("FAKE_AGENT_LOGIN_STATUS", "unknown")
-    started = runtime.start_session(str(repo), SESSION, None, PROVIDER)
+    started = runtime.start_session(str(repo), SESSION, None, PROVIDER)  # nor refuses it
     assert started.warnings == [
         "cannot tell whether Fake agent is logged in: `fake auth status` timed out; the agent "
         "starts all the same"
     ]
     assert status() != state.WAITING
     wait_status(state.IDLE)
+    runtime.spawn_worker(SESSION, "sleep 0", name="w1")
+    wait_status(state.IDLE, "w1")
     runtime.stop_session(SESSION)
 
 
@@ -163,7 +224,8 @@ WINDOW = "fake-window"  # logs in by its own command, like OpenCode
 
 def test_a_login_window_runs_the_login_with_the_agents_environment_then_ends(repo, marker):
     provider = providers.get(WINDOW)
-    runtime.start_session(str(repo), SESSION, None, PROVIDER)  # it waits for the login
+    stopped_logged_out(repo, marker)
+    runtime.start_session(str(repo), SESSION, None)  # resumed, it waits for the login
     name = logins.open_window(provider, "login")
     assert logins.open_window(provider, "login") == name  # one per provider
     assert logins.open_windows() == {WINDOW: name}

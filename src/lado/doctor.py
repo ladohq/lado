@@ -138,7 +138,10 @@ def login_check(found: logins.Login) -> Check:
     if status.state == providers.base.NO:
         if provider.capabilities.needs_login:
             return Check(
-                name, WARN, f"not logged in: its agents wait for a login ({logins.SETTINGS})"
+                name,
+                WARN,
+                "not logged in: new sessions and workers of it are refused, a resumed agent "
+                f"waits ({logins.SETTINGS})",
             )
         return Check(name, INFO, "none")
     return Check(name, WARN, f"unknown: {status.problem}")

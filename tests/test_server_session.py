@@ -255,6 +255,7 @@ def test_about_gives_the_sessions_provider_with_its_version_and_warning(client, 
         "detail": "2.1.300 (Claude Code)",
         "tested_version": "2.1.291",
         "warning": "untested",
+        "login_missing": False,  # only GET /api/providers reads the login
     }
 
 

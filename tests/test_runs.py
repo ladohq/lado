@@ -360,6 +360,25 @@ def test_a_failed_spawn_for_a_run_leaves_no_ghost_worker(session, fake_tmux, mon
     assert runs.acting(state.get_run(session, "feature/login")) == "developer"
 
 
+def test_a_spawn_refused_for_the_login_leaves_the_step_waiting(session, fake_tmux, cli_logins):
+    run = to_implement(session)
+    cli_logins.logged_out()
+    with pytest.raises(runtime.NotLoggedIn, match="so the worker was not started"):
+        runs.spawn_worker(session, "feature/login")
+    assert state.get_agent(session, "developer") is None
+    assert runs.acting(state.get_run(session, "feature/login")) == "developer (not spawned)"
+    assert messages("developer") == []
+    ask = messages("supervisor")[-1]
+    assert (ask.summary, ask.state) == (
+        "flow feature/login: step implement needs a developer",
+        state.PENDING,
+    )
+    assert Path(run.worktree).exists()  # the run's own, kept for its next worker
+    worker = runs.spawn_worker(session, "feature/login", provider="kilo")
+    assert worker.provider == "kilo"
+    assert runs.acting(state.get_run(session, "feature/login")) == "developer"
+
+
 def advance_to_review(session):
     to_implement(session)
     runs.spawn_worker(session, "feature/login")

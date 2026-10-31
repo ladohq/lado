@@ -9,9 +9,11 @@ secrets, with the CLI's login taken whole from one layer (lado.agent_env.merge).
 layer gives the login is the core's to say (`layer`); a login of the CLI's own file, the
 provider's (LoginStatus.file_words).
 
-An agent whose CLI needs a login (Capabilities.needs_login) and has none waits from its
-start with `wait_reason` (lado.runtime, lado.login_wait); the server finds the agents that
-wait by that reason, so the text lives here alone.
+A new session or worker whose CLI needs a login (Capabilities.needs_login) and has none is
+refused before anything of it is made (`refusal`, lado.runtime.check_login); a resumed agent
+of such a CLI waits from its start with `wait_reason` instead (lado.runtime,
+lado.login_wait), as does one whose login went between the check and its launch. The
+server finds the agents that wait by that reason, so the texts live here alone.
 
 A login window is a tmux session of its own on LADO's server, one per provider, named
 `lado-login-<provider>` and labelled with user options (LOGIN, HOME): it runs the CLI's
@@ -23,7 +25,7 @@ ls` and the runtime never see them. The UI streams one through lado.terminal
 """
 
 import os
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -49,6 +51,30 @@ def wait_reason(provider: base.Provider) -> str:
     names = provider.login_variables
     how = f"log in in {SETTINGS}" + (f", or set {names[0]}" if names else "")
     return f"{provider.title} is not logged in: {how}; the agent starts by itself once you do"
+
+
+SESSION, WORKER = "session", "worker"  # what a refusal does not start
+
+
+def refusal(provider: base.Provider, env: Mapping[str, str], what: str) -> str | None:
+    """Why a new `what` (SESSION or WORKER) of `provider` is not started: its agents need a
+    login (Capabilities.needs_login) and its status in `env`, the environment they would
+    start from, says none. None otherwise, also when the status cannot be read: that never
+    refuses (the launch warns)."""
+    if not provider.capabilities.needs_login:
+        return None
+    if provider.login_status(dict(env)).state != base.NO:
+        return None
+    head = f"{provider.title} is not logged in, so the {what} was not started"
+    if what == WORKER:
+        return (
+            f"{head}: ask the human to log in in {SETTINGS}, or start the worker with "
+            "another provider"
+        )
+    how = f"log in in LADO's UI ({SETTINGS}, `lado ui`)"
+    if names := provider.login_variables:
+        how += f", or set {names[0]} as LADO's secret or a project secret"
+    return f"{head}: {how}"
 
 
 def waits_for(agent: state.Agent, reason: str | None) -> str | None:

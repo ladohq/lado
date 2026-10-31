@@ -268,13 +268,14 @@ def test_claude_not_logged_in_warns_where_to_log_in(cli_logins, capsys, monkeypa
     assert check == doctor.Check(
         "Claude Code login",
         doctor.WARN,
-        "not logged in: its agents wait for a login (Settings → Providers and environment)",
+        "not logged in: new sessions and workers of it are refused, a resumed agent waits "
+        "(Settings → Providers and environment)",
     )
     monkeypatch.setattr(doctor, "run_checks", lambda: [check])
     assert doctor.main() == 0  # a warning: the exit code stays
     assert (
-        "[warn] Claude Code login: not logged in: its agents wait for a login (Settings → "
-        "Providers and environment)" in capsys.readouterr().out
+        "[warn] Claude Code login: not logged in: new sessions and workers of it are refused, a "
+        "resumed agent waits (Settings → Providers and environment)" in capsys.readouterr().out
     )
 
 

@@ -1607,19 +1607,50 @@
     "/api/providers": {
       "get": {
         "summary": "List Providers",
-        "description": "LADO's providers and whether each one's CLI can run here, checked anew.",
+        "description": "LADO's providers and whether each one's CLI can run here, checked anew, and\nwhether it lacks the login its agents need, read for the agents of `project` (404\nfor an unknown one) or of no project.",
         "operationId": "list_providers_api_providers_get",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/ProviderInfo"
                   },
-                  "type": "array",
                   "title": "Response List Providers Api Providers Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "no such project"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -7395,6 +7426,11 @@
           "warning": {
             "type": "string",
             "title": "Warning"
+          },
+          "login_missing": {
+            "type": "boolean",
+            "title": "Login Missing",
+            "default": false
           }
         },
         "type": "object",

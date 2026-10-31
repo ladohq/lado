@@ -10,7 +10,13 @@
 - **Agent CLI logins in Settings.** Providers and environment says per CLI how it is logged
   in and from where, with one button; Claude Code logs in by a pasted subscription token or
   API key (a phone too), the place that sets one giving the whole login. A Claude agent
-  without a login waits and starts once there is one.
+  resumed without a login waits and starts once there is one.
+
+### Changed
+
+- **No Claude session or worker starts without a login.** The New session window greys
+  Claude Code out with "Log in first"; `lado start` and a supervisor's new worker are refused
+  with the reason. A resumed session still waits for the login.
 
 ### Fixed
 

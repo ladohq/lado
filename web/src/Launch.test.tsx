@@ -77,6 +77,7 @@ function provider(name: string, more: Partial<ProviderInfo> = {}): ProviderInfo 
     detail: "",
     tested_version: "",
     warning: "",
+    login_missing: false,
     ...more,
   };
 }
@@ -98,7 +99,7 @@ let recent: RecentFolder[];
 let workspace: { path: string; made: boolean }; // LADO_REPOS, else ~/workspace
 let kits: KitInfo[];
 let abouts: Record<string, SessionAbout>; // by session; none: 404
-let providers: () => Promise<ProviderInfo[]>;
+let providers: (project: string | null) => Promise<ProviderInfo[]>; // GET /api/providers?project=
 let answers: Record<string, () => Response | Promise<Response>>; // "METHOD path" -> the server's answer
 let calls: Call[];
 // GET /api/project-launch: Shop with backend and frontend, its last session in backend
@@ -187,7 +188,7 @@ beforeEach(() => {
         return json(projectLaunch(url.searchParams.get("project"), url.searchParams.get("repo")));
       }
       if (url.pathname === "/api/kits") return json(kits);
-      if (url.pathname === "/api/providers") return json(await providers());
+      if (url.pathname === "/api/providers") return json(await providers(url.searchParams.get("project")));
       const about = /^\/api\/sessions\/([^/]+)\/about$/.exec(url.pathname);
       if (about) {
         const found = abouts[decodeURIComponent(about[1])];
@@ -718,6 +719,67 @@ test("the human's own choice of provider is kept when the folder changes", async
   await ready("/src/other", { provider: { name: "kilo", reason: "only_installed" } }, true);
   expect(providerSelect().value).toBe("claude");
   expect(screen.queryByText("the only one installed")).toBeNull();
+});
+
+// A CLI without the login its agents need (openspec change refuse-start-without-login)
+
+const NO_LOGIN = "Claude Code is not logged in: its agents cannot start.";
+
+test("a CLI without its login is greyed out, not taken from the suggestion, and Start stays off", async () => {
+  providers = async () => [provider("claude", { login_missing: true }), provider("kilo")];
+  await openLaunch();
+  await ready("/src/app", { provider: { name: "claude", reason: "last_session" } }, true);
+  const claude = within(providerSelect()).getByRole("option", { name: "claude · not logged in" }) as HTMLOptionElement;
+  expect(claude.disabled).toBe(true);
+  expect(providerSelect().value).toBe("");
+  const note = (await screen.findByText(NO_LOGIN, { exact: false })).closest(".field-note") as HTMLElement;
+  expect(note.classList).toContain("bad");
+  expect(within(note).getByRole("button", { name: "Log in first" })).toBeTruthy();
+  expect(screen.queryByText("choose the agent CLI for this session")).toBeNull();
+  expect(screen.queryByText("from the folder's last session")).toBeNull();
+  expect(startButton().disabled).toBe(true);
+  fireEvent.change(providerSelect(), { target: { value: "kilo" } });
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  expect(screen.queryByText(NO_LOGIN, { exact: false })).toBeNull();
+});
+
+test("Log in first closes the window and opens Settings' providers", async () => {
+  providers = async () => [provider("claude", { login_missing: true }), provider("kilo")];
+  await openLaunch();
+  await ready("/src/app", { provider: { name: "claude", reason: "only_installed" } }, true);
+  fireEvent.click(await screen.findByRole("button", { name: "Log in first" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
+  expect(await screen.findByRole("heading", { name: "Providers and environment" })).toBeTruthy();
+});
+
+test("the Project way asks for the chosen project's providers, where its own login counts", async () => {
+  providers = async (project) => [provider("claude", { login_missing: project !== "shop" }), provider("kilo")];
+  const dialog = await openProject();
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/providers?project=shop")).toBe(true));
+  fireEvent.click(repoRadio(dialog, "frontend"));
+  await waitFor(() => expect(providerSelect().disabled).toBe(false));
+  const claude = within(providerSelect()).getByRole("option", { name: /^claude/ }) as HTMLOptionElement;
+  expect(claude.disabled).toBe(false);
+  fireEvent.change(providerSelect(), { target: { value: "claude" } });
+  await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "Project" }), { target: { value: "acme" } });
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/providers?project=acme")).toBe(true));
+  expect(await screen.findByText(NO_LOGIN, { exact: false })).toBeTruthy();
+});
+
+test("Resume of a CLI without its login warns and goes on", async () => {
+  sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "claude" })];
+  providers = async () => [provider("claude", { login_missing: true }), provider("kilo")];
+  open("/sessions/lado");
+  fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Resume session" });
+  const text = "⚠ Claude Code is not logged in: the supervisor waits until you log in.";
+  const note = (await within(dialog).findByText(text, { exact: false })).closest(".field-note") as HTMLElement;
+  expect(note.classList).toContain("warn");
+  expect(within(note).getByRole("button", { name: "Log in…" })).toBeTruthy();
+  const resume = within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement;
+  await waitFor(() => expect(resume.disabled).toBe(false));
+  expect(providerSelect().value).toBe("claude");
 });
 
 test("a mode the new provider does not support goes back to default, and the window says so", async () => {

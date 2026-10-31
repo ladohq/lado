@@ -1564,13 +1564,106 @@ def _waits_for_login(cmd):
     return "login-wait" in cmd
 
 
+def _stopped_claude_session(repo, fake_tmux):
+    """A Claude session "s" started while logged in, then stopped; tmux's calls forgotten.
+    A new one without the login is refused, so a resume is where an agent waits for it."""
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.stop_session("s")
+    fake_tmux.clear()
+
+
+SESSION_REFUSED = (
+    "Claude Code is not logged in, so the session was not started: log in in LADO's UI "
+    "(Settings → Providers and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
+    "LADO's secret or a project secret"
+)
+WORKER_REFUSED = (
+    "Claude Code is not logged in, so the worker was not started: ask the human to log in in "
+    "Settings → Providers and environment, or start the worker with another provider"
+)
+
+
+def test_a_new_claude_session_without_a_login_is_refused_and_leaves_nothing(
+    repo, fake_tmux, claude_config, cli_logins
+):
+    claude_config.trust()  # it would record the trust, had the start gone on
+    before = claude_config.path.read_text()
+    cli_logins.logged_out()
+    with pytest.raises(runtime.NotLoggedIn) as refused:
+        runtime.start_session(str(repo), "s", None, provider="claude")
+    assert str(refused.value) == SESSION_REFUSED
+    assert state.get_session("s") is None
+    assert fake_tmux == []
+    assert not (state.home() / "agents" / "s").exists()
+    assert claude_config.path.read_text() == before
+    # resume=False (the UI's New session, the MCP tool) is refused the same way.
+    with pytest.raises(runtime.NotLoggedIn):
+        runtime.start_session(str(repo), "s", None, provider="claude", resume=False)
+    assert state.get_session("s") is None
+
+
+def test_a_new_session_is_refused_by_the_suggested_provider(
+    repo, fake_tmux, fake_clis, cli_logins, monkeypatch
+):
+    for name in ("codex", "kilo", "opencode", "noskills"):
+        (fake_clis / name).unlink()
+    (fake_clis / "git").symlink_to(shutil.which("git"))
+    monkeypatch.setenv("PATH", str(fake_clis))  # Claude Code is the only one installed
+    cli_logins.logged_out()
+    with pytest.raises(runtime.NotLoggedIn, match="so the session was not started"):
+        runtime.start_session(str(repo), "s", None)
+    assert state.get_session("s") is None
+
+
+def test_a_stopped_claude_session_resumes_without_a_login_and_waits(repo, fake_tmux, cli_logins):
+    _stopped_claude_session(repo, fake_tmux)
+    cli_logins.logged_out()
+    started = runtime.start_session(str(repo), "s", None)  # lado start: resume=None
+    assert started.resumed
+    assert started.warnings == [LOGIN_REASON]
+    assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    assert _waits_for_login(call[-1])
+
+
+def test_a_claude_worker_without_a_login_is_refused_and_leaves_nothing(repo, fake_tmux, cli_logins):
+    runtime.start_session(str(repo), "s", None, provider="kilo")  # a mixed session
+    fake_tmux.clear()
+    cli_logins.logged_out()
+    with pytest.raises(runtime.NotLoggedIn) as refused:
+        runtime.spawn_worker("s", "task", name="w1", provider="claude")
+    assert str(refused.value) == WORKER_REFUSED
+    assert state.get_agent("s", "w1") is None
+    assert runtime.git(str(repo), "branch", "--list", "lado/s/w1") == ""
+    assert not (repo / ".lado" / "worktrees" / "s" / "w1").exists()
+    assert (
+        not (repo / ".git" / "info" / "exclude").exists()
+        or ".lado" not in (repo / ".git" / "info" / "exclude").read_text()
+    )
+    assert fake_tmux == []
+    # Its own provider decides: a Kilo worker needs no login.
+    runtime.spawn_worker("s", "task", name="w2", provider="kilo")
+    assert state.get_agent("s", "w2").status == state.STARTING
+
+
+def test_a_worker_of_a_claude_session_without_a_login_is_refused(repo, fake_tmux, cli_logins):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    cli_logins.logged_out()
+    with pytest.raises(runtime.NotLoggedIn, match="so the worker was not started"):
+        runtime.spawn_worker("s", "task", name="w1")  # the session's provider
+    runtime.spawn_worker("s", "task", name="w2", provider="kilo")
+    assert state.get_agent("s", "w2") is not None
+
+
 def test_a_claude_agent_without_a_login_waits_for_it(
     repo, fake_tmux, claude_config, cli_logins, monkeypatch
 ):
+    _stopped_claude_session(repo, fake_tmux)
     claude_config.trust()  # and trusts no folder yet
     cli_logins.logged_out()
+    cli_logins.calls.clear()
     seen = _seen_at_launch(monkeypatch, "new_session", "supervisor")
-    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    started = runtime.start_session(str(repo), "s", None)
     assert seen == [(state.WAITING, LOGIN_REASON)]  # waiting before its window starts
     # The trust is recorded now and told whoever starts it; the first run once logged in.
     assert started.warnings == [LOGIN_REASON, claude_config.note(repo)]
@@ -1596,9 +1689,10 @@ def test_a_claude_agent_without_a_login_waits_for_it(
 def test_a_claude_agent_without_a_login_in_a_fresh_home_gets_the_trust_alone(
     repo, fake_tmux, claude_config, cli_logins
 ):
+    _stopped_claude_session(repo, fake_tmux)
     claude_config.path.unlink()
     cli_logins.logged_out()
-    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    started = runtime.start_session(str(repo), "s", None)
     assert started.warnings == [LOGIN_REASON, claude_config.note(repo)]
     assert json.loads(claude_config.path.read_text()) == {
         "projects": {str(repo): {"hasTrustDialogAccepted": True}}
@@ -1613,9 +1707,10 @@ def test_a_trust_lado_cannot_record_waits_for_the_login_first(
 ):
     """The trust's fallback question comes once the login is there: the window asks again
     (lado.login_wait); meanwhile the agent waits for the login."""
+    _stopped_claude_session(repo, fake_tmux)
     claude_config.refuse()
     cli_logins.logged_out()
-    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    started = runtime.start_session(str(repo), "s", None)
     assert started.warnings == [LOGIN_REASON]
     assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
 
@@ -1640,6 +1735,9 @@ def test_an_unknown_login_never_holds_an_agent(repo, fake_tmux, cli_logins):
     assert state.get_agent("s", "supervisor").status == state.STARTING
     [call] = [c for c in fake_tmux if c[0] == "new_session"]
     assert not _waits_for_login(call[-1])
+    # Nor refuses a new one: neither a session nor a worker.
+    runtime.spawn_worker("s", "task", name="w1")
+    assert state.get_agent("s", "w1").status == state.STARTING
 
 
 @pytest.mark.parametrize("provider", ["codex", "kilo", "opencode"])
@@ -1671,9 +1769,17 @@ def test_each_agent_takes_its_own_providers_login_whole_from_one_layer(
     assert (env["ANTHROPIC_API_KEY"], env["CLAUDE_CODE_OAUTH_TOKEN"]) == ("shell-key", "lado-token")
 
 
-def test_a_claude_worker_without_a_login_waits_and_says_so(repo, fake_tmux, cli_logins):
+def test_a_claude_worker_whose_login_goes_after_the_check_waits_and_says_so(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
     runtime.start_session(str(repo), "s", None, provider="kilo")
-    cli_logins.logged_out()
+    checked = runtime.check_login
+
+    def check_then_log_out(*args):
+        checked(*args)
+        cli_logins.logged_out()  # between the check and the launch
+
+    monkeypatch.setattr(runtime, "check_login", check_then_log_out)
     warnings = []
     runtime.spawn_worker("s", "task", name="w1", provider="claude", warnings=warnings)
     assert warnings == [LOGIN_REASON]
@@ -1689,8 +1795,11 @@ def test_a_project_session_waits_with_its_project(fake_tmux, cli_logins, tmp_pat
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
     projects.create("shop", None)
     agent_helpers.init_repo(projects.folder("shop") / "app")
-    cli_logins.logged_out()
     runtime.start_session(None, None, None, provider="claude", project="shop", repo_name="app")
+    runtime.stop_session("shop-app")
+    fake_tmux.clear()
+    cli_logins.logged_out()
+    runtime.start_session(None, None, None, project="shop", repo_name="app")
     [call] = [c for c in fake_tmux if c[0] == "new_session"]
     cmd = call[-1]
     held = json.loads(Path(cmd[cmd.index("login-wait") + 2]).read_text())

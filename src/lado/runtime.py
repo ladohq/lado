@@ -369,6 +369,11 @@ class SessionExists(LadoError):
         )
 
 
+class NotLoggedIn(LadoError):
+    """A new session or worker refused: its CLI needs a login and has none
+    (lado.logins.refusal)."""
+
+
 def slug(value: str) -> str:
     """A name that is safe for tmux targets, git branches and paths."""
     return re.sub(r"[^a-z0-9_-]+", "-", value.lower()).strip("-") or "lado"
@@ -534,13 +539,15 @@ def suggested_provider(
     return Suggestion(found[0], ONLY_INSTALLED) if len(found) == 1 else None
 
 
+def _on_agents_path(base_env: dict[str, str]) -> Callable[[providers.Provider], bool]:
+    """Whether a provider's CLI is on the agents' PATH (suggested_provider's `installed`)."""
+    path = base_env.get("PATH", os.defpath)
+    return lambda provider: shutil.which(provider.command, path=path) is not None
+
+
 def _new_sessions_provider(repo: str, base_env: dict[str, str]) -> Suggestion:
     """The suggested provider of a new session, its CLI looked for on the agents' PATH."""
-    path = base_env.get("PATH", os.defpath)
-
-    def installed(provider: providers.Provider) -> bool:
-        return shutil.which(provider.command, path=path) is not None
-
+    installed = _on_agents_path(base_env)
     suggestion = suggested_provider(repo, installed)
     if suggestion:
         return suggestion
@@ -719,7 +726,7 @@ def start_session(
     if not provider and not old:
         # Resolved before the provider is chosen: it is the one on the agents' PATH. A
         # provider given or stored is checked first, without waiting for the login shell.
-        layers = _layers(project)
+        layers = agent_layers(project)
         chosen = _new_sessions_provider(repo, agent_env.merge(layers))
     agent_cli = _provider(provider or (old.provider if old else chosen.provider))
     sess = state.Session(
@@ -735,9 +742,11 @@ def start_session(
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.kits, sess.without)
     if layers is None:
-        layers = _layers(sess.project)
-    base_env = _base_env(layers, agent_cli)
+        layers = agent_layers(sess.project)
+    base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
+    if not old:  # a resume waits for the login instead (_held_for_login)
+        check_login(agent_cli, base_env, logins.SESSION)
     agent = state.Agent(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
@@ -904,9 +913,10 @@ def spawn_worker(
         agent_cli.name,
         run=run.name if run else None,
     )
-    layers = _layers(sess.project)
-    base_env = _base_env(layers, agent_cli)
+    layers = agent_layers(sess.project)
+    base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
+    check_login(agent_cli, base_env, logins.WORKER)
     spec = _spec(agent_cli, env, role_def.name, agent, instructions, base_env, without or [])
     agent.read_only = spec.read_only
     if not run:
@@ -2848,17 +2858,17 @@ def _add_agent(agent: state.Agent, kit: str) -> None:
     state.add_event(agent.session, agent.name, state.SPAWNED, detail)
 
 
-def _layers(project: str | None) -> agent_env.Layers:
+def agent_layers(project: str | None) -> agent_env.Layers:
     """The layers agents start from (lado.agent_env), read anew for each launch, with the
     layer of the session's `project` as it is now (lado.project_secrets.layer). Each agent
-    merges them with its own provider's login (_base_env)."""
+    merges them with its own provider's login (agents_env)."""
     try:
         return agent_env.layers(project_secrets.layer(project) if project else None)
     except agent_env.AgentEnvError as exc:
         raise LadoError(str(exc)) from exc
 
 
-def _base_env(layers: agent_env.Layers, agent_cli: providers.Provider) -> dict[str, str]:
+def agents_env(layers: agent_env.Layers, agent_cli: providers.Provider) -> dict[str, str]:
     """The environment an agent of `agent_cli` starts from: `layers` merged, its CLI's
     login taken whole from one layer (lado.agent_env.merge)."""
     return agent_env.merge(layers, agent_cli.login_variables)
@@ -2935,6 +2945,32 @@ def _first_hook_blocker(
     if blocker.reason:
         state.block(agent.session, agent.name, blocker.reason)
     return [line for line in (*blocker.notes, blocker.reason, blocker.warning) if line]
+
+
+def check_login(agent_cli: providers.Provider, base_env: dict[str, str], what: str) -> None:
+    """Refuse a new session or worker (`what`, logins.SESSION or WORKER) of `agent_cli`
+    whose CLI needs a login and has none in `base_env`, the environment it would start
+    from; called before anything of it is stored or made. A resumed agent waits instead
+    (_held_for_login)."""
+    if reason := logins.refusal(agent_cli, base_env, what):
+        raise NotLoggedIn(reason)
+
+
+def check_start_login(provider: str | None, project: str | None) -> None:
+    """Before a clone or a new folder for a new session (`lado start <git-url>`, `--new`,
+    the UI's From scratch): refuse as start_session would, when the provider is known now:
+    given, or the only one installed on the agents' PATH. Otherwise start_session decides
+    once the folder is there."""
+    layers = agent_layers(project)
+    if provider is None:
+        found = suggested_provider(None, _on_agents_path(agent_env.merge(layers)))
+        if found is None:
+            return
+        provider = found.provider
+    elif provider not in providers.names():
+        return  # start_session refuses it as it refuses any
+    agent_cli = providers.get(provider)
+    check_login(agent_cli, agents_env(layers, agent_cli), logins.SESSION)
 
 
 def _held_for_login(

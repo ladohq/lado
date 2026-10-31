@@ -235,6 +235,16 @@ def test_a_failed_start_leaves_no_session_and_no_copy(a, monkeypatch):
     assert state.list_messages("b") == []
 
 
+def test_an_approved_start_without_the_login_is_refused_and_leaves_nothing(a, cli_logins):
+    question = _approved()
+    cli_logins.logged_out()
+    with pytest.raises(runtime.NotLoggedIn, match="so the session was not started"):
+        runtime.start_approved_session("a", "supervisor", "b", question)
+    assert state.get_session("b") is None
+    assert artifacts.store().list("b") == []
+    assert state.list_messages("b") == []
+
+
 def test_first_is_only_for_a_new_session(repo, fake_tmux):
     first = runtime.FirstInput("hello", "body", [])
     for resume in (None, True):

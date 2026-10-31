@@ -217,7 +217,7 @@ ask_workspace() {
             case $reply in /*) break ;; esac
             say "It needs a full path, starting with / or ~/."
         fi
-        [ "$interactive" = 1 ] || die "the workspace folder $reply is not a full path"
+        [ "$interactive" = 1 ] || die "the workspace folder $reply is not a full path: give one starting with / or ~/"
     done
     workspace=$reply
 }
@@ -330,7 +330,7 @@ The phone reaches LADO at this computer's address now, $public_host, which may c
 fetch_compose() {
     if [ -n "$source" ]; then
         cp "$source/compose.yaml" "$dir/compose.yaml.new" ||
-            die "cannot copy $source/compose.yaml"
+            die "cannot copy $source/compose.yaml: check that --source names a folder with compose.yaml"
         return 0
     fi
     url=$REPO/releases/download/v$version/compose.yaml
@@ -389,7 +389,7 @@ Warning: the agents cannot commit until LADO_GIT_NAME and LADO_GIT_EMAIL are set
     fetch_compose
     write_env
     if [ ! -d "$workspace" ]; then
-        mkdir -p "$workspace" || die "cannot make the workspace folder $workspace"
+        mkdir -p "$workspace" || die "cannot make the workspace folder $workspace: make it yourself, or take another, then run this again"
         say "Made $workspace"
     fi
     mv "$dir/compose.yaml.new" "$dir/compose.yaml"
@@ -451,7 +451,7 @@ rerun() {
 start_lado() {
     say "Starting LADO..."
     (cd "$dir" && docker compose up -d) ||
-        die "docker compose up -d failed in $dir (its error is above); when another program has LADO's port, set another LADO_PORT in $dir/.env and run this again"
+        die "docker compose up -d failed in $dir, its error above: when another program has LADO's port, set another LADO_PORT in $dir/.env and run this again"
 }
 
 # The UI's link, once the server answers, in $link; another device's in $other_link.
@@ -502,7 +502,7 @@ main() {
     [ -n "$version" ] ||
         die "this install.sh carries no version: take the release's ($REPO/releases/latest/download/install.sh) or pass --version X.Y.Z"
     version_cmp "$version" "$version" >/dev/null ||
-        die "$version is no LADO release (X.Y.Z or X.Y.ZrcN)"
+        die "$version is no LADO release: pass --version X.Y.Z or X.Y.ZrcN"
     scrub_env
     find_platform
     check_docker

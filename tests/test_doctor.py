@@ -251,7 +251,7 @@ def test_a_login_line_per_installed_cli(cli_logins, monkeypatch):
         doctor.Check(
             "Claude Code login",
             doctor.OK,
-            "token (CLAUDE_CODE_OAUTH_TOKEN from the process that starts LADO)",
+            "Subscription (token) · the process that starts LADO",
         ),
         doctor.Check("Codex CLI login", doctor.INFO, "none"),
         doctor.Check(
@@ -286,15 +286,32 @@ def test_a_login_from_a_file_names_the_file(cli_logins, monkeypatch):
     )
     [check] = doctor.check_logins(_only("opencode"))
     assert check == doctor.Check(
-        "OpenCode login", doctor.OK, "1 credential (~/.local/share/opencode/auth.json)"
+        "OpenCode login", doctor.OK, "1 credential · ~/.local/share/opencode/auth.json"
     )
+
+
+def test_a_login_of_lados_secrets_is_named_with_its_layer(cli_logins, capsys, monkeypatch):
+    from lado import project_secrets
+
+    monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "canary-key")  # below the secret: not the login
+    project_secrets.write_lado("CLAUDE_CODE_OAUTH_TOKEN", "canary-tok")
+    cli_logins.logged_in()
+    [check] = doctor.check_logins(_only("claude"))
+    monkeypatch.setattr(doctor, "run_checks", lambda: [check])
+    doctor.main()
+    out = capsys.readouterr().out
+    assert "[ok  ] Claude Code login: Subscription (token) · LADO's secret" in out
+    [(_, given)] = [c for c in cli_logins.calls if c[0][0] == "claude"]
+    assert "ANTHROPIC_API_KEY" not in given
+    assert "canary" not in out
 
 
 def test_no_agent_environment_makes_every_login_unknown(monkeypatch):
     def fail(project=None):
         raise agent_env.AgentEnvError("your shell failed")
 
-    monkeypatch.setattr(agent_env, "resolve", fail)
+    monkeypatch.setattr(agent_env, "layers", fail)
     [check] = doctor.check_logins(_only("claude"))
     assert check == doctor.Check("Claude Code login", doctor.WARN, "unknown: your shell failed")
 

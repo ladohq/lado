@@ -112,6 +112,10 @@ LOGINS = (
 # ("/login managed key") or its apiKeyHelper.
 ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
 
+# The ways to pay that Settings offers (login_choices), and the token of a subscription.
+SUBSCRIPTION, USAGE = "subscription", "usage"
+TOKEN = "CLAUDE_CODE_OAUTH_TOKEN"
+
 
 class ClaudeProvider(base.Provider):
     name = "claude"
@@ -257,7 +261,24 @@ class ClaudeProvider(base.Provider):
         # sweep types it in then (lado.runtime._plan).
         return json.dumps({"decision": "block", "reason": text})
 
-    login_variables = ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
+    login_variables = (TOKEN, "ANTHROPIC_API_KEY")
+    # LADO runs no login command of Claude Code: the human brings a ready token or key.
+    login_question = "How do you pay for Claude?"
+    login_choices = (
+        base.LoginChoice(
+            SUBSCRIPTION,
+            "Subscription — Claude Pro or Max",
+            "Run `claude setup-token` on any computer where Claude Code is installed and paste "
+            "the token it prints.",
+            TOKEN,
+        ),
+        base.LoginChoice(
+            USAGE,
+            "Pay per use — API billing",
+            "Paste an API key from console.anthropic.com.",
+            "ANTHROPIC_API_KEY",
+        ),
+    )
 
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:
         # `claude auth status --json` (2.1.295, about 0.1 s): loggedIn, authMethod
@@ -281,40 +302,35 @@ class ClaudeProvider(base.Provider):
         if not data["loggedIn"]:
             return base.LoginStatus(base.NO)
         method, source = data.get("authMethod"), data.get("apiKeySource")
-        credentials = (
-            "the login keychain"
-            if sys.platform == "darwin"
-            else str(Path(str(data.get("configDirectory") or "")) / ".credentials.json")
-        )
+        if sys.platform == "darwin":
+            file = words = "the login keychain"
+        else:
+            file = str(Path(str(data.get("configDirectory") or "")) / ".credentials.json")
+            words = f"{self.title}'s login file"
         if method == "claude.ai":
             plan = data.get("subscriptionType")
-            words = f"Claude subscription ({plan.capitalize()})" if plan else "Claude subscription"
-            return base.LoginStatus(base.YES, words, file=credentials)
+            how = f"Subscription ({plan.capitalize()})" if plan else "Subscription"
+            return base.LoginStatus(base.YES, how, file=file, file_words=words, choice=SUBSCRIPTION)
         if method == "oauth_token":
-            # CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_AUTH_TOKEN (also "oauth_token", 2.1.295).
-            given = [n for n in ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN") if env.get(n)]
-            return base.LoginStatus(base.YES, "token", variable=given[0] if given else "")
+            # CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_AUTH_TOKEN (also "oauth_token", 2.1.295),
+            # a gateway's: no way to pay the sheet offers.
+            if env.get(TOKEN):
+                return base.LoginStatus(
+                    base.YES, "Subscription (token)", variable=TOKEN, choice=SUBSCRIPTION
+                )
+            given = "ANTHROPIC_AUTH_TOKEN" if env.get("ANTHROPIC_AUTH_TOKEN") else ""
+            return base.LoginStatus(base.YES, "Token", variable=given)
         if method == "api_key":
             if isinstance(source, str) and ENV_NAME.fullmatch(source):
-                return base.LoginStatus(base.YES, "API key", variable=source)
-            return base.LoginStatus(base.YES, "Anthropic Console", file=credentials)
+                return base.LoginStatus(
+                    base.YES, "Pay per use (API key)", variable=source, choice=USAGE
+                )
+            return base.LoginStatus(
+                base.YES, "Pay per use (Console)", file=file, file_words=words, choice=USAGE
+            )
         if method == "third_party":  # Bedrock, Vertex, ... by their CLAUDE_CODE_USE_* variable
             return base.LoginStatus(base.YES, str(data.get("apiProvider") or method).capitalize())
         return base.LoginStatus(base.YES, str(method))
-
-    def login_actions(self) -> tuple[base.LoginAction, ...]:
-        # Without a browser it prints `If the browser didn't open, visit: <url>` and `Paste
-        # code here if prompted >`, and waits for the code (2.1.295).
-        login = (self.command, "auth", "login")
-        return (
-            base.LoginAction("login", "Log in with your Claude account…", (*login, "--claudeai")),
-            base.LoginAction(
-                "login-console", "Log in with Anthropic Console…", (*login, "--console")
-            ),
-        )
-
-    def logout_argv(self) -> list[str] | None:
-        return [self.command, "auth", "logout"]
 
     def keychain_login(self, env: dict[str, str]) -> str | None:
         # On macOS Claude Code keeps its OAuth login in the login keychain ("Claude

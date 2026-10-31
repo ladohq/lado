@@ -1,7 +1,9 @@
-"""An agent whose CLI needs a login, and the login windows, for real (openspec change
-provider-logins): real tmux, the waiting window (`lado login-wait`), hooks and lado.db,
-with the fake provider "fake-login" (fake_provider.py), logged in by a marker file, by
-FAKE_AGENT_TOKEN, or by its login command (fake_login.py) in a login window."""
+"""An agent whose CLI needs a login, and the login windows, for real (openspec changes
+provider-logins, provider-login-layers): real tmux, the waiting window (`lado login-wait`),
+hooks and lado.db, with the fake provider "fake-login" (fake_provider.py), logged in by a
+marker file (its own login file), by FAKE_AGENT_TOKEN or by FAKE_AGENT_KEY, each login taken
+whole from one layer; the marker is written by the login command (fake_login.py) of
+"fake-window" in a login window."""
 
 import json
 import subprocess
@@ -11,7 +13,7 @@ import agent_helpers
 import fake_provider
 import pytest
 
-from lado import logins, project_secrets, providers, runtime, state, terminal, tmux
+from lado import logins, project_secrets, projects, providers, runtime, state, terminal, tmux
 from lado.server import models
 
 pytestmark = pytest.mark.integration
@@ -152,6 +154,46 @@ def test_a_lado_secret_saved_meanwhile_reaches_the_waiting_agent(repo, marker):
     runtime.stop_session(SESSION)
 
 
+def test_a_login_comes_whole_from_the_highest_layer_that_sets_one(
+    repo, marker, tmp_path, monkeypatch
+):
+    outside = tmp_path / "out"
+    outside.mkdir()
+    (outside / fake_provider.KEY).write_text("canary-out-key")
+    monkeypatch.setenv("LADO_ENV_DIR", str(outside))
+    project_secrets.write_lado(fake_provider.TOKEN, VALUE)
+    runtime.start_session(str(repo), SESSION, None, PROVIDER)
+    assert status() != state.WAITING  # logged in by the token
+    wait_status(state.IDLE)
+    env = environ()
+    assert env[fake_provider.TOKEN] == VALUE
+    assert fake_provider.KEY not in env  # the outside folder's key never reaches it
+    # The key is no login variable of "fake": its worker gets it, with the token.
+    runtime.spawn_worker(SESSION, "sleep 0", name="w1", provider="fake")
+    wait_status(state.IDLE, "w1")
+    env = environ("w1")
+    assert (env[fake_provider.KEY], env[fake_provider.TOKEN]) == ("canary-out-key", VALUE)
+    runtime.stop_session(SESSION)
+
+
+def test_a_projects_login_wins_whole(repo, marker, tmp_path, monkeypatch):
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    projects.create("shop", None)
+    agent_helpers.init_repo(projects.folder("shop") / "app")
+    projects.set_secret("shop", fake_provider.KEY, "canary-project-key")
+    project_secrets.write_lado(fake_provider.TOKEN, VALUE)
+    started = runtime.start_session(None, None, None, PROVIDER, project="shop", repo_name="app")
+    session = started.session.name
+    agent_helpers.wait_for(
+        lambda: state.get_agent(session, "supervisor").status == state.IDLE, "idle", session
+    )
+    path = agent_helpers.fake_logs(session, "supervisor") / "seen.json"
+    env = json.loads(path.read_text())["environ"]
+    assert env[fake_provider.KEY] == "canary-project-key"
+    assert fake_provider.TOKEN not in env
+    runtime.stop_session(session)
+
+
 def test_a_login_it_cannot_read_never_holds_the_agent(repo, marker, monkeypatch):
     monkeypatch.setenv("FAKE_AGENT_LOGIN_STATUS", "unknown")
     started = runtime.start_session(str(repo), SESSION, None, PROVIDER)  # nor refuses it
@@ -177,31 +219,36 @@ def _read_until(term, text: str, timeout: float = 20) -> str:
     return seen.decode(errors="replace")
 
 
+WINDOW = "fake-window"  # logs in by its own command, like OpenCode
+
+
 def test_a_login_window_runs_the_login_with_the_agents_environment_then_ends(repo, marker):
-    provider = providers.get(PROVIDER)
+    provider = providers.get(WINDOW)
     stopped_logged_out(repo, marker)
     runtime.start_session(str(repo), SESSION, None)  # resumed, it waits for the login
     name = logins.open_window(provider, "login")
     assert logins.open_window(provider, "login") == name  # one per provider
-    assert logins.open_windows() == {PROVIDER: name}
+    assert logins.open_windows() == {WINDOW: name}
     assert name not in lado_ls()  # no LADO session
-    term = terminal.open_login(PROVIDER)
+    term = terminal.open_login(WINDOW)
     try:
         shown = _read_until(term, "Paste code here")
         assert "https://login.example.invalid/oauth?state=fake" in shown
         term.write(b"code-42\r")
         agent_helpers.wait_for(lambda: marker.exists(), "the login", SESSION)
-        agent_helpers.wait_for(lambda: PROVIDER not in logins.open_windows(), "its end", SESSION)
+        agent_helpers.wait_for(lambda: WINDOW not in logins.open_windows(), "its end", SESSION)
         assert marker.read_text() == "code-42"
-        assert terminal.login_ended(PROVIDER) is not None
+        assert terminal.login_ended(WINDOW) is not None
     finally:
         term.close()
-    wait_status(state.IDLE)  # the waiting agent took the login
+    # The waiting agent took the login of the CLI's own file, as Claude Code's agents take
+    # a login made outside LADO.
+    wait_status(state.IDLE)
     runtime.stop_session(SESSION)
 
 
 def test_the_login_windows_end_with_lado_stop_all(repo, marker):
-    name = logins.open_window(providers.get(PROVIDER), "login")
+    name = logins.open_window(providers.get(WINDOW), "login")
     assert tmux.has_session(name)
     runtime.stop_all(lambda session, stopped: None)
     assert logins.open_windows() == {}

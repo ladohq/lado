@@ -114,12 +114,12 @@ warning.
 
 ### Requirement: An agent whose CLI needs a login waits for it and starts by itself
 
-When an agent's provider needs a login (Claude Code) and is not logged in at launch (a
-resumed agent, or a login lost after a new start's check), the agent SHALL wait from its
-start with the reason `<CLI> is not logged in: log in in Settings → Providers and
-environment, or set <variable>; the agent starts by itself once you do`; its window SHALL
-check again every few seconds, the file layers read anew, and start the CLI once logged
-in. An unknown state SHALL NOT hold it.
+When an agent's CLI needs a login (Claude Code) and is not logged in at launch (a resumed
+agent, or a login lost after a start's check), the agent SHALL wait from its start with
+the reason `<CLI> is not logged in: log in in Settings → Providers and environment, or
+set <variable>; the agent starts by itself once you do`; its window SHALL check every few
+seconds, file layers read anew and the login taken whole from one layer, and start
+the CLI once logged in. An unknown state SHALL NOT hold it.
 
 #### Scenario: A session started without a login
 - **WHEN** Claude Code is not logged in and a stopped session with the provider `claude` is
@@ -128,7 +128,8 @@ in. An unknown state SHALL NOT hold it.
   shows it with "Log in…" leading to Settings → Providers and environment
 
 #### Scenario: The login arrives
-- **WHEN** the supervisor waits for the login and the human logs Claude Code in on the page
+- **WHEN** the supervisor waits for the login and the human logs Claude Code in outside
+  LADO's page (its own login file)
 - **THEN** within a few seconds the window starts Claude Code, and the supervisor reaches
   its first hook with no restart
 

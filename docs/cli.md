@@ -235,9 +235,12 @@ doctor exits 1. The checks that read lado.db (`Projects`, `Artifacts`, `Agent co
 folders`) then say `not checked: lado.db is not at this LADO's schema (see lado.db)`.
 
 `lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
-own status command in the agents' environment without a project (`claude auth status
---json`, `codex login status`, `opencode auth list`, `kilo auth list`): `[ok] <CLI> login:
-<how> (<variable> from <layer>|<file>)`; `[warn] Claude Code login: not logged in: new
+own status command in the environment its agents get without a project, the login taken
+whole from one layer (`claude auth status --json`, `codex login status`, `opencode auth
+list`, `kilo auth list`): `[ok] <CLI> login: <how> · <where from>`, where from the layer
+that gives it (`LADO's secret`, `outside folder`, `login shell`, `the process that starts
+LADO`) or the CLI's own login file (`Claude Code's login file`, or the file's path), e.g.
+`[ok] Claude Code login: Subscription (token) · LADO's secret`; `[warn] Claude Code login: not logged in: new
 sessions and workers of it are refused, a resumed agent waits (Settings → Providers and
 environment)` for a CLI whose agents need one;
 `[info] <CLI> login: none` for the others; `[warn] <CLI> login: unknown: <why>` when the

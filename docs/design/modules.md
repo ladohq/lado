@@ -245,7 +245,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
     messages to them. A new session or worker of a CLI that needs a login and has none is
     refused first (`check_login`, `NotLoggedIn`; `check_start_login` before a clone or a new
-    folder), in `agents_env(project)`, the environment agents start from; a resumed agent
+    folder), in `agents_env(agent_layers(project), agent_cli)`, the environment the agent starts from; a resumed agent
     waits for it instead (`_held_for_login`). Whether a folder can hold a session is `check_repo` (its repository's
     root, or why not: a `FolderProblem`, a `LadoError` with a `kind`, `missing`,
     `not_folder`, `no_git`, `git_broken`, `not_repo`, `git_refused`, `no_commits`, the
@@ -451,7 +451,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     a failure removes the temporary file and keeps the old value. `remove`, `check_removable`
     (no link on the way or anywhere in the data folder) and `remove_all` (by `dir_fd`). `read`
     is `agent_env.read_folder(own=reserved)`; `layer`, the project's plain variables with
-    its secrets over them, is what a launch (`runtime.agents_env`) and a clone into the
+    its secrets over them, is what a launch (`runtime.agent_layers`) and a clone into the
     project (`clone`) get, its one builder; `unused` is what it does
     not give, by name with why (None for the folder), its values left inside, for `lado
     doctor` and the project's page; `names` lists without opening a file
@@ -462,27 +462,34 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   - `logins.py`: the agent CLIs' logins (docs/design/ui.md, Providers and environment):
     `refusal` is why a new session or worker (`SESSION`, `WORKER`) of a CLI that needs a
     login and has none is not started (lado.runtime.check_login raises it), `wait_reason`
-    why a resumed agent waits; `read` asks a provider's `login_status` in the agents' environment without a project
-    (`environment`), says the layer of the variable that logs it in (`layer`: LADO's
-    secret, the outside folder, the login shell), and names the live agents that wait for
-    it and that run (`agents`, by `wait_reason`, the one text of that wait) and the
-    projects with a login variable of their own; `source` is where a login comes from in
-    words, also `lado doctor`'s; `check_variable` the only names LADO's secrets take;
-    `logout` runs a provider's `logout_argv`. The login windows: `open_window` (a tmux
+    why a resumed agent waits;
+    `read` asks a provider's `login_status` in the environment its agents get without a
+    project (`environment(provider, layers)`: the login taken whole from one layer), says
+    the layer that gives the login (`layer`, by the same rule: LADO's secret, the outside
+    folder, the login shell) and where it comes from in words (`Login.where`: that layer,
+    else the CLI's own file in the provider's words, `LoginStatus.file_words`; the page's
+    state line and `lado doctor`'s), and names the live agents that wait for it and that run
+    (`agents`, by `wait_reason`, the one text of that wait) and the projects with a login
+    variable of their own; `check_secret` the only names and values LADO's secrets take.
+    The login windows: `open_window` (a tmux
     session `lado-login-<provider>` with the labels `@lado-login`, `@lado-home`, running the
     action's argv through `agent_env.command`; one per provider), `close_window`,
     `open_windows`, and `end_windows`, which `lado stop --all` and the UI server's start and
     stop use, by the labels only.
   - `login_wait.py`: the window of an agent whose CLI needs a login and has none (`lado
     login-wait`, hidden): `command` writes the launch file with LADO's and the provider's
-    own names, which no layer replaces, and the session's project; `main` polls
-    `login_status` every `logins.POLL` seconds with the file layers read anew (`layers`),
+    own names, which no layer replaces, the session's project and the login shell's own
+    login variables (`shell_login`); `main` polls `login_status` every `logins.POLL`
+    seconds with the file layers read anew and the login taken whole from one (`layers`),
     then settles `first_hook_blocker`, logs what it did and execs the CLI.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`, the login's
     questions (`login_status` → `LoginStatus`, by the CLI's own status command through
-    `run_status`, with a time limit, unknown with why on any failure; `login_actions`,
-    `logout_argv`, `login_variables`, `login_note`, `Capabilities.needs_login`), each
+    `run_status`, with a time limit, unknown with why on any failure, `LoginStatus.choice`
+    and `file_words`; `login_actions`, the login windows' commands (OpenCode's, Kilo's;
+    none of Claude Code's); `login_question` and `login_choices` (`LoginChoice`: a value of
+    one login variable to paste, Claude Code's two); `login_variables`, `login_note`,
+    `Capabilities.needs_login`), each
     provider parsing its own CLI's output, `CLI_VARIABLES`,
     the names LADO sets for the agent CLIs, reserved from project variables and kept in
     step with every provider's `Launch.env` by a test; each provider's
@@ -569,7 +576,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     variables and the calling agent's LADO identity (`LADO_SESSION`, `LADO_AGENT`,
     `LADO_INSTANCE`; every other `LADO_*` stays) from every tmux call, the popup, a UI
     terminal, the session loop's start (`loop.start`) and an agent's environment
-    (`agent_env.resolve`): a session the supervisor's `lado mcp` starts never runs as that
+    (`agent_env.layers`): a session the supervisor's `lado mcp` starts never runs as that
     agent. `runs._popup` keeps its `env -u`: the tmux server builds the popup's environment.
     `server_running` is the one look at whether a server runs on a socket (`list-sessions`;
     it never starts one). `new_session` sets `exit-empty on` (tmux's default) first in its
@@ -591,10 +598,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `remote` with no server; a failure is `LAUNCHD_FAILED`, a warning, and the server starts
     here instead. The texts (`OUTSIDE_GUI`, `NO_GUI`, `PLAN_REMOTE`) name no provider:
     `fill` puts in the titles and hints of `Provider.keychain_login`.
-  - `agent_env.py`: where an agent's environment comes from (docs/design/agents.md): `resolve`
-    (the login shell's, then the outside folder's, `outside`, then LADO's secrets,
-    `lado_secrets`, then the session's project's variables and secrets it is given, which
-    `runtime.agents_env` reads), `for_git` (the
+  - `agent_env.py`: where an agent's environment comes from (docs/design/agents.md): `layers`
+    (`Layers`: the login shell's, the outside folder's, `outside`, LADO's secrets,
+    `lado_secrets`, and the session's project's variables and secrets it is given, which
+    `runtime.agent_layers` reads), `merge` (each over the one before, an agent CLI's login
+    variables, given as names, taken whole from the highest layer that sets any), `resolve`
+    (both), `for_git` (the
     environment of LADO's own network git, gitcache's and clone's: the process's, the
     outside folder's over it, then a project's layer when given; no login shell), and
     `command`, the window's command that runs the agent with exactly that environment. `read_folder` is
@@ -1079,7 +1088,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `/api/kits` (the kit of each name the lookup takes, the same for every folder; a
     `where` the page still sends is ignored; an invalid one `valid: false`) and `/api/providers` (no provider is marked the default;
     `launch.provider_infos(project)` sets `login_missing` by `logins.refusal` in
-    `runtime.agents_env(project)`, false when that environment cannot be had; `?project=`
+    `runtime.agents_env` of the provider over `runtime.agent_layers(project)`, false when those cannot be had; `?project=`
     unknown is 404);
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
     Session head) is what the session's head shows besides its settings, read anew: `repos`

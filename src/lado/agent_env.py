@@ -14,8 +14,13 @@ line.
 Over those go the variables of the session's project (lado.projects), its plain ones read
 from lado.db and its secrets from their folder (lado.project_secrets, by the outside
 folder's reader, `read_folder`, which refuses links and loose modes there) at each launch
-by whoever launches (lado.runtime.agents_env); a session without a project has none. LADO's
+by whoever launches (lado.runtime.agent_layers); a session without a project has none. LADO's
 and the agent CLI's own variables go over all of them (lado.runtime).
+
+A login comes whole from one layer (`merge`): of an agent CLI's login variables (given as
+names, so nothing here knows a CLI), the highest layer that sets any gives those it sets,
+and none comes from a lower one. A login shell's API key thus never beats a token saved in
+LADO's secrets by the CLI's own order of its variables.
 
 LADO's own network git calls (kits, skill packs, marketplaces, a clone of a URL) get the
 same layers over LADO's process environment instead of the login shell's (`for_git`), so
@@ -40,7 +45,7 @@ import sys
 import tempfile
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import NamedTuple
 
@@ -105,15 +110,47 @@ def source() -> str:
     return value
 
 
-def resolve(project: Mapping[str, str] | None = None) -> dict[str, str]:
-    """The environment for an agent, before LADO's and its provider's variables: the
-    login shell's (or the starting process's), then the outside folder's, then LADO's
-    secrets (`lado_secrets`), then `project`, the variables of its session's project
-    (lado.projects), each over the one before."""
+class Layers(NamedTuple):
+    """The layers of an agent's environment, lowest first (`merge` lays them)."""
+
+    shell: dict[str, str]  # the login shell's, or the starting process's
+    outside: dict[str, str]
+    secrets: dict[str, str]  # LADO's secrets
+    project: dict[str, str]
+
+
+def layers(project: Mapping[str, str] | None = None) -> Layers:
+    """The layers of an agent's environment, read now: the login shell's (or the starting
+    process's), the outside folder's, LADO's secrets (`lado_secrets`), and `project`, the
+    variables of its session's project (lado.projects)."""
     env = from_shell() if source() == SHELL else dict(os.environ)
     dropped = (*EXCLUDED, *SHELL_OWN)
     base = {k: v for k, v in tmux.without_agent_vars(env).items() if k not in dropped}
-    return {**base, **outside().values, **lado_secrets().values, **(project or {})}
+    return Layers(base, outside().values, lado_secrets().values, dict(project or {}))
+
+
+def merge(
+    found: Layers | tuple[Mapping[str, str], ...], login: Iterable[str] = ()
+) -> dict[str, str]:
+    """`found`'s layers, each over the one before, but for the names of `login` (an agent
+    CLI's login variables): a login comes whole from one layer, the highest that sets any
+    of them, and none of them is taken from a lower one. Without `login`, name by name."""
+    env: dict[str, str] = {}
+    for layer in found:
+        env.update(layer)
+    names = set(login)
+    if names:
+        top = next((layer for layer in reversed(found) if any(layer.get(n) for n in names)), {})
+        for name in names:
+            env.pop(name, None)
+        env.update({name: top[name] for name in names if name in top})
+    return env
+
+
+def resolve(project: Mapping[str, str] | None = None, login: Iterable[str] = ()) -> dict[str, str]:
+    """The environment for an agent, before LADO's and its provider's variables: `layers`
+    merged, with the login names of its provider (`login`) taken whole from one layer."""
+    return merge(layers(project), login)
 
 
 def for_git(project: Mapping[str, str] | None = None) -> dict[str, str]:

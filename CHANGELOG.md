@@ -7,9 +7,10 @@
 - **Claude Code trusts the session's repository.** LADO records Claude Code's folder trust
   itself, so a session started from the UI or a phone no longer waits for "Yes, I trust
   this folder"; the repository's own Claude Code settings run.
-- **Agent CLI logins in Settings.** Providers and environment shows whether Claude Code,
-  Codex, OpenCode and Kilo are logged in; Claude Code, OpenCode and Kilo log in from the page
-  (a phone too). A resumed Claude agent without a login waits and starts once there is one.
+- **Agent CLI logins in Settings.** Providers and environment says per CLI how it is logged
+  in and from where, with one button; Claude Code logs in by a pasted subscription token or
+  API key (a phone too), the place that sets one giving the whole login. A Claude agent
+  resumed without a login waits and starts once there is one.
 
 ### Changed
 

@@ -414,14 +414,14 @@ export const openLogin = (name: string, action: string) =>
 
 export const closeLogin = (name: string) => post<ProviderLogins>(`${providerPath(name)}/login`, undefined, "DELETE");
 
-export const logOut = (name: string) => post<ProviderLogins>(`${providerPath(name)}/logout`);
-
-// A login variable's value goes in this request's body only, kept as LADO's secret.
+// A login variable's value goes in this request's body only, kept as LADO's secret in place
+// of the CLI's other login variables there.
 export const putLoginVariable = (name: string, variable: string, value: string) =>
   post<ProviderLogins>(`${providerPath(name)}/variables/${encodeURIComponent(variable)}`, { value }, "PUT");
 
-export const deleteLoginVariable = (name: string, variable: string) =>
-  post<ProviderLogins>(`${providerPath(name)}/variables/${encodeURIComponent(variable)}`, undefined, "DELETE");
+// Log out of LADO's secrets: each of the CLI's login variables there goes.
+export const deleteLoginSecrets = (name: string) =>
+  post<ProviderLogins>(`${providerPath(name)}/login-secrets`, undefined, "DELETE");
 
 export type ProjectLaunch = components["schemas"]["ProjectLaunch"];
 export type ProjectPlace = components["schemas"]["ProjectPlace"];

@@ -1771,56 +1771,10 @@
         }
       }
     },
-    "/api/providers/{name}/logout": {
-      "post": {
-        "summary": "Logout",
-        "description": "Run the provider's logout that asks nothing (Provider.logout_argv).",
-        "operationId": "logout_api_providers__name__logout_post",
-        "parameters": [
-          {
-            "name": "name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Name"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProviderLogins"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "refused, with the reason"
-          },
-          "404": {
-            "description": "no such provider"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/providers/{name}/variables/{variable}": {
       "put": {
         "summary": "Set Login Variable",
-        "description": "Keep one of the provider's login variables as LADO's secret; the agents started\nafter it, and those that wait for a login, get it.",
+        "description": "Keep one of the provider's login variables as LADO's secret, in place of its\nothers there: one login per layer, so the one saved is the login. The agents started\nafter it, and those that wait for a login, get it.",
         "operationId": "set_login_variable_api_providers__name__variables__variable__put",
         "parameters": [
           {
@@ -1880,11 +1834,13 @@
             }
           }
         }
-      },
+      }
+    },
+    "/api/providers/{name}/login-secrets": {
       "delete": {
-        "summary": "Remove Login Variable",
-        "description": "Remove one of the provider's login variables from LADO's secrets.",
-        "operationId": "remove_login_variable_api_providers__name__variables__variable__delete",
+        "summary": "Remove Login Secrets",
+        "description": "Log out of LADO's secrets: remove each of the provider's login variables there.\nIts login of another layer, if any, is what the agents get then.",
+        "operationId": "remove_login_secrets_api_providers__name__login_secrets_delete",
         "parameters": [
           {
             "name": "name",
@@ -1893,15 +1849,6 @@
             "schema": {
               "type": "string",
               "title": "Name"
-            }
-          },
-          {
-            "name": "variable",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Variable"
             }
           }
         ],
@@ -5955,6 +5902,35 @@
         "title": "LoginActionInfo",
         "description": "A command the login window can run (Provider.login_actions)."
       },
+      "LoginChoiceInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "variable": {
+            "type": "string",
+            "title": "Variable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "detail",
+          "variable"
+        ],
+        "title": "LoginChoiceInfo",
+        "description": "A way to log the CLI in by a pasted value kept as LADO's secret\n(Provider.login_choices)."
+      },
       "LoginInfo": {
         "properties": {
           "state": {
@@ -5970,28 +5946,13 @@
             "type": "string",
             "title": "Method"
           },
-          "file": {
+          "where": {
             "type": "string",
-            "title": "File"
+            "title": "Where"
           },
-          "variable": {
+          "choice": {
             "type": "string",
-            "title": "Variable"
-          },
-          "layer": {
-            "type": "string",
-            "title": "Layer"
-          },
-          "source": {
-            "type": "string",
-            "title": "Source"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/LoginItemInfo"
-            },
-            "type": "array",
-            "title": "Items"
+            "title": "Choice"
           },
           "problem": {
             "type": "string",
@@ -6002,39 +5963,12 @@
         "required": [
           "state",
           "method",
-          "file",
-          "variable",
-          "layer",
-          "source",
-          "items",
+          "where",
+          "choice",
           "problem"
         ],
         "title": "LoginInfo",
         "description": "A CLI's login as its own status command says (Provider.login_status); no value."
-      },
-      "LoginItemInfo": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "kind": {
-            "type": "string",
-            "title": "Kind"
-          },
-          "variable": {
-            "type": "string",
-            "title": "Variable"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "kind",
-          "variable"
-        ],
-        "title": "LoginItemInfo",
-        "description": "One login of a CLI that keeps several (OpenCode's and Kilo's)."
       },
       "LoginOpen": {
         "properties": {
@@ -6049,30 +5983,6 @@
         ],
         "title": "LoginOpen",
         "description": "The login action a window runs (LoginActionInfo.id)."
-      },
-      "LoginVariableInfo": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "secret": {
-            "type": "boolean",
-            "title": "Secret"
-          },
-          "layer": {
-            "type": "string",
-            "title": "Layer"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "secret",
-          "layer"
-        ],
-        "title": "LoginVariableInfo",
-        "description": "A variable that logs the CLI in: whether LADO's secrets hold it (never its value),\nand which layer gives it now."
       },
       "MarketplaceChange": {
         "properties": {
@@ -7557,16 +7467,20 @@
             "type": "array",
             "title": "Actions"
           },
-          "can_logout": {
-            "type": "boolean",
-            "title": "Can Logout"
+          "question": {
+            "type": "string",
+            "title": "Question"
           },
-          "variables": {
+          "choices": {
             "items": {
-              "$ref": "#/components/schemas/LoginVariableInfo"
+              "$ref": "#/components/schemas/LoginChoiceInfo"
             },
             "type": "array",
-            "title": "Variables"
+            "title": "Choices"
+          },
+          "from_lado": {
+            "type": "boolean",
+            "title": "From Lado"
           },
           "note": {
             "type": "string",
@@ -7604,8 +7518,9 @@
           "login",
           "needs_login",
           "actions",
-          "can_logout",
-          "variables",
+          "question",
+          "choices",
+          "from_lado",
           "note",
           "waiting",
           "running",

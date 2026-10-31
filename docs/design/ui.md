@@ -2292,54 +2292,64 @@ time. Each task is one `feature` run, useful on its own.
 ### Providers and environment
 
 Settings: the agent CLIs LADO can run, their versions and logins, and what `lado doctor`
-checks (LAD-157, openspec change provider-logins; built in `web/src/Providers.tsx` and
-`web/src/LoginWindow.tsx`). Its anchor `#providers-and-environment` scrolls the page to it.
+checks (LAD-157 and LAD-160, openspec changes provider-logins and provider-login-layers;
+built in `web/src/Providers.tsx`, `web/src/LoginSheet.tsx` and `web/src/LoginWindow.tsx`).
+Its anchor `#providers-and-environment` scrolls the page to it.
 
-- **A row per CLI**: its name and version (or how to install it); a dot and its login as
-  the CLI's own status command says it, read by the server in the environment the agents
-  of a session without a project get (lado.logins): "Logged in · <how>", "Not logged in"
-  (bold, orange, for a CLI whose agents need a login: Claude Code), "No login" (the
-  others), or "Unknown: <why>", never shown as not logged in. Then where the login comes
-  from (the CLI's file, or a variable and its layer: the login shell, the outside folder,
-  LADO's secret), OpenCode's and Kilo's logins one by one, the agents that wait for this
-  login as links to their terminals, the projects with a login variable of their own (their
-  sessions use it instead), and the provider's note (Codex: its agents do not get this
-  login yet, GitHub #113; no login action).
-- **Actions**: the CLI's own login commands (Claude Code: "Log in with your Claude
-  account…", "Log in with Anthropic Console…"; OpenCode and Kilo: "Add a login…" and, with a
-  login, "Log out of one…") open the login window; "Log out…" (Claude Code, for a login of
-  its own file: a variable's login stays whatever its logout does) asks first, naming the
-  CLI's running agents, which share that login, then runs `claude auth logout`.
-- **Login variables** (Claude Code's `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`): the
-  project page's secret field (written, never shown or returned), Save; a saved one says
-  "set · LADO's secret" and has Remove…, which asks first, naming the running agents, which
-  keep it until they start again. A value the agents could not get (a NUL, over 64 KiB) is
-  refused. They go to
-  `<LADO_HOME>/secrets/`, a layer of every agent between the outside folder and a project's.
+- **A row per CLI**: its name and version (or how to install it); a dot and one state line
+  as the CLI's own status command says it, read by the server in the environment the agents
+  of that CLI in a session without a project get, its login taken whole from one layer
+  (lado.logins): "Logged in · <how> · <where from>", "Not logged in" (bold, orange, for a
+  CLI whose agents need a login: Claude Code), "No login" (the others), or "Unknown:
+  <why>", never shown as not logged in. How is the provider's words (Claude Code:
+  "Subscription (Max)", "Subscription (token)", "Pay per use (API key)", "Pay per use
+  (Console)"); where from is the layer that gives the login ("LADO's secret", "outside
+  folder", "login shell", "the process that starts LADO") or the CLI's own login file in the
+  provider's words ("Claude Code's login file"; "the login keychain" on a Mac), left out
+  when neither says (OpenCode, Kilo, Codex). Then the agents that wait for this login as
+  links to their terminals, "Projects with their own login: <ids>" (their sessions use it),
+  the provider's note (Codex: its agents do not get this login yet, GitHub #113), and one
+  button: "Log in…" without a login (primary when its agents wait for one), "Change login…"
+  with one; none for a CLI with no way to log in from the page (Codex). No field, path or
+  second button.
+- **The login sheet** (the button): a sheet over the page, the whole screen on a phone,
+  with Close. For a CLI whose provider names choices (Claude Code), its question ("How do
+  you pay for Claude?") and a box per choice with a radio ("Subscription — Claude Pro or
+  Max": a token from `claude setup-token` on any computer with Claude Code; "Pay per use —
+  API billing": an API key), its detail, and the current one marked "current"; the chosen
+  one has the project page's secret field (dots, never shown or returned) and Save, which
+  keeps the value as LADO's secret in place of the CLI's other login variable there and
+  closes the sheet. "Log out…", while the login comes from LADO's secrets, asks first,
+  naming the CLI's running agents, which keep the login until they start again, then
+  removes it. LADO runs no login command of Claude Code: the human brings a ready token or
+  key; `claude auth logout` in a terminal removes the login of Claude Code's own file.
+  For a CLI that logs in by its own command (OpenCode, Kilo) the sheet is its login window
+  at once, with "Log out of one…" in its head while logged in. A value the agents could
+  not get (a NUL, over 64 KiB) is refused. LADO's secrets go to `<LADO_HOME>/secrets/`, a
+  layer of every agent between the outside folder and a project's.
 - **lado doctor** about the providers under the rows (each CLI's version and login, the
   graphical session on macOS, the agents' environment: the same lines as `lado doctor`),
-  and "Check again". The section is read when it opens, after each action, when a login
-  window ends and on Check again; not from the change feed (the CLIs' files change outside
-  LADO).
-- **The login window**: a sheet over the page, the whole screen on a phone, "Log in: <CLI>"
-  and Close (which ends the command), the terminal of the CLI's command (a tmux session of
-  its own, `lado-login-<provider>`, labelled; one per CLI: choosing an action again shows the
-  one open), always in control. A link in it, also one wrapped over lines, opens in a new
-  tab (xterm's web links addon); under it "Text to send" with "Send ⏎" (its text and Enter
-  as one input) and the keys ↑ ↓ Enter Esc. When the command ends, the sheet closes and the
-  section is read again. The windows end with `lado stop --all` and the server's start and
-  stop.
+  and "Check again". The section is read when it opens, when a sheet closes and on Check
+  again; not from the change feed (the CLIs' files change outside LADO).
+- **The login window**: "Log in: <CLI>" and Close (which ends the command), the terminal of
+  the CLI's command (a tmux session of its own, `lado-login-<provider>`, labelled; one per
+  CLI: "Log out of one…" ends the login command and runs the logout one in its place),
+  always in control. A link in it, also one wrapped over lines, opens in a new tab (xterm's
+  web links addon); under it "Text to send" with "Send ⏎" (its text and Enter as one input)
+  and the keys ↑ ↓ Enter Esc. When the command ends, the sheet closes and the section is
+  read again. The windows end with `lado stop --all` and the server's start and stop.
 - **Needs you**: an agent that waits for its CLI's login (`AgentInfo.login_wait`, the
   provider's name) has "Log in…" first, which leads here; Open terminal stays beside it.
 - **API**: `GET /api/providers/logins` (`ProvidersPage`: a `ProviderLogins` per provider,
-  with the System panel's `ProviderInfo` as `cli`, and the checks); `POST
-  /api/providers/{name}/login {action}` and `DELETE …/login` (the window), `WS
-  …/login/terminal` (the agents' terminal protocol, control only); `POST …/logout`; `PUT`
-  and `DELETE …/variables/{variable}` (400 for a name the provider does not name as its
-  login; a 422 there repeats none of its input). `GET /api/providers` stays the System
-  panel's and New session's list; it runs the status command of the CLIs whose agents need
-  a login (`login_missing`), in the environment of the agents of `?project=` (404 for an
-  unknown one) or of none.
+  with the System panel's `ProviderInfo` as `cli`, its `question`, `choices` and
+  `from_lado`, and the checks); `POST /api/providers/{name}/login {action}` and `DELETE
+  …/login` (the window), `WS …/login/terminal` (the agents' terminal protocol, control
+  only); `PUT …/variables/{variable}` (keeps it, removes the provider's other login
+  variables from LADO's secrets; 400 for a name the provider does not name as its login; a
+  422 there repeats none of its input) and `DELETE …/login-secrets` (Log out). No answer
+  holds a value. `GET /api/providers` stays the System panel's and New session's list; it
+  runs the status command of the CLIs whose agents need a login (`login_missing`), in the
+  environment the agents of that CLI in `?project=` (404 for an unknown one) or in none get.
 
 ### Activity
 

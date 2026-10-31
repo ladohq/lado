@@ -430,7 +430,7 @@ def test_an_environment_that_cannot_be_had_lacks_no_login(
     def broken(project):
         raise runtime.LadoError("the login shell failed")
 
-    monkeypatch.setattr(runtime, "agents_env", broken)
+    monkeypatch.setattr(runtime, "agent_layers", broken)
     cli_logins.logged_out()
     assert _by_name(client.get("/api/providers"))["claude"]["login_missing"] is False
 

@@ -15,7 +15,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -722,12 +722,12 @@ def start_session(
             raise LadoError(f'session "{session}" is already running; use `lado attach {session}`')
         if old.repo != repo:
             raise _elsewhere(old, repo)
-    base_env, chosen = None, None
+    layers, chosen = None, None
     if not provider and not old:
         # Resolved before the provider is chosen: it is the one on the agents' PATH. A
         # provider given or stored is checked first, without waiting for the login shell.
-        base_env = agents_env(project)
-        chosen = _new_sessions_provider(repo, base_env)
+        layers = agent_layers(project)
+        chosen = _new_sessions_provider(repo, agent_env.merge(layers))
     agent_cli = _provider(provider or (old.provider if old else chosen.provider))
     sess = state.Session(
         session,
@@ -741,8 +741,9 @@ def start_session(
     )
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.kits, sess.without)
-    if base_env is None:
-        base_env = agents_env(sess.project)
+    if layers is None:
+        layers = agent_layers(sess.project)
+    base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
     if not old:  # a resume waits for the login instead (_held_for_login)
         check_login(agent_cli, base_env, logins.SESSION)
@@ -801,7 +802,9 @@ def start_session(
         launch = _launch_command(agent_cli, agent, sess, spec)
         started.warnings += launch.warnings
         started.warnings += _layer_warnings(agent, launch, sess.project, files=True)
-        blocker, command = _before_window(agent_cli, agent, base_env, launch, sess.project)
+        blocker, command = _before_window(
+            agent_cli, agent, base_env, layers.shell, launch, sess.project
+        )
         started.warnings += blocker
         # The first new-session on a socket starts LADO's tmux server, whose audit session
         # its agents inherit (lado.gui_session).
@@ -910,7 +913,8 @@ def spawn_worker(
         agent_cli.name,
         run=run.name if run else None,
     )
-    base_env = agents_env(sess.project)
+    layers = agent_layers(sess.project)
+    base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
     check_login(agent_cli, base_env, logins.WORKER)
     spec = _spec(agent_cli, env, role_def.name, agent, instructions, base_env, without or [])
@@ -926,7 +930,9 @@ def spawn_worker(
         state.queue_message(session, state.LADO, worker, summary, text)
         launch = _launch_command(agent_cli, agent, sess, spec)
         held = launch.warnings + _layer_warnings(agent, launch, sess.project, files=False)
-        before, command = _before_window(agent_cli, agent, base_env, launch, sess.project)
+        before, command = _before_window(
+            agent_cli, agent, base_env, layers.shell, launch, sess.project
+        )
         held += before
         tmux.new_window(session, worker, str(worktree), command)
         state.window_opened(session, worker)
@@ -2852,13 +2858,20 @@ def _add_agent(agent: state.Agent, kit: str) -> None:
     state.add_event(agent.session, agent.name, state.SPAWNED, detail)
 
 
-def agents_env(project: str | None) -> dict[str, str]:
-    """The environment agents start from (lado.agent_env), resolved anew for each launch,
-    with the layer of the session's `project` as it is now (lado.project_secrets.layer)."""
+def agent_layers(project: str | None) -> agent_env.Layers:
+    """The layers agents start from (lado.agent_env), read anew for each launch, with the
+    layer of the session's `project` as it is now (lado.project_secrets.layer). Each agent
+    merges them with its own provider's login (agents_env)."""
     try:
-        return agent_env.resolve(project_secrets.layer(project) if project else None)
+        return agent_env.layers(project_secrets.layer(project) if project else None)
     except agent_env.AgentEnvError as exc:
         raise LadoError(str(exc)) from exc
+
+
+def agents_env(layers: agent_env.Layers, agent_cli: providers.Provider) -> dict[str, str]:
+    """The environment an agent of `agent_cli` starts from: `layers` merged, its CLI's
+    login taken whole from one layer (lado.agent_env.merge)."""
+    return agent_env.merge(layers, agent_cli.login_variables)
 
 
 def _check_commands(env: kits.Environment, base_env: dict[str, str]) -> None:
@@ -2948,15 +2961,16 @@ def check_start_login(provider: str | None, project: str | None) -> None:
     the UI's From scratch): refuse as start_session would, when the provider is known now:
     given, or the only one installed on the agents' PATH. Otherwise start_session decides
     once the folder is there."""
-    base_env = agents_env(project)
+    layers = agent_layers(project)
     if provider is None:
-        found = suggested_provider(None, _on_agents_path(base_env))
+        found = suggested_provider(None, _on_agents_path(agent_env.merge(layers)))
         if found is None:
             return
         provider = found.provider
     elif provider not in providers.names():
         return  # start_session refuses it as it refuses any
-    check_login(providers.get(provider), base_env, logins.SESSION)
+    agent_cli = providers.get(provider)
+    check_login(agent_cli, agents_env(layers, agent_cli), logins.SESSION)
 
 
 def _held_for_login(
@@ -2988,6 +3002,7 @@ def _before_window(
     agent_cli: providers.Provider,
     agent: state.Agent,
     base_env: dict[str, str],
+    shell: Mapping[str, str],
     launch: providers.Launch,
     project: str | None,
 ) -> tuple[list[str], list[str]]:
@@ -2995,8 +3010,9 @@ def _before_window(
     CLI's login (_held_for_login), else what the CLI asks first (_first_hook_blocker). An
     agent that waits for its login gets now what needs no login (Claude Code's trust),
     told whoever starts it; what does (the first run), and a question the CLI would still
-    ask, its waiting window settles once logged in (lado.login_wait), in loop.log. The
-    lines to tell whoever starts it, and the window's command."""
+    ask, its waiting window settles once logged in (lado.login_wait), in loop.log; `shell`
+    is the login shell's layer, the lowest its window lays the login from. The lines to
+    tell whoever starts it, and the window's command."""
     waits, lines = _held_for_login(agent_cli, agent, base_env, launch)
     if not waits:
         return lines + _first_hook_blocker(agent_cli, agent, base_env, launch), _command(
@@ -3007,8 +3023,11 @@ def _before_window(
     lines += [line for line in (*early.notes, early.warning) if line]
     ours = sorted({**providers.agent_env(agent), **launch.env})
     file = providers.base.config_dir(agent) / "env.json"
+    shell_login = {n: shell[n] for n in agent_cli.login_variables if n in shell}
     try:
-        command = login_wait.command(file, agent_cli.name, env, ours, project, launch.argv)
+        command = login_wait.command(
+            file, agent_cli.name, env, ours, project, shell_login, launch.argv
+        )
     except agent_env.AgentEnvError as exc:
         raise LadoError(str(exc)) from exc
     return lines, command

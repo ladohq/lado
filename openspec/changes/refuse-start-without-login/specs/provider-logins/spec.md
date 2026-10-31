@@ -114,12 +114,12 @@ warning.
 
 ### Requirement: An agent whose CLI needs a login waits for it and starts by itself
 
-When an agent's provider needs a login (Claude Code) and its launch environment is not
-logged in at its launch (a resumed session's agent, or a login lost between a new start's
-check and its launch), the agent SHALL wait from its start with the reason `<CLI> is not
-logged in: log in in Settings → Providers and environment, or set <variable>; the agent
-starts by itself once you do`; its window SHALL check again every few seconds, with the
-file layers read anew, and start the CLI once logged in. An unknown state SHALL NOT hold it.
+When an agent's provider needs a login (Claude Code) and is not logged in at launch (a
+resumed agent, or a login lost after a new start's check), the agent SHALL wait from its
+start with the reason `<CLI> is not logged in: log in in Settings → Providers and
+environment, or set <variable>; the agent starts by itself once you do`; its window SHALL
+check again every few seconds, the file layers read anew, and start the CLI once logged
+in. An unknown state SHALL NOT hold it.
 
 #### Scenario: A session started without a login
 - **WHEN** Claude Code is not logged in and a stopped session with the provider `claude` is

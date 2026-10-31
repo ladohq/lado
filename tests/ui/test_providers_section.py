@@ -8,6 +8,7 @@ fake CLI's login command, prints a link and reads a code sent with "Text to send
 computer and at a phone's width."""
 
 import re
+import time
 import uuid
 
 import agent_helpers
@@ -25,14 +26,15 @@ QUESTION = fake_provider.FakeLoginProvider.login_question
 
 
 def waiting_session(repo, marker) -> str:
-    """A session of "fake-login" resumed without its login: a new one would be refused, a
-    resumed one waits (openspec change refuse-start-without-login)."""
+    """A session of "fake-login" resumed by LADO without its login (as lado update does): a
+    new one or a resume by hand would be refused, LADO's own resume waits (openspec changes
+    refuse-start-without-login, providers-section-and-start-screens)."""
     session = f"ui-{uuid.uuid4().hex[:6]}"
     marker.write_text("logged in")
     runtime.start_session(str(repo), session, None, "fake-login")
     runtime.stop_session(session)
     marker.unlink()
-    runtime.start_session(str(repo), session, None)
+    runtime.start_session(str(repo), session, None, wait_for_login=True)
     assert state.get_agent(session, "supervisor").status == state.WAITING
     agent_helpers.wait_for(lambda: loop.running(session), "the session loop", session)
     return session
@@ -67,7 +69,12 @@ def test_a_waiting_agent_leads_to_the_sheet_and_starts_with_the_pasted_token(
     expect(fake.get_by_role("button")).to_have_count(1)  # one button, no field
     expect(fake.get_by_role("textbox")).to_have_count(0)
     section = page.get_by_role("region", name="Providers and environment")
-    expect(section.get_by_role("list", name="lado doctor about the providers")).to_be_visible()
+    expect(
+        section.get_by_text("Sign-ins your agents use. Changes apply to agents started afterwards.")
+    ).to_be_visible()
+    expect(section.get_by_role("button", name="Check the CLIs again")).to_be_visible()
+    for gone in ("lado doctor", "Check again", "[ok]", "[warn]"):
+        expect(section).not_to_contain_text(gone)
     shot(page, "section")
 
     fake.get_by_role("button", name="Log in…").click()
@@ -82,6 +89,13 @@ def test_a_waiting_agent_leads_to_the_sheet_and_starts_with_the_pasted_token(
     sheet.get_by_role("button", name="Save").click()
     expect(sheet).to_have_count(0)
     expect(row(page).get_by_text("Logged in · token · LADO's secret")).to_be_visible()
+    # Logged in, the row never says that an agent waits for this login (LAD-160's glitch),
+    # also while the agent's window has not looked yet and the check after Save runs.
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        text = row(page).inner_text()
+        assert "Logged in" in text and "waits for this login" not in text, text
+        time.sleep(0.1)
     idle(session)
     assert "canary-ui-token" not in page.content()
     row(page).scroll_into_view_if_needed()
@@ -101,6 +115,44 @@ def test_a_waiting_agent_leads_to_the_sheet_and_starts_with_the_pasted_token(
     expect(row(page).get_by_text("Not logged in")).to_be_visible()
     assert project_secrets.lado_names() == []
     runtime.stop_session(session)
+
+
+@pytest.fixture
+def held(tmp_path, monkeypatch):
+    """While this file exists, "fake-login"'s status command does not answer
+    (fake_provider.py); set before `server`."""
+    hold = tmp_path / "hold-login"
+    monkeypatch.setenv("FAKE_AGENT_LOGIN_HOLD", str(hold))
+    return hold
+
+
+def test_the_section_shows_the_last_rows_at_once(page: Page, logins, held, server, shot):
+    page.set_viewport_size({"width": 1280, "height": 900})
+    held.write_text("")
+    log_in(page, server)
+    page.goto(f"{server['url']}/settings#providers-and-environment")
+    section = page.get_by_role("region", name="Providers and environment")
+    refresh = section.get_by_role("button", name="Check the CLIs again")
+    # The first visit: each row as soon as its CLI answered; the held one says checking….
+    fake = section.get_by_role("listitem", name=TITLE)
+    expect(fake.filter(has_text="checking…")).to_have_count(1)
+    expect(window_row(page).get_by_text("No login")).to_be_visible()
+    expect(refresh).to_have_class(re.compile("spinning"))
+    expect(refresh).to_have_attribute("title", "Checking the CLIs…")
+    shot(page, "first-visit")
+    held.unlink()
+    expect(row(page).get_by_text("Not logged in")).to_be_visible()
+    expect(refresh).not_to_have_class(re.compile("spinning"))
+    # The next visit shows the last rows at once, while a fresh check runs.
+    page.goto(f"{server['url']}/sessions")
+    held.write_text("")
+    page.goto(f"{server['url']}/settings#providers-and-environment")
+    expect(refresh).to_have_class(re.compile("spinning"))
+    expect(row(page).get_by_text("Not logged in")).to_be_visible()
+    expect(fake.filter(has_text="checking…")).to_have_count(0)
+    shot(page, "next-visit")
+    held.unlink()
+    expect(refresh).not_to_have_class(re.compile("spinning"))
 
 
 def test_the_sheet_at_a_phones_width(browser: Browser, logins, server, repo, shot):

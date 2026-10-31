@@ -7,6 +7,7 @@ must know the fake providers too. So run as a script, this file is `lado` with t
 import dataclasses
 import json
 import sys
+import time
 from pathlib import Path
 
 from lado import cli, providers, state
@@ -14,6 +15,7 @@ from lado.providers import base, claude
 
 LADO = Path(__file__).resolve()
 AGENT = LADO.with_name("fake_agent.py")
+HOLD_LIMIT = 30  # seconds a held login status waits at most (FAKE_AGENT_LOGIN_HOLD)
 
 # The fake agent reports the neutral events under their own names.
 EVENTS = (
@@ -158,6 +160,11 @@ class FakeLoginProvider(FakeProvider):
         self.capabilities = dataclasses.replace(self.capabilities, needs_login=True)
 
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:
+        # A slow status command: it answers once the file FAKE_AGENT_LOGIN_HOLD names is
+        # gone (at most HOLD_LIMIT seconds).
+        hold, deadline = env.get("FAKE_AGENT_LOGIN_HOLD"), time.monotonic() + HOLD_LIMIT
+        while hold and Path(hold).exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
         if env.get("FAKE_AGENT_LOGIN_STATUS") == "unknown":
             return base.LoginStatus(base.UNKNOWN, problem="`fake auth status` timed out")
         if env.get(KEY):

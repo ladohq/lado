@@ -4,7 +4,6 @@ the providers. The decisions stay in the core: whether a folder will do is
 runtime.check_repo, a fresh start is lado.scratch, a kit is the one kits.find takes, a
 provider's state is doctor.provider_status."""
 
-import dataclasses
 import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
@@ -280,32 +279,13 @@ def provider_info(
     )
 
 
-def providers_page() -> models.ProvidersPage:
-    """Settings → Providers and environment: each provider's CLI and login, read now (each
-    CLI's commands at once), and `lado doctor`'s provider checks (lado.logins, doctor)."""
-    registry = [providers.get(name) for name in providers.names()]
-    with ThreadPoolExecutor(len(registry)) as pool:
-        statuses = list(pool.map(lambda p: doctor.provider_status(p, shutil.which), registry))
-    env, problem = _environment()
-    with ThreadPoolExecutor(len(registry)) as pool:
-        found = list(pool.map(lambda p, s: _read(p, s, env, problem), registry, statuses))
-    installed = [f for f, s in zip(found, statuses, strict=True) if s.installed]
-    checks = doctor.provider_checks(
-        doctor.version_checks(registry, statuses),
-        [doctor.login_check(f) for f in installed],
-        shutil.which,
-    )
-    return models.ProvidersPage(
-        providers=[
-            provider_logins(f, provider_info(f.provider, s))
-            for f, s in zip(found, statuses, strict=True)
-        ],
-        checks=[models.CheckInfo(**dataclasses.asdict(c)) for c in checks],
-    )
-
-
 def provider_logins(found: logins.Login, cli: models.ProviderInfo) -> models.ProviderLogins:
+    """Settings → Providers and environment's row of a provider (lado.server
+    .provider_check keeps them). The agents that wait for its login are named only while
+    it has none: one that waits still when the login is there starts within its window's
+    next look (lado.login_wait), so a logged-in row never names one."""
     provider, status = found.provider, found.status
+    waiting = found.waiting if status.state != providers.base.YES else []
     return models.ProviderLogins(
         cli=cli,
         login=models.LoginInfo(
@@ -324,10 +304,11 @@ def provider_logins(found: logins.Login, cli: models.ProviderInfo) -> models.Pro
         ],
         from_lado=found.layer == logins.SECRET,
         note=provider.login_note,
-        waiting=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in found.waiting],
+        waiting=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in waiting],
         running=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in found.running],
         projects=found.projects,
         window=found.window,
+        ready=True,
     )
 
 
@@ -335,14 +316,14 @@ def provider_login(name: str) -> models.ProviderLogins:
     """One provider's row, read now (after an action on it); ValueError for no such."""
     provider = providers.get(name)
     status = doctor.provider_status(provider, shutil.which)
-    env, problem = _environment()
-    return provider_logins(_read(provider, status, env, problem), provider_info(provider, status))
+    env, problem = environment()
+    return provider_logins(read(provider, status, env, problem), provider_info(provider, status))
 
 
 NO_LAYERS = agent_env.Layers({}, {}, {}, {})
 
 
-def _environment() -> tuple[agent_env.Layers, str]:
+def environment() -> tuple[agent_env.Layers, str]:
     """The layers of the agents' environment (lado.agent_env.layers), or none and why."""
     try:
         return agent_env.layers(), ""
@@ -350,7 +331,7 @@ def _environment() -> tuple[agent_env.Layers, str]:
         return NO_LAYERS, str(error)
 
 
-def _read(
+def read(
     provider: providers.Provider,
     status: doctor.ProviderStatus,
     env: agent_env.Layers,

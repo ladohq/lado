@@ -492,15 +492,6 @@ class AgentRefInfo(BaseModel):
     agent: str
 
 
-class CheckInfo(BaseModel):
-    """A line of `lado doctor` (doctor.Check)."""
-
-    name: str
-    level: Literal["ok", "info", "warn", "fail"]
-    detail: str
-    hint: str
-
-
 class ProviderLogins(BaseModel):
     """One agent CLI in Settings → Providers and environment (lado.logins)."""
 
@@ -516,13 +507,18 @@ class ProviderLogins(BaseModel):
     running: list[AgentRefInfo]  # its live agents, for Log out's confirmation
     projects: list[str]  # projects that set a login variable of their own, by id
     window: bool  # its login window is open
+    # Read at least once (lado.server.provider_check); false: only `cli`'s name and title
+    # say anything yet.
+    ready: bool
 
 
 class ProvidersPage(BaseModel):
-    """The section's data: each CLI's login, and `lado doctor`'s provider checks."""
+    """The section's data, from the server's last check of the CLIs
+    (lado.server.provider_check)."""
 
     providers: list[ProviderLogins]
-    checks: list[CheckInfo]
+    checking: bool  # a check runs: the rows change as each CLI is read
+    environment: str  # why the agents' environment could not be read; "" when it could
 
 
 class LoginOpen(BaseModel):

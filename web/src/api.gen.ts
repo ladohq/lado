@@ -721,11 +721,32 @@ export interface paths {
         };
         /**
          * Provider Logins
-         * @description Each provider's CLI and login, and `lado doctor`'s provider checks, read now.
+         * @description Each provider's CLI and login as the server's last check read them, at once;
+         *     starts no check (POST /api/providers/check does), so polling it costs nothing.
          */
         get: operations["provider_logins_api_providers_logins_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Providers
+         * @description Start a check of every CLI in the background, unless one runs; the rows kept.
+         */
+        post: operations["check_providers_api_providers_check_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1697,23 +1718,6 @@ export interface components {
             url: string;
             /** Left Out */
             left_out: number;
-        };
-        /**
-         * CheckInfo
-         * @description A line of `lado doctor` (doctor.Check).
-         */
-        CheckInfo: {
-            /** Name */
-            name: string;
-            /**
-             * Level
-             * @enum {string}
-             */
-            level: "ok" | "info" | "warn" | "fail";
-            /** Detail */
-            detail: string;
-            /** Hint */
-            hint: string;
         };
         /**
          * CloneJob
@@ -2770,6 +2774,8 @@ export interface components {
             projects: string[];
             /** Window */
             window: boolean;
+            /** Ready */
+            ready: boolean;
         };
         /** ProviderSuggestion */
         ProviderSuggestion: {
@@ -2783,13 +2789,16 @@ export interface components {
         };
         /**
          * ProvidersPage
-         * @description The section's data: each CLI's login, and `lado doctor`'s provider checks.
+         * @description The section's data, from the server's last check of the CLIs
+         *     (lado.server.provider_check).
          */
         ProvidersPage: {
             /** Providers */
             providers: components["schemas"]["ProviderLogins"][];
-            /** Checks */
-            checks: components["schemas"]["CheckInfo"][];
+            /** Checking */
+            checking: boolean;
+            /** Environment */
+            environment: string;
         };
         /** RecentFolder */
         RecentFolder: {
@@ -4977,6 +4986,26 @@ export interface operations {
         };
     };
     provider_logins_api_providers_logins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvidersPage"];
+                };
+            };
+        };
+    };
+    check_providers_api_providers_check_post: {
         parameters: {
             query?: never;
             header?: never;

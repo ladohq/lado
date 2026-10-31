@@ -3,12 +3,14 @@ provider-logins): each CLI's login, the login window, logout, and the login vari
 as LADO's secrets. In process, with FastAPI's test client; the CLIs' status commands
 answered by tests/conftest.py's cli_logins, tmux recorded for the windows."""
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
 from lado import agent_env, logins, project_secrets, projects, providers, runtime, state, tmux
 from lado.server import app as server_app
-from lado.server import auth
+from lado.server import auth, provider_check
 
 PORT = 8126
 OWN = "http://testserver"
@@ -21,8 +23,20 @@ def client(lado_home, fake_clis, monkeypatch):
     client = TestClient(server_app.create_app(auth.token(), PORT))
     client.cookies.set(auth.cookie_name(PORT), auth.token())
     client.headers["origin"] = OWN
+    provider_check.reset()
     yield client
+    provider_check.reset()  # its check ended, while the CLIs' answers are the test's
     client.app.state.clones.close()
+
+
+def _page(client):
+    """The section's data once a check started now has ended."""
+    assert client.post("/api/providers/check").status_code == 200
+    deadline = time.monotonic() + 10
+    while (page := client.get("/api/providers/logins").json())["checking"]:
+        assert time.monotonic() < deadline, "the check never ended"
+        time.sleep(0.01)
+    return page
 
 
 @pytest.fixture
@@ -52,10 +66,9 @@ def _row(page, name):
 def test_the_page_lists_each_cli_with_its_login(client, cli_logins, windows):
     cli_logins.logged_out()
     cli_logins.answer("codex", 0, "Logged in using ChatGPT\n")
-    answer = client.get("/api/providers/logins")
-    assert answer.status_code == 200, answer.text
-    page = answer.json()
+    page = _page(client)
     assert [p["cli"]["name"] for p in page["providers"]] == providers.names()
+    assert all(p["ready"] for p in page["providers"]) and page["environment"] == ""
     claude = _row(page, "claude")
     assert claude["login"]["state"] == "no"
     assert claude["needs_login"] is True
@@ -80,14 +93,48 @@ def test_the_page_lists_each_cli_with_its_login(client, cli_logins, windows):
     assert (codex["actions"], codex["choices"], codex["question"]) == ([], [], "")
     assert "#113" in codex["note"]
     assert [a["id"] for a in _row(page, "opencode")["actions"]] == ["login", "logout"]
-    names = [c["name"] for c in page["checks"]]
-    assert "Claude Code" in names and "Claude Code login" in names
-    assert "Agent environment" in names
+    assert "checks" not in page  # lado doctor's lines are lado doctor's
+
+
+def test_the_page_answers_at_once_and_only_a_post_starts_a_check(
+    client, cli_logins, windows, monkeypatch
+):
+    page = client.get("/api/providers/logins").json()
+    assert page["checking"] is False
+    assert [p["ready"] for p in page["providers"]] == [False] * len(providers.names())
+    assert _row(page, "claude")["cli"]["title"] == "Claude Code"
+    assert cli_logins.calls == []  # nothing read
+    started = []
+    monkeypatch.setattr(provider_check, "start", lambda: started.append(1) or True)
+    assert client.post("/api/providers/check").status_code == 200
+    assert started == [1]
+
+
+def test_a_saved_token_starts_a_check(client, cli_logins, windows, monkeypatch):
+    started = []
+    monkeypatch.setattr(provider_check, "start", lambda: started.append(1) or True)
+    row = client.put(f"/api/providers/claude/variables/{TOKEN}", json={"value": "c-5"}).json()
+    assert started == [1]
+    # The row is kept at once: the section shows it before the check ends.
+    assert _row(client.get("/api/providers/logins").json(), "claude") == row
+    client.delete("/api/providers/claude/login-secrets")
+    client.delete("/api/providers/claude/login")
+    assert started == [1, 1, 1]
+    client.post("/api/providers/opencode/login", json={"action": "login"})
+    assert started == [1, 1, 1]  # opening a window changes no login
+
+
+def test_the_environments_problem_is_on_the_page(client, windows, monkeypatch):
+    def fails():
+        raise agent_env.AgentEnvError("the login shell did not answer in 10 s")
+
+    monkeypatch.setattr(agent_env, "layers", fails)
+    assert _page(client)["environment"] == "the login shell did not answer in 10 s"
 
 
 def test_a_cli_not_installed_is_unknown_with_why(client, monkeypatch, windows):
     monkeypatch.setenv("PATH", "/nowhere")
-    page = client.get("/api/providers/logins").json()
+    page = _page(client)
     claude = _row(page, "claude")
     assert claude["cli"]["installed"] is False
     assert claude["login"] == {**claude["login"], "state": "unknown", "problem": "not installed"}
@@ -105,6 +152,7 @@ def test_a_saved_token_is_lados_secret_and_never_given_back(client, cli_logins, 
     assert row["login"]["method"] == "Subscription (token)"
     assert (row["login"]["where"], row["login"]["choice"]) == ("LADO's secret", "subscription")
     assert row["from_lado"] is True
+    _page(client)
     page = client.get("/api/providers/logins")
     assert "canary-1" not in page.text
     # The status command got it, as every agent would.
@@ -245,17 +293,23 @@ def test_the_row_names_waiting_and_running_agents_and_projects(
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.stop_session("s")
     cli_logins.logged_out()
-    runtime.start_session(str(repo), "s", None)  # a resume waits for the login
+    runtime.start_session(str(repo), "s", None, reason=runtime.AT_START)  # it waits
     monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
     projects.create("shop", None)
     projects.set_secret("shop", TOKEN, "canary-4")
-    claude = _row(client.get("/api/providers/logins").json(), "claude")
+    claude = _row(_page(client), "claude")
     assert claude["waiting"] == [{"session": "s", "agent": "supervisor"}]
     assert claude["running"] == [{"session": "s", "agent": "supervisor"}]
     assert claude["projects"] == ["shop"]
     [agent] = client.get("/api/sessions/s/agents").json()
     assert agent["login_wait"] == "claude"
     assert agent["status_reason"] == logins.wait_reason(providers.get("claude"))
+    # Logged in, the row names no agent that waits, though its window has not looked yet.
+    cli_logins.logged_in()
+    row = client.put(f"/api/providers/claude/variables/{TOKEN}", json={"value": "c-6"}).json()
+    assert row["login"]["state"] == "yes" and row["waiting"] == []
+    assert state.get_agent("s", "supervisor").status == state.WAITING
+    assert _row(_page(client), "claude")["waiting"] == []
 
 
 def test_no_login_wait_for_another_reason(client, repo, fake_tmux, claude_config):

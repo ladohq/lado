@@ -281,9 +281,9 @@ class Installed:
         self.output = ""
 
     def run(self, *args: str) -> subprocess.CompletedProcess:
-        env = {k: v for k, v in os.environ.items() if not k.startswith(("LADO_", "COMPOSE_"))}
+        # The shell's LADO_* and COMPOSE_* stay: the script keeps them from its compose.
+        env = {**os.environ, "HOME": str(self.home)}
         env["DOCKER_CONFIG"] = os.environ.get("DOCKER_CONFIG", os.path.expanduser("~/.docker"))
-        env["HOME"] = str(self.home)
         return subprocess.run(
             ["sh", str(ROOT / "docker" / "install.sh"), "--yes", "--no-open", *args],
             capture_output=True, text=True, env=env, cwd=self.home,

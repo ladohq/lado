@@ -21,7 +21,6 @@ GUIDE=https://github.com/ladohq/lado/blob/main/docs/install.md
 DESKTOP=https://www.docker.com/products/docker-desktop/
 
 say() { printf '%s\n' "$*"; }
-note() { printf '%s\n' "$*" >&2; }
 die() {
     printf 'lado install: %s\n' "$*" >&2
     exit 1

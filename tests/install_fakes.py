@@ -18,7 +18,7 @@ from pathlib import Path
 # The base system's tools install.sh calls; each must be on the computer running the tests.
 TOOLS = (
     "awk", "basename", "cat", "cp", "cut", "date", "dirname", "env", "grep", "head", "mkdir",
-    "mv", "rm", "sed", "tail", "tr", "sh", "dash", "bash",
+    "mv", "rm", "sed", "tail", "tr",
 )  # fmt: skip
 
 FAKES = (

@@ -179,6 +179,22 @@ def test_the_layers_go_over_what_it_holds_but_not_over_lados_own(
     assert (given["FROM_OUT"], given["FROM_PROJECT"], given["PROVIDERS"]) == ("new", "p", "ours")
 
 
+def test_the_window_marks_the_launch_anew_before_it_starts_the_cli(
+    tmp_path, lado_home, started, monkeypatch
+):
+    """The session loop measures an agent's silence from its CLI's launch (runtime
+    .check_starts), not from the opening of a window that waited minutes for the login."""
+    with state.connect() as db:
+        db.execute("UPDATE agents SET window_at = '2020-01-01 00:00:00.000'")
+    marked = []
+    monkeypatch.setattr(
+        os, "execvpe", lambda *a: marked.append(state.get_agent("s", "sup").window_at)
+    )
+    _run(tmp_path, lado_home)
+    [window_at] = marked
+    assert window_at > "2026" and state.get_agent("s", "sup").status == state.STARTING
+
+
 def test_unknown_never_holds_it(tmp_path, lado_home, started, monkeypatch):
     provider = Waiting(logged_in_after=99, answer=base.UNKNOWN)
     monkeypatch.setitem(providers._PROVIDERS, "waits", provider)
@@ -186,7 +202,9 @@ def test_unknown_never_holds_it(tmp_path, lado_home, started, monkeypatch):
     assert len(provider.looks) == 1 and started["exec"]
 
 
-def test_what_the_cli_asks_first_holds_it_with_why(tmp_path, lado_home, started, monkeypatch):
+def test_what_the_cli_asks_first_holds_it_with_why(
+    tmp_path, lado_home, started, monkeypatch, capsys
+):
     blocker = base.Blocker(reason="Waits CLI asks a question", notes=("LADO recorded x",))
     provider = Waiting(logged_in_after=0, blocker=blocker)
     monkeypatch.setitem(providers._PROVIDERS, "waits", provider)
@@ -194,4 +212,7 @@ def test_what_the_cli_asks_first_holds_it_with_why(tmp_path, lado_home, started,
     assert state.block_reasons("s") == {"sup": "Waits CLI asks a question"}
     log = (lado_home / "loop.log").read_text()
     assert "sup: LADO recorded x" in log and "sup: Waits CLI asks a question" in log
+    # LADO's own write is in loop.log only, not in the agent's terminal.
+    shown = capsys.readouterr().out
+    assert "Waits CLI asks a question" in shown and "LADO recorded" not in shown
     assert started["exec"]

@@ -86,6 +86,7 @@ BUILT_IN_MESSAGING = ["SendMessage", "ListAgents"]
 # --permission-mode bypassPermissions`: neither the agent nor a general-purpose subagent
 # has Write or Edit, and ToolSearch finds neither).
 EDIT_TOOLS = ["Edit", "Write", "NotebookEdit"]
+BYPASS = "bypassPermissions"  # the permission mode whose warning screen the settings skip
 
 # How long Claude Code waits for a command hook that sets no `timeout`: 600 s (`lu`, read in
 # the binary of 2.1.296). LADO sets one only for its turn-end hooks (_timeout).
@@ -139,7 +140,7 @@ class ClaudeProvider(base.Provider):
         "default",
         "acceptEdits",
         "auto",
-        "bypassPermissions",
+        BYPASS,
         "manual",
         "dontAsk",
         "plan",
@@ -185,7 +186,15 @@ class ClaudeProvider(base.Provider):
         config = {
             "hooks": {e: hook(e) for e in EVENTS},
             "permissions": {"deny": BUILT_IN_MESSAGING + (EDIT_TOOLS if spec.read_only else [])},
+            # Screens Claude Code shows before the first hook, answered by the agent's own
+            # settings with no write to a shared file (checked by hand with 2.1.295 on a
+            # clean config): "New MCP server found in this project" for a repository's
+            # .mcp.json, whose servers the agent takes as a human who trusts the folder
+            # would, and, below, bypass mode's warning.
+            "enableAllProjectMcpServers": True,
         }
+        if session.permission_mode == BYPASS:
+            config["skipDangerousModePermissionPrompt"] = True
         settings.write_text(json.dumps(config, indent=2))
 
         # From a file, so the role is not on the command line (checked by hand with 2.1.294

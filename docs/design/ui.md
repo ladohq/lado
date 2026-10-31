@@ -1598,8 +1598,10 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 - **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
   mode and Advanced filled from the session (`SessionInfo` carries its settings) and
   changeable; it sends only what changed (`POST /api/sessions/{name}/resume`). A provider
-  without its login is not off here: a resumed agent waits for it, and the amber note `⚠
-  <CLI> is not logged in: the supervisor waits until you log in.` with **Log in…** says so.
+  without its login is off here as in New session (LAD-163): its option "`<name>` · not
+  logged in" disabled, the red note with **Log in first**, and Resume off, as the resume
+  would be refused (lado.logins); another CLI with its login can be chosen. LADO's own
+  resume (the container's start, `lado update`) still waits for the login.
 - **Actions by status** (`SessionControl.tsx`; task feature/session-controls, 2026-10-05:
   a Stop in the list row was too easy to hit), only in the session's head, as icons with a
   tooltip and the same accessible name (Stop a square filled with the text's colour, dark
@@ -2291,23 +2293,42 @@ time. Each task is one `feature` run, useful on its own.
 
 ### Providers and environment
 
-Settings: the agent CLIs LADO can run, their versions and logins, and what `lado doctor`
-checks (LAD-157 and LAD-160, openspec changes provider-logins and provider-login-layers;
-built in `web/src/Providers.tsx`, `web/src/LoginSheet.tsx` and `web/src/LoginWindow.tsx`).
-Its anchor `#providers-and-environment` scrolls the page to it.
+Settings: the agent CLIs LADO can run, their versions and logins, and of what `lado doctor`
+checks only what the user can fix (LAD-157, LAD-160 and LAD-163, openspec changes
+provider-logins, provider-login-layers and providers-section-and-start-screens; built in
+`web/src/Providers.tsx`, `web/src/LoginSheet.tsx` and `web/src/LoginWindow.tsx`). Its
+anchor `#providers-and-environment` scrolls the page to it. Under the heading: "Sign-ins
+your agents use. Changes apply to agents started afterwards."
 
+- **↻** by the heading ("Check the CLIs again"): it turns while the server checks the CLIs
+  (titled "Checking the CLIs…"; still under reduced motion), and a press while it turns
+  does nothing. The rows are the server's last check (lado.server.provider_check), shown at
+  once; the section asks for a fresh check when it opens, on ↻ and when a sheet closes, and
+  the server after a save, a logout or a login window's end; while one runs the section
+  reads the rows every second and they change in place. A row not read yet (the server's
+  first check) shows its name and "checking…" until its CLI answers.
+- **What the user can fix**, and nothing else of `lado doctor` (no level, no other line):
+  a CLI not installed (its name greyed, "not installed" and its install hint, no state or
+  button); none installed (one line over the list: "No agent CLI is installed: install one
+  of them to start a session."); a version other than the tested one ("LADO is tested with
+  <version>", small, by the version); a sign-in that cannot be checked ("Couldn't check the
+  sign-in" with why under it); the agents' environment when the login shell could not be
+  read (one line under the rows: "⚠ Agents' environment could not be read from your login
+  shell: <why>. `lado doctor` shows more."). The rest stays in `lado doctor` and the System
+  panel.
 - **A row per CLI**: its name and version (or how to install it); a dot and one state line
   as the CLI's own status command says it, read by the server in the environment the agents
   of that CLI in a session without a project get, its login taken whole from one layer
   (lado.logins): "Logged in · <how> · <where from>", "Not logged in" (bold, orange, for a
-  CLI whose agents need a login: Claude Code), "No login" (the others), or "Unknown:
-  <why>", never shown as not logged in. How is the provider's words (Claude Code:
+  CLI whose agents need a login: Claude Code), "No login" (the others), or "Couldn't check
+  the sign-in", never shown as not logged in. How is the provider's words (Claude Code:
   "Subscription (Max)", "Subscription (token)", "Pay per use (API key)", "Pay per use
   (Console)"); where from is the layer that gives the login ("LADO's secret", "outside
   folder", "login shell", "the process that starts LADO") or the CLI's own login file in the
   provider's words ("Claude Code's login file"; "the login keychain" on a Mac), left out
-  when neither says (OpenCode, Kilo, Codex). Then the agents that wait for this login as
-  links to their terminals, "Projects with their own login: <ids>" (their sessions use it),
+  when neither says (OpenCode, Kilo, Codex). Then, while it has no login, the agents that
+  wait for it as links to their terminals (a logged-in row names none: such an agent starts
+  within its window's next look), "Projects with their own login: <ids>" (their sessions use it),
   the provider's note (Codex: its agents do not get this login yet, GitHub #113), and one
   button: "Log in…" without a login (primary when its agents wait for one), "Change login…"
   with one; none for a CLI with no way to log in from the page (Codex). No field, path or
@@ -2327,27 +2348,28 @@ Its anchor `#providers-and-environment` scrolls the page to it.
   at once, with "Log out of one…" in its head while logged in. A value the agents could
   not get (a NUL, over 64 KiB) is refused. LADO's secrets go to `<LADO_HOME>/secrets/`, a
   layer of every agent between the outside folder and a project's.
-- **lado doctor** about the providers under the rows (each CLI's version and login, the
-  graphical session on macOS, the agents' environment: the same lines as `lado doctor`),
-  and "Check again". The section is read when it opens, when a sheet closes and on Check
-  again; not from the change feed (the CLIs' files change outside LADO).
 - **The login window**: "Log in: <CLI>" and Close (which ends the command), the terminal of
   the CLI's command (a tmux session of its own, `lado-login-<provider>`, labelled; one per
   CLI: "Log out of one…" ends the login command and runs the logout one in its place),
   always in control. A link in it, also one wrapped over lines, opens in a new tab (xterm's
   web links addon); under it "Text to send" with "Send ⏎" (its text and Enter as one input)
-  and the keys ↑ ↓ Enter Esc. When the command ends, the sheet closes and the section is
-  read again. The windows end with `lado stop --all` and the server's start and stop.
+  and the keys ↑ ↓ Enter Esc. When the command ends, the sheet closes and the section asks
+  for a check. The windows end with `lado stop --all` and the server's start and stop.
 - **Needs you**: an agent that waits for its CLI's login (`AgentInfo.login_wait`, the
   provider's name) has "Log in…" first, which leads here; Open terminal stays beside it.
 - **API**: `GET /api/providers/logins` (`ProvidersPage`: a `ProviderLogins` per provider,
-  with the System panel's `ProviderInfo` as `cli`, its `question`, `choices` and
-  `from_lado`, and the checks); `POST /api/providers/{name}/login {action}` and `DELETE
-  …/login` (the window), `WS …/login/terminal` (the agents' terminal protocol, control
-  only); `PUT …/variables/{variable}` (keeps it, removes the provider's other login
-  variables from LADO's secrets; 400 for a name the provider does not name as its login; a
-  422 there repeats none of its input) and `DELETE …/login-secrets` (Log out). No answer
-  holds a value. `GET /api/providers` stays the System panel's and New session's list; it
+  with the System panel's `ProviderInfo` as `cli`, its `question`, `choices`, `from_lado`
+  and `ready` (false: not read yet), `checking` while a check runs, and `environment`, why
+  the agents' environment could not be read, "" when it could), answered at once from the
+  server's last check and starting none; `POST /api/providers/check` starts a check unless
+  one runs (then one more runs once after it) and answers the same; `POST
+  /api/providers/{name}/login {action}` and `DELETE …/login` (the window), `WS
+  …/login/terminal` (the agents' terminal protocol, control only); `PUT
+  …/variables/{variable}` (keeps it, removes the provider's other login variables from
+  LADO's secrets; 400 for a name the provider does not name as its login; a 422 there
+  repeats none of its input) and `DELETE …/login-secrets` (Log out). Each action answers
+  the provider's row read now, kept for the section (a check's older read does not replace
+  it), and all but opening a window start a check. No answer holds a value. `GET /api/providers` stays the System panel's and New session's list; it
   runs the status command of the CLIs whose agents need a login (`login_missing`), in the
   environment the agents of that CLI in `?project=` (404 for an unknown one) or in none get.
 

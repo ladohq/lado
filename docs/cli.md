@@ -259,8 +259,13 @@ CLAUDE_CODE_OAUTH_TOKEN as LADO's secret or a project secret`. `lado start <git-
 (`--provider`, or the only one installed). A supervisor's `spawn_worker` of such a CLI gets
 `… so the worker was not started: ask the human to log in in Settings → Providers and
 environment, or start the worker with another provider`; each worker is checked by its own
-provider, so a Claude session's supervisor can still start Kilo workers. A resume is never
-refused: its Claude agent waits, and `lado ls` prints under it `waiting: Claude Code is not
+provider, so a Claude session's supervisor can still start Kilo workers. A resume by hand
+(`lado start` of a stopped session) is refused the same way by the provider of the
+supervisor it starts: `lado: Claude Code is not logged in, so the session was not resumed:
+…`, the session stays stopped; `--provider kilo` resumes it with a Kilo supervisor. LADO's
+own resume is not refused (at the container's start, and `lado update`'s, which runs
+`lado start --wait-for-login`, a flag for LADO, not listed in `--help`): its Claude agent
+waits, and `lado ls` prints under it `waiting: Claude Code is not
 logged in: log in in Settings → Providers and environment, or set CLAUDE_CODE_OAUTH_TOKEN;
 the agent starts by itself once you do`; it starts by itself once there is one. A login
 that cannot be read refuses nothing and holds no agent: `lado start` warns `cannot tell

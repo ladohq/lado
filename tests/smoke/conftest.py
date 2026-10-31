@@ -79,12 +79,10 @@ def smoke_provider(request, monkeypatch, tmp_path, fake_endpoint, codex_home) ->
         config = tmp_path / "claude-config"
         config.mkdir()
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
-        # What a human answers once, ahead: the first-run screens and the bypass permissions
-        # mode's disclaimer (a fresh home shows it before any hook; 2.1.296). Not the trust
-        # of the smoke's repo: LADO records it, and the test checks that it did.
-        (config / ".claude.json").write_text(
-            json.dumps({"hasCompletedOnboarding": True, "bypassPermissionsModeAccepted": True})
-        )
+        # What a human answers once, ahead: the first-run screens. Not bypass mode's warning
+        # (the agent's own settings skip it, LAD-163) nor the trust of the smoke's repo
+        # (LADO records it): the tests check that nothing asks them.
+        (config / ".claude.json").write_text(json.dumps({"hasCompletedOnboarding": True}))
         monkeypatch.setenv("ANTHROPIC_BASE_URL", fake_endpoint.url)
         # A token, which Claude Code takes without asking (an ANTHROPIC_API_KEY it has not
         # seen is a question). It retries every 401 ten times with backoff (2.1.296), so no

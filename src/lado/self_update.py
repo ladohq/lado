@@ -38,6 +38,9 @@ from lado import gui_session, loop, providers, runtime, state, tmux, update
 from lado.server import run as server_run
 
 DEFAULT_HOST = "127.0.0.1"  # `lado server --host`'s default
+# The first LADO whose `lado start` takes `--wait-for-login` (LAD-163); an older one's
+# argparse refuses it (exit 2), so an update to it resumes without.
+WAIT_FOR_LOGIN_SINCE = "0.44.0.dev0"
 LOCK_WAIT = 0.1  # seconds an update tries to take the lock: `refusal()` holds it briefly
 TAIL = 20  # lines of update.log the result keeps
 
@@ -187,6 +190,11 @@ class Plan:
         ]
         lines += ["lado ui"] if self.server else []
         return lines
+
+
+def takes_wait_for_login(version: str) -> bool:
+    """Whether LADO `version`'s `lado start` takes `--wait-for-login`."""
+    return not update.newer(WAIT_FOR_LOGIN_SINCE, version)
 
 
 def _install_by_hand(version: str) -> str:
@@ -561,7 +569,7 @@ class _Update:
             # The sessions the copy lacks are not in lado.db now: not started again.
             stopped = [s for s in stopped if s.name not in back.missing]
         say(f"Resuming on LADO {self.new}:", flush=True)
-        resumed = self._resume(stopped, None)
+        resumed = self._resume(stopped, None, waits=takes_wait_for_login(self.new))
         if self.address:
             down = self._server(self.new)
             if down:
@@ -600,14 +608,19 @@ class _Update:
         return None
 
     def _resume(
-        self, sessions: list[state.Session], server: tuple[str, int] | None
+        self, sessions: list[state.Session], server: tuple[str, int] | None, waits: bool = True
     ) -> list[state.Session]:
-        """Resume the sessions, then the UI server, with the installed `lado`'s public
-        commands; the sessions that resumed (the others go to `failed`)."""
+        """Resume the sessions, then the UI server, with the installed `lado`'s commands;
+        the sessions that resumed (the others go to `failed`). With `waits` (a `lado` that
+        takes it: this version, or a new one from WAIT_FOR_LOGIN_SINCE) a supervisor whose
+        CLI has no login waits for it (`--wait-for-login`), as at the container's start."""
         resumed, self.failed = [], []
+        waiting = ["--wait-for-login"] if waits else []
         for sess in sessions:
             code = _run(
-                self.binary, self.say, "start", sess.repo, "--name", sess.name, "--no-attach"
+                self.binary,
+                self.say,
+                *("start", sess.repo, "--name", sess.name, "--no-attach", *waiting),
             )
             if code:
                 self.say(

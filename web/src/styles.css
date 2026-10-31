@@ -2045,10 +2045,6 @@ h3 {
   margin-top: 4px;
 }
 
-.pv-again {
-  margin-top: 12px;
-}
-
 .pv-confirm {
   display: flex;
   flex-wrap: wrap;
@@ -2058,29 +2054,81 @@ h3 {
   font-size: 13px;
 }
 
-.pv-doctor {
+/* The heading with its ↻, which turns while a check of the CLIs runs (still for those who
+   ask for less motion). */
+.pv-title {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 14px 0 0;
-  padding: 12px 0 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.pv-title h2 {
+  margin: 0;
+}
+
+.pv-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.pv-refresh:hover {
+  background: var(--ground);
+  color: var(--ink);
+}
+
+.pv-refresh.spinning {
+  cursor: default;
+}
+
+.pv-refresh.spinning span {
+  display: inline-block;
+  animation: term-spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-refresh.spinning span {
+    animation: none;
+  }
+}
+
+.pv-tested {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pv-checking {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pv-off strong {
+  color: var(--muted);
+}
+
+.setting .pv-none {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--human);
+  background: var(--human-ground);
+  font-size: 13px;
+}
+
+.setting .pv-env {
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
-  list-style: none;
   font-size: 13px;
   overflow-wrap: anywhere;
-}
-
-.pv-mark {
-  font: 12px var(--mono);
-}
-
-.pv-level-warn .pv-mark,
-.pv-level-fail .pv-mark {
-  color: var(--human);
-}
-
-.pv-level-ok .pv-mark {
-  color: var(--done);
 }
 
 /* The login sheet and window (LoginSheet.tsx, LoginWindow.tsx): a sheet over the page; the

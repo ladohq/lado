@@ -1661,8 +1661,27 @@
     "/api/providers/logins": {
       "get": {
         "summary": "Provider Logins",
-        "description": "Each provider's CLI and login, and `lado doctor`'s provider checks, read now.",
+        "description": "Each provider's CLI and login as the server's last check read them, at once;\nstarts no check (POST /api/providers/check does), so polling it costs nothing.",
         "operationId": "provider_logins_api_providers_logins_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvidersPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers/check": {
+      "post": {
+        "summary": "Check Providers",
+        "description": "Start a check of every CLI in the background, unless one runs; the rows kept.",
+        "operationId": "check_providers_api_providers_check_post",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4229,41 +4248,6 @@
         ],
         "title": "BugReport",
         "description": "The Report a bug page (lado.bug_report.Report): the whole report to show and copy,\nand GitHub's new issue form with it, the oldest kinds of errors left out until the link\nfits."
-      },
-      "CheckInfo": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "level": {
-            "type": "string",
-            "enum": [
-              "ok",
-              "info",
-              "warn",
-              "fail"
-            ],
-            "title": "Level"
-          },
-          "detail": {
-            "type": "string",
-            "title": "Detail"
-          },
-          "hint": {
-            "type": "string",
-            "title": "Hint"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "level",
-          "detail",
-          "hint"
-        ],
-        "title": "CheckInfo",
-        "description": "A line of `lado doctor` (doctor.Check)."
       },
       "CloneJob": {
         "properties": {
@@ -7510,6 +7494,10 @@
           "window": {
             "type": "boolean",
             "title": "Window"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready"
           }
         },
         "type": "object",
@@ -7525,7 +7513,8 @@
           "waiting",
           "running",
           "projects",
-          "window"
+          "window",
+          "ready"
         ],
         "title": "ProviderLogins",
         "description": "One agent CLI in Settings \u2192 Providers and environment (lado.logins)."
@@ -7561,21 +7550,23 @@
             "type": "array",
             "title": "Providers"
           },
-          "checks": {
-            "items": {
-              "$ref": "#/components/schemas/CheckInfo"
-            },
-            "type": "array",
-            "title": "Checks"
+          "checking": {
+            "type": "boolean",
+            "title": "Checking"
+          },
+          "environment": {
+            "type": "string",
+            "title": "Environment"
           }
         },
         "type": "object",
         "required": [
           "providers",
-          "checks"
+          "checking",
+          "environment"
         ],
         "title": "ProvidersPage",
-        "description": "The section's data: each CLI's login, and `lado doctor`'s provider checks."
+        "description": "The section's data, from the server's last check of the CLIs\n(lado.server.provider_check)."
       },
       "RecentFolder": {
         "properties": {

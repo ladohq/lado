@@ -17,11 +17,21 @@
 
 ### Changed
 
-- **No Claude session or worker starts without a login.** The New session window greys
-  Claude Code out with "Log in first"; `lado start` and a supervisor's new worker are refused
-  with the reason. A resumed session still waits for the login.
+- **No Claude session or worker starts without a login.** The New session and Resume
+  windows grey Claude Code out with "Log in first"; `lado start`, a resume and a new worker
+  are refused with the reason. A session LADO resumes itself still waits for the login.
+- **Providers and environment opens at once.** It shows the last check of the CLIs while a
+  fresh one runs (↻ turns), and only what you can fix: a CLI not installed, an untested
+  version, a sign-in it cannot check, an unreadable login shell.
 
 ### Fixed
+
+- **Claude agents no longer stop at a screen nobody sees.** Bypass mode's warning and "New
+  MCP server found" for a repository's `.mcp.json` are answered at start; an agent still
+  silent 30 s after its start shows in Needs you as waiting for an answer in its terminal.
+- **No "Warnings:" box over a new session** for LADO's own trust and first-run writes into
+  Claude Code's config: they go to the session's log.
+- **A saved login no longer shows "waits for this login"** next to "Logged in".
 
 - **A project's page scrolls on a phone.** Its variables, secrets and Delete project were
   cut off below the screen; the project list scrolls too.

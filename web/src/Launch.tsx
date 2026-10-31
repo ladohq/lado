@@ -344,13 +344,14 @@ function LaunchDialog({
   const withPrompt = promptText ? { prompt: promptText } : {};
 
   // A new session's suggestion of a CLI without its login is not taken (held): the field
-  // stays at "choose…" and says why. A resume goes on: its agent waits for the login.
+  // stays at "choose…" and says why. A resume keeps its session's CLI chosen, and is refused
+  // without its login as a new session is (lado.logins): another CLI can be chosen.
   const inList = providers?.find((one) => one.name === provider) ?? null;
   const held = !resuming && !touched.has("provider") && inList?.login_missing === true;
   const chosenProvider = held ? null : provider;
   const providerInfo = held ? null : inList;
   const noLogin = inList?.login_missing ? inList : null;
-  const canStart = providerInfo?.installed === true && (resuming !== null || !providerInfo.login_missing);
+  const canStart = providerInfo?.installed === true && !providerInfo.login_missing;
   const modes = providerInfo?.permission_modes ?? [];
 
   // M5: kits, provider and mode of a new session come from the folder's last session; in
@@ -818,10 +819,10 @@ function LaunchDialog({
                     </option>
                   )}
                   {providers.map((one) => (
-                    <option key={one.name} value={one.name} disabled={!one.installed || (one.login_missing && !resuming)}>
+                    <option key={one.name} value={one.name} disabled={!one.installed || one.login_missing}>
                       {!one.installed
                         ? `${one.name} · not installed`
-                        : one.login_missing && !resuming
+                        : one.login_missing
                           ? `${one.name} · not logged in`
                           : `${one.name} · ${one.title} ${one.version}`.trim()}
                     </option>
@@ -834,7 +835,6 @@ function LaunchDialog({
               info={providerInfo}
               chosen={chosenProvider}
               noLogin={noLogin}
-              resuming={resuming !== null}
               onLogIn={() => {
                 onClose();
                 navigate(PROVIDERS_PATH);
@@ -1709,28 +1709,19 @@ function ProviderNote({
   info,
   chosen,
   noLogin,
-  resuming,
   onLogIn,
 }: {
   asked: Asked<ProviderInfo[]>;
   info: ProviderInfo | null;
   chosen: string | null;
   noLogin: ProviderInfo | null; // the provider chosen or suggested, when it lacks its login
-  resuming: boolean;
   onLogIn: () => void;
 }) {
   if (asked !== null && "error" in asked) return <span className="field-note bad">{asked.error}</span>;
   if (asked === null) return <span className="field-note">checking the agent CLIs…</span>;
   if (noLogin?.installed) {
-    // A new session of it is refused; a resumed one waits for the login (lado.logins).
-    return resuming ? (
-      <span className="field-note warn">
-        ⚠ {noLogin.title} is not logged in: the supervisor waits until you log in.{" "}
-        <button type="button" className="link-button" onClick={onLogIn}>
-          Log in…
-        </button>
-      </span>
-    ) : (
+    // A new session or a resume of it is refused (lado.logins).
+    return (
       <span className="field-note bad">
         {noLogin.title} is not logged in: its agents cannot start.{" "}
         <button type="button" className="link-button" onClick={onLogIn}>

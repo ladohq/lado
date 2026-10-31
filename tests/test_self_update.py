@@ -356,6 +356,15 @@ def test_a_failed_installer_rolls_nothing_back_and_keeps_lado_db(install, sessio
     assert [c.split()[0] for c in install.called()] == ["start"]  # resumed, no --version
 
 
+def test_the_update_resumes_a_session_waiting_for_its_login(install, session, repo):
+    """LADO's own resume: a supervisor whose CLI has no login waits for it, as at the
+    container's start; a resume by hand is refused instead (runtime.start_session)."""
+    install.installs("exit 3")
+    run()
+    [start] = install.called()
+    assert start == f"start {repo} --name {session} --no-attach --wait-for-login"
+
+
 def test_a_session_that_does_not_resume_is_partial_and_rolls_nothing_back(install, session):
     install.fails("start")
     before = listing()
@@ -741,8 +750,9 @@ def test_an_update_to_an_older_schema_puts_the_copy_back_and_resumes_what_it_has
     with sqlite3.connect(live) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("app",)]
     assert two_sessions.read_bytes() == kept  # the copy stays
-    starts = [c.split()[-2] for c in install.called() if c.startswith("start")]
-    assert starts == ["app"]
+    # A LADO before 0.44 has no --wait-for-login (argparse would refuse it with exit 2).
+    starts = [c for c in install.called() if c.startswith("start")]
+    assert [c.split()[-2:] for c in starts] == [["app", "--no-attach"]]
     done = result()
     assert (done.outcome, done.database) == ("ok", "restored")
 

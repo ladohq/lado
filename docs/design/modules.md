@@ -191,8 +191,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     the migration's `lado.db.schema-<N>`), runs the installer, checks
     `<prefix>/bin/lado --version`, for a plan with a `Restore` puts that copy back
     (`restore`, then the schema checked; a failure rolls back with lado.db as it was) and
-    resumes only the sessions the copy has, with that binary's public commands
-    (`lado start <repo> --name <s> --no-attach`, `lado ui --no-open [--host H] --port P`;
+    resumes only the sessions the copy has, with that binary's commands (`lado start <repo>
+    --name <s> --no-attach --wait-for-login`, the hidden flag of LADO's own resume, whose
+    supervisor waits for a missing login where a resume by hand is refused (LAD-163; left
+    out on an update to a LADO before 0.44, `WAIT_FOR_LOGIN_SINCE`, whose argparse refuses
+    it; a LADO before 0.44 that updates runs its own `_resume` without it, so a session
+    whose login is missing lands in `failed` once), `lado ui --no-open [--host H] --port P`;
     `--host` only for another than 127.0.0.1, which a LADO before 0.20 lacks). It rolls
     back only when the new version itself is bad: a wrong `--version`, or the UI server,
     when one ran before, does not come up on it (`lado ui` fails, or `/api/health` names
@@ -1090,6 +1094,18 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `launch.provider_infos(project)` sets `login_missing` by `logins.refusal` in
     `runtime.agents_env` of the provider over `runtime.agent_layers(project)`, false when those cannot be had; `?project=`
     unknown is 404);
+    `provider_check.py`: Settings → Providers and environment's rows (LAD-163): the last
+    `ProviderLogins` of each provider (`launch.provider_logins`, which names the agents
+    waiting for a login only while it is missing), kept for the server's lifetime, never on
+    disk; `start()` runs one check at a time in a daemon thread, every provider at once
+    (`doctor.provider_status`, then `launch.read`) and the login shell once
+    (`launch.environment`), each row kept as soon as its CLI is read, a provider whose read
+    raises a row with its login `unknown` and why (and the error journal); a `start()`
+    while one runs makes one more pass run once after it; `put(row)` keeps an action's
+    fresh row, which an older read of the running pass does not replace; `snapshot()` the
+    `ProvidersPage` (`ready: false` for a provider never read, `checking`, `environment`).
+    `GET /api/providers/logins` answers it, `POST /api/providers/check` starts a check, and
+    the login actions put their row and start one;
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
     Session head) is what the session's head shows besides its settings, read anew: `repos`
     (path, public remote, branch; one now), each kit by `kits.find` with its version and

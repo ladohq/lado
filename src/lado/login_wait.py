@@ -92,6 +92,9 @@ def main(args: list[str]) -> None:
         if line:
             print(line, flush=True)
             loop.log(session, f"{agent}: {line}")
+    # The CLI's launch, from which the session loop counts its silence (runtime
+    # .check_starts); before it is starting, so the wait for the login is never counted.
+    state.window_opened(session, agent)
     if blocker.reason:
         state.block(session, agent, blocker.reason)
     else:

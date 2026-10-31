@@ -11,6 +11,9 @@
   in and from where, with one button; Claude Code logs in by a pasted subscription token or
   API key (a phone too), the place that sets one giving the whole login. A Claude agent
   resumed without a login waits and starts once there is one.
+- **LADO in Docker with one command, Windows too.** `curl -fsSL …/install.sh | sh` (on
+  Windows `irm …/install.ps1 | iex`) asks for your workspace, starts LADO and opens it; run
+  again, it updates. [docs/install.md](docs/install.md#install-with-one-command).
 
 ### Changed
 

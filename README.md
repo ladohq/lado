@@ -45,8 +45,9 @@ Two ways, Docker first:
 
 - **Docker** (recommended): LADO, tmux, git and the four agent CLIs at the versions LADO is
   tested with, in one container. The agents see only your workspace folder and the keys you
-  give them, not the rest of your computer; you install nothing but Docker, and an update
-  is one line. You work in the web UI. macOS and Linux; Codex's login is not carried yet.
+  give them, not the rest of your computer; you install nothing but Docker, and an install
+  or an update is one command. You work in the web UI. macOS, Linux, and Windows (Docker
+  Desktop, LADO in Ubuntu inside WSL2); Codex's login is not carried yet.
 - **PyPI** (`uv tool install lado`): LADO on your computer, with the agent CLIs and logins
   you already have; the agents run as you and reach what you can. You work in the terminal
   (tmux) and the web UI. macOS, Linux, and Windows inside WSL2.
@@ -55,41 +56,27 @@ What each one needs and how they differ: [docs/install.md](docs/install.md).
 
 ### Docker
 
-A variable set in your shell beats the same one in `.env`; look first, and unset what you
-find:
+With Docker running ([Docker Desktop](https://www.docker.com/products/docker-desktop/) on
+a Mac or Windows, Docker Engine on Linux), on macOS and Linux:
 
 ```bash
-env | grep -E '^(LADO|COMPOSE)_'      # left from an earlier try? unset each name printed
-unset LADO_VERSION LADO_WORKSPACE LADO_PROJECTS LADO_PORT LADO_IMAGE COMPOSE_PROJECT_NAME
+curl -fsSL https://github.com/ladohq/lado/releases/latest/download/install.sh | sh
 ```
 
-Then a folder of its own with the compose file of the latest release:
+On Windows, in PowerShell (LADO runs in Ubuntu inside WSL2, which it offers to install):
 
-```bash
-mkdir ~/lado-docker && cd ~/lado-docker
-curl -fLO https://github.com/ladohq/lado/releases/latest/download/compose.yaml
+```powershell
+irm https://github.com/ladohq/lado/releases/latest/download/install.ps1 | iex
 ```
 
-Next to it, a file `.env`:
+It asks for your workspace folder (the only one the agents see; Enter takes
+`~/workspace`), git's name and email when your git has none, and whether to open LADO on
+your phone too (Enter is no); then it writes `~/lado-docker/.env`, starts LADO and opens
+its link in your browser. The same command again updates LADO.
 
-```ini
-LADO_VERSION=<version>              # the latest release's number, from the releases page
-LADO_WORKSPACE=/Users/you/workspace # your workspace folder, the only one the agents see
-LADO_GIT_NAME="Your Name"           # git's identity for the agents' commits
-LADO_GIT_EMAIL=you@example.com
-```
-
-`<version>` is the newest on the [releases page](https://github.com/ladohq/lado/releases),
-without `v`. The workspace folder must exist (`mkdir -p ~/workspace`): compose never
-makes it. Then start it and open the link it prints:
-
-```bash
-docker compose up -d
-docker compose exec lado lado ui --no-open   # the UI's link with its token
-```
-
-Logins, the agents' tokens (an optional `secrets/`), ssh, update and the rest:
-[docs/install.md#docker](docs/install.md#docker).
+What it does, how to read it before it runs, logins, the agents' tokens (an optional
+`secrets/`), ssh and the rest: [docs/install.md#docker](docs/install.md#docker); the
+steps by hand: [docs/install.md#by-hand](docs/install.md#by-hand).
 
 ### PyPI
 
@@ -154,19 +141,24 @@ shows `↑ X.Y.Z` next to `live` in its top bar.
 
 ### Docker
 
-A new version is a new image and its own `compose.yaml`. In the folder of your
-`compose.yaml`, keep a copy of yours, download the new version's in place of it, set the
-new version in `.env` (`LADO_VERSION=<version>`), then start:
+A new version is a new image and its own `compose.yaml`. Run the install command again:
 
 ```bash
-cp compose.yaml compose.yaml.bak
-curl -fLO https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml
-docker compose up -d     # pulls that version's image and replaces the container
+curl -fsSL https://github.com/ladohq/lado/releases/latest/download/install.sh | sh
 ```
 
-`.env`, `secrets/` and the home volume stay; a change you made to `compose.yaml` by hand
-must be carried over to the new one (`diff compose.yaml.bak compose.yaml`). Several LADOs:
-update each in its own folder.
+On Windows, in PowerShell:
+
+```powershell
+irm https://github.com/ladohq/lado/releases/latest/download/install.ps1 | iex
+```
+
+It keeps your `compose.yaml` as `compose.yaml.bak`, downloads the new one, sets the new
+version in `.env`, and starts it (compose pulls that version's image and replaces the
+container). `.env`, `secrets/` and the home volume stay; a change you made to
+`compose.yaml` by hand must be carried over to the new one (`diff compose.yaml.bak
+compose.yaml`). A LADO set up by hand, and several LADOs, each in its own folder:
+[docs/install.md#update-the-container](docs/install.md#update-the-container).
 
 Your sessions stop with the old container and resume in the new one (each agent starts a
 new conversation and a busy one loses its current turn, so update while your agents are

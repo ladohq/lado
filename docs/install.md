@@ -8,14 +8,15 @@ There are two ways to install LADO: **Docker**, the recommended one, and **PyPI*
 | What the agents reach | your workspace folder and the keys you give them (files in `secrets/`, your ssh agent); not the rest of your computer | everything you can: they run as you |
 | Agent CLI logins | made once inside the container, or a token in `secrets/`; your own CLI config stays as it is. Codex's login is not carried yet | the logins and config your CLIs already have |
 | How you work | the web UI; commands as `docker compose exec lado lado ...` | the terminal (`lado start`, tmux windows with `lado attach`) and the web UI |
-| Update and back | a new `LADO_VERSION` in `.env` and `docker compose up -d`; the version before the same way | `lado update` |
+| Install | one command, which asks for your workspace folder and what else it cannot find out | `uv tool install lado`, after tmux, git and an agent CLI |
+| Update and back | the same command again; by hand a new `LADO_VERSION` in `.env` and `docker compose up -d`, the version before the same way | `lado update` |
 | More than one LADO | side by side, each with its own folder, version, logins and keys | one per `LADO_HOME` |
-| Systems | macOS (Docker Desktop) and Linux; Windows not checked yet | macOS, Linux, and Windows inside WSL2 |
+| Systems | macOS (Docker Desktop) and Linux by `install.sh`; Windows by `install.ps1` (Docker Desktop, LADO in Ubuntu inside WSL2) | macOS, Linux, and Windows inside WSL2 |
 
 Take **Docker** unless you want LADO in your own terminal with the agent CLIs you already
-use, or you are on Windows: the agents work apart from the rest of your computer, nothing
-but Docker is installed, every CLI is at its tested version, and an update or a step back is
-one line.
+use: the agents work apart from the rest of your computer, nothing but Docker is
+installed, every CLI is at its tested version, and an install or an update is one
+command.
 
 **PyPI** installs LADO on your computer, and what it needs differs by system:
 
@@ -52,7 +53,8 @@ folder, which the container sees at the same path as your computer, so their com
 worktrees are yours too. The image holds no one's keys or logins: you give your own at run
 time (a login inside, your ssh agent, a secrets folder if you want one). Compose keeps
 every setting in `.env`, so an update is a new `compose.yaml` and one line;
-[`docker run`](#with-docker-run) works too.
+[`docker run`](#with-docker-run) works too. One command does all of it for you, or you do
+the steps [by hand](#by-hand).
 
 The headers of [docker/compose.yaml](../docker/compose.yaml) and
 [docker/Dockerfile](../docker/Dockerfile) are the reference; this guide repeats the steps
@@ -61,7 +63,105 @@ you run.
 ### Prerequisites
 
 - **macOS**: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
-- **Linux**: Docker Engine with the compose plugin (`docker compose version` answers).
+- **Linux**: Docker Engine with the compose plugin (`docker compose version` answers);
+  `curl -fsSL https://get.docker.com | sh` installs both.
+- **Windows**: Docker Desktop with its WSL 2 backend, and Ubuntu in WSL; see
+  [Docker on Windows](#docker-on-windows).
+
+### Install with one command
+
+On macOS and Linux, in a terminal:
+
+```bash
+curl -fsSL https://github.com/ladohq/lado/releases/latest/download/install.sh | sh
+```
+
+On Windows, in PowerShell ([Docker on Windows](#docker-on-windows)):
+
+```powershell
+irm https://github.com/ladohq/lado/releases/latest/download/install.ps1 | iex
+```
+
+It checks that Docker runs (on a Mac it starts Docker Desktop and waits for it; without
+Docker it stops and says where to get it: it never installs Docker), then asks only what
+your computer cannot tell it:
+
+- the workspace folder, the only one the agents see (Enter takes `~/workspace`, made when
+  missing);
+- git's name and email for the agents' commits, only when `git config --global` has none;
+- whether to open LADO on your phone too, after a warning of what that opens (Enter is no;
+  see [Open LADO on your phone](#open-lado-on-your-phone)).
+
+It writes `.env` in `~/lado-docker` (the version is its release's; the port 8765, or the
+next free one; your ssh agent when there is one), downloads its release's `compose.yaml`
+next to it, starts LADO, waits for it, prints the UI's link and opens it in your browser.
+Keep the link as a bookmark: its key stays the same across restarts and updates. A
+variable `LADO_*` or `COMPOSE_*` of your shell never reaches its compose; it names them,
+since they would beat `.env` when you run `docker compose` by hand there.
+
+Run the same command again to update: it [updates the container](#update-the-container) to
+its release, keeping `.env`, `secrets/` and the home volume, and opens the link; with the
+same version it only starts LADO. It never goes back to an older version. Its options
+(`sh -s -- --help` lists them): `--yes` asks nothing and takes every default (no phone),
+`--phone` and `--no-phone` answer the phone's question beforehand (on an update too),
+`--no-open` only prints the link.
+
+To read the script before it runs, download it, read it, then run it:
+
+```bash
+curl -fsSLO https://github.com/ladohq/lado/releases/latest/download/install.sh
+less install.sh
+sh install.sh
+```
+
+In PowerShell the same, and the way when an antivirus stops `iex`:
+
+```powershell
+irm https://github.com/ladohq/lado/releases/latest/download/install.ps1 -OutFile install.ps1
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+A stop says what failed and what to do, in a line `lado install: …`; it leaves `.env` and
+`compose.yaml` as they were. What it does not understand it never changes: a
+`compose.yaml` without `.env`, an `.env` without `LADO_VERSION` or with a development
+version, or LADO's container made from another folder (a LADO you set up by hand
+elsewhere); update those as below.
+
+### Docker on Windows
+
+LADO runs in Ubuntu inside WSL 2, with Docker Desktop's Docker. Its workspace is a folder
+of Ubuntu (e.g. `/home/ann/workspace`): the container sees the workspace at the same path
+as the computer, and a `C:\` path does not exist in it. In PowerShell, with no
+administrator rights:
+
+```powershell
+irm https://github.com/ladohq/lado/releases/latest/download/install.ps1 | iex
+```
+
+It checks Docker Desktop first: not installed, it names its
+[download page](https://www.docker.com/products/docker-desktop/) (keep its default, the
+WSL 2 backend); not running, it starts it and waits up to 2 minutes. Then it looks for
+Ubuntu in WSL (Docker Desktop's own `docker-desktop` does not count). With none, it offers
+`wsl --install -d Ubuntu`, which may ask for administrator rights and a restart; then open
+Ubuntu from the Start menu once, make its user, and run the same command again. Docker
+must answer inside Ubuntu: when it does not, the script names Docker Desktop's Settings →
+Resources → WSL integration, to switch on for Ubuntu. Then it runs its release's
+`install.sh` in Ubuntu: the same questions, asked in PowerShell, and LADO's link opens in
+Windows' browser. The folder `~/lado-docker` is Ubuntu's, and the commands of this guide
+run in Ubuntu's terminal. The switches `-Yes`, `-Phone` and `-NoPhone` are `--yes`,
+`--phone` and `--no-phone`:
+
+```powershell
+& ([scriptblock]::Create((irm https://github.com/ladohq/lado/releases/latest/download/install.ps1))) -Yes
+```
+
+The phone reaches LADO by the Windows computer's name; Windows may ask whether Docker
+Desktop may take connections through its firewall: allow it for private networks.
+
+### By hand
+
+The steps the installer runs, for a LADO you set up yourself, a second one, or to see what
+it does. Docker as in [Prerequisites](#prerequisites).
 
 ### Check the shell
 
@@ -269,8 +369,13 @@ exit" and closes the agent.
 
 ### Open LADO on your phone
 
-The container publishes the UI on this computer's loopback only. To open it from a phone
-or another computer on your network, add two lines to `.env`, then start again:
+The container publishes the UI on this computer's loopback only. The installer asks
+whether to open it to your phone, and `--phone` (on an update too) writes the two lines
+below with this computer's name: on a Mac `<LocalHostName>.local`, from WSL the Windows
+computer's name with `.local`, on Linux `<hostname>.local` when avahi runs, else the
+computer's current address, which may change with the network; `--no-phone` removes them.
+By hand, to open it from a phone or another computer on your network, add two lines to
+`.env`, then start again:
 
 ```ini
 LADO_LISTEN=0.0.0.0              # let the other devices of your network in
@@ -345,7 +450,15 @@ do not update a container, and say so. LADO still tells you when one is out:
 LADO in a container (ghcr.io/ladohq/lado:X.Y.Z)`, and the web UI shows `↑ X.Y.Z` next to
 `live`. The versions are on the [releases page](https://github.com/ladohq/lado/releases).
 
-In the folder of your `compose.yaml`: keep a copy of yours, download the new version's in
+Installed with the installer: run its command again (on Windows its PowerShell line). It
+does the steps below for its release, the newest, and changes only `LADO_VERSION` in
+`.env`:
+
+```bash
+curl -fsSL https://github.com/ladohq/lado/releases/latest/download/install.sh | sh
+```
+
+By hand, in the folder of your `compose.yaml`: keep a copy of yours, download the new version's in
 place of it (`<version>` is the new number as `.env` has it; the address puts a `v` before
 it), set the new `LADO_VERSION` in `.env`, then start (compose pulls that version's image):
 
@@ -620,8 +733,9 @@ A user that can run `sudo`.
 
 ## Windows
 
-LADO runs inside WSL2, in Ubuntu. An agent CLI installed on Windows itself does not count:
-install it inside Ubuntu, as below.
+LADO from PyPI runs inside WSL2, in Ubuntu. An agent CLI installed on Windows itself does
+not count: install it inside Ubuntu, as below. LADO in Docker, the recommended way, is one
+PowerShell command: [Docker on Windows](#docker-on-windows).
 
 ### Prerequisites
 

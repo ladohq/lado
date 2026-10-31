@@ -191,6 +191,24 @@ same process, and its `lado.db` with no session stopped; the update's two have e
 `secrets/` of its own (`LADO_SECRETS=./secrets`), the stop's two none. Such a folder is
 conftest's `folder(name, **settings)`, the `compose` fixture a project with no
 `LADO_SECRETS`.
+The installer (`test_install.py`): `docker/install.sh --yes --no-open` with the working
+copy's `compose.yaml` (`--source`), the image under test (`--image`) and a folder of the
+run's prefix (`--dir`, conftest's `installed`, so its project `lado-<folder>` is the run's),
+a home of its own and Docker's own config; its printed link answers 200, a rerun of the
+same version changes no file and keeps the token, an `.env` set to `0.0.1` is updated with
+`compose.yaml.bak` and the user's line kept, and `--phone` prints the other device's link.
+Every other behaviour of the installer is a unit test: `tests/test_install_sh.py` runs it
+under dash and bash on a faked host (`tests/install_fakes.py`: a PATH of its own with
+links to the base tools and fake `docker`, `curl`, `git`, `uname` and friends that log
+their argv and `LADO_*`/`COMPOSE_*` and answer from per-test settings; `sleep` returns at
+once), its questions through a pty driven by a process of its own (forking a
+multi-threaded pytest worker may deadlock); `tests/test_install_ps1.py` reads
+`install.ps1` and, with `pwsh` on PATH (GitHub's Ubuntu runners), parses it and runs it:
+under `Invoke-Expression` it leaves the caller's `$ErrorActionPreference`, strict mode and
+functions as they were, its script-block form takes the switches, a file run exits with its
+code, and with fake `docker` and `wsl.exe` on PATH it runs its version's `install.sh` in
+Ubuntu (never `docker-desktop`) with the switches' flags. Its behaviour on a real Windows
+is checked by hand (docs/release.md).
 The secrets folder (`test_secrets.py`; only fake values): compose with no `LADO_SECRETS`
 and no folder starts, `lado doctor` exits 0 with `[info] … /run/secrets: none` and the hint
 naming `LADO_SECRETS=./secrets`, a Claude Code session reaches idle, and `docker compose

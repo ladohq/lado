@@ -271,6 +271,53 @@ def folder(request, tmp_path):
     return make
 
 
+class Installed:
+    """A LADO of docker/install.sh in `folder`, the script run by `run(*args)` as the
+    human runs it, with a home of its own (`home`: no git identity, the workspace
+    ~/workspace made there) and Docker's own config."""
+
+    def __init__(self, folder, home):
+        self.folder, self.home = folder, home
+        self.output = ""
+
+    def run(self, *args: str) -> subprocess.CompletedProcess:
+        # The shell's LADO_* and COMPOSE_* stay: the script keeps them from its compose.
+        env = {**os.environ, "HOME": str(self.home)}
+        env["DOCKER_CONFIG"] = os.environ.get("DOCKER_CONFIG", os.path.expanduser("~/.docker"))
+        return subprocess.run(
+            ["sh", str(ROOT / "docker" / "install.sh"), "--yes", "--no-open", *args],
+            capture_output=True, text=True, env=env, cwd=self.home,
+            stdin=subprocess.DEVNULL, start_new_session=True, timeout=420,
+        )  # fmt: skip
+
+    def env(self) -> dict[str, str]:
+        lines = (self.folder / ".env").read_text().splitlines()
+        return dict(line.split("=", 1) for line in lines if line and not line.startswith("#"))
+
+
+@pytest.fixture
+def installed(request, tmp_path) -> Installed:
+    """A folder for install.sh named with this run's prefix, so its compose project
+    (lado-<folder>) and home volume are this run's; the tests' quiet settings as
+    compose.override.yaml, which compose reads beside the installer's compose.yaml. Taken
+    down after the test with its home volume, its container's logs kept when it fails."""
+    folder = tmp_path / f"{PREFIX}install"
+    folder.mkdir()
+    (folder / "compose.override.yaml").write_text(QUIET_OVERRIDE)
+    home = tmp_path / "home"
+    home.mkdir()
+    project = f"lado-{folder.name}"
+    keep(request.node, Container(f"{project}-lado-1", 0))
+
+    def down():
+        env = {k: v for k, v in os.environ.items() if k not in FROM_ENV}
+        docker("compose", "down", "-v", check=False, cwd=folder, env=env, timeout=180)
+        docker("volume", "rm", "-f", f"{project}_home", check=False)
+
+    request.addfinalizer(down)
+    return Installed(folder, home)
+
+
 # What a failed test keeps of each container it started, besides `docker logs`.
 EVIDENCE = [
     ("lado-ls.txt", "lado ls 2>&1"),

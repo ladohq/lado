@@ -1,3 +1,10 @@
+## Purpose
+
+What an agent CLI shows before its first hook: the screens of Claude Code that LADO
+answers by the agent's own settings, and the session loop's safety net that shows an agent
+of any provider held by a screen LADO does not know as waiting for an answer in its
+terminal.
+
 ## ADDED Requirements
 
 ### Requirement: A Claude agent in bypassPermissions skips Claude Code's warning by its own settings

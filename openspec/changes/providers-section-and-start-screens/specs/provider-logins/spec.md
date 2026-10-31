@@ -2,16 +2,17 @@
 
 ### Requirement: Settings shows the login of each agent CLI
 
-Settings' section Providers and environment SHALL show, under the subtitle "Sign-ins your
-agents use. Changes apply to agents started afterwards.", for each agent CLI LADO knows,
-its name, its version, a dot and one state line ("Logged in · <method> · <where from>",
-"Not logged in", "No login" or "Couldn't check the sign-in" with why), then, while its
-login is missing, the live agents that wait for it, the projects that set a login variable
-of it and the provider's note. Of `lado doctor`'s provider checks it SHALL show only what
-the user can fix: a CLI not installed (greyed, with its install hint), no CLI installed
-(one line over the list), a version other than the tested one ("LADO is tested with
-<version>", small, by the version) and the agents' environment when it could not be
-resolved; no check's level and no other check.
+Settings' section Providers and environment SHALL show, for each agent CLI LADO knows, its
+name, its version, a dot and one state line, then, while its login is missing, the live
+agents that wait for it, the projects that set a login variable of it and the provider's
+note. Of `lado doctor`'s provider checks it SHALL show only what the user can fix (the
+scenarios below), with no check's level and no other check.
+
+#### Scenario: The section's words
+- **WHEN** the human opens Settings → Providers and environment
+- **THEN** under its title is "Sign-ins your agents use. Changes apply to agents started
+  afterwards.", and each state line is "Logged in · <method> · <where from>", "Not logged
+  in", "No login" or "Couldn't check the sign-in" with why
 
 #### Scenario: A new user in Docker
 - **WHEN** Claude Code is installed and not logged in, and a session's supervisor waits for
@@ -72,18 +73,18 @@ resolved; no check's level and no other check.
 ### Requirement: An agent whose CLI needs a login waits for it and starts by itself
 
 When an agent's CLI needs a login (Claude Code) and is not logged in at launch (a session
-resumed at LADO's start or by `lado update`, or a login lost after a start's check), the
-agent SHALL wait from its start with the reason `<CLI> is not logged in: log in in
-Settings → Providers and environment, or set <variable>; the agent starts by itself once
-you do`; its window SHALL check every few seconds, file layers read anew and the login
-taken whole from one layer, and start the CLI once logged in. An unknown state SHALL NOT
-hold it.
+LADO resumes by itself, or a login lost after a start's check), the agent SHALL wait from
+its start with a reason that says where to log in; its window SHALL check every few
+seconds, file layers read anew and the login taken whole from one layer, and start the CLI
+once logged in. An unknown state SHALL NOT hold it.
 
 #### Scenario: A session started without a login
 - **WHEN** Claude Code is not logged in and a stopped session with the provider `claude` is
-  resumed at the container's start
-- **THEN** the supervisor is `waiting` with the reason, `lado ls` prints it, and Needs you
-  shows it with "Log in…" leading to Settings → Providers and environment
+  resumed at the container's start or by `lado update`
+- **THEN** the supervisor is `waiting` with the reason `Claude Code is not logged in: log in
+  in Settings → Providers and environment, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts
+  by itself once you do`, `lado ls` prints it, and Needs you shows it with "Log in…"
+  leading to Settings → Providers and environment
 
 #### Scenario: The login arrives
 - **WHEN** the supervisor waits for the login and the human logs Claude Code in outside
@@ -106,14 +107,11 @@ hold it.
 
 ### Requirement: A new session or worker whose CLI needs a login and has none is refused
 
-LADO SHALL refuse a new session whose provider needs a login (Claude Code), a resume asked
-for by the human (`lado start` of a stopped session, the UI's Resume) by the provider of
-the supervisor it starts, and a new worker by the worker's own provider, when that
-provider's status, read in the environment the agent would start from (with the session's
-project's variables and secrets), is not logged in; the refusal SHALL come before anything
-of the session or worker is stored or made, and SHALL name the CLI and where to log in. A
-resume LADO makes by itself (at the container's start, after `lado update`) and a login
-LADO cannot read SHALL NOT be refused.
+LADO SHALL refuse a new session whose provider needs a login (Claude Code), a resume by
+hand by the provider of the supervisor it starts, and a new worker by its own provider,
+when that provider's status, read in the environment the agent would start from, is not
+logged in; before anything of it is stored or made, naming the CLI and where to log in. A
+resume LADO makes by itself and a login LADO cannot read SHALL NOT be refused.
 
 #### Scenario: lado start without a login
 - **WHEN** Claude Code is not logged in and `lado start <repo> --provider claude` starts a

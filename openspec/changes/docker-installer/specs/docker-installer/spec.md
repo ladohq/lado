@@ -1,3 +1,9 @@
+## Purpose
+
+LADO's one-line Docker installers: `install.sh` for macOS, Linux and WSL2, and
+`install.ps1`, which runs it in Ubuntu inside WSL on Windows. One command installs or
+updates LADO's container, asking only what the computer cannot tell.
+
 ## ADDED Requirements
 
 ### Requirement: The installer is one POSIX script

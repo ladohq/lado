@@ -7,14 +7,17 @@
 
 ### Requirement: The install guide leads with the installer, then compose by hand
 
-docs/install.md SHALL have a section `Docker` that leads with the installer: the one line
-of `install.sh` for macOS and Linux, the one line of `install.ps1` for Windows'
-PowerShell, what each asks and does, the download-read-run way (`curl -fsSLO …`, read it,
-`sh install.sh`), and that running it again updates. Then, as "By hand", it SHALL lead
-with compose: get `compose.yaml`, write `.env`, start, open the UI, the agents' variables
-(the optional `secrets/`, enabled by `LADO_SECRETS=./secrets` in `.env` and `mkdir -m 700
-secrets`), log in to the agent CLIs, ssh, update and go back, a second LADO, the sessions,
-removal and the pitfalls. README's Install SHALL link to it.
+docs/install.md SHALL have a section `Docker` that leads with the installer (the
+`install.sh` line, the `install.ps1` line, what they ask and do, the download-read-run
+way, and that a rerun updates), then gives the manual way as "By hand", led by compose.
+README's Install SHALL link to it.
+
+#### Scenario: By hand keeps the manual steps
+- **WHEN** `tests/test_docker.py` reads the guide's Docker section
+- **THEN** "By hand" follows "Install with one command" and comes before the manual steps:
+  check the shell, get `compose.yaml` and write `.env`, start; then the agents'
+  variables, logins, ssh, update and going back, a second LADO, the sessions, removal and
+  the pitfalls
 
 #### Scenario: Secrets as a step of their own
 - **WHEN** `tests/test_docker.py` reads the guide's Docker section and README's Docker
@@ -46,13 +49,17 @@ them.
 
 ### Requirement: An update takes the version's compose.yaml
 
-`docker/compose.yaml`'s header and docs/install.md's "Update the container" (by hand)
-SHALL update in this order, in the folder of `compose.yaml`: keep a copy of the file (`cp
-compose.yaml compose.yaml.bak`), download that version's `compose.yaml` next to `.env`
-(`curl -fLO https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml`),
-set the new `LADO_VERSION` in `.env`, then `docker compose up -d`. README's Docker update,
-and the first way of the guide's "Update the container", SHALL be the installer's line run
-again, which does the same steps.
+`docker/compose.yaml`'s header and the guide's update by hand SHALL, in the folder of
+`compose.yaml`, keep a copy of it, download that version's `compose.yaml`, set the new
+`LADO_VERSION` in `.env`, then `docker compose up -d`, in this order. README's Docker
+update and the first way of the guide's "Update the container" SHALL be the installer's
+line run again, which does the same steps.
+
+#### Scenario: The update by hand
+- **WHEN** `tests/test_docker.py` reads the header's and the guide's update by hand
+- **THEN** its commands are `cp compose.yaml compose.yaml.bak`, `curl -fLO
+  https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml` and `docker
+  compose up -d`, in this order
 
 #### Scenario: The address is the release's asset
 - **WHEN** `tests/test_docker.py` reads the update's address and the release workflow's

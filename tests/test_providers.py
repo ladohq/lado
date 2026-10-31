@@ -193,14 +193,30 @@ def test_claude_hooks_leave_the_human_s_answer_to_the_human(repo, fake_tmux):
         assert hooks.handle(claude, neutral, "s", "supervisor") is None
 
 
-def _claude_settings(repo, mode=None):
+def _claude_settings_file(repo, mode=None):
     sess = state.Session("s", str(repo), mode, provider="claude")
     agent = state.Agent(
         "s", "w1", "worker", str(repo), None, None, state.STARTING, provider="claude"
     )
     spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
     cmd = providers.get("claude").launch_command(agent, sess, spec).argv
-    return json.loads(open(cmd[cmd.index("--settings") + 1]).read())["hooks"]
+    return json.loads(open(cmd[cmd.index("--settings") + 1]).read())
+
+
+def _claude_settings(repo, mode=None):
+    return _claude_settings_file(repo, mode)["hooks"]
+
+
+@pytest.mark.parametrize("mode", [None, *providers.get("claude").permission_modes])
+def test_claude_settings_skip_the_bypass_warning_only_in_bypass(repo, mode):
+    """Two screens Claude Code shows before the first hook (LAD-163), answered by the
+    agent's own settings: a repository's .mcp.json servers, always; bypass mode's
+    warning, only in that mode."""
+    settings = _claude_settings_file(repo, mode)
+    assert settings["enableAllProjectMcpServers"] is True
+    assert settings.get("skipDangerousModePermissionPrompt") is (
+        True if mode == "bypassPermissions" else None
+    )
 
 
 @pytest.mark.parametrize("mode", [None, *providers.get("claude").permission_modes])

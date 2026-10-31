@@ -256,10 +256,11 @@ CLI and press **Start session**.
 Claude Code asks whether to trust a repository it has not seen before its first answer, in
 every permission mode. So LADO records Claude Code's trust in the repository a session
 starts in, before its first agent starts, and Claude Code does not ask; the session's log
-and the start's warnings say so. The workers' worktrees are covered, and the trust is
-remembered on the home volume. A trusted repository's own Claude Code settings
-(`.claude/`) and MCP servers (`.mcp.json`) run without a question, so start sessions only
-in repositories whose settings you accept.
+says so. The workers' worktrees are covered, and the trust is remembered on the home
+volume. A trusted repository's own Claude Code settings (`.claude/`) run without a
+question, and LADO enables the MCP servers of its `.mcp.json` for its Claude agents, so
+Claude Code does not ask about them either: start sessions only in repositories whose
+settings and servers you accept.
 
 When LADO cannot record the trust (Claude Code's config cannot be written or read), Claude
 Code asks, and the agent waits in **Needs you** meanwhile, which says why and what to

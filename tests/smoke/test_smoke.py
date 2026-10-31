@@ -4,6 +4,7 @@ run, LADO's messages reach it, a worker starts, and `lado stop` leaves no proces
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -228,7 +229,7 @@ def test_a_logged_in_agent_passes_the_clis_first_run_with_no_human(
     """A fresh Claude Code config (no hasCompletedOnboarding: the theme screen would hold
     the agent before any hook): LADO records the first run, and the agent is idle."""
     config = Path(os.environ["CLAUDE_CONFIG_DIR"], ".claude.json")
-    config.write_text(json.dumps({"bypassPermissionsModeAccepted": True}))
+    config.write_text(json.dumps({}))
     started = runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", "claude")
     print(f"claude: started, warnings {started.warnings}")
     note = f"LADO recorded Claude Code's first run in {config}"
@@ -237,4 +238,26 @@ def test_a_logged_in_agent_passes_the_clis_first_run_with_no_human(
     assert json.loads(config.read_text())["hasCompletedOnboarding"] is True
     idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
     wait_for(idle, "the supervisor idle with no human", 120)
+    # Bypass mode's warning was skipped by the agent's own settings, not the shared file.
+    assert "bypassPermissionsModeAccepted" not in json.loads(config.read_text())
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_a_claude_session_with_a_repo_mcp_json_starts_with_no_screen(
+    smoke_provider, smoke_repo, fake_endpoint
+):
+    """A repository's .mcp.json makes Claude Code ask "New MCP server found in this
+    project" before any hook; the agent's own settings take its servers (LAD-163)."""
+    servers = {"mcpServers": {"repo-tool": {"command": "true", "args": []}}}
+    (smoke_repo / ".mcp.json").write_text(json.dumps(servers))
+    git = ["git", "-C", str(smoke_repo)]
+    subprocess.run([*git, "add", ".mcp.json"], check=True)
+    subprocess.run([*git, "commit", "-qm", "A repository MCP server"], check=True)
+    # Not bypass mode, whose own warning the other test covers.
+    runtime.start_session(str(smoke_repo), SESSION, "default", "claude")
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor idle with no human", 120)
+    changed = subprocess.run([*git, "status", "--porcelain"], capture_output=True, text=True)
+    assert changed.stdout == ""  # nothing written into the repository
     runtime.stop_session(SESSION)

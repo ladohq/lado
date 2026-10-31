@@ -182,10 +182,11 @@ def test_update_restarts_the_session_and_the_server_on_the_new_version(repo, ses
     assert f"Resuming on LADO {NEW}:" in done.stdout
     assert f'Resumed session "{session}" in {repo}' in done.stdout
     assert done.stdout.endswith(f"LADO {NEW} is ready. Reload open UI tabs.\n")
-    # Resumed by the installed lado's public commands, the server where it was.
+    # Resumed by the installed lado's commands (LADO's own resume waits for a missing
+    # login), the server where it was.
     assert install.called() == [
         "--version",
-        f"start {repo} --name {session} --no-attach",
+        f"start {repo} --name {session} --no-attach --wait-for-login",
         f"ui --no-open --port {before['port']}",
     ]
     assert resumed(session) == 1
@@ -311,7 +312,7 @@ def test_update_to_an_older_schema_restores_the_migrations_copy_and_the_old_lado
     assert f"  Sessions not in that copy are not started again: {new}\n" in done.stderr
     assert f"Restored lado.db from {copy} (schema {before})" in done.stdout
     starts = [call for call in install.called() if call.startswith("start")]
-    assert starts == [f"start {repo} --name {old} --no-attach"]
+    assert starts == [f"start {repo} --name {old} --no-attach --wait-for-login"]
     assert state.schema_version() == before
     listed = install.run("ls")  # OLD now, which refuses schema `after`
     assert listed.returncode == 0, listed.stderr
@@ -465,7 +466,7 @@ def test_the_ui_updates_lado_and_the_server_comes_back_on_the_new_version(repo, 
     assert last["tail"][-1] == f"LADO {NEW} is ready. Reload open UI tabs."
     assert install.called() == [
         "--version",
-        f"start {repo} --name {session} --no-attach",
+        f"start {repo} --name {session} --no-attach --wait-for-login",
         f"ui --no-open --port {server_run.running()['port']}",
     ]
     assert resumed(session) == 1

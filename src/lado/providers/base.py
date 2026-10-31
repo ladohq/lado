@@ -153,7 +153,8 @@ class Blocker:
     # Why the provider cannot tell whether something holds it; None when it can.
     warning: str | None = None
     # What the provider did so that nothing holds it (e.g. recorded an answer in the CLI's
-    # config), one line per write, told and logged as the reason is.
+    # config), one line per write; LADO writes it to the session's loop.log only, never
+    # tells it whoever starts the agent: it is no problem.
     notes: tuple[str, ...] = ()
 
 

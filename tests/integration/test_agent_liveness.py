@@ -243,7 +243,7 @@ def test_lado_records_the_trust_so_the_cli_does_not_ask(session, repo, claude_co
     warnings = []
     runtime.spawn_worker(SESSION, "sleep 0", name="w1", warnings=warnings)
     note = f"LADO recorded Fake agent's trust in {repo.resolve()} in {claude_config.path}"
-    assert warnings == [note]
+    assert warnings == []  # LADO's own write: loop.log only
     wait_status("w1", state.IDLE)
     wait_for(w1_read_its_task, "w1 to read its task")
     assert json.loads(claude_config.path.read_text()) == {

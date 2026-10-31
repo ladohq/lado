@@ -54,18 +54,21 @@ def wait_reason(provider: base.Provider) -> str:
 
 
 SESSION, WORKER = "session", "worker"  # what a refusal does not start
+RESUME = "resume"  # a stopped session resumed by hand (lado start, the UI's Resume)
 
 
 def refusal(provider: base.Provider, env: Mapping[str, str], what: str) -> str | None:
-    """Why a new `what` (SESSION or WORKER) of `provider` is not started: its agents need a
-    login (Capabilities.needs_login) and its status in `env`, the environment they would
-    start from, says none. None otherwise, also when the status cannot be read: that never
+    """Why a new `what` (SESSION or WORKER) of `provider`, or a RESUME of a session whose
+    supervisor it starts, is not started: its agents need a login
+    (Capabilities.needs_login) and its status in `env`, the environment they would start
+    from, says none. None otherwise, also when the status cannot be read: that never
     refuses (the launch warns)."""
     if not provider.capabilities.needs_login:
         return None
     if provider.login_status(dict(env)).state != base.NO:
         return None
-    head = f"{provider.title} is not logged in, so the {what} was not started"
+    done = "the session was not resumed" if what == RESUME else f"the {what} was not started"
+    head = f"{provider.title} is not logged in, so {done}"
     if what == WORKER:
         return (
             f"{head}: ask the human to log in in {SETTINGS}, or start the worker with "

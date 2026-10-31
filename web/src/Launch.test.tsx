@@ -767,19 +767,22 @@ test("the Project way asks for the chosen project's providers, where its own log
   expect(await screen.findByText(NO_LOGIN, { exact: false })).toBeTruthy();
 });
 
-test("Resume of a CLI without its login warns and goes on", async () => {
+test("Resume of a CLI without its login is off, says Log in first, and another CLI resumes", async () => {
   sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "claude" })];
   providers = async () => [provider("claude", { login_missing: true }), provider("kilo")];
   open("/sessions/lado");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
-  const text = "⚠ Claude Code is not logged in: the supervisor waits until you log in.";
-  const note = (await within(dialog).findByText(text, { exact: false })).closest(".field-note") as HTMLElement;
-  expect(note.classList).toContain("warn");
-  expect(within(note).getByRole("button", { name: "Log in…" })).toBeTruthy();
-  const resume = within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement;
-  await waitFor(() => expect(resume.disabled).toBe(false));
+  const note = (await within(dialog).findByText(NO_LOGIN, { exact: false })).closest(".field-note") as HTMLElement;
+  expect(note.classList).toContain("bad");
+  expect(within(note).getByRole("button", { name: "Log in first" })).toBeTruthy();
   expect(providerSelect().value).toBe("claude");
+  const claude = within(providerSelect()).getByRole("option", { name: "claude · not logged in" }) as HTMLOptionElement;
+  expect(claude.disabled).toBe(true);
+  const resume = within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement;
+  expect(resume.disabled).toBe(true);
+  fireEvent.change(providerSelect(), { target: { value: "kilo" } });
+  await waitFor(() => expect(resume.disabled).toBe(false));
 });
 
 test("a mode the new provider does not support goes back to default, and the window says so", async () => {

@@ -1785,6 +1785,22 @@ def block(session: str, name: str, reason: str) -> None:
         db.execute("COMMIT")
 
 
+def block_unheard(session: str, name: str, reason: str) -> bool:
+    """state.block for an agent still starting that no hook of has run (seen_at 0), in the
+    same transaction as that look, so a hook that came meanwhile wins. Whether it waits."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT 1 FROM agents WHERE session = ? AND name = ? AND status = ? AND seen_at = 0",
+            (session, name, STARTING),
+        ).fetchone()
+        if row:
+            _set_status(db, session, name, WAITING)
+            _add_event(db, session, name, BLOCKED, reason)
+        db.execute("COMMIT")
+    return row is not None
+
+
 def block_reasons(session: str) -> dict[str, str]:
     """Per agent name, why its CLI holds it before its first hook: the detail of its latest
     BLOCKED event when no "status" or "spawned" event came after it, so neither a later
@@ -1906,15 +1922,19 @@ def take_resume(
     return message
 
 
-def seen(session: str, name: str) -> None:
+def seen(session: str, name: str) -> bool:
     """Record that a hook of the agent ran now. The only writer of seen_at, which it sets
     alone: an update of it is no change for the UI (AGENTS_CHANGED). Its failed messages
     that no hook ran after (a dialog swallowed them) go back to the queue, with their
     attempts from 0. When it has messages that failed after its previous hook, why it waits
     (runtime.status_reason, from failed_counts) changes with seen_at: that is recorded as a
-    change of the agent, which the UI then shows again."""
+    change of the agent, which the UI then shows again. Whether it is the agent's first
+    hook (seen_at was 0)."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
+        before = db.execute(
+            "SELECT seen_at FROM agents WHERE session = ? AND name = ?", (session, name)
+        ).fetchone()
         db.execute(
             "UPDATE agents SET status = status WHERE session = ? AND name = ? AND EXISTS"
             " (SELECT 1 FROM messages m WHERE m.session = agents.session"
@@ -1932,6 +1952,7 @@ def seen(session: str, name: str) -> None:
             (time.time(), session, name),
         )
         db.execute("COMMIT")
+    return before is not None and not before["seen_at"]
 
 
 def add_event(

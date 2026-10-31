@@ -422,20 +422,6 @@ the next unnamed spawn picks `-2`; if `add_event` fails after `add_agent`, an ag
 Wanted: these steps run under the same `_undo`, so the rollback covers everything the spawn did.
 Found: 2026-10-06, review of fix/tmux-missing-rollback.
 
-## An agent can stay `starting` with no hook and no reason
-
-Size: M. Why here: a dialog LADO does not foresee holds the agent silently, as the trust dialog did.
-
-LADO foresees only what a provider's `first_hook_blocker` reads (Claude Code's folder
-trust). Before its first hook Claude Code may show other dialogs too: its first run and
-login, the confirmation of bypassPermissions, the approval of the servers in a project's
-`.mcp.json` (not checked on 2.1.291). Then the agent stays `starting` with no
-`status_reason`, and messages wait.
-Wanted: a neutral check in the core: an agent `starting` longer than N seconds with no hook
-at all gets a `status_reason` that says to look at its window (`lado attach`, the UI's
-terminal).
-Found: 2026-10-06, architect's review of feature/trust-dialog.
-
 ## Flaky: a Claude live worker's window closes before its first hook
 
 Size: S. Why here: a live-test flake whose cause is unknown; the evidence has no screen of it.
@@ -644,28 +630,6 @@ When the plugin's `promptAsync` of the turn-end output fails, it reports `plugin
 Wanted: on that `HOOK_ERROR`, make the agent's `hook_output` batch `typed` at once
 (`state.output_not_taken`), so the sweep's typed rule takes it on.
 Found: 2026-10-11, design of run feature/hook-output-retry.
-
-## Claude Code's first-run screens block an agent before any hook, unseen
-
-Size: S. Why here: on a user's fresh machine the first Claude agent looks stuck in
-`starting` with no reason given.
-
-`Provider.first_hook_blocker` (providers/claude.py) detects only the folder trust dialog.
-Three more screens of Claude Code 2.1.296 come before its first hook, each seen in the smoke
-test (tests/smoke/, a fresh `CLAUDE_CONFIG_DIR`) with the agent left `starting` and no
-reason in `lado ls`:
-- the first-run screens (theme first), while `.claude.json` has no `hasCompletedOnboarding`;
-- the bypass permissions mode's disclaimer ("No, exit" / "Yes, I accept"), with
-  `--permission-mode bypassPermissions` while `.claude.json` has no
-  `bypassPermissionsModeAccepted` (nor `skipDangerousModePermissionPrompt` in the user's
-  settings);
-- "Detected a custom API key in your environment", for an `ANTHROPIC_API_KEY` whose last 20
-  characters are in neither list of `customApiKeyResponses`.
-The smoke answers all three ahead in its own config.
-Wanted: `first_hook_blocker` names each wait, with what to do in the agent's window, as it
-does for the trust dialog, with unit tests on configs without the keys.
-Found: 2026-10-10, design review of feature/live-cloud-matrix (architect, Found on the way);
-the three screens confirmed by the smoke test on 2026-10-11.
 
 ## A fake model server for the smoke tests
 

@@ -482,11 +482,13 @@ def test_a_start_says_who_leads_and_what_holds_the_supervisor(
     assert started["warnings"] == [claude_config.reason(repo)]
 
 
-def test_a_start_says_that_lado_recorded_claude_codes_trust(client, repo, fake_tmux, claude_config):
+def test_a_start_does_not_warn_that_lado_recorded_claude_codes_trust(
+    client, repo, fake_tmux, claude_config
+):
     claude_config.trust()  # Claude Code trusts no folder
     answer = launch(client, repo, name="s", provider="claude")
     assert answer.status_code == 200, answer.text
-    assert answer.json()["warnings"] == [claude_config.note(repo)]
+    assert answer.json()["warnings"] == []
 
 
 def test_the_first_start_makes_the_database(client, repo, fake_tmux, lado_home):
@@ -943,9 +945,7 @@ def test_a_fresh_start_without_the_login_is_400_and_makes_no_folder(
     assert state.get_session("shop") is None
 
 
-def test_a_new_session_without_the_login_is_400_and_a_resume_waits(
-    client, repo, fake_tmux, cli_logins
-):
+def test_a_new_session_or_a_resume_without_the_login_is_400(client, repo, fake_tmux, cli_logins):
     cli_logins.logged_out()
     answer = launch(client, repo, name="s", kits=["default"], provider="claude")
     assert answer.status_code == 400
@@ -956,8 +956,12 @@ def test_a_new_session_without_the_login_is_400_and_a_resume_waits(
     runtime.stop_session("s")
     cli_logins.logged_out()
     answer = client.post("/api/sessions/s/resume", json={})
+    assert answer.status_code == 400
+    assert "so the session was not resumed" in answer.json()["detail"]
+    assert state.get_session("s").stopped_at
+    # Another CLI resumes it.
+    answer = client.post("/api/sessions/s/resume", json={"provider": "kilo"})
     assert answer.status_code == 200, answer.text
-    assert runtime.status_reason("s", "supervisor").startswith("Claude Code is not logged in:")
 
 
 def test_a_fresh_start_refused_after_the_repository_keeps_it(

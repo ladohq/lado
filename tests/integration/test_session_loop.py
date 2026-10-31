@@ -105,3 +105,30 @@ def test_the_loop_types_in_a_message_every_hook_missed(repo, session):
         "delivery",
         session,
     )
+
+
+def _launched_ago(session: str, name: str, seconds: float) -> None:
+    """The agent's CLI was launched `seconds` ago, as the loop reads it (its window mark)."""
+    with state.connect() as db:
+        db.execute(
+            "UPDATE agents SET window_at = strftime('%Y-%m-%d %H:%M:%f', 'now', ?)"
+            " WHERE session = ? AND name = ?",
+            (f"-{seconds} seconds", session, name),
+        )
+
+
+def test_the_loop_shows_an_agent_its_cli_holds_with_a_question_lado_does_not_know(
+    repo, session, monkeypatch
+):
+    start(repo, session)
+    monkeypatch.setenv("FAKE_AGENT_ASKS_UNKNOWN", "1")
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    wait_for(lambda: "Go on?" in tmux.capture(session, "w1"), "the question", session)
+    assert state.get_agent(session, "w1").status == state.STARTING
+    _launched_ago(session, "w1", runtime.START_SILENCE + 1)
+    held = lambda: runtime.status_reason(session, "w1") == runtime.START_SILENCE_REASON  # noqa: E731
+    wait_for(held, "the loop's reason", session)
+    assert runtime.START_SILENCE_REASON in lado_cli("ls").stdout
+    tmux.send_text(session, "w1", "yes")  # the human answers in its terminal
+    wait_for(lambda: state.get_agent(session, "w1").status == state.IDLE, "w1 idle", session)
+    assert runtime.status_reason(session, "w1") is None

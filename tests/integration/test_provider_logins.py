@@ -13,7 +13,17 @@ import agent_helpers
 import fake_provider
 import pytest
 
-from lado import logins, project_secrets, projects, providers, runtime, state, terminal, tmux
+from lado import (
+    cli,
+    logins,
+    project_secrets,
+    projects,
+    providers,
+    runtime,
+    state,
+    terminal,
+    tmux,
+)
 from lado.server import models
 
 pytestmark = pytest.mark.integration
@@ -89,6 +99,29 @@ def test_a_new_session_without_a_login_is_refused_by_lado_start(repo, marker):
     assert not (state.home() / "agents" / SESSION).exists()
 
 
+def test_a_resume_by_hand_without_a_login_is_refused_and_the_updates_waits(repo, marker):
+    stopped_logged_out(repo, marker)
+    start = ["start", str(repo), "--name", SESSION, "--no-attach"]
+    found = subprocess.run(
+        fake_provider.lado_command(*start), capture_output=True, text=True, timeout=60
+    )
+    assert found.returncode == 1, found.stderr
+    assert found.stderr.splitlines() == [
+        "lado: Fake agent is not logged in, so the session was not resumed: log in in LADO's UI "
+        "(Settings → Providers and environment, `lado ui`), or set FAKE_AGENT_TOKEN as LADO's "
+        "secret or a project secret"
+    ]
+    assert state.get_session(SESSION).stopped_at
+    assert not tmux.has_session(SESSION)
+    # lado update's resume: the supervisor waits for the login, then starts by itself. In
+    # this process, whose LADO commands (the waiting window's) know the fake providers.
+    assert cli.main([*start, "--wait-for-login"]) == 0
+    assert status() == state.WAITING
+    marker.write_text("logged in")
+    wait_status(state.IDLE)
+    runtime.stop_session(SESSION)
+
+
 def test_a_supervisor_spawning_a_worker_without_a_login_gets_the_refusal(repo, marker):
     marker.write_text("logged in")
     runtime.start_session(str(repo), SESSION, None, PROVIDER)
@@ -113,7 +146,7 @@ def test_a_supervisor_spawning_a_worker_without_a_login_gets_the_refusal(repo, m
 
 def test_an_agent_without_a_login_waits_then_starts_by_itself(repo, marker):
     stopped_logged_out(repo, marker)
-    started = runtime.start_session(str(repo), SESSION, None)  # a resume
+    started = runtime.start_session(str(repo), SESSION, None, wait_for_login=True)  # LADO's
     assert started.resumed
     assert started.warnings == [reason()]
     assert status() == state.WAITING
@@ -137,7 +170,7 @@ def test_an_agent_without_a_login_waits_then_starts_by_itself(repo, marker):
 
 def test_a_lado_secret_saved_meanwhile_reaches_the_waiting_agent(repo, marker):
     stopped_logged_out(repo, marker)
-    runtime.start_session(str(repo), SESSION, None)
+    runtime.start_session(str(repo), SESSION, None, wait_for_login=True)
     assert status() == state.WAITING
     project_secrets.write_lado(fake_provider.TOKEN, VALUE)
     wait_status(state.IDLE)
@@ -225,7 +258,7 @@ WINDOW = "fake-window"  # logs in by its own command, like OpenCode
 def test_a_login_window_runs_the_login_with_the_agents_environment_then_ends(repo, marker):
     provider = providers.get(WINDOW)
     stopped_logged_out(repo, marker)
-    runtime.start_session(str(repo), SESSION, None)  # resumed, it waits for the login
+    runtime.start_session(str(repo), SESSION, None, wait_for_login=True)  # it waits
     name = logins.open_window(provider, "login")
     assert logins.open_window(provider, "login") == name  # one per provider
     assert logins.open_windows() == {WINDOW: name}

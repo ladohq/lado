@@ -52,7 +52,7 @@ from lado import (
     tmux,
     update,
 )
-from lado.server import clones, feed, launch, models, terminals
+from lado.server import clones, feed, launch, models, provider_check, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
     AccessInfo,
@@ -881,8 +881,24 @@ def create_app(
 
     @app.get("/api/providers/logins", dependencies=[Depends(guard)])
     def provider_logins() -> ProvidersPage:
-        """Each provider's CLI and login, and `lado doctor`'s provider checks, read now."""
-        return launch.providers_page()
+        """Each provider's CLI and login as the server's last check read them, at once;
+        starts no check (POST /api/providers/check does), so polling it costs nothing."""
+        return provider_check.snapshot()
+
+    @app.post("/api/providers/check", dependencies=[Depends(guard.changes)])
+    def check_providers() -> ProvidersPage:
+        """Start a check of every CLI in the background, unless one runs; the rows kept."""
+        provider_check.start()
+        return provider_check.snapshot()
+
+    def fresh_row(name: str, changed: bool = True) -> ProviderLogins:
+        """The provider's row read now, kept for the section; after a change of its login
+        (`changed`), a check of every CLI starts too, as the section's ↻ would."""
+        row = launch.provider_login(name)
+        provider_check.put(row)
+        if changed:
+            provider_check.start()
+        return row
 
     @app.post(
         "/api/providers/{name}/login",
@@ -896,13 +912,13 @@ def create_app(
             logins.open_window(provider, given.action)
         except (ValueError, agent_env.AgentEnvError, tmux.TmuxError) as error:
             raise HTTPException(400, str(error)) from None
-        return launch.provider_login(name)
+        return fresh_row(name, changed=False)
 
     @app.delete("/api/providers/{name}/login", dependencies=[Depends(guard.changes)])
     def close_login(name: str) -> ProviderLogins:
         """End the provider's login window and its command, if one is open."""
         logins.close_window(provider_named(name))
-        return launch.provider_login(name)
+        return fresh_row(name)
 
     @app.websocket("/api/providers/{name}/login/terminal")
     async def login_terminal(ws: WebSocket, name: str):
@@ -927,7 +943,7 @@ def create_app(
                     project_secrets.remove_lado(other)
         except (ValueError, OSError) as error:
             raise HTTPException(400, str(error)) from None
-        return launch.provider_login(name)
+        return fresh_row(name)
 
     @app.delete(
         "/api/providers/{name}/login-secrets",
@@ -943,7 +959,7 @@ def create_app(
                 project_secrets.remove_lado(variable)
         except OSError as error:
             raise HTTPException(400, str(error)) from None
-        return launch.provider_login(name)
+        return fresh_row(name)
 
     # The Kits page (docs/design/ui.md, Kits): what `lado kits` and `lado marketplaces` do.
     # A request that goes to the network or writes the git cache is a change too.

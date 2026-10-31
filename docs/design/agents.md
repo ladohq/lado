@@ -191,8 +191,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   (`SystemInfo.gui_session`) and the update's plan (`agents_note`) say the same.
 - Claude Code's "trust this folder?" in a repo it does not trust is answered by LADO ahead:
   `first_hook_blocker` records the trust of the repo's main root in Claude Code's global
-  config (`claude.edit_config`) and returns a `note`, told and logged as a reason is
-  (below), and nothing holds the agent. Only when that fails does the agent wait for the
+  config (`claude.edit_config`) and returns a `note`, written to `loop.log` once and told
+  nobody (LAD-163: LADO's own write is no problem), and nothing holds the agent. Only when
+  that fails does the agent wait for the
   question, the reason saying why LADO could not record it. For an agent whose environment
   logs Claude Code in, or whose login it cannot read (`login_status` not `no`: an unknown
   login holds no agent), it also records Claude Code's first run
@@ -201,30 +202,51 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `customApiKeyResponses.approved`, else "Detected a custom API key" holds it): one write
   and one note each, never any part of the key; a key the human rejected there is left,
   and the agent waits with a reason saying so.
+- Two more Claude Code screens before the first hook (all seven `--permission-mode`s
+  checked on a clean config with 2.1.295, LAD-163) are answered by the agent's own
+  `--settings` file, with no write to a shared one: `enableAllProjectMcpServers: true`
+  always ("New MCP server found in this project" for a repository's `.mcp.json`: its servers
+  are taken, as for a human who trusts the folder) and `skipDangerousModePermissionPrompt:
+  true` in `bypassPermissions` only (its warning screen). Auto mode's notice holds nothing.
+- An agent of any provider still `starting` with no hook since its launch (`seen_at` 0)
+  `runtime.START_SILENCE` (30 s) after it (its window mark, `window_at`; a waiting window
+  marks it anew when it starts the CLI) is held by a screen LADO does not know: the session
+  loop's pass (`runtime.check_starts`) makes it `waiting` with a `blocked` event, `Waiting
+  for an answer in its terminal: no sign from it 30 s after its start. Open its terminal.`,
+  in the same transaction as the look (`state.block_unheard`: a hook that came meanwhile
+  wins), logged once. Its first hook ends the wait: its session start as for any start
+  blocker, any other first hook (`state.seen` says it is the first) by
+  `runtime.heard_at_start`, which puts it back to `starting`. A slow CLI past 30 s is
+  `waiting` for a moment and clears by itself.
 - A new session or worker whose CLI needs a login (`Capabilities.needs_login`: Claude
   Code) and has none is refused before anything of it is stored or made
-  (`runtime.check_login`, `lado.logins.refusal`): `start_session` checks a new session,
-  never a resume, and `spawn_worker` each worker by its own provider, both in
+  (`runtime.check_login`, `lado.logins.refusal`): `start_session` checks a new session and
+  a resume by hand (`lado start` of a stopped session, the UI's Resume: `logins.RESUME`,
+  "… so the session was not resumed: …", LAD-163) by the supervisor's provider, the one
+  agent a resume starts, never LADO's own resume (`reason` `AT_START`, or `wait_for_login`:
+  `lado update`'s `lado start --wait-for-login`, a hidden flag), and `spawn_worker` each
+  worker by its own provider, both in
   `runtime.agents_env` over `runtime.agent_layers(project)`, the environment the agent would start from, so a project's
   secret that logs the CLI in counts; `lado start <git-url>`, `--new` and the UI's From
   scratch check before the clone or the folder (`runtime.check_start_login`). Only `no`
   refuses; an unreadable login goes on as below.
-- A resumed agent whose CLI needs a login waits for it before anything else, as does a new
+- An agent LADO resumes by itself whose CLI needs a login waits for it before anything else, as does a new
   one whose login went between the check and its launch: before its window starts
   (`runtime._held_for_login`, at every launch) LADO asks the provider's `login_status` with
   the agent's launch environment; at `no` the agent is `waiting` with `logins.wait_reason` (`<CLI> is not
   logged in: log in in Settings → Providers and environment, or set <variable>; the agent
-  starts by itself once you do`), told and logged as a blocker's reason is, with the lines of
-  what needs no login, settled at once (`first_hook_blocker`: Claude Code's trust; a
-  question it would still ask waits for the window), and its window
+  starts by itself once you do`), told and logged as a blocker's reason is; what needs no
+  login is settled at once (`first_hook_blocker`: Claude Code's trust, its note in
+  `loop.log` only; a question it would still ask waits for the window), and its window
   runs `lado login-wait` (`lado.login_wait`) instead of `lado.agent_env`: it reads and
   removes the launch file, and every `logins.POLL` seconds lays the file layers read anew
   (the outside folder, LADO's secrets, the session's project) over the environment it
   holds, never over LADO's and the provider's own variables, its provider's login taken
   whole from one layer (the launch file keeps the login shell's own login variables,
   `shell_login`, the lowest such layer), and asks again. Once logged
-  in it runs `first_hook_blocker` there (the first run above, printed in the agent's
-  terminal and logged in loop.log: whoever started it is gone), puts the agent
+  in it runs `first_hook_blocker` there (the first run above: its note in loop.log only, a
+  reason or warning also printed in the agent's terminal), marks the CLI's launch
+  (`state.window_opened`, from which the 30 s above count), puts the agent
   back to `starting` (or waits with that blocker's reason) and execs the CLI: the agent
   reaches its first hook with no restart. A login shell's change needs a new agent. A
   login LADO cannot read (`unknown`: a failure, a timeout, odd output) never holds an
@@ -239,9 +261,10 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `SESSION_START` ends that wait (also only that one: a compaction's session start leaves
   any other wait), and its queue is handed over as after any start; an answer that ends
   the CLI ("No, exit") is an end like any other (`agent_ended`, the window check). Who
-  starts it is told the `note`, the reason, or the provider's `warning` when it cannot
-  tell: `lado start` on stderr, the UI's start in `Started.warnings`, `spawn_worker` in its
-  result's `warnings`, and each once in `loop.log` (start, resume and spawn).
+  starts it is told the reason, or the provider's `warning` when it cannot tell: `lado
+  start` on stderr, the UI's start in `Started.warnings`, `spawn_worker` in its result's
+  `warnings`, and each once in `loop.log` (start, resume and spawn); a `note` goes to
+  `loop.log` alone (`runtime._log_notes`).
 - An agent `waiting` for the human (a dialog in its terminal) is `busy` again as soon as the
   human answers there: the neutral `WAITING` and `RESUMED` come in pairs with the same key
   (`Event.key`, the provider's id of the request), and only `RESUMED` with the key it waits
@@ -473,6 +496,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   leaves an agent without the mark alone however many passes miss its window, up to
   `runtime.SPAWN_DEADLINE` (60 s) from its row: past it the spawning process died, and the
   agent ends at once with "its start ended before its window opened" (`SPAWN_DIED`).
+  After it the pass looks for agents a screen holds before any hook
+  (`runtime.check_starts`, the 30 s safety net above).
   A failing list changes nothing: only then
   a `tmux has-session` tells a gone tmux session (the loop ends) from another failure (an
   error of the pass; a tmux that cannot run is one too; `loop.tmux_gone`). The supervisor's

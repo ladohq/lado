@@ -477,6 +477,83 @@ def test_an_agent_whose_window_opened_is_ended_two_looks_later_however_young(
     assert runtime.status_reason("s", "w1") == GONE
 
 
+def _after_window(name: str, seconds: float) -> datetime.datetime:
+    """A pass `seconds` after the agent's window opened (its window mark)."""
+    opened = runtime._utc(state.get_agent("s", name).window_at)
+    return opened + datetime.timedelta(seconds=seconds)
+
+
+def test_an_agent_with_no_hook_30_s_after_its_window_waits_for_its_terminal(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.check_starts("s", _after_window("w1", 31))
+    assert state.get_agent("s", "w1").status == state.WAITING
+    assert runtime.status_reasons("s")["w1"] == runtime.START_SILENCE_REASON
+    assert runtime.START_SILENCE_REASON == (
+        "Waiting for an answer in its terminal: no sign from it 30 s after its start. "
+        "Open its terminal."
+    )
+    log = (state.home() / "loop.log").read_text()
+    assert log.count(f"s: w1: {runtime.START_SILENCE_REASON}") == 1
+
+
+def test_an_agent_under_30_s_is_left_alone(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.check_starts("s", _after_window("w1", 29))
+    assert state.get_agent("s", "w1").status == state.STARTING
+    assert "w1" not in runtime.status_reasons("s")
+
+
+def test_an_agent_that_hooked_is_left_alone(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.seen("s", "w1")  # a hook ran; its session start is still to come
+    runtime.check_starts("s", _after_window("w1", 31))
+    assert state.get_agent("s", "w1").status == state.STARTING
+
+
+def test_a_blocked_or_login_waiting_agent_is_left_alone(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.block("s", "w1", "Claude Code asks whether to trust the folder")
+    runtime.check_starts("s", _after_window("w1", 31))
+    assert runtime.status_reasons("s")["w1"] == "Claude Code asks whether to trust the folder"
+
+
+def test_an_agent_whose_window_has_not_opened_is_not_counted_silent(repo, fake_tmux):
+    _session_with_worker(repo)
+    opened = _after_window("w1", 31)
+    _window_not_opened("w1")
+    runtime.check_starts("s", opened)
+    assert state.get_agent("s", "w1").status == state.STARTING
+
+
+def test_its_first_hook_makes_it_ready(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.check_starts("s", _after_window("w1", 31))
+    _hook("SessionStart", "w1")
+    assert state.get_agent("s", "w1").status == state.IDLE
+    assert "w1" not in runtime.status_reasons("s")
+
+
+def test_a_first_hook_other_than_its_session_start_ends_the_wait(repo, fake_tmux):
+    """A provider whose first hook is no session start is not left waiting."""
+    _session_with_worker(repo)
+    runtime.check_starts("s", _after_window("w1", 31))
+    _hook("PostToolUse", "w1", {"tool_name": "Bash", "tool_use_id": "t1"})
+    assert state.get_agent("s", "w1").status == state.STARTING
+    assert "w1" not in runtime.status_reasons("s")
+    _hook("SessionStart", "w1")
+    assert state.get_agent("s", "w1").status == state.IDLE
+
+
+def test_a_hook_during_the_look_wins(repo, fake_tmux, monkeypatch):
+    """The look read the agent before its first hook, which came before the look's write."""
+    _session_with_worker(repo)
+    listed = state.list_agents("s")
+    monkeypatch.setattr(state, "list_agents", lambda session: listed)
+    _hook("SessionStart", "w1")
+    runtime.check_starts("s", _after_window("w1", 31))
+    assert state.get_agent("s", "w1").status == state.IDLE
+
+
 def test_a_failing_window_list_changes_nothing(repo, fake_tmux, monkeypatch):
     _session_with_worker(repo)
 

@@ -1615,15 +1615,49 @@ def test_a_new_session_is_refused_by_the_suggested_provider(
     assert state.get_session("s") is None
 
 
-def test_a_stopped_claude_session_resumes_without_a_login_and_waits(repo, fake_tmux, cli_logins):
+RESUME_REFUSED = (
+    "Claude Code is not logged in, so the session was not resumed: log in in LADO's UI "
+    "(Settings → Providers and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
+    "LADO's secret or a project secret"
+)
+
+
+@pytest.mark.parametrize("resume", [None, True])  # lado start, and the UI's Resume
+def test_a_stopped_claude_session_is_not_resumed_by_hand_without_a_login(
+    repo, fake_tmux, cli_logins, resume
+):
     _stopped_claude_session(repo, fake_tmux)
     cli_logins.logged_out()
-    started = runtime.start_session(str(repo), "s", None)  # lado start: resume=None
+    with pytest.raises(runtime.NotLoggedIn) as refused:
+        runtime.start_session(str(repo), "s", None, resume=resume)
+    assert str(refused.value) == RESUME_REFUSED
+    assert state.get_session("s").stopped_at
+    assert state.get_agent("s", "supervisor") is None
+    assert fake_tmux == []
+
+
+@pytest.mark.parametrize(
+    "how", [{"reason": runtime.AT_START, "resume": True}, {"wait_for_login": True}]
+)
+def test_lados_own_resume_waits_for_the_login(repo, fake_tmux, cli_logins, how):
+    """At the container's start (resume_at_start), and after `lado update` (its `lado start
+    --wait-for-login`)."""
+    _stopped_claude_session(repo, fake_tmux)
+    cli_logins.logged_out()
+    started = runtime.start_session(str(repo), "s", None, **how)
     assert started.resumed
     assert started.warnings == [LOGIN_REASON]
     assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
     [call] = [c for c in fake_tmux if c[0] == "new_session"]
     assert _waits_for_login(call[-1])
+
+
+def test_a_resume_with_another_provider_goes_on(repo, fake_tmux, cli_logins):
+    _stopped_claude_session(repo, fake_tmux)
+    cli_logins.logged_out()
+    started = runtime.start_session(str(repo), "s", None, provider="kilo")
+    assert started.resumed and state.get_session("s").provider == "kilo"
+    assert state.get_agent("s", "supervisor").status == state.STARTING
 
 
 def test_a_claude_worker_without_a_login_is_refused_and_leaves_nothing(repo, fake_tmux, cli_logins):
@@ -1663,10 +1697,10 @@ def test_a_claude_agent_without_a_login_waits_for_it(
     cli_logins.logged_out()
     cli_logins.calls.clear()
     seen = _seen_at_launch(monkeypatch, "new_session", "supervisor")
-    started = runtime.start_session(str(repo), "s", None)
+    started = runtime.start_session(str(repo), "s", None, wait_for_login=True)
     assert seen == [(state.WAITING, LOGIN_REASON)]  # waiting before its window starts
-    # The trust is recorded now and told whoever starts it; the first run once logged in.
-    assert started.warnings == [LOGIN_REASON, claude_config.note(repo)]
+    # The trust is recorded now, in loop.log only; the first run once logged in.
+    assert started.warnings == [LOGIN_REASON]
     assert _logged(f"s: supervisor: {LOGIN_REASON}") == 1
     assert _logged(f"s: supervisor: {claude_config.note(repo)}") == 1
     assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
@@ -1692,8 +1726,9 @@ def test_a_claude_agent_without_a_login_in_a_fresh_home_gets_the_trust_alone(
     _stopped_claude_session(repo, fake_tmux)
     claude_config.path.unlink()
     cli_logins.logged_out()
-    started = runtime.start_session(str(repo), "s", None)
-    assert started.warnings == [LOGIN_REASON, claude_config.note(repo)]
+    started = runtime.start_session(str(repo), "s", None, reason=runtime.AT_START)
+    assert started.warnings == [LOGIN_REASON]
+    assert _logged(f"s: supervisor: {claude_config.note(repo)}") == 1
     assert json.loads(claude_config.path.read_text()) == {
         "projects": {str(repo): {"hasTrustDialogAccepted": True}}
     }
@@ -1710,7 +1745,7 @@ def test_a_trust_lado_cannot_record_waits_for_the_login_first(
     _stopped_claude_session(repo, fake_tmux)
     claude_config.refuse()
     cli_logins.logged_out()
-    started = runtime.start_session(str(repo), "s", None)
+    started = runtime.start_session(str(repo), "s", None, wait_for_login=True)
     assert started.warnings == [LOGIN_REASON]
     assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
 
@@ -1799,18 +1834,18 @@ def test_a_project_session_waits_with_its_project(fake_tmux, cli_logins, tmp_pat
     runtime.stop_session("shop-app")
     fake_tmux.clear()
     cli_logins.logged_out()
-    runtime.start_session(None, None, None, project="shop", repo_name="app")
+    runtime.start_session(None, None, None, project="shop", repo_name="app", wait_for_login=True)
     [call] = [c for c in fake_tmux if c[0] == "new_session"]
     cmd = call[-1]
     held = json.loads(Path(cmd[cmd.index("login-wait") + 2]).read_text())
     assert held["project"] == "shop"
 
 
-def test_lado_records_claude_codes_trust_and_tells_the_starter(repo, fake_tmux, claude_config):
+def test_lado_records_claude_codes_trust_in_the_log_only(repo, fake_tmux, claude_config):
     claude_config.trust()  # Claude Code trusts no folder
     note = claude_config.note(repo)
     started = runtime.start_session(str(repo), "s", None, provider="claude")
-    assert started.warnings == [note]
+    assert started.warnings == []
     assert _logged(f"s: supervisor: {note}") == 1
     assert state.get_agent("s", "supervisor").status == state.STARTING
     assert runtime.status_reasons("s") == {}
@@ -1828,7 +1863,7 @@ def test_lado_records_claude_codes_trust_at_a_resume(repo, fake_tmux, claude_con
     runtime.stop_session("s")
     claude_config.trust()
     started = runtime.start_session(str(repo), "s", None)
-    assert started.warnings == [claude_config.note(repo)]
+    assert started.warnings == []
     assert _logged(f"s: supervisor: {claude_config.note(repo)}") == 1
     assert state.get_agent("s", "supervisor").status == state.STARTING
 
@@ -1839,7 +1874,7 @@ def test_lado_records_claude_codes_trust_for_a_worker(repo, fake_tmux, claude_co
     warnings = []
     worker = runtime.spawn_worker("s", "task", name="w1", provider="claude", warnings=warnings)
     note = claude_config.note(repo)  # the main repo's root, not the worktree's
-    assert warnings == [note]
+    assert warnings == []
     assert _logged(f"s: w1: {note}") == 1
     assert state.get_agent("s", "w1").status == state.STARTING
     assert list(json.loads(claude_config.path.read_text())["projects"]) == [str(repo)]

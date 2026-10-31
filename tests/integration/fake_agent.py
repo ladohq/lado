@@ -61,7 +61,9 @@ Every input line is a command, after an optional "[from <name>] ":
 With FAKE_AGENT_CRASH_AT_START=1 in its environment it exits before its first hook, as a
 CLI that fails at once (a bad flag). With FAKE_AGENT_ASKS_FIRST=1 in its environment it asks
 the human before any hook, like Claude Code's "trust this folder?": a typed "yes" goes on,
-any other input exits at once with no hook. With FAKE_AGENT_TRUST=1 it asks so only when
+any other input exits at once with no hook; with FAKE_AGENT_ASKS_UNKNOWN=1 it asks the same,
+but its provider does not know it (no Provider.first_hook_blocker), as a screen of a new
+CLI version LADO has not seen. With FAKE_AGENT_TRUST=1 it asks so only when
 $CLAUDE_CONFIG_DIR/.claude.json does not trust its repository's main root, read here as
 Claude Code reads it, not through LADO (trusted). With FAKE_AGENT_HANGUP_HOOK=1 in its
 environment, when its tmux window is killed (SIGHUP) it runs its session-end hook before it
@@ -481,7 +483,10 @@ def main() -> None:
     report(
         prompt=config["prompt"], skills=load_skills(), mcp=config["mcp"], environ=dict(os.environ)
     )
-    asks = os.environ.get("FAKE_AGENT_ASKS_FIRST") == "1"
+    asks = "1" in (
+        os.environ.get("FAKE_AGENT_ASKS_FIRST"),
+        os.environ.get("FAKE_AGENT_ASKS_UNKNOWN"),
+    )
     if asks or (os.environ.get("FAKE_AGENT_TRUST") == "1" and not trusted()):
         print("Go on? Type yes; Enter alone exits", flush=True)
         if read_input() != "yes":

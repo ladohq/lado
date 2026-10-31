@@ -15,7 +15,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -657,6 +657,7 @@ def start_session(
     title: str | None = None,
     project: str | None = None,
     repo_name: str | None = None,
+    wait_for_login: bool = False,
 ) -> Started:
     """Start a session whose agents come from `kit_names` (default: the "default" kit), minus
     the `without` items ("agent:x", "skill:y", "mcp:z"). A new session's supervisor may get
@@ -675,7 +676,12 @@ def start_session(
     With `project` (lado.projects) the folder is its repository `repo_name` (`path` None),
     the default name `<project>-<repo_name>`, and a session of that name must be of that
     project: a session's project never changes, and a resume keeps it. Without one, a new
-    session inside LADO's projects/ is refused (projects.refusal); a resume is not."""
+    session inside LADO's projects/ is refused (projects.refusal); a resume is not.
+
+    A new session, and a resume by hand, whose supervisor's CLI needs a login and has none
+    are refused (check_login); a resume LADO makes by itself (`reason` AT_START, or
+    `wait_for_login`: lado update's `lado start --wait-for-login`) starts the supervisor
+    waiting for the login."""
     from lado import projects  # lado.projects builds on this module
 
     if kit_names is not None and not kit_names:
@@ -745,8 +751,12 @@ def start_session(
         layers = agent_layers(sess.project)
     base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
-    if not old:  # a resume waits for the login instead (_held_for_login)
+    if not old:
         check_login(agent_cli, base_env, logins.SESSION)
+    elif not (wait_for_login or reason == AT_START):
+        # A resume by hand; LADO's own (the container's start, lado update) waits for the
+        # login instead (_held_for_login).
+        check_login(agent_cli, base_env, logins.RESUME)
     agent = state.Agent(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
@@ -2311,6 +2321,40 @@ def check_windows(session: str, missing: set[str], now: datetime | None = None) 
     return gone
 
 
+START_SILENCE = 30.0  # seconds from an agent's launch to its first hook before it is shown
+START_SILENCE_REASON = (
+    "Waiting for an answer in its terminal: no sign from it 30 s after its start. "
+    "Open its terminal."
+)
+
+
+def check_starts(session: str, now: datetime | None = None) -> None:
+    """One look of the session loop for agents whose CLI holds them before any hook with a
+    question LADO does not know (_first_hook_blocker knows the others), of any provider:
+    `starting`, no hook since the launch (seen_at 0), and START_SILENCE or more since the
+    launch, its window mark (state.window_opened; a waiting window marks it anew when it
+    starts the CLI, lado.login_wait). Such an agent waits with START_SILENCE_REASON; its
+    first hook makes it ready (lado.hooks: its session start, or heard_at_start)."""
+    now = now or datetime.now(timezone.utc)
+    for agent in state.list_agents(session):
+        if agent.status != state.STARTING or agent.seen_at or agent.window_at is None:
+            continue
+        if (now - _utc(agent.window_at)).total_seconds() < START_SILENCE:
+            continue
+        if state.block_unheard(session, agent.name, START_SILENCE_REASON):
+            loop.log(session, f"{agent.name}: {START_SILENCE_REASON}")
+
+
+def heard_at_start(session: str, name: str) -> None:
+    """The agent's first hook, which is not its session start: an agent that check_starts
+    made wait is starting again, so whatever its hooks say next applies."""
+    agent = state.get_agent(session, name)
+    if agent is None or agent.status != state.WAITING:
+        return
+    if state.block_reasons(session).get(name) == START_SILENCE_REASON:
+        state.set_status(session, name, state.STARTING)
+
+
 def _finish_hint(session: str, name: str) -> tuple[str, str]:
     """How the supervisor ends a stopped worker, and starts another one for its run's step:
     the end of the summary and the body. A read-only lead has neither tool: the human ends
@@ -2938,20 +2982,28 @@ def _first_hook_blocker(
 ) -> list[str]:
     """Ask the provider what its CLI will ask the human before any hook runs, before the
     agent's window starts: if something will, the agent waits from now on, so its first
-    hook always comes after that. Returns the lines to tell whoever starts it: what the
-    provider did so that nothing holds it, why it will wait, or why the provider cannot
-    tell."""
+    hook always comes after that. Returns the lines to tell whoever starts it: why it will
+    wait, or why the provider cannot tell; what the provider did so that nothing holds it
+    goes to loop.log only (_log_notes)."""
     blocker = agent_cli.first_hook_blocker(agent.cwd, _launch_env(agent, base_env, launch))
+    _log_notes(agent, blocker.notes)
     if blocker.reason:
         state.block(agent.session, agent.name, blocker.reason)
-    return [line for line in (*blocker.notes, blocker.reason, blocker.warning) if line]
+    return [line for line in (blocker.reason, blocker.warning) if line]
+
+
+def _log_notes(agent: state.Agent, notes: Iterable[str]) -> None:
+    """What LADO wrote into the agent's CLI's config (Blocker.notes): the session's log
+    only, never told whoever starts the agent; it is no problem (LAD-163)."""
+    for note in notes:
+        loop.log(agent.session, f"{agent.name}: {note}")
 
 
 def check_login(agent_cli: providers.Provider, base_env: dict[str, str], what: str) -> None:
-    """Refuse a new session or worker (`what`, logins.SESSION or WORKER) of `agent_cli`
-    whose CLI needs a login and has none in `base_env`, the environment it would start
-    from; called before anything of it is stored or made. A resumed agent waits instead
-    (_held_for_login)."""
+    """Refuse a new session or worker, or a resume by hand (`what`, logins.SESSION, WORKER
+    or RESUME) of `agent_cli` whose CLI needs a login and has none in `base_env`, the
+    environment it would start from; called before anything of it is stored or made. An
+    agent LADO resumes by itself waits instead (_held_for_login)."""
     if reason := logins.refusal(agent_cli, base_env, what):
         raise NotLoggedIn(reason)
 
@@ -3009,7 +3061,7 @@ def _before_window(
     """What holds the agent before its first hook, settled before its window starts: its
     CLI's login (_held_for_login), else what the CLI asks first (_first_hook_blocker). An
     agent that waits for its login gets now what needs no login (Claude Code's trust),
-    told whoever starts it; what does (the first run), and a question the CLI would still
+    in loop.log; what does (the first run), and a question the CLI would still
     ask, its waiting window settles once logged in (lado.login_wait), in loop.log; `shell`
     is the login shell's layer, the lowest its window lays the login from. The lines to
     tell whoever starts it, and the window's command."""
@@ -3020,7 +3072,8 @@ def _before_window(
         )
     env = _launch_env(agent, base_env, launch)
     early = agent_cli.first_hook_blocker(agent.cwd, env)  # its reason: the window's, later
-    lines += [line for line in (*early.notes, early.warning) if line]
+    _log_notes(agent, early.notes)
+    lines += [early.warning] if early.warning else []
     ours = sorted({**providers.agent_env(agent), **launch.env})
     file = providers.base.config_dir(agent) / "env.json"
     shell_login = {n: shell[n] for n in agent_cli.login_variables if n in shell}

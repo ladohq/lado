@@ -285,8 +285,9 @@ def _one(provider, env) -> None:
     try:
         status = doctor.provider_status(provider, shutil.which)
         layers, problem = env.result()
-        row = launch.provider_logins(launch._read(provider, status, layers, problem),
-                                     launch.provider_info(provider, status))
+        row = launch.provider_logins(
+            launch._read(provider, status, layers, problem), launch.provider_info(provider, status)
+        )
     except Exception as error:  # one broken CLI never stops the others
         telemetry.record(error)  # or the server's log, as the other background threads do
         row = launch.failed_row(provider, str(error))

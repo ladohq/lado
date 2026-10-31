@@ -50,7 +50,7 @@ EOF
 }
 
 parse() {
-    yes=0 phone= open_link=1 version= dir= image= source=
+    yes=0 phone='' open_link=1 version='' dir='' image='' source=''
     while [ $# -gt 0 ]; do
         case $1 in
         --yes | -y) yes=1 ;;
@@ -200,9 +200,11 @@ ask() {
 
 # Whether $1 may go into .env as it is: compose would read a ", $ or \ in it otherwise.
 plain() {
-    case $1 in *'"'* | *'$'* | *'\'* | *'`'*) return 1 ;; esac
+    case $1 in *'"'* | *'$'* | *\\* | *'`'*) return 1 ;; esac
 }
 
+# A ~ the human typed is expanded here: the shell never sees the answer.
+# shellcheck disable=SC2088
 ask_workspace() {
     while :; do
         ask "Workspace folder, the only one the agents see [~/workspace]: " "~/workspace"
@@ -369,7 +371,7 @@ fresh_install() {
     [ ! -e "$dir/compose.yaml" ] ||
         die "$dir has a compose.yaml but no .env: a LADO set up by hand, which this installer does not change; update it by hand ($GUIDE#update-the-container)"
     ask_workspace
-    git_name= git_email=
+    git_name='' git_email=''
     identity user.name "Your name for the agents' git commits: "
     git_name=$reply
     identity user.email "Your email for the agents' git commits: "
@@ -515,7 +517,7 @@ main() {
     else
         say "No terminal: taking the defaults."
     fi
-    notes= warned=
+    notes='' warned=''
     dir=${dir:-$HOME/lado-docker}
     case $dir in /*) ;; *) dir=$PWD/$dir ;; esac
     trap 'rm -f "$dir/.env.new" "$dir/compose.yaml.new"' EXIT

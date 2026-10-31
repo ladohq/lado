@@ -61,11 +61,19 @@ def install(host: Host, *args: str, **kw) -> Done:
     return run(host, "--version", VERSION, "--yes", "--no-open", *args, **kw)
 
 
-def on_tty(host: Host, answers: list[tuple[str, str]], *args: str, env=None) -> Done:
+def on_tty(
+    host: Host, answers: list[tuple[str, str]], *args: str, env=None, piped=False
+) -> Done:
     """install.sh with a pty as its terminal: each (prompt, answer) answered once the
-    prompt is seen; the output is the terminal's, stdout and stderr together."""
+    prompt is seen; the output is the terminal's, stdout and stderr together. `piped`: the
+    script read from a pipe, as `curl | sh` runs it, so its stdin is no terminal."""
+    dash = shutil.which("dash")
+    flags = ["--version", VERSION, "--no-open", *args]
+    argv = [dash, str(SCRIPT), *flags]
+    if piped:
+        argv = [dash, "-c", f'cat "$0" | {dash} -s -- "$@"', str(SCRIPT), *flags]
     given = {
-        "argv": [shutil.which("dash"), str(SCRIPT), "--version", VERSION, "--no-open", *args],
+        "argv": argv,
         "env": host.env(**(env or {})),
         "cwd": str(host.home),
         "answers": answers,
@@ -243,6 +251,13 @@ def test_enter_takes_the_home_workspace_and_makes_it(host):
     assert env_file(host)["LADO_WORKSPACE"] == f"{host.home}/workspace"
     assert (host.home / "workspace").is_dir()
     assert f"Made {host.home}/workspace" in done.out
+
+
+def test_a_piped_script_asks_through_the_terminal(host):
+    """Under `curl | sh` stdin is the script: the answers come from /dev/tty."""
+    done = on_tty(host, [("Workspace folder", "~/piped"), ("phone too?", "")], piped=True)
+    assert done.code == 0, done.text
+    assert env_file(host)["LADO_WORKSPACE"] == f"{host.home}/piped"
 
 
 def test_a_tilde_is_expanded(host):

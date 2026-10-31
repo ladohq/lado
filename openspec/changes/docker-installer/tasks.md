@@ -2,30 +2,30 @@ The plan with each task's tests: `docs/superpowers/plans/2026-10-31-docker-insta
 
 ## 1. install.sh
 
-- [ ] 1.1 Skeleton (`main "$@"` last), flags, `--help`, the stamped or `--version` version
+- [x] 1.1 Skeleton (`main "$@"` last), flags, `--help`, the stamped or `--version` version
   and the unstamped refusal, the shell's `LADO_*`/`COMPOSE_*` scrubbed, Docker's checks
   and Docker Desktop's start on macOS (D3, D4). Check: `tests/test_install_sh.py` with the
   fakes of `tests/install_fakes.py`, under dash and bash.
-- [ ] 1.2 A fresh install's `.env`: workspace, git identity, port, ssh, folder and project
+- [x] 1.2 A fresh install's `.env`: workspace, git identity, port, ssh, folder and project
   name, `--image`, `--source`, the version's `compose.yaml`; questions from `/dev/tty`,
   defaults with `--yes` or no terminal (D5). Check: `tests/test_install_sh.py` (pty).
-- [ ] 1.3 Another folder's container refused; `docker compose up -d`; the wait for `lado ui
+- [x] 1.3 Another folder's container refused; `docker compose up -d`; the wait for `lado ui
   --no-open`; the link printed and opened; the phone's warning, question, flags and names
   (D4, D7, D8). Check: `tests/test_install_sh.py`.
-- [ ] 1.4 Reruns: update with `compose.yaml.bak` and only `LADO_VERSION` changed, the same
+- [x] 1.4 Reruns: update with `compose.yaml.bak` and only `LADO_VERSION` changed, the same
   version, a refused downgrade or dev version, `--phone`/`--no-phone` on a rerun; files
   moved in place only when complete (D6). Check: `tests/test_install_sh.py`; shellcheck
   once through `mise exec shellcheck@latest`.
 
 ## 2. install.ps1
 
-- [ ] 2.1 Docker Desktop's check and start, Ubuntu found or offered, Docker inside Ubuntu
+- [x] 2.1 Docker Desktop's check and start, Ubuntu found or offered, Docker inside Ubuntu
   checked, the version's `install.sh` run with the mapped switches, the unstamped refusal
   (D9). Check: `tests/test_install_ps1.py` (text, 5.1 syntax, `pwsh` parser when present).
 
 ## 3. Release
 
-- [ ] 3.1 `scripts/stamp_installers.py`; the job `github-release` stamps and uploads
+- [x] 3.1 `scripts/stamp_installers.py`; the job `github-release` stamps and uploads
   `install.sh` and `install.ps1` beside `compose.yaml` (D2). Check:
   `tests/test_stamp_installers.py`, `tests/test_release_workflow.py`.
 

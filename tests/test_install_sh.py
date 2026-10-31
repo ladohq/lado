@@ -61,9 +61,7 @@ def install(host: Host, *args: str, **kw) -> Done:
     return run(host, "--version", VERSION, "--yes", "--no-open", *args, **kw)
 
 
-def on_tty(
-    host: Host, answers: list[tuple[str, str]], *args: str, env=None, piped=False
-) -> Done:
+def on_tty(host: Host, answers: list[tuple[str, str]], *args: str, env=None, piped=False) -> Done:
     """install.sh with a pty as its terminal: each (prompt, answer) answered once the
     prompt is seen; the output is the terminal's, stdout and stderr together. `piped`: the
     script read from a pipe, as `curl | sh` runs it, so its stdin is no terminal."""
@@ -146,6 +144,24 @@ def test_an_unstamped_copy_refuses_and_makes_nothing(host):
     ) in done.err
     assert not (host.home / "lado-docker").exists()
     assert host.calls("docker") == []
+
+
+def test_a_stamped_copy_installs_its_own_version(host, tmp_path):
+    """The release's file (scripts/stamp_installers.py) needs no --version."""
+    out = tmp_path / "stamped"
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "stamp_installers.py"), "0.44.0rc1", str(out)],
+        check=True,
+    )
+    done = subprocess.run(
+        [shutil.which("dash"), str(out / "install.sh"), "--yes", "--no-open"],
+        env=host.env(), cwd=host.home, capture_output=True, text=True,
+        start_new_session=True, timeout=60,
+    )  # fmt: skip
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert env_file(host)["LADO_VERSION"] == "0.44.0rc1"
+    (curl,) = host.calls("curl")
+    assert "/releases/download/v0.44.0rc1/compose.yaml" in curl["args"][-1]
 
 
 def test_an_unknown_flag_stops(host):
@@ -493,8 +509,9 @@ def test_a_failed_up_names_the_port(host):
 
 
 def opened(host: Host) -> list[list[str]]:
-    return [c["args"] for name in ("open", "xdg-open", "wslview", "cmd.exe")
-            for c in host.calls(name) if c["args"][:1] != ["-a"] and "hostname" not in c["args"]]  # fmt: skip
+    """What the openers were given: not `open -a Docker` nor `cmd.exe /c hostname`."""
+    calls = [c for name in ("open", "xdg-open", "wslview", "cmd.exe") for c in host.calls(name)]
+    return [c["args"] for c in calls if c["args"][:1] != ["-a"] and "hostname" not in c["args"]]
 
 
 def test_the_link_is_printed_and_opened_on_macos(tmp_path):

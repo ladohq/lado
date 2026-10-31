@@ -181,15 +181,20 @@ jobs:
         with:
           name: dist
           path: dist
+      # The Docker installers, stamped with the tag's version: each installs its own
+      # release's compose.yaml and image. A lost placeholder fails here, before the release.
+      - name: Stamp the Docker installers
+        run: python3 scripts/stamp_installers.py "${GITHUB_REF_NAME#v}" "$RUNNER_TEMP/installers"
       # A release candidate is a pre-release, never the latest; a final is the latest. The
-      # tag's compose.yaml goes with it, so the install guide's
-      # releases/latest/download/compose.yaml is the newest final's.
+      # tag's compose.yaml and installers go with it, so the install guide's
+      # releases/latest/download/compose.yaml and install.sh are the newest final's.
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           python3 scripts/release_notes.py "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
-          gh release create "$GITHUB_REF_NAME" dist/* docker/compose.yaml --verify-tag \
+          gh release create "$GITHUB_REF_NAME" dist/* docker/compose.yaml \
+            "$RUNNER_TEMP/installers/install.sh" "$RUNNER_TEMP/installers/install.ps1" --verify-tag \
             --title "LADO ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md" \
             "$(python3 scripts/release_notes.py --flag "$GITHUB_REF_NAME")"

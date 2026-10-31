@@ -35,9 +35,7 @@ def said(text: str) -> str:
 
 def test_the_stamp_and_the_versions_install_sh():
     assert re.findall(r"(?m)^\$LadoVersion = .*$", TEXT) == ["$LadoVersion = ''"]
-    assert (
-        '"https://github.com/ladohq/lado/releases/download/v$LadoVersion/install.sh"' in TEXT
-    )
+    assert '"https://github.com/ladohq/lado/releases/download/v$LadoVersion/install.sh"' in TEXT
 
 
 def test_an_unstamped_copy_refuses():

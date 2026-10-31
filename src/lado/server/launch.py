@@ -294,23 +294,18 @@ def provider_logins(found: logins.Login, cli: models.ProviderInfo) -> models.Pro
         login=models.LoginInfo(
             state=status.state,
             method=status.method,
-            file=status.file,
-            variable=status.variable,
-            layer=found.layer,
-            source=logins.source(found),
-            items=[
-                models.LoginItemInfo(name=i.name, kind=i.kind, variable=i.variable)
-                for i in status.items
-            ],
+            where=found.where,
+            choice=status.choice,
             problem=status.problem,
         ),
         needs_login=provider.capabilities.needs_login,
         actions=[models.LoginActionInfo(id=a.id, label=a.label) for a in provider.login_actions()],
-        can_logout=provider.logout_argv() is not None,
-        variables=[
-            models.LoginVariableInfo(name=v.name, secret=v.secret, layer=v.layer)
-            for v in found.variables
+        question=provider.login_question,
+        choices=[
+            models.LoginChoiceInfo(id=c.id, title=c.title, detail=c.detail, variable=c.variable)
+            for c in provider.login_choices
         ],
+        from_lado=found.layer == logins.SECRET,
         note=provider.login_note,
         waiting=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in found.waiting],
         running=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in found.running],
@@ -327,16 +322,22 @@ def provider_login(name: str) -> models.ProviderLogins:
     return provider_logins(_read(provider, status, env, problem), provider_info(provider, status))
 
 
-def _environment() -> tuple[dict[str, str], str]:
-    """The agents' environment (lado.logins.environment), or none and why."""
+NO_LAYERS = agent_env.Layers({}, {}, {}, {})
+
+
+def _environment() -> tuple[agent_env.Layers, str]:
+    """The layers of the agents' environment (lado.agent_env.layers), or none and why."""
     try:
-        return logins.environment(), ""
+        return agent_env.layers(), ""
     except agent_env.AgentEnvError as error:
-        return {}, str(error)
+        return NO_LAYERS, str(error)
 
 
 def _read(
-    provider: providers.Provider, status: doctor.ProviderStatus, env: dict[str, str], problem: str
+    provider: providers.Provider,
+    status: doctor.ProviderStatus,
+    env: agent_env.Layers,
+    problem: str,
 ) -> logins.Login:
     """The provider's login; unknown with why when its CLI is not installed or the agents'
     environment cannot be had (`problem`)."""

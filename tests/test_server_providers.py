@@ -3,8 +3,6 @@ provider-logins): each CLI's login, the login window, logout, and the login vari
 as LADO's secrets. In process, with FastAPI's test client; the CLIs' status commands
 answered by tests/conftest.py's cli_logins, tmux recorded for the windows."""
 
-import json
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -14,7 +12,7 @@ from lado.server import auth
 
 PORT = 8126
 OWN = "http://testserver"
-TOKEN = "CLAUDE_CODE_OAUTH_TOKEN"
+TOKEN, KEY = "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"
 
 
 @pytest.fixture
@@ -61,16 +59,27 @@ def test_the_page_lists_each_cli_with_its_login(client, cli_logins, windows):
     claude = _row(page, "claude")
     assert claude["login"]["state"] == "no"
     assert claude["needs_login"] is True
-    assert [a["id"] for a in claude["actions"]] == ["login", "login-console"]
-    assert claude["can_logout"] is True
-    assert claude["variables"] == [
-        {"name": TOKEN, "secret": False, "layer": ""},
-        {"name": "ANTHROPIC_API_KEY", "secret": False, "layer": ""},
+    assert claude["actions"] == []  # LADO runs no login command of Claude Code
+    assert claude["question"] == "How do you pay for Claude?"
+    assert [(c["id"], c["variable"]) for c in claude["choices"]] == [
+        ("subscription", TOKEN),
+        ("usage", KEY),
     ]
+    assert claude["choices"][0]["title"] == "Subscription — Claude Pro or Max"
+    assert "claude setup-token" in claude["choices"][0]["detail"]
+    assert claude["from_lado"] is False
+    assert claude["login"] == {
+        "state": "no",
+        "method": "",
+        "where": "",
+        "choice": "",
+        "problem": "",
+    }
     codex = _row(page, "codex")
     assert codex["login"]["state"] == "yes" and codex["login"]["method"] == "ChatGPT"
-    assert codex["actions"] == [] and codex["can_logout"] is False
+    assert (codex["actions"], codex["choices"], codex["question"]) == ([], [], "")
     assert "#113" in codex["note"]
+    assert [a["id"] for a in _row(page, "opencode")["actions"]] == ["login", "logout"]
     names = [c["name"] for c in page["checks"]]
     assert "Claude Code" in names and "Claude Code login" in names
     assert "Agent environment" in names
@@ -93,15 +102,61 @@ def test_a_saved_token_is_lados_secret_and_never_given_back(client, cli_logins, 
     assert (folder / TOKEN).stat().st_mode & 0o777 == 0o600
     assert folder.stat().st_mode & 0o777 == 0o700
     row = answer.json()
-    assert row["variables"][0] == {"name": TOKEN, "secret": True, "layer": "LADO's secret"}
+    assert row["login"]["method"] == "Subscription (token)"
+    assert (row["login"]["where"], row["login"]["choice"]) == ("LADO's secret", "subscription")
+    assert row["from_lado"] is True
     page = client.get("/api/providers/logins")
     assert "canary-1" not in page.text
     # The status command got it, as every agent would.
     assert any(env.get(TOKEN) == "canary-1" for argv, env in cli_logins.calls)
-    answer = client.delete(f"/api/providers/claude/variables/{TOKEN}")
-    assert answer.status_code == 200
-    assert answer.json()["variables"][0]["secret"] is False
+    # One variable alone is not removed: Log out removes the provider's login.
+    assert client.delete(f"/api/providers/claude/variables/{TOKEN}").status_code == 405
+    assert project_secrets.lado_names() == [TOKEN]
+
+
+def test_a_saved_key_replaces_lados_token_and_beats_the_outside_folders(
+    client, cli_logins, windows, tmp_path, monkeypatch
+):
+    outside = tmp_path / "out"
+    outside.mkdir()
+    (outside / TOKEN).write_text("canary-out")
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(outside))
+    client.put(f"/api/providers/claude/variables/{TOKEN}", json={"value": "canary-tok"})
+    cli_logins.logged_in("api_key")
+    answer = client.put(f"/api/providers/claude/variables/{KEY}", json={"value": "canary-key"})
+    assert answer.status_code == 200, answer.text
+    assert project_secrets.lado_names() == [KEY]  # one login in LADO's secrets
+    row = answer.json()
+    assert (row["login"]["method"], row["login"]["where"]) == (
+        "Pay per use (API key)",
+        "LADO's secret",
+    )
+    assert row["from_lado"] is True
+    # The status command, as every agent, got the key and not the outside folder's token.
+    argv, env = cli_logins.calls[-1]
+    assert argv[0] == "claude" and env[KEY] == "canary-key" and TOKEN not in env
+    assert "canary" not in answer.text
+
+
+def test_logging_out_removes_lados_login_and_shows_what_is_left(
+    client, cli_logins, windows, tmp_path, monkeypatch
+):
+    outside = tmp_path / "out"
+    outside.mkdir()
+    (outside / TOKEN).write_text("canary-out")
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(outside))
+    project_secrets.write_lado(KEY, "canary-key")
+    cli_logins.logged_in()
+    answer = client.delete("/api/providers/claude/login-secrets")
+    assert answer.status_code == 200, answer.text
     assert project_secrets.lado_names() == []
+    row = answer.json()
+    assert (row["login"]["where"], row["from_lado"]) == ("outside folder", False)
+    assert "canary" not in answer.text
+    assert client.delete("/api/providers/nope/login-secrets").status_code == 404
+    # Claude Code's own logout is gone with its route.
+    assert client.post("/api/providers/claude/logout").status_code in (404, 405)
+    assert not [argv for argv, _ in cli_logins.calls if argv[1:3] == ["auth", "logout"]]
 
 
 def test_only_a_login_variable_may_be_set(client, windows):
@@ -113,7 +168,6 @@ def test_only_a_login_variable_may_be_set(client, windows):
         client.put("/api/providers/codex/variables/OPENAI_API_KEY", json={"value": "x"}).status_code
         == 400
     )
-    assert client.delete("/api/providers/claude/variables/GH_TOKEN").status_code == 400
     assert (
         client.put(f"/api/providers/nope/variables/{TOKEN}", json={"value": "x"}).status_code == 404
     )
@@ -153,8 +207,8 @@ def test_the_variables_need_the_token_and_the_servers_own_origin(client):
         client.put(f"/api/providers/claude/variables/{TOKEN}", json={"value": "x"}).status_code
         == 403
     )
-    assert client.post("/api/providers/claude/logout").status_code == 403
-    assert client.post("/api/providers/claude/login", json={"action": "login"}).status_code == 403
+    assert client.delete("/api/providers/claude/login-secrets").status_code == 403
+    assert client.post("/api/providers/opencode/login", json={"action": "login"}).status_code == 403
     client.headers["origin"] = OWN
     client.cookies.clear()
     assert (
@@ -166,40 +220,23 @@ def test_the_variables_need_the_token_and_the_servers_own_origin(client):
 
 
 def test_a_login_window_opens_once_and_closes(client, windows):
-    answer = client.post("/api/providers/claude/login", json={"action": "login"})
+    answer = client.post("/api/providers/opencode/login", json={"action": "login"})
     assert answer.status_code == 200, answer.text
     assert answer.json()["window"] is True
     [(options, cmd)] = windows.values()
-    assert cmd[-4:] == ["claude", "auth", "login", "--claudeai"]
-    assert options[logins.LOGIN] == "claude"
-    client.post("/api/providers/claude/login", json={"action": "login-console"})
+    assert cmd[-3:] == ["opencode", "auth", "login"]
+    assert options[logins.LOGIN] == "opencode"
+    client.post("/api/providers/opencode/login", json={"action": "logout"})
     assert len(windows) == 1  # the one open is kept
-    answer = client.delete("/api/providers/claude/login")
+    answer = client.delete("/api/providers/opencode/login")
     assert answer.json()["window"] is False and windows == {}
 
 
 def test_a_login_window_needs_a_known_action(client, windows):
-    answer = client.post("/api/providers/codex/login", json={"action": "login"})
+    answer = client.post("/api/providers/claude/login", json={"action": "login"})
     assert answer.status_code == 400 and "no login action" in answer.json()["detail"]
-    assert client.post("/api/providers/claude/login", json={}).status_code == 422
+    assert client.post("/api/providers/opencode/login", json={}).status_code == 422
     assert windows == {}
-
-
-def test_logout_runs_the_clis_own_logout(client, cli_logins, windows):
-    cli_logins.answer("claude", 0, json.dumps({"loggedIn": False, "authMethod": "none"}))
-    answer = client.post("/api/providers/claude/logout")
-    assert answer.status_code == 200, answer.text
-    assert ["claude", "auth", "logout"] in [argv for argv, env in cli_logins.calls]
-    assert answer.json()["login"]["state"] == "no"
-    refused = client.post("/api/providers/kilo/logout")
-    assert refused.status_code == 400 and "login window" in refused.json()["detail"]
-
-
-def test_a_failed_logout_says_why(client, cli_logins, windows):
-    cli_logins.answer("claude", 1, "", "boom\n")
-    answer = client.post("/api/providers/claude/logout")
-    assert answer.status_code == 400
-    assert answer.json()["detail"] == "`claude auth logout` failed with exit status 1: boom"
 
 
 def test_the_row_names_waiting_and_running_agents_and_projects(

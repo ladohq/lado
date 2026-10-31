@@ -27,7 +27,7 @@ class Waiting(base.Provider):
         skills=False,
         needs_login=True,
     )
-    login_variables = ("WAITS_TOKEN",)
+    login_variables = ("WAITS_TOKEN", "WAITS_KEY")
 
     def __init__(self, logged_in_after=2, blocker=None, answer=base.NO):
         self.looks: list[dict] = []
@@ -73,10 +73,20 @@ def started(lado_home, monkeypatch):
 ENV = {"LADO_SESSION": "s", "LADO_AGENT": "sup", "PATH": os.environ["PATH"], "KEEP": "1"}
 
 
-def _run(tmp_path, lado_home, env=None, ours=(), project=None, argv=("sh", "-c", "true")):
+def _run(
+    tmp_path,
+    lado_home,
+    env=None,
+    ours=(),
+    project=None,
+    argv=("sh", "-c", "true"),
+    shell_login=None,
+):
     file = tmp_path / "env.json"
     env = {**ENV, "LADO_HOME": str(lado_home), **(env or {})}
-    command = login_wait.command(file, "waits", env, list(ours), project, list(argv))
+    command = login_wait.command(
+        file, "waits", env, list(ours), project, shell_login or {}, list(argv)
+    )
     login_wait.main(command[command.index("login-wait") + 1 :])
     return file
 
@@ -85,13 +95,19 @@ def test_the_command_keeps_the_environment_in_a_private_file(tmp_path, lado_home
     monkeypatch.setattr(providers, "lado_command", lambda *a: ["lado", *a])
     file = tmp_path / "env.json"
     env = {"PATH": os.environ["PATH"], "TOKEN": "canary"}
-    argv = login_wait.command(file, "claude", env, ["LADO_HOME"], "shop", ["sh", "-c", "x"])
+    shell = {"TOKEN": "canary"}
+    argv = login_wait.command(file, "claude", env, ["LADO_HOME"], "shop", shell, ["sh", "-c", "x"])
     assert argv == ["lado", "login-wait", "claude", str(file), "sh", "-c", "x"]
     assert file.stat().st_mode & 0o777 == 0o600
-    assert json.loads(file.read_text()) == {"env": env, "ours": ["LADO_HOME"], "project": "shop"}
+    assert json.loads(file.read_text()) == {
+        "env": env,
+        "ours": ["LADO_HOME"],
+        "project": "shop",
+        "shell_login": shell,
+    }
     assert "canary" not in " ".join(argv)
     with pytest.raises(agent_env.AgentEnvError, match="not on the agents' PATH"):
-        login_wait.command(file, "claude", {"PATH": str(tmp_path)}, [], None, ["nope"])
+        login_wait.command(file, "claude", {"PATH": str(tmp_path)}, [], None, {}, ["nope"])
 
 
 def test_it_waits_then_runs_the_cli_with_its_environment(tmp_path, lado_home, started):
@@ -120,6 +136,29 @@ def test_a_lado_secret_saved_meanwhile_reaches_the_cli(tmp_path, lado_home, star
     _run(tmp_path, lado_home)
     [(_, _, env)] = started["exec"]
     assert env["WAITS_TOKEN"] == "canary-tok"
+
+
+def test_a_token_saved_meanwhile_takes_the_whole_login_from_the_shells_key(
+    tmp_path, lado_home, started
+):
+    started["provider"].logged_in_after = 99  # logged in by WAITS_TOKEN alone
+
+    def save(seconds):
+        started["sleeps"] += 1
+        project_secrets.write_lado("WAITS_TOKEN", "canary-tok")
+
+    login_wait.time.sleep = save
+    _run(tmp_path, lado_home, {"WAITS_KEY": "shell-key"}, shell_login={"WAITS_KEY": "shell-key"})
+    [(_, _, env)] = started["exec"]
+    assert env["WAITS_TOKEN"] == "canary-tok"
+    assert "WAITS_KEY" not in env
+
+
+def test_a_login_of_a_layer_removed_meanwhile_falls_back_to_the_shells(tmp_path, lado_home):
+    # The key came from LADO's secrets at the launch, which no longer hold it.
+    env = {"WAITS_KEY": "lado-key", "KEEP": "1"}
+    found = login_wait.layers(env, [], None, ("WAITS_TOKEN", "WAITS_KEY"), {"WAITS_TOKEN": "sh"})
+    assert found == {"KEEP": "1", "WAITS_TOKEN": "sh"}
 
 
 def test_the_layers_go_over_what_it_holds_but_not_over_lados_own(

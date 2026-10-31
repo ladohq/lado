@@ -6,7 +6,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
 - An agent's environment (PATH, keys, variables) is the user's login shell's, as a new
   terminal sees it, the same whichever process starts the agent (`lado start`, the UI
   server, an agent's `spawn_worker`) and whoever started LADO's tmux server
-  (`agent_env.resolve`). For each launch (start, resume, spawn) LADO runs
+  (`agent_env.layers`). For each launch (start, resume, spawn) LADO runs
   `$SHELL -ilc` with a dump of the environment, started from a terminal's few variables
   (`HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `LANG`, `SSH_AUTH_SOCK`, and the `PATH` a
   login gives before the shell runs, `agent_env.base_path`) in a new session, no cache. That
@@ -28,13 +28,20 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   outside folder go over them, then LADO's secrets (the agent CLIs' login variables the
   human sets in Settings, `<LADO_HOME>/secrets/`, read as a project's secrets folder is:
   `agent_env.lado_secrets`), then the variables of the session's project, then LADO's
-  variables, then the provider's (`agent_env.resolve(project)`, one function for every
-  provider). LADO's own git calls (`for_git`) do not get LADO's secrets. The project's variables (`lado project set`, docs/design/projects.md), its
+  variables, then the provider's (`agent_env.layers(project)`, merged by
+  `agent_env.merge`, one function for every provider). A login comes whole from one layer:
+  of the agent's provider's login variables (`Provider.login_variables`, given to `merge` as
+  names), the highest of the first four layers that sets any gives those it sets, and none
+  comes from a lower one, so a login shell's `ANTHROPIC_API_KEY` never beats a token saved
+  in LADO's secrets by Claude Code's own order; each agent merges with its own provider's
+  names (`runtime._base_env`), so a worker of another CLI keeps a variable that is no login
+  of its own. LADO's own git calls (`for_git`) do not get LADO's secrets. The project's
+  variables (`lado project set`, docs/design/projects.md), its
   plain ones from lado.db and its secrets from their folder
   (`<LADO_HOME>/projects/<id>/secrets/`, `project_secrets.read`, the outside folder's reader
   with no link and no loose mode), are read anew at each start, resume and spawn by the
   process that launches
-  (`runtime._base_env(project)`: the CLI, the UI server, or a supervisor's `lado mcp` for its
+  (`runtime._layers(project)`: the CLI, the UI server, or a supervisor's `lado mcp` for its
   `spawn_worker`, flow runs' workers and `start_session`), so an agent launched after a
   change gets it and a running one keeps its own; a session without a project gets none.
   Being in the base, they reach the kits' checks and `mcp_exec` as the outside folder's do.
@@ -205,7 +212,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   runs `lado login-wait` (`lado.login_wait`) instead of `lado.agent_env`: it reads and
   removes the launch file, and every `logins.POLL` seconds lays the file layers read anew
   (the outside folder, LADO's secrets, the session's project) over the environment it
-  holds, never over LADO's and the provider's own variables, and asks again. Once logged
+  holds, never over LADO's and the provider's own variables, its provider's login taken
+  whole from one layer (the launch file keeps the login shell's own login variables,
+  `shell_login`, the lowest such layer), and asks again. Once logged
   in it runs `first_hook_blocker` there (the first run above, printed in the agent's
   terminal and logged in loop.log: whoever started it is gone), puts the agent
   back to `starting` (or waits with that blocker's reason) and execs the CLI: the agent

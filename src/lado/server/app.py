@@ -898,48 +898,39 @@ def create_app(
         """The provider's login window (lado.server.terminals), in control."""
         await terminals.serve_login(ws, guard, name)
 
-    @app.post(
-        "/api/providers/{name}/logout",
-        dependencies=[Depends(guard.changes)],
-        responses=login_refused,
-    )
-    def logout(name: str) -> ProviderLogins:
-        """Run the provider's logout that asks nothing (Provider.logout_argv)."""
-        provider = provider_named(name)
-        try:
-            logins.logout(provider)
-        except (ValueError, RuntimeError, agent_env.AgentEnvError) as error:
-            raise HTTPException(400, str(error)) from None
-        return launch.provider_login(name)
-
     @app.put(
         "/api/providers/{name}/variables/{variable}",
         dependencies=[Depends(guard.changes)],
         responses=login_refused,
     )
     def set_login_variable(name: str, variable: str, given: SecretValue) -> ProviderLogins:
-        """Keep one of the provider's login variables as LADO's secret; the agents started
+        """Keep one of the provider's login variables as LADO's secret, in place of its
+        others there: one login per layer, so the one saved is the login. The agents started
         after it, and those that wait for a login, get it."""
         provider = provider_named(name)
         try:
             logins.check_secret(provider, variable, given.value)
             project_secrets.write_lado(variable, given.value)
+            for other in provider.login_variables:
+                if other != variable:
+                    project_secrets.remove_lado(other)
         except (ValueError, OSError) as error:
             raise HTTPException(400, str(error)) from None
         return launch.provider_login(name)
 
     @app.delete(
-        "/api/providers/{name}/variables/{variable}",
+        "/api/providers/{name}/login-secrets",
         dependencies=[Depends(guard.changes)],
         responses=login_refused,
     )
-    def remove_login_variable(name: str, variable: str) -> ProviderLogins:
-        """Remove one of the provider's login variables from LADO's secrets."""
+    def remove_login_secrets(name: str) -> ProviderLogins:
+        """Log out of LADO's secrets: remove each of the provider's login variables there.
+        Its login of another layer, if any, is what the agents get then."""
         provider = provider_named(name)
         try:
-            logins.check_variable(provider, variable)
-            project_secrets.remove_lado(variable)
-        except (ValueError, OSError) as error:
+            for variable in provider.login_variables:
+                project_secrets.remove_lado(variable)
+        except OSError as error:
             raise HTTPException(400, str(error)) from None
         return launch.provider_login(name)
 

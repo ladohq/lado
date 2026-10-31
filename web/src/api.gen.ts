@@ -754,26 +754,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/providers/{name}/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Logout
-         * @description Run the provider's logout that asks nothing (Provider.logout_argv).
-         */
-        post: operations["logout_api_providers__name__logout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/providers/{name}/variables/{variable}": {
         parameters: {
             query?: never;
@@ -784,16 +764,34 @@ export interface paths {
         get?: never;
         /**
          * Set Login Variable
-         * @description Keep one of the provider's login variables as LADO's secret; the agents started
+         * @description Keep one of the provider's login variables as LADO's secret, in place of its
+         *     others there: one login per layer, so the one saved is the login. The agents started
          *     after it, and those that wait for a login, get it.
          */
         put: operations["set_login_variable_api_providers__name__variables__variable__put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{name}/login-secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
         /**
-         * Remove Login Variable
-         * @description Remove one of the provider's login variables from LADO's secrets.
+         * Remove Login Secrets
+         * @description Log out of LADO's secrets: remove each of the provider's login variables there.
+         *     Its login of another layer, if any, is what the agents get then.
          */
-        delete: operations["remove_login_variable_api_providers__name__variables__variable__delete"];
+        delete: operations["remove_login_secrets_api_providers__name__login_secrets_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2211,6 +2209,21 @@ export interface components {
             label: string;
         };
         /**
+         * LoginChoiceInfo
+         * @description A way to log the CLI in by a pasted value kept as LADO's secret
+         *     (Provider.login_choices).
+         */
+        LoginChoiceInfo: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Detail */
+            detail: string;
+            /** Variable */
+            variable: string;
+        };
+        /**
          * LoginInfo
          * @description A CLI's login as its own status command says (Provider.login_status); no value.
          */
@@ -2222,30 +2235,12 @@ export interface components {
             state: "yes" | "no" | "unknown";
             /** Method */
             method: string;
-            /** File */
-            file: string;
-            /** Variable */
-            variable: string;
-            /** Layer */
-            layer: string;
-            /** Source */
-            source: string;
-            /** Items */
-            items: components["schemas"]["LoginItemInfo"][];
+            /** Where */
+            where: string;
+            /** Choice */
+            choice: string;
             /** Problem */
             problem: string;
-        };
-        /**
-         * LoginItemInfo
-         * @description One login of a CLI that keeps several (OpenCode's and Kilo's).
-         */
-        LoginItemInfo: {
-            /** Name */
-            name: string;
-            /** Kind */
-            kind: string;
-            /** Variable */
-            variable: string;
         };
         /**
          * LoginOpen
@@ -2254,19 +2249,6 @@ export interface components {
         LoginOpen: {
             /** Action */
             action: string;
-        };
-        /**
-         * LoginVariableInfo
-         * @description A variable that logs the CLI in: whether LADO's secrets hold it (never its value),
-         *     and which layer gives it now.
-         */
-        LoginVariableInfo: {
-            /** Name */
-            name: string;
-            /** Secret */
-            secret: boolean;
-            /** Layer */
-            layer: string;
         };
         /** MarketplaceChange */
         MarketplaceChange: {
@@ -2765,10 +2747,12 @@ export interface components {
             needs_login: boolean;
             /** Actions */
             actions: components["schemas"]["LoginActionInfo"][];
-            /** Can Logout */
-            can_logout: boolean;
-            /** Variables */
-            variables: components["schemas"]["LoginVariableInfo"][];
+            /** Question */
+            question: string;
+            /** Choices */
+            choices: components["schemas"]["LoginChoiceInfo"][];
+            /** From Lado */
+            from_lado: boolean;
             /** Note */
             note: string;
             /** Waiting */
@@ -5067,51 +5051,6 @@ export interface operations {
             };
         };
     };
-    logout_api_providers__name__logout_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProviderLogins"];
-                };
-            };
-            /** @description refused, with the reason */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description no such provider */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     set_login_variable_api_providers__name__variables__variable__put: {
         parameters: {
             query?: never;
@@ -5162,13 +5101,12 @@ export interface operations {
             };
         };
     };
-    remove_login_variable_api_providers__name__variables__variable__delete: {
+    remove_login_secrets_api_providers__name__login_secrets_delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 name: string;
-                variable: string;
             };
             cookie?: never;
         };

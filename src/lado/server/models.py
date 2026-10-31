@@ -453,24 +453,16 @@ class ProviderInfo(BaseModel):
     warning: str  # "" unless its version is not the tested one
 
 
-class LoginItemInfo(BaseModel):
-    """One login of a CLI that keeps several (OpenCode's and Kilo's)."""
-
-    name: str  # the model provider it is for
-    kind: str  # api, oauth, ...; "variable" for one a variable gives
-    variable: str  # that variable's name; "" for a credential
-
-
 class LoginInfo(BaseModel):
     """A CLI's login as its own status command says (Provider.login_status); no value."""
 
     state: Literal["yes", "no", "unknown"]
-    method: str  # for humans: "Claude subscription (Max)", "token", "2 credentials"
-    file: str  # the CLI's own login file, when it names one
-    variable: str  # the variable that logs it in, when one does
-    layer: str  # where that variable comes from (lado.logins.layer); "" for none
-    source: str  # the two above, or the file, in words (lado.logins.source)
-    items: list[LoginItemInfo]
+    method: str  # for humans: "Subscription (Max)", "Pay per use (API key)", "2 credentials"
+    # Where the login comes from, for the state line: the layer of its variable
+    # (lado.logins.layer), else the CLI's own file in its provider's words ("Claude Code's
+    # login file"); "" when neither says (Login.where).
+    where: str
+    choice: str  # the id of the choice (ProviderLogins.choices) this login is; "" for none
     problem: str  # why unknown
 
 
@@ -481,13 +473,14 @@ class LoginActionInfo(BaseModel):
     label: str
 
 
-class LoginVariableInfo(BaseModel):
-    """A variable that logs the CLI in: whether LADO's secrets hold it (never its value),
-    and which layer gives it now."""
+class LoginChoiceInfo(BaseModel):
+    """A way to log the CLI in by a pasted value kept as LADO's secret
+    (Provider.login_choices)."""
 
-    name: str
-    secret: bool
-    layer: str  # "" when no layer sets it
+    id: str
+    title: str
+    detail: str  # where the value comes from
+    variable: str  # the login variable the value is saved as
 
 
 class AgentRefInfo(BaseModel):
@@ -511,11 +504,12 @@ class ProviderLogins(BaseModel):
     login: LoginInfo
     needs_login: bool  # its agents wait for a login (Capabilities.needs_login)
     actions: list[LoginActionInfo]  # the login window's commands
-    can_logout: bool  # a logout that asks nothing (Provider.logout_argv)
-    variables: list[LoginVariableInfo]
+    question: str  # what the login sheet asks (Provider.login_question); "" for none
+    choices: list[LoginChoiceInfo]  # its answers, each a value to paste
+    from_lado: bool  # the login comes from LADO's secrets: the sheet offers Log out
     note: str  # Provider.login_note
     waiting: list[AgentRefInfo]  # live agents that wait for its login
-    running: list[AgentRefInfo]  # its live agents, for Log out's and Remove's confirmation
+    running: list[AgentRefInfo]  # its live agents, for Log out's confirmation
     projects: list[str]  # projects that set a login variable of their own, by id
     window: bool  # its login window is open
 

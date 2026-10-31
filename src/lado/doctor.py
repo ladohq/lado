@@ -133,8 +133,8 @@ def login_check(found: logins.Login) -> Check:
     provider, status = found.provider, found.status
     name = f"{provider.title} login"
     if status.state == providers.base.YES:
-        source = logins.source(found)
-        return Check(name, OK, f"{status.method} ({source})" if source else status.method)
+        where = found.where or status.file
+        return Check(name, OK, f"{status.method} · {where}" if where else status.method)
     if status.state == providers.base.NO:
         if provider.capabilities.needs_login:
             return Check(
@@ -152,11 +152,11 @@ def check_logins(which: Callable[[str], str | None]) -> list[Check]:
     if not installed:
         return []
     try:
-        env = logins.environment()
+        layers = agent_env.layers()
     except agent_env.AgentEnvError as error:
         return [Check(f"{p.title} login", WARN, f"unknown: {error}") for p in installed]
     with ThreadPoolExecutor(len(installed)) as pool:
-        found = list(pool.map(lambda p: logins.read(p, env, full=False), installed))
+        found = list(pool.map(lambda p: logins.read(p, layers, full=False), installed))
     return [login_check(f) for f in found]
 
 

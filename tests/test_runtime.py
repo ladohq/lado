@@ -112,7 +112,7 @@ def test_a_new_session_without_a_provider_takes_the_one_on_the_agents_path(
     only = tmp_path / "only-kilo"
     only.mkdir()
     (only / "kilo").symlink_to(fake_clis / "kilo")
-    monkeypatch.setattr(agent_env, "resolve", lambda project=None: {"PATH": str(only)})
+    _shell(monkeypatch, {"PATH": str(only)})
     started = runtime.start_session(str(repo), "s", None)
     assert started.session.provider == "kilo"
     assert started.chosen == runtime.Suggestion("kilo", runtime.ONLY_INSTALLED)
@@ -157,16 +157,17 @@ def resolved(monkeypatch, fake_clis):
     """Make the resolved environment a known one; count how often it is resolved."""
     calls = []
 
-    def resolve(project=None):
+    def layers(project=None):
         calls.append(1)
-        return {
+        shell = {
             "PATH": str(fake_clis),
             "FROM_SHELL": "1",
             "LADO_AGENT": "parent",
             "KILO_DISABLE_AUTOUPDATE": "0",
         }
+        return agent_env.Layers(shell, {}, {}, {})
 
-    monkeypatch.setattr(agent_env, "resolve", resolve)
+    monkeypatch.setattr(agent_env, "layers", layers)
     return calls
 
 
@@ -187,6 +188,13 @@ def _broken_env(project=None):
     raise agent_env.AgentEnvError("your shell failed with exit status 1: zsh -ilc ...")
 
 
+def _shell(monkeypatch, env):
+    """The agents' layers with `env` as the login shell's, and no file layer."""
+    monkeypatch.setattr(
+        agent_env, "layers", lambda project=None: agent_env.Layers(dict(env), {}, {}, {})
+    )
+
+
 @pytest.mark.parametrize(
     ("given", "refused"),
     [
@@ -201,13 +209,13 @@ def test_a_wrong_provider_or_mode_is_refused_before_the_login_shell(
     if resumed:
         runtime.start_session(str(repo), "s", None, "claude")
         runtime.stop_session("s")
-    monkeypatch.setattr(agent_env, "resolve", _broken_env)
+    monkeypatch.setattr(agent_env, "layers", _broken_env)
     with pytest.raises(runtime.LadoError, match=re.escape(refused)):
         runtime.start_session(str(repo), "s", given.get("permission_mode"), given["provider"])
 
 
 def test_a_start_whose_environment_fails_launches_nothing(repo, fake_tmux, monkeypatch):
-    monkeypatch.setattr(agent_env, "resolve", _broken_env)
+    monkeypatch.setattr(agent_env, "layers", _broken_env)
     with pytest.raises(runtime.LadoError, match="your shell failed with exit status 1"):
         runtime.start_session(str(repo), "s", None, provider="claude")
     assert fake_tmux == []
@@ -222,7 +230,7 @@ def test_a_resume_whose_environment_fails_leaves_the_session_as_it_was(
     runtime.stop_session("s")
     before = len(fake_tmux)
     with monkeypatch.context() as m:
-        m.setattr(agent_env, "resolve", _broken_env)
+        m.setattr(agent_env, "layers", _broken_env)
         with pytest.raises(runtime.LadoError, match="your shell failed"):
             runtime.start_session(str(repo), "s", "plan")
     assert len(fake_tmux) == before
@@ -233,7 +241,7 @@ def test_a_resume_whose_environment_fails_leaves_the_session_as_it_was(
 
 def test_a_spawn_whose_environment_fails_leaves_no_worker(repo, fake_tmux, monkeypatch):
     runtime.start_session(str(repo), "s", None, provider="claude")
-    monkeypatch.setattr(agent_env, "resolve", _broken_env)
+    monkeypatch.setattr(agent_env, "layers", _broken_env)
     with pytest.raises(runtime.LadoError, match="your shell failed"):
         runtime.spawn_worker("s", "a task")
     assert [c[0] for c in fake_tmux] == ["new_session"]
@@ -246,7 +254,7 @@ def _path_without_clis(monkeypatch, tmp_path):
     """The resolved environment's PATH has no agent CLI on it."""
     empty = tmp_path / "empty-bin"
     empty.mkdir(exist_ok=True)
-    monkeypatch.setattr(agent_env, "resolve", lambda project=None: {"PATH": str(empty)})
+    _shell(monkeypatch, {"PATH": str(empty)})
 
 
 def test_a_start_whose_cli_is_not_on_the_agents_path_launches_nothing(
@@ -1641,6 +1649,26 @@ def test_other_clis_are_never_held_for_a_login(repo, fake_tmux, cli_logins, prov
     [call] = [c for c in fake_tmux if c[0] == "new_session"]
     assert not _waits_for_login(call[-1])
     assert [c for c in cli_logins.calls if c[0][0] == provider] == []
+
+
+def test_each_agent_takes_its_own_providers_login_whole_from_one_layer(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    from lado import project_secrets
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "shell-key")
+    project_secrets.write_lado("CLAUDE_CODE_OAUTH_TOKEN", "lado-token")
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "lado-token"
+    assert "ANTHROPIC_API_KEY" not in env  # the token's layer gives Claude Code's whole login
+    # Its login was read with what the agent gets.
+    _, read_with = next(c for c in cli_logins.calls if c[0][0] == "claude")
+    assert "ANTHROPIC_API_KEY" not in read_with
+    # The key is no login variable of OpenCode: its worker keeps it.
+    runtime.spawn_worker("s", "task", name="w1", provider="opencode")
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert (env["ANTHROPIC_API_KEY"], env["CLAUDE_CODE_OAUTH_TOKEN"]) == ("shell-key", "lado-token")
 
 
 def test_a_claude_worker_without_a_login_waits_and_says_so(repo, fake_tmux, cli_logins):
@@ -3388,9 +3416,7 @@ def test_kit_mcp_variables_come_from_the_agents_environment(repo, fake_tmux, tea
     runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     monkeypatch.delenv("DB_TOKEN", raising=False)  # set only by the user's shell
     path = os.environ["PATH"]
-    monkeypatch.setattr(
-        agent_env, "resolve", lambda project=None: {"PATH": path, "DB_TOKEN": "from-shell"}
-    )
+    _shell(monkeypatch, {"PATH": path, "DB_TOKEN": "from-shell"})
     runtime.spawn_worker("s", "review it", role="reviewer")
     env, _ = agent_helpers.launched(fake_tmux[-1])
     assert env["DB_TOKEN"] == "from-shell"  # the wrapper's CLI gets it from there
@@ -5437,7 +5463,7 @@ def agents_bin(monkeypatch, fake_clis, tmp_path):
     folder = tmp_path / "agents-bin"
     folder.mkdir()
     path = f"{folder}{os.pathsep}{fake_clis}"
-    monkeypatch.setattr(agent_env, "resolve", lambda project=None: {"PATH": path})
+    _shell(monkeypatch, {"PATH": path})
     return folder
 
 

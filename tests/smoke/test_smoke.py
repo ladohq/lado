@@ -184,7 +184,7 @@ def test_a_kits_mcp_server_sees_the_project_s_variable(
 # LADO's parser reads of the real CLI's output, at the tested version.
 LOGINS = {
     # A token LADO's tests give it (ANTHROPIC_AUTH_TOKEN, "oauth_token" too); none: no login.
-    "claude": (("yes", "token", "ANTHROPIC_AUTH_TOKEN"), "no"),
+    "claude": (("yes", "Token", "ANTHROPIC_AUTH_TOKEN"), "no"),
     "codex": (None, "no"),
     "kilo": (None, "no"),
     "opencode": (None, "no"),
@@ -195,11 +195,11 @@ def test_each_clis_login_is_read_from_its_own_command(smoke_provider, tmp_path, 
     provider = providers.get(smoke_provider)
     given, none = LOGINS[smoke_provider]
     if given:
-        found = provider.login_status(logins.environment())
+        found = provider.login_status(logins.environment(provider))
         print(f"{smoke_provider}: {found}")
         assert (found.state, found.method, found.variable) == given
         monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN")
-    found = provider.login_status(logins.environment())
+    found = provider.login_status(logins.environment(provider))
     print(f"{smoke_provider}: without a login {found}")
     assert found.state == none, found.problem
     if smoke_provider in ("kilo", "opencode"):
@@ -208,7 +208,7 @@ def test_each_clis_login_is_read_from_its_own_command(smoke_provider, tmp_path, 
         data.mkdir(parents=True, exist_ok=True)
         (data / "auth.json").write_text(json.dumps({"anthropic": {"type": "api", "key": "k"}}))
         monkeypatch.setenv("OPENAI_API_KEY", "smoke-key")
-        found = provider.login_status(logins.environment())
+        found = provider.login_status(logins.environment(provider))
         print(f"{smoke_provider}: with logins {found}")
         assert found.state == "yes"
         assert [(i.name, i.kind, i.variable) for i in found.items] == [

@@ -482,11 +482,13 @@ def test_a_start_says_who_leads_and_what_holds_the_supervisor(
     assert started["warnings"] == [claude_config.reason(repo)]
 
 
-def test_a_start_says_that_lado_recorded_claude_codes_trust(client, repo, fake_tmux, claude_config):
+def test_a_start_does_not_warn_that_lado_recorded_claude_codes_trust(
+    client, repo, fake_tmux, claude_config
+):
     claude_config.trust()  # Claude Code trusts no folder
     answer = launch(client, repo, name="s", provider="claude")
     assert answer.status_code == 200, answer.text
-    assert answer.json()["warnings"] == [claude_config.note(repo)]
+    assert answer.json()["warnings"] == []
 
 
 def test_the_first_start_makes_the_database(client, repo, fake_tmux, lado_home):

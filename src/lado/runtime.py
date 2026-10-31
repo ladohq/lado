@@ -15,7 +15,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -2938,13 +2938,21 @@ def _first_hook_blocker(
 ) -> list[str]:
     """Ask the provider what its CLI will ask the human before any hook runs, before the
     agent's window starts: if something will, the agent waits from now on, so its first
-    hook always comes after that. Returns the lines to tell whoever starts it: what the
-    provider did so that nothing holds it, why it will wait, or why the provider cannot
-    tell."""
+    hook always comes after that. Returns the lines to tell whoever starts it: why it will
+    wait, or why the provider cannot tell; what the provider did so that nothing holds it
+    goes to loop.log only (_log_notes)."""
     blocker = agent_cli.first_hook_blocker(agent.cwd, _launch_env(agent, base_env, launch))
+    _log_notes(agent, blocker.notes)
     if blocker.reason:
         state.block(agent.session, agent.name, blocker.reason)
-    return [line for line in (*blocker.notes, blocker.reason, blocker.warning) if line]
+    return [line for line in (blocker.reason, blocker.warning) if line]
+
+
+def _log_notes(agent: state.Agent, notes: Iterable[str]) -> None:
+    """What LADO wrote into the agent's CLI's config (Blocker.notes): the session's log
+    only, never told whoever starts the agent; it is no problem (LAD-163)."""
+    for note in notes:
+        loop.log(agent.session, f"{agent.name}: {note}")
 
 
 def check_login(agent_cli: providers.Provider, base_env: dict[str, str], what: str) -> None:
@@ -3009,7 +3017,7 @@ def _before_window(
     """What holds the agent before its first hook, settled before its window starts: its
     CLI's login (_held_for_login), else what the CLI asks first (_first_hook_blocker). An
     agent that waits for its login gets now what needs no login (Claude Code's trust),
-    told whoever starts it; what does (the first run), and a question the CLI would still
+    in loop.log; what does (the first run), and a question the CLI would still
     ask, its waiting window settles once logged in (lado.login_wait), in loop.log; `shell`
     is the login shell's layer, the lowest its window lays the login from. The lines to
     tell whoever starts it, and the window's command."""
@@ -3020,7 +3028,8 @@ def _before_window(
         )
     env = _launch_env(agent, base_env, launch)
     early = agent_cli.first_hook_blocker(agent.cwd, env)  # its reason: the window's, later
-    lines += [line for line in (*early.notes, early.warning) if line]
+    _log_notes(agent, early.notes)
+    lines += [early.warning] if early.warning else []
     ours = sorted({**providers.agent_env(agent), **launch.env})
     file = providers.base.config_dir(agent) / "env.json"
     shell_login = {n: shell[n] for n in agent_cli.login_variables if n in shell}

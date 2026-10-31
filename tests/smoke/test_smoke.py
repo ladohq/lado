@@ -70,7 +70,9 @@ def test_a_session_starts_takes_messages_and_stops(smoke_repo, smoke_provider, f
         config = Path(os.environ["CLAUDE_CONFIG_DIR"], ".claude.json")
         repo = str(smoke_repo.resolve())
         assert json.loads(config.read_text())["projects"][repo] == {"hasTrustDialogAccepted": True}
-        assert f"LADO recorded Claude Code's trust in {repo} in {config}" in started.warnings
+        note = f"LADO recorded Claude Code's trust in {repo} in {config}"
+        assert note not in started.warnings  # LADO's own write: loop.log only
+        assert note in (state.home() / "loop.log").read_text()
 
     # 2. The supervisor's session-start hook ran: it is idle. Codex starts its session only
     # on its first input, LADO's FIRST_INPUT, which its prompt-submit hook confirms.
@@ -229,7 +231,9 @@ def test_a_logged_in_agent_passes_the_clis_first_run_with_no_human(
     config.write_text(json.dumps({"bypassPermissionsModeAccepted": True}))
     started = runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", "claude")
     print(f"claude: started, warnings {started.warnings}")
-    assert f"LADO recorded Claude Code's first run in {config}" in started.warnings
+    note = f"LADO recorded Claude Code's first run in {config}"
+    assert note not in started.warnings  # LADO's own write: loop.log only
+    assert note in (state.home() / "loop.log").read_text()
     assert json.loads(config.read_text())["hasCompletedOnboarding"] is True
     idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
     wait_for(idle, "the supervisor idle with no human", 120)

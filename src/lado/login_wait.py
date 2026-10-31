@@ -86,7 +86,9 @@ def main(args: list[str]) -> None:
     print(said, flush=True)
     loop.log(session, f"{agent}: {said}")
     blocker = provider.first_hook_blocker(os.getcwd(), env)
-    for line in (*blocker.notes, blocker.reason, blocker.warning):
+    for note in blocker.notes:  # LADO's own writes: loop.log only, no line in the terminal
+        loop.log(session, f"{agent}: {note}")
+    for line in (blocker.reason, blocker.warning):
         if line:
             print(line, flush=True)
             loop.log(session, f"{agent}: {line}")

@@ -65,11 +65,15 @@ def test_start_and_ls_say_what_the_supervisors_cli_asks_first(
     assert f"lado: {why}: " in capsys.readouterr().err
 
 
-def test_start_says_that_lado_recorded_claude_codes_trust(repo, fake_tmux, claude_config, capsys):
+def test_start_logs_that_lado_recorded_claude_codes_trust_and_says_nothing(
+    repo, fake_tmux, claude_config, capsys
+):
     claude_config.trust()  # Claude Code trusts no folder
     start = ["start", str(repo), "--name", "s", "--provider", "claude", "--no-attach"]
     assert main(start) == 0
-    assert f"lado: {claude_config.note(repo)}\n" in capsys.readouterr().err
+    assert "LADO recorded" not in capsys.readouterr().err
+    log = (state.home() / "loop.log").read_text()
+    assert log.count(f"s: supervisor: {claude_config.note(repo)}") == 1
 
 
 def test_start_without_provider_says_which_it_took_and_why(repo, fake_tmux, capsys):

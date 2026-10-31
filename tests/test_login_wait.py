@@ -186,7 +186,9 @@ def test_unknown_never_holds_it(tmp_path, lado_home, started, monkeypatch):
     assert len(provider.looks) == 1 and started["exec"]
 
 
-def test_what_the_cli_asks_first_holds_it_with_why(tmp_path, lado_home, started, monkeypatch):
+def test_what_the_cli_asks_first_holds_it_with_why(
+    tmp_path, lado_home, started, monkeypatch, capsys
+):
     blocker = base.Blocker(reason="Waits CLI asks a question", notes=("LADO recorded x",))
     provider = Waiting(logged_in_after=0, blocker=blocker)
     monkeypatch.setitem(providers._PROVIDERS, "waits", provider)
@@ -194,4 +196,7 @@ def test_what_the_cli_asks_first_holds_it_with_why(tmp_path, lado_home, started,
     assert state.block_reasons("s") == {"sup": "Waits CLI asks a question"}
     log = (lado_home / "loop.log").read_text()
     assert "sup: LADO recorded x" in log and "sup: Waits CLI asks a question" in log
+    # LADO's own write is in loop.log only, not in the agent's terminal.
+    shown = capsys.readouterr().out
+    assert "Waits CLI asks a question" in shown and "LADO recorded" not in shown
     assert started["exec"]

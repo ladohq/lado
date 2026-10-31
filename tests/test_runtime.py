@@ -1665,8 +1665,8 @@ def test_a_claude_agent_without_a_login_waits_for_it(
     seen = _seen_at_launch(monkeypatch, "new_session", "supervisor")
     started = runtime.start_session(str(repo), "s", None)
     assert seen == [(state.WAITING, LOGIN_REASON)]  # waiting before its window starts
-    # The trust is recorded now and told whoever starts it; the first run once logged in.
-    assert started.warnings == [LOGIN_REASON, claude_config.note(repo)]
+    # The trust is recorded now, in loop.log only; the first run once logged in.
+    assert started.warnings == [LOGIN_REASON]
     assert _logged(f"s: supervisor: {LOGIN_REASON}") == 1
     assert _logged(f"s: supervisor: {claude_config.note(repo)}") == 1
     assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
@@ -1693,7 +1693,8 @@ def test_a_claude_agent_without_a_login_in_a_fresh_home_gets_the_trust_alone(
     claude_config.path.unlink()
     cli_logins.logged_out()
     started = runtime.start_session(str(repo), "s", None)
-    assert started.warnings == [LOGIN_REASON, claude_config.note(repo)]
+    assert started.warnings == [LOGIN_REASON]
+    assert _logged(f"s: supervisor: {claude_config.note(repo)}") == 1
     assert json.loads(claude_config.path.read_text()) == {
         "projects": {str(repo): {"hasTrustDialogAccepted": True}}
     }
@@ -1806,11 +1807,11 @@ def test_a_project_session_waits_with_its_project(fake_tmux, cli_logins, tmp_pat
     assert held["project"] == "shop"
 
 
-def test_lado_records_claude_codes_trust_and_tells_the_starter(repo, fake_tmux, claude_config):
+def test_lado_records_claude_codes_trust_in_the_log_only(repo, fake_tmux, claude_config):
     claude_config.trust()  # Claude Code trusts no folder
     note = claude_config.note(repo)
     started = runtime.start_session(str(repo), "s", None, provider="claude")
-    assert started.warnings == [note]
+    assert started.warnings == []
     assert _logged(f"s: supervisor: {note}") == 1
     assert state.get_agent("s", "supervisor").status == state.STARTING
     assert runtime.status_reasons("s") == {}
@@ -1828,7 +1829,7 @@ def test_lado_records_claude_codes_trust_at_a_resume(repo, fake_tmux, claude_con
     runtime.stop_session("s")
     claude_config.trust()
     started = runtime.start_session(str(repo), "s", None)
-    assert started.warnings == [claude_config.note(repo)]
+    assert started.warnings == []
     assert _logged(f"s: supervisor: {claude_config.note(repo)}") == 1
     assert state.get_agent("s", "supervisor").status == state.STARTING
 
@@ -1839,7 +1840,7 @@ def test_lado_records_claude_codes_trust_for_a_worker(repo, fake_tmux, claude_co
     warnings = []
     worker = runtime.spawn_worker("s", "task", name="w1", provider="claude", warnings=warnings)
     note = claude_config.note(repo)  # the main repo's root, not the worktree's
-    assert warnings == [note]
+    assert warnings == []
     assert _logged(f"s: w1: {note}") == 1
     assert state.get_agent("s", "w1").status == state.STARTING
     assert list(json.loads(claude_config.path.read_text())["projects"]) == [str(repo)]

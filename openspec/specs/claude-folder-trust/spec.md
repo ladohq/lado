@@ -102,8 +102,8 @@ waits for its login gets it at its start, told whoever starts it.
 
 #### Scenario: A fresh home
 
-- **WHEN** a Claude agent is started, Claude Code is not logged in, and no config file
-  exists
+- **WHEN** a stopped Claude session is resumed, Claude Code is not logged in, and no config
+  file exists (a new session is refused without the login: provider-logins)
 - **THEN** the file exists afterwards as `{"projects": {"<repo>": {"hasTrustDialogAccepted":
   true}}}` with mode 600, whoever started the agent is told the trust's line, and the
   agent waits for its login, not for the trust question

@@ -76,4 +76,5 @@ LAD-165.
 
 All in the human's decisions (`brief-lad-163`, questions #2053-#2069) and question #2078
 of this run: the mockup, the repository's MCP servers enabled, the 30 s safety net, the
-resume checked by the supervisor's CLI, the loop's fault kept out.
+resume checked by the supervisor's CLI, the loop's fault kept out (LAD-165); all
+recommendations taken.

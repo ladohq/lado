@@ -42,7 +42,10 @@ export function Providers() {
       setProblem(null);
       if (found.checking) poll.current = setTimeout(() => void take(getProviderLogins), POLL_MS);
     } catch (error) {
-      if (asked === latest.current) setProblem(messageOf(error));
+      if (asked !== latest.current) return;
+      setProblem(messageOf(error));
+      // No more polling: ↻ stops turning, so a press asks again (the server may be back).
+      setPage((now) => (now ? { ...now, checking: false } : now));
     }
   }, []);
   const check = useCallback(() => void take(checkProviders), [take]);
@@ -63,7 +66,7 @@ export function Providers() {
       now ? { ...now, providers: now.providers.map((p) => (p.cli.name === row.cli.name ? row : p)) } : now,
     );
   const open = page?.providers.find((p) => p.cli.name === sheet);
-  const checking = page?.checking ?? true;
+  const checking = page?.checking ?? problem === null; // before the first answer, unless it failed
   const noneInstalled = page !== null && page.providers.every((p) => p.ready && !p.cli.installed);
 
   return (

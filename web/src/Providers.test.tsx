@@ -114,6 +114,33 @@ test("the rows of the last check show at once while ↻ turns, then change in pl
   expect(reads()).toHaveLength(2); // the check ended: no more polling
 });
 
+test("a failed read ends the turning ↻, which then asks again", async () => {
+  vi.useFakeTimers();
+  page = { ...page, checking: true };
+  mount();
+  await tick(0);
+  expect(refresh().className).toContain("spinning");
+  vi.mocked(fetch).mockImplementationOnce(async () => new Response("down", { status: 502 }));
+  await tick(POLL_MS);
+  expect(screen.getByRole("alert")).toBeTruthy();
+  expect(refresh().className).not.toContain("spinning");
+  page = { ...page, checking: false };
+  fireEvent.click(refresh());
+  await tick(0);
+  expect(checks()).toHaveLength(2);
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("a first answer that fails leaves ↻ to ask again", async () => {
+  vi.mocked(fetch).mockImplementationOnce(async () => new Response("down", { status: 502 }));
+  mount();
+  await screen.findByRole("alert");
+  expect(refresh().className).not.toContain("spinning");
+  fireEvent.click(refresh());
+  await screen.findByRole("listitem", { name: "Claude Code" });
+  expect(checks()).toHaveLength(1); // the first one failed before it was counted
+});
+
 test("stops polling when it leaves", async () => {
   vi.useFakeTimers();
   page = { ...page, checking: true };

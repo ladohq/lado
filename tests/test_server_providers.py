@@ -180,9 +180,10 @@ def test_a_saved_key_replaces_lados_token_and_beats_the_outside_folders(
         "LADO's secret",
     )
     assert row["from_lado"] is True
-    # The status command, as every agent, got the key and not the outside folder's token.
-    argv, env = cli_logins.calls[-1]
-    assert argv[0] == "claude" and env[KEY] == "canary-key" and TOKEN not in env
+    # The status command, as every agent, got the key and not the outside folder's token
+    # (the check the save started reads the other CLIs too).
+    _, env = [c for c in cli_logins.calls if c[0][0] == "claude"][-1]
+    assert env[KEY] == "canary-key" and TOKEN not in env
     assert "canary" not in answer.text
 
 

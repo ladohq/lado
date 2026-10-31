@@ -2101,13 +2101,13 @@ h3 {
   }
 }
 
-.pv-tested,
-.pv-checking {
+.pv-tested {
   color: var(--muted);
   font-size: 12px;
 }
 
 .pv-checking {
+  color: var(--muted);
   font-size: 13px;
 }
 

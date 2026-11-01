@@ -38,7 +38,11 @@ binary passes CI and could ship in a release.
   binaries.
 - `docker/Dockerfile`: each of the four CLIs' `RUN` lines runs the installed CLI's
   `--version` (`/opt/agents/bin/<cli> --version`) after its `npm install` and before
-  `npm cache clean --force`, so a CLI that does not run fails the image's build. No retry
+  `npm cache clean --force`, so a CLI that does not run fails the image's build. It runs
+  with `HOME=/tmp/cli-home`, removed in the same line: Codex writes `~/.codex/tmp/`,
+  OpenCode and Kilo their `~/.config`, `~/.local/share`, `~/.local/state` and `~/.cache`
+  folders at any start, even of `--version`, and the image's `/home/lado` (the home
+  volume's first content) stays as it was. No retry
   in the Dockerfile: a red build is rerun as any CI job (`.lado/sdlc.md`, Review traps).
 - `docs/testing.md`: the smoke cell's line says the install is up to three attempts with
   the `--version` check; the image's paragraph says each CLI is run once at build.
@@ -80,7 +84,8 @@ Changed: `scripts/smoke_ci.py` (`run` and its docstring), `tests/test_smoke_ci.p
 - AC-4: A cell that works at once installs once, uninstalls nothing and prints no
   warning (today's tests stay green unchanged in meaning).
 - AC-5: Each of the four CLIs' `RUN` lines in `docker/Dockerfile` is `npm install ...
-  && /opt/agents/bin/<cli> --version && npm cache clean --force`, the command being its
+  && HOME=/tmp/cli-home /opt/agents/bin/<cli> --version && rm -rf /tmp/cli-home && npm
+  cache clean --force`, the command being its
   `PINS` command (`tests/test_docker.py`); `make docker` builds and the container tests
   pass in CI.
 - AC-6: `make lint`, `make test` pass; CI is green, the smoke and the container jobs

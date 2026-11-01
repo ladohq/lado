@@ -176,20 +176,27 @@ RUN UV_TOOL_DIR=/opt/uv/tools UV_TOOL_BIN_DIR=/opt/uv/bin UV_PYTHON_INSTALL_DIR=
 
 # The four agent CLIs at the versions LADO is tested with (scripts/smoke_ci.py's PINS;
 # tests/test_docker.py keeps them the same), one layer each, so a moved pin rebuilds one.
-# Each package puts its native binary in place for its architecture. Claude Code's update
-# check is off (DISABLE_AUTOUPDATER); LADO switches the others' off per agent. Codex CLI
-# is only installed: carrying its login into the agents is a later step.
+# Each package puts its native binary in place for its architecture, as an optional
+# dependency, which npm drops without an error when it fails to install: so each CLI runs
+# once, and one that does not fails the build. Its HOME there is a folder removed at once,
+# as Codex, OpenCode and Kilo write theirs at any start. Claude Code's update check is off
+# (DISABLE_AUTOUPDATER); LADO switches the others' off per agent. Codex CLI is only
+# installed: carrying its login into the agents is a later step.
 ARG CLAUDE_VERSION=2.1.295
 RUN npm install -g --prefix /opt/agents "@anthropic-ai/claude-code@${CLAUDE_VERSION}" \
+ && HOME=/tmp/cli-home /opt/agents/bin/claude --version && rm -rf /tmp/cli-home \
  && npm cache clean --force
 ARG CODEX_VERSION=0.162.0
 RUN npm install -g --prefix /opt/agents "@openai/codex@${CODEX_VERSION}" \
+ && HOME=/tmp/cli-home /opt/agents/bin/codex --version && rm -rf /tmp/cli-home \
  && npm cache clean --force
 ARG OPENCODE_VERSION=1.18.35
 RUN npm install -g --prefix /opt/agents "opencode-ai@${OPENCODE_VERSION}" \
+ && HOME=/tmp/cli-home /opt/agents/bin/opencode --version && rm -rf /tmp/cli-home \
  && npm cache clean --force
 ARG KILO_VERSION=7.8.8
 RUN npm install -g --prefix /opt/agents "@kilocode/cli@${KILO_VERSION}" \
+ && HOME=/tmp/cli-home /opt/agents/bin/kilo --version && rm -rf /tmp/cli-home \
  && npm cache clean --force
 
 # openspec, which kits expect (sdlc's `expects.commands`), at its pin in /opt/tools: no

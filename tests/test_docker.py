@@ -68,6 +68,21 @@ def test_each_cli_is_installed_at_that_version_in_a_layer_of_its_own(provider):
     assert install.count("@${") == 1, install
 
 
+@pytest.mark.parametrize("provider", sorted(ARGS))
+def test_each_cli_is_run_once_after_its_install(provider):
+    """npm drops an optional dependency (a CLI's native binary) that failed to install and
+    exits 0: the build runs the CLI so such an image is not built. Its HOME is a folder
+    removed in the same layer: Codex, OpenCode and Kilo write theirs at any start, and the
+    image's /home/lado stays as it was."""
+    package, _, command = _pins()[provider]
+    [install] = [line for line in flat() if f'"{package}@${{{ARGS[provider]}}}"' in line]
+    assert install == (
+        f'RUN npm install -g --prefix /opt/agents "{package}@${{{ARGS[provider]}}}" '
+        f"&& HOME=/tmp/cli-home /opt/agents/bin/{command} --version && rm -rf /tmp/cli-home "
+        "&& npm cache clean --force"
+    )
+
+
 def test_node_22_comes_from_the_official_image():
     [stage] = [line for line in lines() if line.startswith("FROM node:")]
     assert stage.startswith("FROM node:22-bookworm-slim@sha256:")

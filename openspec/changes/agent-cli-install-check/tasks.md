@@ -19,16 +19,19 @@
 
 ## 2. The image's build
 
-- [ ] 2.1 Unit test first, `tests/test_docker.py`: each CLI's install line runs
+- [x] 2.1 Unit test first, `tests/test_docker.py`: each CLI's install line runs
   `/opt/agents/bin/<command> --version` (the command from `PINS`) between its `npm
   install` and `npm cache clean --force` (AC-5); the existing tests of those lines stay
   green.
-- [ ] 2.2 `docker/Dockerfile`: the four `RUN` lines gain `&& /opt/agents/bin/<cli>
-  --version`; the comment above them says why (npm drops an optional dependency without
-  an error). With Docker: `make docker` builds, and the check leaves no new files in
-  `/home/lado` of the image (compare `docker run --rm lado:local ls -A /home/lado` with
-  the image of `main`); without Docker, say so in the build report and rely on CI's
-  container job.
+- [x] 2.2 `docker/Dockerfile`: the four `RUN` lines gain `&& HOME=/tmp/cli-home
+  /opt/agents/bin/<cli> --version && rm -rf /tmp/cli-home`; the comment above them says
+  why (npm drops an optional dependency without an error; the CLIs write into HOME). With
+  Docker: `make docker` builds, and the check leaves no new files in `/home/lado` of the
+  image (compare `docker run --rm lado:local ls -A /home/lado` with the image of `main`);
+  without Docker, say so in the build report and rely on CI's container job. (No Docker
+  in the developer's container: each pinned CLI's `--version` was run from npm under an
+  empty HOME instead; Codex, OpenCode and Kilo wrote folders there, hence the throwaway
+  HOME. CI's container job builds the image.)
 
 ## 3. Docs and checks
 

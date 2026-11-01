@@ -14,4 +14,11 @@ a unit test SHALL keep each of the four install lines so, the command being its
 #### Scenario: Every CLI runs
 - **WHEN** `tests/test_docker.py` reads `docker/Dockerfile`
 - **THEN** each CLI's install line is `npm install -g --prefix /opt/agents` of its pin,
-  then `/opt/agents/bin/<command> --version`, then `npm cache clean --force`
+  then `/opt/agents/bin/<command> --version` with `HOME=/tmp/cli-home`, then `rm -rf
+  /tmp/cli-home`, then `npm cache clean --force`
+
+#### Scenario: The check leaves the home as it was
+- **WHEN** a CLI that writes its folders into HOME at any start (Codex, OpenCode, Kilo)
+  runs its `--version` at build
+- **THEN** it writes them into `/tmp/cli-home`, removed in the same `RUN` line, and
+  nothing of it is in the image's `/home/lado`

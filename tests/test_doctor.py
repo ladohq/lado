@@ -14,6 +14,7 @@ from lado import (
     artifacts_local,
     doctor,
     gui_session,
+    logins,
     project_secrets,
     projects,
     providers,
@@ -277,6 +278,16 @@ def test_claude_not_logged_in_warns_where_to_log_in(cli_logins, capsys, monkeypa
         "[warn] Claude Code login: not logged in: new sessions and workers of it are refused, a "
         "resumed agent waits (Settings → Providers and environment)" in capsys.readouterr().out
     )
+
+
+def test_no_login_where_the_agents_need_none_is_no_warning():
+    """Login.needs_login, read in the agents' environment, decides (Codex's model)."""
+    status = providers.base.LoginStatus(providers.base.NO)
+    claude = providers.get("claude")
+    found = logins.Login(claude, status, "", needs_login=False)
+    assert doctor.login_check(found) == doctor.Check("Claude Code login", doctor.INFO, "none")
+    found.needs_login = True
+    assert doctor.login_check(found).level == doctor.WARN
 
 
 def test_a_login_from_a_file_names_the_file(cli_logins, monkeypatch):

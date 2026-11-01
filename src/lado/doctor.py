@@ -136,7 +136,7 @@ def login_check(found: logins.Login) -> Check:
         where = found.where or status.file
         return Check(name, OK, f"{status.method} · {where}" if where else status.method)
     if status.state == providers.base.NO:
-        if provider.capabilities.needs_login:
+        if found.needs_login:
             return Check(
                 name,
                 WARN,

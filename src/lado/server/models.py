@@ -497,7 +497,7 @@ class ProviderLogins(BaseModel):
 
     cli: ProviderInfo
     login: LoginInfo
-    needs_login: bool  # its agents need a login (Capabilities.needs_login)
+    needs_login: bool  # its agents need a login in their environment (Provider.needs_login)
     actions: list[LoginActionInfo]  # the login window's commands
     question: str  # what the login sheet asks (Provider.login_question); "" for none
     choices: list[LoginChoiceInfo]  # its answers, each a value to paste

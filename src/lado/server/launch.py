@@ -295,7 +295,7 @@ def provider_logins(found: logins.Login, cli: models.ProviderInfo) -> models.Pro
             choice=status.choice,
             problem=status.problem,
         ),
-        needs_login=provider.capabilities.needs_login,
+        needs_login=found.needs_login,
         actions=[models.LoginActionInfo(id=a.id, label=a.label) for a in provider.login_actions()],
         question=provider.login_question,
         choices=[

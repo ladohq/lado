@@ -9,7 +9,7 @@ secrets, with the CLI's login taken whole from one layer (lado.agent_env.merge).
 layer gives the login is the core's to say (`layer`); a login of the CLI's own file, the
 provider's (LoginStatus.file_words).
 
-A new session or worker whose CLI needs a login (Capabilities.needs_login) and has none is
+A new session or worker whose CLI needs a login (Provider.needs_login) and has none is
 refused before anything of it is made (`refusal`, lado.runtime.check_login); a resumed agent
 of such a CLI waits from its start with `wait_reason` instead (lado.runtime,
 lado.login_wait), as does one whose login went between the check and its launch. The
@@ -59,11 +59,11 @@ RESUME = "resume"  # a stopped session resumed by hand (lado start, the UI's Res
 
 def refusal(provider: base.Provider, env: Mapping[str, str], what: str) -> str | None:
     """Why a new `what` (SESSION or WORKER) of `provider`, or a RESUME of a session whose
-    supervisor it starts, is not started: its agents need a login
-    (Capabilities.needs_login) and its status in `env`, the environment they would start
-    from, says none. None otherwise, also when the status cannot be read: that never
-    refuses (the launch warns)."""
-    if not provider.capabilities.needs_login:
+    supervisor it starts, is not started: its agents need a login in `env`, the
+    environment they would start from (Provider.needs_login), and its status there says
+    none. None otherwise, also when the status cannot be read: that never refuses (the
+    launch warns)."""
+    if not provider.needs_login(env):
         return None
     if provider.login_status(dict(env)).state != base.NO:
         return None
@@ -135,6 +135,9 @@ class Login:
     running: list[AgentRef] = field(default_factory=list)
     projects: list[str] = field(default_factory=list)
     window: bool = False  # a login window of it is open
+    # Its agents need a login (Provider.needs_login), asked in the environment `status` is
+    # read in.
+    needs_login: bool = False
 
 
 def read(
@@ -146,9 +149,11 @@ def read(
     """`provider`'s login read now in the environment its agents get of `layers`
     (`environment`), unless `status` is given (e.g. why it cannot be read), with the agents
     and projects that concern it (lado.db read as it is) unless not `full`."""
-    status = status or provider.login_status(environment(provider, layers))
+    env = environment(provider, layers)
+    status = status or provider.login_status(env)
     given = layer(status.variable, layers, provider.login_variables) if status.variable else ""
     found = Login(provider, status, given, given or status.file_words)
+    found.needs_login = provider.needs_login(env)
     if not full:
         return found
     if state.schema_version() is not None:

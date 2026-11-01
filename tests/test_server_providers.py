@@ -96,6 +96,19 @@ def test_the_page_lists_each_cli_with_its_login(client, cli_logins, windows):
     assert "checks" not in page  # lado doctor's lines are lado doctor's
 
 
+def test_the_rows_need_follows_the_agents_environment(client, cli_logins, windows, monkeypatch):
+    """Asked in the environment the login is read in (Codex's model decides)."""
+    cli_logins.logged_out()
+    claude = providers.get("claude")
+    monkeypatch.setattr(claude, "needs_login", lambda env: "LADO_NO_NEED" not in env)
+    assert _row(_page(client), "claude")["needs_login"] is True
+    monkeypatch.setenv("LADO_NO_NEED", "1")
+    assert _row(_page(client), "claude")["needs_login"] is False
+    assert not next(p for p in client.get("/api/providers").json() if p["name"] == "claude")[
+        "login_missing"
+    ]
+
+
 def test_the_page_answers_at_once_and_only_a_post_starts_a_check(
     client, cli_logins, windows, monkeypatch
 ):

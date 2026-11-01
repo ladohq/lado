@@ -7,6 +7,7 @@ import shutil
 import signal
 import subprocess
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -61,7 +62,8 @@ class Capabilities:
     deny_edit_tools: bool = False
     # An agent of this CLI cannot work without a login: LADO holds it, waiting, until the
     # CLI's login_status says there is one (lado.runtime, lado.login_wait). False for a CLI
-    # that also works with models that need no login.
+    # that also works with models that need no login. Read through Provider.needs_login,
+    # which a CLI whose need follows its model answers from the environment.
     needs_login: bool = False
 
 
@@ -306,6 +308,12 @@ class Provider(ABC):
     # CLI that logs in by its own command (login_actions) or not from the page.
     login_question: str = ""
     login_choices: tuple[LoginChoice, ...] = ()
+
+    def needs_login(self, env: Mapping[str, str]) -> bool:
+        """Whether the CLI's agents, started with `env`, need a login: a new one is refused
+        and a resumed one waits without it (lado.logins, lado.runtime). By default
+        Capabilities.needs_login."""
+        return self.capabilities.needs_login
 
     def login_status(self, env: dict[str, str]) -> LoginStatus:
         """Whether the CLI, started with `env`, is logged in, as its own status command says

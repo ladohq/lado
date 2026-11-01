@@ -1750,6 +1750,23 @@ def test_a_trust_lado_cannot_record_waits_for_the_login_first(
     assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
 
 
+def test_an_agent_whose_cli_needs_no_login_in_its_launch_environment_is_not_held(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    """Whether it needs one is asked with the agent's launch environment (Codex's model)."""
+    _stopped_claude_session(repo, fake_tmux)
+    cli_logins.logged_out()
+    seen = []
+    claude = providers.get("claude")
+    monkeypatch.setattr(claude, "needs_login", lambda env: seen.append(env) or False)
+    started = runtime.start_session(str(repo), "s", None, wait_for_login=True)
+    assert started.warnings == []
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    assert not _waits_for_login(call[-1])
+    assert seen and seen[-1]["LADO_AGENT"] == "supervisor"
+
+
 def test_a_logged_in_claude_agent_starts_as_before(repo, fake_tmux):
     started = runtime.start_session(str(repo), "s", None, provider="claude")
     assert started.warnings == []

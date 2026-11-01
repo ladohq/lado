@@ -3032,12 +3032,13 @@ def _held_for_login(
     launch: providers.Launch,
 ) -> tuple[bool, list[str]]:
     """Before the agent's window starts: whether it waits for its CLI's login (a CLI that
-    needs one, Capabilities.needs_login, and is not logged in with the agent's launch
-    environment), then from now on with lado.logins.wait_reason; and the lines to tell
-    whoever starts it. A login LADO cannot read never holds it: a warning says why."""
-    if not agent_cli.capabilities.needs_login:
+    needs one and is not logged in, both asked with the agent's launch environment), then
+    from now on with lado.logins.wait_reason; and the lines to tell whoever starts it. A
+    login LADO cannot read never holds it: a warning says why."""
+    env = _launch_env(agent, base_env, launch)
+    if not agent_cli.needs_login(env):
         return False, []
-    found = agent_cli.login_status(_launch_env(agent, base_env, launch))
+    found = agent_cli.login_status(env)
     if found.state == providers.base.NO:
         reason = logins.wait_reason(agent_cli)
         state.block(agent.session, agent.name, reason)

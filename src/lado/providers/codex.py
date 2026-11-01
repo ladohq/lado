@@ -285,7 +285,12 @@ class CodexProvider(base.Provider):
         config.update(
             developer_instructions=spec.prompt,
             check_for_update_on_startup=False,
-            # Codex's own subagents: an agent that starts them talks to nobody. Its shell
+            # Codex's own subagents: an agent that starts them talks to nobody, and one that
+            # waits for them (`wait_agent`, "Waiting for agents") never ends its turn, so
+            # LADO never delivers its messages (LAD-167). `multi_agent` switches the first
+            # version off; newer models turn the second on through their metadata, over
+            # `multi_agent_v2`, and only `agents.enabled` wins over the model. Codex checks
+            # `multi_agent_v2` before it, so that stays off too. Its shell
             # snapshot writes the agent's whole environment, a kit's MCP secrets too, into
             # shell_snapshots/ of its home: no such value may go on disk (lado.mcp_exec).
             # Its goals (`update_goal`, on by default in 0.162): an agent gets its task as
@@ -294,10 +299,12 @@ class CodexProvider(base.Provider):
             # at the start; the user's installed plugins live in the user's home anyway.
             features={
                 "multi_agent": False,
+                "multi_agent_v2": False,
                 "shell_snapshot": False,
                 "goals": False,
                 "plugins": False,
             },
+            agents={"enabled": False},
             analytics={"enabled": False},
             feedback={"enabled": False},
             # Its login stays in the file every agent and the user's own Codex share

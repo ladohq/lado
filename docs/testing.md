@@ -162,7 +162,12 @@ delivered instead of the human's message and the turn error, in code, never a sk
 failed smoke keeps its evidence as a failed live test does. `make test-smoke
 [PROVIDER=...]`; not in `make check`, which has no CLI. The 401 endpoint is
 `tests/fake_endpoint.py` (standard library only), also a script, `python fake_endpoint.py
-<port> <log file>`, for the container tests.
+<port> <log file>`, for the container tests. It keeps the names of the tools each request
+offers the model (`Endpoint.tools`, and `tools` in the log's line; a namespace's as
+`<namespace>.<name>`), so a Codex test checks that an agent on a model whose metadata
+brings Codex's own subagents (gpt-6-sol) gets none of them, after a control: a plain
+`codex exec` on the same home gets `collaboration.wait_agent`, or the test fails saying the
+model no longer brings them.
 
 Container tests (`tests/container/`, marker `container`) run LADO's image (`docker/`) with
 real Docker and no model, driving the `docker` CLI from the host against an image built

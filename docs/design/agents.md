@@ -112,7 +112,11 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS`), Kilo is not checked (BACKLOG.md). Codex
   CLI never sets it either: its `Stop` (0.162) says nothing of work still running, though
   it can move a shell command to a background terminal, and LADO switches its subagents off
-  (BACKLOG.md).
+  (BACKLOG.md): both of Codex's versions of them, `features.multi_agent = false` the first,
+  `agents.enabled = false` the second, which newer OpenAI models turn on through their
+  metadata over the features (its `wait_agent`, "Waiting for agents", held a turn open, so
+  the agent got no messages, LAD-167), and `features.multi_agent_v2 = false`, which Codex
+  checks before `agents.enabled`.
 - A turn that ends on an error is a turn's end: the provider's `TURN_END` carries
   `Event.error` (one short line), the agent is `idle` (or `background`) and gets its queue
   as after any turn, a `turn_error` event keeps the error (`lado log`), and
@@ -410,7 +414,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   its own `[PROMPT]` argument, and starts its session (SessionStart) only when its first
   input is submitted (`Capabilities.session_start_on_first_input`): an agent of it with an
   empty queue (a new supervisor) first gets `runtime.FIRST_INPUT` from `lado`, a message
-  like any other, so a Codex supervisor's start costs one short model turn. Codex's
+  like any other, so a Codex supervisor's start costs one short model turn. The line asks
+  the agent to end that turn and never to wait: a model with a tool to wait takes "wait"
+  literally, and the turn that does not end gets no messages. Codex's
   `SessionEnd` is not used: after `/resume` it runs for the conversation left, once the
   next one has started; an agent whose Codex exits is ended by the window check.
 - A queue is handed over by one of two channels, kept with each message

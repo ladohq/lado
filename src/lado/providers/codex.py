@@ -365,22 +365,31 @@ class CodexProvider(base.Provider):
             argv += ["--dangerously-bypass-approvals-and-sandbox"]
         if notice:
             argv.append(notice)
-        return base.Launch(argv, {"CODEX_HOME": str(home)}, warnings)
+        return base.Launch(
+            argv,
+            {"CODEX_HOME": str(home)},
+            warnings,
+            model=_carried(config, "model"),
+            effort=_carried(config, "model_reasoning_effort"),
+        )
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:
         if native not in EVENTS:
             return None
         data = json.loads(payload) if payload.strip() else {}
         neutral = EVENTS[native]
+        # Every hook's input names the model the agent runs (0.162.0, its hook input
+        # schemas); none names the reasoning effort.
+        model = data.get("model") if isinstance(data.get("model"), str) else ""
         if native == "Interrupt":
-            return base.Event(neutral, output_ignored=True)
+            return base.Event(neutral, output_ignored=True, model=model)
         if native == "Stop":
-            return base.Event(neutral, continued=bool(data.get("stop_hook_active")))
+            return base.Event(neutral, continued=bool(data.get("stop_hook_active")), model=model)
         if neutral in (base.WAITING, base.RESUMED):
             about = ["tool", data.get("tool_name", ""), data.get("tool_input")]
             digest = hashlib.sha256(json.dumps(about, sort_keys=True).encode()).hexdigest()
-            return base.Event(neutral, key=digest[:16])
-        return base.Event(neutral, data.get("prompt", ""))
+            return base.Event(neutral, key=digest[:16], model=model)
+        return base.Event(neutral, data.get("prompt", ""), model=model)
 
     def hook_limit(self, native: str) -> float | None:
         # The timeout of LADO's handler (_handler), as Codex normalizes it.
@@ -502,11 +511,28 @@ def _user_config(environ, warnings: list[str]) -> tuple[dict, Path]:
 def _model_provider(config: dict) -> str:
     """The model provider Codex runs with `config`: the chosen profile's, else the top
     level's, else OpenAI's."""
+    return str(_setting(config, "model_provider")[0] or "openai")
+
+
+def _setting(config: dict, key: str) -> tuple[object, str | None]:
+    """The value of `key` Codex runs with `config`: the chosen profile's (`profile`), else
+    the top level's; with the profile's name when it came from the profile."""
     chosen = config.get("profile")
     profile = (
         _as_table(_as_table(config.get("profiles")).get(chosen)) if isinstance(chosen, str) else {}
     )
-    return str(profile.get("model_provider") or config.get("model_provider") or "openai")
+    if profile.get(key):
+        return profile[key], chosen
+    return config.get(key), None
+
+
+def _carried(config: dict, key: str) -> state.Choice | None:
+    """The model or effort (`key`) of the carried `config`, as the user's Codex config chose
+    it; None when it names none."""
+    value, profile = _setting(config, key)
+    if not isinstance(value, str) or not value:
+        return None
+    return state.Choice(value, state.CLI_CONFIG, f"profile {profile}" if profile else None)
 
 
 def _as_table(value) -> dict:

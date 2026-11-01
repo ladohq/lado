@@ -3766,6 +3766,40 @@ class _NoSkills(providers.Provider):
         return None
 
 
+class _ChoosesAModel(_NoSkills):
+    """A CLI whose launch chooses a model and an effort (Codex's carried config)."""
+
+    capabilities = providers.Capabilities(
+        status_events=True, permission_event=False, deliver_on_turn_end=True, skills=True
+    )
+
+    def launch_command(self, agent, session, spec):
+        detail = f"for {agent.name}"
+        return providers.Launch(
+            ["noskills"],
+            model=state.Choice("big", state.CLI_CONFIG, detail),
+            effort=state.Choice("high", state.CLI_CONFIG),
+        )
+
+
+def test_spawn_records_the_launchs_model(repo, fake_tmux, monkeypatch):
+    monkeypatch.setitem(providers._PROVIDERS, "noskills", _ChoosesAModel())
+    runtime.start_session(str(repo), "s", None, provider="noskills")
+    runtime.spawn_worker("s", "fix the bug", name="w1")
+    for name in ("supervisor", "w1"):
+        agent = state.get_agent("s", name)
+        assert (agent.model, agent.model_source, agent.model_detail) == (
+            "big",
+            "cli-config",
+            f"for {name}",
+        )
+        assert (agent.effort, agent.effort_source, agent.effort_detail) == (
+            "high",
+            "cli-config",
+            None,
+        )
+
+
 def test_provider_without_skills_fails_loudly(repo, fake_tmux, team_kit, monkeypatch):
     monkeypatch.setitem(providers._PROVIDERS, "noskills", _NoSkills())
     with pytest.raises(runtime.LadoError, match="No Skills CLI cannot load skills.*checklist"):

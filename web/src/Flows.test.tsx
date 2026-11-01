@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { GateInfo, NoteInfo, RunEventInfo, RunInfo, SessionInfo } from "./api";
 import { App } from "./App";
 import { clock, dayName, since } from "./ChatText";
-import { FakeEventSource, FakeSocket, narrowColumn, stream, wideColumn } from "./fakes";
+import { CLI_DEFAULT, FakeEventSource, FakeSocket, narrowColumn, stream, wideColumn } from "./fakes";
 import styles from "./styles.css?raw";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -144,6 +144,8 @@ const AGENT = {
   worktree: "/w",
   spawned_at: "2026-10-04T10:00:00.000Z",
   since: "2026-10-04T10:00:00.000Z",
+  model: CLI_DEFAULT,
+  effort: CLI_DEFAULT,
 };
 
 function serve({ runs = [], notes = [], events = [], gates = [], agents = [] }: Data) {

@@ -368,12 +368,17 @@ export class FakeNotification {
 
 // The fields of an AgentInfo a test that is not about them leaves as they are: an agent
 // without a branch of its own, spawned and in its status since 10:00.
+// An agent's model or effort its CLI has not named.
+export const CLI_DEFAULT = { name: null, source: "cli", detail: null, words: "CLI default" };
+
 export const AGENT_REST = {
   login_wait: null,
   branch: null,
   worktree: null,
   spawned_at: "2026-10-04T10:00:00.000Z",
   since: "2026-10-04T10:00:00.000Z",
+  model: CLI_DEFAULT,
+  effort: CLI_DEFAULT,
 };
 
 // An attachment of run feature/x's design, as attached at record r1 (hash h1).

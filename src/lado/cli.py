@@ -602,7 +602,8 @@ def cmd_ls(args: argparse.Namespace) -> int:
             when = since.get(agent.name)
             took = format_duration((now - when).total_seconds()) if when else "-"
             line = f"  {agent.name:<12} {agent.role:<10} {agent.provider:<8} {agent.status:<10}"
-            print(f"{line} {took:<6}  {agent.branch or ''}".rstrip())
+            model = agent.model or "-"
+            print(f"{line} {took:<6}  {model:<18} {agent.branch or ''}".rstrip())
             if agent.name in reasons:
                 print(f"    {agent.status}: {reasons[agent.name]}")
         run_since = state.run_since(sess.name)

@@ -41,6 +41,7 @@ async function get<T>(path: string): Promise<T> {
 }
 
 export type AgentInfo = components["schemas"]["AgentInfo"];
+export type ModelInfo = components["schemas"]["ModelInfo"];
 
 export const getSessions = () => get<SessionInfo[]>("/api/sessions");
 

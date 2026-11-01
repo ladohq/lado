@@ -7,7 +7,7 @@ import { afterEach, expect, test } from "vitest";
 import type { AgentInfo, RunInfo } from "./api";
 import { AGENT_REST } from "./fakes";
 import { ResumeIcon, StopIcon } from "./icons";
-import { AgentChip, RunFrame, runColours, StatusDot, teamGroups } from "./Team";
+import { AgentChip, AgentTip, RunFrame, runColours, StatusDot, teamGroups } from "./Team";
 
 afterEach(cleanup);
 
@@ -85,6 +85,13 @@ test("every chip is one chip: the supervisor's, a worker's and a run's alike, wi
     "w1, developer, idle",
     "dev, developer, idle",
   ]); // the role stays for the ear
+});
+
+test("a chip's tooltip names the agent's model when its CLI has named one", () => {
+  const known = { ...agent("w1"), model: { name: "gpt-5.6-sol", source: "cli", detail: null, words: "CLI default" } };
+  const line = (info: AgentInfo) => render(<AgentTip name={info.name} info={info} />).container.textContent;
+  expect(line(known)).toBe("w1 · developer · claude · gpt-5.6-sol");
+  expect(line(agent("w2"))).toBe("w2 · developer · claude");
 });
 
 // A run as the server lists it; only its name and status matter to its colour.

@@ -15,6 +15,7 @@ import {
   type AgentDetails,
   type AgentInfo,
   type FinishPreviewInfo,
+  type ModelInfo,
   type RunInfo,
 } from "./api";
 import { messageText } from "./Chat";
@@ -196,7 +197,7 @@ function AgentPage({ session, agent, lists }: { session: string; agent: AgentInf
         <div className="agent-title">
           <h3>{agent.name}</h3>
           <span className="muted">
-            {agent.role} · {agent.provider}
+            {agent.role} · {agent.provider} · {agent.model.name ?? "CLI default model"}
           </span>
         </div>
         <p className="agent-now">
@@ -239,6 +240,14 @@ function AgentPage({ session, agent, lists }: { session: string; agent: AgentInf
         </p>
       )}
       <dl className="agent-facts">
+        <dt>Model</dt>
+        <dd>
+          <ModelFact fact={agent.model} />
+        </dd>
+        <dt>Effort</dt>
+        <dd>
+          <ModelFact fact={agent.effort} />
+        </dd>
         {agent.branch && (
           <>
             <dt>Branch</dt>
@@ -271,6 +280,18 @@ function AgentPage({ session, agent, lists }: { session: string; agent: AgentInf
       </div>
       {finishing && <FinishDialog session={session} agent={agent.name} onClose={() => setFinishing(false)} />}
     </section>
+  );
+}
+
+// An agent's model or effort: its name, then where it came from in the server's words; only
+// those words while the CLI has named none.
+function ModelFact({ fact }: { fact: ModelInfo }) {
+  if (fact.name === null) return <span className="muted">{fact.words}</span>;
+  return (
+    <>
+      <code>{fact.name}</code>
+      <span className="muted"> · {fact.words}</span>
+    </>
   );
 }
 

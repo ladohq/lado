@@ -38,6 +38,9 @@
 - **Codex agents no longer ask to trust the repository.** Nor to review its own Codex
   hooks, in every permission mode; a repository your Codex marks untrusted stays so.
 - **Codex agents no longer download the plugins catalogue at every start.**
+- **A Codex agent no longer hangs on "Waiting for agents".** Newer OpenAI models brought
+  Codex's own subagents back; the supervisor waited for them and the human's messages were
+  not delivered.
 
 - **A project's page scrolls on a phone.** Its variables, secrets and Delete project were
   cut off below the screen; the project list scrolls too.

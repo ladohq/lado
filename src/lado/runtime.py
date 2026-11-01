@@ -248,8 +248,10 @@ send_message, ask_human and flow_advance; read_messages names those attached to 
 
 WORKTREES_EXCLUDE = "/.lado/worktrees/"
 # The first input of an agent whose CLI starts its session only then and that has nothing
-# else to start with (Capabilities.session_start_on_first_input): one short turn.
-FIRST_INPUT = "session started; wait for the human or a message"
+# else to start with (Capabilities.session_start_on_first_input): one short turn. It must
+# ask the agent to end it, never to wait: a model with a tool to wait takes it literally,
+# and LADO delivers its queue only at the end of its turn (LAD-167).
+FIRST_INPUT = "session started; nothing to do yet: end this turn, the next message starts a new one"
 # The summary of the human's first message to a session's supervisor (start_session's
 # `prompt`): fixed, so the text, only in the body, never goes on a CLI's command line.
 FIRST_MESSAGE = "the human's first message"

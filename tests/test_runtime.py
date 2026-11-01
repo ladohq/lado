@@ -803,6 +803,12 @@ def test_a_failed_start_drops_the_humans_message(repo, fake_tmux, monkeypatch, r
         assert state.list_messages("s") == []
 
 
+@pytest.mark.parametrize("provider", ["claude", "kilo", "opencode"])
+def test_a_cli_that_starts_its_session_by_itself_gets_no_first_input(repo, fake_tmux, provider):
+    runtime.start_session(str(repo), "s", None, provider=provider)
+    assert [m.summary for m in state.list_messages("s")] == []
+
+
 @pytest.mark.parametrize("provider", ["kilo", "opencode"])
 def test_an_opencode_family_supervisor_gets_the_fixed_line_not_the_text(repo, fake_tmux, provider):
     runtime.start_session(

@@ -26,8 +26,9 @@
 #   docker compose exec lado lado ui --no-open               # the UI's link with its token
 #
 # The agent CLIs' logins: first the UI's Settings → Providers and environment, which logs
-# Claude Code, OpenCode and Kilo in from the page (a phone too) and keeps Claude Code's
-# token; the ways below are for the terminal. Codex's login is not covered yet.
+# Claude Code, Codex, OpenCode and Kilo in from the page (a phone too: Codex by a sign-in
+# code) and keeps Claude Code's token and Codex's token or key; the ways below are for the
+# terminal.
 #
 # The agents' variables (tokens, keys), optional: files in a folder secrets/ next to this
 # file, one per variable. To give them, add LADO_SECRETS=./secrets to .env, then:
@@ -45,12 +46,16 @@
 #                             inside: docker compose exec -it lado gh auth login)
 #   CLAUDE_CODE_OAUTH_TOKEN   Claude Code's login, from `claude setup-token` (or log in once
 #                             inside: docker compose exec -it lado claude)
+#   CODEX_ACCESS_TOKEN        Codex's login, a ChatGPT Business or Enterprise access token;
+#                             or OPENAI_API_KEY, an OpenAI API key; or log in once inside:
+#                             docker compose exec -it lado codex login --device-auth
 #   YOUGILE_API_KEY           a kit's key, as its MCP server names it
 #   OPENAI_API_KEY, ...       a model provider's key, for OpenCode and Kilo (or `opencode
 #                             auth login` / `kilo auth login` inside)
-# Logins made inside stay on the home volume. Codex's login is not covered yet. Every agent
-# of the container can read every variable given to it: another LADO, with its own folder
-# (or none) and home volume, keeps another set apart. LADO_SECRETS may name any folder.
+# Logins made inside stay on the home volume; Codex's is shared by every Codex agent.
+# Every agent of the container can read every variable given to it: another LADO, with its
+# own folder (or none) and home volume, keeps another set apart. LADO_SECRETS may name any
+# folder.
 #
 # git: LADO_GIT_NAME and LADO_GIT_EMAIL are written to git's global config at every start;
 # without them `docker compose logs lado` warns that agents cannot commit. ssh: set

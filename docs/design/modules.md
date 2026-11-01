@@ -465,9 +465,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     agent CLIs' login variables the human sets in Settings (lado.logins checks the names).
   - `logins.py`: the agent CLIs' logins (docs/design/ui.md, Providers and environment):
     `refusal` is why a new session or worker (`SESSION`, `WORKER`) of a CLI that needs a
-    login and has none is not started (lado.runtime.check_login raises it), `wait_reason`
-    why a resumed agent waits;
-    `read` asks a provider's `login_status` in the environment its agents get without a
+    login there (`Provider.needs_login(env)`) and has none is not started
+    (lado.runtime.check_login raises it), `wait_reason` why a resumed agent waits;
+    `read` asks a provider's `login_status` and `needs_login` (`Login.needs_login`) in the environment its agents get without a
     project (`environment(provider, layers)`: the login taken whole from one layer), says
     the layer that gives the login (`layer`, by the same rule: LADO's secret, the outside
     folder, the login shell) and where it comes from in words (`Login.where`: that layer,
@@ -544,7 +544,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     launch warning): the role as `developer_instructions` (the base prompt stays), Codex's
     update check, subagents (`features.multi_agent`), analytics and feedback off, its shell
     snapshot off (`features.shell_snapshot`: it writes the agent's whole environment, a
-    kit's MCP secrets too, into the home's `shell_snapshots/`), LADO's
+    kit's MCP secrets too, into the home's `shell_snapshots/`), its plugins off
+    (`features.plugins`: it would clone OpenAI's catalogue into each new home), its login
+    in the file (`cli_auth_credentials_store = "file"`), LADO's
     hooks with their `trusted_hash` (`hook_hash`, Codex's formula, pinned by a test against
     hashes Codex wrote; keyed by the real path of that config.toml), the MCP servers (`lado`
     `required` and its tools approved; each server's `env_vars` names every variable of the
@@ -560,9 +562,20 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     path then as spelled; the first entry with a level decides, `untrusted` too) and to
     review the repository's own hooks (`.codex/hooks.json` and `[hooks]` of
     `.codex/config.toml`, the main checkout's in a linked worktree) it has no trust for:
-    `first_hook_blocker` reads both from the agent's config.toml. Its argv is `codex
-    --no-daemon` (else a background app server outlives the agent) with the first lines
-    last. Codex's own login is not carried (BACKLOG.md). The provider is chosen
+    so without the user's entry LADO trusts the main root, and in a trusted folder it
+    trusts the repository's hooks by their hashes (a hook the user disabled stays so);
+    `first_hook_blocker` still reads both from the agent's config.toml, for a home LADO did
+    not write. Its argv is `codex --no-daemon` (else a background app server outlives the
+    agent) with the first lines last. The login (`first_hook_blocker`, `_settle_login`):
+    `auth.json` a link to the user's (`user-codex-home` in the agent's folder names the
+    user's Codex home), or a file of the agent's own with `OPENAI_API_KEY`, whose variable
+    Codex's TUI ignores. `login_status` runs `codex login status -c
+    cli_auth_credentials_store="file"` (the store agents use), takes `OPENAI_API_KEY` as a
+    login without it, and reads a login kept only in the keyring as none, with
+    `LoginStatus.keyring` (Settings shows `keyring_note`); `needs_login(env)` follows the
+    model provider of the config. Its sheet (`login_choices`): a ChatGPT sign-in code
+    (`login_actions`' `codex login --device-auth`), `CODEX_ACCESS_TOKEN` or
+    `OPENAI_API_KEY`; `logout` runs `codex logout`. The provider is chosen
     per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
     Each provider lists the `--permission-mode` values it honours (`permission_modes`; the
     CLI help shows them); `lado start` (also a resume) and `spawn_worker` refuse a mode the

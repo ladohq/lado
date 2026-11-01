@@ -218,8 +218,31 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   blocker, any other first hook (`state.seen` says it is the first) by
   `runtime.heard_at_start`, which puts it back to `starting`. A slow CLI past 30 s is
   `waiting` for a moment and clears by itself.
-- A new session or worker whose CLI needs a login (`Capabilities.needs_login`: Claude
-  Code) and has none is refused before anything of it is stored or made
+- A Codex agent's own Codex home (its config folder, `CODEX_HOME`) is settled so that no
+  screen holds it: its config.toml trusts the repository's main root (`trust_level =
+  "trusted"` for its real path, which covers a worker's worktree) unless the user's Codex
+  config has an entry Codex goes by for the folder, carried as it is (`untrusted` too);
+  trusts the repository's own hooks (`.codex/hooks.json` and `.codex/config.toml`'s, from
+  the project root down) by Codex's hashes, as a human who trusts the folder takes them, a
+  hook the user disabled staying disabled; switches plugins off (`features.plugins =
+  false`: Codex would clone its catalogue into each new home at its start); and keeps the
+  login in the file (`cli_auth_credentials_store = "file"`). Its login is settled by
+  `first_hook_blocker` (`codex._settle_login`), before its status is read in that home:
+  `auth.json` becomes a symbolic link to the user's (`$CODEX_HOME/auth.json` of the agent's
+  environment, else `~/.codex/auth.json`, kept by `launch_command` in the agent's folder as
+  `user-codex-home` for the waiting window, whose `CODEX_HOME` is the agent's), also before
+  that file exists; Codex writes it in place and re-reads it before a refresh, so one
+  refresh serves every agent and the user's own Codex (0.162.0, checked on a ChatGPT login:
+  three agents refreshing at once). With `OPENAI_API_KEY` in the agent's environment and no
+  `CODEX_ACCESS_TOKEN` (which Codex reads itself, before its file) it is a file of the
+  agent's own instead, mode 600, holding the key as `codex login --with-api-key` writes it:
+  Codex's TUI does not read the variable. Each write is a `note`; one LADO cannot make is a
+  `warning`, and the agent starts all the same. Nothing is written into the user's Codex
+  home.
+- A new session or worker whose CLI needs a login (`Provider.needs_login`, asked with the
+  environment the agent would start from: Claude Code always; Codex when the model
+  provider of the user's config, the chosen profile's, else the top level's, is OpenAI's,
+  its default, or has `requires_openai_auth`) and has none is refused before anything of it is stored or made
   (`runtime.check_login`, `lado.logins.refusal`): `start_session` checks a new session and
   a resume by hand (`lado start` of a stopped session, the UI's Resume: `logins.RESUME`,
   "… so the session was not resumed: …", LAD-163) by the supervisor's provider, the one
@@ -231,9 +254,11 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   scratch check before the clone or the folder (`runtime.check_start_login`). Only `no`
   refuses; an unreadable login goes on as below.
 - An agent LADO resumes by itself whose CLI needs a login waits for it before anything else, as does a new
-  one whose login went between the check and its launch: before its window starts
-  (`runtime._held_for_login`, at every launch) LADO asks the provider's `login_status` with
-  the agent's launch environment; at `no` the agent is `waiting` with `logins.wait_reason` (`<CLI> is not
+  one whose login went between the check and its launch: before its window starts, once
+  `first_hook_blocker` has settled what it can (`runtime._before_window`, at every launch:
+  it may give the agent its login, Codex's link), LADO asks the provider (`needs_login`,
+  `login_status`) with the agent's launch environment (`runtime._held_for_login`); at `no`
+  the agent is `waiting` with `logins.wait_reason` (`<CLI> is not
   logged in: log in in Settings → Providers and environment, or set <variable>; the agent
   starts by itself once you do`), told and logged as a blocker's reason is; what needs no
   login is settled at once (`first_hook_blocker`: Claude Code's trust, its note in
@@ -253,7 +278,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   agent: the launch goes on with a warning. The UI shows the wait by `AgentInfo.login_wait`.
 - An agent whose CLI asks the human before any hook (Claude Code's "trust this folder?"
   when LADO could not record it, Codex's; `Provider.first_hook_blocker`) waits from its
-  start: after `launch_command` and before its window starts (`runtime._first_hook_blocker`, for start,
+  start: after `launch_command` and before its window starts (`runtime._before_window`, for start,
   resume and spawn), `state.block` sets it `waiting` with a `blocked` event, whose detail
   is why and what to answer. That reason holds while no `status` or `spawned` event came
   after it (`state.block_reasons`, read by `_Reasons`: `lado ls`, `list_agents`,

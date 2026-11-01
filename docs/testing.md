@@ -124,8 +124,11 @@ LADO_LIVE_API_KEY="$(cat <key file>)" LADO_LIVE_MODEL=<model> LADO_LIVE_IMAGE=1 
 PROVIDER=codex`; never a paid model. The passive supervisor of the live kit is
 read-only (no command tools; LADO's run messages to it name the human's ways), and every
 live test fails when a `repo_changed` event names it; the test merges only while it is idle.
-Each Codex agent asks whether to trust the test's repo, answered by the test after checking
-the wait.
+No Codex agent asks whether to trust the test's repo: LADO's config of each agent trusts
+it, and the test fails if Codex asks. `tests/live/test_codex_login.py` runs a Codex session
+with a worker on OpenAI's model and a real ChatGPT login, shared by the agents' links, made
+stale so each refreshes it: only with `LADO_LIVE_CODEX_HOME` naming a Codex home the human
+logged in to (`CODEX_HOME=<dir> codex login --device-auth`), else it skips.
 Unit tests get a `CODEX_HOME` of their own (`codex_home`, `tests/conftest.py`), never the
 user's `~/.codex`. The Claude test runs Claude Code with the human's own config (it
 unsets the tests' `CLAUDE_CONFIG_DIR`) and a fixed repo path, so LADO records one trusted

@@ -6,7 +6,7 @@ There are two ways to install LADO: **Docker**, the recommended one, and **PyPI*
 |---|---|---|
 | What you install | Docker only: the image holds LADO, tmux, git, gh and the four agent CLIs at the versions LADO is tested with | tmux, git, uv and an agent CLI on your computer, then LADO |
 | What the agents reach | your workspace folder and the keys you give them (files in `secrets/`, your ssh agent); not the rest of your computer | everything you can: they run as you |
-| Agent CLI logins | made once inside the container, or a token in `secrets/`; your own CLI config stays as it is. Codex's login is not carried yet | the logins and config your CLIs already have |
+| Agent CLI logins | made once inside the container, or a token in `secrets/`; your own CLI config stays as it is | the logins and config your CLIs already have |
 | How you work | the web UI; commands as `docker compose exec lado lado ...` | the terminal (`lado start`, tmux windows with `lado attach`) and the web UI |
 | Install | one command, which asks for your workspace folder and what else it cannot find out | `uv tool install lado`, after tmux, git and an agent CLI |
 | Update and back | the same command again; by hand a new `LADO_VERSION` in `.env` and `docker compose up -d`, the version before the same way | `lado update` |
@@ -302,7 +302,14 @@ shows for each CLI whether it is logged in, how and from where ("Logged in · Su
 Claude Code is installed and paste the token it prints; **Pay per use**: paste an API key
 from console.anthropic.com. LADO keeps it as its own secret, in place of the other one,
 and gives it to every agent; **Log out…** there removes it. LADO runs no Claude Code login
-itself. OpenCode and Kilo open their own login there. A session started before the login
+itself. For Codex, **Log in…** asks how you pay for Codex: **ChatGPT plan** (Plus, Pro,
+Business or Enterprise): **Get a sign-in code** shows a link and a one-time code, which you
+enter on any device; **ChatGPT Business or Enterprise — access token**: paste a token your
+workspace admin made in ChatGPT's admin console; **Pay per use**: paste an OpenAI API key.
+The sign-in code goes to Codex's own login file in the home volume, which every Codex agent
+and your own Codex in the container share; a token or a key is LADO's secret. A Codex agent
+needs a login only on OpenAI's models (Codex's default); with a local model it starts
+without. OpenCode and Kilo open their own login there. A session started before the login
 waits in **Needs you** ("Claude Code is not logged in") and starts by itself once you log
 in.
 
@@ -326,7 +333,10 @@ ways:
   given).
 - **OpenCode and Kilo**: `docker compose exec -it lado opencode auth login` or
   `docker compose exec -it lado kilo auth login`, or the model provider's key in `secrets/`.
-- **Codex**: not covered in the container yet.
+- **Codex**: `docker compose exec -it lado codex login --device-auth` (a link and a
+  one-time code), or a token or key in `secrets/`: `CODEX_ACCESS_TOKEN` (ChatGPT Business
+  or Enterprise) or `OPENAI_API_KEY`. Every Codex agent shares that login; a token or key
+  overrides it, and `docker compose exec -it lado codex logout` removes it.
 
 ### git over ssh
 

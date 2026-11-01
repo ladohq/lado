@@ -16,7 +16,7 @@ model's metadata turns on.
 
 #### Scenario: A model whose metadata turns the subagents on
 - **WHEN** a Codex supervisor whose model is one that Codex's metadata gives the
-  `collaboration` tools (gpt-5.6-sol with Codex 0.162.0) sends its first request
+  `collaboration` tools (gpt-6-sol with Codex 0.162.0) sends its first request
 - **THEN** the request's tools hold no `collaboration` namespace and no `spawn_agent` or
   `wait_agent`, while a plain `codex exec` with the same model and no LADO config does get
   them

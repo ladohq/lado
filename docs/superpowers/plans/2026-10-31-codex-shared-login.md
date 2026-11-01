@@ -133,23 +133,44 @@ def test_refusal_asks_the_provider_with_the_environment(monkeypatch):
 def test_an_api_key_variable_is_a_login_without_the_command(cli_logins):
     found = CodexProvider().login_status({"OPENAI_API_KEY": "sk-x", "HOME": "/h"})
     assert (found.state, found.method, found.variable, found.choice) == (
-        base.YES, "Pay per use (API key)", "OPENAI_API_KEY", "usage")
+        base.YES,
+        "Pay per use (API key)",
+        "OPENAI_API_KEY",
+        "usage",
+    )
     assert cli_logins.calls == []
+
 
 def test_the_status_reads_the_file_store(cli_logins, codex_home):
     cli_logins.answer("codex", 0, "", "Logged in using ChatGPT\n")
     found = CodexProvider().login_status({"CODEX_HOME": str(codex_home)})
-    assert (found.method, found.choice, found.file_words) == ("ChatGPT plan", "chatgpt", "Codex's login file")
+    assert (found.method, found.choice, found.file_words) == (
+        "ChatGPT plan",
+        "chatgpt",
+        "Codex's login file",
+    )
     assert ["-c", 'cli_auth_credentials_store="file"'] == cli_logins.calls[0][0][3:5]
+
 
 def test_an_access_token_variable(cli_logins):
     cli_logins.answer("codex", 0, "", "Logged in using personal access token\n")
     found = CodexProvider().login_status({"CODEX_ACCESS_TOKEN": "at-x", "OPENAI_API_KEY": "sk"})
-    assert (found.method, found.variable, found.choice) == ("ChatGPT access token", "CODEX_ACCESS_TOKEN", "token")
+    assert (found.method, found.variable, found.choice) == (
+        "ChatGPT access token",
+        "CODEX_ACCESS_TOKEN",
+        "token",
+    )
+
 
 def test_a_keyring_login_is_not_the_agents(cli_logins, codex_home):
-    codex_home.mkdir(); (codex_home / "config.toml").write_text('cli_auth_credentials_store = "keyring"\n')
-    cli_logins.answer("codex", lambda argv, env: (1, "", "Not logged in\n") if "-c" in argv else (0, "", "Logged in using ChatGPT\n"))
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text('cli_auth_credentials_store = "keyring"\n')
+    cli_logins.answer(
+        "codex",
+        lambda argv, env: (
+            (1, "", "Not logged in\n") if "-c" in argv else (0, "", "Logged in using ChatGPT\n")
+        ),
+    )
     found = CodexProvider().login_status({"CODEX_HOME": str(codex_home)})
     assert (found.state, found.keyring) == (base.NO, True)
 ```
@@ -168,8 +189,13 @@ def test_a_keyring_login_is_not_the_agents(cli_logins, codex_home):
 ```python
 FILE_STORE = ["-c", 'cli_auth_credentials_store="file"']
 KEYRING_STORES = ("keyring", "auto")
-METHODS = {"ChatGPT": ("ChatGPT plan", "chatgpt"), "API key": ("Pay per use (API key)", "usage"),
-           "personal access token": ("ChatGPT access token", "token"), "access token": ("ChatGPT access token", "token")}
+METHODS = {
+    "ChatGPT": ("ChatGPT plan", "chatgpt"),
+    "API key": ("Pay per use (API key)", "usage"),
+    "personal access token": ("ChatGPT access token", "token"),
+    "access token": ("ChatGPT access token", "token"),
+}
+
 
 def _model_provider(config: dict) -> str:
     """The model provider Codex runs with this config: the chosen profile's, else the top
@@ -248,7 +274,9 @@ def _model_provider(config: dict) -> str:
 ```python
 def test_the_agents_login_is_a_link_to_the_users(tmp_path):
     home, user = tmp_path / "agent", tmp_path / "user"
-    home.mkdir(); user.mkdir(); (user / "auth.json").write_text("{}")
+    home.mkdir()
+    user.mkdir()
+    (user / "auth.json").write_text("{}")
     (home / "user-codex-home").write_text(str(user))
     blocker = CodexProvider().first_hook_blocker(str(repo), {"CODEX_HOME": str(home)})
     assert (home / "auth.json").is_symlink()

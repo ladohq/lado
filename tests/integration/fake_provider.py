@@ -185,7 +185,8 @@ class FakeLoginProvider(FakeProvider):
             return base.LoginStatus(base.YES, "key", variable=KEY, choice="key")
         if env.get(TOKEN):
             return base.LoginStatus(base.YES, "token", variable=TOKEN, choice="token")
-        return _file_login(env)
+        found = _file_login(env)  # its own file: the sign-in code's, as Codex's ChatGPT login
+        return dataclasses.replace(found, choice="code") if found.state == base.YES else found
 
 
 # "fake-window" logs in by its own command, like OpenCode and Kilo: its login action

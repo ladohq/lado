@@ -1,10 +1,12 @@
 # Plan: Model and power choice for agents (LAD-154)
 
 ## State
+Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: plan · Epic run: epic/epic-models · Branch: base (`main`)
 In work: none · Next: S1 · Open checks: none
 Standing rules of the human:
 - Every step merges into `main` on its own and leaves the product working; unset means today's behaviour (D2).
+- No release between steps: the next release carries the whole epic, unless the human decides on a release during the epic (gate #190, D9).
 - Each step's task gets the label `component lado` (kit sdlc's: `component kit-sdlc`) and is linked to LAD-154; LAD-80 is not touched.
 Last review: none yet, base at ca7548fc
 
@@ -16,8 +18,9 @@ alone), S7 gains S7b for kit sdlc's own repository (D6). Statement step 10 is in
 (`web/openapi.json`, `web/src/api.gen.ts`), the others build on each other.
 
 Rules for every step of LADO (not S7b, which is kit sdlc's own release):
-- Its Check includes: a CHANGELOG line under `## X.Y.Z (unreleased)` (a minor: schema,
-  MCP tool or CLI change); the spec of its capability in `openspec/specs/` (a new one for
+- Its Check includes: a CHANGELOG line under the current `## X.Y.Z (unreleased)` heading
+  (one minor for the whole epic, D9; a step adds no heading of its own while that one is
+  unreleased); the spec of its capability in `openspec/specs/` (a new one for
   agent models, session models, model servers, power tables) and `openspec validate
   --specs --strict`; `make lint`, `make test`, `make web` when `web/` or the API changed,
   the changed tests with their markers; CI green.
@@ -144,7 +147,9 @@ Check:
   a row an agent takes "normal"; S1's card names the row and the level ("normal work,
   user table").
 - What a row's CLI does against the agent's provider: as Q3 decides, in the Check of
-  S5c and S8.
+  S5c and S8; the login check before the start goes by the CLI the agent resolves to.
+- The table is kept in S5a's store: the schema is unchanged when S5a's store holds it,
+  else the migration and the way back (rules above).
 - Unit tests of the resolution; UI e2e, mockup; `docs/design/ui.md`, `docs/cli.md`.
 Notes: light and heavy take effect from S7/S8, when roles, steps and the supervisor choose
 a row. Ready-made tables («Claude: haiku / sonnet / opus», «Всё на сервере»): Q1.
@@ -183,9 +188,11 @@ such a kit; `dependencies.lado` makes the refusal clear.
 Status: planned
 Check: kit sdlc (its own repository) marks its roles and steps with a power and
 `dependencies.lado` on the LADO release that ships S7; a session with that kit shows each
-role's row on its cards.
-Notes: tracker task with `component kit-sdlc` (D6); starts only after that LADO release.
-Versioned and released by kit sdlc's own rules, not LADO's minor.
+role's row on its cards (checked against LADO's `main` before that release).
+Status of its check: open until the LADO release that carries the epic (D9): kit sdlc's
+pull request merges and is released by kit sdlc's own rules only after it.
+Notes: tracker task with `component kit-sdlc` (D6). With no LADO release mid-epic (D9) it
+is built during the epic and waits for that release to merge.
 
 ### S8 — Power when the supervisor spawns a worker (S)
 Status: planned
@@ -223,9 +230,12 @@ Check:
   Needed before S3b's merge.
 - Q3. A table row names a CLI (heavy → Claude opus); the agent's provider may come from
   elsewhere (the session's `--provider`, `spawn_worker`'s provider). Options: (a) the
-  row's CLI decides the agent's CLI; the session's provider is only the default for
-  agents whose row is empty; a provider passed explicitly to `spawn_worker` that differs
-  from the row is refused loudly, naming both; (b) the provider always wins and the row
+  row's CLI decides the agent's CLI; an explicit `--provider` of the session is the
+  session level and overrides the CLI of the user's and the project's rows (each level
+  overrides only where it says something; critic P15); without it the session's provider
+  is only the default for agents whose row is empty; the login check goes by the CLI the
+  agent resolves to; a provider passed explicitly to `spawn_worker` that differs from the
+  row is refused loudly, naming both; (b) the provider always wins and the row
   is used only when its CLI matches, otherwise the CLI's default with a loud warning;
   (c) any mismatch is refused. Recommended: (a): the row is a model and a model is a CLI
   + a model (statement), the explicit conflict is the only one a human or supervisor made

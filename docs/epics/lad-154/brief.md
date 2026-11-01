@@ -99,7 +99,7 @@ Statement step 10 goes to "Later" (D3).
 | Scope and what is out | Covered: out are profiles (LAD-80), automatic power by task complexity, fallback models on error, statement step 10 (D3), network scanning, LADO's own model catalogue. |
 | Data and migrations | Covered by S1, S2, S3b, S5a, S6, Check: "the schema migration from `tests/agent_helpers.previous_schema`; the way back: an `lado update` rollback restores `lado.db` from its backup, an older LADO refuses a newer database" (the plan's rule for every step that changes the schema, named in each one's Check). |
 | Secrets and credentials | Covered by S3a, S3b, S5a, S9a, S9b, Check: "the key's value reaches the agent only through its environment, never the config file (the canary approach of LAD-116)" (S3b); the key is a reference by name (D4). |
-| Update and rollback | Covered by S1, S2, S5a, S6 (way back by `lado update`'s restore of `lado.db`) and S7, Check: "the kit docs say a kit with the field needs `dependencies.lado`, and `kits.warnings()` asks for it"; every LADO step is a minor; S7b is released by kit sdlc's own version. |
+| Update and rollback | Covered by S1, S2, S5a, S6 (way back by `lado update`'s restore of `lado.db`) and S7, Check: "the kit docs say a kit with the field needs `dependencies.lado`, and `kits.warnings()` asks for it"; the whole epic is one minor of LADO, released at once (D9); S7b is released by kit sdlc's own version after that release. |
 | Removal | Covered by S5a, Check: "removing a server a session uses: the session's next agent refuses loudly at start; removing the secret a server names: S3b's refusal before the start"; `lado uninstall` removes the settings with `LADO_HOME` (S5a); an empty table row is the CLI's default (S5c). |
 | Platforms | Covered by S2, S4 (all four CLIs, smoke per provider), S3b (OpenCode/Kilo), S9a/S9b (Claude, Codex), S3a, Check: "in Docker, `localhost` that does not answer gives the loud hint `host.docker.internal:<port>`" (D5); macOS, Linux, WSL as today. |
 | Observability | Covered by S1, Check: "`list_agents`, the API and the UI card show model, effort and source"; S3b's pre-start check, S2/S4's loud warnings, S5a's `lado doctor` check of saved servers; the model check's thresholds (plan, rules for every step). |
@@ -109,8 +109,8 @@ Statement step 10 goes to "Later" (D3).
 ## Branch strategy
 
 Every step merges into `main` on its own and leaves the product working; unset means
-today's behaviour, so no feature flag (D2). No epic branch. A release may come between
-steps; while main is frozen for an RC, steps wait for the final.
+today's behaviour, so no feature flag (D2). No epic branch. No release between steps: the next
+release carries the whole epic, unless the human decides on one during the epic (D9).
 
 ## Epic tracker task
 

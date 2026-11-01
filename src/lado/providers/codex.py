@@ -115,6 +115,7 @@ STORE = "file"
 FILE_STORE = ["-c", f'cli_auth_credentials_store="{STORE}"']
 KEYRING_STORES = ("keyring", "auto")
 LOGIN_FILE = "Codex's login file"
+USER_HOME = "user-codex-home"  # in the agent's home: the user's Codex home, one line
 API_KEY = "Pay per use (API key)"
 # `codex login status`'s ways (after "Logged in using", the article dropped): the method
 # for humans and the login choice.
@@ -205,7 +206,7 @@ class CodexProvider(base.Provider):
         if isinstance(found, str):
             return base.LoginStatus(base.UNKNOWN, problem=found)
         lines = [line.strip() for line in f"{found.stdout}\n{found.stderr}".splitlines()]
-        home = Path(env.get("CODEX_HOME") or Path(env.get("HOME") or Path.home()) / ".codex")
+        home = _codex_home(env)
         for line in lines:
             if line == "Not logged in":
                 return base.LoginStatus(base.NO)
@@ -247,9 +248,19 @@ class CodexProvider(base.Provider):
             # shell_snapshots/ of its home: no such value may go on disk (lado.mcp_exec).
             # Its goals (`update_goal`, on by default in 0.162): an agent gets its task as
             # messages, and local models loop on the tool.
-            features={"multi_agent": False, "shell_snapshot": False, "goals": False},
+            # Its plugins: Codex clones OpenAI's catalogue (about 100 MB) into each new home
+            # at the start; the user's installed plugins live in the user's home anyway.
+            features={
+                "multi_agent": False,
+                "shell_snapshot": False,
+                "goals": False,
+                "plugins": False,
+            },
             analytics={"enabled": False},
             feedback={"enabled": False},
+            # Its login stays in the file every agent and the user's own Codex share
+            # (_settle_login): in the keyring it would be under a key of this home's path.
+            cli_auth_credentials_store=STORE,
         )
         if spec.read_only:
             config["features"]["worktrees"] = False
@@ -258,8 +269,10 @@ class CodexProvider(base.Provider):
                 f"that LADO cannot take away from read-only agent {agent.name}; its shell "
                 "stays too, and LADO reports any change of the repository"
             )
-        if trust := _trust_entry(user.get("projects"), cwd):
-            config["projects"] = {trust[0]: {"trust_level": trust[1]}}
+        # The user's entry for the folder as it is (untrusted too), else LADO trusts the
+        # repository's main root, which covers a worker's worktree: no question at the start.
+        trust = _trust_entry(user.get("projects"), cwd) or (str(gitpaths.main_root(cwd)), "trusted")
+        config["projects"] = {trust[0]: {"trust_level": trust[1]}}
         config["hooks"] = _hooks(agent, home)
         user_trust = (user.get("hooks") or {}).get("state") or {}
         for path in _repo_hook_files(cwd, home):
@@ -267,6 +280,11 @@ class CodexProvider(base.Provider):
                 kept = _keep(entry, key, dropped) if key.startswith(f"{path}:") else None
                 if kept is not None:
                     config["hooks"]["state"][key] = kept
+            # The repository's own hooks, which load in a trusted folder only, trusted as a
+            # human who trusts the folder takes them; one the user disabled stays so.
+            for key, digest in _hook_handlers(path) if trust[1] == "trusted" else ():
+                if (config["hooks"]["state"].get(key) or {}).get("enabled") is not False:
+                    config["hooks"]["state"][key] = {"trusted_hash": digest}
         if dropped:
             warnings.append(
                 f"cannot write {', '.join(dropped)} of {user_path} into the config of Codex "
@@ -286,6 +304,8 @@ class CodexProvider(base.Provider):
         os.fchmod(fd, 0o600)  # the mode above is only for a new file
         with os.fdopen(fd, "w") as file:
             file.write(toml_text(config))
+        # For _settle_login, which also runs where CODEX_HOME is the agent's own.
+        (home / USER_HOME).write_text(f"{_codex_home(spec.environ or os.environ)}\n")
         # --no-daemon: else Codex starts a background app server for the home, which runs
         # the hooks with its own environment, copies the CLI into the home and outlives the
         # agent.
@@ -358,14 +378,17 @@ class CodexProvider(base.Provider):
         return base.Blocker()
 
 
-def _user_config(environ, warnings: list[str]) -> tuple[dict, Path]:
-    """The user's own Codex config (CODEX_HOME of the agent's environment, else
-    ~/.codex) and its path; {} when there is none, or with a warning when it cannot be
-    read."""
+def _codex_home(environ) -> Path:
+    """The user's own Codex home: CODEX_HOME of the agent's environment, else ~/.codex."""
     if environ.get("CODEX_HOME"):
-        path = Path(environ["CODEX_HOME"]) / "config.toml"
-    else:
-        path = Path(environ.get("HOME") or Path.home()) / ".codex" / "config.toml"
+        return Path(environ["CODEX_HOME"])
+    return Path(environ.get("HOME") or Path.home()) / ".codex"
+
+
+def _user_config(environ, warnings: list[str]) -> tuple[dict, Path]:
+    """The user's own Codex config (in _codex_home) and its path; {} when there is none,
+    or with a warning when it cannot be read."""
+    path = _codex_home(environ) / "config.toml"
     try:
         return _read_toml(path), path
     except (OSError, ValueError) as error:
@@ -403,7 +426,8 @@ def _read_toml(path: Path) -> dict:
 # config/src/loader/mod.rs): Codex looks up the folder it runs in, its project root (the
 # nearest folder up with a .git), then its repository's main root (a linked worktree's main
 # repo), each by its real path, then as spelled; the first entry with a trust level decides,
-# trusted or untrusted. An entry above the git root covers nothing. With none, Codex asks.
+# trusted or untrusted. An entry above the git root covers nothing. With none, Codex asks:
+# so LADO writes one for the main root when the user's config has none (launch_command).
 # The agent's Codex uses the default project_root_markers (.git): the user's are not
 # carried.
 def _trust_keys(cwd: Path) -> list[str]:
@@ -441,8 +465,9 @@ def _trust_entry(projects, cwd: Path) -> tuple[str, str] | None:
 # folder from the project root down to the agent's folder that has a .codex folder (not the
 # Codex home), its hooks.json and the [hooks] of its config.toml, only in a trusted folder.
 # In a linked worktree they are the main checkout's, read from there, so the trust the user
-# gave them in the main checkout holds. Plugins' hooks come from plugins installed in the
-# Codex home, which is new for each agent: none.
+# gave them in the main checkout holds; LADO trusts the rest by their hashes in the agent's
+# config (launch_command). Plugins' hooks come from plugins installed in the Codex home,
+# which is new for each agent, with plugins off: none.
 def _repo_hook_files(cwd: Path, home: Path) -> list[Path]:
     cwd, root = cwd.resolve(), _project_root(cwd)
     top = gitpaths.rev_parse(cwd, "--show-toplevel")

@@ -512,9 +512,40 @@ def test_codex_trusts_the_repo_the_user_trusts(repo, codex_home):
     assert _blocker(launch, repo) == base.Blocker()
 
 
-def test_codex_asks_about_a_repo_the_user_does_not_trust(repo, codex_home):
+def test_a_repo_the_user_never_trusted_is_trusted_by_the_agents_config(repo, codex_home):
     launch, config = _launch(repo)
-    assert "projects" not in config
+    assert config["projects"] == {str(repo.resolve()): {"trust_level": "trusted"}}
+    assert _blocker(launch, repo).reason is None
+    assert not codex_home.exists()  # nothing written into the user's Codex home
+
+
+def test_a_worker_trusts_the_main_repos_root(repo, codex_home):
+    worktree = _worktree(repo)
+    launch, config = _launch(worktree)
+    assert config["projects"] == {str(repo.resolve()): {"trust_level": "trusted"}}
+    assert _blocker(launch, worktree).reason is None
+
+
+def test_a_folder_of_no_repository_is_trusted_by_its_real_path(tmp_path, codex_home):
+    folder = tmp_path / "plain"
+    folder.mkdir()
+    launch, config = _launch(folder)
+    assert config["projects"] == {str(folder.resolve()): {"trust_level": "trusted"}}
+    assert _blocker(launch, folder).reason is None
+
+
+def _rewrite(launch, change):
+    """The agent's config.toml as LADO did not write it: `change` edits its table."""
+    path = Path(launch.env["CODEX_HOME"]) / "config.toml"
+    config = tomllib.loads(path.read_text())
+    change(config)
+    path.write_text(codex.toml_text(config))
+
+
+def test_a_config_lado_did_not_write_without_the_trust_asks(repo, codex_home):
+    """A hand-edited home: Codex asks, and the reason says so."""
+    launch, _ = _launch(repo)
+    _rewrite(launch, lambda config: config.pop("projects"))
     blocker = _blocker(launch, repo)
     assert blocker.reason.startswith(f"Codex CLI asks whether to trust {repo.resolve()}")
     assert "Trust and continue" in blocker.reason
@@ -523,8 +554,9 @@ def test_codex_asks_about_a_repo_the_user_does_not_trust(repo, codex_home):
 def test_trust_above_the_git_root_does_not_cover_it(repo, codex_home):
     _trust(codex_home, repo.parent.resolve())
     launch, config = _launch(repo)
-    assert "projects" not in config
-    assert _blocker(launch, repo).reason
+    # Not the user's entry, which Codex would not go by: LADO's own.
+    assert config["projects"] == {str(repo.resolve()): {"trust_level": "trusted"}}
+    assert _blocker(launch, repo).reason is None
 
 
 def test_a_subfolder_is_trusted_by_its_repo(repo, codex_home):
@@ -584,10 +616,42 @@ def _repo_hooks(repo):
     return group, codex.hook_hash("Stop", group, group["hooks"][0])
 
 
-def test_the_repo_s_own_hooks_asked_about_are_named(repo, codex_home):
+def _repo_hook_key(repo, file="hooks.json"):
+    return f"{repo.resolve() / '.codex' / file}:stop:0:0"
+
+
+def test_the_repo_s_own_hooks_are_trusted_by_the_agents_config(repo, codex_home):
+    """As a human who trusts the folder takes them; the user never reviewed them."""
+    _, digest = _repo_hooks(repo)
+    launch, config = _launch(repo)
+    assert config["hooks"]["state"][_repo_hook_key(repo)] == {"trusted_hash": digest}
+    assert _blocker(launch, repo).reason is None
+    assert not codex_home.exists()
+
+
+def test_a_repo_hook_the_user_disabled_stays_disabled(repo, codex_home):
     _repo_hooks(repo)
-    _trust(codex_home, repo.resolve())
+    key = _repo_hook_key(repo)
+    _user_config(codex_home, f'[hooks.state."{key}"]\nenabled = false\n')
+    launch, config = _launch(repo)
+    assert config["hooks"]["state"][key] == {"enabled": False}
+    assert _blocker(launch, repo).reason is None
+
+
+def test_an_unreadable_repo_hooks_file_is_left_to_codex(repo, codex_home):
+    """No hook read, no hash: Codex warns and skips such a file itself."""
+    (repo / ".codex").mkdir()
+    (repo / ".codex" / "hooks.json").write_text("{ not json")
+    launch, config = _launch(repo)
+    assert not [k for k in config["hooks"]["state"] if "hooks.json" in k]
+    assert _blocker(launch, repo).reason is None
+
+
+def test_the_repo_s_own_hooks_asked_about_are_named(repo, codex_home):
+    """A config LADO did not write: the review question is named."""
+    _repo_hooks(repo)
     launch, _ = _launch(repo)
+    _rewrite(launch, lambda config: config["hooks"]["state"].pop(_repo_hook_key(repo)))
     blocker = _blocker(launch, repo)
     assert blocker.reason.startswith("Codex CLI asks to review the repository's own hooks")
     assert str(repo.resolve() / ".codex" / "hooks.json") in blocker.reason
@@ -632,20 +696,47 @@ def test_hooks_in_the_repo_s_codex_config_count_too(repo, codex_home):
     (repo / ".codex" / "config.toml").write_text(
         '[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype = "command"\ncommand = "repo-hook"\n'
     )
-    _trust(codex_home, repo.resolve())
-    launch, _ = _launch(repo)
+    launch, config = _launch(repo)
+    assert _repo_hook_key(repo, "config.toml") in config["hooks"]["state"]
+    assert _blocker(launch, repo).reason is None
+    _rewrite(launch, lambda c: c["hooks"]["state"].pop(_repo_hook_key(repo, "config.toml")))
     assert str(repo.resolve() / ".codex" / "config.toml") in _blocker(launch, repo).reason
 
 
 def test_an_untrusted_repo_s_hooks_do_not_load(repo, codex_home):
     _repo_hooks(repo)
     _trust(codex_home, repo.resolve(), level="untrusted")
-    launch, _ = _launch(repo)
+    launch, config = _launch(repo)
+    assert _repo_hook_key(repo) not in config["hooks"]["state"]  # none to trust
     assert _blocker(launch, repo) == base.Blocker()
 
 
 def test_a_repo_codex_will_ask_about_names_its_hooks_too(repo, codex_home):
     _repo_hooks(repo)
     launch, _ = _launch(repo)
+
+    def forget(config):
+        config.pop("projects")
+        config["hooks"]["state"].pop(_repo_hook_key(repo))
+
+    _rewrite(launch, forget)
     reason = _blocker(launch, repo).reason
     assert "whether to trust" in reason and "hooks.json" in reason
+
+
+def test_plugins_are_off_and_the_login_is_kept_in_a_file(repo):
+    """Codex would clone its plugins catalogue into each new home at its start; and a
+    keyring login would be one of each agent's home."""
+    _, config = _launch(repo)
+    assert config["features"]["plugins"] is False
+    assert config["cli_auth_credentials_store"] == "file"
+
+
+def test_the_user_s_codex_home_is_written_for_the_login(repo, tmp_path):
+    """The waiting window's environment holds the agent's own CODEX_HOME: the user's is
+    kept beside its config (lado.providers.codex._settle_login)."""
+    launch, _ = _launch(repo, environ={"HOME": "/h", "CODEX_HOME": str(tmp_path / "u")})
+    home = Path(launch.env["CODEX_HOME"])
+    assert (home / "user-codex-home").read_text() == f"{tmp_path / 'u'}\n"
+    _launch(repo, environ={"HOME": "/h"})
+    assert (home / "user-codex-home").read_text() == "/h/.codex\n"

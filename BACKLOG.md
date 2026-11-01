@@ -12,6 +12,21 @@ No entry is open.
 
 # P1: next
 
+## A Codex agent on gpt-5.6-sol stops at "Meet GPT-6 Sol"
+
+Size: S. Why here: every Codex agent of a user whose model is gpt-5.6-sol needs a hand in
+its terminal before its first turn.
+
+Codex 0.162.0 with `model = "gpt-5.6-sol"` opens its TUI on a model-upgrade screen ("Meet
+GPT-6 Sol", 1. Try new model, 2. Use existing model) before any input, in each new agent's
+home: where Codex keeps the answer is not checked, and LADO carries only the model settings
+(`codex.CARRIED`) into an agent's config. LADO shows the agent as waiting for an answer in
+its terminal 30 s after the start. Seen in a smoke run of a LADO Codex session with that
+model (the smoke of LAD-167 uses gpt-6-sol for it). Wanted: the agent starts with no such
+screen (Codex's own way to mark the notice seen, carried or set), with a smoke test on
+gpt-5.6-sol.
+Found: 2026-11-01, branch lado/lad-167/task-lad-167 (LAD-167).
+
 ## One failing step of the session loop's sweep stops the whole session's pass
 
 Size: M. Why here: one agent's error leaves every agent of the session without the loop's

@@ -4,6 +4,7 @@ run, LADO's messages reach it, a worker starts, and `lado stop` leaves no proces
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -339,4 +340,57 @@ def test_a_codex_session_starts_with_no_screen_in_each_mode(
         time.sleep(1)
     assert not (home / ".tmp" / "plugins").exists()
     assert "projects" not in (codex_home / "config.toml").read_text()  # the user's untouched
+    runtime.stop_session(SESSION)
+
+
+# A model whose metadata turns Codex's second version of its own subagents on (Codex 0.162):
+# the tools of the namespace `collaboration`, `wait_agent` among them (LAD-167).
+# Not gpt-5.6-sol, whose TUI asks first whether to move to gpt-6-sol.
+SUBAGENT_MODEL = "gpt-6-sol"
+# The first version's tools, which a namespace may hold too.
+SUBAGENT_TOOLS = {"spawn_agent", "wait_agent", "send_input", "resume_agent", "close_agent"}
+
+
+def _subagent_tools(names: list[str]) -> list[str]:
+    return [
+        n for n in names if n.startswith("collaboration.") or n.rsplit(".", 1)[-1] in SUBAGENT_TOOLS
+    ]
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_a_codex_agent_gets_none_of_codex_s_own_subagents(
+    smoke_provider, smoke_repo, fake_endpoint, codex_home
+):
+    """With a model whose metadata gives Codex's subagents, a plain `codex exec` offers it
+    `collaboration.wait_agent`; a LADO agent's first request offers no subagent tool."""
+    config = codex_home / "config.toml"
+    config.write_text(
+        re.sub(r'(?m)^model = ".*"$', f'model = "{SUBAGENT_MODEL}"', config.read_text())
+    )
+    control = subprocess.run(
+        ["codex", "exec", "--skip-git-repo-check", "hi"],
+        cwd=smoke_repo,
+        env={**os.environ, "CODEX_HOME": str(codex_home)},
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    plain = [n for names in fake_endpoint.tools for n in names]
+    assert "collaboration.wait_agent" in plain, (
+        f"{SUBAGENT_MODEL} no longer brings Codex's own subagents to a plain `codex exec`: "
+        f"re-check the cause (openspec change codex-subagents-off, D4); tools {plain}, "
+        f"codex {control.stderr[-2000:]}"
+    )
+    asked = len(fake_endpoint.requests)
+
+    runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", "codex")
+    first = delivered(state.LADO, "supervisor", runtime.FIRST_INPUT)
+    wait_for(answering("codex", "supervisor", first), "codex's first input delivered", 120)
+    wait_for(
+        lambda: len(fake_endpoint.requests) > asked, "the supervisor's turn at the endpoint", 120
+    )
+    agent = fake_endpoint.tools[asked]
+    assert {"exec_command", "functions.exec"} & set(agent), agent  # the names were read
+    assert _subagent_tools(agent) == [], agent
     runtime.stop_session(SESSION)

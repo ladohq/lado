@@ -549,7 +549,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     agent's `CODEX_HOME` is its config folder, with a `config.toml` (mode 600) LADO writes
     with a small TOML writer (`toml_text`; a value it cannot write is left out with a
     launch warning): the role as `developer_instructions` (the base prompt stays), Codex's
-    update check, subagents (`features.multi_agent`), analytics and feedback off, its shell
+    update check, its own subagents of both versions (`features.multi_agent`,
+    `features.multi_agent_v2` and `agents.enabled`, the one switch a newer model's metadata
+    does not override), analytics and feedback off, its shell
     snapshot off (`features.shell_snapshot`: it writes the agent's whole environment, a
     kit's MCP secrets too, into the home's `shell_snapshots/`), its plugins off
     (`features.plugins`: it would clone OpenAI's catalogue into each new home), its login

@@ -28,22 +28,51 @@ OPENAI_401 = {
 }
 
 
+def tool_names(body: bytes) -> list[str]:
+    """The names of the tools a request offers the model: its `tools` and those of its input
+    items of type `additional_tools` (where Codex 0.162 puts a newer model's), a namespace's
+    as `<namespace>.<name>`. No names for a body that is not JSON (a compressed one)."""
+    try:
+        request = json.loads(body)
+    except ValueError:
+        return []
+    if not isinstance(request, dict):
+        return []
+    tools = list(request.get("tools") or [])
+    for item in request.get("input") or []:
+        if isinstance(item, dict) and item.get("type") == "additional_tools":
+            tools += item.get("tools") or []
+    names = []
+    for tool in tools:
+        if tool.get("type") == "namespace":
+            names += [f"{tool['name']}.{inner['name']}" for inner in tool.get("tools") or []]
+        else:
+            names.append(tool.get("name"))
+    return names
+
+
 class Endpoint:
-    """Answers every request at once with 401, and keeps the method and path of each (and,
-    with `log`, appends them to that file as a JSON line)."""
+    """Answers every request at once with 401, and keeps the method and path of each and, in
+    `tools`, the names of the tools it offers (with `log`, appends them to that file as a JSON
+    line)."""
 
     def __init__(self, host: str = "127.0.0.1", port: int = 0, log: Path | None = None):
         self.requests: list[tuple[str, str]] = []
+        self.tools: list[list[str]] = []
+        kept_together = threading.Lock()  # the n-th of `tools` is the n-th request's
         endpoint = self
 
         class Handler(BaseHTTPRequestHandler):
             def answer(self):
                 length = int(self.headers.get("Content-Length") or 0)
-                self.rfile.read(length)
-                endpoint.requests.append((self.command, self.path))
+                names = tool_names(self.rfile.read(length))
+                with kept_together:
+                    endpoint.requests.append((self.command, self.path))
+                    endpoint.tools.append(names)
                 if log is not None:
+                    line = {"method": self.command, "path": self.path, "tools": names}
                     with log.open("a") as kept:
-                        kept.write(json.dumps({"method": self.command, "path": self.path}) + "\n")
+                        kept.write(json.dumps(line) + "\n")
                 body = ANTHROPIC_401 if "/messages" in self.path else OPENAI_401
                 data = json.dumps(body).encode()
                 self.send_response(401)

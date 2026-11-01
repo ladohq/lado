@@ -2,7 +2,9 @@
 session with a worker on OpenAI's model, each agent's auth.json a link to the login file of
 a Codex home the human logged in to; each agent started on that file made stale, so it
 refreshes it through its link; the other goes on working, the links stay, and the home is
-still logged in.
+still logged in. And a Codex supervisor on that login, OpenAI's newer models whose metadata
+brings Codex's own subagents, ends its start turn and answers the human's first message
+without them (openspec change codex-subagents-off).
 
 Only at a release, with the human: it needs a ChatGPT account, which CI has none of, and it
 spends a few of its requests. Log a throwaway Codex home in once, then name it:
@@ -136,4 +138,56 @@ def test_codex_agents_share_a_chatgpt_login_and_its_refresh(chatgpt_home, tmp_pa
     for agent in ("supervisor", "w1"):
         linked(agent, target)
     assert "Logged in using ChatGPT" in _status(chatgpt_home)
+    runtime.stop_session(SESSION)
+
+
+# Codex's own subagents, of both versions: newer OpenAI models turn the second on through
+# their metadata (openspec change codex-subagents-off).
+SUBAGENT_TOOLS = {"spawn_agent", "wait_agent", "send_input", "resume_agent", "close_agent"}
+
+
+def tool_calls(agent: str) -> list[str]:
+    """The names of the tools the agent's Codex called, from the rollouts in its home's
+    sessions/, a namespace's as `<namespace>.<name>`."""
+    home = providers.base.config_path(state.get_agent(SESSION, agent))
+    names = []
+    for rollout in sorted((home / "sessions").rglob("rollout-*.jsonl")):
+        for line in rollout.read_text().splitlines():
+            payload = json.loads(line).get("payload") or {}
+            if payload.get("type") in ("function_call", "custom_tool_call"):
+                namespace = payload.get("namespace")
+                names.append(f"{namespace}.{payload['name']}" if namespace else payload["name"])
+    return names
+
+
+def test_a_codex_supervisor_answers_the_human_s_first_message(chatgpt_home, tmp_path):
+    """A session without a first message: LADO's start line ends the supervisor's turn, the
+    human's "hi" is delivered and answered, and no turn called Codex's own subagents."""
+    repo = init_repo(tmp_path / "repo")
+    runtime.start_session(str(repo), SESSION, "bypassPermissions", "codex")
+    first = [m for m in state.list_messages(SESSION) if m.summary == runtime.FIRST_INPUT]
+    assert first, "the supervisor got no first input from LADO"
+    wait_for(idle("supervisor"), "the supervisor's start turn to end", 300)
+
+    runtime.write_as_human(SESSION, "hi")
+    wait_for(
+        lambda: (
+            [m for m in state.list_messages(SESSION) if m.sender == "human"][-1].state
+            in (state.DELIVERED, state.READ)
+        ),
+        "the human's hi delivered",
+        300,
+    )
+
+    def answered():
+        messages = state.list_messages(SESSION)
+        return [m for m in messages if (m.sender, m.recipient) == ("supervisor", "human")]
+
+    wait_for(answered, "the supervisor's answer to the human", 300)
+    wait_for(idle("supervisor"), "the supervisor idle after its answer", 300)
+
+    called = tool_calls("supervisor")
+    print(f"codex: the supervisor's tool calls {called}")
+    assert called, "no tool call in the supervisor's rollouts: were they read?"
+    assert [n for n in called if n.rsplit(".", 1)[-1] in SUBAGENT_TOOLS] == [], called
     runtime.stop_session(SESSION)

@@ -101,9 +101,15 @@ def test_the_config_is_only_the_owners_also_over_an_older_file(repo, lado_home):
 
 
 def test_the_agent_does_not_update_itself_nor_start_its_own_agents(repo):
+    """Codex has two versions of its own subagents: `features.multi_agent` switches the first
+    off, but newer models turn the second on through their metadata (the `collaboration`
+    tools, `wait_agent` among them), over `features.multi_agent_v2`; only `agents.enabled`
+    wins over the model, and `multi_agent_v2` is checked before it (LAD-167)."""
     _, config = _launch(repo)
     assert config["check_for_update_on_startup"] is False
     assert config["features"]["multi_agent"] is False
+    assert config["features"]["multi_agent_v2"] is False
+    assert config["agents"] == {"enabled": False}
     assert config["analytics"] == {"enabled": False}
     assert config["feedback"] == {"enabled": False}
 
@@ -480,11 +486,21 @@ def test_a_codex_supervisor_starts_with_lado_s_line(repo, fake_tmux, codex_home)
     [hello] = state.list_messages("s")
     _, argv = agent_helpers.launched(fake_tmux[0])
     assert argv[-1] == f"[from lado] {runtime.FIRST_INPUT}"
+    assert argv[-1] == (
+        "[from lado] session started; nothing to do yet: end this turn,"
+        " the next message starts a new one"
+    )
     hooks.handle(providers.get("codex"), Event(providers.SESSION_START), "s", "supervisor")
     hooks.handle(
         providers.get("codex"), Event(providers.PROMPT_SUBMIT, argv[-1]), "s", "supervisor"
     )
     assert state.list_messages("s")[0].state == state.DELIVERED
+
+
+def test_the_first_input_asks_to_end_the_turn_not_to_wait():
+    """A model with a tool to wait takes "wait" literally and its turn never ends (LAD-167)."""
+    assert "wait" not in runtime.FIRST_INPUT.lower()
+    assert "end this turn" in runtime.FIRST_INPUT
 
 
 def test_a_codex_supervisor_with_a_first_message_gets_no_first_input(repo, fake_tmux, codex_home):

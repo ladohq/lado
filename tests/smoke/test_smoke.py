@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import agent_helpers
@@ -30,8 +31,8 @@ def wait_for(check, what: str, timeout: float):
 
 
 def answering(provider: str, agent: str, check, session: str = SESSION):
-    """`check` for wait_for, answering the agent's trust dialog first (each Codex agent has a
-    home of its own, so it asks about its folder)."""
+    """`check` for wait_for, failing first if the agent shows a trust dialog (LADO settles
+    each CLI's before the agent starts)."""
 
     def answered():
         answer_dialogs(provider, session, agent)
@@ -188,20 +189,26 @@ def test_a_kits_mcp_server_sees_the_project_s_variable(
 LOGINS = {
     # A token LADO's tests give it (ANTHROPIC_AUTH_TOKEN, "oauth_token" too); none: no login.
     "claude": (("yes", "Token", "ANTHROPIC_AUTH_TOKEN"), "no"),
-    "codex": (None, "no"),
+    # The smoke's Codex home is logged in with a key (conftest.codex_login).
+    "codex": (("yes", "Pay per use (API key)", ""), "no"),
     "kilo": (None, "no"),
     "opencode": (None, "no"),
 }
 
 
-def test_each_clis_login_is_read_from_its_own_command(smoke_provider, tmp_path, monkeypatch):
+def test_each_clis_login_is_read_from_its_own_command(
+    smoke_provider, tmp_path, monkeypatch, codex_home
+):
     provider = providers.get(smoke_provider)
     given, none = LOGINS[smoke_provider]
     if given:
         found = provider.login_status(logins.environment(provider))
         print(f"{smoke_provider}: {found}")
         assert (found.state, found.method, found.variable) == given
-        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN")
+        if smoke_provider == "claude":
+            monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN")
+        else:
+            (codex_home / "auth.json").unlink()
     found = provider.login_status(logins.environment(provider))
     print(f"{smoke_provider}: without a login {found}")
     assert found.state == none, found.problem
@@ -260,4 +267,76 @@ def test_a_claude_session_with_a_repo_mcp_json_starts_with_no_screen(
     wait_for(idle, "the supervisor idle with no human", 120)
     changed = subprocess.run([*git, "status", "--porcelain"], capture_output=True, text=True)
     assert changed.stdout == ""  # nothing written into the repository
+    runtime.stop_session(SESSION)
+
+
+# Codex's shared login (openspec change codex-shared-login): each agent's auth.json is a link
+# to the user's, which Codex writes in place, so a refresh in one reaches all.
+FILE_STORE = ["-c", 'cli_auth_credentials_store="file"']
+PLUGINS_WATCH = 40  # seconds a new agent's home is watched for Codex's plugins catalogue
+
+
+def _codex(home: Path, *args: str, key: str | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["codex", *args, *FILE_STORE],
+        input=key,
+        env={**os.environ, "CODEX_HOME": str(home)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_a_codex_agent_shares_the_users_login_file(
+    smoke_provider, smoke_repo, fake_endpoint, codex_home
+):
+    user = codex_home / "auth.json"
+    runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", "codex")
+    first = delivered(state.LADO, "supervisor", runtime.FIRST_INPUT)
+    wait_for(answering("codex", "supervisor", first), "codex's first input delivered", 120)
+    wait_for(lambda: fake_endpoint.requests, "the supervisor's turn at the endpoint", 120)
+    home = providers.base.config_path(state.get_agent(SESSION, "supervisor"))
+    auth = home / "auth.json"
+    assert auth.is_symlink() and os.readlink(auth) == str(user)
+    status = _codex(home, "login", "status")
+    assert "Logged in using an API key" in status.stderr + status.stdout, status
+    # Codex writes the login through the agent's link into the user's file (its refresh
+    # saves the same way): the link stays a link. A Codex that wrote a new file and renamed
+    # it would break the shared login here.
+    before = user.stat().st_ino
+    written = _codex(home, "login", "--with-api-key", key="smoke-second-key-0123456789")
+    assert written.returncode == 0, written
+    assert auth.is_symlink() and os.readlink(auth) == str(user)
+    assert user.stat().st_ino == before
+    assert "smoke-second-key" in user.read_text()
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+@pytest.mark.parametrize("mode", [None, "default", "bypassPermissions"])
+def test_a_codex_session_starts_with_no_screen_in_each_mode(
+    smoke_provider, smoke_repo, fake_endpoint, codex_home, mode
+):
+    """A repository the user's Codex never trusted, with its own hooks never reviewed: the
+    agent's first input, submitted once no dialog holds Codex, is delivered with no human,
+    and Codex fetched no plugins into its home."""
+    hooks = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "true"}]}]}}
+    (smoke_repo / ".codex").mkdir()
+    (smoke_repo / ".codex" / "hooks.json").write_text(json.dumps(hooks))
+    git = ["git", "-C", str(smoke_repo)]
+    subprocess.run([*git, "add", ".codex"], check=True)
+    subprocess.run([*git, "commit", "-qm", "The repository's own Codex hooks"], check=True)
+    assert "projects" not in (codex_home / "config.toml").read_text()
+    runtime.start_session(str(smoke_repo), SESSION, mode, "codex")
+    first = delivered(state.LADO, "supervisor", runtime.FIRST_INPUT)
+    wait_for(answering("codex", "supervisor", first), "codex's first input delivered", 120)
+    home = providers.base.config_path(state.get_agent(SESSION, "supervisor"))
+    # Codex 0.162 clones its plugins catalogue some seconds after its start (16 s in the
+    # container): watched for a while, in one mode, as it does not depend on the mode.
+    deadline = time.monotonic() + (PLUGINS_WATCH if mode is None else 0)
+    while not (home / ".tmp" / "plugins").exists() and time.monotonic() < deadline:
+        time.sleep(1)
+    assert not (home / ".tmp" / "plugins").exists()
+    assert "projects" not in (codex_home / "config.toml").read_text()  # the user's untouched
     runtime.stop_session(SESSION)

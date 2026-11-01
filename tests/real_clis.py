@@ -105,24 +105,14 @@ def status(session: str, agent: str) -> str:
 
 
 def answer_dialogs(provider: str, session: str, window: str) -> None:
-    """Answer the dialogs a human answers once per repo, before the agent can start. The
-    first time, the agent (named as its window) waits for the human and says why: LADO saw
-    the trust dialog coming (Provider.first_hook_blocker). Claude Code's never shows: LADO
-    records its trust before the agent starts, so the test fails if it does."""
-    if provider == "claude" and CLAUDE_TRUST in tmux.capture(session, window):
-        reason = runtime.status_reason(session, window)
-        pytest.fail(f"Claude Code asks whether to trust the repo after all; LADO: {reason}")
-    if provider == "codex" and CODEX_TRUST in tmux.capture(session, window):
-        if (session, window) not in TRUST_ASKED:
-            TRUST_ASKED.add((session, window))
-            assert status(session, window) == state.WAITING
-            reason = runtime.status_reason(session, window) or ""
-            assert reason.startswith("Codex CLI asks whether to trust "), reason
-        # "Trust and continue" is the first choice; the prompt on its command line follows.
-        tmux.run("send-keys", "-t", f"{session}:{window}", "Enter")
-
-
-TRUST_ASKED: set[tuple[str, str]] = set()  # the agents answer_dialogs checked
+    """Fail when the agent (named as its window) shows a dialog a human would answer once per
+    repo before it can start: none shows, as LADO settles them before the agent starts
+    (Provider.first_hook_blocker; Claude Code's trust in its config, Codex's in the agent's
+    own config.toml)."""
+    for cli, trust in (("claude", CLAUDE_TRUST), ("codex", CODEX_TRUST)):
+        if provider == cli and trust in tmux.capture(session, window):
+            reason = runtime.status_reason(session, window)
+            pytest.fail(f"{cli} asks whether to trust the repo after all; LADO: {reason}")
 
 
 def agent_processes(target: str = "") -> set[int]:

@@ -130,7 +130,8 @@ def live_provider(request, monkeypatch, codex_home, tmp_path) -> str:
             monkeypatch.setenv(variable, value)
     elif name == "codex":
         # The user's Codex config of the test, which LADO carries into each agent's own. It
-        # trusts no folder, so each agent asks (real_clis.answer_dialogs).
+        # trusts no folder: LADO's config of each agent does (real_clis.answer_dialogs fails
+        # if Codex asks).
         base_url, key = CODEX_BASE_URL, None
         if not base_url:
             bridge = request.getfixturevalue("codex_bridge")

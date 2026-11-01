@@ -1,11 +1,11 @@
 // The login window of Settings → Providers and environment (docs/design/ui.md), for a CLI that
-// logs in by its own command (OpenCode, Kilo; LoginSheet.tsx opens it): a sheet over
-// the page (the whole screen on a phone) with the terminal of the CLI's own login command,
-// always in control, over the agents' terminal protocol (terminalLink.ts). A link in it,
-// also one wrapped over lines, opens in a new tab (xterm's web links addon). Under it "Text
-// to send" sends its text and Enter as one input (a code, a key), and the keys ↑ ↓ Enter
-// Esc go to menus, so it works from a phone. When the command ends the socket closes for
-// good and the sheet goes (`onEnded`); Close ends the command first.
+// logs in by its own command (OpenCode, Kilo, Codex's sign-in code; LoginSheet.tsx opens it):
+// a sheet over the page (the whole screen on a phone) with the terminal of the CLI's own login
+// command, always in control, over the agents' terminal protocol (terminalLink.ts). A link in
+// it, also one wrapped over lines, opens in a new tab (xterm's web links addon). Under it the
+// action's help line, "Text to send", which sends its text and Enter as one input (a code, a
+// key), and the keys ↑ ↓ Enter Esc for menus, so it works from a phone. When the command ends
+// the socket closes for good and the sheet goes (`onEnded`); Close ends the command first.
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
@@ -23,14 +23,18 @@ export const KEYS: { label: string; name: string; data: string }[] = [
   { label: "Esc", name: "Escape", data: "\x1b" },
 ];
 
+const HELP = "Open the link, sign in, then send what it gives you (a code) from here.";
+
 export function LoginWindow({
   provider,
   title,
+  help,
   extra,
   onEnded,
 }: {
   provider: string;
   title: string;
+  help?: string; // the action's own line (Codex's sign-in code needs nothing sent back)
   extra?: ReactNode; // in the header, before Close (LoginSheet's "Log out of one…")
   onEnded: () => void;
 }) {
@@ -110,7 +114,7 @@ export function LoginWindow({
         </div>
         <div className="login-term" ref={box} data-link={state.phase} />
         <div className="login-help">
-          <p className="muted">Open the link, sign in, then send what it gives you (a code) from here.</p>
+          <p className="muted">{help || HELP}</p>
           <div className="login-send">
             <input
               type="text"

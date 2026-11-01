@@ -2320,46 +2320,62 @@ your agents use. Changes apply to agents started afterwards."
   as the CLI's own status command says it, read by the server in the environment the agents
   of that CLI in a session without a project get, its login taken whole from one layer
   (lado.logins): "Logged in · <how> · <where from>", "Not logged in" (bold, orange, for a
-  CLI whose agents need a login: Claude Code), "No login" (the others), or "Couldn't check
-  the sign-in", never shown as not logged in. How is the provider's words (Claude Code:
-  "Subscription (Max)", "Subscription (token)", "Pay per use (API key)", "Pay per use
-  (Console)"); where from is the layer that gives the login ("LADO's secret", "outside
-  folder", "login shell", "the process that starts LADO") or the CLI's own login file in the
-  provider's words ("Claude Code's login file"; "the login keychain" on a Mac), left out
-  when neither says (OpenCode, Kilo, Codex). Then, while it has no login, the agents that
-  wait for it as links to their terminals (a logged-in row names none: such an agent starts
-  within its window's next look), "Projects with their own login: <ids>" (their sessions use it),
-  the provider's note (Codex: its agents do not get this login yet, GitHub #113), and one
-  button: "Log in…" without a login (primary when its agents wait for one), "Change login…"
-  with one; none for a CLI with no way to log in from the page (Codex). No field, path or
-  second button.
+  CLI whose agents need a login there: Claude Code; Codex with OpenAI's model, its
+  default), "No login" (the others), or "Couldn't check the sign-in", never shown as not
+  logged in. How is the provider's words (Claude Code: "Subscription (Max)", "Subscription
+  (token)", "Pay per use (API key)", "Pay per use (Console)"; Codex: "ChatGPT plan",
+  "ChatGPT access token", "Pay per use (API key)"); where from is the layer that gives the
+  login ("LADO's secret", "outside folder", "login shell", "the process that starts LADO")
+  or the CLI's own login file in the provider's words ("Claude Code's login file"; "the
+  login keychain" on a Mac; "Codex's login file", which every Codex agent shares), left out
+  when neither says (OpenCode, Kilo). Then, while it has no login, the agents that wait for
+  it as links to their terminals (a logged-in row names none: such an agent starts within
+  its window's next look), "Projects with their own login: <ids>" (their sessions use it),
+  the provider's note (Codex's login kept only in the system keyring: "Your Codex keeps its
+  login in the system keyring, which Codex agents cannot read. Log in here: …"), and one
+  button: "Log in…" without a login (primary when its agents need one), "Change login…"
+  with one; none for a CLI with no way to log in from the page. No field, path or second
+  button.
 - **The login sheet** (the button): a sheet over the page, the whole screen on a phone,
-  with Close. For a CLI whose provider names choices (Claude Code), its question ("How do
-  you pay for Claude?") and a box per choice with a radio ("Subscription — Claude Pro or
-  Max": a token from `claude setup-token` on any computer with Claude Code; "Pay per use —
-  API billing": an API key), its detail, and the current one marked "current"; the chosen
-  one has the project page's secret field (dots, never shown or returned) and Save, which
-  keeps the value as LADO's secret in place of the CLI's other login variable there and
-  closes the sheet. "Log out…", while the login comes from LADO's secrets, asks first,
-  naming the CLI's running agents, which keep the login until they start again, then
-  removes it. LADO runs no login command of Claude Code: the human brings a ready token or
-  key; `claude auth logout` in a terminal removes the login of Claude Code's own file.
-  For a CLI that logs in by its own command (OpenCode, Kilo) the sheet is its login window
-  at once, with "Log out of one…" in its head while logged in. A value the agents could
-  not get (a NUL, over 64 KiB) is refused. LADO's secrets go to `<LADO_HOME>/secrets/`, a
-  layer of every agent between the outside folder and a project's.
+  with Close. For a CLI whose provider names choices (Claude Code, Codex), its question
+  ("How do you pay for Claude?", "How do you pay for Codex?") and a box per choice with a
+  radio (Claude: "Subscription — Claude Pro or Max": a token from `claude setup-token` on
+  any computer with Claude Code; "Pay per use — API billing": an API key. Codex: "ChatGPT
+  plan — Plus, Pro, Business or Enterprise": a one-time sign-in code; "ChatGPT Business or
+  Enterprise — access token": a token from ChatGPT's admin console, kept as
+  `CODEX_ACCESS_TOKEN`; "Pay per use — OpenAI API key", kept as `OPENAI_API_KEY`), its
+  detail, and the current one marked "current". The chosen one has the project page's
+  secret field (dots, never shown or returned) and Save, which keeps the value as LADO's
+  secret in place of the CLI's other login variable there and closes the sheet; a choice
+  that runs one of the CLI's login actions has the action's label as a primary button
+  instead ("Get a sign-in code"), which opens the login window in the sheet. "Log out…"
+  asks first, naming the CLI's running agents: while the login comes from LADO's secrets
+  ("Remove this login from LADO's secrets?") they keep it until they start again, and it is
+  removed; while it is the CLI's own file and the CLI has a logout action (Codex: "Log out
+  of Codex CLI? … share this login and stop working until you log in again. Your own Codex
+  CLI in a terminal is logged out too.") Yes runs the logout in the login window. None for
+  a login of another layer. LADO runs no login command of Claude Code: the human brings a
+  ready token or key; `claude auth logout` in a terminal removes the login of Claude Code's
+  own file. For a CLI that logs in by its own command only (OpenCode, Kilo) the sheet is its
+  login window at once, with "Log out of one…" in its head while logged in. A value the
+  agents could not get (a NUL, over 64 KiB) is refused. LADO's secrets go to
+  `<LADO_HOME>/secrets/`, a layer of every agent between the outside folder and a project's.
 - **The login window**: "Log in: <CLI>" and Close (which ends the command), the terminal of
   the CLI's command (a tmux session of its own, `lado-login-<provider>`, labelled; one per
   CLI: "Log out of one…" ends the login command and runs the logout one in its place),
   always in control. A link in it, also one wrapped over lines, opens in a new tab (xterm's
-  web links addon); under it "Text to send" with "Send ⏎" (its text and Enter as one input)
-  and the keys ↑ ↓ Enter Esc. When the command ends, the sheet closes and the section asks
-  for a check. The windows end with `lado stop --all` and the server's start and stop.
+  web links addon); under it the action's help line (by default "Open the link, sign in,
+  then send what it gives you (a code) from here."; Codex's sign-in code: "Open the link,
+  sign in and enter the code there. This window closes by itself once you are signed in."),
+  "Text to send" with "Send ⏎" (its text and Enter as one input) and the keys ↑ ↓ Enter
+  Esc. When the command ends, the sheet closes and the section asks for a check. The
+  windows end with `lado stop --all` and the server's start and stop.
 - **Needs you**: an agent that waits for its CLI's login (`AgentInfo.login_wait`, the
   provider's name) has "Log in…" first, which leads here; Open terminal stays beside it.
 - **API**: `GET /api/providers/logins` (`ProvidersPage`: a `ProviderLogins` per provider,
-  with the System panel's `ProviderInfo` as `cli`, its `question`, `choices`, `from_lado`
-  and `ready` (false: not read yet), `checking` while a check runs, and `environment`, why
+  with the System panel's `ProviderInfo` as `cli`, its `needs_login` (asked in the agents'
+  environment), `question`, `choices` (each a `variable` or an `action`), `actions` (each
+  with its `help`), `from_lado`, `logout_file` and `ready` (false: not read yet), `checking` while a check runs, and `environment`, why
   the agents' environment could not be read, "" when it could), answered at once from the
   server's last check and starting none; `POST /api/providers/check` starts a check unless
   one runs (then one more runs once after it) and answers the same; `POST

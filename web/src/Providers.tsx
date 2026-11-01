@@ -155,7 +155,8 @@ function ProviderRow({ row, onOpen }: { row: ProviderLogins; onOpen: () => void 
   const missing = login.state === "no" && row.needs_login;
   const unknown = login.state === "unknown";
   const dot = login.state === "yes" ? "ok-dot" : missing || unknown ? "dot-waiting" : "off-dot";
-  // A CLI with no way to log in from the page (Codex) has no button.
+  // One button that opens the sheet, for a CLI that logs in from the page; none for one that
+  // cannot.
   const loginHere = row.choices.length > 0 || row.actions.length > 0;
 
   return (

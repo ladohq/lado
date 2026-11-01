@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { ProviderLogins, ProvidersPage } from "./api";
-import { claudeRow, cli, FakeSocket, FakeXterm, LOGIN, opencodeRow } from "./fakes";
+import { claudeRow, cli, codexRow, FakeSocket, FakeXterm, LOGIN, opencodeRow } from "./fakes";
 import { POLL_MS, Providers, stateText } from "./Providers";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -13,15 +13,7 @@ vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: class {} }));
 const claude = claudeRow;
 const opencode = opencodeRow;
 
-function codex(): ProviderLogins {
-  return {
-    ...opencode(),
-    cli: cli("codex", "Codex CLI"),
-    login: { ...LOGIN, state: "yes", method: "ChatGPT" },
-    actions: [],
-    note: "Codex agents do not get this login yet (GitHub #113)",
-  };
-}
+const codex = codexRow;
 
 let page: ProvidersPage;
 let calls: { method: string; path: string; body: unknown }[];
@@ -226,22 +218,37 @@ test("with a login: one state line, how and from which layer, and Change login�
   expect(within(row).getByRole("button", { name: "Change login…" }).className).toBe("quiet");
 });
 
-test("OpenCode has one button too; Codex its note and none", async () => {
+test("OpenCode and Codex have one button too, and no note that their agents lack the login", async () => {
   await show();
   const open = screen.getByRole("listitem", { name: "OpenCode" });
   expect(within(open).getByText("Logged in · 2 credentials, 1 variable")).toBeTruthy();
   expect(buttons(open)).toEqual(["Change login…"]);
-  const codexRow = screen.getByRole("listitem", { name: "Codex CLI" });
-  expect(within(codexRow).getByText("Logged in · ChatGPT")).toBeTruthy();
-  expect(within(codexRow).getByText(/GitHub #113/)).toBeTruthy();
-  expect(buttons(codexRow)).toEqual([]);
+  const row = screen.getByRole("listitem", { name: "Codex CLI" });
+  expect(within(row).getByText("Logged in · ChatGPT plan · Codex's login file")).toBeTruthy();
+  expect(buttons(row)).toEqual(["Change login…"]);
+  expect(row.querySelector(".pv-warn")).toBeNull();
+});
+
+test("Codex without a login its model needs: the primary Log in…, and the keyring's note", async () => {
+  const note = "Your Codex keeps its login in the system keyring, which Codex agents cannot read.";
+  page.providers[2] = codex({ login: { ...LOGIN, state: "no" }, note, logout_file: false });
+  const row = await show("Codex CLI");
+  expect(within(row).getByText("Not logged in").tagName).toBe("STRONG");
+  expect(within(row).getByRole("button", { name: "Log in…" }).className).toBe("primary");
+  expect(within(row).getByText(note).className).toBe("pv-warn");
+  // A local model needs none: no login, and Log in… is not pressed on the human.
+  page.providers[2] = codex({ login: { ...LOGIN, state: "no" }, needs_login: false, logout_file: false });
+  cleanup();
+  const local = await show("Codex CLI");
+  expect(within(local).getByText("No login")).toBeTruthy();
+  expect(within(local).getByRole("button", { name: "Log in…" }).className).toBe("quiet");
 });
 
 test("the state in words, unknown as couldn't check, never as not logged in", () => {
   expect(stateText(claude({ login: { ...LOGIN, state: "unknown", problem: "timed out" } }))).toBe(
     "Couldn't check the sign-in",
   );
-  expect(stateText({ ...codex(), login: { ...LOGIN, state: "no" } })).toBe("No login");
+  expect(stateText({ ...codex(), login: { ...LOGIN, state: "no" }, needs_login: false })).toBe("No login");
   const file = { ...LOGIN, state: "yes" as const, method: "Subscription (Max)", where: "Claude Code's login file" };
   expect(stateText(claude({ login: file }))).toBe("Logged in · Subscription (Max) · Claude Code's login file");
   expect(stateText(claude({ login: { ...LOGIN, state: "yes", method: "Bedrock" } }))).toBe("Logged in · Bedrock");

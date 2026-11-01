@@ -56,11 +56,12 @@ device code sets it and implements `login_prompt`.
 **D3. The window's text survives its command.** A login window is made with tmux's
 `remain-on-exit on`: when the command ends, its pane stays dead with its text and exit
 status (`#{pane_dead}`, `#{pane_dead_status}`). LADO reads the text with `capture-pane -p
--J` (wrapped lines joined, no colours) and then kills the session. tmux may list a pane
-dead a moment before it has its exit status (`#{pane_dead_status}`, or
-`#{pane_dead_signal}` for a signal): LADO reads such a pane only once one of them is there,
-looking again every 0.05 s for at most 2 s (tmux 3.2 has no `pane_dead_signal`), else a
-login that succeeded would show as failed. A dead window counts as
+-J` (wrapped lines joined, no colours) and then kills the session. The exit status
+is not tmux's: under load tmux lists a pane dead and gives no `#{pane_dead_status}`, for
+15 s and more, and a login that succeeded would show as failed. The window's command runs
+under a wrapper (`python -m lado.logins <status file> <argv>`) that writes its command's
+exit status to `<LADO_HOME>/logins/<provider>.status` before it exits with it; LADO reads
+that file once, tmux's status only when it is missing. A dead window counts as
 ended everywhere `open_windows` is asked (`open_window` replaces it, `close_window` and
 `end_windows` kill it, `terminal.login_ended` reports it). Why: polling the pane while the
 command runs misses a line printed just before the exit, which is exactly Codex's error;

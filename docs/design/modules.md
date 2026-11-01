@@ -477,14 +477,15 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     variable of their own; `check_secret` the only names and values LADO's secrets take.
     The login windows: `open_window` (a tmux
     session `lado-login-<provider>` with the labels `@lado-login`, `@lado-home`,
-    `@lado-login-action`, running the action's argv through `agent_env.command`; one per
+    `@lado-login-action`, running the action's argv under `main` through
+    `agent_env.command`; one per
     provider; with `remain-on-exit`, so its pane stays, dead, with its text and exit status
     once the command ends), `close_window`, `windows` (dead ones too), `open_windows` (the
     running ones: a dead window counts as ended, and `open_window` replaces it), `look`
     (for the login socket: the provider's `login_prompt` of the window's text while an
-    action that `shows_code` runs; once dead, and once tmux has its exit status or signal
-    (`DEAD_WAIT` at most), its status and last line, `Ended`, read before the window is
-    killed), and `end_windows`, which `lado stop --all` and the UI server's
+    action that `shows_code` runs; once dead its exit status and last line, `Ended`, read
+    before the window is killed: the status from `status_file`, which the window's wrapper
+    `main` writes, as tmux may give none under load), and `end_windows`, which `lado stop --all` and the UI server's
     start and stop use, by the labels only.
   - `login_wait.py`: the window of an agent whose CLI needs a login and has none (`lado
     login-wait`, hidden): `command` writes the launch file with LADO's and the provider's

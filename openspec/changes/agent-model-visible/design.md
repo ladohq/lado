@@ -49,7 +49,8 @@ holds no table of its own. The detail is free text the source writes (`profile w
 ### D3. A launch says what it set up
 
 `base.Launch` gets `model: Choice | None = None` and `effort: Choice | None = None`, with
-`base.Choice(name: str, source: str, detail: str | None = None)`. `runtime` writes them
+`state.Choice(name: str, source: str, detail: str | None = None)` (in `state.py`, which
+`base` imports and whose `set_model` takes it). `runtime` writes them
 into the agent's record right after `_launch_command`, before the window opens
 (`state.set_model(session, agent, model, effort)`), for the supervisor and for workers.
 None leaves `cli` and no name. Codex's `launch` fills them from the carried config by the

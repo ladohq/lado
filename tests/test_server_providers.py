@@ -89,11 +89,31 @@ def test_the_page_lists_each_cli_with_its_login(client, cli_logins, windows):
         "problem": "",
     }
     codex = _row(page, "codex")
-    assert codex["login"]["state"] == "yes" and codex["login"]["method"] == "ChatGPT"
-    assert (codex["actions"], codex["choices"], codex["question"]) == ([], [], "")
-    assert "#113" in codex["note"]
+    assert codex["login"]["state"] == "yes" and codex["login"]["method"] == "ChatGPT plan"
+    assert codex["login"]["where"] == "Codex's login file"
+    assert codex["note"] == ""  # its agents get the login
     assert [a["id"] for a in _row(page, "opencode")["actions"]] == ["login", "logout"]
     assert "checks" not in page  # lado doctor's lines are lado doctor's
+
+
+def test_a_codex_login_in_the_keyring_is_named_on_its_row(client, cli_logins, windows, codex_home):
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text('cli_auth_credentials_store = "keyring"\n')
+    cli_logins.answer("codex", 1, "", "Not logged in\n")
+    codex = _row(_page(client), "codex")
+    assert (codex["login"]["state"], codex["needs_login"], codex["note"]) == ("no", True, "")
+    # Logged in, but only where the store is not overridden: the keyring.
+    cli_logins.answer_by_argv(
+        "codex",
+        lambda argv: (
+            (1, "", "Not logged in\n") if "-c" in argv else (0, "", "Logged in using ChatGPT\n")
+        ),
+    )
+    codex = _row(_page(client), "codex")
+    assert (codex["login"]["state"], codex["needs_login"]) == ("no", True)
+    assert codex["note"] == providers.get("codex").keyring_note
+    listed = client.get("/api/providers").json()
+    assert next(p for p in listed if p["name"] == "codex")["login_missing"] is True
 
 
 def test_the_rows_need_follows_the_agents_environment(client, cli_logins, windows, monkeypatch):
@@ -227,7 +247,7 @@ def test_only_a_login_variable_may_be_set(client, windows):
     assert "GH_TOKEN is not a login variable of Claude Code" in answer.json()["detail"]
     assert "canary-2" not in answer.text
     assert (
-        client.put("/api/providers/codex/variables/OPENAI_API_KEY", json={"value": "x"}).status_code
+        client.put("/api/providers/kilo/variables/OPENAI_API_KEY", json={"value": "x"}).status_code
         == 400
     )
     assert (

@@ -242,7 +242,7 @@ def _only(*names):
     return lambda command: command if command in names else None
 
 
-def test_a_login_line_per_installed_cli(cli_logins, monkeypatch):
+def test_a_login_line_per_installed_cli(cli_logins, monkeypatch, codex_home):
     monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "canary-tok")
     cli_logins.answer("codex", 1, "", "Not logged in\n")
@@ -254,12 +254,23 @@ def test_a_login_line_per_installed_cli(cli_logins, monkeypatch):
             doctor.OK,
             "Subscription (token) · the process that starts LADO",
         ),
-        doctor.Check("Codex CLI login", doctor.INFO, "none"),
+        # No config: OpenAI's model, which needs a login.
+        doctor.Check(
+            "Codex CLI login",
+            doctor.WARN,
+            "not logged in: new sessions and workers of it are refused, a resumed agent waits "
+            "(Settings → Providers and environment)",
+        ),
         doctor.Check(
             "Kilo CLI login", doctor.WARN, "unknown: `kilo auth list` timed out after 10 s"
         ),
     ]
     assert "canary" not in repr(checks)
+    # A local model needs none.
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text('model_provider = "ollama"\n')
+    [_, line, _] = doctor.check_logins(_only("claude", "codex", "kilo"))
+    assert line == doctor.Check("Codex CLI login", doctor.INFO, "none")
 
 
 def test_claude_not_logged_in_warns_where_to_log_in(cli_logins, capsys, monkeypatch):
@@ -288,6 +299,14 @@ def test_no_login_where_the_agents_need_none_is_no_warning():
     assert doctor.login_check(found) == doctor.Check("Claude Code login", doctor.INFO, "none")
     found.needs_login = True
     assert doctor.login_check(found).level == doctor.WARN
+
+
+def test_a_login_in_the_keyring_warns_with_the_providers_note(cli_logins, monkeypatch):
+    monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
+    found = logins.Login(codex.CodexProvider(), providers.base.LoginStatus("no", keyring=True), "")
+    assert doctor.login_check(found) == doctor.Check(
+        "Codex CLI login", doctor.WARN, f"not logged in: {codex.CodexProvider.keyring_note}"
+    )
 
 
 def test_a_login_from_a_file_names_the_file(cli_logins, monkeypatch):

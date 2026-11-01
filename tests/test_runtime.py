@@ -1793,12 +1793,27 @@ def test_an_unknown_login_never_holds_an_agent(repo, fake_tmux, cli_logins):
 
 
 @pytest.mark.parametrize("provider", ["codex", "kilo", "opencode"])
-def test_other_clis_are_never_held_for_a_login(repo, fake_tmux, cli_logins, provider):
+def test_other_clis_are_never_held_for_a_login(repo, fake_tmux, cli_logins, provider, codex_home):
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text('model_provider = "ollama"\n')  # Codex: a local model
     runtime.start_session(str(repo), "s", None, provider=provider)
     assert runtime.status_reason("s", "supervisor") != LOGIN_REASON
     [call] = [c for c in fake_tmux if c[0] == "new_session"]
     assert not _waits_for_login(call[-1])
     assert [c for c in cli_logins.calls if c[0][0] == provider] == []
+
+
+def test_codex_on_openais_model_is_refused_without_a_login(repo, fake_tmux, cli_logins):
+    cli_logins.answer("codex", 1, "", "Not logged in\n")
+    with pytest.raises(runtime.NotLoggedIn) as refused:
+        runtime.start_session(str(repo), "s", None, provider="codex")
+    assert str(refused.value) == (
+        "Codex CLI is not logged in, so the session was not started: log in in LADO's UI "
+        "(Settings → Providers and environment, `lado ui`), or set OPENAI_API_KEY as LADO's "
+        "secret or a project secret"
+    )
+    assert state.get_session("s") is None
+    assert fake_tmux == []
 
 
 def test_each_agent_takes_its_own_providers_login_whole_from_one_layer(

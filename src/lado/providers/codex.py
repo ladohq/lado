@@ -18,6 +18,7 @@ import math
 import os
 import re
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from lado import state
@@ -105,6 +106,25 @@ CARRIED = (
 PROFILE = "lado"  # LADO's permission profile (see _git_profile)
 USING = "Logged in using "  # the start of `codex login status`'s line for a login
 
+# Codex's login (0.162.0, checked by hand): its file CODEX_HOME/auth.json, the system
+# keyring (cli_auth_credentials_store `keyring`, or `auto` with a keyring that works) under a
+# key made of the home's path, or CODEX_ACCESS_TOKEN, read before the file. Its agents keep
+# theirs in the file (STORE), which they share with the user's own Codex.
+KEY, TOKEN = "OPENAI_API_KEY", "CODEX_ACCESS_TOKEN"
+STORE = "file"
+FILE_STORE = ["-c", f'cli_auth_credentials_store="{STORE}"']
+KEYRING_STORES = ("keyring", "auto")
+LOGIN_FILE = "Codex's login file"
+API_KEY = "Pay per use (API key)"
+# `codex login status`'s ways (after "Logged in using", the article dropped): the method
+# for humans and the login choice.
+METHODS = {
+    "ChatGPT": ("ChatGPT plan", "chatgpt"),
+    "API key": (API_KEY, "usage"),
+    "personal access token": ("ChatGPT access token", "token"),
+    "access token": ("ChatGPT access token", "token"),
+}
+
 
 class CodexProvider(base.Provider):
     name = "codex"
@@ -140,19 +160,48 @@ class CodexProvider(base.Provider):
     # No mode: Codex's own approvals (on-request in a trusted folder) and LADO's permission
     # profile. `default` asks for approvals as Codex's on-request does.
     permission_modes = ("default", "bypassPermissions")
-    # Each agent has a Codex home of its own (its config folder), where no login is: the
-    # user's login is not carried over (GitHub #113), so no login action either.
-    login_note = (
-        "Codex agents do not get this login yet: each has a Codex home of its own (GitHub "
-        "#113); they work only with a model that needs no login"
+    # Every agent shares the user's login file, or gets the key of OPENAI_API_KEY in a file
+    # of its own (first_hook_blocker); Codex reads CODEX_ACCESS_TOKEN itself. The first one
+    # is named where a login is missing: the one a container's user most likely has.
+    login_variables = (KEY, TOKEN)
+    keyring_note = (
+        "Your Codex keeps its login in the system keyring, which Codex agents cannot read. "
+        "Log in here: the login goes to Codex's login file, and your own Codex keeps using "
+        "the keyring."
     )
 
+    def needs_login(self, env: Mapping[str, str]) -> bool:
+        # The model provider of the user's config, as carried to the agents (in an agent's
+        # launch environment CODEX_HOME is its own home, whose config.toml carries it):
+        # OpenAI's, and a provider that asks for OpenAI's login, need one. A config that
+        # cannot be read is read as none: the status then decides.
+        config, _ = _user_config(env, [])
+        name = _model_provider(config)
+        provider = (config.get("model_providers") or {}).get(name) or {}
+        return name == "openai" or bool(
+            isinstance(provider, dict) and provider.get("requires_openai_auth")
+        )
+
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:
-        # `codex login status` (0.162.0) reads CODEX_HOME/auth.json (~/.codex without it;
-        # an OPENAI_API_KEY in the environment does not count) and prints, on stderr after
+        # Codex's TUI and its status ignore OPENAI_API_KEY; LADO hands it to the agents
+        # (_settle_login), so it is their login whatever Codex's file holds.
+        if env.get(KEY) and not env.get(TOKEN):
+            return base.LoginStatus(base.YES, API_KEY, variable=KEY, choice="usage")
+        found = self._status(env, FILE_STORE)
+        if found.state == base.NO and _user_store(env) in KEYRING_STORES:
+            # The user's own Codex may keep its login in the keyring, under a key of its
+            # home's path, which no agent's home reaches.
+            if self._status(env, []).state == base.YES:
+                return base.LoginStatus(base.NO, keyring=True)
+        return found
+
+    def _status(self, env: dict[str, str], store: list[str]) -> base.LoginStatus:
+        # `codex login status` (0.162.0) reads CODEX_ACCESS_TOKEN, then CODEX_HOME/auth.json
+        # (~/.codex without it) or the keyring as `store` says, and prints, on stderr after
         # warnings of its own, `Not logged in` (exit 1) or `Logged in using <how>`, for a
-        # key with ` - ` and the key masked: nothing after ` - ` is kept.
-        found = base.run_status([self.command, "login", "status"], env)
+        # key with ` - ` and the key masked: nothing after ` - ` is kept. The ways it
+        # names are read in its source (cli/src/login.rs, run_login_status).
+        found = base.run_status([self.command, "login", "status", *store], env)
         if isinstance(found, str):
             return base.LoginStatus(base.UNKNOWN, problem=found)
         lines = [line.strip() for line in f"{found.stdout}\n{found.stderr}".splitlines()]
@@ -164,7 +213,11 @@ class CodexProvider(base.Provider):
                 how = line[len(USING) :].split(" - ", 1)[0].strip()
                 for article in ("an ", "a "):
                     how = how.removeprefix(article)
-                return base.LoginStatus(base.YES, how, file=str(home / "auth.json"))
+                method, choice = METHODS.get(how, (how, ""))
+                if choice == "token" and env.get(TOKEN):
+                    return base.LoginStatus(base.YES, method, variable=TOKEN, choice=choice)
+                file = str(home / "auth.json")
+                return base.LoginStatus(base.YES, method, file, LOGIN_FILE, choice=choice)
         last = next((line for line in reversed(lines) if line), "")
         return base.LoginStatus(
             base.UNKNOWN, problem=base.error_line("cannot read `codex login status`", last)
@@ -320,6 +373,21 @@ def _user_config(environ, warnings: list[str]) -> tuple[dict, Path]:
             f"cannot read {path}: {error}; nothing of it is carried into the Codex agents' config"
         )
         return {}, path
+
+
+def _model_provider(config: dict) -> str:
+    """The model provider Codex runs with `config`: the chosen profile's, else the top
+    level's, else OpenAI's."""
+    profiles = config.get("profiles")
+    profile = profiles.get(config.get("profile") or "") if isinstance(profiles, dict) else None
+    chosen = profile.get("model_provider") if isinstance(profile, dict) else None
+    return str(chosen or config.get("model_provider") or "openai")
+
+
+def _user_store(env) -> str:
+    """Where the user's own Codex keeps its login (cli_auth_credentials_store)."""
+    config, _ = _user_config(env, [])
+    return str(config.get("cli_auth_credentials_store") or STORE)
 
 
 def _read_toml(path: Path) -> dict:

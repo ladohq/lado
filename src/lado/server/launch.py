@@ -303,7 +303,7 @@ def provider_logins(found: logins.Login, cli: models.ProviderInfo) -> models.Pro
             for c in provider.login_choices
         ],
         from_lado=found.layer == logins.SECRET,
-        note=provider.login_note,
+        note=provider.keyring_note if status.keyring else provider.login_note,
         waiting=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in waiting],
         running=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in found.running],
         projects=found.projects,

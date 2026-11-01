@@ -336,7 +336,8 @@ class CliLogins:
     """What the agent CLIs' login status commands answer in a test (base.run_status): no
     command runs; Claude Code is logged in with a token (`claude_config` has its first run
     recorded, so no agent waits and nothing is written), the others unknown.
-    `answer(command, code, stdout, stderr="")` or `answer(command, problem)` sets one,
+    `answer(command, code, stdout, stderr="")` or `answer(command, problem)` sets one
+    (`answer_by_argv(command, answer)` one that depends on the arguments),
     `logged_in(method)` and `logged_out()` Claude Code's, `logged_in_with(name)` logged in
     only where the environment asked holds `name`. `calls` keeps the (argv, env) asked."""
 
@@ -369,9 +370,15 @@ class CliLogins:
             else (1, json.dumps({"loggedIn": False, "authMethod": "none"}), "")
         )
 
+    def answer_by_argv(self, command, answer):
+        """`answer(argv)` gives the answer, for a CLI asked twice with other arguments."""
+        self.answers[command] = ("argv", answer)
+
     def run(self, argv, env):
         self.calls.append((list(argv), dict(env)))
         answer = self.answers.get(os.path.basename(argv[0]), self.UNREAD)
+        if isinstance(answer, tuple) and answer[0] == "argv":
+            answer = answer[1](list(argv))
         if callable(answer):
             answer = answer(env)
         if isinstance(answer, str):

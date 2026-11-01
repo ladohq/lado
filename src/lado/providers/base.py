@@ -191,6 +191,9 @@ class LoginStatus:
     items: tuple[LoginItem, ...] = ()
     problem: str = ""  # why UNKNOWN
     choice: str = ""  # the id of the LoginChoice this login is; "" for none
+    # For NO: the CLI's own login is where its agents cannot read it (Codex's system
+    # keyring); Settings says so with Provider.keyring_note.
+    keyring: bool = False
 
 
 @dataclass(frozen=True)
@@ -300,6 +303,9 @@ class Provider(ABC):
     # A line about the login for the human, shown under its state in Settings (e.g. that
     # the CLI's agents do not get it); "" for none.
     login_note: str = ""
+    # The line Settings and `lado doctor` show instead when the CLI's own login is where its
+    # agents cannot read it (LoginStatus.keyring), with what to do; "" for none.
+    keyring_note: str = ""
     # The variables that log the CLI in, which the human may set as LADO's secrets in
     # Settings (lado.project_secrets, LADO's folder); the first one is named in the reason
     # of an agent that waits for a login.

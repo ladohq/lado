@@ -204,7 +204,8 @@ def test_only_a_login_variable_may_be_lados_secret():
     with pytest.raises(ValueError, match="GH_TOKEN is not a login variable of Claude Code"):
         logins.check_variable(CLAUDE, "GH_TOKEN")
     with pytest.raises(ValueError, match=r"LADO's secrets take: none"):
-        logins.check_variable(providers.get("codex"), "OPENAI_API_KEY")
+        logins.check_variable(providers.get("kilo"), "OPENAI_API_KEY")
+    logins.check_variable(providers.get("codex"), "OPENAI_API_KEY")
 
 
 OPENCODE = providers.get("opencode")

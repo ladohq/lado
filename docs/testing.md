@@ -284,7 +284,9 @@ e2e tests in two shards on Python 3.13 (on two workers, `-n 2 --shard K/2`), the
 the bundle; `changes`, whether the run needs the smoke; `smoke <os> <provider>`, the smoke
 tests on Linux and macOS, one cell per (system, provider), none stopping the others;
 `container (<arch>)`, LADO's image on amd64 (`ubuntu-24.04`) and arm64 (`ubuntu-24.04-arm`),
-each on its native runner: `make docker` and `docker history lado:local` (each layer's
+each on its native runner: `make docker` (whose build runs each agent CLI's `--version`
+once, with a throwaway HOME, so a CLI npm left without its native binary fails it; no
+retry) and `docker history lado:local` (each layer's
 size, so a new layer's is the image's growth), then `scripts/smoke_ci.py container <out>` (the
 container tests with the smoke cell's pass rule, so a skip is red; the artifact
 `container-<arch>`), on every run whatever it changes, pushing nothing anywhere; and
@@ -309,7 +311,11 @@ said it is not needed, a cancelled job a failure. A pull request's new run cance
 older one; a run of another event is alone in its group (its run id), never cancelled.
 GitHub mails a red scheduled run to whoever last changed its cron line. A cell is
 `scripts/smoke_ci.py run <provider> <out>`: it installs the CLI with `npm install -g
---prefix ~/.local` at its pin, runs `uv run pytest -m smoke -n0 -v -k <provider>` into
+--prefix ~/.local` at its pin and runs its `--version`, in up to three attempts (npm drops
+an optional dependency that failed to install, a CLI's native binary, and exits 0): after a
+failed attempt but the last, a `::warning::` annotation in the run's summary names the
+provider and the attempt, then `npm uninstall` and a fresh install; the third failure is a
+red cell with no test run. Then it runs `uv run pytest -m smoke -n0 -v -k <provider>` into
 `<out>/smoke-<provider>.log`, and passes only on exit 0 with a test passed and none skipped;
 a failing cell's evidence goes to `<out>/evidence` (the artifact
 `smoke-<os>-<provider>`). `smoke_ci.py`'s `PINS` is the one place a CLI's version is

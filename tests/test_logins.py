@@ -276,5 +276,5 @@ def test_close_window(windows):
 
 def test_a_window_needs_a_known_action(windows):
     with pytest.raises(ValueError, match="no login action"):
-        logins.open_window(providers.get("codex"), "login")
+        logins.open_window(providers.get("claude"), "login")  # LADO runs none of Claude's
     assert windows["calls"] == []

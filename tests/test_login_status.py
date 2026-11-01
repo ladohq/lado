@@ -390,7 +390,38 @@ def test_run_status_gives_the_output(tmp_path):
 
 
 @pytest.mark.parametrize("name", ["claude", "codex", "kilo", "opencode"])
-def test_each_choice_logs_in_by_one_of_the_providers_login_variables(name):
+def test_each_choice_logs_in_by_a_login_variable_or_a_login_action(name):
     provider = providers.get(name)
-    assert {c.variable for c in provider.login_choices} <= set(provider.login_variables)
+    actions = {a.id for a in provider.login_actions()}
+    for choice in provider.login_choices:
+        assert bool(choice.variable) != bool(choice.action), choice
+        assert choice.variable in provider.login_variables or choice.action in actions
     assert bool(provider.login_choices) == bool(provider.login_question)
+
+
+def test_codex_asks_how_the_human_pays():
+    codex = providers.get("codex")
+    assert codex.login_question == "How do you pay for Codex?"
+    assert [(c.id, c.title, c.variable, c.action) for c in codex.login_choices] == [
+        ("chatgpt", "ChatGPT plan — Plus, Pro, Business or Enterprise", "", "login"),
+        ("token", "ChatGPT Business or Enterprise — access token", "CODEX_ACCESS_TOKEN", ""),
+        ("usage", "Pay per use — OpenAI API key", "OPENAI_API_KEY", ""),
+    ]
+    assert [c.detail for c in codex.login_choices] == [
+        "Sign in with your ChatGPT account by a one-time code: LADO shows a link and a code, "
+        "you open the link on any device and enter the code.",
+        "Paste an access token your workspace admin made in ChatGPT's admin console (Codex "
+        "access tokens).",
+        "Paste an API key from platform.openai.com.",
+    ]
+    file = ("-c", 'cli_auth_credentials_store="file"')
+    assert [(a.id, a.label, a.argv, a.help) for a in codex.login_actions()] == [
+        (
+            "login",
+            "Get a sign-in code",
+            ("codex", "login", "--device-auth", *file),
+            "Open the link, sign in and enter the code there. This window closes by itself "
+            "once you are signed in.",
+        ),
+        ("logout", "Log out…", ("codex", "logout", *file), ""),
+    ]

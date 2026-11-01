@@ -199,21 +199,26 @@ class LoginStatus:
 @dataclass(frozen=True)
 class LoginChoice:
     """A way to log the CLI in that Settings offers (Provider.login_choices): a value of
-    `variable`, one of the provider's login variables, pasted and kept as LADO's secret."""
+    `variable`, one of the provider's login variables, pasted and kept as LADO's secret, or
+    the login window running `action`, one of the provider's login_actions (Codex's sign-in
+    code); exactly one of them."""
 
     id: str
     title: str
-    detail: str  # where the value comes from
-    variable: str
+    detail: str  # where the value comes from, or what the action does
+    variable: str = ""
+    action: str = ""
 
 
 @dataclass(frozen=True)
 class LoginAction:
-    """A command of the login window (lado.logins): its id in the API, its label, its argv."""
+    """A command of the login window (lado.logins): its id in the API, its label, its argv,
+    and the window's help line while it runs ("" for the window's own)."""
 
     id: str
     label: str
     argv: tuple[str, ...]
+    help: str = ""
 
 
 def run_status(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess | str:
@@ -310,8 +315,9 @@ class Provider(ABC):
     # Settings (lado.project_secrets, LADO's folder); the first one is named in the reason
     # of an agent that waits for a login.
     login_variables: tuple[str, ...] = ()
-    # What Settings asks to log the CLI in by a pasted value, and its answers; none for a
-    # CLI that logs in by its own command (login_actions) or not from the page.
+    # What Settings asks to log the CLI in by a pasted value or a login action, and its
+    # answers; none for a CLI that logs in by its own command only (login_actions) or not
+    # from the page.
     login_question: str = ""
     login_choices: tuple[LoginChoice, ...] = ()
 

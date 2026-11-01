@@ -147,13 +147,27 @@ def _file_login(env: dict[str, str]) -> base.LoginStatus:
     return base.LoginStatus(base.NO)
 
 
+CODE_HELP = "Open the link, sign in and enter the code there."
+
+
+# "fake-login" logs in like Claude Code by a pasted token or key, and like Codex by a
+# sign-in code: its choice "code" runs fake_login.py in the login window, which writes its
+# login file; "logout" removes that file.
 class FakeLoginProvider(FakeProvider):
     login_variables = (TOKEN, KEY)
     login_question = "How do you pay for the fake agent?"
     login_choices = (
         base.LoginChoice("token", "A token", "Paste a fake token.", TOKEN),
         base.LoginChoice("key", "A key", "Paste a fake key.", KEY),
+        base.LoginChoice("code", "A sign-in code", "Get a fake code.", action="login"),
     )
+
+    def login_actions(self) -> tuple[base.LoginAction, ...]:
+        script = (sys.executable, str(LOGIN_SCRIPT))
+        return (
+            base.LoginAction("login", "Get a sign-in code", script, CODE_HELP),
+            base.LoginAction("logout", "Log out…", (*script, "--logout")),
+        )
 
     def __init__(self, name: str):
         super().__init__(name, True)

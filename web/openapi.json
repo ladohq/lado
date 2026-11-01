@@ -5876,12 +5876,17 @@
           "label": {
             "type": "string",
             "title": "Label"
+          },
+          "help": {
+            "type": "string",
+            "title": "Help"
           }
         },
         "type": "object",
         "required": [
           "id",
-          "label"
+          "label",
+          "help"
         ],
         "title": "LoginActionInfo",
         "description": "A command the login window can run (Provider.login_actions)."
@@ -5903,6 +5908,10 @@
           "variable": {
             "type": "string",
             "title": "Variable"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
           }
         },
         "type": "object",
@@ -5910,10 +5919,11 @@
           "id",
           "title",
           "detail",
-          "variable"
+          "variable",
+          "action"
         ],
         "title": "LoginChoiceInfo",
-        "description": "A way to log the CLI in by a pasted value kept as LADO's secret\n(Provider.login_choices)."
+        "description": "A way to log the CLI in (Provider.login_choices): a pasted value kept as LADO's\nsecret, or the login window running one of `actions`."
       },
       "LoginInfo": {
         "properties": {
@@ -7466,6 +7476,10 @@
             "type": "boolean",
             "title": "From Lado"
           },
+          "logout_file": {
+            "type": "boolean",
+            "title": "Logout File"
+          },
           "note": {
             "type": "string",
             "title": "Note"
@@ -7509,6 +7523,7 @@
           "question",
           "choices",
           "from_lado",
+          "logout_file",
           "note",
           "waiting",
           "running",

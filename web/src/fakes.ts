@@ -450,12 +450,14 @@ export const CHOICES = [
     title: "Subscription — Claude Pro or Max",
     detail: "Run `claude setup-token` on any computer where Claude Code is installed and paste the token it prints.",
     variable: "CLAUDE_CODE_OAUTH_TOKEN",
+    action: "",
   },
   {
     id: "usage",
     title: "Pay per use — API billing",
     detail: "Paste an API key from console.anthropic.com.",
     variable: "ANTHROPIC_API_KEY",
+    action: "",
   },
 ];
 
@@ -469,6 +471,7 @@ export function claudeRow(more: Partial<ProviderLogins> = {}): ProviderLogins {
     question: "How do you pay for Claude?",
     choices: CHOICES,
     from_lado: false,
+    logout_file: false,
     note: "",
     waiting: [{ session: "my-app", agent: "supervisor" }],
     running: [
@@ -490,8 +493,8 @@ export function opencodeRow(state: "yes" | "no" = "yes"): ProviderLogins {
     login: { ...LOGIN, state, method: state === "yes" ? "2 credentials, 1 variable" : "" },
     needs_login: false,
     actions: [
-      { id: "login", label: "Add a login…" },
-      { id: "logout", label: "Log out of one…" },
+      { id: "login", label: "Add a login…", help: "" },
+      { id: "logout", label: "Log out of one…", help: "" },
     ],
     question: "",
     choices: [],

@@ -314,6 +314,35 @@ def test_a_login_window_opens_once_and_closes(client, windows):
     assert answer.json()["window"] is False and windows == {}
 
 
+def test_codexs_sheet_runs_its_sign_in_from_a_choice_and_logs_out_of_its_file(
+    client, cli_logins, windows
+):
+    cli_logins.answer("codex", 0, "", "Logged in using ChatGPT\n")
+    codex = _row(_page(client), "codex")
+    assert codex["question"] == "How do you pay for Codex?"
+    assert [(c["id"], c["variable"], c["action"]) for c in codex["choices"]] == [
+        ("chatgpt", "", "login"),
+        ("token", "CODEX_ACCESS_TOKEN", ""),
+        ("usage", "OPENAI_API_KEY", ""),
+    ]
+    assert [(a["id"], bool(a["help"])) for a in codex["actions"]] == [
+        ("login", True),
+        ("logout", False),
+    ]
+    assert codex["login"]["choice"] == "chatgpt"
+    assert (codex["from_lado"], codex["logout_file"]) == (False, True)
+    answer = client.post("/api/providers/codex/login", json={"action": "logout"})
+    assert answer.status_code == 200, answer.text
+    [(_, cmd)] = windows.values()
+    assert cmd[-4:] == ["codex", "logout", "-c", 'cli_auth_credentials_store="file"']
+    # A key of LADO's secrets: logged out by removing the secret, not by Codex's command.
+    put = client.put("/api/providers/codex/variables/OPENAI_API_KEY", json={"value": "sk"})
+    assert put.status_code == 200, put.text
+    codex = _row(_page(client), "codex")
+    assert codex["login"]["method"] == "Pay per use (API key)"
+    assert (codex["from_lado"], codex["logout_file"]) == (True, False)
+
+
 def test_a_login_window_needs_a_known_action(client, windows):
     answer = client.post("/api/providers/claude/login", json={"action": "login"})
     assert answer.status_code == 400 and "no login action" in answer.json()["detail"]

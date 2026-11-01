@@ -168,6 +168,31 @@ class CodexProvider(base.Provider):
     # of its own (first_hook_blocker); Codex reads CODEX_ACCESS_TOKEN itself. The first one
     # is named where a login is missing: the one a container's user most likely has.
     login_variables = (KEY, TOKEN)
+    login_question = "How do you pay for Codex?"
+    login_choices = (
+        base.LoginChoice(
+            "chatgpt",
+            "ChatGPT plan — Plus, Pro, Business or Enterprise",
+            "Sign in with your ChatGPT account by a one-time code: LADO shows a link and a "
+            "code, you open the link on any device and enter the code.",
+            action="login",
+        ),
+        # Made in ChatGPT's admin console; Codex checks it with OpenAI's server and never
+        # refreshes it: Codex's counterpart of `claude setup-token`.
+        base.LoginChoice(
+            "token",
+            "ChatGPT Business or Enterprise — access token",
+            "Paste an access token your workspace admin made in ChatGPT's admin console "
+            "(Codex access tokens).",
+            TOKEN,
+        ),
+        base.LoginChoice(
+            "usage",
+            "Pay per use — OpenAI API key",
+            "Paste an API key from platform.openai.com.",
+            KEY,
+        ),
+    )
     keyring_note = (
         "Your Codex keeps its login in the system keyring, which Codex agents cannot read. "
         "Log in here: the login goes to Codex's login file, and your own Codex keeps using "
@@ -184,6 +209,22 @@ class CodexProvider(base.Provider):
         provider = (config.get("model_providers") or {}).get(name) or {}
         return name == "openai" or bool(
             isinstance(provider, dict) and provider.get("requires_openai_auth")
+        )
+
+    def login_actions(self) -> tuple[base.LoginAction, ...]:
+        # Into the file the agents share, whatever store the user's own Codex keeps. The
+        # device code needs no browser on this machine: `--device-auth` prints a link and a
+        # code and ends once the code is entered. `codex logout` removes the file and, for
+        # a ChatGPT login, revokes its tokens: every agent's and the user's own Codex's.
+        return (
+            base.LoginAction(
+                "login",
+                "Get a sign-in code",
+                (self.command, "login", "--device-auth", *FILE_STORE),
+                "Open the link, sign in and enter the code there. This window closes by "
+                "itself once you are signed in.",
+            ),
+            base.LoginAction("logout", "Log out…", (self.command, "logout", *FILE_STORE)),
         )
 
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:

@@ -475,16 +475,18 @@ class LoginActionInfo(BaseModel):
 
     id: str
     label: str
+    help: str  # the window's help line while it runs; "" for the window's own
 
 
 class LoginChoiceInfo(BaseModel):
-    """A way to log the CLI in by a pasted value kept as LADO's secret
-    (Provider.login_choices)."""
+    """A way to log the CLI in (Provider.login_choices): a pasted value kept as LADO's
+    secret, or the login window running one of `actions`."""
 
     id: str
     title: str
-    detail: str  # where the value comes from
-    variable: str  # the login variable the value is saved as
+    detail: str  # where the value comes from, or what the action does
+    variable: str  # the login variable the value is saved as; "" for an action
+    action: str  # the login action's id; "" for a value
 
 
 class AgentRefInfo(BaseModel):
@@ -502,6 +504,9 @@ class ProviderLogins(BaseModel):
     question: str  # what the login sheet asks (Provider.login_question); "" for none
     choices: list[LoginChoiceInfo]  # its answers, each a value to paste
     from_lado: bool  # the login comes from LADO's secrets: the sheet offers Log out
+    # The login is the CLI's own file and its `logout` action logs out of it: the choice
+    # sheet offers Log out, which runs that action in the login window.
+    logout_file: bool
     note: str  # Provider.login_note
     waiting: list[AgentRefInfo]  # live agents that wait for its login
     running: list[AgentRefInfo]  # its live agents, for Log out's confirmation

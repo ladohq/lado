@@ -415,7 +415,9 @@ with a hidden character (a line break, a tab, a line separator, a bidi control, 
 zero-width space; `text.py`) is refused naming it (`a title is one line of visible text:
 U+202E RIGHT-TO-LEFT OVERRIDE is not allowed`). Setting
 or clearing is refused inside an agent (`LADO_AGENT` set), as `lado answer` is; reading is
-not. `lado ls` prints the title, quoted, after the name. The UI sets it too (the pencil in
+not. `lado ls` prints the title, quoted, after the name; each agent's line has its name,
+role, provider, status, for how long, the model it runs on (`-` while its CLI has named
+none; docs/design/agents.md), then a worker's branch. The UI sets it too (the pencil in
 the session's head, Rename… in the list; docs/design/ui.md, Session title). A title is
 never set at the start and by no MCP tool.
 

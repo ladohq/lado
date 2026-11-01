@@ -448,6 +448,8 @@ def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(stream
         "login_wait": None,
         "branch": None,
         "worktree": None,
+        "model": {"name": None, "source": "cli", "detail": None, "words": "CLI default"},
+        "effort": {"name": None, "source": "cli", "detail": None, "words": "CLI default"},
     }
     assert (
         spawned

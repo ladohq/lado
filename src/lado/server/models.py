@@ -17,6 +17,7 @@ from lado import (
     kits,
     logins,
     marketplaces,
+    providers,
     runs,
     runtime,
     scratch,
@@ -1065,6 +1066,15 @@ class Forgotten(BaseModel):
 AgentStatus = Literal["starting", "busy", "idle", "background", "waiting", "stopped"]
 
 
+class ModelInfo(BaseModel):
+    """An agent's model or effort, and where it came from."""
+
+    name: str | None  # None while unknown: the CLI's default
+    source: str  # one of state.MODEL_SOURCES, or a newer LADO's token
+    detail: str | None  # which part of the source, e.g. "profile work"
+    words: str  # what the UI shows for the source (state.source_words)
+
+
 class AgentInfo(BaseModel):
     name: str
     role: str
@@ -1083,6 +1093,8 @@ class AgentInfo(BaseModel):
     worktree: str | None  # a worker's folder; None for the supervisor
     spawned_at: str  # UTC, ISO 8601: its latest spawn
     since: str  # UTC, ISO 8601: when it got its status, as `lado ls` says
+    model: ModelInfo  # the model it runs on
+    effort: ModelInfo  # its reasoning effort
 
 
 class CommitInfo(BaseModel):
@@ -1546,7 +1558,18 @@ def agent_info(agent: state.Agent) -> AgentInfo:
         worktree=agent.cwd if worker else None,
         spawned_at=_iso(spawned) if spawned else added,
         since=_iso(since) if since else added,
+        model=_model_info(agent, agent.model, agent.model_source, agent.model_detail),
+        effort=_model_info(agent, agent.effort, agent.effort_source, agent.effort_detail),
     )
+
+
+def _model_info(agent: state.Agent, name: str | None, source: str, detail: str | None) -> ModelInfo:
+    try:
+        title = providers.get(agent.provider).title
+    except ValueError:  # a newer LADO's provider
+        title = agent.provider
+    words = state.source_words(source, detail, title)
+    return ModelInfo(name=name, source=source, detail=detail, words=words)
 
 
 def work_info(work: runtime.WorkState) -> WorkInfo:

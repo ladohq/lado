@@ -75,6 +75,38 @@ def test_a_workers_page_shows_its_work_and_finish_discards_it(page: Page, server
     shot(page, "finished")
 
 
+def test_an_agents_page_shows_its_model_and_effort_and_follows_the_cli(
+    page: Page, server, repo, shot
+):
+    """A worker whose launch carried a model and an effort from the CLI's config, and a
+    supervisor whose CLI has named none yet; then it names one, and the page follows."""
+    page.set_viewport_size({"width": 1600, "height": 1000})
+    session, _ = session_with_worker(repo)
+    chosen = state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work")
+    state.set_model(session, "w1", chosen, state.Choice("high", state.CLI_CONFIG, "profile work"))
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/agents/w1")
+    page.get_by_role("button", name="Collapse terminals").click()
+    worker = page.get_by_role("region", name="Agent w1")
+    expect(worker.locator(".agent-title")).to_contain_text("worker · fake · gpt-5.6-sol")
+    facts = worker.locator("dl.agent-facts")
+    expect(facts).to_contain_text("Modelgpt-5.6-sol · your Fake agent config, profile work")
+    expect(facts).to_contain_text("Efforthigh · your Fake agent config, profile work")
+    shot(page, "config")
+
+    page.get_by_role("navigation", name="Agents").get_by_role("link", name="supervisor").click()
+    supervisor = page.get_by_role("region", name="Agent supervisor")
+    title = supervisor.locator(".agent-title")
+    expect(title).to_contain_text("supervisor · fake · CLI default model")
+    facts = supervisor.locator("dl.agent-facts")
+    expect(facts).to_contain_text("ModelCLI defaultEffortCLI default")
+    shot(page, "cli-default")
+    state.report_model(session, "supervisor", "fake-large", None)
+    expect(title).to_contain_text("supervisor · fake · fake-large")
+    expect(facts).to_contain_text("Modelfake-large · CLI defaultEffortCLI default")
+    shot(page, "named")
+
+
 def test_in_a_narrow_column_the_agents_take_it_and_a_page_is_not_squeezed(
     page: Page, server, repo, shot
 ):

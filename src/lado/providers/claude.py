@@ -234,8 +234,14 @@ class ClaudeProvider(base.Provider):
         data = json.loads(payload) if payload.strip() else {}
         if native == "SessionEnd" and data.get("reason") in SWITCHES:
             return base.Event(base.CONVERSATION_END)
-        if native == "SessionStart" and data.get("source") in SWITCHES:
-            return base.Event(base.CONVERSATION_START)
+        if native == "SessionStart":
+            # Its input names the model in the interactive mode LADO runs, also at a
+            # compaction, /clear and a resume, not in `claude -p` (2.1.295, checked by hand);
+            # no hook named the effort.
+            model = data.get("model") if isinstance(data.get("model"), str) else ""
+            if data.get("source") in SWITCHES:
+                return base.Event(base.CONVERSATION_START, model=model)
+            return base.Event(base.SESSION_START, model=model)
         if native == "StopFailure":
             kind = data.get("error") or "unknown"
             error = base.error_line(kind, data.get("error_details", ""))

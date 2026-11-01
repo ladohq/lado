@@ -21,7 +21,7 @@ from lado.flows import IDENTIFIER
 
 # `lado update` of a later LADO reads this line from this release's wheel to learn the schema
 # it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
-SCHEMA_VERSION = 35
+SCHEMA_VERSION = 36
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -954,6 +954,34 @@ AGENTS_WINDOWS_OPENED = "UPDATE agents SET window_at = created_at"
 SCHEMA += AGENTS_WINDOW_AT + ";\n"
 MIGRATIONS[34] = [AGENTS_WINDOW_AT, AGENTS_WINDOWS_OPENED]
 
+# From version 36: the model and the effort the agent runs on, each a name (NULL while
+# unknown) with its source (MODEL_SOURCES) and a detail of the source (`profile work`). The
+# agents of an older LADO, like a new one, run on their CLI's default.
+AGENTS_MODEL = [
+    "ALTER TABLE agents ADD COLUMN model TEXT",
+    "ALTER TABLE agents ADD COLUMN model_source TEXT NOT NULL DEFAULT 'cli'",
+    "ALTER TABLE agents ADD COLUMN model_detail TEXT",
+    "ALTER TABLE agents ADD COLUMN effort TEXT",
+    "ALTER TABLE agents ADD COLUMN effort_source TEXT NOT NULL DEFAULT 'cli'",
+    "ALTER TABLE agents ADD COLUMN effort_detail TEXT",
+]
+SCHEMA += "".join(f"{step};\n" for step in AGENTS_MODEL)
+MIGRATIONS[35] = AGENTS_MODEL
+
+# Where an agent's model or effort came from. Each later way of choosing one adds a token;
+# a token this LADO does not know (a newer LADO's row) is shown as itself (source_words).
+CLI_DEFAULT = "cli"  # the CLI's own choice: its default or its own settings
+CLI_CONFIG = "cli-config"  # the user's config of the CLI, carried by LADO into the agent
+MODEL_SOURCES = {CLI_DEFAULT: "CLI default", CLI_CONFIG: "your {cli} config"}
+
+
+def source_words(source: str, detail: str | None, cli_title: str) -> str:
+    """What the human reads for a source of a model or effort: its words for the CLI titled
+    `cli_title` (by its own name: "Codex CLI" says "your Codex config"), then the detail."""
+    words = MODEL_SOURCES.get(source, source).format(cli=cli_title.removesuffix(" CLI"))
+    return f"{words}, {detail}" if detail else words
+
+
 # Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
 # approval or choice gate. An override is the human's past the flow (flow-set's reason, an
 # answer at a loop limit): kept, but never taken for the state's report.
@@ -980,6 +1008,22 @@ class Agent:
     read_only: bool = False  # its role changes nothing in the repository (lado.kits)
     created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS", when it was added; set by the database
     window_at: str | None = None  # UTC, when its window opened (window_opened); None before
+    # What it runs on (AGENTS_MODEL): a name, None while unknown, with its source and detail.
+    model: str | None = None
+    model_source: str = CLI_DEFAULT
+    model_detail: str | None = None
+    effort: str | None = None
+    effort_source: str = CLI_DEFAULT
+    effort_detail: str | None = None
+
+
+@dataclass(frozen=True)
+class Choice:
+    """A model or an effort chosen for an agent at its launch, with where it came from."""
+
+    name: str
+    source: str  # one of MODEL_SOURCES
+    detail: str | None = None
 
 
 @dataclass
@@ -1670,6 +1714,47 @@ def window_opened(session: str, name: str) -> None:
             " WHERE session = ? AND name = ?",
             (session, name),
         )
+
+
+def set_model(session: str, name: str, model: Choice | None, effort: Choice | None) -> None:
+    """Record what the agent's launch chose for its model and effort; None for nothing
+    chosen, which is the CLI's default. A row that is gone is no error."""
+    values = []
+    for choice in (model, effort):
+        values += (
+            [choice.name, choice.source, choice.detail] if choice else [None, CLI_DEFAULT, None]
+        )
+    with connect() as db:
+        db.execute(
+            "UPDATE agents SET model = ?, model_source = ?, model_detail = ?, effort = ?,"
+            " effort_source = ?, effort_detail = ? WHERE session = ? AND name = ?",
+            (*values, session, name),
+        )
+
+
+def report_model(session: str, name: str, model: str, effort: str | None) -> None:
+    """Record the model and effort the agent's CLI named in an event (base.Event): a model
+    "" or an effort None it did not name, which stays as it was; an effort "" is the
+    model's default one, no name. A name that differs from the agent's is the CLI's own:
+    its source becomes CLI_DEFAULT, with no detail. Writes nothing when nothing changes, so
+    a CLI that names its model in every hook adds no change to the journal."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT model, effort FROM agents WHERE session = ? AND name = ?", (session, name)
+        ).fetchone()
+        reports = [("model", model)] if model else []
+        if effort is not None:
+            reports.append(("effort", effort or None))
+        changed = [(c, reported) for c, reported in reports if row and reported != row[c]]
+        if changed:
+            sets = ", ".join(f"{c} = ?, {c}_source = ?, {c}_detail = NULL" for c, _ in changed)
+            values = [v for _, reported in changed for v in (reported, CLI_DEFAULT)]
+            db.execute(
+                f"UPDATE agents SET {sets} WHERE session = ? AND name = ?",
+                (*values, session, name),
+            )
+        db.execute("COMMIT")
 
 
 def get_agent(session: str, name: str) -> Agent | None:
@@ -3185,6 +3270,12 @@ def _agent(row: sqlite3.Row) -> Agent:
         read_only=bool(row["read_only"]),
         created_at=row["created_at"],
         window_at=row["window_at"],
+        model=row["model"],
+        model_source=row["model_source"],
+        model_detail=row["model_detail"],
+        effort=row["effort"],
+        effort_source=row["effort_source"],
+        effort_detail=row["effort_detail"],
     )
 
 

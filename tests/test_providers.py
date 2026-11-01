@@ -61,6 +61,24 @@ def test_claude_maps_native_events(native, payload, expected):
 
 
 @pytest.mark.parametrize(
+    ("native", "payload", "model"),
+    [
+        # The interactive mode's SessionStart names the model (2.1.295, checked by hand).
+        ("SessionStart", {"source": "startup", "model": "claude-opus-5-5"}, "claude-opus-5-5"),
+        ("SessionStart", {"source": "compact", "model": "claude-opus-5-5"}, "claude-opus-5-5"),
+        ("SessionStart", {"source": "clear", "model": "claude-opus-5-5"}, "claude-opus-5-5"),
+        ("SessionStart", {"source": "resume", "model": "claude-opus-5-5"}, "claude-opus-5-5"),
+        ("SessionStart", {"source": "startup"}, ""),  # `claude -p` does not
+        ("SessionStart", {"source": "startup", "model": {"id": "x"}}, ""),
+        ("Stop", {"model": "claude-opus-5-5"}, ""),  # only SessionStart is read
+    ],
+)
+def test_claude_names_the_model_at_its_session_start(native, payload, model):
+    event = providers.get("claude").parse_event(native, json.dumps(payload))
+    assert (event.model, event.effort) == (model, None)  # no hook names the effort
+
+
+@pytest.mark.parametrize(
     ("payload", "error"),
     [
         ({"error": "server_error"}, "server_error"),
@@ -922,6 +940,22 @@ def test_opencode_declares_its_permission_modes_and_version():
 )
 def test_opencode_family_maps_native_events(provider, native, payload, expected):
     assert providers.get(provider).parse_event(native, json.dumps(payload)) == expected
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_opencode_familys_prompt_names_the_model_and_its_variant(provider):
+    cli = providers.get(provider)
+    payload = {"prompt": "hi", "model": "anthropic/claude-sonnet-5-5", "variant": "high"}
+    event = cli.parse_event("chat.message", json.dumps(payload))
+    assert (event.kind, event.prompt) == (providers.PROMPT_SUBMIT, "hi")
+    assert (event.model, event.effort) == ("anthropic/claude-sonnet-5-5", "high")
+    # A model with no variant runs its default one: the effort is the CLI's default.
+    default = cli.parse_event("chat.message", json.dumps({"prompt": "hi", "model": "a/b"}))
+    assert (default.model, default.effort) == ("a/b", "")
+    # No model named: the event says nothing of either.
+    plain = cli.parse_event("chat.message", json.dumps({"prompt": "hi", "model": 1}))
+    assert (plain.model, plain.effort) == ("", None)
+    assert cli.parse_event("chat.message", json.dumps({"prompt": "hi"})).effort is None
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))

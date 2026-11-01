@@ -473,7 +473,7 @@ def test_the_migration_marks_the_windows_of_the_agents_there_as_opened(lado_home
     db.close()
     assert "window_at" not in columns
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (34, 35)
+    assert (migrated.before, migrated.after) == (34, 36)
     agent = state.get_agent("s", "w1")
     assert agent.window_at == agent.created_at != ""
 
@@ -485,6 +485,158 @@ def test_an_agent_has_no_window_mark_until_its_window_opened(lado_home):
     state.window_opened("s", "w1")
     assert state.get_agent("s", "w1").window_at
     state.window_opened("s", "gone")  # a spawn that failed forgot it: no error
+
+
+def _model(agent: state.Agent) -> tuple:
+    return (
+        agent.model,
+        agent.model_source,
+        agent.model_detail,
+        agent.effort,
+        agent.effort_source,
+        agent.effort_detail,
+    )
+
+
+CLI_DEFAULT_MODEL = (None, "cli", None, None, "cli", None)
+
+
+def _last_change() -> int:
+    with state.connect() as db:
+        return db.execute("SELECT coalesce(max(id), 0) FROM changes").fetchone()[0]
+
+
+def test_a_new_agent_has_the_clis_default_model(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
+    assert _model(state.get_agent("s", "w1")) == CLI_DEFAULT_MODEL
+
+
+def test_the_migration_gives_the_agents_there_the_clis_default(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "idle", "claude"))
+    agent_helpers.schema_before(36)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    columns = _agent_columns(db)
+    db.close()
+    assert "model" not in columns
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (35, 36)
+    assert _model(state.get_agent("s", "w1")) == CLI_DEFAULT_MODEL
+
+
+def test_set_model_writes_the_launchs_choice(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="codex"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "codex"))
+    state.set_model(
+        "s",
+        "w1",
+        state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work"),
+        state.Choice("high", state.CLI_CONFIG),
+    )
+    assert _model(state.get_agent("s", "w1")) == (
+        "gpt-5.6-sol",
+        "cli-config",
+        "profile work",
+        "high",
+        "cli-config",
+        None,
+    )
+    state.set_model("s", "w1", None, None)  # nothing chosen: the CLI's default again
+    assert _model(state.get_agent("s", "w1")) == CLI_DEFAULT_MODEL
+
+
+@pytest.mark.parametrize(
+    ("source", "detail", "words"),
+    [
+        ("cli", None, "CLI default"),
+        ("cli-config", None, "your Codex config"),
+        ("cli-config", "profile work", "your Codex config, profile work"),
+        ("session", None, "session"),  # a newer LADO's token: shown as it is
+        ("session", "x", "session, x"),
+    ],
+)
+def test_source_words(source, detail, words):
+    assert state.source_words(source, detail, "Codex") == words
+    assert state.source_words(source, detail, "Codex CLI") == words  # the CLI's own name
+
+
+def _codex_agent_with_a_config_model():
+    state.add_session(state.Session("s", "/r", None, provider="codex"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "codex"))
+    state.set_model(
+        "s",
+        "w1",
+        state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work"),
+        state.Choice("high", state.CLI_CONFIG, "profile work"),
+    )
+
+
+def test_a_reported_model_is_recorded(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
+    state.report_model("s", "w1", "claude-opus-5-5", None)
+    assert _model(state.get_agent("s", "w1")) == (
+        "claude-opus-5-5",
+        "cli",
+        None,
+        None,
+        "cli",
+        None,
+    )
+    state.report_model("s", "w1", "", "high")
+    assert _model(state.get_agent("s", "w1"))[3:] == ("high", "cli", None)
+
+
+def test_a_repeated_report_writes_nothing(lado_home):
+    _codex_agent_with_a_config_model()
+    before = _last_change()
+    state.report_model("s", "w1", "gpt-5.6-sol", None)
+    state.report_model("s", "w1", "gpt-5.6-sol", "high")
+    assert _last_change() == before
+    assert _model(state.get_agent("s", "w1"))[:3] == ("gpt-5.6-sol", "cli-config", "profile work")
+    state.report_model("s", "gone", "gpt-5.5", None)  # a row that is gone: no error
+    state.report_model("s", "gone", "gpt-5.5", "")
+
+
+def test_a_different_model_is_the_clis(lado_home):
+    _codex_agent_with_a_config_model()
+    before = _last_change()
+    state.report_model("s", "w1", "gpt-5.5", None)
+    assert _model(state.get_agent("s", "w1")) == (
+        "gpt-5.5",
+        "cli",
+        None,
+        "high",
+        "cli-config",
+        "profile work",
+    )
+    assert _last_change() == before + 1
+
+
+def test_an_event_without_a_model_changes_nothing(lado_home):
+    _codex_agent_with_a_config_model()
+    before = _last_change()
+    state.report_model("s", "w1", "", None)
+    assert _last_change() == before
+
+
+def test_an_effort_reported_as_the_clis_default_clears_the_name(lado_home):
+    """The OpenCode family names its model with each prompt, and no variant then means the
+    model's default one: the effort goes back to the CLI's default."""
+    state.add_session(state.Session("s", "/r", None, provider="opencode"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "idle", "opencode"))
+    state.report_model("s", "w1", "anthropic/claude-sonnet-5-5", "high")
+    before = _last_change()
+    state.report_model("s", "w1", "anthropic/claude-sonnet-5-5", "")
+    assert _model(state.get_agent("s", "w1"))[3:] == (None, "cli", None)
+    assert _last_change() == before + 1
+    state.report_model("s", "w1", "anthropic/claude-sonnet-5-5", "")  # the default again
+    assert _last_change() == before + 1
+    # A chosen effort the CLI says it does not run is the CLI's default.
+    state.set_model("s", "w1", None, state.Choice("high", state.CLI_CONFIG, "profile work"))
+    state.report_model("s", "w1", "", "")
+    assert _model(state.get_agent("s", "w1"))[3:] == (None, "cli", None)
 
 
 PROJECT_VARIABLES_TABLE = "SELECT sql FROM sqlite_master WHERE name = 'project_variables'"
@@ -501,7 +653,7 @@ def test_the_migration_makes_the_project_variables_table_as_a_new_database_has_i
     assert db.execute(PROJECT_VARIABLES_TABLE).fetchone() is None
     db.close()
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (33, 35)
+    assert (migrated.before, migrated.after) == (33, 36)
     assert migrated.backup == lado_home / "backups" / "lado.db.schema-33"
     with state.connect() as db:
         assert db.execute(PROJECT_VARIABLES_TABLE).fetchone()[0] == fresh
@@ -993,7 +1145,7 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
         columns = _agent_columns(db)
-    assert "window_at" not in columns  # the content before the migration
+    assert "model" not in columns  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -1045,7 +1197,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert "window_at" not in _agent_columns(db)  # rolled back
+        assert "model" not in _agent_columns(db)  # rolled back
 
 
 def test_no_pending_migration_without_a_database(lado_home):

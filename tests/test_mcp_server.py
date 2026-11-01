@@ -113,6 +113,29 @@ def test_list_agents_says_since_when_and_how_long_each_has_its_status(repo, fake
     assert 90 <= worker["status_for_seconds"] < 100
 
 
+def test_list_agents_gives_each_agents_model_and_effort_with_their_sources(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.spawn_worker("s", "task", name="w1")
+    state.set_model(
+        "s",
+        "w1",
+        state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work"),
+        state.Choice("high", state.CLI_CONFIG, "profile work"),
+    )
+    result = asyncio.run(mcp_server.build("s", "supervisor").call_tool("list_agents", {}))
+    supervisor, worker = result.structured_content["result"]
+    keys = ("model", "model_source", "model_detail", "effort", "effort_source", "effort_detail")
+    assert [worker[k] for k in keys] == [
+        "gpt-5.6-sol",
+        "cli-config",
+        "profile work",
+        "high",
+        "cli-config",
+        "profile work",
+    ]
+    assert [supervisor[k] for k in keys] == [None, "cli", None, None, "cli", None]
+
+
 def test_list_agents_shows_an_agent_in_background_with_its_time_and_nothing_more(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")

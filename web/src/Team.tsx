@@ -49,10 +49,13 @@ export function StatusDot({ status, small = false }: { status: AgentInfo["status
   return <span className={`dot${small ? " dot-small" : ""} dot-${status}`} aria-hidden="true" />;
 }
 
-// What a tooltip says about an agent, compactly: name · role · provider (the role left out
-// when it is the name), and the flow run it works for. `info` null: an agent not listed.
+// What a tooltip says about an agent, compactly: name · role · provider · model (the role
+// left out when it is the name, the model while its CLI has named none), and the flow run it
+// works for. `info` null: an agent not listed.
 export function AgentTip({ name, info }: { name: string; info: AgentInfo | null }) {
-  const about = info ? [name, info.role !== name && info.role, info.provider].filter(Boolean) : [name];
+  const about = info
+    ? [name, info.role !== name && info.role, info.provider, info.model.name].filter(Boolean)
+    : [name];
   return (
     <>
       <div className="tooltip-line">{about.join(" · ")}</div>

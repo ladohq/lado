@@ -456,6 +456,52 @@ def test_codex_maps_native_events(native, payload, expected):
     assert providers.get("codex").parse_event(native, json.dumps(payload)) == expected
 
 
+@pytest.mark.parametrize(
+    ("native", "payload"),
+    [
+        ("SessionStart", {"source": "startup"}),
+        ("UserPromptSubmit", {"prompt": "hi"}),
+        ("Stop", {"stop_hook_active": False}),
+        ("Interrupt", {}),
+        ("PermissionRequest", {"tool_name": "Bash", "tool_input": {}}),
+        ("PostToolUse", {"tool_name": "Bash", "tool_input": {}}),
+    ],
+)
+def test_every_codex_hook_names_the_model(native, payload):
+    cli = providers.get("codex")
+    event = cli.parse_event(native, json.dumps({**payload, "model": "gpt-5.5"}))
+    assert (event.model, event.effort) == ("gpt-5.5", None)  # no hook names the effort
+    assert cli.parse_event(native, json.dumps(payload)).model == ""
+    assert cli.parse_event(native, json.dumps({**payload, "model": 5})).model == ""
+
+
+def test_carried_model_of_the_chosen_profile(repo, codex_home):
+    _user_config(
+        codex_home,
+        'profile = "work"\nmodel = "gpt-5.5"\nmodel_reasoning_effort = "low"\n'
+        '[profiles.work]\nmodel = "gpt-5.6-sol"\nmodel_reasoning_effort = "high"\n',
+    )
+    launch, _ = _launch(repo)
+    assert launch.model == state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work")
+    assert launch.effort == state.Choice("high", state.CLI_CONFIG, "profile work")
+
+
+def test_carried_model_falls_back_to_the_top_level(repo, codex_home):
+    _user_config(
+        codex_home,
+        'profile = "work"\nmodel = "gpt-5.5"\n[profiles.work]\nmodel_reasoning_effort = "high"\n',
+    )
+    launch, _ = _launch(repo)
+    assert launch.model == state.Choice("gpt-5.5", state.CLI_CONFIG)
+    assert launch.effort == state.Choice("high", state.CLI_CONFIG, "profile work")
+
+
+def test_no_carried_model_leaves_none(repo, codex_home):
+    _user_config(codex_home, '[profiles.work]\nmodel = "gpt-5.6-sol"\n')  # not the chosen one
+    launch, _ = _launch(repo)
+    assert (launch.model, launch.effort) == (None, None)
+
+
 def test_codex_pairs_an_approval_with_its_tool_call():
     cli = providers.get("codex")
     asked = {"tool_name": "mcp__echo__echo", "tool_input": {"text": "hello"}, "turn_id": "t"}

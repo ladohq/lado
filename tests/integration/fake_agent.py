@@ -24,6 +24,7 @@ Every input line is a command, after an optional "[from <name>] ":
                        as {"sh": {command, code}} in "seen")
     tools              write the names of the LADO MCP tools it listed at start to "seen"
                        ("tools")
+    agents             call the LADO MCP tool list_agents; "seen" gets its result ("agents")
     spawn <task>       call the LADO MCP tool spawn_worker; "seen" gets its text ("spawn_text")
     finish <name> [discard]  call the LADO MCP tool finish_worker
     flow_start <flow> <task>  call the LADO MCP tool flow_start
@@ -102,7 +103,13 @@ config = json.load(open(sys.argv[1]))
 
 
 def hook(event: str, prompt: str = "", key: str = "", **more) -> str:
-    """Run the agent's hook for `event`; returns what it printed."""
+    """Run the agent's hook for `event`; returns what it printed. Its session-start and
+    prompt-submit hooks name the model and effort of FAKE_AGENT_MODEL and FAKE_AGENT_EFFORT
+    when its environment has them, as a CLI names the model it runs."""
+    if event in ("session_start", "prompt_submit"):
+        for field, variable in (("model", "FAKE_AGENT_MODEL"), ("effort", "FAKE_AGENT_EFFORT")):
+            if os.environ.get(variable):
+                more.setdefault(field, os.environ[variable])
     payload = json.dumps({"prompt": prompt, "key": key, **more})
     result = subprocess.run(config["hooks"][event], input=payload, capture_output=True, text=True)
     return result.stdout.strip()
@@ -388,6 +395,8 @@ def work(text: str) -> bool:
         elif command[0] == "tools":
             lado_mcp.ready.wait()
             report(tools=lado_mcp.tools)
+        elif command[0] == "agents":
+            report(agents=call_tool("list_agents", {}))
         elif command[0] == "spawn":
             call_tool("spawn_worker", {"task": " ".join(command[1:])})
             report(spawn_text=[c.get("text") for c in lado_mcp.last_content])

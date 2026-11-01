@@ -604,6 +604,22 @@ def test_an_opencode_family_worker_gets_its_first_line_on_its_command_line(
     assert state.get_agent("s", "w1").status == state.BUSY
 
 
+def test_handle_records_the_model_before_the_status(repo, fake_tmux):
+    cli = providers.get("opencode")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.spawn_worker("s", "fix the bug", name="w1")
+    hooks.handle(cli, providers.Event(providers.SESSION_START, model="claude-opus-5-5"), "s", "w1")
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source, agent.status) == ("claude-opus-5-5", "cli", state.IDLE)
+    hooks.handle(cli, providers.Event(providers.PROMPT_SUBMIT, effort="high"), "s", "w1")
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.effort, agent.status) == ("claude-opus-5-5", "high", state.BUSY)
+    # An event that says its model runs the default effort: no name any more.
+    default = providers.Event(providers.TURN_END, effort="")
+    hooks.handle(cli, default, "s", "w1")
+    assert state.get_agent("s", "w1").effort is None
+
+
 class _FirstInput(providers.Provider):
     """A CLI that starts its session only when its first input is submitted (Codex CLI)."""
 
@@ -3752,6 +3768,40 @@ class _NoSkills(providers.Provider):
 
     def parse_event(self, native, payload):
         return None
+
+
+class _ChoosesAModel(_NoSkills):
+    """A CLI whose launch chooses a model and an effort (Codex's carried config)."""
+
+    capabilities = providers.Capabilities(
+        status_events=True, permission_event=False, deliver_on_turn_end=True, skills=True
+    )
+
+    def launch_command(self, agent, session, spec):
+        detail = f"for {agent.name}"
+        return providers.Launch(
+            ["noskills"],
+            model=state.Choice("big", state.CLI_CONFIG, detail),
+            effort=state.Choice("high", state.CLI_CONFIG),
+        )
+
+
+def test_spawn_records_the_launchs_model(repo, fake_tmux, monkeypatch):
+    monkeypatch.setitem(providers._PROVIDERS, "noskills", _ChoosesAModel())
+    runtime.start_session(str(repo), "s", None, provider="noskills")
+    runtime.spawn_worker("s", "fix the bug", name="w1")
+    for name in ("supervisor", "w1"):
+        agent = state.get_agent("s", name)
+        assert (agent.model, agent.model_source, agent.model_detail) == (
+            "big",
+            "cli-config",
+            f"for {name}",
+        )
+        assert (agent.effort, agent.effort_source, agent.effort_detail) == (
+            "high",
+            "cli-config",
+            None,
+        )
 
 
 def test_provider_without_skills_fails_loudly(repo, fake_tmux, team_kit, monkeypatch):

@@ -91,6 +91,12 @@ class Event:
     # Code's background subagents and shells), so it is `background`, not idle (lado.hooks).
     # A provider that cannot tell leaves it False.
     background: bool = False
+    # The model and the effort the CLI says the agent runs on, in any event that says so
+    # (lado.hooks records them: state.report_model). The model: "" where it does not say.
+    # The effort: None where it does not say; "" where it says the model runs its default
+    # effort, with no name.
+    model: str = ""
+    effort: str | None = None
 
 
 ERROR_LIMIT = 160  # characters of an Event.error
@@ -143,6 +149,10 @@ class Launch:
     # What the provider could not do as asked and did otherwise, told whoever starts the
     # agent (e.g. a user setting it could not read).
     warnings: list[str] = field(default_factory=list)
+    # The model and the effort the launch set up, with where they came from; None for
+    # nothing set up: the CLI chooses (lado.runtime records them: state.set_model).
+    model: state.Choice | None = None
+    effort: state.Choice | None = None
 
 
 @dataclass(frozen=True)

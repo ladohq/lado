@@ -989,15 +989,19 @@ def _launch_command(
     handed over now as typed, an attempt like any hand-over (hand_over), and confirmed by
     its prompt-submit hook as typed text; the agent stays starting. A CLI that starts its
     session only at its first input (Capabilities.session_start_on_first_input) and has
-    nothing in its queue gets FIRST_INPUT from LADO, a message like any other."""
-    if not agent_cli.capabilities.notice_on_argv:
-        return agent_cli.launch_command(agent, sess, spec)
-    taken = state.take_pending(agent.session, agent.name, state.SENT, channel=state.TYPED)
-    if not taken and agent_cli.capabilities.session_start_on_first_input:
-        state.queue_message(agent.session, state.LADO, agent.name, FIRST_INPUT)
+    nothing in its queue gets FIRST_INPUT from LADO, a message like any other. The model
+    and effort the launch set up become the agent's (state.set_model)."""
+    if agent_cli.capabilities.notice_on_argv:
         taken = state.take_pending(agent.session, agent.name, state.SENT, channel=state.TYPED)
-    notice = format_messages(taken) or None
-    return agent_cli.launch_command(agent, sess, spec, notice=notice)
+        if not taken and agent_cli.capabilities.session_start_on_first_input:
+            state.queue_message(agent.session, state.LADO, agent.name, FIRST_INPUT)
+            taken = state.take_pending(agent.session, agent.name, state.SENT, channel=state.TYPED)
+        notice = format_messages(taken) or None
+        launch = agent_cli.launch_command(agent, sess, spec, notice=notice)
+    else:
+        launch = agent_cli.launch_command(agent, sess, spec)
+    state.set_model(agent.session, agent.name, launch.model, launch.effort)
+    return launch
 
 
 def _undo(

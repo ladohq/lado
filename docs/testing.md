@@ -126,8 +126,9 @@ read-only (no command tools; LADO's run messages to it name the human's ways), a
 live test fails when a `repo_changed` event names it; the test merges only while it is idle.
 No Codex agent asks whether to trust the test's repo: LADO's config of each agent trusts
 it, and the test fails if Codex asks. `tests/live/test_codex_login.py` runs a Codex session
-with a worker on OpenAI's model and a real ChatGPT login, shared by the agents' links, made
-stale so each refreshes it: only with `LADO_LIVE_CODEX_HOME` naming a Codex home the human
+with a worker on OpenAI's model and a real ChatGPT login, shared by the agents' links, each
+agent started on the file made stale so it refreshes it (a running Codex keeps its login in
+memory and reads the file again only when its own tokens need a refresh): only with `LADO_LIVE_CODEX_HOME` naming a Codex home the human
 logged in to (`CODEX_HOME=<dir> codex login --device-auth`), else it skips.
 Unit tests get a `CODEX_HOME` of their own (`codex_home`, `tests/conftest.py`), never the
 user's `~/.codex`. The Claude test runs Claude Code with the human's own config (it

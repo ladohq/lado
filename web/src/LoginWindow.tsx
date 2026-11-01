@@ -64,7 +64,6 @@ export function LoginWindow({
   const id = useId();
   const box = useRef<HTMLDivElement>(null);
   const link = useRef<TermLink | null>(null);
-  const fitted = useRef<() => void>(() => {});
   const [state, setState] = useState<LinkState>({ phase: "connecting", reason: null });
   const [text, setText] = useState("");
   const [closing, setClosing] = useState(false);
@@ -112,7 +111,6 @@ export function LoginWindow({
       fit.fit();
       socket.resize(term.cols, term.rows);
     };
-    fitted.current = resize;
     const typed = term.onData((data) => socket.input(data));
     const observed = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
     observed?.observe(element);
@@ -133,10 +131,7 @@ export function LoginWindow({
     return () => clearTimeout(timer);
   }, [showsCode, prompt]);
 
-  const terminal = !showsCode || (fallback && !prompt);
-  useEffect(() => {
-    if (terminal && fallback) fitted.current(); // shown at last: its size is the box's now
-  }, [terminal, fallback]);
+  const terminal = !showsCode || (fallback && !prompt); // once shown, ResizeObserver fits it
 
   const send = () => {
     link.current?.input(`${text}\r`); // one input: the CLI reads the line and its Enter

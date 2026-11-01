@@ -17,11 +17,13 @@ server finds the agents that wait by that reason, so the texts live here alone.
 
 A login window is a tmux session of its own on LADO's server, one per provider, named
 `lado-login-<provider>` and labelled with user options (LOGIN, HOME): it runs the CLI's
-login or logout command (OpenCode's, Kilo's) with the agents' environment
-(lado.agent_env.command) and ends with it. `lado stop --all` and the UI server's start and
-stop end the windows by their labels, never by name; they are no LADO session, so `lado
-ls` and the runtime never see them. The UI streams one through lado.terminal
-(`open_login`).
+login or logout command (OpenCode's, Kilo's, Codex's sign-in code) with the agents'
+environment (lado.agent_env.command). When the command ends its pane stays, dead, with its
+text and exit status, and the window counts as ended; `look` reads them and ends it.
+`lado stop --all` and the UI server's start and stop end the windows by their labels,
+never by name; they are no LADO session, so `lado ls` and the runtime never see them. The
+UI streams one through lado.terminal (`open_login`), and lado.server.terminals watches it
+with `look`: the link and the code of an action that shows one, and how it ended.
 """
 
 import contextlib

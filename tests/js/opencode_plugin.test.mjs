@@ -65,6 +65,31 @@ test("chat.message passes the prompt without synthetic parts", async () => {
   ])
 })
 
+test("chat.message passes the model of the prompt and its variant", async () => {
+  const { plugin } = await load({ "chat.message": hook("chat.message") })
+  const model = { providerID: "anthropic", modelID: "claude-sonnet-5-5", variant: "high" }
+  await plugin["chat.message"](
+    { sessionID: "s1" },
+    { message: { role: "user", model }, parts: [{ type: "text", text: "hi" }] },
+  )
+  assert.deepEqual(calls(), [
+    {
+      event: "chat.message",
+      payload: { sessionID: "s1", prompt: "hi", model: "anthropic/claude-sonnet-5-5", variant: "high" },
+    },
+  ])
+})
+
+test("chat.message without a model passes the prompt alone", async () => {
+  const { plugin } = await load({ "chat.message": hook("chat.message") })
+  const text = [{ type: "text", text: "hi" }]
+  await plugin["chat.message"]({ sessionID: "s1" }, { message: { role: "user" }, parts: text })
+  await plugin["chat.message"]({ sessionID: "s1" }, { message: { model: { modelID: "m" } }, parts: text })
+  await plugin["chat.message"]({ sessionID: "s1" }, { parts: text })
+  const plain = { event: "chat.message", payload: { sessionID: "s1", prompt: "hi" } }
+  assert.deepEqual(calls(), [plain, plain, plain])
+})
+
 test("session.idle sends what the hook prints as the next message", async () => {
   const { plugin, client } = await load({ "session.idle": hook("session.idle", "[from w1] hi") })
   await plugin.event({ event: { type: "session.idle", properties: { sessionID: "s1" } } })

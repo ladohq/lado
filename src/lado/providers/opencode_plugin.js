@@ -60,7 +60,16 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
           .filter((part) => part.type === "text" && !part.synthetic)
           .map((part) => part.text)
           .join("\n")
-        await run(hooks["chat.message"], { sessionID: input.sessionID, prompt })
+        const payload = { sessionID: input.sessionID, prompt }
+        // The user message names the model the prompt goes to, as the agent's or the
+        // session's choice resolved it, and its variant, the reasoning effort (OpenCode
+        // 1.18.35, read in its bundle).
+        const model = output.message?.model
+        if (model?.providerID && model?.modelID) {
+          payload.model = `${model.providerID}/${model.modelID}`
+          if (model.variant) payload.variant = model.variant
+        }
+        await run(hooks["chat.message"], payload)
       } catch {}
     },
     event: async ({ event }) => {

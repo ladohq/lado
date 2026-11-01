@@ -614,6 +614,10 @@ def test_handle_records_the_model_before_the_status(repo, fake_tmux):
     hooks.handle(cli, providers.Event(providers.PROMPT_SUBMIT, effort="high"), "s", "w1")
     agent = state.get_agent("s", "w1")
     assert (agent.model, agent.effort, agent.status) == ("claude-opus-5-5", "high", state.BUSY)
+    # An event that says its model runs the default effort: no name any more.
+    default = providers.Event(providers.TURN_END, effort="")
+    hooks.handle(cli, default, "s", "w1")
+    assert state.get_agent("s", "w1").effort is None
 
 
 class _FirstInput(providers.Provider):

@@ -1732,9 +1732,10 @@ def set_model(session: str, name: str, model: Choice | None, effort: Choice | No
         )
 
 
-def report_model(session: str, name: str, model: str, effort: str) -> None:
-    """Record the model and effort the agent's CLI named in an event; "" for one it did not
-    name, which stays as it was. A name that differs from the agent's is the CLI's own:
+def report_model(session: str, name: str, model: str, effort: str | None) -> None:
+    """Record the model and effort the agent's CLI named in an event (base.Event): a model
+    "" or an effort None it did not name, which stays as it was; an effort "" is the
+    model's default one, no name. A name that differs from the agent's is the CLI's own:
     its source becomes CLI_DEFAULT, with no detail. Writes nothing when nothing changes, so
     a CLI that names its model in every hook adds no change to the journal."""
     with connect() as db:
@@ -1742,8 +1743,10 @@ def report_model(session: str, name: str, model: str, effort: str) -> None:
         row = db.execute(
             "SELECT model, effort FROM agents WHERE session = ? AND name = ?", (session, name)
         ).fetchone()
-        reports = (("model", model), ("effort", effort)) if row else ()
-        changed = [(c, reported) for c, reported in reports if reported and reported != row[c]]
+        reports = [("model", model)] if model else []
+        if effort is not None:
+            reports.append(("effort", effort or None))
+        changed = [(c, reported) for c, reported in reports if row and reported != row[c]]
         if changed:
             sets = ", ".join(f"{c} = ?, {c}_source = ?, {c}_detail = NULL" for c, _ in changed)
             values = [v for _, reported in changed for v in (reported, CLI_DEFAULT)]

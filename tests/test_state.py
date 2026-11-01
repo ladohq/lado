@@ -575,7 +575,7 @@ def _codex_agent_with_a_config_model():
 def test_a_reported_model_is_recorded(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
-    state.report_model("s", "w1", "claude-opus-5-5", "")
+    state.report_model("s", "w1", "claude-opus-5-5", None)
     assert _model(state.get_agent("s", "w1")) == (
         "claude-opus-5-5",
         "cli",
@@ -591,17 +591,18 @@ def test_a_reported_model_is_recorded(lado_home):
 def test_a_repeated_report_writes_nothing(lado_home):
     _codex_agent_with_a_config_model()
     before = _last_change()
-    state.report_model("s", "w1", "gpt-5.6-sol", "")
+    state.report_model("s", "w1", "gpt-5.6-sol", None)
     state.report_model("s", "w1", "gpt-5.6-sol", "high")
     assert _last_change() == before
     assert _model(state.get_agent("s", "w1"))[:3] == ("gpt-5.6-sol", "cli-config", "profile work")
-    state.report_model("s", "gone", "gpt-5.5", "")  # a row that is gone: no error
+    state.report_model("s", "gone", "gpt-5.5", None)  # a row that is gone: no error
+    state.report_model("s", "gone", "gpt-5.5", "")
 
 
 def test_a_different_model_is_the_clis(lado_home):
     _codex_agent_with_a_config_model()
     before = _last_change()
-    state.report_model("s", "w1", "gpt-5.5", "")
+    state.report_model("s", "w1", "gpt-5.5", None)
     assert _model(state.get_agent("s", "w1")) == (
         "gpt-5.5",
         "cli",
@@ -616,8 +617,26 @@ def test_a_different_model_is_the_clis(lado_home):
 def test_an_event_without_a_model_changes_nothing(lado_home):
     _codex_agent_with_a_config_model()
     before = _last_change()
-    state.report_model("s", "w1", "", "")
+    state.report_model("s", "w1", "", None)
     assert _last_change() == before
+
+
+def test_an_effort_reported_as_the_clis_default_clears_the_name(lado_home):
+    """The OpenCode family names its model with each prompt, and no variant then means the
+    model's default one: the effort goes back to the CLI's default."""
+    state.add_session(state.Session("s", "/r", None, provider="opencode"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "idle", "opencode"))
+    state.report_model("s", "w1", "anthropic/claude-sonnet-5-5", "high")
+    before = _last_change()
+    state.report_model("s", "w1", "anthropic/claude-sonnet-5-5", "")
+    assert _model(state.get_agent("s", "w1"))[3:] == (None, "cli", None)
+    assert _last_change() == before + 1
+    state.report_model("s", "w1", "anthropic/claude-sonnet-5-5", "")  # the default again
+    assert _last_change() == before + 1
+    # A chosen effort the CLI says it does not run is the CLI's default.
+    state.set_model("s", "w1", None, state.Choice("high", state.CLI_CONFIG, "profile work"))
+    state.report_model("s", "w1", "", "")
+    assert _model(state.get_agent("s", "w1"))[3:] == (None, "cli", None)
 
 
 PROJECT_VARIABLES_TABLE = "SELECT sql FROM sqlite_master WHERE name = 'project_variables'"

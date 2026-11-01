@@ -172,7 +172,7 @@ def test_ls_shows_how_long_each_agent_has_had_its_status(repo, fake_tmux, capsys
 def test_ls_shows_each_agents_model_after_its_time(repo, fake_tmux, capsys):
     main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
     runtime.spawn_worker("s", "task", name="w1")
-    state.report_model("s", "supervisor", "claude-opus-5-5", "")
+    state.report_model("s", "supervisor", "claude-opus-5-5", None)
     capsys.readouterr()
     main(["ls"])
     lines = capsys.readouterr().out.splitlines()

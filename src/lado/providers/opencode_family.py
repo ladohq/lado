@@ -245,14 +245,20 @@ class OpenCodeFamily(base.Provider):
             text = base.error_line(error.get("name") or "UnknownError", error.get("message", ""))
             return base.Event(EVENTS[native], error=text)
         # The plugin's chat.message names the model of the prompt and its variant, the
-        # reasoning effort (opencode_plugin.js).
+        # reasoning effort (opencode_plugin.js). A model with no variant runs its default
+        # one: OpenCode drops the variant when the human picks the default (1.18.35, read
+        # in its bundle), so the effort is the CLI's default then, not the one before.
         model, variant = data.get("model"), data.get("variant")
+        model = model if isinstance(model, str) else ""
+        effort = None
+        if model:
+            effort = variant if isinstance(variant, str) else ""
         return base.Event(
             EVENTS[native],
             data.get("prompt", ""),
             data.get("id") or "",
-            model=model if isinstance(model, str) else "",
-            effort=variant if isinstance(variant, str) else "",
+            model=model,
+            effort=effort,
         )
 
     def continue_output(self, text: str) -> str | None:

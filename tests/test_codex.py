@@ -470,7 +470,7 @@ def test_codex_maps_native_events(native, payload, expected):
 def test_every_codex_hook_names_the_model(native, payload):
     cli = providers.get("codex")
     event = cli.parse_event(native, json.dumps({**payload, "model": "gpt-5.5"}))
-    assert (event.model, event.effort) == ("gpt-5.5", "")
+    assert (event.model, event.effort) == ("gpt-5.5", None)  # no hook names the effort
     assert cli.parse_event(native, json.dumps(payload)).model == ""
     assert cli.parse_event(native, json.dumps({**payload, "model": 5})).model == ""
 

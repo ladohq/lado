@@ -170,7 +170,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   compaction, `/clear` and resume, not in `claude -p`, and no hook gave the effort (2.1.295,
   checked by hand), so a `/model` typed in its terminal shows at the next SessionStart; the
   OpenCode family's plugin sends with `chat.message` the user message's model
-  (`providerID/modelID`) and its `variant` as the effort (OpenCode 1.18.35, read in its
+  (`providerID/modelID`) and its `variant` as the effort, none when the model runs its
+  default variant, so the effort goes back to the CLI's default (OpenCode 1.18.35, read in its
   bundle; Kilo runs the same plugin interface, its bundle not read: without a model in its
   message a Kilo agent shows the CLI's default with no name). A name equal to the one the
   agent has writes nothing, so a hook in every turn adds nothing to the change journal; a

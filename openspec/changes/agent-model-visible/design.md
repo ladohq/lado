@@ -61,14 +61,18 @@ detail is `profile <name>` when the profile gave it. Only a value that is carrie
 
 ### D4. Events carry the model
 
-`base.Event` gets `model: str = ""` and `effort: str = ""`. Providers fill them:
+`base.Event` gets `model: str = ""` and `effort: str | None = None` (None: the event says
+nothing of the effort; "": the model runs its default effort, no name). Providers fill
+them:
 
 - Codex: `data.get("model")` for every event it parses (strings only).
 - Claude Code: `data.get("model")` for SessionStart, both as SESSION_START and as
   CONVERSATION_START (the `/clear` and resume switch).
 - OpenCode family: the plugin's `chat.message` payload gets `model` (`providerID/modelID`
   of `output.message.model`) and `variant`; `parse_event` puts them into `model` and
-  `effort`. No new hook or event: the existing `chat.message` carries two more fields.
+  `effort`; a model with no variant gives the effort "", as OpenCode drops the variant
+  when the human picks the model's default one. No new hook or event: the existing
+  `chat.message` carries two more fields.
 - The fake provider reads `model` and `effort` from its payload; the fake agent puts
   `FAKE_AGENT_MODEL` / `FAKE_AGENT_EFFORT` of its environment into its session-start and
   prompt-submit payloads.
@@ -79,8 +83,8 @@ Before acting on `event.kind`, after `state.seen`, `hooks.handle` calls
 `state.report_model(session, agent, event.model, event.effort)` when either is set. In
 one transaction it reads the row and writes only what changes: a reported name equal to
 the current one changes nothing; a different one replaces the name, and when the current
-source is not `cli`, sets the source to `cli` and the detail to NULL. An empty value
-leaves its pair alone. No write when nothing changes, so the journal and the UI get no
+source is not `cli`, sets the source to `cli` and the detail to NULL. A model "" or an
+effort None leaves its pair alone; an effort "" clears the name, as a different one would. No write when nothing changes, so the journal and the UI get no
 empty update. A failure there is logged like any hook error and does not stop the status
 handling (wrapped as the rest of `main`).
 

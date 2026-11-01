@@ -42,8 +42,9 @@ came from one.
 When a hook or plugin event of an agent names the model it runs (Codex's hooks, Claude
 Code's SessionStart, the OpenCode family's `chat.message`), LADO SHALL take that name as
 the agent's model, and the OpenCode family's variant as its effort, learning it from
-events only, never from the agent's terminal. A name equal to the one the agent has SHALL
-change nothing.
+events only, never from the agent's terminal. A model the OpenCode family names with no
+variant runs its default one: the agent's effort SHALL then have no name and the source
+`cli`. A name equal to the one the agent has SHALL change nothing.
 
 #### Scenario: Claude Code names its default
 - **WHEN** a Claude agent's SessionStart input has `model` `claude-opus-5-5`
@@ -54,6 +55,11 @@ change nothing.
   `claude-sonnet-5-5` with the variant `high`
 - **THEN** its model is `anthropic/claude-sonnet-5-5` and its effort `high`, both with the
   source `cli`
+
+#### Scenario: OpenCode goes back to the model's default variant
+- **WHEN** an OpenCode or Kilo agent's effort is `high` and its next `chat.message` has the
+  model `anthropic` / `claude-sonnet-5-5` with no variant
+- **THEN** its effort has no name and the source `cli`, and the page reads `CLI default`
 
 #### Scenario: An event without a model
 - **WHEN** an agent's event names no model

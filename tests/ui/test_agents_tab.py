@@ -101,7 +101,7 @@ def test_an_agents_page_shows_its_model_and_effort_and_follows_the_cli(
     facts = supervisor.locator("dl.agent-facts")
     expect(facts).to_contain_text("ModelCLI defaultEffortCLI default")
     shot(page, "cli-default")
-    state.report_model(session, "supervisor", "fake-large", "")
+    state.report_model(session, "supervisor", "fake-large", None)
     expect(title).to_contain_text("supervisor · fake · fake-large")
     expect(facts).to_contain_text("Modelfake-large · CLI defaultEffortCLI default")
     shot(page, "named")

@@ -237,8 +237,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `CODEX_ACCESS_TOKEN` (which Codex reads itself, before its file) it is a file of the
   agent's own instead, mode 600, holding the key as `codex login --with-api-key` writes it:
   Codex's TUI does not read the variable. Each write is a `note`; one LADO cannot make is a
-  `warning`, and the agent starts all the same. Nothing is written into the user's Codex
-  home.
+  `warning`, which says that an agent whose model needs a login then waits for one (its
+  status, read in its own home, finds none) until it starts again with its folder
+  writable. Nothing is written into the user's Codex home.
 - A new session or worker whose CLI needs a login (`Provider.needs_login`, asked with the
   environment the agent would start from: Claude Code always; Codex when the model
   provider of the user's config, the chosen profile's, else the top level's, is OpenAI's,

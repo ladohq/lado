@@ -206,10 +206,8 @@ class CodexProvider(base.Provider):
         # cannot be read is read as none: the status then decides.
         config, _ = _user_config(env, [])
         name = _model_provider(config)
-        provider = (config.get("model_providers") or {}).get(name) or {}
-        return name == "openai" or bool(
-            isinstance(provider, dict) and provider.get("requires_openai_auth")
-        )
+        provider = _as_table(_as_table(config.get("model_providers")).get(name))
+        return name == "openai" or bool(provider.get("requires_openai_auth"))
 
     def login_actions(self) -> tuple[base.LoginAction, ...]:
         # Into the file the agents share, whatever store the user's own Codex keeps. The
@@ -318,16 +316,16 @@ class CodexProvider(base.Provider):
         trust = _trust_entry(user.get("projects"), cwd) or (str(gitpaths.main_root(cwd)), "trusted")
         config["projects"] = {trust[0]: {"trust_level": trust[1]}}
         config["hooks"] = _hooks(agent, home)
-        user_trust = (user.get("hooks") or {}).get("state") or {}
+        user_trust = _as_table(_as_table(user.get("hooks")).get("state"))
         for path in _repo_hook_files(cwd, home):
             for key, entry in user_trust.items():
                 kept = _keep(entry, key, dropped) if key.startswith(f"{path}:") else None
-                if kept is not None:
+                if isinstance(kept, dict):  # an entry of another type is no trust
                     config["hooks"]["state"][key] = kept
             # The repository's own hooks, which load in a trusted folder only, trusted as a
             # human who trusts the folder takes them; one the user disabled stays so.
             for key, digest in _hook_handlers(path) if trust[1] == "trusted" else ():
-                if (config["hooks"]["state"].get(key) or {}).get("enabled") is not False:
+                if _as_table(config["hooks"]["state"].get(key)).get("enabled") is not False:
                     config["hooks"]["state"][key] = {"trusted_hash": digest}
         if dropped:
             warnings.append(
@@ -398,7 +396,8 @@ class CodexProvider(base.Provider):
         except OSError as error:
             return base.Blocker(
                 warning=f"cannot give the agent its {self.title} login in {home}: {error}; "
-                "it starts all the same"
+                "an agent whose model needs a login waits for one until it starts again with "
+                "its folder writable"
             )
         path = home / "config.toml"
         try:
@@ -412,7 +411,9 @@ class CodexProvider(base.Provider):
         trust = _trust_entry(config.get("projects"), folder)
         hooks: list[Path] = []
         if trust is None or trust[1] == "trusted":  # an untrusted folder's hooks do not load
-            hooks = _unreviewed(folder, home, (config.get("hooks") or {}).get("state") or {})
+            hooks = _unreviewed(
+                folder, home, _as_table(_as_table(config.get("hooks")).get("state"))
+            )
         review = (
             f"the repository's own hooks in {', '.join(map(str, hooks))}: in its terminal "
             'choose "Trust all and continue" or "Continue without trusting (hooks won\'t '
@@ -494,10 +495,17 @@ def _user_config(environ, warnings: list[str]) -> tuple[dict, Path]:
 def _model_provider(config: dict) -> str:
     """The model provider Codex runs with `config`: the chosen profile's, else the top
     level's, else OpenAI's."""
-    profiles = config.get("profiles")
-    profile = profiles.get(config.get("profile") or "") if isinstance(profiles, dict) else None
-    chosen = profile.get("model_provider") if isinstance(profile, dict) else None
-    return str(chosen or config.get("model_provider") or "openai")
+    chosen = config.get("profile")
+    profile = (
+        _as_table(_as_table(config.get("profiles")).get(chosen)) if isinstance(chosen, str) else {}
+    )
+    return str(profile.get("model_provider") or config.get("model_provider") or "openai")
+
+
+def _as_table(value) -> dict:
+    """`value` when it is a TOML table, else an empty one: a value of another type where
+    Codex has a table (a hand-edited config) is read as none, never a crash."""
+    return value if isinstance(value, dict) else {}
 
 
 def _user_store(env) -> str:
@@ -606,7 +614,7 @@ def _unreviewed(cwd: Path, home: Path, trusted: dict) -> list[Path]:
     files = []
     for path in _repo_hook_files(cwd, home):
         for key, digest in _hook_handlers(path):
-            entry = trusted.get(key) or {}
+            entry = _as_table(trusted.get(key))
             if entry.get("enabled") is not False and entry.get("trusted_hash") != digest:
                 files.append(path)
                 break

@@ -629,6 +629,20 @@ def test_the_repo_s_own_hooks_are_trusted_by_the_agents_config(repo, codex_home)
     assert not codex_home.exists()
 
 
+@pytest.mark.parametrize(
+    "text",
+    ['hooks = "x"\n', '[hooks]\nstate = "x"\n', '[hooks.state]\n"{key}" = "x"\n'],
+)
+def test_user_hooks_of_odd_types_crash_no_launch(repo, codex_home, text):
+    """No table where Codex has one is no trust of the user's: the repository's hooks are
+    trusted as with none."""
+    _, digest = _repo_hooks(repo)
+    _user_config(codex_home, text.format(key=_repo_hook_key(repo)))
+    launch, config = _launch(repo)
+    assert config["hooks"]["state"][_repo_hook_key(repo)] == {"trusted_hash": digest}
+    assert _blocker(launch, repo).reason is None
+
+
 def test_a_repo_hook_the_user_disabled_stays_disabled(repo, codex_home):
     _repo_hooks(repo)
     key = _repo_hook_key(repo)
@@ -831,7 +845,12 @@ def test_a_login_lado_cannot_settle_is_a_warning(repo, tmp_path):
         home.chmod(0o700)
     assert blocker.reason is None
     assert blocker.warning.startswith(f"cannot give the agent its Codex CLI login in {home}: ")
-    assert blocker.warning.endswith("; it starts all the same")
+    # Its status is read in its own home, where no login is now: on a model that needs one,
+    # it waits for a login it cannot see (Provider.needs_login), and the warning says so.
+    assert blocker.warning.endswith(
+        "; an agent whose model needs a login waits for one until it starts again with its "
+        "folder writable"
+    )
 
 
 def test_a_launched_agent_gets_its_login_and_trust_with_notes(repo, codex_home):

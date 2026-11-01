@@ -313,6 +313,23 @@ def test_codex_a_profile_without_a_provider_falls_back_to_the_top_level(tmp_path
     assert not _codex_needs(tmp_path, 'model_provider = "ollama"\nprofile = "p"\n[profiles.p]\n')
 
 
+@pytest.mark.parametrize(
+    "text, needs",
+    [
+        ('model_providers = "x"\n', True),
+        ('model_provider = "x"\nmodel_providers = "x"\n', False),
+        ('model_provider = "x"\n[model_providers]\nx = "y"\n', False),
+        ('profile = ["a"]\n[profiles.p]\nmodel_provider = "ollama"\n', True),
+        ('profile = "p"\nprofiles = "p"\n', True),
+        ('profile = "p"\n[profiles]\np = 1\n', True),
+    ],
+)
+def test_codex_a_config_of_odd_types_is_read_as_codex_would_not_crash(tmp_path, text, needs):
+    """A value of another type than Codex's is no table: never a crash of `lado doctor`,
+    Settings or a start."""
+    assert _codex_needs(tmp_path, text) is needs
+
+
 # `opencode auth list` and `kilo auth list`, ANSI colours and all (stdout; stderr has one
 # reset code).
 FAMILY_FULL = (

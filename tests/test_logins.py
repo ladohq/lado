@@ -222,10 +222,11 @@ def test_an_action_is_found_by_its_id():
 @pytest.fixture
 def windows(monkeypatch, lado_home, inherit, fake_clis):
     """tmux recorded: the sessions it lists (name, @lado-login, @lado-home, then
-    @lado-login-action, pane_dead, pane_dead_status: '' where a row leaves them out), the
-    text of each window (`texts`) and the calls."""
+    @lado-login-action, pane_dead, pane_dead_status, pane_dead_signal: '' where a row
+    leaves them out), the text of each window (`texts`), the calls, and `on_list`, run
+    before each listing (tmux's state changing meanwhile)."""
     home = str(state.home().resolve())
-    found = {"rows": [], "calls": [], "texts": {}}
+    found = {"rows": [], "calls": [], "texts": {}, "on_list": None}
 
     def made(name, cwd, cmd, options, before_attempt=None):
         found["calls"].append(("new", name, cwd, cmd, options))
@@ -239,6 +240,8 @@ def windows(monkeypatch, lado_home, inherit, fake_clis):
         found["rows"] = [r for r in found["rows"] if r[0] != name]
 
     def listed(*options):
+        if found["on_list"]:
+            found["on_list"]()
         return [(r + [""] * len(options))[: len(options) + 1] for r in found["rows"]]
 
     monkeypatch.setattr(tmux, "sessions_with", listed)
@@ -249,12 +252,13 @@ def windows(monkeypatch, lado_home, inherit, fake_clis):
     return found
 
 
-def dies(windows, name: str, status: str, text: str) -> None:
-    """The command of the window `name` ends with `status` ('' for a signal), its pane kept
-    with `text` (remain-on-exit)."""
+def dies(windows, name: str, status: str, text: str, signal: str = "") -> list[str]:
+    """The command of the window `name` ends with `status` or `signal` (both '' while tmux
+    has not got its end yet), its pane kept with `text` (remain-on-exit); its row."""
     [row] = [r for r in windows["rows"] if r[0] == name]
-    row[4:] = ["1", status]
+    row[4:] = ["1", status, signal]
     windows["texts"][name] = text
+    return row
 
 
 def test_a_login_window_is_one_per_provider_and_labelled(windows):
@@ -340,8 +344,34 @@ def test_a_look_at_a_window_without_a_code(windows):
     name = logins.open_window(OPENCODE, "login")
     windows["texts"][name] = CODE_TEXT
     assert logins.look(OPENCODE) == logins.Look()  # its action shows no code: not read
-    dies(windows, name, "", "")  # ended by a signal, nothing said
+    dies(windows, name, "", "", signal="15")  # ended by a signal, nothing said
     assert logins.look(OPENCODE) == logins.Look(ended=logins.Ended(None, ""))
+
+
+def test_a_dead_pane_is_read_only_once_tmux_has_its_exit_status(windows, monkeypatch):
+    """tmux may list a pane dead before it has its exit status: read and ended then, the
+    window would lose it, and a login that succeeded would show as failed (LAD-168 F1)."""
+    monkeypatch.setattr(logins, "DEAD_EVERY", 0.001)
+    name = logins.open_window(CODEX, "login")
+    row = dies(windows, name, "", "Successfully logged in\n")
+    lists = []
+
+    def status_comes():
+        lists.append(1)
+        if len(lists) == 3:
+            row[5] = "0"
+
+    windows["on_list"] = status_comes
+    assert logins.look(CODEX) == logins.Look(ended=logins.Ended(0, "Successfully logged in"))
+    assert windows["calls"][-1] == ("kill", name)
+
+
+def test_a_dead_pane_whose_status_never_comes_ends_after_dead_wait(windows, monkeypatch):
+    monkeypatch.setattr(logins, "DEAD_EVERY", 0.001)
+    monkeypatch.setattr(logins, "DEAD_WAIT", 0.05)
+    name = logins.open_window(CODEX, "login")
+    dies(windows, name, "", "said\n")  # as on tmux 3.2, which has no pane_dead_signal
+    assert logins.look(CODEX) == logins.Look(ended=logins.Ended(None, "said"))
 
 
 def test_a_window_needs_a_known_action(windows):

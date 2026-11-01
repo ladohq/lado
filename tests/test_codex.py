@@ -509,7 +509,7 @@ def test_codex_trusts_the_repo_the_user_trusts(repo, codex_home):
     _trust(codex_home, repo.resolve())
     launch, config = _launch(repo)
     assert config["projects"] == {str(repo.resolve()): {"trust_level": "trusted"}}
-    assert _blocker(launch, repo) == base.Blocker()
+    assert _blocker(launch, repo).reason is None
 
 
 def test_a_repo_the_user_never_trusted_is_trusted_by_the_agents_config(repo, codex_home):
@@ -563,7 +563,7 @@ def test_a_subfolder_is_trusted_by_its_repo(repo, codex_home):
     (repo / "sub").mkdir()
     _trust(codex_home, repo.resolve())
     launch, _ = _launch(repo / "sub")
-    assert _blocker(launch, repo / "sub") == base.Blocker()
+    assert _blocker(launch, repo / "sub").reason is None
 
 
 def test_a_worktree_is_trusted_by_its_main_repo(repo, codex_home):
@@ -571,7 +571,7 @@ def test_a_worktree_is_trusted_by_its_main_repo(repo, codex_home):
     worktree = _worktree(repo)
     launch, config = _launch(worktree)
     assert config["projects"] == {str(repo.resolve()): {"trust_level": "trusted"}}
-    assert _blocker(launch, worktree) == base.Blocker()
+    assert _blocker(launch, worktree).reason is None
 
 
 def test_a_subfolder_of_a_worktree_is_trusted_by_the_worktree(repo, codex_home):
@@ -580,7 +580,7 @@ def test_a_subfolder_of_a_worktree_is_trusted_by_the_worktree(repo, codex_home):
     _trust(codex_home, worktree.resolve())
     launch, config = _launch(worktree / "sub")
     assert config["projects"] == {str(worktree.resolve()): {"trust_level": "trusted"}}
-    assert _blocker(launch, worktree / "sub") == base.Blocker()
+    assert _blocker(launch, worktree / "sub").reason is None
 
 
 def test_a_folder_is_trusted_by_its_real_path(repo, codex_home, tmp_path):
@@ -588,14 +588,14 @@ def test_a_folder_is_trusted_by_its_real_path(repo, codex_home, tmp_path):
     link.symlink_to(repo)
     _trust(codex_home, repo.resolve())
     launch, _ = _launch(link)
-    assert _blocker(launch, link) == base.Blocker()
+    assert _blocker(launch, link).reason is None
 
 
 def test_an_untrusted_repo_is_carried_and_asks_nothing(repo, codex_home):
     _trust(codex_home, repo.resolve(), level="untrusted")
     launch, config = _launch(repo)
     assert config["projects"] == {str(repo.resolve()): {"trust_level": "untrusted"}}
-    assert _blocker(launch, repo) == base.Blocker()
+    assert _blocker(launch, repo).reason is None
 
 
 def test_an_agent_config_lado_cannot_read_is_a_warning(repo, codex_home):
@@ -670,7 +670,7 @@ def test_the_user_s_trust_in_the_repo_s_hooks_is_carried(repo, codex_home):
     launch, config = _launch(repo)
     assert config["hooks"]["state"][key] == {"trusted_hash": digest}
     assert other not in config["hooks"]["state"]
-    assert _blocker(launch, repo) == base.Blocker()
+    assert _blocker(launch, repo).reason is None
 
 
 def test_a_worktree_runs_the_main_checkout_s_hooks_with_the_user_s_trust(repo, codex_home):
@@ -688,7 +688,7 @@ def test_a_worktree_runs_the_main_checkout_s_hooks_with_the_user_s_trust(repo, c
     worktree = _worktree(repo)
     launch, config = _launch(worktree)
     assert config["hooks"]["state"][key] == {"trusted_hash": digest}
-    assert _blocker(launch, worktree) == base.Blocker()
+    assert _blocker(launch, worktree).reason is None
 
 
 def test_hooks_in_the_repo_s_codex_config_count_too(repo, codex_home):
@@ -708,7 +708,7 @@ def test_an_untrusted_repo_s_hooks_do_not_load(repo, codex_home):
     _trust(codex_home, repo.resolve(), level="untrusted")
     launch, config = _launch(repo)
     assert _repo_hook_key(repo) not in config["hooks"]["state"]  # none to trust
-    assert _blocker(launch, repo) == base.Blocker()
+    assert _blocker(launch, repo).reason is None
 
 
 def test_a_repo_codex_will_ask_about_names_its_hooks_too(repo, codex_home):
@@ -740,3 +740,104 @@ def test_the_user_s_codex_home_is_written_for_the_login(repo, tmp_path):
     assert (home / "user-codex-home").read_text() == f"{tmp_path / 'u'}\n"
     _launch(repo, environ={"HOME": "/h"})
     assert (home / "user-codex-home").read_text() == "/h/.codex\n"
+
+
+# The agent's login (D1 of openspec change codex-shared-login): settled before its first
+# hook, and again by its waiting window once a login is there (lado.login_wait).
+
+
+def _homes(tmp_path, user_file=True):
+    """An agent's Codex home that knows the user's; the user's with a login file."""
+    home, user = tmp_path / "agent", tmp_path / "user"
+    home.mkdir()
+    if user_file:
+        user.mkdir()
+        (user / "auth.json").write_text("{}")
+    (home / "user-codex-home").write_text(f"{user}\n")
+    return home, user
+
+
+def _settle(repo, home, **env):
+    return providers.get("codex").first_hook_blocker(
+        str(repo), {"HOME": "/h", "CODEX_HOME": str(home), **env}
+    )
+
+
+def test_the_agents_login_is_a_link_to_the_users(repo, tmp_path):
+    home, user = _homes(tmp_path)
+    blocker = _settle(repo, home)
+    auth = home / "auth.json"
+    assert auth.is_symlink() and os.readlink(auth) == str(user / "auth.json")
+    assert f"LADO linked {auth} to {user / 'auth.json'}" in blocker.notes
+
+
+def test_a_link_to_a_missing_file_is_made_without_its_folder(repo, tmp_path):
+    """The user logs in later (a sign-in code): the link then reaches the login."""
+    home, user = _homes(tmp_path, user_file=False)
+    _settle(repo, home)
+    assert os.readlink(home / "auth.json") == str(user / "auth.json")
+    assert not user.exists()
+
+
+def test_an_existing_link_is_left_with_no_note(repo, tmp_path):
+    home, _ = _homes(tmp_path)
+    _settle(repo, home)
+    assert not [n for n in _settle(repo, home).notes if "auth.json" in n]
+
+
+def test_without_the_users_home_written_it_is_the_default_one(repo, tmp_path):
+    """An agent launched by an older LADO."""
+    home, _ = _homes(tmp_path)
+    (home / "user-codex-home").unlink()
+    _settle(repo, home)
+    assert os.readlink(home / "auth.json") == "/h/.codex/auth.json"
+
+
+def test_an_api_key_becomes_the_agents_own_file(repo, tmp_path):
+    """Codex's TUI does not read OPENAI_API_KEY: the agent gets it as Codex's own key
+    login keeps it."""
+    home, user = _homes(tmp_path)
+    _settle(repo, home)  # a link first
+    blocker = _settle(repo, home, OPENAI_API_KEY="sk-canary")
+    auth = home / "auth.json"
+    assert not auth.is_symlink()
+    assert json.loads(auth.read_text()) == {"auth_mode": "apikey", "OPENAI_API_KEY": "sk-canary"}
+    assert auth.stat().st_mode & 0o777 == 0o600
+    assert (user / "auth.json").read_text() == "{}"  # the user's file untouched
+    assert f"LADO wrote the API key of OPENAI_API_KEY into {auth}" in blocker.notes
+    assert "canary" not in repr(blocker)
+
+
+def test_the_access_token_wins_over_the_key(repo, tmp_path):
+    home, user = _homes(tmp_path)
+    _settle(repo, home, OPENAI_API_KEY="sk-x", CODEX_ACCESS_TOKEN="at-x")
+    assert os.readlink(home / "auth.json") == str(user / "auth.json")
+
+
+def test_a_key_file_turns_back_into_the_link(repo, tmp_path):
+    home, user = _homes(tmp_path)
+    _settle(repo, home, OPENAI_API_KEY="sk-x")
+    _settle(repo, home)
+    assert os.readlink(home / "auth.json") == str(user / "auth.json")
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes any folder")
+def test_a_login_lado_cannot_settle_is_a_warning(repo, tmp_path):
+    home, _ = _homes(tmp_path)
+    home.chmod(0o500)
+    try:
+        blocker = _settle(repo, home)
+    finally:
+        home.chmod(0o700)
+    assert blocker.reason is None
+    assert blocker.warning.startswith(f"cannot give the agent its Codex CLI login in {home}: ")
+    assert blocker.warning.endswith("; it starts all the same")
+
+
+def test_a_launched_agent_gets_its_login_and_trust_with_notes(repo, codex_home):
+    launch, _ = _launch(repo)
+    blocker = _blocker(launch, repo)
+    home = Path(launch.env["CODEX_HOME"])
+    assert blocker.reason is None
+    assert os.readlink(home / "auth.json") == str(codex_home / "auth.json")
+    assert blocker.notes == (f"LADO linked {home / 'auth.json'} to {codex_home / 'auth.json'}",)

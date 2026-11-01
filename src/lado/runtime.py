@@ -884,7 +884,7 @@ def spawn_worker(
     `has_step`: the task holds a step of `run`, which the worker reports with flow_advance;
     any other task it reports with send_message. The task waits in its queue as a message
     from LADO, handed over at its first hook as any message; none of it is on the command
-    line. What holds the worker before its first hook (_first_hook_blocker), and its
+    line. What holds the worker before its first hook (_before_window), and its
     provider's launch warnings, are added to `warnings` and written to loop.log.
 
     A worker gets its own worktree and branch; a worker for a flow `run` works in the
@@ -2330,7 +2330,7 @@ START_SILENCE_REASON = (
 
 def check_starts(session: str, now: datetime | None = None) -> None:
     """One look of the session loop for agents whose CLI holds them before any hook with a
-    question LADO does not know (_first_hook_blocker knows the others), of any provider:
+    question LADO does not know (_before_window knows the others), of any provider:
     `starting`, no hook since the launch (seen_at 0), and START_SILENCE or more since the
     launch, its window mark (state.window_opened; a waiting window marks it anew when it
     starts the CLI, lado.login_wait). Such an agent waits with START_SILENCE_REASON; its
@@ -2974,24 +2974,6 @@ def _command(agent: state.Agent, base_env: dict[str, str], launch: providers.Lau
         raise LadoError(str(exc)) from exc
 
 
-def _first_hook_blocker(
-    agent_cli: providers.Provider,
-    agent: state.Agent,
-    base_env: dict[str, str],
-    launch: providers.Launch,
-) -> list[str]:
-    """Ask the provider what its CLI will ask the human before any hook runs, before the
-    agent's window starts: if something will, the agent waits from now on, so its first
-    hook always comes after that. Returns the lines to tell whoever starts it: why it will
-    wait, or why the provider cannot tell; what the provider did so that nothing holds it
-    goes to loop.log only (_log_notes)."""
-    blocker = agent_cli.first_hook_blocker(agent.cwd, _launch_env(agent, base_env, launch))
-    _log_notes(agent, blocker.notes)
-    if blocker.reason:
-        state.block(agent.session, agent.name, blocker.reason)
-    return [line for line in (blocker.reason, blocker.warning) if line]
-
-
 def _log_notes(agent: state.Agent, notes: Iterable[str]) -> None:
     """What LADO wrote into the agent's CLI's config (Blocker.notes): the session's log
     only, never told whoever starts the agent; it is no problem (LAD-163)."""
@@ -3059,22 +3041,25 @@ def _before_window(
     launch: providers.Launch,
     project: str | None,
 ) -> tuple[list[str], list[str]]:
-    """What holds the agent before its first hook, settled before its window starts: its
-    CLI's login (_held_for_login), else what the CLI asks first (_first_hook_blocker). An
-    agent that waits for its login gets now what needs no login (Claude Code's trust),
-    in loop.log; what does (the first run), and a question the CLI would still
-    ask, its waiting window settles once logged in (lado.login_wait), in loop.log; `shell`
-    is the login shell's layer, the lowest its window lays the login from. The lines to
-    tell whoever starts it, and the window's command."""
+    """What holds the agent before its first hook, settled before its window starts: what
+    the CLI asks first (Provider.first_hook_blocker), settled first as it may give the agent
+    its login (Codex's login file, which its status is read in), then its CLI's login
+    (_held_for_login). If something will hold it, the agent waits from now on, so its first
+    hook always comes after that. An agent that waits for its login gets now what needs no login
+    (Claude Code's trust), in loop.log; what does (the first run), and a question the CLI
+    would still ask, its waiting window settles once logged in (lado.login_wait), in
+    loop.log; `shell` is the login shell's layer, the lowest its window lays the login from.
+    The lines to tell whoever starts it, and the window's command."""
+    env = _launch_env(agent, base_env, launch)
+    blocker = agent_cli.first_hook_blocker(agent.cwd, env)
+    _log_notes(agent, blocker.notes)
     waits, lines = _held_for_login(agent_cli, agent, base_env, launch)
     if not waits:
-        return lines + _first_hook_blocker(agent_cli, agent, base_env, launch), _command(
-            agent, base_env, launch
-        )
-    env = _launch_env(agent, base_env, launch)
-    early = agent_cli.first_hook_blocker(agent.cwd, env)  # its reason: the window's, later
-    _log_notes(agent, early.notes)
-    lines += [early.warning] if early.warning else []
+        if blocker.reason:
+            state.block(agent.session, agent.name, blocker.reason)
+        lines += [line for line in (blocker.reason, blocker.warning) if line]
+        return lines, _command(agent, base_env, launch)
+    lines += [blocker.warning] if blocker.warning else []  # its reason: the window's, later
     ours = sorted({**providers.agent_env(agent), **launch.env})
     file = providers.base.config_dir(agent) / "env.json"
     shell_login = {n: shell[n] for n in agent_cli.login_variables if n in shell}

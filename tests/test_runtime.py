@@ -1816,6 +1816,38 @@ def test_codex_on_openais_model_is_refused_without_a_login(repo, fake_tmux, cli_
     assert fake_tmux == []
 
 
+def _codex_logged_in_by_its_file(cli_logins):
+    """Codex's status as the real one reads it: logged in where CODEX_HOME's auth.json is
+    there (a link to a file that exists too)."""
+    cli_logins.answers["codex"] = lambda env: (
+        (0, "", "Logged in using ChatGPT\n")
+        if (Path(env["CODEX_HOME"]) / "auth.json").exists()
+        else (1, "", "Not logged in\n")
+    )
+
+
+@pytest.mark.parametrize("how", [{"provider": "codex"}, {"reason": runtime.AT_START}])
+def test_a_logged_in_codex_agent_is_not_held_for_its_login(
+    repo, fake_tmux, cli_logins, codex_home, how
+):
+    """Its login is read in its own Codex home, whose auth.json LADO links before."""
+    codex_home.mkdir()
+    (codex_home / "auth.json").write_text("{}")
+    _codex_logged_in_by_its_file(cli_logins)
+    if how.get("reason"):
+        runtime.start_session(str(repo), "s", None, provider="codex")
+        runtime.stop_session("s")
+        fake_tmux.clear()
+        how = {**how, "resume": True}
+    started = runtime.start_session(str(repo), "s", None, **how)
+    assert started.warnings == []
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    assert not _waits_for_login(call[-1])
+    home = state.home() / "agents" / "s" / "supervisor"
+    assert os.readlink(home / "auth.json") == str(codex_home / "auth.json")
+
+
 def test_each_agent_takes_its_own_providers_login_whole_from_one_layer(
     repo, fake_tmux, cli_logins, monkeypatch
 ):
@@ -3616,7 +3648,8 @@ def test_kit_mcp_secrets_are_in_no_file_lado_leaves(
     assert found == []
     config = providers.base.config_path(state.get_agent("s", "r"))
     files = [*config.glob("*.json"), *config.glob("*.toml")]
-    text = "\n".join(p.read_text() for p in files if p.name != "env.json")
+    # Not Codex's auth.json, a link to the user's login file, which may not exist.
+    text = "\n".join(p.read_text() for p in files if p.is_file() and p.name != "env.json")
     assert "lado.mcp_exec" in text
     assert "${" not in text and "{env:" not in text
     env_files = list((lado_home / "agents").rglob("env.json"))

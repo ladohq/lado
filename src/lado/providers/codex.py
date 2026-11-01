@@ -6,7 +6,10 @@ Codex's base prompt is `developer_instructions` in config.toml (`model_instructi
 replaces the base prompt), and Codex writes into config.toml itself (trust, TUI state). So
 each agent gets a home of its own, its config folder, with a config.toml LADO writes anew
 at each launch, and what of the user's own Codex config the agent needs is read, never
-written (`CARRIED`, the trust of the folder and of the repository's own hooks).
+written (`CARRIED`, the trust of the folder and of the repository's own hooks). What would
+make a fresh home stop the agent at its start is settled in the agent's home: the trust of
+the repository and of its hooks (launch_command), and the login, a link to the user's login
+file or the agent's own key file (_settle_login).
 
 Checked by hand with Codex CLI 0.162.0 on a local model (Ollama, qwen3-coder:30b), in
 throwaway homes; where Codex's open source was read for a behaviour, the comment says so.
@@ -343,17 +346,27 @@ class CodexProvider(base.Provider):
         return json.dumps({"decision": "block", "reason": text})
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
-        # Read from the agent's own config.toml, which LADO wrote with what it carried: it
-        # is what the agent's Codex reads.
+        # The agent's login first: its own home has none, and the login's state is read
+        # there (lado.runtime, lado.login_wait). Then what Codex asks, read from the agent's
+        # own config.toml, which LADO wrote with what it carried: it is what the agent's
+        # Codex reads.
         folder = Path(cwd)
         home = Path(env.get("CODEX_HOME") or "")
+        try:
+            notes = tuple(_settle_login(home, env))
+        except OSError as error:
+            return base.Blocker(
+                warning=f"cannot give the agent its {self.title} login in {home}: {error}; "
+                "it starts all the same"
+            )
         path = home / "config.toml"
         try:
             config = _read_toml(path)
         except (OSError, ValueError) as error:
             return base.Blocker(
                 warning=f"cannot tell whether {self.title} asks the human before its first "
-                f"hook in {folder}: {path}: {error}"
+                f"hook in {folder}: {path}: {error}",
+                notes=notes,
             )
         trust = _trust_entry(config.get("projects"), folder)
         hooks: list[Path] = []
@@ -371,11 +384,50 @@ class CodexProvider(base.Provider):
                 "once in your own Codex (`codex` in that folder) stops the question"
             )
             return base.Blocker(
-                reason=f"{reason}; then it asks to review {review}" if hooks else reason
+                reason=f"{reason}; then it asks to review {review}" if hooks else reason,
+                notes=notes,
             )
         if hooks:
-            return base.Blocker(reason=f"{self.title} asks to review {review}")
-        return base.Blocker()
+            return base.Blocker(reason=f"{self.title} asks to review {review}", notes=notes)
+        return base.Blocker(notes=notes)
+
+
+def _settle_login(home: Path, env: Mapping[str, str]) -> list[str]:
+    """Make the agent's auth.json its login: with OPENAI_API_KEY (and no
+    CODEX_ACCESS_TOKEN, which Codex reads itself and prefers) a file of its own with that
+    key, as `codex login --with-api-key` writes it (Codex's TUI does not read the
+    variable); else a link to the user's auth.json, also before it exists, which every
+    agent and the user's own Codex share. Codex writes that file in place, so a refresh in
+    one reaches all (0.162.0, checked by hand on a ChatGPT login: three agents refreshing at
+    once). The notes of what LADO wrote; OSError when it cannot."""
+    auth = home / "auth.json"
+    key = env.get(KEY)
+    if key and not env.get(TOKEN):
+        if auth.is_symlink():
+            auth.unlink()  # never write through the link into the user's file
+        fd = os.open(auth, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        os.fchmod(fd, 0o600)  # the mode above is only for a new file
+        with os.fdopen(fd, "w") as file:
+            json.dump({"auth_mode": "apikey", KEY: key}, file)
+        return [f"LADO wrote the API key of {KEY} into {auth}"]
+    target = _user_codex_home(home, env) / "auth.json"
+    if auth.is_symlink() and os.readlink(auth) == str(target):
+        return []
+    beside = home / ".auth.json.lado"
+    beside.unlink(missing_ok=True)
+    beside.symlink_to(target)
+    os.replace(beside, auth)  # a key file or another link, replaced at once
+    return [f"LADO linked {auth} to {target}"]
+
+
+def _user_codex_home(home: Path, env: Mapping[str, str]) -> Path:
+    """The user's Codex home as launch_command wrote it into the agent's `home`; without
+    that file (an agent of an older LADO), the default one of `env`'s HOME."""
+    try:
+        written = (home / USER_HOME).read_text().strip()
+    except FileNotFoundError:
+        written = ""
+    return Path(written) if written else Path(env.get("HOME") or Path.home()) / ".codex"
 
 
 def _codex_home(environ) -> Path:

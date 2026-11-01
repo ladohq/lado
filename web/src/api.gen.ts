@@ -1651,6 +1651,8 @@ export interface components {
             spawned_at: string;
             /** Since */
             since: string;
+            model: components["schemas"]["ModelInfo"];
+            effort: components["schemas"]["ModelInfo"];
         };
         /** AgentRefInfo */
         AgentRefInfo: {
@@ -2385,6 +2387,20 @@ export interface components {
              * @default []
              */
             artifacts: string[];
+        };
+        /**
+         * ModelInfo
+         * @description An agent's model or effort, and where it came from.
+         */
+        ModelInfo: {
+            /** Name */
+            name: string | null;
+            /** Source */
+            source: string;
+            /** Detail */
+            detail: string | null;
+            /** Words */
+            words: string;
         };
         /** NewMarketplace */
         NewMarketplace: {

@@ -4072,6 +4072,12 @@
           "since": {
             "type": "string",
             "title": "Since"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelInfo"
+          },
+          "effort": {
+            "$ref": "#/components/schemas/ModelInfo"
           }
         },
         "type": "object",
@@ -4087,7 +4093,9 @@
           "branch",
           "worktree",
           "spawned_at",
-          "since"
+          "since",
+          "model",
+          "effort"
         ],
         "title": "AgentInfo"
       },
@@ -6351,6 +6359,49 @@
         ],
         "title": "MessageText",
         "description": "The human's text from the composer, with the full names of the files uploaded for\nit (POST \u2026/artifacts); the text may be empty when there are some."
+      },
+      "ModelInfo": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "words": {
+            "type": "string",
+            "title": "Words"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "source",
+          "detail",
+          "words"
+        ],
+        "title": "ModelInfo",
+        "description": "An agent's model or effort, and where it came from."
       },
       "NewMarketplace": {
         "properties": {

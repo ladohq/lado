@@ -977,8 +977,8 @@ MODEL_SOURCES = {CLI_DEFAULT: "CLI default", CLI_CONFIG: "your {cli} config"}
 
 def source_words(source: str, detail: str | None, cli_title: str) -> str:
     """What the human reads for a source of a model or effort: its words for the CLI titled
-    `cli_title`, then the detail."""
-    words = MODEL_SOURCES.get(source, source).format(cli=cli_title)
+    `cli_title` (by its own name: "Codex CLI" says "your Codex config"), then the detail."""
+    words = MODEL_SOURCES.get(source, source).format(cli=cli_title.removesuffix(" CLI"))
     return f"{words}, {detail}" if detail else words
 
 

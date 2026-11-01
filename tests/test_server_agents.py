@@ -54,6 +54,34 @@ def test_an_agent_says_its_branch_worktree_and_since_when(client, session):
     assert supervisor["spawned_at"] == utc(state.agent_times("s", "supervisor")[0])
 
 
+def test_an_agent_says_its_model_and_effort_with_the_words_of_their_sources(client, session):
+    state.set_model(
+        "s",
+        "w1",
+        state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work"),
+        state.Choice("high", state.CLI_CONFIG, "profile work"),
+    )
+    with state.connect() as db:  # a Codex worker in a Claude session
+        db.execute("UPDATE agents SET provider = 'codex' WHERE name = 'w1'")
+    supervisor, worker = client.get(AGENTS).json()
+    assert worker["model"] == {
+        "name": "gpt-5.6-sol",
+        "source": "cli-config",
+        "detail": "profile work",
+        "words": "your Codex config, profile work",
+    }
+    assert worker["effort"]["name"] == "high"
+    nothing = {"name": None, "source": "cli", "detail": None, "words": "CLI default"}
+    assert supervisor["model"] == supervisor["effort"] == nothing
+
+
+def test_an_agent_of_an_unknown_provider_names_it_in_the_words(client, session):
+    state.set_model("s", "w1", state.Choice("m", state.CLI_CONFIG), None)
+    with state.connect() as db:  # a row of a newer LADO
+        db.execute("UPDATE agents SET provider = 'later' WHERE name = 'w1'")
+    assert client.get(AGENTS).json()[1]["model"]["words"] == "your later config"
+
+
 def test_an_agent_in_background_is_served_with_its_status_and_no_reason(client, session):
     state.set_status("s", "w1", state.BACKGROUND)
     worker = client.get(AGENTS).json()[1]

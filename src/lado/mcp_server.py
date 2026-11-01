@@ -91,7 +91,9 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
     def list_agents() -> list[dict]:
         """List the agents in this session: role, provider, status (with since when and for
         how many seconds; why it waits when LADO could not deliver it messages, or why it
-        stopped), branch and worktree."""
+        stopped), branch and worktree, and the model and effort it runs on (null while
+        unknown), each with its source (`cli`: the CLI's own choice; `cli-config`: the
+        user's config of the CLI) and the source's detail."""
         since = state.status_since(session)
         now = datetime.datetime.now(datetime.timezone.utc)
         reasons = runtime.status_reasons(session)
@@ -112,6 +114,12 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
                     "worktree": a.cwd,
                     "run": a.run,
                     "task": (a.task or "")[:200],
+                    "model": a.model,
+                    "model_source": a.model_source,
+                    "model_detail": a.model_detail,
+                    "effort": a.effort,
+                    "effort_source": a.effort_source,
+                    "effort_detail": a.effort_detail,
                 }
             )
         return agents

@@ -558,6 +558,7 @@ def test_set_model_writes_the_launchs_choice(lado_home):
 )
 def test_source_words(source, detail, words):
     assert state.source_words(source, detail, "Codex") == words
+    assert state.source_words(source, detail, "Codex CLI") == words  # the CLI's own name
 
 
 def _codex_agent_with_a_config_model():

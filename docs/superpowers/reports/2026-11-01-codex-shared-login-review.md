@@ -1,7 +1,7 @@
 # LAD-166 codex-shared-login: review report
 
 Pull request #189 `feature/lad-166-codex-shared-login` → `main`. Scale: full; it also
-closes LAD-152. Head reviewed last: `6112431a` (= the remote head). Every Codex agent's
+closes LAD-152. Head reviewed last: `f371fa24` (= the remote head, `origin/main` `7831c65c` merged in). Every Codex agent's
 `auth.json` is a link to the user's Codex login file (or a file of its own with
 `OPENAI_API_KEY`), so one login serves all agents; Codex's sheet asks how the human pays
 (sign-in code, access token, API key) and offers Log out; a model that needs a login
@@ -25,6 +25,12 @@ real ChatGPT account.
   the details moved to scenarios, the container's Codex login made a requirement of its
   own. Meaning checked against the old text; no new findings; no external round: the cap
   of 2 was used.
+- **Round 5** (`6112431a..f371fa24`), after the merge of `origin/main` (LAD-158,
+  agent-cli-install-check) conflicted in `openspec/specs/container/spec.md`: the archive
+  `de53f68f` checked (the change moved unchanged, the deltas in the living specs, the
+  removed requirement gone), and the merge keeps both new requirements whole ("The headers
+  say how Codex logs in", "The image's build runs each agent CLI it installs" with its
+  three scenarios). No new findings; no external round.
 
 External rounds used: 2 of 2. The external reviewer is of the same model family, so its
 "no findings" weighs less.
@@ -44,9 +50,10 @@ External rounds used: 2 of 2. The external reviewer is of the same model family,
 
 ## Checks
 
-- On `6112431a`: `openspec validate codex-shared-login --strict` and `openspec validate
-  --specs --strict` valid; `tests/test_docker.py` 97 passed, 1 skipped; CI 23/23 with
-  `ci-ok` and the smoke of every CLI.
+- On `f371fa24`: `make lint` green; `make test` 4689 passed, 7 skipped;
+  `tests/test_docker.py` 101 passed, 1 skipped; `openspec validate --specs --strict`
+  53/53; CI 23/23 with `ci-ok`, integration, UI, container and the smoke of every CLI.
+- On `6112431a`: `openspec validate codex-shared-login --strict` valid.
 - On `cde86bbb` (LADO's code unchanged since): `make test` 4680 passed, 7 skipped;
   integration `test_provider_logins` 11 passed.
 - Live: `tests/live/test_codex_login.py` 1 passed on `3f4dc45d`, by the developer's report

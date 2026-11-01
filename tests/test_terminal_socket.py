@@ -459,6 +459,8 @@ def test_the_agents_of_a_session(client, session):
         "login_wait": None,
         "branch": None,
         "worktree": None,
+        "model": {"name": None, "source": "cli", "detail": None, "words": "CLI default"},
+        "effort": {"name": None, "source": "cli", "detail": None, "words": "CLI default"},
     }
     assert logged_in(client).get("/api/sessions/x/agents").status_code == 404
     state.set_status("s", "supervisor", state.IDLE)

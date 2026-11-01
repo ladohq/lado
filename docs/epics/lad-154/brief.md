@@ -76,8 +76,8 @@ Goal: models are chosen conveniently and flexibly, and nothing needs setting: un
 everything works as today. The main scenario: agents on a model of a model server on the
 network.
 
-Done when statement steps 1–9 are merged into `main`, each on its own, leaving the product
-working (D2, D3):
+Done when statement steps 1–9 are merged into the epic branch, each on its own, leaving
+it working, and the epic branch is merged into `main` (D3, D10):
 - every agent shows its model, effort and their source in the UI card, `list_agents` and
   the API;
 - a session runs on one chosen model and effort (`lado start`, the launch window);
@@ -108,9 +108,13 @@ Statement step 10 goes to "Later" (D3).
 
 ## Branch strategy
 
-Every step merges into `main` on its own and leaves the product working; unset means
-today's behaviour, so no feature flag (D2). No epic branch. No release between steps: the next
-release carries the whole epic, unless the human decides on one during the epic (D9).
+An epic branch `epic/lad-154-models` (the settings' pattern `epic/<key>-<slug>`), made by
+the lead from `main` on the remote (D10, gate #191, replacing D2). Every step's pull request
+targets it and leaves it working; unset means today's behaviour, so no feature flag. After
+every step the lead brings `main` into it and pushes. The epic reaches `main` by one final
+pull request after the readiness check. No release between steps (D9); the human may ask
+for a manual visual check after a step. After a merge into the epic branch the step's
+task stays in review with the settings' comment «Слит PR #<n> в эпик-ветку …».
 
 ## Epic tracker task
 

@@ -1,12 +1,14 @@
 # Plan: Model and power choice for agents (LAD-154)
 
 ## State
+Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
-Phase: plan · Epic run: epic/epic-models · Branch: base (`main`)
+Phase: plan · Epic run: epic/epic-models · Branch: epic/lad-154-models
 In work: none · Next: S1 · Open checks: none
 Standing rules of the human:
-- Every step merges into `main` on its own and leaves the product working; unset means today's behaviour (D2).
+- Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - No release between steps: the next release carries the whole epic, unless the human decides on a release during the epic (gate #190, D9).
+- After some steps the human may ask the lead to help with a manual check of how the step looks; the lead then gives the branch, the folder, the commands and what to look at (gate #191, D10).
 - Each step's task gets the label `component lado` (kit sdlc's: `component kit-sdlc`) and is linked to LAD-154; LAD-80 is not touched.
 Last review: none yet, base at ca7548fc
 
@@ -14,7 +16,8 @@ Last review: none yet, base at ca7548fc
 
 Statement steps 1–9 map to S1–S9; S3 and S9 split in two, S5 in four (each part merges
 alone), S7 gains S7b for kit sdlc's own repository (D6). Statement step 10 is in "Later"
-(D3). No two steps run at once: S3a and S4 both change `cli.py` and the server's API
+(D3). Every step targets the epic branch `epic/lad-154-models`; after each step the lead
+brings `main` into it (D10). No two steps run at once: S3a and S4 both change `cli.py` and the server's API
 (`web/openapi.json`, `web/src/api.gen.ts`), the others build on each other.
 
 Rules for every step of LADO (not S7b, which is kit sdlc's own release):
@@ -147,7 +150,8 @@ Check:
   a row an agent takes "normal"; S1's card names the row and the level ("normal work,
   user table").
 - What a row's CLI does against the agent's provider: as Q3 decides, in the Check of
-  S5c and S8; the login check before the start goes by the CLI the agent resolves to.
+  S5c and S8; the login check before the start goes by the CLI the agent resolves to;
+  with (a), only a provider the human chose counts as the session's (Q3).
 - The table is kept in S5a's store: the schema is unchanged when S5a's store holds it,
   else the migration and the way back (rules above).
 - Unit tests of the resolution; UI e2e, mockup; `docs/design/ui.md`, `docs/cli.md`.
@@ -160,6 +164,8 @@ Check:
 - The launch window's Advanced and `lado start` set the session's table row by row (S2's
   one model fills every row); an empty session row takes the user's; S1's card names the
   level.
+- The launch window tells a provider the human picked from the default it shows, so a
+  default never overrides the rows of the user's or the project's table (Q3, critic P17).
 - UI e2e, mockup; `docs/design/ui.md`, `docs/cli.md`.
 Notes: the statement's session level is a table (critic P6); S2's one model stays its
 shortcut.
@@ -188,7 +194,7 @@ such a kit; `dependencies.lado` makes the refusal clear.
 Status: planned
 Check: kit sdlc (its own repository) marks its roles and steps with a power and
 `dependencies.lado` on the LADO release that ships S7; a session with that kit shows each
-role's row on its cards (checked against LADO's `main` before that release).
+role's row on its cards (checked against LADO's epic branch before that release).
 Status of its check: open until the LADO release that carries the epic (D9): kit sdlc's
 pull request merges and is released by kit sdlc's own rules only after it.
 Notes: tracker task with `component kit-sdlc` (D6). With no LADO release mid-epic (D9) it
@@ -230,8 +236,10 @@ Check:
   Needed before S3b's merge.
 - Q3. A table row names a CLI (heavy → Claude opus); the agent's provider may come from
   elsewhere (the session's `--provider`, `spawn_worker`'s provider). Options: (a) the
-  row's CLI decides the agent's CLI; an explicit `--provider` of the session is the
-  session level and overrides the CLI of the user's and the project's rows (each level
+  row's CLI decides the agent's CLI; an explicit `--provider` of the session (only one
+  the human chose: `lado start --provider`, or a provider picked in the launch window
+  rather than its default; not the value the session keeps for its resume; critic P17)
+  is the session level and overrides the CLI of the user's and the project's rows (each level
   overrides only where it says something; critic P15); without it the session's provider
   is only the default for agents whose row is empty; the login check goes by the CLI the
   agent resolves to; a provider passed explicitly to `spawn_worker` that differs from the

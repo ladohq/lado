@@ -4,7 +4,7 @@
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: none · Next: S1 · Open checks: none
+In work: S1 (LAD-169) · Next: S2 · Open checks: none
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - No release between steps: the next release carries the whole epic, unless the human decides on a release during the epic (gate #190, D9).
@@ -41,7 +41,7 @@ Rules for every step of LADO (not S7b, which is kit sdlc's own release):
   gives a list and the model is not in it.
 
 ### S1 — The agent's model is visible (M)
-Status: planned
+Status: in progress (LAD-169)
 Check:
 - Unit and integration tests with the fake agent: each agent in `lado.db` has a model,
   an effort and their source; `list_agents`, `GET` of the session's agents in the API

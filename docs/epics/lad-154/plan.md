@@ -7,7 +7,7 @@ Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
 In work: S1 (LAD-169, run task/lad-169) · Next: S2 · Open checks: none
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
-- No release between steps: the next release carries the whole epic, unless the human decides on a release during the epic (gate #190, D9).
+- The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9).
 - After some steps the human may ask the lead to help with a manual check of how the step looks; the lead then gives the branch, the folder, the commands and what to look at (gate #191, D10).
 - Each step's task gets the label `component lado` (kit sdlc's: `component kit-sdlc`) and is linked to LAD-154; LAD-80 is not touched.
 Last review: none yet, base at ca7548fc
@@ -24,9 +24,9 @@ epic's migrations on top of `main`'s (critic P19). No two steps run at once: S3a
 (`web/openapi.json`, `web/src/api.gen.ts`), the others build on each other.
 
 Rules for every step of LADO (not S7b, which is kit sdlc's own release):
-- Its Check includes: a CHANGELOG line under the current `## X.Y.Z (unreleased)` heading
-  (one minor for the whole epic, D9; a step adds no heading of its own while that one is
-  unreleased); the spec of its capability in `openspec/specs/` (a new one for
+- Its Check includes: a CHANGELOG line under `## 0.45.0 (unreleased)` (one minor for the
+  whole epic, D11), a heading the first step adds on the epic branch above `main`'s
+  `## 0.44.0`; the epic's migrations number after 0.44.0's; the spec of its capability in `openspec/specs/` (a new one for
   agent models, session models, model servers, power tables) and `openspec validate
   --specs --strict`; `make lint`, `make test`, `make web` when `web/` or the API changed,
   the changed tests with their markers; CI green.

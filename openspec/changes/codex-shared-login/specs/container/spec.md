@@ -23,10 +23,7 @@ The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL also say:
 - the logins of the agent CLIs: Claude Code by `CLAUDE_CODE_OAUTH_TOKEN` (from `claude
   setup-token`) in the folder or one login inside; OpenCode and Kilo by `opencode auth
   login` and `kilo auth login` inside (kept on the home volume) or a model provider's key
-  in the folder; Codex by `CODEX_ACCESS_TOKEN` (a ChatGPT Business or Enterprise access
-  token) or `OPENAI_API_KEY` in the folder, or one login inside (`codex login
-  --device-auth`, or Settings → Providers), kept on the home volume and shared by every
-  Codex agent.
+  in the folder; Codex as its own requirement below says.
 The first start's commands of both headers SHALL make no folder: the minimal start needs
 no secrets.
 
@@ -48,3 +45,17 @@ Claude Code's token and Codex's token or key.
 #### Scenario: The headers name the UI's login
 - **WHEN** `tests/test_docker.py` reads both headers
 - **THEN** each names `Providers and environment`
+
+## ADDED Requirements
+
+### Requirement: The headers say how Codex logs in
+
+The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL say that Codex logs in
+by `CODEX_ACCESS_TOKEN` (a ChatGPT Business or Enterprise access token) or
+`OPENAI_API_KEY` in the secrets folder, or by one login inside (`codex login
+--device-auth`, or Settings → Providers), kept on the home volume and shared by every
+Codex agent.
+
+#### Scenario: Codex's ways are named
+- **WHEN** `tests/test_docker.py` reads both headers
+- **THEN** each names `CODEX_ACCESS_TOKEN`, `OPENAI_API_KEY` and `codex login --device-auth`

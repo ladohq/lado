@@ -130,12 +130,16 @@ no Log out.
 ### Requirement: LADO reads each CLI's login with the CLI's own command
 
 LADO SHALL read whether an agent CLI is logged in, and how, only by the CLI's own status
-command run in the environment LADO's agents of that CLI get without a project
-(`claude auth status --json`, `codex login status`, `opencode auth list`, `kilo auth
-list`), within a time limit, except a login variable the CLI does not report itself
-(Codex's `OPENAI_API_KEY`, which LADO hands its agents), and SHALL NOT read the screen of any agent. A command that
-fails, times out or prints what LADO cannot read SHALL give the state `unknown` with why,
-never "not logged in".
+command, run within a time limit in the environment LADO's agents of that CLI get without
+a project, except a login variable the CLI does not report itself (Codex's
+`OPENAI_API_KEY`), and SHALL NOT read any agent's screen. A command that fails, times out
+or prints what LADO cannot read SHALL give the state `unknown` with why, never "not logged
+in".
+
+#### Scenario: The status commands
+- **WHEN** LADO reads the logins of Claude Code, Codex, OpenCode and Kilo
+- **THEN** it runs `claude auth status --json`, `codex login status -c
+  cli_auth_credentials_store="file"`, `opencode auth list` and `kilo auth list`
 
 #### Scenario: Claude Code with a subscription
 - **WHEN** `claude auth status --json` prints `loggedIn: true`, `authMethod: "claude.ai"`
@@ -183,14 +187,18 @@ never "not logged in".
 
 ### Requirement: The login window runs the CLI's own login command
 
-For a CLI whose login is the CLI's own command (OpenCode, Kilo), the row's button SHALL
-open a terminal on the page that runs it (`opencode auth login`, `kilo auth login`), with
-"Log out of one…" (their `auth logout`) while logged in; Codex's sheet SHALL open such a
-terminal with `codex login --device-auth -c cli_auth_credentials_store="file"` for its
-choice "ChatGPT plan"; in the environment of the agents
-without a project, at most one per CLI; when the command ends the window SHALL close and
+For a CLI that logs in by its own command (OpenCode, Kilo: the row's button; Codex: its
+sheet's choice "ChatGPT plan"), the page SHALL open a terminal that runs it, in the
+environment of the agents without a project, at most one per CLI, with "Log out of one…"
+while logged in where the CLI asks which; when the command ends the window SHALL close and
 the page SHALL read the state again, and Close SHALL end the command. LADO SHALL run no
 login command of Claude Code.
+
+#### Scenario: The login commands
+- **WHEN** the login window opens for OpenCode, Kilo or Codex's "ChatGPT plan"
+- **THEN** it runs `opencode auth login`, `kilo auth login` or `codex login --device-auth
+  -c cli_auth_credentials_store="file"`, and "Log out of one…" runs `opencode auth logout`
+  or `kilo auth logout`
 
 #### Scenario: OpenCode's login from a phone
 - **WHEN** the human chooses OpenCode's "Log in…" on a phone, picks a model provider with

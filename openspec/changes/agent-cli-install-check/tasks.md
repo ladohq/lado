@@ -35,7 +35,7 @@
 
 ## 3. Docs and checks
 
-- [ ] 3.1 `docs/testing.md`: the smoke cell's sentence (three attempts with the
+- [x] 3.1 `docs/testing.md`: the smoke cell's sentence (three attempts with the
   `--version` check, the warning, the uninstall) and the image's paragraph (each CLI run
   once at build).
 - [ ] 3.2 `make lint`, `make test` (counts in the build report), `openspec validate

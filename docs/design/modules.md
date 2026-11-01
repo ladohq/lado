@@ -1229,7 +1229,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `ssh-agent-env.sh`, `ssh_known_hosts` and `mise.toml`; the image holds no one's key or login, only public host keys), the
   four agent CLIs at
   `smoke_ci.py`'s `PINS`, one `ARG <NAME>_VERSION` and one layer each (`CLAUDE_VERSION`,
-  `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet),
+  `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet;
+  each run once at build, its `--version` with a throwaway HOME, so one that does not run
+  fails the build),
   programs under `/opt` (the `/opt` folders named only in the build's install lines), the
   repositories' toolchains (below), the user `lado` (uid
   1000 in the image) with its home a volume; `lado server --host 0.0.0.0 --port

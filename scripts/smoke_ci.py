@@ -10,8 +10,8 @@ then on) and checks that `<cli> --version` runs, in up to three attempts: npm dr
 optional dependency that failed to install (a CLI's native binary) and still exits 0.
 After a failed attempt but the last it prints a GitHub `::warning::` naming the provider
 and the attempt, uninstalls the package and installs again; after the third the cell is red
-and runs no test. Then it runs `uv run pytest -m smoke -n0 -v -k <provider>`, as `make test-smoke
-PROVIDER=<provider>` does. Its output goes to the terminal and to
+and runs no test. Then it runs `uv run pytest -m smoke -n0 -v -k <provider>`, as `make
+test-smoke PROVIDER=<provider>` does. Its output goes to the terminal and to
 `<out>/smoke-<provider>.log`. The cell passes only when pytest exits 0 and its last summary
 line has a `passed` and no `skipped` (a missing CLI skips). A failing cell copies the
 test's evidence into `<out>/evidence`.

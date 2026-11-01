@@ -40,6 +40,7 @@ ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 LINK = re.compile(r"https://\S+")
 CODE = re.compile(r"[A-Z0-9]+(?:-[A-Z0-9]+)+")
 EXPIRES = re.compile(r"\((expires [^)]*)\)")
+WARNING = "Continue only if"
 
 # Codex hook events and the neutral events they stand for (0.162.0, checked by hand).
 #
@@ -249,8 +250,9 @@ class CodexProvider(base.Provider):
         while after and not after[0]:
             after.pop(0)
         paragraph = " ".join(after[: after.index("")] if "" in after else after)
+        warned = paragraph.startswith(WARNING)  # not an error printed at the end instead
         return base.LoginPrompt(
-            link, code, expires[1] if expires else "", (paragraph,) if paragraph else ()
+            link, code, expires[1] if expires else "", (paragraph,) if warned else ()
         )
 
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:

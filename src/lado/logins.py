@@ -24,6 +24,7 @@ ls` and the runtime never see them. The UI streams one through lado.terminal
 (`open_login`).
 """
 
+import contextlib
 import os
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -41,9 +42,17 @@ OUTSIDE = "outside folder"
 SHELL = "login shell"
 INHERITED = "the process that starts LADO"
 
-LOGIN, HOME = "@lado-login", "@lado-home"  # a login window's labels
+LOGIN, HOME, ACTION = "@lado-login", "@lado-home", "@lado-login-action"  # a window's labels
 PREFIX = "lado-login-"
-TERMINAL = {"prefix": "None", "prefix2": "None", "status": "off", "mouse": "on"}
+# Its pane stays, dead, with its text and exit status once its command ended (`look`).
+TERMINAL = {
+    "prefix": "None",
+    "prefix2": "None",
+    "status": "off",
+    "mouse": "on",
+    "remain-on-exit": "on",
+}
+DEAD, STATUS = "pane_dead", "pane_dead_status"  # tmux's formats of a dead pane
 
 
 def wait_reason(provider: base.Provider) -> str:
@@ -237,30 +246,94 @@ def action(provider: base.Provider, id: str) -> base.LoginAction:
     raise ValueError(f'{provider.title} has no login action "{id}" (known: {known})')
 
 
-def open_windows() -> dict[str, str]:
-    """This LADO_HOME's login windows: tmux session by provider name."""
+@dataclass(frozen=True)
+class Window:
+    name: str  # its tmux session
+    action: str  # the id of the login action it runs
+    dead: bool  # its command ended; its pane is kept until LADO reads it
+    status: int | None  # the command's exit status once dead; None for a signal
+
+
+def windows() -> dict[str, Window]:
+    """This LADO_HOME's login windows, those whose command ended too, by provider name."""
     home = _home()
     try:
-        rows = tmux.sessions_with(LOGIN, HOME)
+        rows = tmux.sessions_with(LOGIN, HOME, ACTION, DEAD, STATUS)
     except tmux.TmuxError:
         return {}
-    return {login: name for name, login, of_home in rows if login and of_home == home}
+    found = {}
+    for name, login, of_home, chosen, dead, status in rows:
+        if login and of_home == home:
+            code = int(status) if dead == "1" and status.lstrip("-").isdigit() else None
+            found[login] = Window(name, chosen, dead == "1", code)
+    return found
+
+
+def open_windows() -> dict[str, str]:
+    """This LADO_HOME's login windows whose command runs: tmux session by provider name. One
+    whose command ended counts as ended."""
+    return {login: w.name for login, w in windows().items() if not w.dead}
+
+
+@dataclass(frozen=True)
+class Ended:
+    status: int | None  # the command's exit status; None when a signal ended it
+    said: str  # the last line it printed that is not blank, as it wrote it
+
+
+@dataclass(frozen=True)
+class Look:
+    """A login window as `look` found it: what its command asks the human (an action that
+    shows_code), and how it ended."""
+
+    prompt: base.LoginPrompt | None = None
+    ended: Ended | None = None
+
+
+def look(provider: base.Provider, prompt: bool = True) -> Look | None:
+    """`provider`'s login window now; None when none is open. With `prompt`, and when its
+    action shows_code, its text is read for the link and the code (Provider.login_prompt).
+    Once its command ended, its text and status are read and the window ends: its command's
+    last line is never lost, also one printed just before its exit."""
+    window = windows().get(provider.name)
+    if window is None:
+        return None
+    try:
+        shows = prompt and action(provider, window.action).shows_code
+    except ValueError:
+        shows = False  # a window of another LADO version's action
+    if not window.dead and not shows:
+        return Look()
+    try:
+        text = tmux.pane_text(window.name)
+    except tmux.TmuxError:
+        return None  # it ended meanwhile (Close)
+    found = provider.login_prompt(text) if shows else None
+    if not window.dead:
+        return Look(found)
+    with contextlib.suppress(tmux.TmuxError):
+        tmux.kill_session(window.name)
+    said = next((line.strip() for line in reversed(text.splitlines()) if line.strip()), "")
+    return Look(found, Ended(window.status, said))
 
 
 def open_window(provider: base.Provider, id: str) -> str:
     """Open `provider`'s login window running its action `id` (ValueError for none such)
-    with the agents' environment; the one open already is returned as it is. Its tmux
-    session's name."""
+    with the agents' environment; the one running already is returned as it is, one whose
+    command ended is replaced. Its tmux session's name."""
     chosen = action(provider, id)
-    if running := open_windows().get(provider.name):
-        return running
+    if found := windows().get(provider.name):
+        if not found.dead:
+            return found.name
+        with contextlib.suppress(tmux.TmuxError):
+            tmux.kill_session(found.name)
     name = tmux_name(provider)
     env = environment(provider)
     folder = state.home() / "logins"
     folder.mkdir(mode=0o700, exist_ok=True)
     command = agent_env.command(folder / f"{provider.name}.json", env, list(chosen.argv))
     cwd = env.get("HOME") or str(Path.home())
-    labels = {LOGIN: provider.name, HOME: _home(), **TERMINAL}
+    labels = {LOGIN: provider.name, HOME: _home(), ACTION: chosen.id, **TERMINAL}
     tmux.new_labelled_session(
         name,
         cwd if os.path.isdir(cwd) else "/",
@@ -273,11 +346,11 @@ def open_window(provider: base.Provider, id: str) -> str:
 
 def close_window(provider: base.Provider) -> bool:
     """End `provider`'s login window and its command; False when none is open."""
-    name = open_windows().get(provider.name)
-    if name is None:
+    found = windows().get(provider.name)
+    if found is None:
         return False
     try:
-        tmux.kill_session(name)
+        tmux.kill_session(found.name)
     except tmux.TmuxError:
         return False  # it ended meanwhile
     return True
@@ -286,10 +359,10 @@ def close_window(provider: base.Provider) -> bool:
 def end_windows() -> list[str]:
     """End every login window of this LADO_HOME, found by its labels; their names."""
     ended = []
-    for name in open_windows().values():
+    for found in windows().values():
         try:
-            tmux.kill_session(name)
+            tmux.kill_session(found.name)
         except tmux.TmuxError:
             continue
-        ended.append(name)
+        ended.append(found.name)
     return ended

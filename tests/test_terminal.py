@@ -97,8 +97,8 @@ def test_no_terminal_for_an_unknown_agent_or_a_stopped_session(agent_session, co
 def test_a_login_window_is_attached_as_it_is_and_kept_at_close(monkeypatch, commands):
     from lado import logins
 
-    windows = {"claude": "lado-login-claude"}
-    monkeypatch.setattr(logins, "open_windows", lambda: dict(windows))
+    windows = {"claude": logins.Window("lado-login-claude", "login", False, None)}
+    monkeypatch.setattr(logins, "windows", lambda: dict(windows))
     attached = []
     monkeypatch.setattr(
         terminal, "_attach", lambda name, mode, size: attached.append((name, mode)) or (None, -1)
@@ -108,6 +108,12 @@ def test_a_login_window_is_attached_as_it_is_and_kept_at_close(monkeypatch, comm
     assert commands == []
     assert (term.mode, term.keep) == (terminal.CONTROL, True)
     assert terminal.login_ended("claude") is None
+    # Its command ended: the window counts as ended, and is still attached to, for the
+    # socket to say how it ended (lado.logins.look).
+    windows["claude"] = logins.Window("lado-login-claude", "login", True, 1)
+    assert "ended" in str(terminal.login_ended("claude"))
+    terminal.open_login("claude")
+    assert len(attached) == 2
     windows.clear()
     assert "ended" in str(terminal.login_ended("claude"))
     with pytest.raises(terminal.NoTerminal, match="no login window of kilo"):

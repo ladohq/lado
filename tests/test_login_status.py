@@ -510,6 +510,9 @@ def test_the_code_before_its_warning_is_shown_without_it():
     assert providers.get("codex").login_prompt(partial) == base.LoginPrompt(
         CODEX_PROMPT.link, CODEX_PROMPT.code, CODEX_PROMPT.expires, ()
     )
+    # Its end, with no warning: Codex's error is no line of the prompt.
+    ended = partial + "Error: device auth timed out after 15 minutes\n"
+    assert providers.get("codex").login_prompt(ended).lines == ()
 
 
 def test_other_providers_show_no_code():

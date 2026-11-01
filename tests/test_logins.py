@@ -221,24 +221,40 @@ def test_an_action_is_found_by_its_id():
 
 @pytest.fixture
 def windows(monkeypatch, lado_home, inherit, fake_clis):
-    """tmux recorded: the sessions it lists (name, @lado-login, @lado-home) and the calls."""
+    """tmux recorded: the sessions it lists (name, @lado-login, @lado-home, then
+    @lado-login-action, pane_dead, pane_dead_status: '' where a row leaves them out), the
+    text of each window (`texts`) and the calls."""
     home = str(state.home().resolve())
-    found = {"rows": [], "calls": []}
+    found = {"rows": [], "calls": [], "texts": {}}
 
     def made(name, cwd, cmd, options, before_attempt=None):
         found["calls"].append(("new", name, cwd, cmd, options))
-        found["rows"].append([name, options[logins.LOGIN], options[logins.HOME]])
+        found["rows"].append(
+            [name, options[logins.LOGIN], options[logins.HOME], options[logins.ACTION]]
+        )
         return []
 
     def killed(name):
         found["calls"].append(("kill", name))
         found["rows"] = [r for r in found["rows"] if r[0] != name]
 
-    monkeypatch.setattr(tmux, "sessions_with", lambda *options: list(found["rows"]))
+    def listed(*options):
+        return [(r + [""] * len(options))[: len(options) + 1] for r in found["rows"]]
+
+    monkeypatch.setattr(tmux, "sessions_with", listed)
     monkeypatch.setattr(tmux, "new_labelled_session", made)
     monkeypatch.setattr(tmux, "kill_session", killed)
+    monkeypatch.setattr(tmux, "pane_text", lambda name: found["texts"].get(name, ""))
     found["home"] = home
     return found
+
+
+def dies(windows, name: str, status: str, text: str) -> None:
+    """The command of the window `name` ends with `status` ('' for a signal), its pane kept
+    with `text` (remain-on-exit)."""
+    [row] = [r for r in windows["rows"] if r[0] == name]
+    row[4:] = ["1", status]
+    windows["texts"][name] = text
 
 
 def test_a_login_window_is_one_per_provider_and_labelled(windows):
@@ -249,6 +265,8 @@ def test_a_login_window_is_one_per_provider_and_labelled(windows):
     assert cmd[-4] == str(state.home() / "logins" / "opencode.json")  # the agents' environment
     assert options[logins.LOGIN] == "opencode" and options[logins.HOME] == windows["home"]
     assert options["prefix"] == "None" and options["status"] == "off"
+    assert options[logins.ACTION] == "login"
+    assert options["remain-on-exit"] == "on"  # its text outlives its command
     # Opened again (any action): the same window, no second command.
     assert logins.open_window(OPENCODE, "logout") == "lado-login-opencode"
     assert len(windows["calls"]) == 1
@@ -272,6 +290,58 @@ def test_close_window(windows):
     logins.open_window(OPENCODE, "login")
     assert logins.close_window(OPENCODE) is True
     assert logins.open_windows() == {}
+
+
+CODEX = providers.get("codex")
+CODE_TEXT = (
+    "1. Open this link in your browser and sign in to your account\n"
+    "   https://auth.openai.com/codex/device\n\n"
+    "2. Enter this one-time code (expires in 15 minutes)\n"
+    "   UBSY-FIU1O\n"
+)
+
+
+def test_a_window_whose_command_ended_counts_as_ended(windows):
+    name = logins.open_window(OPENCODE, "login")
+    dies(windows, name, "0", "Logged in\n")
+    assert logins.open_windows() == {}
+    assert logins.read(OPENCODE, NO_LAYERS).window is False
+    # Opened again: the dead one goes, a new one runs.
+    assert logins.open_window(OPENCODE, "login") == name
+    assert [c[0] for c in windows["calls"]] == ["new", "kill", "new"]
+    assert logins.open_windows() == {"opencode": name}
+    dies(windows, name, "1", "")
+    assert logins.close_window(OPENCODE) is True
+    dies_and_ends = logins.open_window(OPENCODE, "login")
+    dies(windows, dies_and_ends, "1", "")
+    assert logins.end_windows() == [name]
+
+
+def test_a_look_reads_the_code_while_it_runs_and_the_last_words_at_its_end(windows):
+    assert logins.look(CODEX) is None  # none open
+    name = logins.open_window(CODEX, "login")
+    assert logins.look(CODEX) == logins.Look()  # nothing printed yet
+    windows["texts"][name] = CODE_TEXT
+    prompt = base.LoginPrompt(
+        "https://auth.openai.com/codex/device", "UBSY-FIU1O", "expires in 15 minutes"
+    )
+    assert logins.look(CODEX) == logins.Look(prompt)
+    assert logins.look(CODEX, prompt=False) == logins.Look()  # shown already: not read again
+    assert ("kill", name) not in windows["calls"]
+    # The last line printed just before the exit is kept, read once the command ended.
+    dies(windows, name, "1", CODE_TEXT + "\nError: device auth timed out after 15 minutes\n\n\n")
+    ended = logins.Ended(1, "Error: device auth timed out after 15 minutes")
+    assert logins.look(CODEX) == logins.Look(prompt, ended)
+    assert windows["calls"][-1] == ("kill", name)  # read, then gone
+    assert logins.look(CODEX) is None
+
+
+def test_a_look_at_a_window_without_a_code(windows):
+    name = logins.open_window(OPENCODE, "login")
+    windows["texts"][name] = CODE_TEXT
+    assert logins.look(OPENCODE) == logins.Look()  # its action shows no code: not read
+    dies(windows, name, "", "")  # ended by a signal, nothing said
+    assert logins.look(OPENCODE) == logins.Look(ended=logins.Ended(None, ""))
 
 
 def test_a_window_needs_a_known_action(windows):

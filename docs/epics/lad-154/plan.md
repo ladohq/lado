@@ -3,7 +3,7 @@
 ## State
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
-Phase: plan · Epic run: epic/epic-models · Branch: epic/lad-154-models
+Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
 In work: none · Next: S1 · Open checks: none
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
@@ -17,7 +17,10 @@ Last review: none yet, base at ca7548fc
 Statement steps 1–9 map to S1–S9; S3 and S9 split in two, S5 in four (each part merges
 alone), S7 gains S7b for kit sdlc's own repository (D6). Statement step 10 is in "Later"
 (D3). Every step targets the epic branch `epic/lad-154-models`; after each step the lead
-brings `main` into it (D10). No two steps run at once: S3a and S4 both change `cli.py` and the server's API
+brings `main` into it (D10). A conflict of that merge (migration numbers in `state.py` and
+`tests/agent_helpers.previous_schema`, CHANGELOG's heading) is aborted and put to the human
+with a recommendation, usually a small sdlc task that brings `main` in and renumbers the
+epic's migrations on top of `main`'s (critic P19). No two steps run at once: S3a and S4 both change `cli.py` and the server's API
 (`web/openapi.json`, `web/src/api.gen.ts`), the others build on each other.
 
 Rules for every step of LADO (not S7b, which is kit sdlc's own release):
@@ -229,12 +232,12 @@ Check:
 
 ## Open questions
 
-- Q1. Ready-made tables («Claude: haiku / sonnet / opus», «Всё на сервере») go with the
+- Q1 (decided at `plan_ok` #194: in S5c). Ready-made tables («Claude: haiku / sonnet / opus», «Всё на сервере») go with the
   user's table in S5c, not with S7 as the statement had it: they are the table's UI and
   need nothing of S7. Recommended: in S5c.
 - Q2. Which model server the human checks S3b, S9a and S9b on, and its address (D7).
   Needed before S3b's merge.
-- Q3. A table row names a CLI (heavy → Claude opus); the agent's provider may come from
+- Q3 (decided at `plan_ok` #194: (a) with P15 and P17). A table row names a CLI (heavy → Claude opus); the agent's provider may come from
   elsewhere (the session's `--provider`, `spawn_worker`'s provider). Options: (a) the
   row's CLI decides the agent's CLI; an explicit `--provider` of the session (only one
   the human chose: `lado start --provider`, or a provider picked in the launch window

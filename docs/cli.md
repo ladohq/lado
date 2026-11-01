@@ -236,13 +236,18 @@ folders`) then say `not checked: lado.db is not at this LADO's schema (see lado.
 
 `lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
 own status command in the environment its agents get without a project, the login taken
-whole from one layer (`claude auth status --json`, `codex login status`, `opencode auth
-list`, `kilo auth list`): `[ok] <CLI> login: <how> · <where from>`, where from the layer
-that gives it (`LADO's secret`, `outside folder`, `login shell`, `the process that starts
-LADO`) or the CLI's own login file (`Claude Code's login file`, or the file's path), e.g.
+whole from one layer (`claude auth status --json`, `codex login status -c
+cli_auth_credentials_store="file"`, `opencode auth list`, `kilo auth list`; Codex's
+`OPENAI_API_KEY`, which LADO hands its agents, without the command): `[ok] <CLI> login:
+<how> · <where from>`, where from the layer that gives it (`LADO's secret`, `outside
+folder`, `login shell`, `the process that starts LADO`) or the CLI's own login file
+(`Claude Code's login file`, `Codex's login file`, or the file's path), e.g.
 `[ok] Claude Code login: Subscription (token) · LADO's secret`; `[warn] Claude Code login: not logged in: new
 sessions and workers of it are refused, a resumed agent waits (Settings → Providers and
-environment)` for a CLI whose agents need one;
+environment)` for a CLI whose agents need one (Claude Code; Codex on OpenAI's models, its
+default, by the model provider of the user's Codex config); `[warn] Codex CLI login: not
+logged in: Your Codex keeps its login in the system keyring, which Codex agents cannot
+read. …` when the user's Codex is logged in only there;
 `[info] <CLI> login: none` for the others; `[warn] <CLI> login: unknown: <why>` when the
 command fails, times out (10 s) or prints what LADO cannot read. None of them changes the exit
 code. LADO's secrets (the login variables set in Settings, `<LADO_HOME>/secrets/`) get a line
@@ -254,7 +259,9 @@ A new session of a CLI that needs a login and has none, read in the environment 
 would get (with the project's secrets for `--project`), is refused with exit 1 before
 anything is stored: `lado: Claude Code is not logged in, so the session was not started: log
 in in LADO's UI (Settings → Providers and environment, `lado ui`), or set
-CLAUDE_CODE_OAUTH_TOKEN as LADO's secret or a project secret`. `lado start <git-url>` and
+CLAUDE_CODE_OAUTH_TOKEN as LADO's secret or a project secret` (Codex: `lado: Codex CLI is
+not logged in, so the session was not started: … or set OPENAI_API_KEY as LADO's secret or
+a project secret`). `lado start <git-url>` and
 `lado start --new` say so before the clone or the new folder when the provider is known
 (`--provider`, or the only one installed). A supervisor's `spawn_worker` of such a CLI gets
 `… so the worker was not started: ask the human to log in in Settings → Providers and
@@ -270,7 +277,8 @@ logged in: log in in Settings → Providers and environment, or set CLAUDE_CODE_
 the agent starts by itself once you do`; it starts by itself once there is one. A login
 that cannot be read refuses nothing and holds no agent: `lado start` warns `cannot tell
 whether Claude Code is logged in: <why>; the agent starts all the same`.
-There is no `lado login`: in a terminal the CLIs' own commands log in.
+There is no `lado login`: in a terminal the CLIs' own commands log in. Every Codex agent
+shares the login of the user's own Codex (`codex login`, `codex login --device-auth`).
 
 `lado doctor` always has a `Workspace` line: `<path> (LADO_REPOS)` or `<path> (default)`, `info`
 with `, not made yet: the first clone or project makes it` while the folder is missing, and a

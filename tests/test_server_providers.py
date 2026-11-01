@@ -89,11 +89,44 @@ def test_the_page_lists_each_cli_with_its_login(client, cli_logins, windows):
         "problem": "",
     }
     codex = _row(page, "codex")
-    assert codex["login"]["state"] == "yes" and codex["login"]["method"] == "ChatGPT"
-    assert (codex["actions"], codex["choices"], codex["question"]) == ([], [], "")
-    assert "#113" in codex["note"]
+    assert codex["login"]["state"] == "yes" and codex["login"]["method"] == "ChatGPT plan"
+    assert codex["login"]["where"] == "Codex's login file"
+    assert codex["note"] == ""  # its agents get the login
     assert [a["id"] for a in _row(page, "opencode")["actions"]] == ["login", "logout"]
     assert "checks" not in page  # lado doctor's lines are lado doctor's
+
+
+def test_a_codex_login_in_the_keyring_is_named_on_its_row(client, cli_logins, windows, codex_home):
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text('cli_auth_credentials_store = "keyring"\n')
+    cli_logins.answer("codex", 1, "", "Not logged in\n")
+    codex = _row(_page(client), "codex")
+    assert (codex["login"]["state"], codex["needs_login"], codex["note"]) == ("no", True, "")
+    # Logged in, but only where the store is not overridden: the keyring.
+    cli_logins.answer_by_argv(
+        "codex",
+        lambda argv: (
+            (1, "", "Not logged in\n") if "-c" in argv else (0, "", "Logged in using ChatGPT\n")
+        ),
+    )
+    codex = _row(_page(client), "codex")
+    assert (codex["login"]["state"], codex["needs_login"]) == ("no", True)
+    assert codex["note"] == providers.get("codex").keyring_note
+    listed = client.get("/api/providers").json()
+    assert next(p for p in listed if p["name"] == "codex")["login_missing"] is True
+
+
+def test_the_rows_need_follows_the_agents_environment(client, cli_logins, windows, monkeypatch):
+    """Asked in the environment the login is read in (Codex's model decides)."""
+    cli_logins.logged_out()
+    claude = providers.get("claude")
+    monkeypatch.setattr(claude, "needs_login", lambda env: "LADO_NO_NEED" not in env)
+    assert _row(_page(client), "claude")["needs_login"] is True
+    monkeypatch.setenv("LADO_NO_NEED", "1")
+    assert _row(_page(client), "claude")["needs_login"] is False
+    assert not next(p for p in client.get("/api/providers").json() if p["name"] == "claude")[
+        "login_missing"
+    ]
 
 
 def test_the_page_answers_at_once_and_only_a_post_starts_a_check(
@@ -214,7 +247,7 @@ def test_only_a_login_variable_may_be_set(client, windows):
     assert "GH_TOKEN is not a login variable of Claude Code" in answer.json()["detail"]
     assert "canary-2" not in answer.text
     assert (
-        client.put("/api/providers/codex/variables/OPENAI_API_KEY", json={"value": "x"}).status_code
+        client.put("/api/providers/kilo/variables/OPENAI_API_KEY", json={"value": "x"}).status_code
         == 400
     )
     assert (
@@ -279,6 +312,35 @@ def test_a_login_window_opens_once_and_closes(client, windows):
     assert len(windows) == 1  # the one open is kept
     answer = client.delete("/api/providers/opencode/login")
     assert answer.json()["window"] is False and windows == {}
+
+
+def test_codexs_sheet_runs_its_sign_in_from_a_choice_and_logs_out_of_its_file(
+    client, cli_logins, windows
+):
+    cli_logins.answer("codex", 0, "", "Logged in using ChatGPT\n")
+    codex = _row(_page(client), "codex")
+    assert codex["question"] == "How do you pay for Codex?"
+    assert [(c["id"], c["variable"], c["action"]) for c in codex["choices"]] == [
+        ("chatgpt", "", "login"),
+        ("token", "CODEX_ACCESS_TOKEN", ""),
+        ("usage", "OPENAI_API_KEY", ""),
+    ]
+    assert [(a["id"], bool(a["help"])) for a in codex["actions"]] == [
+        ("login", True),
+        ("logout", False),
+    ]
+    assert codex["login"]["choice"] == "chatgpt"
+    assert (codex["from_lado"], codex["logout_file"]) == (False, True)
+    answer = client.post("/api/providers/codex/login", json={"action": "logout"})
+    assert answer.status_code == 200, answer.text
+    [(_, cmd)] = windows.values()
+    assert cmd[-4:] == ["codex", "logout", "-c", 'cli_auth_credentials_store="file"']
+    # A key of LADO's secrets: logged out by removing the secret, not by Codex's command.
+    put = client.put("/api/providers/codex/variables/OPENAI_API_KEY", json={"value": "sk"})
+    assert put.status_code == 200, put.text
+    codex = _row(_page(client), "codex")
+    assert codex["login"]["method"] == "Pay per use (API key)"
+    assert (codex["from_lado"], codex["logout_file"]) == (True, False)
 
 
 def test_a_login_window_needs_a_known_action(client, windows):

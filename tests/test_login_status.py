@@ -18,14 +18,16 @@ RUN_STATUS = base.run_status
 
 @pytest.fixture
 def answers(monkeypatch):
-    """base.run_status answered from a table: argv[0] -> (exit code, stdout, stderr) or a
-    problem string; the calls are kept."""
+    """base.run_status answered from a table: argv[0] -> (exit code, stdout, stderr), a
+    problem string, or a function of argv giving one; the calls are kept."""
     table: dict[str, object] = {}
     calls: list[tuple[list[str], dict]] = []
 
     def run(argv, env):
         calls.append((argv, env))
         answer = table[argv[0]]
+        if callable(answer):
+            answer = answer(argv)
         if isinstance(answer, str):
             return answer
         code, out, err = answer
@@ -168,9 +170,12 @@ def test_claude_asks_how_the_human_pays_and_runs_no_login_command():
     assert claude.login_note == ""
 
 
-def test_only_claude_needs_a_login():
-    needs = {n: providers.get(n).capabilities.needs_login for n in providers.names()}
-    assert needs == {"claude": True, "codex": False, "kilo": False, "opencode": False}
+def test_claude_always_needs_a_login_and_codex_by_its_model(tmp_path):
+    env = {"HOME": "/h", "CODEX_HOME": str(tmp_path)}  # Codex on OpenAI's model
+    needs = {n: providers.get(n).needs_login(env) for n in providers.names()}
+    assert needs == {"claude": True, "codex": True, "kilo": False, "opencode": False}
+    (tmp_path / "config.toml").write_text('model_provider = "ollama"\n')
+    assert not providers.get("codex").needs_login(env)
 
 
 # Codex prints its status on stderr, after a warning of its own.
@@ -180,24 +185,80 @@ CODEX_WARNING = (
 )
 
 
+# `codex login status` reads the store Codex's agents use, the login file (they keep their
+# login there, cli_auth_credentials_store = "file"): a login only in the keyring is none.
+CODEX_STATUS = ["codex", "login", "status", "-c", 'cli_auth_credentials_store="file"']
+CODEX_FILE = "Codex's login file"
+
+
 def test_codex_not_logged_in(answers):
     answers["codex"] = (1, "", CODEX_WARNING + "Not logged in\n")
     assert providers.get("codex").login_status({"HOME": "/h"}) == LoginStatus(NO)
     [(argv, _)] = answers["calls"]
-    assert argv == ["codex", "login", "status"]
+    assert argv == CODEX_STATUS
 
 
 def test_codex_logged_in_keeps_nothing_after_the_dash(answers):
     answers["codex"] = (0, "", CODEX_WARNING + "Logged in using an API key - sk-proj-***lmnop\n")
     found = providers.get("codex").login_status({"HOME": "/h", "CODEX_HOME": "/c"})
-    assert found == LoginStatus(YES, "API key", file="/c/auth.json")
+    assert found == LoginStatus(
+        YES, "Pay per use (API key)", file="/c/auth.json", file_words=CODEX_FILE, choice="usage"
+    )
     assert "lmnop" not in repr(found)
 
 
 def test_codex_chatgpt_in_its_default_home(answers):
     answers["codex"] = (0, "Logged in using ChatGPT\n", "")
     found = providers.get("codex").login_status({"HOME": "/h"})
-    assert found == LoginStatus(YES, "ChatGPT", file="/h/.codex/auth.json")
+    assert found == LoginStatus(
+        YES, "ChatGPT plan", file="/h/.codex/auth.json", file_words=CODEX_FILE, choice="chatgpt"
+    )
+
+
+def test_codex_an_api_key_variable_is_a_login_without_the_command(answers):
+    """Codex's TUI does not read OPENAI_API_KEY: LADO hands it to its agents
+    (lado.providers.codex), so Codex's status would not say."""
+    found = providers.get("codex").login_status({"HOME": "/h", "OPENAI_API_KEY": "sk-canary"})
+    assert found == LoginStatus(
+        YES, "Pay per use (API key)", variable="OPENAI_API_KEY", choice="usage"
+    )
+    assert answers["calls"] == []
+    assert "canary" not in repr(found)
+
+
+@pytest.mark.parametrize("line", ["personal access token", "access token"])
+def test_codex_an_access_token(answers, line):
+    """Codex reads CODEX_ACCESS_TOKEN itself, before its file, and wins over a key."""
+    answers["codex"] = (0, "", f"Logged in using {line}\n")
+    env = {"HOME": "/h", "CODEX_ACCESS_TOKEN": "at-canary", "OPENAI_API_KEY": "sk-x"}
+    found = providers.get("codex").login_status(env)
+    assert found == LoginStatus(
+        YES, "ChatGPT access token", variable="CODEX_ACCESS_TOKEN", choice="token"
+    )
+    # One stored by `codex login --with-access-token` is the file's.
+    found = providers.get("codex").login_status({"HOME": "/h"})
+    assert (found.variable, found.file, found.choice) == ("", "/h/.codex/auth.json", "token")
+
+
+@pytest.mark.parametrize("store", ["keyring", "auto"])
+def test_codex_a_login_in_the_keyring_is_none_the_agents_can_read(answers, tmp_path, store):
+    (tmp_path / "config.toml").write_text(f'cli_auth_credentials_store = "{store}"\n')
+    answers["codex"] = lambda argv: (
+        (1, "", "Not logged in\n") if "-c" in argv else (0, "", "Logged in using ChatGPT\n")
+    )
+    found = providers.get("codex").login_status({"HOME": "/h", "CODEX_HOME": str(tmp_path)})
+    assert found == LoginStatus(NO, keyring=True)
+    assert [argv for argv, _ in answers["calls"]] == [CODEX_STATUS, CODEX_STATUS[:3]]
+    # Not logged in there either: plainly none.
+    answers["codex"] = (1, "", "Not logged in\n")
+    found = providers.get("codex").login_status({"HOME": "/h", "CODEX_HOME": str(tmp_path)})
+    assert found == LoginStatus(NO)
+
+
+def test_codex_without_a_keyring_store_asks_once(answers, tmp_path):
+    answers["codex"] = (1, "", "Not logged in\n")
+    providers.get("codex").login_status({"HOME": "/h", "CODEX_HOME": str(tmp_path)})
+    assert len(answers["calls"]) == 1
 
 
 def test_codex_error_is_unknown(answers):
@@ -208,12 +269,65 @@ def test_codex_error_is_unknown(answers):
     assert "Error loading configuration" in found.problem
 
 
-def test_codex_offers_no_login_and_says_why():
+def test_codex_logs_in_by_its_variables_and_says_where_the_keyring_cannot_be_read():
     codex = providers.get("codex")
-    assert codex.login_actions() == ()
-    assert codex.login_choices == ()
-    assert codex.login_variables == ()
-    assert "#113" in codex.login_note and "do not get" in codex.login_note
+    assert codex.login_variables == ("OPENAI_API_KEY", "CODEX_ACCESS_TOKEN")
+    assert codex.login_note == ""
+    assert codex.keyring_note == (
+        "Your Codex keeps its login in the system keyring, which Codex agents cannot read. "
+        "Log in here: the login goes to Codex's login file, and your own Codex keeps using "
+        "the keyring."
+    )
+    assert all(providers.get(n).keyring_note == "" for n in providers.names() if n != "codex")
+
+
+def _codex_needs(tmp_path, text=None):
+    if text is not None:
+        (tmp_path / "config.toml").write_text(text)
+    return providers.get("codex").needs_login({"HOME": "/h", "CODEX_HOME": str(tmp_path)})
+
+
+@pytest.mark.parametrize(
+    "text, needs",
+    [
+        (None, True),  # OpenAI's model by default
+        ('model_provider = "openai"\n', True),
+        ('model_provider = "ollama"\n', False),
+        ('model_provider = "lmstudio"\n', False),
+        ('model_provider = "x"\n[model_providers.x]\nrequires_openai_auth = true\n', True),
+        ('model_provider = "x"\n[model_providers.x]\nenv_key = "X_KEY"\n', False),
+        ('profile = "p"\n[profiles.p]\nmodel_provider = "ollama"\n', False),
+        ('model_provider = "ollama"\nprofile = "p"\n[profiles.p]\nmodel = "m"\n', False),
+        (
+            'model_provider = "ollama"\nprofile = "p"\n[profiles.p]\nmodel_provider = "openai"\n',
+            True,
+        ),
+        ("= broken", True),  # the status decides; an unknown one never refuses
+    ],
+)
+def test_codex_needs_a_login_by_its_model_provider(tmp_path, text, needs):
+    assert _codex_needs(tmp_path, text) is needs
+
+
+def test_codex_a_profile_without_a_provider_falls_back_to_the_top_level(tmp_path):
+    assert not _codex_needs(tmp_path, 'model_provider = "ollama"\nprofile = "p"\n[profiles.p]\n')
+
+
+@pytest.mark.parametrize(
+    "text, needs",
+    [
+        ('model_providers = "x"\n', True),
+        ('model_provider = "x"\nmodel_providers = "x"\n', False),
+        ('model_provider = "x"\n[model_providers]\nx = "y"\n', False),
+        ('profile = ["a"]\n[profiles.p]\nmodel_provider = "ollama"\n', True),
+        ('profile = "p"\nprofiles = "p"\n', True),
+        ('profile = "p"\n[profiles]\np = 1\n', True),
+    ],
+)
+def test_codex_a_config_of_odd_types_is_read_as_codex_would_not_crash(tmp_path, text, needs):
+    """A value of another type than Codex's is no table: never a crash of `lado doctor`,
+    Settings or a start."""
+    assert _codex_needs(tmp_path, text) is needs
 
 
 # `opencode auth list` and `kilo auth list`, ANSI colours and all (stdout; stderr has one
@@ -293,7 +407,38 @@ def test_run_status_gives_the_output(tmp_path):
 
 
 @pytest.mark.parametrize("name", ["claude", "codex", "kilo", "opencode"])
-def test_each_choice_logs_in_by_one_of_the_providers_login_variables(name):
+def test_each_choice_logs_in_by_a_login_variable_or_a_login_action(name):
     provider = providers.get(name)
-    assert {c.variable for c in provider.login_choices} <= set(provider.login_variables)
+    actions = {a.id for a in provider.login_actions()}
+    for choice in provider.login_choices:
+        assert bool(choice.variable) != bool(choice.action), choice
+        assert choice.variable in provider.login_variables or choice.action in actions
     assert bool(provider.login_choices) == bool(provider.login_question)
+
+
+def test_codex_asks_how_the_human_pays():
+    codex = providers.get("codex")
+    assert codex.login_question == "How do you pay for Codex?"
+    assert [(c.id, c.title, c.variable, c.action) for c in codex.login_choices] == [
+        ("chatgpt", "ChatGPT plan — Plus, Pro, Business or Enterprise", "", "login"),
+        ("token", "ChatGPT Business or Enterprise — access token", "CODEX_ACCESS_TOKEN", ""),
+        ("usage", "Pay per use — OpenAI API key", "OPENAI_API_KEY", ""),
+    ]
+    assert [c.detail for c in codex.login_choices] == [
+        "Sign in with your ChatGPT account by a one-time code: LADO shows a link and a code, "
+        "you open the link on any device and enter the code.",
+        "Paste an access token your workspace admin made in ChatGPT's admin console (Codex "
+        "access tokens).",
+        "Paste an API key from platform.openai.com.",
+    ]
+    file = ("-c", 'cli_auth_credentials_store="file"')
+    assert [(a.id, a.label, a.argv, a.help) for a in codex.login_actions()] == [
+        (
+            "login",
+            "Get a sign-in code",
+            ("codex", "login", "--device-auth", *file),
+            "Open the link, sign in and enter the code there. This window closes by itself "
+            "once you are signed in.",
+        ),
+        ("logout", "Log out…", ("codex", "logout", *file), ""),
+    ]

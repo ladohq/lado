@@ -1,12 +1,14 @@
 // The login sheet of Settings → Providers and environment (docs/design/ui.md), opened by a
 // CLI's one button. For a CLI whose provider names choices (Claude Code: "How do you pay for
-// Claude?") it asks its question, the current choice marked, and keeps the value pasted under
-// the chosen one as LADO's secret in place of the CLI's other login there (PUT
-// …/variables/{name}: written, never shown); "Log out…" while the login comes from LADO's
-// secrets removes it (DELETE …/login-secrets) after asking, naming the CLI's running agents.
-// LADO runs no login command for such a CLI. For a CLI that logs in by its own command
-// (OpenCode, Kilo) the sheet is its login window at once (LoginWindow.tsx), with "Log out of
-// one…" while logged in. A sheet over the page; the whole screen on a phone.
+// Claude?", Codex: "How do you pay for Codex?") it asks its question, the current choice
+// marked, and keeps the value pasted under the chosen one as LADO's secret in place of the
+// CLI's other login there (PUT …/variables/{name}: written, never shown), or, for a choice
+// with an action (Codex's sign-in code), opens the login window running it in the sheet.
+// "Log out…" asks first, naming the CLI's running agents: while the login comes from LADO's
+// secrets it removes it (DELETE …/login-secrets); while it is the CLI's own file, which they
+// share, it runs the CLI's logout in the login window. For a CLI that logs in by its own
+// command only (OpenCode, Kilo) the sheet is its login window at once (LoginWindow.tsx), with
+// "Log out of one…" while logged in. A sheet over the page; the whole screen on a phone.
 import { useEffect, useId, useRef, useState } from "react";
 
 import { closeLogin, deleteLoginSecrets, openLogin, putLoginVariable, type ProviderLogins } from "./api";
@@ -33,6 +35,33 @@ function Detail({ text }: { text: string }) {
   );
 }
 
+// The login window's state for a CLI: which of its actions it shows. Each window counts: only
+// the end of the one shown (`last`) closes the sheet.
+function useLoginWindow(name: string, onChanged: Props["onChanged"]) {
+  const count = useRef(0);
+  const [shown, setShown] = useState<{ action: string; count: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
+
+  const start = async (action: string, replacing = false) => {
+    const mine = ++count.current;
+    setBusy(true);
+    try {
+      if (replacing) await closeLogin(name);
+      const opened = await openLogin(name, action);
+      if (mine !== count.current) return;
+      onChanged(opened);
+      setShown({ action, count: mine });
+    } catch (error) {
+      setRefused(messageOf(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const last = (shownCount: number) => shownCount === count.current;
+  return { shown, busy, refused, start, last };
+}
+
 function ChoiceSheet({ row, onChanged, onClose }: Props) {
   const id = useId();
   const { login } = row;
@@ -40,26 +69,47 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
   const [chosen, setChosen] = useState(current || row.choices[0].id);
   const [filled, setFilled] = useState(false);
   const [asking, setAsking] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [refused, setRefused] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const choice = row.choices.find((c) => c.id === chosen) ?? row.choices[0];
+  const win = useLoginWindow(row.cli.name, onChanged);
+  const busy = saving || win.busy;
+  const refused = failed ?? win.refused;
 
   const act = async (request: () => Promise<ProviderLogins>) => {
-    setBusy(true);
+    setSaving(true);
     try {
       onChanged(await request());
       onClose();
     } catch (error) {
-      setRefused(messageOf(error));
-      setBusy(false);
+      setFailed(messageOf(error));
+      setSaving(false);
     }
   };
   const save = () => {
     const value = field.current?.value ?? "";
     if (value) void act(() => putLoginVariable(row.cli.name, choice.variable, value));
   };
+  const logout = row.actions.find((a) => a.id === "logout");
+  const logOut = () =>
+    row.from_lado || !logout ? void act(() => deleteLoginSecrets(row.cli.name)) : void win.start(logout.id);
 
+  if (win.shown) {
+    const { count } = win.shown;
+    const action = row.actions.find((a) => a.id === win.shown?.action);
+    return (
+      <LoginWindow
+        key={count}
+        provider={row.cli.name}
+        title={row.cli.title}
+        help={action?.help}
+        onEnded={() => {
+          if (win.last(count)) onClose();
+        }}
+      />
+    );
+  }
   return (
     <div className="login-sheet" role="dialog" aria-modal="true" aria-labelledby={id}>
       <div className="login-window">
@@ -72,9 +122,10 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
         <div className="login-help">
           {asking ? (
             <Confirm
+              title={row.from_lado ? null : row.cli.title}
               running={row.running}
               busy={busy}
-              onYes={() => void act(() => deleteLoginSecrets(row.cli.name))}
+              onYes={logOut}
               onCancel={() => setAsking(false)}
             />
           ) : (
@@ -89,14 +140,26 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
                       onChange={() => {
                         setChosen(c.id);
                         setFilled(false);
-                        setRefused(null);
+                        setFailed(null);
                       }}
                     />
                     <strong>{c.title}</strong>
                     {c.id === current && <span className="login-current">current</span>}
                   </label>
                   <Detail text={c.detail} />
-                  {c.id === chosen && (
+                  {c.id === chosen && c.action && (
+                    <div className="pv-actions">
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={busy}
+                        onClick={() => void win.start(c.action)}
+                      >
+                        {row.actions.find((a) => a.id === c.action)?.label ?? c.title}
+                      </button>
+                    </div>
+                  )}
+                  {c.id === chosen && !c.action && (
                     <div className="login-send">
                       <SecretField
                         key={c.id}
@@ -113,7 +176,7 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
                   )}
                 </div>
               ))}
-              {row.from_lado && (
+              {(row.from_lado || row.logout_file) && (
                 <div className="pv-actions login-out">
                   <button type="button" className="quiet" disabled={busy} onClick={() => setAsking(true)}>
                     Log out…
@@ -133,26 +196,32 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
   );
 }
 
-// Asks before Log out, naming the CLI's running agents: they keep the login they started with.
+// Asks before Log out, naming the CLI's running agents. Of LADO's secrets they keep the login
+// they started with; the CLI's own file (`title`, the CLI's, null for LADO's secrets) they
+// share, so they stop working, and so does the user's own CLI.
 function Confirm({
+  title,
   running,
   busy,
   onYes,
   onCancel,
 }: {
+  title: string | null;
   running: Ref[];
   busy: boolean;
   onYes: () => void;
   onCancel: () => void;
 }) {
-  const text = "Remove this login from LADO's secrets?";
+  const text = title ? `Log out of ${title}?` : "Remove this login from LADO's secrets?";
+  const one = running.length === 1;
+  const agents = title
+    ? `${who(running)} ${one ? "shares" : "share"} this login and ${one ? "stops" : "stop"} working until you log in again.`
+    : `${who(running)} ${one ? "keeps it until it starts" : "keep it until they start"} again; new agents go without it.`;
   return (
     <div className="pv-confirm" role="group" aria-label={text}>
       <span>
-        {text}{" "}
-        {running.length === 0
-          ? "No agent of it runs now."
-          : `${who(running)} ${running.length === 1 ? "keeps it until it starts" : "keep it until they start"} again; new agents go without it.`}
+        {text} {running.length === 0 ? "No agent of it runs now." : agents}
+        {title && ` Your own ${title} in a terminal is logged out too.`}
       </span>
       <button type="button" className="danger" disabled={busy} onClick={onYes}>
         Log out
@@ -165,32 +234,13 @@ function Confirm({
 }
 
 // The CLI's own login command in its window; "Log out of one…" ends it and runs the logout
-// command in its place. Each window counts: only the end of the one shown closes the sheet.
+// command in its place.
 function WindowSheet({ row, onChanged, onClose }: Props) {
   const id = useId();
   const name = row.cli.name;
-  const count = useRef(0);
-  const [shown, setShown] = useState<{ action: string; count: number } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [refused, setRefused] = useState<string | null>(null);
-
-  const start = async (action: string, replacing: boolean) => {
-    const mine = ++count.current;
-    setBusy(true);
-    try {
-      if (replacing) await closeLogin(name);
-      const opened = await openLogin(name, action);
-      if (mine !== count.current) return;
-      onChanged(opened);
-      setShown({ action, count: mine });
-    } catch (error) {
-      setRefused(messageOf(error));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { shown, busy, refused, start, last } = useLoginWindow(name, onChanged);
   useEffect(() => {
-    void start("login", false); // once, as the sheet opens
+    void start("login"); // once, as the sheet opens
   }, []);
 
   if (!shown) {
@@ -230,7 +280,7 @@ function WindowSheet({ row, onChanged, onClose }: Props) {
         )
       }
       onEnded={() => {
-        if (shown.count === count.current) onClose();
+        if (last(shown.count)) onClose();
       }}
     />
   );

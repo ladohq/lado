@@ -6,7 +6,10 @@ Codex's base prompt is `developer_instructions` in config.toml (`model_instructi
 replaces the base prompt), and Codex writes into config.toml itself (trust, TUI state). So
 each agent gets a home of its own, its config folder, with a config.toml LADO writes anew
 at each launch, and what of the user's own Codex config the agent needs is read, never
-written (`CARRIED`, the trust of the folder and of the repository's own hooks).
+written (`CARRIED`, the trust of the folder and of the repository's own hooks). What would
+make a fresh home stop the agent at its start is settled in the agent's home: the trust of
+the repository and of its hooks (launch_command), and the login, a link to the user's login
+file or the agent's own key file (_settle_login).
 
 Checked by hand with Codex CLI 0.162.0 on a local model (Ollama, qwen3-coder:30b), in
 throwaway homes; where Codex's open source was read for a behaviour, the comment says so.
@@ -18,6 +21,7 @@ import math
 import os
 import re
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from lado import state
@@ -105,6 +109,26 @@ CARRIED = (
 PROFILE = "lado"  # LADO's permission profile (see _git_profile)
 USING = "Logged in using "  # the start of `codex login status`'s line for a login
 
+# Codex's login (0.162.0, checked by hand): its file CODEX_HOME/auth.json, the system
+# keyring (cli_auth_credentials_store `keyring`, or `auto` with a keyring that works) under a
+# key made of the home's path, or CODEX_ACCESS_TOKEN, read before the file. Its agents keep
+# theirs in the file (STORE), which they share with the user's own Codex.
+KEY, TOKEN = "OPENAI_API_KEY", "CODEX_ACCESS_TOKEN"
+STORE = "file"
+FILE_STORE = ["-c", f'cli_auth_credentials_store="{STORE}"']
+KEYRING_STORES = ("keyring", "auto")
+LOGIN_FILE = "Codex's login file"
+USER_HOME = "user-codex-home"  # in the agent's home: the user's Codex home, one line
+API_KEY = "Pay per use (API key)"
+# `codex login status`'s ways (after "Logged in using", the article dropped): the method
+# for humans and the login choice.
+METHODS = {
+    "ChatGPT": ("ChatGPT plan", "chatgpt"),
+    "API key": (API_KEY, "usage"),
+    "personal access token": ("ChatGPT access token", "token"),
+    "access token": ("ChatGPT access token", "token"),
+}
+
 
 class CodexProvider(base.Provider):
     name = "codex"
@@ -140,23 +164,91 @@ class CodexProvider(base.Provider):
     # No mode: Codex's own approvals (on-request in a trusted folder) and LADO's permission
     # profile. `default` asks for approvals as Codex's on-request does.
     permission_modes = ("default", "bypassPermissions")
-    # Each agent has a Codex home of its own (its config folder), where no login is: the
-    # user's login is not carried over (GitHub #113), so no login action either.
-    login_note = (
-        "Codex agents do not get this login yet: each has a Codex home of its own (GitHub "
-        "#113); they work only with a model that needs no login"
+    # Every agent shares the user's login file, or gets the key of OPENAI_API_KEY in a file
+    # of its own (first_hook_blocker); Codex reads CODEX_ACCESS_TOKEN itself. The first one
+    # is named where a login is missing: the one a container's user most likely has.
+    login_variables = (KEY, TOKEN)
+    login_question = "How do you pay for Codex?"
+    login_choices = (
+        base.LoginChoice(
+            "chatgpt",
+            "ChatGPT plan — Plus, Pro, Business or Enterprise",
+            "Sign in with your ChatGPT account by a one-time code: LADO shows a link and a "
+            "code, you open the link on any device and enter the code.",
+            action="login",
+        ),
+        # Made in ChatGPT's admin console; Codex checks it with OpenAI's server and never
+        # refreshes it: Codex's counterpart of `claude setup-token`.
+        base.LoginChoice(
+            "token",
+            "ChatGPT Business or Enterprise — access token",
+            "Paste an access token your workspace admin made in ChatGPT's admin console "
+            "(Codex access tokens).",
+            TOKEN,
+        ),
+        base.LoginChoice(
+            "usage",
+            "Pay per use — OpenAI API key",
+            "Paste an API key from platform.openai.com.",
+            KEY,
+        ),
+    )
+    keyring_note = (
+        "Your Codex keeps its login in the system keyring, which Codex agents cannot read. "
+        "Log in here: the login goes to Codex's login file, and your own Codex keeps using "
+        "the keyring."
     )
 
+    def needs_login(self, env: Mapping[str, str]) -> bool:
+        # The model provider of the user's config, as carried to the agents (in an agent's
+        # launch environment CODEX_HOME is its own home, whose config.toml carries it):
+        # OpenAI's, and a provider that asks for OpenAI's login, need one. A config that
+        # cannot be read is read as none: the status then decides.
+        config, _ = _user_config(env, [])
+        name = _model_provider(config)
+        provider = _as_table(_as_table(config.get("model_providers")).get(name))
+        return name == "openai" or bool(provider.get("requires_openai_auth"))
+
+    def login_actions(self) -> tuple[base.LoginAction, ...]:
+        # Into the file the agents share, whatever store the user's own Codex keeps. The
+        # device code needs no browser on this machine: `--device-auth` prints a link and a
+        # code and ends once the code is entered. `codex logout` removes the file and, for
+        # a ChatGPT login, revokes its tokens: every agent's and the user's own Codex's.
+        return (
+            base.LoginAction(
+                "login",
+                "Get a sign-in code",
+                (self.command, "login", "--device-auth", *FILE_STORE),
+                "Open the link, sign in and enter the code there. This window closes by "
+                "itself once you are signed in.",
+            ),
+            base.LoginAction("logout", "Log out…", (self.command, "logout", *FILE_STORE)),
+        )
+
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:
-        # `codex login status` (0.162.0) reads CODEX_HOME/auth.json (~/.codex without it;
-        # an OPENAI_API_KEY in the environment does not count) and prints, on stderr after
+        # Codex's TUI and its status ignore OPENAI_API_KEY; LADO hands it to the agents
+        # (_settle_login), so it is their login whatever Codex's file holds.
+        if env.get(KEY) and not env.get(TOKEN):
+            return base.LoginStatus(base.YES, API_KEY, variable=KEY, choice="usage")
+        found = self._status(env, FILE_STORE)
+        if found.state == base.NO and _user_store(env) in KEYRING_STORES:
+            # The user's own Codex may keep its login in the keyring, under a key of its
+            # home's path, which no agent's home reaches.
+            if self._status(env, []).state == base.YES:
+                return base.LoginStatus(base.NO, keyring=True)
+        return found
+
+    def _status(self, env: dict[str, str], store: list[str]) -> base.LoginStatus:
+        # `codex login status` (0.162.0) reads CODEX_ACCESS_TOKEN, then CODEX_HOME/auth.json
+        # (~/.codex without it) or the keyring as `store` says, and prints, on stderr after
         # warnings of its own, `Not logged in` (exit 1) or `Logged in using <how>`, for a
-        # key with ` - ` and the key masked: nothing after ` - ` is kept.
-        found = base.run_status([self.command, "login", "status"], env)
+        # key with ` - ` and the key masked: nothing after ` - ` is kept. The ways it
+        # names are read in its source (cli/src/login.rs, run_login_status).
+        found = base.run_status([self.command, "login", "status", *store], env)
         if isinstance(found, str):
             return base.LoginStatus(base.UNKNOWN, problem=found)
         lines = [line.strip() for line in f"{found.stdout}\n{found.stderr}".splitlines()]
-        home = Path(env.get("CODEX_HOME") or Path(env.get("HOME") or Path.home()) / ".codex")
+        home = _codex_home(env)
         for line in lines:
             if line == "Not logged in":
                 return base.LoginStatus(base.NO)
@@ -164,7 +256,11 @@ class CodexProvider(base.Provider):
                 how = line[len(USING) :].split(" - ", 1)[0].strip()
                 for article in ("an ", "a "):
                     how = how.removeprefix(article)
-                return base.LoginStatus(base.YES, how, file=str(home / "auth.json"))
+                method, choice = METHODS.get(how, (how, ""))
+                if choice == "token" and env.get(TOKEN):
+                    return base.LoginStatus(base.YES, method, variable=TOKEN, choice=choice)
+                file = str(home / "auth.json")
+                return base.LoginStatus(base.YES, method, file, LOGIN_FILE, choice=choice)
         last = next((line for line in reversed(lines) if line), "")
         return base.LoginStatus(
             base.UNKNOWN, problem=base.error_line("cannot read `codex login status`", last)
@@ -194,9 +290,19 @@ class CodexProvider(base.Provider):
             # shell_snapshots/ of its home: no such value may go on disk (lado.mcp_exec).
             # Its goals (`update_goal`, on by default in 0.162): an agent gets its task as
             # messages, and local models loop on the tool.
-            features={"multi_agent": False, "shell_snapshot": False, "goals": False},
+            # Its plugins: Codex clones OpenAI's catalogue (about 100 MB) into each new home
+            # at the start; the user's installed plugins live in the user's home anyway.
+            features={
+                "multi_agent": False,
+                "shell_snapshot": False,
+                "goals": False,
+                "plugins": False,
+            },
             analytics={"enabled": False},
             feedback={"enabled": False},
+            # Its login stays in the file every agent and the user's own Codex share
+            # (_settle_login): in the keyring it would be under a key of this home's path.
+            cli_auth_credentials_store=STORE,
         )
         if spec.read_only:
             config["features"]["worktrees"] = False
@@ -205,15 +311,22 @@ class CodexProvider(base.Provider):
                 f"that LADO cannot take away from read-only agent {agent.name}; its shell "
                 "stays too, and LADO reports any change of the repository"
             )
-        if trust := _trust_entry(user.get("projects"), cwd):
-            config["projects"] = {trust[0]: {"trust_level": trust[1]}}
+        # The user's entry for the folder as it is (untrusted too), else LADO trusts the
+        # repository's main root, which covers a worker's worktree: no question at the start.
+        trust = _trust_entry(user.get("projects"), cwd) or (str(gitpaths.main_root(cwd)), "trusted")
+        config["projects"] = {trust[0]: {"trust_level": trust[1]}}
         config["hooks"] = _hooks(agent, home)
-        user_trust = (user.get("hooks") or {}).get("state") or {}
+        user_trust = _as_table(_as_table(user.get("hooks")).get("state"))
         for path in _repo_hook_files(cwd, home):
             for key, entry in user_trust.items():
                 kept = _keep(entry, key, dropped) if key.startswith(f"{path}:") else None
-                if kept is not None:
+                if isinstance(kept, dict):  # an entry of another type is no trust
                     config["hooks"]["state"][key] = kept
+            # The repository's own hooks, which load in a trusted folder only, trusted as a
+            # human who trusts the folder takes them; one the user disabled stays so.
+            for key, digest in _hook_handlers(path) if trust[1] == "trusted" else ():
+                if _as_table(config["hooks"]["state"].get(key)).get("enabled") is not False:
+                    config["hooks"]["state"][key] = {"trusted_hash": digest}
         if dropped:
             warnings.append(
                 f"cannot write {', '.join(dropped)} of {user_path} into the config of Codex "
@@ -233,6 +346,8 @@ class CodexProvider(base.Provider):
         os.fchmod(fd, 0o600)  # the mode above is only for a new file
         with os.fdopen(fd, "w") as file:
             file.write(toml_text(config))
+        # For _settle_login, which also runs where CODEX_HOME is the agent's own.
+        (home / USER_HOME).write_text(f"{_codex_home(spec.environ or os.environ)}\n")
         # --no-daemon: else Codex starts a background app server for the home, which runs
         # the hooks with its own environment, copies the CLI into the home and outlives the
         # agent.
@@ -270,22 +385,35 @@ class CodexProvider(base.Provider):
         return json.dumps({"decision": "block", "reason": text})
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
-        # Read from the agent's own config.toml, which LADO wrote with what it carried: it
-        # is what the agent's Codex reads.
+        # The agent's login first: its own home has none, and the login's state is read
+        # there (lado.runtime, lado.login_wait). Then what Codex asks, read from the agent's
+        # own config.toml, which LADO wrote with what it carried: it is what the agent's
+        # Codex reads.
         folder = Path(cwd)
         home = Path(env.get("CODEX_HOME") or "")
+        try:
+            notes = tuple(_settle_login(home, env))
+        except OSError as error:
+            return base.Blocker(
+                warning=f"cannot give the agent its {self.title} login in {home}: {error}; "
+                "an agent whose model needs a login waits for one until it starts again with "
+                "its folder writable"
+            )
         path = home / "config.toml"
         try:
             config = _read_toml(path)
         except (OSError, ValueError) as error:
             return base.Blocker(
                 warning=f"cannot tell whether {self.title} asks the human before its first "
-                f"hook in {folder}: {path}: {error}"
+                f"hook in {folder}: {path}: {error}",
+                notes=notes,
             )
         trust = _trust_entry(config.get("projects"), folder)
         hooks: list[Path] = []
         if trust is None or trust[1] == "trusted":  # an untrusted folder's hooks do not load
-            hooks = _unreviewed(folder, home, (config.get("hooks") or {}).get("state") or {})
+            hooks = _unreviewed(
+                folder, home, _as_table(_as_table(config.get("hooks")).get("state"))
+            )
         review = (
             f"the repository's own hooks in {', '.join(map(str, hooks))}: in its terminal "
             'choose "Trust all and continue" or "Continue without trusting (hooks won\'t '
@@ -298,21 +426,63 @@ class CodexProvider(base.Provider):
                 "once in your own Codex (`codex` in that folder) stops the question"
             )
             return base.Blocker(
-                reason=f"{reason}; then it asks to review {review}" if hooks else reason
+                reason=f"{reason}; then it asks to review {review}" if hooks else reason,
+                notes=notes,
             )
         if hooks:
-            return base.Blocker(reason=f"{self.title} asks to review {review}")
-        return base.Blocker()
+            return base.Blocker(reason=f"{self.title} asks to review {review}", notes=notes)
+        return base.Blocker(notes=notes)
+
+
+def _settle_login(home: Path, env: Mapping[str, str]) -> list[str]:
+    """Make the agent's auth.json its login: with OPENAI_API_KEY (and no
+    CODEX_ACCESS_TOKEN, which Codex reads itself and prefers) a file of its own with that
+    key, as `codex login --with-api-key` writes it (Codex's TUI does not read the
+    variable); else a link to the user's auth.json, also before it exists, which every
+    agent and the user's own Codex share. Codex writes that file in place, so a refresh in
+    one reaches all (0.162.0, checked by hand on a ChatGPT login: three agents refreshing at
+    once). The notes of what LADO wrote; OSError when it cannot."""
+    auth = home / "auth.json"
+    key = env.get(KEY)
+    if key and not env.get(TOKEN):
+        if auth.is_symlink():
+            auth.unlink()  # never write through the link into the user's file
+        fd = os.open(auth, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        os.fchmod(fd, 0o600)  # the mode above is only for a new file
+        with os.fdopen(fd, "w") as file:
+            json.dump({"auth_mode": "apikey", KEY: key}, file)
+        return [f"LADO wrote the API key of {KEY} into {auth}"]
+    target = _user_codex_home(home, env) / "auth.json"
+    if auth.is_symlink() and os.readlink(auth) == str(target):
+        return []
+    beside = home / ".auth.json.lado"
+    beside.unlink(missing_ok=True)
+    beside.symlink_to(target)
+    os.replace(beside, auth)  # a key file or another link, replaced at once
+    return [f"LADO linked {auth} to {target}"]
+
+
+def _user_codex_home(home: Path, env: Mapping[str, str]) -> Path:
+    """The user's Codex home as launch_command wrote it into the agent's `home`; without
+    that file (an agent of an older LADO), the default one of `env`'s HOME."""
+    try:
+        written = (home / USER_HOME).read_text().strip()
+    except FileNotFoundError:
+        written = ""
+    return Path(written) if written else Path(env.get("HOME") or Path.home()) / ".codex"
+
+
+def _codex_home(environ) -> Path:
+    """The user's own Codex home: CODEX_HOME of the agent's environment, else ~/.codex."""
+    if environ.get("CODEX_HOME"):
+        return Path(environ["CODEX_HOME"])
+    return Path(environ.get("HOME") or Path.home()) / ".codex"
 
 
 def _user_config(environ, warnings: list[str]) -> tuple[dict, Path]:
-    """The user's own Codex config (CODEX_HOME of the agent's environment, else
-    ~/.codex) and its path; {} when there is none, or with a warning when it cannot be
-    read."""
-    if environ.get("CODEX_HOME"):
-        path = Path(environ["CODEX_HOME"]) / "config.toml"
-    else:
-        path = Path(environ.get("HOME") or Path.home()) / ".codex" / "config.toml"
+    """The user's own Codex config (in _codex_home) and its path; {} when there is none,
+    or with a warning when it cannot be read."""
+    path = _codex_home(environ) / "config.toml"
     try:
         return _read_toml(path), path
     except (OSError, ValueError) as error:
@@ -320,6 +490,28 @@ def _user_config(environ, warnings: list[str]) -> tuple[dict, Path]:
             f"cannot read {path}: {error}; nothing of it is carried into the Codex agents' config"
         )
         return {}, path
+
+
+def _model_provider(config: dict) -> str:
+    """The model provider Codex runs with `config`: the chosen profile's, else the top
+    level's, else OpenAI's."""
+    chosen = config.get("profile")
+    profile = (
+        _as_table(_as_table(config.get("profiles")).get(chosen)) if isinstance(chosen, str) else {}
+    )
+    return str(profile.get("model_provider") or config.get("model_provider") or "openai")
+
+
+def _as_table(value) -> dict:
+    """`value` when it is a TOML table, else an empty one: a value of another type where
+    Codex has a table (a hand-edited config) is read as none, never a crash."""
+    return value if isinstance(value, dict) else {}
+
+
+def _user_store(env) -> str:
+    """Where the user's own Codex keeps its login (cli_auth_credentials_store)."""
+    config, _ = _user_config(env, [])
+    return str(config.get("cli_auth_credentials_store") or STORE)
 
 
 def _read_toml(path: Path) -> dict:
@@ -335,7 +527,8 @@ def _read_toml(path: Path) -> dict:
 # config/src/loader/mod.rs): Codex looks up the folder it runs in, its project root (the
 # nearest folder up with a .git), then its repository's main root (a linked worktree's main
 # repo), each by its real path, then as spelled; the first entry with a trust level decides,
-# trusted or untrusted. An entry above the git root covers nothing. With none, Codex asks.
+# trusted or untrusted. An entry above the git root covers nothing. With none, Codex asks:
+# so LADO writes one for the main root when the user's config has none (launch_command).
 # The agent's Codex uses the default project_root_markers (.git): the user's are not
 # carried.
 def _trust_keys(cwd: Path) -> list[str]:
@@ -373,8 +566,9 @@ def _trust_entry(projects, cwd: Path) -> tuple[str, str] | None:
 # folder from the project root down to the agent's folder that has a .codex folder (not the
 # Codex home), its hooks.json and the [hooks] of its config.toml, only in a trusted folder.
 # In a linked worktree they are the main checkout's, read from there, so the trust the user
-# gave them in the main checkout holds. Plugins' hooks come from plugins installed in the
-# Codex home, which is new for each agent: none.
+# gave them in the main checkout holds; LADO trusts the rest by their hashes in the agent's
+# config (launch_command). Plugins' hooks come from plugins installed in the Codex home,
+# which is new for each agent, with plugins off: none.
 def _repo_hook_files(cwd: Path, home: Path) -> list[Path]:
     cwd, root = cwd.resolve(), _project_root(cwd)
     top = gitpaths.rev_parse(cwd, "--show-toplevel")
@@ -420,7 +614,7 @@ def _unreviewed(cwd: Path, home: Path, trusted: dict) -> list[Path]:
     files = []
     for path in _repo_hook_files(cwd, home):
         for key, digest in _hook_handlers(path):
-            entry = trusted.get(key) or {}
+            entry = _as_table(trusted.get(key))
             if entry.get("enabled") is not False and entry.get("trusted_hash") != digest:
                 files.append(path)
                 break

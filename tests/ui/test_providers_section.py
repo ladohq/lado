@@ -184,6 +184,83 @@ def test_the_sheet_at_a_phones_width(browser: Browser, logins, server, repo, sho
         context.close()
 
 
+def sign_in_by_code(page: Page, marker, shot, full_page: bool = True) -> None:
+    """From the open row of "fake-login": its choice that runs the sign-in (as Codex's
+    ChatGPT plan), the login window with the action's help line, the code sent."""
+    sheet = page.get_by_role("dialog", name=QUESTION)
+    sheet.get_by_text("A sign-in code").click()
+    expect(sheet.get_by_role("textbox")).to_have_count(0)  # no field: a button
+    shot(page, "sheet-code", full_page=full_page)
+    sheet.get_by_role("button", name="Get a sign-in code").click()
+    window = page.get_by_role("dialog", name=f"Log in: {TITLE}")
+    expect(window.get_by_text(fake_provider.CODE_HELP)).to_be_visible()
+    expect(window.locator(".xterm-rows")).to_contain_text("login.example.invalid", timeout=20000)
+    shot(page, "window-code", full_page=full_page)
+    window.get_by_label("Text to send").fill("code-7")
+    window.get_by_role("button", name="Send ⏎").click()
+    expect(window).to_have_count(0, timeout=20000)  # the command ended: the window closed
+    assert marker.read_text() == "code-7"
+
+
+def log_out_of_the_file(page: Page, session: str, shot, full_page: bool = True) -> None:
+    """Change login… of "fake-login" logged in by its own file: Log out asks first, naming
+    the agent that shares it, then runs its logout in the login window."""
+    row(page).get_by_role("button", name="Change login…").click()
+    sheet = page.get_by_role("dialog", name=QUESTION)
+    expect(sheet.get_by_role("radio", name=re.compile("A sign-in code"))).to_be_checked()
+    sheet.get_by_role("button", name="Log out…").click()
+    ask = sheet.get_by_role("group", name=f"Log out of {TITLE}?")
+    expect(ask).to_contain_text(
+        f"supervisor of {session} shares this login and stops working until you log in "
+        f"again. Your own {TITLE} in a terminal is logged out too."
+    )
+    shot(page, "log-out-file", full_page=full_page)
+    ask.get_by_role("button", name="Log out", exact=True).click()
+    expect(page.get_by_role("dialog")).to_have_count(0, timeout=20000)
+    expect(row(page).get_by_text("Not logged in")).to_be_visible()
+
+
+def test_a_choice_signs_in_by_a_code_and_logs_out_of_the_file(
+    page: Page, logins, server, repo, shot
+):
+    page.set_viewport_size({"width": 1280, "height": 900})
+    session = waiting_session(repo, logins)
+    log_in(page, server)
+    page.goto(f"{server['url']}/settings#providers-and-environment")
+    row(page).get_by_role("button", name="Log in…").click()
+    sign_in_by_code(page, logins, shot)
+    expect(
+        row(page).get_by_text(f"Logged in · fake login · {fake_provider.FILE_WORDS}")
+    ).to_be_visible()
+    idle(session)  # the waiting agent took the login
+    row(page).scroll_into_view_if_needed()
+    shot(page, "logged-in-code")
+    log_out_of_the_file(page, session, shot)
+    assert not logins.exists()
+    assert project_secrets.lado_names() == []
+    runtime.stop_session(session)
+
+
+def test_the_sign_in_by_a_code_at_a_phones_width(browser: Browser, logins, server, repo, shot):
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True
+    )
+    try:
+        page = context.new_page()
+        session = waiting_session(repo, logins)
+        log_in(page, server)
+        page.goto(f"{server['url']}/settings#providers-and-environment")
+        row(page).get_by_role("button", name="Log in…").click()
+        sign_in_by_code(page, logins, shot, full_page=False)
+        expect(row(page).get_by_text(re.compile("Logged in · fake login"))).to_be_visible()
+        idle(session)
+        assert page.evaluate("document.documentElement.scrollWidth") <= 390
+        log_out_of_the_file(page, session, shot, full_page=False)
+        runtime.stop_session(session)
+    finally:
+        context.close()
+
+
 def window_row(page: Page):
     return page.get_by_role("listitem", name="Fake window agent")
 

@@ -10,8 +10,8 @@ holds, never over LADO's and the provider's own variables, and the provider's lo
 whole from one layer (lado.agent_env.merge; the file keeps the login shell's own login
 variables for that); a login shell's change needs a new agent. Once the CLI is logged in,
 or LADO cannot tell (unknown never holds an agent), it settles what the CLI asks first
-(Provider.first_hook_blocker: Claude Code's trust and first run), tells loop.log what it
-did, and replaces itself with the CLI.
+(Provider.first_hook_blocker: Claude Code's trust and first run, Codex's login file or the
+key saved meanwhile), tells loop.log what it did, and replaces itself with the CLI.
 """
 
 import json

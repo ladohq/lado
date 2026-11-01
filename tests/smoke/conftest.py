@@ -12,7 +12,9 @@ A failed test keeps its evidence as a failed live test does (real_clis.EVIDENCE)
 """
 
 import json
+import os
 import shutil
+import subprocess
 
 import pytest
 import real_clis
@@ -102,6 +104,9 @@ def smoke_provider(request, monkeypatch, tmp_path, fake_endpoint, codex_home) ->
             'env_key = "SMOKE_API_KEY"\n'
         )
         monkeypatch.setenv("SMOKE_API_KEY", KEY)
+        # The user's own Codex logged in, as Codex writes its login file: its agents share it
+        # (their model, the endpoint's, takes the key of its env_key).
+        codex_login(codex_home, KEY)
     else:
         folder = home / ".config" / name
         folder.mkdir()
@@ -109,6 +114,20 @@ def smoke_provider(request, monkeypatch, tmp_path, fake_endpoint, codex_home) ->
         provider = with_model(CLASSES[name], f"smoke/{MODEL}")
         monkeypatch.setitem(providers._PROVIDERS, name, provider)
     return name
+
+
+def codex_login(codex_home, key: str) -> None:
+    """`codex login --with-api-key` into `codex_home`'s login file (the key on stdin, which
+    must not be a terminal)."""
+    subprocess.run(
+        ["codex", "login", "--with-api-key", "-c", 'cli_auth_credentials_store="file"'],
+        input=key,
+        env={**os.environ, "CODEX_HOME": str(codex_home)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
 
 
 @pytest.fixture

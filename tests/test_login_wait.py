@@ -195,6 +195,33 @@ def test_the_window_marks_the_launch_anew_before_it_starts_the_cli(
     assert window_at > "2026" and state.get_agent("s", "sup").status == state.STARTING
 
 
+def test_a_codex_agent_that_waited_for_a_key_gets_it_before_its_cli_runs(
+    tmp_path, lado_home, cli_logins, monkeypatch
+):
+    """Codex's TUI does not read OPENAI_API_KEY: the window writes the agent's auth.json
+    with the key saved meanwhile (Provider.first_hook_blocker) before it runs Codex."""
+    state.add_session(state.Session("s", str(tmp_path), None, "codex"))
+    agent = state.Agent("s", "sup", "role", str(tmp_path), None, None, state.STARTING, "codex")
+    state.add_agent(agent)
+    home = base.config_dir(agent)
+    (home / "user-codex-home").write_text(f"{tmp_path / 'user'}\n")
+    cli_logins.answer("codex", 1, "", "Not logged in\n")
+    monkeypatch.setattr(login_wait.time, "sleep", lambda s: project_secrets.write_lado(KEY, "sk-c"))
+    seen = []
+    monkeypatch.setattr(
+        os, "execvpe", lambda *a: seen.append(json.loads((home / "auth.json").read_text()))
+    )
+    file = tmp_path / "env.json"
+    env = {**ENV, "LADO_HOME": str(lado_home), "HOME": str(tmp_path), "CODEX_HOME": str(home)}
+    command = login_wait.command(file, "codex", env, ["CODEX_HOME"], None, {}, ["sh"])
+    login_wait.main(command[command.index("login-wait") + 1 :])
+    assert seen == [{"auth_mode": "apikey", KEY: "sk-c"}]
+    assert not (home / "auth.json").is_symlink()
+
+
+KEY = "OPENAI_API_KEY"
+
+
 def test_unknown_never_holds_it(tmp_path, lado_home, started, monkeypatch):
     provider = Waiting(logged_in_after=99, answer=base.UNKNOWN)
     monkeypatch.setitem(providers._PROVIDERS, "waits", provider)

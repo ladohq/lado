@@ -2213,11 +2213,13 @@ export interface components {
             id: string;
             /** Label */
             label: string;
+            /** Help */
+            help: string;
         };
         /**
          * LoginChoiceInfo
-         * @description A way to log the CLI in by a pasted value kept as LADO's secret
-         *     (Provider.login_choices).
+         * @description A way to log the CLI in (Provider.login_choices): a pasted value kept as LADO's
+         *     secret, or the login window running one of `actions`.
          */
         LoginChoiceInfo: {
             /** Id */
@@ -2228,6 +2230,8 @@ export interface components {
             detail: string;
             /** Variable */
             variable: string;
+            /** Action */
+            action: string;
         };
         /**
          * LoginInfo
@@ -2764,6 +2768,8 @@ export interface components {
             choices: components["schemas"]["LoginChoiceInfo"][];
             /** From Lado */
             from_lado: boolean;
+            /** Logout File */
+            logout_file: boolean;
             /** Note */
             note: string;
             /** Waiting */

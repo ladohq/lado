@@ -1750,6 +1750,23 @@ def test_a_trust_lado_cannot_record_waits_for_the_login_first(
     assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
 
 
+def test_an_agent_whose_cli_needs_no_login_in_its_launch_environment_is_not_held(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    """Whether it needs one is asked with the agent's launch environment (Codex's model)."""
+    _stopped_claude_session(repo, fake_tmux)
+    cli_logins.logged_out()
+    seen = []
+    claude = providers.get("claude")
+    monkeypatch.setattr(claude, "needs_login", lambda env: seen.append(env) or False)
+    started = runtime.start_session(str(repo), "s", None, wait_for_login=True)
+    assert started.warnings == []
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    assert not _waits_for_login(call[-1])
+    assert seen and seen[-1]["LADO_AGENT"] == "supervisor"
+
+
 def test_a_logged_in_claude_agent_starts_as_before(repo, fake_tmux):
     started = runtime.start_session(str(repo), "s", None, provider="claude")
     assert started.warnings == []
@@ -1776,12 +1793,59 @@ def test_an_unknown_login_never_holds_an_agent(repo, fake_tmux, cli_logins):
 
 
 @pytest.mark.parametrize("provider", ["codex", "kilo", "opencode"])
-def test_other_clis_are_never_held_for_a_login(repo, fake_tmux, cli_logins, provider):
+def test_other_clis_are_never_held_for_a_login(repo, fake_tmux, cli_logins, provider, codex_home):
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text('model_provider = "ollama"\n')  # Codex: a local model
     runtime.start_session(str(repo), "s", None, provider=provider)
     assert runtime.status_reason("s", "supervisor") != LOGIN_REASON
     [call] = [c for c in fake_tmux if c[0] == "new_session"]
     assert not _waits_for_login(call[-1])
     assert [c for c in cli_logins.calls if c[0][0] == provider] == []
+
+
+def test_codex_on_openais_model_is_refused_without_a_login(repo, fake_tmux, cli_logins):
+    cli_logins.answer("codex", 1, "", "Not logged in\n")
+    with pytest.raises(runtime.NotLoggedIn) as refused:
+        runtime.start_session(str(repo), "s", None, provider="codex")
+    assert str(refused.value) == (
+        "Codex CLI is not logged in, so the session was not started: log in in LADO's UI "
+        "(Settings → Providers and environment, `lado ui`), or set OPENAI_API_KEY as LADO's "
+        "secret or a project secret"
+    )
+    assert state.get_session("s") is None
+    assert fake_tmux == []
+
+
+def _codex_logged_in_by_its_file(cli_logins):
+    """Codex's status as the real one reads it: logged in where CODEX_HOME's auth.json is
+    there (a link to a file that exists too)."""
+    cli_logins.answers["codex"] = lambda env: (
+        (0, "", "Logged in using ChatGPT\n")
+        if (Path(env["CODEX_HOME"]) / "auth.json").exists()
+        else (1, "", "Not logged in\n")
+    )
+
+
+@pytest.mark.parametrize("how", [{"provider": "codex"}, {"reason": runtime.AT_START}])
+def test_a_logged_in_codex_agent_is_not_held_for_its_login(
+    repo, fake_tmux, cli_logins, codex_home, how
+):
+    """Its login is read in its own Codex home, whose auth.json LADO links before."""
+    codex_home.mkdir()
+    (codex_home / "auth.json").write_text("{}")
+    _codex_logged_in_by_its_file(cli_logins)
+    if how.get("reason"):
+        runtime.start_session(str(repo), "s", None, provider="codex")
+        runtime.stop_session("s")
+        fake_tmux.clear()
+        how = {**how, "resume": True}
+    started = runtime.start_session(str(repo), "s", None, **how)
+    assert started.warnings == []
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    assert not _waits_for_login(call[-1])
+    home = state.home() / "agents" / "s" / "supervisor"
+    assert os.readlink(home / "auth.json") == str(codex_home / "auth.json")
 
 
 def test_each_agent_takes_its_own_providers_login_whole_from_one_layer(
@@ -3584,7 +3648,8 @@ def test_kit_mcp_secrets_are_in_no_file_lado_leaves(
     assert found == []
     config = providers.base.config_path(state.get_agent("s", "r"))
     files = [*config.glob("*.json"), *config.glob("*.toml")]
-    text = "\n".join(p.read_text() for p in files if p.name != "env.json")
+    # Not Codex's auth.json, a link to the user's login file, which may not exist.
+    text = "\n".join(p.read_text() for p in files if p.is_file() and p.name != "env.json")
     assert "lado.mcp_exec" in text
     assert "${" not in text and "{env:" not in text
     env_files = list((lado_home / "agents").rglob("env.json"))

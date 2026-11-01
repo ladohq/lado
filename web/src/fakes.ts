@@ -450,12 +450,14 @@ export const CHOICES = [
     title: "Subscription — Claude Pro or Max",
     detail: "Run `claude setup-token` on any computer where Claude Code is installed and paste the token it prints.",
     variable: "CLAUDE_CODE_OAUTH_TOKEN",
+    action: "",
   },
   {
     id: "usage",
     title: "Pay per use — API billing",
     detail: "Paste an API key from console.anthropic.com.",
     variable: "ANTHROPIC_API_KEY",
+    action: "",
   },
 ];
 
@@ -469,6 +471,7 @@ export function claudeRow(more: Partial<ProviderLogins> = {}): ProviderLogins {
     question: "How do you pay for Claude?",
     choices: CHOICES,
     from_lado: false,
+    logout_file: false,
     note: "",
     waiting: [{ session: "my-app", agent: "supervisor" }],
     running: [
@@ -490,12 +493,56 @@ export function opencodeRow(state: "yes" | "no" = "yes"): ProviderLogins {
     login: { ...LOGIN, state, method: state === "yes" ? "2 credentials, 1 variable" : "" },
     needs_login: false,
     actions: [
-      { id: "login", label: "Add a login…" },
-      { id: "logout", label: "Log out of one…" },
+      { id: "login", label: "Add a login…", help: "" },
+      { id: "logout", label: "Log out of one…", help: "" },
     ],
     question: "",
     choices: [],
     waiting: [],
     running: [],
+  };
+}
+
+export const CODEX_HELP =
+  "Open the link, sign in and enter the code there. This window closes by itself once you are signed in.";
+
+// Codex logged in with ChatGPT in its own login file, which its two agents share: a choice
+// runs its sign-in code in the login window, the others take a pasted value.
+export function codexRow(more: Partial<ProviderLogins> = {}): ProviderLogins {
+  return {
+    ...claudeRow(),
+    cli: cli("codex", "Codex CLI"),
+    login: { ...LOGIN, state: "yes", method: "ChatGPT plan", where: "Codex's login file", choice: "chatgpt" },
+    actions: [
+      { id: "login", label: "Get a sign-in code", help: CODEX_HELP },
+      { id: "logout", label: "Log out…", help: "" },
+    ],
+    question: "How do you pay for Codex?",
+    choices: [
+      {
+        id: "chatgpt",
+        title: "ChatGPT plan — Plus, Pro, Business or Enterprise",
+        detail: "Sign in with your ChatGPT account by a one-time code.",
+        variable: "",
+        action: "login",
+      },
+      {
+        id: "token",
+        title: "ChatGPT Business or Enterprise — access token",
+        detail: "Paste an access token.",
+        variable: "CODEX_ACCESS_TOKEN",
+        action: "",
+      },
+      {
+        id: "usage",
+        title: "Pay per use — OpenAI API key",
+        detail: "Paste an API key from platform.openai.com.",
+        variable: "OPENAI_API_KEY",
+        action: "",
+      },
+    ],
+    logout_file: true,
+    waiting: [],
+    ...more,
   };
 }

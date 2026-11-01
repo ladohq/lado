@@ -7,6 +7,7 @@ import shutil
 import signal
 import subprocess
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -61,7 +62,8 @@ class Capabilities:
     deny_edit_tools: bool = False
     # An agent of this CLI cannot work without a login: LADO holds it, waiting, until the
     # CLI's login_status says there is one (lado.runtime, lado.login_wait). False for a CLI
-    # that also works with models that need no login.
+    # that also works with models that need no login. Read through Provider.needs_login,
+    # which a CLI whose need follows its model answers from the environment.
     needs_login: bool = False
 
 
@@ -189,26 +191,34 @@ class LoginStatus:
     items: tuple[LoginItem, ...] = ()
     problem: str = ""  # why UNKNOWN
     choice: str = ""  # the id of the LoginChoice this login is; "" for none
+    # For NO: the CLI's own login is where its agents cannot read it (Codex's system
+    # keyring); Settings says so with Provider.keyring_note.
+    keyring: bool = False
 
 
 @dataclass(frozen=True)
 class LoginChoice:
     """A way to log the CLI in that Settings offers (Provider.login_choices): a value of
-    `variable`, one of the provider's login variables, pasted and kept as LADO's secret."""
+    `variable`, one of the provider's login variables, pasted and kept as LADO's secret, or
+    the login window running `action`, one of the provider's login_actions (Codex's sign-in
+    code); exactly one of them."""
 
     id: str
     title: str
-    detail: str  # where the value comes from
-    variable: str
+    detail: str  # where the value comes from, or what the action does
+    variable: str = ""
+    action: str = ""
 
 
 @dataclass(frozen=True)
 class LoginAction:
-    """A command of the login window (lado.logins): its id in the API, its label, its argv."""
+    """A command of the login window (lado.logins): its id in the API, its label, its argv,
+    and the window's help line while it runs ("" for the window's own)."""
 
     id: str
     label: str
     argv: tuple[str, ...]
+    help: str = ""
 
 
 def run_status(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess | str:
@@ -298,14 +308,24 @@ class Provider(ABC):
     # A line about the login for the human, shown under its state in Settings (e.g. that
     # the CLI's agents do not get it); "" for none.
     login_note: str = ""
+    # The line Settings and `lado doctor` show instead when the CLI's own login is where its
+    # agents cannot read it (LoginStatus.keyring), with what to do; "" for none.
+    keyring_note: str = ""
     # The variables that log the CLI in, which the human may set as LADO's secrets in
     # Settings (lado.project_secrets, LADO's folder); the first one is named in the reason
     # of an agent that waits for a login.
     login_variables: tuple[str, ...] = ()
-    # What Settings asks to log the CLI in by a pasted value, and its answers; none for a
-    # CLI that logs in by its own command (login_actions) or not from the page.
+    # What Settings asks to log the CLI in by a pasted value or a login action, and its
+    # answers; none for a CLI that logs in by its own command only (login_actions) or not
+    # from the page.
     login_question: str = ""
     login_choices: tuple[LoginChoice, ...] = ()
+
+    def needs_login(self, env: Mapping[str, str]) -> bool:
+        """Whether the CLI's agents, started with `env`, need a login: a new one is refused
+        and a resumed one waits without it (lado.logins, lado.runtime). By default
+        Capabilities.needs_login."""
+        return self.capabilities.needs_login
 
     def login_status(self, env: dict[str, str]) -> LoginStatus:
         """Whether the CLI, started with `env`, is logged in, as its own status command says

@@ -56,6 +56,28 @@ def test_a_login_an_unknown_one_or_no_need_refuses_nothing(cli_logins):
         assert logins.refusal(providers.get(name), {}, logins.WORKER) is None
 
 
+def test_whether_a_login_is_needed_is_asked_with_the_environment(cli_logins, monkeypatch, inherit):
+    """A CLI whose need follows its model (Codex) is asked in the environment the agents
+    would start from."""
+    cli_logins.logged_out()
+    seen = []
+
+    def needs(env):
+        seen.append(env.get("MODEL"))
+        return env.get("MODEL") == "cloud"
+
+    monkeypatch.setattr(CLAUDE, "needs_login", needs)
+    assert logins.refusal(CLAUDE, {"MODEL": "local"}, logins.SESSION) is None
+    assert logins.refusal(CLAUDE, {"MODEL": "cloud"}, logins.SESSION) is not None
+    assert seen == ["local", "cloud"]
+    seen.clear()
+    project_secrets.write_lado(KEY, "local-key")  # the agents' environment, as read() gives it
+    monkeypatch.setattr(CLAUDE, "needs_login", lambda env: env.get(KEY) != "local-key")
+    assert logins.read(CLAUDE, agent_env.layers(), full=False).needs_login is False
+    project_secrets.write_lado(KEY, "cloud-key")
+    assert logins.read(CLAUDE, agent_env.layers(), full=False).needs_login is True
+
+
 def _agent(session, name, provider="claude", status=state.STARTING):
     return state.Agent(session, name, "role", "/r", None, None, status, provider)
 
@@ -182,7 +204,8 @@ def test_only_a_login_variable_may_be_lados_secret():
     with pytest.raises(ValueError, match="GH_TOKEN is not a login variable of Claude Code"):
         logins.check_variable(CLAUDE, "GH_TOKEN")
     with pytest.raises(ValueError, match=r"LADO's secrets take: none"):
-        logins.check_variable(providers.get("codex"), "OPENAI_API_KEY")
+        logins.check_variable(providers.get("kilo"), "OPENAI_API_KEY")
+    logins.check_variable(providers.get("codex"), "OPENAI_API_KEY")
 
 
 OPENCODE = providers.get("opencode")
@@ -253,5 +276,5 @@ def test_close_window(windows):
 
 def test_a_window_needs_a_known_action(windows):
     with pytest.raises(ValueError, match="no login action"):
-        logins.open_window(providers.get("codex"), "login")
+        logins.open_window(providers.get("claude"), "login")  # LADO runs none of Claude's
     assert windows["calls"] == []

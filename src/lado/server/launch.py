@@ -295,15 +295,23 @@ def provider_logins(found: logins.Login, cli: models.ProviderInfo) -> models.Pro
             choice=status.choice,
             problem=status.problem,
         ),
-        needs_login=provider.capabilities.needs_login,
-        actions=[models.LoginActionInfo(id=a.id, label=a.label) for a in provider.login_actions()],
+        needs_login=found.needs_login,
+        actions=[
+            models.LoginActionInfo(id=a.id, label=a.label, help=a.help)
+            for a in provider.login_actions()
+        ],
         question=provider.login_question,
         choices=[
-            models.LoginChoiceInfo(id=c.id, title=c.title, detail=c.detail, variable=c.variable)
+            models.LoginChoiceInfo(
+                id=c.id, title=c.title, detail=c.detail, variable=c.variable, action=c.action
+            )
             for c in provider.login_choices
         ],
         from_lado=found.layer == logins.SECRET,
-        note=provider.login_note,
+        logout_file=status.state == providers.base.YES
+        and not status.variable
+        and any(a.id == "logout" for a in provider.login_actions()),
+        note=provider.keyring_note if status.keyring else provider.login_note,
         waiting=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in waiting],
         running=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in found.running],
         projects=found.projects,

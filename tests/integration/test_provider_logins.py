@@ -227,6 +227,38 @@ def test_a_projects_login_wins_whole(repo, marker, tmp_path, monkeypatch):
     runtime.stop_session(session)
 
 
+def test_a_login_needed_by_the_model_only(repo, marker, tmp_path, monkeypatch):
+    """As Codex's: its model, read in the agents' environment (here the outside folder),
+    decides whether its agents need a login."""
+    from lado.server import launch
+
+    def missing() -> bool:
+        [info] = [p for p in launch.provider_infos() if p.name == PROVIDER]
+        return info.login_missing
+
+    outside = tmp_path / "out"
+    outside.mkdir()
+    monkeypatch.setenv("LADO_ENV_DIR", str(outside))
+    assert missing()
+    (outside / "FAKE_AGENT_LOCAL_MODEL").write_text("1")
+    assert not missing()
+    start = ["start", str(repo), "--name", SESSION, "--provider", PROVIDER, "--no-attach"]
+    found = subprocess.run(
+        fake_provider.lado_command(*start), capture_output=True, text=True, timeout=60
+    )
+    assert found.returncode == 0, found.stderr
+    wait_status(state.IDLE)  # no login, and none waited for
+    runtime.stop_session(SESSION)
+    # Resumed by LADO without the local model: it waits for the login, which comes.
+    (outside / "FAKE_AGENT_LOCAL_MODEL").unlink()
+    runtime.start_session(str(repo), SESSION, None, wait_for_login=True)
+    assert status() == state.WAITING
+    project_secrets.write_lado(fake_provider.KEY, VALUE)
+    wait_status(state.IDLE)
+    assert environ()[fake_provider.KEY] == VALUE
+    runtime.stop_session(SESSION)
+
+
 def test_a_login_it_cannot_read_never_holds_the_agent(repo, marker, monkeypatch):
     monkeypatch.setenv("FAKE_AGENT_LOGIN_STATUS", "unknown")
     started = runtime.start_session(str(repo), SESSION, None, PROVIDER)  # nor refuses it

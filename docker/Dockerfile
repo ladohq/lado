@@ -10,7 +10,8 @@
 #   docker exec lado lado ui --no-open            # the UI's link with its token
 #
 # The agent CLIs' logins: first the UI's Settings → Providers and environment (Claude
-# Code, OpenCode and Kilo, from a phone too; it keeps Claude Code's token).
+# Code, Codex, OpenCode and Kilo, from a phone too; it keeps Claude Code's token and
+# Codex's token or key).
 #
 # The agents' variables, optional, are files in a folder, one per variable (its name the
 # file's, its value the content): `mkdir -m 700 secrets`, then add
@@ -19,10 +20,12 @@
 # inspect`: GH_TOKEN
 # (git over https to github.com and gh; or `docker exec -it lado gh auth login`),
 # CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`; or log in once with `docker exec -it
-# lado claude`), a kit's key, a model provider's key for OpenCode and Kilo (or `opencode
+# lado claude`), Codex's CODEX_ACCESS_TOKEN (a ChatGPT Business or Enterprise access
+# token) or OPENAI_API_KEY (or log in once with `docker exec -it lado codex login
+# --device-auth`), a kit's key, a model provider's key for OpenCode and Kilo (or `opencode
 # auth login` / `kilo auth login` inside). Logins made inside stay on the home volume;
-# Codex's is not covered yet. Every agent of the container can read every variable given
-# to it; another LADO keeps its own folder. LADO_GIT_NAME and LADO_GIT_EMAIL are git's
+# Codex's is shared by every Codex agent. Every agent of the container can read every
+# variable given to it; another LADO keeps its own folder. LADO_GIT_NAME and LADO_GIT_EMAIL are git's
 # identity for the agents' commits, written at every start (without them `docker logs`
 # warns). The host's ssh agent, for git over ssh: on a Mac add
 # `-v /run/host-services/ssh-auth.sock:/run/lado/ssh-agent.sock` (Docker Desktop's), on

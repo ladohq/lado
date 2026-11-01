@@ -147,17 +147,35 @@ def _file_login(env: dict[str, str]) -> base.LoginStatus:
     return base.LoginStatus(base.NO)
 
 
+CODE_HELP = "Open the link, sign in and enter the code there."
+
+
+# "fake-login" logs in like Claude Code by a pasted token or key, and like Codex by a
+# sign-in code: its choice "code" runs fake_login.py in the login window, which writes its
+# login file; "logout" removes that file.
 class FakeLoginProvider(FakeProvider):
     login_variables = (TOKEN, KEY)
     login_question = "How do you pay for the fake agent?"
     login_choices = (
         base.LoginChoice("token", "A token", "Paste a fake token.", TOKEN),
         base.LoginChoice("key", "A key", "Paste a fake key.", KEY),
+        base.LoginChoice("code", "A sign-in code", "Get a fake code.", action="login"),
     )
+
+    def login_actions(self) -> tuple[base.LoginAction, ...]:
+        script = (sys.executable, str(LOGIN_SCRIPT))
+        return (
+            base.LoginAction("login", "Get a sign-in code", script, CODE_HELP),
+            base.LoginAction("logout", "Log out…", (*script, "--logout")),
+        )
 
     def __init__(self, name: str):
         super().__init__(name, True)
         self.capabilities = dataclasses.replace(self.capabilities, needs_login=True)
+
+    def needs_login(self, env) -> bool:
+        # As Codex's model decides: a "local model" in the agents' environment needs none.
+        return not env.get("FAKE_AGENT_LOCAL_MODEL")
 
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:
         # A slow status command: it answers once the file FAKE_AGENT_LOGIN_HOLD names is
@@ -171,7 +189,8 @@ class FakeLoginProvider(FakeProvider):
             return base.LoginStatus(base.YES, "key", variable=KEY, choice="key")
         if env.get(TOKEN):
             return base.LoginStatus(base.YES, "token", variable=TOKEN, choice="token")
-        return _file_login(env)
+        found = _file_login(env)  # its own file: the sign-in code's, as Codex's ChatGPT login
+        return dataclasses.replace(found, choice="code") if found.state == base.YES else found
 
 
 # "fake-window" logs in by its own command, like OpenCode and Kilo: its login action

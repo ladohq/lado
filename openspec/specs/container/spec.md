@@ -881,8 +881,9 @@ The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL say:
 #### Scenario: The steps are in the headers
 - **WHEN** `tests/test_docker.py` reads the headers
 - **THEN** each names `secrets`, `LADO_GIT_NAME`, `LADO_GIT_EMAIL`, `GH_TOKEN`, `gh auth
-  login`, `LADO_SSH_AGENT`, `CLAUDE_CODE_OAUTH_TOKEN`, `opencode auth login` and `kilo auth
-  login`; compose's names `LADO_SECRETS=./secrets`
+  login`, `LADO_SSH_AGENT`, `CLAUDE_CODE_OAUTH_TOKEN`, `opencode auth login`, `kilo auth
+  login`, `CODEX_ACCESS_TOKEN`, `OPENAI_API_KEY` and `codex login --device-auth`; compose's
+  names `LADO_SECRETS=./secrets`
 
 ### Requirement: The headers say how the agent CLIs log in, and the first start makes no folder
 
@@ -890,9 +891,13 @@ The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL also say:
 - the logins of the agent CLIs: Claude Code by `CLAUDE_CODE_OAUTH_TOKEN` (from `claude
   setup-token`) in the folder or one login inside; OpenCode and Kilo by `opencode auth
   login` and `kilo auth login` inside (kept on the home volume) or a model provider's key
-  in the folder. Codex's login is not covered.
+  in the folder; Codex as its own requirement below says.
 The first start's commands of both headers SHALL make no folder: the minimal start needs
 no secrets.
+
+#### Scenario: Codex's login is named
+- **WHEN** `tests/test_docker.py` reads the headers
+- **THEN** neither says that Codex's login is not covered
 
 #### Scenario: The minimal start makes no folder
 - **WHEN** `tests/test_docker.py` reads the first start's commands of both headers
@@ -1449,12 +1454,24 @@ shim on `PATH`.
 
 The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL name, before the
 terminal's ways to log the agent CLIs in, the UI's Settings → Providers and environment,
-which logs Claude Code, OpenCode and Kilo in from the page, a phone too, and keeps Claude
-Code's token.
+which logs Claude Code, Codex, OpenCode and Kilo in from the page, a phone too, and keeps
+Claude Code's token and Codex's token or key.
 
 #### Scenario: The headers name the UI's login
 - **WHEN** `tests/test_docker.py` reads both headers
 - **THEN** each names `Providers and environment`
+
+### Requirement: The headers say how Codex logs in
+
+The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL say that Codex logs in
+by `CODEX_ACCESS_TOKEN` (a ChatGPT Business or Enterprise access token) or
+`OPENAI_API_KEY` in the secrets folder, or by one login inside (`codex login
+--device-auth`, or Settings → Providers), kept on the home volume and shared by every
+Codex agent.
+
+#### Scenario: Codex's ways are named
+- **WHEN** `tests/test_docker.py` reads both headers
+- **THEN** each names `CODEX_ACCESS_TOKEN`, `OPENAI_API_KEY` and `codex login --device-auth`
 
 ### Requirement: The image's build runs each agent CLI it installs
 

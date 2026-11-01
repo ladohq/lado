@@ -141,6 +141,7 @@ def _row(cli: models.ProviderInfo, provider: providers.Provider, problem: str, r
         question="",
         choices=[],
         from_lado=False,
+        logout_file=False,
         note="",
         waiting=[],
         running=[],

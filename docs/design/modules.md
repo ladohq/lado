@@ -557,7 +557,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     lets the sandbox write the git folders but their hooks and config (else a worker cannot
     commit; not with `bypassPermissions`), and what it carries from the user's own Codex
     config (`CODEX_HOME` of the agent's environment, else `~/.codex`; read, never written;
-    one it cannot read is a launch warning): `CARRIED` (model settings), the `projects`
+    one it cannot read is a launch warning): `CARRIED` (model settings; the carried model
+    and effort, by the chosen profile before the top level as `_setting` reads them, are the
+    agent's with the source `cli-config`, `Launch.model`/`effort`), the `projects`
     entry Codex goes by in the agent's folder, and the user's `hooks.state` entries of the
     repository's own hooks. Codex asks before any hook whether to trust a folder with no
     entry (by the folder, its project root, then its repository's main root, each by real
@@ -815,7 +817,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     record refers to is removed by `remove_session` only after `ORPHAN_AGE`, an hour).
     Nothing else touches the artifact tables or that folder.
   - `hooks.py`: neutral hook logic: agent status, handing over queued messages and, at a
-    turn's end, the forgotten-reply check (docs/design/agents.md).
+    turn's end, the forgotten-reply check; first of all the model an event names
+    (`state.report_model`; docs/design/agents.md).
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory),
     in WAL mode with `synchronous = NORMAL`: a commit holds the write lock without waiting
     for an fsync, so a busy disk does not keep the other writers past their busy timeout.

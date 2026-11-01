@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.45.0 (unreleased)
+
+### Added
+
+- **See which model each agent runs on.** The agent's page, the Team chip's tooltip,
+  `lado ls` and `list_agents` show its model and effort and where they came from: the CLI's
+  default or your Codex config (its profile too), as the CLIs report them.
+
 ## 0.44.0 (unreleased)
 
 ### Added

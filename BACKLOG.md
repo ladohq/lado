@@ -1166,16 +1166,10 @@ Found: 2026-10-04, design of feature/launch.
 
 ## Choose the model per agent
 
-Size: M/L. Why here: savings and parity, but postponed until a scheme for model names is decided.
+Size: M/L. Why here: savings and parity.
 
-Providers start the agent CLI with its own default model. Kilo without an account picks a free
-"auto" model; there is no way to say which model a session or a worker uses.
-Wanted: a model option per session and per worker, translated by each provider.
-Postponed (2026-10-01): model names differ per provider and change with every release, so
-first decide how a kit names a model without tying it to one provider (aliases such as
-fast / strong mapped per provider? a per-provider map?). Draft design: `model:` in a role,
-`spawn_worker(model=...)` so the supervisor can pick a cheaper model per task, `lado start
---model`; no hand-kept model lists; the model shown in `lado ls` and the `spawned` event.
+In the tracker: the epic LAD-154 (choosing the model and the effort of agents). The agent's
+model is shown already (`lado ls`, `list_agents`, the agent's page).
 Found: 2026-10-01, Kilo provider smoke test.
 
 ## Permission modes are Claude-shaped

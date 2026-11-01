@@ -1285,7 +1285,8 @@ Built in the layout task (2026-10-03, schema 14):
   one. Until the runs are loaded the dashes are `--line`. The tooltip (the UI polish, the
   human's decision, 2026-10-03) is the UI's own (`Tooltip.tsx`, one component for the
   chips and the terminal tabs), not the browser's `title`: compact, from `AgentInfo`
-  only: `name · role · provider` (the role left out when it is the name), and
+  only: `name · role · provider · model` (the role left out when it is the name, the
+  model while its CLI has named none), and
   `flow <run>` on a second line when the agent works for a run; no task, no status (the
   status is in the accessible name). It shows 300 ms after the pointer enters, at once on
   the keyboard's focus (not a click's), goes when the pointer leaves, the focus goes or on
@@ -2425,11 +2426,17 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   live agents. A List and page (Structure): the search finds an agent by name, role, task
   and run. On a narrow page
   the facts' names stand above their values and Write takes the page's width.
-- **An agent's page**: the head (name, role, provider, status and for how long, when it
+- **An agent's page**: the head (name; `role · provider · model`, the model's name or
+  `CLI default model` while its CLI has named none; status and for how long, when it
   was spawned, for which run and step with the visit, from the run in the store), Open
   terminal, **Write to <agent>** (the Activity composer with `to` fixed; the supervisor
   gets a one-line copy from LADO of what the human writes to another agent, docs/design/agents.md) and **Finish…** (not for the supervisor); why it waits, or why it
-  stopped ("Stopped: <reason>", its way out is Finish…); Branch,
+  stopped ("Stopped: <reason>", its way out is Finish…); **Model** and **Effort** first
+  among the facts (LAD-169, option A of its mockup): the name in code type, then, muted,
+  ` · ` and where it came from in the API's words (`AgentInfo.model`/`effort`, `ModelInfo.words`
+  from `state.source_words`: `CLI default`, `your Codex config, profile work`), or only
+  the muted words while there is no name; the feed updates them when the CLI names its
+  model (docs/design/agents.md); Branch,
   Work (asked when the page opens, when the agent leaves busy, to any status, the moment a
   turn's commits exist, and with Refresh; no comparison with `idle` alone, which would miss
   `background`, `web/src/status.test.ts`; feature/background-status; "as of"

@@ -476,6 +476,9 @@ class LoginActionInfo(BaseModel):
     id: str
     label: str
     help: str  # the window's help line while it runs; "" for the window's own
+    # The window shows the link and the code its command prints instead of a terminal
+    # (the login socket's `prompt` frame, lado.server.terminals).
+    shows_code: bool
 
 
 class LoginChoiceInfo(BaseModel):

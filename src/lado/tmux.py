@@ -349,6 +349,19 @@ def capture(session: str, window: str) -> str:
     return run("capture-pane", "-p", "-t", f"{session}:{window}")
 
 
+# What tmux writes under a dead pane's text (remain-on-exit): "Pane is dead (status 1, <time>)".
+DEAD_LINE = re.compile(r"Pane is dead( \(.*\))?")
+
+
+def pane_text(session: str) -> str:
+    """The text of `session`'s pane with its history, wrapped lines joined, no colours, and
+    without the line tmux adds once its command ended."""
+    lines = run("capture-pane", "-p", "-J", "-S", "-", "-t", f"={session}:").splitlines()
+    while lines and (not lines[-1].strip() or DEAD_LINE.fullmatch(lines[-1].strip())):
+        lines.pop()
+    return "".join(f"{line}\n" for line in lines)
+
+
 def attach_argv(session: str) -> list[str]:
     return ["tmux", "-L", socket(), "attach-session", "-t", f"={session}"]
 

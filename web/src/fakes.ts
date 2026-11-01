@@ -493,8 +493,8 @@ export function opencodeRow(state: "yes" | "no" = "yes"): ProviderLogins {
     login: { ...LOGIN, state, method: state === "yes" ? "2 credentials, 1 variable" : "" },
     needs_login: false,
     actions: [
-      { id: "login", label: "Add a login…", help: "" },
-      { id: "logout", label: "Log out of one…", help: "" },
+      { id: "login", label: "Add a login…", help: "", shows_code: false },
+      { id: "logout", label: "Log out of one…", help: "", shows_code: false },
     ],
     question: "",
     choices: [],
@@ -503,8 +503,7 @@ export function opencodeRow(state: "yes" | "no" = "yes"): ProviderLogins {
   };
 }
 
-export const CODEX_HELP =
-  "Open the link, sign in and enter the code there. This window closes by itself once you are signed in.";
+export const CODEX_HELP = "This window closes by itself once you are signed in.";
 
 // Codex logged in with ChatGPT in its own login file, which its two agents share: a choice
 // runs its sign-in code in the login window, the others take a pasted value.
@@ -514,8 +513,8 @@ export function codexRow(more: Partial<ProviderLogins> = {}): ProviderLogins {
     cli: cli("codex", "Codex CLI"),
     login: { ...LOGIN, state: "yes", method: "ChatGPT plan", where: "Codex's login file", choice: "chatgpt" },
     actions: [
-      { id: "login", label: "Get a sign-in code", help: CODEX_HELP },
-      { id: "logout", label: "Log out…", help: "" },
+      { id: "login", label: "Get a sign-in code", help: CODEX_HELP, shows_code: true },
+      { id: "logout", label: "Log out…", help: "", shows_code: false },
     ],
     question: "How do you pay for Codex?",
     choices: [

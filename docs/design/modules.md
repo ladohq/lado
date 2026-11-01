@@ -476,10 +476,17 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (`agents`, by `wait_reason`, the one text of that wait) and the projects with a login
     variable of their own; `check_secret` the only names and values LADO's secrets take.
     The login windows: `open_window` (a tmux
-    session `lado-login-<provider>` with the labels `@lado-login`, `@lado-home`, running the
-    action's argv through `agent_env.command`; one per provider), `close_window`,
-    `open_windows`, and `end_windows`, which `lado stop --all` and the UI server's start and
-    stop use, by the labels only.
+    session `lado-login-<provider>` with the labels `@lado-login`, `@lado-home`,
+    `@lado-login-action`, running the action's argv under `main` through
+    `agent_env.command`; one per
+    provider; with `remain-on-exit`, so its pane stays, dead, with its text and exit status
+    once the command ends), `close_window`, `windows` (dead ones too), `open_windows` (the
+    running ones: a dead window counts as ended, and `open_window` replaces it), `look`
+    (for the login socket: the provider's `login_prompt` of the window's text while an
+    action that `shows_code` runs; once dead its exit status and last line, `Ended`, read
+    before the window is killed: the status from `status_file`, which the window's wrapper
+    `main` writes, as tmux may give none under load), and `end_windows`, which `lado stop --all` and the UI server's
+    start and stop use, by the labels only.
   - `login_wait.py`: the window of an agent whose CLI needs a login and has none (`lado
     login-wait`, hidden): `command` writes the launch file with LADO's and the provider's
     own names, which no layer replaces, the session's project and the login shell's own
@@ -576,8 +583,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     login without it, and reads a login kept only in the keyring as none, with
     `LoginStatus.keyring` (Settings shows `keyring_note`); `needs_login(env)` follows the
     model provider of the config. Its sheet (`login_choices`): a ChatGPT sign-in code
-    (`login_actions`' `codex login --device-auth`), `CODEX_ACCESS_TOKEN` or
-    `OPENAI_API_KEY`; `logout` runs `codex logout`. The provider is chosen
+    (`login_actions`' `codex login --device-auth`, which `shows_code`: `login_prompt`
+    reads the link, the code, its expiry and the "Continue only if…" warning from its
+    output), `CODEX_ACCESS_TOKEN` or `OPENAI_API_KEY`; `logout` runs `codex logout`. The provider is chosen
     per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
     Each provider lists the `--permission-mode` values it honours (`permission_modes`; the
     CLI help shows them); `lado start` (also a resume) and `spawn_worker` refuse a mode the
@@ -1012,7 +1020,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
     backpressure, close codes, and the open sockets (`OPEN`), which a new token closes
-    (`close_all`); the agents, messages, run events
+    (`close_all`); a login window's socket also watches it (`watch_login`, every
+    `LOOK_EVERY`: its `prompt` frame, and its `ended` frame before the close); the agents, messages, run events
     (`/api/sessions/{name}/events`), gates (with the human's answer), the human's answers
     to one agent's open questions (`POST …/answers`, a tab of the UI's waiting card, all or
     none, through `runtime.answer_questions`; each reply and a gate's answer with the full

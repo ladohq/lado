@@ -437,8 +437,86 @@ def test_codex_asks_how_the_human_pays():
             "login",
             "Get a sign-in code",
             ("codex", "login", "--device-auth", *file),
-            "Open the link, sign in and enter the code there. This window closes by itself "
-            "once you are signed in.",
+            "This window closes by itself once you are signed in.",
         ),
         ("logout", "Log out…", ("codex", "logout", *file), ""),
     ]
+
+
+# Codex 0.162.0's `codex login --device-auth` as tmux's capture-pane -J gives it (recorded
+# 2026-11-01 in LADO's image), and the same with its colours and wrapped at 60 columns.
+CODEX_CODE = """\
+Welcome to Codex [v0.162.0]
+OpenAI's command-line coding agent
+
+Follow these steps to sign in with ChatGPT using device code authorization:
+
+1. Open this link in your browser and sign in to your account
+   https://auth.openai.com/codex/device
+
+2. Enter this one-time code (expires in 15 minutes)
+   UD75-FNMVY
+
+Continue only if you started this login in Codex. If a website or another person gave you \
+this code, cancel.
+
+
+
+"""
+CODE_WARNING = (
+    "Continue only if you started this login in Codex. If a website or another person gave "
+    "you this code, cancel."
+)
+CODEX_COLOURED = (
+    "Welcome to Codex [v\x1b[90m0.162.0\x1b[39m]\n"
+    "\x1b[90mOpenAI's command-line coding agent\n\n"
+    "\x1b[39mFollow these steps to sign in with ChatGPT using device code authorization:\n\n"
+    "1. Open this link in your browser and sign in to your account\n"
+    "   \x1b[94mhttps://auth.openai.com/codex/device\n\n"
+    "\x1b[39m2. Enter this one-time code \x1b[90m(expires in 15 minutes)\n"
+    "\x1b[39m   \x1b[94mUD75-FNMVY\n\n"
+    "\x1b[90mContinue only if you started this login in Codex. If a website or another\n"
+    "person gave you this code, cancel.\x1b[39m\n"
+)
+CODEX_PROMPT = base.LoginPrompt(
+    "https://auth.openai.com/codex/device", "UD75-FNMVY", "expires in 15 minutes", (CODE_WARNING,)
+)
+
+
+def test_codex_s_login_window_shows_its_link_and_code():
+    codex = providers.get("codex")
+    assert codex.login_prompt(CODEX_CODE) == CODEX_PROMPT
+    assert codex.login_prompt(CODEX_COLOURED) == CODEX_PROMPT  # wrapped, coloured
+    assert [a.shows_code for a in codex.login_actions()] == [True, False]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "Welcome to Codex [v0.162.0]\n",
+        CODEX_CODE.split("2. Enter")[0],  # the link, no code yet
+        CODEX_CODE.replace("https://auth", "http://auth"),  # only https is shown
+        CODEX_CODE.replace("UD75-FNMVY", "a code"),
+    ],
+    ids=["empty", "welcome", "no-code", "http", "no-code-token"],
+)
+def test_codex_s_partial_or_other_output_shows_no_code(text):
+    assert providers.get("codex").login_prompt(text) is None
+
+
+def test_the_code_before_its_warning_is_shown_without_it():
+    partial = CODEX_CODE.split("Continue only")[0]
+    assert providers.get("codex").login_prompt(partial) == base.LoginPrompt(
+        CODEX_PROMPT.link, CODEX_PROMPT.code, CODEX_PROMPT.expires, ()
+    )
+    # Its end, with no warning: Codex's error is no line of the prompt.
+    ended = partial + "Error: device auth timed out after 15 minutes\n"
+    assert providers.get("codex").login_prompt(ended).lines == ()
+
+
+def test_other_providers_show_no_code():
+    for name in ("claude", "opencode", "kilo"):
+        provider = providers.get(name)
+        assert provider.login_prompt(CODEX_CODE) is None
+        assert not any(a.shows_code for a in provider.login_actions())

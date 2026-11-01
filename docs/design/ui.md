@@ -1995,8 +1995,8 @@ M2, P1–P3 of round 3, F3 and U1–U3).
 
 ### Open on another device (decided 2026-10-18, LAD-94)
 
-A link and its QR code that open LADO on a phone or another computer (`Share.tsx`; the
-mockup `task/lad-94/mockup-share-access.html`, section 1 option И3 and sections 2a–2d).
+A link and its QR code that open LADO on a phone or another computer (`Share.tsx`, its QR
+code `QrCode.tsx`, which the login window's sign-in code shares; the mockup `task/lad-94/mockup-share-access.html`, section 1 option И3 and sections 2a–2d).
 
 - **The icon**: the QR code, first of the system panel's header icons (tooltip and label
   `Open on another device`). It opens the dialog `Open LADO on another device` (a
@@ -2365,22 +2365,42 @@ your agents use. Changes apply to agents started afterwards."
   CLI: "Log out of one…" ends the login command and runs the logout one in its place),
   always in control. A link in it, also one wrapped over lines, opens in a new tab (xterm's
   web links addon); under it the action's help line (by default "Open the link, sign in,
-  then send what it gives you (a code) from here."; Codex's sign-in code: "Open the link,
-  sign in and enter the code there. This window closes by itself once you are signed in."),
-  "Text to send" with "Send ⏎" (its text and Enter as one input) and the keys ↑ ↓ Enter
-  Esc. When the command ends, the sheet closes and the section asks for a check. The
-  windows end with `lado stop --all` and the server's start and stop.
+  then send what it gives you (a code) from here."), "Text to send" with "Send ⏎" (its
+  text and Enter as one input) and the keys ↑ ↓ Enter Esc. When the command ends, the
+  sheet closes and the section asks for a check. The windows end with `lado stop --all`
+  and the server's start and stop.
+- **A login window that shows a code** (an action with `shows_code`: Codex's "Get a
+  sign-in code"; openspec change codex-login-code): no terminal, no field and no keys.
+  First "Asking <CLI> for a sign-in code…"; once the socket's `prompt` frame comes (the
+  link and the code the provider read from the command's output, an https link only),
+  step 1 "Open the sign-in page and sign in to ChatGPT" with "Open sign-in page" (a link
+  in a new tab) and the address, step 2 "Enter this one-time code there (expires in …)"
+  with the code large and "Copy code" (the Clipboard API, else the legacy copy, as over
+  http on a phone in the LAN; when both fail the code shows selected with "Press ⌘C /
+  Ctrl+C to copy"), the CLI's own lines under them (Codex's warning about codes from
+  others), on a computer a QR code of the link ("Or scan it with your phone"; none at a
+  phone's width, where the window fills the screen), and the help line ("This window
+  closes by itself once you are signed in."). When the command ends with 0 the sheet
+  closes as for any window; with another status (the `ended` frame), before the code too,
+  the window stays with "<CLI> did not sign you in", "What <CLI> said:" and its last line
+  as it wrote it, "Get a new code" (the action again) and "Back" (the sheet's choices).
+  Without a prompt within 10 s the window shows the CLI's terminal after all, under "LADO
+  could not find the link and the code in <CLI>'s output; here is <CLI>'s own window.",
+  with the field and the keys.
 - **Needs you**: an agent that waits for its CLI's login (`AgentInfo.login_wait`, the
   provider's name) has "Log in…" first, which leads here; Open terminal stays beside it.
 - **API**: `GET /api/providers/logins` (`ProvidersPage`: a `ProviderLogins` per provider,
   with the System panel's `ProviderInfo` as `cli`, its `needs_login` (asked in the agents'
   environment), `question`, `choices` (each a `variable` or an `action`), `actions` (each
-  with its `help`), `from_lado`, `logout_file` and `ready` (false: not read yet), `checking` while a check runs, and `environment`, why
+  with its `help` and `shows_code`), `from_lado`, `logout_file` and `ready` (false: not read yet), `checking` while a check runs, and `environment`, why
   the agents' environment could not be read, "" when it could), answered at once from the
   server's last check and starting none; `POST /api/providers/check` starts a check unless
   one runs (then one more runs once after it) and answers the same; `POST
   /api/providers/{name}/login {action}` and `DELETE …/login` (the window), `WS
-  …/login/terminal` (the agents' terminal protocol, control only); `PUT
+  …/login/terminal` (the agents' terminal protocol, control only, with two more frames
+  from the server: `{type: "prompt", link, code, expires, lines}` once for an action that
+  `shows_code`, again on a reconnect, and `{type: "ended", status, said}` before it closes
+  because the command ended); `PUT
   …/variables/{variable}` (keeps it, removes the provider's other login variables from
   LADO's secrets; 400 for a name the provider does not name as its login; a 422 there
   repeats none of its input) and `DELETE …/login-secrets` (Log out). Each action answers

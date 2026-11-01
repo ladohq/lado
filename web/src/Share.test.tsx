@@ -4,7 +4,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AccessInfo } from "./api";
 import { stubDialogs, stubLegacyCopy } from "./fakes";
-import { cutToken, QrCode, ShareDialog } from "./Share";
+import { QrCode } from "./QrCode";
+import { cutToken, ShareDialog } from "./Share";
 
 const TOKEN = "Jf3kAbCdEfGhIjKlq8Zw";
 const LINK = `http://kaos-mbp.local:8765/?token=${TOKEN}`;

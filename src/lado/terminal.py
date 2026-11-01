@@ -203,10 +203,12 @@ class Terminal:
 def open_login(provider: str) -> Terminal:
     """The terminal of `provider`'s login window (lado.logins), in CONTROL: a client
     attached to the window's own session, which nobody else owns, so no viewer; closing it
-    leaves the window and its command running."""
-    name = logins.open_windows().get(provider)
-    if name is None:
+    leaves the window and its command running. A window whose command ended is attached to
+    as well, for the UI to learn how it ended (lado.logins.look)."""
+    found = logins.windows().get(provider)
+    if found is None:
         raise NoTerminal(f"no login window of {provider} is open")
+    name = found.name
     try:
         size = tmux.window_size(f"={name}:")
         process, fd = _attach(name, CONTROL, size)
@@ -216,8 +218,8 @@ def open_login(provider: str) -> Terminal:
 
 
 def login_ended(provider: str) -> NoTerminal | None:
-    """Why `provider`'s login terminal ended for good: its window is gone (its command
-    ended, or Close); None while it is open."""
+    """Why `provider`'s login terminal ended for good: its command ended, or its window is
+    gone (Close); None while it runs."""
     if provider in logins.open_windows():
         return None
     return NoTerminal(f"the login window of {provider} ended")

@@ -5880,13 +5880,18 @@
           "help": {
             "type": "string",
             "title": "Help"
+          },
+          "shows_code": {
+            "type": "boolean",
+            "title": "Shows Code"
           }
         },
         "type": "object",
         "required": [
           "id",
           "label",
-          "help"
+          "help",
+          "shows_code"
         ],
         "title": "LoginActionInfo",
         "description": "A command the login window can run (Provider.login_actions)."

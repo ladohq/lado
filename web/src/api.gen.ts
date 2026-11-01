@@ -2215,6 +2215,8 @@ export interface components {
             label: string;
             /** Help */
             help: string;
+            /** Shows Code */
+            shows_code: boolean;
         };
         /**
          * LoginChoiceInfo

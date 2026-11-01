@@ -36,8 +36,8 @@ changes its output. Non-goals: see the proposal's Out of scope.
 ## Decisions
 
 **D1. The provider reads its login window's text.** `base.Provider.login_prompt(text) ->
-base.LoginPrompt | None` (`link`, `code`, `lines`: the code's expiry line and the warning,
-as Codex wrote them); the default is None. Codex's finds the first `https://` URL after
+base.LoginPrompt | None` (`link`, `code`, `expires`: the code's expiry as Codex wrote it,
+"" when it does not say, and `lines`: the warning as Codex wrote it); the default is None. Codex's finds the first `https://` URL after
 the line naming the link, the code as the first token of the line after "one-time code"
 (letters and digits in groups joined by `-`) and keeps the expiry and the "Continue only
 if…" line. Why: Codex's words are the Codex provider's knowledge (neutral core: nothing
@@ -48,14 +48,19 @@ xterm's buffer (a CLI's text in the web UI), and LADO doing OpenAI's device flow
 
 **D2. `LoginAction.shows_code`.** The action says its window shows a code instead of a
 terminal; Codex's `login` action sets it, and the API's `LoginAction` carries it, so the
-UI knows to show "Asking Codex for a sign-in code…" rather than a terminal from the start.
+UI knows to show "Asking Codex CLI for a sign-in code…" (the CLI's title, as in the
+window's head) rather than a terminal from the start.
 Why: only what is used, one field, true for one action today; any later CLI with a
 device code sets it and implements `login_prompt`.
 
 **D3. The window's text survives its command.** A login window is made with tmux's
 `remain-on-exit on`: when the command ends, its pane stays dead with its text and exit
 status (`#{pane_dead}`, `#{pane_dead_status}`). LADO reads the text with `capture-pane -p
--J` (wrapped lines joined, no colours) and then kills the session. A dead window counts as
+-J` (wrapped lines joined, no colours) and then kills the session. tmux may list a pane
+dead a moment before it has its exit status (`#{pane_dead_status}`, or
+`#{pane_dead_signal}` for a signal): LADO reads such a pane only once one of them is there,
+looking again every 0.05 s for at most 2 s (tmux 3.2 has no `pane_dead_signal`), else a
+login that succeeded would show as failed. A dead window counts as
 ended everywhere `open_windows` is asked (`open_window` replaces it, `close_window` and
 `end_windows` kill it, `terminal.login_ended` reports it). Why: polling the pane while the
 command runs misses a line printed just before the exit, which is exactly Codex's error;
@@ -63,7 +68,7 @@ a pipe to a file starts after the command and keeps the output on disk.
 
 **D4. The login socket carries the prompt and the end.** While a window whose action
 `shows_code` is open, `serve_login` reads the pane every 0.5 s until `login_prompt`
-returns a prompt and sends `{"type": "prompt", "link", "code", "lines"}` once (again on a
+returns a prompt and sends `{"type": "prompt", "link", "code", "expires", "lines"}` once (again on a
 reconnect). When the command ends it sends `{"type": "ended", "status", "said"}` (`said`:
 the last non-blank line of the dead pane) before closing the socket. Windows of other
 actions get the same `ended` frame and the UI ignores it for them. Why: the socket already
@@ -76,7 +81,7 @@ frame, then shows it with the fallback line, "Text to send" and the keys. Why: o
 component, the fallback costs nothing.
 
 **D6. The end of a code window.** `ended` with status 0 closes the sheet as today; any
-other status after a prompt shows "Codex did not sign you in" with `said`; "Get a new
+other status after a prompt shows "Codex CLI did not sign you in" with `said`; "Get a new
 code" opens the action again (`POST …/login`), "Back" returns to the sheet's choices.
 Before a prompt (the fallback terminal shown, or the command failed at once) a non-zero
 end shows the same failure view, so `said` is never lost.
@@ -90,7 +95,7 @@ width (≤ 600px, the login sheet's breakpoint).
 ## Risks / Trade-offs
 
 - A new Codex version may print other words: D5's fallback shows the terminal after 10 s,
-  and `tests/test_codex.py` pins the text of the version LADO's image ships.
+  and `tests/test_login_status.py` pins the text of the version LADO's image ships.
 - `remain-on-exit` keeps a dead session until LADO reads it: the server's start and stop and
   `lado stop --all` already end every login window by its labels, dead ones too.
 

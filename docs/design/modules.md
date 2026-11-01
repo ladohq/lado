@@ -482,8 +482,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     once the command ends), `close_window`, `windows` (dead ones too), `open_windows` (the
     running ones: a dead window counts as ended, and `open_window` replaces it), `look`
     (for the login socket: the provider's `login_prompt` of the window's text while an
-    action that `shows_code` runs; once dead its status and last line, `Ended`, read before
-    the window is killed), and `end_windows`, which `lado stop --all` and the UI server's
+    action that `shows_code` runs; once dead, and once tmux has its exit status or signal
+    (`DEAD_WAIT` at most), its status and last line, `Ended`, read before the window is
+    killed), and `end_windows`, which `lado stop --all` and the UI server's
     start and stop use, by the labels only.
   - `login_wait.py`: the window of an agent whose CLI needs a login and has none (`lado
     login-wait`, hidden): `command` writes the launch file with LADO's and the provider's

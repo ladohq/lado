@@ -6,7 +6,8 @@ While Codex's "Get a sign-in code" runs, the login window SHALL show no terminal
 sign-in link and the one-time code that the Codex provider reads from the command's
 output: the link as "Open sign-in page", the code large with "Copy code", Codex's warning
 about codes given by others, and on a window wider than a phone's a QR code of the link.
-Only an `https` link SHALL be shown.
+Only an `https` link SHALL be shown. The window names the CLI by its title, "Codex CLI",
+as its head "Log in: Codex CLI" does.
 
 #### Scenario: The code shown
 - **WHEN** Codex prints its link `https://auth.openai.com/codex/device` and the code
@@ -19,7 +20,7 @@ Only an `https` link SHALL be shown.
 
 #### Scenario: Before the code
 - **WHEN** the window opens and Codex has not printed its code yet
-- **THEN** the window shows "Asking Codex for a sign-in code…" and no terminal
+- **THEN** the window shows "Asking Codex CLI for a sign-in code…" and no terminal
 
 #### Scenario: On a phone
 - **WHEN** the window shows the code at a phone's width
@@ -34,14 +35,15 @@ Only an `https` link SHALL be shown.
 ### Requirement: Codex's login window keeps Codex's last words when it ends without a login
 
 When Codex's login command ends with a non-zero exit status after its code was shown, the
-login window SHALL stay open with "Codex did not sign you in", the last non-blank line of
+login window SHALL stay open with "Codex CLI did not sign you in", "What Codex CLI said:"
+and the last non-blank line of
 the command's output as Codex wrote it, "Get a new code", which runs the command again,
 and "Back", which returns to Codex's sheet. When the command ends with status 0 the window
 SHALL close as before.
 
 #### Scenario: The code expired
 - **WHEN** the human does not enter the code and Codex ends after 15 minutes with an error
-- **THEN** the window shows "Codex did not sign you in" and Codex's last line, and "Get a
+- **THEN** the window shows "Codex CLI did not sign you in" and Codex's last line, and "Get a
   new code" shows a new link and code
 
 #### Scenario: Signed in
@@ -57,8 +59,8 @@ SHALL close as before.
 
 When the link and the code are not read from Codex's output within 10 seconds of the
 window opening, the login window SHALL show Codex's terminal, as for OpenCode and Kilo,
-under the line "LADO could not find the link and the code in Codex's output; here is
-Codex's own window.", with "Text to send" and the keys.
+under the line "LADO could not find the link and the code in Codex CLI's output; here is
+Codex CLI's own window.", with "Text to send" and the keys.
 
 #### Scenario: Output LADO cannot read
 - **WHEN** the login command prints no link and code LADO recognises for 10 seconds

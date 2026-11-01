@@ -25,10 +25,11 @@ the terminal again only when LADO cannot read the link and the code.
 - Codex's login window reads the link, the code and Codex's warning from the command's
   output (the Codex provider's knowledge) and shows them in two steps: "Open sign-in page"
   (a link button) and the code with "Copy code"; on a computer a QR code of the link
-  ("Or scan it with your phone"); until then "Asking Codex for a sign-in code…".
+  ("Or scan it with your phone"); until then "Asking Codex CLI for a sign-in code…" (the window names the CLI by its
+  title, as its head "Log in: Codex CLI" does).
 - "Copy code" copies as LADO's other Copy buttons do: the Clipboard API, without it (a
   phone over the LAN by http) the legacy copy, and when both fail the code shown selected.
-- When Codex ends without a login, the window stays with "Codex did not sign you in",
+- When Codex ends without a login, the window stays with "Codex CLI did not sign you in",
   Codex's last line as Codex wrote it, and "Get a new code". When it signs in, the window
   closes as today.
 - When the link and the code are not found within 10 seconds (Codex changed its output),

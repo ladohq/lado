@@ -5,7 +5,7 @@ run task/lad-168.
 
 - [x] 1.1 `base.LoginPrompt`, `Provider.login_prompt` (default None), `LoginAction.shows_code`;
   Codex's `login_prompt` on its real 0.162.0 output, its `login` action `shows_code` (D1, D2).
-  Check: `tests/test_codex.py` (the real output with and without colours and wrapped
+  Check: `tests/test_login_status.py` (the real output with and without colours and wrapped
   lines, a partial output, a non-https link, the warning and expiry lines),
   `tests/test_providers.py`.
 

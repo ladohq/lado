@@ -184,22 +184,49 @@ def test_the_sheet_at_a_phones_width(browser: Browser, logins, server, repo, sho
         context.close()
 
 
-def sign_in_by_code(page: Page, marker, shot, full_page: bool = True) -> None:
+def open_code_window(page: Page, shot, full_page: bool = True):
     """From the open row of "fake-login": its choice that runs the sign-in (as Codex's
-    ChatGPT plan), the login window with the action's help line, the code sent."""
+    ChatGPT plan); the login window it opens."""
     sheet = page.get_by_role("dialog", name=QUESTION)
     sheet.get_by_text("A sign-in code").click()
     expect(sheet.get_by_role("textbox")).to_have_count(0)  # no field: a button
     shot(page, "sheet-code", full_page=full_page)
     sheet.get_by_role("button", name="Get a sign-in code").click()
-    window = page.get_by_role("dialog", name=f"Log in: {TITLE}")
+    return page.get_by_role("dialog", name=f"Log in: {TITLE}")
+
+
+def sign_in_by_code(page: Page, marker, shot, full_page: bool = True, phone: bool = False):
+    """The sign-in code's window (openspec change codex-login-code): no terminal, the link
+    to open, the code copied, a QR code on a computer; the code entered on the "site" ends
+    the command and the window."""
+    window = open_code_window(page, shot, full_page)
+    code = window.locator(".login-code")
+    expect(code).to_have_text(fake_provider.CODE, timeout=20000)
     expect(window.get_by_text(fake_provider.CODE_HELP)).to_be_visible()
-    expect(window.locator(".xterm-rows")).to_contain_text("login.example.invalid", timeout=20000)
+    expect(window.get_by_text("(expires in 15 minutes)")).to_be_visible()
+    expect(window.get_by_text(re.compile("^Continue only if you started"))).to_be_visible()
+    open_link = window.get_by_role("link", name="Open sign-in page")
+    expect(open_link).to_have_attribute("href", fake_provider.CODE_LINK)
+    expect(open_link).to_have_attribute("target", "_blank")
+    expect(window.locator(".login-term")).to_be_hidden()
+    expect(window.get_by_label("Text to send")).to_have_count(0)
+    expect(window.get_by_role("button", name="Escape")).to_have_count(0)
+    qr = window.get_by_role("img", name="QR code of the sign-in page")
+    if phone:
+        expect(qr).to_be_hidden()
+        box = window.locator(".login-window").bounding_box()
+        assert box and box["width"] == 390  # the whole screen
+    else:
+        expect(qr).to_be_visible()
+    window.get_by_role("button", name="Copy code").click()
+    expect(window.get_by_role("status")).to_have_text("Code copied")
+    if not phone:  # the Clipboard API; on the phone the legacy copy (no API over http)
+        assert page.evaluate("navigator.clipboard.readText()") == fake_provider.CODE
     shot(page, "window-code", full_page=full_page)
-    window.get_by_label("Text to send").fill("code-7")
-    window.get_by_role("button", name="Send ⏎").click()
+    marker.with_name(marker.name + ".entered").write_text(fake_provider.CODE)
     expect(window).to_have_count(0, timeout=20000)  # the command ended: the window closed
-    assert marker.read_text() == "code-7"
+    assert marker.read_text() == fake_provider.CODE
+    return window
 
 
 def log_out_of_the_file(page: Page, session: str, shot, full_page: bool = True) -> None:
@@ -224,6 +251,7 @@ def test_a_choice_signs_in_by_a_code_and_logs_out_of_the_file(
     page: Page, logins, server, repo, shot
 ):
     page.set_viewport_size({"width": 1280, "height": 900})
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
     session = waiting_session(repo, logins)
     log_in(page, server)
     page.goto(f"{server['url']}/settings#providers-and-environment")
@@ -246,12 +274,14 @@ def test_the_sign_in_by_a_code_at_a_phones_width(browser: Browser, logins, serve
         viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True
     )
     try:
+        # As a phone over the LAN by http: no Clipboard API there.
+        context.add_init_script("Object.defineProperty(navigator, 'clipboard', {value: undefined})")
         page = context.new_page()
         session = waiting_session(repo, logins)
         log_in(page, server)
         page.goto(f"{server['url']}/settings#providers-and-environment")
         row(page).get_by_role("button", name="Log in…").click()
-        sign_in_by_code(page, logins, shot, full_page=False)
+        sign_in_by_code(page, logins, shot, full_page=False, phone=True)
         expect(row(page).get_by_text(re.compile("Logged in · fake login"))).to_be_visible()
         idle(session)
         assert page.evaluate("document.documentElement.scrollWidth") <= 390
@@ -259,6 +289,33 @@ def test_the_sign_in_by_a_code_at_a_phones_width(browser: Browser, logins, serve
         runtime.stop_session(session)
     finally:
         context.close()
+
+
+@pytest.fixture
+def code_fails(monkeypatch):
+    """The fake sign-in code ends at once with an error, as Codex's does where device codes
+    are off; taken before `server`, whose login windows get it."""
+    monkeypatch.setenv("FAKE_AGENT_LOGIN_END", "fail")
+
+
+def test_a_sign_in_code_that_fails_keeps_the_clis_words(
+    page: Page, logins, code_fails, server, shot
+):
+    page.set_viewport_size({"width": 1280, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/settings#providers-and-environment")
+    row(page).get_by_role("button", name="Log in…").click()
+    window = open_code_window(page, shot)
+    said = "Error: device code login is not enabled for this fake server."
+    expect(window.get_by_text(f"{TITLE} did not sign you in")).to_be_visible(timeout=20000)
+    expect(window.get_by_text(said)).to_be_visible()
+    expect(window.locator(".login-term")).to_be_hidden()
+    shot(page, "failed")
+    window.get_by_role("button", name="Get a new code").click()  # a new window, failing again
+    expect(window.get_by_text(said)).to_be_visible(timeout=20000)
+    window.get_by_role("button", name="Back").click()
+    expect(page.get_by_role("dialog", name=QUESTION)).to_be_visible()
+    assert not logins.exists()
 
 
 def window_row(page: Page):

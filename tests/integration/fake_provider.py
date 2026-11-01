@@ -148,6 +148,7 @@ def _file_login(env: dict[str, str]) -> base.LoginStatus:
 
 
 CODE_HELP = "This window closes by itself once you are signed in."
+CODE, CODE_LINK = "FAKE-C0DE7", "https://login.example.invalid/device"  # fake_login.py's
 
 
 # "fake-login" logs in like Claude Code by a pasted token or key, and like Codex by a

@@ -113,6 +113,8 @@ class FakeProvider(base.Provider):
             output_ignored=data.get("output_ignored", False),
             continued=data.get("continued", False),
             background=data.get("background", False),
+            model=data.get("model", ""),
+            effort=data.get("effort", ""),
         )
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:

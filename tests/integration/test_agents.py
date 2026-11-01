@@ -410,6 +410,35 @@ def test_supervisor_runs_waits_for_a_command_typed_with_queued_messages(repo):
     assert inputs("supervisor")[-1] == "[from human] sleep 0\n[from human] sleep 0.1"
 
 
+def test_the_model_a_cli_names_reaches_lado_db_list_agents_and_the_api(repo, monkeypatch):
+    """The fake agent names its model and effort in its session-start hook, as Claude Code's
+    SessionStart and Codex's hooks do: its record, its list_agents and the UI's API say
+    them, with the CLI as their source."""
+    from lado.server import models
+
+    monkeypatch.setenv("FAKE_AGENT_MODEL", "fake-large")
+    monkeypatch.setenv("FAKE_AGENT_EFFORT", "high")
+    start(repo)
+    runtime.spawn_worker(SESSION, "agents", name="w1")
+    wait_for(lambda: "agents" in seen("w1"), "w1's list_agents")
+    agent = state.get_agent(SESSION, "w1")
+    assert (agent.model, agent.model_source, agent.effort, agent.effort_source) == (
+        "fake-large",
+        "cli",
+        "high",
+        "cli",
+    )
+    listed = {a["name"]: a for a in seen("w1")["agents"]}
+    assert (listed["w1"]["model"], listed["w1"]["effort"]) == ("fake-large", "high")
+    assert listed["supervisor"]["model_source"] == "cli"
+    info = models.agent_info(agent)
+    assert (info.model.name, info.model.words, info.effort.name) == (
+        "fake-large",
+        "CLI default",
+        "high",
+    )
+
+
 def test_agent_that_switches_conversation_keeps_running(repo):
     """Like Claude Code's /resume: the conversation ends, the process goes on with another."""
     start(repo)

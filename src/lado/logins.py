@@ -28,12 +28,13 @@ with `look`: the link and the code of an action that shows one, and how it ended
 
 import contextlib
 import os
-import time
+import subprocess
+import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lado import agent_env, gui_session, project_secrets, providers, state, tmux
+from lado import agent_env, gui_session, interpreter, project_secrets, providers, state, tmux
 from lado.providers import base
 
 SETTINGS = "Settings → Providers and environment"
@@ -55,10 +56,7 @@ TERMINAL = {
     "mouse": "on",
     "remain-on-exit": "on",
 }
-DEAD, STATUS, SIGNAL = "pane_dead", "pane_dead_status", "pane_dead_signal"  # tmux's formats
-# tmux may list a pane dead a moment before it has its exit status or signal (`look`): looked
-# at again every DEAD_EVERY seconds, at most DEAD_WAIT (tmux 3.2 has no pane_dead_signal).
-DEAD_EVERY, DEAD_WAIT = 0.05, 2.0
+DEAD, STATUS = "pane_dead", "pane_dead_status"  # tmux's formats of a dead pane
 
 
 def wait_reason(provider: base.Provider) -> str:
@@ -257,46 +255,22 @@ class Window:
     name: str  # its tmux session
     action: str  # the id of the login action it runs
     dead: bool  # its command ended; its pane is kept until LADO reads it
-    status: int | None  # the command's exit status once dead; None for a signal
-    signal: int | None = None  # the signal that ended it
-
-    @property
-    def settled(self) -> bool:
-        """Dead with its exit status or signal known to tmux (see DEAD_WAIT)."""
-        return self.dead and (self.status is not None or self.signal is not None)
+    status: int | None  # tmux's exit status once dead; None for a signal or none given
 
 
 def windows() -> dict[str, Window]:
     """This LADO_HOME's login windows, those whose command ended too, by provider name."""
     home = _home()
     try:
-        rows = tmux.sessions_with(LOGIN, HOME, ACTION, DEAD, STATUS, SIGNAL)
+        rows = tmux.sessions_with(LOGIN, HOME, ACTION, DEAD, STATUS)
     except tmux.TmuxError:
         return {}
     found = {}
-    for name, login, of_home, chosen, dead, status, signal in rows:
+    for name, login, of_home, chosen, dead, status in rows:
         if login and of_home == home:
-            ended = dead == "1"
-            found[login] = Window(
-                name, chosen, ended, _number(status, ended), _number(signal, ended)
-            )
+            code = int(status) if dead == "1" and status.lstrip("-").isdigit() else None
+            found[login] = Window(name, chosen, dead == "1", code)
     return found
-
-
-def _number(value: str, dead: bool) -> int | None:
-    return int(value) if dead and value.lstrip("-").isdigit() else None
-
-
-def _settle(provider: str, window: Window) -> Window | None:
-    """`window`, dead, once tmux has its exit status or signal, or as it is after DEAD_WAIT;
-    None when it went meanwhile."""
-    deadline = time.monotonic() + DEAD_WAIT
-    while not window.settled and time.monotonic() < deadline:
-        time.sleep(DEAD_EVERY)
-        window = windows().get(provider)
-        if window is None:
-            return None
-    return window
 
 
 def open_windows() -> dict[str, str]:
@@ -326,8 +300,6 @@ def look(provider: base.Provider, prompt: bool = True) -> Look | None:
     Once its command ended, its text and status are read and the window ends: its command's
     last line is never lost, also one printed just before its exit."""
     window = windows().get(provider.name)
-    if window is not None and window.dead:
-        window = _settle(provider.name, window)
     if window is None:
         return None
     try:
@@ -346,7 +318,24 @@ def look(provider: base.Provider, prompt: bool = True) -> Look | None:
     with contextlib.suppress(tmux.TmuxError):
         tmux.kill_session(window.name)
     said = next((line.strip() for line in reversed(text.splitlines()) if line.strip()), "")
-    return Look(found, Ended(window.status, said))
+    return Look(found, Ended(_status(provider, window), said))
+
+
+def status_file(provider: base.Provider) -> Path:
+    """Where the login window's wrapper (`main`) keeps its command's exit status."""
+    return state.home() / "logins" / f"{provider.name}.status"
+
+
+def _status(provider: base.Provider, window: Window) -> int | None:
+    """The exit status of the dead `window`'s command, as its wrapper wrote it, read once;
+    else tmux's. Under load tmux may list a pane dead and never give its status."""
+    file = status_file(provider)
+    try:
+        written = file.read_text().strip()
+        file.unlink()
+    except OSError:
+        return window.status
+    return int(written) if written.lstrip("-").isdigit() else window.status
 
 
 def open_window(provider: base.Provider, id: str) -> str:
@@ -363,7 +352,11 @@ def open_window(provider: base.Provider, id: str) -> str:
     env = environment(provider)
     folder = state.home() / "logins"
     folder.mkdir(mode=0o700, exist_ok=True)
-    command = agent_env.command(folder / f"{provider.name}.json", env, list(chosen.argv))
+    agent_env.check_program(chosen.argv[0], env)  # the CLI, not the wrapper's Python
+    status = status_file(provider)
+    status.unlink(missing_ok=True)  # an earlier window's
+    wrapped = [*interpreter.run_module("lado.logins", str(status)), *chosen.argv]
+    command = agent_env.command(folder / f"{provider.name}.json", env, wrapped)
     cwd = env.get("HOME") or str(Path.home())
     labels = {LOGIN: provider.name, HOME: _home(), ACTION: chosen.id, **TERMINAL}
     tmux.new_labelled_session(
@@ -398,3 +391,25 @@ def end_windows() -> list[str]:
             continue
         ended.append(found.name)
     return ended
+
+
+def main(args: list[str]) -> None:
+    """A login window's command (`python -m lado.logins <status file> <argv>...`): run the
+    CLI's login command on the window's terminal, write its exit status (a signal's as
+    -N), atomically, and end with it. Ctrl+C reaches the command, which decides."""
+    file, *argv = args
+    process = subprocess.Popen(argv)
+    while True:
+        try:
+            code = process.wait()
+            break
+        except KeyboardInterrupt:
+            continue
+    written = Path(f"{file}.part")
+    written.write_text(f"{code}\n")
+    os.replace(written, file)
+    sys.exit(code if code >= 0 else 128 - code)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

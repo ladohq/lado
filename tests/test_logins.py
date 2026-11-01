@@ -266,7 +266,9 @@ def test_a_login_window_is_one_per_provider_and_labelled(windows):
     [(kind, name, _, cmd, options)] = windows["calls"]
     assert (kind, name) == ("new", "lado-login-opencode")
     assert cmd[-3:] == ["opencode", "auth", "login"]
-    assert cmd[-4] == str(state.home() / "logins" / "opencode.json")  # the agents' environment
+    # The agents' environment, then the wrapper that keeps the command's exit status.
+    assert str(state.home() / "logins" / "opencode.json") in cmd
+    assert cmd[-5:-3] == ["lado.logins", str(logins.status_file(OPENCODE))]
     assert options[logins.LOGIN] == "opencode" and options[logins.HOME] == windows["home"]
     assert options["prefix"] == "None" and options["status"] == "off"
     assert options[logins.ACTION] == "login"
@@ -348,30 +350,34 @@ def test_a_look_at_a_window_without_a_code(windows):
     assert logins.look(OPENCODE) == logins.Look(ended=logins.Ended(None, ""))
 
 
-def test_a_dead_pane_is_read_only_once_tmux_has_its_exit_status(windows, monkeypatch):
-    """tmux may list a pane dead before it has its exit status: read and ended then, the
-    window would lose it, and a login that succeeded would show as failed (LAD-168 F1)."""
-    monkeypatch.setattr(logins, "DEAD_EVERY", 0.001)
+def test_a_dead_pane_s_status_is_the_one_its_command_wrote(windows):
+    """Under load tmux may list a pane dead and never give its exit status (seen for 15 s
+    and more): a login that succeeded would show as failed (LAD-168 F1). The window's
+    wrapper (`main`) writes its command's status; tmux's is only the fallback."""
     name = logins.open_window(CODEX, "login")
-    row = dies(windows, name, "", "Successfully logged in\n")
-    lists = []
-
-    def status_comes():
-        lists.append(1)
-        if len(lists) == 3:
-            row[5] = "0"
-
-    windows["on_list"] = status_comes
+    dies(windows, name, "", "Successfully logged in\n")  # tmux has no status
+    logins.status_file(CODEX).write_text("0\n")
     assert logins.look(CODEX) == logins.Look(ended=logins.Ended(0, "Successfully logged in"))
     assert windows["calls"][-1] == ("kill", name)
-
-
-def test_a_dead_pane_whose_status_never_comes_ends_after_dead_wait(windows, monkeypatch):
-    monkeypatch.setattr(logins, "DEAD_EVERY", 0.001)
-    monkeypatch.setattr(logins, "DEAD_WAIT", 0.05)
+    assert not logins.status_file(CODEX).exists()  # read once
+    # Opened again: a status left by an earlier window is not this one's.
+    logins.status_file(CODEX).write_text("1\n")
     name = logins.open_window(CODEX, "login")
-    dies(windows, name, "", "said\n")  # as on tmux 3.2, which has no pane_dead_signal
+    assert not logins.status_file(CODEX).exists()
+    dies(windows, name, "", "said\n")
     assert logins.look(CODEX) == logins.Look(ended=logins.Ended(None, "said"))
+
+
+@pytest.mark.parametrize(
+    ("script", "status"),
+    [("print('Successfully logged in')", 0), ("raise SystemExit(3)", 3)],
+)
+def test_the_window_s_wrapper_writes_its_command_s_status(tmp_path, script, status):
+    file = tmp_path / "codex.status"
+    with pytest.raises(SystemExit) as end:
+        logins.main([str(file), sys.executable, "-c", script])
+    assert end.value.code == status
+    assert file.read_text() == f"{status}\n"
 
 
 def test_a_window_needs_a_known_action(windows):

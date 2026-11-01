@@ -1742,11 +1742,8 @@ def report_model(session: str, name: str, model: str, effort: str) -> None:
         row = db.execute(
             "SELECT model, effort FROM agents WHERE session = ? AND name = ?", (session, name)
         ).fetchone()
-        changed = [
-            (column, reported)
-            for column, reported in (("model", model), ("effort", effort))
-            if row is not None and reported and reported != row[column]
-        ]
+        reports = (("model", model), ("effort", effort)) if row else ()
+        changed = [(c, reported) for c, reported in reports if reported and reported != row[c]]
         if changed:
             sets = ", ".join(f"{c} = ?, {c}_source = ?, {c}_detail = NULL" for c, _ in changed)
             values = [v for _, reported in changed for v in (reported, CLI_DEFAULT)]

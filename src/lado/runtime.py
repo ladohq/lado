@@ -991,17 +991,15 @@ def _launch_command(
     session only at its first input (Capabilities.session_start_on_first_input) and has
     nothing in its queue gets FIRST_INPUT from LADO, a message like any other. The model
     and effort the launch set up become the agent's (state.set_model)."""
-    notice = None
     if agent_cli.capabilities.notice_on_argv:
         taken = state.take_pending(agent.session, agent.name, state.SENT, channel=state.TYPED)
         if not taken and agent_cli.capabilities.session_start_on_first_input:
             state.queue_message(agent.session, state.LADO, agent.name, FIRST_INPUT)
             taken = state.take_pending(agent.session, agent.name, state.SENT, channel=state.TYPED)
         notice = format_messages(taken) or None
-    if notice is None:
-        launch = agent_cli.launch_command(agent, sess, spec)
-    else:
         launch = agent_cli.launch_command(agent, sess, spec, notice=notice)
+    else:
+        launch = agent_cli.launch_command(agent, sess, spec)
     state.set_model(agent.session, agent.name, launch.model, launch.effort)
     return launch
 

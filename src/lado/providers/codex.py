@@ -35,6 +35,12 @@ else:
 # `lado doctor` warns when the installed Codex CLI is not this version.
 TESTED_VERSION = "0.162"
 
+# The sign-in code's output (login_prompt): colours, the link, a code such as UBSY-FIU1O.
+ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+LINK = re.compile(r"https://\S+")
+CODE = re.compile(r"[A-Z0-9]+(?:-[A-Z0-9]+)+")
+EXPIRES = re.compile(r"\((expires [^)]*)\)")
+
 # Codex hook events and the neutral events they stand for (0.162.0, checked by hand).
 #
 # SessionStart runs only when the first input is submitted, just before its
@@ -212,17 +218,39 @@ class CodexProvider(base.Provider):
     def login_actions(self) -> tuple[base.LoginAction, ...]:
         # Into the file the agents share, whatever store the user's own Codex keeps. The
         # device code needs no browser on this machine: `--device-auth` prints a link and a
-        # code and ends once the code is entered. `codex logout` removes the file and, for
-        # a ChatGPT login, revokes its tokens: every agent's and the user's own Codex's.
+        # code and ends once the code is entered; the window shows them (login_prompt).
+        # `codex logout` removes the file and, for a ChatGPT login, revokes its tokens:
+        # every agent's and the user's own Codex's.
         return (
             base.LoginAction(
                 "login",
                 "Get a sign-in code",
                 (self.command, "login", "--device-auth", *FILE_STORE),
-                "Open the link, sign in and enter the code there. This window closes by "
-                "itself once you are signed in.",
+                "This window closes by itself once you are signed in.",
+                shows_code=True,
             ),
             base.LoginAction("logout", "Log out…", (self.command, "logout", *FILE_STORE)),
+        )
+
+    def login_prompt(self, text: str) -> base.LoginPrompt | None:
+        # 0.162.0 prints "1. Open this link …", the link on the next line, "2. Enter this
+        # one-time code (expires in 15 minutes)", the code on the next line, then a
+        # paragraph "Continue only if you started this login in Codex. …".
+        lines = [ANSI.sub("", line).strip() for line in text.splitlines()]
+        named = next((i for i, line in enumerate(lines) if "one-time code" in line), None)
+        if named is None:
+            return None
+        link = next((found[0] for line in lines[:named] if (found := LINK.search(line))), None)
+        code = next((line for line in lines[named + 1 :] if line), "")
+        if link is None or not CODE.fullmatch(code):
+            return None
+        expires = EXPIRES.search(lines[named])
+        after = lines[lines.index(code, named + 1) + 1 :]
+        while after and not after[0]:
+            after.pop(0)
+        paragraph = " ".join(after[: after.index("")] if "" in after else after)
+        return base.LoginPrompt(
+            link, code, expires[1] if expires else "", (paragraph,) if paragraph else ()
         )
 
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:

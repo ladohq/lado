@@ -325,9 +325,9 @@ def test_codexs_sheet_runs_its_sign_in_from_a_choice_and_logs_out_of_its_file(
         ("token", "CODEX_ACCESS_TOKEN", ""),
         ("usage", "OPENAI_API_KEY", ""),
     ]
-    assert [(a["id"], bool(a["help"])) for a in codex["actions"]] == [
-        ("login", True),
-        ("logout", False),
+    assert [(a["id"], bool(a["help"]), a["shows_code"]) for a in codex["actions"]] == [
+        ("login", True, True),  # its window shows the link and the code, no terminal
+        ("logout", False, False),
     ]
     assert codex["login"]["choice"] == "chatgpt"
     assert (codex["from_lado"], codex["logout_file"]) == (False, True)

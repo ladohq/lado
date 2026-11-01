@@ -91,6 +91,10 @@ class Event:
     # Code's background subagents and shells), so it is `background`, not idle (lado.hooks).
     # A provider that cannot tell leaves it False.
     background: bool = False
+    # The model and the effort the CLI says the agent runs on, in any event that says so;
+    # "" where it does not (lado.hooks records them: state.report_model).
+    model: str = ""
+    effort: str = ""
 
 
 ERROR_LIMIT = 160  # characters of an Event.error

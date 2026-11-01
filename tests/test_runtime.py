@@ -604,6 +604,18 @@ def test_an_opencode_family_worker_gets_its_first_line_on_its_command_line(
     assert state.get_agent("s", "w1").status == state.BUSY
 
 
+def test_handle_records_the_model_before_the_status(repo, fake_tmux):
+    cli = providers.get("opencode")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.spawn_worker("s", "fix the bug", name="w1")
+    hooks.handle(cli, providers.Event(providers.SESSION_START, model="claude-opus-5-5"), "s", "w1")
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source, agent.status) == ("claude-opus-5-5", "cli", state.IDLE)
+    hooks.handle(cli, providers.Event(providers.PROMPT_SUBMIT, effort="high"), "s", "w1")
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.effort, agent.status) == ("claude-opus-5-5", "high", state.BUSY)
+
+
 class _FirstInput(providers.Provider):
     """A CLI that starts its session only when its first input is submitted (Codex CLI)."""
 

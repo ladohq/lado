@@ -203,8 +203,9 @@ def sign_in_by_code(page: Page, marker, shot, full_page: bool = True, phone: boo
     code = window.locator(".login-code")
     expect(code).to_have_text(fake_provider.CODE, timeout=20000)
     expect(window.get_by_text(fake_provider.CODE_HELP)).to_be_visible()
-    expect(window.get_by_text("(expires in 15 minutes)")).to_be_visible()
-    expect(window.get_by_text(re.compile("^Continue only if you started"))).to_be_visible()
+    # Within the steps: the hidden terminal's rows hold the same words.
+    expect(window.locator(".login-steps").get_by_text("(expires in 15 minutes)")).to_be_visible()
+    expect(window.locator(".login-details")).to_contain_text("Continue only if you started")
     open_link = window.get_by_role("link", name="Open sign-in page")
     expect(open_link).to_have_attribute("href", fake_provider.CODE_LINK)
     expect(open_link).to_have_attribute("target", "_blank")
@@ -308,11 +309,11 @@ def test_a_sign_in_code_that_fails_keeps_the_clis_words(
     window = open_code_window(page, shot)
     said = "Error: device code login is not enabled for this fake server."
     expect(window.get_by_text(f"{TITLE} did not sign you in")).to_be_visible(timeout=20000)
-    expect(window.get_by_text(said)).to_be_visible()
+    expect(window.locator(".login-fail").get_by_text(said)).to_be_visible()
     expect(window.locator(".login-term")).to_be_hidden()
     shot(page, "failed")
     window.get_by_role("button", name="Get a new code").click()  # a new window, failing again
-    expect(window.get_by_text(said)).to_be_visible(timeout=20000)
+    expect(window.locator(".login-fail").get_by_text(said)).to_be_visible(timeout=20000)
     window.get_by_role("button", name="Back").click()
     expect(page.get_by_role("dialog", name=QUESTION)).to_be_visible()
     assert not logins.exists()

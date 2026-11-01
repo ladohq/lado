@@ -43,9 +43,9 @@ if sys.argv[1:] == ["--code"]:
         sys.exit(1)
     login = Path(os.environ["FAKE_AGENT_LOGIN"])
     entered = login.with_name(login.name + ".entered")
-    while not entered.exists():
+    # Its content, not only the file: the test's write may not have ended yet.
+    while not (code := entered.read_text().strip() if entered.exists() else ""):
         time.sleep(0.1)
-    code = entered.read_text().strip()
     entered.unlink()
     if code != CODE:
         print(f"Error: the code {code} is not the one given", flush=True)

@@ -173,6 +173,10 @@ class FakeLoginProvider(FakeProvider):
         super().__init__(name, True)
         self.capabilities = dataclasses.replace(self.capabilities, needs_login=True)
 
+    def needs_login(self, env) -> bool:
+        # As Codex's model decides: a "local model" in the agents' environment needs none.
+        return not env.get("FAKE_AGENT_LOCAL_MODEL")
+
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:
         # A slow status command: it answers once the file FAKE_AGENT_LOGIN_HOLD names is
         # gone (at most HOLD_LIMIT seconds).

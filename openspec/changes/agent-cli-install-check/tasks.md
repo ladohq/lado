@@ -1,6 +1,6 @@
 ## 1. The smoke cell's install
 
-- [ ] 1.1 Unit tests first (layer 1), `tests/test_smoke_ci.py`: the npm stub learns to
+- [x] 1.1 Unit tests first (layer 1), `tests/test_smoke_ci.py`: the npm stub learns to
   fail its first N installs (a counter file), either by exiting 1 or by writing a CLI
   that prints `Error: Missing optional dependency ...` and exits 1, and records `npm
   uninstall ...` calls. Tests: a broken CLI once, then good: the cell passes, `ran` has
@@ -10,7 +10,7 @@
   `uv run`, `<cli> --version failed after the install` (AC-3); an install failing three
   times: red, `did not install` (AC-3); a good first attempt: one install, no uninstall,
   no `::warning::` (AC-4). They fail before 1.2.
-- [ ] 1.2 `scripts/smoke_ci.py`: `run` installs in up to three attempts (a module
+- [x] 1.2 `scripts/smoke_ci.py`: `run` installs in up to three attempts (a module
   constant), each `npm install` then `<cli> --version`; after a failed attempt but the
   last, `::warning::<provider>: attempt <n> of 3: <what failed>; reinstalling` on stdout,
   then `npm uninstall -g --prefix <local> <package>` (exit not checked). The last

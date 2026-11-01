@@ -6,7 +6,11 @@
 
 `run` does one (system, provider) cell of ci.yml's job `smoke` or of the Windows probe's WSL
 part: it installs the provider's CLI at its pin from npm into ~/.local (first on PATH from
-then on), then runs `uv run pytest -m smoke -n0 -v -k <provider>`, as `make test-smoke
+then on) and checks that `<cli> --version` runs, in up to three attempts: npm drops an
+optional dependency that failed to install (a CLI's native binary) and still exits 0.
+After a failed attempt but the last it prints a GitHub `::warning::` naming the provider
+and the attempt, uninstalls the package and installs again; after the third the cell is red
+and runs no test. Then it runs `uv run pytest -m smoke -n0 -v -k <provider>`, as `make test-smoke
 PROVIDER=<provider>` does. Its output goes to the terminal and to
 `<out>/smoke-<provider>.log`. The cell passes only when pytest exits 0 and its last summary
 line has a `passed` and no `skipped` (a missing CLI skips). A failing cell copies the
@@ -45,6 +49,8 @@ PINS = {
     "opencode": ("opencode-ai", "1.18.35", "opencode"),
     "kilo": ("@kilocode/cli", "7.8.8", "kilo"),
 }
+# A cell's tries at installing its CLI (`run`).
+ATTEMPTS = 3
 
 # pytest's last line, e.g. `===== 1 failed, 2 passed in 10.00s (0:00:10) =====`.
 SUMMARY = re.compile(r"^=+ .* in [0-9.]+s\b.*=+$")
@@ -62,20 +68,36 @@ def passed(line: str, code: int) -> bool:
     return code == 0 and " passed" in line and " skipped" not in line
 
 
+def install_once(install: list[str], command: str, env: dict) -> str:
+    """One attempt: `npm install`, then the CLI's `--version`; what failed, or '' when both
+    exited 0."""
+    print("$", " ".join(install), flush=True)
+    if subprocess.run(install, env=env).returncode != 0:
+        return f"{install[-1]} did not install"
+    cli = shutil.which(command, path=env["PATH"])
+    if cli is None or subprocess.run([cli, "--version"], env=env).returncode != 0:
+        return f"{command} --version failed after the install"
+    return ""
+
+
 def run(provider: str, out: Path) -> int:
     package, version, command = PINS[provider]
     env = dict(os.environ)
     local = Path(env["HOME"]) / ".local"
     env["PATH"] = f"{local / 'bin'}{os.pathsep}{env.get('PATH', '')}"
     install = ["npm", "install", "-g", "--prefix", str(local), f"{package}@{version}"]
-    print("$", " ".join(install), flush=True)
-    if subprocess.run(install, env=env).returncode != 0:
-        print(f"{package}@{version} did not install", file=sys.stderr)
-        return 1
-    cli = shutil.which(command, path=env["PATH"])
-    if cli is None or subprocess.run([cli, "--version"], env=env).returncode != 0:
-        print(f"{command} --version failed after the install", file=sys.stderr)
-        return 1
+    uninstall = ["npm", "uninstall", "-g", "--prefix", str(local), package]
+    for attempt in range(1, ATTEMPTS + 1):
+        failed = install_once(install, command, env)
+        if not failed:
+            break
+        if attempt == ATTEMPTS:
+            print(failed, file=sys.stderr)
+            return 1
+        print(f"::warning::{provider}: attempt {attempt} of {ATTEMPTS}: {failed}; reinstalling")
+        print("$", " ".join(uninstall), flush=True)
+        # Not checked: the install that follows decides.
+        subprocess.run(uninstall, env=env)
     tests = ["uv", "run", "pytest", "-m", "smoke", "-n0", "-v", "-k", provider]
     return cell(tests, out / f"smoke-{provider}.log", out, f"smoke {provider}", env)
 

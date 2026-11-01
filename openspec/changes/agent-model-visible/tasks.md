@@ -2,7 +2,8 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-01-agent-model-
 
 ## 1. Core
 
-- [ ] 1.1 Six columns of `agents`, schema 36, `Agent` fields, `source_words`, `set_model`;
+- [ ] 1.1 Six columns of `agents`, schema 36 (checked against main's at each merge of the
+  base), `Agent` fields, `source_words`, `set_model`;
   `previous_schema` undoes it (D1, D2). Check: `tests/test_state.py`, `tests/test_cli.py
   -k schema`.
 - [ ] 1.2 `Event.model`/`effort`, `state.report_model`, `hooks.handle` records it (D4, D5).
@@ -33,8 +34,8 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-01-agent-model-
 ## 4. Docs and regression
 
 - [ ] 4.1 `docs/design/agents.md`, `docs/design/ui.md`, `docs/cli.md`,
-  `docs/design/modules.md`, CHANGELOG (`0.45.0 (unreleased)`, Added; the heading added on top when
-  missing), BACKLOG's "Choose
+  `docs/design/modules.md`, CHANGELOG: the heading `## 0.45.0 (unreleased)` added above `## 0.44.0`,
+  the line under it (Added), BACKLOG's "Choose
   the model per agent" → LAD-154.
 - [ ] 4.2 Regression: `make lint`, `make test`, `make web`, `make test-js`, the changed
   integration and UI files with their markers, `openspec validate --specs --strict`; CI

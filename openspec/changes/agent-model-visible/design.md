@@ -125,7 +125,9 @@ Schema 35 → 36 adds nullable or defaulted columns: old rows read as `cli` with
 `lado update`'s rollback restores `lado.db` from its backup; an older LADO meeting schema
 36 refuses with `state.SchemaError` as today (checked by the migration test, not changed).
 
-The epic ships in 0.45.0 and 0.44.0 is released from main without it, so main is merged
-into the epic branch later: should main reach schema 36 first (a fix with a migration),
-the epic's step is renumbered on top of main's (`SCHEMA_VERSION`, `MIGRATIONS`,
-`previous_schema`) when that merge is made, by the epic's lead.
+The epic ships in 0.45.0 and 0.44.0 is released from main without it; the epic's
+migrations are numbered after 0.44.0's. Main has schema 35 now, so 36 fits. Each time the
+base is merged into the run's branch, the developer compares `SCHEMA_VERSION` with
+main's: when 0.44.0 or a fix of its RC added a migration to main, this step's migration
+moves to the next free number (`SCHEMA_VERSION`, `MIGRATIONS`, `previous_schema`, the
+migration test).

@@ -95,10 +95,9 @@ Options weighed:
 - Docs: `docs/design/agents.md`, `docs/design/ui.md`, `docs/cli.md`,
   `docs/design/modules.md`, CHANGELOG.md, BACKLOG.md.
 - Version: the minor (schema migration, an MCP tool's result). The epic ships in 0.45.0;
-  0.44.0 is released from main without it. The CHANGELOG line goes under
-  `## 0.45.0 (unreleased)`, added on top when the target branch lacks it, above the
-  0.44.0 section as that section stands there. When main, with 0.44.0 released, is merged
-  into the epic branch, the 0.44.0 section and schema numbers come from main and the
-  epic's sit on top of them.
+  0.44.0 is released from main without it. This change, the epic's first, adds the
+  heading `## 0.45.0 (unreleased)` on the epic branch above main's `## 0.44.0` section and
+  puts its line under it. Its migration is numbered after 0.44.0's, checked against main
+  at each merge of the base (design.md, Migration Plan).
 - Way back: `lado update`'s rollback restores `lado.db` from its backup; an older LADO on
   schema 36 refuses it with `state.py`'s existing schema error (checked, not changed).

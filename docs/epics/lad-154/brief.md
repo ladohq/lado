@@ -97,14 +97,14 @@ Statement step 10 goes to "Later" (D3).
 | Goal and "done" | Covered: the statement's goal, "done" above (D3). |
 | Users and how they use it | Covered: the human running sessions on their CLIs' logins who wants a local or corporate model server, or heavy roles on a strong model and light ones on a cheap one; kit authors marking power; the supervisor choosing a worker's power. |
 | Scope and what is out | Covered: out are profiles (LAD-80), automatic power by task complexity, fallback models on error, statement step 10 (D3), network scanning, LADO's own model catalogue. |
-| Data and migrations | Missing: a step: the agent's model, effort and source (`agents`), the session's model or table (`sessions`), the user's settings store, the project's table; each with its way back by `lado update`'s backup of `lado.db`. |
-| Secrets and credentials | Missing: a step: a server's key is a reference by name to LADO's or the project's secrets (D4), never in an agent's config file; the canary approach of LAD-116 proves it. |
-| Update and rollback | Missing: a step: every step is a minor (schema, MCP, CLI); an older LADO after a rollback ignores the new columns; a kit with the power field needs `dependencies.lado` (D6). |
-| Removal | Missing: a step: removing a server or a table row; a session whose server is gone refuses loudly at start; `lado uninstall` removes the settings with `LADO_HOME`. |
-| Platforms | Missing: a step: all four CLIs (neutral core), macOS, Linux, WSL; Docker's `localhost` (D5). |
-| Observability | Missing: a step: the model and source on each agent, the pre-start check's message, warnings for what a CLI or server cannot do, `lado doctor` for a configured server. |
-| Tests and what only a human can check | Missing: a step: unit and integration with the fake agent per step, a fake OpenAI-compatible server in CI, smoke per provider for the model reaching the CLI; by hand: a real model server for steps 3 and 9 (D7; which server, the human will add); mockups for the UI steps. |
-| Documentation | Missing: a step: `docs/cli.md`, `docs/design/ui.md`, `docs/design/agents.md`, `docs/install.md` (local models, Docker), the kit format's docs, CHANGELOG per step; BACKLOG's "Choose the model per agent" replaced by LAD-154 (D8). |
+| Data and migrations | Covered by S1, S2, S5a, S6, Check: "the schema migration from `tests/agent_helpers.previous_schema`; the way back: an `lado update` rollback restores `lado.db`" (S1; the same line in S2, S5a, S6). |
+| Secrets and credentials | Covered by S3a, S3b, S5a, S9a, S9b, Check: "the key's value reaches the agent only through its environment, never the config file (the canary approach of LAD-116)" (S3b); the key is a reference by name (D4). |
+| Update and rollback | Covered by S1, S2, S5a, S6 (way back by `lado update`'s restore of `lado.db`) and S7, Check: "the kit docs say a kit with the field needs `dependencies.lado`, and `kits.warnings()` asks for it"; every step is a minor. |
+| Removal | Covered by S5a, Check: "removing a server a session uses: the session's next agent refuses loudly at start; `lado uninstall` removes the settings with `LADO_HOME`"; an empty table row is the CLI's default (S5b). |
+| Platforms | Covered by S2, S4 (all four CLIs, smoke per provider), S3b (OpenCode/Kilo), S9a/S9b (Claude, Codex), S3a, Check: "in Docker, `localhost` that does not answer gives the loud hint `host.docker.internal:<port>`" (D5); macOS, Linux, WSL as today. |
+| Observability | Covered by S1, Check: "`list_agents`, the API and the UI card show model, effort and source"; S3b's pre-start check, S2/S4's loud warnings, S5a's `lado doctor` check of saved servers. |
+| Tests and what only a human can check | Covered by every step's Check (unit, integration with the fake agent, fake servers, smoke per provider in S2, S4, S9a, S9b); by hand: a real model server in S3b, S9a, S9b (D7; which server: open question Q2 of the plan); mockups at `design_ok` of the UI steps. |
+| Documentation | Covered by every step's Check ("docs describe what was built": `docs/cli.md`, `docs/design/ui.md`, `docs/design/agents.md`, `docs/install.md` in S3b, the kit format in S7, CHANGELOG per step); BACKLOG's entry replaced in S1 (D8). |
 
 ## Branch strategy
 

@@ -33,7 +33,8 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-01-agent-model-
 ## 4. Docs and regression
 
 - [ ] 4.1 `docs/design/agents.md`, `docs/design/ui.md`, `docs/cli.md`,
-  `docs/design/modules.md`, CHANGELOG (`0.44.0 (unreleased)`, Added), BACKLOG's "Choose
+  `docs/design/modules.md`, CHANGELOG (`0.45.0 (unreleased)`, Added; the heading added on top when
+  missing), BACKLOG's "Choose
   the model per agent" → LAD-154.
 - [ ] 4.2 Regression: `make lint`, `make test`, `make web`, `make test-js`, the changed
   integration and UI files with their markers, `openspec validate --specs --strict`; CI

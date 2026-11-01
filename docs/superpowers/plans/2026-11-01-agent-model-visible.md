@@ -29,7 +29,10 @@ Mockup: run artifact `mockup-agent-model.html` (option A).
 - `SCHEMA_VERSION = 36`, `MIGRATIONS[35]`; `tests/agent_helpers.previous_schema` undoes it.
 - No provider name above `providers/` except through `Provider.title`; no terminal
   reading; no new hook or event of any CLI; no network request.
-- CHANGELOG.md: one line under `## 0.44.0 (unreleased)`, `### Added`; no new heading.
+- CHANGELOG.md: one line under `## 0.45.0 (unreleased)`, `### Added`: the epic ships in
+  0.45.0, and 0.44.0 is released from main without it. When the target branch has no
+  `## 0.45.0 (unreleased)` heading, add it on top, above the 0.44.0 section, which stays
+  as it is there (main's release sets its date; the merge of main brings it).
 - Unit suites with `-n auto`; integration and UI files with their markers; single node ids
   with `-n0`.
 
@@ -172,7 +175,7 @@ Mockup: run artifact `mockup-agent-model.html` (option A).
   proposal's Why) and how a launch's choice is recorded; `docs/design/ui.md`: the agent's
   page head line and facts, the tooltip; `docs/cli.md`: `lado ls`'s model column;
   `docs/design/modules.md` where `state.py`/`hooks.py`/providers' lines change; CHANGELOG
-  line under `## 0.44.0 (unreleased)`, `### Added`; BACKLOG.md "Choose the model per
+  line under `## 0.45.0 (unreleased)`, `### Added` (heading added when missing); BACKLOG.md "Choose the model per
   agent" replaced by a pointer to LAD-154.
 - [ ] Regression: `make lint`, `make test`, `make web`, `make test-js`, `uv run pytest -m
   integration -n auto tests/integration/test_agents.py tests/integration/test_fake_agent.py`,

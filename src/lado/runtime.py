@@ -3010,14 +3010,12 @@ def check_start_login(provider: str | None, project: str | None) -> None:
 def _held_for_login(
     agent_cli: providers.Provider,
     agent: state.Agent,
-    base_env: dict[str, str],
-    launch: providers.Launch,
+    env: dict[str, str],
 ) -> tuple[bool, list[str]]:
     """Before the agent's window starts: whether it waits for its CLI's login (a CLI that
-    needs one and is not logged in, both asked with the agent's launch environment), then
-    from now on with lado.logins.wait_reason; and the lines to tell whoever starts it. A
-    login LADO cannot read never holds it: a warning says why."""
-    env = _launch_env(agent, base_env, launch)
+    needs one and is not logged in, both asked with `env`, the agent's launch environment),
+    then from now on with lado.logins.wait_reason; and the lines to tell whoever starts it.
+    A login LADO cannot read never holds it: a warning says why."""
     if not agent_cli.needs_login(env):
         return False, []
     found = agent_cli.login_status(env)
@@ -3045,15 +3043,15 @@ def _before_window(
     the CLI asks first (Provider.first_hook_blocker), settled first as it may give the agent
     its login (Codex's login file, which its status is read in), then its CLI's login
     (_held_for_login). If something will hold it, the agent waits from now on, so its first
-    hook always comes after that. An agent that waits for its login gets now what needs no login
-    (Claude Code's trust), in loop.log; what does (the first run), and a question the CLI
-    would still ask, its waiting window settles once logged in (lado.login_wait), in
+    hook always comes after that. An agent that waits for its login gets now what needs no
+    login (Claude Code's trust), in loop.log; what does (the first run), and a question the
+    CLI would still ask, its waiting window settles once logged in (lado.login_wait), in
     loop.log; `shell` is the login shell's layer, the lowest its window lays the login from.
     The lines to tell whoever starts it, and the window's command."""
     env = _launch_env(agent, base_env, launch)
     blocker = agent_cli.first_hook_blocker(agent.cwd, env)
     _log_notes(agent, blocker.notes)
-    waits, lines = _held_for_login(agent_cli, agent, base_env, launch)
+    waits, lines = _held_for_login(agent_cli, agent, env)
     if not waits:
         if blocker.reason:
             state.block(agent.session, agent.name, blocker.reason)

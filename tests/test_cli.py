@@ -313,6 +313,25 @@ def test_start_help_lists_each_providers_permission_modes(capsys):
     assert "claude: " in out and "dontAsk" in out
 
 
+def test_start_help_names_the_model(capsys):
+    with pytest.raises(SystemExit):
+        main(["start", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "--model MODEL" in out
+    assert "'' on a resume goes back to the CLI's default" in out
+
+
+def test_start_passes_the_model_through(repo, fake_tmux, capsys):
+    args = ["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]
+    assert main([*args, "--model", "claude-opus-5-5"]) == 0
+    assert state.get_session("s").power == state.PowerTable.single("claude", "claude-opus-5-5")
+    err = capsys.readouterr().err
+    assert "lado: Claude Code gives no list of models beyond its aliases: LADO cannot check" in err
+    runtime.stop_session("s")
+    assert main(["start", str(repo), "--name", "s", "--no-attach", "--model", ""]) == 0
+    assert "  changed model: claude claude-opus-5-5 -> CLI default" in capsys.readouterr().out
+
+
 def test_start_with_a_mode_the_provider_cannot_honour_fails(repo, fake_tmux, capsys):
     args = ["start", str(repo), "--provider", "kilo", "--permission-mode", "dontAsk"]
     assert main([*args, "--no-attach"]) == 1

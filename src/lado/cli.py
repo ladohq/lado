@@ -97,6 +97,7 @@ def cmd_start(args: argparse.Namespace) -> int:
             project=args.project,
             repo_name=args.repo,
             wait_for_login=args.wait_for_login,
+            model=args.model,
         )
     except Exception as exc:
         _sources_warning(unless_in=str(exc))  # a kit not found says it already
@@ -1640,6 +1641,12 @@ def main(argv: list[str] | None = None) -> int:
             f"{name}: {', '.join(providers.get(name).permission_modes)}"
             for name in providers.names()
         ),
+    )
+    start.add_argument(
+        "--model",
+        help="the model of the session's agents of its provider's CLI, an alias or a name "
+        "of the CLI's own list (checked before the start); '' on a resume goes back to the "
+        "CLI's default; without it, a resume keeps the session's",
     )
     start.add_argument(
         "--kit",

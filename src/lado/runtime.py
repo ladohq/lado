@@ -32,6 +32,7 @@ from lado import (
     login_wait,
     logins,
     loop,
+    model_check,
     project_secrets,
     providers,
     state,
@@ -660,13 +661,17 @@ def start_session(
     project: str | None = None,
     repo_name: str | None = None,
     wait_for_login: bool = False,
+    model: str | None = None,
 ) -> Started:
     """Start a session whose agents come from `kit_names` (default: the "default" kit), minus
     the `without` items ("agent:x", "skill:y", "mcp:z"). A new session's supervisor may get
     `first` as its first input. `prompt` is the human's first message, for a new session and
     a resume alike (check_prompt): queued from `human` after LADO's own messages. `reason`
     begins a resume's event detail (why it was resumed: resume_at_start). `title` is a new
-    session's (check_title); a resume keeps its own, which `lado title` changes.
+    session's (check_title); a resume keeps its own, which `lado title` changes. `model` is
+    the session's model for its provider's CLI, checked against the CLI (lado.model_check):
+    None keeps a resumed session's (unless the provider changes: a model is its CLI's) and
+    gives a new one none, "" drops it.
 
     A stopped session of that name, or one whose tmux server is gone, is resumed: it keeps
     its history, open runs and gates, and the settings given replace its stored ones. The
@@ -746,6 +751,7 @@ def start_session(
         without if without is not None else (old.without if old else []),
         title=old.title if old else stored_title,
         project=old.project if old else project,
+        power=_power(old, agent_cli, model),
     )
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.kits, sess.without)
@@ -753,6 +759,13 @@ def start_session(
         layers = agent_layers(sess.project)
     base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
+    checked = []
+    if model:
+        verdict = model_check.check(agent_cli, model, base_env)
+        if verdict.kind == model_check.REFUSED:
+            raise LadoError(verdict.text)
+        if verdict.kind == model_check.WARN:
+            checked.append(verdict.text)
     if not old:
         check_login(agent_cli, base_env, logins.SESSION)
     elif not (wait_for_login or reason == AT_START):
@@ -766,7 +779,7 @@ def start_session(
     model, _ = session_model(sess, agent_cli)
     spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env, model=model)
     agent.read_only = spec.read_only  # stored anew at each resume, as the kit says now
-    started = Started(sess, chosen, lead=env.lead_line(), warnings=list(env.warnings))
+    started = Started(sess, chosen, lead=env.lead_line(), warnings=[*env.warnings, *checked])
     if outside := outside_workspace(repo):
         started.warnings.append(outside)
     if old and not old.stopped_at:
@@ -849,11 +862,27 @@ def start_session(
         _undo(session, f"the start of {session}", error, steps)
         raise
     started.warnings += placed
-    for line in blocker + placed:
+    for line in checked + blocker + placed:
         loop.log(session, f"{SUPERVISOR}: {line}")
     # It ends by itself when the tmux session is gone, so not before that exists.
     loop.start(session)
     return started
+
+
+def _power(
+    old: state.Session | None, agent_cli: providers.Provider, model: str | None
+) -> state.PowerTable | None:
+    """The session's power table (start_session's `model`): a model given is the table of
+    one model for the session's CLI, "" none; else a resume keeps a table of its CLI."""
+    if model is not None:
+        return state.PowerTable.single(agent_cli.name, model) if model else None
+    if old and old.power and old.power.row().cli == agent_cli.name:
+        return old.power
+    return None
+
+
+def _model_words(power: state.PowerTable | None) -> str:
+    return f"{power.row().cli} {power.row().model}" if power else "CLI default"
 
 
 def _changes(old: state.Session, new: state.Session) -> list[str]:
@@ -867,6 +896,8 @@ def _changes(old: state.Session, new: state.Session) -> list[str]:
     ):
         if before != after:
             changes.append(f"{what}: {before or 'none'} -> {after or 'none'}")
+    if old.power != new.power:
+        changes.append(f"model: {_model_words(old.power)} -> {_model_words(new.power)}")
     return changes
 
 

@@ -1199,5 +1199,19 @@ def test_the_server_keeps_a_provider_s_list_a_while(client, monkeypatch):
     assert len(asked) == 2
 
 
+def test_the_server_reads_again_a_list_it_could_not_read(client, monkeypatch):
+    answers = [
+        providers.base.ModelList(why="kilo models failed"),
+        providers.base.ModelList(models=("kilo/a",), command="kilo models"),
+    ]
+    monkeypatch.setattr(type(providers.get("kilo")), "model_list", lambda self, env: answers[0])
+    server_launch.forget_model_lists()
+    found = client.get("/api/providers/kilo/models", params={"model": "kilo/a"}).json()
+    assert found["check"]["kind"] == "warn"
+    answers.pop(0)
+    found = client.get("/api/providers/kilo/models", params={"model": "kilo/a"}).json()
+    assert (found["models"], found["check"]["kind"]) == (["kilo/a"], "ok")
+
+
 def test_an_unknown_provider_s_models_are_404(client):
     assert client.get("/api/providers/nope/models").status_code == 404

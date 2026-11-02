@@ -6038,11 +6038,74 @@ def test_a_resume_keeps_the_model(repo, fake_tmux, monkeypatch):
     _models(monkeypatch, "kilo", "kilo/a")
     runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
     runtime.stop_session("s")
-    _models(monkeypatch, "kilo", "kilo/b")  # no check of a model kept: it was checked
     started = runtime.start_session(str(repo), "s", None)
     assert started.changes == []
     env, _ = agent_helpers.launched(fake_tmux[-1])
     assert json.loads(env["KILO_CONFIG_CONTENT"])["model"] == "kilo/a"
+
+
+def test_the_model_is_taken_without_its_spaces(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    started = runtime.start_session(str(repo), "s", None, provider="kilo", model=" kilo/a ")
+    assert not [w for w in started.warnings if "kilo/a" in w]
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "kilo/a")
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None, model="  ")
+    assert started.changes == ["model: kilo kilo/a -> CLI default"]
+    assert state.get_session("s").power is None
+
+
+_KEPT_REFUSED = (
+    "kilo/a is not in Kilo CLI's list of models; kilo models prints the list; the session "
+    "ran on it before: resume it with --model '' for Kilo CLI's default or --model <model> "
+    "for another"
+)
+
+
+def _kept_model_gone(repo, fake_tmux, monkeypatch) -> int:
+    """Session s of Kilo, stopped with the model kilo/a, which Kilo's list no longer has;
+    the number of tmux calls until then."""
+    _models(monkeypatch, "kilo", "kilo/a")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    _models(monkeypatch, "kilo", "kilo/b")
+    return len(fake_tmux)
+
+
+def test_a_resume_refuses_a_kept_model_the_list_lacks(repo, fake_tmux, monkeypatch):
+    calls = _kept_model_gone(repo, fake_tmux, monkeypatch)
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.start_session(str(repo), "s", None)
+    assert str(error.value) == _KEPT_REFUSED
+    sess = state.get_session("s")
+    assert sess.stopped_at and sess.power == state.PowerTable.single("kilo", "kilo/a")
+    assert len(fake_tmux) == calls  # no agent started
+
+
+def test_a_resume_to_the_default_of_a_kept_model_the_list_lacks(repo, fake_tmux, monkeypatch):
+    _kept_model_gone(repo, fake_tmux, monkeypatch)
+    started = runtime.start_session(str(repo), "s", None, model="")
+    assert started.changes == ["model: kilo kilo/a -> CLI default"]
+    runtime.stop_session("s")
+    with pytest.raises(runtime.LadoError) as error:  # a model given: no way out to name
+        runtime.start_session(str(repo), "s", None, model="kilo/a")
+    assert str(error.value) == (
+        "kilo/a is not in Kilo CLI's list of models; kilo models prints the list"
+    )
+
+
+def test_lados_own_resume_of_a_kept_model_the_list_lacks(repo, fake_tmux, monkeypatch):
+    _kept_model_gone(repo, fake_tmux, monkeypatch)
+    state.resume_session(state.get_session("s"), "")
+    state.stop_for_container()
+    lines = []
+    runtime.resume_at_start(lines.append)
+    assert lines == [
+        f'lado: could not resume session "s" at the container\'s start: {_KEPT_REFUSED}; '
+        "it stays stopped"
+    ]
+    sess = state.get_session("s")
+    assert sess.stopped_at and sess.power == state.PowerTable.single("kilo", "kilo/a")
 
 
 def test_an_empty_model_drops_it(repo, fake_tmux, monkeypatch):

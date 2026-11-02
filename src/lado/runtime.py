@@ -669,9 +669,11 @@ def start_session(
     a resume alike (check_prompt): queued from `human` after LADO's own messages. `reason`
     begins a resume's event detail (why it was resumed: resume_at_start). `title` is a new
     session's (check_title); a resume keeps its own, which `lado title` changes. `model` is
-    the session's model for its provider's CLI, checked against the CLI (lado.model_check):
-    None keeps a resumed session's (unless the provider changes: a model is its CLI's) and
-    gives a new one none, "" drops it.
+    the session's model for its provider's CLI, taken without the spaces around it: None
+    keeps a resumed session's (unless the provider changes: a model is its CLI's) and gives
+    a new one none, "" (or only spaces) drops it. The model the session runs on, given or
+    kept, is checked against the CLI (lado.model_check); a refusal of a kept one names the
+    way out.
 
     A stopped session of that name, or one whose tmux server is gone, is resumed: it keeps
     its history, open runs and gates, and the settings given replace its stored ones. The
@@ -696,6 +698,8 @@ def start_session(
     if first is not None and resume is not False:
         raise LadoError("a first input is only for a new session (resume=False)")
     text = check_prompt(prompt) if prompt is not None else None
+    if model is not None:
+        model = model.strip()
     refused = None
     if project is not None:
         assert path is None and repo_name is not None
@@ -760,9 +764,15 @@ def start_session(
     base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
     checked = []
-    if model:
-        verdict = model_check.check(agent_cli, model, base_env)
+    chosen_model, _ = session_model(sess, agent_cli)
+    if chosen_model:
+        verdict = model_check.check(agent_cli, chosen_model, base_env)
         if verdict.kind == model_check.REFUSED:
+            if model is None:  # the model a resume keeps
+                raise LadoError(
+                    f"{verdict.text}; the session ran on it before: resume it with --model '' "
+                    f"for {agent_cli.title}'s default or --model <model> for another"
+                )
             raise LadoError(verdict.text)
         if verdict.kind == model_check.WARN:
             checked.append(verdict.text)
@@ -776,7 +786,6 @@ def start_session(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
     instructions = _supervisor_instructions(env, session)
-    chosen_model, _ = session_model(sess, agent_cli)
     spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env, model=chosen_model)
     agent.read_only = spec.read_only  # stored anew at each resume, as the kit says now
     started = Started(sess, chosen, lead=env.lead_line(), warnings=[*env.warnings, *checked])

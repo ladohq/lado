@@ -46,6 +46,7 @@ import { useCopy } from "./Copy";
 import { ProjectField } from "./LaunchProject";
 import { useLive } from "./live";
 import { projectPath, PROVIDERS_PATH, sessionPath } from "./paths";
+import { SuggestField, type Suggestion } from "./SuggestField";
 
 // How long the window waits after a keystroke before it asks the server about the folder.
 export const DEBOUNCE = 200;
@@ -386,7 +387,23 @@ function LaunchDialog({
   useEffect(() => {
     if (modelAnswer !== null && "value" in modelAnswer) setModelList(modelAnswer.value);
   }, [modelAnswer]);
-  const suggestions = modelList ? [...modelList.aliases, ...(modelList.models ?? [])] : [];
+  const suggestions: Suggestion[] = modelList
+    ? [
+        ...modelList.aliases.map((one) => ({ value: one, tag: "alias" })),
+        ...(modelList.models ?? []).filter((one) => !modelList.aliases.includes(one)).map((one) => ({ value: one })),
+      ]
+    : [];
+  // Resume of the model the session keeps, which its CLI refuses: the note says the way out.
+  const keptRefused =
+    resuming !== null &&
+    typedModel === resuming.model &&
+    chosenProvider === resuming.provider &&
+    modelAnswer !== null &&
+    "value" in modelAnswer &&
+    modelAnswer.value.check.kind === "refused";
+  useEffect(() => {
+    if (keptRefused && advanced.current) advanced.current.open = true; // why Resume is off
+  }, [keptRefused]);
   const modes = providerInfo?.permission_modes ?? [];
 
   // M5: kits, provider and mode of a new session come from the folder's last session; in
@@ -933,22 +950,27 @@ function LaunchDialog({
               "Advanced: model, switch off agents, skills, MCP servers or flows"
             )}
           </summary>
-          <label className="field">
-            Model
-            <input
-              value={model}
-              disabled={busy || chosenProvider === null}
-              placeholder={providerInfo ? `${providerInfo.title}'s default` : "the CLI's default"}
-              list={`${ids}-models`}
-              onChange={(event) => setModel(event.target.value)}
-            />
-          </label>
-          <datalist id={`${ids}-models`}>
-            {suggestions.map((one) => (
-              <option key={one} value={one} />
-            ))}
-          </datalist>
-          <ModelNote typed={typedModel} answer={modelAnswer} />
+          <div className="launch-grid">
+            <div className="field">
+              <label htmlFor={`${ids}-model`}>Model</label>
+              <SuggestField
+                id={`${ids}-model`}
+                value={model}
+                onValue={setModel}
+                suggestions={suggestions}
+                arrowLabel="Show the models"
+                listLabel="Models"
+                disabled={busy || chosenProvider === null}
+                placeholder={providerInfo ? `${providerInfo.title}'s default` : "the CLI's default"}
+              />
+              <ModelNote
+                typed={typedModel}
+                answer={modelAnswer}
+                wayOut={keptRefused ? (providerInfo?.title ?? chosenProvider) : null}
+                onDefault={() => setModel("")}
+              />
+            </div>
+          </div>
           <label className="field">
             Switch off
             <input
@@ -1073,13 +1095,37 @@ function LaunchDialog({
   );
 }
 
-// The check of the typed model under the Model field (lado.model_check's words).
-function ModelNote({ typed, answer }: { typed: string; answer: Asked<ProviderModels> }) {
+// The check of the typed model under the Model field (lado.model_check's words). `wayOut`,
+// the CLI's title, when the refused model is the one a resumed session kept: the note says
+// how to go on, as `lado start <session>` does, with a button that empties the field.
+function ModelNote({
+  typed,
+  answer,
+  wayOut,
+  onDefault,
+}: {
+  typed: string;
+  answer: Asked<ProviderModels>;
+  wayOut: string | null;
+  onDefault: () => void;
+}) {
   if (answer === null) return typed ? <span className="field-note">checking the model…</span> : null;
   if (!("value" in answer)) return <span className="field-note warn">⚠ {answer.error}</span>;
   const { kind, text } = answer.value.check;
   if (kind === "ok") return <span className="field-note ok">✓ {text}</span>;
   if (kind === "warn") return <span className="field-note warn">⚠ {text}</span>;
+  if (kind === "refused" && wayOut !== null)
+    return (
+      <div className="field-note bad">
+        <div>{text}</div>
+        <div className="way-out">
+          <span>{`The session ran on it before. Empty the field to resume on ${wayOut}'s default, or pick another model.`}</span>
+          <button type="button" className="chip-button" onClick={onDefault}>
+            {`Use ${wayOut}'s default`}
+          </button>
+        </div>
+      </div>
+    );
   if (kind === "refused") return <span className="field-note bad">{text}</span>;
   return <span className="field-note">{text}</span>;
 }

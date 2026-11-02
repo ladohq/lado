@@ -42,7 +42,7 @@ Rules for every step of LADO (not S7b, which is kit sdlc's own release):
   gives a list and the model is not in it.
 
 ### S1 — The agent's model is visible (M)
-Status: done (LAD-169, PR #194, merged into the epic branch as b377959a; 49 files, schema 35 → 36; CI 23/23, smoke on all four providers). Check open: Kilo's model in its event (State).
+Status: done (LAD-169, PR #194, merged into the epic branch as b377959a; 49 files, schema 35 → 36; CI 23/23, smoke on all four providers). Check open: Kilo's model in its event (State). Checked by hand by the human on another machine from the epic branch at c9f068e3, 2026-11-02: no remarks.
 Leftovers: carried into S2 (source `session`, Codex on top of `cli-config`, Kilo, the CLI's event against the session's model, the migration number) and S4 (Claude Code reports no effort; Codex's effort after `/model`); the rest in "Later".
 Check:
 - Unit and integration tests with the fake agent: each agent in `lado.db` has a model,

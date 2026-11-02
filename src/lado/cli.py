@@ -1478,6 +1478,16 @@ _PROBE_TAKES_NO_MORE = (
 )
 
 
+class _ProbeParser(argparse.ArgumentParser):
+    """`lado model-server probe`'s parser: its own errors (an argument of -h or --help, a
+    missing address) would name a word of argv, which may be the key; the usage and a fixed
+    text instead, exit 1."""
+
+    def error(self, message: str):
+        self.print_usage(sys.stderr)
+        self.exit(1, f"lado: {_PROBE_TAKES_NO_MORE}\n")
+
+
 def cmd_model_server_probe(args: argparse.Namespace) -> int:
     """`lado model-server probe <address> [--key]`: what the server is (lado.model_servers);
     exit 1 for no server it knows, 2 for an address it does not probe. The key is asked
@@ -2067,9 +2077,13 @@ def main(argv: list[str] | None = None) -> int:
         "model-server", help="a model server in your network: what it is, from its address"
     )
     model_server.set_defaults(func=lambda _: model_server.print_help() or 0)
-    model_server_sub = model_server.add_subparsers(dest="sub", metavar="<command>")
+    model_server_sub = model_server.add_subparsers(
+        dest="sub", metavar="<command>", parser_class=_ProbeParser
+    )
     model_server_probe = model_server_sub.add_parser(
-        "probe", help="the server's type, its models and the agent CLIs that can use it"
+        "probe",
+        help="the server's type, its models and the agent CLIs that can use it",
+        usage="%(prog)s [-h] [--key] address",  # --key takes no value
     )
     model_server_probe.add_argument(
         "address", help="e.g. 192.168.1.10:11434 or https://gw.example/llm (http:// if none)"

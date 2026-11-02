@@ -7,7 +7,7 @@ import socket
 import fake_model_server as fake
 import pytest
 
-from lado import state
+from lado import cli, state
 from lado.cli import main
 
 
@@ -159,6 +159,40 @@ def test_anything_more_on_the_command_line_is_refused_unechoed(serve, capsys, mo
     assert "s3cr3t" not in out + err
     assert server.requests == []
     assert not stdin.touched
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        ["--help=s3cr3t"],
+        ["--he=s3cr3t"],
+        ["--key", "--he=s3cr3t"],
+        ["--key", "-hs3cr3t"],  # Python 3.10: -h with an explicit argument
+    ],
+)
+def test_what_argparse_refuses_itself_is_refused_unechoed(serve, capsys, monkeypatch, given):
+    """argparse's own errors of probe (an argument of -h, a missing address) name argv."""
+    server = serve("openai")
+    stdin = Stdin("k\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    with pytest.raises(SystemExit) as exited:
+        main(["model-server", "probe", server.url, *given])
+    out, err = capsys.readouterr()
+    assert "s3cr3t" not in out + err
+    assert exited.value.code in (0, 1)  # 0: -h... printed the help (Python 3.11+)
+    if exited.value.code == 1:
+        assert err.splitlines()[-1] == f"lado: {cli._PROBE_TAKES_NO_MORE}"
+    assert server.requests == []
+    assert not stdin.touched
+
+
+def test_a_missing_address_shows_the_usage(capsys):
+    with pytest.raises(SystemExit) as exited:
+        main(["model-server", "probe"])
+    assert exited.value.code == 1
+    err = capsys.readouterr().err
+    assert err.startswith("usage: lado model-server probe [-h] [--key] address\n")
+    assert err.splitlines()[-1] == f"lado: {cli._PROBE_TAKES_NO_MORE}"
 
 
 def test_other_commands_still_name_what_they_do_not_take(capsys):

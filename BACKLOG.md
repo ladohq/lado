@@ -12,6 +12,19 @@ No entry is open.
 
 # P1: next
 
+## A project's secret given on the command line with a leading `-` is printed
+
+Size: S. Why here: a secret's value reaches the terminal, its scrollback and any log of it,
+which `lado project set --secret` promises never to do.
+
+`lado project set shop GH_TOKEN -s3cr3t --secret` prints `lado: error: unrecognized
+arguments: -s3cr3t` and exits 2: argparse takes no value that looks like an option for the
+positional `value`, and its own error repeats it. A value without the dash is refused
+unechoed (`cli._secret_value`). `lado model-server probe --key` met the same: `cli.main`
+refuses whatever `probe` does not take without repeating it. Wanted: the same refusal,
+unechoed, exit 1, for a dashed value or a word left over, with a CLI test.
+Found: 2026-11-02, branch lado/lad-154-epic/task-lad-177 (LAD-177).
+
 ## A Codex agent on gpt-5.6-sol stops at "Meet GPT-6 Sol"
 
 Size: S. Why here: every Codex agent of a user whose model is gpt-5.6-sol needs a hand in

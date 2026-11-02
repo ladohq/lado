@@ -10,6 +10,9 @@
 - **Choose the session's model.** `lado start --model` and the Model field in the launch
   window's Advanced start the session's agents on a model, checked first against the CLI's
   own list; a resume keeps it and checks it again.
+- **Find out what a model server is.** `lado model-server probe <address>` names the type
+  of a server in your network (Ollama, LM Studio, OpenAI- or Anthropic-compatible), its
+  models and which agent CLIs can use it, without generating anything; `--key` for its key.
 
 ## 0.44.1 (unreleased)
 

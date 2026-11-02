@@ -56,6 +56,7 @@ ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")  # the colours of `auth list`
 
 class OpenCodeFamily(base.Provider):
     plugin = PLUGIN
+    server_api = base.CHAT_COMPLETIONS  # an OpenAI-compatible provider in its config
     config_file_name: str  # the agent's config in its config folder, e.g. "opencode.json"
     # Text typed into OpenCode's TUI 0.2-0.7 s after the plugin's init is lost whole, and
     # no event or API says when the TUI takes input (checked by hand with OpenCode 1.18.35):

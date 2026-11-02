@@ -144,6 +144,7 @@ class CodexProvider(base.Provider):
     command = "codex"
     install_hint = "install it: `npm install -g @openai/codex`"
     tested_version = TESTED_VERSION
+    server_api = base.RESPONSES
     # Text typed in right after the start: not checked, so the first lines go on the command
     # line as Codex's own [PROMPT], submitted once the TUI is ready (after any dialog).
     capabilities = base.Capabilities(

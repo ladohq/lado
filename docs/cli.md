@@ -502,12 +502,71 @@ journal: sessions started and resumed; agents started per agent CLI and per role
 (`<role>@<kit>`, `@?` for one spawned before 0.38.0, with a note), agents ended by
 themselves, turn errors per CLI and kind; flow runs started per flow, ended, cancelled;
 gates opened per kind, closed per answer, and how many of the human's answers with a
-recommended choice took it (a cancelled or overridden gate is closed, never in that); questions to the human; messages failed and dropped; LADO's own errors. A
-breakdown lists the larger first, then by name, and wraps under itself. The first line
-names the period in UTC and says nothing is sent; `Earliest record:` follows with `--all`
-or when the earliest row is later than the period's start. It reads only, opens no
-connection and starts no statistics sender (`cli.main` does not kick after it); it
-migrates lado.db as `lado ls` does.
+recommended choice took it (a cancelled or overridden gate is closed, never in that);
+questions to the human; messages failed and dropped; LADO's own errors. A breakdown lists
+the larger first, then by name, and wraps under itself. The first line names the period
+in UTC and says nothing is sent; `Earliest record:` follows with `--all` or when the
+earliest row is later than the period's start. It reads only, opens no connection and
+starts no statistics sender (`cli.main` does not kick after it); it migrates lado.db as
+`lado ls` does.
+
+`lado model-server probe <address> [--key]` asks a model server in the human's network what
+it is (`model_servers.py`): its type (`Ollama`, `LM Studio`, `OpenAI-compatible` or
+`Anthropic-compatible`), its models, and the agent CLIs that can use it. The address may
+lack its scheme (`http://` is added and the first line says `(added http://)`) and may end
+in `/v1` or `/`, both dropped; any other path is kept, so `https://gw.example/llm` asks
+`https://gw.example/llm/v1/models`. Another scheme, a user or password, a query or a
+fragment in it is refused with exit 2. `lado model-server` alone prints its help.
+
+It sends nothing that generates, at most one request per check, each cut at 5 s (its name
+lookup included): `GET /v1/models` first, alone; when that gets an HTTP answer, at once
+`GET /api/version` (Ollama), `GET /api/v0/models` (LM Studio), one `POST` with the body
+`{}` to each of `/v1/chat/completions`, `/v1/responses` and `/v1/messages`, and a control
+`POST {}` to `/v1/lado-no-such-api`, a path no server has. A POST proves its API when the
+server refuses the empty body with 400 or 422 and a JSON object; when the control is
+refused that way too, the server answers every POST alike and no API counts. No redirect is
+followed (it would carry the key to another host); proxies and `SSL_CERT_FILE` come from
+the environment. A CLI suits the server when the server proved the API its provider
+declares (`Provider.server_api`): chat completions for OpenCode and Kilo, the Responses API
+for Codex, the Anthropic Messages API for Claude Code; the type is only shown. Exit 0:
+
+```
+http://192.168.1.10:11434 (added http://)
+type: Ollama
+models: llama3.1:8b, qwen2.5-coder:7b
+CLIs: Kilo CLI, OpenCode (chat completions); Codex CLI (Responses API)
+not: Claude Code (no Anthropic Messages API)
+```
+
+`models: none` for an empty list, `models: no list (GET /v1/models: <status> | the answer
+is larger than 4 MiB)` for a list it cannot read (not a failure); `CLIs: none` when no API
+was proven, after `APIs: cannot be told: <address> answers <status> to any POST` when the
+control was refused like an API; no `not:` line when every CLI suits. What the server
+says (its model ids, a redirect's location) is shown as one line of visible text
+(`text.one_line`). Each failure is one
+line on stderr and exit 1: `<address> does not answer (connection refused | unknown host |
+no answer in 5 s | …)`, with, in LADO's container (`LADO_CONTAINER`) for `localhost`,
+`127.0.0.0/8` or `::1`, a second line naming `http://host.docker.internal:<port>` (LADO
+does not try it); `<address>: TLS failed (<why>); a company's CA goes in the file
+SSL_CERT_FILE names`; any 401 or 403 among the answers as `<address> asks for a key
+(<status>): run lado model-server probe <address> --key` or, with a key, `<address>
+refused the key (<status>)`; and `unknown server: <address> answered, but not as an
+OpenAI-compatible, Anthropic-compatible, Ollama or LM Studio server (GET /v1/models:
+<status>)` (a redirect as `301 to <location>` without its query; for a server that refuses
+every POST alike, `; it answers <status> to any POST, so its APIs cannot be told` at the
+end).
+
+`--key` goes after the address and takes no value: the key is asked without echo on a
+terminal (`Key of the server (not shown): `), else read from stdin with one line break
+dropped (`printf '%s' "$KEY" | lado model-server probe https://gw.example/llm --key`), as
+`lado project set --secret` reads a secret. `--key <value>` is refused without repeating
+the value, an empty key too, and so is anything else the command does not take (a value
+starting with `-`, a word left over, an argument of `-h`, a missing address): where
+argparse would print a word of the command line, the usage and a fixed text instead (exit
+1). An address urllib cannot read is refused with a fixed text, never the address, which
+may hold a password (exit 2). The key is sent as `Authorization: Bearer` and `x-api-key`
+and kept nowhere: no output, log, error journal or file of `LADO_HOME`; the command never
+opens lado.db (`cli.NOT_MIGRATING`).
 
 `lado ui` prints (or opens) the local link with the token, then, when the running server
 has a link for another device, `From another machine: <link>`: it asks the server

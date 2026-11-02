@@ -5,13 +5,14 @@ Rejected at `step_ok` (gate #204, 2026-11-02): «сначала S2b» (D13; S2b 
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: S2b (LAD-176, run task/lad-176) · Next: S3a · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
+In work: none · Next: S3a · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9).
 - After some steps the human may ask the lead to help with a manual check of how the step looks; the lead then gives the branch, the folder, the commands and what to look at (gate #191, D10).
 - Each step's task gets the label `component lado` (kit sdlc's: `component kit-sdlc`) and is linked to LAD-154; LAD-80 is not touched.
 Last review: S2, 2026-11-02, base at 228a1de2 (0.44.0 + the unreleased 0.44.1 hotfix LAD-151, Codex's sandbox in the container), merged into the epic branch as 0d18c677: conflicts resolved by joining both sides (CHANGELOG: 0.45.0 above 0.44.1 (unreleased); `tests/smoke/test_smoke.py`: one import line, `CLASSES` and `SANDBOX_ERROR`); `providers/codex.py` merged without conflict; schema on `main` 35, the epic's 37 on top; `make lint`, `make test` (4826 passed, 7 skipped), integration `test_session_model.py` (3 passed), smoke collected (23), `openspec validate --specs --strict` (57) green; CI of the merge runs with S3a's pull request
+Last review: S2b, 2026-11-02, base at 228a1de2 (unchanged since S2's review); S2b merged as f2cbf119; `openspec validate --specs --strict` (57) green on the epic branch; the CI of the LAD-151 merge passed with PR #202
 
 ## Steps
 
@@ -87,7 +88,8 @@ which CLI's models the field offers comes from the session's provider. Free inpu
 check, no catalogue of LADO's own.
 
 ### S2b — The launch window's Model field: its look and small fixes (S)
-Status: in progress (LAD-176, run task/lad-176; added at S2's review on the human's word, question #2509, gate #204: «сначала S2b»)
+Status: done (LAD-176, PR #202, merged into the epic branch as f2cbf119; tweak, no schema or API change; the window's own combobox `SuggestField`, the note inside its `.field`; every resume checks the kept model, LADO's own resumes leave it stopped with the reason in the server's output and `lado update`'s (D14); CI green, review 2 rounds, 0 blockers, 4 minor declined). The human set out to check the PR's branch by hand before #207 and approved without remarks.
+Leftovers: L1, L2, E1, E2 and the reason of a LADO resume in `lado ls`/UI (D14) to "Later"; the false refusal without a CLI login to the open checks.
 Check:
 - From the human's manual check of S2 (screenshot at question #2509): the field's note
   (refusal, warning, check) stands below the field with the same gap as the other
@@ -321,6 +323,19 @@ Check:
   with the open live run of Codex.
 - Codex's path with a model list is not walked by the smoke (S2's residual risk) —
   LAD-174 — with the open live runs before the final pull request.
+- The launch window after S2b (LAD-176, declined at its review): the "Use <CLI>'s default"
+  button is in the monospace `.chip-button` font (L2); a failed or hanging model list is
+  asked again at each check, no single-flight (L1); SuggestField's list stays shown for a
+  moment when the field turns disabled (E1); the Where and Branch fields could move onto
+  `SuggestField` — with the next change of the launch window (S3b adds the server's field).
+- A session LADO's own resume (`lado update`, the container's start) left stopped because
+  its kept model left the CLI's list shows the reason only in the server's output and
+  `lado update`'s, not in `lado ls` or on the session in the UI (D14, the lead's
+  condition not taken); each such resume asks the CLI's list, up to 15 s a session, one
+  after another (E2) — LAD-176 — if the human meets it.
+- macOS smoke jobs cancelled after 15 min without a runner (PR #202, run 41496744121;
+  not our `timeout-minutes` of 20) — no task (question #2521: «нет») — a task at its
+  second occurrence.
 - Flaky Codex smoke: Codex's own background `git ls-remote` to `openai/plugins` outlives
   the test — LAD-175 (Backlog, derived from LAD-174, outside the epic) — its fix (turning
   the sync off in the agent's own Codex config) helps every step that touches `providers/`.

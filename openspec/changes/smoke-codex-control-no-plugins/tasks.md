@@ -19,6 +19,6 @@
   passes, its teardown names no process, and the control's tools still hold
   `collaboration.wait_agent`. Then the whole Codex smoke file once:
   `uv run pytest -m smoke -n0 tests/smoke/test_smoke.py -k codex`.
-- [ ] 2.3 On the pull request: CI's smoke cells `smoke ubuntu-latest codex` and
+- [x] 2.3 On the pull request: CI's smoke cells `smoke ubuntu-latest codex` and
   `smoke macos-latest codex` are green with no "processes left after the test" (the pull
   request changes `tests/smoke/`, which is off ci.yml's skip list, so the smoke runs).

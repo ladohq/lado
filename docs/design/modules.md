@@ -842,6 +842,15 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     model API) and gives a `Verdict`: `default` (no model), `ok`, `warn` (no list, with
     why) or `refused`, with the words the CLI, the API and the UI show. `verdict` gives it
     for a list read before (the server keeps each for a minute, `server/launch.py`).
+  - `model_servers.py`: what a model server is, from its address (`lado model-server
+    probe`): `address` (the root, `http://` added visibly; ValueError for one it does not
+    probe), `probe` (the model list, then Ollama's and LM Studio's own endpoints, one
+    empty POST per API and a control POST in threads, each within `TIMEOUT`, its name
+    lookup included; no redirect followed) giving a frozen `Probe` (address, type, proven
+    APIs, models or no list with why) or a `ProbeError` with its hint (the container's
+    `host.docker.internal`), and `lines`, the command's output. `Probe.clis` names the
+    CLIs whose provider's `server_api` (`providers/base.py`, one of `SERVER_APIS`) the
+    server proved; standard library only, the key only in the requests' headers.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory);
     a session's model as a `PowerTable` (rows of `LEVELS`, each a `PowerRow` of a CLI and a
     model; one JSON document in `sessions.power`, the format the user's and the project's

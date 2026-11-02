@@ -171,6 +171,13 @@ model no longer brings them. It keeps the model each request asks for too (`Endp
 per provider, a session started with a model (`lado start --model`; OpenCode and Kilo
 without the test's `--model`, as the CLI itself) asks the endpoint for that model.
 
+The model servers of `lado model-server probe`'s tests are `tests/fake_model_server.py`
+(standard library only): a `Server` on `127.0.0.1` with a profile (`openai`, `ollama`,
+`lmstudio`, `anthropic`, a gateway that answers 400 to every path, a redirect, one that
+hangs, …), optionally behind a key and under a gateway's path, that keeps each request with
+its headers and body; also a script, `python fake_model_server.py <profile> <port file>
+[<key>]`, for the integration test that runs the real command against it.
+
 Container tests (`tests/container/`, marker `container`) run LADO's image (`docker/`) with
 real Docker and no model, driving the `docker` CLI from the host against an image built
 already (`make docker`; `LADO_TEST_IMAGE`, else `lado:local`); they skip when Docker does

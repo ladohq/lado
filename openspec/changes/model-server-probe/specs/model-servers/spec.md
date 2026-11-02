@@ -1,3 +1,9 @@
+## Purpose
+
+What a model server in the human's network is, from its address and, when it asks for one,
+its key: its type, its models and the agent CLIs that can use it, proven by requests that
+generate nothing, with one clear line for each way it can fail and the key kept nowhere.
+
 ## ADDED Requirements
 
 ### Requirement: lado model-server probe names a server's type, models and CLIs

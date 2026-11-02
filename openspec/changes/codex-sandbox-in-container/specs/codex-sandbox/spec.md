@@ -49,8 +49,8 @@ its mode unchanged (`-a on-request` for `default`), and SHALL warn at the launch
 ### Requirement: The container's warning names the agent and the cause
 
 The launch warning of a Codex agent that runs without its sandbox in LADO's container SHALL
-be one line naming the agent and quoting the first line of the probe's stderr: `Codex's
-sandbox cannot start here (<line>): Codex agent <name> runs without it, and LADO's
+be one line naming the agent and quoting the first line of the probe's stderr that is not
+one of Codex's own `WARNING:` lines: `Codex's sandbox cannot start here (<line>): Codex agent <name> runs without it, and LADO's
 container is its only boundary`.
 
 #### Scenario: The warning's text
@@ -64,8 +64,8 @@ container is its only boundary`.
 
 Outside LADO's container, when the probe says Codex's sandbox cannot start, LADO SHALL
 launch the Codex agent as it would with a working sandbox, and the launch SHALL warn in one
-line naming the agent and quoting the first line of the probe's stderr: `Codex's sandbox
-cannot start here (<line>): Codex agent <name> asks before each shell command;
+line naming the agent and quoting the first line of the probe's stderr that is not one of
+Codex's own `WARNING:` lines: `Codex's sandbox cannot start here (<line>): Codex agent <name> asks before each shell command;
 docs/install.md says how to allow it, or use bypassPermissions`.
 
 #### Scenario: A Linux host without user namespaces

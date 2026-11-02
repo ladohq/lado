@@ -98,8 +98,9 @@ workers (Later) run LADO's image, where this is the behaviour they need.
 - D1. The probe is Codex's own `codex sandbox -- true`, run with the agent's `CODEX_HOME`
   and environment after its config.toml is written, so it meets the very sandbox and
   profile the agent would get; any nonzero exit, a timeout (10 s) or a failure to run it
-  means the sandbox cannot start, and the warning quotes the first line of its stderr. No
-  check of kernels, sysctls or Docker settings: Codex is the one source.
+  means the sandbox cannot start, and the warning quotes the first line of its stderr that
+  is not one of Codex's own `WARNING:` lines (Codex may print one about its helper
+  binaries before bubblewrap's error). No check of kernels, sysctls or Docker settings: Codex is the one source.
 - D2. Linux only (`sys.platform == "linux"`): only there does Codex's sandbox need
   bubblewrap; macOS's works, and native Windows is refused by LADO.
 - D3. The fallback is `--sandbox danger-full-access` on the argv and no

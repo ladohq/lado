@@ -134,6 +134,15 @@ class FakeProvider(base.Provider):
     def continue_output(self, text: str) -> str | None:
         return text
 
+    def model_list(self, env) -> base.ModelList:
+        # Its list is FAKE_AGENT_MODELS of the agents' environment (comma-separated); none
+        # without it.
+        listed = env.get("FAKE_AGENT_MODELS")
+        if listed is None:
+            return base.ModelList(why="the fake agent gives no list of models")
+        models = tuple(m.strip() for m in listed.split(",") if m.strip())
+        return base.ModelList(models=models, command="FAKE_AGENT_MODELS")
+
 
 ASKS_FIRST = 'Fake agent asks a question first: type "yes" in its terminal'
 

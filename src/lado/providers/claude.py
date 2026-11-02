@@ -10,7 +10,7 @@ import shutil
 import stat
 import sys
 import tempfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
 from lado import state
@@ -249,6 +249,11 @@ class ClaudeProvider(base.Provider):
         if spec.model:
             cmd += ["--model", spec.model]
         return base.Launch(cmd, model=self.session_choice(spec))
+
+    def model_list(self, env: Mapping[str, str]) -> base.ModelList:
+        return base.ModelList(
+            ALIASES, why=f"{self.title} gives no list of models beyond its aliases"
+        )
 
     def same_model(self, chosen: str, reported: str) -> bool:
         """An alias is the same as a full name of its family (`opus`: `claude-opus-5-5`, with

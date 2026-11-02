@@ -148,6 +148,10 @@ Check:
   private network over `http://` gives a loud warning before the start.
 - The session keeps the server's address (and its key file): the schema migration and the
   way back (rules above); removing the session removes its key file.
+- From S2 (F2, moved here from S4 at S3a's review: the server is the first new key of a
+  power-table row, before S4's effort): `PowerTable.from_json` reads a row with an unknown
+  or missing key and a broken row without breaking every session (or the schema is bumped
+  with a migration of the rows); a unit test of each case. S4 then only adds its key.
 - Integration test with the fake agent and a fake server; S1's card shows the model with
   the server as its source.
 - The human's manual check on a real server (D7: which, they will add) before the merge.

@@ -6,7 +6,9 @@
   `test_permission_modes`, `test_a_worker_in_the_sandbox_may_commit_but_not_change_git_hooks`
   and `test_bypassing_the_sandbox_needs_no_permission_profile` stay green unchanged.
   Done in `tests/conftest.py` (`codex_sandbox`), as `tests/test_runtime.py` and others
-  launch Codex agents too.
+  launch Codex agents too. The real-CLI layers take the real probe back
+  (`real_clis.isolated`), and the Codex smoke checks its start warned as the real probe
+  answered.
 - [x] 1.2 `tests/test_codex.py`, requirement "LADO tries Codex's sandbox before it launches a
   Codex agent on Linux": the probe is called with the agent's `CODEX_HOME` after
   config.toml is written (the fake reads it and sees `default_permissions`), for modes

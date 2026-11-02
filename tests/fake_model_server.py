@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sys
 import threading
+from email.message import Message
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import NamedTuple
@@ -116,7 +117,7 @@ SPECIAL = ("redirect", "hang")
 class Request(NamedTuple):
     method: str
     path: str
-    headers: dict[str, str]
+    headers: Message  # a header's name in any case
     body: bytes
 
 
@@ -143,7 +144,7 @@ class Server:
             def answer(self):
                 length = int(self.headers.get("Content-Length") or 0)
                 body = self.rfile.read(length)
-                fake.requests.append(Request(self.command, self.path, dict(self.headers), body))
+                fake.requests.append(Request(self.command, self.path, self.headers, body))
                 if profile == "hang":
                     fake.closing.wait()
                     return

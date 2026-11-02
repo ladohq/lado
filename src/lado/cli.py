@@ -52,7 +52,8 @@ OPEN_ON_HOST = "Open it in your browser on the host."  # `lado ui` in a containe
 # `lado telemetry` keeps its files outside lado.db and reads it only.
 # `lado uninstall` shows an older lado.db as it is and stops (so migrates) itself.
 # `lado bug-report` reports lado.db's schema as it is, as `lado doctor`.
-NOT_MIGRATING = ("stop", "doctor", "telemetry", "uninstall", "bug-report")
+# `lado model-server` asks a server over the network and keeps nothing, lado.db untouched.
+NOT_MIGRATING = ("stop", "doctor", "telemetry", "uninstall", "bug-report", "model-server")
 
 
 def _check_project_args(args: argparse.Namespace) -> None:
@@ -1150,9 +1151,16 @@ def _secret_value(args: argparse.Namespace) -> str:
             "pipe it in"
         )
     projects.get(args.id)
+    return _read_secret(f"Value of {args.name} (not shown): ")
+
+
+def _read_secret(prompt: str) -> str:
+    """A secret asked once with `prompt` without echo on a terminal, else the whole of
+    stdin (up to agent_env.MAX_VALUE and a line break, and a little more for its reader to
+    refuse) with one line break at its end dropped; "" for Ctrl-D at the prompt."""
     if sys.stdin.isatty():
         try:
-            return getpass.getpass(f"Value of {args.name} (not shown): ")
+            return getpass.getpass(prompt)
         except EOFError:  # Ctrl-D at the prompt: no value, refused as an empty one
             print(file=sys.stderr)  # the prompt's line ends
             return ""
@@ -1453,6 +1461,42 @@ def cmd_stats(args: argparse.Namespace) -> int:
     from lado import stats
 
     for line in stats.lines(None if args.all else args.days or stats.DEFAULT_DAYS):
+        print(line)
+    return 0
+
+
+_NO_VALUE = object()  # `--key` given without a value, as it must be
+
+
+def cmd_model_server_probe(args: argparse.Namespace) -> int:
+    """`lado model-server probe <address> [--key]`: what the server is (lado.model_servers);
+    exit 1 for no server it knows, 2 for an address it does not probe. The key is asked
+    without echo or read from stdin, never taken from argv, and kept nowhere."""
+    from lado import model_servers
+
+    try:
+        root, _ = model_servers.address(args.address)
+    except ValueError as exc:
+        print(f"lado: {exc}", file=sys.stderr)
+        return 2
+    key = None
+    if args.key is not None:
+        if args.key is not _NO_VALUE:
+            raise runtime.LadoError(
+                "a server's key is never given on the command line (ps and the shell's history "
+                f"keep it); run lado model-server probe {root} --key and type it, or pipe it in"
+            )
+        key = _read_secret("Key of the server (not shown): ")
+        if not key:
+            raise runtime.LadoError("the key is empty")
+    try:
+        found = model_servers.probe(args.address, key)
+    except model_servers.ProbeError as exc:
+        for line in (str(exc), exc.hint):
+            if line:
+                print(f"lado: {line}", file=sys.stderr)
+        return 1
+    for line in model_servers.lines(found):
         print(line)
     return 0
 
@@ -2008,6 +2052,25 @@ def main(argv: list[str] | None = None) -> int:
     )
     period.add_argument("--all", action="store_true", help="everything kept")
     stats_cmd.set_defaults(func=cmd_stats)
+
+    model_server = commands.add_parser(
+        "model-server", help="a model server in your network: what it is, from its address"
+    )
+    model_server.set_defaults(func=lambda _: model_server.print_help() or 0)
+    model_server_sub = model_server.add_subparsers(dest="sub", metavar="<command>")
+    model_server_probe = model_server_sub.add_parser(
+        "probe", help="the server's type, its models and the agent CLIs that can use it"
+    )
+    model_server_probe.add_argument(
+        "address", help="e.g. 192.168.1.10:11434 or https://gw.example/llm (http:// if none)"
+    )
+    model_server_probe.add_argument(
+        "--key",
+        nargs="?",
+        const=_NO_VALUE,
+        help="the server asks for a key: asked without echo, or read from stdin; never given here",
+    )
+    model_server_probe.set_defaults(func=cmd_model_server_probe)
 
     bug_report_cmd = commands.add_parser(
         "bug-report", help="print a bug report for a new GitHub issue, and open it"

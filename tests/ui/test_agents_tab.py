@@ -107,6 +107,35 @@ def test_an_agents_page_shows_its_model_and_effort_and_follows_the_cli(
     shot(page, "named")
 
 
+def test_an_agents_page_says_the_session_s_model_or_that_it_is_for_another_cli(
+    page: Page, server, repo, shot
+):
+    """An agent on the session's model, and a worker of another CLI, which runs its CLI's
+    default (openspec change session-model)."""
+    page.set_viewport_size({"width": 1600, "height": 1000})
+    session, _ = session_with_worker(repo)
+    state.set_model(session, "supervisor", state.Choice("gpt-5.6-sol", state.SESSION), None)
+    note = "the session's model gpt-5.6-sol is for Codex CLI"
+    state.set_model(session, "w1", state.Choice(None, state.CLI_DEFAULT, note), None)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/agents/supervisor")
+    page.get_by_role("button", name="Collapse terminals").click()
+    supervisor = page.get_by_role("region", name="Agent supervisor")
+    expect(supervisor.locator(".agent-title")).to_contain_text("supervisor · fake · gpt-5.6-sol")
+    expect(supervisor.locator("dl.agent-facts")).to_contain_text(
+        "Modelgpt-5.6-sol · chosen for the session"
+    )
+    shot(page, "session")
+    page.get_by_role("navigation", name="Agents").get_by_role("link", name="w1").click()
+    worker = page.get_by_role("region", name="Agent w1")
+    expect(worker.locator(".agent-title")).to_contain_text("worker · fake · CLI default model")
+    facts = worker.locator("dl.agent-facts")
+    expect(facts).to_contain_text(f"ModelCLI default, {note}")
+    shot(page, "other-cli")
+    state.report_model(session, "w1", "fake-large", None)
+    expect(facts).to_contain_text(f"Modelfake-large · CLI default, {note}")
+
+
 def test_in_a_narrow_column_the_agents_take_it_and_a_page_is_not_squeezed(
     page: Page, server, repo, shot
 ):

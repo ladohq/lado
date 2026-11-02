@@ -68,13 +68,17 @@ class _Server(MCPServer):
         early = self._lado_take() if name == "read_messages" else []
         try:
             result = await self._lado_call(name, arguments, context)
-        except ToolError as error:
+        except Exception as error:  # a ToolError, or an MCPError the library passes on
             text = runtime.mid_turn_text(early + self._lado_take())
             if not text:
                 raise
             raise ToolError(f"{error}\n\n{text}") from error
+        if not isinstance(result, CallToolResult):
+            # No content to carry lines (an input request): the queue waits for the next
+            # call. read_messages, which took it before, always gives a CallToolResult.
+            return result
         text = runtime.mid_turn_text([m for m in early if not m.to_read] + self._lado_take())
-        if not text or not isinstance(result, CallToolResult):
+        if not text:
             return result
         structured = result.structured_content
         return result.model_copy(

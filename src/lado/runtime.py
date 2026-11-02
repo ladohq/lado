@@ -1499,7 +1499,8 @@ def send_message(
             "write the details to an artifact (write_artifact) and attach it"
         )
     attachments = artifacts.resolve_attachments(session, sender, attached)
-    if recipient != state.HUMAN:
+    # The human is no agent: messages to them stay delivered, never read (post).
+    if state.HUMAN not in (sender, recipient):
         _refuse_while_waiting(session, sender, recipient)
     return post(session, sender, recipient, summary, body, or_human=True, attachments=attachments)
 

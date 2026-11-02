@@ -7,6 +7,8 @@ from pathlib import Path
 import agent_helpers
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.shared.exceptions import MCPError
+from mcp.types import InputRequiredResult
 
 from lado import mcp_server, runtime, state, tmux
 
@@ -281,6 +283,38 @@ def test_a_message_to_the_human_carries_the_queue_and_goes(repo, fake_tmux):
     result = asyncio.run(server.call_tool("send_message", {"to": "human", "summary": "x done"}))
     assert result.structured_content["lado_messages"] == _mid_turn([report])
     assert [m.summary for m in state.list_messages("s") if m.recipient == state.HUMAN] == ["x done"]
+
+
+def test_a_result_that_cannot_carry_lines_leaves_the_queue_waiting(repo, fake_tmux, monkeypatch):
+    _busy_supervisor(repo)
+    runtime.send_message("s", "w1", "supervisor", "DONE")
+    asks = InputRequiredResult(request_state="r")
+
+    async def asking(self, name, arguments, context):
+        return asks
+
+    monkeypatch.setattr(mcp_server._Server, "_lado_call", asking)
+    server = mcp_server.build("s", "supervisor")
+    assert asyncio.run(server.call_tool("list_agents", {})) is asks
+    assert [m.state for m in state.list_messages("s")] == [state.PENDING]
+
+
+def test_read_messages_that_fails_otherwise_still_carries_what_it_took(
+    repo, fake_tmux, monkeypatch
+):
+    _busy_supervisor(repo)
+    runtime.send_message("s", "w1", "supervisor", "DONE")
+    [line] = state.list_messages("s")
+
+    async def failing(self, name, arguments, context):
+        raise MCPError(-32603, "it broke")
+
+    monkeypatch.setattr(mcp_server._Server, "_lado_call", failing)
+    server = mcp_server.build("s", "supervisor")
+    with pytest.raises(ToolError) as error:
+        asyncio.run(server.call_tool("read_messages", {}))
+    assert "it broke" in str(error.value)
+    assert str(error.value).endswith(_mid_turn([line]))
 
 
 def test_finish_worker_reports_what_it_removed(repo, fake_tmux):

@@ -1139,6 +1139,14 @@ def test_a_message_to_the_human_is_never_refused_for_a_waiting_one(repo, fake_tm
     assert runtime.send_message("s", "supervisor", state.HUMAN, "x done").startswith("delivered")
 
 
+def test_a_message_from_the_human_is_never_refused_for_one_waiting_for_them(repo, fake_tmux):
+    """The human's messages stay delivered, never read: one to read never stops them."""
+    _session_with_worker(repo)
+    runtime.send_message("s", "supervisor", state.HUMAN, "which one?", "a or b")
+    runtime.send_message("s", state.HUMAN, "supervisor", "a")
+    assert [m.summary for m in state.list_messages("s") if m.sender == state.HUMAN] == ["a"]
+
+
 def test_every_agent_is_told_where_mid_turn_messages_come_from(repo, fake_tmux):
     assert "arrives with the result of your next `lado` tool call" in runtime.MESSAGING
     runtime.start_session(str(repo), "s", None, provider="claude")

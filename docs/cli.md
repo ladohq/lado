@@ -97,7 +97,14 @@ lado project unset <id> <NAME>`), a value over 64 KiB or with a NUL, an unknown 
 folder there, its `secrets` or the secret's file (`<path> is a symbolic link: LADO writes
 and removes a project's secrets only in its own folders`); a write the disk refuses keeps
 the old value (`could not write the secret <NAME> of <id>: <reason>`). No refusal holds the
-value. `lado project unset <id> NAME` removes a plain variable or a secret with `Removed
+value. A command line of `lado project set` that argparse refuses (a word it does not take,
+so a value starting with `-` before `--`, plain or secret, an argument given to `--secret`,
+`-h` or `--help` as `--secret=…`, a missing id or name) prints the command's usage and
+`lado project set takes <id> <NAME>, a value and --secret, nothing more; a value starting
+with - goes after -- (lado project set <id> <NAME> -- -v); a secret's value is never given
+on the command line (ps and the shell's history keep it): run lado project set <id> <NAME>
+--secret and type it, or pipe it in` on stderr, naming none of its words, exit 1, reading
+and storing nothing; `-h` or `--help` alone prints its help. `lado project unset <id> NAME` removes a plain variable or a secret with `Removed
 <NAME> from project <id>.` and `Agents started from now on do not get it.`, or, while
 sessions of the project run, `Agents started from now on do not get it; running sessions of
 <id> keep the old environment until restarted: <names>`; a name the project lacks is exit 1

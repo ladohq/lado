@@ -264,7 +264,9 @@ def provider_infos(project: str | None = None) -> list[models.ProviderInfo]:
 
 
 # Seconds the server keeps a provider's list of models (Provider.model_list): typing in the
-# Model field checks each text against it, without running the CLI's command again.
+# Model field checks each text against it, without running the CLI's command again. Only a
+# list it could read: one that could not be read (a command that failed or ran over its
+# time, a CLI with aliases only) is read again at the next check, as the CLI may be fixed.
 MODEL_LIST_KEPT = 60
 _model_lists: dict[tuple[str, str | None], tuple[float, providers.base.ModelList]] = {}
 _model_lists_lock = threading.Lock()
@@ -279,8 +281,8 @@ def provider_models(
     provider: providers.Provider, model: str, project: str | None = None
 ) -> models.ProviderModels:
     """The CLI's aliases and list of models, read in the environment of the agents of
-    `project` (or of none) as a start reads it and kept MODEL_LIST_KEPT seconds, and the
-    check of `model` against them (lado.model_check); NoSuchProject for an unknown
+    `project` (or of none) as a start reads it and, once read, kept MODEL_LIST_KEPT seconds,
+    and the check of `model` against them (lado.model_check); NoSuchProject for an unknown
     `project`, LadoError for an environment that cannot be read."""
     if project is not None:
         projects.get(project)
@@ -292,8 +294,9 @@ def provider_models(
     else:
         env = runtime.agents_env(runtime.agent_layers(project), provider)
         listed = provider.model_list(env)
-        with _model_lists_lock:
-            _model_lists[key] = (now, listed)
+        if listed.models is not None:
+            with _model_lists_lock:
+                _model_lists[key] = (now, listed)
     verdict = model_check.verdict(provider, model, listed)
     return models.ProviderModels(
         aliases=list(listed.aliases),

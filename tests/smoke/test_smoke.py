@@ -396,14 +396,18 @@ def _subagent_tools(names: list[str]) -> list[str]:
 def test_a_codex_agent_gets_none_of_codex_s_own_subagents(
     smoke_provider, smoke_repo, fake_endpoint, codex_home
 ):
-    """With a model whose metadata gives Codex's subagents, a plain `codex exec` offers it
-    `collaboration.wait_agent`; a LADO agent's first request offers no subagent tool."""
+    """With a model whose metadata gives Codex's subagents, a plain `codex exec` (its plugins
+    off) offers it `collaboration.wait_agent`; a LADO agent's first request offers no
+    subagent tool."""
     config = codex_home / "config.toml"
     config.write_text(
         re.sub(r'(?m)^model = ".*"$', f'model = "{SUBAGENT_MODEL}"', config.read_text())
     )
+    # Plugins off: Codex 0.162 syncs OpenAI's curated plugins catalogue at its start in the
+    # background (`git ls-remote https://github.com/openai/plugins.git`, then a clone);
+    # `codex exec` ends before it, and the orphaned git outlived the test (LAD-175).
     control = subprocess.run(
-        ["codex", "exec", "--skip-git-repo-check", "hi"],
+        ["codex", "exec", "--skip-git-repo-check", "-c", "features.plugins=false", "hi"],
         cwd=smoke_repo,
         env={**os.environ, "CODEX_HOME": str(codex_home)},
         stdin=subprocess.DEVNULL,

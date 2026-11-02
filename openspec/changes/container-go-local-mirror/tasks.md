@@ -42,5 +42,5 @@
   (No Docker on the developer's machine: the fixture, the mirror's readiness wait and the
   installs' shell were run outside Docker with mise 2026.10.13 instead, see build-report;
   the test in the image is proven by 4.3.)
-- [ ] 4.3 On the pull request: CI's `container (amd64)` and `container (arm64)` are green,
+- [x] 4.3 On the pull request: CI's `container (amd64)` and `container (arm64)` are green,
   and the Go test takes seconds (the job log's timestamps).

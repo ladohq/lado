@@ -473,7 +473,7 @@ def test_the_migration_marks_the_windows_of_the_agents_there_as_opened(lado_home
     db.close()
     assert "window_at" not in columns
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (34, 36)
+    assert (migrated.before, migrated.after) == (34, state.SCHEMA_VERSION)
     agent = state.get_agent("s", "w1")
     assert agent.window_at == agent.created_at != ""
 
@@ -521,7 +521,7 @@ def test_the_migration_gives_the_agents_there_the_clis_default(lado_home):
     db.close()
     assert "model" not in columns
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (35, 36)
+    assert (migrated.before, migrated.after) == (35, state.SCHEMA_VERSION)
     assert _model(state.get_agent("s", "w1")) == CLI_DEFAULT_MODEL
 
 
@@ -552,13 +552,56 @@ def test_set_model_writes_the_launchs_choice(lado_home):
         ("cli", None, "CLI default"),
         ("cli-config", None, "your Codex config"),
         ("cli-config", "profile work", "your Codex config, profile work"),
-        ("session", None, "session"),  # a newer LADO's token: shown as it is
-        ("session", "x", "session, x"),
+        ("session", None, "chosen for the session"),
+        ("server", None, "server"),  # a newer LADO's token: shown as it is
+        ("server", "x", "server, x"),
     ],
 )
 def test_source_words(source, detail, words):
     assert state.source_words(source, detail, "Codex") == words
     assert state.source_words(source, detail, "Codex CLI") == words  # the CLI's own name
+
+
+def test_power_table_round_trips():
+    table = state.PowerTable.single("codex", "gpt-5.6-sol")
+    assert set(table.rows) == {"light", "normal", "heavy"}
+    assert all(row == state.PowerRow("codex", "gpt-5.6-sol") for row in table.rows.values())
+    assert table.row() == table.rows["normal"]
+    assert json.loads(table.to_json())["normal"] == {"cli": "codex", "model": "gpt-5.6-sol"}
+    assert state.PowerTable.from_json(table.to_json()) == table
+
+
+def test_a_session_keeps_its_power(lado_home):
+    table = state.PowerTable.single("codex", "gpt-5.6-sol")
+    state.add_session(state.Session("s", "/r", None, provider="codex", power=table))
+    state.add_session(state.Session("t", "/r", None, provider="codex"))
+    assert state.get_session("s").power == table
+    assert state.get_session("t").power is None
+    stopped = state.get_session("s")
+    state.stop_session("s")
+    stopped.power = None
+    assert state.resume_session(stopped, "")
+    assert state.get_session("s").power is None
+
+
+def test_the_migration_gives_sessions_no_power(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="codex"))
+    agent_helpers.schema_before(37)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    columns = _session_columns(db)
+    db.close()
+    assert "power" not in columns
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (36, 37)
+    assert state.get_session("s").power is None
+
+
+def test_a_launch_records_a_source_with_no_name(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="codex"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
+    note = "the session's model gpt-5.6-sol is for Codex CLI"
+    state.set_model("s", "w1", state.Choice(None, state.CLI_DEFAULT, note), None)
+    assert _model(state.get_agent("s", "w1"))[:3] == (None, "cli", note)
 
 
 def _codex_agent_with_a_config_model():
@@ -653,7 +696,7 @@ def test_the_migration_makes_the_project_variables_table_as_a_new_database_has_i
     assert db.execute(PROJECT_VARIABLES_TABLE).fetchone() is None
     db.close()
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (33, 36)
+    assert (migrated.before, migrated.after) == (33, state.SCHEMA_VERSION)
     assert migrated.backup == lado_home / "backups" / "lado.db.schema-33"
     with state.connect() as db:
         assert db.execute(PROJECT_VARIABLES_TABLE).fetchone()[0] == fresh
@@ -1124,6 +1167,10 @@ def _agent_columns(db: sqlite3.Connection) -> list[str]:
     return [row[1] for row in db.execute("PRAGMA table_info(agents)")]
 
 
+def _session_columns(db: sqlite3.Connection) -> list[str]:
+    return [row[1] for row in db.execute("PRAGMA table_info(sessions)")]
+
+
 def _schema(path: Path) -> int:
     with contextlib.closing(sqlite3.connect(path)) as db:
         return db.execute("PRAGMA user_version").fetchone()[0]
@@ -1144,8 +1191,8 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
-        columns = _agent_columns(db)
-    assert "model" not in columns  # the content before the migration
+        columns = _session_columns(db)
+    assert "power" not in columns  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -1197,7 +1244,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert "model" not in _agent_columns(db)  # rolled back
+        assert "power" not in _session_columns(db)  # rolled back
 
 
 def test_no_pending_migration_without_a_database(lado_home):

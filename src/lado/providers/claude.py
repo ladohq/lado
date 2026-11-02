@@ -142,6 +142,7 @@ class ClaudeProvider(base.Provider):
     command = "claude"
     install_hint = "install it: https://docs.anthropic.com/en/docs/claude-code"
     tested_version = TESTED_VERSION
+    server_api = base.ANTHROPIC_MESSAGES
     capabilities = base.Capabilities(
         status_events=True,
         permission_event=True,

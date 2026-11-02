@@ -25,6 +25,22 @@ def test_registry():
         providers.get("nope")
 
 
+def test_each_provider_declares_its_server_api():
+    apis = {n: providers.get(n).server_api for n in providers.names()}
+    assert apis == {
+        "claude": base.ANTHROPIC_MESSAGES,
+        "codex": base.RESPONSES,
+        "kilo": base.CHAT_COMPLETIONS,
+        "opencode": base.CHAT_COMPLETIONS,
+    }
+    assert (base.CHAT_COMPLETIONS, base.RESPONSES, base.ANTHROPIC_MESSAGES) == (
+        "chat completions",
+        "Responses API",
+        "Anthropic Messages API",
+    )
+    assert base.Provider.server_api == ""  # a stand-in that declares none is left out
+
+
 def test_the_cli_takes_the_turn_end_hook_output_once_printed_for_claude_and_codex_only():
     taken = {n: providers.get(n).capabilities.output_taken_when_printed for n in providers.names()}
     assert taken == {"claude": True, "codex": True, "kilo": False, "opencode": False}

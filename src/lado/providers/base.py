@@ -262,6 +262,13 @@ class ModelList:
     why: str = ""
 
 
+# The APIs of a model server an agent CLI can speak (lado.model_servers), in the order they
+# are named.
+CHAT_COMPLETIONS = "chat completions"  # OpenAI's POST /v1/chat/completions
+RESPONSES = "Responses API"  # OpenAI's POST /v1/responses
+ANTHROPIC_MESSAGES = "Anthropic Messages API"  # POST /v1/messages
+SERVER_APIS = (CHAT_COMPLETIONS, RESPONSES, ANTHROPIC_MESSAGES)
+
 MODEL_LIST_TIMEOUT = 15  # seconds a CLI's list command may take; then it is killed
 NO_MODEL_LIST = "LADO knows no list of this CLI's models"
 
@@ -329,6 +336,8 @@ class Provider(ABC):
     capabilities: Capabilities
     # The values of `lado start --permission-mode` this provider honours.
     permission_modes: tuple[str, ...]
+    # The model server API its CLI speaks (one of SERVER_APIS); "" for none.
+    server_api: str = ""
 
     def check_permission_mode(self, mode: str | None) -> None:
         """Raise ValueError for a permission mode this provider cannot honour."""

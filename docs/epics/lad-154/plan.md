@@ -5,7 +5,7 @@ Rejected at `step_ok` (gate #204, 2026-11-02): «сначала S2b» (D13; S2b 
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: S3a (LAD-177, run task/lad-177) · Next: S3b · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
+In work: none · Next: S3b (waits at `step_ok`: its check changed by D15, the real server for the manual check, Q2) · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9).
@@ -13,6 +13,7 @@ Standing rules of the human:
 - Each step's task gets the label `component lado` (kit sdlc's: `component kit-sdlc`) and is linked to LAD-154; LAD-80 is not touched.
 Last review: S2, 2026-11-02, base at 228a1de2 (0.44.0 + the unreleased 0.44.1 hotfix LAD-151, Codex's sandbox in the container), merged into the epic branch as 0d18c677: conflicts resolved by joining both sides (CHANGELOG: 0.45.0 above 0.44.1 (unreleased); `tests/smoke/test_smoke.py`: one import line, `CLASSES` and `SANDBOX_ERROR`); `providers/codex.py` merged without conflict; schema on `main` 35, the epic's 37 on top; `make lint`, `make test` (4826 passed, 7 skipped), integration `test_session_model.py` (3 passed), smoke collected (23), `openspec validate --specs --strict` (57) green; CI of the merge runs with S3a's pull request
 Last review: S2b, 2026-11-02, base at 228a1de2 (unchanged since S2's review); S2b merged as f2cbf119; `openspec validate --specs --strict` (57) green on the epic branch; the CI of the LAD-151 merge passed with PR #202
+Last review: S3a, 2026-11-02, base at 84c8f7c4 (hotfixes LAD-175, LAD-172; `main`'s heading is now `## 0.45.0 (unreleased)`), merged into the epic branch as d6ded361: CHANGELOG resolved into one 0.45.0 section (the epic's lines under `### New`, `main`'s under `### Fixed`); schema on `main` 35, the epic's 37; `make lint`, `make test` (4958 passed, 7 skipped), integration of the merged files (17 passed), `openspec validate --specs --strict` (59) green
 
 ## Steps
 
@@ -111,7 +112,8 @@ Advanced section on this field's component, so it comes before S3a. A widening b
 the Model field (other fields of the window) is a question to the human.
 
 ### S3a — Find out what a model server is (M)
-Status: in progress (LAD-177, run task/lad-177)
+Status: done (LAD-177, PR #203, merged into the epic branch as cf072b9d; `lado model-server probe <address> [--key]`, new spec `model-servers`, `Provider.server_api`; no schema, API or UI change; a control POST to a path that cannot exist tells a gateway answering 400 to everything (D16); the key is part of the server, asked without echo or read from stdin, never in arguments (D15, replaces D4); review 4 local and 2 external rounds, 8 findings fixed, E5 (the key printed through `--help`) closed by the parser's own `error()`; CI 23/23; the openspec archive tried before the review: no return after merge_ok).
+Leftovers: E3 (no warning when the key goes over `http://`) and D15 into S3b; D15 into S5a; F3 (a key over 64 KiB) to "Later"; found on the way: `lado project set --secret` prints a value starting with `-` (a question to the human: a task and a hotfix to `main`).
 Check:
 - Against fake servers in tests (an OpenAI-compatible `/v1/models`, Ollama, LM Studio, an
   Anthropic-compatible one): given only an address (and a key by name, D4), LADO names
@@ -133,18 +135,25 @@ Check:
   agents on it: the server goes into each agent's config content as an OpenAI-compatible
   provider; the key's value reaches the agent only through its environment, never the
   config file (the canary approach of LAD-116); before the start LADO checks the server
-  answers and the model is there, and refuses loudly otherwise; a key named but found
-  neither in LADO's nor in the project's secrets refuses before the start, naming where
-  to create it; an agent of a CLI the server does not suit (a Claude or Codex worker in
-  that session) is refused at its start with a text naming the server's CLIs.
-- The session keeps the server's address and the key's name: the schema migration and the
-  way back (rules above).
+  answers and the model is there (S3a's probe), and refuses loudly otherwise; an agent of
+  a CLI the server does not suit (a Claude or Codex worker in that session) is refused at
+  its start with a text naming the server's CLIs.
+- From S3a (D15, replacing D4): the key is part of the server, not a secret's name. It is
+  given as S3a's `--key` does (without echo, or from stdin; never in arguments, a URL or
+  `lado.db`) and kept for the session in a file of its own under `LADO_HOME` (mode 600),
+  read only to put it in the environment of that server's agents; it never reaches
+  LADO's shared `secrets/` (they go to every agent). The launch window asks for it with
+  the address (a password field), on `SuggestField` (S2b).
+- From S3a (E3, declined there): a key sent to an address that is not `localhost`/a
+  private network over `http://` gives a loud warning before the start.
+- The session keeps the server's address (and its key file): the schema migration and the
+  way back (rules above); removing the session removes its key file.
 - Integration test with the fake agent and a fake server; S1's card shows the model with
   the server as its source.
 - The human's manual check on a real server (D7: which, they will add) before the merge.
 - `docs/install.md` (local models, Docker), `docs/cli.md`, `docs/design/ui.md`.
 Notes: the core value of the epic with S1–S2. Where the server is kept before S5a: the
-session (an address and a key name in the launch window and `lado start`).
+session (an address and its key file, from the launch window and `lado start`).
 
 ### S4 — Effort with the model (S)
 Status: planned
@@ -172,11 +181,14 @@ no common scale.
 Status: planned
 Check:
 - A store of the user's settings on the server (in `lado.db` or `LADO_HOME`; the
-  analyst's call); a `lado` command adds a model server by address (S3a's probe, a key by
-  name), lists and removes it; `lado start` takes a saved server by name; `lado doctor`
-  checks the saved servers (answers, the key's secret exists).
+  analyst's call); a `lado` command adds a model server by address (S3a's probe; its key
+  part of the server, D15: asked without echo or from stdin, kept in the server's own
+  file, mode 600, given only to its agents' environment), lists and removes it; `lado
+  start` takes a saved server by name; `lado doctor` checks the saved servers (answers,
+  the key is taken).
 - Removing a server a session uses: the session's next agent refuses loudly at start;
-  removing the secret a server names: S3b's refusal before the start.
+  removing a server removes its key file; a session's own server (S3b) moves to a saved
+  one without asking for its key again.
 - The schema migration (or the new file) and the way back (rules above); `lado
   uninstall` removes the settings with `LADO_HOME`.
 - `docs/cli.md`, `docs/design/modules.md` describe what was built.
@@ -295,6 +307,17 @@ Check:
   (c) any mismatch is refused. Recommended: (a): the row is a model and a model is a CLI
   + a model (statement), the explicit conflict is the only one a human or supervisor made
   on purpose, and nothing is replaced silently.
+- Q4 (asked at S3a's review). `main`'s heading is now `## 0.45.0 (unreleased)` (LAD-172,
+  a change of the MCP tools' behaviour, and LAD-151): if `main` releases 0.45.0 before
+  the epic is done, the epic ships in 0.46.0 and its lines move under that heading at
+  readiness. Recommended: let `main` release 0.45.0 when it wants, the epic takes the next
+  minor; the standing rule "the epic ships in 0.45.0" becomes "in the first minor after the
+  epic is ready".
+- Q5 (asked at S3a's review). `lado project set --secret` prints a value that starts with
+  `-` (found at S3a's review, already in `main`). Recommended: a task of its own, a hotfix
+  into `main`, outside the epic.
+- Q6 (asked at S3a's review). The second macOS smoke job cancelled without a runner
+  (PR #203). Recommended: a task to find the cause (not our `timeout-minutes`).
 
 ## Later
 
@@ -333,9 +356,14 @@ Check:
   `lado update`'s, not in `lado ls` or on the session in the UI (D14, the lead's
   condition not taken); each such resume asks the CLI's list, up to 15 s a session, one
   after another (E2) — LAD-176 — if the human meets it.
-- macOS smoke jobs cancelled after 15 min without a runner (PR #202, run 41496744121;
-  not our `timeout-minutes` of 20) — no task (question #2521: «нет») — a task at its
-  second occurrence.
+- macOS smoke jobs cancelled without a runner: PR #202 (run 41496744121, 15 min) and
+  PR #203 (smoke macos opencode, 23 min); not our `timeout-minutes` of 20 — no task yet
+  (question #2521: «нет»); the second occurrence is put to the human at S3a's review.
+- Flaky container test of the Go toolchain (`mise install` over 600 s) — LAD-178
+  (derived from LAD-177, outside the epic; a session of its own runs it, PR #206 into
+  `main`).
+- A model server's key over 64 KiB is refused by S3a's probe (F3, declined) — LAD-177 —
+  if a real gateway's key is ever that long.
 - Flaky Codex smoke: Codex's own background `git ls-remote` to `openai/plugins` outlives
   the test — LAD-175 (Backlog, derived from LAD-174, outside the epic) — its fix (turning
   the sync off in the agent's own Codex config) helps every step that touches `providers/`.

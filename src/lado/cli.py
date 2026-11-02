@@ -1163,6 +1163,33 @@ def _secret_value(args: argparse.Namespace) -> str:
     return data.decode("utf-8", "surrogateescape")  # no UTF-8: refused by its rule
 
 
+# What `lado project set` does not take may be a secret (`-abc --secret`, a dashed value
+# argparse leaves over, `--secret=abc`, `--help=abc`): refused without it, where argparse
+# would quote it.
+_PROJECT_SET_TAKES_NO_MORE = (
+    "lado project set takes <id> <NAME>, a value and --secret, nothing more; a value starting "
+    "with - goes after -- (lado project set <id> <NAME> -- -v); a secret's value is never "
+    "given on the command line (ps and the shell's history keep it): run lado project set "
+    "<id> <NAME> --secret and type it, or pipe it in"
+)
+
+
+class _QuietParser(argparse.ArgumentParser):
+    """A parser whose refusals may name a secret: given a `refusal`, its errors print its
+    usage and that fixed text, exit 1, and `main` sends it the words argparse leaves over
+    (the default `quiet_parser`); without one, argparse's own errors."""
+
+    def __init__(self, *args, refusal: str | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.refusal = refusal
+
+    def error(self, message: str):
+        if self.refusal is None:
+            return super().error(message)  # exits 2
+        self.print_usage(sys.stderr)
+        self.exit(1, f"lado: {self.refusal}\n")
+
+
 def cmd_project(args: argparse.Namespace) -> int:
     """`lado project <command>`: the human's projects (lado.projects); agents only read."""
     if args.sub in ("create", "rename", "delete", "set", "unset"):
@@ -1790,7 +1817,7 @@ def main(argv: list[str] | None = None) -> int:
         "project", help="the human's projects: folders in the workspace's projects/"
     )
     project.set_defaults(func=lambda _: project.print_help() or 0)
-    project_sub = project.add_subparsers(dest="sub", metavar="<command>")
+    project_sub = project.add_subparsers(dest="sub", metavar="<command>", parser_class=_QuietParser)
     project_sub.add_parser("list", help="every project with its folder").set_defaults(
         func=cmd_project
     )
@@ -1826,6 +1853,7 @@ def main(argv: list[str] | None = None) -> int:
         "set",
         help="set a plain variable or a secret that the agents of the project's sessions get; "
         "they get it from their next start",
+        refusal=_PROJECT_SET_TAKES_NO_MORE,
     )
     project_set.add_argument("id")
     project_set.add_argument("name", help="the variable's name, e.g. BOARD_URL")
@@ -1837,7 +1865,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="a secret: asked without echo, or read from stdin; never shown again",
     )
-    project_set.set_defaults(func=cmd_project)
+    project_set.set_defaults(func=cmd_project, quiet_parser=project_set)
     project_unset = project_sub.add_parser("unset", help="remove a project's variable or secret")
     project_unset.add_argument("id")
     project_unset.add_argument("name")
@@ -2020,7 +2048,11 @@ def main(argv: list[str] | None = None) -> int:
     login_wait_cmd = commands.add_parser("login-wait")
     login_wait_cmd.add_argument("args", nargs=argparse.REMAINDER)
 
-    args = parser.parse_args(argv)
+    args, more = parser.parse_known_args(argv)
+    if more and hasattr(args, "quiet_parser"):  # words that may be a secret: not repeated
+        args.quiet_parser.error("")
+    if more:  # as parse_args says it
+        parser.error(f"unrecognized arguments: {' '.join(more)}")
     if args.command == "mcp":
         from lado import mcp_server
 

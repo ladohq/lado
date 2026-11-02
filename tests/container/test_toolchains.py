@@ -12,6 +12,8 @@ import hashlib
 import io
 import re
 import shlex
+import time
+import urllib.request
 import zipfile
 
 import pytest
@@ -21,7 +23,13 @@ from test_docker import BASE_TOOLS as PACKAGES
 pytestmark = pytest.mark.container
 
 PROJECTS = "/srv/projects"
-GO = "1.23.4"  # one download (~70 MB) per run
+# One download (~70 MB) per run, on the host, served to mise from a mirror inside the
+# container: mise's own download from dl.google.com once hung past the test's 600 s (LAD-178).
+GO = "1.23.4"
+GO_SITE = "https://dl.google.com/go"
+GO_ARCH = {"x86_64": "amd64", "aarch64": "arm64"}  # the container's `uname -m`
+# The image's own Python, not a shim of mise's.
+PYTHON3 = "/opt/fallback/bin/python3"
 # What agent_env.resolve hands the login shell: no ENV of the image.
 CLEAN = [
     "env", "-i", "HOME=/home/lado", "USER=lado", "LOGNAME=lado", "SHELL=/bin/bash",
@@ -85,25 +93,112 @@ INSTALLED = (
 )
 
 
-def test_a_projects_go_is_installed_once_and_kept_in_a_new_container(start, projects_volume):
+def go_archive_name(arch: str) -> str:
+    return f"go{GO}.linux-{arch}.tar.gz"
+
+
+def download(url: str, deadline: float) -> bytes:
+    """`url`'s body: at most three attempts, 30 s of silence ends one, and all of them end by
+    `deadline` (time.monotonic())."""
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(url, timeout=30) as response:
+                chunks = []
+                while chunk := response.read(1 << 20):
+                    chunks.append(chunk)
+                    if time.monotonic() > deadline:
+                        raise TimeoutError(f"{url}: not downloaded by the deadline")
+                return b"".join(chunks)
+        except OSError as e:  # URLError and TimeoutError among them
+            if attempt == 3 or time.monotonic() > deadline:
+                raise AssertionError(f"{url}: {e} (attempt {attempt})") from e
+            time.sleep(2)
+
+
+@pytest.fixture(scope="session")
+def go_archive(tmp_path_factory):
+    """Go's archive for an architecture (`amd64`, `arm64`) and its `.sha256`, downloaded on
+    the host once per run and checked against that sum; returns their folder."""
+    folders = {}
+
+    def fetch(arch: str):
+        if arch not in folders:
+            folder = tmp_path_factory.mktemp(f"go-{arch}")
+            name, deadline = go_archive_name(arch), time.monotonic() + 300
+            archive = download(f"{GO_SITE}/{name}", deadline)
+            digest = download(f"{GO_SITE}/{name}.sha256", deadline).decode().split()[0]
+            assert hashlib.sha256(archive).hexdigest() == digest, f"{name}: not its sha256"
+            (folder / name).write_bytes(archive)
+            (folder / f"{name}.sha256").write_text(digest)
+            folders[arch] = folder
+        return folders[arch]
+
+    return fetch
+
+
+def go_mirror(container: Container, go_archive) -> tuple[str, str]:
+    """Go's archive for the container's architecture served on its loopback by the image's
+    python3, its access log in /tmp/go-mirror.log; returns the mirror's URL and the archive's
+    name, once the server answers."""
+    machine = container.exec("uname", "-m").stdout.strip()
+    assert machine in GO_ARCH, f"no Go architecture for the container's {machine}"
+    arch = GO_ARCH[machine]
+    container.exec("mkdir", "-p", "/tmp/go-mirror")
+    docker("cp", f"{go_archive(arch)}/.", f"{container.name}:/tmp/go-mirror")
+    docker("exec", "-u", "0", container.name, "chmod", "-R", "a+rX", "/tmp/go-mirror")
+    port = free_port()
+    docker(
+        "exec", "-d", container.name, "sh", "-c",
+        f"cd /tmp/go-mirror && exec {PYTHON3} -u -m http.server {port} --bind 127.0.0.1 "
+        "> /tmp/go-mirror.log 2>&1",
+    )  # fmt: skip
+    url = f"http://127.0.0.1:{port}"
+    waited = container.exec(
+        PYTHON3, "-c",
+        "import sys, time, urllib.request\n"
+        "for _ in range(100):\n"
+        "    try:\n"
+        f"        urllib.request.urlopen('{url}/', timeout=2); sys.exit(0)\n"
+        "    except OSError:\n"
+        "        time.sleep(0.2)\n"
+        "sys.exit(open('/tmp/go-mirror.log').read() or 'no answer')",
+        check=False,
+    )  # fmt: skip
+    assert waited.returncode == 0, f"the Go mirror at {url}: {waited.stderr}"
+    return url, go_archive_name(arch)
+
+
+def test_a_projects_go_is_installed_once_and_kept_in_a_new_container(
+    start, projects_volume, go_archive
+):
     """Two agents at once (mise's lock): both succeed, one install; then the container is
-    made again on the same volumes and the Go is still there."""
+    made again on the same volumes and the Go is still there. The two installs take Go from
+    a mirror in the container (LAD-178), each bounded by its own `timeout` so that the
+    shell always prints both exit codes (124: timed out) and mise's debug logs."""
     projects, home = projects_volume(1000, 1000), f"{new_name()}-home"
     first = served(start, projects, home=home)
+    mirror, archive = go_mirror(first, go_archive)
     app = f"{PROJECTS}/hello-go"
     first.write(f"{app}/.tool-versions", f"go {GO}\n")
     first.write(f"{app}/go.mod", "module example.com/hello\n\ngo 1.23\n")
     first.write(
         f"{app}/main.go", 'package main\n\nimport "fmt"\n\nfunc main() { fmt.Println("go ok") }\n'
     )
+    install = (
+        f"MISE_GO_DOWNLOAD_MIRROR={mirror} MISE_LOG_LEVEL=debug timeout -k 10 240 mise install"
+    )
     both = login(
         first,
-        "(mise install > /tmp/one.log 2>&1; echo $? > /tmp/one) & "
-        "(mise install > /tmp/two.log 2>&1; echo $? > /tmp/two) & wait; "
-        "cat /tmp/one /tmp/two /tmp/one.log /tmp/two.log",
+        f"({install} > /tmp/one.log 2>&1; echo $? > /tmp/one) & "
+        f"({install} > /tmp/two.log 2>&1; echo $? > /tmp/two) & wait; "
+        "cat /tmp/one /tmp/two; for log in /tmp/one.log /tmp/two.log /tmp/go-mirror.log; do "
+        'echo "--- $log"; cat "$log"; done',
         cwd=app,
     ).stdout
     assert both.splitlines()[:2] == ["0", "0"], both
+    # From the mirror, and once for both agents.
+    mirror_log = first.exec("cat", "/tmp/go-mirror.log").stdout
+    assert mirror_log.count(f'"GET /{archive} ') == 1, both
     # Its folder alone: mise adds links beside it (1, 1.23, latest).
     installed = login(first, INSTALLED).stdout
     assert installed.split()[1:] == [GO], installed

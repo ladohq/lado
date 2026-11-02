@@ -4,7 +4,7 @@
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: none · Next: S2 (waits at `step_ok`) · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
+In work: S2 (LAD-174, run task/lad-174) · Next: S3a · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9).
@@ -62,7 +62,7 @@ BACKLOG's "Choose the model per agent" is replaced by a link to LAD-154 here (D8
 The analyst may split the UI card off when the design cannot take it in one round.
 
 ### S2 — One model per session (L)
-Status: planned (drafted at S1's review; re-sized M → L: S1 touched all four providers, the UI and the schema in 49 files, S2 touches the same)
+Status: in progress (LAD-174, run task/lad-174; drafted at S1's review; re-sized M → L: S1 touched all four providers, the UI and the schema in 49 files, S2 touches the same)
 Check:
 - `lado start --model <model>` and a field in the launch window's Advanced; the session
   keeps it (in the table's format); every agent of the session's CLI starts on it through

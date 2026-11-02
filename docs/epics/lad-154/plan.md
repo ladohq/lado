@@ -1,12 +1,12 @@
 # Plan: Model and power choice for agents (LAD-154)
 
 ## State
-Revised at S3b's design (D18, questions #2715, #2721, 2026-11-02): models and model servers are set once in Settings → Models under names; everything else refers to a name (the concept `concept-models`). S3b's run cancelled; S3c «Models in settings» runs before S3b; S5a and S5b dropped into S3c.
+Revised at S3b's design (D18, questions #2715, #2721, 2026-11-02): models and model servers are set once in Settings → Models under names; everything else refers to a name (the concept `concept-models`). S3b's run cancelled; S3c «Models in settings» runs before S3b; S5a and S5b dropped into S3c. At the review S3c split into S3c (store, servers and models from the CLI) and S3d (Settings → Models).
 Rejected at `step_ok` (gate #204, 2026-11-02): «сначала S2b» (D13; S2b added before S3a, question #2509, D12)
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: none · Next: S3c (waits at `step_ok`), then S3b · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
+In work: none · Next: S3c (waits at `step_ok`), then S3d, S3b · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9). 0.45.0 is released from `main` together with the epic: `main` waits for it (step_ok #222, Q4, D17).
@@ -19,7 +19,7 @@ Last review: S3a, 2026-11-02, base at 84c8f7c4 (hotfixes LAD-175, LAD-172; `main
 
 ## Steps
 
-Statement steps 1–9 map to S1–S9 (from D18: S3c «Models in settings» before S3b, S5a and S5b dropped into S3c); S3 and S9 split in two, S5 in four (each part merges
+Statement steps 1–9 map to S1–S9 (from D18: S3c and S3d «Models in settings» before S3b, S5a into S3c, S5b into S3d); S3 and S9 split in two, S5 in four (each part merges
 alone), S7 gains S7b for kit sdlc's own repository (D6). Statement step 10 is in "Later"
 (D3). Every step targets the epic branch `epic/lad-154-models`; after each step the lead
 brings `main` into it (D10). A conflict of that merge (migration numbers in `state.py` and
@@ -132,35 +132,48 @@ Check:
 - `docs/cli.md` describes the command.
 Notes: no session uses the result yet; S3b does; S9a and S9b rest on its rule.
 
-### S3c — Models in settings (L)
-Status: planned (added at S3b's design on D18, question #2721; runs before S3b; takes in S5a and S5b)
+### S3c — Models in settings: the store, servers and models from the CLI (M)
+Status: planned (added at S3b's design on D18, question #2721; runs before S3d and S3b; takes in S5a; split from «Models in settings» at the review: a schema change with an interface and two capabilities the user sees, `epic-files`)
 Check:
 - A store of the user's settings on the server (in `lado.db` or `LADO_HOME`, the
   analyst's call); the schema migration (or the new file) and the way back (rules above);
   `lado uninstall` removes it with `LADO_HOME`.
-- Settings → Models, «Servers»: a server is an entry of its own (D18, answer 3) with a
-  name, an address and a key (a password field); on saving, S3a's probe names its type,
-  models and CLIs and refuses an address that does not answer; the key is part of the
-  server (D15): kept in the server's own file under `LADO_HOME` (mode 600), never in
-  `lado.db`, LADO's shared `secrets/`, arguments or output; removing a server removes its
-  key file; in Docker, a `localhost` that does not answer gives the loud
-  `host.docker.internal` hint (D5).
-- Settings → Models, «Models»: an entry has a name, a CLI, the CLI's model (suggestions
-  from the CLI's aliases and list, or the server's list, on S2b's `SuggestField`) and an
-  optional server; on saving the model is checked (S2's thresholds, now here) and the
-  server must suit the CLI (S3a's rule); ready-made entries for the installed CLIs
-  («Claude: haiku / sonnet / opus») added in one click (D18, answer 4; Q1).
-- The same from the CLI: `lado model add/list/remove`, `lado model-server add/list/remove`
-  (S3a's `probe` stays); `lado doctor` checks the saved servers (answer, key taken).
+- A model server is an entry of its own (D18, answer 3): a name, an address and a key;
+  `lado model-server add/list/remove` (S3a's `probe` stays): on adding, S3a's probe names
+  its type, models and CLIs and refuses an address that does not answer; the key is part
+  of the server (D15): asked without echo or read from stdin as S3a's `--key`, kept in the
+  server's own file under `LADO_HOME` (mode 600), never in `lado.db`, LADO's shared
+  `secrets/`, arguments, output, log or error text (canary test, LAD-116; the parser's
+  own `error()` as S3a's); removing a server removes its key file; in Docker, a
+  `localhost` that does not answer gives the loud `host.docker.internal` hint (D5); from
+  S3a (E3): a key over `http://` to an address that is neither `localhost` nor a private
+  network gives a loud warning.
+- A configured model is an entry: a name, a CLI, the CLI's model and an optional server;
+  `lado model add/list/remove`; on adding, the model is checked (S2's thresholds, now
+  here) and the server must suit the CLI (S3a's rule).
+- `lado doctor` checks the saved servers (answer, key taken).
 - Removing a model or server a session uses: that session's next start or agent refuses
-  loudly, naming it.
-- UI e2e and a mockup at `design_ok`; `docs/cli.md`, `docs/design/ui.md`,
-  `docs/design/modules.md` describe what was built.
-Notes: no session uses the entries yet; S3b does. Thresholds: the store is one place for
-the user's later settings (the power table of S5c), not a second format.
+  loudly, naming it (once S3b makes sessions use them; here the rule in the store).
+- The server's API (for S3d's UI) when the analyst finds it simpler to add now; else S3d.
+- `docs/cli.md`, `docs/design/modules.md` describe what was built.
+Notes: no session uses the entries yet; S3b does. The store is the one place of the
+user's later settings (the power table of S5c), not a second format.
+
+### S3d — Models in settings: Settings → Models (M)
+Status: planned (split from «Models in settings» at the review; runs after S3c, before S3b; takes in S5b)
+Check:
+- Settings → Models: «Servers» (add by name, address and key in a password field, S3a's
+  result shown; remove) and «Models» (name, CLI, the CLI's model with suggestions from the
+  CLI's aliases and list or the server's list on S2b's `SuggestField`, an optional server;
+  remove); the same checks as S3c's commands, shown under the fields as S2b's notes.
+- Ready-made entries for the installed CLIs («Claude: haiku / sonnet / opus») added in
+  one click (D18, answer 4).
+- UI e2e and a mockup at `design_ok` that shows the page next to Settings' other pages;
+  screenshots for the human; `docs/design/ui.md`.
+Notes: the human's manual check of the page is likely (gate #191's standing rule).
 
 ### S3b — A session on a model from settings (L)
-Status: planned (LAD-180, paused): its run task/lad-180 was cancelled at design on D18 (question #2721); it runs after S3c; its tracker task's description is updated at its start
+Status: planned (LAD-180, paused): its run task/lad-180 was cancelled at design on D18 (question #2721); it runs after S3c and S3d; its tracker task's description is updated at its start
 Check:
 - The launch window's Model field (S2/S2b) becomes a choice among the configured models
   (S3c) and «the CLI's default»; the free input goes (D18, answer 2а); `lado start --model
@@ -190,7 +203,7 @@ Check:
   is `host.docker.internal`.
 - Smoke (CI): OpenCode and Kilo with a fake server; UI e2e of the field; `docs/install.md`
   (local models, Docker), `docs/cli.md`, `docs/design/ui.md`, `docs/design/agents.md`.
-Notes: the core value of the epic. Rests on S3c's store, entries and check.
+Notes: the core value of the epic. Rests on S3c's store, entries and check and S3d's page.
 
 ### S4 — Effort with the model (S)
 Status: planned
@@ -227,7 +240,7 @@ Check:
 - `docs/cli.md`, `docs/design/modules.md` describe what was built.
 
 ### S5b — Model servers in Settings and the launch window (M)
-Status: dropped (taken into S3c on D18, question #2721)
+Status: dropped (taken into S3d on D18, question #2721)
 Check:
 - Settings → Models lists the saved servers: add by address with S3a's result shown, a
   key by name with the offer to create the secret, remove; the launch window chooses a

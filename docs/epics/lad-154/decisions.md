@@ -16,3 +16,4 @@
 
 Epic: plan_ok gate #194 — approved as recommended (Q1 in S5c; Q3 option (a) with the critic's P15 and P17; Q2 open until S3b's merge); step_ok gate #198 (S2) — approved as recommended.
 S1: question #2357, gates #196, #197 — approved as recommended
+S2: question #2471, gate #200 — approved as recommended

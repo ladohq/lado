@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import uuid
+from pathlib import Path
 
 import leftovers
 import pytest
@@ -330,6 +331,31 @@ def codex_home(tmp_path, monkeypatch):
     folder = tmp_path / "codex-home"
     monkeypatch.setenv("CODEX_HOME", str(folder))
     return folder
+
+
+class CodexSandbox:
+    """What the probe of Codex's sandbox answers in a test (codex._sandbox_error): no `codex`
+    runs; the sandbox starts unless `error` is set (the line the probe would give). `calls`
+    keeps each probe's (CODEX_HOME, cwd, the config.toml it met)."""
+
+    def __init__(self):
+        self.error: str | None = None
+        self.calls: list[tuple[Path, Path, str]] = []
+
+    def probe(self, home, cwd, environ):
+        self.calls.append((Path(home), Path(cwd), (Path(home) / "config.toml").read_text()))
+        return self.error
+
+
+@pytest.fixture(autouse=True)
+def codex_sandbox(monkeypatch):
+    """Codex's sandbox in every unit test (CodexSandbox): CI's runners have no `codex`, and
+    LADO's container one whose sandbox cannot start (LAD-151)."""
+    from lado.providers import codex
+
+    sandbox = CodexSandbox()
+    monkeypatch.setattr(codex, "_sandbox_error", sandbox.probe)
+    return sandbox
 
 
 class CliLogins:

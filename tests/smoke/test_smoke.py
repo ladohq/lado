@@ -12,9 +12,10 @@ from pathlib import Path
 
 import agent_helpers
 import pytest
-from real_clis import CLASSES, agent_processes, answer_dialogs, check_gone, status
+from real_clis import CLASSES, SANDBOX_ERROR, agent_processes, answer_dialogs, check_gone, status
 
 from lado import logins, loop, projects, providers, runtime, state, tmux
+from lado.providers import codex
 
 pytestmark = pytest.mark.smoke
 
@@ -358,14 +359,47 @@ def test_a_codex_agent_shares_the_users_login_file(
     runtime.stop_session(SESSION)
 
 
+def sandbox_probes(monkeypatch) -> list[str | None]:
+    """What each probe of Codex's sandbox answered, the real one asked (real_clis.isolated)."""
+    assert codex._sandbox_error is SANDBOX_ERROR, "the smoke must ask the real Codex"
+    probes = []
+
+    def probe(*args):
+        probes.append(SANDBOX_ERROR(*args))
+        return probes[-1]
+
+    monkeypatch.setattr(codex, "_sandbox_error", probe)
+    return probes
+
+
+def check_sandbox_warning(started, probes: list[str | None], mode: str | None) -> None:
+    """The launch warned of Codex's sandbox exactly as the real probe answered (LAD-151), as
+    on a host: tests/conftest.py clears LADO_CONTAINER."""
+    warned = [w for w in started.warnings if w.startswith("Codex's sandbox cannot start")]
+    if sys.platform != "linux" or mode == "bypassPermissions":
+        assert (probes, warned) == ([], [])
+        return
+    [error] = probes
+    assert warned == (
+        []
+        if error is None
+        else [
+            f"Codex's sandbox cannot start here ({error}): Codex agent supervisor asks before "
+            "each shell command; docs/install.md says how to allow it, or use bypassPermissions"
+        ]
+    )
+
+
 @pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
 @pytest.mark.parametrize("mode", [None, "default", "bypassPermissions"])
 def test_a_codex_session_starts_with_no_screen_in_each_mode(
-    smoke_provider, smoke_repo, fake_endpoint, codex_home, mode
+    smoke_provider, smoke_repo, fake_endpoint, codex_home, mode, monkeypatch
 ):
     """A repository the user's Codex never trusted, with its own hooks never reviewed: the
     agent's first input, submitted once no dialog holds Codex, is delivered with no human,
-    and Codex fetched no plugins into its home."""
+    and Codex fetched no plugins into its home. On Linux, out of bypass mode, the launch
+    asked the real Codex whether its sandbox starts, and warned only when it did not."""
+    probes = sandbox_probes(monkeypatch)
     hooks = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "true"}]}]}}
     (smoke_repo / ".codex").mkdir()
     (smoke_repo / ".codex" / "hooks.json").write_text(json.dumps(hooks))
@@ -373,7 +407,8 @@ def test_a_codex_session_starts_with_no_screen_in_each_mode(
     subprocess.run([*git, "add", ".codex"], check=True)
     subprocess.run([*git, "commit", "-qm", "The repository's own Codex hooks"], check=True)
     assert "projects" not in (codex_home / "config.toml").read_text()
-    runtime.start_session(str(smoke_repo), SESSION, mode, "codex")
+    started = runtime.start_session(str(smoke_repo), SESSION, mode, "codex")
+    check_sandbox_warning(started, probes, mode)
     first = delivered(state.LADO, "supervisor", runtime.FIRST_INPUT)
     wait_for(answering("codex", "supervisor", first), "codex's first input delivered", 120)
     home = providers.base.config_path(state.get_agent(SESSION, "supervisor"))

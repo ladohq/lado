@@ -324,6 +324,123 @@ def test_bypassing_the_sandbox_needs_no_permission_profile(repo):
     assert "default_permissions" not in config and "permissions" not in config
 
 
+# Codex's sandbox on Linux needs bubblewrap, which Docker's seccomp refuses (LAD-151).
+BWRAP = (
+    "bwrap: No permissions to create a new namespace, likely because the kernel does not "
+    "allow non-privileged user namespaces."
+)
+IN_CONTAINER = (
+    f"Codex's sandbox cannot start here ({BWRAP}): Codex agent w1 runs without it, and "
+    "LADO's container is its only boundary"
+)
+ON_A_HOST = (
+    f"Codex's sandbox cannot start here ({BWRAP}): Codex agent w1 asks before each shell "
+    "command; docs/install.md says how to allow it, or use bypassPermissions"
+)
+
+
+@pytest.fixture
+def linux(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("LADO_CONTAINER", raising=False)
+
+
+@pytest.mark.parametrize("mode", [None, "default"])
+def test_the_sandbox_is_tried_with_the_agents_home_and_config(repo, linux, codex_sandbox, mode):
+    launch, _ = _launch(repo, mode)
+    [(home, cwd, config)] = codex_sandbox.calls
+    assert str(home) == launch.env["CODEX_HOME"] and cwd == repo
+    assert 'default_permissions = "lado"' in config
+    assert launch.argv == ["codex", "--no-daemon", *(["-a", "on-request"] if mode else [])]
+    assert not launch.warnings
+
+
+@pytest.mark.parametrize(
+    ("platform", "mode"), [("linux", "bypassPermissions"), ("darwin", None), ("darwin", "default")]
+)
+def test_no_probe_in_bypass_mode_nor_on_macos(repo, monkeypatch, codex_sandbox, platform, mode):
+    monkeypatch.setattr(sys, "platform", platform)
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    codex_sandbox.error = BWRAP
+    launch, _ = _launch(repo, mode)
+    assert codex_sandbox.calls == [] and not launch.warnings
+    assert "danger-full-access" not in launch.argv
+
+
+@pytest.mark.parametrize(("mode", "flags"), [("default", ["-a", "on-request"]), (None, [])])
+def test_in_the_container_a_sandbox_that_cannot_start_is_left_out(
+    repo, linux, monkeypatch, codex_sandbox, mode, flags
+):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    codex_sandbox.error = BWRAP
+    launch, config = _launch(repo, mode)
+    assert launch.argv == ["codex", "--no-daemon", *flags, "--sandbox", "danger-full-access"]
+    assert "default_permissions" not in config and "permissions" not in config
+    assert launch.warnings == [IN_CONTAINER]
+
+
+def test_in_the_container_with_a_notice_the_sandbox_flag_comes_before_it(
+    repo, linux, monkeypatch, codex_sandbox
+):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    codex_sandbox.error = BWRAP
+    launch, _ = _launch(repo, "default", notice="hello")
+    assert launch.argv[-3:] == ["--sandbox", "danger-full-access", "hello"]
+
+
+def test_on_a_host_a_sandbox_that_cannot_start_stays_with_a_warning(repo, linux, codex_sandbox):
+    codex_sandbox.error = BWRAP
+    launch, config = _launch(repo, "default")
+    assert launch.argv == ["codex", "--no-daemon", "-a", "on-request"]
+    assert config["default_permissions"] == "lado" and "lado" in config["permissions"]
+    assert launch.warnings == [ON_A_HOST]
+
+
+def _fake_codex(folder, script):
+    folder.mkdir(exist_ok=True)
+    (folder / "codex").write_text(f"#!/bin/sh\n{script}\n")
+    (folder / "codex").chmod(0o755)
+    return {**os.environ, "PATH": f"{folder}{os.pathsep}/usr/bin:/bin"}
+
+
+# The real probe: the autouse fixture codex_sandbox replaces it in each test.
+_REAL_PROBE = codex._sandbox_error
+
+
+def test_the_probe_runs_codex_sandbox_true_in_the_agents_home(tmp_path):
+    seen = tmp_path / "seen"
+    environ = _fake_codex(tmp_path / "bin", f'echo "$CODEX_HOME|$(pwd)|$*" > {seen}; exit 0')
+    assert _REAL_PROBE(tmp_path / "home", tmp_path, environ) is None
+    assert seen.read_text().strip() == f"{tmp_path / 'home'}|{tmp_path}|sandbox -- true"
+
+
+def test_the_probe_gives_the_first_line_of_codexs_error(tmp_path):
+    environ = _fake_codex(
+        tmp_path / "bin",
+        "echo 'WARNING: proceeding, even though we could not create PATH aliases' >&2\n"
+        f"echo '{BWRAP}' >&2\necho 'second line' >&2\nexit 1",
+    )
+    assert _REAL_PROBE(tmp_path, tmp_path, environ) == BWRAP
+
+
+def test_a_probe_that_fails_with_no_words_says_its_exit(tmp_path):
+    environ = _fake_codex(tmp_path / "bin", "exit 3")
+    assert _REAL_PROBE(tmp_path, tmp_path, environ) == "`codex sandbox -- true` exited 3"
+
+
+def test_a_probe_that_hangs_cannot_start(tmp_path, monkeypatch):
+    monkeypatch.setattr(codex, "SANDBOX_TIMEOUT", 0.2)
+    environ = _fake_codex(tmp_path / "bin", "exec sleep 5")
+    assert _REAL_PROBE(tmp_path, tmp_path, environ) == (
+        "`codex sandbox -- true` did not end in 0.2 s"
+    )
+
+
+def test_a_missing_codex_cannot_start(tmp_path):
+    environ = {**os.environ, "PATH": str(tmp_path / "empty")}
+    assert _REAL_PROBE(tmp_path, tmp_path, environ).startswith("cannot run `codex sandbox`")
+
+
 USER_CONFIG = """
 model = "qwen3-coder:30b"
 model_provider = "ollama"

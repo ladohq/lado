@@ -5,11 +5,9 @@
 LADO SHALL keep for every agent in `lado.db` its model and its effort, each a name or
 none, each with a source and an optional detail. A source SHALL be one of a set of tokens
 that later ways of choosing a model extend without changing the shape: `cli` (the CLI's
-own choice: its default or its own settings), `cli-config` (the user's config of the
-CLI, carried by LADO into the agent) and `session` (the session's model, chosen with
-`lado start --model` or the launch window; words `chosen for the session`). An agent
-whose CLI has said nothing and for which LADO chose nothing SHALL have no name and the
-source `cli`.
+own choice), `cli-config` (the user's CLI config, carried by LADO into the agent) and
+`session` (the session's model). An agent whose CLI has said nothing and for which LADO
+chose nothing SHALL have no name and the source `cli`.
 
 #### Scenario: A new Claude agent before its first hook
 - **WHEN** a Claude agent is spawned in a session with no model and no hook of it has run

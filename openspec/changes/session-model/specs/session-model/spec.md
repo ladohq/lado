@@ -1,3 +1,9 @@
+## Purpose
+One model for a session's agents, chosen with `lado start --model` or the launch window's
+Model field: kept with the session as a power table, checked against its CLI's own aliases
+and list before the start, and passed to every agent of that CLI by the CLI's own way,
+while an agent of another CLI runs its own default, loudly.
+
 ## ADDED Requirements
 
 ### Requirement: A session keeps its model as a power table

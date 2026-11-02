@@ -25,7 +25,7 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 
-from lado import state, update
+from lado import state
 from lado.providers import base, gitpaths
 
 if sys.version_info >= (3, 11):
@@ -385,6 +385,8 @@ class CodexProvider(base.Provider):
         # a host it stays, as dropping it there opens the user's home.
         unsandboxed = False
         if session.permission_mode != "bypassPermissions" and sys.platform == "linux":
+            from lado import update  # only here: the CLI's commands do not import it (cli.py)
+
             error = _sandbox_error(home, cwd, spec.environ or os.environ)
             cause = f"Codex's sandbox cannot start here ({error}): Codex agent {agent.name}"
             if error and update.in_container():

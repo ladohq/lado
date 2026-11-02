@@ -1417,10 +1417,18 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   when the folder changes. **Advanced** (folded; its row `Advanced: model, switch off
   agents, skills, MCP servers or flows`, folded with a model `Advanced: model <model>`, the
   model in `.launch-first-peek`): **Model** first, the session's model (`lado start
-  --model`): free text, its suggestions (a `<datalist>`) the chosen CLI's aliases then its
-  own list, the placeholder `<CLI>'s default`, and one note under it from `GET
-  /api/providers/{name}/models?model=` (the server keeps each CLI's list a minute; asked
-  300 ms after the last keystroke): empty `empty: <CLI>'s default model; type or pick one
+  --model`), in the left column of a `.launch-grid` of its own (the whole row on a narrow
+  window), its label bold as Provider's: free text in the window's own combobox
+  (`SuggestField.tsx`, not a native `<datalist>`): the height, frame and font of
+  Provider, a drawn chevron at its right end that opens or closes the whole list; typing
+  or ↓ opens it filtered by what is typed (case-insensitive), ↑↓ move, Enter picks the
+  highlighted one (else it is the form's), Esc or leaving the field closes it, a click
+  picks; the suggestions are the chosen CLI's aliases (tagged `alias`, muted) then its own
+  list, in `.where-list`'s look. The placeholder `<CLI>'s default`, and one note under it,
+  inside its `.field` (6 px below, out of the focus ring's reach), from `GET
+  /api/providers/{name}/models?model=` (the server keeps a CLI's list a minute once read;
+  one it could not read is read again at the next check; asked 300 ms after the last
+  keystroke): empty `empty: <CLI>'s default model; type or pick one
   of its models` (muted), `✓ in <CLI>'s list of models` or `✓ an alias of <CLI>` (`.ok`),
   the ⚠ warning of a CLI that gives no list (`.warn`), or the refusal (`.bad`); Start is
   off while it refuses and while the typed text is checked. Another provider empties the
@@ -1609,7 +1617,11 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 - **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
   mode and Advanced filled from the session (`SessionInfo` carries its settings, its model
   too) and changeable; it sends only what changed (`POST /api/sessions/{name}/resume`; an
-  emptied Model sends `model: ""`, the CLI's default). A provider
+  emptied Model sends `model: ""`, the CLI's default). The kept model is checked as
+  `lado start <session>` checks it: when its CLI's list no longer has it, the refusal adds
+  `The session ran on it before. Empty the field to resume on <CLI>'s default, or pick
+  another model.` (`.way-out`) and the chip button **Use `<CLI>`'s default**, which empties
+  the field; Advanced opens to show it, and Resume is off until then. A provider
   without its login is off here as in New session (LAD-163): its option "`<name>` · not
   logged in" disabled, the red note with **Log in first**, and Resume off, as the resume
   would be refused (lado.logins); another CLI with its login can be chosen. LADO's own

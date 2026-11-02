@@ -9,7 +9,7 @@
   default or your Codex config (its profile too), as the CLIs report them.
 - **Choose the session's model.** `lado start --model` and the Model field in the launch
   window's Advanced start the session's agents on a model, checked first against the CLI's
-  own list; a resume keeps it.
+  own list; a resume keeps it and checks it again.
 
 ## 0.44.1 (unreleased)
 

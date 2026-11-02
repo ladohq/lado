@@ -277,7 +277,8 @@ logged in: log in in Settings → Providers and environment, or set CLAUDE_CODE_
 the agent starts by itself once you do`; it starts by itself once there is one. A login
 that cannot be read refuses nothing and holds no agent: `lado start` warns `cannot tell
 whether Claude Code is logged in: <why>; the agent starts all the same`.
-`lado start --model <model>` starts the session's agents of its provider's CLI on a model:
+`lado start --model <model>` starts the session's agents of its provider's CLI on a model
+(taken without the spaces around it; only spaces is `''`):
 Claude Code with `--model`, Codex with `model` in its agent's config.toml (the carried
 profile's too, as that wins), OpenCode and Kilo with `model` in their config content; never
 the user's own config. The model is checked first (`lado.model_check`) against the CLI's
@@ -293,6 +294,12 @@ check claude-opus-5-5; a wrong name stops its agents at their first turn`). The 
 `sessions.power`): a resume without `--model` keeps it, `--model ''` goes back to the CLI's
 default, a resume with another `--provider` and no `--model` drops it; each prints `changed
 model: codex gpt-5.6-sol -> CLI default` (or `CLI default -> …`, or one model to another). A
+resume checks the model it keeps as a given one: one its CLI's list no longer has is
+refused before anything starts, the session stays stopped with its model, and the refusal
+names the way out (`lado: gpt-5.4-old is not in Codex CLI's list of models; codex debug
+models prints the list; the session ran on it before: resume it with --model '' for Codex
+CLI's default or --model <model> for another`); LADO's own resumes (the container's
+start, `lado update`) leave it stopped and log the refusal. A
 worker spawned with another provider runs its CLI's default model: `spawn_worker` warns
 `w1 runs on Claude Code's default model: the session's model gpt-5.6-sol is for Codex CLI`.
 `lado ls` shows each agent's model as before.

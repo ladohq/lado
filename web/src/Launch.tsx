@@ -396,7 +396,6 @@ function LaunchDialog({
   // Resume of the model the session keeps, which its CLI refuses: the note says the way out.
   const keptRefused =
     resuming !== null &&
-    typedModel !== "" &&
     typedModel === resuming.model &&
     chosenProvider === resuming.provider &&
     modelAnswer !== null &&

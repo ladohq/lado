@@ -5,10 +5,11 @@ Rejected at `step_ok` (gate #204, 2026-11-02): «сначала S2b» (D13; S2b 
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: none · Next: S3b (waits at `step_ok`: its check changed by D15, the real server for the manual check, Q2) · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
+In work: S3b (LAD-180, run task/lad-180) · Next: S4 · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
-- The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9).
+- The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9). 0.45.0 is released from `main` together with the epic: `main` waits for it (step_ok #222, Q4, D17).
+- The human checks a model server step by hand on LM Studio at localhost and on an external LiteLLM; the lead tells them when the check is due (step_ok #222, Q2).
 - After some steps the human may ask the lead to help with a manual check of how the step looks; the lead then gives the branch, the folder, the commands and what to look at (gate #191, D10).
 - Each step's task gets the label `component lado` (kit sdlc's: `component kit-sdlc`) and is linked to LAD-154; LAD-80 is not touched.
 Last review: S2, 2026-11-02, base at 228a1de2 (0.44.0 + the unreleased 0.44.1 hotfix LAD-151, Codex's sandbox in the container), merged into the epic branch as 0d18c677: conflicts resolved by joining both sides (CHANGELOG: 0.45.0 above 0.44.1 (unreleased); `tests/smoke/test_smoke.py`: one import line, `CLASSES` and `SANDBOX_ERROR`); `providers/codex.py` merged without conflict; schema on `main` 35, the epic's 37 on top; `make lint`, `make test` (4826 passed, 7 skipped), integration `test_session_model.py` (3 passed), smoke collected (23), `openspec validate --specs --strict` (57) green; CI of the merge runs with S3a's pull request
@@ -129,7 +130,7 @@ Check:
 Notes: no session uses the result yet; S3b does; S9a and S9b rest on its rule.
 
 ### S3b — A session on a model server through OpenCode/Kilo (L)
-Status: planned
+Status: in progress (LAD-180, run task/lad-180)
 Check:
 - A session started with a server address and one of its models runs OpenCode and Kilo
   agents on it: the server goes into each agent's config content as an OpenAI-compatible
@@ -295,8 +296,8 @@ Check:
 - Q1 (decided at `plan_ok` #194: in S5c). Ready-made tables («Claude: haiku / sonnet / opus», «Всё на сервере») go with the
   user's table in S5c, not with S7 as the statement had it: they are the table's UI and
   need nothing of S7. Recommended: in S5c.
-- Q2. Which model server the human checks S3b, S9a and S9b on, and its address (D7).
-  Needed before S3b's merge.
+- Q2 (answered at `step_ok` #222). LM Studio at localhost, and an external LiteLLM the
+  human wants to try; the lead tells them when the check is due.
 - Q3 (decided at `plan_ok` #194: (a) with P15 and P17). A table row names a CLI (heavy → Claude opus); the agent's provider may come from
   elsewhere (the session's `--provider`, `spawn_worker`'s provider). Options: (a) the
   row's CLI decides the agent's CLI; an explicit `--provider` of the session (only one
@@ -311,16 +312,18 @@ Check:
   (c) any mismatch is refused. Recommended: (a): the row is a model and a model is a CLI
   + a model (statement), the explicit conflict is the only one a human or supervisor made
   on purpose, and nothing is replaced silently.
-- Q4 (asked at S3a's review). `main`'s heading is now `## 0.45.0 (unreleased)` (LAD-172,
+- Q4 (answered at `step_ok` #222: «будем выпускать 0.45.0 с main и нашим эпиком» — 0.45.0
+  waits for the epic; D17). Asked at S3a's review: `main`'s heading is now `## 0.45.0 (unreleased)` (LAD-172,
   a change of the MCP tools' behaviour, and LAD-151): if `main` releases 0.45.0 before
   the epic is done, the epic ships in 0.46.0 and its lines move under that heading at
   readiness. Recommended: let `main` release 0.45.0 when it wants, the epic takes the next
   minor; the standing rule "the epic ships in 0.45.0" becomes "in the first minor after the
   epic is ready".
-- Q5 (asked at S3a's review). `lado project set --secret` prints a value that starts with
+- Q5 (asked at S3a's review; not answered at #222, asked again). `lado project set --secret` prints a value that starts with
   `-` (found at S3a's review, already in `main`). Recommended: a task of its own, a hotfix
   into `main`, outside the epic.
-- Q6 (asked at S3a's review). The second macOS smoke job cancelled without a runner
+- Q6 (answered at `step_ok` #222: «создай. Разберемся отдельно» → LAD-179, outside the
+  epic). Asked at S3a's review: The second macOS smoke job cancelled without a runner
   (PR #203). Recommended: a task to find the cause (not our `timeout-minutes`).
 
 ## Later
@@ -362,7 +365,8 @@ Check:
   after another (E2) — LAD-176 — if the human meets it.
 - macOS smoke jobs cancelled without a runner: PR #202 (run 41496744121, 15 min) and
   PR #203 (smoke macos opencode, 23 min); not our `timeout-minutes` of 20 — no task yet
-  (question #2521: «нет»); the second occurrence is put to the human at S3a's review.
+  (question #2521: «нет»); at the second occurrence the human said create: LAD-179
+  (outside the epic, derived from LAD-177).
 - Flaky container test of the Go toolchain (`mise install` over 600 s) — LAD-178
   (derived from LAD-177, outside the epic; a session of its own runs it, PR #206 into
   `main`).

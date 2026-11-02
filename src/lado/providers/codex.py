@@ -386,20 +386,19 @@ class CodexProvider(base.Provider):
         unsandboxed = False
         if session.permission_mode != "bypassPermissions" and sys.platform == "linux":
             error = _sandbox_error(home, cwd, spec.environ or os.environ)
+            cause = f"Codex's sandbox cannot start here ({error}): Codex agent {agent.name}"
             if error and update.in_container():
                 unsandboxed = True
                 config.pop("default_permissions", None)
                 config.pop("permissions", None)
                 _write_config(home, config)
                 warnings.append(
-                    f"Codex's sandbox cannot start here ({error}): Codex agent {agent.name} "
-                    "runs without it, and LADO's container is its only boundary"
+                    f"{cause} runs without it, and LADO's container is its only boundary"
                 )
             elif error:
                 warnings.append(
-                    f"Codex's sandbox cannot start here ({error}): Codex agent {agent.name} "
-                    "asks before each shell command; docs/install.md says how to allow it, "
-                    "or use bypassPermissions"
+                    f"{cause} asks before each shell command; docs/install.md says how to "
+                    "allow it, or use bypassPermissions"
                 )
         # For _settle_login, which also runs where CODEX_HOME is the agent's own.
         (home / USER_HOME).write_text(f"{_codex_home(spec.environ or os.environ)}\n")
@@ -775,13 +774,6 @@ def _mcp_servers(servers: dict[str, base.McpServer], environ: list[str]) -> dict
     return config
 
 
-# Codex's sandbox (workspace-write) keeps .git under the folder it runs in and a worktree's
-# git folder read-only, so a worker cannot commit; writable_roots does not lift it. A
-# permission profile can: an explicit rule for the git folders wins (checked by hand: a
-# commit in a LADO worktree and in the main checkout). Git's hooks and config stay
-# read-only, as git runs them outside the sandbox. Reading is not restricted (checked), so
-# AgentSpec.read needs nothing. Hooks run outside the sandbox (Codex's review dialog says
-# so) and MCP servers are not sandboxed: both write LADO_HOME.
 # On Linux, Codex's sandbox (workspace-write, and LADO's profile over `:workspace`) runs
 # commands only through bubblewrap, which needs an unprivileged user namespace. Docker's
 # default seccomp profile refuses one in a container whatever the kernel allows, and the way
@@ -819,6 +811,13 @@ def _sandbox_error(home: Path, cwd: Path, environ: Mapping[str, str]) -> str | N
     return (errors or lines or [f"{probe} exited {done.returncode}"])[0]
 
 
+# Codex's sandbox (workspace-write) keeps .git under the folder it runs in and a worktree's
+# git folder read-only, so a worker cannot commit; writable_roots does not lift it. A
+# permission profile can: an explicit rule for the git folders wins (checked by hand: a
+# commit in a LADO worktree and in the main checkout). Git's hooks and config stay
+# read-only, as git runs them outside the sandbox. Reading is not restricted (checked), so
+# AgentSpec.read needs nothing. Hooks run outside the sandbox (Codex's review dialog says
+# so) and MCP servers are not sandboxed: both write LADO_HOME.
 def _git_profile(cwd: Path) -> dict | None:
     common = gitpaths.rev_parse(cwd, "--git-common-dir")
     gitdir = gitpaths.rev_parse(cwd, "--git-dir")

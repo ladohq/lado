@@ -1,10 +1,11 @@
 # Plan: Model and power choice for agents (LAD-154)
 
 ## State
+Rejected at `step_ok` (gate #204, 2026-11-02): «сначала S2b» (D13; S2b added before S3a, question #2509, D12)
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: none · Next: S3a (waits at `step_ok`: manual check of S2 recommended) · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
+In work: none · Next: S2b (waits at `step_ok`), then S3a · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9).
@@ -61,8 +62,8 @@ BACKLOG's "Choose the model per agent" is replaced by a link to LAD-154 here (D8
 The analyst may split the UI card off when the design cannot take it in one round.
 
 ### S2 — One model per session (L)
-Status: done (LAD-174, PR #201, merged into the epic branch as 69bd2306; schema 36 → 37, `sessions.power`; new spec `session-model`, delta of `agent-model`; CI 23/23, one review round, 0 blockers, 6 minor declined). Not checked by hand yet (recommended at S2's review). Born in the step: LAD-175 (Later).
-Leftovers: F2 and `real_clis.with_model` carried into S4; Q2, F5, F3, F4, E3 and Codex's list path in smoke to "Later".
+Status: done (LAD-174, PR #201, merged into the epic branch as 69bd2306; schema 36 → 37, `sessions.power`; new spec `session-model`, delta of `agent-model`; CI 23/23, one review round, 0 blockers, 6 minor declined). Checked by hand by the human on another machine from the epic branch at 0d18c677, 2026-11-02: two remarks on the launch window's Model field (its note sticks to the field under the focus ring; the field looks unlike the other dropdown fields) → S2b. Born in the step: LAD-175 (Later).
+Leftovers: F2 and `real_clis.with_model` carried into S4; F3, F4, E3 and the manual check's remarks into S2b; Q2, F5 and Codex's list path in smoke to "Later".
 Check:
 - `lado start --model <model>` and a field in the launch window's Advanced; the session
   keeps it (in the table's format); every agent of the session's CLI starts on it through
@@ -84,6 +85,28 @@ Check:
 Notes: walking skeleton: choose → reaches the CLI → visible. A model is a CLI + a model;
 which CLI's models the field offers comes from the session's provider. Free input with a
 check, no catalogue of LADO's own.
+
+### S2b — The launch window's Model field: its look and small fixes (S)
+Status: planned (added at S2's review on the human's word, question #2509, gate #204: «сначала S2b»)
+Check:
+- From the human's manual check of S2 (screenshot at question #2509): the field's note
+  (refusal, warning, check) stands below the field with the same gap as the other
+  fields' notes and is never covered by the focus ring; the Model field looks like the
+  window's other dropdown fields (Provider, Permission mode): the same arrow, height,
+  border and width rules, while keeping free input with the CLI's suggestions (no
+  catalogue of LADO's own).
+- From S2's ledger: `lado start --model` trims spaces as the UI does (F4); a failed
+  model list is not kept in the server's cache (E3); Resume and `lado start <session>`
+  treat a saved model that left the CLI's list the same way, and the window says how to
+  go on (clear the field or pick another) (F3).
+- UI e2e of the field (note placement, focus, the look next to Provider), screenshots
+  for the human; unit tests of F4 and E3; `docs/design/ui.md` describes what was built;
+  a CHANGELOG line only if users of 0.45.0 see a difference from its S2 line (else none).
+Touches: `web/src/Launch.tsx`, `web/src/styles.css`, `cli.py` (trim),
+`server/launch.py` (cache).
+Notes: no schema or API change. S3b builds the server's address field in the same
+Advanced section on this field's component, so it comes before S3a. A widening beyond
+the Model field (other fields of the window) is a question to the human.
 
 ### S3a — Find out what a model server is (M)
 Status: planned
@@ -296,10 +319,6 @@ Check:
 - A Codex profile or model in the repository's own `.codex/config.toml` may override the
   session's model; the card then says `cli` (Q2, unverifiable at S2) — LAD-174 — check
   with the open live run of Codex.
-- Launch window's Resume disables Start when the saved model left the CLI's list while
-  `lado start <session>` does not check it (F3); `lado start --model` keeps spaces the UI
-  trims (F4); a failed model list is cached 60 s (E3) — declined at S2 — LAD-174 — with
-  the next change of the launch window (S5b/S5c).
 - Codex's path with a model list is not walked by the smoke (S2's residual risk) —
   LAD-174 — with the open live runs before the final pull request.
 - Flaky Codex smoke: Codex's own background `git ls-remote` to `openai/plugins` outlives

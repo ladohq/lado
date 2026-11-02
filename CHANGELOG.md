@@ -7,6 +7,9 @@
 - **See which model each agent runs on.** The agent's page, the Team chip's tooltip,
   `lado ls` and `list_agents` show its model and effort and where they came from: the CLI's
   default or your Codex config (its profile too), as the CLIs report them.
+- **Choose the session's model.** `lado start --model` and the Model field in the launch
+  window's Advanced start the session's agents on a model, checked first against the CLI's
+  own list; a resume keeps it.
 
 ## 0.44.0 (2026-11-02)
 

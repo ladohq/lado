@@ -156,14 +156,25 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   output Codex ignores (`output_ignored`, read in its source), so the queue is typed in, and
   a refused approval ends the wait at once.
 - An agent's model and effort (`agents.model`, `effort`, schema 36) each have a source and
-  a detail: `cli`, the CLI's own choice (its default or its own settings), or `cli-config`,
+  a detail: `cli`, the CLI's own choice (its default or its own settings), `cli-config`,
   the user's config of the CLI that LADO carries into the agent, with the detail
-  `profile <name>` when a profile gave it. Later ways of choosing a model add tokens, not
+  `profile <name>` when a profile gave it, or `session`, the session's model ("chosen for
+  the session"). Later ways of choosing a model add tokens, not
   columns; `state.source_words` holds the words the API and the UI show for each, and an
   unknown token is shown as itself. A launch says what it set up (`Launch.model`, `effort`),
   which `runtime` records before the window opens (`state.set_model`): Codex's carried
   `model` and `model_reasoning_effort`, the chosen profile's before the top level's, as
-  Codex reads them; nothing else chooses a model yet. Then the events name it
+  Codex reads them, and the session's model. A session keeps its model as a power table
+  (`sessions.power`, schema 37: rows `light`, `normal` and `heavy`, each a CLI and a model,
+  all the same for now); `runtime.session_model` gives an agent whose CLI is the `normal`
+  row's that model in `AgentSpec.model`, which its provider applies its own way (Claude
+  Code `--model`, Codex `model` at the top level and in the carried profile of its
+  config.toml, the OpenCode family `model` in its config content, the fake agent
+  `FAKE_AGENT_MODEL`) and returns as `Launch.model` with the source `session`, so a Kilo
+  agent shows it also while its plugin names none. An agent of another CLI (a worker
+  spawned with another provider) gets no model: its record has no name, the source `cli`
+  and the detail `the session's model <model> is for <CLI>`, and its launch warns, as
+  `spawn_worker` returns and loop.log keeps its launch warnings. Then the events name it
   (`Event.model`, `effort`), recorded by `hooks.handle` first (`state.report_model`): every
   Codex hook's input has `model` and none the effort (0.162.0, its hook input schemas);
   Claude Code's SessionStart has `model` in the interactive mode LADO runs, at a start,
@@ -176,7 +187,10 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   message a Kilo agent shows the CLI's default with no name). A name equal to the one the
   agent has writes nothing, so a hook in every turn adds nothing to the change journal; a
   different one replaces it, and a source other than `cli` becomes `cli` with no detail:
-  the CLI runs another model than the one chosen. LADO never reads the terminal for it and
+  the CLI runs another model than the one chosen. Two names keep the source and the
+  detail: the first one an agent with none gets (so the other CLI's note stays), and one
+  the provider's `same_model` says is the chosen one's (Claude Code names the full model of
+  an alias: `opus` → `claude-opus-5-5`; `best` and `opusplan` any of Claude's). LADO never reads the terminal for it and
   asks no model API.
 - An agent whose process ends by itself goes through one transition, `runtime.agent_ended`
   (`state.agent_ended`, one conditional transaction): its session-end hook (`SESSION_END`,

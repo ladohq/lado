@@ -1414,7 +1414,17 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   agents cannot start.` and **Log in first**, which closes the window and opens Settings →
   Providers and environment; Start stays off, as the start would be refused (lado.logins).
   The human's own pick is kept
-  when the folder changes. **Advanced** (folded): the `--without` items, `kind:name` or `kind:name@kit`
+  when the folder changes. **Advanced** (folded; its row `Advanced: model, switch off
+  agents, skills, MCP servers or flows`, folded with a model `Advanced: model <model>`, the
+  model in `.launch-first-peek`): **Model** first, the session's model (`lado start
+  --model`): free text, its suggestions (a `<datalist>`) the chosen CLI's aliases then its
+  own list, the placeholder `<CLI>'s default`, and one note under it from `GET
+  /api/providers/{name}/models?model=` (the server keeps each CLI's list a minute; asked
+  300 ms after the last keystroke): empty `empty: <CLI>'s default model; type or pick one
+  of its models` (muted), `✓ in <CLI>'s list of models` or `✓ an alias of <CLI>` (`.ok`),
+  the ⚠ warning of a CLI that gives no list (`.warn`), or the refusal (`.bad`); Start is
+  off while it refuses and while the typed text is checked. Another provider empties the
+  field. Then the `--without` items, `kind:name` or `kind:name@kit`
   (placeholder `agent:reviewer@kit-b, skill:style`). Start shows "Starting…" with
   the fields off; a refusal is shown whole (`role="alert"`) and the window stays; a name
   taken (409, `Taken`: its status and folder) offers Resume it for a session of this
@@ -1597,8 +1607,9 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   in Folder (#1283); `useLaunch()({kind: "new", project, repo})` opens it in Project with
   that project (and repository: the project's page's New session… and Start session).
 - **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
-  mode and Advanced filled from the session (`SessionInfo` carries its settings) and
-  changeable; it sends only what changed (`POST /api/sessions/{name}/resume`). A provider
+  mode and Advanced filled from the session (`SessionInfo` carries its settings, its model
+  too) and changeable; it sends only what changed (`POST /api/sessions/{name}/resume`; an
+  emptied Model sends `model: ""`, the CLI's default). A provider
   without its login is off here as in New session (LAD-163): its option "`<name>` · not
   logged in" disabled, the red note with **Log in first**, and Resume off, as the resume
   would be refused (lado.logins); another CLI with its login can be chosen. LADO's own

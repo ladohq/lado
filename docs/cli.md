@@ -277,6 +277,26 @@ logged in: log in in Settings → Providers and environment, or set CLAUDE_CODE_
 the agent starts by itself once you do`; it starts by itself once there is one. A login
 that cannot be read refuses nothing and holds no agent: `lado start` warns `cannot tell
 whether Claude Code is logged in: <why>; the agent starts all the same`.
+`lado start --model <model>` starts the session's agents of its provider's CLI on a model:
+Claude Code with `--model`, Codex with `model` in its agent's config.toml (the carried
+profile's too, as that wins), OpenCode and Kilo with `model` in their config content; never
+the user's own config. The model is checked first (`lado.model_check`) against the CLI's
+own, local list: an alias of the CLI (Claude Code's `opus`, `sonnet`, …) or a name of the
+list starts; a name the list lacks is refused with exit 1 before anything is stored (`lado:
+gpt-9 is not in Codex CLI's list of models; codex debug models prints the list`); a CLI
+that gives no list (Claude Code beyond its aliases, Codex on a model provider other than
+OpenAI's, a list command that fails or runs over 15 s) starts with a warning on stderr,
+also in loop.log (`lado: Claude Code gives no list of models beyond its aliases: LADO cannot
+check claude-opus-5-5; a wrong name stops its agents at their first turn`). The lists:
+`codex debug models --bundled` and the account's catalogue Codex cached in its home,
+`opencode models`, `kilo models`; LADO asks no model API. The session keeps it (`lado.db`,
+`sessions.power`): a resume without `--model` keeps it, `--model ''` goes back to the CLI's
+default, a resume with another `--provider` and no `--model` drops it; each prints `changed
+model: codex gpt-5.6-sol -> CLI default` (or `CLI default -> …`, or one model to another). A
+worker spawned with another provider runs its CLI's default model: `spawn_worker` warns
+`w1 runs on Claude Code's default model: the session's model gpt-5.6-sol is for Codex CLI`.
+`lado ls` shows each agent's model as before.
+
 There is no `lado login`: in a terminal the CLIs' own commands log in. Every Codex agent
 shares the login of the user's own Codex (`codex login`, `codex login --device-auth`).
 

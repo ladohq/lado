@@ -75,6 +75,8 @@
 
 - [x] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_launch.py`,
   `openspec validate model-field-suggestions --strict`, `openspec validate --specs
-  --strict`; the screenshots attached as run artifacts; CI green.
+  --strict`; the screenshots attached as run artifacts; CI green. Also `openspec validate
+  --specs --strict` after an archive on a copy of `openspec/`: the delta's requirements
+  are split so that none is over 500 characters once applied.
 - [x] 4.2 Regression: without `--model` and with the field empty nothing changes
   (`test_no_table_passes_no_model`, the UI test's `empty` state).

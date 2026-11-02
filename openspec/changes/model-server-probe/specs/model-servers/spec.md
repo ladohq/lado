@@ -125,6 +125,11 @@ fragment, SHALL be refused with exit 2.
 - **WHEN** the human probes `http://me:pw@host:4000`
 - **THEN** it exits 2 with a line that does not contain `pw`
 
+#### Scenario: An address urllib itself refuses
+- **WHEN** the human probes `http://u:pw@h＃x`, whose host holds a character that Unicode
+  normalisation changes
+- **THEN** it exits 2 with a fixed line that does not contain `pw`
+
 ### Requirement: An address that does not answer
 
 An address that gives no HTTP answer to the model list within 5 seconds SHALL stop the
@@ -173,6 +178,11 @@ SHALL be refused. The key's value SHALL appear in no output, log, error journal,
 #### Scenario: A key on the command line
 - **WHEN** the human runs `lado model-server probe http://gw:4000 --key s3cr3t`
 - **THEN** it exits 1 without sending a request, and the line does not contain `s3cr3t`
+
+#### Scenario: A dashed value or a word more on the command line
+- **WHEN** the human runs `lado model-server probe http://gw:4000 --key -s3cr3t`, or adds
+  a word the command does not take (`--key a s3cr3t`, `--help=s3cr3t`)
+- **THEN** it exits 1 without sending a request, and neither stream contains `s3cr3t`
 
 ### Requirement: A server that asks for a key or refuses it
 

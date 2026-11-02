@@ -502,12 +502,13 @@ journal: sessions started and resumed; agents started per agent CLI and per role
 (`<role>@<kit>`, `@?` for one spawned before 0.38.0, with a note), agents ended by
 themselves, turn errors per CLI and kind; flow runs started per flow, ended, cancelled;
 gates opened per kind, closed per answer, and how many of the human's answers with a
-recommended choice took it (a cancelled or overridden gate is closed, never in that); questions to the human; messages failed and dropped; LADO's own errors. A
-breakdown lists the larger first, then by name, and wraps under itself. The first line
-names the period in UTC and says nothing is sent; `Earliest record:` follows with `--all`
-or when the earliest row is later than the period's start. It reads only, opens no
-connection and starts no statistics sender (`cli.main` does not kick after it); it
-migrates lado.db as `lado ls` does.
+recommended choice took it (a cancelled or overridden gate is closed, never in that);
+questions to the human; messages failed and dropped; LADO's own errors. A breakdown lists
+the larger first, then by name, and wraps under itself. The first line names the period
+in UTC and says nothing is sent; `Earliest record:` follows with `--all` or when the
+earliest row is later than the period's start. It reads only, opens no connection and
+starts no statistics sender (`cli.main` does not kick after it); it migrates lado.db as
+`lado ls` does.
 
 `lado model-server probe <address> [--key]` asks a model server in the human's network what
 it is (`model_servers.py`): its type (`Ollama`, `LM Studio`, `OpenAI-compatible` or
@@ -560,11 +561,12 @@ terminal (`Key of the server (not shown): `), else read from stdin with one line
 dropped (`printf '%s' "$KEY" | lado model-server probe https://gw.example/llm --key`), as
 `lado project set --secret` reads a secret. `--key <value>` is refused without repeating
 the value, an empty key too, and so is anything else the command does not take (a value
-starting with `-`, a word left over), where argparse would print it as an unrecognized
-argument (exit 1). An address urllib cannot read is refused with a fixed text, never the
-address, which may hold a password (exit 2). It is sent as `Authorization: Bearer` and `x-api-key` and kept
-nowhere: no output, log, error journal or file of `LADO_HOME`; the command never opens
-lado.db (`cli.NOT_MIGRATING`).
+starting with `-`, a word left over, an argument of `-h`, a missing address): where
+argparse would print a word of the command line, the usage and a fixed text instead (exit
+1). An address urllib cannot read is refused with a fixed text, never the address, which
+may hold a password (exit 2). The key is sent as `Authorization: Bearer` and `x-api-key`
+and kept nowhere: no output, log, error journal or file of `LADO_HOME`; the command never
+opens lado.db (`cli.NOT_MIGRATING`).
 
 `lado ui` prints (or opens) the local link with the token, then, when the running server
 has a link for another device, `From another machine: <link>`: it asks the server

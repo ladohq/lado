@@ -3,7 +3,9 @@
 // Claude?", Codex: "How do you pay for Codex?") it asks its question, the current choice
 // marked, and keeps the value pasted under the chosen one as LADO's secret in place of the
 // CLI's other login there (PUT …/variables/{name}: written, never shown), or, for a choice
-// with an action (Codex's sign-in code), opens the login window running it in the sheet.
+// with an action (Codex's sign-in code), opens the login window running it in the sheet:
+// for an action that shows a code, its failure offers "Get a new code" (the action again) and
+// "Back" (these choices).
 // "Log out…" asks first, naming the CLI's running agents: while the login comes from LADO's
 // secrets it removes it (DELETE …/login-secrets); while it is the CLI's own file, which they
 // share, it runs the CLI's logout in the login window. For a CLI that logs in by its own
@@ -59,7 +61,11 @@ function useLoginWindow(name: string, onChanged: Props["onChanged"]) {
     }
   };
   const last = (shownCount: number) => shownCount === count.current;
-  return { shown, busy, refused, start, last };
+  const back = () => {
+    count.current++; // the window shown is no longer the last
+    setShown(null);
+  };
+  return { shown, busy, refused, start, last, back };
 }
 
 function ChoiceSheet({ row, onChanged, onClose }: Props) {
@@ -104,9 +110,12 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
         provider={row.cli.name}
         title={row.cli.title}
         help={action?.help}
+        showsCode={action?.shows_code}
         onEnded={() => {
           if (win.last(count)) onClose();
         }}
+        onRetry={() => void win.start(win.shown!.action)}
+        onBack={win.back}
       />
     );
   }

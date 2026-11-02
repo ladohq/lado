@@ -43,7 +43,6 @@ def _page(client):
 def windows(monkeypatch):
     """tmux's login sessions, recorded: name -> (labels, command)."""
     made: dict[str, tuple[dict, list[str]]] = {}
-    home = str(state.home().resolve())
 
     def new(name, cwd, cmd, options, before_attempt=None):
         made[name] = (options, cmd)
@@ -51,10 +50,11 @@ def windows(monkeypatch):
 
     monkeypatch.setattr(tmux, "new_labelled_session", new)
     monkeypatch.setattr(tmux, "kill_session", lambda name: made.pop(name))
+    # Each one's labels as it was made with them; its command runs ('' for pane_dead).
     monkeypatch.setattr(
         tmux,
         "sessions_with",
-        lambda *o: [[n, opts[logins.LOGIN], home] for n, (opts, _) in made.items()],
+        lambda *o: [[n, *(opts.get(x, "") for x in o)] for n, (opts, _) in made.items()],
     )
     return made
 
@@ -325,9 +325,9 @@ def test_codexs_sheet_runs_its_sign_in_from_a_choice_and_logs_out_of_its_file(
         ("token", "CODEX_ACCESS_TOKEN", ""),
         ("usage", "OPENAI_API_KEY", ""),
     ]
-    assert [(a["id"], bool(a["help"])) for a in codex["actions"]] == [
-        ("login", True),
-        ("logout", False),
+    assert [(a["id"], bool(a["help"]), a["shows_code"]) for a in codex["actions"]] == [
+        ("login", True, True),  # its window shows the link and the code, no terminal
+        ("logout", False, False),
     ]
     assert codex["login"]["choice"] == "chatgpt"
     assert (codex["from_lado"], codex["logout_file"]) == (False, True)

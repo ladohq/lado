@@ -6,12 +6,15 @@ whole from one layer; the marker is written by the login command (fake_login.py)
 "fake-window" in a login window."""
 
 import json
+import os
 import subprocess
 import time
 
 import agent_helpers
 import fake_provider
 import pytest
+from websockets.exceptions import ConnectionClosed
+from websockets.sync.client import ClientConnection, connect
 
 from lado import (
     cli,
@@ -24,7 +27,8 @@ from lado import (
     terminal,
     tmux,
 )
-from lado.server import models
+from lado.server import auth, models
+from lado.server import run as server_run
 
 pytestmark = pytest.mark.integration
 
@@ -318,3 +322,110 @@ def test_the_login_windows_end_with_lado_stop_all(repo, marker):
     runtime.stop_all(lambda session, stopped: None)
     assert logins.open_windows() == {}
     assert not tmux.has_session(name)
+
+
+# A login window that shows a code (openspec change codex-login-code): "fake-login"'s
+# sign-in code prints a link and a code in Codex's words (fake_login.py --code), read
+# through a real `lado server`'s login socket.
+CODE_PROMPT = {
+    "type": "prompt",
+    "link": "https://login.example.invalid/device",
+    "code": "FAKE-C0DE7",
+    "expires": "expires in 15 minutes",
+    "lines": [
+        "Continue only if you started this login in Codex. If a website or another person "
+        "gave you this code, cancel."
+    ],
+}
+
+
+@pytest.fixture
+def server(tmp_path, marker):
+    """A `lado server` that knows the fake providers, on a free port: its server.json."""
+    with open(tmp_path / "server.out", "w") as out:
+        process = subprocess.Popen(
+            fake_provider.lado_command("server", "--port", "0"),
+            stdout=out,
+            stderr=subprocess.STDOUT,
+            env=os.environ,
+        )
+    try:
+        yield server_run.wait_ready()
+    finally:
+        server_run.stop()
+        process.wait(timeout=10)
+
+
+def login_socket(server: dict, provider: str = PROVIDER) -> ClientConnection:
+    url = server["url"].replace("http://", "ws://")
+    return connect(
+        f"{url}/api/providers/{provider}/login/terminal",
+        origin=server["url"],
+        additional_headers={"Cookie": f"{auth.cookie_name(server['port'])}={auth.token()}"},
+        open_timeout=10,
+    )
+
+
+def frames(ws: ClientConnection, until: str, timeout: float = 20) -> list[dict]:
+    """The JSON frames up to the first of type `until`, output skipped."""
+    found, deadline = [], time.monotonic() + timeout
+    while not found or found[-1]["type"] != until:
+        message = ws.recv(timeout=max(deadline - time.monotonic(), 0.1))
+        if isinstance(message, str):
+            found.append(json.loads(message))
+    return found
+
+
+def closed_code(ws: ClientConnection) -> int:
+    with pytest.raises(ConnectionClosed) as end:
+        while True:
+            ws.recv(timeout=20)
+    return end.value.rcvd.code
+
+
+def test_a_code_window_sends_its_prompt_then_its_last_words(server, marker, monkeypatch):
+    monkeypatch.setenv("FAKE_AGENT_LOGIN_END", "fail")  # prints the code, fails at once
+    logins.open_window(providers.get(PROVIDER), "login")
+    with login_socket(server) as ws:
+        got = frames(ws, "ended")
+        assert [f["type"] for f in got] == ["size", "prompt", "ended"]
+        assert got[1] == CODE_PROMPT
+        assert got[2] == {
+            "type": "ended",
+            "status": 1,
+            "said": "Error: device code login is not enabled for this fake server.",
+        }
+        assert closed_code(ws) == 4404  # for good
+    assert logins.windows() == {}  # read, then ended
+
+
+def test_a_code_entered_ends_the_window_with_status_0(server, marker):
+    logins.open_window(providers.get(PROVIDER), "login")
+    with login_socket(server) as ws:
+        assert frames(ws, "prompt")[-1] == CODE_PROMPT
+        marker.with_name(marker.name + ".entered").write_text("FAKE-C0DE7")
+        assert frames(ws, "ended")[-1] == {
+            "type": "ended",
+            "status": 0,
+            "said": "Successfully logged in",
+        }
+        assert closed_code(ws) == 4404
+    assert marker.read_text() == "FAKE-C0DE7"
+    assert logins.windows() == {}
+
+
+def test_output_lado_does_not_know_sends_no_prompt(server, marker, monkeypatch):
+    monkeypatch.setenv("FAKE_AGENT_LOGIN_END", "other")
+    logins.open_window(providers.get(PROVIDER), "login")
+    with login_socket(server) as ws:
+        seen, deadline = b"", time.monotonic() + 20
+        while b"somehow" not in seen:  # its text came, and more looks than one went by
+            assert time.monotonic() < deadline
+            message = ws.recv(timeout=20)
+            assert not (isinstance(message, str) and json.loads(message)["type"] == "prompt")
+            seen += message if isinstance(message, bytes) else b""
+        time.sleep(1.5)
+        ws.send(json.dumps({"type": "input", "data": "\r"}))  # it ends
+        got = frames(ws, "ended")
+        assert "prompt" not in [f["type"] for f in got]
+        assert got[-1]["status"] == 1 and got[-1]["said"] == "Sign in somewhere else, somehow"

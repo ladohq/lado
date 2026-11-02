@@ -1514,7 +1514,7 @@ def _refuse_while_waiting(session: str, sender: str, recipient: str) -> None:
         return
     then = (
         "read it with read_messages, then send again"
-        if waiting.body or waiting.attachments
+        if waiting.to_read
         else "its line comes with this result; send again"
     )
     raise LadoError(

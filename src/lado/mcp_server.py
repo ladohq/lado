@@ -73,9 +73,7 @@ class _Server(MCPServer):
             if not text:
                 raise
             raise ToolError(f"{error}\n\n{text}") from error
-        text = runtime.mid_turn_text(
-            [m for m in early if not (m.body or m.attachments)] + self._lado_take()
-        )
+        text = runtime.mid_turn_text([m for m in early if not m.to_read] + self._lado_take())
         if not text or not isinstance(result, CallToolResult):
             return result
         structured = result.structured_content

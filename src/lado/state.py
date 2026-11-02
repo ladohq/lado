@@ -1063,6 +1063,11 @@ class Message:
         first = self.body.strip().split("\n", 1)[0].rstrip()
         return first if len(first) <= SUMMARY_LIMIT else first[: SUMMARY_LIMIT - 1] + "…"
 
+    @property
+    def to_read(self) -> bool:
+        """Whether it has more than its line, for read_messages: TO_READ of a loaded one."""
+        return bool(self.body or self.attachments)
+
 
 @dataclass
 class Event:

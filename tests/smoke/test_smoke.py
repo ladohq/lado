@@ -329,25 +329,21 @@ def sandbox_probes(monkeypatch) -> list[str | None]:
 
 
 def check_sandbox_warning(started, probes: list[str | None], mode: str | None) -> None:
-    """The launch warned of Codex's sandbox exactly as the real probe answered (LAD-151)."""
-    from lado import update
-
+    """The launch warned of Codex's sandbox exactly as the real probe answered (LAD-151), as
+    on a host: tests/conftest.py clears LADO_CONTAINER."""
     warned = [w for w in started.warnings if w.startswith("Codex's sandbox cannot start")]
     if sys.platform != "linux" or mode == "bypassPermissions":
         assert (probes, warned) == ([], [])
         return
     [error] = probes
-    if error is None:
-        assert warned == []
-        return
-    if update.in_container():
-        then = "runs without it, and LADO's container is its only boundary"
-    else:
-        then = (
-            "asks before each shell command; docs/install.md says how to allow it, "
-            "or use bypassPermissions"
-        )
-    assert warned == [f"Codex's sandbox cannot start here ({error}): Codex agent supervisor {then}"]
+    assert warned == (
+        []
+        if error is None
+        else [
+            f"Codex's sandbox cannot start here ({error}): Codex agent supervisor asks before "
+            "each shell command; docs/install.md says how to allow it, or use bypassPermissions"
+        ]
+    )
 
 
 @pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)

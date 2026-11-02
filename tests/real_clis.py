@@ -63,7 +63,7 @@ SANDBOX_ERROR = codex._sandbox_error
 
 
 @pytest.fixture(autouse=True)
-def isolated(lado_home, monkeypatch, kill_tmux_server, cli_logins):
+def isolated(lado_home, monkeypatch, kill_tmux_server, cli_logins, codex_sandbox):
     if shutil.which("tmux") is None:
         pytest.skip("tmux not installed")
     monkeypatch.setattr(base, "run_status", RUN_STATUS)  # the real CLIs answer

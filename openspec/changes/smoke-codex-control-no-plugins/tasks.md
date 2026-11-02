@@ -1,6 +1,6 @@
 ## 1. The fix
 
-- [ ] 1.1 `tests/smoke/test_smoke.py`, `test_a_codex_agent_gets_none_of_codex_s_own_subagents`,
+- [x] 1.1 `tests/smoke/test_smoke.py`, `test_a_codex_agent_gets_none_of_codex_s_own_subagents`,
   requirement "A Codex agent has none of Codex's own subagents", scenario "A model whose
   metadata turns the subagents on": the control `codex exec` runs as
   `["codex", "exec", "--skip-git-repo-check", "-c", "features.plugins=false", "hi"]`, with
@@ -12,9 +12,9 @@
 
 ## 2. Checks
 
-- [ ] 2.1 `make lint`; `openspec validate smoke-codex-control-no-plugins --strict`;
+- [x] 2.1 `make lint`; `openspec validate smoke-codex-control-no-plugins --strict`;
   `openspec validate --specs --strict`.
-- [ ] 2.2 The Codex smoke locally, where the real `codex` (0.162.0) is installed:
+- [x] 2.2 The Codex smoke locally, where the real `codex` (0.162.0) is installed:
   `uv run pytest -m smoke -n0 "tests/smoke/test_smoke.py::test_a_codex_agent_gets_none_of_codex_s_own_subagents[codex]"`
   passes, its teardown names no process, and the control's tools still hold
   `collaboration.wait_agent`. Then the whole Codex smoke file once:

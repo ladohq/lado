@@ -362,7 +362,9 @@ with their delivery state and summary, the body indented below) and agent events
 status changes). `--agent NAME` keeps one agent's
 lines, `-n N` the last N entries, `--follow` keeps printing new ones until Ctrl-C.
 With `--follow` a message is printed once, with the state it had then; a later delivery
-is not printed again.
+is not printed again. Without it a message's `[state]` is the state it has now, beside
+the time it was created: `[read]` means its body was returned by `read_messages` at some
+time after that, not at the time shown.
 
 `lado finish <session> <agent>` ends a worker whose branch is merged into the session repo's
 current branch: it removes the worktree and branch, drops the agent from `lado ls` (its

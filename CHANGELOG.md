@@ -2,7 +2,7 @@
 
 ## 0.45.0 (unreleased)
 
-### Added
+### New
 
 - **See which model each agent runs on.** The agent's page, the Team chip's tooltip,
   `lado ls` and `list_agents` show its model and effort and where they came from: the CLI's
@@ -14,9 +14,11 @@
   of a server in your network (Ollama, LM Studio, OpenAI- or Anthropic-compatible), its
   models and which agent CLIs can use it, without generating anything; `--key` for its key.
 
-## 0.44.1 (unreleased)
-
 ### Fixed
+
+- **The supervisor no longer asks again for a report it already got.** A message that
+  comes while an agent works reaches it with its next LADO tool call, and a reminder to an
+  agent whose message waits is refused.
 
 - **Codex agents run shell commands in LADO's container.** Codex's sandbox cannot start in
   Docker, so in the mode `default` every command asked "retry without sandbox?". They now

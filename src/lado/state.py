@@ -228,10 +228,11 @@ EVENTS_JOURNAL = _journal_triggers("events")
 MARKETPLACES_TABLE = [MARKETPLACES, MARKETPLACES_OFFICIAL, *_journal_triggers("marketplaces")]
 KITS_TABLE = [KITS, *_journal_triggers("kits")]
 # How a message was handed over to its recipient, from version 19 on: typed into its window
-# or carried on in its turn-end hook's output (TYPED, HOOK_OUTPUT; lado.runtime.hand_over).
-# NULL while it is pending, and for one handed over another way (a message to the human, the
-# first input of a LADO before 0.30.1). Each channel has its own confirmation and its own
-# sweep rule (lado.runtime._plan).
+# or carried on in its turn-end hook's output (TYPED, HOOK_OUTPUT; lado.runtime.hand_over),
+# and from 0.45.0 on in the result of its own call of a LADO tool (TOOL_RESULT, delivered
+# at once; lado.runtime.take_mid_turn). NULL while it is pending, and for one handed over
+# another way (a message to the human, the first input of a LADO before 0.30.1). Each
+# channel has its own confirmation and its own sweep rule (lado.runtime._plan).
 MESSAGES_CHANNEL = "ALTER TABLE messages ADD COLUMN channel TEXT"
 # Resuming an agent whose turn ended on an error that passes by itself (lado.hooks), from
 # version 20 on: when LADO tells it to go on (NULL for nothing planned; only while it is
@@ -523,6 +524,9 @@ TYPED = "typed"  # typed into the window; confirmed by its line in a prompt-subm
 # Carried on in the turn-end hook's output; confirmed by its line in a prompt-submit hook,
 # or by the next turn's end that says the turn went on from that output (lado.hooks).
 HOOK_OUTPUT = "hook_output"
+# Carried in the result of a call of a LADO MCP tool by the recipient, mid-turn
+# (lado.runtime.take_mid_turn); confirmed by being in that result: delivered at once.
+TOOL_RESULT = "tool_result"
 # A message with more than its line, which its recipient reads with read_messages: a body,
 # or artifacts attached (from version 21 on). The one condition for both (in a statement on
 # `messages`).
@@ -1131,7 +1135,7 @@ class Message:
     reply_to: int | None = None  # an answer's or dismissal's: the question's id
     choice: str | None = None  # an answer's: the choice taken, if one was
     reply_state: str | None = None  # the human's message to an agent: REPLIED | MISSING
-    channel: str | None = None  # how it was handed over: TYPED | HOOK_OUTPUT; None for none
+    channel: str | None = None  # how it was handed over: TYPED | HOOK_OUTPUT | TOOL_RESULT
     printed_at: float | None = None  # when its turn-end hook printed it (MESSAGES_PRINTED)
     attachments: int = 0  # how many artifacts it carries (message_attachments)
     # A question's: the lead's recommendation on it (RECOMMENDATION).
@@ -1149,6 +1153,11 @@ class Message:
             return self.summary
         first = self.body.strip().split("\n", 1)[0].rstrip()
         return first if len(first) <= SUMMARY_LIMIT else first[: SUMMARY_LIMIT - 1] + "…"
+
+    @property
+    def to_read(self) -> bool:
+        """Whether it has more than its line, for read_messages: TO_READ of a loaded one."""
+        return bool(self.body or self.attachments)
 
 
 @dataclass
@@ -3103,6 +3112,18 @@ def read_messages(session: str, recipient: str) -> list[Message]:
         )
         db.execute("COMMIT")
     return [_message(r, state=READ) for r in rows]
+
+
+def waiting_from(session: str, recipient: str, sender: str) -> Message | None:
+    """The oldest message from `sender` that `recipient` has not received: pending, or
+    handed over with something to read (TO_READ) and not read; None for none."""
+    with connect() as db:
+        row = db.execute(
+            f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE session = ? AND recipient = ?"
+            f" AND sender = ? AND (state = ? OR (state IN (?, ?) AND {TO_READ})) ORDER BY id",
+            (session, recipient, sender, PENDING, SENT, DELIVERED),
+        ).fetchone()
+    return _message(row) if row else None
 
 
 def take_pending(

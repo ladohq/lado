@@ -1106,6 +1106,76 @@ def test_a_message_to_an_agent_in_background_is_queued_like_one_to_an_idle_agent
     )
 
 
+def _to_w1():
+    return [m.summary for m in state.list_messages("s") if m.recipient == "w1"]
+
+
+def test_a_reminder_to_an_agent_whose_report_waits_is_refused_until_it_is_read(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.BUSY)
+    report = runtime.send_message("s", "w1", "supervisor", "DONE", "the report")
+    assert report.startswith("queued")
+    [waiting] = state.list_messages("s")
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.send_message("s", "supervisor", "w1", "send your report")
+    assert str(error.value) == (
+        f"w1's message #{waiting.id} waits for you, so nothing was sent: read it with "
+        "read_messages, then send again if it still needs saying"
+    )
+    assert _to_w1() == []
+    # Delivered by that error's result, but not read yet: still refused.
+    state.take_pending("s", "supervisor", state.DELIVERED, channel=state.TOOL_RESULT)
+    with pytest.raises(runtime.LadoError):
+        runtime.send_message("s", "supervisor", "w1", "send your report")
+    state.read_messages("s", "supervisor")
+    runtime.send_message("s", "supervisor", "w1", "send your report")
+    assert _to_w1() == ["send your report"]
+
+
+def test_a_reminder_after_a_message_without_a_body_goes_once_its_line_arrived(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.BUSY)
+    runtime.send_message("s", "w1", "supervisor", "DONE")
+    [waiting] = state.list_messages("s")
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.send_message("s", "supervisor", "w1", "thanks")
+    assert str(error.value) == (
+        f"w1's message #{waiting.id} waits for you, so nothing was sent: its line comes with "
+        "this result; send again if it still needs saying"
+    )
+    state.take_pending("s", "supervisor", state.DELIVERED, channel=state.TOOL_RESULT)
+    runtime.send_message("s", "supervisor", "w1", "thanks")
+    assert _to_w1() == ["thanks"]
+
+
+def test_a_message_to_the_human_is_never_refused_for_a_waiting_one(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.BUSY)
+    runtime.send_message("s", "w1", "supervisor", "DONE", "the report")
+    assert runtime.send_message("s", "supervisor", state.HUMAN, "x done").startswith("delivered")
+
+
+def test_a_message_from_the_human_is_never_refused_for_one_waiting_for_them(repo, fake_tmux):
+    """The human's messages stay delivered, never read: one to read never stops them."""
+    _session_with_worker(repo)
+    runtime.send_message("s", "supervisor", state.HUMAN, "which one?", "a or b")
+    runtime.send_message("s", state.HUMAN, "supervisor", "a")
+    assert [m.summary for m in state.list_messages("s") if m.sender == state.HUMAN] == ["a"]
+
+
+def test_every_agent_is_told_where_mid_turn_messages_come_from(repo, fake_tmux):
+    assert "arrives with the result of your next `lado` tool call" in runtime.MESSAGING
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    supervisor = agent_helpers.claude_prompt(fake_tmux[0][-1])
+    assert runtime.MESSAGING in supervisor
+    assert "Do not wait for a worker inside your turn" in supervisor
+    assert "call read_messages first" in supervisor
+    runtime.spawn_worker("s", "task", name="w1")
+    worker = agent_helpers.claude_prompt(fake_tmux[-1][-1])
+    assert runtime.MESSAGING in worker
+    assert "Do not wait for a worker" not in worker
+
+
 def test_hand_over_by_hook_output_returns_the_lines_and_types_nothing(repo, fake_tmux):
     _session_with_worker(repo)
     state.queue_message("s", "supervisor", "w1", "one")

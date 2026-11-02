@@ -380,8 +380,19 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   returns the caller's handed-over (`sent` or `delivered`), unread ones (with each
   attachment's full name, title, media type, size and whether it `changed` since) and
   marks them `read`; reading a `sent` one confirms it, as the agent has it in the tool's
-  result (any channel; never a `pending` one, which keeps the queue's order); a stop or finish
-  drops such a message unread. The supervisor stays quiet with the human: it does not relay reports,
+  result (any channel); a `pending` one it first takes with the whole queue, in order, as
+  every tool call does (`tool_result`, below), so a message that waited is returned at
+  once, and its result's lines are those of the taken messages without anything to read.
+  A stop or finish drops such a message unread.
+- A `send_message` to agent X is refused, with nothing queued, while a message from X waits
+  for the caller unreceived (`state.waiting_from`: `pending`, or handed over with
+  something to read and not read): `X's message #<id> waits for you, so nothing was
+  sent: ...` (`runtime._refuse_while_waiting`), carrying the caller's queue as any tool's
+  error does. It compares sender and recipient only, so the "send your report" to a
+  worker whose report is on its way never goes out; once the caller got the message (its
+  line in that very error, its body by `read_messages`), the same send goes through. A
+  message to or from `human` is never refused so: messages to the human stay
+  `delivered`, never read. The supervisor stays quiet with the human: it does not relay reports,
   and the details are in `lado log`.
 - The human is a participant of messages, `human` (design in
   [docs/design/ui.md](ui.md), The human in the session): agents write to it with
@@ -467,7 +478,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   literally, and the turn that does not end gets no messages. Codex's
   `SessionEnd` is not used: after `/resume` it runs for the conversation left, once the
   next one has started; an agent whose Codex exits is ended by the window check.
-- A queue is handed over by one of two channels, kept with each message
+- A queue is handed over by one of two channels at a turn's end (and a third, mid-turn,
+  below), kept with each message
   (`messages.channel`), and stays `sent` until the agent confirms it (then `delivered`):
   - `typed`: pasted into the agent's window, confirmed when its prompt-submit hook sees
     the message's line. A paste that ends in a backslash gets a space after it
@@ -507,7 +519,26 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   (`state.take_pending`'s `become`), so the session loop never sees the agent idle with
   the queue the hook takes: exactly one of them hands a message over, and the sender's reply says `sent` also when a hook or the loop handed its
   message over in between (and refuses, as for an agent not running, when the agent was
-  finished or stopped in between). A queue is taken only so, also an agent's first input.
+  finished or stopped in between). A queue is taken only so, also an agent's first input,
+  but for the third channel:
+  - `tool_result`: in the middle of a turn, the result of any call of a `lado` MCP tool
+    carries the caller's whole queue (`mcp_server._Server.call_tool`,
+    `runtime.take_mid_turn`), after the tool's own content, under `runtime.MID_TURN`
+    ("Messages that came during your turn:"); a tool that fails carries it in its error
+    text, and `read_messages` takes it before it reads. The lines are `delivered` at once
+    (`sent_at` set): the agent has them as it has `read_messages`' result, so no hook
+    confirms them, no turn's end hands them over again and the sweep never retypes them.
+    Without a queue the result is unchanged. Before 0.45.0 a message to a busy agent
+    waited for its turn's end, and a supervisor that waited for a worker inside its turn
+    asked again for a report it had (LAD-172). The lines go twice: a text block after the
+    tool's content and `lado_messages` in its structured content, when there is one,
+    since the CLIs show the model different parts: OpenCode the content when there is any
+    (its structured content only for a result without content; read in its 1.18 bundle,
+    errors as their text blocks), Claude Code the structured content (seen in a session:
+    `{"result": ...}`), Codex the structured content when there is one (its
+    `FunctionCallOutputPayload` from a `CallToolResult`, open source, not re-read for
+    this change); Kilo's binary has no readable bundle, as OpenCode's fork it is taken to
+    behave as OpenCode. Either way the model gets the lines once.
   What was handed
   over and is unconfirmed is typed again only by the sweep's rule (below), also into a
   busy agent whose window shows no sign of having taken it; never into one that is

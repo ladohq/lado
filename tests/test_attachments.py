@@ -313,7 +313,8 @@ def test_a_runs_worker_is_shown_the_sessions_artifacts_as_slash_names(run):
     )
     assert sent
     _delivered("s", _last_message("s").id)
-    [message] = _call("s", "worker", "read_messages")
+    # Its step, still queued, comes with this call too (runtime.take_mid_turn).
+    [message] = [m for m in _call("s", "worker", "read_messages") if m["from"] == "supervisor"]
     assert [a["name"] for a in message["artifacts"]] == ["/brief"]
     assert _call("s", "worker", "read_artifact", {"name": "/brief"})["content"] == "b"
     args = {"run": "ship/x", "outcome": "done", "note_summary": "built", "artifacts": ["/brief"]}

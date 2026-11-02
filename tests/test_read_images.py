@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 
+import agent_helpers
 import pytest
 from test_images import gif, jpeg, png, vp8x
 
@@ -68,6 +69,7 @@ def test_an_image_comes_back_as_an_image_with_its_facts(session, file_name, data
 
 def test_a_run_workers_image_facts_name_it_as_it_reads_it(session):
     runtime.spawn_worker(session, "task", name="w1")
+    agent_helpers.forget_tasks(session)  # its queued task would come with the result
     name = artifacts.upload(session, "shot.png", png(3, 2)).full_name
     facts, _ = _read(name, "w1").content
     assert json.loads(facts.text)["name"] == name  # w1 is no run's worker

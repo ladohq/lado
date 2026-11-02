@@ -1741,6 +1741,48 @@ def test_read_messages_reads_a_handed_over_message_before_it_is_confirmed(lado_h
     assert states == {"report": state.READ, "ping": state.DELIVERED, "later": state.PENDING}
 
 
+def test_a_queue_taken_by_a_tool_result_is_delivered_once_and_out_of_the_sweep(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    first = state.queue_message("s", "supervisor", "w1", "first", "the details")
+    second = state.queue_message("s", "w2", "w1", "second")
+    before = time.time()
+    taken = state.take_pending("s", "w1", state.DELIVERED, channel=state.TOOL_RESULT)
+    assert [(m.id, m.state, m.channel) for m in taken] == [
+        (first, state.DELIVERED, state.TOOL_RESULT),
+        (second, state.DELIVERED, state.TOOL_RESULT),
+    ]
+    stored = {m.id: m for m in state.list_messages("s")}
+    assert all(stored[i].sent_at >= before for i in (first, second))
+    assert {stored[i].channel for i in (first, second)} == {state.TOOL_RESULT}
+    assert state.take_pending("s", "w1", state.SENT, channel=state.TYPED) == []
+    seen = []
+
+    def plan(agent, sent):
+        seen.extend(sent)
+        return state.Plan(retype=True)
+
+    assert state.sweep("s", "w1", time.time(), plan).typed == []
+    assert seen == []
+    assert [m.id for m in state.read_messages("s", "w1")] == [first]
+
+
+def test_a_message_from_a_sender_waits_until_its_recipient_received_it(lado_home):
+    _session_with(_agent("supervisor", status=state.BUSY), _agent())
+    assert state.waiting_from("s", "supervisor", "w1") is None
+    report = state.queue_message("s", "w1", "supervisor", "report", "the details")
+    state.queue_message("s", "w2", "supervisor", "other's", "body")
+    assert state.waiting_from("s", "supervisor", "w1").id == report  # pending
+    assert state.waiting_from("s", "w1", "supervisor") is None  # the other way round
+    state.take_pending("s", "supervisor", state.DELIVERED, channel=state.TOOL_RESULT)
+    assert state.waiting_from("s", "supervisor", "w1").id == report  # delivered, not read
+    state.read_messages("s", "supervisor")
+    assert state.waiting_from("s", "supervisor", "w1") is None
+    line = state.queue_message("s", "w1", "supervisor", "a line only")
+    assert state.waiting_from("s", "supervisor", "w1").id == line
+    state.take_pending("s", "supervisor", state.DELIVERED, channel=state.TOOL_RESULT)
+    assert state.waiting_from("s", "supervisor", "w1") is None  # its line was received
+
+
 def test_version_5_database_gets_runs(lado_home):
     db = _schema_v4(lado_home)
     for statement in state.MIGRATIONS[4]:

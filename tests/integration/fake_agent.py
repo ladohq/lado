@@ -10,12 +10,15 @@ the body of each message from "lado" it gets, as an agent reads its task and doe
 bodies of later messages, and of other senders, it only reads when told to (`read`).
 Every input line is a command, after an optional "[from <name>] ":
     send <to> <summary>[ | <body>][ --artifacts <name>,<name>...]  call the LADO MCP tool
-                       send_message; "\\n" in the body is a line break
+                       send_message; "\\n" in the body is a line break; "seen" gets the
+                       text of the latest one's result ("send_text")
     artifact_write <name> <path>  call the LADO MCP tool write_artifact with the file at
                        <path> (relative: to the agent's folder, as an agent passes it)
     artifact_read <name>  call the LADO MCP tool read_artifact; "seen" gets its result and
                        the type (and mimeType) of each content block
     read               call the LADO MCP tool read_messages
+    agents             call the LADO MCP tool list_agents; "seen" gets its result ("agents")
+                       and its text ("agents_text")
     askhuman <question>[ | <choice>, <choice>...][ --artifacts <name>,<name>...]  call the
                        LADO MCP tool ask_human
     start_session <name> <question id>  call the LADO MCP tool start_session; "seen" gets
@@ -256,6 +259,7 @@ def send(to: str, text: str) -> None:
     if attached:
         arguments["artifacts"] = attached.split(",")
     call_tool("send_message", arguments)
+    report(send_text=[c.get("text") for c in lado_mcp.last_content])
 
 
 def log_input(text) -> None:
@@ -359,6 +363,9 @@ def work(text: str) -> bool:
             send(command[1], command[2])
         elif command[0] == "read":
             report(read=call_tool("read_messages", {}))
+        elif command[0] == "agents":
+            listed = call_tool("list_agents", {})
+            report(agents=listed, agents_text=[c.get("text") for c in lado_mcp.last_content])
         elif command[0] == "artifact_write":
             written = call_tool("write_artifact", {"name": command[1], "file": command[2]})
             report(artifact_write=written)

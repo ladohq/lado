@@ -809,7 +809,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `COMMAND_TOOLS`, unless it is read-only: then they are not listed, and a call of one
     is refused as `role <r> is read-only: <tool> is not available`; and `recommend`, the
     lead's own, read-only or not: `runtime.recommend`). No tool answers a gate or a
-    question.
+    question. Every tool's result, or its error, carries the caller's queue, delivered by
+    the channel `tool_result` (`_Server.call_tool`, `runtime.take_mid_turn`; How agents
+    talk): a text block and `lado_messages` in the structured content.
   - `artifacts.py`: artifacts, named documents of a session (contract:
     [docs/design/artifacts.md](artifacts.md)); the only module the rest of LADO
     calls for them (MCP tools, CLI, runs, runtime, doctor, the UI server): names (`NAME`,

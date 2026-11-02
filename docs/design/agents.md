@@ -354,7 +354,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   error does. It compares sender and recipient only, so the "send your report" to a
   worker whose report is on its way never goes out; once the caller got the message (its
   line in that very error, its body by `read_messages`), the same send goes through. A
-  message to `human` is never refused so. The supervisor stays quiet with the human: it does not relay reports,
+  message to or from `human` is never refused so: messages to the human stay
+  `delivered`, never read. The supervisor stays quiet with the human: it does not relay reports,
   and the details are in `lado log`.
 - The human is a participant of messages, `human` (design in
   [docs/design/ui.md](ui.md), The human in the session): agents write to it with

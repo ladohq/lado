@@ -319,7 +319,7 @@ Check:
   readiness. Recommended: let `main` release 0.45.0 when it wants, the epic takes the next
   minor; the standing rule "the epic ships in 0.45.0" becomes "in the first minor after the
   epic is ready".
-- Q5 (asked at S3a's review; not answered at #222, asked again). `lado project set --secret` prints a value that starts with
+- Q5 (answered at question #2699: «Да, заведи задачу» → LAD-181, a hotfix into `main`, outside the epic). Asked at S3a's review: `lado project set --secret` prints a value that starts with
   `-` (found at S3a's review, already in `main`). Recommended: a task of its own, a hotfix
   into `main`, outside the epic.
 - Q6 (answered at `step_ok` #222: «создай. Разберемся отдельно» → LAD-179, outside the

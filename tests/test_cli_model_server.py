@@ -133,8 +133,42 @@ def test_empty_key_is_refused(serve, capsys, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "given", [["--key", "s3cr3t"], ["--key=s3cr3t"], ["--key", "-s3cr3t"], ["--key", "--s3cr3t"]]
+    "given",
+    [
+        ["--key", "-s3cr3t"],
+        ["--key", "--s3cr3t"],
+        ["--k", "-s3cr3t"],  # argparse takes a prefix of an option for it
+        ["--ke", "-s3cr3t"],
+        ["--key", "a", "s3cr3t"],  # a key with a space, unquoted
+        ["s3cr3t"],
+        ["--json", "--s3cr3t"],
+    ],
 )
+def test_anything_more_on_the_command_line_is_refused_unechoed(serve, capsys, monkeypatch, given):
+    """argparse would print what it does not take as `unrecognized arguments`: a key."""
+    server = serve("openai")
+    stdin = Stdin("k\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    assert main(["model-server", "probe", server.url, *given]) == 1
+    out, err = capsys.readouterr()
+    assert err == (
+        "lado: lado model-server probe takes an address and --key, nothing more; a server's "
+        "key is never given on the command line (ps and the shell's history keep it): run lado "
+        "model-server probe <address> --key and type it, or pipe it in\n"
+    )
+    assert "s3cr3t" not in out + err
+    assert server.requests == []
+    assert not stdin.touched
+
+
+def test_other_commands_still_name_what_they_do_not_take(capsys):
+    with pytest.raises(SystemExit) as exited:
+        main(["ls", "--nope"])
+    assert exited.value.code == 2
+    assert "unrecognized arguments: --nope" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("given", [["--key", "s3cr3t"], ["--key=s3cr3t"], ["--ke=s3cr3t"]])
 def test_key_on_the_command_line_is_refused_unechoed(serve, capsys, monkeypatch, given):
     server = serve("openai")
     stdin = Stdin("k\n")

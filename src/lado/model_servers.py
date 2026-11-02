@@ -123,7 +123,13 @@ def address(text: str) -> tuple[str, bool]:
     added = "://" not in text
     if added:
         text = "http://" + text
-    parts = urllib.parse.urlsplit(text)
+    try:
+        # urllib's own refusals (a bad bracketed host, a character NFKC changes) name the
+        # address: a fixed text instead.
+        parts = urllib.parse.urlsplit(text)
+        hostname = parts.hostname
+    except ValueError:
+        raise ValueError("not an address of a server (http://host:port/path)") from None
     scheme = parts.scheme.lower()
     if scheme not in ("http", "https"):
         raise ValueError("a server's address starts with http:// or https://")
@@ -135,7 +141,7 @@ def address(text: str) -> tuple[str, bool]:
         raise ValueError("a server's address holds no query")
     if parts.fragment:
         raise ValueError("a server's address holds no fragment")
-    if not parts.hostname:
+    if not hostname:
         raise ValueError("the address names no host")
     try:
         parts.port  # noqa: B018 - raises for a port out of range
@@ -275,10 +281,13 @@ def _container_hint(root: str) -> str:
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     """Follows nothing: a redirect is an answer (urllib's own handler would send the key's
-    headers on to the host it names)."""
+    headers on to the host it names). It does not read the location either, which urllib's
+    would refuse with an error of its own: the 3xx goes on to be an HTTPError."""
 
-    def redirect_request(self, *args, **kwargs):
+    def http_error_302(self, *args, **kwargs):
         return None
+
+    http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
 
 
 def _all(opener, asked: list[tuple[str, str]], headers: dict[str, str]) -> list[Answer]:
@@ -313,8 +322,11 @@ def _ask(opener, url: str, method: str, headers: dict[str, str]) -> Answer:
     except urllib.error.HTTPError as e:
         location = ""
         if 300 <= e.code < 400 and e.headers.get("Location"):
-            parts = urllib.parse.urlsplit(e.headers["Location"])
-            location = visible.one_line(parts._replace(query="", fragment="").geturl())
+            try:
+                parts = urllib.parse.urlsplit(e.headers["Location"])
+                location = visible.one_line(parts._replace(query="", fragment="").geturl())
+            except ValueError:
+                location = "a location that is not a URL"
         with e:
             return _read(e.code, e, location)
     except urllib.error.URLError as e:

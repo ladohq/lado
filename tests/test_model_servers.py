@@ -275,6 +275,10 @@ def test_address_forms(given, root, added):
         ("http://", "no host"),
         ("", "no address"),
         ("http://h:99999", "port"),
+        # urllib's own refusals name the address: a fixed text instead.
+        ("http://u:pw@h＃x", "not an address"),
+        ("http://u:pw@[::1", "not an address"),
+        ("http://u:pw@[zz]", "not an address"),
     ],
 )
 def test_address_refused(given, says):
@@ -465,3 +469,10 @@ def test_redirect_location_loses_its_query(serve):
     with pytest.raises(ms.ProbeError) as raised:
         ms.probe(server.url)
     assert "(GET /v1/models: 301 to http://other.invalid/x)" in str(raised.value)
+
+
+def test_redirect_to_no_url_is_named_so(serve):
+    server = serve("redirect", location="http://[zz]")
+    with pytest.raises(ms.ProbeError) as raised:
+        ms.probe(server.url)
+    assert "(GET /v1/models: 301 to a location that is not a URL)" in str(raised.value)

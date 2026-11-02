@@ -559,7 +559,10 @@ end).
 terminal (`Key of the server (not shown): `), else read from stdin with one line break
 dropped (`printf '%s' "$KEY" | lado model-server probe https://gw.example/llm --key`), as
 `lado project set --secret` reads a secret. `--key <value>` is refused without repeating
-the value, an empty key too. It is sent as `Authorization: Bearer` and `x-api-key` and kept
+the value, an empty key too, and so is anything else the command does not take (a value
+starting with `-`, a word left over), where argparse would print it as an unrecognized
+argument (exit 1). An address urllib cannot read is refused with a fixed text, never the
+address, which may hold a password (exit 2). It is sent as `Authorization: Bearer` and `x-api-key` and kept
 nowhere: no output, log, error journal or file of `LADO_HOME`; the command never opens
 lado.db (`cli.NOT_MIGRATING`).
 

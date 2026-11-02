@@ -1468,20 +1468,14 @@ def cmd_stats(args: argparse.Namespace) -> int:
 _NO_VALUE = object()  # `--key` given without a value, as it must be
 
 
-def _dashed_key_joined(argv: list[str]) -> list[str]:
-    """`lado model-server probe … --key -abc` as `--key=-abc`: argparse takes no value that
-    looks like an option and would print it as an unrecognized argument; joined, it is a
-    value given, refused unechoed (cmd_model_server_probe). `probe` has no other option
-    but -h and --help, which stay as they are, as `--` does."""
-    if argv[:2] != ["model-server", "probe"]:
-        return argv
-    joined = list(argv)
-    for i, word in enumerate(joined[:-1]):
-        given = joined[i + 1]
-        if word == "--key" and given.startswith("-") and given not in ("-h", "--help", "--"):
-            joined[i : i + 2] = [f"--key={given}"]
-            break
-    return joined
+# What `lado model-server probe` does not take may be a key (`--key -abc`, whose value
+# argparse leaves over, a prefix `--k -abc`, a key with a space): refused without it, where
+# argparse would print it as an unrecognized argument.
+_PROBE_TAKES_NO_MORE = (
+    "lado model-server probe takes an address and --key, nothing more; a server's key is "
+    "never given on the command line (ps and the shell's history keep it): run lado "
+    "model-server probe <address> --key and type it, or pipe it in"
+)
 
 
 def cmd_model_server_probe(args: argparse.Namespace) -> int:
@@ -2107,7 +2101,12 @@ def main(argv: list[str] | None = None) -> int:
     login_wait_cmd = commands.add_parser("login-wait")
     login_wait_cmd.add_argument("args", nargs=argparse.REMAINDER)
 
-    args = parser.parse_args(_dashed_key_joined(sys.argv[1:] if argv is None else argv))
+    args, more = parser.parse_known_args(argv)
+    if more and args.command == "model-server" and args.sub == "probe":
+        print(f"lado: {_PROBE_TAKES_NO_MORE}", file=sys.stderr)
+        return 1
+    if more:  # as parse_args says it
+        parser.error(f"unrecognized arguments: {' '.join(more)}")
     if args.command == "mcp":
         from lado import mcp_server
 

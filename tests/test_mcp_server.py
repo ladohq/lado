@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+import time
 from pathlib import Path
 
 import agent_helpers
@@ -173,6 +174,113 @@ def test_a_report_is_a_summary_and_a_body_read_once(repo, fake_tmux):
     }
     again = asyncio.run(supervisor.call_tool("read_messages", {}))
     assert again.structured_content == {"result": []}
+
+
+def _busy_supervisor(repo):
+    """A session whose supervisor is in its turn, with worker w1 and nothing queued."""
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
+    state.take_pending("s", "supervisor", state.DELIVERED)
+    state.set_status("s", "supervisor", state.BUSY)
+
+
+def _mid_turn(messages):
+    return f"{runtime.MID_TURN}\n{runtime.format_messages(messages)}"
+
+
+def test_a_busy_agent_gets_its_queue_in_order_with_any_tools_result(repo, fake_tmux):
+    _busy_supervisor(repo)
+    runtime.send_message("s", "w1", "supervisor", "DONE: x added", "Files: x.py")
+    runtime.send_message("s", "w1", "supervisor", "one more thing")
+    queued = [m for m in state.list_messages("s") if m.state == state.PENDING]
+    before = time.time()
+    result = asyncio.run(mcp_server.build("s", "supervisor").call_tool("list_agents", {}))
+    assert [a["name"] for a in result.structured_content["result"]] == ["supervisor", "w1"]
+    lines = _mid_turn(queued)
+    assert "[from w1] DONE: x added (#" in lines and "1 line: call read_messages)" in lines
+    assert result.content[-1].text == lines
+    assert result.structured_content["lado_messages"] == lines  # Claude Code, Codex
+    stored = {m.id: m for m in state.list_messages("s")}
+    for message in queued:
+        taken = stored[message.id]
+        assert (taken.state, taken.channel) == (state.DELIVERED, state.TOOL_RESULT)
+        assert taken.sent_at >= before
+
+
+def test_a_tool_without_structured_content_gets_the_lines_as_text(repo, fake_tmux):
+    _busy_supervisor(repo)
+    runtime.send_message("s", "w1", "supervisor", "DONE")
+    [queued] = [m for m in state.list_messages("s") if m.state == state.PENDING]
+    server = mcp_server.build("s", "supervisor")
+    result = asyncio.run(server.call_tool("write_artifact", {"name": "n", "content": "x"}))
+    assert result.structured_content is None
+    assert json.loads(result.content[0].text)["name"] == "n"
+    assert result.content[-1].text == _mid_turn([queued])
+
+
+def test_with_nothing_queued_a_tools_result_is_unchanged(repo, fake_tmux):
+    _busy_supervisor(repo)
+    result = asyncio.run(mcp_server.build("s", "supervisor").call_tool("list_agents", {}))
+    assert list(result.structured_content) == ["result"]
+    assert len(result.content) == 2  # one block per agent
+    assert all(runtime.MID_TURN not in block.text for block in result.content)
+
+
+def test_a_tool_that_fails_carries_the_queue_in_its_error(repo, fake_tmux):
+    _busy_supervisor(repo)
+    runtime.send_message("s", "w1", "supervisor", "DONE", "the report")
+    [queued] = [m for m in state.list_messages("s") if m.state == state.PENDING]
+    server = mcp_server.build("s", "supervisor")
+    with pytest.raises(ToolError) as error:
+        asyncio.run(server.call_tool("read_artifact", {"name": "nothing"}))
+    assert 'no artifact "nothing"' in str(error.value)
+    assert str(error.value).endswith(_mid_turn([queued]))
+    [taken] = [m for m in state.list_messages("s") if m.id == queued.id]
+    assert (taken.state, taken.channel) == (state.DELIVERED, state.TOOL_RESULT)
+
+
+def test_read_messages_returns_a_waiting_message_at_once(repo, fake_tmux):
+    _busy_supervisor(repo)
+    runtime.send_message("s", "w1", "supervisor", "DONE", "the report")
+    runtime.send_message("s", "w1", "supervisor", "a line only")
+    report, line = [m for m in state.list_messages("s") if m.state == state.PENDING]
+    result = asyncio.run(mcp_server.build("s", "supervisor").call_tool("read_messages", {}))
+    [read] = result.structured_content["result"]
+    assert (read["id"], read["body"]) == (report.id, "the report")
+    assert result.structured_content["lado_messages"] == _mid_turn([line])
+    states = {m.id: m.state for m in state.list_messages("s")}
+    assert (states[report.id], states[line.id]) == (state.READ, state.DELIVERED)
+    again = asyncio.run(mcp_server.build("s", "supervisor").call_tool("read_messages", {}))
+    assert again.structured_content == {"result": []}
+
+
+def test_a_reminder_to_an_agent_whose_message_waits_carries_its_line(repo, fake_tmux):
+    _busy_supervisor(repo)
+    runtime.send_message("s", "w1", "supervisor", "DONE", "the report")
+    [report] = [m for m in state.list_messages("s") if m.state == state.PENDING]
+    server = mcp_server.build("s", "supervisor")
+    reminder = {"to": "w1", "summary": "send your report"}
+    with pytest.raises(ToolError) as error:
+        asyncio.run(server.call_tool("send_message", reminder))
+    assert f"w1's message #{report.id} waits for you" in str(error.value)
+    assert str(error.value).endswith(_mid_turn([report]))
+    assert [m.summary for m in state.list_messages("s") if m.recipient == "w1"] == []
+    asyncio.run(server.call_tool("read_messages", {}))
+    asyncio.run(server.call_tool("send_message", reminder))
+    assert [m.summary for m in state.list_messages("s") if m.recipient == "w1"] == [
+        "send your report"
+    ]
+
+
+def test_a_message_to_the_human_carries_the_queue_and_goes(repo, fake_tmux):
+    _busy_supervisor(repo)
+    runtime.send_message("s", "w1", "supervisor", "DONE", "the report")
+    [report] = [m for m in state.list_messages("s") if m.state == state.PENDING]
+    server = mcp_server.build("s", "supervisor")
+    result = asyncio.run(server.call_tool("send_message", {"to": "human", "summary": "x done"}))
+    assert result.structured_content["lado_messages"] == _mid_turn([report])
+    assert [m.summary for m in state.list_messages("s") if m.recipient == state.HUMAN] == ["x done"]
 
 
 def test_finish_worker_reports_what_it_removed(repo, fake_tmux):

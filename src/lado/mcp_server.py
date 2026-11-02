@@ -12,6 +12,7 @@ from contextlib import contextmanager, suppress
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.server.mcpserver.utilities.types import Image
+from mcp.types import CallToolResult, TextContent
 
 from lado import artifacts, kits, runs, runtime, state, telemetry, tmux
 
@@ -55,6 +56,45 @@ class _Server(MCPServer):
         return tools
 
     async def call_tool(self, name, arguments, context=None):
+        """Carry the caller's queue (runtime.take_mid_turn) in every tool's result, after
+        the tool's own content, or in its error: the one way a message reaches an agent in
+        the middle of its turn, with any provider. Taken after the tool ran, but by
+        read_messages before, so that it returns a waiting message's body at once; its
+        result then has the lines of those without one only.
+
+        The lines are a text block for a CLI that shows the model the result's content
+        (OpenCode, Kilo), and `lado_messages` in its structured content for one that shows
+        only that when there is one (Claude Code, Codex)."""
+        early = self._lado_take() if name == "read_messages" else []
+        try:
+            result = await self._lado_call(name, arguments, context)
+        except ToolError as error:
+            text = runtime.mid_turn_text(early + self._lado_take())
+            if not text:
+                raise
+            raise ToolError(f"{error}\n\n{text}") from error
+        text = runtime.mid_turn_text(
+            [m for m in early if not (m.body or m.attachments)] + self._lado_take()
+        )
+        if not text or not isinstance(result, CallToolResult):
+            return result
+        structured = result.structured_content
+        return result.model_copy(
+            update={
+                "content": [*result.content, TextContent(type="text", text=text)],
+                "structured_content": None
+                if structured is None
+                else {**structured, "lado_messages": text},
+            }
+        )
+
+    def _lado_take(self) -> list[state.Message]:
+        # On another schema nothing is taken; the tool's own error says why.
+        with suppress(state.SchemaError):
+            return runtime.take_mid_turn(*self._lado_agent)
+        return []
+
+    async def _lado_call(self, name, arguments, context):
         """Refuse arguments the tool does not have. The MCP library drops them without a
         word, so an agent with a stale tool schema, or a typo, would never learn that its
         argument was not used."""

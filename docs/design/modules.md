@@ -583,10 +583,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `--sandbox danger-full-access` and a config.toml without LADO's permission profile,
     its mode's approvals kept, and a launch warning; on a host it keeps the sandbox, and
     the launch warning says each shell command will ask (docs/install.md). The login
-    (`first_hook_blocker`, `_settle_login`): `auth.json` a link to the user's (`user-codex-home` in the agent's folder names the
-    user's Codex home), or a file of the agent's own with `OPENAI_API_KEY`, whose variable
-    Codex's TUI ignores. `login_status` runs `codex login status -c
-    cli_auth_credentials_store="file"` (the store agents use), takes `OPENAI_API_KEY` as a
+    (`first_hook_blocker`, `_settle_login`): `auth.json` a link to the user's
+    (`user-codex-home` in the agent's folder names the user's Codex home), or a file of the
+    agent's own with `OPENAI_API_KEY`, whose variable Codex's TUI ignores. `login_status`
+    runs `codex login status -c cli_auth_credentials_store="file"` (the store agents use),
+    takes `OPENAI_API_KEY` as a
     login without it, and reads a login kept only in the keyring as none, with
     `LoginStatus.keyring` (Settings shows `keyring_note`); `needs_login(env)` follows the
     model provider of the config. Its sheet (`login_choices`): a ChatGPT sign-in code

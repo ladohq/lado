@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.44.0 (2026-11-02)
+
+### New
+
+- **Agent CLI logins in Settings.** Providers and environment shows how each CLI is logged
+  in and from where, with one button to log in; Claude Code takes a pasted subscription
+  token or API key, from a phone too.
+- **Codex agents share your Codex login.** Log in once, in a terminal or in Settings: by a
+  sign-in code, a ChatGPT Business or Enterprise access token or an API key, from a phone
+  too; in Docker, `OPENAI_API_KEY` in `secrets/` works as well.
+
+### Improved
+
+- **Sessions start without "Yes, I trust this folder".** Claude Code trusts the session's
+  repository at once, so a session started from the UI or a phone does not wait; the
+  repository's own Claude Code settings apply.
+- **Nothing starts without the login its CLI needs.** New session and Resume grey out a CLI
+  that is not logged in, with "Log in first", and `lado start` refuses; a resumed agent
+  waits for the login and then starts.
+- **Providers and environment opens at once.** It shows the last check while a new one
+  runs (↻ turns), and only what you can fix: a CLI missing, an untested version, a sign-in
+  it cannot check, an unreadable login shell.
+
+### Fixed
+
+- **Claude agents no longer stop at a screen nobody sees.** Bypass mode's warning and "New
+  MCP server found" are answered at start; an agent still silent 30 s after its start
+  shows in Needs you as waiting for an answer in its terminal.
+- **No "Warnings:" box over a new session** for LADO's own setup of Claude Code; those notes
+  are in the session's log.
+- **A saved login no longer shows "waits for this login"** next to "Logged in".
+- **Codex agents no longer ask to trust the repository** nor to review its Codex hooks, in
+  every permission mode; a repository your Codex marks untrusted stays so.
+- **Codex agents start faster.** They no longer download the plugins catalogue at every
+  start.
+- **A Codex supervisor no longer hangs on "Waiting for agents".** With newer OpenAI models
+  it no longer waits for Codex's own subagents, and your messages reach it.
+- **A project's page scrolls on a phone.** Its variables, secrets and Delete project are no
+  longer cut off below the screen; the project list scrolls too.
+
+### Docker image
+
+- **LADO in Docker with one command, Windows too.** `curl -fsSL …/install.sh | sh` (on
+  Windows `irm …/install.ps1 | iex`) asks for your workspace, starts LADO and opens it; run
+  it again to update. [docs/install.md](docs/install.md#install-with-one-command).
+
 ## 0.43.0 (2026-10-26)
 
 ### Added

@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import stat
@@ -830,7 +831,9 @@ def test_long_outage_stays_bounded(telemetry_on, monkeypatch):
     monkeypatch.setattr(telemetry, "_providers", dict)
     monkeypatch.setattr(telemetry, "OUTBOX_MAX", 3)
     monkeypatch.setattr(telemetry, "RETRY_AFTER", 0)
-    _sent(report_at="2026-10-01T00:00:00Z")
+    # Two days back from the real clock, which send() and batch() read: inside the window.
+    since = telemetry.format_time(telemetry.now() - datetime.timedelta(days=2))
+    _sent(report_at=since)
     for _ in range(10):
         telemetry.record("loop", _raise(KeyError("x")))
     for _ in range(5):
@@ -838,7 +841,7 @@ def test_long_outage_stays_bounded(telemetry_on, monkeypatch):
     assert len(telemetry.queued()) == 3
     assert telemetry.dropped() == 7
     reports = [e for e in telemetry.batch() if e["event"] == telemetry.DAILY]
-    assert [r["properties"]["since"] for r in reports] == ["2026-10-01T00:00:00Z"]
+    assert [r["properties"]["since"] for r in reports] == [since]
     assert sorted(p.name for p in (state.home() / "telemetry").iterdir()) == [
         "consent.json",
         "dropped",

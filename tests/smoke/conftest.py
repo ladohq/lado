@@ -12,7 +12,9 @@ A failed test keeps its evidence as a failed live test does (real_clis.EVIDENCE)
 """
 
 import json
+import os
 import shutil
+import subprocess
 
 import pytest
 import real_clis
@@ -79,18 +81,10 @@ def smoke_provider(request, monkeypatch, tmp_path, fake_endpoint, codex_home) ->
         config = tmp_path / "claude-config"
         config.mkdir()
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
-        # What a human answers once, ahead: the first-run screens, the bypass permissions
-        # mode's disclaimer (a fresh home shows it before any hook; 2.1.296), and the trust of
-        # the smoke's repo.
-        (config / ".claude.json").write_text(
-            json.dumps(
-                {
-                    "hasCompletedOnboarding": True,
-                    "bypassPermissionsModeAccepted": True,
-                    "projects": {str(tmp_path / "My Repo"): {"hasTrustDialogAccepted": True}},
-                }
-            )
-        )
+        # What a human answers once, ahead: the first-run screens. Not bypass mode's warning
+        # (the agent's own settings skip it, LAD-163) nor the trust of the smoke's repo
+        # (LADO records it): the tests check that nothing asks them.
+        (config / ".claude.json").write_text(json.dumps({"hasCompletedOnboarding": True}))
         monkeypatch.setenv("ANTHROPIC_BASE_URL", fake_endpoint.url)
         # A token, which Claude Code takes without asking (an ANTHROPIC_API_KEY it has not
         # seen is a question). It retries every 401 ten times with backoff (2.1.296), so no
@@ -110,6 +104,9 @@ def smoke_provider(request, monkeypatch, tmp_path, fake_endpoint, codex_home) ->
             'env_key = "SMOKE_API_KEY"\n'
         )
         monkeypatch.setenv("SMOKE_API_KEY", KEY)
+        # The user's own Codex logged in, as Codex writes its login file: its agents share it
+        # (their model, the endpoint's, takes the key of its env_key).
+        codex_login(codex_home, KEY)
     else:
         folder = home / ".config" / name
         folder.mkdir()
@@ -117,6 +114,20 @@ def smoke_provider(request, monkeypatch, tmp_path, fake_endpoint, codex_home) ->
         provider = with_model(CLASSES[name], f"smoke/{MODEL}")
         monkeypatch.setitem(providers._PROVIDERS, name, provider)
     return name
+
+
+def codex_login(codex_home, key: str) -> None:
+    """`codex login --with-api-key` into `codex_home`'s login file (the key on stdin, which
+    must not be a terminal)."""
+    subprocess.run(
+        ["codex", "login", "--with-api-key", "-c", 'cli_auth_credentials_store="file"'],
+        input=key,
+        env={**os.environ, "CODEX_HOME": str(codex_home)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
 
 
 @pytest.fixture

@@ -6,7 +6,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
 - An agent's environment (PATH, keys, variables) is the user's login shell's, as a new
   terminal sees it, the same whichever process starts the agent (`lado start`, the UI
   server, an agent's `spawn_worker`) and whoever started LADO's tmux server
-  (`agent_env.resolve`). For each launch (start, resume, spawn) LADO runs
+  (`agent_env.layers`). For each launch (start, resume, spawn) LADO runs
   `$SHELL -ilc` with a dump of the environment, started from a terminal's few variables
   (`HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `LANG`, `SSH_AUTH_SOCK`, and the `PATH` a
   login gives before the shell runs, `agent_env.base_path`) in a new session, no cache. That
@@ -25,14 +25,23 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `LADO_AGENT_ENV=inherit` takes the environment of the process that starts the agent instead
   (the tests set it). From either, `TMUX`, `TMUX_PANE`, the shell's own `PWD`, `OLDPWD`,
   `SHLVL` and `_`, and a parent Claude Code's variables are dropped; the variables of the
-  outside folder go over them, then the variables of the session's project, then LADO's
-  variables, then the provider's (`agent_env.resolve(project)`, one function for every
-  provider). The project's variables (`lado project set`, docs/design/projects.md), its
+  outside folder go over them, then LADO's secrets (the agent CLIs' login variables the
+  human sets in Settings, `<LADO_HOME>/secrets/`, read as a project's secrets folder is:
+  `agent_env.lado_secrets`), then the variables of the session's project, then LADO's
+  variables, then the provider's (`agent_env.layers(project)`, merged by
+  `agent_env.merge`, one function for every provider). A login comes whole from one layer:
+  of the agent's provider's login variables (`Provider.login_variables`, given to `merge` as
+  names), the highest of the first four layers that sets any gives those it sets, and none
+  comes from a lower one, so a login shell's `ANTHROPIC_API_KEY` never beats a token saved
+  in LADO's secrets by Claude Code's own order; each agent merges with its own provider's
+  names (`runtime.agents_env`), so a worker of another CLI keeps a variable that is no login
+  of its own. LADO's own git calls (`for_git`) do not get LADO's secrets. The project's
+  variables (`lado project set`, docs/design/projects.md), its
   plain ones from lado.db and its secrets from their folder
   (`<LADO_HOME>/projects/<id>/secrets/`, `project_secrets.read`, the outside folder's reader
   with no link and no loose mode), are read anew at each start, resume and spawn by the
   process that launches
-  (`runtime._base_env(project)`: the CLI, the UI server, or a supervisor's `lado mcp` for its
+  (`runtime.agent_layers(project)`: the CLI, the UI server, or a supervisor's `lado mcp` for its
   `spawn_worker`, flow runs' workers and `start_session`), so an agent launched after a
   change gets it and a running one keeps its own; a session without a project gets none.
   Being in the base, they reach the kits' checks and `mcp_exec` as the outside folder's do.
@@ -103,7 +112,11 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS`), Kilo is not checked (BACKLOG.md). Codex
   CLI never sets it either: its `Stop` (0.162) says nothing of work still running, though
   it can move a shell command to a background terminal, and LADO switches its subagents off
-  (BACKLOG.md).
+  (BACKLOG.md): both of Codex's versions of them, `features.multi_agent = false` the first,
+  `agents.enabled = false` the second, which newer OpenAI models turn on through their
+  metadata over the features (its `wait_agent`, "Waiting for agents", held a turn open, so
+  the agent got no messages, LAD-167), and `features.multi_agent_v2 = false`, which Codex
+  checks before `agents.enabled`.
 - A turn that ends on an error is a turn's end: the provider's `TURN_END` carries
   `Event.error` (one short line), the agent is `idle` (or `background`) and gets its queue
   as after any turn, a `turn_error` event keeps the error (`lado log`), and
@@ -180,9 +193,97 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   starts it as a blocker's reason is (`Started.warnings`, `spawn_worker`'s warnings,
   `loop.log`); the agent runs anyway. `lado doctor` (Graphical session), the system panel
   (`SystemInfo.gui_session`) and the update's plan (`agents_note`) say the same.
-- An agent whose CLI asks the human before any hook (Claude Code's "trust this folder?" in a
-  repo it does not trust; `Provider.first_hook_blocker`) waits from its start: after
-  `launch_command` and before its window starts (`runtime._first_hook_blocker`, for start,
+- Claude Code's "trust this folder?" in a repo it does not trust is answered by LADO ahead:
+  `first_hook_blocker` records the trust of the repo's main root in Claude Code's global
+  config (`claude.edit_config`) and returns a `note`, written to `loop.log` once and told
+  nobody (LAD-163: LADO's own write is no problem), and nothing holds the agent. Only when
+  that fails does the agent wait for the
+  question, the reason saying why LADO could not record it. For an agent whose environment
+  logs Claude Code in, or whose login it cannot read (`login_status` not `no`: an unknown
+  login holds no agent), it also records Claude Code's first run
+  (`hasCompletedOnboarding`, else the theme screen holds it) and approves the
+  `ANTHROPIC_API_KEY` LADO gives it (its last 20 characters in
+  `customApiKeyResponses.approved`, else "Detected a custom API key" holds it): one write
+  and one note each, never any part of the key; a key the human rejected there is left,
+  and the agent waits with a reason saying so.
+- Two more Claude Code screens before the first hook (all seven `--permission-mode`s
+  checked on a clean config with 2.1.295, LAD-163) are answered by the agent's own
+  `--settings` file, with no write to a shared one: `enableAllProjectMcpServers: true`
+  always ("New MCP server found in this project" for a repository's `.mcp.json`: its servers
+  are taken, as for a human who trusts the folder) and `skipDangerousModePermissionPrompt:
+  true` in `bypassPermissions` only (its warning screen). Auto mode's notice holds nothing.
+- An agent of any provider still `starting` with no hook since its launch (`seen_at` 0)
+  `runtime.START_SILENCE` (30 s) after it (its window mark, `window_at`; a waiting window
+  marks it anew when it starts the CLI) is held by a screen LADO does not know: the session
+  loop's pass (`runtime.check_starts`) makes it `waiting` with a `blocked` event, `Waiting
+  for an answer in its terminal: no sign from it 30 s after its start. Open its terminal.`,
+  in the same transaction as the look (`state.block_unheard`: a hook that came meanwhile
+  wins), logged once. Its first hook ends the wait: its session start as for any start
+  blocker, any other first hook (`state.seen` says it is the first) by
+  `runtime.heard_at_start`, which puts it back to `starting`. A slow CLI past 30 s is
+  `waiting` for a moment and clears by itself.
+- A Codex agent's own Codex home (its config folder, `CODEX_HOME`) is settled so that no
+  screen holds it: its config.toml trusts the repository's main root (`trust_level =
+  "trusted"` for its real path, which covers a worker's worktree) unless the user's Codex
+  config has an entry Codex goes by for the folder, carried as it is (`untrusted` too);
+  trusts the repository's own hooks (`.codex/hooks.json` and `.codex/config.toml`'s, from
+  the project root down) by Codex's hashes, as a human who trusts the folder takes them, a
+  hook the user disabled staying disabled; switches plugins off (`features.plugins =
+  false`: Codex would clone its catalogue into each new home at its start); and keeps the
+  login in the file (`cli_auth_credentials_store = "file"`). Its login is settled by
+  `first_hook_blocker` (`codex._settle_login`), before its status is read in that home:
+  `auth.json` becomes a symbolic link to the user's (`$CODEX_HOME/auth.json` of the agent's
+  environment, else `~/.codex/auth.json`, kept by `launch_command` in the agent's folder as
+  `user-codex-home` for the waiting window, whose `CODEX_HOME` is the agent's), also before
+  that file exists; Codex writes it in place and re-reads it before a refresh, so one
+  refresh serves every agent and the user's own Codex (0.162.0, checked on a ChatGPT login:
+  three agents refreshing at once). With `OPENAI_API_KEY` in the agent's environment and no
+  `CODEX_ACCESS_TOKEN` (which Codex reads itself, before its file) it is a file of the
+  agent's own instead, mode 600, holding the key as `codex login --with-api-key` writes it:
+  Codex's TUI does not read the variable. Each write is a `note`; one LADO cannot make is a
+  `warning`, which says that an agent whose model needs a login then waits for one (its
+  status, read in its own home, finds none) until it starts again with its folder
+  writable. Nothing is written into the user's Codex home.
+- A new session or worker whose CLI needs a login (`Provider.needs_login`, asked with the
+  environment the agent would start from: Claude Code always; Codex when the model
+  provider of the user's config, the chosen profile's, else the top level's, is OpenAI's,
+  its default, or has `requires_openai_auth`) and has none is refused before anything of it is stored or made
+  (`runtime.check_login`, `lado.logins.refusal`): `start_session` checks a new session and
+  a resume by hand (`lado start` of a stopped session, the UI's Resume: `logins.RESUME`,
+  "… so the session was not resumed: …", LAD-163) by the supervisor's provider, the one
+  agent a resume starts, never LADO's own resume (`reason` `AT_START`, or `wait_for_login`:
+  `lado update`'s `lado start --wait-for-login`, a hidden flag), and `spawn_worker` each
+  worker by its own provider, both in
+  `runtime.agents_env` over `runtime.agent_layers(project)`, the environment the agent would start from, so a project's
+  secret that logs the CLI in counts; `lado start <git-url>`, `--new` and the UI's From
+  scratch check before the clone or the folder (`runtime.check_start_login`). Only `no`
+  refuses; an unreadable login goes on as below.
+- An agent LADO resumes by itself whose CLI needs a login waits for it before anything else, as does a new
+  one whose login went between the check and its launch: before its window starts, once
+  `first_hook_blocker` has settled what it can (`runtime._before_window`, at every launch:
+  it may give the agent its login, Codex's link), LADO asks the provider (`needs_login`,
+  `login_status`) with the agent's launch environment (`runtime._held_for_login`); at `no`
+  the agent is `waiting` with `logins.wait_reason` (`<CLI> is not
+  logged in: log in in Settings → Providers and environment, or set <variable>; the agent
+  starts by itself once you do`), told and logged as a blocker's reason is; what needs no
+  login is settled at once (`first_hook_blocker`: Claude Code's trust, its note in
+  `loop.log` only; a question it would still ask waits for the window), and its window
+  runs `lado login-wait` (`lado.login_wait`) instead of `lado.agent_env`: it reads and
+  removes the launch file, and every `logins.POLL` seconds lays the file layers read anew
+  (the outside folder, LADO's secrets, the session's project) over the environment it
+  holds, never over LADO's and the provider's own variables, its provider's login taken
+  whole from one layer (the launch file keeps the login shell's own login variables,
+  `shell_login`, the lowest such layer), and asks again. Once logged
+  in it runs `first_hook_blocker` there (the first run above: its note in loop.log only, a
+  reason or warning also printed in the agent's terminal), marks the CLI's launch
+  (`state.window_opened`, from which the 30 s above count), puts the agent
+  back to `starting` (or waits with that blocker's reason) and execs the CLI: the agent
+  reaches its first hook with no restart. A login shell's change needs a new agent. A
+  login LADO cannot read (`unknown`: a failure, a timeout, odd output) never holds an
+  agent: the launch goes on with a warning. The UI shows the wait by `AgentInfo.login_wait`.
+- An agent whose CLI asks the human before any hook (Claude Code's "trust this folder?"
+  when LADO could not record it, Codex's; `Provider.first_hook_blocker`) waits from its
+  start: after `launch_command` and before its window starts (`runtime._before_window`, for start,
   resume and spawn), `state.block` sets it `waiting` with a `blocked` event, whose detail
   is why and what to answer. That reason holds while no `status` or `spawned` event came
   after it (`state.block_reasons`, read by `_Reasons`: `lado ls`, `list_agents`,
@@ -192,7 +293,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   the CLI ("No, exit") is an end like any other (`agent_ended`, the window check). Who
   starts it is told the reason, or the provider's `warning` when it cannot tell: `lado
   start` on stderr, the UI's start in `Started.warnings`, `spawn_worker` in its result's
-  `warnings` and in `loop.log`.
+  `warnings`, and each once in `loop.log` (start, resume and spawn); a `note` goes to
+  `loop.log` alone (`runtime._log_notes`).
 - An agent `waiting` for the human (a dialog in its terminal) is `busy` again as soon as the
   human answers there: the neutral `WAITING` and `RESUMED` come in pairs with the same key
   (`Event.key`, the provider's id of the request), and only `RESUMED` with the key it waits
@@ -312,7 +414,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   its own `[PROMPT]` argument, and starts its session (SessionStart) only when its first
   input is submitted (`Capabilities.session_start_on_first_input`): an agent of it with an
   empty queue (a new supervisor) first gets `runtime.FIRST_INPUT` from `lado`, a message
-  like any other, so a Codex supervisor's start costs one short model turn. Codex's
+  like any other, so a Codex supervisor's start costs one short model turn. The line asks
+  the agent to end that turn and never to wait: a model with a tool to wait takes "wait"
+  literally, and the turn that does not end gets no messages. Codex's
   `SessionEnd` is not used: after `/resume` it runs for the conversation left, once the
   next one has started; an agent whose Codex exits is ended by the window check.
 - A queue is handed over by one of two channels, kept with each message
@@ -424,6 +528,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   leaves an agent without the mark alone however many passes miss its window, up to
   `runtime.SPAWN_DEADLINE` (60 s) from its row: past it the spawning process died, and the
   agent ends at once with "its start ended before its window opened" (`SPAWN_DIED`).
+  After it the pass looks for agents a screen holds before any hook
+  (`runtime.check_starts`, the 30 s safety net above).
   A failing list changes nothing: only then
   a `tmux has-session` tells a gone tmux session (the loop ends) from another failure (an
   error of the pass; a tmux that cannot run is one too; `loop.tmux_gone`). The supervisor's

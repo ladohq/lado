@@ -183,6 +183,29 @@ def new_session(
     return said
 
 
+def new_labelled_session(
+    session: str,
+    cwd: str,
+    cmd: list[str],
+    options: dict[str, str],
+    before_attempt: Callable[[], str | None] | None = None,
+) -> list[str]:
+    """A detached session running `cmd`, its `options` (labels among them) set in the same
+    tmux call, so it never exists without them (a login window, lado.logins); it ends with
+    `cmd`. `before_attempt` as for new_session."""
+    said: list[str] = []
+
+    def attempt() -> None:
+        line = before_attempt() if before_attempt else None
+        if line and line not in said:
+            said.append(line)
+
+    made = ["new-session", "-d", "-s", session, "-c", cwd, *cmd]
+    labelled = (["set-option", "-t", f"={session}:", k, v] for k, v in options.items())
+    run_chain(EXIT_EMPTY, made, *labelled, NO_RENAME, before_attempt=attempt)
+    return said
+
+
 def new_window(session: str, window: str, cwd: str, cmd: list[str]) -> None:
     run_chain(["new-window", "-d", "-t", f"{session}:", "-n", window, "-c", cwd, *cmd], NO_RENAME)
 
@@ -324,6 +347,19 @@ def parse_version(output: str) -> tuple[int, int] | None:
 
 def capture(session: str, window: str) -> str:
     return run("capture-pane", "-p", "-t", f"{session}:{window}")
+
+
+# What tmux writes under a dead pane's text (remain-on-exit): "Pane is dead (status 1, <time>)".
+DEAD_LINE = re.compile(r"Pane is dead( \(.*\))?")
+
+
+def pane_text(session: str) -> str:
+    """The text of `session`'s pane with its history, wrapped lines joined, no colours, and
+    without the line tmux adds once its command ended."""
+    lines = run("capture-pane", "-p", "-J", "-S", "-", "-t", f"={session}:").splitlines()
+    while lines and (not lines[-1].strip() or DEAD_LINE.fullmatch(lines[-1].strip())):
+        lines.pop()
+    return "".join(f"{line}\n" for line in lines)
 
 
 def attach_argv(session: str) -> list[str]:

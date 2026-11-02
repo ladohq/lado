@@ -3,7 +3,7 @@
 import { act } from "@testing-library/react";
 import { vi } from "vitest";
 
-import type { ArtifactInfo, AttachmentInfo } from "./api";
+import type { ArtifactInfo, AttachmentInfo, ProviderLogins } from "./api";
 
 // A WebSocket the test drives: it opens, sends frames and closes as the server would.
 export class FakeSocket {
@@ -369,6 +369,7 @@ export class FakeNotification {
 // The fields of an AgentInfo a test that is not about them leaves as they are: an agent
 // without a branch of its own, spawned and in its status since 10:00.
 export const AGENT_REST = {
+  login_wait: null,
   branch: null,
   worktree: null,
   spawned_at: "2026-10-04T10:00:00.000Z",
@@ -422,4 +423,125 @@ export function setVisible(visible: boolean) {
     configurable: true,
     get: () => (visible ? "visible" : "hidden"),
   });
+}
+
+// Rows of Settings → Providers and environment (Providers.tsx, LoginSheet.tsx).
+
+export function cli(name: string, title: string) {
+  return {
+    name,
+    title,
+    permission_modes: [],
+    install_hint: `install ${name}`,
+    installed: true,
+    version: "1.0.0",
+    detail: `${name} 1.0.0`,
+    tested_version: "",
+    warning: "",
+    login_missing: false,
+  };
+}
+
+export const LOGIN = { method: "", where: "", choice: "", problem: "" };
+
+export const CHOICES = [
+  {
+    id: "subscription",
+    title: "Subscription — Claude Pro or Max",
+    detail: "Run `claude setup-token` on any computer where Claude Code is installed and paste the token it prints.",
+    variable: "CLAUDE_CODE_OAUTH_TOKEN",
+    action: "",
+  },
+  {
+    id: "usage",
+    title: "Pay per use — API billing",
+    detail: "Paste an API key from console.anthropic.com.",
+    variable: "ANTHROPIC_API_KEY",
+    action: "",
+  },
+];
+
+// Claude Code without a login, a supervisor waiting for it.
+export function claudeRow(more: Partial<ProviderLogins> = {}): ProviderLogins {
+  return {
+    cli: cli("claude", "Claude Code"),
+    login: { ...LOGIN, state: "no" },
+    needs_login: true,
+    actions: [],
+    question: "How do you pay for Claude?",
+    choices: CHOICES,
+    from_lado: false,
+    logout_file: false,
+    note: "",
+    waiting: [{ session: "my-app", agent: "supervisor" }],
+    running: [
+      { session: "my-app", agent: "supervisor" },
+      { session: "my-app", agent: "developer" },
+    ],
+    projects: [],
+    window: false,
+    ready: true,
+    ...more,
+  };
+}
+
+// OpenCode, which logs in by its own command in the login window.
+export function opencodeRow(state: "yes" | "no" = "yes"): ProviderLogins {
+  return {
+    ...claudeRow(),
+    cli: cli("opencode", "OpenCode"),
+    login: { ...LOGIN, state, method: state === "yes" ? "2 credentials, 1 variable" : "" },
+    needs_login: false,
+    actions: [
+      { id: "login", label: "Add a login…", help: "", shows_code: false },
+      { id: "logout", label: "Log out of one…", help: "", shows_code: false },
+    ],
+    question: "",
+    choices: [],
+    waiting: [],
+    running: [],
+  };
+}
+
+export const CODEX_HELP = "This window closes by itself once you are signed in.";
+
+// Codex logged in with ChatGPT in its own login file, which its two agents share: a choice
+// runs its sign-in code in the login window, the others take a pasted value.
+export function codexRow(more: Partial<ProviderLogins> = {}): ProviderLogins {
+  return {
+    ...claudeRow(),
+    cli: cli("codex", "Codex CLI"),
+    login: { ...LOGIN, state: "yes", method: "ChatGPT plan", where: "Codex's login file", choice: "chatgpt" },
+    actions: [
+      { id: "login", label: "Get a sign-in code", help: CODEX_HELP, shows_code: true },
+      { id: "logout", label: "Log out…", help: "", shows_code: false },
+    ],
+    question: "How do you pay for Codex?",
+    choices: [
+      {
+        id: "chatgpt",
+        title: "ChatGPT plan — Plus, Pro, Business or Enterprise",
+        detail: "Sign in with your ChatGPT account by a one-time code.",
+        variable: "",
+        action: "login",
+      },
+      {
+        id: "token",
+        title: "ChatGPT Business or Enterprise — access token",
+        detail: "Paste an access token.",
+        variable: "CODEX_ACCESS_TOKEN",
+        action: "",
+      },
+      {
+        id: "usage",
+        title: "Pay per use — OpenAI API key",
+        detail: "Paste an API key from platform.openai.com.",
+        variable: "OPENAI_API_KEY",
+        action: "",
+      },
+    ],
+    logout_file: true,
+    waiting: [],
+    ...more,
+  };
 }

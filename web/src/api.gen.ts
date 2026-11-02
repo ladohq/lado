@@ -699,12 +699,122 @@ export interface paths {
         };
         /**
          * List Providers
-         * @description LADO's providers and whether each one's CLI can run here, checked anew.
+         * @description LADO's providers and whether each one's CLI can run here, checked anew, and
+         *     whether it lacks the login its agents need, read for the agents of `project` (404
+         *     for an unknown one) or of no project.
          */
         get: operations["list_providers_api_providers_get"];
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/logins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Provider Logins
+         * @description Each provider's CLI and login as the server's last check read them, at once;
+         *     starts no check (POST /api/providers/check does), so polling it costs nothing.
+         */
+        get: operations["provider_logins_api_providers_logins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Providers
+         * @description Start a check of every CLI in the background, unless one runs; the rows kept.
+         */
+        post: operations["check_providers_api_providers_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{name}/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Login
+         * @description Open the provider's login window running the action; the one open is kept.
+         */
+        post: operations["open_login_api_providers__name__login_post"];
+        /**
+         * Close Login
+         * @description End the provider's login window and its command, if one is open.
+         */
+        delete: operations["close_login_api_providers__name__login_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{name}/variables/{variable}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Login Variable
+         * @description Keep one of the provider's login variables as LADO's secret, in place of its
+         *     others there: one login per layer, so the one saved is the login. The agents started
+         *     after it, and those that wait for a login, get it.
+         */
+        put: operations["set_login_variable_api_providers__name__variables__variable__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{name}/login-secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Login Secrets
+         * @description Log out of LADO's secrets: remove each of the provider's login variables there.
+         *     Its login of another layer, if any, is what the agents get then.
+         */
+        delete: operations["remove_login_secrets_api_providers__name__login_secrets_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1531,6 +1641,8 @@ export interface components {
             task: string | null;
             /** Status Reason */
             status_reason: string | null;
+            /** Login Wait */
+            login_wait: string | null;
             /** Branch */
             branch: string | null;
             /** Worktree */
@@ -1539,6 +1651,13 @@ export interface components {
             spawned_at: string;
             /** Since */
             since: string;
+        };
+        /** AgentRefInfo */
+        AgentRefInfo: {
+            /** Session */
+            session: string;
+            /** Agent */
+            agent: string;
         };
         /**
          * ArtifactInfo
@@ -2085,6 +2204,64 @@ export interface components {
             /** Max Title */
             max_title: number;
         };
+        /**
+         * LoginActionInfo
+         * @description A command the login window can run (Provider.login_actions).
+         */
+        LoginActionInfo: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Help */
+            help: string;
+            /** Shows Code */
+            shows_code: boolean;
+        };
+        /**
+         * LoginChoiceInfo
+         * @description A way to log the CLI in (Provider.login_choices): a pasted value kept as LADO's
+         *     secret, or the login window running one of `actions`.
+         */
+        LoginChoiceInfo: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Detail */
+            detail: string;
+            /** Variable */
+            variable: string;
+            /** Action */
+            action: string;
+        };
+        /**
+         * LoginInfo
+         * @description A CLI's login as its own status command says (Provider.login_status); no value.
+         */
+        LoginInfo: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "yes" | "no" | "unknown";
+            /** Method */
+            method: string;
+            /** Where */
+            where: string;
+            /** Choice */
+            choice: string;
+            /** Problem */
+            problem: string;
+        };
+        /**
+         * LoginOpen
+         * @description The login action a window runs (LoginActionInfo.id).
+         */
+        LoginOpen: {
+            /** Action */
+            action: string;
+        };
         /** MarketplaceChange */
         MarketplaceChange: {
             /** Enabled */
@@ -2570,6 +2747,43 @@ export interface components {
             tested_version: string;
             /** Warning */
             warning: string;
+            /**
+             * Login Missing
+             * @default false
+             */
+            login_missing: boolean;
+        };
+        /**
+         * ProviderLogins
+         * @description One agent CLI in Settings → Providers and environment (lado.logins).
+         */
+        ProviderLogins: {
+            cli: components["schemas"]["ProviderInfo"];
+            login: components["schemas"]["LoginInfo"];
+            /** Needs Login */
+            needs_login: boolean;
+            /** Actions */
+            actions: components["schemas"]["LoginActionInfo"][];
+            /** Question */
+            question: string;
+            /** Choices */
+            choices: components["schemas"]["LoginChoiceInfo"][];
+            /** From Lado */
+            from_lado: boolean;
+            /** Logout File */
+            logout_file: boolean;
+            /** Note */
+            note: string;
+            /** Waiting */
+            waiting: components["schemas"]["AgentRefInfo"][];
+            /** Running */
+            running: components["schemas"]["AgentRefInfo"][];
+            /** Projects */
+            projects: string[];
+            /** Window */
+            window: boolean;
+            /** Ready */
+            ready: boolean;
         };
         /** ProviderSuggestion */
         ProviderSuggestion: {
@@ -2580,6 +2794,19 @@ export interface components {
              * @enum {string}
              */
             reason: "last_session" | "only_installed";
+        };
+        /**
+         * ProvidersPage
+         * @description The section's data, from the server's last check of the CLIs
+         *     (lado.server.provider_check).
+         */
+        ProvidersPage: {
+            /** Providers */
+            providers: components["schemas"]["ProviderLogins"][];
+            /** Checking */
+            checking: boolean;
+            /** Environment */
+            environment: string;
         };
         /** RecentFolder */
         RecentFolder: {
@@ -4730,7 +4957,9 @@ export interface operations {
     };
     list_providers_api_providers_get: {
         parameters: {
-            query?: never;
+            query?: {
+                project?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4744,6 +4973,237 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderInfo"][];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provider_logins_api_providers_logins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvidersPage"];
+                };
+            };
+        };
+    };
+    check_providers_api_providers_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvidersPage"];
+                };
+            };
+        };
+    };
+    open_login_api_providers__name__login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginOpen"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLogins"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such provider */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_login_api_providers__name__login_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLogins"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_login_variable_api_providers__name__variables__variable__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                variable: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretValue"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLogins"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such provider */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_login_secrets_api_providers__name__login_secrets_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderLogins"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such provider */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

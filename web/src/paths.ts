@@ -59,6 +59,10 @@ export const projectPath = (id: string) => `/projects/${encodeURIComponent(id)}`
 // The Needs you page (NeedsYou.tsx), whose rail link counts what waits.
 export const NEEDS_YOU_PATH = "/needs-you";
 
+// Settings' section of the agent CLIs' logins (Providers.tsx): the page scrolls to it.
+export const PROVIDERS_ANCHOR = "providers-and-environment";
+export const PROVIDERS_PATH = `/settings#${PROVIDERS_ANCHOR}`;
+
 // A card in the session's chat: the chat scrolls to the element of that id.
 export const chatPath = (session: string, anchor?: string) =>
   `${sessionPath(session, "activity")}${anchor ? `#${anchor}` : ""}`;
@@ -79,5 +83,4 @@ export const PLANS = {
   agents: ui("agents", "Agents"),
   flows: ui("flows", "Flows"),
   artifacts: ui("artifacts", "Artifacts"),
-  providers: ui("providers-and-environment", "Providers and environment"),
 } satisfies Record<string, Plan>;

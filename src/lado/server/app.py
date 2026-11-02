@@ -32,12 +32,16 @@ from starlette.concurrency import run_in_threadpool
 
 import lado
 from lado import (
+    agent_env,
     artifacts,
     bug_report,
     doctor,
     kits,
+    logins,
     marketplaces,
+    project_secrets,
     projects,
+    providers,
     runs,
     runtime,
     scratch,
@@ -45,9 +49,10 @@ from lado import (
     state,
     telemetry,
     terminal,
+    tmux,
     update,
 )
-from lado.server import clones, feed, launch, models, terminals
+from lado.server import clones, feed, launch, models, provider_check, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
     AccessInfo,
@@ -73,6 +78,7 @@ from lado.server.models import (
     KitUsersInfo,
     Launch,
     Limits,
+    LoginOpen,
     MarketplaceChange,
     MarketplaceInfo,
     MarketplaceUpdate,
@@ -95,6 +101,8 @@ from lado.server.models import (
     ProjectSummary,
     ProjectTitle,
     ProviderInfo,
+    ProviderLogins,
+    ProvidersPage,
     RecentFolder,
     RecordView,
     Refused,
@@ -139,7 +147,7 @@ T = TypeVar("T")
 STATIC = Path(__file__).parent / "static"  # the built bundle (make web); not in git
 BUILD_HINT = "build it with `make web` in a LADO checkout"
 # The routes whose body is a secret's value: a 422 there repeats none of what it was given.
-SECRET_ROUTE = re.compile(r"/api/projects/[^/]+/secrets/")
+SECRET_ROUTE = re.compile(r"/api/(projects/[^/]+/secrets|providers/[^/]+/variables)/")
 
 
 class Health(BaseModel):
@@ -840,10 +848,118 @@ def create_app(
         the same for every folder."""
         return core(launch.kit_infos, has_db)
 
-    @app.get("/api/providers", dependencies=[Depends(guard)])
-    def list_providers() -> list[ProviderInfo]:
-        """LADO's providers and whether each one's CLI can run here, checked anew."""
-        return launch.provider_infos()
+    @app.get(
+        "/api/providers",
+        dependencies=[Depends(guard)],
+        responses={404: {"description": "no such project"}},
+    )
+    def list_providers(project: str | None = None) -> list[ProviderInfo]:
+        """LADO's providers and whether each one's CLI can run here, checked anew, and
+        whether it lacks the login its agents need, read for the agents of `project` (404
+        for an unknown one) or of no project."""
+        try:
+            if project is not None and not database():  # asking makes no lado.db
+                raise projects.NoSuchProject(f'unknown project "{project}"')
+            return launch.provider_infos(project)
+        except projects.NoSuchProject as unknown:
+            raise HTTPException(404, str(unknown)) from unknown
+
+    # Settings → Providers and environment (docs/design/ui.md): each agent CLI's login, read
+    # by its own command (lado.logins), its login window, and the login variables kept as
+    # LADO's secrets, written and removed, never read back.
+
+    login_refused = {
+        400: {"description": "refused, with the reason"},
+        404: {"description": "no such provider"},
+    }
+
+    def provider_named(name: str) -> providers.Provider:
+        try:
+            return providers.get(name)
+        except ValueError as error:
+            raise HTTPException(404, str(error)) from None
+
+    @app.get("/api/providers/logins", dependencies=[Depends(guard)])
+    def provider_logins() -> ProvidersPage:
+        """Each provider's CLI and login as the server's last check read them, at once;
+        starts no check (POST /api/providers/check does), so polling it costs nothing."""
+        return provider_check.snapshot()
+
+    @app.post("/api/providers/check", dependencies=[Depends(guard.changes)])
+    def check_providers() -> ProvidersPage:
+        """Start a check of every CLI in the background, unless one runs; the rows kept."""
+        provider_check.start()
+        return provider_check.snapshot()
+
+    def fresh_row(name: str, changed: bool = True) -> ProviderLogins:
+        """The provider's row read now, kept for the section; after a change of its login
+        (`changed`), a check of every CLI starts too, as the section's ↻ would."""
+        row = launch.provider_login(name)
+        provider_check.put(row)
+        if changed:
+            provider_check.start()
+        return row
+
+    @app.post(
+        "/api/providers/{name}/login",
+        dependencies=[Depends(guard.changes)],
+        responses=login_refused,
+    )
+    def open_login(name: str, given: LoginOpen) -> ProviderLogins:
+        """Open the provider's login window running the action; the one open is kept."""
+        provider = provider_named(name)
+        try:
+            logins.open_window(provider, given.action)
+        except (ValueError, agent_env.AgentEnvError, tmux.TmuxError) as error:
+            raise HTTPException(400, str(error)) from None
+        return fresh_row(name, changed=False)
+
+    @app.delete("/api/providers/{name}/login", dependencies=[Depends(guard.changes)])
+    def close_login(name: str) -> ProviderLogins:
+        """End the provider's login window and its command, if one is open."""
+        logins.close_window(provider_named(name))
+        return fresh_row(name)
+
+    @app.websocket("/api/providers/{name}/login/terminal")
+    async def login_terminal(ws: WebSocket, name: str):
+        """The provider's login window (lado.server.terminals), in control."""
+        await terminals.serve_login(ws, guard, name)
+
+    @app.put(
+        "/api/providers/{name}/variables/{variable}",
+        dependencies=[Depends(guard.changes)],
+        responses=login_refused,
+    )
+    def set_login_variable(name: str, variable: str, given: SecretValue) -> ProviderLogins:
+        """Keep one of the provider's login variables as LADO's secret, in place of its
+        others there: one login per layer, so the one saved is the login. The agents started
+        after it, and those that wait for a login, get it."""
+        provider = provider_named(name)
+        try:
+            logins.check_secret(provider, variable, given.value)
+            project_secrets.write_lado(variable, given.value)
+            for other in provider.login_variables:
+                if other != variable:
+                    project_secrets.remove_lado(other)
+        except (ValueError, OSError) as error:
+            raise HTTPException(400, str(error)) from None
+        return fresh_row(name)
+
+    @app.delete(
+        "/api/providers/{name}/login-secrets",
+        dependencies=[Depends(guard.changes)],
+        responses=login_refused,
+    )
+    def remove_login_secrets(name: str) -> ProviderLogins:
+        """Log out of LADO's secrets: remove each of the provider's login variables there.
+        Its login of another layer, if any, is what the agents get then."""
+        provider = provider_named(name)
+        try:
+            for variable in provider.login_variables:
+                project_secrets.remove_lado(variable)
+        except OSError as error:
+            raise HTTPException(400, str(error)) from None
+        return fresh_row(name)
 
     # The Kits page (docs/design/ui.md, Kits): what `lado kits` and `lado marketplaces` do.
     # A request that goes to the network or writes the git cache is a change too.
@@ -1196,6 +1312,7 @@ def create_app(
             if where.path is not None:
                 path = runtime.full_path(where.path)
                 if where.kind == "scratch":
+                    runtime.check_start_login(given.provider, None)
                     scratch.make(path, runtime.slug(given.name or Path(path).name))
             done = runtime.start_session(
                 path,

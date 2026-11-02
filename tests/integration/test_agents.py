@@ -297,10 +297,13 @@ def test_a_spawn_from_an_agent_without_tmux_on_its_path_leaves_no_ghost_worker(
     tools = tmp_path / "no-tmux"
     tools.mkdir()
     (tools / "git").symlink_to(shutil.which("git"))
-    resolve = agent_env.resolve
-    monkeypatch.setattr(
-        agent_env, "resolve", lambda project=None: {**resolve(project), "PATH": str(tools)}
-    )
+    layers = agent_env.layers
+
+    def without_tmux(project=None):
+        found = layers(project)
+        return found._replace(shell={**found.shell, "PATH": str(tools)})
+
+    monkeypatch.setattr(agent_env, "layers", without_tmux)
     start(repo)
     runtime.send_message(SESSION, "human", "supervisor", "spawn sleep 0")
     # The tool's error, which comes once the spawn is undone, names the cause.

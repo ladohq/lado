@@ -484,6 +484,120 @@ def test_the_project_wins_over_the_folder_and_the_login_shell(shell, outdir):
     assert agent_env.resolve()["BOARD_URL"] == "out"  # no project: no layer
 
 
+def test_lados_secrets_go_between_the_outside_folder_and_the_project(outdir, monkeypatch):
+    from lado import project_secrets
+
+    monkeypatch.setenv(agent_env.SOURCE_VAR, "inherit")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "shell")
+    assert agent_env.resolve()["CLAUDE_CODE_OAUTH_TOKEN"] == "shell"
+    write(outdir, "CLAUDE_CODE_OAUTH_TOKEN", b"out\n")
+    assert agent_env.resolve()["CLAUDE_CODE_OAUTH_TOKEN"] == "out"
+    project_secrets.write_lado("CLAUDE_CODE_OAUTH_TOKEN", "lado")
+    assert agent_env.resolve()["CLAUDE_CODE_OAUTH_TOKEN"] == "lado"
+    env = agent_env.resolve({"CLAUDE_CODE_OAUTH_TOKEN": "proj"})
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "proj"
+    # LADO's own git calls do not get them: an agent CLI's login means nothing to git.
+    assert agent_env.for_git()["CLAUDE_CODE_OAUTH_TOKEN"] == "out"
+
+
+# A login comes whole from one layer (merge's `login`): the names of a provider's login.
+
+LOGIN = ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
+
+
+def layers(shell=None, outside=None, secrets=None, project=None):
+    return agent_env.Layers(shell or {}, outside or {}, secrets or {}, project or {})
+
+
+def test_without_login_names_each_layer_goes_over_the_one_before_name_by_name():
+    found = layers(
+        {"A": "shell", "ANTHROPIC_API_KEY": "key"},
+        {"A": "out", "B": "out"},
+        {"CLAUDE_CODE_OAUTH_TOKEN": "tok"},
+        {"B": "proj"},
+    )
+    assert agent_env.merge(found) == {
+        "A": "out",
+        "B": "proj",
+        "ANTHROPIC_API_KEY": "key",
+        "CLAUDE_CODE_OAUTH_TOKEN": "tok",
+    }
+
+
+def test_the_highest_layer_that_sets_a_login_name_gives_the_whole_login():
+    found = layers({"ANTHROPIC_API_KEY": "key", "A": "1"}, {}, {"CLAUDE_CODE_OAUTH_TOKEN": "tok"})
+    env = agent_env.merge(found, LOGIN)
+    assert env == {"A": "1", "CLAUDE_CODE_OAUTH_TOKEN": "tok"}
+
+
+def test_a_project_with_one_login_name_hides_both_of_the_lower_layers():
+    found = layers(
+        {"ANTHROPIC_API_KEY": "shell"},
+        {"CLAUDE_CODE_OAUTH_TOKEN": "out"},
+        {},
+        {"ANTHROPIC_API_KEY": "proj"},
+    )
+    assert agent_env.merge(found, LOGIN) == {"ANTHROPIC_API_KEY": "proj"}
+
+
+def test_a_layer_that_sets_every_login_name_gives_them_all():
+    found = layers({}, {"CLAUDE_CODE_OAUTH_TOKEN": "t", "ANTHROPIC_API_KEY": "k"})
+    assert agent_env.merge(found, LOGIN) == {
+        "CLAUDE_CODE_OAUTH_TOKEN": "t",
+        "ANTHROPIC_API_KEY": "k",
+    }
+
+
+def test_an_empty_value_sets_no_login():
+    found = layers({"ANTHROPIC_API_KEY": "key"}, {"CLAUDE_CODE_OAUTH_TOKEN": ""})
+    assert agent_env.merge(found, LOGIN) == {"ANTHROPIC_API_KEY": "key"}
+
+
+def test_names_outside_the_login_keep_their_order():
+    found = layers({"ANTHROPIC_API_KEY": "shell"}, {}, {"CLAUDE_CODE_OAUTH_TOKEN": "t"})
+    # Another provider's agent: the key is no login name of its own.
+    assert agent_env.merge(found, ("OTHER_TOKEN",))["ANTHROPIC_API_KEY"] == "shell"
+
+
+def test_resolve_lays_the_files_and_takes_the_login_whole(outdir, monkeypatch):
+    from lado import project_secrets
+
+    monkeypatch.setenv(agent_env.SOURCE_VAR, "inherit")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "shell")
+    write(outdir, "CLAUDE_CODE_OAUTH_TOKEN", b"out\n")
+    found = agent_env.layers()
+    assert found.shell["ANTHROPIC_API_KEY"] == "shell"
+    assert found.outside == {"CLAUDE_CODE_OAUTH_TOKEN": "out"}
+    env = agent_env.resolve(login=LOGIN)
+    assert (env["CLAUDE_CODE_OAUTH_TOKEN"], "ANTHROPIC_API_KEY" in env) == ("out", False)
+    assert agent_env.resolve()["ANTHROPIC_API_KEY"] == "shell"  # name by name without it
+    project_secrets.write_lado("ANTHROPIC_API_KEY", "lado")
+    env = agent_env.resolve(login=LOGIN)
+    assert (env["ANTHROPIC_API_KEY"], "CLAUDE_CODE_OAUTH_TOKEN" in env) == ("lado", False)
+    env = agent_env.resolve({"CLAUDE_CODE_OAUTH_TOKEN": "proj"}, login=LOGIN)
+    assert (env["CLAUDE_CODE_OAUTH_TOKEN"], "ANTHROPIC_API_KEY" in env) == ("proj", False)
+
+
+def test_lados_secrets_folder_is_read_as_lados_own(lado_home, monkeypatch):
+    monkeypatch.setenv(agent_env.SOURCE_VAR, "inherit")
+    folder = lado_home / "secrets"
+    folder.mkdir(mode=0o700, parents=True)
+    write(folder, "ANTHROPIC_API_KEY", b"k\n")
+    (folder / "ANTHROPIC_API_KEY").chmod(0o600)
+    write(folder, "LOOSE", b"x")
+    (folder / "LOOSE").chmod(0o644)
+    (folder / "LINKED").symlink_to(folder / "ANTHROPIC_API_KEY")
+    found = agent_env.lado_secrets()
+    assert found.values == {"ANTHROPIC_API_KEY": "k"}
+    assert dict(found.unused) == {"LINKED": agent_env.LINK, "LOOSE": agent_env.LOOSE_FILE}
+    assert agent_env.resolve()["ANTHROPIC_API_KEY"] == "k"
+    assert "LOOSE" not in agent_env.resolve()
+
+
+def test_no_lado_secrets_folder_is_no_layer(lado_home):
+    assert agent_env.lado_secrets() == agent_env.Folder({}, [])
+
+
 def test_the_project_wins_over_the_inherited_environment(outdir, monkeypatch):
     monkeypatch.setenv(agent_env.SOURCE_VAR, "inherit")
     monkeypatch.setenv("BOARD_URL", "old")

@@ -124,15 +124,21 @@ LADO_LIVE_API_KEY="$(cat <key file>)" LADO_LIVE_MODEL=<model> LADO_LIVE_IMAGE=1 
 PROVIDER=codex`; never a paid model. The passive supervisor of the live kit is
 read-only (no command tools; LADO's run messages to it name the human's ways), and every
 live test fails when a `repo_changed` event names it; the test merges only while it is idle.
-Each Codex agent asks whether to trust the test's repo, answered by the test after checking
-the wait.
+No Codex agent asks whether to trust the test's repo: LADO's config of each agent trusts
+it, and the test fails if Codex asks. `tests/live/test_codex_login.py` runs a Codex session
+with a worker on OpenAI's model and a real ChatGPT login, shared by the agents' links, each
+agent started on the file made stale so it refreshes it (a running Codex keeps its login in
+memory and reads the file again only when its own tokens need a refresh): only with `LADO_LIVE_CODEX_HOME` naming a Codex home the human
+logged in to (`CODEX_HOME=<dir> codex login --device-auth`), else it skips.
 Unit tests get a `CODEX_HOME` of their own (`codex_home`, `tests/conftest.py`), never the
-user's `~/.codex`. The Claude test uses a fixed
-repo path and answers Claude Code's workspace trust dialog, so Claude Code records one trusted
-folder for it; when it shows, the test first checks that the supervisor waits with its reason
-(a run in a repo trusted already prints that it does not check that). Unit tests that start
-Claude agents get a Claude config of their own (`claude_config` in `tests/conftest.py`,
-`CLAUDE_CONFIG_DIR`), which trusts the `repo` fixture's folder, never the user's.
+user's `~/.codex`. The Claude test runs Claude Code with the human's own config (it
+unsets the tests' `CLAUDE_CONFIG_DIR`) and a fixed repo path, so LADO records one trusted
+folder for it there; if Claude Code's workspace trust dialog shows all the same, the test
+fails with LADO's reason. Every unit, integration and UI test gets a Claude config of its
+own (`claude_config` in `tests/conftest.py`, autouse, `CLAUDE_CONFIG_DIR` outside
+`tmp_path`), which trusts the `repo` fixture's folder, never the user's: LADO writes the
+trust there; `trust()` with no folder lets a test see the write, `refuse()` the fallback
+question.
 
 Smoke tests (`tests/smoke/`, marker `smoke`) run each provider's real CLI with the live
 tests' isolation and helpers (`tests/real_clis.py`, shared by both) but no model: each CLI
@@ -142,7 +148,8 @@ a server on `127.0.0.1` that answers every request with 401 (Anthropic's or Open
 body) and keeps each request. Claude Code: `ANTHROPIC_BASE_URL`, a fake
 `ANTHROPIC_AUTH_TOKEN` (an `ANTHROPIC_API_KEY` it has not seen is a question),
 `CLAUDE_CODE_MAX_RETRIES=0` (it retries every 401 ten times), and a `.claude.json` that has
-the onboarding, the bypass permissions disclaimer and the repo's trust done; Codex: a
+the onboarding and the bypass permissions disclaimer done but not the repo's trust, which
+LADO records (the test checks the entry and the start's line); Codex: a
 `model_provider` at the endpoint (`wire_api = "responses"`, a fake `env_key`); OpenCode and
 Kilo: a global config with an OpenAI-compatible provider at it, the model given as
 `--model`. One test, per installed provider (a missing CLI skips): the session starts and
@@ -155,7 +162,12 @@ delivered instead of the human's message and the turn error, in code, never a sk
 failed smoke keeps its evidence as a failed live test does. `make test-smoke
 [PROVIDER=...]`; not in `make check`, which has no CLI. The 401 endpoint is
 `tests/fake_endpoint.py` (standard library only), also a script, `python fake_endpoint.py
-<port> <log file>`, for the container tests.
+<port> <log file>`, for the container tests. It keeps the names of the tools each request
+offers the model (`Endpoint.tools`, and `tools` in the log's line; a namespace's as
+`<namespace>.<name>`), so a Codex test checks that an agent on a model whose metadata
+brings Codex's own subagents (gpt-6-sol) gets none of them, after a control: a plain
+`codex exec` on the same home gets `collaboration.wait_agent`, or the test fails saying the
+model no longer brings them.
 
 Container tests (`tests/container/`, marker `container`) run LADO's image (`docker/`) with
 real Docker and no model, driving the `docker` CLI from the host against an image built
@@ -188,6 +200,24 @@ same process, and its `lado.db` with no session stopped; the update's two have e
 `secrets/` of its own (`LADO_SECRETS=./secrets`), the stop's two none. Such a folder is
 conftest's `folder(name, **settings)`, the `compose` fixture a project with no
 `LADO_SECRETS`.
+The installer (`test_install.py`): `docker/install.sh --yes --no-open` with the working
+copy's `compose.yaml` (`--source`), the image under test (`--image`) and a folder of the
+run's prefix (`--dir`, conftest's `installed`, so its project `lado-<folder>` is the run's),
+a home of its own and Docker's own config; its printed link answers 200, a rerun of the
+same version changes no file and keeps the token, an `.env` set to `0.0.1` is updated with
+`compose.yaml.bak` and the user's line kept, and `--phone` prints the other device's link.
+Every other behaviour of the installer is a unit test: `tests/test_install_sh.py` runs it
+under dash and bash on a faked host (`tests/install_fakes.py`: a PATH of its own with
+links to the base tools and fake `docker`, `curl`, `git`, `uname` and friends that log
+their argv and `LADO_*`/`COMPOSE_*` and answer from per-test settings; `sleep` returns at
+once), its questions through a pty driven by a process of its own (forking a
+multi-threaded pytest worker may deadlock); `tests/test_install_ps1.py` reads
+`install.ps1` and, with `pwsh` on PATH (GitHub's Ubuntu runners), parses it and runs it:
+under `Invoke-Expression` it leaves the caller's `$ErrorActionPreference`, strict mode and
+functions as they were, its script-block form takes the switches, a file run exits with its
+code, and with fake `docker` and `wsl.exe` on PATH it runs its version's `install.sh` in
+Ubuntu (never `docker-desktop`) with the switches' flags. Its behaviour on a real Windows
+is checked by hand (docs/release.md).
 The secrets folder (`test_secrets.py`; only fake values): compose with no `LADO_SECRETS`
 and no folder starts, `lado doctor` exits 0 with `[info] … /run/secrets: none` and the hint
 naming `LADO_SECRETS=./secrets`, a Claude Code session reaches idle, and `docker compose
@@ -259,7 +289,9 @@ e2e tests in two shards on Python 3.13 (on two workers, `-n 2 --shard K/2`), the
 the bundle; `changes`, whether the run needs the smoke; `smoke <os> <provider>`, the smoke
 tests on Linux and macOS, one cell per (system, provider), none stopping the others;
 `container (<arch>)`, LADO's image on amd64 (`ubuntu-24.04`) and arm64 (`ubuntu-24.04-arm`),
-each on its native runner: `make docker` and `docker history lado:local` (each layer's
+each on its native runner: `make docker` (whose build runs each agent CLI's `--version`
+once, with a throwaway HOME, so a CLI npm left without its native binary fails it; no
+retry) and `docker history lado:local` (each layer's
 size, so a new layer's is the image's growth), then `scripts/smoke_ci.py container <out>` (the
 container tests with the smoke cell's pass rule, so a skip is red; the artifact
 `container-<arch>`), on every run whatever it changes, pushing nothing anywhere; and
@@ -284,7 +316,11 @@ said it is not needed, a cancelled job a failure. A pull request's new run cance
 older one; a run of another event is alone in its group (its run id), never cancelled.
 GitHub mails a red scheduled run to whoever last changed its cron line. A cell is
 `scripts/smoke_ci.py run <provider> <out>`: it installs the CLI with `npm install -g
---prefix ~/.local` at its pin, runs `uv run pytest -m smoke -n0 -v -k <provider>` into
+--prefix ~/.local` at its pin and runs its `--version`, in up to three attempts (npm drops
+an optional dependency that failed to install, a CLI's native binary, and exits 0): after a
+failed attempt but the last, a `::warning::` annotation in the run's summary names the
+provider and the attempt, then `npm uninstall` and a fresh install; the third failure is a
+red cell with no test run. Then it runs `uv run pytest -m smoke -n0 -v -k <provider>` into
 `<out>/smoke-<provider>.log`, and passes only on exit 0 with a test passed and none skipped;
 a failing cell's evidence goes to `<out>/evidence` (the artifact
 `smoke-<os>-<provider>`). `smoke_ci.py`'s `PINS` is the one place a CLI's version is

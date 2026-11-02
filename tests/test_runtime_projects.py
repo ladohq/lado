@@ -297,6 +297,25 @@ def test_a_link_from_outside_is_refused(shop, tmp_path):
 # The project's secrets (openspec change project-secrets)
 
 
+def test_a_projects_secret_that_logs_claude_in_lets_its_sessions_start(
+    shop, fake_tmux, cli_logins, monkeypatch, tmp_path
+):
+    """The login is read in the environment the agents get, the project's layer in it
+    (openspec change refuse-start-without-login)."""
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    cli_logins.logged_in_with("CLAUDE_CODE_OAUTH_TOKEN")
+    with pytest.raises(runtime.NotLoggedIn):
+        _start(path=str(init_repo(tmp_path / "app")))  # no project: no login
+    projects.set_secret("shop", "CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-test")
+    _start(project="shop", repo_name="frontend")
+    runtime.spawn_worker("shop-frontend", "task", name="w1")
+    assert state.get_agent("shop-frontend", "w1").status == state.STARTING
+    assert runtime.status_reasons("shop-frontend") == {}
+    projects.unset("shop", "CLAUDE_CODE_OAUTH_TOKEN")
+    with pytest.raises(runtime.NotLoggedIn, match="so the worker was not started"):
+        runtime.spawn_worker("shop-frontend", "task", name="w2")
+
+
 def test_the_agents_of_a_session_in_a_project_get_its_secrets(shop, fake_tmux, tmp_path):
     projects.set_secret("shop", "SHOP_TOKEN", "ghp_a\nline2")
     projects.set_variable("shop", "BOARD_URL", "https://a")

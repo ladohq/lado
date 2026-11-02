@@ -198,3 +198,25 @@ def test_the_github_release_carries_the_tags_compose_file():
     assert "docker/compose.yaml" in words, words
     assert words.index("dist/*") < words.index("docker/compose.yaml")
     assert job["steps"][0]["uses"].startswith("actions/checkout@")
+
+
+def test_the_github_release_carries_the_stamped_installers():
+    """releases/latest/download/install.sh (and install.ps1) are the newest final's, each
+    installing its own version: stamped with the tag's version before the release is
+    created, so a lost placeholder creates no release, and uploaded under their base names
+    beside compose.yaml."""
+    job = jobs()["github-release"]
+    runs = [s.get("run", "") for s in job["steps"]]
+    (stamp,) = [i for i, run in enumerate(runs) if "scripts/stamp_installers.py" in run]
+    (create,) = [i for i, run in enumerate(runs) if "gh release create" in run]
+    assert stamp < create
+    assert (
+        'python3 scripts/stamp_installers.py "${GITHUB_REF_NAME#v}" "$RUNNER_TEMP/installers"'
+        in (runs[stamp])
+    )
+    words = runs[create].replace("\\\n", " ").split()
+    at = words.index("docker/compose.yaml")
+    assert words[at + 1 : at + 3] == [
+        '"$RUNNER_TEMP/installers/install.sh"',
+        '"$RUNNER_TEMP/installers/install.ps1"',
+    ]

@@ -512,6 +512,116 @@ def test_resume_is_off_while_the_sessions_provider_cannot_run(page: Page, server
     shot(page, "picked")
 
 
+# A CLI without the login its agents need (openspec change refuse-start-without-login): the
+# fake provider "fake-login", logged in while its marker file exists.
+
+
+def stopped_login_session(repo, marker) -> str:
+    """A stopped session of "fake-login" in `repo`, its login gone since."""
+    session = f"ui-{uuid.uuid4().hex[:6]}"
+    marker.write_text("logged in")
+    runtime.start_session(str(repo), session, None, "fake-login")
+    runtime.stop_session(session)
+    marker.unlink()
+    return session
+
+
+def test_a_cli_without_its_login_is_greyed_out_and_leads_to_settings(
+    page: Page, logins, server, repo, shot
+):
+    page.set_viewport_size({"width": 1280, "height": 900})
+    stopped_login_session(repo, logins)  # the folder's last session: fake-login's
+    log_in(page, server)
+    launch = page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch")
+    launch.click()
+    dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()
+    dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
+    expect(dialog).to_contain_text("✓ git repository · branch main")
+    select = dialog.get_by_label("Provider")
+    option = select.locator("option", has_text="fake-login · not logged in")
+    expect(option).to_be_disabled(timeout=30_000)  # CLIs checked
+    expect(select).to_have_value("")
+    note = dialog.locator(".field-note.bad", has_text="is not logged in: its agents cannot start.")
+    expect(note).to_have_text("Fake agent is not logged in: its agents cannot start. Log in first")
+    start = dialog.get_by_role("button", name="Start session")
+    expect(start).to_be_disabled()
+    shot(page, "refused")
+
+    note.get_by_role("button", name="Log in first").click()
+    expect(dialog).to_have_count(0)
+    expect(page).to_have_url(re.compile("/settings#providers-and-environment$"))
+    expect(page.get_by_role("heading", name="Providers and environment")).to_be_visible()
+
+    logins.write_text("logged in")
+    launch.click()
+    dialog.get_by_role("button", name="Folder", exact=True).click()
+    dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
+    expect(select).to_have_value("fake-login", timeout=30_000)
+    expect(select.locator("option", has_text="fake-login · not logged in")).to_have_count(0)
+    expect(note).to_have_count(0)
+    shot(page, "logged-in")
+    start.click()
+    expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
+    idle("my-repo")
+    assert state.get_session("my-repo").provider == "fake-login"
+    runtime.stop_session("my-repo")
+
+
+def test_resume_without_the_login_is_disabled_and_leads_to_settings(
+    page: Page, logins, server, repo, shot
+):
+    session = stopped_login_session(repo, logins)
+    log_in(page, server, f"/sessions/{session}")
+    page.get_by_role("button", name="Resume…").click()
+    dialog = page.get_by_role("dialog", name="Resume session")
+    note = dialog.locator(".field-note.bad", has_text="is not logged in")
+    expect(note).to_have_text(
+        "Fake agent is not logged in: its agents cannot start. Log in first",
+        timeout=30_000,  # CLIs checked
+    )
+    select = dialog.get_by_label("Provider")
+    expect(select).to_have_value("fake-login")
+    expect(select.locator("option", has_text="fake-login · not logged in")).to_be_disabled()
+    expect(dialog.get_by_role("button", name="Resume session")).to_be_disabled()
+    shot(page, "window")
+    note.get_by_role("button", name="Log in first").click()
+    expect(dialog).to_have_count(0)
+    expect(page).to_have_url(re.compile("/settings#providers-and-environment$"))
+    assert state.get_session(session).stopped_at
+
+
+def test_a_start_that_records_the_trust_shows_no_warnings(page: Page, trusting, server, repo, shot):
+    """LADO's own write into Claude Code's config goes to loop.log only (LAD-163)."""
+    log_in(page, server)
+    page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
+    dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()
+    dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
+    expect(dialog).to_contain_text("✓ git repository · branch main")
+    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_role("button", name="Start session").click()
+    expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
+    idle("my-repo")
+    view = page.get_by_role("region", name="Session my-repo")
+    expect(view.get_by_role("group", name="Team")).to_contain_text("supervisor")
+    expect(page.get_by_text("Warnings:")).to_have_count(0)
+    log = (state.home() / "loop.log").read_text()
+    note = f"LADO recorded Fake agent's trust in {repo.resolve()} in {trusting.path}"
+    assert f"my-repo: supervisor: {note}" in log
+    shot(page)
+    runtime.stop_session("my-repo")
+
+
+@pytest.fixture
+def trusting(claude_config, monkeypatch):
+    """The fake agent asks as Claude Code does whether to trust its folder, which Claude
+    Code's config trusts not: LADO records it (fake_provider.py); before `server`."""
+    monkeypatch.setenv("FAKE_AGENT_TRUST", "1")
+    claude_config.trust()
+    return claude_config
+
+
 def test_the_resume_notice_stands_above_the_tabs(page: Page, server, repo, shot):
     session = stopped_session(repo)
     log_in(page, server, f"/sessions/{session}")

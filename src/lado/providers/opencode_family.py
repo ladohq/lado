@@ -11,6 +11,7 @@ of `launch_command`'s steps, split this base instead.
 """
 
 import json
+import re
 from abc import abstractmethod
 from pathlib import Path
 
@@ -49,6 +50,7 @@ EVENTS = {
 # and "session.idle" says nothing of work still running; Kilo is taken to be as its base,
 # not checked. So their agents are idle at a turn's end, never `background` (BACKLOG.md).
 ABORTED = "MessageAbortedError"
+ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")  # the colours of `auth list`
 
 
 class OpenCodeFamily(base.Provider):
@@ -66,6 +68,57 @@ class OpenCodeFamily(base.Provider):
         deny_edit_tools=True,  # see deny_edits
     )
     permission_modes = ("default", "acceptEdits", "bypassPermissions", "plan")
+
+    def login_status(self, env: dict[str, str]) -> base.LoginStatus:
+        # `<cli> auth list` (OpenCode 1.18.35, Kilo 7.8.8): `Credentials <file>`, a line
+        # `● <Provider> <kind>` per credential, then, when a provider's key variable is set,
+        # a section `Environment` with `● <Provider> <VARIABLE>`; ANSI colours throughout.
+        # Both work with no login on their free models, so none is NO, not a problem.
+        argv = [self.command, "auth", "list"]
+        found = base.run_status(argv, env)
+        if isinstance(found, str):
+            return base.LoginStatus(base.UNKNOWN, problem=found)
+        section, file, items = None, None, []
+        for raw in ANSI.sub("", found.stdout).splitlines():
+            line = raw.strip(" │┌└")
+            if raw.lstrip().startswith("┌"):
+                section, _, rest = line.partition(" ")
+                if section == "Credentials":
+                    file = rest.strip()
+            elif line.startswith("●") and section in ("Credentials", "Environment"):
+                name, _, kind = line[1:].strip().rpartition(" ")
+                if not name:
+                    continue
+                if section == "Credentials":
+                    items.append(base.LoginItem(name.strip(), kind))
+                else:
+                    items.append(base.LoginItem(name.strip(), "variable", kind))
+        if file is None:
+            why = (found.stderr.strip() or found.stdout.strip()).splitlines()
+            command = " ".join(argv)
+            return base.LoginStatus(
+                base.UNKNOWN,
+                problem=base.error_line(
+                    f"cannot read `{command}`", ANSI.sub("", why[-1]) if why else ""
+                ),
+            )
+        if not items:
+            return base.LoginStatus(base.NO, file=file)
+        credentials = sum(1 for item in items if not item.variable)
+        variables = len(items) - credentials
+        counts = [
+            f"{n} {word}{'s' if n != 1 else ''}"
+            for n, word in ((credentials, "credential"), (variables, "variable"))
+            if n
+        ]
+        return base.LoginStatus(base.YES, ", ".join(counts), file=file, items=tuple(items))
+
+    def login_actions(self) -> tuple[base.LoginAction, ...]:
+        # Both ask which provider (and how) in their own menus.
+        return (
+            base.LoginAction("login", "Add a login…", (self.command, "auth", "login")),
+            base.LoginAction("logout", "Log out of one…", (self.command, "auth", "logout")),
+        )
 
     def launch_command(
         self,

@@ -363,3 +363,25 @@ def test_server_running_tells_whether_a_server_runs_and_never_starts_one(tmp_pat
         assert tmux.server_running(socket) is True
     finally:
         subprocess.run(["tmux", "-L", socket, "kill-server"], capture_output=True, check=False)
+
+
+def test_a_labelled_session_kept_after_its_command_gives_its_text_and_status(tmp_path):
+    session = f"test-{uuid.uuid4().hex[:6]}"
+    script = "printf 'one\\n\\nlast words\\n'; exit 3"
+    tmux.new_labelled_session(
+        session, str(tmp_path), ["sh", "-c", script], {"@x": "1", "remain-on-exit": "on"}
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while (row := _dead(session)) != ["1", "3"] and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert row == ["1", "3"]
+        # Without tmux's own "Pane is dead (status 3, …)" line.
+        assert tmux.pane_text(session).rstrip("\n") == "one\n\nlast words"
+    finally:
+        tmux.kill_session(session)
+
+
+def _dead(session: str) -> list[str]:
+    rows = tmux.sessions_with("pane_dead", "pane_dead_status")
+    return next((r[1:] for r in rows if r[0] == session), [])

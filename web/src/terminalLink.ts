@@ -14,6 +14,7 @@ export type LinkHandlers = {
   size: (cols: number, rows: number) => void;
   error: (reason: string) => void;
   state: (state: LinkState) => void;
+  frame?: (frame: { type: string; [key: string]: unknown }) => void; // another JSON frame (a login window's)
 };
 
 export const RETRY_MS = 2000;
@@ -29,7 +30,13 @@ export function terminalUrl(
   return `${scheme}//${where.host}${path}/terminal?mode=${mode}`;
 }
 
-export const forGood = (code: number) => code >= 4400 && code < 4500;
+// A provider's login window (docs/design/ui.md, Providers and environment): always in control.
+export function loginTerminalUrl(where: { protocol: string; host: string }, provider: string): string {
+  const scheme = where.protocol === "https:" ? "wss:" : "ws:";
+  return `${scheme}//${where.host}/api/providers/${encodeURIComponent(provider)}/login/terminal`;
+}
+
+export const forGood =(code: number) => code >= 4400 && code < 4500;
 
 export class TermLink {
   private socket: WebSocket | null = null;
@@ -85,6 +92,7 @@ export class TermLink {
       const frame = JSON.parse(event.data);
       if (frame.type === "size") this.on.size(frame.cols, frame.rows);
       else if (frame.type === "error") this.on.error(frame.reason);
+      else this.on.frame?.(frame);
     };
     socket.onclose = (event) => {
       if (this.socket !== socket || this.stopped) return;

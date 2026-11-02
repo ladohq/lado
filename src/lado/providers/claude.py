@@ -1,9 +1,16 @@
 """Claude Code as a LADO provider."""
 
+import contextlib
+import fcntl
 import hashlib
 import json
+import os
+import re
 import shutil
+import stat
 import sys
+import tempfile
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from lado import state
@@ -79,6 +86,7 @@ BUILT_IN_MESSAGING = ["SendMessage", "ListAgents"]
 # --permission-mode bypassPermissions`: neither the agent nor a general-purpose subagent
 # has Write or Edit, and ToolSearch finds neither).
 EDIT_TOOLS = ["Edit", "Write", "NotebookEdit"]
+BYPASS = "bypassPermissions"  # the permission mode whose warning screen the settings skip
 
 # How long Claude Code waits for a command hook that sets no `timeout`: 600 s (`lu`, read in
 # the binary of 2.1.296). LADO sets one only for its turn-end hooks (_timeout).
@@ -101,6 +109,15 @@ LOGINS = (
 )
 
 
+# An apiKeySource that is a variable (ANTHROPIC_API_KEY), not Claude Code's own login's key
+# ("/login managed key") or its apiKeyHelper.
+ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
+
+# The ways to pay that Settings offers (login_choices), and the token of a subscription.
+SUBSCRIPTION, USAGE = "subscription", "usage"
+TOKEN = "CLAUDE_CODE_OAUTH_TOKEN"
+
+
 class ClaudeProvider(base.Provider):
     name = "claude"
     title = "Claude Code"
@@ -115,6 +132,7 @@ class ClaudeProvider(base.Provider):
         hold_first_turn=True,
         output_taken_when_printed=True,
         deny_edit_tools=True,
+        needs_login=True,
     )
     # Passed on as --permission-mode: the choices of Claude Code 2.1.287, which also takes
     # "default" without listing it.
@@ -122,7 +140,7 @@ class ClaudeProvider(base.Provider):
         "default",
         "acceptEdits",
         "auto",
-        "bypassPermissions",
+        BYPASS,
         "manual",
         "dontAsk",
         "plan",
@@ -168,7 +186,15 @@ class ClaudeProvider(base.Provider):
         config = {
             "hooks": {e: hook(e) for e in EVENTS},
             "permissions": {"deny": BUILT_IN_MESSAGING + (EDIT_TOOLS if spec.read_only else [])},
+            # Screens Claude Code shows before the first hook, answered by the agent's own
+            # settings with no write to a shared file (checked by hand with 2.1.295 on a
+            # clean config): "New MCP server found in this project" for a repository's
+            # .mcp.json, whose servers the agent takes as a human who trusts the folder
+            # would, and, below, bypass mode's warning.
+            "enableAllProjectMcpServers": True,
         }
+        if session.permission_mode == BYPASS:
+            config["skipDangerousModePermissionPrompt"] = True
         settings.write_text(json.dumps(config, indent=2))
 
         # From a file, so the role is not on the command line (checked by hand with 2.1.294
@@ -244,6 +270,77 @@ class ClaudeProvider(base.Provider):
         # sweep types it in then (lado.runtime._plan).
         return json.dumps({"decision": "block", "reason": text})
 
+    login_variables = (TOKEN, "ANTHROPIC_API_KEY")
+    # LADO runs no login command of Claude Code: the human brings a ready token or key.
+    login_question = "How do you pay for Claude?"
+    login_choices = (
+        base.LoginChoice(
+            SUBSCRIPTION,
+            "Subscription — Claude Pro or Max",
+            "Run `claude setup-token` on any computer where Claude Code is installed and paste "
+            "the token it prints.",
+            TOKEN,
+        ),
+        base.LoginChoice(
+            USAGE,
+            "Pay per use — API billing",
+            "Paste an API key from console.anthropic.com.",
+            "ANTHROPIC_API_KEY",
+        ),
+    )
+
+    def login_status(self, env: dict[str, str]) -> base.LoginStatus:
+        # `claude auth status --json` (2.1.295, about 0.1 s): loggedIn, authMethod
+        # (claude.ai, oauth_token, api_key, none), subscriptionType for claude.ai,
+        # apiKeySource for a key, configDirectory; exit 1 when not logged in. It does not
+        # check a token with the server: a made-up one is loggedIn.
+        argv = [self.command, "auth", "status", "--json"]
+        found = base.run_status(argv, env)
+        if isinstance(found, str):
+            return base.LoginStatus(base.UNKNOWN, problem=found)
+        command = " ".join(argv)
+        try:
+            data = json.loads(found.stdout)
+        except ValueError:
+            data = None
+        if not isinstance(data, dict) or not isinstance(data.get("loggedIn"), bool):
+            if found.returncode not in (0, 1):
+                why = base.error_line(f"exit status {found.returncode}", found.stderr)
+                return base.LoginStatus(base.UNKNOWN, problem=f"`{command}` failed with {why}")
+            return base.LoginStatus(base.UNKNOWN, problem=f"cannot read `{command}`'s output")
+        if not data["loggedIn"]:
+            return base.LoginStatus(base.NO)
+        method, source = data.get("authMethod"), data.get("apiKeySource")
+        if sys.platform == "darwin":
+            file = words = "the login keychain"
+        else:
+            file = str(Path(str(data.get("configDirectory") or "")) / ".credentials.json")
+            words = f"{self.title}'s login file"
+        if method == "claude.ai":
+            plan = data.get("subscriptionType")
+            how = f"Subscription ({plan.capitalize()})" if plan else "Subscription"
+            return base.LoginStatus(base.YES, how, file=file, file_words=words, choice=SUBSCRIPTION)
+        if method == "oauth_token":
+            # CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_AUTH_TOKEN (also "oauth_token", 2.1.295),
+            # a gateway's: no way to pay the sheet offers.
+            if env.get(TOKEN):
+                return base.LoginStatus(
+                    base.YES, "Subscription (token)", variable=TOKEN, choice=SUBSCRIPTION
+                )
+            given = "ANTHROPIC_AUTH_TOKEN" if env.get("ANTHROPIC_AUTH_TOKEN") else ""
+            return base.LoginStatus(base.YES, "Token", variable=given)
+        if method == "api_key":
+            if isinstance(source, str) and ENV_NAME.fullmatch(source):
+                return base.LoginStatus(
+                    base.YES, "Pay per use (API key)", variable=source, choice=USAGE
+                )
+            return base.LoginStatus(
+                base.YES, "Pay per use (Console)", file=file, file_words=words, choice=USAGE
+            )
+        if method == "third_party":  # Bedrock, Vertex, ... by their CLAUDE_CODE_USE_* variable
+            return base.LoginStatus(base.YES, str(data.get("apiProvider") or method).capitalize())
+        return base.LoginStatus(base.YES, str(method))
+
     def keychain_login(self, env: dict[str, str]) -> str | None:
         # On macOS Claude Code keeps its OAuth login in the login keychain ("Claude
         # Code-credentials"). It needs none with one of LOGINS. apiKeyHelper in its settings
@@ -255,20 +352,54 @@ class ClaudeProvider(base.Provider):
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
         # Claude Code asks whether to trust a folder it does not trust before any hook runs,
         # and no flag, permission mode or setting skips the question; its default answer,
-        # "No, exit", ends it. LADO only reads whether it trusts the folder: recording the
-        # trust is the human's, in Claude Code's global config (see _trusted).
+        # "No, exit", ends it. So LADO records the trust of the session's repository itself
+        # in Claude Code's global config (see _trusted and _record_trust); the question in
+        # Needs you is left for when it cannot.
         try:
             trusted = _trusted(Path(cwd), env)
         except (OSError, ValueError) as error:
             repo = gitpaths.main_root(Path(cwd))
             return base.Blocker(warning=f"cannot tell whether {self.title} trusts {repo}: {error}")
-        if trusted:
-            return base.Blocker()
-        return base.Blocker(
-            reason=f"{self.title} asks whether to trust {gitpaths.main_root(Path(cwd))}: in its "
-            'terminal choose "Yes, I trust this folder" (Enter alone answers "No, exit" and '
-            "closes the agent)"
-        )
+        notes: list[str] = []
+        if not trusted:
+            repo = gitpaths.main_root(Path(cwd))
+            try:
+                path = _record_trust(repo, env)
+            except (OSError, ValueError) as error:
+                return base.Blocker(
+                    reason=f"{self.title} asks whether to trust {repo}: LADO could not record "
+                    f'the trust ({error}); in its terminal choose "Yes, I trust this folder" '
+                    '(Enter alone answers "No, exit" and closes the agent)'
+                )
+            if path is not None:  # else another LADO recorded it meanwhile
+                notes.append(f"LADO recorded {self.title}'s trust in {repo} in {path}")
+        # A logged-in Claude Code still shows its first-run screens before any hook: the
+        # theme, then for a key in its environment whether to use it (default "No"). Not
+        # while it is not logged in: those agents wait for a login (lado.login_wait), which
+        # calls this again once there is one. A login LADO cannot read holds no agent, so
+        # its first run is recorded too, or it would stand on the theme with no reason.
+        if self.login_status(env).state == base.NO:
+            return base.Blocker(notes=tuple(notes))
+        try:
+            if path := _record_first_run(env):
+                notes.append(f"LADO recorded {self.title}'s first run in {path}")
+            key = env.get("ANTHROPIC_API_KEY")
+            if key:
+                path, rejected = _approve_key(env, key)
+                if rejected:
+                    return base.Blocker(
+                        reason=f"{self.title} asks whether to use ANTHROPIC_API_KEY, which you "
+                        f"rejected before (in {rejected}): in its terminal choose to use it, or "
+                        "remove the key from customApiKeyResponses.rejected there",
+                        notes=tuple(notes),
+                    )
+                if path:
+                    notes.append(f"LADO recorded the approval of ANTHROPIC_API_KEY in {path}")
+        except (OSError, ValueError) as error:
+            return base.Blocker(
+                warning=f"cannot record {self.title}'s first run: {error}", notes=tuple(notes)
+            )
+        return base.Blocker(notes=tuple(notes))
 
 
 # Background work after a turn's end. Seen live with 2.1.295 (haiku): every Stop payload has
@@ -309,15 +440,158 @@ def _request_key(data: dict) -> str:
 # $CLAUDE_CONFIG_DIR or the home folder; the config home is $CLAUDE_CONFIG_DIR or
 # ~/.claude. A folder is trusted by its git repository's main root (the main repo of a
 # worktree), or by itself or a folder above it up to its git root, each by its real path.
-def _trusted(cwd: Path, env: dict[str, str]) -> bool:
-    """Whether Claude Code, started in `cwd` with `env`, trusts the folder. Reads only the
-    config's projects; ValueError, naming the file, when it cannot be read. No config:
-    none."""
+#
+# LADO writes that flag for the session's repository (_record_trust), the one exception to
+# "Never touch the user's global agent config" (AGENTS.md, LAD-106): there is no other way
+# to start Claude Code in a new folder without a human at its terminal. Checked by hand
+# with 2.1.295: the entry of the repository's main root covers its linked worktrees;
+# hasTrustDialogAccepted alone lets the repository's own hooks run
+# (hasTrustDialogHooksAccepted is not needed); an entry written into the file by another
+# process (temporary file and rename) while Claude Code ran survived Claude Code's own
+# rewrite of the file at its exit, as it watches the file and re-reads it. A missing
+# config is made with the entry alone: Claude Code adds the rest at its start.
+def _config_path(env: dict[str, str]) -> Path:
+    """The global config Claude Code, started with `env`, reads its trust from."""
     home = Path(env.get("HOME") or Path.home())
     config_dir = env.get("CLAUDE_CONFIG_DIR")
     path = Path(config_dir or home / ".claude") / ".config.json"
     if not path.exists():
         path = Path(config_dir or home) / ".claude.json"
+    return path
+
+
+@contextlib.contextmanager
+def _config_lock() -> Iterator[None]:
+    """LADO's own changes of Claude Code's config one at a time (two agents started at once
+    would lose each other's change). Claude Code's own lock is an internal detail of its
+    binary, not used."""
+    with open(state.home() / "claude-config.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def edit_config(env: dict[str, str], change: Callable[[dict], bool]) -> Path | None:
+    """Change Claude Code's global config, the one it reads with `env`, by `change`, which
+    gets the config, read again now, and returns whether it changed it; the file written, or
+    None when nothing changed (nothing is written then). Every key `change` leaves is kept.
+    The file is written as Claude Code writes it (JSON, indent 2) to a temporary file in its
+    folder, then put in its place in one step, with the old file's mode (a new one 600: it
+    holds the login); a symlinked config is written through to its target. ValueError,
+    naming the file, for a file that is not a JSON object, or that `change` refuses: the
+    file is left as it is; OSError for a file that cannot be read or written."""
+    with _config_lock():
+        path = _config_path(env)
+        target = path.resolve()
+        try:
+            text = target.read_text()
+        except FileNotFoundError:
+            config: object = {}
+            mode = 0o600
+        except UnicodeDecodeError as error:
+            raise ValueError(f"{path}: {error}") from error
+        else:
+            try:
+                config = json.loads(text)
+            except ValueError as error:
+                raise ValueError(f"{path}: {error}") from error
+            mode = stat.S_IMODE(target.stat().st_mode)
+        if not isinstance(config, dict):
+            raise ValueError(f"{path} is not a JSON object")
+        try:
+            if not change(config):
+                return None
+        except ValueError as error:
+            raise ValueError(f"{path}: {error}") from error
+        fd, temp = tempfile.mkstemp(prefix=f"{target.name}.", suffix=".tmp", dir=target.parent)
+        try:
+            with os.fdopen(fd, "w") as file:
+                json.dump(config, file, indent=2, ensure_ascii=False)
+                file.flush()
+                os.fsync(file.fileno())
+            os.chmod(temp, mode)
+            os.replace(temp, target)
+        except BaseException:
+            Path(temp).unlink(missing_ok=True)
+            raise
+        return path
+
+
+def _record_trust(repo: Path, env: dict[str, str]) -> Path | None:
+    """Set hasTrustDialogAccepted in the entry of `repo`, a real path, in Claude Code's
+    config (edit_config), keeping the entry's other keys; the file written, or None when it
+    trusted `repo` already. ValueError for projects or an entry that is not an object."""
+
+    def trust(config: dict) -> bool:
+        projects = config.setdefault("projects", {})
+        if not isinstance(projects, dict):
+            raise ValueError("its projects are not a JSON object")
+        entry = projects.setdefault(str(repo), {})
+        if not isinstance(entry, dict):
+            raise ValueError(f"the entry of {repo} in its projects is not a JSON object")
+        if entry.get("hasTrustDialogAccepted") is True:
+            return False
+        entry["hasTrustDialogAccepted"] = True
+        return True
+
+    return edit_config(env, trust)
+
+
+# Claude Code's first-run keys, LADO's other exception to the same rule (AGENTS.md,
+# LAD-157), written the same way, only for an agent whose environment logs it in (checked
+# by hand with 2.1.295): with hasCompletedOnboarding true it starts straight away with a
+# token; with ANTHROPIC_API_KEY it asks "Detected a custom API key in your environment… Do
+# you want to use this API key?" until the key's last 20 characters are in
+# customApiKeyResponses.approved, as Claude Code itself stores the answer there. The key
+# itself goes nowhere else.
+KEY_TAIL = 20
+
+
+def _record_first_run(env: dict[str, str]) -> Path | None:
+    """Set hasCompletedOnboarding (edit_config); the file written, or None when it was set."""
+
+    def onboard(config: dict) -> bool:
+        if config.get("hasCompletedOnboarding") is True:
+            return False
+        config["hasCompletedOnboarding"] = True
+        return True
+
+    return edit_config(env, onboard)
+
+
+def _approve_key(env: dict[str, str], key: str) -> tuple[Path | None, Path | None]:
+    """Add the key's last characters to customApiKeyResponses.approved (edit_config) when
+    they are in neither list: (the file written, None); (None, the config) when the human
+    rejected them, which is left as it is; (None, None) when they were approved. ValueError
+    for responses or a list that is not what Claude Code writes."""
+    tail = key[-KEY_TAIL:]
+    rejected = False
+
+    def approve(config: dict) -> bool:
+        nonlocal rejected
+        responses = config.setdefault("customApiKeyResponses", {})
+        if not isinstance(responses, dict):
+            raise ValueError("its customApiKeyResponses are not a JSON object")
+        approved = responses.setdefault("approved", [])
+        refused = responses.get("rejected", [])
+        if not isinstance(approved, list) or not isinstance(refused, list):
+            raise ValueError("its customApiKeyResponses are not lists")
+        if tail in refused:
+            rejected = True
+            return False
+        if tail in approved:
+            return False
+        approved.append(tail)
+        return True
+
+    path = edit_config(env, approve)
+    return path, (_config_path(env) if rejected else None)
+
+
+def _trusted(cwd: Path, env: dict[str, str]) -> bool:
+    """Whether Claude Code, started in `cwd` with `env`, trusts the folder. Reads only the
+    config's projects; ValueError, naming the file, when it cannot be read. No config:
+    none."""
+    path = _config_path(env)
     try:
         config = json.loads(path.read_text())
     except FileNotFoundError:

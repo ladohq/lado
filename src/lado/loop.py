@@ -170,6 +170,7 @@ def run(session: str, interval: float | None = None) -> int:
                     # is dropped and told, not typed into no window. The pass's one tmux
                     # call: a gone tmux session fails it (tmux_gone).
                     missing = runtime.check_windows(session, missing)
+                    runtime.check_starts(session)
                     runtime.sweep(session)
                     errors.worked()
             except state.SchemaError as exc:

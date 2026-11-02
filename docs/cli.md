@@ -234,6 +234,52 @@ with the newer-LADO refusal's words; incompatible: `FAIL` with that refusal's wo
 doctor exits 1. The checks that read lado.db (`Projects`, `Artifacts`, `Agent config
 folders`) then say `not checked: lado.db is not at this LADO's schema (see lado.db)`.
 
+`lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
+own status command in the environment its agents get without a project, the login taken
+whole from one layer (`claude auth status --json`, `codex login status -c
+cli_auth_credentials_store="file"`, `opencode auth list`, `kilo auth list`; Codex's
+`OPENAI_API_KEY`, which LADO hands its agents, without the command): `[ok] <CLI> login:
+<how> · <where from>`, where from the layer that gives it (`LADO's secret`, `outside
+folder`, `login shell`, `the process that starts LADO`) or the CLI's own login file
+(`Claude Code's login file`, `Codex's login file`, or the file's path), e.g.
+`[ok] Claude Code login: Subscription (token) · LADO's secret`; `[warn] Claude Code login: not logged in: new
+sessions and workers of it are refused, a resumed agent waits (Settings → Providers and
+environment)` for a CLI whose agents need one (Claude Code; Codex on OpenAI's models, its
+default, by the model provider of the user's Codex config); `[warn] Codex CLI login: not
+logged in: Your Codex keeps its login in the system keyring, which Codex agents cannot
+read. …` when the user's Codex is logged in only there;
+`[info] <CLI> login: none` for the others; `[warn] <CLI> login: unknown: <why>` when the
+command fails, times out (10 s) or prints what LADO cannot read. None of them changes the exit
+code. LADO's secrets (the login variables set in Settings, `<LADO_HOME>/secrets/`) get a line
+after `Variables from outside` only when one takes the place of the outside folder's (`[info]
+LADO secrets: <NAME>[, …] overrides LADO_ENV_DIR`) or a file there is not used (a warning, by
+name with why, never a value).
+
+A new session of a CLI that needs a login and has none, read in the environment its agents
+would get (with the project's secrets for `--project`), is refused with exit 1 before
+anything is stored: `lado: Claude Code is not logged in, so the session was not started: log
+in in LADO's UI (Settings → Providers and environment, `lado ui`), or set
+CLAUDE_CODE_OAUTH_TOKEN as LADO's secret or a project secret` (Codex: `lado: Codex CLI is
+not logged in, so the session was not started: … or set OPENAI_API_KEY as LADO's secret or
+a project secret`). `lado start <git-url>` and
+`lado start --new` say so before the clone or the new folder when the provider is known
+(`--provider`, or the only one installed). A supervisor's `spawn_worker` of such a CLI gets
+`… so the worker was not started: ask the human to log in in Settings → Providers and
+environment, or start the worker with another provider`; each worker is checked by its own
+provider, so a Claude session's supervisor can still start Kilo workers. A resume by hand
+(`lado start` of a stopped session) is refused the same way by the provider of the
+supervisor it starts: `lado: Claude Code is not logged in, so the session was not resumed:
+…`, the session stays stopped; `--provider kilo` resumes it with a Kilo supervisor. LADO's
+own resume is not refused (at the container's start, and `lado update`'s, which runs
+`lado start --wait-for-login`, a flag for LADO, not listed in `--help`): its Claude agent
+waits, and `lado ls` prints under it `waiting: Claude Code is not
+logged in: log in in Settings → Providers and environment, or set CLAUDE_CODE_OAUTH_TOKEN;
+the agent starts by itself once you do`; it starts by itself once there is one. A login
+that cannot be read refuses nothing and holds no agent: `lado start` warns `cannot tell
+whether Claude Code is logged in: <why>; the agent starts all the same`.
+There is no `lado login`: in a terminal the CLIs' own commands log in. Every Codex agent
+shares the login of the user's own Codex (`codex login`, `codex login --device-auth`).
+
 `lado doctor` always has a `Workspace` line: `<path> (LADO_REPOS)` or `<path> (default)`, `info`
 with `, not made yet: the first clone or project makes it` while the folder is missing, and a
 warning for a `LADO_REPOS` that is not absolute (ignored: `LADO uses <home>/workspace`), a path

@@ -1967,6 +1967,514 @@ h3 {
   border: 0;
 }
 
+/* Settings → Providers and environment (Providers.tsx): a row per agent CLI. */
+
+.pv-list {
+  display: flex;
+  flex-direction: column;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pv {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.setting .pv p {
+  margin: 0;
+}
+
+.pv-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.pv-head strong {
+  font-size: 15px;
+}
+
+.pv-head .ver {
+  color: var(--muted);
+  font: 13px var(--mono);
+}
+
+.pv-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.ok-dot {
+  background: var(--done);
+}
+
+.off-dot {
+  border: 1.5px solid var(--muted);
+}
+
+.setting .pv-src {
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.pv-src code {
+  font-size: 12px;
+}
+
+.setting .pv-warn {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--human);
+  background: var(--human-ground);
+  font-size: 13px;
+}
+
+.pv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.pv-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-basis: 100%;
+  font-size: 13px;
+}
+
+/* The heading with its ↻, which turns while a check of the CLIs runs (still for those who
+   ask for less motion). */
+.pv-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pv-title h2 {
+  margin: 0;
+}
+
+.pv-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.pv-refresh:hover {
+  background: var(--ground);
+  color: var(--ink);
+}
+
+.pv-refresh.spinning {
+  cursor: default;
+}
+
+.pv-refresh.spinning span {
+  display: inline-block;
+  animation: term-spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-refresh.spinning span {
+    animation: none;
+  }
+}
+
+.pv-tested {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pv-checking {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pv-off strong {
+  color: var(--muted);
+}
+
+.setting .pv-none {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--human);
+  background: var(--human-ground);
+  font-size: 13px;
+}
+
+.setting .pv-env {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* The login sheet and window (LoginSheet.tsx, LoginWindow.tsx): a sheet over the page; the
+   whole screen on a phone. */
+
+.login-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
+}
+
+.login-window {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 100%);
+  max-height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.login-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.login-top h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+}
+
+.login-link {
+  font-size: 12px;
+}
+
+.login-term {
+  height: 340px;
+  min-height: 0;
+  padding: 8px;
+  background: var(--ground);
+  color: var(--ink);
+}
+
+.login-help {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  font-size: 13px;
+}
+
+.login-help p {
+  margin: 0;
+}
+
+.login-send {
+  display: flex;
+  gap: 6px;
+}
+
+.login-send input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 13px var(--mono);
+}
+
+/* The login sheet's choices (LoginSheet.tsx): one box per way to log in, the chosen one in
+   the action colour with its field. */
+
+.login-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.login-chosen {
+  border-color: var(--action);
+}
+
+.login-choice label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.login-choice .muted {
+  margin: 0 0 0 24px;
+  font-size: 13px;
+}
+
+.login-choice .login-send {
+  margin: 4px 0 0 24px;
+}
+
+/* A pasted token or key shows as dots, as a project's secret does. */
+.login-send .project-in-secret {
+  font-family: LadoSecretDots;
+}
+
+.login-send .project-in-secret::placeholder {
+  font-family: var(--sans);
+}
+
+.login-current {
+  padding: 0 5px;
+  border: 1px solid var(--action);
+  border-radius: 4px;
+  color: var(--action);
+  font-size: 11px;
+}
+
+.login-out {
+  justify-content: flex-end;
+}
+
+.login-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.login-keys .quiet {
+  min-width: 44px;
+  height: 32px;
+}
+
+/* A login window that shows a code (LoginWindow.tsx, Codex's sign-in code): no terminal,
+   the wait, the two steps with the QR code of the link beside them, the CLI's own lines,
+   its failure, and the line over the terminal when it shows after all. */
+
+.login-wait {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 28px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.login-spin {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--line);
+  border-top-color: var(--action);
+  border-radius: 50%;
+  animation: login-spin 0.9s linear infinite;
+}
+
+@keyframes login-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-spin {
+    animation: none;
+  }
+}
+
+.login-steps {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.login-step-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.login-step {
+  display: flex;
+  gap: 10px;
+}
+
+.login-n {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.login-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.login-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.login-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  text-decoration: none;
+}
+
+.login-url {
+  font: 12px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.login-code {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ground);
+  font: 600 26px/1 var(--mono);
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+
+.login-copy .quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+}
+
+.login-qr {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 120px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.login-qr-code {
+  width: 110px;
+  height: 110px;
+}
+
+.login-details {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.login-details p {
+  margin: 0;
+}
+
+.login-fail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  font-size: 14px;
+}
+
+.login-fail blockquote {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--line);
+  background: var(--ground);
+  font: 13px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.login-note {
+  margin: 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.login-term[hidden] {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .login-sheet {
+    padding: 0;
+  }
+
+  .login-qr {
+    display: none;
+  }
+
+  .login-code {
+    font-size: 24px;
+  }
+
+  .login-window {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .login-term {
+    flex: 1;
+    height: auto;
+  }
+}
+
 .choice legend {
   margin-bottom: 6px;
   padding: 0;
@@ -9079,8 +9587,9 @@ button.quiet.danger-text {
   flex: none;
 }
 
-/* Projects (Projects.tsx): the list or a project, one at a time; a variable's row is a card
-   of its lines. */
+/* Projects (Projects.tsx): the list or a project, one at a time, each scrolling by itself
+   under the top bar, as on Sessions; the height takes back the narrow window's auto
+   (LAD-159). A variable's row is a card of its lines. */
 :root[data-phone] .content:has(> .projects) {
   padding: 0;
   overflow: hidden;
@@ -9089,6 +9598,7 @@ button.quiet.danger-text {
 :root[data-phone] .projects {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
+  height: 100%;
 }
 
 :root[data-phone] .project-page {

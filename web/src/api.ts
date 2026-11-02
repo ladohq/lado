@@ -327,8 +327,10 @@ export const cancelCloneOnLeave = (id: string) =>
 export const getKits = (where: string | null) =>
   get<KitInfo[]>(where ? `/api/kits?${query({ where })}` : "/api/kits");
 
-// LADO's providers, each one's CLI checked anew.
-export const getProviders = () => get<ProviderInfo[]>("/api/providers");
+// LADO's providers, each one's CLI checked anew, and whether it lacks the login its agents
+// need, read for the agents of `project` (or of none).
+export const getProviders = (project: string | null = null) =>
+  get<ProviderInfo[]>(project ? `/api/providers?${query({ project })}` : "/api/providers");
 
 // What the session's head shows besides its settings: its repository, its kits' and its
 // provider's versions as installed now; read anew by the server each time.
@@ -396,6 +398,32 @@ export const putSecret = (id: string, name: string, value: string) =>
 
 export const deleteSecret = (id: string, name: string) =>
   post<VariableChange>(variablePath(id, "secrets", name), undefined, "DELETE");
+
+// Settings → Providers and environment: each agent CLI's login (docs/design/ui.md).
+export type ProvidersPage = components["schemas"]["ProvidersPage"];
+export type ProviderLogins = components["schemas"]["ProviderLogins"];
+const providerPath = (name: string) => `/api/providers/${encodeURIComponent(name)}`;
+
+// The rows of the server's last check of the CLIs, at once; a check runs while `checking`.
+export const getProviderLogins = () => get<ProvidersPage>("/api/providers/logins");
+
+// Start a check of every CLI unless one runs; the rows kept meanwhile.
+export const checkProviders = () => post<ProvidersPage>("/api/providers/check");
+
+// Open the CLI's login window running `action` (the one open is kept), or end it.
+export const openLogin = (name: string, action: string) =>
+  post<ProviderLogins>(`${providerPath(name)}/login`, { action });
+
+export const closeLogin = (name: string) => post<ProviderLogins>(`${providerPath(name)}/login`, undefined, "DELETE");
+
+// A login variable's value goes in this request's body only, kept as LADO's secret in place
+// of the CLI's other login variables there.
+export const putLoginVariable = (name: string, variable: string, value: string) =>
+  post<ProviderLogins>(`${providerPath(name)}/variables/${encodeURIComponent(variable)}`, { value }, "PUT");
+
+// Log out of LADO's secrets: each of the CLI's login variables there goes.
+export const deleteLoginSecrets = (name: string) =>
+  post<ProviderLogins>(`${providerPath(name)}/login-secrets`, undefined, "DELETE");
 
 export type ProjectLaunch = components["schemas"]["ProjectLaunch"];
 export type ProjectPlace = components["schemas"]["ProjectPlace"];

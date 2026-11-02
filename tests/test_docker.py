@@ -68,6 +68,21 @@ def test_each_cli_is_installed_at_that_version_in_a_layer_of_its_own(provider):
     assert install.count("@${") == 1, install
 
 
+@pytest.mark.parametrize("provider", sorted(ARGS))
+def test_each_cli_is_run_once_after_its_install(provider):
+    """npm drops an optional dependency (a CLI's native binary) that failed to install and
+    exits 0: the build runs the CLI so such an image is not built. Its HOME is a folder
+    removed in the same layer: Codex, OpenCode and Kilo write theirs at any start, and the
+    image's /home/lado stays as it was."""
+    package, _, command = _pins()[provider]
+    [install] = [line for line in flat() if f'"{package}@${{{ARGS[provider]}}}"' in line]
+    assert install == (
+        f'RUN npm install -g --prefix /opt/agents "{package}@${{{ARGS[provider]}}}" '
+        f"&& HOME=/tmp/cli-home /opt/agents/bin/{command} --version && rm -rf /tmp/cli-home "
+        "&& npm cache clean --force"
+    )
+
+
 def test_node_22_comes_from_the_official_image():
     [stage] = [line for line in lines() if line.startswith("FROM node:")]
     assert stage.startswith("FROM node:22-bookworm-slim@sha256:")
@@ -900,10 +915,18 @@ def test_the_headers_say_how_agents_get_variables_access_and_logins(name):
         "claude setup-token",
         "opencode auth login",
         "kilo auth login",
+        # Codex's: a variable of the folder, or one login inside its agents share
+        # (openspec change codex-shared-login).
+        "CODEX_ACCESS_TOKEN",
+        "OPENAI_API_KEY",
+        "codex login --device-auth",
+        "Providers and environment",  # the UI's login first (openspec provider-logins)
         "Every agent of the container can read every variable given to it",
         "LADO_SECRETS=./secrets" if name == "compose.yaml" else '-v "$PWD/secrets:/run/secrets:ro"',
     ):
         assert needle in head, (name, needle)
+    assert "Codex's login is not covered" not in head, name
+    assert "Codex's is not covered" not in head, name
 
 
 def dockerfile_run() -> list[str]:
@@ -1003,7 +1026,8 @@ def test_the_guides_first_start_is_the_headers():
 
 
 def test_the_guides_update_and_way_back_are_the_headers():
-    assert guide_steps("Update the container") == header_steps(UPDATE)
+    """The installer's line first, which does the same; then the header's steps by hand."""
+    assert guide_steps("Update the container") == [INSTALL_SH, *header_steps(UPDATE)]
     assert guide_steps("Go back to the version before") == way_back()
 
 
@@ -1016,7 +1040,7 @@ def test_the_guide_enables_secrets_as_a_step_of_its_own():
 
 def test_the_guides_update_says_what_stays_and_what_to_carry_over():
     text = " ".join(guide_part("Update the container").split())
-    assert guide_steps("Update the container") == UPDATE_STEPS
+    assert guide_steps("Update the container") == [INSTALL_SH, *UPDATE_STEPS]
     assert "`.env`, `secrets/` and the home volume stay" in text
     assert "carry it over" in text
     assert "diff compose.yaml.bak compose.yaml" in text
@@ -1036,27 +1060,85 @@ def readme_part(heading: str, sub: str) -> str:
     return part if end == -1 else part[:end]
 
 
-def test_readmes_docker_install_starts_without_mkdir():
-    steps = [line for block in blocks(readme_part("Install", "Docker")) for line in commands(block)]
-    assert "docker compose up -d" in steps
-    assert [s for s in steps if s.startswith("mkdir")] == [
-        "mkdir ~/lado-docker && cd ~/lado-docker"
+INSTALL_SH = "curl -fsSL https://github.com/ladohq/lado/releases/latest/download/install.sh | sh"
+INSTALL_PS1 = "irm https://github.com/ladohq/lado/releases/latest/download/install.ps1 | iex"
+
+
+def code_lines(text: str) -> list[str]:
+    """The commands of every code block of `text`, bash and PowerShell alike."""
+    found = blocks(text) + blocks(text, "powershell")
+    return [line for block in found for line in commands(block)]
+
+
+def test_readmes_docker_install_is_the_installer_alone():
+    """The installer checks the shell's variables (LAD-69, LAD-73), makes the folders and
+    runs compose itself: README has no step of its own to forget."""
+    part = readme_part("Install", "Docker")
+    assert [line for block in blocks(part) for line in commands(block)] == [INSTALL_SH]
+    assert [line for b in blocks(part, "powershell") for line in commands(b)] == [INSTALL_PS1]
+    assert "mkdir" not in part and "docker compose up" not in part
+    assert "docs/install.md#by-hand" in part
+
+
+def test_readmes_update_runs_the_installer_again():
+    part = readme_part("Update", "Docker")
+    assert code_lines(part) == [INSTALL_SH, INSTALL_PS1]
+    assert "docs/install.md#update-the-container" in part
+
+
+def test_the_guide_leads_with_the_installer():
+    text = guide()
+    assert commands(blocks(text)[0]) == [INSTALL_SH]
+    assert commands(blocks(text, "powershell")[0]) == [INSTALL_PS1]
+    assert text.index(INSTALL_SH) < text.index(INSTALL_PS1) < text.index("docker compose up -d")
+    one = guide_part("Install with one command")
+    steps = code_lines(one)
+    # Download, read, run; and PowerShell's download-and-run form, which no antivirus
+    # takes for `iex` of a download.
+    for step in (
+        "curl -fsSLO https://github.com/ladohq/lado/releases/latest/download/install.sh",
+        "less install.sh",
+        "sh install.sh",
+        "irm https://github.com/ladohq/lado/releases/latest/download/install.ps1 "
+        "-OutFile install.ps1",
+        "powershell -ExecutionPolicy Bypass -File install.ps1",
+    ):
+        assert step in steps, step
+    said = " ".join(one.split())
+    for words in ("--yes", "--phone", "updates", "~/lado-docker", "~/workspace"):
+        assert words in said, words
+    assert guide().index("\n### Install with one command\n") < guide().index("\n### By hand\n")
+    assert guide().index("\n### By hand\n") < guide().index("\n### Check the shell\n")
+
+
+def test_the_guide_has_windows_by_install_ps1():
+    text = " ".join(guide_part("Docker on Windows").split())
+    for words in (
+        INSTALL_PS1,
+        "Ubuntu",
+        "WSL integration",
+        "wsl --install -d Ubuntu",
+        "Docker Desktop",
+    ):
+        assert words in text, words
+    pypi = INSTALL.read_text()
+    pypi = pypi[pypi.index("\n## Windows\n") :]
+    assert "[Docker on Windows](#docker-on-windows)" in pypi[: pypi.index("\n## ", 3)]
+    assert "docs/install.md#docker-on-windows" in (DOCKER / "install.ps1").read_text()
+
+
+def test_the_guides_systems_name_windows_by_install_ps1():
+    [systems] = [
+        line for line in INSTALL.read_text().splitlines() if line.startswith("| Systems |")
     ]
+    docker = systems.split("|")[2]
+    assert "`install.ps1`" in docker and "WSL2" in docker and "Windows" in docker
+    assert "not checked" not in docker
 
 
-def test_readmes_docker_install_checks_the_shell_first():
-    """A shell's LADO_VERSION beats .env's and ran a manual check on the wrong version
-    twice (LAD-69, LAD-73): README's start looks first, as the guide's does."""
-    steps = [line for block in blocks(readme_part("Install", "Docker")) for line in commands(block)]
-    look = steps.index("env | grep -E '^(LADO|COMPOSE)_'")
-    [unset] = [i for i, step in enumerate(steps) if step.startswith("unset ")]
-    assert {"LADO_VERSION", "COMPOSE_PROJECT_NAME"} <= set(steps[unset].split())
-    assert max(look, unset) < steps.index("docker compose up -d")
-
-
-def test_readmes_update_downloads_the_versions_compose_file_first():
-    steps = [line for block in blocks(readme_part("Update", "Docker")) for line in commands(block)]
-    assert steps == UPDATE_STEPS
+def test_the_compose_header_names_the_installer():
+    """The short way, which writes the .env this header describes."""
+    assert INSTALL_SH in leading_comment(DOCKER / "compose.yaml")
 
 
 def test_the_guide_downloads_the_release_asset():
@@ -1143,13 +1225,21 @@ def test_the_guide_says_to_check_the_shells_variables_first():
 
 
 def test_the_first_session_names_claude_codes_trust_question(tmp_path):
-    """The container's Claude Code has trusted no folder yet: the guide quotes the answers
-    as LADO's own reason for the wait words them, so Needs you and the guide agree."""
+    """The container's Claude Code has trusted no folder yet: LADO records the trust, and
+    the guide says so and what that runs. When it cannot (here a home it cannot write), the
+    guide quotes the answers as LADO's own reason for the wait words them, so Needs you and
+    the guide agree."""
     repo, home = tmp_path / "repo", tmp_path / "home"
-    home.mkdir()
+    home.mkdir(mode=0o500)
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    reason = ClaudeProvider().first_hook_blocker(str(repo), {"HOME": str(home)}).reason
+    try:
+        reason = ClaudeProvider().first_hook_blocker(str(repo), {"HOME": str(home)}).reason
+    finally:
+        home.chmod(0o700)
+    assert "LADO could not record the trust" in reason
     text = " ".join(guide_part("Your first session").split())
+    assert "LADO records Claude Code's trust" in text
+    assert "`.claude/`" in text and "`.mcp.json`" in text
     assert "Needs you" in text
     for answer in ('"Yes, I trust this folder"', '"No, exit"'):
         assert answer in text and answer in reason, answer
@@ -1187,7 +1277,7 @@ def test_update_says_both_ways_docker_first():
     update_part = readme[readme.index("\n## Update\n") :]
     update_part = update_part[: update_part.index("\n## ", 3)]
     assert update_part.index("### Docker") < update_part.index("### PyPI")
-    assert "docker compose up -d" in update_part and "lado update" in update_part
+    assert INSTALL_SH in update_part and "lado update" in update_part
     text = INSTALL.read_text()
     update_part = text[text.index("\n## Update\n") :]
     update_part = update_part[: update_part.index("\n## ", 3)]

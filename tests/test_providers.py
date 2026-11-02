@@ -193,14 +193,30 @@ def test_claude_hooks_leave_the_human_s_answer_to_the_human(repo, fake_tmux):
         assert hooks.handle(claude, neutral, "s", "supervisor") is None
 
 
-def _claude_settings(repo, mode=None):
+def _claude_settings_file(repo, mode=None):
     sess = state.Session("s", str(repo), mode, provider="claude")
     agent = state.Agent(
         "s", "w1", "worker", str(repo), None, None, state.STARTING, provider="claude"
     )
     spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
     cmd = providers.get("claude").launch_command(agent, sess, spec).argv
-    return json.loads(open(cmd[cmd.index("--settings") + 1]).read())["hooks"]
+    return json.loads(open(cmd[cmd.index("--settings") + 1]).read())
+
+
+def _claude_settings(repo, mode=None):
+    return _claude_settings_file(repo, mode)["hooks"]
+
+
+@pytest.mark.parametrize("mode", [None, *providers.get("claude").permission_modes])
+def test_claude_settings_skip_the_bypass_warning_only_in_bypass(repo, mode):
+    """Two screens Claude Code shows before the first hook (LAD-163), answered by the
+    agent's own settings: a repository's .mcp.json servers, always; bypass mode's
+    warning, only in that mode."""
+    settings = _claude_settings_file(repo, mode)
+    assert settings["enableAllProjectMcpServers"] is True
+    assert settings.get("skipDangerousModePermissionPrompt") is (
+        True if mode == "bypassPermissions" else None
+    )
 
 
 @pytest.mark.parametrize("mode", [None, *providers.get("claude").permission_modes])
@@ -252,9 +268,10 @@ def test_claude_continues_with_queued_messages():
 # Claude Code's trust of a folder: projects[<folder>].hasTrustDialogAccepted in its global
 # config, $CLAUDE_CONFIG_DIR/.claude.json or ~/.claude.json (2.1.291, read in its binary).
 @pytest.fixture
-def claude_home(tmp_path):
-    """The agent's environment with an empty home for Claude Code, and a writer of its
-    config: trust(*folders) or raw(text)."""
+def claude_home(tmp_path, cli_logins):
+    """The agent's environment with an empty home for Claude Code, not logged in (its first
+    run is the tests' below), and a writer of its config: trust(*folders) or raw(text)."""
+    cli_logins.logged_out()
     home = tmp_path / "home"
     home.mkdir()
     env = {"HOME": str(home)}
@@ -276,20 +293,58 @@ def _blocker(cwd, env):
     return providers.get("claude").first_hook_blocker(str(cwd), env)
 
 
-def test_claude_blocks_the_first_hook_in_a_folder_it_does_not_trust(repo, claude_home):
-    env, _ = claude_home  # no config at all: Claude Code trusts nothing yet
-    blocker = _blocker(repo, env)
-    assert blocker.warning is None
-    assert blocker.reason == (
-        f'Claude Code asks whether to trust {repo}: in its terminal choose "Yes, I trust '
-        'this folder" (Enter alone answers "No, exit" and closes the agent)'
+def _recorded(repo, config_path):
+    return base.Blocker(notes=(f"LADO recorded Claude Code's trust in {repo} in {config_path}",))
+
+
+def _fallback(repo, why):
+    return (
+        f"Claude Code asks whether to trust {repo}: LADO could not record the trust ({why}); "
+        'in its terminal choose "Yes, I trust this folder" (Enter alone answers "No, exit" '
+        "and closes the agent)"
     )
+
+
+def _config(path):
+    return json.loads(path.read_text())
+
+
+def test_claude_records_its_trust_in_a_repo_it_does_not_trust(repo, claude_home):
+    env, config = claude_home
+    other = {"/elsewhere": {"hasTrustDialogAccepted": True, "allowedTools": ["Bash"]}}
+    config.raw(json.dumps({"numStartups": 3, "oauthAccount": {"a": 1}, "projects": other}))
+    assert _blocker(repo, env) == _recorded(repo, config.path)
+    assert _config(config.path) == {
+        "numStartups": 3,
+        "oauthAccount": {"a": 1},
+        "projects": {**other, str(repo.resolve()): {"hasTrustDialogAccepted": True}},
+    }
+    assert config.path.read_text().startswith('{\n  "numStartups": 3,')  # indent 2
+    assert _blocker(repo, env) == base.Blocker()  # trusted now
+
+
+def test_claude_config_is_made_with_the_trust_alone(repo, claude_home):
+    env, config = claude_home  # no config at all: Claude Code trusts nothing yet
+    assert _blocker(repo, env) == _recorded(repo, config.path)
+    assert _config(config.path) == {"projects": {str(repo): {"hasTrustDialogAccepted": True}}}
+    assert config.path.stat().st_mode & 0o777 == 0o600
+    assert sorted(p.name for p in config.path.parent.iterdir()) == [".claude.json"]
 
 
 def test_claude_does_not_block_in_the_repo_it_trusts(repo, claude_home):
     env, config = claude_home
     config.trust(repo)
+    before = (config.path.read_bytes(), config.path.stat().st_mtime_ns)
     assert _blocker(repo, env) == base.Blocker()
+    assert (config.path.read_bytes(), config.path.stat().st_mtime_ns) == before
+
+
+def test_claude_trust_entry_it_made_earlier_keeps_its_keys(repo, claude_home):
+    env, config = claude_home
+    entry = {"hasTrustDialogAccepted": False, "allowedTools": [], "x": 1}
+    config.raw(json.dumps({"projects": {str(repo): entry}}))
+    assert _blocker(repo, env) == _recorded(repo, config.path)
+    assert _config(config.path)["projects"][str(repo)] == {**entry, "hasTrustDialogAccepted": True}
 
 
 def test_claude_trust_is_kept_by_the_real_path(repo, tmp_path, claude_home):
@@ -299,7 +354,8 @@ def test_claude_trust_is_kept_by_the_real_path(repo, tmp_path, claude_home):
     config.trust(repo.resolve())
     assert _blocker(link, env) == base.Blocker()
     config.trust(link)  # a path through a link is no key of Claude Code's
-    assert _blocker(repo, env).reason
+    assert _blocker(link, env) == _recorded(repo.resolve(), config.path)
+    assert _config(config.path)["projects"][str(repo.resolve())]["hasTrustDialogAccepted"]
 
 
 def test_claude_trusts_a_worktree_by_its_main_repo(repo, tmp_path, claude_home):
@@ -308,6 +364,79 @@ def test_claude_trusts_a_worktree_by_its_main_repo(repo, tmp_path, claude_home):
     subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "-b", "w1", str(worktree)])
     config.trust(repo)
     assert _blocker(worktree, env) == base.Blocker()
+
+
+def test_claude_records_a_worktrees_trust_for_its_main_repo(repo, claude_home):
+    env, config = claude_home
+    worktree = repo / ".lado" / "worktrees" / "s" / "w1"
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "-b", "w1", str(worktree)])
+    assert _blocker(worktree, env) == _recorded(repo, config.path)
+    assert list(_config(config.path)["projects"]) == [str(repo)]
+
+
+def test_claude_config_symlink_is_written_through(repo, tmp_path, claude_home):
+    env, config = claude_home
+    target = tmp_path / "dotfiles" / "claude.json"
+    target.parent.mkdir()
+    target.write_text(json.dumps({"numStartups": 1}))
+    target.chmod(0o600)
+    config.path.symlink_to(target)
+    assert _blocker(repo, env) == _recorded(repo, config.path)
+    assert config.path.is_symlink() and config.path.resolve() == target
+    assert _config(target)["projects"] == {str(repo): {"hasTrustDialogAccepted": True}}
+    assert target.stat().st_mode & 0o777 == 0o600
+    assert sorted(p.name for p in target.parent.iterdir()) == ["claude.json"]
+
+
+def test_claude_config_keeps_its_mode(repo, claude_home):
+    env, config = claude_home
+    config.raw("{}")
+    config.path.chmod(0o644)
+    _blocker(repo, env)
+    assert config.path.stat().st_mode & 0o777 == 0o644
+
+
+@pytest.mark.parametrize("entry", ["x", None])
+def test_claude_trust_entry_that_is_no_object_is_left_alone(repo, claude_home, entry):
+    env, config = claude_home
+    config.raw(json.dumps({"projects": {str(repo): entry}}))
+    before = config.path.read_bytes()
+    blocker = _blocker(repo, env)
+    assert blocker.notes == () and blocker.warning is None
+    assert blocker.reason.startswith(_fallback(repo, "").split("(")[0] + "(")
+    assert str(config.path) in blocker.reason and "not a JSON object" in blocker.reason
+    assert config.path.read_bytes() == before
+
+
+def test_claude_trust_it_cannot_write_waits_with_why(repo, claude_home):
+    env, config = claude_home
+    config.raw(json.dumps({"numStartups": 3}))
+    home = config.path.parent
+    home.chmod(0o500)
+    try:
+        listing = sorted(p.name for p in home.iterdir())
+        blocker = _blocker(repo, env)
+        assert sorted(p.name for p in home.iterdir()) == listing
+    finally:
+        home.chmod(0o700)
+    assert blocker.notes == ()
+    assert blocker.reason.startswith(f"Claude Code asks whether to trust {repo}: LADO could not ")
+    assert "Permission denied" in blocker.reason and str(home) in blocker.reason
+    assert blocker.reason.endswith(_fallback(repo, "").split(")", 1)[1])
+
+
+def test_claude_trust_write_that_fails_leaves_no_temporary_file(repo, claude_home, monkeypatch):
+    env, config = claude_home
+    config.raw(json.dumps({"numStartups": 3}))
+    before = config.path.read_bytes()
+
+    def fail(*args):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("os.replace", fail)
+    assert _blocker(repo, env).reason == _fallback(repo, "disk full")
+    assert config.path.read_bytes() == before
+    assert sorted(p.name for p in config.path.parent.iterdir()) == [".claude.json"]
 
 
 def test_claude_trusts_a_folder_under_a_trusted_one_inside_the_repo(repo, claude_home):
@@ -321,26 +450,36 @@ def test_claude_trusts_a_folder_under_a_trusted_one_inside_the_repo(repo, claude
 def test_claude_trust_above_the_repo_does_not_cover_it(repo, claude_home):
     env, config = claude_home
     config.trust(repo.parent, "/")
-    assert _blocker(repo, env).reason
+    assert _blocker(repo, env) == _recorded(repo, config.path)
 
 
 def test_claude_trust_is_read_from_the_agents_claude_config_dir(repo, tmp_path, claude_home):
     env, config = claude_home
-    config.trust(repo)  # in the home, which CLAUDE_CONFIG_DIR replaces
-    own = tmp_path / "claude-config"
+    own = tmp_path / "own-claude-config"
+    own.mkdir()
+    config.trust(repo, path=own / ".claude.json")
+    assert _blocker(repo, {**env, "CLAUDE_CONFIG_DIR": str(own)}) == base.Blocker()
+
+
+def test_claude_trust_is_recorded_in_the_agents_claude_config_dir(repo, tmp_path, claude_home):
+    env, config = claude_home
+    config.raw("{}")  # in the home, which CLAUDE_CONFIG_DIR replaces
+    own = tmp_path / "own-claude-config"
     own.mkdir()
     env = {**env, "CLAUDE_CONFIG_DIR": str(own)}
-    assert _blocker(repo, env).reason
-    config.trust(repo, path=own / ".claude.json")
+    assert _blocker(repo, env) == _recorded(repo, own / ".claude.json")
     assert _blocker(repo, env) == base.Blocker()
+    assert config.path.read_text() == "{}"
 
 
 def test_claude_older_config_file_wins(repo, claude_home):
     env, config = claude_home
     config.trust(repo)
-    (Path(env["HOME"]) / ".claude").mkdir()
-    config.raw("{}", path=Path(env["HOME"]) / ".claude" / ".config.json")
-    assert _blocker(repo, env).reason
+    older = Path(env["HOME"]) / ".claude" / ".config.json"
+    older.parent.mkdir()
+    config.raw("{}", path=older)
+    assert _blocker(repo, env) == _recorded(repo, older)
+    assert _config(older) == {"projects": {str(repo): {"hasTrustDialogAccepted": True}}}
 
 
 @pytest.mark.parametrize(
@@ -355,19 +494,146 @@ def test_claude_config_it_cannot_read_is_a_warning(repo, claude_home, text, erro
     env, config = claude_home
     config.raw(text)
     blocker = _blocker(repo, env)
-    assert blocker.reason is None
+    assert blocker.reason is None and blocker.notes == ()
     assert blocker.warning.startswith(f"cannot tell whether Claude Code trusts {repo}: ")
     assert str(config.path) in blocker.warning and error in blocker.warning
+    assert config.path.read_text() == text
 
 
 def test_claude_reads_only_the_projects_of_its_config(repo, claude_home):
     env, config = claude_home
-    # Other keys may hold anything; only projects is read.
+    # Other keys may hold anything; only projects is read, and only the trust written.
     config.raw(json.dumps({"oauthAccount": None, "projects": {str(repo): {"x": 1}}}))
-    assert _blocker(repo, env).reason
-    before = config.path.read_text()
-    _blocker(repo, env)
-    assert config.path.read_text() == before
+    assert _blocker(repo, env).notes
+    assert _config(config.path) == {
+        "oauthAccount": None,
+        "projects": {str(repo): {"x": 1, "hasTrustDialogAccepted": True}},
+    }
+
+
+# Claude Code's first run (2.1.295, checked by hand): the theme screen until
+# hasCompletedOnboarding, and "Detected a custom API key" until the key's last 20
+# characters are in customApiKeyResponses.approved.
+KEY = "sk-ant-api03-" + "k" * 30 + "abcdefghijklmnopqrst"
+TAIL = KEY[-20:]
+
+
+def _onboarded(path):
+    return f"LADO recorded Claude Code's first run in {path}"
+
+
+def _approved(path):
+    return f"LADO recorded the approval of ANTHROPIC_API_KEY in {path}"
+
+
+def test_claude_records_its_first_run_for_a_logged_in_agent(repo, claude_home, cli_logins):
+    env, config = claude_home
+    config.trust(repo)
+    cli_logins.logged_in()
+    env = {**env, "CLAUDE_CODE_OAUTH_TOKEN": "t"}
+    assert _blocker(repo, env) == base.Blocker(notes=(_onboarded(config.path),))
+    assert _config(config.path)["hasCompletedOnboarding"] is True
+    assert _config(config.path)["numStartups"] == 3  # the rest kept
+    assert "customApiKeyResponses" not in _config(config.path)  # no key, no approval
+    assert _blocker(repo, env) == base.Blocker()  # once
+
+
+def test_claude_writes_no_first_run_without_a_login(repo, claude_home, cli_logins):
+    env, config = claude_home
+    config.trust(repo)
+    before = config.path.read_bytes()
+    cli_logins.logged_out()
+    assert _blocker(repo, env) == base.Blocker()
+    assert config.path.read_bytes() == before
+
+
+def test_claude_records_its_first_run_when_its_login_cannot_be_read(repo, claude_home, cli_logins):
+    """An unknown login holds no agent (lado.runtime): it starts, and without the record it
+    would stand on the theme screen with no hook and no reason."""
+    env, config = claude_home
+    config.trust(repo)
+    cli_logins.answer("claude", "`claude auth status --json` timed out after 10 s")
+    assert _blocker(repo, env) == base.Blocker(notes=(_onboarded(config.path),))
+    assert _config(config.path)["hasCompletedOnboarding"] is True
+
+
+def test_claude_fresh_config_with_a_login_gets_the_trust_then_the_first_run(
+    repo, claude_home, cli_logins
+):
+    env, config = claude_home
+    cli_logins.logged_in()
+    assert _blocker(repo, env).notes == (
+        _recorded(repo, config.path).notes[0],
+        _onboarded(config.path),
+    )
+    assert _config(config.path) == {
+        "projects": {str(repo): {"hasTrustDialogAccepted": True}},
+        "hasCompletedOnboarding": True,
+    }
+    assert config.path.stat().st_mode & 0o777 == 0o600
+
+
+def test_claude_approves_the_api_key_it_gives(repo, claude_home, cli_logins):
+    env, config = claude_home
+    keep = {"approved": ["x" * 20], "rejected": ["y" * 20]}
+    config.raw(
+        json.dumps(
+            {
+                "hasCompletedOnboarding": True,
+                "customApiKeyResponses": keep,
+                "projects": {str(repo): {"hasTrustDialogAccepted": True}},
+            }
+        )
+    )
+    cli_logins.logged_in("api_key")
+    env = {**env, "ANTHROPIC_API_KEY": KEY}
+    blocker = _blocker(repo, env)
+    assert blocker == base.Blocker(notes=(_approved(config.path),))
+    assert _config(config.path)["customApiKeyResponses"] == {
+        "approved": ["x" * 20, TAIL],
+        "rejected": ["y" * 20],
+    }
+    assert TAIL not in repr(blocker) and KEY[:10] not in repr(blocker)
+    assert _blocker(repo, env) == base.Blocker()  # approved already
+
+
+def test_claude_leaves_a_rejected_key_and_waits_with_why(repo, claude_home, cli_logins):
+    env, config = claude_home
+    text = json.dumps(
+        {
+            "hasCompletedOnboarding": True,
+            "customApiKeyResponses": {"approved": [], "rejected": [TAIL]},
+            "projects": {str(repo): {"hasTrustDialogAccepted": True}},
+        }
+    )
+    config.raw(text)
+    cli_logins.logged_in("api_key")
+    blocker = _blocker(repo, {**env, "ANTHROPIC_API_KEY": KEY})
+    assert config.path.read_text() == text
+    assert blocker.notes == ()
+    assert blocker.reason == (
+        "Claude Code asks whether to use ANTHROPIC_API_KEY, which you rejected before (in "
+        f"{config.path}): in its terminal choose to use it, or remove the key from "
+        "customApiKeyResponses.rejected there"
+    )
+    assert TAIL not in blocker.reason
+
+
+def test_claude_api_key_responses_that_are_no_object_are_a_warning(repo, claude_home, cli_logins):
+    env, config = claude_home
+    text = json.dumps(
+        {
+            "hasCompletedOnboarding": True,
+            "customApiKeyResponses": [],
+            "projects": {str(repo): {"hasTrustDialogAccepted": True}},
+        }
+    )
+    config.raw(text)
+    cli_logins.logged_in("api_key")
+    blocker = _blocker(repo, {**env, "ANTHROPIC_API_KEY": KEY})
+    assert config.path.read_text() == text
+    assert blocker.reason is None and blocker.notes == ()
+    assert "customApiKeyResponses" in blocker.warning and str(config.path) in blocker.warning
 
 
 def test_other_providers_never_block_the_first_hook(repo):

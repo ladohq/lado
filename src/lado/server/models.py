@@ -15,6 +15,7 @@ from lado import (
     gitcache,
     gui_session,
     kits,
+    logins,
     marketplaces,
     runs,
     runtime,
@@ -450,6 +451,88 @@ class ProviderInfo(BaseModel):
     detail: str  # its `--version` line, or why there is none
     tested_version: str
     warning: str  # "" unless its version is not the tested one
+    # Its agents need a login and it has none, in the environment of the agents of the
+    # project asked for (or of none): a new session or worker of it is refused
+    # (lado.logins.refusal). False when the login cannot be read.
+    login_missing: bool = False
+
+
+class LoginInfo(BaseModel):
+    """A CLI's login as its own status command says (Provider.login_status); no value."""
+
+    state: Literal["yes", "no", "unknown"]
+    method: str  # for humans: "Subscription (Max)", "Pay per use (API key)", "2 credentials"
+    # Where the login comes from, for the state line: the layer of its variable
+    # (lado.logins.layer), else the CLI's own file in its provider's words ("Claude Code's
+    # login file"); "" when neither says (Login.where).
+    where: str
+    choice: str  # the id of the choice (ProviderLogins.choices) this login is; "" for none
+    problem: str  # why unknown
+
+
+class LoginActionInfo(BaseModel):
+    """A command the login window can run (Provider.login_actions)."""
+
+    id: str
+    label: str
+    help: str  # the window's help line while it runs; "" for the window's own
+    # The window shows the link and the code its command prints instead of a terminal
+    # (the login socket's `prompt` frame, lado.server.terminals).
+    shows_code: bool
+
+
+class LoginChoiceInfo(BaseModel):
+    """A way to log the CLI in (Provider.login_choices): a pasted value kept as LADO's
+    secret, or the login window running one of `actions`."""
+
+    id: str
+    title: str
+    detail: str  # where the value comes from, or what the action does
+    variable: str  # the login variable the value is saved as; "" for an action
+    action: str  # the login action's id; "" for a value
+
+
+class AgentRefInfo(BaseModel):
+    session: str
+    agent: str
+
+
+class ProviderLogins(BaseModel):
+    """One agent CLI in Settings → Providers and environment (lado.logins)."""
+
+    cli: ProviderInfo
+    login: LoginInfo
+    needs_login: bool  # its agents need a login in their environment (Provider.needs_login)
+    actions: list[LoginActionInfo]  # the login window's commands
+    question: str  # what the login sheet asks (Provider.login_question); "" for none
+    choices: list[LoginChoiceInfo]  # its answers, each a value to paste
+    from_lado: bool  # the login comes from LADO's secrets: the sheet offers Log out
+    # The login is the CLI's own file and its `logout` action logs out of it: the choice
+    # sheet offers Log out, which runs that action in the login window.
+    logout_file: bool
+    note: str  # Provider.login_note
+    waiting: list[AgentRefInfo]  # live agents that wait for its login
+    running: list[AgentRefInfo]  # its live agents, for Log out's confirmation
+    projects: list[str]  # projects that set a login variable of their own, by id
+    window: bool  # its login window is open
+    # Read at least once (lado.server.provider_check); false: only `cli`'s name and title
+    # say anything yet.
+    ready: bool
+
+
+class ProvidersPage(BaseModel):
+    """The section's data, from the server's last check of the CLIs
+    (lado.server.provider_check)."""
+
+    providers: list[ProviderLogins]
+    checking: bool  # a check runs: the rows change as each CLI is read
+    environment: str  # why the agents' environment could not be read; "" when it could
+
+
+class LoginOpen(BaseModel):
+    """The login action a window runs (LoginActionInfo.id)."""
+
+    action: str
 
 
 class SessionCommand(BaseModel):
@@ -996,6 +1079,9 @@ class AgentInfo(BaseModel):
     # it waits after failed messages and what the human can do (None when it waits for the
     # human in its terminal, a prompt); in `stopped`, why its process ended. Else None.
     status_reason: str | None
+    # The provider whose CLI's login it waits for (lado.logins.waits_for), so the UI offers
+    # "Log in…" without reading the reason; None for any other status or reason.
+    login_wait: str | None
     branch: str | None  # a worker's; None for the supervisor, which works in the repo
     worktree: str | None  # a worker's folder; None for the supervisor
     spawned_at: str  # UTC, ISO 8601: its latest spawn
@@ -1445,6 +1531,11 @@ def agent_info(agent: state.Agent) -> AgentInfo:
     spawned, since = state.agent_times(agent.session, agent.name)
     added = _utc(agent.created_at)  # an agent written without LADO's runtime has no events
     worker = agent.branch is not None
+    reason = (
+        runtime.status_reason(agent.session, agent.name)
+        if agent.status in (state.WAITING, state.STOPPED)
+        else None
+    )
     return AgentInfo(
         name=agent.name,
         role=agent.role,
@@ -1452,11 +1543,8 @@ def agent_info(agent: state.Agent) -> AgentInfo:
         status=agent.status,
         run=agent.run,
         task=_first_line(agent.task),
-        status_reason=(
-            runtime.status_reason(agent.session, agent.name)
-            if agent.status in (state.WAITING, state.STOPPED)
-            else None
-        ),
+        status_reason=reason,
+        login_wait=logins.waits_for(agent, reason) if agent.status == state.WAITING else None,
         branch=agent.branch,
         worktree=agent.cwd if worker else None,
         spawned_at=_iso(spawned) if spawned else added,

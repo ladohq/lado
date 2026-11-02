@@ -14,8 +14,13 @@ line.
 Over those go the variables of the session's project (lado.projects), its plain ones read
 from lado.db and its secrets from their folder (lado.project_secrets, by the outside
 folder's reader, `read_folder`, which refuses links and loose modes there) at each launch
-by whoever launches (lado.runtime._base_env); a session without a project has none. LADO's
+by whoever launches (lado.runtime.agent_layers); a session without a project has none. LADO's
 and the agent CLI's own variables go over all of them (lado.runtime).
+
+A login comes whole from one layer (`merge`): of an agent CLI's login variables (given as
+names, so nothing here knows a CLI), the highest layer that sets any gives those it sets,
+and none comes from a lower one. A login shell's API key thus never beats a token saved in
+LADO's secrets by the CLI's own order of its variables.
 
 LADO's own network git calls (kits, skill packs, marketplaces, a clone of a URL) get the
 same layers over LADO's process environment instead of the login shell's (`for_git`), so
@@ -40,11 +45,11 @@ import sys
 import tempfile
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import NamedTuple
 
-from lado import interpreter, tmux
+from lado import interpreter, state, tmux
 
 SOURCE_VAR = "LADO_AGENT_ENV"
 SHELL, INHERIT = "shell", "inherit"
@@ -105,14 +110,47 @@ def source() -> str:
     return value
 
 
-def resolve(project: Mapping[str, str] | None = None) -> dict[str, str]:
-    """The environment for an agent, before LADO's and its provider's variables: the
-    login shell's (or the starting process's), then the outside folder's, then `project`,
-    the variables of its session's project (lado.projects), each over the one before."""
+class Layers(NamedTuple):
+    """The layers of an agent's environment, lowest first (`merge` lays them)."""
+
+    shell: dict[str, str]  # the login shell's, or the starting process's
+    outside: dict[str, str]
+    secrets: dict[str, str]  # LADO's secrets
+    project: dict[str, str]
+
+
+def layers(project: Mapping[str, str] | None = None) -> Layers:
+    """The layers of an agent's environment, read now: the login shell's (or the starting
+    process's), the outside folder's, LADO's secrets (`lado_secrets`), and `project`, the
+    variables of its session's project (lado.projects)."""
     env = from_shell() if source() == SHELL else dict(os.environ)
     dropped = (*EXCLUDED, *SHELL_OWN)
     base = {k: v for k, v in tmux.without_agent_vars(env).items() if k not in dropped}
-    return {**base, **outside().values, **(project or {})}
+    return Layers(base, outside().values, lado_secrets().values, dict(project or {}))
+
+
+def merge(
+    found: Layers | tuple[Mapping[str, str], ...], login: Iterable[str] = ()
+) -> dict[str, str]:
+    """`found`'s layers, each over the one before, but for the names of `login` (an agent
+    CLI's login variables): a login comes whole from one layer, the highest that sets any
+    of them, and none of them is taken from a lower one. Without `login`, name by name."""
+    env: dict[str, str] = {}
+    for layer in found:
+        env.update(layer)
+    names = set(login)
+    if names:
+        top = next((layer for layer in reversed(found) if any(layer.get(n) for n in names)), {})
+        for name in names:
+            env.pop(name, None)
+        env.update({name: top[name] for name in names if name in top})
+    return env
+
+
+def resolve(project: Mapping[str, str] | None = None, login: Iterable[str] = ()) -> dict[str, str]:
+    """The environment for an agent, before LADO's and its provider's variables: `layers`
+    merged, with the login names of its provider (`login`) taken whole from one layer."""
+    return merge(layers(project), login)
 
 
 def for_git(project: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -201,6 +239,42 @@ def read_folder(folder: str, *, own: Callable[[str], bool] | None = None) -> Fol
         else:
             values[entry.name] = value
     return Folder(values, unused)
+
+
+def value_problem(name: str, value: str) -> str | None:
+    """Why `value` cannot be the variable `name` that a folder of variables gives (no text of
+    at most 64 KiB: the reader would not give it), for a project's secret or LADO's; None
+    when it can."""
+    try:
+        data = value.encode()
+    except UnicodeEncodeError:
+        data = None  # lone surrogates, as argv gives bytes that are no UTF-8
+    if data is None or "\0" in value:
+        return f"the value of {name} is not UTF-8 text"
+    if len(data) > MAX_VALUE:
+        return f"the value of {name} is larger than 64 KiB"
+    return None
+
+
+def nothing_more(name: str) -> bool:
+    """`own` of a folder only LADO writes whose names have no further reservation."""
+    return False
+
+
+# LADO's secrets: the agent CLIs' login variables the human sets in Settings, one file per
+# variable in this folder of LADO_HOME, written by lado.project_secrets and read as a
+# project's secrets folder is (no link, no loose mode). A layer of every agent, not of
+# LADO's own git calls (for_git): an agent CLI's login means nothing to git.
+LADO_SECRETS = "secrets"
+
+
+def lado_secrets_folder() -> Path:
+    return state.home_path() / LADO_SECRETS
+
+
+def lado_secrets() -> Folder:
+    """LADO's secrets, read now; no folder: none and no line."""
+    return read_folder(str(lado_secrets_folder()), own=nothing_more)
 
 
 def null_device(path: str) -> bool:
@@ -469,14 +543,25 @@ def command(file: Path, env: Mapping[str, str], argv: list[str]) -> list[str]:
     """The window's command that runs `argv` with exactly `env` (and tmux's own variables
     of the window). `env` goes into `file`, readable by the user only, until the window
     reads it. Fails when `argv[0]` is not on `env`'s PATH: the window would close at once."""
+    check_program(argv[0], env)
+    write_private(file, dict(env))
+    return interpreter.run_module("lado.agent_env", str(file), *argv)
+
+
+def check_program(program: str, env: Mapping[str, str]) -> None:
+    """AgentEnvError when `program` is not on `env`'s PATH."""
     path = env.get("PATH", os.defpath)
-    if shutil.which(argv[0], path=path) is None:
-        raise AgentEnvError(f"`{argv[0]}` is not on the agents' PATH ({path}): {PATH_ADVICE}")
+    if shutil.which(program, path=path) is None:
+        raise AgentEnvError(f"`{program}` is not on the agents' PATH ({path}): {PATH_ADVICE}")
+
+
+def write_private(file: Path, data: object) -> None:
+    """Write `data` as JSON to `file`, readable by the user only: it holds the user's keys
+    until the window reads and removes it."""
     fd = os.open(file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     os.fchmod(fd, 0o600)  # the mode above is only for a new file
     with os.fdopen(fd, "w") as f:
-        json.dump(dict(env), f)
-    return interpreter.run_module("lado.agent_env", str(file), *argv)
+        json.dump(data, f)
 
 
 def main(args: list[str]) -> None:

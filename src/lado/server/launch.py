@@ -10,7 +10,18 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal
 
-from lado import doctor, kits, project_secrets, projects, providers, runtime, scratch, state
+from lado import (
+    agent_env,
+    doctor,
+    kits,
+    logins,
+    project_secrets,
+    projects,
+    providers,
+    runtime,
+    scratch,
+    state,
+)
 from lado.server import models
 
 SUBFOLDERS = 50  # at most this many subfolders of a folder
@@ -225,11 +236,28 @@ def kit_infos(has_db: bool) -> list[models.KitInfo]:
     return infos
 
 
-def provider_infos() -> list[models.ProviderInfo]:
-    """Each provider of the registry, its CLI checked anew (`<cli> --version`), all at once."""
+def provider_infos(project: str | None = None) -> list[models.ProviderInfo]:
+    """Each provider of the registry, its CLI checked anew (`<cli> --version`), all at once,
+    and whether it lacks the login its agents need in the environment the agents of
+    `project` (or of no project) start from, as a new session's start reads it
+    (runtime.check_login); NoSuchProject for an unknown `project`."""
+    if project is not None:
+        projects.get(project)
     registry = [providers.get(name) for name in providers.names()]
+    try:
+        layers: agent_env.Layers | None = runtime.agent_layers(project)
+    except runtime.LadoError:
+        layers = None  # the start says why itself
+
+    def one(provider: providers.Provider) -> models.ProviderInfo:
+        info = provider_info(provider)
+        if layers is not None and info.installed:
+            env = runtime.agents_env(layers, provider)
+            info.login_missing = logins.refusal(provider, env, logins.SESSION) is not None
+        return info
+
     with ThreadPoolExecutor(len(registry)) as pool:
-        return list(pool.map(provider_info, registry))
+        return list(pool.map(one, registry))
 
 
 def provider_info(
@@ -249,6 +277,81 @@ def provider_info(
         tested_version=status.tested_version,
         warning=status.warning,
     )
+
+
+def provider_logins(found: logins.Login, cli: models.ProviderInfo) -> models.ProviderLogins:
+    """Settings → Providers and environment's row of a provider (lado.server
+    .provider_check keeps them). The agents that wait for its login are named only while
+    it has none: one that waits still when the login is there starts within its window's
+    next look (lado.login_wait), so a logged-in row never names one."""
+    provider, status = found.provider, found.status
+    waiting = found.waiting if status.state != providers.base.YES else []
+    return models.ProviderLogins(
+        cli=cli,
+        login=models.LoginInfo(
+            state=status.state,
+            method=status.method,
+            where=found.where,
+            choice=status.choice,
+            problem=status.problem,
+        ),
+        needs_login=found.needs_login,
+        actions=[
+            models.LoginActionInfo(id=a.id, label=a.label, help=a.help, shows_code=a.shows_code)
+            for a in provider.login_actions()
+        ],
+        question=provider.login_question,
+        choices=[
+            models.LoginChoiceInfo(
+                id=c.id, title=c.title, detail=c.detail, variable=c.variable, action=c.action
+            )
+            for c in provider.login_choices
+        ],
+        from_lado=found.layer == logins.SECRET,
+        logout_file=status.state == providers.base.YES
+        and not status.variable
+        and any(a.id == "logout" for a in provider.login_actions()),
+        note=provider.keyring_note if status.keyring else provider.login_note,
+        waiting=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in waiting],
+        running=[models.AgentRefInfo(session=a.session, agent=a.agent) for a in found.running],
+        projects=found.projects,
+        window=found.window,
+        ready=True,
+    )
+
+
+def provider_login(name: str) -> models.ProviderLogins:
+    """One provider's row, read now (after an action on it); ValueError for no such."""
+    provider = providers.get(name)
+    status = doctor.provider_status(provider, shutil.which)
+    env, problem = environment()
+    return provider_logins(read(provider, status, env, problem), provider_info(provider, status))
+
+
+NO_LAYERS = agent_env.Layers({}, {}, {}, {})
+
+
+def environment() -> tuple[agent_env.Layers, str]:
+    """The layers of the agents' environment (lado.agent_env.layers), or none and why."""
+    try:
+        return agent_env.layers(), ""
+    except agent_env.AgentEnvError as error:
+        return NO_LAYERS, str(error)
+
+
+def read(
+    provider: providers.Provider,
+    status: doctor.ProviderStatus,
+    env: agent_env.Layers,
+    problem: str,
+) -> logins.Login:
+    """The provider's login; unknown with why when its CLI is not installed or the agents'
+    environment cannot be had (`problem`)."""
+    why = problem if status.installed else "not installed"
+    if why:
+        unknown = providers.base.LoginStatus(providers.base.UNKNOWN, problem=why)
+        return logins.read(provider, env, status=unknown)
+    return logins.read(provider, env)
 
 
 def session_about(sess: state.Session) -> models.SessionAbout:

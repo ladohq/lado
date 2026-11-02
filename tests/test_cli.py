@@ -52,7 +52,7 @@ def test_start_with_provider_and_ls_shows_it(repo, fake_tmux, capsys):
 def test_start_and_ls_say_what_the_supervisors_cli_asks_first(
     repo, fake_tmux, claude_config, capsys
 ):
-    claude_config.trust()  # Claude Code trusts no folder
+    claude_config.refuse()  # Claude Code trusts no folder, and LADO cannot record it
     why = f"Claude Code asks whether to trust {repo}"
     start = ["start", str(repo), "--name", "s", "--provider", "claude", "--no-attach"]
     assert main(start) == 0
@@ -63,6 +63,40 @@ def test_start_and_ls_say_what_the_supervisors_cli_asks_first(
     capsys.readouterr()
     assert main(start) == 0  # a resume
     assert f"lado: {why}: " in capsys.readouterr().err
+
+
+def test_start_logs_that_lado_recorded_claude_codes_trust_and_says_nothing(
+    repo, fake_tmux, claude_config, capsys
+):
+    claude_config.trust()  # Claude Code trusts no folder
+    start = ["start", str(repo), "--name", "s", "--provider", "claude", "--no-attach"]
+    assert main(start) == 0
+    assert "LADO recorded" not in capsys.readouterr().err
+    log = (state.home() / "loop.log").read_text()
+    assert log.count(f"s: supervisor: {claude_config.note(repo)}") == 1
+
+
+def test_start_refuses_a_resume_by_hand_without_the_login(repo, fake_tmux, cli_logins, capsys):
+    start = ["start", str(repo), "--name", "s", "--provider", "claude", "--no-attach"]
+    assert main(start) == 0
+    assert main(["stop", "s"]) == 0
+    cli_logins.logged_out()
+    capsys.readouterr()
+    assert main(["start", str(repo), "--name", "s", "--no-attach"]) == 1
+    assert "Claude Code is not logged in, so the session was not resumed: " in (
+        capsys.readouterr().err
+    )
+    assert state.get_session("s").stopped_at
+    # LADO's own resume (lado update) waits for the login instead.
+    assert main(["start", str(repo), "--name", "s", "--no-attach", "--wait-for-login"]) == 0
+    assert "Claude Code is not logged in: " in capsys.readouterr().err
+    assert state.get_agent("s", "supervisor").status == state.WAITING
+
+
+def test_start_does_not_list_the_wait_for_login(capsys):
+    with pytest.raises(SystemExit):
+        main(["start", "--help"])
+    assert "--wait-for-login" not in capsys.readouterr().out
 
 
 def test_start_without_provider_says_which_it_took_and_why(repo, fake_tmux, capsys):
@@ -2352,6 +2386,25 @@ def test_a_start_refused_after_the_clone_keeps_the_clone(tmp_path, fake_tmux, ca
     assert _branch_of(folder) == "main"
 
 
+def test_a_git_url_without_the_login_is_refused_before_the_clone(
+    tmp_path, fake_tmux, capsys, monkeypatch, cli_logins
+):
+    for key, value in agent_helpers.fake_git(tmp_path / "fake", "ok").items():
+        monkeypatch.setenv(key, value)
+    cli_logins.logged_out()
+    folder = tmp_path / "work" / "app"
+    argv = ["start", "https://h/a/app", str(folder), "--provider", "claude", "--no-attach"]
+    assert main(argv) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "lado: Claude Code is not logged in, so the session was not started: log in in LADO's "
+        "UI (Settings → Providers and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN "
+        "as LADO's secret or a project secret"
+    ]
+    assert agent_helpers.fake_git_calls(tmp_path / "fake") == []
+    assert not (tmp_path / "work").exists()
+    assert state.list_sessions() == []
+
+
 def test_ctrl_c_during_the_clone(tmp_path, fake_tmux, capsys, monkeypatch):
     def interrupted(*args, **kwargs):
         raise KeyboardInterrupt
@@ -2679,6 +2732,15 @@ def test_a_new_folder_from_the_terminal(tmp_path, git_config, fake_tmux, capsys)
         ["git", "-C", str(folder), "log", "--format=%s"], capture_output=True, text=True
     )
     assert log.stdout == "Start from scratch\n"
+
+
+def test_new_without_the_login_makes_no_folder(tmp_path, git_config, fake_tmux, capsys, cli_logins):
+    cli_logins.logged_out()
+    folder = tmp_path / "lado" / "shop"
+    assert main(["start", "--new", str(folder), "--provider", "claude", "--no-attach"]) == 1
+    assert "so the session was not started" in capsys.readouterr().err
+    assert not folder.exists()
+    assert state.list_sessions() == []
 
 
 def test_new_takes_the_name_given_and_a_relative_folder(

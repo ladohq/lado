@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from typing import IO
 
 import lado
-from lado import providers, state, telemetry, terminal
+from lado import logins, providers, state, telemetry, terminal
 from lado.runtime import LadoError
 
 DEFAULT_PORT = 8000
@@ -370,6 +370,10 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
         left = terminal.close_viewers()
         if left:
             print(f"Closed {len(left)} terminal viewers left over: {', '.join(left)}", flush=True)
+        # And its login windows (lado.logins): only the UI gets to them.
+        left = logins.end_windows()
+        if left:
+            print(f"Closed {len(left)} login windows left over: {', '.join(left)}", flush=True)
         print(f"Open the UI with: lado ui (token in {auth.token_path()})", flush=True)
         # uvicorn shuts down on SIGTERM or SIGINT, then raises the signal again: end with 0
         # through the `finally` below instead of being killed by it.
@@ -385,6 +389,8 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
         finally:
             stop.set()
             info_path().unlink(missing_ok=True)
+            with contextlib.suppress(Exception):  # tmux gone or failing: nothing to end
+                logins.end_windows()
     return 0
 
 

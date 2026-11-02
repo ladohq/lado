@@ -68,6 +68,7 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `tmux.py`: tmux calls on LADO's private server (`tmux -L lado`).
   - `gui_session.py`: where a process runs on macOS (the keychain's graphical session).
   - `agent_env.py`: an agent's environment, from the user's login shell.
+  - `logins.py`: the agent CLIs' logins and login windows; `login_wait.py` an agent's wait.
   - `interpreter.py`: `run_module`, the one way LADO starts a Python process of its own.
   - `mcp_exec.py`: a kit's MCP server whose secrets never go on disk.
   - `text.py`: the one rule of a line of visible text.
@@ -86,7 +87,8 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `log.py`: `lado log`; `stats.py`: `lado stats`.
   - `loop.py`: the session loop, `lado loop <session>`.
   - `server/`: the UI server (`lado server`, `lado ui`): `app.py`, `auth.py`, `feed.py`,
-    `models.py`, `terminals.py`, `clones.py`, `launch.py`, `run.py`; `static/` the bundle.
+    `models.py`, `terminals.py`, `clones.py`, `launch.py`, `provider_check.py`, `run.py`;
+    `static/` the bundle.
 - `web/`: the web UI (React, TypeScript, Vite). `openapi.json` and `src/api.gen.ts` are made
   by `make web-types` and committed.
 - `tests/`: unit tests; `integration/` (fake agent), `ui/` (browser), `live/` (real CLIs),
@@ -94,7 +96,7 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   `agent_helpers.py`, `real_clis.py`, `fake_endpoint.py`, `leftovers.py` shared helpers.
 - `scripts/`: the test-run lock and groups, CI's smoke and container cells, release checks,
   the secret field's font.
-- `docker/`: LADO's image (`Dockerfile`, `compose.yaml`, entrypoint, profile).
+- `docker/`: LADO's image (`Dockerfile`, `compose.yaml`, entrypoint), `install.sh`/`.ps1`.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
 ## How agents talk
@@ -153,6 +155,8 @@ LADO borrows ideas from other orchestrators but must not repeat their mistakes:
 - **No hardcoded paths.** Resources refer to each other by relative paths or `${KIT_DIR}` /
   `${SKILL_DIR}`, never by absolute or home-directory paths.
 - **Never touch the user's global agent config.** Configure each agent process on its own.
+  One exception: Claude Code's trust in the session's repo, its first run and the approval
+  of the API key LADO gives it (`claude.edit_config`, LAD-106, LAD-157).
 - **Native over injected.** Use each CLI's own way of loading skills, MCP servers and hooks
   instead of pasting their text into the prompt.
 - **Explicit lookup.** No hidden fallbacks to global locations; show where each resolved

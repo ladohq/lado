@@ -340,7 +340,7 @@ def get(id: str) -> state.Project:
 
 # A project's plain variables (lado.db) and secrets (files, lado.project_secrets): the human
 # sets them (the CLI, the server), every agent of a session in the project gets them
-# (lado.runtime._base_env). A name the shell, LADO or an agent CLI sets is reserved for
+# (lado.runtime.agent_layers). A name the shell, LADO or an agent CLI sets is reserved for
 # both; a name that looks like a secret is no plain variable; a project holds one value per
 # name.
 RESERVED_NAMES = agent_env.RESERVED | providers.base.CLI_VARIABLES
@@ -365,14 +365,8 @@ def check_name(name: str) -> None:
 
 def _check_value(name: str, value: str) -> None:
     """Refuse a value that is no text of at most 64 KiB."""
-    try:
-        data = value.encode()
-    except UnicodeEncodeError:
-        data = None  # lone surrogates, as argv gives bytes that are no UTF-8
-    if data is None or "\0" in value:
-        raise ProjectError(f"the value of {name} is not UTF-8 text")
-    if len(data) > agent_env.MAX_VALUE:
-        raise ProjectError(f"the value of {name} is larger than 64 KiB")
+    if problem := agent_env.value_problem(name, value):
+        raise ProjectError(problem)
 
 
 def check_variable(id: str, name: str, value: str | None) -> None:

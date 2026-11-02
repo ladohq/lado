@@ -280,21 +280,43 @@ def loop_starts(monkeypatch):
     return started
 
 
-@pytest.fixture
-def claude_config(tmp_path, monkeypatch):
-    """Claude Code's global config for the agents (CLAUDE_CONFIG_DIR), never the user's: it
+# Claude Code's first run, recorded (lado.providers.claude): no logged-in agent stops there.
+ONBOARDED = {"hasCompletedOnboarding": True}
+
+
+@pytest.fixture(autouse=True)
+def claude_config(tmp_path, tmp_path_factory, monkeypatch):
+    """Claude Code's global config for the agents (CLAUDE_CONFIG_DIR), never the user's, in
+    every test, since LADO writes its trust there (outside tmp_path, which tests list): it
     trusts the folder of the `repo` fixture, as Claude Code would after the human said yes
-    there. trust(*folders) replaces what it trusts."""
-    folder = tmp_path / "claude-config"
-    folder.mkdir()
+    there. trust(*folders) replaces what it trusts (none: LADO records the trust of the
+    folder an agent starts in, note(repo) its line); refuse(): it trusts none and LADO cannot
+    record the trust in `repo`'s folder, whose entry is no JSON object, so a Claude agent
+    waits there with reason(repo)."""
+    folder = tmp_path_factory.mktemp("claude-config")
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(folder))
+    repo = tmp_path / "My Repo"
 
     class Config:
         path = folder / ".claude.json"
 
         def trust(self, *folders):
             projects = {str(f): {"hasTrustDialogAccepted": True} for f in folders}
-            self.path.write_text(json.dumps({"projects": projects}))
+            self.path.write_text(json.dumps({**ONBOARDED, "projects": projects}))
+
+        def refuse(self):
+            self.path.write_text(json.dumps({**ONBOARDED, "projects": {str(repo): None}}))
+
+        def note(self, repo):
+            return f"LADO recorded Claude Code's trust in {repo} in {self.path}"
+
+        def reason(self, repo):
+            return (
+                f"Claude Code asks whether to trust {repo}: LADO could not record the trust "
+                f"({self.path}: the entry of {repo} in its projects is not a JSON object); in "
+                'its terminal choose "Yes, I trust this folder" (Enter alone answers "No, '
+                'exit" and closes the agent)'
+            )
 
     config = Config()
     config.trust(tmp_path / "My Repo")
@@ -308,6 +330,71 @@ def codex_home(tmp_path, monkeypatch):
     folder = tmp_path / "codex-home"
     monkeypatch.setenv("CODEX_HOME", str(folder))
     return folder
+
+
+class CliLogins:
+    """What the agent CLIs' login status commands answer in a test (base.run_status): no
+    command runs; Claude Code is logged in with a token (`claude_config` has its first run
+    recorded, so no agent waits and nothing is written), the others unknown.
+    `answer(command, code, stdout, stderr="")` or `answer(command, problem)` sets one
+    (`answer_by_argv(command, answer)` one that depends on the arguments),
+    `logged_in(method)` and `logged_out()` Claude Code's, `logged_in_with(name)` logged in
+    only where the environment asked holds `name`. `calls` keeps the (argv, env) asked."""
+
+    UNREAD = "LADO's tests run no agent CLI's status command"
+
+    def __init__(self):
+        self.answers: dict[str, object] = {}
+        self.calls: list[tuple[list[str], dict]] = []
+        self.logged_in()
+
+    def answer(self, command, code_or_problem, stdout="", stderr=""):
+        if isinstance(code_or_problem, str):
+            self.answers[command] = code_or_problem
+        else:
+            self.answers[command] = (code_or_problem, stdout, stderr)
+
+    def logged_in(self, method="oauth_token"):
+        data = {"loggedIn": True, "authMethod": method, "configDirectory": "/c"}
+        if method == "api_key":
+            data["apiKeySource"] = "ANTHROPIC_API_KEY"
+        self.answer("claude", 0, json.dumps(data))
+
+    def logged_out(self):
+        self.answer("claude", 1, json.dumps({"loggedIn": False, "authMethod": "none"}))
+
+    def logged_in_with(self, name):
+        self.answers["claude"] = lambda env: (
+            (0, json.dumps({"loggedIn": True, "authMethod": "oauth_token"}), "")
+            if env.get(name)
+            else (1, json.dumps({"loggedIn": False, "authMethod": "none"}), "")
+        )
+
+    def answer_by_argv(self, command, answer):
+        """`answer(argv)` gives the answer, for a CLI asked twice with other arguments."""
+        self.answers[command] = ("argv", answer)
+
+    def run(self, argv, env):
+        self.calls.append((list(argv), dict(env)))
+        answer = self.answers.get(os.path.basename(argv[0]), self.UNREAD)
+        if isinstance(answer, tuple) and answer[0] == "argv":
+            answer = answer[1](list(argv))
+        if callable(answer):
+            answer = answer(env)
+        if isinstance(answer, str):
+            return answer
+        code, out, err = answer
+        return subprocess.CompletedProcess(argv, code, out, err)
+
+
+@pytest.fixture(autouse=True)
+def cli_logins(monkeypatch):
+    """The agent CLIs' login status in every unit test (CliLogins), never the user's."""
+    from lado.providers import base
+
+    logins = CliLogins()
+    monkeypatch.setattr(base, "run_status", logins.run)
+    return logins
 
 
 @pytest.fixture
@@ -325,7 +412,7 @@ def fake_clis(tmp_path, monkeypatch, claude_config):
 @pytest.fixture
 def fake_tmux(monkeypatch, loop_starts, fake_clis):
     """Record tmux calls instead of running them; no session loop is started either."""
-    from lado import gui_session, terminal, tmux
+    from lado import gui_session, logins, terminal, tmux
 
     calls = []
     # The hook it is given (runtime passes gui_session.ensure_server) is not called.
@@ -364,4 +451,5 @@ def fake_tmux(monkeypatch, loop_starts, fake_clis):
     monkeypatch.setattr(tmux, "kill_window", lambda *a: calls.append(("kill_window", *a)))
     monkeypatch.setattr(tmux, "popup", lambda *a: calls.append(("popup", *a)))
     monkeypatch.setattr(terminal, "close_viewers", lambda s: calls.append(("close_viewers", s)))
+    monkeypatch.setattr(logins, "end_windows", lambda: calls.append(("end_login_windows",)) or [])
     return calls

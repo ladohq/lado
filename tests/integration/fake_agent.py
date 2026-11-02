@@ -24,7 +24,7 @@ Every input line is a command, after an optional "[from <name>] ":
                        as {"sh": {command, code}} in "seen")
     tools              write the names of the LADO MCP tools it listed at start to "seen"
                        ("tools")
-    spawn <task>       call the LADO MCP tool spawn_worker
+    spawn <task>       call the LADO MCP tool spawn_worker; "seen" gets its text ("spawn_text")
     finish <name> [discard]  call the LADO MCP tool finish_worker
     flow_start <flow> <task>  call the LADO MCP tool flow_start
     spawnrun <run>     call the LADO MCP tool spawn_worker for a flow run
@@ -61,11 +61,15 @@ Every input line is a command, after an optional "[from <name>] ":
 With FAKE_AGENT_CRASH_AT_START=1 in its environment it exits before its first hook, as a
 CLI that fails at once (a bad flag). With FAKE_AGENT_ASKS_FIRST=1 in its environment it asks
 the human before any hook, like Claude Code's "trust this folder?": a typed "yes" goes on,
-any other input exits at once with no hook. With FAKE_AGENT_HANGUP_HOOK=1 in its environment, when
-its tmux window is killed (SIGHUP) it runs its session-end hook before it exits, as Claude
-Code does, and writes {"hung_up": <what the hook printed>} to "seen" once the hook is done;
-FAKE_AGENT_HANGUP_DELAY=<seconds> waits that long before the hook, as a slow CLI. Else it
-exits at once. A killed terminal can also end its read (EOF, or EIO) before the
+any other input exits at once with no hook; with FAKE_AGENT_ASKS_UNKNOWN=1 it asks the same,
+but its provider does not know it (no Provider.first_hook_blocker), as a screen of a new
+CLI version LADO has not seen. With FAKE_AGENT_TRUST=1 it asks so only when
+$CLAUDE_CONFIG_DIR/.claude.json does not trust its repository's main root, read here as
+Claude Code reads it, not through LADO (trusted). With FAKE_AGENT_HANGUP_HOOK=1 in its
+environment, when its tmux window is killed (SIGHUP) it runs its session-end hook before it
+exits, as Claude Code does, and writes {"hung_up": <what the hook printed>} to "seen" once
+the hook is done; FAKE_AGENT_HANGUP_DELAY=<seconds> waits that long before the hook, as a
+slow CLI. Else it exits at once. A killed terminal can also end its read (EOF, or EIO) before the
 signal is handled: whichever comes first ends the session, once (end_session).
 A typed "switch" is no input but a command of the CLI itself, like Claude Code's /resume: the
 agent leaves its conversation, picks another while it pauses (as `pause`), and goes on in
@@ -386,6 +390,7 @@ def work(text: str) -> bool:
             report(tools=lado_mcp.tools)
         elif command[0] == "spawn":
             call_tool("spawn_worker", {"task": " ".join(command[1:])})
+            report(spawn_text=[c.get("text") for c in lado_mcp.last_content])
         elif command[0] == "finish":
             call_tool("finish_worker", {"name": command[1], "discard": command[2:] == ["discard"]})
         elif command[0] == "flow_start":
@@ -452,6 +457,23 @@ def hung_up(*_) -> None:
     os._exit(0)
 
 
+def trusted() -> bool:
+    """Whether Claude Code's config in $CLAUDE_CONFIG_DIR trusts the main root of the
+    repository the agent runs in."""
+    common = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    root = os.path.dirname(os.path.realpath(common))
+    try:
+        with open(os.path.join(os.environ["CLAUDE_CONFIG_DIR"], ".claude.json")) as file:
+            entry = json.load(file).get("projects", {}).get(root)
+    except (OSError, ValueError, KeyError):
+        return False
+    return isinstance(entry, dict) and entry.get("hasTrustDialogAccepted") is True
+
+
 def main() -> None:
     global turn_error, lose_output, in_background
     if os.environ.get("FAKE_AGENT_CRASH_AT_START") == "1":
@@ -461,7 +483,11 @@ def main() -> None:
     report(
         prompt=config["prompt"], skills=load_skills(), mcp=config["mcp"], environ=dict(os.environ)
     )
-    if os.environ.get("FAKE_AGENT_ASKS_FIRST") == "1":
+    asks = "1" in (
+        os.environ.get("FAKE_AGENT_ASKS_FIRST"),
+        os.environ.get("FAKE_AGENT_ASKS_UNKNOWN"),
+    )
+    if asks or (os.environ.get("FAKE_AGENT_TRUST") == "1" and not trusted()):
         print("Go on? Type yes; Enter alone exits", flush=True)
         if read_input() != "yes":
             os._exit(1)

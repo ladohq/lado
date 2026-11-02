@@ -9,6 +9,10 @@
 #     ghcr.io/ladohq/lado:<version>
 #   docker exec lado lado ui --no-open            # the UI's link with its token
 #
+# The agent CLIs' logins: first the UI's Settings → Providers and environment (Claude
+# Code, Codex, OpenCode and Kilo, from a phone too; it keeps Claude Code's token and
+# Codex's token or key).
+#
 # The agents' variables, optional, are files in a folder, one per variable (its name the
 # file's, its value the content): `mkdir -m 700 secrets`, then add
 # `-v "$PWD/secrets:/run/secrets:ro"` to the `docker run`. Without it there are none and
@@ -16,10 +20,12 @@
 # inspect`: GH_TOKEN
 # (git over https to github.com and gh; or `docker exec -it lado gh auth login`),
 # CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`; or log in once with `docker exec -it
-# lado claude`), a kit's key, a model provider's key for OpenCode and Kilo (or `opencode
+# lado claude`), Codex's CODEX_ACCESS_TOKEN (a ChatGPT Business or Enterprise access
+# token) or OPENAI_API_KEY (or log in once with `docker exec -it lado codex login
+# --device-auth`), a kit's key, a model provider's key for OpenCode and Kilo (or `opencode
 # auth login` / `kilo auth login` inside). Logins made inside stay on the home volume;
-# Codex's is not covered yet. Every agent of the container can read every variable given
-# to it; another LADO keeps its own folder. LADO_GIT_NAME and LADO_GIT_EMAIL are git's
+# Codex's is shared by every Codex agent. Every agent of the container can read every
+# variable given to it; another LADO keeps its own folder. LADO_GIT_NAME and LADO_GIT_EMAIL are git's
 # identity for the agents' commits, written at every start (without them `docker logs`
 # warns). The host's ssh agent, for git over ssh: on a Mac add
 # `-v /run/host-services/ssh-auth.sock:/run/lado/ssh-agent.sock` (Docker Desktop's), on
@@ -55,9 +61,9 @@
 # tests; the browser itself comes from `make browser`, into the home volume. Other apt
 # packages and databases are not covered.
 
-FROM ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff AS uv
+FROM ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0 AS uv
 FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS node
-FROM jdxcode/mise:2026.10.13@sha256:a2f1563d47f56a7ce69d5c94ac61d9f7af5063613bfd3c50e6268768ed9c87ad AS mise
+FROM jdxcode/mise:2026.10.19@sha256:6bd2515bf27389f537921fc8c3e5a6579f15cf889a63a8432dc542670174e50a AS mise
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 
 # tmux 3.3a and git 2.39 from Debian 12; tini reaps what tmux and the agents leave; gh and
@@ -173,20 +179,27 @@ RUN UV_TOOL_DIR=/opt/uv/tools UV_TOOL_BIN_DIR=/opt/uv/bin UV_PYTHON_INSTALL_DIR=
 
 # The four agent CLIs at the versions LADO is tested with (scripts/smoke_ci.py's PINS;
 # tests/test_docker.py keeps them the same), one layer each, so a moved pin rebuilds one.
-# Each package puts its native binary in place for its architecture. Claude Code's update
-# check is off (DISABLE_AUTOUPDATER); LADO switches the others' off per agent. Codex CLI
-# is only installed: carrying its login into the agents is a later step.
+# Each package puts its native binary in place for its architecture, as an optional
+# dependency, which npm drops without an error when it fails to install: so each CLI runs
+# once, and one that does not fails the build. Its HOME there is a folder removed at once,
+# as Codex, OpenCode and Kilo write theirs at any start. Claude Code's update check is off
+# (DISABLE_AUTOUPDATER); LADO switches the others' off per agent. Codex CLI is only
+# installed: carrying its login into the agents is a later step.
 ARG CLAUDE_VERSION=2.1.295
 RUN npm install -g --prefix /opt/agents "@anthropic-ai/claude-code@${CLAUDE_VERSION}" \
+ && HOME=/tmp/cli-home /opt/agents/bin/claude --version && rm -rf /tmp/cli-home \
  && npm cache clean --force
 ARG CODEX_VERSION=0.162.0
 RUN npm install -g --prefix /opt/agents "@openai/codex@${CODEX_VERSION}" \
+ && HOME=/tmp/cli-home /opt/agents/bin/codex --version && rm -rf /tmp/cli-home \
  && npm cache clean --force
 ARG OPENCODE_VERSION=1.18.35
 RUN npm install -g --prefix /opt/agents "opencode-ai@${OPENCODE_VERSION}" \
+ && HOME=/tmp/cli-home /opt/agents/bin/opencode --version && rm -rf /tmp/cli-home \
  && npm cache clean --force
 ARG KILO_VERSION=7.8.8
 RUN npm install -g --prefix /opt/agents "@kilocode/cli@${KILO_VERSION}" \
+ && HOME=/tmp/cli-home /opt/agents/bin/kilo --version && rm -rf /tmp/cli-home \
  && npm cache clean --force
 
 # openspec, which kits expect (sdlc's `expects.commands`), at its pin in /opt/tools: no

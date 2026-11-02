@@ -881,8 +881,9 @@ The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL say:
 #### Scenario: The steps are in the headers
 - **WHEN** `tests/test_docker.py` reads the headers
 - **THEN** each names `secrets`, `LADO_GIT_NAME`, `LADO_GIT_EMAIL`, `GH_TOKEN`, `gh auth
-  login`, `LADO_SSH_AGENT`, `CLAUDE_CODE_OAUTH_TOKEN`, `opencode auth login` and `kilo auth
-  login`; compose's names `LADO_SECRETS=./secrets`
+  login`, `LADO_SSH_AGENT`, `CLAUDE_CODE_OAUTH_TOKEN`, `opencode auth login`, `kilo auth
+  login`, `CODEX_ACCESS_TOKEN`, `OPENAI_API_KEY` and `codex login --device-auth`; compose's
+  names `LADO_SECRETS=./secrets`
 
 ### Requirement: The headers say how the agent CLIs log in, and the first start makes no folder
 
@@ -890,9 +891,13 @@ The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL also say:
 - the logins of the agent CLIs: Claude Code by `CLAUDE_CODE_OAUTH_TOKEN` (from `claude
   setup-token`) in the folder or one login inside; OpenCode and Kilo by `opencode auth
   login` and `kilo auth login` inside (kept on the home volume) or a model provider's key
-  in the folder. Codex's login is not covered.
+  in the folder; Codex as its own requirement below says.
 The first start's commands of both headers SHALL make no folder: the minimal start needs
 no secrets.
+
+#### Scenario: Codex's login is named
+- **WHEN** `tests/test_docker.py` reads the headers
+- **THEN** neither says that Codex's login is not covered
 
 #### Scenario: The minimal start makes no folder
 - **WHEN** `tests/test_docker.py` reads the first start's commands of both headers
@@ -931,19 +936,32 @@ build takes.
   `docker/entrypoint.sh`, `docker/ssh-agent-socket.sh`, `docker/ssh-agent-env.sh` and
   `docker/ssh_known_hosts`
 
-### Requirement: The install guide leads with compose and runs the headers' commands
+### Requirement: The install guide leads with the installer, then compose by hand
 
-docs/install.md SHALL have a section `Docker` that leads with compose: get `compose.yaml`,
-write `.env`, start, open the UI, the agents' variables (the optional `secrets/`, enabled
-by `LADO_SECRETS=./secrets` in `.env` and `mkdir -m 700 secrets`), log in to the agent
-CLIs, ssh, update and go back, a second LADO, the sessions, removal and the pitfalls;
+docs/install.md SHALL have a section `Docker` that leads with the installer (the
+`install.sh` line, the `install.ps1` line, what they ask and do, the download-read-run
+way, and that a rerun updates), then gives the manual way as "By hand", led by compose.
 README's Install SHALL link to it.
+
+#### Scenario: By hand keeps the manual steps
+- **WHEN** `tests/test_docker.py` reads the guide's Docker section
+- **THEN** "By hand" follows "Install with one command" and comes before the manual steps:
+  check the shell, get `compose.yaml` and write `.env`, start; then the agents'
+  variables, logins, ssh, update and going back, a second LADO, the sessions, removal and
+  the pitfalls
 
 #### Scenario: Secrets as a step of their own
 - **WHEN** `tests/test_docker.py` reads the guide's Docker section and README's Docker
   install
 - **THEN** neither start has `mkdir`, and the guide's "The agents' variables" has
   `LADO_SECRETS=./secrets` and `mkdir -m 700 secrets`
+
+#### Scenario: The installer first
+- **WHEN** `tests/test_docker.py` reads the guide's Docker section
+- **THEN** its first code block is `curl -fsSL
+  https://github.com/ladohq/lado/releases/latest/download/install.sh | sh`, the
+  PowerShell line `irm https://github.com/ladohq/lado/releases/latest/download/install.ps1
+  | iex` follows, and the manual `docker compose up -d` comes after both
 
 ### Requirement: The guide's commands are the compose header's
 
@@ -971,29 +989,33 @@ container and volume, by name, and nothing in the guide or the headers SHALL run
 
 ### Requirement: The guide and README check the shell's variables first
 
-The guide SHALL say to check `env | grep -E '^(LADO|COMPOSE)_'` and
-`unset` what the shell sets, since a shell's variable beats `.env`. README's Docker install SHALL start without `mkdir`, and SHALL first check the shell
-with `env | grep -E '^(LADO|COMPOSE)_'` and `unset`, as the guide does.
+The guide's manual way SHALL say to check `env | grep -E '^(LADO|COMPOSE)_'` and `unset`
+what the shell sets, since a shell's variable beats `.env`. README's Docker install SHALL
+be the installer's lines alone, with no `mkdir` and no `docker compose` command, since the
+installer runs compose without the shell's `LADO_*` and `COMPOSE_*` variables and names
+them.
 
 #### Scenario: README checks the shell first
 - **WHEN** `tests/test_docker.py` reads README's Docker install
-- **THEN** its commands have `env | grep -E '^(LADO|COMPOSE)_'` and an `unset` naming
-  `LADO_VERSION` and `COMPOSE_PROJECT_NAME`, both before `docker compose up -d`
+- **THEN** its commands are the `install.sh` line and the `install.ps1` line, with no
+  `docker compose up -d`, and the guide's manual way has `env | grep -E
+  '^(LADO|COMPOSE)_'` and an `unset` naming `LADO_VERSION` and `COMPOSE_PROJECT_NAME`,
+  both before its `docker compose up -d`
 
 ### Requirement: The guide's first session names Claude Code's trust question
 
-The guide's "Your first session"
-SHALL say that Claude Code asks whether to trust a repository it has not seen
-before its first answer, that the agent waits in Needs you meanwhile, that the answer is
-"Yes, I trust this folder" in the agent's terminal while Enter alone answers "No, exit" and
-closes the agent, that it is asked once per repository and remembered on the home volume,
-and that a trusted repository's own Claude Code settings and MCP servers run.
+The guide's "Your first session" SHALL say that LADO records Claude Code's trust in the
+repository a session is started in, so Claude Code does not ask; that the repository's own
+Claude Code settings and MCP servers then run without a question; and that when LADO
+cannot record it, the agent waits in Needs you for Claude Code's question, whose answers
+the scenario names.
 
 #### Scenario: The guide on the trust question
 - **WHEN** the human reads the guide's Docker "Your first session"
-- **THEN** it says that Claude Code asks once per repository whether to trust it, that the
-  agent waits in Needs you meanwhile, and that "Yes, I trust this folder" answers it while
-  Enter alone answers "No, exit" and closes the agent
+- **THEN** it says that LADO trusts the repository for Claude Code itself and that the
+  repository's own Claude Code settings and MCP servers run, and that when LADO cannot,
+  the agent waits in Needs you and "Yes, I trust this folder" answers it while Enter alone
+  answers "No, exit" and closes the agent
 
 ### Requirement: The guide quotes the trust answers as LADO's reason words them
 
@@ -1004,27 +1026,40 @@ reason for that wait words them.
 - **WHEN** `tests/test_docker.py` reads the guide's Docker "Your first session"
 - **THEN** it names Needs you and quotes "Yes, I trust this folder" and "No, exit", and
   each quoted answer is in the reason `ClaudeProvider.first_hook_blocker` gives for a folder
-  Claude Code does not trust
+  Claude Code does not trust when LADO cannot record the trust (a config folder it cannot
+  write)
 
 ### Requirement: README and the guide present Docker first, then PyPI
 
 README's Install and docs/install.md's opening SHALL present the two ways to install,
-Docker first and recommended, then PyPI, each with what it is for and what it needs; PyPI's
-differences by system (macOS, Linux, Windows inside WSL2) SHALL be named there too.
+Docker first and recommended, then PyPI, each with what it is for and what it needs; the
+Docker way's systems SHALL be macOS and Linux by `install.sh` and Windows by `install.ps1`
+(Docker Desktop with Ubuntu in WSL2); PyPI's differences by system (macOS, Linux, Windows
+inside WSL2) SHALL be named there too.
 
 #### Scenario: Two ways, Docker first
 - **WHEN** `tests/test_docker.py` reads README's Install and docs/install.md's opening
 - **THEN** each names Docker as recommended before PyPI, and docs/install.md's `## Docker`
   comes before its systems' sections
 
+#### Scenario: Windows by the PowerShell line
+- **WHEN** `tests/test_docker.py` reads docs/install.md's table of the two ways
+- **THEN** the Docker column's Systems names Windows through `install.ps1` and WSL2, and
+  not "not checked"
+
 ### Requirement: An update takes the version's compose.yaml
 
-`docker/compose.yaml`'s header, docs/install.md's "Update the container" and README's
-Docker update SHALL update in this order, in the folder of `compose.yaml`: keep a copy of
-the file (`cp compose.yaml compose.yaml.bak`), download that version's `compose.yaml` next
-to `.env` (`curl -fLO
-https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml`), set the new
-`LADO_VERSION` in `.env`, then `docker compose up -d`.
+`docker/compose.yaml`'s header and the guide's update by hand SHALL, in the folder of
+`compose.yaml`, keep a copy of it, download that version's `compose.yaml`, set the new
+`LADO_VERSION` in `.env`, then `docker compose up -d`, in this order. README's Docker
+update and the first way of the guide's "Update the container" SHALL be the installer's
+line run again, which does the same steps.
+
+#### Scenario: The update by hand
+- **WHEN** `tests/test_docker.py` reads the header's and the guide's update by hand
+- **THEN** its commands are `cp compose.yaml compose.yaml.bak`, `curl -fLO
+  https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml` and `docker
+  compose up -d`, in this order
 
 #### Scenario: The address is the release's asset
 - **WHEN** `tests/test_docker.py` reads the update's address and the release workflow's
@@ -1034,8 +1069,8 @@ https://github.com/ladohq/lado/releases/download/v<version>/compose.yaml`), set 
 
 #### Scenario: README's update
 - **WHEN** `tests/test_docker.py` reads README's `## Update`, `### Docker`
-- **THEN** it downloads `releases/download/v<version>/compose.yaml` before `docker compose
-  up -d`
+- **THEN** it runs the `install.sh` line (and names the `install.ps1` line for Windows),
+  and links to the guide's update by hand
 
 ### Requirement: An update says what stays and touches no other LADO
 
@@ -1414,3 +1449,49 @@ shim on `PATH`.
 - **WHEN** `docker/Dockerfile` copies from the `uv` stage without `/uvx` into
   `/usr/local/bin`
 - **THEN** the unit tests fail and name it
+
+### Requirement: The headers name the UI's login first
+
+The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL name, before the
+terminal's ways to log the agent CLIs in, the UI's Settings → Providers and environment,
+which logs Claude Code, Codex, OpenCode and Kilo in from the page, a phone too, and keeps
+Claude Code's token and Codex's token or key.
+
+#### Scenario: The headers name the UI's login
+- **WHEN** `tests/test_docker.py` reads both headers
+- **THEN** each names `Providers and environment`
+
+### Requirement: The headers say how Codex logs in
+
+The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL say that Codex logs in
+by `CODEX_ACCESS_TOKEN` (a ChatGPT Business or Enterprise access token) or
+`OPENAI_API_KEY` in the secrets folder, or by one login inside (`codex login
+--device-auth`, or Settings → Providers), kept on the home volume and shared by every
+Codex agent.
+
+#### Scenario: Codex's ways are named
+- **WHEN** `tests/test_docker.py` reads both headers
+- **THEN** each names `CODEX_ACCESS_TOKEN`, `OPENAI_API_KEY` and `codex login --device-auth`
+
+### Requirement: The image's build runs each agent CLI it installs
+
+The image's build SHALL run each agent CLI's `--version` right after its `npm install`,
+in the same `RUN` line, so that an install that left a CLI unable to run fails the build;
+a unit test SHALL keep each of the four install lines so, the command being its
+`PINS` command.
+
+#### Scenario: npm dropped a CLI's binary
+- **WHEN** `npm install` of Codex CLI exits 0 without its platform package
+- **THEN** `codex --version` fails and the image is not built
+
+#### Scenario: Every CLI runs
+- **WHEN** `tests/test_docker.py` reads `docker/Dockerfile`
+- **THEN** each CLI's install line is `npm install -g --prefix /opt/agents` of its pin,
+  then `/opt/agents/bin/<command> --version` with `HOME=/tmp/cli-home`, then `rm -rf
+  /tmp/cli-home`, then `npm cache clean --force`
+
+#### Scenario: The check leaves the home as it was
+- **WHEN** a CLI that writes its folders into HOME at any start (Codex, OpenCode, Kilo)
+  runs its `--version` at build
+- **THEN** it writes them into `/tmp/cli-home`, removed in the same `RUN` line, and
+  nothing of it is in the image's `/home/lado`

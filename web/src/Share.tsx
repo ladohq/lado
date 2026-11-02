@@ -4,11 +4,11 @@
 // or, without a link, why there is none and what makes one. New link… asks first, then
 // makes a new token (POST /api/access/new-token): every other browser is logged out, and
 // the answer sets this one's cookie, so this page goes on.
-import qrcode from "qrcode-generator";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ApiError, getAccess, newAccessToken, type AccessInfo } from "./api";
 import { useCopy } from "./Copy";
+import { QrCode } from "./QrCode";
 
 const TITLE = "Open LADO on another device";
 const NAME = "<this computer's name>";
@@ -25,28 +25,6 @@ export function cutToken(link: string): string {
   const token = link.slice(at + "token=".length);
   if (token.length <= 8) return link;
   return `${link.slice(0, at)}token=${token.slice(0, 4)}…${token.slice(-4)}`;
-}
-
-// The text as a QR code: black modules on white with a 4-module quiet zone, in both themes,
-// as a phone's camera needs.
-export function QrCode({ text }: { text: string }) {
-  const code = qrcode(0, "M");
-  code.addData(text);
-  code.make();
-  const count = code.getModuleCount();
-  const size = count + 8;
-  const cells: ReactNode[] = [];
-  for (let row = 0; row < count; row++) {
-    for (let col = 0; col < count; col++) {
-      if (code.isDark(row, col)) cells.push(<rect key={`${row}-${col}`} x={col + 4} y={row + 4} width={1} height={1} />);
-    }
-  }
-  return (
-    <svg className="share-qr" viewBox={`0 0 ${size} ${size}`} role="img" aria-label="QR code of the link" shapeRendering="crispEdges">
-      <rect width={size} height={size} fill="#fff" />
-      <g fill="#000">{cells}</g>
-    </svg>
-  );
 }
 
 export function ShareDialog({ onClose }: { onClose: () => void }) {

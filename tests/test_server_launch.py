@@ -358,6 +358,7 @@ def test_providers_are_lados_registry_with_their_status(client, monkeypatch):
         "detail": "2.1.287 (Claude Code)",
         "tested_version": "2.1.287",
         "warning": "",
+        "login_missing": False,
     }
     assert "default" not in kilo
     assert (kilo["installed"], kilo["detail"]) == (
@@ -369,6 +370,69 @@ def test_providers_are_lados_registry_with_their_status(client, monkeypatch):
         True,
         "1.18.34",
     )
+
+
+@pytest.fixture
+def clis_run(monkeypatch):
+    """Every provider's CLI answers `--version`, whatever this machine has installed: only
+    an installed CLI's login is read."""
+    found = doctor.ProviderStatus(True, "1.0.0", "1.0.0", "1.0.0", "")
+    monkeypatch.setattr(doctor, "provider_status", lambda p, which: found)
+
+
+def _by_name(answer) -> dict:
+    assert answer.status_code == 200, answer.text
+    return {p["name"]: p for p in answer.json()}
+
+
+def test_providers_say_which_cli_lacks_the_login_it_needs(client, cli_logins, clis_run):
+    """openspec change refuse-start-without-login: the window greys such a CLI out."""
+    assert {n: p["login_missing"] for n, p in _by_name(client.get("/api/providers")).items()} == {
+        n: False for n in providers.names()
+    }
+    cli_logins.logged_out()
+    found = _by_name(client.get("/api/providers"))
+    assert found["claude"]["login_missing"] is True
+    assert [n for n, p in found.items() if p["login_missing"]] == ["claude"]
+    cli_logins.answer("claude", "`claude auth status --json` timed out after 10 s")
+    assert _by_name(client.get("/api/providers"))["claude"]["login_missing"] is False
+
+
+def test_a_cli_not_installed_lacks_no_login(client, installed, cli_logins, monkeypatch):
+    monkeypatch.setattr(
+        doctor,
+        "provider_status",
+        lambda p, which: doctor.ProviderStatus(False, "", "not found", "", ""),
+    )
+    cli_logins.logged_out()
+    assert _by_name(client.get("/api/providers"))["claude"]["login_missing"] is False
+
+
+def test_providers_for_a_project_read_its_login(
+    client, cli_logins, clis_run, tmp_path, monkeypatch, git_config
+):
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    assert client.get("/api/providers", params={"project": "shop"}).status_code == 404  # no db
+    projects.create("shop", "Shop")
+    projects.set_secret("shop", "CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-test")
+    cli_logins.logged_in_with("CLAUDE_CODE_OAUTH_TOKEN")
+    assert _by_name(client.get("/api/providers"))["claude"]["login_missing"] is True
+    shop = _by_name(client.get("/api/providers", params={"project": "shop"}))
+    assert shop["claude"]["login_missing"] is False
+    answer = client.get("/api/providers", params={"project": "nope"})
+    assert (answer.status_code, answer.json()["detail"]) == (404, 'unknown project "nope"')
+
+
+def test_an_environment_that_cannot_be_had_lacks_no_login(
+    client, cli_logins, clis_run, monkeypatch
+):
+    def broken(project):
+        raise runtime.LadoError("the login shell failed")
+
+    monkeypatch.setattr(runtime, "agent_layers", broken)
+    cli_logins.logged_out()
+    assert _by_name(client.get("/api/providers"))["claude"]["login_missing"] is False
 
 
 @pytest.mark.parametrize(
@@ -410,15 +474,21 @@ def test_a_session_starts_from_the_api(client, repo, fake_tmux):
 def test_a_start_says_who_leads_and_what_holds_the_supervisor(
     client, repo, fake_tmux, claude_config
 ):
-    claude_config.trust()  # Claude Code trusts no folder
+    claude_config.refuse()  # Claude Code trusts no folder, and LADO cannot record it
     answer = launch(client, repo, name="s", provider="claude")
     assert answer.status_code == 200, answer.text
     started = answer.json()
     assert started["lead"] == "lead: supervisor of kit default"
-    assert started["warnings"] == [
-        f'Claude Code asks whether to trust {repo}: in its terminal choose "Yes, I trust '
-        'this folder" (Enter alone answers "No, exit" and closes the agent)'
-    ]
+    assert started["warnings"] == [claude_config.reason(repo)]
+
+
+def test_a_start_does_not_warn_that_lado_recorded_claude_codes_trust(
+    client, repo, fake_tmux, claude_config
+):
+    claude_config.trust()  # Claude Code trusts no folder
+    answer = launch(client, repo, name="s", provider="claude")
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["warnings"] == []
 
 
 def test_the_first_start_makes_the_database(client, repo, fake_tmux, lado_home):
@@ -858,6 +928,40 @@ def test_a_fresh_start_refused_before_the_repository_is_400_and_makes_nothing(
     answer = start_scratch(client, tmp_path / "cafe", name="cafe", provider="kilo")
     assert answer.status_code == 400 and "user.name or user.email" in answer.json()["detail"]
     assert not (tmp_path / "shop").exists() and not (tmp_path / "cafe").exists()
+
+
+def test_a_fresh_start_without_the_login_is_400_and_makes_no_folder(
+    client, git_config, tmp_path, fake_tmux, cli_logins
+):
+    cli_logins.logged_out()
+    answer = start_scratch(client, tmp_path / "shop", name="shop", provider="claude")
+    assert (answer.status_code, answer.json()["detail"]) == (
+        400,
+        "Claude Code is not logged in, so the session was not started: log in in LADO's UI "
+        "(Settings → Providers and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
+        "LADO's secret or a project secret",
+    )
+    assert not (tmp_path / "shop").exists()
+    assert state.get_session("shop") is None
+
+
+def test_a_new_session_or_a_resume_without_the_login_is_400(client, repo, fake_tmux, cli_logins):
+    cli_logins.logged_out()
+    answer = launch(client, repo, name="s", kits=["default"], provider="claude")
+    assert answer.status_code == 400
+    assert "so the session was not started" in answer.json()["detail"]
+    assert state.get_session("s") is None
+    cli_logins.logged_in()
+    assert launch(client, repo, name="s", kits=["default"], provider="claude").status_code == 200
+    runtime.stop_session("s")
+    cli_logins.logged_out()
+    answer = client.post("/api/sessions/s/resume", json={})
+    assert answer.status_code == 400
+    assert "so the session was not resumed" in answer.json()["detail"]
+    assert state.get_session("s").stopped_at
+    # Another CLI resumes it.
+    answer = client.post("/api/sessions/s/resume", json={"provider": "kilo"})
+    assert answer.status_code == 200, answer.text
 
 
 def test_a_fresh_start_refused_after_the_repository_keeps_it(

@@ -12,6 +12,21 @@ No entry is open.
 
 # P1: next
 
+## A Codex agent on gpt-5.6-sol stops at "Meet GPT-6 Sol"
+
+Size: S. Why here: every Codex agent of a user whose model is gpt-5.6-sol needs a hand in
+its terminal before its first turn.
+
+Codex 0.162.0 with `model = "gpt-5.6-sol"` opens its TUI on a model-upgrade screen ("Meet
+GPT-6 Sol", 1. Try new model, 2. Use existing model) before any input, in each new agent's
+home: where Codex keeps the answer is not checked, and LADO carries only the model settings
+(`codex.CARRIED`) into an agent's config. LADO shows the agent as waiting for an answer in
+its terminal 30 s after the start. Seen in a smoke run of a LADO Codex session with that
+model (the smoke of LAD-167 uses gpt-6-sol for it). Wanted: the agent starts with no such
+screen (Codex's own way to mark the notice seen, carried or set), with a smoke test on
+gpt-5.6-sol.
+Found: 2026-11-01, branch lado/lad-167/task-lad-167 (LAD-167).
+
 ## One failing step of the session loop's sweep stops the whole session's pass
 
 Size: M. Why here: one agent's error leaves every agent of the session without the loop's
@@ -422,20 +437,6 @@ the next unnamed spawn picks `-2`; if `add_event` fails after `add_agent`, an ag
 Wanted: these steps run under the same `_undo`, so the rollback covers everything the spawn did.
 Found: 2026-10-06, review of fix/tmux-missing-rollback.
 
-## An agent can stay `starting` with no hook and no reason
-
-Size: M. Why here: a dialog LADO does not foresee holds the agent silently, as the trust dialog did.
-
-LADO foresees only what a provider's `first_hook_blocker` reads (Claude Code's folder
-trust). Before its first hook Claude Code may show other dialogs too: its first run and
-login, the confirmation of bypassPermissions, the approval of the servers in a project's
-`.mcp.json` (not checked on 2.1.291). Then the agent stays `starting` with no
-`status_reason`, and messages wait.
-Wanted: a neutral check in the core: an agent `starting` longer than N seconds with no hook
-at all gets a `status_reason` that says to look at its window (`lado attach`, the UI's
-terminal).
-Found: 2026-10-06, architect's review of feature/trust-dialog.
-
 ## Flaky: a Claude live worker's window closes before its first hook
 
 Size: S. Why here: a live-test flake whose cause is unknown; the evidence has no screen of it.
@@ -527,16 +528,6 @@ Since feature/hook-output-retry (2026-10-11) a batch a Codex Stop hook printed w
 turn's end, up to `runtime.HOOK_OUTPUT_BACKSTOP` (600 s): a turn that goes on from it and
 ends on such an error is typed into after 10 minutes, no longer after 15 s, which used to
 wake it by chance. The human accepted that (decision Р3 of that run); this entry is the fix.
-
-## Codex agents cannot log in: the user's Codex login is not carried
-
-Size: S/M. Why here: a Codex user with an account (ChatGPT login or an API key stored by
-`codex login`) gets the login screen in every agent; only a model that needs no login works.
-Each Codex agent has its own CODEX_HOME, and LADO carries only the model settings from the
-user's config.toml, not `auth.json` or the keyring setting.
-Wanted: carry the login next to the carried settings (read only; a link or a copy with mode
-600, or the keyring's setting), checked by hand with an account.
-Found: 2026-10-09, design of run feature/codex-provider.
 
 ## A Claude turn that goes on from the hook's output and ends on Esc is not fingerprinted
 
@@ -645,28 +636,6 @@ Wanted: on that `HOOK_ERROR`, make the agent's `hook_output` batch `typed` at on
 (`state.output_not_taken`), so the sweep's typed rule takes it on.
 Found: 2026-10-11, design of run feature/hook-output-retry.
 
-## Claude Code's first-run screens block an agent before any hook, unseen
-
-Size: S. Why here: on a user's fresh machine the first Claude agent looks stuck in
-`starting` with no reason given.
-
-`Provider.first_hook_blocker` (providers/claude.py) detects only the folder trust dialog.
-Three more screens of Claude Code 2.1.296 come before its first hook, each seen in the smoke
-test (tests/smoke/, a fresh `CLAUDE_CONFIG_DIR`) with the agent left `starting` and no
-reason in `lado ls`:
-- the first-run screens (theme first), while `.claude.json` has no `hasCompletedOnboarding`;
-- the bypass permissions mode's disclaimer ("No, exit" / "Yes, I accept"), with
-  `--permission-mode bypassPermissions` while `.claude.json` has no
-  `bypassPermissionsModeAccepted` (nor `skipDangerousModePermissionPrompt` in the user's
-  settings);
-- "Detected a custom API key in your environment", for an `ANTHROPIC_API_KEY` whose last 20
-  characters are in neither list of `customApiKeyResponses`.
-The smoke answers all three ahead in its own config.
-Wanted: `first_hook_blocker` names each wait, with what to do in the agent's window, as it
-does for the trust dialog, with unit tests on configs without the keys.
-Found: 2026-10-10, design review of feature/live-cloud-matrix (architect, Found on the way);
-the three screens confirmed by the smoke test on 2026-10-11.
-
 ## A fake model server for the smoke tests
 
 Size: M. Why here: the smoke stops at the model; a full turn (a tool call, a reply) would
@@ -739,18 +708,6 @@ Wanted: `lado answer` lists the open questions beside the gates and answers one 
 or a text, through `runtime.answer_question`; maybe a popup as for a gate.
 Found: 2026-10-09, design of feature/session-start-tool (the human, the architect).
 
-## macOS: Codex with `cli_auth_credentials_store = "keyring"` is not warned about
-
-Size: S. Why here: only a Codex user who keeps its login in the macOS keychain meets it, and
-only with agents started outside the graphical session.
-Codex's `keychain_login` is None: LADO does not read whether the user's Codex config keeps
-the login in the keyring, so a Codex agent of a tmux server outside the graphical session
-may fail to log in without LADO's warning (lado.gui_session; Claude Code is warned about).
-Wanted: Codex's `keychain_login` from the carried config's `cli_auth_credentials_store`
-(`keyring`, `auto`), checked by hand on a Mac over ssh; together with carrying the Codex
-login (P1 above).
-Found: 2026-10-10, design of run feature/macos-gui-session.
-
 ## macOS: agents after a reboot with nobody logged in to the graphical session
 
 Size: M. Why here: a headless Mac (a build host reached by ssh) after a reboot has no
@@ -759,17 +716,6 @@ agents work only with a token (`CLAUDE_CODE_OAUTH_TOKEN`).
 Wanted: decide whether LADO should help more: e.g. say how to turn on automatic login, or
 read the token from somewhere the human chooses; checked on a host after a reboot.
 Found: 2026-10-10, design of run feature/macos-gui-session.
-
-## Every Codex agent asks whether to trust a repo the user's Codex does not trust
-
-Size: S. Why here: in such a repo each Codex agent, worker or resumed supervisor, waits for
-the human at its start (`lado ls` says why), since its home is new at each launch.
-LADO carries the user's own trust entry and never trusts a folder on the human's behalf; the
-answer in an agent's window is lost with its home. Trusting the repo once in the user's own
-Codex (`codex` in it) ends the questions.
-Wanted: the human's decision whether LADO may pre-trust the session's repo for its agents
-(e.g. after the first agent's answer), and how that is shown.
-Found: 2026-10-09, design of run feature/codex-provider.
 
 ## A Codex approval of a command moved to a background terminal may wait until the turn ends
 
@@ -1895,16 +1841,6 @@ next move, a gate's line that gets its answer and comment), the feed does not sc
 the new lines sit below the fold.
 Wanted: a reader at the bottom stays at the bottom when the last entry grows too.
 Found: 2026-10-14, feature/lad-44-flake-races (design).
-
-## Codex clones its plugins repository at every start
-
-Size: S. Why here: it slows each Codex agent's start and fills a failed smoke's evidence.
-Codex CLI clones its plugins repository into `<CODEX_HOME>/.tmp/plugins-clone-*` at every
-start; LADO gives each agent its own `CODEX_HOME`, so each start clones again, about 300 MB
-in each failed smoke's evidence folder. It did not cause the smoke failures of 0.37.0.
-Wanted: switch it off in the agent's config.toml, once a config key for it is checked by
-hand on the tested Codex version.
-Found: 2026-10-14, feature/lad-44-flake-races (design, from the smoke's evidence).
 
 ## The expanded waiting card sometimes stays expanded after the second Esc
 

@@ -12,7 +12,7 @@ import agent_helpers
 import pytest
 from playwright.sync_api import Browser, Page, expect
 from test_main_screen import log_in
-from test_phone import UPRIGHT, no_sideways_scroll
+from test_phone import UPRIGHT, no_sideways_scroll, wheel_to_the_end
 from test_project_secrets_canary import files_holding
 
 from lado import loop, project_secrets, projects, runtime, state
@@ -223,3 +223,22 @@ def test_on_a_phone_the_list_and_a_project_in_turns(phone: Page, server, shop, s
     expect(page.get_by_text("Select a project")).to_have_count(0)
     shot(page, "list", full_page=False)
     assert "canary-phone" not in json.dumps(page.content())
+
+
+@pytest.fixture
+def many(git_config):
+    """Thirty projects, a list longer than the phone's screen; the last is Zone 30."""
+    for n in range(1, 31):
+        projects.create(f"zone-{n:02}", f"Zone {n:02}")
+
+
+def test_on_a_phone_a_long_project_list_scrolls_to_its_end(phone: Page, server, many, shot):
+    page = phone
+    log_in(page, server)
+    page.goto(f"{server['url']}/projects")
+    nav = page.get_by_role("navigation", name="Projects")
+    last = nav.get_by_role("link", name="Zone 30")
+    expect(last).to_be_attached()
+    assert last.bounding_box()["y"] > page.viewport_size["height"]  # below the screen
+    wheel_to_the_end(page, last)
+    shot(page, "long-list", full_page=False)

@@ -18,6 +18,7 @@ const PROVIDER = {
   permission_modes: [],
   install_hint: "",
   detail: "",
+  login_missing: false,
 };
 
 const SYSTEM: SystemInfo = {

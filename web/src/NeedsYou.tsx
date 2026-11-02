@@ -12,7 +12,7 @@ import { ArtifactPanel } from "./ArtifactPanel";
 import { FeedRow } from "./FeedRow";
 import { useLive, useLiveStore } from "./live";
 import { NotificationsOffer } from "./Notifications";
-import { chatPath, terminalPath, VIEW_PARAM, VIEW_SESSION_PARAM } from "./paths";
+import { chatPath, PROVIDERS_PATH, terminalPath, VIEW_PARAM, VIEW_SESSION_PARAM } from "./paths";
 import { labelOf } from "./sessionLabel";
 import { useTitle } from "./Shell";
 import { agentWaits } from "./waiting";
@@ -100,9 +100,19 @@ function WaitingAgent({ session, agent, since }: { session: string; agent: Agent
       <div className="waits-agent">
         <p className="waits-reason">{agentWaits(agent)}</p>
         <div className="answer-actions">
+          {agent.login_wait && (
+            <button
+              type="button"
+              className="primary"
+              aria-label={`Log in for ${agent.name}`}
+              onClick={() => navigate(PROVIDERS_PATH)}
+            >
+              Log in…
+            </button>
+          )}
           <button
             type="button"
-            className="primary"
+            className={agent.login_wait ? "quiet" : "primary"}
             aria-label={`Open ${agent.name}'s terminal`}
             onClick={() => navigate(terminalPath(session, agent.name))}
           >

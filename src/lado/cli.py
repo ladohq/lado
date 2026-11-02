@@ -96,6 +96,7 @@ def cmd_start(args: argparse.Namespace) -> int:
             prompt=args.prompt_text,
             project=args.project,
             repo_name=args.repo,
+            wait_for_login=args.wait_for_login,
         )
     except Exception as exc:
         _sources_warning(unless_in=str(exc))  # a kit not found says it already
@@ -146,8 +147,9 @@ def _read_prompt(args: argparse.Namespace) -> str | None:
 
 
 def _start_clone(args: argparse.Namespace) -> int:
-    """`lado start <git-url> [<folder>] [--branch NAME]`: check the folder and the name,
-    clone, then start in the clone as `lado start <folder>` does."""
+    """`lado start <git-url> [<folder>] [--branch NAME]`: check the folder, the name and
+    the login of the provider when it is known (runtime.check_start_login), clone, then
+    start in the clone as `lado start <folder>` does."""
     url = args.path
     folder = runtime.full_path(args.folder) if args.folder else str(clone.default_folder(url))
     target = clone.check_target(url, folder)
@@ -159,6 +161,7 @@ def _start_clone(args: argparse.Namespace) -> int:
             print(f"lado: To start a session in it as it is: lado start {folder}", file=sys.stderr)
         return 1
     runtime.check_name(runtime.slug(args.name or Path(folder).name), folder)
+    runtime.check_start_login(args.provider, None)
     cancelled = _cloned(
         url, folder, args.branch, lambda shown: clone.clone(url, folder, args.branch, shown)
     )
@@ -208,10 +211,12 @@ def _cloned(
 
 def _start_new(args: argparse.Namespace) -> int:
     """`lado start --new [<folder>]`: make a new or empty folder a repository with an empty
-    first commit (lado.scratch), then start in it as `lado start <folder>` does."""
+    first commit (lado.scratch), then start in it as `lado start <folder>` does; refused
+    first, as the clone is, for a provider without its login."""
     if clone.is_url(args.path) or args.folder or args.branch:
         args.start_parser.error("--new takes a folder, not a git URL or a second folder")
     folder = os.path.abspath(os.path.expanduser(args.path))
+    runtime.check_start_login(args.provider, None)
     scratch.make(folder, runtime.slug(args.name or Path(folder).name))
     print(f"Made {folder} a git repository with an empty first commit")
     args.path, args.new = folder, False
@@ -1655,6 +1660,9 @@ def main(argv: list[str] | None = None) -> int:
         help="the first message from a file; - reads it from stdin",
     )
     start.add_argument("--no-attach", action="store_true", help="do not attach to the session")
+    # LADO's own resume (lado update): the supervisor waits for its CLI's login, where a
+    # resume by hand is refused. Not for the human, so not listed.
+    start.add_argument("--wait-for-login", action="store_true", help=argparse.SUPPRESS)
     start.set_defaults(func=cmd_start, start_parser=start)
 
     kits_cmd = commands.add_parser(
@@ -2008,6 +2016,9 @@ def main(argv: list[str] | None = None) -> int:
     # Internal: started by `lado start`, one per session (lado.loop).
     loop_cmd = commands.add_parser("loop")
     loop_cmd.add_argument("session")
+    # Internal: the window of an agent that waits for its CLI's login (lado.login_wait).
+    login_wait_cmd = commands.add_parser("login-wait")
+    login_wait_cmd.add_argument("args", nargs=argparse.REMAINDER)
 
     args = parser.parse_args(argv)
     if args.command == "mcp":
@@ -2018,6 +2029,11 @@ def main(argv: list[str] | None = None) -> int:
         from lado import hooks
 
         return hooks.main(args.event, args.session, args.agent, args.instance)
+    if args.command == "login-wait":
+        from lado import login_wait
+
+        login_wait.main(args.args)
+        return 0  # not reached: it becomes the agent's CLI
     if args.command == "loop":
         # Never migrates: on another schema state.connect refuses, and the loop ends.
         return loop.run(args.session)

@@ -191,8 +191,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     the migration's `lado.db.schema-<N>`), runs the installer, checks
     `<prefix>/bin/lado --version`, for a plan with a `Restore` puts that copy back
     (`restore`, then the schema checked; a failure rolls back with lado.db as it was) and
-    resumes only the sessions the copy has, with that binary's public commands
-    (`lado start <repo> --name <s> --no-attach`, `lado ui --no-open [--host H] --port P`;
+    resumes only the sessions the copy has, with that binary's commands (`lado start <repo>
+    --name <s> --no-attach --wait-for-login`, the hidden flag of LADO's own resume, whose
+    supervisor waits for a missing login where a resume by hand is refused (LAD-163; left
+    out on an update to a LADO before 0.44, `WAIT_FOR_LOGIN_SINCE`, whose argparse refuses
+    it; a LADO before 0.44 that updates runs its own `_resume` without it, so a session
+    whose login is missing lands in `failed` once), `lado ui --no-open [--host H] --port P`;
     `--host` only for another than 127.0.0.1, which a LADO before 0.20 lacks). It rolls
     back only when the new version itself is bad: a wrong `--version`, or the UI server,
     when one ran before, does not come up on it (`lado ui` fails, or `/api/health` names
@@ -243,7 +247,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     stdout only, no log; exit 0 when each step of the plan was done. `--keep-data` stops
     and removes the program only.
   - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
-    messages to them. Whether a folder can hold a session is `check_repo` (its repository's
+    messages to them. A new session or worker of a CLI that needs a login and has none is
+    refused first (`check_login`, `NotLoggedIn`; `check_start_login` before a clone or a new
+    folder), in `agents_env(agent_layers(project), agent_cli)`, the environment the agent starts from; a resumed agent
+    waits for it instead (`_held_for_login`). Whether a folder can hold a session is `check_repo` (its repository's
     root, or why not: a `FolderProblem`, a `LadoError` with a `kind`, `missing`,
     `not_folder`, `no_git`, `git_broken`, `not_repo`, `git_refused`, `no_commits`, the
     first that holds in that order, and a `Hint`, a sentence and one command, for `no_git`,
@@ -448,13 +455,53 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     a failure removes the temporary file and keeps the old value. `remove`, `check_removable`
     (no link on the way or anywhere in the data folder) and `remove_all` (by `dir_fd`). `read`
     is `agent_env.read_folder(own=reserved)`; `layer`, the project's plain variables with
-    its secrets over them, is what a launch (`runtime._base_env`) and a clone into the
+    its secrets over them, is what a launch (`runtime.agent_layers`) and a clone into the
     project (`clone`) get, its one builder; `unused` is what it does
     not give, by name with why (None for the folder), its values left inside, for `lado
     doctor` and the project's page; `names` lists without opening a file
-    (`agent_env.check_entry`), a file of a loose mode too, which a replace mends.
+    (`agent_env.check_entry`), a file of a loose mode too, which a replace mends. The same
+    store keeps LADO's secrets in `<LADO_HOME>/secrets/` (`write_lado`, `remove_lado`,
+    `read_lado`, `lado_names`, `lado_folder`; `_open_chain` over the folder's parts): the
+    agent CLIs' login variables the human sets in Settings (lado.logins checks the names).
+  - `logins.py`: the agent CLIs' logins (docs/design/ui.md, Providers and environment):
+    `refusal` is why a new session or worker (`SESSION`, `WORKER`) of a CLI that needs a
+    login there (`Provider.needs_login(env)`) and has none is not started
+    (lado.runtime.check_login raises it), `wait_reason` why a resumed agent waits;
+    `read` asks a provider's `login_status` and `needs_login` (`Login.needs_login`) in the environment its agents get without a
+    project (`environment(provider, layers)`: the login taken whole from one layer), says
+    the layer that gives the login (`layer`, by the same rule: LADO's secret, the outside
+    folder, the login shell) and where it comes from in words (`Login.where`: that layer,
+    else the CLI's own file in the provider's words, `LoginStatus.file_words`; the page's
+    state line and `lado doctor`'s), and names the live agents that wait for it and that run
+    (`agents`, by `wait_reason`, the one text of that wait) and the projects with a login
+    variable of their own; `check_secret` the only names and values LADO's secrets take.
+    The login windows: `open_window` (a tmux
+    session `lado-login-<provider>` with the labels `@lado-login`, `@lado-home`,
+    `@lado-login-action`, running the action's argv under `main` through
+    `agent_env.command`; one per
+    provider; with `remain-on-exit`, so its pane stays, dead, with its text and exit status
+    once the command ends), `close_window`, `windows` (dead ones too), `open_windows` (the
+    running ones: a dead window counts as ended, and `open_window` replaces it), `look`
+    (for the login socket: the provider's `login_prompt` of the window's text while an
+    action that `shows_code` runs; once dead its exit status and last line, `Ended`, read
+    before the window is killed: the status from `status_file`, which the window's wrapper
+    `main` writes, as tmux may give none under load), and `end_windows`, which `lado stop --all` and the UI server's
+    start and stop use, by the labels only.
+  - `login_wait.py`: the window of an agent whose CLI needs a login and has none (`lado
+    login-wait`, hidden): `command` writes the launch file with LADO's and the provider's
+    own names, which no layer replaces, the session's project and the login shell's own
+    login variables (`shell_login`); `main` polls `login_status` every `logins.POLL`
+    seconds with the file layers read anew and the login taken whole from one (`layers`),
+    then settles `first_hook_blocker`, logs what it did and execs the CLI.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
-    `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`, `CLI_VARIABLES`,
+    `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`, the login's
+    questions (`login_status` → `LoginStatus`, by the CLI's own status command through
+    `run_status`, with a time limit, unknown with why on any failure, `LoginStatus.choice`
+    and `file_words`; `login_actions`, the login windows' commands (OpenCode's, Kilo's;
+    none of Claude Code's); `login_question` and `login_choices` (`LoginChoice`: a value of
+    one login variable to paste, Claude Code's two); `login_variables`, `login_note`,
+    `Capabilities.needs_login`), each
+    provider parsing its own CLI's output, `CLI_VARIABLES`,
     the names LADO sets for the agent CLIs, reserved from project variables and kept in
     step with every provider's `Launch.env` by a test; each provider's
     `EVENTS` maps its native events; `claude.py`: Claude Code, its role in `prompt.md` of
@@ -479,19 +526,36 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `lado forget` and a start or resume (what is left of the session's) remove it
     (`base.remove_config_dir`, `remove_session_config_dirs`); nothing of the CLI's own goes
     there but Codex's, whose home it is. `first_hook_blocker(cwd, env)` (a `Blocker`:
-    `reason`, `warning`) says what its CLI will ask the human before any hook (How agents
-    talk). Claude Code asks whether
-    to trust the folder, read from `projects[<folder>].hasTrustDialogAccepted` in its global
-    config (`$CLAUDE_CONFIG_DIR/.claude.json` or `~/.claude.json`, an older
-    `<config home>/.config.json` first), by the repo's main root (a worktree's main repo) or
-    a folder from `cwd` up to its git root, each by real path; only `projects` is read,
-    nothing written; a config it cannot read is a `warning`. Codex CLI (`codex.py`): each
+    `reason`, `warning`, `note`) says what its CLI will ask the human before any hook (How
+    agents talk), after it settled what LADO answers itself (`note`: what it did). Claude
+    Code asks whether to trust the folder, read from
+    `projects[<folder>].hasTrustDialogAccepted` in its global config
+    (`$CLAUDE_CONFIG_DIR/.claude.json` or `~/.claude.json`, an older
+    `<config home>/.config.json` first; `_config_path`), by the repo's main root (a
+    worktree's main repo) or a folder from `cwd` up to its git root, each by real path; a
+    config it cannot read is a `warning`, and the file is left alone. A folder it does not
+    trust: LADO sets the flag in the entry of the repo's main root (`_record_trust`; the
+    entry's other keys kept, `false` made `true`) and returns the `note` "LADO recorded
+    Claude Code's trust in <repo> in <file>"; when that fails (an `OSError`, an entry that
+    is not an object), the `reason` with why. Every change of that file goes through
+    `edit_config(env, change)`: under an exclusive `flock` on
+    `LADO_HOME/claude-config.lock` it reads the file again, gives `change` the parsed object
+    (no file: `{}`), writes nothing when `change` changed nothing, else JSON with indent 2
+    to `<name>.<random>.tmp` in the target's folder, fsynced, the old mode (a new file 600)
+    and `os.replace` (a symlinked config is written through to its target); the temporary
+    file goes on any failure; a top level that is not an object is a `ValueError` naming
+    the file. The one exception to "Never touch the user's global agent config" (AGENTS.md,
+    LAD-106). Codex CLI (`codex.py`): each
     agent's `CODEX_HOME` is its config folder, with a `config.toml` (mode 600) LADO writes
     with a small TOML writer (`toml_text`; a value it cannot write is left out with a
     launch warning): the role as `developer_instructions` (the base prompt stays), Codex's
-    update check, subagents (`features.multi_agent`), analytics and feedback off, its shell
+    update check, its own subagents of both versions (`features.multi_agent`,
+    `features.multi_agent_v2` and `agents.enabled`, the one switch a newer model's metadata
+    does not override), analytics and feedback off, its shell
     snapshot off (`features.shell_snapshot`: it writes the agent's whole environment, a
-    kit's MCP secrets too, into the home's `shell_snapshots/`), LADO's
+    kit's MCP secrets too, into the home's `shell_snapshots/`), its plugins off
+    (`features.plugins`: it would clone OpenAI's catalogue into each new home), its login
+    in the file (`cli_auth_credentials_store = "file"`), LADO's
     hooks with their `trusted_hash` (`hook_hash`, Codex's formula, pinned by a test against
     hashes Codex wrote; keyed by the real path of that config.toml), the MCP servers (`lado`
     `required` and its tools approved; each server's `env_vars` names every variable of the
@@ -507,9 +571,21 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     path then as spelled; the first entry with a level decides, `untrusted` too) and to
     review the repository's own hooks (`.codex/hooks.json` and `[hooks]` of
     `.codex/config.toml`, the main checkout's in a linked worktree) it has no trust for:
-    `first_hook_blocker` reads both from the agent's config.toml. Its argv is `codex
-    --no-daemon` (else a background app server outlives the agent) with the first lines
-    last. Codex's own login is not carried (BACKLOG.md). The provider is chosen
+    so without the user's entry LADO trusts the main root, and in a trusted folder it
+    trusts the repository's hooks by their hashes (a hook the user disabled stays so);
+    `first_hook_blocker` still reads both from the agent's config.toml, for a home LADO did
+    not write. Its argv is `codex --no-daemon` (else a background app server outlives the
+    agent) with the first lines last. The login (`first_hook_blocker`, `_settle_login`):
+    `auth.json` a link to the user's (`user-codex-home` in the agent's folder names the
+    user's Codex home), or a file of the agent's own with `OPENAI_API_KEY`, whose variable
+    Codex's TUI ignores. `login_status` runs `codex login status -c
+    cli_auth_credentials_store="file"` (the store agents use), takes `OPENAI_API_KEY` as a
+    login without it, and reads a login kept only in the keyring as none, with
+    `LoginStatus.keyring` (Settings shows `keyring_note`); `needs_login(env)` follows the
+    model provider of the config. Its sheet (`login_choices`): a ChatGPT sign-in code
+    (`login_actions`' `codex login --device-auth`, which `shows_code`: `login_prompt`
+    reads the link, the code, its expiry and the "Continue only if…" warning from its
+    output), `CODEX_ACCESS_TOKEN` or `OPENAI_API_KEY`; `logout` runs `codex logout`. The provider is chosen
     per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
     Each provider lists the `--permission-mode` values it honours (`permission_modes`; the
     CLI help shows them); `lado start` (also a resume) and `spawn_worker` refuse a mode the
@@ -527,7 +603,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     variables and the calling agent's LADO identity (`LADO_SESSION`, `LADO_AGENT`,
     `LADO_INSTANCE`; every other `LADO_*` stays) from every tmux call, the popup, a UI
     terminal, the session loop's start (`loop.start`) and an agent's environment
-    (`agent_env.resolve`): a session the supervisor's `lado mcp` starts never runs as that
+    (`agent_env.layers`): a session the supervisor's `lado mcp` starts never runs as that
     agent. `runs._popup` keeps its `env -u`: the tmux server builds the popup's environment.
     `server_running` is the one look at whether a server runs on a socket (`list-sessions`;
     it never starts one). `new_session` sets `exit-empty on` (tmux's default) first in its
@@ -549,9 +625,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `remote` with no server; a failure is `LAUNCHD_FAILED`, a warning, and the server starts
     here instead. The texts (`OUTSIDE_GUI`, `NO_GUI`, `PLAN_REMOTE`) name no provider:
     `fill` puts in the titles and hints of `Provider.keychain_login`.
-  - `agent_env.py`: where an agent's environment comes from (docs/design/agents.md): `resolve`
-    (the login shell's, then the outside folder's, `outside`, then the session's project's
-    variables and secrets it is given, which `runtime._base_env` reads), `for_git` (the
+  - `agent_env.py`: where an agent's environment comes from (docs/design/agents.md): `layers`
+    (`Layers`: the login shell's, the outside folder's, `outside`, LADO's secrets,
+    `lado_secrets`, and the session's project's variables and secrets it is given, which
+    `runtime.agent_layers` reads), `merge` (each over the one before, an agent CLI's login
+    variables, given as names, taken whole from the highest layer that sets any), `resolve`
+    (both), `for_git` (the
     environment of LADO's own network git, gitcache's and clone's: the process's, the
     outside folder's over it, then a project's layer when given; no login shell), and
     `command`, the window's command that runs the agent with exactly that environment. `read_folder` is
@@ -600,7 +679,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     uploaded file's title. No other copy of the check. Only the standard library.
   - `terminal.py`: an agent's terminal for the UI (design in
     [docs/design/ui.md](ui.md), section Terminal): `open` (a viewer tmux session
-    with the agent's window linked in and a `tmux attach` on a pty), `NoTerminal`,
+    with the agent's window linked in and a `tmux attach` on a pty), `open_login` (a login
+    window's own session attached in control, kept at close; `login_ended`), `NoTerminal`,
     and `close_viewers`, which `lado stop` and the UI server's start use; viewers are found
     by their tmux labels (`@lado-viewer`, `@lado-home`, `@lado-session`) only. Never a
     read-only tmux client: tmux would refuse LADO's own `send-keys` while one is attached.
@@ -940,7 +1020,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
     backpressure, close codes, and the open sockets (`OPEN`), which a new token closes
-    (`close_all`); the agents, messages, run events
+    (`close_all`); a login window's socket also watches it (`watch_login`, every
+    `LOOK_EVERY`: its `prompt` frame, and its `ended` frame before the close); the agents, messages, run events
     (`/api/sessions/{name}/events`), gates (with the human's answer), the human's answers
     to one agent's open questions (`POST …/answers`, a tab of the UI's waiting card, all or
     none, through `runtime.answer_questions`; each reply and a gate's answer with the full
@@ -1033,7 +1114,22 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `/api/repos-folder` (in `app.py`; `Workspace`, `projects.workspace` and whether it is
     made: where an empty Where starts once it exists),
     `/api/kits` (the kit of each name the lookup takes, the same for every folder; a
-    `where` the page still sends is ignored; an invalid one `valid: false`) and `/api/providers` (no provider is marked the default);
+    `where` the page still sends is ignored; an invalid one `valid: false`) and `/api/providers` (no provider is marked the default;
+    `launch.provider_infos(project)` sets `login_missing` by `logins.refusal` in
+    `runtime.agents_env` of the provider over `runtime.agent_layers(project)`, false when those cannot be had; `?project=`
+    unknown is 404);
+    `provider_check.py`: Settings → Providers and environment's rows (LAD-163): the last
+    `ProviderLogins` of each provider (`launch.provider_logins`, which names the agents
+    waiting for a login only while it is missing), kept for the server's lifetime, never on
+    disk; `start()` runs one check at a time in a daemon thread, every provider at once
+    (`doctor.provider_status`, then `launch.read`) and the login shell once
+    (`launch.environment`), each row kept as soon as its CLI is read, a provider whose read
+    raises a row with its login `unknown` and why (and the error journal); a `start()`
+    while one runs makes one more pass run once after it; `put(row)` keeps an action's
+    fresh row, which an older read of the running pass does not replace; `snapshot()` the
+    `ProvidersPage` (`ready: false` for a provider never read, `checking`, `environment`).
+    `GET /api/providers/logins` answers it, `POST /api/providers/check` starts a check, and
+    the login actions put their row and start one;
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
     Session head) is what the session's head shows besides its settings, read anew: `repos`
     (path, public remote, branch; one now), each kit by `kits.find` with its version and
@@ -1128,6 +1224,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   release, checked before PyPI too, with the release's `docker pull` (docs/release.md);
   standard library only, so it holds the image's name as its own `IMAGE`, kept equal to
   `update.IMAGE` by a test.
+  `scripts/stamp_installers.py`: the GitHub release's `install.sh` and `install.ps1`,
+  `docker/`'s with their version placeholder line replaced by the tag's version (exactly
+  one such line each, a release's version, or it fails and the release is not created);
+  standard library only.
   `scripts/rc_check.py`: the human's checks of a release candidate (docs/release.md,
   section 4): `sandbox` (a clean install in a temporary folder, statistics off, removed
   after), `upgrade` (the human's `lado update X.Y.ZrcN`, keeping the final's database in
@@ -1153,7 +1253,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `ssh-agent-env.sh`, `ssh_known_hosts` and `mise.toml`; the image holds no one's key or login, only public host keys), the
   four agent CLIs at
   `smoke_ci.py`'s `PINS`, one `ARG <NAME>_VERSION` and one layer each (`CLAUDE_VERSION`,
-  `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet),
+  `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet;
+  each run once at build, its `--version` with a throwaway HOME, so one that does not run
+  fails the build),
   programs under `/opt` (the `/opt` folders named only in the build's install lines), the
   repositories' toolchains (below), the user `lado` (uid
   1000 in the image) with its home a volume; `lado server --host 0.0.0.0 --port
@@ -1274,4 +1376,39 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   downloads from `releases/latest/download/compose.yaml`. The research
   prototype in
   `docs/research/docker-install/` is evidence only.
+  `install.sh`, the one-line installer (`curl -fsSL …/releases/latest/download/install.sh
+  | sh`), POSIX sh run by dash and bash, every step in a `main` called on its last line:
+  the version stamped in it (`LADO_INSTALL_VERSION=`, by `scripts/stamp_installers.py` at
+  release; `--version` for the repository's unstamped copy, which refuses otherwise); the
+  shell's `LADO_*` and `COMPOSE_*` unset before compose and named at the end; Docker checked
+  (missing, no compose, permission denied, a stopped daemon: each its own stop; on macOS
+  Docker Desktop started and waited for 120 s; never Docker installed, never `sudo`); the
+  folder `~/lado-docker` (`--dir`: `COMPOSE_PROJECT_NAME=lado-<folder>`), refused when a
+  container of its compose project was made from another folder (compose's
+  `working_dir` label). A fresh install asks from `/dev/tty` (the defaults with `--yes` or
+  no terminal) for the workspace and only the git identity `git config --global` lacks,
+  picks the first port of 8765–8799 nothing listens on (`nc`, else `lsof`), takes Docker
+  Desktop's or `$SSH_AUTH_SOCK`'s ssh agent, asks about the phone after its warning (Enter
+  no; `--phone`/`--no-phone`) and then writes `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST`
+  (macOS LocalHostName, WSL's Windows name, avahi's hostname, else the address with a
+  warning), all `.local`; `.env` holds only variables this header names. A rerun compares
+  `.env`'s `LADO_VERSION` with its own (`X.Y.Z[rcN]`, an RC before its final): older,
+  `compose.yaml.bak` and only every `LADO_VERSION` line changed; the same, no file
+  rewritten; newer or another form, a refusal naming the guide. Files are written as
+  `.new` and moved in place when complete. Then `docker compose up -d`, a wait of up to
+  180 s for `/api/health` inside the container (before `lado ui`, which would otherwise
+  start a server of its own), `lado ui --no-open`'s link printed and opened (`open`,
+  `xdg-open` with a display, `wslview` or `cmd.exe /c start` from WSL). Every stop is a
+  line `lado install: <what>: <what to do>`. `install.ps1`, Windows PowerShell 5.1 and 7,
+  ASCII only, `$LadoVersion = ''` stamped the same way: Docker Desktop checked and
+  started, the first `Ubuntu*` WSL distribution (`wsl -l -q` read as UTF-16; never
+  `docker-desktop*`) or `wsl --install -d Ubuntu` offered, Docker checked inside it (WSL
+  integration), then its release's `install.sh` run there by `wsl.exe -d <distro> -- sh
+  -c 'curl … | sh -s -- <flags>'` (`-Yes`, `-Phone`, `-NoPhone`), with the console for
+  its questions. All but its `param` runs in a script block of its own (`& { … }`), so
+  under `irm | iex`, which runs the text in the human's scope, its strict mode, its
+  'Stop' and its functions do not stay in their window; it exits only when run as a file,
+  since `exit` would close that window. `install.sh`'s rerun writes `--image` too
+  (`LADO_IMAGE` replaced or added), and `--dir` drops a trailing `/`. The Dockerfile's
+  allowlist leaves both out of the image.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

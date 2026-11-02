@@ -228,6 +228,52 @@ def test_an_agent_whose_cli_asks_first_and_ends_on_no_is_found_stopped(session, 
     assert runtime.status_reason(SESSION, "w1") == runtime.WINDOW_GONE
 
 
+def w1_read_its_task() -> bool:
+    return [m.state for m in state.list_messages(SESSION) if m.recipient == "w1"] == [state.READ]
+
+
+def test_lado_records_the_trust_so_the_cli_does_not_ask(session, repo, claude_config, monkeypatch):
+    """Claude Code's "trust this folder?": LADO writes the trust before the CLI starts, the
+    CLI reads it and asks nothing."""
+    monkeypatch.setenv("FAKE_AGENT_TRUST", "1")
+    # Its first run is recorded already (the fake's login cannot be read, so LADO would
+    # record it too: tests/test_providers.py); this test is the trust's.
+    first = {"numStartups": 2, "hasCompletedOnboarding": True}
+    claude_config.path.write_text(json.dumps({**first, "projects": {"/x": {"a": 1}}}))
+    warnings = []
+    runtime.spawn_worker(SESSION, "sleep 0", name="w1", warnings=warnings)
+    note = f"LADO recorded Fake agent's trust in {repo.resolve()} in {claude_config.path}"
+    assert warnings == []  # LADO's own write: loop.log only
+    wait_status("w1", state.IDLE)
+    wait_for(w1_read_its_task, "w1 to read its task")
+    assert json.loads(claude_config.path.read_text()) == {
+        **first,
+        "projects": {"/x": {"a": 1}, str(repo.resolve()): {"hasTrustDialogAccepted": True}},
+    }
+    assert (state.home() / "loop.log").read_text().count(f"live: w1: {note}") == 1
+
+
+def test_the_cli_asks_when_lado_cannot_record_the_trust(session, repo, claude_config, monkeypatch):
+    monkeypatch.setenv("FAKE_AGENT_TRUST", "1")
+    claude_config.trust()
+    before = claude_config.path.read_text()
+    folder = claude_config.path.parent
+    folder.chmod(0o500)
+    try:
+        runtime.spawn_worker(SESSION, "sleep 0", name="w1")
+    finally:
+        folder.chmod(0o700)
+    reason = runtime.status_reason(SESSION, "w1")
+    assert status("w1") == state.WAITING
+    assert reason.startswith(f"Fake agent asks whether to trust {repo.resolve()}: LADO could not")
+    assert "Permission denied" in reason
+    assert claude_config.path.read_text() == before  # it trusts no folder, unchanged
+    tmux.send_text(SESSION, "w1", "yes")  # the human answers
+    wait_status("w1", state.IDLE)
+    wait_for(w1_read_its_task, "w1 to read its task")
+    assert runtime.status_reason(SESSION, "w1") is None
+
+
 def test_the_human_writes_to_a_worker_while_the_supervisor_is_stopped(session):
     """No copy is queued for a supervisor that would never get it; the worker gets the text."""
     runtime.spawn_worker(SESSION, "sleep 0", name="w1")

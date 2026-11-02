@@ -154,7 +154,9 @@ def handle(
         _log(f"{session}/{agent}: {event.error}")
         return None
     # First of all: the agent is alive, so what a dialog swallowed can go to it again.
-    state.seen(session, agent)
+    first = state.seen(session, agent)
+    if first and event.kind != providers.SESSION_START:
+        runtime.heard_at_start(session, agent)  # its CLI did not hold it after all
     if event.kind == providers.SESSION_START:
         current = state.get_agent(session, agent)
         # Claude Code starts the first turn when its session-start hooks are done, whether

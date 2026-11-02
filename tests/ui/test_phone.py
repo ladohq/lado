@@ -5,7 +5,7 @@ touch screen (`is_mobile`, `has_touch`) upright at 390x844 and 360x780 and sidew
 import re
 
 import pytest
-from playwright.sync_api import Browser, Page, expect
+from playwright.sync_api import Browser, Locator, Page, expect
 from test_gates import gated_session, waiting_card
 from test_main_screen import log_in, running_session
 
@@ -72,6 +72,19 @@ def box(locator) -> dict:
 def no_sideways_scroll(page: Page) -> None:
     sizes = page.evaluate("[document.documentElement.scrollWidth, window.innerWidth]")
     assert sizes[0] <= sizes[1], (page.url, sizes)
+
+
+def wheel_to_the_end(page: Page, target: Locator) -> None:
+    """Scroll as a finger does: the wheel over the page, which Chromium gives only to a box
+    that scrolls (script scrolling moves a clipped box too, LAD-159), until `target` is
+    within the window, the window itself not scrolled."""
+    width, height = page.viewport_size["width"], page.viewport_size["height"]
+    page.mouse.move(width / 2, height / 2)
+    page.mouse.wheel(0, 5000)
+    page.wait_for_function(
+        "e => e.getBoundingClientRect().bottom <= window.innerHeight", arg=target.element_handle()
+    )
+    assert page.evaluate("window.scrollY") == 0
 
 
 def keeps_the_computers_frame(page: Page) -> None:

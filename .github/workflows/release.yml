@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0  # every tag and the history: the release check compares tags
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       - name: Check tag matches package version
         run: |
           version=$(uv version --short)
@@ -72,7 +72,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           python-version: "3.13"
       # The container tests make an old home's lado.db with this checkout's lado.state.
@@ -122,7 +122,7 @@ jobs:
     permissions:
       id-token: write  # PyPI trusted publishing
     steps:
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist
@@ -181,15 +181,20 @@ jobs:
         with:
           name: dist
           path: dist
+      # The Docker installers, stamped with the tag's version: each installs its own
+      # release's compose.yaml and image. A lost placeholder fails here, before the release.
+      - name: Stamp the Docker installers
+        run: python3 scripts/stamp_installers.py "${GITHUB_REF_NAME#v}" "$RUNNER_TEMP/installers"
       # A release candidate is a pre-release, never the latest; a final is the latest. The
-      # tag's compose.yaml goes with it, so the install guide's
-      # releases/latest/download/compose.yaml is the newest final's.
+      # tag's compose.yaml and installers go with it, so the install guide's
+      # releases/latest/download/compose.yaml and install.sh are the newest final's.
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           python3 scripts/release_notes.py "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
-          gh release create "$GITHUB_REF_NAME" dist/* docker/compose.yaml --verify-tag \
+          gh release create "$GITHUB_REF_NAME" dist/* docker/compose.yaml \
+            "$RUNNER_TEMP/installers/install.sh" "$RUNNER_TEMP/installers/install.ps1" --verify-tag \
             --title "LADO ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md" \
             "$(python3 scripts/release_notes.py --flag "$GITHUB_REF_NAME")"

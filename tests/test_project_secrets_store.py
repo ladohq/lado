@@ -294,3 +294,41 @@ def test_names_hold_a_loose_file_its_agents_do_not_get(home):
     project_secrets.write("shop", "SENTRY_DSN", "s")
     (secrets_of(home) / "SENTRY_DSN").chmod(0o644)
     assert project_secrets.names("shop") == ["SENTRY_DSN"]
+
+
+# LADO's secrets (`<LADO_HOME>/secrets/`): the same store over LADO's own folder, for the
+# agent CLIs' login variables set in Settings (lado.logins).
+
+
+def test_lados_secrets_are_written_private_and_read_by_the_one_reader(home, umask):
+    project_secrets.write_lado("CLAUDE_CODE_OAUTH_TOKEN", "tok\n")
+    folder = home / "secrets"
+    assert project_secrets.lado_folder() == folder
+    assert mode(folder) == 0o700
+    assert mode(folder / "CLAUDE_CODE_OAUTH_TOKEN") == 0o600
+    assert project_secrets.read_lado().values == {"CLAUDE_CODE_OAUTH_TOKEN": "tok\n"}
+    assert project_secrets.lado_names() == ["CLAUDE_CODE_OAUTH_TOKEN"]
+    assert agent_env.lado_secrets().values == {"CLAUDE_CODE_OAUTH_TOKEN": "tok\n"}
+    project_secrets.write_lado("CLAUDE_CODE_OAUTH_TOKEN", "new")
+    assert os.listdir(folder) == ["CLAUDE_CODE_OAUTH_TOKEN"]
+    assert project_secrets.remove_lado("CLAUDE_CODE_OAUTH_TOKEN") is True
+    assert project_secrets.remove_lado("CLAUDE_CODE_OAUTH_TOKEN") is False
+    assert project_secrets.lado_names() == []
+
+
+def test_lados_secrets_refuse_a_link_on_the_way(home, tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (home / "secrets").symlink_to(elsewhere)
+    with pytest.raises(project_secrets.LinkRefused):
+        project_secrets.write_lado("ANTHROPIC_API_KEY", "k")
+    with pytest.raises(project_secrets.LinkRefused):
+        project_secrets.remove_lado("ANTHROPIC_API_KEY")
+    assert os.listdir(elsewhere) == []
+
+
+@pytest.mark.parametrize("name", NOT_A_SECRETS_NAME)
+def test_lados_secrets_take_variable_names_only(home, name):
+    with pytest.raises(ValueError, match="not a variable name"):
+        project_secrets.write_lado(name, "v")
+    assert project_secrets.remove_lado(name) is False

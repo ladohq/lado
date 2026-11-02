@@ -258,7 +258,9 @@ test.each(["/", "/sessions", "/settings"])(
     const reload = vi.fn();
     vi.stubGlobal("location", { ...window.location, reload });
     open(path);
-    const banner = await screen.findByRole("alert");
+    // The banner; a section that cannot read this server's answer may say so too (Settings).
+    const alerts = await screen.findAllByRole("alert");
+    const banner = alerts.find((alert) => alert.classList.contains("version-banner"))!;
     expect(banner.textContent).toBe(
       `This page is LADO ${BUNDLE_VERSION}, the server runs 0.0.1: reload the page.Reload`,
     );
@@ -568,10 +570,9 @@ test("Settings is one flat page: Appearance, Notifications, Providers and enviro
     .getAllByRole("heading", { level: 2 })
     .map((h) => h.textContent);
   expect(sections).toEqual(["Appearance", "Notifications", "Providers and environment", "Usage statistics"]);
+  // The section itself: Providers.test.tsx.
   const providers = screen.getByRole("region", { name: "Providers and environment" });
-  expect(within(providers).getByRole("link", { name: /plan/i }).getAttribute("href")).toMatch(
-    /docs\/design\/ui\.md#providers-and-environment/,
-  );
+  expect(providers.id).toBe("providers-and-environment");
 });
 
 test("the theme applies at once on the root and is remembered", () => {

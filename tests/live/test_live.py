@@ -254,8 +254,8 @@ def messages(sender: str, recipient: str) -> list[tuple[str, str]]:
 
 
 def answering(provider: str, agent: str, check):
-    """`check` for wait_for, answering the agent's dialogs first: each Codex agent has a
-    new home, so a worker asks about the folder too (Claude Code's trusts it by then)."""
+    """`check` for wait_for, failing first if the agent shows a trust dialog (LADO settles
+    each CLI's before the agent starts)."""
 
     def answered():
         answer_dialogs(provider, SESSION, agent)

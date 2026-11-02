@@ -13,7 +13,8 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from lado import runtime, state, terminal
+from lado import logins, runtime, state, terminal
+from lado.providers import base
 from lado.server import app as server_app
 from lado.server import auth, terminals
 
@@ -24,6 +25,8 @@ URL = "/api/sessions/s/agents/supervisor/terminal"
 
 class FakeTerminal:
     """A terminal whose output the test gives (None ends it) and whose window it sizes."""
+
+    keep = False  # an agent's; a login window's keeps its session (terminal.open_login)
 
     def __init__(self, session: str, agent: str, mode: str):
         self.session, self.agent, self.mode = session, agent, mode
@@ -278,6 +281,123 @@ def test_a_terminal_that_ends_for_good_closes_with_the_reason_else_to_open_again
     assert all(t.closed for t in terms)
 
 
+# A provider's login window (lado.logins): the same protocol, always in control.
+LOGIN_URL = "/api/providers/claude/login/terminal"
+
+
+@pytest.fixture
+def login_terms(monkeypatch):
+    opened: list[FakeTerminal] = []
+    windows = {"claude": True}
+
+    def open_login(provider):
+        if not windows.get(provider):
+            raise terminal.NoTerminal(f"no login window of {provider} is open")
+        opened.append(FakeTerminal(f"lado-login-{provider}", provider, terminal.CONTROL))
+        opened[-1].keep = True
+        return opened[-1]
+
+    def login_ended(provider):
+        return None if windows.get(provider) else terminal.NoTerminal("the window ended")
+
+    monkeypatch.setattr(terminal, "open_login", open_login)
+    monkeypatch.setattr(terminal, "login_ended", login_ended)
+    # Each look at a window (lado.logins.look) as `looks` says, the asks kept: nothing
+    # found by default.
+    looks["found"] = logins.Look()
+    looks["asked"] = []
+
+    def look(provider, prompt=True):
+        looks["asked"].append((provider.name, prompt))
+        if not windows.get(provider.name):
+            return None
+        found = looks["found"]
+        if found is not None and found.ended:  # read, then the window ends
+            windows[provider.name] = False
+            looks["found"] = None
+            opened[-1].output.put(None)
+        return found
+
+    monkeypatch.setattr(logins, "look", look)
+    monkeypatch.setattr(terminals, "LOOK_EVERY", 0.01)
+    return opened, windows
+
+
+looks: dict = {}
+
+
+def test_a_login_window_sends_its_prompt_once_and_how_it_ended(client, login_terms):
+    opened, windows = login_terms
+    prompt = base.LoginPrompt(
+        "https://auth.example/device", "AB12-CD34", "expires in 15 minutes", ("Careful.",)
+    )
+    with logged_in(client).websocket_connect(LOGIN_URL, headers=headers()) as ws:
+        assert ws.receive_json()["type"] == "size"
+        looks["found"] = logins.Look(prompt)
+        assert ws.receive_json() == {
+            "type": "prompt",
+            "link": "https://auth.example/device",
+            "code": "AB12-CD34",
+            "expires": "expires in 15 minutes",
+            "lines": ["Careful."],
+        }
+        wait_until(lambda: ("claude", False) in looks["asked"])  # not read again
+        looks["found"] = logins.Look(ended=logins.Ended(1, "device auth timed out"))
+        assert ws.receive_json() == {"type": "ended", "status": 1, "said": "device auth timed out"}
+        assert closed(ws) == (4404, "the window ended")
+    assert looks["asked"][0] == ("claude", True)
+
+
+def test_a_prompt_read_at_the_end_comes_before_the_end(client, login_terms):
+    prompt = base.LoginPrompt("https://auth.example/device", "AB12-CD34")
+    looks["found"] = logins.Look(prompt, logins.Ended(None, ""))
+    with logged_in(client).websocket_connect(LOGIN_URL, headers=headers()) as ws:
+        frames = [ws.receive_json() for _ in range(3)]
+        assert [f["type"] for f in frames] == ["size", "prompt", "ended"]
+        assert frames[2] == {"type": "ended", "status": None, "said": ""}
+        assert closed(ws)[0] == 4404
+
+
+def wait_until(done, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not done():
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+
+
+def test_a_login_window_streams_in_control_and_ends_for_good_with_its_command(client, login_terms):
+    opened, windows = login_terms
+    with logged_in(client).websocket_connect(LOGIN_URL, headers=headers()) as ws:
+        assert ws.receive_json()["type"] == "size"
+        ws.send_text(json.dumps({"type": "input", "data": "code-123\r"}))
+        opened[0].wait(lambda: opened[0].written == [b"code-123\r"])
+        opened[0].output.put(b"Logged in\r\n")
+        assert ws.receive_bytes() == b"Logged in\r\n"
+        windows["claude"] = False  # its command ended: the window is gone
+        opened[0].output.put(None)
+        assert closed(ws) == (4404, "the window ended")
+    assert opened[0].closed
+
+
+def test_no_login_window_ends_it_for_good(client, login_terms):
+    with logged_in(client).websocket_connect(
+        "/api/providers/kilo/login/terminal", headers=headers()
+    ) as ws:
+        assert ws.receive_json()["type"] == "error"
+        assert closed(ws) == (4404, "no login window of kilo is open")
+
+
+def test_a_login_window_needs_the_token_and_the_servers_own_origin(client, login_terms):
+    with client.websocket_connect(LOGIN_URL, headers=headers()) as ws:  # no cookie
+        ws.receive_json()
+        assert closed(ws)[0] == 4401
+    with pytest.raises(WebSocketDisconnect) as refused:
+        with logged_in(client).websocket_connect(LOGIN_URL, headers=headers("http://evil.x")):
+            pass
+    assert refused.value.code == 1008
+    assert login_terms[0] == []
+
+
 def test_a_new_token_closes_the_open_terminals_and_the_old_one_is_refused(session, terms):
     """One event loop for the socket and the request (the client entered), as in uvicorn."""
     old = auth.token()
@@ -397,6 +517,7 @@ def test_the_agents_of_a_session(client, session):
         "run": None,
         "task": None,
         "status_reason": None,
+        "login_wait": None,
         "branch": None,
         "worktree": None,
     }

@@ -98,12 +98,27 @@ def test_the_summary_is_pytests_last_summary_line():
 
 # A cell's run, with npm, the CLI and uv stubbed on PATH.
 
+# npm records its argv; an uninstall removes the CLIs. Its installs are counted: the first
+# $NPM_FAILS_FIRST exit 1, and the first $CLI_BROKEN_FIRST leave a CLI that does not run, as
+# when npm dropped the optional package with its binary; $NPM_FAILS fails them all.
 NPM = """#!/bin/sh
 printf 'npm %s\\n' "$*" >>"$CELL_RAN"
+if [ "$1" = uninstall ]; then
+  rm -f "$HOME/.local/bin/"*
+  exit 0
+fi
+n=$(( $(cat "$CELL_RAN.installs" 2>/dev/null || echo 0) + 1 ))
+echo "$n" >"$CELL_RAN.installs"
 [ -n "$NPM_FAILS" ] && exit 1
+[ "$n" -le "${NPM_FAILS_FIRST:-0}" ] && exit 1
 mkdir -p "$HOME/.local/bin"
 for cli in claude codex opencode kilo; do
-  printf '#!/bin/sh\\necho %s 9.9.9\\n' "$cli" >"$HOME/.local/bin/$cli"
+  if [ "$n" -le "${CLI_BROKEN_FIRST:-0}" ]; then
+    printf '#!/bin/sh\\necho Error: Missing optional dependency >&2\\nexit 1\\n' \\
+      >"$HOME/.local/bin/$cli"
+  else
+    printf '#!/bin/sh\\necho %s 9.9.9\\n' "$cli" >"$HOME/.local/bin/$cli"
+  fi
   chmod +x "$HOME/.local/bin/$cli"
 done
 """
@@ -184,6 +199,57 @@ def test_a_cell_whose_install_fails_is_red_and_runs_no_test(tmp_path):
     done, _, ran = run_cell(tmp_path, "kilo", NPM_FAILS="1")
     assert done.returncode != 0
     assert "uv run" not in ran
+
+
+# The install in up to three attempts: npm drops an optional package (a CLI's native binary)
+# that failed to fetch and still exits 0.
+
+
+def npm_calls(ran: str) -> list[str]:
+    """What npm was asked to do, in order: `install` or `uninstall`."""
+    return [line.split()[1] for line in ran.splitlines() if line.startswith("npm ")]
+
+
+def warnings(done) -> list[str]:
+    return [line for line in done.stdout.splitlines() if line.startswith("::warning::")]
+
+
+@pytest.mark.parametrize("fails", [{"CLI_BROKEN_FIRST": "1"}, {"NPM_FAILS_FIRST": "1"}])
+def test_an_install_that_failed_once_is_redone_and_the_cell_passes(tmp_path, fails):
+    done, _, ran = run_cell(tmp_path, "codex", **fails)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert npm_calls(ran) == ["install", "uninstall", "install"]
+    package, _, _ = smoke_ci.PINS["codex"]
+    home = tmp_path / "home"
+    assert f"npm uninstall -g --prefix {home}/.local {package}\n" in ran
+    [warning] = warnings(done)
+    assert warning.startswith("::warning::codex: attempt 1 of 3: "), warning
+    assert warning.endswith("; reinstalling")
+    assert "uv run pytest -m smoke -n0 -v -k codex\n" in ran
+
+
+def test_a_cli_that_never_runs_is_red_after_three_installs(tmp_path):
+    done, _, ran = run_cell(tmp_path, "codex", CLI_BROKEN_FIRST="3")
+    assert done.returncode == 1
+    assert npm_calls(ran) == ["install", "uninstall", "install", "uninstall", "install"]
+    assert len(warnings(done)) == 2
+    assert "codex --version failed after the install" in done.stderr
+    assert "uv run" not in ran
+
+
+def test_an_install_that_always_fails_is_red_after_three_installs(tmp_path):
+    done, _, ran = run_cell(tmp_path, "kilo", NPM_FAILS="1")
+    assert done.returncode == 1
+    assert npm_calls(ran).count("install") == 3
+    package, version, _ = smoke_ci.PINS["kilo"]
+    assert f"{package}@{version} did not install" in done.stderr
+
+
+def test_an_install_that_works_at_once_is_done_once_without_a_warning(tmp_path):
+    done, _, ran = run_cell(tmp_path, "opencode")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert npm_calls(ran) == ["install"]
+    assert warnings(done) == []
 
 
 @pytest.mark.parametrize(

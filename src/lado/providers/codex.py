@@ -364,6 +364,8 @@ class CodexProvider(base.Provider):
             for key, digest in _hook_handlers(path) if trust[1] == "trusted" else ():
                 if _as_table(config["hooks"]["state"].get(key)).get("enabled") is not False:
                     config["hooks"]["state"][key] = {"trusted_hash": digest}
+        if spec.model:
+            _choose_model(config, spec.model)
         if dropped:
             warnings.append(
                 f"cannot write {', '.join(dropped)} of {user_path} into the config of Codex "
@@ -399,7 +401,7 @@ class CodexProvider(base.Provider):
             argv,
             {"CODEX_HOME": str(home)},
             warnings,
-            model=_carried(config, "model"),
+            model=self.session_choice(spec) or _carried(config, "model"),
             effort=_carried(config, "model_reasoning_effort"),
         )
 
@@ -554,6 +556,17 @@ def _setting(config: dict, key: str) -> tuple[object, str | None]:
     if profile.get(key):
         return profile[key], chosen
     return config.get(key), None
+
+
+def _choose_model(config: dict, model: str) -> None:
+    """Make `model` the one Codex runs with the agent's `config`: at the top level and in
+    the chosen profile, whose value wins over the top level's (_setting)."""
+    config["model"] = model
+    chosen = config.get("profile")
+    profiles = config.get("profiles")
+    if isinstance(chosen, str) and isinstance(profiles, dict):
+        if isinstance(profiles.get(chosen), dict):
+            profiles[chosen]["model"] = model
 
 
 def _carried(config: dict, key: str) -> state.Choice | None:

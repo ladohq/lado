@@ -97,7 +97,11 @@ class FakeProvider(base.Provider):
         }
         config_file = config_dir / "fake.json"
         config_file.write_text(json.dumps(config, indent=2))
-        return base.Launch([sys.executable, str(AGENT), str(config_file)])
+        # The fake agent names FAKE_AGENT_MODEL in its hooks, as a CLI names its model.
+        env = {"FAKE_AGENT_MODEL": spec.model} if spec.model else {}
+        return base.Launch(
+            [sys.executable, str(AGENT), str(config_file)], env, model=self.session_choice(spec)
+        )
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:
         if native not in EVENTS:

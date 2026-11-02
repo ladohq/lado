@@ -137,6 +137,10 @@ class AgentSpec:
     # Its role changes nothing in the repository (lado.kits): the CLI's edit tools are taken
     # away. Only for a CLI with Capabilities.deny_edit_tools.
     read_only: bool = False
+    # The model the agent runs on, an alias or a name of its CLI's (lado.runtime
+    # session_model); None for the CLI's default. A provider that applies it returns it in
+    # Launch.model with the source state.SESSION.
+    model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -380,6 +384,11 @@ class Provider(ABC):
         """The seconds the CLI gives LADO's hook of the native event `native` before it
         stops waiting for it; None when it waits with no limit. By default None."""
         return None
+
+    @staticmethod
+    def session_choice(spec: AgentSpec) -> state.Choice | None:
+        """Launch.model for a launch that applied `spec.model`."""
+        return state.Choice(spec.model, state.SESSION) if spec.model else None
 
     def same_model(self, chosen: str, reported: str) -> bool:
         """Whether the model the CLI names in an event, `reported`, is the one LADO chose,

@@ -244,7 +244,11 @@ class ClaudeProvider(base.Provider):
             cmd += ["--add-dir", str(folder)]
         if session.permission_mode:
             cmd += ["--permission-mode", session.permission_mode]
-        return base.Launch(cmd)
+        # --model wins over the user's settings and ANTHROPIC_MODEL (2.1.295's help: "Model
+        # for the current session"); a model's name is no secret on the command line.
+        if spec.model:
+            cmd += ["--model", spec.model]
+        return base.Launch(cmd, model=self.session_choice(spec))
 
     def same_model(self, chosen: str, reported: str) -> bool:
         """An alias is the same as a full name of its family (`opus`: `claude-opus-5-5`, with

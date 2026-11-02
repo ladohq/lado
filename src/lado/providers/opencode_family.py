@@ -137,7 +137,7 @@ class OpenCodeFamily(base.Provider):
         argv = self.argv(session.permission_mode)
         if notice:
             argv[1:1] = ["--prompt", notice]
-        return base.Launch(argv, self.env(config_file, text))
+        return base.Launch(argv, self.env(config_file, text), model=self.session_choice(spec))
 
     def config(
         self, agent: state.Agent, mode: str | None, spec: base.AgentSpec, role: Path
@@ -184,6 +184,10 @@ class OpenCodeFamily(base.Provider):
             # before that dialog when it is false (read in the binary).
             "snapshot": False,
         }
+        if spec.model:
+            # `provider/model`; the config text wins over the user's and the repository's
+            # config (as for the rest of it).
+            config["model"] = spec.model
         if mode == "plan":
             # The plan agent denies every tool it does not list, LADO's MCP tools too (Kilo
             # 7.8.1); its own rules come after the global ones (`opencode debug agent plan`,

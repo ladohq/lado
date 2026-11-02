@@ -5931,3 +5931,52 @@ def test_check_title_is_the_rule_of_set_title():
     assert runtime.check_title("s", "s") is None
     with pytest.raises(runtime.LadoError, match="^a title is at most 80 characters$"):
         runtime.check_title("x" * 81, "s")
+
+
+def _set_power(session: str, cli: str, model: str) -> None:
+    """Give a running session a power table, as a start with --model stores it."""
+    with state.connect() as db:
+        db.execute(
+            "UPDATE sessions SET power = ? WHERE name = ?",
+            (state.PowerTable.single(cli, model).to_json(), session),
+        )
+
+
+def test_a_worker_of_the_session_s_cli_starts_on_its_model(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    _set_power("s", "claude", "opus")
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", warnings=warnings)
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert argv[argv.index("--model") + 1] == "opus"
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source, agent.model_detail) == ("opus", "session", None)
+    assert not [w for w in warnings if "model" in w]
+
+
+def test_a_worker_of_another_cli_gets_the_note(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    _set_power("s", "codex", "gpt-5.6-sol")
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", provider="claude", warnings=warnings)
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert "--model" not in argv
+    line = (
+        "w1 runs on Claude Code's default model: the session's model gpt-5.6-sol is for Codex CLI"
+    )
+    assert line in warnings
+    assert f"s: w1: {line}" in (state.home() / "loop.log").read_text()
+    agent = state.get_agent("s", "w1")
+    note = "the session's model gpt-5.6-sol is for Codex CLI"
+    assert (agent.model, agent.model_source, agent.model_detail) == (None, "cli", note)
+
+
+def test_no_table_passes_no_model(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", warnings=warnings)
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert "--model" not in argv
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source, agent.model_detail) == (None, "cli", None)
+    assert runtime.session_model(state.get_session("s"), providers.get("claude")) == (None, None)

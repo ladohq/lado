@@ -28,12 +28,14 @@ def _agent(cwd, name="w1"):
     )
 
 
-def _launch(cwd, mode=None, spec=None, notice=None, environ=None):
+def _launch(cwd, mode=None, spec=None, notice=None, environ=None, model=None):
     """Launch a Codex agent in `cwd`; its Launch and the config.toml LADO wrote for it."""
     agent = _agent(cwd)
     if spec is None:
         environ = dict(os.environ) if environ is None else environ
-        spec = providers.AgentSpec(ROLE, mcp={"lado": base.mcp_server(agent)}, environ=environ)
+        spec = providers.AgentSpec(
+            ROLE, mcp={"lado": base.mcp_server(agent)}, environ=environ, model=model
+        )
     sess = state.Session("s", str(cwd), mode, "codex")
     launch = providers.get("codex").launch_command(agent, sess, spec, notice=notice)
     return launch, _config(launch)
@@ -500,6 +502,36 @@ def test_no_carried_model_leaves_none(repo, codex_home):
     _user_config(codex_home, '[profiles.work]\nmodel = "gpt-5.6-sol"\n')  # not the chosen one
     launch, _ = _launch(repo)
     assert (launch.model, launch.effort) == (None, None)
+
+
+def test_session_model_wins_over_the_carried_profile(repo, codex_home):
+    text = (
+        'profile = "work"\nmodel = "gpt-5.5"\n'
+        '[profiles.work]\nmodel = "gpt-5.5"\nmodel_reasoning_effort = "high"\n'
+    )
+    _user_config(codex_home, text)
+    before = (codex_home / "config.toml").read_bytes()
+    launch, config = _launch(repo, model="gpt-5.6-sol")
+    assert config["model"] == "gpt-5.6-sol"
+    assert config["profiles"]["work"] == {"model": "gpt-5.6-sol", "model_reasoning_effort": "high"}
+    assert launch.model == state.Choice("gpt-5.6-sol", state.SESSION)
+    assert launch.effort == state.Choice("high", state.CLI_CONFIG, "profile work")
+    assert (codex_home / "config.toml").read_bytes() == before
+
+
+def test_session_model_without_a_profile_goes_to_the_top_level(repo, codex_home):
+    _user_config(codex_home, '[profiles.other]\nmodel = "gpt-5.5"\n')  # not the chosen one
+    launch, config = _launch(repo, model="gpt-5.6-sol")
+    assert config["model"] == "gpt-5.6-sol"
+    assert config["profiles"] == {"other": {"model": "gpt-5.5"}}
+    assert launch.model == state.Choice("gpt-5.6-sol", state.SESSION)
+
+
+def test_no_session_model_keeps_the_carried_one(repo, codex_home):
+    _user_config(codex_home, 'model = "gpt-5.5"\n')
+    launch, config = _launch(repo)
+    assert config["model"] == "gpt-5.5"
+    assert launch.model == state.Choice("gpt-5.5", state.CLI_CONFIG)
 
 
 def test_codex_pairs_an_approval_with_its_tool_call():

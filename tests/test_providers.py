@@ -1209,6 +1209,32 @@ def test_no_prompt_or_input_on_the_command_line(repo, lado_home, provider):
         assert prompt.read_text() == spec.prompt
 
 
+def test_claude_gets_the_session_model_on_its_command_line(repo):
+    sess = state.Session("s", str(repo), None, provider="claude")
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "claude")
+    claude = providers.get("claude")
+    launch = claude.launch_command(agent, sess, providers.AgentSpec("the role", model="opus"))
+    assert launch.argv[launch.argv.index("--model") + 1] == "opus"
+    assert launch.model == state.Choice("opus", state.SESSION)
+    launch = claude.launch_command(agent, sess, providers.AgentSpec("the role"))
+    assert "--model" not in launch.argv
+    assert launch.model is None
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_opencode_family_gets_the_session_model_in_its_config(repo, provider):
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
+    cli = providers.get(provider)
+    model = "anthropic/claude-sonnet-5-5"
+    launch = cli.launch_command(agent, sess, providers.AgentSpec("the role", model=model))
+    assert json.loads(launch.env[FAMILY[provider]])["model"] == model
+    assert launch.model == state.Choice(model, state.SESSION)
+    launch = cli.launch_command(agent, sess, providers.AgentSpec("the role"))
+    assert "model" not in json.loads(launch.env[FAMILY[provider]])
+    assert launch.model is None
+
+
 NOTICE = "[from lado] your task (#7, 40 lines: call read_messages)"
 
 

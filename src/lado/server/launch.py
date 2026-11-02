@@ -6,6 +6,8 @@ provider's state is doctor.provider_status."""
 
 import os
 import shutil
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal
@@ -15,6 +17,7 @@ from lado import (
     doctor,
     kits,
     logins,
+    model_check,
     project_secrets,
     projects,
     providers,
@@ -258,6 +261,46 @@ def provider_infos(project: str | None = None) -> list[models.ProviderInfo]:
 
     with ThreadPoolExecutor(len(registry)) as pool:
         return list(pool.map(one, registry))
+
+
+# Seconds the server keeps a provider's list of models (Provider.model_list): typing in the
+# Model field checks each text against it, without running the CLI's command again.
+MODEL_LIST_KEPT = 60
+_model_lists: dict[tuple[str, str | None], tuple[float, providers.base.ModelList]] = {}
+_model_lists_lock = threading.Lock()
+
+
+def forget_model_lists() -> None:
+    with _model_lists_lock:
+        _model_lists.clear()
+
+
+def provider_models(
+    provider: providers.Provider, model: str, project: str | None = None
+) -> models.ProviderModels:
+    """The CLI's aliases and list of models, read in the environment of the agents of
+    `project` (or of none) as a start reads it and kept MODEL_LIST_KEPT seconds, and the
+    check of `model` against them (lado.model_check); NoSuchProject for an unknown
+    `project`, LadoError for an environment that cannot be read."""
+    if project is not None:
+        projects.get(project)
+    key, now = (provider.name, project), time.monotonic()
+    with _model_lists_lock:
+        kept = _model_lists.get(key)
+    if kept and now - kept[0] < MODEL_LIST_KEPT:
+        listed = kept[1]
+    else:
+        env = runtime.agents_env(runtime.agent_layers(project), provider)
+        listed = provider.model_list(env)
+        with _model_lists_lock:
+            _model_lists[key] = (now, listed)
+    verdict = model_check.verdict(provider, model, listed)
+    return models.ProviderModels(
+        aliases=list(listed.aliases),
+        models=None if listed.models is None else list(listed.models),
+        why=listed.why,
+        check=models.ModelCheck(kind=verdict.kind, text=verdict.text),
+    )
 
 
 def provider_info(

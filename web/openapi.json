@@ -1658,6 +1658,78 @@
         }
       }
     },
+    "/api/providers/{name}/models": {
+      "get": {
+        "summary": "Provider Models",
+        "description": "The provider's CLI's aliases and own list of models, kept a minute, and the\ncheck of `model` against them, as `lado start --model` checks it; read for the\nagents of `project` (404 for an unknown one) or of no project.",
+        "operationId": "provider_models_api_providers__name__models_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Model"
+            }
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderModels"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such provider or project"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/providers/logins": {
       "get": {
         "summary": "Provider Logins",
@@ -5803,6 +5875,17 @@
               }
             ],
             "title": "Title"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
           }
         },
         "type": "object",
@@ -6364,6 +6447,31 @@
         ],
         "title": "MessageText",
         "description": "The human's text from the composer, with the full names of the files uploaded for\nit (POST \u2026/artifacts); the text may be empty when there are some."
+      },
+      "ModelCheck": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "default",
+              "ok",
+              "warn",
+              "refused"
+            ],
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "ModelCheck",
+        "description": "lado.model_check's verdict on a model: its kind and its line for the human."
       },
       "ModelInfo": {
         "properties": {
@@ -7590,6 +7698,47 @@
         "title": "ProviderLogins",
         "description": "One agent CLI in Settings \u2192 Providers and environment (lado.logins)."
       },
+      "ProviderModels": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Aliases"
+          },
+          "models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Models"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why"
+          },
+          "check": {
+            "$ref": "#/components/schemas/ModelCheck"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aliases",
+          "models",
+          "why",
+          "check"
+        ],
+        "title": "ProviderModels",
+        "description": "What a provider's CLI takes as a model (Provider.model_list), and the check of the\none asked about: its aliases, its own list (None: it gives none, `why`)."
+      },
       "ProviderSuggestion": {
         "properties": {
           "name": {
@@ -8140,6 +8289,17 @@
               }
             ],
             "title": "Prompt"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
           }
         },
         "type": "object",
@@ -8723,6 +8883,17 @@
               }
             ],
             "title": "Project"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
           }
         },
         "type": "object",

@@ -64,6 +64,9 @@ class SessionInfo(BaseModel):
     # The id of the project it is in (lado.projects), None for none; it never changes, so
     # the feed carries it, and the project's title comes with SessionAbout.
     project: str | None
+    # The model chosen for its agents of its provider's CLI (state.PowerTable's default
+    # row), None for the CLI's default: the Resume window starts with it.
+    model: str | None = None
 
 
 class TitleChange(BaseModel):
@@ -456,6 +459,23 @@ class ProviderInfo(BaseModel):
     # project asked for (or of none): a new session or worker of it is refused
     # (lado.logins.refusal). False when the login cannot be read.
     login_missing: bool = False
+
+
+class ModelCheck(BaseModel):
+    """lado.model_check's verdict on a model: its kind and its line for the human."""
+
+    kind: Literal["default", "ok", "warn", "refused"]
+    text: str
+
+
+class ProviderModels(BaseModel):
+    """What a provider's CLI takes as a model (Provider.model_list), and the check of the
+    one asked about: its aliases, its own list (None: it gives none, `why`)."""
+
+    aliases: list[str]
+    models: list[str] | None
+    why: str
+    check: ModelCheck
 
 
 class LoginInfo(BaseModel):
@@ -1001,6 +1021,7 @@ class Launch(BaseModel):
     without: list[str] | None = None
     prompt: str | None = None  # the human's first message to the supervisor (check_prompt)
     title: str | None = None  # the session's title (runtime.check_title)
+    model: str | None = None  # the session's model, checked (lado.model_check); None, "": none
 
 
 class Resume(BaseModel):
@@ -1011,6 +1032,8 @@ class Resume(BaseModel):
     permission_mode: str | None = None
     without: list[str] | None = None
     prompt: str | None = None  # the human's first message to the supervisor (check_prompt)
+    # The session's model: None keeps its own (none after a change of provider), "" drops it.
+    model: str | None = None
 
 
 class Taken(BaseModel):
@@ -1773,6 +1796,7 @@ def session_info(sess: state.Session) -> SessionInfo:
         stopped_at=_utc(sess.stopped_at) if sess.stopped_at else None,
         title=sess.title,
         project=sess.project,
+        model=sess.power.row().model if sess.power else None,
     )
 
 

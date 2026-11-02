@@ -1468,6 +1468,22 @@ def cmd_stats(args: argparse.Namespace) -> int:
 _NO_VALUE = object()  # `--key` given without a value, as it must be
 
 
+def _dashed_key_joined(argv: list[str]) -> list[str]:
+    """`lado model-server probe … --key -abc` as `--key=-abc`: argparse takes no value that
+    looks like an option and would print it as an unrecognized argument; joined, it is a
+    value given, refused unechoed (cmd_model_server_probe). `probe` has no other option
+    but -h and --help, which stay as they are, as `--` does."""
+    if argv[:2] != ["model-server", "probe"]:
+        return argv
+    joined = list(argv)
+    for i, word in enumerate(joined[:-1]):
+        given = joined[i + 1]
+        if word == "--key" and given.startswith("-") and given not in ("-h", "--help", "--"):
+            joined[i : i + 2] = [f"--key={given}"]
+            break
+    return joined
+
+
 def cmd_model_server_probe(args: argparse.Namespace) -> int:
     """`lado model-server probe <address> [--key]`: what the server is (lado.model_servers);
     exit 1 for no server it knows, 2 for an address it does not probe. The key is asked
@@ -2091,7 +2107,7 @@ def main(argv: list[str] | None = None) -> int:
     login_wait_cmd = commands.add_parser("login-wait")
     login_wait_cmd.add_argument("args", nargs=argparse.REMAINDER)
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_dashed_key_joined(sys.argv[1:] if argv is None else argv))
     if args.command == "mcp":
         from lado import mcp_server
 

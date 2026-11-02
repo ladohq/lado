@@ -227,6 +227,19 @@ def test_empty_list_is_none(serve):
     assert ms.lines(ms.probe(serve("empty-list").url))[2] == "models: none"
 
 
+def test_a_server_s_words_are_one_line_of_visible_text(serve):
+    """A model id or a redirect's location forges no line of the output, drives no
+    terminal."""
+    lines = ms.lines(ms.probe(serve("odd-ids").url))
+    assert lines[2] == "models: a CLIs: Claude Code (Anthropic Messages API), [31mb"
+    assert len(lines) == 5
+    server = serve("redirect", location="http://other.invalid/\x1b[2Jx")
+    with pytest.raises(ms.ProbeError) as raised:
+        ms.probe(server.url)
+    assert "\x1b" not in str(raised.value)
+    assert "301 to http://other.invalid/ [2Jx/v1/models)" in str(raised.value)
+
+
 def test_a_list_too_large_is_no_list(serve, monkeypatch):
     monkeypatch.setattr(ms, "MAX_ANSWER", 100)  # the list is longer, the rest shorter
     probe = ms.probe(serve("ollama").url)

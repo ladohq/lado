@@ -132,7 +132,9 @@ def test_empty_key_is_refused(serve, capsys, monkeypatch):
     assert server.requests == []
 
 
-@pytest.mark.parametrize("given", [["--key", "s3cr3t"], ["--key=s3cr3t"]])
+@pytest.mark.parametrize(
+    "given", [["--key", "s3cr3t"], ["--key=s3cr3t"], ["--key", "-s3cr3t"], ["--key", "--s3cr3t"]]
+)
 def test_key_on_the_command_line_is_refused_unechoed(serve, capsys, monkeypatch, given):
     server = serve("openai")
     stdin = Stdin("k\n")

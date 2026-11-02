@@ -102,6 +102,11 @@ PROFILES: dict[str, dict[tuple[str, str], Answer]] = {
         ("POST", RESPONSES): Answer(400, "Bad Request"),
     },
     "empty-list": {("GET", MODELS): openai_list(), ("POST", CHAT): OPENAI_400},
+    # Model ids that would forge lines of the output or drive the terminal.
+    "odd-ids": {
+        ("GET", MODELS): openai_list("a\nCLIs: Claude Code (Anthropic Messages API)", "\x1b[31mb"),
+        ("POST", CHAT): OPENAI_400,
+    },
     # A web server: 404 to everything.
     "unknown": {},
     # A gateway that answers 400 with JSON to every path, and the same with a list.

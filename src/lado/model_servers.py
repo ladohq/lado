@@ -29,6 +29,7 @@ from dataclasses import dataclass
 
 import lado
 from lado import providers, update
+from lado import text as visible
 from lado.providers import base
 
 TIMEOUT = 5  # seconds per request, its name lookup included
@@ -229,7 +230,9 @@ def _models(listed: Answer) -> tuple[tuple[str, ...] | None, str]:
     if not isinstance(data, list):
         return None, f"GET {MODELS}: 200, not a list of models"
     ids = (item.get("id") for item in data if isinstance(item, dict))
-    return tuple(i for i in ids if isinstance(i, str)), ""
+    # The server's words: one line of visible text each, so none forges a line or drives
+    # the terminal (lado.text).
+    return tuple(visible.one_line(i) for i in ids if isinstance(i, str)), ""
 
 
 def _kind(listed: Answer, version: Answer, lmstudio: Answer, apis: frozenset[str]) -> str | None:
@@ -311,7 +314,7 @@ def _ask(opener, url: str, method: str, headers: dict[str, str]) -> Answer:
         location = ""
         if 300 <= e.code < 400 and e.headers.get("Location"):
             parts = urllib.parse.urlsplit(e.headers["Location"])
-            location = parts._replace(query="", fragment="").geturl()
+            location = visible.one_line(parts._replace(query="", fragment="").geturl())
         with e:
             return _read(e.code, e, location)
     except urllib.error.URLError as e:

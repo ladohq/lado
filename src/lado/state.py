@@ -6,6 +6,7 @@ call opens its own short-lived connection and SQLite does the locking.
 
 import datetime
 import json
+import operator
 import os
 import re
 import sqlite3
@@ -14,14 +15,14 @@ import uuid
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import closing, contextmanager, suppress
-from dataclasses import astuple, dataclass, field, replace
+from dataclasses import asdict, astuple, dataclass, field, replace
 from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
 # `lado update` of a later LADO reads this line from this release's wheel to learn the schema
 # it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
-SCHEMA_VERSION = 36
+SCHEMA_VERSION = 37
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -968,11 +969,22 @@ AGENTS_MODEL = [
 SCHEMA += "".join(f"{step};\n" for step in AGENTS_MODEL)
 MIGRATIONS[35] = AGENTS_MODEL
 
+# From version 37: the session's power table (PowerTable, JSON; NULL for none), the model
+# chosen for it. The sessions of an older LADO, like a new one without a model, have none.
+SESSIONS_POWER = "ALTER TABLE sessions ADD COLUMN power TEXT"
+SCHEMA += SESSIONS_POWER + ";\n"
+MIGRATIONS[36] = [SESSIONS_POWER]
+
 # Where an agent's model or effort came from. Each later way of choosing one adds a token;
 # a token this LADO does not know (a newer LADO's row) is shown as itself (source_words).
 CLI_DEFAULT = "cli"  # the CLI's own choice: its default or its own settings
 CLI_CONFIG = "cli-config"  # the user's config of the CLI, carried by LADO into the agent
-MODEL_SOURCES = {CLI_DEFAULT: "CLI default", CLI_CONFIG: "your {cli} config"}
+SESSION = "session"  # the session's model (PowerTable), chosen with lado start --model
+MODEL_SOURCES = {
+    CLI_DEFAULT: "CLI default",
+    CLI_CONFIG: "your {cli} config",
+    SESSION: "chosen for the session",
+}
 
 
 def source_words(source: str, detail: str | None, cli_title: str) -> str:
@@ -1021,9 +1033,43 @@ class Agent:
 class Choice:
     """A model or an effort chosen for an agent at its launch, with where it came from."""
 
-    name: str
+    name: str | None  # None: no name chosen, only a source and its detail
     source: str  # one of MODEL_SOURCES
     detail: str | None = None
+
+
+# A power table's levels; an agent takes DEFAULT_LEVEL's row.
+LEVELS = ("light", "normal", "heavy")
+DEFAULT_LEVEL = "normal"
+
+
+@dataclass(frozen=True)
+class PowerRow:
+    cli: str  # a provider's name
+    model: str
+
+
+@dataclass(frozen=True)
+class PowerTable:
+    """What a session's agents run on, by level: a CLI and a model for each of LEVELS.
+    Kept as one JSON document ({"normal": {"cli": ..., "model": ...}, ...})."""
+
+    rows: dict[str, PowerRow]
+
+    @classmethod
+    def single(cls, cli: str, model: str) -> "PowerTable":
+        """The table of one model: every level the same."""
+        return cls({level: PowerRow(cli, model) for level in LEVELS})
+
+    def row(self, level: str = DEFAULT_LEVEL) -> PowerRow:
+        return self.rows[level]
+
+    def to_json(self) -> str:
+        return json.dumps({level: asdict(row) for level, row in self.rows.items()})
+
+    @classmethod
+    def from_json(cls, text: str) -> "PowerTable":
+        return cls({level: PowerRow(**row) for level, row in json.loads(text).items()})
 
 
 @dataclass
@@ -1039,6 +1085,7 @@ class Session:
     title: str | None = None  # the human's label over the name; None for none
     resume_at_start: bool = False  # stopped by its container's stop, to resume at its start
     project: str | None = None  # the project's id (lado.projects); never changes
+    power: PowerTable | None = None  # the model chosen for it; None: its CLI's default
 
 
 @dataclass(frozen=True)
@@ -1442,8 +1489,8 @@ def add_session(session: Session) -> bool:
     with connect() as db:
         added = db.execute(
             "INSERT INTO sessions"
-            " (name, repo, permission_mode, provider, kits, switched_off, title, project)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (name) DO NOTHING",
+            " (name, repo, permission_mode, provider, kits, switched_off, title, project, power)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (name) DO NOTHING",
             (
                 session.name,
                 session.repo,
@@ -1453,6 +1500,7 @@ def add_session(session: Session) -> bool:
                 json.dumps(session.without),
                 session.title,
                 session.project,
+                _power_json(session.power),
             ),
         ).rowcount
     return added == 1
@@ -1639,13 +1687,14 @@ def fail_resume(old: Session, restored: str) -> None:
 
 def _set_settings(db: sqlite3.Connection, session: Session) -> None:
     db.execute(
-        "UPDATE sessions SET permission_mode = ?, provider = ?, kits = ?, switched_off = ?"
-        " WHERE name = ?",
+        "UPDATE sessions SET permission_mode = ?, provider = ?, kits = ?, switched_off = ?,"
+        " power = ? WHERE name = ?",
         (
             session.permission_mode,
             session.provider,
             json.dumps(session.kits),
             json.dumps(session.without),
+            _power_json(session.power),
             session.name,
         ),
     )
@@ -1732,12 +1781,21 @@ def set_model(session: str, name: str, model: Choice | None, effort: Choice | No
         )
 
 
-def report_model(session: str, name: str, model: str, effort: str | None) -> None:
+def report_model(
+    session: str,
+    name: str,
+    model: str,
+    effort: str | None,
+    same: Callable[[str, str], bool] = operator.eq,
+) -> None:
     """Record the model and effort the agent's CLI named in an event (base.Event): a model
     "" or an effort None it did not name, which stays as it was; an effort "" is the
     model's default one, no name. A name that differs from the agent's is the CLI's own:
-    its source becomes CLI_DEFAULT, with no detail. Writes nothing when nothing changes, so
-    a CLI that names its model in every hook adds no change to the journal."""
+    its source becomes CLI_DEFAULT, with no detail; but a first model name (the agent had
+    none), or one that `same(chosen, reported)` says is the chosen model's (the agent's
+    provider's Provider.same_model: Claude Code's full name of an alias), replaces the name
+    and keeps the source and the detail. Writes nothing when nothing changes, so a CLI that
+    names its model in every hook adds no change to the journal."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
@@ -1746,12 +1804,20 @@ def report_model(session: str, name: str, model: str, effort: str | None) -> Non
         reports = [("model", model)] if model else []
         if effort is not None:
             reports.append(("effort", effort or None))
-        changed = [(c, reported) for c, reported in reports if row and reported != row[c]]
-        if changed:
-            sets = ", ".join(f"{c} = ?, {c}_source = ?, {c}_detail = NULL" for c, _ in changed)
-            values = [v for _, reported in changed for v in (reported, CLI_DEFAULT)]
+        sets, values = [], []
+        for column, reported in reports:
+            if not row or reported == row[column]:
+                continue
+            kept = column == "model" and (row[column] is None or same(row[column], reported))
+            if kept:
+                sets.append(f"{column} = ?")
+                values.append(reported)
+            else:
+                sets.append(f"{column} = ?, {column}_source = ?, {column}_detail = NULL")
+                values += [reported, CLI_DEFAULT]
+        if sets:
             db.execute(
-                f"UPDATE agents SET {sets} WHERE session = ? AND name = ?",
+                f"UPDATE agents SET {', '.join(sets)} WHERE session = ? AND name = ?",
                 (*values, session, name),
             )
         db.execute("COMMIT")
@@ -3556,7 +3622,12 @@ def _session(row: sqlite3.Row) -> Session:
         row["title"],
         bool(row["resume_at_start"]),
         row["project"],
+        PowerTable.from_json(row["power"]) if row["power"] else None,
     )
+
+
+def _power_json(power: PowerTable | None) -> str | None:
+    return power.to_json() if power else None
 
 
 @dataclass(frozen=True)

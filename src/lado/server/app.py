@@ -102,6 +102,7 @@ from lado.server.models import (
     ProjectTitle,
     ProviderInfo,
     ProviderLogins,
+    ProviderModels,
     ProvidersPage,
     RecentFolder,
     RecordView,
@@ -879,6 +880,28 @@ def create_app(
         except ValueError as error:
             raise HTTPException(404, str(error)) from None
 
+    @app.get(
+        "/api/providers/{name}/models",
+        dependencies=[Depends(guard)],
+        responses={
+            400: {"description": "refused, with the reason"},
+            404: {"description": "no such provider or project"},
+        },
+    )
+    def provider_models(name: str, model: str = "", project: str | None = None) -> ProviderModels:
+        """The provider's CLI's aliases and own list of models, kept a minute, and the
+        check of `model` against them, as `lado start --model` checks it; read for the
+        agents of `project` (404 for an unknown one) or of no project."""
+        provider = provider_named(name)
+        try:
+            if project is not None and not database():  # asking makes no lado.db
+                raise projects.NoSuchProject(f'unknown project "{project}"')
+            return launch.provider_models(provider, model, project)
+        except projects.NoSuchProject as unknown:
+            raise HTTPException(404, str(unknown)) from unknown
+        except runtime.LadoError as refused:
+            raise HTTPException(400, str(refused)) from refused
+
     @app.get("/api/providers/logins", dependencies=[Depends(guard)])
     def provider_logins() -> ProvidersPage:
         """Each provider's CLI and login as the server's last check read them, at once;
@@ -1326,6 +1349,7 @@ def create_app(
                 title=given.title,
                 project=where.project,
                 repo_name=where.repo,
+                model=given.model or None,
             )
         except runtime.SessionExists as taken:
             detail = Taken(message=str(taken), status=taken.status, repo=taken.repo)
@@ -1359,6 +1383,7 @@ def create_app(
                 given.without,
                 resume=True,
                 prompt=given.prompt,
+                model=given.model,
             )
         except runtime.NoSuchSession as gone:
             raise HTTPException(404, str(gone)) from gone

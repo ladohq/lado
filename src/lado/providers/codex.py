@@ -216,6 +216,31 @@ class CodexProvider(base.Provider):
         provider = _as_table(_as_table(config.get("model_providers")).get(name))
         return name == "openai" or bool(provider.get("requires_openai_auth"))
 
+    def model_list(self, env: Mapping[str, str]) -> base.ModelList:
+        # The catalogue shipped in the binary (`--bundled`: no network; without it Codex
+        # fetches the account's over the network, 0.162.0) and the account's, as Codex
+        # cached it in the user's home; read only. Another model provider has neither.
+        command = "codex debug models"
+        config, _ = _user_config(env, [])
+        provider = _model_provider(config)
+        if provider != "openai":
+            why = f"{self.title} gives no list of models for the model provider `{provider}`"
+            return base.ModelList(command=command, why=why)
+        argv = [self.command, "debug", "models", "--bundled"]
+        try:
+            models = _slugs(base.run_list(argv, env))
+        except ValueError as error:
+            return base.ModelList(command=command, why=str(error))
+        if models is None:
+            why = f"`{' '.join(argv)}` printed no list LADO can read"
+            return base.ModelList(command=command, why=why)
+        try:
+            cached = _slugs((_codex_home(env) / "models_cache.json").read_text())
+        except (OSError, ValueError):
+            cached = None
+        models += [m for m in cached or () if m not in models]
+        return base.ModelList(models=tuple(models), command=command)
+
     def login_actions(self) -> tuple[base.LoginAction, ...]:
         # Into the file the agents share, whatever store the user's own Codex keeps. The
         # device code needs no browser on this machine: `--device-auth` prints a link and a
@@ -364,6 +389,8 @@ class CodexProvider(base.Provider):
             for key, digest in _hook_handlers(path) if trust[1] == "trusted" else ():
                 if _as_table(config["hooks"]["state"].get(key)).get("enabled") is not False:
                     config["hooks"]["state"][key] = {"trusted_hash": digest}
+        if spec.model:
+            _choose_model(config, spec.model)
         if dropped:
             warnings.append(
                 f"cannot write {', '.join(dropped)} of {user_path} into the config of Codex "
@@ -399,7 +426,7 @@ class CodexProvider(base.Provider):
             argv,
             {"CODEX_HOME": str(home)},
             warnings,
-            model=_carried(config, "model"),
+            model=self.session_choice(spec) or _carried(config, "model"),
             effort=_carried(config, "model_reasoning_effort"),
         )
 
@@ -538,6 +565,19 @@ def _user_config(environ, warnings: list[str]) -> tuple[dict, Path]:
         return {}, path
 
 
+def _slugs(text: str) -> list[str] | None:
+    """The models' slugs of a Codex catalogue (`{"models": [{"slug": ...}, ...]}`); None for
+    text that is not one."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("models"), list):
+        return None
+    models = [m.get("slug") for m in data["models"] if isinstance(m, dict)]
+    return [m for m in models if isinstance(m, str) and m]
+
+
 def _model_provider(config: dict) -> str:
     """The model provider Codex runs with `config`: the chosen profile's, else the top
     level's, else OpenAI's."""
@@ -554,6 +594,17 @@ def _setting(config: dict, key: str) -> tuple[object, str | None]:
     if profile.get(key):
         return profile[key], chosen
     return config.get(key), None
+
+
+def _choose_model(config: dict, model: str) -> None:
+    """Make `model` the one Codex runs with the agent's `config`: at the top level and in
+    the chosen profile, whose value wins over the top level's (_setting)."""
+    config["model"] = model
+    chosen = config.get("profile")
+    profiles = config.get("profiles")
+    if isinstance(chosen, str) and isinstance(profiles, dict):
+        if isinstance(profiles.get(chosen), dict):
+            profiles[chosen]["model"] = model
 
 
 def _carried(config: dict, key: str) -> state.Choice | None:

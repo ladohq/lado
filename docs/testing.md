@@ -167,7 +167,9 @@ offers the model (`Endpoint.tools`, and `tools` in the log's line; a namespace's
 `<namespace>.<name>`), so a Codex test checks that an agent on a model whose metadata
 brings Codex's own subagents (gpt-6-sol) gets none of them, after a control: a plain
 `codex exec` on the same home gets `collaboration.wait_agent`, or the test fails saying the
-model no longer brings them.
+model no longer brings them. It keeps the model each request asks for too (`Endpoint.models`):
+per provider, a session started with a model (`lado start --model`; OpenCode and Kilo
+without the test's `--model`, as the CLI itself) asks the endpoint for that model.
 
 Container tests (`tests/container/`, marker `container`) run LADO's image (`docker/`) with
 real Docker and no model, driving the `docker` CLI from the host against an image built

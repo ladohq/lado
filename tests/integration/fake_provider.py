@@ -97,7 +97,11 @@ class FakeProvider(base.Provider):
         }
         config_file = config_dir / "fake.json"
         config_file.write_text(json.dumps(config, indent=2))
-        return base.Launch([sys.executable, str(AGENT), str(config_file)])
+        # The fake agent names FAKE_AGENT_MODEL in its hooks, as a CLI names its model.
+        env = {"FAKE_AGENT_MODEL": spec.model} if spec.model else {}
+        return base.Launch(
+            [sys.executable, str(AGENT), str(config_file)], env, model=self.session_choice(spec)
+        )
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:
         if native not in EVENTS:
@@ -129,6 +133,15 @@ class FakeProvider(base.Provider):
 
     def continue_output(self, text: str) -> str | None:
         return text
+
+    def model_list(self, env) -> base.ModelList:
+        # Its list is FAKE_AGENT_MODELS of the agents' environment (comma-separated); none
+        # without it.
+        listed = env.get("FAKE_AGENT_MODELS")
+        if listed is None:
+            return base.ModelList(why="the fake agent gives no list of models")
+        models = tuple(m.strip() for m in listed.split(",") if m.strip())
+        return base.ModelList(models=models, command="FAKE_AGENT_MODELS")
 
 
 ASKS_FIRST = 'Fake agent asks a question first: type "yes" in its terminal'

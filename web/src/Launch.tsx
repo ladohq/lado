@@ -12,6 +12,7 @@ import {
   getKits,
   getLimits,
   getProjectLaunch,
+  getProviderModels,
   getProviders,
   getRecentFolders,
   getWorkspace,
@@ -29,6 +30,7 @@ import {
   type ProjectLaunch,
   type ProjectPlace,
   type ProviderInfo,
+  type ProviderModels,
   type ProviderSuggestion,
   type RecentFolder,
   type RemoteInfo,
@@ -47,6 +49,8 @@ import { projectPath, PROVIDERS_PATH, sessionPath } from "./paths";
 
 // How long the window waits after a keystroke before it asks the server about the folder.
 export const DEBOUNCE = 200;
+// The same before it asks for the check of a typed model, which may run the CLI's list.
+export const MODEL_DEBOUNCE = 300;
 // The same before it asks a remote for its branches, which goes to the network.
 export const BRANCHES_DEBOUNCE = 500;
 // Up to this many branches the Branch field is a list; more, a field that filters them.
@@ -206,6 +210,9 @@ function LaunchDialog({
   const [suggested, setSuggested] = useState<ProviderSuggestion["reason"] | null>(null);
   const [permissionMode, setPermissionMode] = useState(resuming?.permission_mode ?? DEFAULT_MODE);
   const [without, setWithout] = useState(resuming?.without.join(", ") ?? "");
+  // The session's model for its provider's CLI; "" for the CLI's default.
+  const [model, setModel] = useState(resuming?.model ?? "");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [prompt, setPrompt] = useState(""); // the human's first message to the supervisor
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [fromLast, setFromLast] = useState(false);
@@ -352,6 +359,34 @@ function LaunchDialog({
   const providerInfo = held ? null : inList;
   const noLogin = inList?.login_missing ? inList : null;
   const canStart = providerInfo?.installed === true && !providerInfo.login_missing;
+
+  // A model is its CLI's: another provider empties the field (not the first one chosen).
+  const modelFor = useRef(chosenProvider);
+  useEffect(() => {
+    if (modelFor.current === chosenProvider) return;
+    if (modelFor.current !== null) setModel("");
+    modelFor.current = chosenProvider;
+  }, [chosenProvider]);
+  const typedModel = model.trim();
+  const settledModel = useDebounced(typedModel, MODEL_DEBOUNCE);
+  const modelsAsked = useAsked(
+    chosenProvider !== null && loginsOf !== null ? JSON.stringify([chosenProvider, settledModel, loginsOf]) : null,
+    (key) => {
+      const [name, asked, project] = JSON.parse(key) as [string, string, string];
+      return getProviderModels(name, asked, project || null);
+    },
+  );
+  const modelAnswer = settledModel === typedModel ? modelsAsked : null;
+  // Start waits for the check of a model typed, and is off for one the CLI's list lacks.
+  const modelReady =
+    typedModel === "" ||
+    (modelAnswer !== null && !("value" in modelAnswer && modelAnswer.value.check.kind === "refused"));
+  // The suggestions stay while the next text is checked.
+  const [modelList, setModelList] = useState<ProviderModels | null>(null);
+  useEffect(() => {
+    if (modelAnswer !== null && "value" in modelAnswer) setModelList(modelAnswer.value);
+  }, [modelAnswer]);
+  const suggestions = modelList ? [...modelList.aliases, ...(modelList.models ?? [])] : [];
   const modes = providerInfo?.permission_modes ?? [];
 
   // M5: kits, provider and mode of a new session come from the folder's last session; in
@@ -416,6 +451,7 @@ function LaunchDialog({
   const ready =
     (resuming !== null || (current?.ok ?? false)) &&
     canStart &&
+    modelReady &&
     kits.length > 0 &&
     !promptOver;
   const cloneReady =
@@ -424,6 +460,7 @@ function LaunchDialog({
     target !== null &&
     CAN_CLONE.has(target.state) &&
     canStart &&
+    modelReady &&
     kits.length > 0 &&
     shownName !== "";
   const scratchReady =
@@ -435,9 +472,10 @@ function LaunchDialog({
     fresh.author === null &&
     fresh.name_state === "free" &&
     canStart &&
+    modelReady &&
     kits.length > 0;
   const projectReady =
-    !promptOver && projectRepo !== null && canStart && kits.length > 0 && shownName !== "";
+    !promptOver && projectRepo !== null && canStart && modelReady && kits.length > 0 && shownName !== "";
 
   // A new session in `where`, as the window's fields say; from scratch, its folder is made
   // a repository first, and the session takes the name and title of the name typed.
@@ -452,6 +490,7 @@ function LaunchDialog({
       ...(chosenProvider !== null ? { provider: chosenProvider } : {}),
       ...(permissionMode !== DEFAULT_MODE ? { permission_mode: permissionMode } : {}),
       ...(off.length ? { without: off } : {}),
+      ...(typedModel ? { model: typedModel } : {}),
       ...withPrompt,
     });
   };
@@ -579,6 +618,7 @@ function LaunchDialog({
         if (chosenProvider !== null && chosenProvider !== resuming.provider) changed.provider = chosenProvider;
         if (permissionMode !== (resuming.permission_mode ?? DEFAULT_MODE)) changed.permission_mode = permissionMode;
         if (!sameList(off, resuming.without)) changed.without = off;
+        if (typedModel !== (resuming.model ?? "")) changed.model = typedModel; // "": none
         started = await resumeSession(resuming.name, { ...changed, ...withPrompt });
       } else {
         started = await startIn(
@@ -879,8 +919,36 @@ function LaunchDialog({
 
         <FirstMessage text={prompt} onText={setPrompt} limit={maxMessage} disabled={busy} />
 
-        <details className="launch-advanced" ref={advanced}>
-          <summary>Advanced: switch off agents, skills, MCP servers or flows</summary>
+        <details
+          className={`launch-advanced${typedModel && !advancedOpen ? " launch-first" : ""}`}
+          ref={advanced}
+          onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+        >
+          <summary>
+            {typedModel && !advancedOpen ? (
+              <>
+                Advanced: model <span className="launch-first-peek">{typedModel}</span>
+              </>
+            ) : (
+              "Advanced: model, switch off agents, skills, MCP servers or flows"
+            )}
+          </summary>
+          <label className="field">
+            Model
+            <input
+              value={model}
+              disabled={busy || chosenProvider === null}
+              placeholder={providerInfo ? `${providerInfo.title}'s default` : "the CLI's default"}
+              list={`${ids}-models`}
+              onChange={(event) => setModel(event.target.value)}
+            />
+          </label>
+          <datalist id={`${ids}-models`}>
+            {suggestions.map((one) => (
+              <option key={one} value={one} />
+            ))}
+          </datalist>
+          <ModelNote typed={typedModel} answer={modelAnswer} />
           <label className="field">
             Switch off
             <input
@@ -1003,6 +1071,17 @@ function LaunchDialog({
       </form>
     </dialog>
   );
+}
+
+// The check of the typed model under the Model field (lado.model_check's words).
+function ModelNote({ typed, answer }: { typed: string; answer: Asked<ProviderModels> }) {
+  if (answer === null) return typed ? <span className="field-note">checking the model…</span> : null;
+  if (!("value" in answer)) return <span className="field-note warn">⚠ {answer.error}</span>;
+  const { kind, text } = answer.value.check;
+  if (kind === "ok") return <span className="field-note ok">✓ {text}</span>;
+  if (kind === "warn") return <span className="field-note warn">⚠ {text}</span>;
+  if (kind === "refused") return <span className="field-note bad">{text}</span>;
+  return <span className="field-note">{text}</span>;
 }
 
 // The human's first message to the supervisor: a row folded each time the window opens,

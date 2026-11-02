@@ -5931,3 +5931,143 @@ def test_check_title_is_the_rule_of_set_title():
     assert runtime.check_title("s", "s") is None
     with pytest.raises(runtime.LadoError, match="^a title is at most 80 characters$"):
         runtime.check_title("x" * 81, "s")
+
+
+def _set_power(session: str, cli: str, model: str) -> None:
+    """Give a running session a power table, as a start with --model stores it."""
+    with state.connect() as db:
+        db.execute(
+            "UPDATE sessions SET power = ? WHERE name = ?",
+            (state.PowerTable.single(cli, model).to_json(), session),
+        )
+
+
+def test_a_worker_of_the_session_s_cli_starts_on_its_model(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    _set_power("s", "claude", "opus")
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", warnings=warnings)
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert argv[argv.index("--model") + 1] == "opus"
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source, agent.model_detail) == ("opus", "session", None)
+    assert not [w for w in warnings if "model" in w]
+
+
+def test_a_worker_of_another_cli_gets_the_note(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    _set_power("s", "codex", "gpt-5.6-sol")
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", provider="claude", warnings=warnings)
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert "--model" not in argv
+    line = (
+        "w1 runs on Claude Code's default model: the session's model gpt-5.6-sol is for Codex CLI"
+    )
+    assert line in warnings
+    assert f"s: w1: {line}" in (state.home() / "loop.log").read_text()
+    agent = state.get_agent("s", "w1")
+    note = "the session's model gpt-5.6-sol is for Codex CLI"
+    assert (agent.model, agent.model_source, agent.model_detail) == (None, "cli", note)
+
+
+def test_no_table_passes_no_model(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", warnings=warnings)
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert "--model" not in argv
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source, agent.model_detail) == (None, "cli", None)
+    assert runtime.session_model(state.get_session("s"), providers.get("claude")) == (None, None)
+
+
+def _models(monkeypatch, name, *models):
+    """`name`'s CLI lists `models` (none: it gives no list)."""
+    listed = (
+        providers.base.ModelList(models=models, command=f"{name} models")
+        if models
+        else providers.base.ModelList(why=f"{name} gives no list")
+    )
+    monkeypatch.setattr(type(providers.get(name)), "model_list", lambda self, env: listed)
+
+
+def test_the_supervisor_starts_on_the_session_model(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
+    started = runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/b")
+    assert not [w for w in started.warnings if "kilo/b" in w]
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "kilo/b")
+    env, _ = agent_helpers.launched(fake_tmux[0])
+    assert json.loads(env["KILO_CONFIG_CONTENT"])["model"] == "kilo/b"
+    agent = state.get_agent("s", "supervisor")
+    assert (agent.model, agent.model_source) == ("kilo/b", "session")
+
+
+def test_a_refused_model_stores_nothing(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/z")
+    assert (
+        str(error.value)
+        == "kilo/z is not in Kilo CLI's list of models; kilo models prints the list"
+    )
+    assert state.get_session("s") is None
+    assert fake_tmux == []
+
+
+def test_a_warned_model_starts_with_the_warning(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo")
+    started = runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/z")
+    line = (
+        "kilo gives no list: LADO cannot check kilo/z; a wrong name stops its agents at their "
+        "first turn"
+    )
+    assert line in started.warnings
+    assert f"s: supervisor: {line}" in (state.home() / "loop.log").read_text()
+    assert state.get_session("s").power.row().model == "kilo/z"
+
+
+def test_a_claude_alias_starts_with_no_warning_and_no_list(repo, fake_tmux):
+    started = runtime.start_session(str(repo), "s", None, provider="claude", model="sonnet")
+    assert not [w for w in started.warnings if "sonnet" in w]
+    _, argv = agent_helpers.launched(fake_tmux[0])
+    assert argv[argv.index("--model") + 1] == "sonnet"
+
+
+def test_a_resume_keeps_the_model(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    _models(monkeypatch, "kilo", "kilo/b")  # no check of a model kept: it was checked
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.changes == []
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert json.loads(env["KILO_CONFIG_CONTENT"])["model"] == "kilo/a"
+
+
+def test_an_empty_model_drops_it(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None, model="kilo/b")
+    assert started.changes == ["model: kilo kilo/a -> kilo kilo/b"]
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None, model="")
+    assert started.changes == ["model: kilo kilo/b -> CLI default"]
+    assert state.get_session("s").power is None
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert "model" not in json.loads(env["KILO_CONFIG_CONTENT"])
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None, model="kilo/a")
+    assert started.changes == ["model: CLI default -> kilo kilo/a"]
+
+
+def test_another_provider_drops_the_model(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.changes == ["provider: kilo -> claude", "model: kilo kilo/a -> CLI default"]
+    assert state.get_session("s").power is None
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert "--model" not in argv

@@ -826,8 +826,18 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     Nothing else touches the artifact tables or that folder.
   - `hooks.py`: neutral hook logic: agent status, handing over queued messages and, at a
     turn's end, the forgotten-reply check; first of all the model an event names
-    (`state.report_model`; docs/design/agents.md).
-  - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory),
+    (`state.report_model`, with the provider's `same_model`; docs/design/agents.md).
+  - `model_check.py`: the one check of a model chosen for a session (`lado start
+    --model`, the launch window): `check(provider, model, env)` reads the CLI's
+    `Provider.model_list` (its aliases, and its own list from its list command, run with
+    the agents' environment within `base.MODEL_LIST_TIMEOUT`, or its local cache; never a
+    model API) and gives a `Verdict`: `default` (no model), `ok`, `warn` (no list, with
+    why) or `refused`, with the words the CLI, the API and the UI show. `verdict` gives it
+    for a list read before (the server keeps each for a minute, `server/launch.py`).
+  - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory);
+    a session's model as a `PowerTable` (rows of `LEVELS`, each a `PowerRow` of a CLI and a
+    model; one JSON document in `sessions.power`, the format the user's and the project's
+    tables will reuse),
     in WAL mode with `synchronous = NORMAL`: a commit holds the write lock without waiting
     for an fsync, so a busy disk does not keep the other writers past their busy timeout.
     Schema changes: bump `SCHEMA_VERSION`, add a step to `MIGRATIONS` and update

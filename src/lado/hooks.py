@@ -158,7 +158,7 @@ def handle(
     if first and event.kind != providers.SESSION_START:
         runtime.heard_at_start(session, agent)  # its CLI did not hold it after all
     if event.model or event.effort is not None:
-        state.report_model(session, agent, event.model, event.effort)
+        state.report_model(session, agent, event.model, event.effort, provider.same_model)
     if event.kind == providers.SESSION_START:
         current = state.get_agent(session, agent)
         # Claude Code starts the first turn when its session-start hooks are done, whether

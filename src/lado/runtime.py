@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -32,6 +32,7 @@ from lado import (
     login_wait,
     logins,
     loop,
+    model_check,
     project_secrets,
     providers,
     state,
@@ -660,13 +661,17 @@ def start_session(
     project: str | None = None,
     repo_name: str | None = None,
     wait_for_login: bool = False,
+    model: str | None = None,
 ) -> Started:
     """Start a session whose agents come from `kit_names` (default: the "default" kit), minus
     the `without` items ("agent:x", "skill:y", "mcp:z"). A new session's supervisor may get
     `first` as its first input. `prompt` is the human's first message, for a new session and
     a resume alike (check_prompt): queued from `human` after LADO's own messages. `reason`
     begins a resume's event detail (why it was resumed: resume_at_start). `title` is a new
-    session's (check_title); a resume keeps its own, which `lado title` changes.
+    session's (check_title); a resume keeps its own, which `lado title` changes. `model` is
+    the session's model for its provider's CLI, checked against the CLI (lado.model_check):
+    None keeps a resumed session's (unless the provider changes: a model is its CLI's) and
+    gives a new one none, "" drops it.
 
     A stopped session of that name, or one whose tmux server is gone, is resumed: it keeps
     its history, open runs and gates, and the settings given replace its stored ones. The
@@ -746,6 +751,7 @@ def start_session(
         without if without is not None else (old.without if old else []),
         title=old.title if old else stored_title,
         project=old.project if old else project,
+        power=_power(old, agent_cli, model),
     )
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.kits, sess.without)
@@ -753,6 +759,13 @@ def start_session(
         layers = agent_layers(sess.project)
     base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
+    checked = []
+    if model:
+        verdict = model_check.check(agent_cli, model, base_env)
+        if verdict.kind == model_check.REFUSED:
+            raise LadoError(verdict.text)
+        if verdict.kind == model_check.WARN:
+            checked.append(verdict.text)
     if not old:
         check_login(agent_cli, base_env, logins.SESSION)
     elif not (wait_for_login or reason == AT_START):
@@ -763,9 +776,10 @@ def start_session(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
     instructions = _supervisor_instructions(env, session)
-    spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env)
+    chosen_model, _ = session_model(sess, agent_cli)
+    spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env, model=chosen_model)
     agent.read_only = spec.read_only  # stored anew at each resume, as the kit says now
-    started = Started(sess, chosen, lead=env.lead_line(), warnings=list(env.warnings))
+    started = Started(sess, chosen, lead=env.lead_line(), warnings=[*env.warnings, *checked])
     if outside := outside_workspace(repo):
         started.warnings.append(outside)
     if old and not old.stopped_at:
@@ -848,11 +862,27 @@ def start_session(
         _undo(session, f"the start of {session}", error, steps)
         raise
     started.warnings += placed
-    for line in blocker + placed:
+    for line in checked + blocker + placed:
         loop.log(session, f"{SUPERVISOR}: {line}")
     # It ends by itself when the tmux session is gone, so not before that exists.
     loop.start(session)
     return started
+
+
+def _power(
+    old: state.Session | None, agent_cli: providers.Provider, model: str | None
+) -> state.PowerTable | None:
+    """The session's power table (start_session's `model`): a model given is the table of
+    one model for the session's CLI, "" none; else a resume keeps a table of its CLI."""
+    if model is not None:
+        return state.PowerTable.single(agent_cli.name, model) if model else None
+    if old and old.power and old.power.row().cli == agent_cli.name:
+        return old.power
+    return None
+
+
+def _model_words(power: state.PowerTable | None) -> str:
+    return f"{power.row().cli} {power.row().model}" if power else "CLI default"
 
 
 def _changes(old: state.Session, new: state.Session) -> list[str]:
@@ -866,6 +896,8 @@ def _changes(old: state.Session, new: state.Session) -> list[str]:
     ):
         if before != after:
             changes.append(f"{what}: {before or 'none'} -> {after or 'none'}")
+    if old.power != new.power:
+        changes.append(f"model: {_model_words(old.power)} -> {_model_words(new.power)}")
     return changes
 
 
@@ -929,7 +961,10 @@ def spawn_worker(
     base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
     check_login(agent_cli, base_env, logins.WORKER)
-    spec = _spec(agent_cli, env, role_def.name, agent, instructions, base_env, without or [])
+    chosen_model, _ = session_model(sess, agent_cli)
+    spec = _spec(
+        agent_cli, env, role_def.name, agent, instructions, base_env, without or [], chosen_model
+    )
     agent.read_only = spec.read_only
     if not run:
         exclude_worktrees(sess.repo)
@@ -977,6 +1012,21 @@ def spawn_worker(
     return agent
 
 
+def session_model(
+    sess: state.Session, agent_cli: providers.Provider
+) -> tuple[str | None, str | None]:
+    """The model of the session's power table for an agent of `agent_cli`, and the note for
+    one of another CLI: the default row's model when its CLI is the agent's; else None
+    and, when the session has a table, `the session's model <model> is for <CLI>`."""
+    if sess.power is None:
+        return None, None
+    row = sess.power.row()
+    if row.cli == agent_cli.name:
+        return row.model, None
+    title = providers.get(row.cli).title if row.cli in providers.names() else row.cli
+    return None, f"the session's model {row.model} is for {title}"
+
+
 def _launch_command(
     agent_cli: providers.Provider,
     agent: state.Agent,
@@ -990,7 +1040,9 @@ def _launch_command(
     its prompt-submit hook as typed text; the agent stays starting. A CLI that starts its
     session only at its first input (Capabilities.session_start_on_first_input) and has
     nothing in its queue gets FIRST_INPUT from LADO, a message like any other. The model
-    and effort the launch set up become the agent's (state.set_model)."""
+    and effort the launch set up become the agent's (state.set_model); an agent of another
+    CLI than the session's model's runs its CLI's default, with a warning and the note as
+    its model's detail (session_model)."""
     if agent_cli.capabilities.notice_on_argv:
         taken = state.take_pending(agent.session, agent.name, state.SENT, channel=state.TYPED)
         if not taken and agent_cli.capabilities.session_start_on_first_input:
@@ -1000,7 +1052,19 @@ def _launch_command(
         launch = agent_cli.launch_command(agent, sess, spec, notice=notice)
     else:
         launch = agent_cli.launch_command(agent, sess, spec)
-    state.set_model(agent.session, agent.name, launch.model, launch.effort)
+    model = launch.model
+    _, note = session_model(sess, agent_cli)
+    if note:
+        launch = replace(
+            launch,
+            warnings=[
+                *launch.warnings,
+                f"{agent.name} runs on {agent_cli.title}'s default model: {note}",
+            ],
+        )
+        if model is None:
+            model = state.Choice(None, state.CLI_DEFAULT, note)
+    state.set_model(agent.session, agent.name, model, launch.effort)
     return launch
 
 
@@ -2805,10 +2869,12 @@ def _spec(
     instructions: str,
     base_env: dict[str, str],
     without: list[str] | None = None,
+    model: str | None = None,
 ) -> providers.AgentSpec:
     """What `agent` is given: its role from the kits plus LADO's instructions, its skills
     and MCP servers, each ${ENV_VAR} of theirs checked in the agent's `base_env` (the value
-    stays there: lado.mcp_exec). Fails on anything its CLI cannot do."""
+    stays there: lado.mcp_exec), and the session's `model` for it (session_model). Fails
+    on anything its CLI cannot do."""
     resolved = env.resolve(role, without or [])
     read_only = resolved.agent.read_only
     if read_only and not agent_cli.capabilities.deny_edit_tools:
@@ -2857,6 +2923,7 @@ def _spec(
         read=read,
         environ=base_env,
         read_only=read_only,
+        model=model,
     )
 
 

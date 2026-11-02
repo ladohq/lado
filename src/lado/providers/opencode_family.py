@@ -13,6 +13,7 @@ of `launch_command`'s steps, split this base instead.
 import json
 import re
 from abc import abstractmethod
+from collections.abc import Mapping
 from pathlib import Path
 
 from lado import state
@@ -113,6 +114,19 @@ class OpenCodeFamily(base.Provider):
         ]
         return base.LoginStatus(base.YES, ", ".join(counts), file=file, items=tuple(items))
 
+    def model_list(self, env: Mapping[str, str]) -> base.ModelList:
+        # `<cli> models` prints one `provider/model` a line, of the providers the CLI can
+        # use (OpenCode 1.18.35 from its cache; Kilo 7.8.8 refreshes its gateway's list
+        # itself, from its cache when offline).
+        command = f"{self.command} models"
+        try:
+            out = base.run_list([self.command, "models"], env)
+        except ValueError as error:
+            return base.ModelList(command=command, why=str(error))
+        return base.ModelList(
+            models=tuple(line.strip() for line in out.splitlines() if line.strip()), command=command
+        )
+
     def login_actions(self) -> tuple[base.LoginAction, ...]:
         # Both ask which provider (and how) in their own menus.
         return (
@@ -137,7 +151,7 @@ class OpenCodeFamily(base.Provider):
         argv = self.argv(session.permission_mode)
         if notice:
             argv[1:1] = ["--prompt", notice]
-        return base.Launch(argv, self.env(config_file, text))
+        return base.Launch(argv, self.env(config_file, text), model=self.session_choice(spec))
 
     def config(
         self, agent: state.Agent, mode: str | None, spec: base.AgentSpec, role: Path
@@ -184,6 +198,10 @@ class OpenCodeFamily(base.Provider):
             # before that dialog when it is false (read in the binary).
             "snapshot": False,
         }
+        if spec.model:
+            # `provider/model`; the config text wins over the user's and the repository's
+            # config (as for the rest of it).
+            config["model"] = spec.model
         if mode == "plan":
             # The plan agent denies every tool it does not list, LADO's MCP tools too (Kilo
             # 7.8.1); its own rules come after the global ones (`opencode debug agent plan`,

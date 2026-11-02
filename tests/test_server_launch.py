@@ -1111,3 +1111,93 @@ def test_a_project_with_its_repositories(client, shop):
 def test_no_project_without_a_database(client, lado_home):
     assert client.get("/api/projects/shop").status_code == 404
     assert not (lado_home / "lado.db").exists()
+
+
+def _models(monkeypatch, name, *models):
+    """`name`'s CLI lists `models`; how often it was asked, in the list returned."""
+    asked = []
+
+    def model_list(self, env):
+        asked.append(env)
+        return providers.base.ModelList(models=models, command=f"{name} models")
+
+    monkeypatch.setattr(type(providers.get(name)), "model_list", model_list)
+    return asked
+
+
+def test_a_session_starts_with_a_model(client, repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    answer = launch(client, repo, name="s", provider="kilo", model="kilo/a")
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["session"]["model"] == "kilo/a"
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "kilo/a")
+    answer = launch(client, repo, name="t", provider="kilo", model="kilo/z")
+    assert (answer.status_code, answer.json()["detail"]) == (
+        400,
+        "kilo/z is not in Kilo CLI's list of models; kilo models prints the list",
+    )
+    assert state.get_session("t") is None
+
+
+def test_a_resume_keeps_changes_or_drops_the_model(client, repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    assert client.get("/api/sessions").json()[0]["model"] == "kilo/a"
+    answer = client.post("/api/sessions/s/resume", json={})
+    assert (answer.json()["changes"], answer.json()["session"]["model"]) == ([], "kilo/a")
+    runtime.stop_session("s")
+    answer = client.post("/api/sessions/s/resume", json={"model": "kilo/b"})
+    assert answer.json()["changes"] == ["model: kilo kilo/a -> kilo kilo/b"]
+    runtime.stop_session("s")
+    answer = client.post("/api/sessions/s/resume", json={"model": ""})
+    assert answer.json()["changes"] == ["model: kilo kilo/b -> CLI default"]
+    assert answer.json()["session"]["model"] is None
+
+
+@pytest.mark.parametrize(
+    ("model", "kind", "text"),
+    [
+        ("", "default", "empty: Kilo CLI's default model; type or pick one of its models"),
+        ("kilo/a", "ok", "in Kilo CLI's list of models"),
+        (
+            "kilo/z",
+            "refused",
+            "kilo/z is not in Kilo CLI's list of models; kilo models prints the list",
+        ),
+    ],
+)
+def test_a_provider_s_models_and_the_check_of_one(client, monkeypatch, model, kind, text):
+    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
+    answer = client.get("/api/providers/kilo/models", params={"model": model})
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == {
+        "aliases": [],
+        "models": ["kilo/a", "kilo/b"],
+        "why": "",
+        "check": {"kind": kind, "text": text},
+    }
+
+
+def test_a_provider_s_aliases_and_no_list(client):
+    found = client.get("/api/providers/claude/models", params={"model": "x-1"}).json()
+    assert "opus" in found["aliases"]
+    assert (found["models"], found["check"]["kind"]) == (None, "warn")
+    assert found["why"] == "Claude Code gives no list of models beyond its aliases"
+
+
+def test_the_server_keeps_a_provider_s_list_a_while(client, monkeypatch):
+    asked = _models(monkeypatch, "kilo", "kilo/a")
+    clock = [1000.0]
+    monkeypatch.setattr(server_launch.time, "monotonic", lambda: clock[0])
+    server_launch.forget_model_lists()
+    client.get("/api/providers/kilo/models", params={"model": "kilo/a"})
+    client.get("/api/providers/kilo/models", params={"model": "kilo/b"})
+    assert len(asked) == 1
+    clock[0] += server_launch.MODEL_LIST_KEPT + 1
+    client.get("/api/providers/kilo/models", params={"model": "kilo/a"})
+    assert len(asked) == 2
+
+
+def test_an_unknown_provider_s_models_are_404(client):
+    assert client.get("/api/providers/nope/models").status_code == 404

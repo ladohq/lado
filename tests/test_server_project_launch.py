@@ -81,6 +81,7 @@ def test_a_start_in_a_project_is_the_clis_call(client, shop, monkeypatch, fake_t
                 "title": "Fix it",
                 "project": "shop",
                 "repo_name": "frontend",
+                "model": None,
             },
         )
     ]

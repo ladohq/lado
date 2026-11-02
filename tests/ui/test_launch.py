@@ -207,6 +207,66 @@ def test_a_session_starts_from_the_new_session_window(page: Page, server, repo, 
     shot(page)
 
 
+@pytest.fixture
+def fake_models(monkeypatch):
+    """The fake CLI's own list of models, in the server's agents' environment; taken
+    before `server`."""
+    monkeypatch.setenv("FAKE_AGENT_MODELS", "fake-small,fake-large")
+
+
+def test_a_session_starts_on_the_model_typed_in_advanced(
+    page: Page, fake_models, server, repo, shot
+):
+    """The Model field in Advanced checks what is typed against the CLI's list (openspec
+    change session-model); the agents of the session started run on it."""
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    log_in(page, server)
+    page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
+    dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
+    dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
+    expect(dialog).to_contain_text("✓ git repository · branch main")
+    dialog.get_by_label("Provider").select_option("fake")
+    row = dialog.locator("details.launch-advanced").last  # after the first message's
+    advanced = row.locator("summary")
+    expect(advanced).to_have_text(
+        "Advanced: model, switch off agents, skills, MCP servers or flows"
+    )
+    advanced.click()
+    model = dialog.get_by_role("combobox", name="Model")
+    note = row.locator(".field-note").first
+    expect(note).to_have_text("empty: Fake agent's default model; type or pick one of its models")
+    shot(page, "empty")
+    start = dialog.get_by_role("button", name="Start session")
+    model.fill("nope")
+    expect(note).to_have_text(
+        "nope is not in Fake agent's list of models; FAKE_AGENT_MODELS prints the list"
+    )
+    expect(note).to_have_class("field-note bad")
+    expect(start).to_be_disabled()
+    shot(page, "refused")
+    model.fill("fake-large")
+    expect(note).to_have_text("✓ in Fake agent's list of models")
+    expect(start).to_be_enabled()
+    shot(page, "ok")
+    advanced.click()
+    expect(advanced).to_have_text("Advanced: model fake-large")
+    shot(page, "folded")
+
+    start.click()
+    expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
+    idle("my-repo")
+    assert state.get_session("my-repo").power == state.PowerTable.single("fake", "fake-large")
+    page.goto(f"{server['url']}/sessions/my-repo/agents/supervisor")
+    page.get_by_role("button", name="Collapse terminals").click()
+    supervisor = page.get_by_role("region", name="Agent supervisor")
+    expect(supervisor.locator(".agent-title")).to_contain_text("supervisor · fake · fake-large")
+    expect(supervisor.locator("dl.agent-facts")).to_contain_text(
+        "Modelfake-large · chosen for the session"
+    )
+    shot(page, "agent")
+
+
 def test_a_session_starts_with_a_first_message(page: Page, server, repo, shot):
     """The folded row above Advanced takes the human's first message; the session's chat
     shows it as the human's (openspec change first-message)."""

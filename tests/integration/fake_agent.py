@@ -400,6 +400,11 @@ def work(text: str) -> bool:
         elif command[0] == "spawn":
             call_tool("spawn_worker", {"task": " ".join(command[1:])})
             report(spawn_text=[c.get("text") for c in lado_mcp.last_content])
+        elif command[0] == "spawnwith":  # spawnwith <name>@<provider> <task>
+            name, _, provider = command[1].partition("@")
+            args = {"task": command[2], "name": name, "provider": provider}
+            call_tool("spawn_worker", args)
+            report(spawn_text=[c.get("text") for c in lado_mcp.last_content])
         elif command[0] == "finish":
             call_tool("finish_worker", {"name": command[1], "discard": command[2:] == ["discard"]})
         elif command[0] == "flow_start":

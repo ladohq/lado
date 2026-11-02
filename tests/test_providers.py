@@ -79,6 +79,41 @@ def test_claude_names_the_model_at_its_session_start(native, payload, model):
 
 
 @pytest.mark.parametrize(
+    ("chosen", "reported", "same"),
+    [
+        ("opus", "claude-opus-5-5", True),
+        ("opus", "claude-opus-5-5[1m]", True),
+        ("opus[1m]", "claude-opus-5-5[1m]", True),
+        ("sonnet", "claude-sonnet-5-5", True),
+        ("opus", "claude-sonnet-5-5", False),
+        ("best", "claude-fable-5-1", True),  # names no family: any of Claude's models
+        ("opusplan", "claude-sonnet-5-5", True),
+        ("best", "gpt-5.5", False),
+        ("claude-opus-5-5", "claude-opus-5-6", False),  # a full name is no alias
+        ("claude-opus-5-5", "claude-opus-5-5", True),
+    ],
+)
+def test_claude_knows_its_aliases_full_names(chosen, reported, same):
+    assert providers.get("claude").same_model(chosen, reported) is same
+
+
+def test_a_provider_s_same_model_is_equality_by_default():
+    codex = providers.get("codex")
+    assert codex.same_model("gpt-5.5", "gpt-5.5")
+    assert not codex.same_model("gpt-5.5", "gpt-5.5-mini")
+
+
+def test_a_claude_session_start_keeps_the_alias_s_source(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    state.set_model("s", "supervisor", state.Choice("opus", state.SESSION), None)
+    claude = providers.get("claude")
+    event = claude.parse_event("SessionStart", json.dumps({"model": "claude-opus-5-5"}))
+    hooks.handle(claude, event, "s", "supervisor")
+    agent = state.get_agent("s", "supervisor")
+    assert (agent.model, agent.model_source) == ("claude-opus-5-5", "session")
+
+
+@pytest.mark.parametrize(
     ("payload", "error"),
     [
         ({"error": "server_error"}, "server_error"),
@@ -1172,6 +1207,32 @@ def test_no_prompt_or_input_on_the_command_line(repo, lado_home, provider):
         prompt = Path(argv[argv.index("--append-system-prompt-file") + 1])
         assert prompt == lado_home / "agents" / "s" / "w1" / "prompt.md"
         assert prompt.read_text() == spec.prompt
+
+
+def test_claude_gets_the_session_model_on_its_command_line(repo):
+    sess = state.Session("s", str(repo), None, provider="claude")
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "claude")
+    claude = providers.get("claude")
+    launch = claude.launch_command(agent, sess, providers.AgentSpec("the role", model="opus"))
+    assert launch.argv[launch.argv.index("--model") + 1] == "opus"
+    assert launch.model == state.Choice("opus", state.SESSION)
+    launch = claude.launch_command(agent, sess, providers.AgentSpec("the role"))
+    assert "--model" not in launch.argv
+    assert launch.model is None
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_opencode_family_gets_the_session_model_in_its_config(repo, provider):
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
+    cli = providers.get(provider)
+    model = "anthropic/claude-sonnet-5-5"
+    launch = cli.launch_command(agent, sess, providers.AgentSpec("the role", model=model))
+    assert json.loads(launch.env[FAMILY[provider]])["model"] == model
+    assert launch.model == state.Choice(model, state.SESSION)
+    launch = cli.launch_command(agent, sess, providers.AgentSpec("the role"))
+    assert "model" not in json.loads(launch.env[FAMILY[provider]])
+    assert launch.model is None
 
 
 NOTICE = "[from lado] your task (#7, 40 lines: call read_messages)"

@@ -137,6 +137,10 @@ class AgentSpec:
     # Its role changes nothing in the repository (lado.kits): the CLI's edit tools are taken
     # away. Only for a CLI with Capabilities.deny_edit_tools.
     read_only: bool = False
+    # The model the agent runs on, an alias or a name of its CLI's (lado.runtime
+    # session_model); None for the CLI's default. A provider that applies it returns it in
+    # Launch.model with the source state.SESSION.
+    model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -246,10 +250,33 @@ class LoginPrompt:
     lines: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class ModelList:
+    """The models a CLI takes (Provider.model_list): its own aliases, and the names of its
+    own list, from `command` (what the human runs to print it); `models` None when there is
+    no list, with `why`."""
+
+    aliases: tuple[str, ...] = ()
+    models: tuple[str, ...] | None = None
+    command: str = ""
+    why: str = ""
+
+
+MODEL_LIST_TIMEOUT = 15  # seconds a CLI's list command may take; then it is killed
+NO_MODEL_LIST = "LADO knows no list of this CLI's models"
+
+
 def run_status(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess | str:
     """Run a CLI's login status command with `env` within LOGIN_TIMEOUT, from the home
     folder (no repository's config is read): its result, or why it has none, for an
     UNKNOWN status. Never prints or keeps the output."""
+    return _run_quietly(argv, env, LOGIN_TIMEOUT)
+
+
+def _run_quietly(
+    argv: list[str], env: Mapping[str, str], timeout: float
+) -> subprocess.CompletedProcess | str:
+    """run_status within `timeout` seconds, for any of a CLI's read-only commands."""
     path = env.get("PATH", os.defpath)
     found = shutil.which(argv[0], path=path)
     if found is None:
@@ -271,13 +298,25 @@ def run_status(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProc
     except OSError as error:
         return f"`{shlex.join(argv)}` failed: {error.strerror or error}"
     try:
-        out, err = process.communicate(timeout=LOGIN_TIMEOUT)
+        out, err = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
         process.communicate()
-        return f"`{shlex.join(argv)}` timed out after {LOGIN_TIMEOUT:g} s"
+        return f"`{shlex.join(argv)}` timed out after {timeout:g} s"
     return subprocess.CompletedProcess(argv, process.returncode, out, err)
+
+
+def run_list(argv: list[str], env: Mapping[str, str]) -> str:
+    """The output of a CLI's list command (run_status, within MODEL_LIST_TIMEOUT); raises
+    ValueError with why there is none: it could not run, or it failed."""
+    found = _run_quietly(argv, env, MODEL_LIST_TIMEOUT)
+    if isinstance(found, str):
+        raise ValueError(found)
+    if found.returncode:
+        first = (found.stderr.strip().splitlines() or [f"exit status {found.returncode}"])[0]
+        raise ValueError(f"`{shlex.join(argv)}` failed: {first.strip()}")
+    return found.stdout
 
 
 class Provider(ABC):
@@ -380,6 +419,23 @@ class Provider(ABC):
         """The seconds the CLI gives LADO's hook of the native event `native` before it
         stops waiting for it; None when it waits with no limit. By default None."""
         return None
+
+    def model_list(self, env: Mapping[str, str]) -> ModelList:
+        """The models the CLI, started with `env`, takes: its aliases and its own list,
+        from its own command or local files, never a request to a model API; a list that
+        cannot be read is none, with why (lado.model_check). By default none."""
+        return ModelList(why=NO_MODEL_LIST)
+
+    @staticmethod
+    def session_choice(spec: AgentSpec) -> state.Choice | None:
+        """Launch.model for a launch that applied `spec.model`."""
+        return state.Choice(spec.model, state.SESSION) if spec.model else None
+
+    def same_model(self, chosen: str, reported: str) -> bool:
+        """Whether the model the CLI names in an event, `reported`, is the one LADO chose,
+        `chosen`, by another name (an alias's full name): its source stays
+        (state.report_model). By default only the same name is."""
+        return chosen == reported
 
     def continue_output(self, text: str) -> str | None:
         """Hook output that makes the agent continue with `text` when its turn ends.

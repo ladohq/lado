@@ -10,7 +10,7 @@ import shutil
 import stat
 import sys
 import tempfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
 from lado import state
@@ -96,6 +96,24 @@ HOOK_LIMIT = 600
 def _timeout(event: str) -> int | None:
     """The `timeout` LADO writes for its hook of `event`; None for Claude Code's default."""
     return base.TURN_END_HOOK_TIMEOUT if EVENTS.get(event) == base.TURN_END else None
+
+
+# The aliases `--model` takes, each for the latest model of its family: Claude Code's own
+# list (read in the binary of 2.1.295; its help names fable, opus and sonnet). An alias of
+# no family (ANY_FAMILY) picks one of several models.
+ALIASES = (
+    "sonnet",
+    "opus",
+    "haiku",
+    "fable",
+    "best",
+    "sonnet[1m]",
+    "opus[1m]",
+    "fable[1m]",
+    "opusplan",
+)
+ANY_FAMILY = ("best", "opusplan")
+LONG_CONTEXT = "[1m]"  # an alias's or a model's suffix for its long context window
 
 
 # Variables that log Claude Code in without the keychain: a token, an API key, or another
@@ -226,7 +244,29 @@ class ClaudeProvider(base.Provider):
             cmd += ["--add-dir", str(folder)]
         if session.permission_mode:
             cmd += ["--permission-mode", session.permission_mode]
-        return base.Launch(cmd)
+        # --model wins over the user's settings and ANTHROPIC_MODEL (2.1.295's help: "Model
+        # for the current session"); a model's name is no secret on the command line.
+        if spec.model:
+            cmd += ["--model", spec.model]
+        return base.Launch(cmd, model=self.session_choice(spec))
+
+    def model_list(self, env: Mapping[str, str]) -> base.ModelList:
+        return base.ModelList(
+            ALIASES, why=f"{self.title} gives no list of models beyond its aliases"
+        )
+
+    def same_model(self, chosen: str, reported: str) -> bool:
+        """An alias is the same as a full name of its family (`opus`: `claude-opus-5-5`, with
+        or without `[1m]`); an alias of no family is the same as any of Claude's models."""
+        if chosen == reported:
+            return True
+        if chosen not in ALIASES:
+            return False
+        family = chosen.removesuffix(LONG_CONTEXT)
+        name = reported.removesuffix(LONG_CONTEXT)
+        if family in ANY_FAMILY:
+            return name.startswith("claude-")
+        return name.startswith(f"claude-{family}-")
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:
         if native not in EVENTS:

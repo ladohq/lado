@@ -12,7 +12,7 @@ from pathlib import Path
 
 import agent_helpers
 import pytest
-from real_clis import agent_processes, answer_dialogs, check_gone, status
+from real_clis import CLASSES, agent_processes, answer_dialogs, check_gone, status
 
 from lado import logins, loop, projects, providers, runtime, state, tmux
 
@@ -119,6 +119,50 @@ def test_a_session_starts_takes_messages_and_stops(smoke_repo, smoke_provider, f
     check_gone(processes, "stop")
     wait_for(lambda: not loop.running(SESSION), "the session loop to end", 5 * loop.INTERVAL)
     agent_helpers.check_loop_ended_by_stop(SESSION)
+
+
+# The session's model per CLI: one the endpoint serves (smoke/conftest.py). Claude Code's is
+# a full name, which it gives no list for; Codex's model provider is the endpoint's, with no
+# list either; OpenCode's and Kilo's is in their own `models` list.
+SESSION_MODELS = {
+    "claude": "claude-smoke-2",
+    "codex": "smoke-model-2",
+    "kilo": "smoke/smoke-model-2",
+    "opencode": "smoke/smoke-model-2",
+}
+
+
+def test_the_session_s_model_reaches_the_cli(
+    smoke_repo, smoke_provider, fake_endpoint, monkeypatch
+):
+    """`lado start --model`: the model is checked against the CLI, passed its own way (argv,
+    config.toml, config content), and the CLI asks the endpoint for it."""
+    provider = smoke_provider
+    if provider in ("kilo", "opencode"):
+        # The CLI itself, without the test's own --model (real_clis.with_model).
+        monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
+    model = SESSION_MODELS[provider]
+    started = runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", provider, model=model
+    )
+    print(f"{provider}: started, warnings {started.warnings}")
+    checked = [w for w in started.warnings if "LADO cannot check" in w]
+    assert bool(checked) == (provider in ("claude", "codex")), started.warnings
+    agent = state.get_agent(SESSION, "supervisor")
+    assert (agent.model, agent.model_source) == (model, state.SESSION)
+    asked = model.removeprefix("smoke/")
+    if provider == "codex":
+        home = providers.base.config_path(agent)
+        assert f'model = "{model}"' in (home / "config.toml").read_text().splitlines()
+        first = delivered(state.LADO, "supervisor", runtime.FIRST_INPUT)
+        wait_for(answering(provider, "supervisor", first), "codex's first input delivered", 120)
+    else:
+        idle = answering(provider, "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+        wait_for(idle, "the supervisor to be idle after its session start", 120)
+        runtime.write_as_human(SESSION, HUMAN_SAYS)
+    wait_for(lambda: asked in fake_endpoint.models, f"a request for {asked}", 120)
+    print(f"{provider}: models asked {fake_endpoint.models}")
+    runtime.stop_session(SESSION)
 
 
 PROBE = Path(__file__).with_name("probe_mcp.py")

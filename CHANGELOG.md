@@ -8,7 +8,7 @@
   `lado ls` and `list_agents` show its model and effort and where they came from: the CLI's
   default or your Codex config (its profile too), as the CLIs report them.
 
-## 0.44.0 (unreleased)
+## 0.44.0 (2026-11-02)
 
 ### New
 

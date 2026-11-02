@@ -339,7 +339,7 @@ no setting of yours. When the RC moved the schema, the log has `lado: upgraded l
 from schema N to M; its backup is /home/lado/.lado/backups/lado.db.schema-N`. The running
 session resumes: the log has `lado: resumed session "<session>" at the container's start`
 and, a few seconds after the start, `lado ls` shows it running (before, it may still say
-`tmux session is gone`); the stopped one stays stopped. The UI shows the RC's version.
+`(stopped)`); the stopped one stays stopped. The UI shows the RC's version.
 The second LADO is as it was: `docker compose ps -q` in its folder prints the same
 container id, and its UI still shows `X.Y.Z`.
 

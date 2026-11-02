@@ -121,7 +121,11 @@ goal, how to check it), then ask_human with the brief attached and the choices \
 "{start_choice}" (exactly so, with the new session's name) and one to decline; when the \
 human picks "{start_choice}", call start_session with that name and the question's id. The \
 new session's supervisor gets the brief; it reports nothing back to you.
-Workers report back with messages that arrive in your input as "[from <name>] ...".
+Workers report back with messages that arrive in your input as "[from <name>] ...". \
+Do not wait for a worker inside your turn (no sleep, no polling list_agents): end the turn; \
+its report starts your next one, or comes with the result of your next `lado` tool call. \
+Before you remind an agent of a report, or tell the human you wait for one, call \
+read_messages first.
 A bare artifact name is in the session's scope. A flow run's artifacts are named by their \
 full name, "<run>/<name>": in a step of your own in a run, write and attach the run's \
 artifacts by its full name, e.g. "feature/x/design", since you may lead several runs.
@@ -230,11 +234,17 @@ Do not set a tool's default version for the whole container (`mise use -g`): ask
 supervisor.
 """
 
+# The line above the messages that came during an agent's turn, in the result of its next
+# call of a LADO tool (take_mid_turn).
+MID_TURN = "Messages that came during your turn:"
+
 # How every agent sends and reads messages, appended to the instructions above.
-MESSAGING = """\
+MESSAGING = f"""\
 Messages: send_message takes a one-line summary (at most 200 characters), the only thing \
 the recipient sees at first; put the details in body. A message with a body arrives as one \
-line ending in "call read_messages": call read_messages to get its full text. Make the \
+line ending in "call read_messages": call read_messages to get its full text. A message \
+that comes while you are in a turn arrives with the result of your next `lado` tool call, \
+after the tool's own result, under "{MID_TURN}". Make the \
 reporting call (send_message, or flow_advance in a flow run) the last action of your turn. \
 Send no status-only messages: being idle tells \
 the others you are done.
@@ -250,7 +260,8 @@ WORKTREES_EXCLUDE = "/.lado/worktrees/"
 # The first input of an agent whose CLI starts its session only then and that has nothing
 # else to start with (Capabilities.session_start_on_first_input): one short turn. It must
 # ask the agent to end it, never to wait: a model with a tool to wait takes it literally,
-# and LADO delivers its queue only at the end of its turn (LAD-167).
+# and LADO delivers its queue only at the end of its turn or with a `lado` tool's result
+# (LAD-167, LAD-172).
 FIRST_INPUT = "session started; nothing to do yet: end this turn, the next message starts a new one"
 # The summary of the human's first message to a session's supervisor (start_session's
 # `prompt`): fixed, so the text, only in the body, never goes on a CLI's command line.
@@ -1488,7 +1499,41 @@ def send_message(
             "write the details to an artifact (write_artifact) and attach it"
         )
     attachments = artifacts.resolve_attachments(session, sender, attached)
+    # The human is no agent: messages to them stay delivered, never read (post).
+    if state.HUMAN not in (sender, recipient):
+        _refuse_while_waiting(session, sender, recipient)
     return post(session, sender, recipient, summary, body, or_human=True, attachments=attachments)
+
+
+def _refuse_while_waiting(session: str, sender: str, recipient: str) -> None:
+    """Refuse a message to `recipient` while one of its own waits for `sender` unreceived
+    (state.waiting_from): the "send your report" to an agent whose report is on its way.
+    The refusal's tool result carries the sender's queue (take_mid_turn), so a line comes
+    with it and a body needs read_messages; then the same send goes through."""
+    waiting = state.waiting_from(session, sender, recipient)
+    if waiting is None:
+        return
+    then = (
+        "read it with read_messages, then send again"
+        if waiting.to_read
+        else "its line comes with this result; send again"
+    )
+    raise LadoError(
+        f"{recipient}'s message #{waiting.id} waits for you, so nothing was sent: {then} if it "
+        "still needs saying"
+    )
+
+
+def take_mid_turn(session: str, agent: str) -> list[state.Message]:
+    """Take the agent's queue for the result of its call of a LADO tool (lado.mcp_server):
+    delivered at once by TOOL_RESULT, so no turn's end hands it over again and the sweep
+    never retypes it."""
+    return state.take_pending(session, agent, state.DELIVERED, channel=state.TOOL_RESULT)
+
+
+def mid_turn_text(messages: list[state.Message]) -> str:
+    """The lines of the messages take_mid_turn took, under MID_TURN; '' for none."""
+    return f"{MID_TURN}\n{format_messages(messages)}" if messages else ""
 
 
 def write_as_human(

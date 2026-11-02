@@ -4,14 +4,13 @@
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: S2 (LAD-174, run task/lad-174) · Next: S3a · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
+In work: none · Next: S3a (waits at `step_ok`: manual check of S2 recommended) · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9).
 - After some steps the human may ask the lead to help with a manual check of how the step looks; the lead then gives the branch, the folder, the commands and what to look at (gate #191, D10).
 - Each step's task gets the label `component lado` (kit sdlc's: `component kit-sdlc`) and is linked to LAD-154; LAD-80 is not touched.
-Last review: S1, 2026-11-02, base at e55f6867 (0.44.0rc1), merged into the epic branch as e948c1f9, Checks green
-Base brought in: 2026-11-02, `main` at 6aba756d (0.44.0 final) into the epic branch as c9f068e3; CHANGELOG heading resolved (0.45.0 above 0.44.0 (2026-11-02)), schema on `main` still 35, the epic's 36 on top; `make lint`, `make test` (4748 passed, 7 skipped), `make web`, `openspec validate --specs --strict` green
+Last review: S2, 2026-11-02, base at 228a1de2 (0.44.0 + the unreleased 0.44.1 hotfix LAD-151, Codex's sandbox in the container), merged into the epic branch as 0d18c677: conflicts resolved by joining both sides (CHANGELOG: 0.45.0 above 0.44.1 (unreleased); `tests/smoke/test_smoke.py`: one import line, `CLASSES` and `SANDBOX_ERROR`); `providers/codex.py` merged without conflict; schema on `main` 35, the epic's 37 on top; `make lint`, `make test` (4826 passed, 7 skipped), integration `test_session_model.py` (3 passed), smoke collected (23), `openspec validate --specs --strict` (57) green; CI of the merge runs with S3a's pull request
 
 ## Steps
 
@@ -62,7 +61,8 @@ BACKLOG's "Choose the model per agent" is replaced by a link to LAD-154 here (D8
 The analyst may split the UI card off when the design cannot take it in one round.
 
 ### S2 — One model per session (L)
-Status: in progress (LAD-174, run task/lad-174; drafted at S1's review; re-sized M → L: S1 touched all four providers, the UI and the schema in 49 files, S2 touches the same)
+Status: done (LAD-174, PR #201, merged into the epic branch as 69bd2306; schema 36 → 37, `sessions.power`; new spec `session-model`, delta of `agent-model`; CI 23/23, one review round, 0 blockers, 6 minor declined). Not checked by hand yet (recommended at S2's review). Born in the step: LAD-175 (Later).
+Leftovers: F2 and `real_clis.with_model` carried into S4; Q2, F5, F3, F4, E3 and Codex's list path in smoke to "Later".
 Check:
 - `lado start --model <model>` and a field in the launch window's Advanced; the session
   keeps it (in the table's format); every agent of the session's CLI starts on it through
@@ -129,6 +129,14 @@ Check:
   where the CLI or the model cannot take it, a loud warning before the start; S1's card
   shows it.
 - Unit tests per provider, smoke per provider (CI); `docs/cli.md`, `docs/design/ui.md`.
+- From S2 (ledger F2+E1, required): the effort is a new key of a power-table row, and
+  `PowerTable.from_json` today fails on an unknown key, a missing `normal` and broken
+  JSON, so that one such row breaks reading every session (`state._session`): S4 makes
+  the reading tolerant (an unknown key kept or ignored loudly, a broken row reported for
+  its session only) or bumps the schema with a migration of the rows; a unit test of each
+  case.
+- From S2 (found on the way): `tests/real_clis.with_model` rebuilds `Launch` and drops
+  its `model` and `effort`; S4's smoke passes them through.
 - From S1: Claude Code reports no effort in its events, so its card shows the effort
   S4 sets with the source "session"; Codex's effort after a `/model` in the CLI stays
   "your Codex config" (no hook reports it): S4's design says whether that holds.
@@ -282,3 +290,18 @@ Check:
   S1's review) — LAD-169 — with the next change of `lado ls`.
 - Codex's hooks record the model in a short write transaction even when nothing changed
   (F4, declined) — LAD-169 — if hooks ever show up in profiling.
+- The card's source turns `cli` where the CLI names the session's model under another
+  name: Bedrock/Vertex ids (`us.anthropic.…`), names OpenCode/Kilo normalise (F5/Q1,
+  unverifiable at S2) — LAD-174 — with S9b (Claude Code on a server) or when a user meets it.
+- A Codex profile or model in the repository's own `.codex/config.toml` may override the
+  session's model; the card then says `cli` (Q2, unverifiable at S2) — LAD-174 — check
+  with the open live run of Codex.
+- Launch window's Resume disables Start when the saved model left the CLI's list while
+  `lado start <session>` does not check it (F3); `lado start --model` keeps spaces the UI
+  trims (F4); a failed model list is cached 60 s (E3) — declined at S2 — LAD-174 — with
+  the next change of the launch window (S5b/S5c).
+- Codex's path with a model list is not walked by the smoke (S2's residual risk) —
+  LAD-174 — with the open live runs before the final pull request.
+- Flaky Codex smoke: Codex's own background `git ls-remote` to `openai/plugins` outlives
+  the test — LAD-175 (Backlog, derived from LAD-174, outside the epic) — its fix (turning
+  the sync off in the agent's own Codex config) helps every step that touches `providers/`.

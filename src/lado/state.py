@@ -229,9 +229,9 @@ KITS_TABLE = [KITS, *_journal_triggers("kits")]
 # How a message was handed over to its recipient, from version 19 on: typed into its window
 # or carried on in its turn-end hook's output (TYPED, HOOK_OUTPUT; lado.runtime.hand_over),
 # and from 0.45.0 on in the result of its own call of a LADO tool (TOOL_RESULT, delivered
-# at once; lado.runtime.take_mid_turn). NULL while it is pending, and for one handed over another way (a message to the human, the
-# first input of a LADO before 0.30.1). Each channel has its own confirmation and its own
-# sweep rule (lado.runtime._plan).
+# at once; lado.runtime.take_mid_turn). NULL while it is pending, and for one handed over
+# another way (a message to the human, the first input of a LADO before 0.30.1). Each
+# channel has its own confirmation and its own sweep rule (lado.runtime._plan).
 MESSAGES_CHANNEL = "ALTER TABLE messages ADD COLUMN channel TEXT"
 # Resuming an agent whose turn ended on an error that passes by itself (lado.hooks), from
 # version 20 on: when LADO tells it to go on (NULL for nothing planned; only while it is

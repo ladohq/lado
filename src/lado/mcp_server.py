@@ -199,8 +199,9 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
         first; put the details in `body`, which it reads with read_messages, and attach
         `artifacts` (names as in write_artifact; each as it is now). It is delivered right
         away if the agent is idle or background (its turn ended while work it started still
-        runs), otherwise as soon as it is (when its current turn ends, or once it has
-        started).
+        runs), otherwise with the result of its next `lado` tool call or as soon as it is
+        idle (when its current turn ends, or once it has started). It is refused while a
+        message from that agent waits for you unreceived: read it, then send again.
         """
         with _reasons():
             return runtime.send_message(session, agent, to, summary, body, artifacts)

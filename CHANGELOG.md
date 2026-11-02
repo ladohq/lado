@@ -1,8 +1,12 @@
 # Changelog
 
-## 0.44.1 (unreleased)
+## 0.45.0 (unreleased)
 
 ### Fixed
+
+- **The supervisor no longer asks again for a report it already got.** A message that
+  comes while an agent works reaches it with its next LADO tool call, and a reminder to an
+  agent whose message waits is refused.
 
 - **Codex agents run shell commands in LADO's container.** Codex's sandbox cannot start in
   Docker, so in the mode `default` every command asked "retry without sandbox?". They now

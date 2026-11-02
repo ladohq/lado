@@ -626,6 +626,13 @@ identity, the ssh agent, the workspace).
   `docker compose exec lado lado start <repository> --name <session>` with the
   repository's path in the container) and choose "Yes, I trust this folder"; see
   [Your first session](#your-first-session).
+- **`Codex's sandbox cannot start here (bwrap: …): Codex agent <name> runs without it`**
+  at a session's start: expected. Codex's own sandbox on Linux needs bubblewrap and an
+  unprivileged user namespace, which Docker does not allow in a container, so without it
+  every shell command of a Codex agent asked "retry without sandbox?". LADO starts Codex
+  agents in the container without that sandbox (`--sandbox danger-full-access`, approvals
+  as the session's permission mode says); the container is their boundary, as it is for
+  every other agent there.
 - **The UI's link is lost**: `docker compose exec lado lado ui --no-open`.
 - **`No version is set for shim: go`**: neither the repository's version files nor a
   default name that tool. Add the version to the repository (`.tool-versions`: `go 1.23.4`)
@@ -739,6 +746,17 @@ A user that can run `sudo`.
 - `npm install -g` without `--prefix` fails with a permission error (`EACCES`): the system
   Node installs global packages into a folder only root can write. Use
   `--prefix ~/.local`, as above, instead of `sudo`.
+- `Codex's sandbox cannot start here (…): Codex agent <name> asks before each shell
+  command` at a session's start: Codex's sandbox on Linux runs commands through bubblewrap,
+  which needs unprivileged user namespaces, and this machine refuses them: the kernel
+  (`kernel.unprivileged_userns_clone`, `user.max_user_namespaces`), AppArmor (Ubuntu
+  23.10 and later restrict them for programs without a profile) or a seccomp profile. The
+  agent keeps the sandbox, and each shell command waits for your answer in its terminal.
+  `codex sandbox -- true` shows the same error. Either allow user namespaces for
+  bubblewrap (your distribution's documentation says how, e.g. an AppArmor profile for
+  `bwrap`; it changes your system's security, so decide it yourself), or start the session
+  with the permission mode `bypassPermissions`, where Codex runs without its sandbox and
+  without approvals. LADO's container starts Codex agents without the sandbox instead.
 - See also [Common problems](#common-problems).
 
 ## Windows

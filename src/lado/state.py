@@ -6,6 +6,7 @@ call opens its own short-lived connection and SQLite does the locking.
 
 import datetime
 import json
+import operator
 import os
 import re
 import sqlite3
@@ -1780,12 +1781,21 @@ def set_model(session: str, name: str, model: Choice | None, effort: Choice | No
         )
 
 
-def report_model(session: str, name: str, model: str, effort: str | None) -> None:
+def report_model(
+    session: str,
+    name: str,
+    model: str,
+    effort: str | None,
+    same: Callable[[str, str], bool] = operator.eq,
+) -> None:
     """Record the model and effort the agent's CLI named in an event (base.Event): a model
     "" or an effort None it did not name, which stays as it was; an effort "" is the
     model's default one, no name. A name that differs from the agent's is the CLI's own:
-    its source becomes CLI_DEFAULT, with no detail. Writes nothing when nothing changes, so
-    a CLI that names its model in every hook adds no change to the journal."""
+    its source becomes CLI_DEFAULT, with no detail; but a first model name (the agent had
+    none), or one that `same(chosen, reported)` says is the chosen model's (the agent's
+    provider's Provider.same_model: Claude Code's full name of an alias), replaces the name
+    and keeps the source and the detail. Writes nothing when nothing changes, so a CLI that
+    names its model in every hook adds no change to the journal."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
@@ -1794,12 +1804,20 @@ def report_model(session: str, name: str, model: str, effort: str | None) -> Non
         reports = [("model", model)] if model else []
         if effort is not None:
             reports.append(("effort", effort or None))
-        changed = [(c, reported) for c, reported in reports if row and reported != row[c]]
-        if changed:
-            sets = ", ".join(f"{c} = ?, {c}_source = ?, {c}_detail = NULL" for c, _ in changed)
-            values = [v for _, reported in changed for v in (reported, CLI_DEFAULT)]
+        sets, values = [], []
+        for column, reported in reports:
+            if not row or reported == row[column]:
+                continue
+            kept = column == "model" and (row[column] is None or same(row[column], reported))
+            if kept:
+                sets.append(f"{column} = ?")
+                values.append(reported)
+            else:
+                sets.append(f"{column} = ?, {column}_source = ?, {column}_detail = NULL")
+                values += [reported, CLI_DEFAULT]
+        if sets:
             db.execute(
-                f"UPDATE agents SET {sets} WHERE session = ? AND name = ?",
+                f"UPDATE agents SET {', '.join(sets)} WHERE session = ? AND name = ?",
                 (*values, session, name),
             )
         db.execute("COMMIT")

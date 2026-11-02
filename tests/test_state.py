@@ -657,6 +657,39 @@ def test_a_different_model_is_the_clis(lado_home):
     assert _last_change() == before + 1
 
 
+def _agent_with_model(model, source, detail=None, provider="claude"):
+    state.add_session(state.Session("s", "/r", None, provider=provider))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", provider))
+    state.set_model("s", "w1", state.Choice(model, source, detail), None)
+
+
+def _alias(chosen: str, reported: str) -> bool:
+    return chosen == "opus" and reported.startswith("claude-opus-")
+
+
+def test_an_alias_s_full_name_keeps_the_source(lado_home):
+    _agent_with_model("opus", state.SESSION)
+    state.report_model("s", "w1", "claude-opus-5-5", None, _alias)
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-opus-5-5", "session", None)
+
+
+def test_another_model_than_the_alias_is_the_clis(lado_home):
+    _agent_with_model("opus", state.SESSION)
+    state.report_model("s", "w1", "claude-sonnet-5-5", None, _alias)
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-sonnet-5-5", "cli", None)
+    state.report_model("s", "w1", "claude-opus-5-5", None)  # the default rule: equality
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-opus-5-5", "cli", None)
+
+
+def test_a_first_name_keeps_the_note(lado_home):
+    note = "the session's model gpt-5.6-sol is for Codex CLI"
+    _agent_with_model(None, state.CLI_DEFAULT, note)
+    state.report_model("s", "w1", "claude-opus-5-5", None)
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-opus-5-5", "cli", note)
+    state.report_model("s", "w1", "claude-sonnet-5-5", None)  # a later change: the CLI's
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-sonnet-5-5", "cli", None)
+
+
 def test_an_event_without_a_model_changes_nothing(lado_home):
     _codex_agent_with_a_config_model()
     before = _last_change()

@@ -381,6 +381,12 @@ class Provider(ABC):
         stops waiting for it; None when it waits with no limit. By default None."""
         return None
 
+    def same_model(self, chosen: str, reported: str) -> bool:
+        """Whether the model the CLI names in an event, `reported`, is the one LADO chose,
+        `chosen`, by another name (an alias's full name): its source stays
+        (state.report_model). By default only the same name is."""
+        return chosen == reported
+
     def continue_output(self, text: str) -> str | None:
         """Hook output that makes the agent continue with `text` when its turn ends.
 

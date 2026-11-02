@@ -14,5 +14,5 @@
 | 2026-11-01 | plan_ok, gate #191 (D10) | Approve the plan revised for D9 (steps into `main`, one minor for the epic) | approve; reject | approve (lead) | rejected: «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально» — an epic branch `epic/lad-154-models` replaces D2; manual visual checks after some steps on request (human) | no |
 | 2026-11-01 | S1 (LAD-169), design_ok gate #195 (D11) | The design of S1 (CHANGELOG under the current `0.44.0 (unreleased)`) | approve; reject | approve (lead) | rejected: «я думаю эпик войдет в релиз 0.45.0. Я в скором времени собираюсь выпустить релиз 0.44.0 без этого эпика. Обновления нам надо будет подтянуть» — the epic's lines go under 0.45.0, the epic branch brings `main` in after 0.44.0 (human) | no |
 
-Epic: plan_ok gate #194 — approved as recommended (Q1 in S5c; Q3 option (a) with the critic's P15 and P17; Q2 open until S3b's merge).
+Epic: plan_ok gate #194 — approved as recommended (Q1 in S5c; Q3 option (a) with the critic's P15 and P17; Q2 open until S3b's merge); step_ok gate #198 (S2) — approved as recommended.
 S1: question #2357, gates #196, #197 — approved as recommended

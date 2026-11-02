@@ -23,4 +23,4 @@ Epic: plan_ok gate #194 — approved as recommended (Q1 in S5c; Q3 option (a) wi
 S1: question #2357, gates #196, #197 — approved as recommended
 S2: questions #2471, #2501, gates #200, #202, #203 — approved as recommended
 S2b: questions #2515 (points 1, 3, 4), #2521 (the lead's «нет» against the developer's proposal), gates #206, #207, #208 — approved as recommended
-S3a: question #2658 (one more build visit for E5, no third external round), gate #210 — approved as recommended
+S3a: question #2658 (one more build visit for E5, no third external round), gates #210, #220 — approved as recommended

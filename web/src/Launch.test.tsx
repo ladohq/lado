@@ -1055,9 +1055,30 @@ test("the Model field comes before Switch off, empty with the CLI's default and 
   expect(labels[0]).toMatch(/^Model/);
   expect(labels[1]).toMatch(/^Switch off/);
   expect(modelField().placeholder).toBe("Claude Code's default");
-  expect(await screen.findByText("empty: Claude Code's default model; type or pick one of its models")).toBeTruthy();
-  const list = document.getElementById(modelField().getAttribute("list")!)!;
-  await waitFor(() => expect([...list.querySelectorAll("option")].map((o) => o.value)).toEqual(["sonnet", "opus"]));
+  const note = await screen.findByText("empty: Claude Code's default model; type or pick one of its models");
+  // The note is the field's own, under it in its .field, as the other fields' notes.
+  expect(note.closest(".field")).toBe(modelField().closest(".field"));
+  expect(modelField().closest(".launch-grid")).toBeTruthy();
+  expect(document.querySelector("datalist")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Show the models" }));
+  await waitFor(() =>
+    expect(within(screen.getByRole("listbox", { name: "Models" })).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "sonnetalias",
+      "opusalias",
+    ]),
+  );
+});
+
+test("the Model field suggests the CLI's aliases, then its list, and a pick is checked", async () => {
+  await openLaunch();
+  await ready("/src/app", { provider: { name: "kilo", reason: "only_installed" } });
+  typeModel("kilo/");
+  await screen.findByText("kilo/ is not in Kilo CLI's list of models; kilo models prints the list");
+  const options = within(screen.getByRole("listbox", { name: "Models" })).getAllByRole("option");
+  expect(options.map((o) => o.textContent)).toEqual(["kilo/small", "kilo/large"]);
+  fireEvent.mouseDown(options[1]);
+  expect(modelField().value).toBe("kilo/large");
+  expect(await screen.findByText("✓ in Kilo CLI's list of models")).toBeTruthy();
 });
 
 test("each verdict on the typed model shows under the field; Start is off for a refused one and while checking", async () => {
@@ -1112,6 +1133,28 @@ test("Resume starts with the session's model and sends it only when changed", as
   fireEvent.click(resume);
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Resume session" })).toBeNull());
   expect(calls.find((c) => c.method === "POST")!.body).toEqual({ model: "" });
+});
+
+test("Resume of a session whose model its CLI no longer lists says the way out", async () => {
+  sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "kilo", model: "kilo/old" })];
+  answers["POST /api/sessions/lado/resume"] = () => json({ session: session("lado"), ...STARTED, resumed: true });
+  open("/sessions/lado");
+  fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Resume session" });
+  const resume = within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement;
+  await screen.findByText("kilo/old is not in Kilo CLI's list of models; kilo models prints the list");
+  expect(advancedRow().open).toBe(true); // the reason Resume is off is in sight
+  expect(
+    screen.getByText("The session ran on it before. Empty the field to resume on Kilo CLI's default, or pick another model."),
+  ).toBeTruthy();
+  expect(resume.disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Use Kilo CLI's default" }));
+  expect(modelField().value).toBe("");
+  await waitFor(() => expect(resume.disabled).toBe(false));
+  // Another model refused is refused as in a new session: no way out to name.
+  typeModel("kilo/huge");
+  await screen.findByText("kilo/huge is not in Kilo CLI's list of models; kilo models prints the list");
+  expect(screen.queryByText(/The session ran on it before/)).toBeNull();
 });
 
 // Resume

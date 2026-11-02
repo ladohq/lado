@@ -48,18 +48,38 @@ the Anthropic Messages API for Claude Code. The server's type SHALL NOT decide i
 
 LADO SHALL prove each API with one POST whose body is `{}`: an answer 400 or 422 with a
 JSON body proves it, any other answer does not. It SHALL send at most one request per
-check to an address (the model list, Ollama's and LM Studio's own endpoints, one per
-API), each limited to 5 seconds, and none to another path, port or host.
+check to an address (the model list, Ollama's and LM Studio's own endpoints, one per API,
+one control), each limited to 5 seconds, and none to another path, port or host.
 
 #### Scenario: The requests of one probe
 - **WHEN** the human probes an address that answers
 - **THEN** the server receives at most `GET /v1/models`, `GET /api/version`,
   `GET /api/v0/models` and one `POST` with the body `{}` to each of
-  `/v1/chat/completions`, `/v1/responses` and `/v1/messages`
+  `/v1/chat/completions`, `/v1/responses`, `/v1/messages` and `/v1/lado-no-such-api`
 
 #### Scenario: An API missing
 - **WHEN** the server answers `POST /v1/responses` with 404
 - **THEN** the server is named as without the Responses API
+
+### Requirement: A server that answers every POST alike proves no API
+
+When the control `POST /v1/lado-no-such-api` answers 400 or 422 with a JSON body, no API
+SHALL count as proven. A server whose type is otherwise unknown SHALL then be an unknown
+server; one whose type is known SHALL print `APIs: cannot be told: <address> answers
+<status> to any POST` and `CLIs: none`.
+
+#### Scenario: A gateway that answers 400 to every path
+- **WHEN** the server answers every request, `GET /v1/models` and the control included,
+  with 400 and a JSON error
+- **THEN** it prints `unknown server: <address> answered, but not as an OpenAI-compatible,
+  Anthropic-compatible, Ollama or LM Studio server (GET /v1/models: 400; it answers 400 to
+  any POST, so its APIs cannot be told)` and exits 1
+
+#### Scenario: A server with a list that answers every POST alike
+- **WHEN** the server lists its models in OpenAI's shape and answers every POST, the
+  control included, with 400 and a JSON error
+- **THEN** it prints `type: OpenAI-compatible`, its models, `APIs: cannot be told:
+  <address> answers 400 to any POST` and `CLIs: none`, and exits 0
 
 ### Requirement: The server's type
 

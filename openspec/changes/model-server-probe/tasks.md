@@ -6,9 +6,10 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-02-model-server
   Code, Codex and the OpenCode family declare theirs (D5). Check: `tests/test_providers.py`.
 - [ ] 1.2 `tests/fake_model_server.py`: a fake model server in-process and as a script, with
   profiles (OpenAI-compatible, Ollama, LM Studio, Anthropic-compatible, Responses only,
-  models only, unknown, key required, redirect, hanging, list failing) that records each
+  models only, unknown, a gateway that answers 400 with JSON to every path, the same
+  with an OpenAI list, key required, redirect, hanging, list failing) that records each
   request with its headers. Check: `tests/test_fake_model_server.py`.
-- [ ] 1.3 `src/lado/model_servers.py`: the address (D2), the six requests with their
+- [ ] 1.3 `src/lado/model_servers.py`: the address (D2), the seven requests (the control too) with their
   limits and no redirect (D1, D3, D6), the type (D4), the rule (D5), the key's headers
   (D7), `Probe` and `ProbeError` with the texts of D8, the container's hint. Check:
   `tests/test_model_servers.py`.

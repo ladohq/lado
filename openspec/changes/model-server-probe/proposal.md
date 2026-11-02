@@ -40,8 +40,9 @@ Options weighed:
 - A (taken): one probe of a few requests per address that never generates: the model
   list, the native endpoints of Ollama and LM Studio, and one empty POST per API. The CLIs
   that suit a server follow from the APIs it proved, by each provider's own declaration
-  of the API it speaks; the server's type is only shown. Long-term cost: six small
-  requests per probe; a server that hides an API behind something other than 400/422 for
+  of the API it speaks; the server's type is only shown. A control POST to a path no server has
+  tells a gateway that answers 400 to everything from one that has the APIs (human, at
+  `design_ok`). Long-term cost: seven small requests per probe; a server that hides an API behind something other than 400/422 for
   an empty body is named as not having it.
 - B: decide by type: recognise Ollama, LM Studio, OpenAI or Anthropic and look the CLIs up
   in a table per type. One request fewer, but the table goes stale with every server
@@ -69,6 +70,8 @@ the probe alone and kept nowhere.
   with or without a trailing `/v1`.
 - Clear one-line messages for an address that does not answer, a server that asks for a
   key, a key it refused, an unknown server, a TLS failure.
+- A server that answers every POST alike proves no API: a control request to a path no
+  server has tells it apart.
 - In LADO's container, a `localhost` address that does not answer gets a loud hint naming
   `http://host.docker.internal:<port>`, which LADO does not try itself.
 - `--key` asks for the key without echo, or reads it from stdin; never from the command

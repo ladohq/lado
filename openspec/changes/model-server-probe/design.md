@@ -33,13 +33,17 @@ The address is normalised (D2) to a root `R` and its API base `R/v1`. Requests:
 | 4 | `POST R/v1/chat/completions`, body `{}` | chat completions |
 | 5 | `POST R/v1/responses`, body `{}` | the Responses API |
 | 6 | `POST R/v1/messages`, body `{}` | the Anthropic Messages API |
+| 7 | `POST R/v1/lado-no-such-api`, body `{}` | the control: a path no server has |
 
 A POST proves its API when it answers 400 or 422 with a JSON body (an object): the server
 parsed the request and refused it for want of a model and input. 404, 405 or any other
-answer is "no". `{}` holds nothing to generate, so no request costs anything or needs a
+answer is "no". The control (human, rejection at `design_ok`): a gateway that answers 400
+with JSON to every path would otherwise prove all three APIs. When request 7 answers as an
+API would (400 or 422 with JSON), no API counts as proven: requests 4–6 prove nothing on
+that server, and the output says why (D9). `{}` holds nothing to generate, so no request costs anything or needs a
 model. Every request carries `Content-Type: application/json` (POSTs),
 `anthropic-version: 2023-06-01` and `User-Agent: lado/<version>`, and with a key the
-headers of D7. At most one request per check per address; no other path, port or host.
+headers of D7. At most one request per check per address (seven); no other path, port or host.
 
 ### D2. The address
 
@@ -55,7 +59,7 @@ dropped, then one trailing `/v1`: the rest is `R`, kept with its path, so a gate
 that is waited for at most `TIMEOUT` (a hung resolver is abandoned, the thread a daemon).
 Request 1 goes first, alone: when it gets no HTTP answer (refused, unknown host, timeout,
 reset), the probe stops with "does not answer" (D8) and sends nothing more. Otherwise
-requests 2–6 go at once, in five threads, under the same limit. Within the epic's
+requests 2–7 go at once, in six threads, under the same limit. Within the epic's
 ceiling of 10 s per address.
 
 ### D4. The type: shown, never used for the rule
@@ -64,7 +68,7 @@ In this order: request 2 proves Ollama → `Ollama`; request 3 proves LM Studio 
 `LM Studio`; request 1's body has items with `"type": "model"` or a key `has_more` →
 `Anthropic-compatible`; request 1's body is an object with a list `data` →
 `OpenAI-compatible`; else an API proven by 6 → `Anthropic-compatible`, by 4 or 5 →
-`OpenAI-compatible`. None of these: an unknown server (D8). The CLIs never follow from the
+`OpenAI-compatible` (never after a control answered as an API, D1). None of these: an unknown server (D8). The CLIs never follow from the
 type (proposal, option B).
 
 ### D5. The rule: each provider declares the API it speaks
@@ -95,7 +99,7 @@ it in`, which never repeats the value (argparse's "unrecognized arguments" would
 is read as `cli._secret_value` reads a secret: `getpass` (`Key of the server (not
 shown): `) on a terminal, else the whole of stdin with one line break dropped; empty is
 refused (`the key is empty`). It is sent as `Authorization: Bearer <key>` and
-`x-api-key: <key>` on all six requests (one host, D6) and kept nowhere: no file, no
+`x-api-key: <key>` on all seven requests (one host, D6) and kept nowhere: no file, no
 `lado.db`, no log. Messages are built only from the status, the path and the server's
 error text cut to 200 characters; an exception's text is never built from a request's
 headers, so the error journal cannot receive the key either.
@@ -113,7 +117,9 @@ One line each, on stderr, exit 1 (`R` is the normalised address):
 - any 401 or 403 among the answers, without a key: `<R> asks for a key (<status>): run
   lado model-server probe <R> --key`; with one: `<R> refused the key (<status>)`
 - `unknown server: <R> answered, but not as an OpenAI-compatible, Anthropic-compatible,
-  Ollama or LM Studio server (GET /v1/models: <status or 301 to …>)`
+  Ollama or LM Studio server (GET /v1/models: <status or 301 to …>)`; when the control
+  answered as an API, the parenthesis ends `; it answers <status> to any POST, so its APIs
+  cannot be told`
 
 ### D9. The output and the result
 
@@ -129,7 +135,9 @@ not: Claude Code (no Anthropic Messages API)
 
 `models: none` for an empty list, `models: no list (GET /v1/models: <status or reason>)`
 when request 1 gave no list (the `model_check` rule: a failed list is no list, not an
-error); `CLIs: none` when no API was proven; no `not:` line when every CLI suits. The
+error); `CLIs: none` when no API was proven; no `not:` line when every CLI suits. When the
+control answered as an API on a server whose type is known, the line `APIs: cannot be
+told: <R> answers <status> to any POST` comes before `CLIs: none`, exit 0. The
 result is `model_servers.Probe` (frozen): `address`, `added_scheme`, `kind`,
 `apis: frozenset[str]`, `models: tuple[str, ...] | None`, `models_why`, and the method
 `clis()` (`suits`, `not_suits` from D5). Failures raise `model_servers.ProbeError(text,
@@ -150,4 +158,4 @@ is larger than 4 MiB)`).
   safe side; the human checks by hand (the epic's decision D7: a real server by hand).
 - LM Studio's REST API `/api/v0` is marked beta by LM Studio; if it moves, LM Studio is
   shown as `OpenAI-compatible` and its CLIs are unchanged (D4, D5).
-- Six requests reach the server's log, among them three refused POSTs.
+- Seven requests reach the server's log, among them four refused POSTs.

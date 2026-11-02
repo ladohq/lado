@@ -29,7 +29,9 @@ http://localhost:11434 does not answer (connection refused)
 LADO runs in a container, where localhost is the container itself; a server on your machine: lado model-server probe http://host.docker.internal:11434 (not tried)
 ```
 
-(the second line only in LADO's container), `https://gw.example/llm asks for a key (401):
+(the second line only in LADO's container), `unknown server: http://gw:8080 answered, but
+not as an OpenAI-compatible, Anthropic-compatible, Ollama or LM Studio server (GET
+/v1/models: 400; it answers 400 to any POST, so its APIs cannot be told)`, `https://gw.example/llm asks for a key (401):
 run lado model-server probe https://gw.example/llm --key`, `https://gw.example/llm
 refused the key (401)`, `unknown server: http://h:8080 answered, but not as an
 OpenAI-compatible, Anthropic-compatible, Ollama or LM Studio server (GET /v1/models:
@@ -42,6 +44,9 @@ probe yet.
 ## Facts the design rests on
 
 - The servers' endpoints and shapes, and which CLI speaks which API: the proposal, Why.
+- A gateway may answer 400 with JSON to any path; a POST to a path no server has (the
+  control) tells it apart from a server that has the APIs (human, rejection at
+  `design_ok`).
 - An empty JSON body has nothing to generate; every server named answers it with 400 or
   422 and a JSON error when it has the API, 404 or 405 when it does not.
 - `session-model`'s rule that a CLI's list is local and never fetched from a model API
@@ -57,8 +62,8 @@ probe yet.
 `src/lado/model_servers.py`, standard library only:
 
 - `address(text) -> (root, added_scheme)` or `ValueError` (D2).
-- `probe(text, key=None) -> Probe` or `ProbeError(text, hint)`: request 1, then 2–6 in
-  five threads, each under `TIMEOUT = 5` (D1, D3); an opener with the environment's proxies (D10) and
+- `probe(text, key=None) -> Probe` or `ProbeError(text, hint)`: request 1, then 2–7 in
+  six threads, each under `TIMEOUT = 5` (D1, D3); an opener with the environment's proxies (D10) and
   with a redirect handler that follows nothing (D6, D10).
 - `Probe` (frozen): `address`, `added_scheme`, `kind`, `apis`, `models`, `models_why`;
   `clis()` gives the providers that suit and those that do not, from

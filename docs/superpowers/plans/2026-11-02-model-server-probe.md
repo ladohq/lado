@@ -5,7 +5,7 @@ models and the agent CLIs that can use it, proven by requests that generate noth
 clear failures and a key kept nowhere.
 
 **Architecture:** `model_servers.probe` sends the model list first, then the native
-endpoints of Ollama and LM Studio and one empty POST per API in five threads, each under
+endpoints of Ollama and LM Studio, one empty POST per API and a control POST in six threads, each under
 5 s, following no redirect; `Probe.clis()` names the providers whose declared
 `server_api` was proven; `lines()` is the output; `cli.py` reads the key as a secret and
 prints.
@@ -21,7 +21,9 @@ design.md D1-D10) and `docs/superpowers/specs/2026-11-02-model-server-probe-desi
 - No new dependency; no schema change; no API, UI or `web/` change.
 - No provider name above `providers/`: the rule reads `Provider.server_api` and names
   `Provider.title`.
-- Texts (exact, design.md D8, D9): `<R> does not answer (<why>)` with `connection
+- Texts (exact, design.md D8, D9): the control's `APIs: cannot be told: <R> answers
+  <status> to any POST` and the unknown server's ending `; it answers <status> to any POST,
+  so its APIs cannot be told`; `<R> does not answer (<why>)` with `connection
   refused`, `unknown host`, `no answer in 5 s`; the container's hint `LADO runs in a
   container, where localhost is the container itself; a server on your machine: lado
   model-server probe <scheme>://host.docker.internal:<port><path> (not tried)`;
@@ -46,6 +48,8 @@ design.md D1-D10) and `docs/superpowers/specs/2026-11-02-model-server-probe-desi
 - No redirect followed, no request to any other host or port, at most one per check
   (Task 3 `test_redirect_is_not_followed`, `test_one_request_per_check`).
 - The hint never becomes a request (Task 3 `test_container_hint_sends_nothing_there`).
+- A gateway that answers 400 to everything proves no API (Task 3
+  `test_gateway_400_everywhere_is_unknown`).
 - The 5 s limit holds for a hanging server (Task 3 `test_hanging_server_does_not_answer`).
 
 ---
@@ -65,9 +69,10 @@ design.md D1-D10) and `docs/superpowers/specs/2026-11-02-model-server-probe-desi
 
 **Files:** `tests/fake_model_server.py`, `tests/test_fake_model_server.py`.
 
-- [ ] A `ThreadingHTTPServer` on `127.0.0.1:0` with a profile: which of the six paths
+- [ ] A `ThreadingHTTPServer` on `127.0.0.1:0` with a profile: which of the seven paths
   answer and how (`openai`, `ollama`, `lmstudio`, `anthropic`, `responses-only`,
-  `models-only`, `unknown` (404 everywhere), `key` (401 without `Authorization: Bearer
+  `models-only`, `unknown` (404 everywhere), `gateway-400` (400 with JSON on every path),
+  `gateway-400-list` (an OpenAI list, 400 with JSON on every POST), `key` (401 without `Authorization: Bearer
   <key>`), `redirect` (301 to another fake's URL), `hang` (accepts, never answers),
   `list-500`). It records `(method, path, headers, body)`. It runs as a script too:
   `python tests/fake_model_server.py <profile> <port-file> [<key>]`, writing its port.
@@ -90,8 +95,11 @@ Failing tests first, one per rule (requirement of the delta in brackets):
   (the server's type).
 - `test_api_proven_by_400_or_422_json`, `test_404_405_and_non_json_are_no`,
   `test_post_bodies_are_empty`, `test_one_request_per_check` (an API is proven without
-  generating): the fake's record holds at most the six requests and each POST's body is
+  generating): the fake's record holds at most the seven requests and each POST's body is
   `{}`.
+- `test_gateway_400_everywhere_is_unknown`, `test_gateway_400_with_list_tells_no_api`
+  (`APIs: cannot be told`, `CLIs: none`, exit 0), `test_control_404_keeps_the_apis` (a
+  server answers every POST alike proves no API).
 - `test_list_500_is_no_list`, `test_empty_list_is_none` (models or no list).
 - `test_address_forms` table: `localhost:11434` → `http://localhost:11434`, added;
   `http://h/v1/` → `http://h`; `https://gw/llm/v1` → `https://gw/llm`;
@@ -103,7 +111,7 @@ Failing tests first, one per rule (requirement of the delta in brackets):
 - `test_container_hint` with `LADO_CONTAINER=1` for `localhost`, `127.0.0.1`, `[::1]`;
   `test_no_hint_outside_container`; `test_no_hint_for_a_lan_address`;
   `test_container_hint_sends_nothing_there` (localhost in the container).
-- `test_key_headers` (each of the six requests carries `Authorization: Bearer` and
+- `test_key_headers` (each of the seven requests carries `Authorization: Bearer` and
   `x-api-key`), `test_key_never_in_error_text` (a refused key's `ProbeError` and `repr`
   hold no key) (the key is kept nowhere).
 - `test_asks_for_a_key`, `test_refuses_the_key` (asks for a key or refuses it).

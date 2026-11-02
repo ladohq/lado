@@ -4,13 +4,13 @@
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: S1 (LAD-169, run task/lad-169) · Next: S2 · Open checks: none
+In work: none · Next: S2 (waits at `step_ok`) · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes); bring `main` in again after the 0.44.0 final and check the migration numbers
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9).
 - After some steps the human may ask the lead to help with a manual check of how the step looks; the lead then gives the branch, the folder, the commands and what to look at (gate #191, D10).
 - Each step's task gets the label `component lado` (kit sdlc's: `component kit-sdlc`) and is linked to LAD-154; LAD-80 is not touched.
-Last review: none yet, base at ca7548fc
+Last review: S1, 2026-11-02, base at e55f6867 (0.44.0rc1), merged into the epic branch as e948c1f9, Checks green
 
 ## Steps
 
@@ -41,7 +41,8 @@ Rules for every step of LADO (not S7b, which is kit sdlc's own release):
   gives a list and the model is not in it.
 
 ### S1 — The agent's model is visible (M)
-Status: in progress (LAD-169, run task/lad-169)
+Status: done (LAD-169, PR #194, merged into the epic branch as b377959a; 49 files, schema 35 → 36; CI 23/23, smoke on all four providers). Check open: Kilo's model in its event (State).
+Leftovers: carried into S2 (source `session`, Codex on top of `cli-config`, Kilo, the CLI's event against the session's model, the migration number) and S4 (Claude Code reports no effort; Codex's effort after `/model`); the rest in "Later".
 Check:
 - Unit and integration tests with the fake agent: each agent in `lado.db` has a model,
   an effort and their source; `list_agents`, `GET` of the session's agents in the API
@@ -59,8 +60,8 @@ Notes: no model is chosen yet; this step only learns and shows. No terminal read
 BACKLOG's "Choose the model per agent" is replaced by a link to LAD-154 here (D8).
 The analyst may split the UI card off when the design cannot take it in one round.
 
-### S2 — One model per session (M)
-Status: planned
+### S2 — One model per session (L)
+Status: planned (drafted at S1's review; re-sized M → L: S1 touched all four providers, the UI and the schema in 49 files, S2 touches the same)
 Check:
 - `lado start --model <model>` and a field in the launch window's Advanced; the session
   keeps it (in the table's format); every agent of the session's CLI starts on it through
@@ -73,6 +74,12 @@ Check:
 - Smoke per provider (CI): the model reaches the real CLI's argv or config.
 - The schema migration and the way back (rules above).
 - UI e2e and mockup; `docs/cli.md`, `docs/design/ui.md` describe what was built.
+- From S1: the session's model is a new source next to `cli` and `cli-config`
+  (`state.source_words`), with no change of the agent's six columns; for Codex it goes
+  on top of the model carried from `config.toml`; a Kilo card shows the session's model
+  even when Kilo reports none; the design says what the card shows when a CLI's event
+  names another model than the session's (`/model`); the migration numbers after
+  `main`'s.
 Notes: walking skeleton: choose → reaches the CLI → visible. A model is a CLI + a model;
 which CLI's models the field offers comes from the session's provider. Free input with a
 check, no catalogue of LADO's own.
@@ -121,6 +128,9 @@ Check:
   where the CLI or the model cannot take it, a loud warning before the start; S1's card
   shows it.
 - Unit tests per provider, smoke per provider (CI); `docs/cli.md`, `docs/design/ui.md`.
+- From S1: Claude Code reports no effort in its events, so its card shows the effort
+  S4 sets with the source "session"; Codex's effort after a `/model` in the CLI stays
+  "your Codex config" (no hook reports it): S4's design says whether that holds.
 Notes: the CLIs' scales differ (research §1.3); LADO passes the CLI's own value and keeps
 no common scale.
 
@@ -262,3 +272,12 @@ Check:
   the user table of S5c is the one set until profiles come.
 - Automatic power by task complexity; fallback models on an error — out of the epic
   (statement).
+- The model in `lado log` and the `spawned` event — S1 left them out (proposal, Out of
+  scope) — LAD-169 — when the log is asked for it.
+- A model change in Claude Code's own terminal (`/model`) shows only at its next
+  SessionStart — S1 (Events, not screens) — LAD-169 — if Claude Code gets a hook that
+  names the model on a change.
+- `lado ls`: a model name over 18 characters shifts the branch column (E3, declined at
+  S1's review) — LAD-169 — with the next change of `lado ls`.
+- Codex's hooks record the model in a short write transaction even when nothing changed
+  (F4, declined) — LAD-169 — if hooks ever show up in profiling.

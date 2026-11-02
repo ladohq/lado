@@ -20,6 +20,7 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -378,11 +379,29 @@ class CodexProvider(base.Provider):
         # Codex loads SKILL.md folders from $CODEX_HOME/skills, links followed. It also
         # reads the user's $HOME/.agents/skills, whatever CODEX_HOME is (BACKLOG.md).
         base.link_skills(home / "skills", spec.skills)
-        # The carried settings may hold credentials (model_providers): only the user reads it.
-        fd = os.open(home / "config.toml", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        os.fchmod(fd, 0o600)  # the mode above is only for a new file
-        with os.fdopen(fd, "w") as file:
-            file.write(toml_text(config))
+        _write_config(home, config)
+        # Codex's sandbox where it may not start (_sandbox_error): in LADO's container the
+        # agent runs without it, the container its boundary as for every other agent CLI; on
+        # a host it stays, as dropping it there opens the user's home.
+        unsandboxed = False
+        if session.permission_mode != "bypassPermissions" and sys.platform == "linux":
+            from lado import update  # only here: the CLI's commands do not import it (cli.py)
+
+            error = _sandbox_error(home, cwd, spec.environ or os.environ)
+            cause = f"Codex's sandbox cannot start here ({error}): Codex agent {agent.name}"
+            if error and update.in_container():
+                unsandboxed = True
+                config.pop("default_permissions", None)
+                config.pop("permissions", None)
+                _write_config(home, config)
+                warnings.append(
+                    f"{cause} runs without it, and LADO's container is its only boundary"
+                )
+            elif error:
+                warnings.append(
+                    f"{cause} asks before each shell command; docs/install.md says how to "
+                    "allow it, or use bypassPermissions"
+                )
         # For _settle_login, which also runs where CODEX_HOME is the agent's own.
         (home / USER_HOME).write_text(f"{_codex_home(spec.environ or os.environ)}\n")
         # --no-daemon: else Codex starts a background app server for the home, which runs
@@ -393,6 +412,9 @@ class CodexProvider(base.Provider):
             argv += ["-a", "on-request"]
         elif session.permission_mode == "bypassPermissions":
             argv += ["--dangerously-bypass-approvals-and-sandbox"]
+        if unsandboxed:
+            # On the command line, where it shows and wins over a carried sandbox_mode.
+            argv += ["--sandbox", "danger-full-access"]
         if notice:
             argv.append(notice)
         return base.Launch(argv, {"CODEX_HOME": str(home)}, warnings)
@@ -469,6 +491,14 @@ class CodexProvider(base.Provider):
         if hooks:
             return base.Blocker(reason=f"{self.title} asks to review {review}", notes=notes)
         return base.Blocker(notes=notes)
+
+
+def _write_config(home: Path, config: dict) -> None:
+    # The carried settings may hold credentials (model_providers): only the user reads it.
+    fd = os.open(home / "config.toml", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)  # the mode above is only for a new file
+    with os.fdopen(fd, "w") as file:
+        file.write(toml_text(config))
 
 
 def _settle_login(home: Path, env: Mapping[str, str]) -> list[str]:
@@ -744,6 +774,43 @@ def _mcp_servers(servers: dict[str, base.McpServer], environ: list[str]) -> dict
         # are approved; a kit's servers ask as Codex's own would.
         config["lado"].update(required=True, default_tools_approval_mode="approve")
     return config
+
+
+# On Linux, Codex's sandbox (workspace-write, and LADO's profile over `:workspace`) runs
+# commands only through bubblewrap, which needs an unprivileged user namespace. Docker's
+# default seccomp profile refuses one in a container whatever the kernel allows, and the way
+# without bubblewrap (feature `use_legacy_landlock`) refuses in 0.162 ("filesystem-restricted
+# execution requires bubblewrap"): every shell command then asks "retry without sandbox?"
+# (LAD-151, checked by hand in LADO's container). Codex itself answers whether its sandbox
+# starts, so the probe asks it, in the agent's home, folder and environment.
+SANDBOX_TIMEOUT = 10
+SANDBOX_PROBE = ("sandbox", "--", "true")
+
+
+def _sandbox_error(home: Path, cwd: Path, environ: Mapping[str, str]) -> str | None:
+    """None when `codex sandbox -- true` runs in the agent's home; else why not, in one line:
+    the first line of Codex's error (its own `WARNING:` lines skipped)."""
+    probe = f"`codex {' '.join(SANDBOX_PROBE)}`"
+    try:
+        done = subprocess.run(
+            ["codex", *SANDBOX_PROBE],
+            cwd=cwd,
+            env={**environ, "CODEX_HOME": str(home)},
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=SANDBOX_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return f"{probe} did not end in {SANDBOX_TIMEOUT:g} s"
+    except OSError as e:
+        return f"cannot run `codex sandbox`: {e.strerror or e}"
+    if done.returncode == 0:
+        return None
+    lines = [line.strip() for line in done.stderr.splitlines() if line.strip()]
+    errors = [line for line in lines if not line.startswith("WARNING:")]
+    return (errors or lines or [f"{probe} exited {done.returncode}"])[0]
 
 
 # Codex's sandbox (workspace-write) keeps .git under the folder it runs in and a worktree's

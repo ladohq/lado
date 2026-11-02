@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.44.1 (unreleased)
+
+### Fixed
+
+- **Codex agents run shell commands in LADO's container.** Codex's sandbox cannot start in
+  Docker, so in the mode `default` every command asked "retry without sandbox?". They now
+  run without it there, and the session's start says so.
+
 ## 0.44.0 (2026-11-02)
 
 ### New

@@ -575,11 +575,19 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     trusts the repository's hooks by their hashes (a hook the user disabled stays so);
     `first_hook_blocker` still reads both from the agent's config.toml, for a home LADO did
     not write. Its argv is `codex --no-daemon` (else a background app server outlives the
-    agent) with the first lines last. The login (`first_hook_blocker`, `_settle_login`):
-    `auth.json` a link to the user's (`user-codex-home` in the agent's folder names the
-    user's Codex home), or a file of the agent's own with `OPENAI_API_KEY`, whose variable
-    Codex's TUI ignores. `login_status` runs `codex login status -c
-    cli_auth_credentials_store="file"` (the store agents use), takes `OPENAI_API_KEY` as a
+    agent) with the first lines last. On Linux, in any mode but `bypassPermissions`, the
+    launch first asks Codex whether its sandbox starts (`_sandbox_error`: `codex sandbox
+    -- true` in the agent's home, folder and environment, after config.toml is written;
+    10 s): it needs bubblewrap and a user namespace, which Docker refuses (LAD-151). When
+    it cannot start, in LADO's container (`update.in_container`) the agent gets
+    `--sandbox danger-full-access` and a config.toml without LADO's permission profile,
+    its mode's approvals kept, and a launch warning; on a host it keeps the sandbox, and
+    the launch warning says each shell command will ask (docs/install.md). The login
+    (`first_hook_blocker`, `_settle_login`): `auth.json` a link to the user's
+    (`user-codex-home` in the agent's folder names the user's Codex home), or a file of the
+    agent's own with `OPENAI_API_KEY`, whose variable Codex's TUI ignores. `login_status`
+    runs `codex login status -c cli_auth_credentials_store="file"` (the store agents use),
+    takes `OPENAI_API_KEY` as a
     login without it, and reads a login kept only in the keyring as none, with
     `LoginStatus.keyring` (Settings shows `keyring_note`); `needs_login(env)` follows the
     model provider of the config. Its sheet (`login_choices`): a ChatGPT sign-in code

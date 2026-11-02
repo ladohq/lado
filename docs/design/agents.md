@@ -244,6 +244,17 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `warning`, which says that an agent whose model needs a login then waits for one (its
   status, read in its own home, finds none) until it starts again with its folder
   writable. Nothing is written into the user's Codex home.
+- A Codex agent on Linux in any mode but `bypassPermissions` would otherwise stand in
+  Needs you at its first shell command where Codex's sandbox cannot start: it runs
+  commands through bubblewrap, which needs an unprivileged user namespace, and Docker's
+  seccomp refuses one in a container (LAD-151; Codex 0.162's way without bubblewrap
+  refuses too), so Codex asks "retry without sandbox?". Before each launch (start, resume,
+  worker) LADO asks Codex itself, `codex sandbox -- true` in the agent's home, folder and
+  environment (`codex._sandbox_error`). When it fails, in LADO's container the agent runs
+  with `--sandbox danger-full-access` and no permission profile, its mode's approvals kept,
+  the container being its boundary as for every other CLI there; on a host it keeps the
+  sandbox. Either way the launch warns (`lado start`, the UI's start notice, loop.log for a
+  worker). macOS's sandbox is not bubblewrap: no probe there.
 - A new session or worker whose CLI needs a login (`Provider.needs_login`, asked with the
   environment the agent would start from: Claude Code always; Codex when the model
   provider of the user's config, the chosen profile's, else the top level's, is OpenAI's,

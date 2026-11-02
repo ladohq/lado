@@ -28,6 +28,16 @@ OPENAI_401 = {
 }
 
 
+def model_name(body: bytes) -> str:
+    """The model a request asks for (its `model`); "" for none or a body that is not JSON."""
+    try:
+        request = json.loads(body)
+    except ValueError:
+        return ""
+    model = request.get("model") if isinstance(request, dict) else None
+    return model if isinstance(model, str) else ""
+
+
 def tool_names(body: bytes) -> list[str]:
     """The names of the tools a request offers the model: its `tools` and those of its input
     items of type `additional_tools` (where Codex 0.162 puts a newer model's), a namespace's
@@ -52,29 +62,32 @@ def tool_names(body: bytes) -> list[str]:
 
 
 class Endpoint:
-    """Answers every request at once with 401, and keeps the method and path of each and, in
-    `tools`, the names of the tools it offers (with `log`, appends them to that file as a JSON
-    line)."""
+    """Answers every request at once with 401, and keeps the method and path of each, in
+    `tools` the names of the tools it offers and in `models` the model it asks for (with
+    `log`, appends them to that file as a JSON line)."""
 
     def __init__(self, host: str = "127.0.0.1", port: int = 0, log: Path | None = None):
         self.requests: list[tuple[str, str]] = []
         self.tools: list[list[str]] = []
+        self.models: list[str] = []
         kept_together = threading.Lock()  # the n-th of `tools` is the n-th request's
         endpoint = self
 
         class Handler(BaseHTTPRequestHandler):
             def answer(self):
                 length = int(self.headers.get("Content-Length") or 0)
-                names = tool_names(self.rfile.read(length))
+                body = self.rfile.read(length)
+                names = tool_names(body)
                 with kept_together:
                     endpoint.requests.append((self.command, self.path))
                     endpoint.tools.append(names)
+                    endpoint.models.append(model_name(body))
                 if log is not None:
                     line = {"method": self.command, "path": self.path, "tools": names}
                     with log.open("a") as kept:
                         kept.write(json.dumps(line) + "\n")
-                body = ANTHROPIC_401 if "/messages" in self.path else OPENAI_401
-                data = json.dumps(body).encode()
+                error = ANTHROPIC_401 if "/messages" in self.path else OPENAI_401
+                data = json.dumps(error).encode()
                 self.send_response(401)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))

@@ -67,6 +67,7 @@ def test_it_keeps_the_tool_names_of_each_request():
             ["exec_command", "functions.exec", "collaboration.wait_agent", "update_plan"],
             [],  # a body that is not JSON (a compressed one) has none
         ]
+        assert endpoint.models == ["gpt-5.6-sol", ""]
     finally:
         endpoint.close()
 

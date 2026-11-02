@@ -776,8 +776,8 @@ def start_session(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
     instructions = _supervisor_instructions(env, session)
-    model, _ = session_model(sess, agent_cli)
-    spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env, model=model)
+    chosen_model, _ = session_model(sess, agent_cli)
+    spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env, model=chosen_model)
     agent.read_only = spec.read_only  # stored anew at each resume, as the kit says now
     started = Started(sess, chosen, lead=env.lead_line(), warnings=[*env.warnings, *checked])
     if outside := outside_workspace(repo):
@@ -961,8 +961,10 @@ def spawn_worker(
     base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
     check_login(agent_cli, base_env, logins.WORKER)
-    model, _ = session_model(sess, agent_cli)
-    spec = _spec(agent_cli, env, role_def.name, agent, instructions, base_env, without or [], model)
+    chosen_model, _ = session_model(sess, agent_cli)
+    spec = _spec(
+        agent_cli, env, role_def.name, agent, instructions, base_env, without or [], chosen_model
+    )
     agent.read_only = spec.read_only
     if not run:
         exclude_worktrees(sess.repo)

@@ -333,6 +333,15 @@ export const getKits = (where: string | null) =>
 export const getProviders = (project: string | null = null) =>
   get<ProviderInfo[]>(project ? `/api/providers?${query({ project })}` : "/api/providers");
 
+export type ProviderModels = components["schemas"]["ProviderModels"];
+
+// The provider's CLI's aliases and own list of models, and the check of `model` against
+// them (lado.model_check), read for the agents of `project` (or of none).
+export const getProviderModels = (name: string, model: string, project: string | null = null) =>
+  get<ProviderModels>(
+    `/api/providers/${encodeURIComponent(name)}/models?${query({ model, ...(project ? { project } : {}) })}`,
+  );
+
 // What the session's head shows besides its settings: its repository, its kits' and its
 // provider's versions as installed now; read anew by the server each time.
 export const getSessionAbout = (session: string) => get<SessionAbout>(`${sessionPath(session)}/about`);

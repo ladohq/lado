@@ -13,6 +13,7 @@ import type {
   KitInfo,
   ProjectLaunch,
   ProviderInfo,
+  ProviderModels,
   RecentFolder,
   ScratchTarget,
   SessionAbout,
@@ -44,6 +45,7 @@ function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
     stopped_at: null,
     title: null,
     project: null,
+    model: null,
     ...more,
   };
 }
@@ -100,6 +102,26 @@ let workspace: { path: string; made: boolean }; // LADO_REPOS, else ~/workspace
 let kits: KitInfo[];
 let abouts: Record<string, SessionAbout>; // by session; none: 404
 let providers: (project: string | null) => Promise<ProviderInfo[]>; // GET /api/providers?project=
+// GET /api/providers/{name}/models?model=: the CLI's aliases, its list and the verdict
+let providerModels: (name: string, model: string) => ProviderModels;
+
+// As lado.model_check words them: Claude Code has aliases and no list; Kilo a list.
+function modelsOf(name: string, model: string): ProviderModels {
+  const title = name === "claude" ? "Claude Code" : "Kilo CLI";
+  const aliases = name === "claude" ? ["sonnet", "opus"] : [];
+  const models = name === "claude" ? null : ["kilo/small", "kilo/large"];
+  const why = name === "claude" ? "Claude Code gives no list of models beyond its aliases" : "";
+  const check: ProviderModels["check"] = !model
+    ? { kind: "default", text: `empty: ${title}'s default model; type or pick one of its models` }
+    : aliases.includes(model)
+      ? { kind: "ok", text: `an alias of ${title}` }
+      : models === null
+        ? { kind: "warn", text: `${why}: LADO cannot check ${model}; a wrong name stops its agents at their first turn` }
+        : models.includes(model)
+          ? { kind: "ok", text: `in ${title}'s list of models` }
+          : { kind: "refused", text: `${model} is not in ${title}'s list of models; kilo models prints the list` };
+  return { aliases, models, why, check };
+}
 let answers: Record<string, () => Response | Promise<Response>>; // "METHOD path" -> the server's answer
 let calls: Call[];
 // GET /api/project-launch: Shop with backend and frontend, its last session in backend
@@ -155,6 +177,7 @@ beforeEach(() => {
   kits = [kit("default"), kit("team")];
   abouts = {};
   providers = async () => [provider("claude"), provider("kilo")];
+  providerModels = modelsOf;
   answers = {};
   calls = [];
   projectLaunch = shopLaunch;
@@ -189,6 +212,8 @@ beforeEach(() => {
       }
       if (url.pathname === "/api/kits") return json(kits);
       if (url.pathname === "/api/providers") return json(await providers(url.searchParams.get("project")));
+      const models = /^\/api\/providers\/([^/]+)\/models$/.exec(url.pathname);
+      if (models) return json(providerModels(decodeURIComponent(models[1]), url.searchParams.get("model") ?? ""));
       const about = /^\/api\/sessions\/([^/]+)\/about$/.exec(url.pathname);
       if (about) {
         const found = abouts[decodeURIComponent(about[1])];
@@ -950,7 +975,7 @@ test("the first message row is folded when the window opens", async () => {
   expect(firstRow().open).toBe(false);
   // It comes before Advanced.
   const rows = [...document.querySelectorAll(".launch-dialog details summary")].map((s) => s.textContent);
-  expect(rows).toEqual([FIRST_ROW, "Advanced: switch off agents, skills, MCP servers or flows"]);
+  expect(rows).toEqual([FIRST_ROW, "Advanced: model, switch off agents, skills, MCP servers or flows"]);
 });
 
 test("a first message is sent with the start", async () => {
@@ -1010,6 +1035,83 @@ test("the Resume window sends its first message", async () => {
   fireEvent.click(resume);
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Resume session" })).toBeNull());
   expect(calls.find((c) => c.method === "POST")!.body).toEqual({ prompt: "Continue the review" });
+});
+
+// The session's model (Advanced)
+
+const modelField = () => screen.getByRole("combobox", { name: "Model" }) as HTMLInputElement;
+const advancedRow = () => screen.getByText(/^Advanced/).closest("details") as HTMLDetailsElement;
+
+function typeModel(text: string) {
+  if (!advancedRow().open) fireEvent.click(advancedRow().querySelector("summary")!);
+  fireEvent.change(modelField(), { target: { value: text } });
+}
+
+test("the Model field comes before Switch off, empty with the CLI's default and its suggestions", async () => {
+  await openLaunch();
+  await ready("/src/app");
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  const labels = [...advancedRow().querySelectorAll("label")].map((one) => one.textContent?.trim().split("\n")[0]);
+  expect(labels[0]).toMatch(/^Model/);
+  expect(labels[1]).toMatch(/^Switch off/);
+  expect(modelField().placeholder).toBe("Claude Code's default");
+  expect(await screen.findByText("empty: Claude Code's default model; type or pick one of its models")).toBeTruthy();
+  const list = document.getElementById(modelField().getAttribute("list")!)!;
+  await waitFor(() => expect([...list.querySelectorAll("option")].map((o) => o.value)).toEqual(["sonnet", "opus"]));
+});
+
+test("each verdict on the typed model shows under the field; Start is off for a refused one and while checking", async () => {
+  await openLaunch();
+  await ready("/src/app", { provider: { name: "kilo", reason: "only_installed" } });
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  typeModel("kilo/large");
+  expect(startButton().disabled).toBe(true); // checking
+  const ok = await screen.findByText("✓ in Kilo CLI's list of models");
+  expect(ok.className).toBe("field-note ok");
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  typeModel("kilo/huge");
+  const refused = await screen.findByText("kilo/huge is not in Kilo CLI's list of models; kilo models prints the list");
+  expect(refused.className).toBe("field-note bad");
+  expect(startButton().disabled).toBe(true);
+  fireEvent.change(providerSelect(), { target: { value: "claude" } });
+  await waitFor(() => expect(modelField().value).toBe("")); // another CLI's model goes
+  typeModel("opus");
+  expect((await screen.findByText("✓ an alias of Claude Code")).className).toBe("field-note ok");
+  typeModel("claude-opus-5-5");
+  const warned = await screen.findByText(/^⚠ Claude Code gives no list of models beyond its aliases/);
+  expect(warned.className).toBe("field-note warn");
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+});
+
+test("folded with a model, Advanced shows it; Start sends it", async () => {
+  answers["POST /api/sessions"] = () => json({ session: session("app", { repo: "/src/app" }), ...STARTED });
+  await openLaunch();
+  await ready("/src/app");
+  typeModel("opus");
+  await screen.findByText("✓ an alias of Claude Code");
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  await waitFor(() => expect(advancedRow().querySelector("summary")!.textContent).toBe("Advanced: model opus"));
+  expect(screen.getByText("opus", { selector: ".launch-first-peek" })).toBeTruthy();
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  fireEvent.click(startButton());
+  await waitFor(() => expect(calls.find((c) => c.method === "POST")).toBeTruthy());
+  expect((calls.find((c) => c.method === "POST")!.body as { model?: string }).model).toBe("opus");
+});
+
+test("Resume starts with the session's model and sends it only when changed", async () => {
+  sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "kilo", model: "kilo/small" })];
+  answers["POST /api/sessions/lado/resume"] = () => json({ session: session("lado"), ...STARTED, resumed: true });
+  open("/sessions/lado");
+  fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Resume session" });
+  expect(modelField().value).toBe("kilo/small");
+  expect(advancedRow().querySelector("summary")!.textContent).toBe("Advanced: model kilo/small");
+  typeModel("");
+  const resume = within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement;
+  await waitFor(() => expect(resume.disabled).toBe(false));
+  fireEvent.click(resume);
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Resume session" })).toBeNull());
+  expect(calls.find((c) => c.method === "POST")!.body).toEqual({ model: "" });
 });
 
 // Resume

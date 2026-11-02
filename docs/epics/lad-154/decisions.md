@@ -16,6 +16,6 @@
 | 2026-11-02 | S2, manual check by the human; question #2509 (D12) | The human's remarks on the launch window's Model field (its note sticks to the field; the field looks unlike the other dropdown fields): fix them, and where in the plan | a step S2b before S3a; S2b after S3a; inside S3b; not fixed, to "Later" | S2b before S3a, with S2's declined launch-window findings F3, F4, E3 (lead) | as recommended (human) | yes |
 | 2026-11-02 | step_ok, gate #204 (D13) | Approve S2's review and S3a as the next step | approve; reject | approve (lead) | rejected: «сначала S2b» — as agreed at #2509, S2b goes before S3a (human) | no |
 
-Epic: plan_ok gate #194 — approved as recommended (Q1 in S5c; Q3 option (a) with the critic's P15 and P17; Q2 open until S3b's merge); step_ok gate #198 (S2) — approved as recommended.
+Epic: plan_ok gate #194 — approved as recommended (Q1 in S5c; Q3 option (a) with the critic's P15 and P17; Q2 open until S3b's merge); step_ok gate #198 (S2) — approved as recommended; step_ok gate #205 (S2b) — approved as recommended.
 S1: question #2357, gates #196, #197 — approved as recommended
 S2: questions #2471, #2501, gates #200, #202, #203 — approved as recommended

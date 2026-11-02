@@ -332,6 +332,12 @@ def test_start_passes_the_model_through(repo, fake_tmux, capsys):
     assert "  changed model: claude claude-opus-5-5 -> CLI default" in capsys.readouterr().out
 
 
+def test_start_takes_the_model_without_its_spaces(repo, fake_tmux):
+    args = ["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]
+    assert main([*args, "--model", " sonnet "]) == 0
+    assert state.get_session("s").power == state.PowerTable.single("claude", "sonnet")
+
+
 def test_start_with_a_mode_the_provider_cannot_honour_fails(repo, fake_tmux, capsys):
     args = ["start", str(repo), "--provider", "kilo", "--permission-mode", "dontAsk"]
     assert main([*args, "--no-attach"]) == 1

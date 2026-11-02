@@ -4,7 +4,8 @@
   without repeating it", parametrized over its scenarios: `-s3cr3t --secret`, `--secret
   -s3cr3t`, `--s -s3cr3t`, `--secret=s3cr3t`, `--secret=-s3cr3t`, `--help=s3cr3t`,
   `--he=s3cr3t`, `-h=s3cr3t`, `-hs3cr3t` (on 3.13 it may print the help: then exit 0 and the
-  value is not in the output either), `ghp a1 --secret`, and a missing name (`project set
+  value is not in the output either), `--=s3cr3t` before and after `--secret` (on 3.10
+  `lado`'s own parser found it ambiguous, `--help` or `--version`: review F1), `ghp a1 --secret`, and a missing name (`project set
   shop`). For each: `main([...])` raises `SystemExit(1)` (or returns 1), stderr is the
   usage line and the fixed text, stdout empty, the value appears in neither, stdin is not
   read (the existing `Stdin` helper), the project has no new secret or variable, and no
@@ -20,7 +21,8 @@
 - [x] 2.1 `src/lado/cli.py`: the parser class and its fixed text (design D1), given to
   `project.add_subparsers(parser_class=…)`, the text on `project set` only; `main` parses
   with `parse_known_args` and sends leftovers to the quiet parser in the defaults, else to
-  `parser.error("unrecognized arguments: …")` (D2). 1.1 and 1.2 pass.
+  `parser.error("unrecognized arguments: …")` (D2); `lado`'s own parser takes no
+  abbreviation (`allow_abbrev=False`, review F1). 1.1 and 1.2 pass.
 - [x] 2.2 `make lint` and `make test` green.
 
 ## 3. Docs

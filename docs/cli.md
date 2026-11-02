@@ -104,8 +104,11 @@ so a value starting with `-` before `--`, plain or secret, an argument given to 
 with - goes after -- (lado project set <id> <NAME> -- -v); a secret's value is never given
 on the command line (ps and the shell's history keep it): run lado project set <id> <NAME>
 --secret and type it, or pipe it in` on stderr, naming none of its words, exit 1, reading
-and storing nothing; `-h` or `--help` alone prints its help. `lado project unset <id> NAME` removes a plain variable or a secret with `Removed
-<NAME> from project <id>.` and `Agents started from now on do not get it.`, or, while
+and storing nothing; `-h` or `--help` alone prints its help. For it `lado`'s own `--help`
+and `--version` take no abbreviation (`lado --vers` is an unrecognized argument): Python
+3.10 matches them against every word, and `--=<value>` was refused as ambiguous, quoted.
+`lado project unset <id> NAME` removes a plain variable or a secret with `Removed <NAME>
+from project <id>.` and `Agents started from now on do not get it.`, or, while
 sessions of the project run, `Agents started from now on do not get it; running sessions of
 <id> keep the old environment until restarted: <names>`; a name the project lacks is exit 1
 with `project <id> has no variable or secret <NAME>; its variables: <names>; its secrets:

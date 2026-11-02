@@ -29,7 +29,7 @@ alike. `-h` or `--help` alone SHALL print the help, exit 0.
 
 #### Scenario: An argument given to a flag
 - **WHEN** the human runs `lado project set shop GH_TOKEN` with `--secret=s3cr3t`,
-  `--help=s3cr3t`, `--he=s3cr3t`, `-h=s3cr3t` or `-hs3cr3t`
+  `--help=s3cr3t`, `--he=s3cr3t`, `-h=s3cr3t`, `-hs3cr3t` or `--=s3cr3t`
 - **THEN** it exits 1 with the usage and the fixed text, and `s3cr3t` is not printed
 
 #### Scenario: A second word

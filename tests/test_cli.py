@@ -3583,6 +3583,10 @@ def _files_holding(root: Path, word: str) -> list[Path]:
         (["GH_TOKEN", "--he=s3cr3t"], "s3cr3t"),
         (["GH_TOKEN", "-h=s3cr3t"], "s3cr3t"),
         (["GH_TOKEN", "-hs3cr3t"], "s3cr3t"),
+        # On 3.10 lado's own parser matches --= against --help and --version
+        (["GH_TOKEN", "--=s3cr3t"], "s3cr3t"),
+        (["GH_TOKEN", "--secret", "--=s3cr3t"], "s3cr3t"),
+        (["GH_TOKEN", "--=-s3cr3t", "--secret"], "s3cr3t"),
         (["GH_TOKEN", "ghp", "a1", "--secret"], "ghp"),
         (["GH_TOKEN", "ghp", "a1", "--secret"], "a1"),
         ([], "shop"),

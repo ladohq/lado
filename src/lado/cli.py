@@ -1604,6 +1604,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="lado",
         description="Layered Agent Delegation & Orchestration.",
+        # Python 3.10 matches prefixes of --help and --version against every word, a
+        # command's too: `--=<secret>` after `project set` was ambiguous and quoted.
+        allow_abbrev=False,
     )
     parser.add_argument("--version", action=_Version)
     commands = parser.add_subparsers(dest="command", metavar="<command>")

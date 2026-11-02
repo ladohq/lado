@@ -758,8 +758,10 @@ test("the Project way asks for the chosen project's providers, where its own log
   await waitFor(() => expect(calls.some((c) => c.path === "/api/providers?project=shop")).toBe(true));
   fireEvent.click(repoRadio(dialog, "frontend"));
   await waitFor(() => expect(providerSelect().disabled).toBe(false));
-  const claude = within(providerSelect()).getByRole("option", { name: /^claude/ }) as HTMLOptionElement;
-  expect(claude.disabled).toBe(false);
+  await waitFor(() => {
+    const claude = within(providerSelect()).getByRole("option", { name: /^claude/ }) as HTMLOptionElement;
+    expect(claude.disabled).toBe(false);
+  });
   fireEvent.change(providerSelect(), { target: { value: "claude" } });
   await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
   fireEvent.change(within(dialog).getByRole("combobox", { name: "Project" }), { target: { value: "acme" } });

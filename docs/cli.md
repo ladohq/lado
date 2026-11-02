@@ -540,7 +540,9 @@ not: Claude Code (no Anthropic Messages API)
 `models: none` for an empty list, `models: no list (GET /v1/models: <status> | the answer
 is larger than 4 MiB)` for a list it cannot read (not a failure); `CLIs: none` when no API
 was proven, after `APIs: cannot be told: <address> answers <status> to any POST` when the
-control was refused like an API; no `not:` line when every CLI suits. Each failure is one
+control was refused like an API; no `not:` line when every CLI suits. What the server
+says (its model ids, a redirect's location) is shown as one line of visible text
+(`text.one_line`). Each failure is one
 line on stderr and exit 1: `<address> does not answer (connection refused | unknown host |
 no answer in 5 s | …)`, with, in LADO's container (`LADO_CONTAINER`) for `localhost`,
 `127.0.0.0/8` or `::1`, a second line naming `http://host.docker.internal:<port>` (LADO

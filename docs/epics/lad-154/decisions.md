@@ -25,7 +25,7 @@
 | 2026-11-03 | step_ok, gate #234 (D20) | Approve S3c's review and S3d as the next step | approve; reject | approve at first; after #2824 (D19) reject (lead) | rejected: «сначала S3e: LAD-183…186» (human) | yes |
 | 2026-11-03 | S3e in work; the human's question on external providers (D21) | Check an external provider (OpenRouter, Qwen by key) in S3b's manual check, or later | in S3b's manual check; at the epic's end | in S3b's manual check (lead) | an open check at the epic's end, nothing changed now (human) | no |
 
-Epic: plan_ok gate #194 — approved as recommended (Q1 in S5c; Q3 option (a) with the critic's P15 and P17; Q2 open until S3b's merge); step_ok gate #198 (S2) — approved as recommended; step_ok gate #205 (S2b) — approved as recommended; step_ok gate #222 (S3b, Q6 → LAD-179) — approved as recommended; step_ok gate #225 (D18's plan, S3c) — approved as recommended; step_ok gate #236 (S3e, after D19/D20) — approved as recommended.
+Epic: plan_ok gate #194 — approved as recommended (Q1 in S5c; Q3 option (a) with the critic's P15 and P17; Q2 open until S3b's merge); step_ok gate #198 (S2) — approved as recommended; step_ok gate #205 (S2b) — approved as recommended; step_ok gate #222 (S3b, Q6 → LAD-179) — approved as recommended; step_ok gate #225 (D18's plan, S3c) — approved as recommended; step_ok gate #236 (S3e, after D19/D20) — approved as recommended; step_ok gate #239 (S3d) — approved as recommended.
 S1: question #2357, gates #196, #197 — approved as recommended
 S2: questions #2471, #2501, gates #200, #202, #203 — approved as recommended
 S2b: questions #2515 (points 1, 3, 4), #2521 (the lead's «нет» against the developer's proposal), gates #206, #207, #208 — approved as recommended

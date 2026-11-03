@@ -272,10 +272,35 @@ mock-up first; #2969: 1A, 2A, 3A) change the page, not the core's rules or the c
     (`icons.tsx`'s `PencilIcon` and `ForgetIcon`, their names in `aria-label` and title); ↻
     is at the right above the list, as Providers' ↻; a server shows its list, its Change
     form or its Remove confirmation, opening one closing the others.
-14. **"CLI", not "provider", on the page**: in LADO a provider is the support of one agent
-    CLI, but "provider" also names a model's company (`anthropic/…`, Codex's
-    `model_provider`). Renaming Settings' "Providers and environment" is not this change
-    (#2978, 3A).
+14. **"Agent CLI", not "provider"**: in LADO a provider is the support of one agent CLI,
+    but "provider" also names a model's company (`anthropic/…`, Codex's `model_provider`).
+    See D17.
+
+### D17. One word in the UI: agent CLI
+
+The human's question at gate #246 ("are we confusing the user with CLI after Provider?")
+and their answer #2995 (A). The UI named one thing three ways: the New session window's
+field `Provider` with the note `choose the agent CLI…`, Settings' `Providers and
+environment`, the system panel's `Providers`, the session details' `Agent CLI`. Now:
+
+- `Launch.tsx`: the field's label `Agent CLI`; `Providers.tsx`: the heading `Agent CLIs and
+  environment`; `SystemPanel.tsx`: `Agent CLIs` (its `aria-label` too).
+- `logins.SETTINGS = "Settings → Agent CLIs and environment"`: every refusal and doctor line
+  naming the section takes it from there; the Docker image's headers (`docker/Dockerfile`,
+  `docker/compose.yaml`) say the same.
+- Kept: the anchor `#providers-and-environment` (`PROVIDERS_ANCHOR`: links and bookmarks
+  keep working; an id the human does not read), `--provider` of `lado start` (scripts),
+  `lado ls`'s column, the code's word `provider`, and lowercase
+  "provider" in texts outside these labels.
+- The living specs that quote the old words are modified in this change's deltas
+  (`provider-logins`, `container`, `launch-notes`, `projects`, `session-clone`,
+  `session-model`, `session-scratch`); docs (`docs/cli.md`, `docs/install.md`,
+  `docs/design/ui.md`, `docs/design/agents.md`, `docs/design/modules.md`) follow; earlier
+  design docs and plans under `docs/superpowers/` stay as written.
+
+Why: one word for one thing; "provider" is ambiguous on the Models page. Cost: seven code
+files more (about 22 in all, under the ~25 threshold) and the tests that quote the old
+labels.
 
 ## Risks / Trade-offs
 

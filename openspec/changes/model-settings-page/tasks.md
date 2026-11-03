@@ -86,5 +86,10 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
   fake CLI list) bounded; rename by Enter and Esc; the add form's check against
   `tests/fake_model_server.py`; 390 px without sideways scroll; screenshots for the pull
   request. Check: `uv run pytest -m ui tests/ui/test_models_section.py`.
-- [ ] 6.5 `docs/design/ui.md`'s section Models as built; the manual check in the pull
+- [ ] 6.5 Agent CLI in the UI (D17): the labels in `Launch.tsx`, `Providers.tsx`,
+  `SystemPanel.tsx`, `logins.SETTINGS`, the Docker headers, the docstrings that name the
+  section; the tests quoting them; `docs/cli.md`, `docs/install.md`, `docs/design/*.md`.
+  Check: `make test`, `make web`, `uv run pytest -m ui tests/ui/test_launch.py
+  tests/ui/test_providers_section.py`, `tests/test_docker.py`.
+- [ ] 6.6 `docs/design/ui.md`'s section Models as built; the manual check in the pull
   request updated; regression as 4.2.

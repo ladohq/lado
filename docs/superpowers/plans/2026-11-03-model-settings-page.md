@@ -326,3 +326,24 @@ the form's check stay.
 - [ ] `docs/design/ui.md` as built; the manual check in the pull request names the new
   steps (tabs, rename by Enter/Esc, the form's check); regression as Task 9; commit
   `Settings → Models after the human's UI remarks (LAD-187)`.
+
+### Task 11: One word, agent CLI (D17)
+
+**Files:** modify `src/lado/logins.py` (`SETTINGS`), `web/src/Launch.tsx` (label),
+`web/src/Providers.tsx` (heading), `web/src/SystemPanel.tsx` (heading, `aria-label`),
+`docker/Dockerfile`, `docker/compose.yaml` (headers), the docstrings of `doctor.py`,
+`server/provider_check.py`, `server/launch.py`, `server/app.py`, `server/models.py`; the
+tests that quote the old words (`tests/test_logins.py`, `tests/test_runtime.py`,
+`tests/test_doctor.py`, `tests/test_cli.py`, `tests/test_server_launch.py`,
+`tests/test_docker.py`, `tests/ui/test_launch.py`, `tests/ui/test_providers_section.py`, the
+vitest files); docs `docs/cli.md`, `docs/install.md`, `docs/design/ui.md`,
+`docs/design/agents.md`, `docs/design/modules.md`.
+
+- [ ] Change the tests' expected texts first (`Settings → Agent CLIs and environment`, the
+  heading `Agent CLIs and environment`, the label `Agent CLI`, the panel's `Agent CLIs`); a
+  UI test that `/settings#providers-and-environment` still scrolls to the section; run them
+  and see them fail.
+- [ ] Change the labels and `SETTINGS`; `grep -rn "Providers and environment" src web/src
+  docker docs/*.md docs/design` finds nothing; run the tests above, `make web`.
+- [ ] Commit `The UI says agent CLI (LAD-187)`.
+

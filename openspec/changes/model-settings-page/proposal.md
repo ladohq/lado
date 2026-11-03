@@ -52,6 +52,9 @@ provider's own list).
   does not answer says why and its models stay.
 - **Model id** only where a source's list is not whole (Claude Code's full ids, a CLI or a
   server with no list), with the launch window's live check.
+- The UI says **agent CLI** for Claude Code, Codex CLI, OpenCode and Kilo CLI everywhere:
+  the New session window's `Agent CLI`, Settings' `Agent CLIs and environment`, the system
+  panel's `Agent CLIs`, and the lines that point to that section.
 - The add-server form checks the name and probes the address as the human types, without
   the key; the key goes only with Check key or Add; Add is on only for a server that
   answered.
@@ -83,8 +86,9 @@ provider's own list).
   page; a source is read when the human opens it.
 - UI texts of their own for the refusals: a second set of texts drifting from the commands'.
 - Removing several models at once other than with their server.
-- Renaming Settings' "Providers and environment" to say CLI: the page says CLI; a rename of
-  the section is a task of its own if wanted (the human's answer #2978).
+- `--provider` renamed, the anchor `#providers-and-environment` changed, the word
+  "provider" in the code or in lowercase texts: scripts and links keep working; only the
+  labels the human reads change (design.md D17).
 - Undo of a server removed: its key is deleted with it and LADO keeps no copy of a key.
 
 ## Capabilities
@@ -94,6 +98,10 @@ provider's own list).
 - `model-settings-page`: Settings → Models, its sources and ticks, and the API it uses.
 
 ### Modified Capabilities
+
+- `provider-logins`, `container`, `launch-notes`, `projects`, `session-clone`,
+  `session-model`, `session-scratch`: the labels `Agent CLI`, `Agent CLIs and environment`
+  in place of `Provider`, `Providers and environment`.
 
 - `model-servers`: `lado model-server remove --with-models`; doctor names a model its
   server no longer lists; the why of a missing list only with no list.
@@ -109,7 +117,7 @@ provider's own list).
   `src/lado/server/model_entries.py`; `web/src/Settings.tsx`, new
   `web/src/ModelSettings.tsx` and `web/src/ModelSources.tsx`, `web/src/api.ts`,
   `web/src/paths.ts`, `web/src/styles.css`; `web/openapi.json` and `web/src/api.gen.ts`
-  regenerated. About 15 code files; the redesign after the human's UI remarks changes the page's two components, `styles.css`, `model_entries.py`, `models.py` and `app.py` (the form's check) of them.
+  regenerated. About 22 code files with `src/lado/logins.py`, `web/src/Launch.tsx`, `web/src/Providers.tsx`, `web/src/SystemPanel.tsx`, `src/lado/server/provider_check.py`, `docker/Dockerfile` and `docker/compose.yaml` for the agent CLI wording; the redesign after the human's UI remarks changes the page's two components, `styles.css`, `model_entries.py`, `models.py` and `app.py` (the form's check) of them.
 - Docs: `docs/design/ui.md`, `docs/design/modules.md`, AGENTS.md's line of `server/`,
   `docs/cli.md` (`--with-models`, doctor's line), CHANGELOG.md (0.45.0, New).
 - Tests: unit, integration (the key canary, `--with-models` in the real command), vitest,

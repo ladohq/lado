@@ -8,7 +8,7 @@ uses, which a server's key enters and never leaves.
 
 ### Requirement: Settings has a section Models
 
-The Settings page SHALL show a section **Models** after Providers and environment and
+The Settings page SHALL show a section **Models** after Agent CLIs and environment and
 before Usage statistics, at the anchor `#models`, with two tabs: **Your models**, the
 configured models, its tab naming their number, and **Add models**, the sources models come
 from: the agent CLIs and the saved model servers. The section SHALL open on Your models.
@@ -467,6 +467,23 @@ other, and no part of the section SHALL make the page scroll sideways.
 #### Scenario: A server's list on a phone
 - **WHEN** the human opens a server with a long address in a window 390 px wide
 - **THEN** the page does not scroll sideways and the server's ✎ and 🗑 show under its name
+
+### Requirement: The UI calls Claude Code, Codex CLI, OpenCode and Kilo CLI agent CLIs
+
+The UI SHALL name what runs an agent "agent CLI": the New session window's field `Agent
+CLI`, Settings' section `Agent CLIs and environment`, the system panel's `Agent CLIs`, and
+every line pointing to that section `Settings → Agent CLIs and environment`; the section
+Models SHALL say `agent CLI`, or `CLI` where room is short. The section's anchor and the
+commands' options (`--provider`, `--cli`) SHALL stay as they are.
+
+#### Scenario: A worker refused for a CLI not logged in
+- **WHEN** a session starts with Claude Code not logged in
+- **THEN** the refusal says `log in in Settings → Agent CLIs and environment`, and that
+  heading shows in Settings
+
+#### Scenario: An old link
+- **WHEN** the human opens `/settings#providers-and-environment`
+- **THEN** the page scrolls to Agent CLIs and environment
 
 ### Requirement: Without the page everything is as before
 

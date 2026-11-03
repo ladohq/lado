@@ -284,6 +284,38 @@ test("a server with a key says so; one whose APIs cannot be told says why", asyn
   expect(within(keyed).getByText("No installed CLI can use this server.")).toBeTruthy();
 });
 
+test("a server added again takes no late answer of the read before its removal", async () => {
+  const pending: ((r: Response) => void)[] = [];
+  server.probes["LM Studio дома"] = () => new Promise((resolve) => pending.push(resolve));
+  server.entries = { models: [], servers: [LMSTUDIO] };
+  server.answers["POST /api/model-servers"] = () => {
+    server.entries = { ...server.entries, servers: [LMSTUDIO] };
+    return new Response(
+      JSON.stringify({ server: LMSTUDIO, probe: { ...LMSTUDIO_PROBE, models: ["newer"] }, notes: [], warnings: [] }),
+    );
+  };
+  mount();
+  const row = item(await source(/LM Studio дома/));
+  fireEvent.click(await source(/LM Studio дома/)); // a read that will answer late
+  await waitFor(() => expect(pending.length).toBe(1));
+  fireEvent.click(within(row).getByRole("button", { name: "Remove" }));
+  const asks = row.querySelector(".mm-confirm") as HTMLElement;
+  const confirm = within(asks).getByRole("button", { name: "Remove" }) as HTMLButtonElement;
+  await waitFor(() => expect(confirm.disabled).toBe(false));
+  fireEvent.click(confirm);
+  await waitFor(() => expect(screen.queryByRole("button", { name: /^LM Studio дома$/ })).toBeNull());
+  fireEvent.click(screen.getByRole("button", { name: "+ Add server" }));
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "LM Studio дома" } });
+  fireEvent.change(screen.getByLabelText("Address"), { target: { value: "localhost:1234" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  expect(await screen.findByRole("checkbox", { name: "newer on OpenCode" })).toBeTruthy();
+  await act(async () => {
+    pending[0](new Response(JSON.stringify({ ...LMSTUDIO_PROBE, models: ["older"] })));
+  });
+  expect(screen.getByRole("checkbox", { name: "newer on OpenCode" })).toBeTruthy();
+  expect(screen.queryByText("older")).toBeNull();
+});
+
 test("Remove asks with the models saved now, read when it asks", async () => {
   server.entries = {
     models: [model("a", "opencode", "OpenCode", "qwen3-8b", "LM Studio дома")],

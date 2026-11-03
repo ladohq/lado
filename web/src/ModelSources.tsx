@@ -5,7 +5,7 @@
 // model has a tick per CLI that can run it: on exactly when a configured model has that CLI,
 // model and server (ticking saves one with its default name, unticking removes it). The
 // latest read of a source wins; a closed source takes no late answer.
-import { useEffect, useId, useRef, useState } from "react";
+import { type MutableRefObject, useEffect, useId, useRef, useState } from "react";
 
 import {
   addModel,
@@ -94,13 +94,19 @@ type Props = {
   saved: Record<string, Saved>;
   onSaved: (key: string, saved: Saved | null) => void;
   onChanged: (settings?: ModelSettings) => void;
+  // The latest read of each source, by key: whatever fills a source (a read here, an add or
+  // a change) counts one up, so an older read's late answer is dropped.
+  latest: MutableRefObject<Record<string, number>>;
 };
 
+// A new read, add or change of the source `key`: its number in `latest`.
+export const nextRead = (latest: MutableRefObject<Record<string, number>>, key: string) =>
+  (latest.current[key] = (latest.current[key] ?? 0) + 1);
+
 export function ModelSources(props: Props) {
-  const { settings, logins } = props;
-  const latest = useRef<Record<string, number>>({});
+  const { settings, logins, latest } = props;
   const read = (key: string, ask: () => Promise<Read>) => {
-    const asked = (latest.current[key] = (latest.current[key] ?? 0) + 1);
+    const asked = nextRead(latest, key);
     props.onRead(key, { reading: true });
     ask().then(
       (found) => latest.current[key] === asked && props.onRead(key, found),
@@ -119,7 +125,7 @@ export function ModelSources(props: Props) {
     props.onSaved(key, null); // the lines of a save are said once, in the open source
     if (opening) reader();
     else {
-      latest.current[key] = (latest.current[key] ?? 0) + 1; // no late answer fills it
+      nextRead(latest, key); // no late answer fills it
       props.onRead(key, null);
     }
   };
@@ -165,7 +171,7 @@ export function ModelSources(props: Props) {
             onToggle={() => toggle(key, () => readServer(server.name))}
             onRefresh={() => readServer(server.name)}
             onProbe={(probe, saved) => {
-              latest.current[key] = (latest.current[key] ?? 0) + 1;
+              nextRead(latest, key);
               props.onOpen(key, true); // a changed server shows open, as an added one
               props.onRead(key, { probe });
               props.onSaved(key, saved);

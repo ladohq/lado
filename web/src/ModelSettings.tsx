@@ -28,6 +28,7 @@ import {
   FieldNotes,
   listed,
   ModelSources,
+  nextRead,
   type Read,
   type Saved,
   serverKey,
@@ -52,6 +53,7 @@ export function ModelSettings() {
   const [adding, setAdding] = useState(false);
   const section = useRef<HTMLElement>(null);
   const latest = useRef(0);
+  const reading = useRef<Record<string, number>>({}); // each source's latest read (ModelSources)
   const { hash } = useLocation();
 
   const reload = useCallback(async (given?: Entries) => {
@@ -157,6 +159,7 @@ export function ModelSettings() {
               saved={saved}
               onSaved={onSaved}
               onChanged={(given) => void reload(given)}
+              latest={reading}
             />
             {adding ? (
               <AddServer
@@ -164,6 +167,7 @@ export function ModelSettings() {
                 onAdded={(name, probe, done) => {
                   setAdding(false);
                   const key = serverKey(name);
+                  nextRead(reading, key); // an older read of a server of that name is late
                   onOpen(key, true);
                   onRead(key, { probe });
                   onSaved(key, done);

@@ -874,6 +874,22 @@ def test_check_model_without_a_name_checks_no_name(monkeypatch):
     assert (checked.verdict.kind, checked.aliases) == (model_check.OK, ("haiku",))
 
 
+def test_check_model_uses_the_list_given(monkeypatch):
+    seen = listing(monkeypatch, "kilo", base.ModelList((), ("kilo/a",), "kilo models"))
+    given = []
+    checked = model_settings.check_model(
+        None,
+        "kilo",
+        "kilo/b",
+        None,
+        lambda provider: {},
+        listing=lambda provider: (
+            given.append(provider.name) or base.ModelList((), ("kilo/b",), "kilo models")
+        ),
+    )
+    assert (checked.verdict.kind, given, seen) == (model_check.OK, ["kilo"], [])
+
+
 def test_check_model_uses_the_probe_given(serve):
     server = serve("lmstudio")
     add("lms", server.url)

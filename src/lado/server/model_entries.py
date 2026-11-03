@@ -17,7 +17,7 @@ import threading
 import time
 
 from lado import model_check, model_servers, model_settings, providers, runtime, state
-from lado.server import models
+from lado.server import launch, models
 
 KEPT = 60  # seconds a probe is kept for the live check of a model
 _probes: dict[tuple[str, str], tuple[float, model_servers.Probe]] = {}
@@ -190,7 +190,13 @@ def check_model(given: models.ModelAdd) -> models.ModelCheck:
     refusal is a ModelCheck of kind refused with its field."""
     try:
         checked = model_settings.check_model(
-            given.name, given.cli, given.model, given.server, _agents_env, probe=_kept_or_probed
+            given.name,
+            given.cli,
+            given.model,
+            given.server,
+            _agents_env,
+            probe=_kept_or_probed,
+            listing=launch.model_list,  # the launch window's list, kept a minute
         )
     except REFUSED as exc:
         return models.ModelCheck(

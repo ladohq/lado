@@ -277,6 +277,26 @@ def forget_model_lists() -> None:
         _model_lists.clear()
 
 
+def model_list(
+    provider: providers.Provider, project: str | None = None, fresh: bool = False
+) -> providers.base.ModelList:
+    """The CLI's aliases and list of models in the environment of the agents of `project`
+    (or of none), kept MODEL_LIST_KEPT seconds once read (`fresh`: read now, and kept);
+    LadoError for an environment that cannot be read. Settings → Models' live check of a
+    CLI's model takes it too (lado.server.model_entries)."""
+    key, now = (provider.name, project), time.monotonic()
+    with _model_lists_lock:
+        kept = _model_lists.get(key)
+    if kept and now - kept[0] < MODEL_LIST_KEPT and not fresh:
+        return kept[1]
+    env = runtime.agents_env(runtime.agent_layers(project), provider)
+    listed = provider.model_list(env)
+    if listed.models is not None:
+        with _model_lists_lock:
+            _model_lists[key] = (now, listed)
+    return listed
+
+
 def provider_models(
     provider: providers.Provider, model: str, project: str | None = None, fresh: bool = False
 ) -> models.ProviderModels:
@@ -287,17 +307,7 @@ def provider_models(
     read."""
     if project is not None:
         projects.get(project)
-    key, now = (provider.name, project), time.monotonic()
-    with _model_lists_lock:
-        kept = _model_lists.get(key)
-    if kept and now - kept[0] < MODEL_LIST_KEPT and not fresh:
-        listed = kept[1]
-    else:
-        env = runtime.agents_env(runtime.agent_layers(project), provider)
-        listed = provider.model_list(env)
-        if listed.models is not None:
-            with _model_lists_lock:
-                _model_lists[key] = (now, listed)
+    listed = model_list(provider, project, fresh)
     verdict = model_check.verdict(provider, model, listed)
     return models.ProviderModels(
         aliases=list(listed.aliases),

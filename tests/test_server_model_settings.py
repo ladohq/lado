@@ -29,6 +29,7 @@ def client(lado_home, monkeypatch):
     client.headers["origin"] = OWN
     yield client
     model_entries.forget_probes()
+    server_launch.forget_model_lists()  # kept by the process: no later test gets them
 
 
 @pytest.fixture
@@ -293,6 +294,19 @@ def test_check_model_ok_warn_refused(client, serve, monkeypatch):
     assert check(client, cli="gemini", model="x")["field"] == "cli"
     assert check(client, cli="kilo", model="kilo/a", server="nope")["field"] == "server"
     assert state.schema_version() is None or state.models() == []
+
+
+def test_check_model_of_a_cli_reads_its_list_once_a_minute(client, monkeypatch):
+    """The live check of Other model… at each settled keystroke takes the CLI's list the
+    launch window keeps, read when the source opened (`fresh`); a save reads it now."""
+    asked = listing(monkeypatch, "kilo", base.ModelList((), ("kilo/a",), "kilo models"))
+    server_launch.forget_model_lists()
+    client.get("/api/providers/kilo/models", params={"fresh": True})  # the source opened
+    assert check(client, cli="kilo", model="kilo/a")["kind"] == "ok"
+    assert check(client, cli="kilo", model="kilo/b")["kind"] == "refused"
+    assert len(asked) == 1
+    ok(client.post("/api/models", json={"cli": "kilo", "model": "kilo/a"}))
+    assert len(asked) == 2
 
 
 def test_check_model_keeps_the_probe_a_minute(client, serve, monkeypatch):

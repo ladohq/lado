@@ -247,6 +247,7 @@ def check_model(
     env: Callable[[providers.Provider], Mapping[str, str]],
     *,
     probe: Prober | None = None,
+    listing: Callable[[providers.Provider], base.ModelList] | None = None,
 ) -> Checked:
     """The checks of `add_model` on the model `model` of the CLI `cli` under `name` (None:
     no name to check), on the saved server `server_name` (None for the CLI's own way to its
@@ -254,7 +255,8 @@ def check_model(
     the model, the server saved, its CLI's server API, the server answering with its kept key
     (asked with `probe`, else probed now), the API among the ones it proves, the model not one
     the server types as embeddings, the model against the server's list, or for no server
-    against the CLI's own list, read with `env(provider)` (the agents' environment)."""
+    against the CLI's own list (given by `listing`, else read now with `env(provider)`, the
+    agents' environment)."""
     if name is not None:
         check_name(name, MODEL)
         taken = state.model(name)
@@ -275,7 +277,7 @@ def check_model(
     aliases: tuple[str, ...] = ()
     if server_name is None:
         server = None
-        listed = provider.model_list(env(provider))
+        listed = listing(provider) if listing is not None else provider.model_list(env(provider))
         aliases = listed.aliases
         verdict = model_check.verdict(provider, model, listed)
     else:

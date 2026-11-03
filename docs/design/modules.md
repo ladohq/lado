@@ -1206,14 +1206,15 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `ProvidersPage` (`ready: false` for a provider never read, `checking`, `environment`).
     `GET /api/providers/logins` answers it, `POST /api/providers/check` starts a check, and
     the login actions put their row and start one; `GET /api/providers/{name}/models` reads
-    the CLI's list kept a minute (`launch.provider_models`), with `fresh` read now and kept;
+    the CLI's list kept a minute (`launch.provider_models` over `launch.model_list`), with
+    `fresh` read now and kept;
     `model_entries.py`: Settings → Models' routes (docs/design/ui.md, Models) over
     `model_settings.py`, one per action of the commands: `listing` (asks no server; empty
     with no lado.db), `add_server` (the warnings and notes as lists), `probe_server`,
     `remove_server`, `check_model`, `add_model`, `rename_model`, `remove_model`; each
     refusal a `Refusal` holding `EntryRefused` (the core's line, hint and field), a 400 in
     `app.py`; a server's probe kept `KEPT` seconds by its id and address for `check_model`
-    only (a failed one not kept); the key comes in only in `ModelServerAdd`, whose route is
+    only (a failed one not kept), and a CLI's list taken there from `launch.model_list`; the key comes in only in `ModelServerAdd`, whose route is
     in `app.SECRET_ROUTE`;
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
     Session head) is what the session's head shows besides its settings, read anew: `repos`

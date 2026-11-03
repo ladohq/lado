@@ -50,7 +50,7 @@
   validate --specs --strict`; in a copy of `openspec/` outside the tree `openspec archive
   model-settings-checks --yes` and `openspec validate --specs --strict`, the result in the
   PR's description.
-- [ ] 6.3 The PR's manual check from its first version: branch, folder, `env | grep LADO_`
+- [x] 6.3 The PR's manual check from its first version: branch, folder, `env | grep LADO_`
   and `unset`, own `LADO_HOME` and `LADO_TMUX_SOCKET`, steps on LM Studio
   (`10.73.10.235:1234`: the embeddings mark and refusal, a second name on the same
   address, several models removed, then the server) and on LiteLLM 1.105.1 (`probe`, `add

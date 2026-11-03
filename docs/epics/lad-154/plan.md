@@ -6,7 +6,7 @@ Rejected at `step_ok` (gate #204, 2026-11-02): «сначала S2b» (D13; S2b 
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: S3c (LAD-182, run task/lad-182) · Next: S3d, then S3b · Open checks: Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
+In work: S3d (its task to be created) · Next: S3b (LAD-180), then S4 · Open checks: at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9). 0.45.0 is released from `main` together with the epic: `main` waits for it (step_ok #222, Q4, D17).
@@ -16,6 +16,7 @@ Standing rules of the human:
 Last review: S2, 2026-11-02, base at 228a1de2 (0.44.0 + the unreleased 0.44.1 hotfix LAD-151, Codex's sandbox in the container), merged into the epic branch as 0d18c677: conflicts resolved by joining both sides (CHANGELOG: 0.45.0 above 0.44.1 (unreleased); `tests/smoke/test_smoke.py`: one import line, `CLASSES` and `SANDBOX_ERROR`); `providers/codex.py` merged without conflict; schema on `main` 35, the epic's 37 on top; `make lint`, `make test` (4826 passed, 7 skipped), integration `test_session_model.py` (3 passed), smoke collected (23), `openspec validate --specs --strict` (57) green; CI of the merge runs with S3a's pull request
 Last review: S2b, 2026-11-02, base at 228a1de2 (unchanged since S2's review); S2b merged as f2cbf119; `openspec validate --specs --strict` (57) green on the epic branch; the CI of the LAD-151 merge passed with PR #202
 Last review: S3a, 2026-11-02, base at 84c8f7c4 (hotfixes LAD-175, LAD-172; `main`'s heading is now `## 0.45.0 (unreleased)`), merged into the epic branch as d6ded361: CHANGELOG resolved into one 0.45.0 section (the epic's lines under `### New`, `main`'s under `### Fixed`); schema on `main` 35, the epic's 37; `make lint`, `make test` (4958 passed, 7 skipped), integration of the merged files (17 passed), `openspec validate --specs --strict` (59) green
+Last review: S3c, 2026-11-03, base at 22940ebc (hotfixes LAD-178 #206, LAD-181 #207), merged into the epic branch as 95db9d78: one conflict in `src/lado/cli.py` resolved by keeping both guards (S3c's `model-server` refusal of extra words, then LAD-181's quiet refusal); CHANGELOG merged without conflict (LAD-181's line under `### Fixed`); schema on `main` 35, the epic's 38; `make lint`, `make test` (5112 passed, 7 skipped), integration `test_session_model.py` (3 passed), `openspec validate --specs --strict` (60) green
 
 ## Steps
 
@@ -133,7 +134,7 @@ Check:
 Notes: no session uses the result yet; S3b does; S9a and S9b rest on its rule.
 
 ### S3c — Models in settings: the store, servers and models from the CLI (M)
-Status: in progress (LAD-182, run task/lad-182; added at S3b's design on D18, question #2721; runs before S3d and S3b; takes in S5a; split from «Models in settings» at the review: a schema change with an interface and two capabilities the user sees, `epic-files`)
+Status: done (LAD-182, PR #208, merged as acc2b129; added at S3b's design on D18, question #2721; runs before S3d and S3b; takes in S5a; split from «Models in settings» at the review: a schema change with an interface and two capabilities the user sees, `epic-files`)
 Check:
 - A store of the user's settings on the server (in `lado.db` or `LADO_HOME`, the
   analyst's call); the schema migration (or the new file) and the way back (rules above);
@@ -171,6 +172,11 @@ Check:
 - UI e2e and a mockup at `design_ok` that shows the page next to Settings' other pages;
   screenshots for the human; `docs/design/ui.md`.
 Notes: the human's manual check of the page is likely (gate #191's standing rule).
+From S3c (LAD-182): S3c added no API method (only what is used), so S3d adds the server's
+API for servers and models over `model_settings.py`, the key only going in, never out
+(canary test, LAD-116); a model is changed by removing and adding it (no `--replace` for
+models); removing a server some models use is refused naming them, and the page shows that
+refusal.
 
 ### S3b — A session on a model from settings (L)
 Status: planned (LAD-180, paused): its run task/lad-180 was cancelled at design on D18 (question #2721); it runs after S3c and S3d; its tracker task's description is updated at its start
@@ -367,7 +373,7 @@ Check:
   readiness. Recommended: let `main` release 0.45.0 when it wants, the epic takes the next
   minor; the standing rule "the epic ships in 0.45.0" becomes "in the first minor after the
   epic is ready".
-- Q5 (answered at question #2699: «Да, заведи задачу» → LAD-181, a hotfix into `main`, outside the epic). Asked at S3a's review: `lado project set --secret` prints a value that starts with
+- Q5 (answered at question #2699: «Да, заведи задачу» → LAD-181, a hotfix into `main`, outside the epic; fixed in `main` by PR #207, in the epic branch since S3c's review). Asked at S3a's review: `lado project set --secret` prints a value that starts with
   `-` (found at S3a's review, already in `main`). Recommended: a task of its own, a hotfix
   into `main`, outside the epic.
 - Q6 (answered at `step_ok` #222: «создай. Разберемся отдельно» → LAD-179, outside the
@@ -416,10 +422,19 @@ Check:
   (question #2521: «нет»); at the second occurrence the human said create: LAD-179
   (outside the epic, derived from LAD-177).
 - Flaky container test of the Go toolchain (`mise install` over 600 s) — LAD-178
-  (derived from LAD-177, outside the epic; a session of its own runs it, PR #206 into
-  `main`).
+  (derived from LAD-177, outside the epic) — fixed in `main` by PR #206, in the epic branch
+  since S3c's review.
 - A model server's key over 64 KiB is refused by S3a's probe (F3, declined) — LAD-177 —
   if a real gateway's key is ever that long.
 - Flaky Codex smoke: Codex's own background `git ls-remote` to `openai/plugins` outlives
   the test — LAD-175 (Backlog, derived from LAD-174, outside the epic) — its fix (turning
   the sync off in the agent's own Codex config) helps every step that touches `providers/`.
+- S3c's small edges (LAD-182, the ledger's «not checked»): `lado doctor` names an unreadable
+  key twice in one line; a key write refused midway leaves an empty server folder that
+  `doctor` names as left over — if the human meets them.
+- S3c's declined findings (LAD-182): the plain-`http://` warning also fires for CGNAT
+  `100.64/10` and private DNS names (F10, D6: names are not resolved) — an extra warning,
+  never a missing one; `--help=<key>` exits 0 on Python 3.11+ (F4) — the key is not shown.
+- Changing a configured model in place (`--replace` for models), renaming a server or a
+  model, removing a server's key alone: out of S3c's frame (remove and add again) — LAD-182
+  — when the human asks; S3d's page follows the same rule.

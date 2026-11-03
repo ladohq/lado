@@ -87,17 +87,35 @@ test("a refused tick shows in its row, the tick stays off", async () => {
 test("Refresh reads again; the latest answer wins and none fills a closed source", async () => {
   const pending: ((r: Response) => void)[] = [];
   server.probes["LM Studio дома"] = () => new Promise((resolve) => pending.push(resolve));
-  server.entries = { models: [], servers: [LMSTUDIO] };
+  server.entries = {
+    models: [model("gone", "opencode", "OpenCode", "gone-model", "LM Studio дома")],
+    servers: [LMSTUDIO],
+  };
   mount();
   const toggle = await source(/LM Studio дома/);
   fireEvent.click(toggle);
-  fireEvent.click(await screen.findByRole("button", { name: "↻ Refresh" }).catch(() => toggle));
-  await waitFor(() => expect(pending.length).toBeGreaterThanOrEqual(1));
-  fireEvent.click(toggle); // closed
+  await waitFor(() => expect(pending.length).toBe(1));
+  fireEvent.click(toggle); // closed before its answer
   await act(async () => {
-    for (const resolve of pending) resolve(new Response(JSON.stringify(LMSTUDIO_PROBE)));
+    pending[0](new Response(JSON.stringify(LMSTUDIO_PROBE)));
   });
-  expect(screen.queryByText("qwen3-8b")).toBeNull();
+  // The late list keeps nothing: no warning of a model it lacks.
+  expect(screen.queryByText(/not in LM Studio дома's list/)).toBeNull();
+  // Two reads at once: the later one's answer counts, whichever comes last.
+  fireEvent.click(toggle);
+  await waitFor(() => expect(pending.length).toBe(2));
+  fireEvent.click(toggle);
+  fireEvent.click(toggle); // opened again while the first read runs
+  await waitFor(() => expect(pending.length).toBe(3));
+  await act(async () => {
+    pending[2](new Response(JSON.stringify({ ...LMSTUDIO_PROBE, models: ["newer"] })));
+  });
+  await act(async () => {
+    pending[1](new Response(JSON.stringify({ ...LMSTUDIO_PROBE, models: ["older"] })));
+  });
+  expect(screen.getByText("newer")).toBeTruthy();
+  expect(screen.queryByText("older")).toBeNull();
+  fireEvent.click(toggle);
   server.probes["LM Studio дома"] = LMSTUDIO_PROBE;
   fireEvent.click(toggle);
   expect(await screen.findByText("qwen3-8b")).toBeTruthy();

@@ -146,11 +146,14 @@ export function ModelSettings() {
     setRemoved((now) => ({ ...now, [fold(model.name)]: { ...gone, busy: true, problem: null } }));
     try {
       await addModel({ name: model.name, cli: model.cli, model: model.model, server: model.server });
-      forget(model.name);
     } catch (error) {
       setRemoved((now) => ({ ...now, [fold(model.name)]: { model, busy: false, problem: refusalOf(error).message } }));
+      void reload();
+      return;
     }
-    void reload();
+    // The Undo row goes only once the reload has brought the model back: nothing moves.
+    await reload();
+    forget(model.name);
   };
   // Opens a CLI's source in Add models, as its card's link asks.
   const opening = useRef<string | null>(null);

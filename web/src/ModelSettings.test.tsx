@@ -238,6 +238,25 @@ test("Undo is off while it runs: a second press sends nothing", async () => {
   expect(server.of("POST", "/api/models").filter((c) => c.path === "/api/models")).toHaveLength(1);
 });
 
+test("after Undo its row stays until the reload brings the model back: nothing moves", async () => {
+  server.entries = { models: FOUR.slice(0, 2), servers: [] };
+  mount();
+  const claude = await card("Claude Code");
+  fireEvent.click(within(claude).getByRole("button", { name: "Remove Claude Sonnet" }));
+  const undo = await within(claude).findByRole("button", { name: "Undo" });
+  let release: () => void = () => undefined;
+  server.answers["GET /api/model-settings"] = () =>
+    new Promise((resolve) => {
+      release = () => resolve(server.answer("GET", "/api/model-settings", undefined));
+    });
+  fireEvent.click(undo);
+  await waitFor(() => expect(server.of("GET", "/api/model-settings").length).toBeGreaterThan(1));
+  expect(within(claude).getAllByRole("row").slice(1)).toHaveLength(1);
+  release();
+  expect(await within(claude).findByRole("button", { name: "Rename Claude Sonnet" })).toBeTruthy();
+  expect(within(claude).getAllByRole("row").slice(1)).toHaveLength(1);
+});
+
 test("Undo goes after UNDO_MS, and a refused Undo says why", async () => {
   server.entries = { models: FOUR.slice(0, 1), servers: [] };
   mount();

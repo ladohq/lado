@@ -89,7 +89,7 @@ def test_a_name_kept(name):
 def test_add_saves_the_address_type_and_apis_not_the_models(serve):
     server = serve("lmstudio")
     found, warned = add("LM Studio дома", server.url.removeprefix("http://"))
-    assert (found.kind, found.models, warned) == ("LM Studio", ("qwen3-8b",), [])
+    assert (found.kind, found.models, warned) == ("LM Studio", ("qwen3-8b", fake.EMBEDDINGS), [])
     [saved] = state.model_servers()
     assert (saved.name, saved.address, saved.kind, saved.apis) == (
         "LM Studio дома",

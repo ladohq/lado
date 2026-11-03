@@ -1,6 +1,6 @@
 ## 1. Test server
 
-- [ ] 1.1 `tests/fake_model_server.py`: answers by the `anthropic-version` header, the
+- [x] 1.1 `tests/fake_model_server.py`: answers by the `anthropic-version` header, the
   profiles `litellm` and `anthropic-versioned`, LM Studio's typed models with an
   embeddings model (D6). Check: `tests/test_fake_model_server.py`, the tests counting
   `lmstudio`'s models updated.

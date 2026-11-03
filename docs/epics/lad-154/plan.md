@@ -6,7 +6,7 @@ Rejected at `step_ok` (gate #204, 2026-11-02): «сначала S2b» (D13; S2b 
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: S3d (its task to be created) · Next: S3b (LAD-180), then S4 · Open checks: at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
+In work: S3e (LAD-186 with LAD-183, LAD-184, LAD-185; D19) · Next: S3d, then S3b (LAD-180), then S4 · Open checks: at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9). 0.45.0 is released from `main` together with the epic: `main` waits for it (step_ok #222, Q4, D17).
@@ -160,8 +160,27 @@ Check:
 Notes: no session uses the entries yet; S3b does. The store is the one place of the
 user's later settings (the power table of S5c), not a second format.
 
+### S3e — Fixes from the manual check of the model server commands (S)
+Status: planned (LAD-186 with LAD-183, LAD-184, LAD-185: created by the human after the manual check of S3c on LM Studio and LiteLLM 1.105.1; one step on D19, question #2824; runs before S3d)
+Check:
+- LAD-186: a gateway that speaks both APIs (LiteLLM) is typed OpenAI-compatible: the
+  model list is asked without `anthropic-version` (or as the design finds, within the
+  probe's request limits); the spec `model-servers`' scenario «The server's type» corrected;
+  a test with a fake server that changes its list's form by the header.
+- LAD-184: a model the server marks as embeddings (LM Studio's `type` in
+  `/api/v0/models`) is refused or warned at `lado model add`; a server with no such mark
+  stays as today.
+- LAD-183: `lado model-server add` names a saved server with the same address after the
+  probe's normalisation; a refusal or a warning is the design's call (two keys on one
+  address may be wanted).
+- LAD-185: the refusal to remove a server used by models covers every model (a command
+  each, or `lado model remove` taking several names).
+- `docs/cli.md`, the specs and CHANGELOG's line under 0.45.0 describe what was built.
+Notes: the integrator updates all four tasks and links them to LAD-154; S3d's page reuses
+the corrected type, refusals and hint.
+
 ### S3d — Models in settings: Settings → Models (M)
-Status: planned (split from «Models in settings» at the review; runs after S3c, before S3b; takes in S5b)
+Status: planned (split from «Models in settings» at the review; runs after S3e, before S3b; takes in S5b)
 Check:
 - Settings → Models: «Servers» (add by name, address and key in a password field, S3a's
   result shown; remove) and «Models» (name, CLI, the CLI's model with suggestions from the

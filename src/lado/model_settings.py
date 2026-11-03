@@ -174,8 +174,8 @@ def add_model(
     `server_name` (None for the CLI's own way to its models): the saved entry and the check's
     verdict (OK, or WARN for no list to check against). Each check refuses before the next
     (Refused): the name, the CLI, the model, the server saved, its CLI's server API, the
-    server answering with its kept key, the API among the ones it proves, the model against
-    the server's list, or for no server against the CLI's own list, read with `env(provider)`
+    server answering with its kept key, the API among the ones it proves, the model not one
+    the server types as embeddings, the model against the server's list, or for no server against the CLI's own list, read with `env(provider)`
     (the agents' environment)."""
     check_name(name, MODEL)
     taken = state.model(name)
@@ -230,6 +230,11 @@ def _on_server(
         raise Refused(
             f"{server.name} does not suit {provider.title}: it has no {api}; it suits "
             f"{', '.join(suits) or 'no CLI'}"
+        )
+    if model in found.embeddings:
+        raise Refused(
+            f"{model} is an embeddings model on {server.name}; an agent needs a chat model: "
+            f"{model_servers.PROBE_COMMAND} {server.address} lists the models"
         )
     listed = base.ModelList(
         models=found.models,

@@ -486,6 +486,34 @@ def test_a_model_the_server_does_not_list_is_refused(serve):
     assert state.models() == []
 
 
+def test_an_embeddings_model_is_refused(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("emb", "opencode", fake.EMBEDDINGS, "lms", no_env)
+    assert str(refused.value) == (
+        f"{fake.EMBEDDINGS} is an embeddings model on lms; an agent needs a chat model: "
+        f"lado model-server probe {server.url} lists the models"
+    )
+    assert state.models() == []
+    saved, _ = add_model("chat", "opencode", "qwen3-8b", "lms", no_env)
+    assert saved.model == "qwen3-8b"
+
+
+def test_the_api_is_checked_before_the_embeddings(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    with pytest.raises(model_settings.Refused, match="lms does not suit Claude Code"):
+        add_model("emb", "claude", fake.EMBEDDINGS, "lms", no_env)
+
+
+def test_a_server_without_types_is_checked_by_its_list(serve):
+    server = serve("ollama")
+    add("ol", server.url)
+    _, verdict = add_model("O", "opencode", "llama3.1:8b", "ol", no_env)
+    assert verdict.kind == model_check.OK
+
+
 def test_a_server_with_no_list_saves_with_a_warning(serve):
     server = serve("responses-only")
     add("resp", server.url)

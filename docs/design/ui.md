@@ -2469,8 +2469,9 @@ how sessions start.
   would, unticking removes it, and a refusal shows in the tick's row. Several models of one
   tick: on and disabled, titled `Models: <names>; remove them in Your models`. Default
   names (the core's `model_settings.default_name`): an alias `Claude Sonnet` (the first
-  word of the CLI's title and the alias capitalised), a model of a CLI's list the model, a
-  model on a server `<model> · <server>`; a taken name gets ` · <CLI>`, then ` (2)`, ` (3)`,
+  word of the CLI's title and the alias capitalised, `[1m]` as ` 1M`: `Claude Opus 1M`), a
+  model of a CLI's list the model, a model on a server `<model> · <server>`, with ` · <CLI>`
+  when the server suits more than one CLI (so each says its CLI); a taken name gets ` · <CLI>`, then ` (2)`, ` (3)`,
   each cut to 64 characters before its suffix.
 - **A long list** (more than ten models): a search field above it, `Search <n> models`,
   that keeps the models holding the text ignoring case. A model the server types as

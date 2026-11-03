@@ -61,8 +61,8 @@ def test_a_model_server_s_key_is_found_nowhere_else(api, serve, lado_home):  # n
     check = call("POST", "/api/models/check", {"cli": "opencode", "model": "m1", "server": "work"})
     assert check["kind"] == "ok"
     model = call("POST", "/api/models", {"cli": "opencode", "model": "m1", "server": "work"})
-    assert model["model"]["name"] == "m1 · work"
-    call("PATCH", "/api/models/m1%20%C2%B7%20work", {"name": "Local"})
+    assert model["model"]["name"] == "m1 · work · OpenCode"
+    call("PATCH", "/api/models/m1%20%C2%B7%20work%20%C2%B7%20OpenCode", {"name": "Local"})
     home = state.home_path()
     for value in canaries:
         assert files_holding(home, value.encode(), [folder]) == []

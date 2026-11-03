@@ -122,9 +122,11 @@ def test_a_server_added_ticked_renamed_refreshed_and_removed(
     shot(page, "server-added")
 
     lm.get_by_role("checkbox", name="qwen3-8b on OpenCode", exact=True).click()
-    row = your_models(page).get_by_role("row").filter(has_text="qwen3-8b · LM Studio дома")
+    row = (
+        your_models(page).get_by_role("row").filter(has_text="qwen3-8b · LM Studio дома · OpenCode")
+    )
     expect(row).to_be_visible()
-    row.get_by_role("button", name="Rename qwen3-8b · LM Studio дома").click()
+    row.get_by_role("button", name="Rename qwen3-8b · LM Studio дома · OpenCode").click()
     field = your_models(page).get_by_role("textbox")
     field.fill("Локальная Qwen")
     your_models(page).get_by_role("button", name="Save").click()
@@ -179,18 +181,18 @@ def test_refusals_under_their_fields_a_silent_server_and_change(
     add_server(page, "LM Studio дома", lms.url)
     lm = source(page, "LM Studio дома")
     lm.get_by_role("checkbox", name="qwen3-8b on OpenCode", exact=True).click()
-    expect(your_models(page)).to_contain_text("qwen3-8b · LM Studio дома")
+    expect(your_models(page)).to_contain_text("qwen3-8b · LM Studio дома · OpenCode")
     lm.get_by_role("button", name="LM Studio дома", exact=True).click()  # closed
     port = lms.port
     lms.close()
     lm.get_by_role("button", name="LM Studio дома", exact=True).click()
     expect(
         lm.get_by_text(
-            re.compile(r"does not answer .*Its models stay: qwen3-8b · LM Studio дома\.")
+            re.compile(r"does not answer .*Its models stay: qwen3-8b · LM Studio дома · OpenCode\.")
         )
     ).to_be_visible()
     shot(page, "silent")
-    assert [m.name for m in state.models()] == ["qwen3-8b · LM Studio дома"]
+    assert [m.name for m in state.models()] == ["qwen3-8b · LM Studio дома · OpenCode"]
 
     moved = fake.Server("lmstudio")
     try:
@@ -202,7 +204,7 @@ def test_refusals_under_their_fields_a_silent_server_and_change(
         ).to_be_visible()
         assert state.model_server("LM Studio дома").address == moved.url
         assert (
-            state.model("qwen3-8b · LM Studio дома").server
+            state.model("qwen3-8b · LM Studio дома · OpenCode").server
             == state.model_server("LM Studio дома").id
         )
         assert port != moved.port
@@ -228,7 +230,7 @@ def test_the_section_at_a_phones_width(browser: Browser, clis, server, lms, shot
         cell = lm.locator("td.mono", has_text="coder")
         assert cell.bounding_box()["width"] >= 120
         lm.get_by_role("checkbox", name="qwen3-8b on OpenCode", exact=True).click()
-        expect(your_models(page)).to_contain_text("qwen3-8b · LM Studio дома")
+        expect(your_models(page)).to_contain_text("qwen3-8b · LM Studio дома · OpenCode")
         assert page.evaluate("document.documentElement.scrollWidth") <= 390  # no sideways scroll
         section(page).scroll_into_view_if_needed()
         shot(page, "phone", full_page=False)

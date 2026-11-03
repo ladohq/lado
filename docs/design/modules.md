@@ -881,8 +881,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `model_check.verdict(whose=…)`, or without a server against the CLI's list read with the
     agents' environment; without a name, its `default_name` checked by `check_name`, a
     refusal under the model's field; a `Checked`), `add_model` (`check_model`, its server probed now,
-    then the row; `name` None takes `default_name`: an alias `Claude Sonnet`, a CLI's model
-    itself, a server's `<model> · <server>`, a taken one ` · <CLI>`, then ` (2)`…, cut to 64
+    then the row; `name` None takes `default_name`: an alias `Claude Sonnet` (`[1m]` as
+    ` 1M`), a CLI's model itself, a server's `<model> · <server>` (with ` · <CLI>` when
+    `model_servers.suiting` gives the server more than one CLI), a taken one ` · <CLI>`, then ` (2)`…, cut to 64
     before its suffix), `rename_model` (`state.rename_model`: the row's name and `folded`,
     its CLI, model and server kept; nothing refers to a model by name yet),
     `remove_models` (every name found before any is removed). Each refusal is a one-line

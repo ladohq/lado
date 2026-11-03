@@ -381,7 +381,7 @@ def test_add_model_default_name(client, serve, monkeypatch):
     ok(add_server(client, "LiteLLM", server.url))
     added = ok(client.post("/api/models", json={"cli": "opencode", "model": "qwen3-8b",
                                                 "server": "LiteLLM"}))  # fmt: skip
-    assert added["model"]["name"] == "qwen3-8b · LiteLLM"
+    assert added["model"]["name"] == "qwen3-8b · LiteLLM · OpenCode"  # several CLIs suit it
     detail = refused(client.post("/api/models", json={"cli": "opencode",
                                                       "model": fake.EMBEDDINGS,
                                                       "server": "LiteLLM"}))  # fmt: skip

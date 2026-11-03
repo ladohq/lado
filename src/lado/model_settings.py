@@ -17,6 +17,7 @@ from __future__ import annotations
 import contextlib
 import errno
 import os
+import re
 import sqlite3
 import stat
 import urllib.parse
@@ -316,17 +317,22 @@ def default_name(
     aliases: tuple[str, ...],
 ) -> str:
     """The name a model gets when the human gives none: for an alias of the CLI (`aliases`),
-    the first word of the CLI's title and the alias capitalised (`Claude Sonnet`); for a
-    model on `server`, `<model> · <server>`; else the model. A name taken ignoring case gets
-    ` · <CLI title>`, then ` (2)`, ` (3)`, … until free; each try is cut to MAX_NAME
-    characters before its suffix."""
+    the first word of the CLI's title and the alias capitalised, a `[1m]` of it as ` 1M`
+    (`Claude Sonnet`, `Claude Opus 1M`); for a model on `server`, `<model> · <server>`, and
+    ` · <CLI title>` when the server suits more than one CLI (each name then says its CLI,
+    whatever was ticked first); else the model. A name taken ignoring case gets ` · <CLI
+    title>`, then ` (2)`, ` (3)`, … until free; each try is cut to MAX_NAME characters
+    before its suffix."""
+    suffixes = ["", f" · {provider.title}"]
     if server is not None:
         base_name = f"{model} · {server.name}"
+        if len(model_servers.suiting(server.apis)[0]) > 1:
+            suffixes = [f" · {provider.title}"]
     elif model in aliases:
-        base_name = f"{provider.title.split()[0]} {model[:1].upper()}{model[1:]}"
+        alias = re.sub(r"\[(\w+)\]$", lambda m: f" {m[1].upper()}", model)
+        base_name = f"{provider.title.split()[0]} {alias[:1].upper()}{alias[1:]}"
     else:
         base_name = model
-    suffixes = ["", f" · {provider.title}"]
     number = 2
     while True:
         for suffix in suffixes:

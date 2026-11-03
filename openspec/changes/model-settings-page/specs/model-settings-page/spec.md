@@ -80,14 +80,25 @@ remove it.
 ### Requirement: A model's default name
 
 A model ticked or added SHALL be named: an alias of a CLI, the first word of the CLI's
-title and the alias with its first letter capitalised (`Claude Sonnet`); a model of a
-CLI's own list, the model; a model on a server, `<model> · <server>`. A name taken SHALL
-get ` · <CLI title>` added, and then ` (2)`, ` (3)` until free.
+title and the alias with its first letter capitalised, a `[1m]` of it as ` 1M` (`Claude
+Sonnet`, `Claude Opus 1M`); a model of a CLI's own list, the model; a model on a server,
+`<model> · <server>`, and `<model> · <server> · <CLI title>` when the server suits more
+than one CLI. A name taken SHALL get ` · <CLI title>` added, and then ` (2)`, ` (3)` until
+free.
 
 #### Scenario: The same model on a second CLI
 - **WHEN** `qwen3-8b · LiteLLM` of OpenCode is saved and the human ticks `qwen3-8b` under
   Codex CLI
 - **THEN** the new model is named `qwen3-8b · LiteLLM · Codex CLI`
+
+#### Scenario: A server several CLIs suit
+- **WHEN** `LM Studio дома` suits OpenCode and Kilo CLI and the human ticks `qwen3-8b`
+  under OpenCode
+- **THEN** the model is named `qwen3-8b · LM Studio дома · OpenCode`
+
+#### Scenario: An alias with [1m]
+- **WHEN** the human ticks `opus[1m]` under Claude Code
+- **THEN** the model is named `Claude Opus 1M`
 
 ### Requirement: A tick of several models
 

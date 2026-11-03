@@ -928,8 +928,9 @@ def test_check_model_uses_the_probe_given(serve):
 # A model's default name.
 
 
-def litellm_server():
-    return state.add_model_server("s1", "LiteLLM", "http://gw", "OpenAI-compatible", (CHAT,))
+def litellm_server(apis=(RESPONSES,)):
+    """A server one CLI suits (Codex CLI, by the Responses API), unless `apis` say more."""
+    return state.add_model_server("s1", "LiteLLM", "http://gw", "OpenAI-compatible", apis)
 
 
 def default_name(cli, model, server=None, aliases=()):
@@ -937,9 +938,10 @@ def default_name(cli, model, server=None, aliases=()):
 
 
 def test_the_default_name_of_an_alias():
-    aliases = ("sonnet", "sonnet[1m]")
+    aliases = ("sonnet", "sonnet[1m]", "opus[1m]")
     assert default_name("claude", "sonnet", aliases=aliases) == "Claude Sonnet"
-    assert default_name("claude", "sonnet[1m]", aliases=aliases) == "Claude Sonnet[1m]"
+    assert default_name("claude", "sonnet[1m]", aliases=aliases) == "Claude Sonnet 1M"
+    assert default_name("claude", "opus[1m]", aliases=aliases) == "Claude Opus 1M"
 
 
 def test_the_default_name_of_a_model_of_the_clis_list():
@@ -947,7 +949,17 @@ def test_the_default_name_of_a_model_of_the_clis_list():
 
 
 def test_the_default_name_of_a_model_on_a_server():
-    assert default_name("opencode", "qwen3-8b", litellm_server()) == "qwen3-8b · LiteLLM"
+    assert default_name("codex", "qwen3-8b", litellm_server()) == "qwen3-8b · LiteLLM"
+
+
+def test_the_default_name_on_a_server_several_clis_suit_names_its_cli():
+    """Ticked for OpenCode and then Kilo CLI, each name says its CLI, the first too."""
+    server = litellm_server((CHAT, RESPONSES))
+    assert default_name("opencode", "qwen3-8b", server) == "qwen3-8b · LiteLLM · OpenCode"
+    state.add_model("qwen3-8b · LiteLLM · OpenCode", "opencode", "qwen3-8b", server.id)
+    assert default_name("kilo", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Kilo CLI"
+    state.add_model("qwen3-8b · LiteLLM · kilo cli", "kilo", "qwen3-8b", server.id)
+    assert default_name("kilo", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Kilo CLI (2)"
 
 
 def test_a_taken_default_name_gets_the_cli_then_a_number():

@@ -87,6 +87,10 @@ a model of a CLI's own list, the model; on a server, `<model> · <server name>`;
 (ignoring case) gets ` · <CLI title>`, then ` (2)`, ` (3)`, … and is cut to the name's 64
 characters before its suffix. `add_model` takes `name=None` and names the model so.
 Why: a tick needs a name without a form; the rule lives once, so the CLI could use it later.
+After the human's manual check (their answer at #2935): on a server several CLIs suit (by
+its saved APIs, `model_servers.suiting`, not by which are installed, so a name does not
+change when a CLI is installed) every name gets ` · <CLI title>`, so the first ticked one
+says its CLI too; an alias's `[1m]` reads ` 1M` (`Claude Opus 1M`).
 
 ### D5. Lists read now; a server's probe kept a minute for the live check only
 

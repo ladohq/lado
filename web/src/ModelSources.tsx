@@ -437,14 +437,22 @@ function SourceBody({
         </td>
         {columns.map((column) => {
           const state = tickState(models, column.name, row.value, server);
+          // A model gone from the list is unticked only: its add would be refused.
+          const gone = missingTag !== "" && !state.on;
           return (
             <td key={column.name} className="ck">
               <input
                 type="checkbox"
                 aria-label={`${row.value} on ${column.title}`}
                 checked={state.on}
-                disabled={busy || embeddings || state.several.length > 0}
-                title={state.several.length ? `Models: ${state.several.join(", ")}; remove them in Your models` : undefined}
+                disabled={busy || embeddings || state.several.length > 0 || gone}
+                title={
+                  state.several.length
+                    ? `Models: ${state.several.join(", ")}; remove them in Your models`
+                    : gone
+                      ? `${row.value} is ${missingTag}: ↻ Refresh reads it again`
+                      : undefined
+                }
                 onChange={(event) => void tick(column.name, row.value, event.target.checked)}
               />
             </td>

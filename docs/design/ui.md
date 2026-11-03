@@ -2476,7 +2476,8 @@ how sessions start.
   that keeps the models holding the text ignoring case. A model the server types as
   embeddings is greyed with `(embeddings)`, its ticks disabled. A configured model whose
   model the read list lacks shows first, ticked, with `⚠ not in the server's list` (a CLI's:
-  `not in <CLI>'s list`), and stays saved. A server with no list says `⚠ no list of models:
+  `not in <CLI>'s list`), and stays saved; its other ticks are disabled, titled `<model> is
+  not in …: ↻ Refresh reads it again` (the add would be refused). A server with no list says `⚠ no list of models:
   <why>`, one whose APIs cannot be told `⚠ APIs: cannot be told: <why>`. A server that does not answer, asks for its key or refuses it shows the probe's
   line as a warning, `Its models stay: <names>.`, and its hint (the container's
   `host.docker.internal` one included).

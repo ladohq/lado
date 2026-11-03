@@ -124,7 +124,8 @@ ticks disabled.
 When a source's list was read and lacks the model of a configured model of that source,
 the model SHALL show first in the list, ticked, with `not in the server's list` (a CLI's:
 `not in <CLI title>'s list`), and in Your models with the warning `not in <source>'s list
-of models`. Nothing SHALL remove it but the human.
+of models`. Nothing SHALL remove it but the human. Its ticks not on SHALL be disabled, their
+title saying why: the add would be refused.
 
 #### Scenario: A model gone from the server
 - **WHEN** `mistral-7b · LiteLLM` is saved and `LiteLLM` no longer lists `mistral-7b`, and

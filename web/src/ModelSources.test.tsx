@@ -144,6 +144,13 @@ test("a server's columns are its CLIs that are installed; embeddings greyed; a g
   expect((within(rows[0]).getByRole("checkbox", { name: "mistral-7b on OpenCode" }) as HTMLInputElement).checked).toBe(
     true,
   );
+  // A gone model can be unticked, not ticked for another CLI: the add would be refused.
+  expect((within(rows[0]).getByRole("checkbox", { name: "mistral-7b on OpenCode" }) as HTMLInputElement).disabled).toBe(
+    false,
+  );
+  const other = within(rows[0]).getByRole("checkbox", { name: "mistral-7b on Codex CLI" }) as HTMLInputElement;
+  expect(other.disabled).toBe(true);
+  expect(other.title).toBe("mistral-7b is not in the server's list: ↻ Refresh reads it again");
   const emb = within(table).getByText("text-embedding-nomic").closest("tr") as HTMLElement;
   expect(emb.className).toBe("src-emb");
   expect(within(emb).getByText("(embeddings)")).toBeTruthy();

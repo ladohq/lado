@@ -331,6 +331,21 @@ a failing cell's evidence goes to `<out>/evidence` (the artifact
 written for CI: its providers are exactly `lado.providers`' and each pin's version parts are
 its provider's `TESTED_VERSION` (`tests/test_smoke_ci.py`); the matrix is the same list
 (`tests/test_ci_workflow.py`). No secret anywhere.
+A job GitHub finds no hosted runner for is cancelled before any step, with no runner and
+GitHub's annotation "The job was not acquired by Runner of type hosted even after multiple
+attempts" (`timeout-minutes` does not count that wait): mostly a `smoke macos-latest` cell,
+beside the notice that GitHub lacks macOS arm64 capacity, and `ci-ok` fails the run. The
+workflow `CI rerun` (`.github/workflows/ci-rerun.yml`, on `workflow_run` of CI, so it runs
+main's files and never a pull request's code; `actions: write`, `checks: read`, `contents:
+read` only) takes each CI run whose first attempt ended `failure` and runs
+`scripts/ci_rerun.py <run-id> --rerun`: it reruns the failed jobs (`gh run rerun --failed`)
+once, and only when every job of attempt 1 that did not succeed, `ci-ok` aside, was
+cancelled with no step, no runner and that annotation, and, for a pull request's run, no
+newer CI run of its branch exists (the rerun would cancel it through the concurrency
+group). A superseded run ends `cancelled` and is never looked at; the rerun is attempt 2,
+never rerun again. Its log says why it reruns or not; without `--rerun` the script only
+prints the verdict on attempt 1, e.g. on a past run (`tests/test_ci_rerun.py`,
+`tests/test_ci_rerun_workflow.py`).
 Every `uses:` of every workflow, GitHub's own actions too, is a full commit SHA followed by
 `# vX.Y.Z`, the release it is (`tests/test_workflow_security.py`); Dependabot
 (`.github/dependabot.yml`) updates those pins, the uv and the web UI's npm dependencies and

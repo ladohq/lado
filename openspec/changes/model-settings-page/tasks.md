@@ -100,9 +100,9 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
   `ModelServerCheck.replace` (the server's own name not taken) in `server/models.py` and
   `server/model_entries.py`; `make web-types`, both generated files committed (D18.7, 10).
   Check: `tests/test_server_model_settings.py`.
-- [ ] 7.2 `web/src/useScrollAnchor.ts`: the anchor noted before a render and the scroll by
+- [x] 7.2 `web/src/useScrollAnchor.ts`: the anchor noted before a render and the scroll by
   its moved top after it, on `.content` above 900 px and the window at or under it (D18.3).
-  Check: `web/src/useScrollAnchor.test.ts`.
+  Check: `web/src/useScrollAnchor.test.tsx`.
 - [ ] 7.3 `ModelSettings.tsx` without tabs: the intro, the three blocks with their counts;
   Your models' cards only for agent CLIs with models, the line of those without, names
   wrapped, From `the agent CLI`; × with `Removed <name>. Undo`, Undo going after `UNDO_MS`

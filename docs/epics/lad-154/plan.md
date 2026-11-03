@@ -227,6 +227,12 @@ Check:
 - From S3a (E3): a key sent over `http://` to an address that is neither `localhost` nor
   a private network gives a loud warning (at saving the server in S3c, and before the
   start).
+- LAD-188 (question #2913): two flaky tests of the epic's own, seen on PR #211's CI and
+  green on rerun — `web/src/Launch.test.tsx:1077` (the Model field's listbox looked up
+  synchronously after `findByText`, LAD-176) and `test_session_model.py::
+  test_a_worker_of_another_cli_runs_its_default_and_says_so` (a worker of another CLI got
+  the session's model, LAD-174): both stable, and №2 told apart as a race of the test or of
+  the product (a model reaching a worker), fixed where it is.
 - From S3d (LAD-187, D8 of its design): a configured model has no id yet, its name is its
   key and it is renamable; S3b, the first to keep a reference to a model, adds `models.id`
   (migration 38 → 39, with the way back) and refers to the id, so a rename breaks nothing.

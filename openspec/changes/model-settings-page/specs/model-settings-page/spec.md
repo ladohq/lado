@@ -1,3 +1,9 @@
+## Purpose
+Settings → Models: the page where the human sees what each agent CLI and saved model
+server offers and ticks the models to keep under names, renames them, and adds, changes
+and removes servers, with the rules and lines of `lado model-server` and `lado model`; and
+the API it uses, which a server's key enters and never leaves.
+
 ## ADDED Requirements
 
 ### Requirement: Settings has a section Models

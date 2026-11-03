@@ -6,9 +6,7 @@ LADO SHALL prove each API with one POST whose body is `{}`: an answer 400 or 422
 JSON body proves it, any other answer does not. It SHALL send at most one request per
 check to an address (the model list, the model list in Anthropic's way, Ollama's and LM
 Studio's own endpoints, one per API, one control), each limited to 5 seconds, and none to
-another path, port or host. The header `anthropic-version` SHALL go only with the POSTs and
-with the model list asked in Anthropic's way; the model list, `GET /api/version` and
-`GET /api/v0/models` SHALL be asked without it.
+another path, port or host.
 
 #### Scenario: The requests of one probe
 - **WHEN** the human probes an address that answers
@@ -21,21 +19,14 @@ with the model list asked in Anthropic's way; the model list, `GET /api/version`
 - **WHEN** the server answers `POST /v1/responses` with 404
 - **THEN** the server is named as without the Responses API
 
-#### Scenario: The header of Anthropic's API
-- **WHEN** the human probes an address that answers
-- **THEN** every `POST` and one `GET /v1/models` carry `anthropic-version: 2023-06-01`, and
-  the first `GET /v1/models`, `GET /api/version` and `GET /api/v0/models` carry no
-  `anthropic-version`
-
 ### Requirement: The server's type
 
 LADO SHALL name a server Ollama when `GET /api/version` gives a version, LM Studio when
 `GET /api/v0/models` gives a list, then by its model list asked without
-`anthropic-version`: Anthropic-compatible when it has Anthropic's shape, OpenAI-compatible
-when it has OpenAI's; when that gives no list, Anthropic-compatible when the model list
-asked with `anthropic-version` has Anthropic's shape; and otherwise by the APIs it proved:
-the Messages API as Anthropic-compatible, chat completions or the Responses API as
-OpenAI-compatible.
+`anthropic-version`: Anthropic-compatible in Anthropic's shape, else OpenAI-compatible;
+with no such list, Anthropic-compatible when the list asked with `anthropic-version` has
+Anthropic's shape; otherwise by the APIs it proved: the Messages API as
+Anthropic-compatible, chat completions or the Responses API as OpenAI-compatible.
 
 #### Scenario: LM Studio
 - **WHEN** the server answers `GET /api/v0/models` with a list
@@ -99,6 +90,18 @@ refused with exit 1.
   is gone, and it exits 0
 
 ## ADDED Requirements
+
+### Requirement: The header of Anthropic's API goes with its requests only
+
+The header `anthropic-version` SHALL go only with the POSTs and with the model list asked in
+Anthropic's way; the model list, `GET /api/version` and `GET /api/v0/models` SHALL be asked
+without it.
+
+#### Scenario: The header of Anthropic's API
+- **WHEN** the human probes an address that answers
+- **THEN** every `POST` and one `GET /v1/models` carry `anthropic-version: 2023-06-01`, and
+  the first `GET /v1/models`, `GET /api/version` and `GET /api/v0/models` carry no
+  `anthropic-version`
 
 ### Requirement: Embeddings models are marked in a server's models
 

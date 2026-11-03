@@ -45,7 +45,7 @@
   the removal's hint); CHANGELOG.md: the lines **Find out what a model server is** and
   **Save model servers and models under names** under `## 0.45.0 (unreleased)`, `### New`,
   amended, `### Fixed` untouched. Check: reading against the spec.
-- [ ] 6.2 Regression and the trial archive: `make lint`, `make test`, the integration files
+- [x] 6.2 Regression and the trial archive: `make lint`, `make test`, the integration files
   of 5.1 with their marker; `openspec validate model-settings-checks --strict`, `openspec
   validate --specs --strict`; in a copy of `openspec/` outside the tree `openspec archive
   model-settings-checks --yes` and `openspec validate --specs --strict`, the result in the

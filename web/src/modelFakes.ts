@@ -98,6 +98,10 @@ export class ModelServer {
     if (where === "/api/models/check") return json({ kind: "ok", text: "in the list", field: "" });
     const server = where.match(/^\/api\/model-servers\/(.+)$/);
     if (server && method === "DELETE") {
+      const confirmed = new URLSearchParams(path.split("?")[1] ?? "").getAll("confirmed");
+      const own = this.entries.models.filter((m) => m.server === server[1]).map((m) => m.name);
+      if ([...own].sort().join("\n") !== [...confirmed].sort().join("\n"))
+        return refusal(`model server "${server[1]}" has other models now: ${own.join(", ")}; nothing was removed`);
       this.entries = {
         models: this.entries.models.filter((m) => m.server !== server[1]),
         servers: this.entries.servers.filter((s) => s.name !== server[1]),

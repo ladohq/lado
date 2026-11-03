@@ -372,8 +372,13 @@ export const addModelServer = (name: string, address: string, key: string | null
 // The saved server asked now with its kept key: its models and the CLIs that can use it.
 export const probeModelServer = (name: string) => post<ProbeInfo>(`${modelServerPath(name)}/probe`);
 
-export const removeModelServer = (name: string, withModels: boolean) =>
-  post<ModelSettings>(`${modelServerPath(name)}?${query({ with_models: String(withModels) })}`, undefined, "DELETE");
+// Remove a server with its models, refused unless they are `confirmed`, the ones the human
+// was asked about.
+export const removeModelServer = (name: string, confirmed: string[]) => {
+  const params = new URLSearchParams({ with_models: "true" });
+  for (const one of confirmed) params.append("confirmed", one);
+  return post<ModelSettings>(`${modelServerPath(name)}?${params}`, undefined, "DELETE");
+};
 
 // The check `lado model add` would make, saving nothing; a refusal is a check of kind refused.
 export const checkModel = (given: ModelAdd) => post<ModelCheck>("/api/models/check", given);

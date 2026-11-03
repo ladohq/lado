@@ -2850,6 +2850,18 @@ def test_a_server_removed_with_its_models(lado_home):
     assert state.remove_model_server_with_models("s1") is None
 
 
+def test_a_server_removed_with_the_models_confirmed_only(lado_home):
+    _server()
+    state.add_model("sp", "kilo", "qwen3-8b", "s1")
+    state.add_model("late", "opencode", "qwen3-8b", "s1")
+    with pytest.raises(state.ModelsChanged) as changed:
+        state.remove_model_server_with_models("s1", confirmed=["SP"])
+    assert changed.value.names == ["late", "sp"]
+    assert [m.name for m in state.models()] == ["late", "sp"]
+    assert state.model_server("LM Studio дома") is not None
+    assert state.remove_model_server_with_models("s1", confirmed=["Late", "sp"]) == ["late", "sp"]
+
+
 def test_a_model_renamed_keeps_its_cli_model_and_server(lado_home):
     _server()
     state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")

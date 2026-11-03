@@ -873,7 +873,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     models, the hint one `lado model remove` for all and a second hint naming
     `--with-models`; the foreign key backs it; `with_models` removes the server's models and
     the server in one transaction, `state.remove_model_server_with_models`, reporting each
-    model to `removed`), `check_model` (the checks of `add_model` in order, saving nothing:
+    model to `removed`; with `confirmed`, refused, nothing removed, when the server's models
+    are not those names), `check_model` (the checks of `add_model` in order, saving nothing:
     name (unless None), CLI, model, server saved, the provider's `server_api`, a probe with
     the kept key (`probe_saved`, or the `probe` given: the page's kept one), the API among
     those proved, not an embeddings model, the model against the server's list by

@@ -807,7 +807,9 @@ export interface paths {
         post?: never;
         /**
          * Remove Model Server
-         * @description Remove a server as `lado model-server remove [--with-models]` does.
+         * @description Remove a server as `lado model-server remove [--with-models]` does; with
+         *     `with_models`, refused unless its models are `confirmed`, the ones the human was
+         *     asked about.
          */
         delete: operations["remove_model_server_api_model_servers__name__delete"];
         options?: never;
@@ -5516,6 +5518,7 @@ export interface operations {
         parameters: {
             query?: {
                 with_models?: boolean;
+                confirmed?: string[] | null;
             };
             header?: never;
             path: {

@@ -420,7 +420,20 @@ def test_remove_server_route(client, serve):
     assert detail["hint"] == (
         'or remove them with it: lado model-server remove "LiteLLM" --with-models'
     )
-    settings = ok(client.delete("/api/model-servers/litellm", params={"with_models": True}))
+    detail = refused(
+        client.delete(
+            "/api/model-servers/litellm", params={"with_models": True, "confirmed": ["a"]}
+        )
+    )
+    assert detail["message"] == (
+        'model server "LiteLLM" has other models now: a, b; nothing was removed'
+    )
+    assert len(state.models()) == 3
+    settings = ok(
+        client.delete(
+            "/api/model-servers/litellm", params={"with_models": True, "confirmed": ["a", "B"]}
+        )
+    )
     assert settings == {
         "models": [
             {

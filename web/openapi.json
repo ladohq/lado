@@ -1861,7 +1861,7 @@
     "/api/model-servers/{name}": {
       "delete": {
         "summary": "Remove Model Server",
-        "description": "Remove a server as `lado model-server remove [--with-models]` does.",
+        "description": "Remove a server as `lado model-server remove [--with-models]` does; with\n`with_models`, refused unless its models are `confirmed`, the ones the human was\nasked about.",
         "operationId": "remove_model_server_api_model_servers__name__delete",
         "parameters": [
           {
@@ -1881,6 +1881,25 @@
               "type": "boolean",
               "default": false,
               "title": "With Models"
+            }
+          },
+          {
+            "name": "confirmed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Confirmed"
             }
           }
         ],

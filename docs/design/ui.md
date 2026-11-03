@@ -2496,7 +2496,9 @@ how sessions start.
   --replace` does, the kept key when New key is empty; "Models on <server> keep referring
   to it."; a failed probe changes nothing. **Remove** (a server) asks in its row: `Remove
   <name>?`, or `Remove <name> and its <n> models: <names>?` with **Remove server and
-  models**; only that removes them, as `lado model-server remove <name> --with-models`.
+  models**; only that removes them, as `lado model-server remove <name> --with-models`,
+  and only the models it named: when the server has others by then (the CLI added one),
+  nothing is removed, the refusal shows and it asks again with the entries read anew.
 - **The key** lives only in its field: emptied once sent, on Cancel and when the form
   closes; never in the page's state, an address or the browser's storage.
 - **A phone**: the forms' fields one under the other, a source's buttons under its title,
@@ -2506,7 +2508,7 @@ how sessions start.
   servers, asking none; no `lado.db` made), `POST /api/model-servers` (`ModelServerAdd
   {name, address, key, replace}` → `ModelServerAdded {server, probe, notes, warnings}`),
   `POST /api/model-servers/{name}/probe` (`ProbeInfo {models, models_why, embeddings,
-  apis_why, clis}`, probed now with the kept key), `DELETE /api/model-servers/{name}?with_models=` (→ `ModelSettings`), `POST
+  apis_why, clis}`, probed now with the kept key), `DELETE /api/model-servers/{name}?with_models=&confirmed=` (→ `ModelSettings`; refused unless the server's models are the confirmed ones), `POST
   /api/models/check` (`ModelAdd {name, cli, model, server}` → `ModelCheck`, a refusal of
   kind refused with its `field`; a server's probe kept a minute for this check only), `POST
   /api/models` (→ `ModelAdded`; `name` null for the default name), `PATCH /api/models/{name}`

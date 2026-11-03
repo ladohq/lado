@@ -167,9 +167,12 @@ def probe_server(name: str) -> models.ProbeInfo:
     return probe_info(found)
 
 
-def remove_server(name: str, with_models: bool) -> models.ModelSettings:
+def remove_server(name: str, with_models: bool, confirmed: list[str]) -> models.ModelSettings:
+    """Remove the server, with its models only when they are `confirmed`."""
     try:
-        model_settings.remove_server(name, with_models=with_models)
+        model_settings.remove_server(
+            name, with_models=with_models, confirmed=confirmed if with_models else None
+        )
     except REFUSED as exc:
         raise _refusal(exc) from None
     return listing()

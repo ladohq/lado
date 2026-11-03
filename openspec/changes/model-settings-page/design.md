@@ -39,7 +39,7 @@ token (`guard` reads, `guard.changes` changes):
 | `GET /api/model-settings` | | `ModelSettings{models: [ConfiguredModelInfo], servers: [ModelServerInfo]}` |
 | `POST /api/model-servers` | `ModelServerAdd{name, address, key: str \| None, replace: bool}` | `ModelServerAdded{server, probe: ProbeInfo, notes, warnings}` |
 | `POST /api/model-servers/{name}/probe` | | `ProbeInfo`, probed now with the kept key |
-| `DELETE /api/model-servers/{name}?with_models=true` | | `ModelSettings` |
+| `DELETE /api/model-servers/{name}?with_models=true&confirmed=…` | | `ModelSettings` |
 | `POST /api/models` | `ModelAdd{name: str \| None, cli, model, server: str \| None}` | `ModelAdded{model: ConfiguredModelInfo, check: ModelCheck}` |
 | `POST /api/models/check` | `ModelAdd` | `ModelCheck{kind, text, field}` (200 also for a refusal) |
 | `PATCH /api/models/{name}` | `ModelRename{name}` | `ModelSettings` |
@@ -116,7 +116,11 @@ removed=callback)` reports each model removed, then removes the key folder as no
 it the refusal stays, its text as now and its hint `or remove them with it: lado
 model-server remove "<name>" --with-models`. `cli.py` adds `--with-models`; the page always
 sends `with_models=true` after its confirmation, which names the models from
-`ModelSettings`. Why: #2890, 2; the refusal remains the CLI's guard against a slip.
+`ModelSettings`, and `confirmed=` for each of them: the transaction removes nothing
+(`state.ModelsChanged`, a refusal) when the server has other models by then, and the page
+reads the entries and asks again. Why: #2890, 2; the refusal remains the CLI's guard
+against a slip; the human's manual check found a model added from the CLI after the page
+asked removed unconfirmed.
 
 ### D8. Renaming without an id now
 

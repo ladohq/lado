@@ -251,7 +251,15 @@ probe SHALL change nothing.
 
 **Remove** of a server SHALL ask in its source: `Remove <name>?`, or with models `Remove
 <name> and its <n> models: <name>, <name>?`; only its confirmation SHALL remove them as
-`lado model-server remove <name> --with-models` does.
+`lado model-server remove <name> --with-models` does, and only the models it named: when
+the server has others by then, nothing SHALL be removed and it SHALL ask again, naming
+them.
+
+#### Scenario: A model added after it asked
+- **WHEN** the confirmation names `a`, and `lado model add` puts `late` on the server before
+  the human confirms
+- **THEN** the server, `a` and `late` stay, and it asks `Remove <name> and its 2 models: a,
+  late?`
 
 #### Scenario: A server with three models
 - **WHEN** three models refer to `LiteLLM` and the human removes it and confirms

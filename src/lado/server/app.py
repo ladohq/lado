@@ -13,7 +13,7 @@ import threading
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import Annotated, Literal, TypeVar
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket
@@ -947,9 +947,15 @@ def create_app(
         dependencies=[Depends(guard.changes), Depends(database)],
         responses=entry_refused,
     )
-    def remove_model_server(name: str, with_models: bool = False) -> models.ModelSettings:
-        """Remove a server as `lado model-server remove [--with-models]` does."""
-        return entries(model_entries.remove_server, name, with_models)
+    def remove_model_server(
+        name: str,
+        with_models: bool = False,
+        confirmed: Annotated[list[str] | None, Query()] = None,
+    ) -> models.ModelSettings:
+        """Remove a server as `lado model-server remove [--with-models]` does; with
+        `with_models`, refused unless its models are `confirmed`, the ones the human was
+        asked about."""
+        return entries(model_entries.remove_server, name, with_models, confirmed or [])
 
     @app.post(
         "/api/models/check",

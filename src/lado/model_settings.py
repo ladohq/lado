@@ -21,7 +21,7 @@ import sqlite3
 import stat
 import urllib.parse
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -174,17 +174,28 @@ def add_server(
 
 
 def remove_server(
-    name: str, *, with_models: bool = False, removed: Callable[[str], None] = lambda _: None
+    name: str,
+    *,
+    with_models: bool = False,
+    confirmed: Collection[str] | None = None,
+    removed: Callable[[str], None] = lambda _: None,
 ) -> str:
     """Remove the saved server named `name` and its key file; its name as saved. Refused for
     no such server, or, without `with_models`, one a configured model refers to; with it,
     the models on the server go first, in the same transaction, `removed` getting each
-    one's name."""
+    one's name. With `confirmed` (the models the human was asked about), refused, nothing
+    removed, unless the models on the server are those."""
     saved = state.model_server(name)
     if saved is None:
         raise no_server(name)
     if with_models:
-        models = state.remove_model_server_with_models(saved.id)
+        try:
+            models = state.remove_model_server_with_models(saved.id, confirmed)
+        except state.ModelsChanged as changed:
+            raise Refused(
+                f'model server "{saved.name}" has other models now: '
+                f"{', '.join(changed.names) or 'none'}; nothing was removed"
+            ) from None
         if models is None:  # removed meanwhile
             raise no_server(name)
         for model in models:

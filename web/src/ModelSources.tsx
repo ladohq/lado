@@ -686,21 +686,27 @@ function RemoveServer({
 }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(true); // until the entries are read again
+  const current = useRef(true);
+  useEffect(
+    () => () => {
+      current.current = false;
+    },
+    [],
+  );
   // The models it names are the ones saved now (the CLI may have added one since the page
-  // read them): the removal takes every model of the server.
-  useEffect(() => {
-    let current = true;
+  // read them); the removal takes only those, refused when the server has others by then,
+  // and then the entries are read again and it asks anew.
+  const reread = () =>
     getModelSettings().then(
       (found) => {
-        if (!current) return;
+        if (!current.current) return;
         onChanged(found);
         setBusy(false);
       },
-      (error: unknown) => current && setProblem(refusalOf(error).message),
+      (error: unknown) => current.current && setProblem(refusalOf(error).message),
     );
-    return () => {
-      current = false;
-    };
+  useEffect(() => {
+    void reread();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when it asks
   }, []);
   const ask = own.length
@@ -708,11 +714,17 @@ function RemoveServer({
     : `Remove ${server.name}?`;
   const remove = async () => {
     setBusy(true);
+    setProblem(null);
     try {
-      onChanged(await removeModelServer(server.name, true));
+      onChanged(
+        await removeModelServer(
+          server.name,
+          own.map((m) => m.name),
+        ),
+      );
     } catch (error) {
       setProblem(refusalOf(error).message);
-      setBusy(false);
+      void reread();
     }
   };
   return (

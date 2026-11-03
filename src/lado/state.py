@@ -13,7 +13,7 @@ import sqlite3
 import time
 import uuid
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import closing, contextmanager, suppress
 from dataclasses import asdict, astuple, dataclass, field, replace
 from pathlib import Path
@@ -3867,21 +3867,39 @@ def remove_model_server(id: str) -> bool:
         return db.execute("DELETE FROM model_servers WHERE id = ?", (id,)).rowcount == 1
 
 
-def remove_model_server_with_models(id: str) -> list[str] | None:
+class ModelsChanged(Exception):
+    """The models on a server are not the ones confirmed: `names` are the ones on it now, by
+    name ignoring case."""
+
+    def __init__(self, names: list[str]):
+        super().__init__(", ".join(names))
+        self.names = names
+
+
+def remove_model_server_with_models(
+    id: str, confirmed: Collection[str] | None = None
+) -> list[str] | None:
     """Remove the server of id `id` and every configured model on it, in one transaction:
     the names of the models removed, by name ignoring case; None when there was no such
-    server."""
+    server. With `confirmed`, ModelsChanged and nothing removed unless the models on it are
+    those names, ignoring case."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         rows = db.execute(
             "SELECT name FROM models WHERE server = ? ORDER BY folded", (id,)
         ).fetchall()
+        names = [row["name"] for row in rows]
+        if confirmed is not None and {n.casefold() for n in names} != {
+            n.casefold() for n in confirmed
+        }:
+            db.execute("ROLLBACK")
+            raise ModelsChanged(names)
         db.execute("DELETE FROM models WHERE server = ?", (id,))
         if db.execute("DELETE FROM model_servers WHERE id = ?", (id,)).rowcount != 1:
             db.execute("ROLLBACK")
             return None
         db.execute("COMMIT")
-    return [row["name"] for row in rows]
+    return names
 
 
 def add_model(name: str, cli: str, model: str, server: str | None) -> ConfiguredModel:

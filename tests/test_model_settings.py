@@ -364,15 +364,36 @@ def test_remove_with_models_takes_a_model_added_after_the_listing(serve, monkeyp
     state.add_model("listed", "opencode", "qwen3-8b", id)
     real = state.remove_model_server_with_models
 
-    def late(server_id):
+    def late(server_id, confirmed):
         state.add_model("late", "kilo", "qwen3-8b", server_id)
-        return real(server_id)
+        return real(server_id, confirmed)
 
     monkeypatch.setattr(state, "remove_model_server_with_models", late)
     removed = []
     model_settings.remove_server("lms", with_models=True, removed=removed.append)
     assert removed == ["late", "listed"]
     assert state.models() == []
+
+
+def test_remove_with_the_models_confirmed_refuses_one_added_after_the_confirmation(serve):
+    """The page names the models it removes: one added after it asked keeps the server and
+    every model, and the refusal names them all."""
+    add("lms", serve("lmstudio").url)
+    id = state.model_server("lms").id
+    state.add_model("listed", "opencode", "qwen3-8b", id)
+    state.add_model("late", "kilo", "qwen3-8b", id)
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.remove_server("lms", with_models=True, confirmed=["listed"])
+    assert str(refused.value) == (
+        'model server "lms" has other models now: late, listed; nothing was removed'
+    )
+    assert (refused.value.hint, refused.value.field) == ("", "")
+    assert [m.name for m in state.models()] == ["late", "listed"]
+    removed = []
+    model_settings.remove_server(
+        "lms", with_models=True, confirmed=["late", "LISTED"], removed=removed.append
+    )
+    assert (removed, state.model_servers()) == (["late", "listed"], [])
 
 
 def test_remove_with_models_of_a_server_no_model_uses(serve):

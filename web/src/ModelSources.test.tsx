@@ -352,6 +352,30 @@ test("Remove of a server with models asks, naming them, then removes it with the
   fireEvent.click(confirm);
   await waitFor(() => expect(screen.queryByRole("button", { name: /LM Studio дома/ })).toBeNull());
   expect(server.of("DELETE", "/api/model-servers/")[0].path).toBe(
-    `/api/model-servers/${encodeURIComponent("LM Studio дома")}?with_models=true`,
+    `/api/model-servers/${encodeURIComponent("LM Studio дома")}?with_models=true&confirmed=a&confirmed=b`,
   );
+});
+
+test("Remove refused for a model added after it asked asks again, naming it", async () => {
+  server.entries = {
+    models: [model("a", "opencode", "OpenCode", "qwen3-8b", "LM Studio дома")],
+    servers: [LMSTUDIO],
+  };
+  mount();
+  const row = item(await source(/LM Studio дома/));
+  fireEvent.click(within(row).getByRole("button", { name: "Remove" }));
+  const confirm = within(row).getByRole("button", { name: "Remove server and models" }) as HTMLButtonElement;
+  await waitFor(() => expect(confirm.disabled).toBe(false));
+  server.entries = {
+    ...server.entries,
+    models: [...server.entries.models, model("late one", "kilo", "Kilo CLI", "qwen3-8b", "LM Studio дома")],
+  };
+  fireEvent.click(confirm);
+  expect(await within(row).findByText(/has other models now: a, late one; nothing was removed/)).toBeTruthy();
+  expect(await within(row).findByText("Remove LM Studio дома and its 2 models: a, late one?")).toBeTruthy();
+  expect(server.entries.models).toHaveLength(2);
+  await waitFor(() => expect(confirm.disabled).toBe(false));
+  fireEvent.click(confirm);
+  await waitFor(() => expect(screen.queryByRole("button", { name: /LM Studio дома/ })).toBeNull());
+  expect(server.entries.models).toEqual([]);
 });

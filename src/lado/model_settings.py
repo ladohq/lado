@@ -19,6 +19,7 @@ import errno
 import os
 import sqlite3
 import stat
+import urllib.parse
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -91,13 +92,33 @@ def server_to_add(name: str, replace: bool) -> state.ModelServer | None:
     return saved
 
 
+def same_address(a: str, b: str) -> bool:
+    """Whether two probe roots (model_servers.address) are one server's: the same scheme,
+    host ignoring case, port with its default filled in, and path."""
+
+    def parts(root: str) -> tuple[str, str, int, str]:
+        split = urllib.parse.urlsplit(root)
+        port = split.port or (443 if split.scheme == "https" else 80)
+        return split.scheme, (split.hostname or "").lower(), port, split.path
+
+    return parts(a) == parts(b)
+
+
 def add_server(
-    name: str, address: str, key: str | None, *, replace: bool = False, warn: Callable[[str], None]
+    name: str,
+    address: str,
+    key: str | None,
+    *,
+    replace: bool = False,
+    warn: Callable[[str], None],
+    note: Callable[[str], None],
 ) -> model_servers.Probe:
     """Probe `address` and save the server it is under `name`, with `key` in its key file;
     with `replace`, replace the saved server's address, type and APIs instead, and its key
     when `key` is given (else the kept key is sent and kept). `warn` gets the plain-http
-    warning before anything is sent. Refused for a name taken or not saved, ValueError for an
+    warning before anything is sent; `note`, once the probe recognised the server, a line
+    for each other saved server at the same address (two names on one address may carry two
+    keys: named, not refused). Refused for a name taken or not saved, ValueError for an
     address the probe does not take, model_servers.ProbeError for a server it does not
     recognise; nothing changes then."""
     saved = server_to_add(name, replace)
@@ -109,6 +130,9 @@ def add_server(
     if warning:
         warn(warning)
     found = model_servers.probe(address, sent, add_command(name, replace))
+    for other in state.model_servers():
+        if (saved is None or other.id != saved.id) and same_address(other.address, found.address):
+            note(f'same address as model server "{other.name}"')
     apis = [api for api in base.SERVER_APIS if api in found.apis]
     if saved is not None:
         if key is not None:

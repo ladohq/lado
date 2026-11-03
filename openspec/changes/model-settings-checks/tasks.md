@@ -19,7 +19,7 @@
 
 - [x] 3.1 `model_settings._on_server`: the embeddings refusal before the list's verdict
   (D3). Check: `tests/test_model_settings.py`.
-- [ ] 3.2 `model_settings.same_address` and the `same address as model server` lines of
+- [x] 3.2 `model_settings.same_address` and the `same address as model server` lines of
   `add_server`, the replaced server left out (D4). Check: `tests/test_model_settings.py`.
 - [ ] 3.3 `model_settings.remove_models` and the one-command hint of `remove_server` (D5).
   Check: `tests/test_model_settings.py`.

@@ -1415,7 +1415,7 @@ def serve():
 
 
 def _saved(name, server, key=None):
-    model_settings.add_server(name, server.url, key, warn=lambda _: None)
+    model_settings.add_server(name, server.url, key, warn=lambda _: None, note=lambda _: None)
 
 
 def test_no_server_saved_no_line(lado_home):

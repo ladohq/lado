@@ -41,9 +41,16 @@ def closed_port() -> int:
         return s.getsockname()[1]
 
 
-def add(name, address, key=None, replace=False):
+def add(name, address, key=None, replace=False, notes=None):
     warned = []
-    found = model_settings.add_server(name, address, key, replace=replace, warn=warned.append)
+    found = model_settings.add_server(
+        name,
+        address,
+        key,
+        replace=replace,
+        warn=warned.append,
+        note=(notes if notes is not None else []).append,
+    )
     return found, warned
 
 
@@ -131,6 +138,77 @@ def test_a_taken_name_is_refused_before_any_request(serve):
         'lado model-server add "LM Studio дома" <address> [--key] --replace'
     )
     assert second.requests == []
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "same"),
+    [
+        ("http://h:1234", "http://h:1234", True),
+        ("http://h:1234", "http://H:1234", True),
+        ("http://h", "http://h:80", True),
+        ("https://h", "https://h:443", True),
+        ("http://h:1234/llm", "http://h:1234/llm", True),
+        ("http://h:1234", "http://h:1235", False),
+        ("http://h:1234", "http://h:1234/llm", False),
+        ("http://h:443", "https://h:443", False),
+        ("http://h", "https://h", False),
+        ("http://[::1]:1234", "http://[::1]:1234", True),
+        ("http://h:1234/LLM", "http://h:1234/llm", False),
+    ],
+)
+def test_same_address(a, b, same):
+    assert model_settings.same_address(a, b) is same
+    assert model_settings.same_address(b, a) is same
+
+
+@pytest.mark.parametrize("given", ["{host}", "{host}/v1/", "http://{host}/"])
+def test_a_server_at_the_address_of_another_is_saved_and_named(serve, given):
+    server = serve("lmstudio")
+    host = server.url.removeprefix("http://")
+    add("macpro", server.url)
+    add("other", serve("openai").url)
+    notes = []
+    add("lms", given.format(host=host), notes=notes)
+    assert notes == ['same address as model server "macpro"']
+    assert [s.name for s in state.model_servers()] == ["lms", "macpro", "other"]
+
+
+def test_each_server_at_the_address_is_named(serve):
+    server = serve("lmstudio")
+    add("a", server.url)
+    add("b", server.url)
+    notes = []
+    add("c", server.url, notes=notes)
+    assert notes == ['same address as model server "a"', 'same address as model server "b"']
+
+
+def test_another_port_is_not_named(serve):
+    # Another path: test_same_address (a fake answers under one path only).
+    add("gw", serve("openai", prefix="/llm").url)
+    notes = []
+    add("root", serve("openai").url, notes=notes)
+    assert notes == []
+
+
+def test_replace_does_not_count_the_server_replaced(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    notes = []
+    add("lms", server.url + "/", replace=True, notes=notes)
+    assert notes == []
+    add("macpro", server.url)
+    add("lms", server.url, replace=True, notes=notes)
+    assert notes == ['same address as model server "macpro"']
+
+
+def test_a_failed_probe_names_no_server(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    server.close()
+    notes = []
+    with pytest.raises(model_servers.ProbeError):
+        add("macpro", server.url, notes=notes)
+    assert notes == []
 
 
 def test_the_probe_names_the_add_command(serve):
@@ -224,7 +302,9 @@ def test_the_plain_http_warning_comes_before_the_probe(serve, monkeypatch):
         return real(server.url, key, command)
 
     monkeypatch.setattr(model_servers, "probe", probe)
-    model_settings.add_server("ext", "http://llm.example.com", "k-1", warn=events.append)
+    model_settings.add_server(
+        "ext", "http://llm.example.com", "k-1", warn=events.append, note=events.append
+    )
     assert events == [
         "the key goes to llm.example.com over plain http://, unencrypted; use https:// if the "
         "server has it",

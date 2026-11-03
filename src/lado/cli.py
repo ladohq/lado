@@ -1616,12 +1616,13 @@ def cmd_model_server_add(args: argparse.Namespace) -> int:
     try:
         saved = model_settings.server_to_add(args.name, args.replace)
         key = _server_key(args, f"{model_settings.add_command(args.name, args.replace)} {root}")
+        notes: list[str] = []
         found = model_settings.add_server(
-            args.name, args.address, key, replace=args.replace, warn=_warn_line
+            args.name, args.address, key, replace=args.replace, warn=_warn_line, note=notes.append
         )
     except (model_servers.ProbeError, model_settings.Refused) as exc:
         return _refused(exc)
-    for line in model_servers.lines(found):
+    for line in [*model_servers.lines(found), *notes]:
         print(line)
     if saved is not None:
         print(f'Replaced model server "{saved.name}".')

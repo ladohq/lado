@@ -278,18 +278,19 @@ def forget_model_lists() -> None:
 
 
 def provider_models(
-    provider: providers.Provider, model: str, project: str | None = None
+    provider: providers.Provider, model: str, project: str | None = None, fresh: bool = False
 ) -> models.ProviderModels:
     """The CLI's aliases and list of models, read in the environment of the agents of
-    `project` (or of none) as a start reads it and, once read, kept MODEL_LIST_KEPT seconds,
-    and the check of `model` against them (lado.model_check); NoSuchProject for an unknown
-    `project`, LadoError for an environment that cannot be read."""
+    `project` (or of none) as a start reads it and, once read, kept MODEL_LIST_KEPT seconds
+    (`fresh`: read now, and kept), and the check of `model` against them (lado.model_check);
+    NoSuchProject for an unknown `project`, LadoError for an environment that cannot be
+    read."""
     if project is not None:
         projects.get(project)
     key, now = (provider.name, project), time.monotonic()
     with _model_lists_lock:
         kept = _model_lists.get(key)
-    if kept and now - kept[0] < MODEL_LIST_KEPT:
+    if kept and now - kept[0] < MODEL_LIST_KEPT and not fresh:
         listed = kept[1]
     else:
         env = runtime.agents_env(runtime.agent_layers(project), provider)

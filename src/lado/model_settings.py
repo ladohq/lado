@@ -84,7 +84,8 @@ def add_command(name: str, replace: bool) -> str:
     return f'lado model-server add "{name}"' + (" --replace" if replace else "")
 
 
-def _no_server(name: str, field: str = "") -> Refused:
+def no_server(name: str, field: str = "") -> Refused:
+    """The refusal of a server name no saved server has."""
     return Refused(
         f'no model server "{name}" is saved; lado model-server list names them', field=field
     )
@@ -107,7 +108,7 @@ def server_to_add(name: str, replace: bool) -> state.ModelServer | None:
     if saved is not None and not replace:
         raise _server_taken(saved.name)
     if saved is None and replace:
-        raise _no_server(name, NAME)
+        raise no_server(name, NAME)
     return saved
 
 
@@ -157,7 +158,7 @@ def add_server(
         if key is not None:
             _write_key(saved.id, key)
         if not state.replace_model_server(saved.id, found.address, found.kind, apis):
-            raise _no_server(name)  # removed meanwhile; its key file is left over (doctor)
+            raise no_server(name)  # removed meanwhile; its key file is left over (doctor)
         return found
     id = uuid.uuid4().hex[:12]
     if key is not None:
@@ -183,11 +184,11 @@ def remove_server(
     one's name."""
     saved = state.model_server(name)
     if saved is None:
-        raise _no_server(name)
+        raise no_server(name)
     if with_models:
         models = state.remove_model_server_with_models(saved.id)
         if models is None:  # removed meanwhile
-            raise _no_server(name)
+            raise no_server(name)
         for model in models:
             removed(model)
         return _remove_folder(saved)
@@ -282,7 +283,7 @@ def check_model(
     else:
         server = state.model_server(server_name)
         if server is None:
-            raise _no_server(server_name, SERVER_FIELD)
+            raise no_server(server_name, SERVER_FIELD)
         verdict = _on_server(provider, model, server, probe)
     if verdict.kind == model_check.REFUSED:
         raise Refused(verdict.text, field=MODEL_FIELD)
@@ -335,7 +336,7 @@ def add_model(
     except state.NameTaken as exc:  # added meanwhile
         raise _model_taken(exc.name) from None
     except sqlite3.IntegrityError:  # its server removed meanwhile
-        raise _no_server(server_name or "", SERVER_FIELD) from None
+        raise no_server(server_name or "", SERVER_FIELD) from None
     return saved, checked.verdict
 
 

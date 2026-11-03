@@ -462,10 +462,120 @@ class ProviderInfo(BaseModel):
 
 
 class ModelCheck(BaseModel):
-    """lado.model_check's verdict on a model: its kind and its line for the human."""
+    """lado.model_check's verdict on a model: its kind and its line for the human; for a
+    refusal of a configured model (lado.model_settings), the field of the form it concerns
+    ("" for none)."""
 
     kind: Literal["default", "ok", "warn", "refused"]
     text: str
+    field: str = ""
+
+
+# Settings → Models (lado.server.model_entries over lado.model_settings).
+
+
+class ConfiguredModelInfo(BaseModel):
+    """A configured model: its name, CLI (a provider's name, and its title), the model as
+    the CLI names it, and its server's name (None for the CLI's own way to its models)."""
+
+    name: str
+    cli: str
+    cli_title: str
+    model: str
+    server: str | None
+
+
+class ModelServerInfo(BaseModel):
+    """A saved model server as lado.db keeps it, asking it nothing: the CLIs (providers'
+    names) whose API it proved when saved, and whether it has a key file (never the key)."""
+
+    name: str
+    address: str
+    kind: str
+    clis: list[str]
+    has_key: bool
+
+
+class ModelSettings(BaseModel):
+    """The human's configured models and model servers, each by name ignoring case."""
+
+    models: list[ConfiguredModelInfo]
+    servers: list[ModelServerInfo]
+
+
+class CliApi(BaseModel):
+    """An agent CLI (a provider's name and title) and the model server API it speaks."""
+
+    name: str
+    title: str
+    api: str
+
+
+class ProbeInfo(BaseModel):
+    """What a probe found a model server to be (lado.model_servers.Probe): its models (None
+    for no list, why in `models_why`), those it types as embeddings, why its APIs could not
+    be told ("" when they could), the CLIs that can use it and those that cannot."""
+
+    address: str
+    added_scheme: bool
+    kind: str
+    models: list[str] | None
+    models_why: str
+    embeddings: list[str]
+    apis_why: str
+    clis: list[CliApi]
+    not_clis: list[CliApi]
+
+
+class ModelServerAdd(BaseModel):
+    """A model server to save, or with `replace` a saved one's new address and key; `key`
+    None for none (with `replace`: the kept key). No answer gives the key back."""
+
+    name: str
+    address: str
+    key: str | None = None
+    replace: bool = False
+
+
+class ModelServerAdded(BaseModel):
+    """A server saved or replaced: as saved, the probe that found it, the notes (another
+    server at its address) and the warnings (its key over plain http://)."""
+
+    server: ModelServerInfo
+    probe: ProbeInfo
+    notes: list[str]
+    warnings: list[str]
+    replaced: bool
+
+
+class ModelAdd(BaseModel):
+    """A configured model to check or save: `name` None for its default name, `server` None
+    for the CLI's own way to its models."""
+
+    name: str | None = None
+    cli: str
+    model: str
+    server: str | None = None
+
+
+class ModelAdded(BaseModel):
+    model: ConfiguredModelInfo
+    check: ModelCheck
+
+
+class ModelRename(BaseModel):
+    name: str
+
+
+class EntryRefused(BaseModel):
+    """The detail of a 400 that Settings → Models' API answers for a refusal: the line the
+    matching command prints, its hint ("" for none), the field of the form it concerns (""
+    for none), and the warnings given before it (a key over plain http://)."""
+
+    message: str
+    hint: str
+    field: str
+    warnings: list[str]
 
 
 class ProviderModels(BaseModel):

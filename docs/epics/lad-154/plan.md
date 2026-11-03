@@ -198,6 +198,10 @@ API for servers and models over `model_settings.py`, the key only going in, neve
 (canary test, LAD-116); a model is changed by removing and adding it (no `--replace` for
 models); removing a server some models use is refused naming them, and the page shows that
 refusal.
+Reshaped by D23 (question #2890, the cases in `ux-models-cases`): sources (CLIs and saved
+servers) whose model lists are read fresh on expanding or Refresh; a model enabled by a
+tick, its name filled in and renamable; removing a server removes its models after a
+confirmation (`--with-models` in the CLI); no ready-made chips, no «new model» badge.
 From S3e (LAD-186): the page shows the `(embeddings)` mark and the `same address as model
 server "<name>"` line the commands print, and uses `lado model remove`'s several names where
 it helps; `Probe.models_why` keeps a stale reason when the list came from the request with

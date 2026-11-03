@@ -802,7 +802,8 @@ def check_project_secrets() -> Check | None:
 
 def check_model_servers() -> Check | None:
     """The saved model servers (lado.model_settings), all probed at once with their keys:
-    which answer, which do not and why, each key file that is not a regular file of mode
+    which answer, which do not and why, each configured model on a server whose list lacks
+    its model, each key file that is not a regular file of mode
     600, and each folder of the keys' that is no saved server's (left over, by a lado.db
     rolled back or a removal the disk refused). Never FAIL: a server in the network being
     off is not LADO's to fix. None with neither a server nor a left-over folder; lado.db is
@@ -826,23 +827,29 @@ def check_model_servers() -> Check | None:
     if not servers and not left:
         return None
 
-    def probed(server: state.ModelServer) -> tuple[bool, str]:
+    models = state.models() if servers else []
+
+    def probed(server: state.ModelServer) -> tuple[bool, list[str]]:
         try:
-            key = model_settings.server_key(server)
-            found = model_servers.probe(
-                server.address, key, model_settings.add_command(server.name, True)
-            )
+            found = model_settings.probe_saved(server)
         except (model_servers.ProbeError, model_settings.Refused) as exc:
             text = str(exc)
             if text.startswith(server.address + " "):
-                return False, f"{server.name} {text.removeprefix(server.address + ' ')}"
-            return False, f"{server.name}: {text}"
-        return True, f"{server.name} answers ({found.kind})"
+                return False, [f"{server.name} {text.removeprefix(server.address + ' ')}"]
+            return False, [f"{server.name}: {text}"]
+        gone = [
+            f'model "{model.name}" ({model.model}) is not in {server.name}\'s list of models'
+            for model in models
+            if model.server == server.id
+            and found.models is not None
+            and model.model not in found.models
+        ]
+        return not gone, [f"{server.name} answers ({found.kind})", *gone]
 
     with ThreadPoolExecutor(max_workers=max(1, len(servers))) as pool:
         answers = list(pool.map(probed, servers))
     files = [line for server in servers if (line := _key_file_problem(server))]
-    lines = [text for _, text in answers] + files + left
+    lines = [text for _, texts in answers for text in texts] + files + left
     fine = all(ok for ok, _ in answers) and not files and not left
     return Check(name, OK if fine else WARN, "; ".join(lines))
 

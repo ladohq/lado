@@ -249,7 +249,9 @@ When model servers are saved (`lado model-server add`), `lado doctor` prints one
 servers` line: all of them probed at once with their kept keys, so it takes one probe's
 time (about 10 s at most for a server that hangs). `ok` names each with its type
 (`LM Studio at home answers (LM Studio)`); `warn` names each that does not answer, asks for
-a key, refuses its key or is no server LADO knows, with the probe's reason, each key file
+a key, refuses its key or is no server LADO knows, with the probe's reason, each configured
+model on a server that answered with a list lacking its model (`model "<name>" (<model>) is
+not in <server>'s list of models`; never removed for it), each key file
 that is not a regular file, cannot be read or has a mode other than 600, and each folder of
 `<LADO_HOME>/model-servers/` of no saved server, as left over (also when none is saved). It
 never fails: doctor's exit status is as without it.

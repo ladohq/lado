@@ -1450,6 +1450,34 @@ def test_a_server_that_does_not_answer_warns_and_keeps_the_exit(serve, monkeypat
     assert doctor.main() == 0
 
 
+def test_a_model_its_server_no_longer_lists_warns(serve, monkeypatch):
+    _saved("LM Studio дома", serve("lmstudio"))
+    id = state.model_server("LM Studio дома").id
+    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", id)
+    state.add_model("Gone", "kilo", "gemma-3-12b", id)
+    state.add_model("own", "claude", "gemma-3-12b", None)
+    found = doctor.check_model_servers()
+    assert found == doctor.Check(
+        "Model servers",
+        doctor.WARN,
+        'LM Studio дома answers (LM Studio); model "Gone" (gemma-3-12b) is not in LM Studio '
+        "дома's list of models",
+    )
+    monkeypatch.setattr(doctor, "run_checks", lambda: [doctor.Check("x", doctor.OK, ""), found])
+    assert doctor.main() == 0
+
+
+def test_a_server_without_a_list_or_answer_names_no_model(serve):
+    _saved("resp", serve("responses-only"))
+    state.add_model("C", "codex", "gpt-x", state.model_server("resp").id)
+    assert doctor.check_model_servers().level == doctor.OK
+    lm = serve("lmstudio")
+    _saved("lms", lm)
+    state.add_model("Gone", "opencode", "gemma-3-12b", state.model_server("lms").id)
+    lm.close()
+    assert "is not in" not in doctor.check_model_servers().detail
+
+
 def test_a_server_that_refuses_its_key_warns(serve):
     server = serve("openai", key="k")
     _saved("work", server, key="k")

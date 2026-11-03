@@ -41,9 +41,16 @@ def closed_port() -> int:
         return s.getsockname()[1]
 
 
-def add(name, address, key=None, replace=False):
+def add(name, address, key=None, replace=False, notes=None):
     warned = []
-    found = model_settings.add_server(name, address, key, replace=replace, warn=warned.append)
+    found = model_settings.add_server(
+        name,
+        address,
+        key,
+        replace=replace,
+        warn=warned.append,
+        note=(notes if notes is not None else []).append,
+    )
     return found, warned
 
 
@@ -89,7 +96,7 @@ def test_a_name_kept(name):
 def test_add_saves_the_address_type_and_apis_not_the_models(serve):
     server = serve("lmstudio")
     found, warned = add("LM Studio дома", server.url.removeprefix("http://"))
-    assert (found.kind, found.models, warned) == ("LM Studio", ("qwen3-8b",), [])
+    assert (found.kind, found.models, warned) == ("LM Studio", ("qwen3-8b", fake.EMBEDDINGS), [])
     [saved] = state.model_servers()
     assert (saved.name, saved.address, saved.kind, saved.apis) == (
         "LM Studio дома",
@@ -131,6 +138,77 @@ def test_a_taken_name_is_refused_before_any_request(serve):
         'lado model-server add "LM Studio дома" <address> [--key] --replace'
     )
     assert second.requests == []
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "same"),
+    [
+        ("http://h:1234", "http://h:1234", True),
+        ("http://h:1234", "http://H:1234", True),
+        ("http://h", "http://h:80", True),
+        ("https://h", "https://h:443", True),
+        ("http://h:1234/llm", "http://h:1234/llm", True),
+        ("http://h:1234", "http://h:1235", False),
+        ("http://h:1234", "http://h:1234/llm", False),
+        ("http://h:443", "https://h:443", False),
+        ("http://h", "https://h", False),
+        ("http://[::1]:1234", "http://[::1]:1234", True),
+        ("http://h:1234/LLM", "http://h:1234/llm", False),
+    ],
+)
+def test_same_address(a, b, same):
+    assert model_settings.same_address(a, b) is same
+    assert model_settings.same_address(b, a) is same
+
+
+@pytest.mark.parametrize("given", ["{host}", "{host}/v1/", "http://{host}/"])
+def test_a_server_at_the_address_of_another_is_saved_and_named(serve, given):
+    server = serve("lmstudio")
+    host = server.url.removeprefix("http://")
+    add("macpro", server.url)
+    add("other", serve("openai").url)
+    notes = []
+    add("lms", given.format(host=host), notes=notes)
+    assert notes == ['same address as model server "macpro"']
+    assert [s.name for s in state.model_servers()] == ["lms", "macpro", "other"]
+
+
+def test_each_server_at_the_address_is_named(serve):
+    server = serve("lmstudio")
+    add("a", server.url)
+    add("b", server.url)
+    notes = []
+    add("c", server.url, notes=notes)
+    assert notes == ['same address as model server "a"', 'same address as model server "b"']
+
+
+def test_another_port_is_not_named(serve):
+    # Another path: test_same_address (a fake answers under one path only).
+    add("gw", serve("openai", prefix="/llm").url)
+    notes = []
+    add("root", serve("openai").url, notes=notes)
+    assert notes == []
+
+
+def test_replace_does_not_count_the_server_replaced(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    notes = []
+    add("lms", server.url + "/", replace=True, notes=notes)
+    assert notes == []
+    add("macpro", server.url)
+    add("lms", server.url, replace=True, notes=notes)
+    assert notes == ['same address as model server "macpro"']
+
+
+def test_a_failed_probe_names_no_server(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    server.close()
+    notes = []
+    with pytest.raises(model_servers.ProbeError):
+        add("macpro", server.url, notes=notes)
+    assert notes == []
 
 
 def test_the_probe_names_the_add_command(serve):
@@ -224,7 +302,9 @@ def test_the_plain_http_warning_comes_before_the_probe(serve, monkeypatch):
         return real(server.url, key, command)
 
     monkeypatch.setattr(model_servers, "probe", probe)
-    model_settings.add_server("ext", "http://llm.example.com", "k-1", warn=events.append)
+    model_settings.add_server(
+        "ext", "http://llm.example.com", "k-1", warn=events.append, note=events.append
+    )
     assert events == [
         "the key goes to llm.example.com over plain http://, unencrypted; use https:// if the "
         "server has it",
@@ -252,7 +332,7 @@ def test_remove_of_a_server_models_use_is_refused_naming_them(serve):
         model_settings.remove_server("LM Studio дома")
     assert str(refused.value) == (
         'model server "LM Studio дома" is used by the models Another, Локальная Qwen; remove '
-        'them first: lado model remove "Another"'
+        'them first: lado model remove "Another" "Локальная Qwen"'
     )
     assert state.model_server("LM Studio дома") is not None
 
@@ -486,6 +566,34 @@ def test_a_model_the_server_does_not_list_is_refused(serve):
     assert state.models() == []
 
 
+def test_an_embeddings_model_is_refused(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("emb", "opencode", fake.EMBEDDINGS, "lms", no_env)
+    assert str(refused.value) == (
+        f"{fake.EMBEDDINGS} is an embeddings model on lms; an agent needs a chat model: "
+        f"lado model-server probe {server.url} lists the models"
+    )
+    assert state.models() == []
+    saved, _ = add_model("chat", "opencode", "qwen3-8b", "lms", no_env)
+    assert saved.model == "qwen3-8b"
+
+
+def test_the_api_is_checked_before_the_embeddings(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    with pytest.raises(model_settings.Refused, match="lms does not suit Claude Code"):
+        add_model("emb", "claude", fake.EMBEDDINGS, "lms", no_env)
+
+
+def test_a_server_without_types_is_checked_by_its_list(serve):
+    server = serve("ollama")
+    add("ol", server.url)
+    _, verdict = add_model("O", "opencode", "llama3.1:8b", "ol", no_env)
+    assert verdict.kind == model_check.OK
+
+
 def test_a_server_with_no_list_saves_with_a_warning(serve):
     server = serve("responses-only")
     add("resp", server.url)
@@ -557,12 +665,60 @@ def test_remove_a_model_keeps_its_server(serve):
     server = serve("lmstudio")
     add("LM Studio дома", server.url)
     add_model("Локальная Qwen", "opencode", "qwen3-8b", "LM Studio дома", no_env)
-    assert model_settings.remove_model("локальная QWEN") == "Локальная Qwen"
+    assert remove_models("локальная QWEN") == ["Локальная Qwen"]
     assert state.models() == []
     assert model_settings.remove_server("LM Studio дома") == "LM Studio дома"
 
 
+def remove_models(*names):
+    removed = []
+    model_settings.remove_models(list(names), removed.append)
+    return removed
+
+
+def saved_models(*names):
+    for name in names:
+        state.add_model(name, "claude", "haiku", None)
+
+
+def test_remove_several_models_in_the_order_given():
+    saved_models("coder-codex", "coder-oc", "sp", "kept")
+    assert remove_models("sp", "CODER-codex", "coder-oc", "Sp") == ["sp", "coder-codex", "coder-oc"]
+    assert [m.name for m in state.models()] == ["kept"]
+
+
 def test_remove_of_a_name_no_model_has_is_refused():
     with pytest.raises(model_settings.Refused) as refused:
-        model_settings.remove_model("nope")
+        remove_models("nope")
     assert str(refused.value) == 'no model "nope" is saved; lado model list names them'
+
+
+def test_one_name_not_saved_removes_none():
+    saved_models("coder-codex", "sp")
+    removed = []
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.remove_models(
+            ["coder-codex", "nowhere", "sp", "x", "NOWHERE"], removed.append
+        )
+    assert str(refused.value) == ('no models "nowhere", "x" are saved; lado model list names them')
+    assert removed == []
+    assert [m.name for m in state.models()] == ["coder-codex", "sp"]
+
+
+def test_a_model_removed_meanwhile_is_named_after_the_others(monkeypatch):
+    saved_models("a", "b", "c")
+    real = state.remove_model
+
+    def remove(name):
+        if name == "b":
+            real(name)
+            return False  # another process was first
+        return real(name)
+
+    monkeypatch.setattr(state, "remove_model", remove)
+    removed = []
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.remove_models(["a", "b", "c"], removed.append)
+    assert removed == ["a", "c"]
+    assert str(refused.value) == 'no model "b" is saved; lado model list names them'
+    assert state.models() == []

@@ -5,7 +5,8 @@ Standard library only.
     python fake_model_server.py <profile> <port file> [<key>]   # 127.0.0.1, port written
 
 Each profile says how the server answers the paths the probe asks; every other request gets
-404 with a plain text body, as a web server would. With a key, a request without
+404 with a plain text body, as a web server would. A key `(method, path, "anthropic-version")`
+answers a request that carries that header, before `(method, path)`. With a key, a request without
 `Authorization: Bearer <key>` gets 401 first.
 """
 
@@ -57,8 +58,11 @@ VALIDATION_422 = Answer(422, {"detail": [{"loc": ["body", "model"], "msg": "Fiel
 NOT_FOUND = Answer(404, "404 page not found")
 
 OLLAMA_MODELS = ("llama3.1:8b", "qwen2.5-coder:7b")
+EMBEDDINGS = "text-embedding-nomic-embed-text-v1.5"
+LITELLM_MODELS = ("gpt-4o", "claude-sonnet")
+VERSIONED = "anthropic-version"
 
-PROFILES: dict[str, dict[tuple[str, str], Answer]] = {
+PROFILES: dict[str, dict[tuple[str, ...] | str, Answer]] = {
     # An OpenAI-compatible server with chat completions only (vLLM, an older gateway).
     "openai": {("GET", MODELS): openai_list("gpt-oss-20b"), ("POST", CHAT): OPENAI_400},
     # Ollama: its own version, the OpenAI-compatible list, chat completions and Responses.
@@ -75,10 +79,19 @@ PROFILES: dict[str, dict[tuple[str, str], Answer]] = {
         ("POST", CHAT): OPENAI_400,
         ("POST", RESPONSES): OPENAI_400,
     },
-    # LM Studio: its own REST API's list beside the OpenAI-compatible one.
+    # LM Studio: its own REST API's list, typing each model, beside the OpenAI-compatible one.
     "lmstudio": {
-        ("GET", MODELS): openai_list("qwen3-8b"),
-        ("GET", LMSTUDIO_MODELS): Answer(200, {"object": "list", "data": [{"id": "qwen3-8b"}]}),
+        ("GET", MODELS): openai_list("qwen3-8b", EMBEDDINGS),
+        ("GET", LMSTUDIO_MODELS): Answer(
+            200,
+            {
+                "object": "list",
+                "data": [
+                    {"id": "qwen3-8b", "object": "model", "type": "llm"},
+                    {"id": EMBEDDINGS, "object": "model", "type": "embeddings"},
+                ],
+            },
+        ),
         ("POST", CHAT): OPENAI_400,
         ("POST", RESPONSES): OPENAI_400,
     },
@@ -86,6 +99,21 @@ PROFILES: dict[str, dict[tuple[str, str], Answer]] = {
     "anthropic": {("GET", MODELS): anthropic_list("claude-x"), ("POST", MESSAGES): ANTHROPIC_400},
     # A server with the Responses API alone, and no list.
     "responses-only": {("POST", RESPONSES): OPENAI_400},
+    # A gateway of both APIs (LiteLLM): its list in Anthropic's shape when asked with
+    # Anthropic's version header, in OpenAI's without it.
+    "litellm": {
+        ("GET", MODELS): openai_list(*LITELLM_MODELS),
+        ("GET", MODELS, VERSIONED): anthropic_list(*LITELLM_MODELS),
+        ("POST", CHAT): OPENAI_400,
+        ("POST", RESPONSES): OPENAI_400,
+        ("POST", MESSAGES): ANTHROPIC_400,
+    },
+    # An Anthropic API that lists its models only with its version header.
+    "anthropic-versioned": {
+        ("GET", MODELS): ANTHROPIC_400,
+        ("GET", MODELS, VERSIONED): anthropic_list("claude-x"),
+        ("POST", MESSAGES): ANTHROPIC_400,
+    },
     # A server with no list that proves the Messages API alone.
     "messages-only": {("POST", MESSAGES): ANTHROPIC_400},
     # A server with all three APIs; the Responses API refuses with a validation error.
@@ -188,8 +216,9 @@ class Server:
         if not path.startswith(self._prefix):
             return NOT_FOUND
         table = PROFILES[self._profile]
-        found = table.get((method, path[len(self._prefix) :]))
-        return found or table.get("*") or NOT_FOUND
+        asked = (method, path[len(self._prefix) :])
+        found = table.get((*asked, VERSIONED)) if headers.get(VERSIONED) else None
+        return found or table.get(asked) or table.get("*") or NOT_FOUND
 
     def paths(self) -> list[tuple[str, str]]:
         return [(r.method, r.path) for r in self.requests]

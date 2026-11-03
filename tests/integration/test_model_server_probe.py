@@ -72,6 +72,25 @@ def test_probe_a_fake_server_process(serve):
     ]
 
 
+def test_a_gateway_of_both_apis_is_openai_compatible(serve, lado_home):
+    """LiteLLM lists in Anthropic's shape when asked with anthropic-version."""
+    url = serve("litellm")
+    done = lado("model-server", "probe", url)
+    assert (done.returncode, done.stderr) == (0, "")
+    assert done.stdout.splitlines()[1:3] == [
+        "type: OpenAI-compatible",
+        f"models: {', '.join(fake_model_server.LITELLM_MODELS)}",
+    ]
+    assert not any(line.startswith("not:") for line in done.stdout.splitlines())
+    assert lado("model-server", "add", "gw", url).returncode == 0
+    assert lado("model-server", "list").stdout.splitlines()[1].split()[:3] == [
+        "gw",
+        url,
+        "OpenAI-compatible",
+    ]
+    assert "gw answers (OpenAI-compatible)" in lado("doctor").stdout
+
+
 def test_canary_key_is_kept_nowhere(serve, lado_home):
     canary = f"canary-key-{uuid.uuid4().hex}"
     url = serve("openai", key=canary)

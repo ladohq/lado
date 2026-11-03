@@ -56,6 +56,8 @@ def statuses(server: fake.Server) -> dict[str, int]:
         ("list-500", (500, 200, 404, 400, 400, 404, 404)),
         ("lmstudio", (200, 404, 200, 400, 400, 404, 404)),
         ("anthropic", (200, 404, 404, 404, 404, 400, 404)),
+        ("litellm", (200, 404, 404, 400, 400, 400, 404)),
+        ("anthropic-versioned", (400, 404, 404, 404, 404, 400, 404)),
         ("responses-only", (404, 404, 404, 404, 400, 404, 404)),
         ("messages-only", (404, 404, 404, 404, 404, 400, 404)),
         ("all", (200, 404, 404, 400, 422, 400, 404)),
@@ -91,6 +93,43 @@ def test_bodies_tell_the_shapes_apart():
     finally:
         for server in (ollama, anthropic, plain):
             server.close()
+
+
+VERSIONED = {"anthropic-version": "2023-06-01"}
+
+
+def test_a_gateway_of_both_apis_lists_by_the_header():
+    litellm, versioned = fake.Server("litellm"), fake.Server("anthropic-versioned")
+    try:
+        plain = ask(litellm.url + fake.MODELS)[1]
+        assert "has_more" not in plain and plain["data"][0]["object"] == "model"
+        headered = ask(litellm.url + fake.MODELS, headers=VERSIONED)[1]
+        assert headered["has_more"] is False and headered["data"][0]["type"] == "model"
+        assert [m["id"] for m in plain["data"]] == [m["id"] for m in headered["data"]]
+        assert ask(versioned.url + fake.MODELS)[0] == 400
+        status, listed = ask(versioned.url + fake.MODELS, headers=VERSIONED)
+        assert (status, listed["data"][0]["id"]) == (200, "claude-x")
+        # The header changes only the answers a profile gives for it.
+        assert ask(litellm.url + fake.CHAT, "POST", VERSIONED)[0] == 400
+    finally:
+        litellm.close()
+        versioned.close()
+
+
+def test_lmstudio_types_its_models():
+    server = fake.Server("lmstudio")
+    try:
+        listed = ask(server.url + fake.LMSTUDIO_MODELS)[1]["data"]
+        assert [(m["id"], m["type"]) for m in listed] == [
+            ("qwen3-8b", "llm"),
+            (fake.EMBEDDINGS, "embeddings"),
+        ]
+        assert [m["id"] for m in ask(server.url + fake.MODELS)[1]["data"]] == [
+            "qwen3-8b",
+            fake.EMBEDDINGS,
+        ]
+    finally:
+        server.close()
 
 
 def test_it_keeps_each_request_with_its_headers_and_body():

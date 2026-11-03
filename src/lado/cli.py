@@ -1616,12 +1616,13 @@ def cmd_model_server_add(args: argparse.Namespace) -> int:
     try:
         saved = model_settings.server_to_add(args.name, args.replace)
         key = _server_key(args, f"{model_settings.add_command(args.name, args.replace)} {root}")
+        notes: list[str] = []
         found = model_settings.add_server(
-            args.name, args.address, key, replace=args.replace, warn=_warn_line
+            args.name, args.address, key, replace=args.replace, warn=_warn_line, note=notes.append
         )
     except (model_servers.ProbeError, model_settings.Refused) as exc:
         return _refused(exc)
-    for line in model_servers.lines(found):
+    for line in [*model_servers.lines(found), *notes]:
         print(line)
     if saved is not None:
         print(f'Replaced model server "{saved.name}".')
@@ -1714,14 +1715,14 @@ def cmd_model_list(args: argparse.Namespace) -> int:
 
 
 def cmd_model_remove(args: argparse.Namespace) -> int:
-    """`lado model remove <name>`: the model; its server stays."""
+    """`lado model remove <name>…`: the models, all found before any is removed; their
+    servers stay."""
     from lado import model_settings
 
     try:
-        name = model_settings.remove_model(args.name)
+        model_settings.remove_models(args.names, lambda name: print(f'Removed model "{name}".'))
     except model_settings.Refused as exc:
         return _refused(exc)
-    print(f'Removed model "{name}".')
     return 0
 
 
@@ -2357,8 +2358,10 @@ def main(argv: list[str] | None = None) -> int:
         "list", help="the saved models, running no CLI and asking no server"
     )
     model_list.set_defaults(func=cmd_model_list)
-    model_remove = model_sub.add_parser("remove", help="remove a saved model; its server stays")
-    model_remove.add_argument("name")
+    model_remove = model_sub.add_parser(
+        "remove", help="remove saved models, all or none; their servers stay"
+    )
+    model_remove.add_argument("names", nargs="+", metavar="name")
     model_remove.set_defaults(func=cmd_model_remove)
 
     bug_report_cmd = commands.add_parser(

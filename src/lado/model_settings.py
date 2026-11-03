@@ -19,6 +19,7 @@ import errno
 import os
 import sqlite3
 import stat
+import urllib.parse
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -91,13 +92,33 @@ def server_to_add(name: str, replace: bool) -> state.ModelServer | None:
     return saved
 
 
+def same_address(a: str, b: str) -> bool:
+    """Whether two probe roots (model_servers.address) are one server's: the same scheme,
+    host ignoring case, port with its default filled in, and path."""
+
+    def parts(root: str) -> tuple[str, str, int, str]:
+        split = urllib.parse.urlsplit(root)
+        port = split.port or (443 if split.scheme == "https" else 80)
+        return split.scheme, (split.hostname or "").lower(), port, split.path
+
+    return parts(a) == parts(b)
+
+
 def add_server(
-    name: str, address: str, key: str | None, *, replace: bool = False, warn: Callable[[str], None]
+    name: str,
+    address: str,
+    key: str | None,
+    *,
+    replace: bool = False,
+    warn: Callable[[str], None],
+    note: Callable[[str], None],
 ) -> model_servers.Probe:
     """Probe `address` and save the server it is under `name`, with `key` in its key file;
     with `replace`, replace the saved server's address, type and APIs instead, and its key
     when `key` is given (else the kept key is sent and kept). `warn` gets the plain-http
-    warning before anything is sent. Refused for a name taken or not saved, ValueError for an
+    warning before anything is sent; `note`, once the probe recognised the server, a line
+    for each other saved server at the same address (two names on one address may carry two
+    keys: named, not refused). Refused for a name taken or not saved, ValueError for an
     address the probe does not take, model_servers.ProbeError for a server it does not
     recognise; nothing changes then."""
     saved = server_to_add(name, replace)
@@ -109,6 +130,9 @@ def add_server(
     if warning:
         warn(warning)
     found = model_servers.probe(address, sent, add_command(name, replace))
+    for other in state.model_servers():
+        if (saved is None or other.id != saved.id) and same_address(other.address, found.address):
+            note(f'same address as model server "{other.name}"')
     apis = [api for api in base.SERVER_APIS if api in found.apis]
     if saved is not None:
         if key is not None:
@@ -147,10 +171,10 @@ def remove_server(name: str) -> str:
             raise Refused(
                 f'model server "{saved.name}" was used by a model meanwhile; run the command again'
             ) from None
+        quoted = " ".join('"' + m.name + '"' for m in used)
         raise Refused(
             f'model server "{saved.name}" is used by the models '
-            f"{', '.join(m.name for m in used)}; remove them first: "
-            f'lado model remove "{used[0].name}"'
+            f"{', '.join(m.name for m in used)}; remove them first: lado model remove {quoted}"
         ) from None
     try:
         _remove_key(saved.id)
@@ -174,9 +198,9 @@ def add_model(
     `server_name` (None for the CLI's own way to its models): the saved entry and the check's
     verdict (OK, or WARN for no list to check against). Each check refuses before the next
     (Refused): the name, the CLI, the model, the server saved, its CLI's server API, the
-    server answering with its kept key, the API among the ones it proves, the model against
-    the server's list, or for no server against the CLI's own list, read with `env(provider)`
-    (the agents' environment)."""
+    server answering with its kept key, the API among the ones it proves, the model not one
+    the server types as embeddings, the model against the server's list, or for no server
+    against the CLI's own list, read with `env(provider)` (the agents' environment)."""
     check_name(name, MODEL)
     taken = state.model(name)
     if taken is not None:
@@ -231,6 +255,11 @@ def _on_server(
             f"{server.name} does not suit {provider.title}: it has no {api}; it suits "
             f"{', '.join(suits) or 'no CLI'}"
         )
+    if model in found.embeddings:
+        raise Refused(
+            f"{model} is an embeddings model on {server.name}; an agent needs a chat model: "
+            f"{model_servers.PROBE_COMMAND} {server.address} lists the models"
+        )
     listed = base.ModelList(
         models=found.models,
         command=f"{model_servers.PROBE_COMMAND} {server.address}",
@@ -239,12 +268,36 @@ def _on_server(
     return model_check.verdict(provider, model, listed, whose=server.name)
 
 
-def remove_model(name: str) -> str:
-    """Remove the configured model named `name`; its name as saved. Refused for none."""
-    saved = state.model(name)
-    if saved is None or not state.remove_model(saved.name):
-        raise Refused(f'no model "{name}" is saved; lado model list names them')
-    return saved.name
+def remove_models(names: list[str], removed: Callable[[str], None]) -> None:
+    """Remove the configured models named `names`, in their order, a name given twice
+    (ignoring case) once; `removed` gets each one's name as saved. Every name is found
+    first: Refused for any no model has, nothing removed. A model another process removed
+    in between is Refused once the others are removed."""
+    found: dict[str, None] = {}  # the names as saved, in order, once each
+    unknown: dict[str, str] = {}
+    for name in names:
+        saved = state.model(name)
+        if saved is None:
+            unknown.setdefault(name.casefold(), name)
+        else:
+            found.setdefault(saved.name)
+    if unknown:
+        raise _no_models(list(unknown.values()))
+    gone = []
+    for name in found:
+        if state.remove_model(name):
+            removed(name)
+        else:
+            gone.append(name)
+    if gone:
+        raise _no_models(gone)
+
+
+def _no_models(names: list[str]) -> Refused:
+    quoted = ", ".join(f'"{name}"' for name in names)
+    if len(names) == 1:
+        return Refused(f"no model {quoted} is saved; lado model list names them")
+    return Refused(f"no models {quoted} are saved; lado model list names them")
 
 
 def _model_taken(name: str) -> Refused:

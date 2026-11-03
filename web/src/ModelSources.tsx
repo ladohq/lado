@@ -247,7 +247,6 @@ export function ModelSources(props: Props) {
             onCancel={() => setAdding(false)}
             onAdded={(server, probe, saved) => {
               setAdding(false);
-              order.current?.push(server.name); // where the form was
               filled(server.name, probe, saved);
               void props.onChanged();
             }}

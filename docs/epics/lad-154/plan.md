@@ -7,7 +7,7 @@ Rejected at `step_ok` (gate #204, 2026-11-02): «сначала S2b» (D13; S2b 
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: S3e (LAD-186 with LAD-183, LAD-184, LAD-185, run task/lad-186; D19) · Next: S3d, then S3b (LAD-180), then S4 · Open checks: at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes); an external provider by key (OpenRouter, Qwen through Alibaba Model Studio) checked by the human at the epic's end, before the final pull request: `probe` and `add` on its address (its path: `/api/v1`, `/compatible-mode/v1`), OpenCode/Kilo agents on it, and a model of a provider the CLI logged in to itself (`openrouter/<model>` from the CLI's list) (the human, 2026-11-03)
+In work: S3d (its task to be created) · Next: S3b (LAD-180), then S4 · Open checks: the human's manual check of S3e on LM Studio and LiteLLM 1.105.1 (LiteLLM's header behaviour reproduced only by a fake), before S3d's design or with it; at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes); an external provider by key (OpenRouter, Qwen through Alibaba Model Studio) checked by the human at the epic's end, before the final pull request: `probe` and `add` on its address (its path: `/api/v1`, `/compatible-mode/v1`), OpenCode/Kilo agents on it, and a model of a provider the CLI logged in to itself (`openrouter/<model>` from the CLI's list) (the human, 2026-11-03)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9). 0.45.0 is released from `main` together with the epic: `main` waits for it (step_ok #222, Q4, D17).
@@ -18,6 +18,7 @@ Last review: S2, 2026-11-02, base at 228a1de2 (0.44.0 + the unreleased 0.44.1 ho
 Last review: S2b, 2026-11-02, base at 228a1de2 (unchanged since S2's review); S2b merged as f2cbf119; `openspec validate --specs --strict` (57) green on the epic branch; the CI of the LAD-151 merge passed with PR #202
 Last review: S3a, 2026-11-02, base at 84c8f7c4 (hotfixes LAD-175, LAD-172; `main`'s heading is now `## 0.45.0 (unreleased)`), merged into the epic branch as d6ded361: CHANGELOG resolved into one 0.45.0 section (the epic's lines under `### New`, `main`'s under `### Fixed`); schema on `main` 35, the epic's 37; `make lint`, `make test` (4958 passed, 7 skipped), integration of the merged files (17 passed), `openspec validate --specs --strict` (59) green
 Last review: S3c, 2026-11-03, base at 22940ebc (hotfixes LAD-178 #206, LAD-181 #207), merged into the epic branch as 95db9d78: one conflict in `src/lado/cli.py` resolved by keeping both guards (S3c's `model-server` refusal of extra words, then LAD-181's quiet refusal); CHANGELOG merged without conflict (LAD-181's line under `### Fixed`); schema on `main` 35, the epic's 38; `make lint`, `make test` (5112 passed, 7 skipped), integration `test_session_model.py` (3 passed), `openspec validate --specs --strict` (60) green
+Last review: S3e, 2026-11-03, base at 931818bb (LAD-179 #209: CI reruns jobs GitHub gave no runner; its first live run passed on PR #210), merged into the epic branch as 132552ce without conflict; `make lint`, `make test` (5183 passed, 7 skipped), `openspec validate --specs --strict` (60) green
 
 ## Steps
 
@@ -162,7 +163,7 @@ Notes: no session uses the entries yet; S3b does. The store is the one place of 
 user's later settings (the power table of S5c), not a second format.
 
 ### S3e — Fixes from the manual check of the model server commands (S)
-Status: in progress (LAD-186 with LAD-183, LAD-184, LAD-185, run task/lad-186; approved at step_ok #236; created by the human after the manual check of S3c on LM Studio and LiteLLM 1.105.1; one step on D19, question #2824; runs before S3d)
+Status: done (LAD-186 with LAD-183, LAD-184, LAD-185, PR #210, merged as 27679604; approved at step_ok #236; created by the human after the manual check of S3c on LM Studio and LiteLLM 1.105.1; one step on D19, question #2824; runs before S3d)
 Check:
 - LAD-186: a gateway that speaks both APIs (LiteLLM) is typed OpenAI-compatible: the
   model list is asked without `anthropic-version` (or as the design finds, within the
@@ -197,6 +198,10 @@ API for servers and models over `model_settings.py`, the key only going in, neve
 (canary test, LAD-116); a model is changed by removing and adding it (no `--replace` for
 models); removing a server some models use is refused naming them, and the page shows that
 refusal.
+From S3e (LAD-186): the page shows the `(embeddings)` mark and the `same address as model
+server "<name>"` line the commands print, and uses `lado model remove`'s several names where
+it helps; `Probe.models_why` keeps a stale reason when the list came from the request with
+`anthropic-version` (E1, invisible today): clear it if the page's API shows the reason.
 
 ### S3b — A session on a model from settings (L)
 Status: planned (LAD-180, paused): its run task/lad-180 was cancelled at design on D18 (question #2721); it runs after S3c and S3d; its tracker task's description is updated at its start
@@ -458,3 +463,9 @@ Check:
 - Changing a configured model in place (`--replace` for models), renaming a server or a
   model, removing a server's key alone: out of S3c's frame (remove and add again) — LAD-182
   — when the human asks; S3d's page follows the same rule.
+- S3e's declined findings (LAD-186): a port out of range in a hand-edited `lado.db` row breaks
+  `same_address` (E2, unreachable through LADO); `lado model remove`'s «all or none» help is
+  inexact only when two processes race (E3, D5 documents it) — if the human meets them.
+- A server saved with a wrong type before S3e keeps it until `--replace` (LAD-186, D7, no
+  migration: unreleased, test stands only) — on the human's stand: replace the LiteLLM entry
+  once.

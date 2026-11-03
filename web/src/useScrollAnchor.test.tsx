@@ -1,4 +1,4 @@
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { type ReactNode, useRef } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -33,11 +33,9 @@ function wide(on: boolean) {
   }));
 }
 
-let hold: (acted?: Element | null) => void = () => undefined;
-
 function Page({ children }: { children: ReactNode }) {
   const section = useRef<HTMLElement>(null);
-  hold = useScrollAnchor(section).hold;
+  useScrollAnchor(section);
   return (
     <div className="content" data-t="content">
       <section ref={section} data-t="section">
@@ -112,14 +110,16 @@ test("with no focus in the section the element acted on is the anchor, else the 
   const view = render(page(["a", "b", "c"]));
   const content = view.container.querySelector(".content") as HTMLElement;
   const by = scrolls(content);
-  act(() => hold(view.getByText("c")));
+  fireEvent.pointerDown(view.getByText("c")); // pressed, never focused (Safari's buttons)
   tops = { a: -50, b: 40, c: 360 };
   view.rerender(page(["a", "b", "c", "d"]));
   expect(by).toHaveBeenLastCalledWith(0, 60);
   by.mockClear();
-  act(() => hold(null));
-  tops = { x: -80, a: -50, b: 70, c: 390 }; // b, the first in view, moved by 30
-  view.rerender(page(["x", "a", "b", "c", "d"]));
+  tops = { a: -50, b: 40, d: 300 }; // c gone: nothing around it, nothing scrolled
+  view.rerender(page(["a", "b", "d"]));
+  expect(by).not.toHaveBeenCalled();
+  tops = { x: -80, a: -50, b: 70, d: 330 }; // b, the first in view, moved by 30
+  view.rerender(page(["x", "a", "b", "d"]));
   expect(by).toHaveBeenLastCalledWith(0, 30);
 });
 

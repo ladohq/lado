@@ -3,7 +3,8 @@
 // section, and whenever its size changes, the anchor noted before is put back where it was by
 // scrolling the scrolling container (`.content` above 900 px, the window at or under it) by
 // the distance it moved. The anchor is the focused element inside the section, else the one
-// last acted on (`hold`, or a pointer press in the section), else the first element in view.
+// last pressed in the section (a button a click does not focus, as Safari's), else the first
+// element in view.
 // When it leaves the page (× turns into Undo, a field into a name, a server into its line), the
 // nearest `[data-anchor]` that held it stands for it, so a card or a server's row keeps its
 // place. The page scrolls by whole pixels: an anchor keeps the place first noted, so the half
@@ -32,9 +33,7 @@ function firstInView(section: HTMLElement): Element | null {
   return null;
 }
 
-export function useScrollAnchor(section: RefObject<HTMLElement | null>): {
-  hold: (acted?: Element | null) => void;
-} {
+export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
   const held = useRef<Held | null>(null);
   const acted = useRef<Element | null>(null);
   const ours = useRef<{ on: Scroller; at: number } | null>(null); // the scroll it made last
@@ -113,13 +112,4 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): {
       sized?.disconnect();
     };
   }, [section, note, settle]);
-
-  const hold = useCallback(
-    (el?: Element | null) => {
-      acted.current = el ?? null;
-      note();
-    },
-    [note],
-  );
-  return { hold };
 }

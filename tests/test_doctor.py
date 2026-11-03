@@ -5,6 +5,7 @@ import sqlite3
 import time
 
 import agent_helpers
+import fake_model_server
 import pytest
 
 from lado import (
@@ -15,6 +16,8 @@ from lado import (
     doctor,
     gui_session,
     logins,
+    model_servers,
+    model_settings,
     project_secrets,
     projects,
     providers,
@@ -1392,3 +1395,129 @@ def test_the_projects_check_on_an_older_lado_db(ws, lado_home):
     agent_helpers.previous_schema()
     assert doctor.check_projects() == doctor.Check("Projects", doctor.INFO, doctor.NOT_AT_SCHEMA)
     assert state.schema_version() == state.SCHEMA_VERSION - 1  # nothing migrated
+
+
+# The saved model servers.
+
+
+@pytest.fixture
+def serve():
+    servers = []
+
+    def start(profile, **kwargs):
+        server = fake_model_server.Server(profile, **kwargs)
+        servers.append(server)
+        return server
+
+    yield start
+    for server in servers:
+        server.close()
+
+
+def _saved(name, server, key=None):
+    model_settings.add_server(name, server.url, key, warn=lambda _: None)
+
+
+def test_no_server_saved_no_line(lado_home):
+    assert doctor.check_model_servers() is None
+    assert not (lado_home / "lado.db").exists()
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    assert doctor.check_model_servers() is None
+
+
+def test_the_servers_that_answer(serve, monkeypatch):
+    _saved("LM Studio дома", serve("lmstudio"))
+    _saved("work", serve("openai", key="k"), key="k")
+    assert doctor.check_model_servers() == doctor.Check(
+        "Model servers", doctor.OK, "LM Studio дома answers (LM Studio); work answers "
+        "(OpenAI-compatible)"
+    )  # fmt: skip
+
+
+def test_a_server_that_does_not_answer_warns_and_keeps_the_exit(serve, monkeypatch, capsys):
+    lm = serve("lmstudio")
+    _saved("LM Studio дома", lm)
+    work = serve("openai")
+    _saved("work", work)
+    work.close()
+    found = doctor.check_model_servers()
+    assert found == doctor.Check(
+        "Model servers",
+        doctor.WARN,
+        "LM Studio дома answers (LM Studio); work does not answer (connection refused)",
+    )
+    monkeypatch.setattr(doctor, "run_checks", lambda: [doctor.Check("x", doctor.OK, ""), found])
+    assert doctor.main() == 0
+
+
+def test_a_server_that_refuses_its_key_warns(serve):
+    server = serve("openai", key="k")
+    _saved("work", server, key="k")
+    key = model_settings.key_folder(state.model_server("work").id) / model_settings.KEY
+    key.write_text("other")
+    assert doctor.check_model_servers().detail == "work refused the key (401)"
+
+
+def test_a_key_file_with_a_loose_mode_warns(serve):
+    server = serve("openai", key="k")
+    _saved("work", server, key="k")
+    key = model_settings.key_folder(state.model_server("work").id) / model_settings.KEY
+    key.chmod(0o644)
+    found = doctor.check_model_servers()
+    assert found.level == doctor.WARN
+    assert (
+        found.detail
+        == "work answers (OpenAI-compatible); the key file of work has mode 644, not 600"
+    )
+
+
+def test_a_key_file_that_is_a_link_warns(serve, tmp_path):
+    server = serve("openai")
+    _saved("work", server)
+    folder = model_settings.key_folder(state.model_server("work").id)
+    folder.mkdir(parents=True)
+    (tmp_path / "elsewhere").write_text("k")
+    (folder / model_settings.KEY).symlink_to(tmp_path / "elsewhere")
+    found = doctor.check_model_servers()
+    assert found.level == doctor.WARN
+    assert "the key file of work is not a regular file" in found.detail
+
+
+def test_a_folder_of_no_server_is_left_over(lado_home):
+    (lado_home / model_settings.KEYS / "0123abcd").mkdir(parents=True)
+    found = doctor.check_model_servers()
+    assert found == doctor.Check(
+        "Model servers",
+        doctor.WARN,
+        f"left over: {lado_home / model_settings.KEYS / '0123abcd'} (no saved server's)",
+    )
+
+
+def test_the_servers_on_an_older_lado_db_are_not_checked(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    agent_helpers.previous_schema()
+    assert doctor.check_model_servers() == doctor.Check(
+        "Model servers", doctor.INFO, doctor.NOT_AT_SCHEMA
+    )
+    assert state.schema_version() == state.SCHEMA_VERSION - 1  # nothing migrated
+
+
+def test_the_servers_are_probed_at_once(serve, monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 1)
+    for name in ("a", "b", "c"):
+        _saved(name, serve("openai"))
+    hangs = [serve("hang") for _ in range(3)]
+    for saved, hang in zip(state.model_servers(), hangs, strict=True):
+        state.replace_model_server(saved.id, hang.url, saved.kind, saved.apis)
+    started = time.monotonic()
+    found = doctor.check_model_servers()
+    assert time.monotonic() - started < 2.5  # one probe's time, not three
+    assert found.detail.count("does not answer (no answer in 1 s)") == 3
+
+
+def test_the_line_follows_the_project_secrets(serve, monkeypatch):
+    _versions(monkeypatch)
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+    _saved("lab", serve("openai"))
+    found = [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
+    assert "Model servers" in found

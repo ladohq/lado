@@ -37,7 +37,7 @@ token (`guard` reads, `guard.changes` changes):
 | Route | Body | Answer |
 |---|---|---|
 | `GET /api/model-settings` | | `ModelSettings{models: [ConfiguredModelInfo], servers: [ModelServerInfo]}` |
-| `POST /api/model-servers` | `ModelServerAdd{name, address, key: str \| None, replace: bool}` | `ModelServerAdded{server, probe: ProbeInfo, notes, warnings, replaced}` |
+| `POST /api/model-servers` | `ModelServerAdd{name, address, key: str \| None, replace: bool}` | `ModelServerAdded{server, probe: ProbeInfo, notes, warnings}` |
 | `POST /api/model-servers/{name}/probe` | | `ProbeInfo`, probed now with the kept key |
 | `DELETE /api/model-servers/{name}?with_models=true` | | `ModelSettings` |
 | `POST /api/models` | `ModelAdd{name: str \| None, cli, model, server: str \| None}` | `ModelAdded{model: ConfiguredModelInfo, check: ModelCheck}` |
@@ -46,10 +46,11 @@ token (`guard` reads, `guard.changes` changes):
 | `DELETE /api/models/{name}` | | `ModelSettings` |
 | `GET /api/providers/{name}/models?fresh=true` | | as now; `fresh` skips the kept list and keeps the new one |
 
-`ModelServerInfo{name, address, kind, clis: [str] (provider names), has_key}` (the saved
-row, no request); `ConfiguredModelInfo{name, cli, cli_title, model, server: str | None}`;
-`ProbeInfo{address, added_scheme, kind, models: [str] | None, models_why, embeddings,
-apis_why, clis: [CliApi{name, title, api}], not_clis: [CliApi]}`. A refusal is a 400 whose
+`ModelServerInfo{name, address, kind, has_key}` (the saved row, no request; the page shows
+`key: yes`); `ConfiguredModelInfo{name, cli, cli_title, model, server: str | None}`;
+`ProbeInfo{models: [str] | None, models_why, embeddings, apis_why, clis: [CliApi{name,
+title, api}]}`, only what the page shows (the CLIs that cannot use a server, the type and
+the address a probe found are the command's alone). A refusal is a 400 whose
 `detail` is `EntryRefused{message, hint, field, warnings}`. `GET` with no `lado.db` answers
 empty lists and makes none (`database()`); a change makes it, as the commands do. Names go
 in the path encoded whole. The CLI sources need no route of their own: their install and

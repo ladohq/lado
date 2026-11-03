@@ -9,9 +9,6 @@ import { claudeRow, cli, codexRow, opencodeRow } from "./fakes";
 export type Call = { method: string; path: string; body: unknown };
 
 export const LMSTUDIO_PROBE: ProbeInfo = {
-  address: "http://localhost:1234",
-  added_scheme: false,
-  kind: "LM Studio",
   models: ["qwen3-8b", "text-embedding-nomic"],
   models_why: "",
   embeddings: ["text-embedding-nomic"],
@@ -21,14 +18,12 @@ export const LMSTUDIO_PROBE: ProbeInfo = {
     { name: "opencode", title: "OpenCode", api: "chat completions" },
     { name: "codex", title: "Codex CLI", api: "Responses API" },
   ],
-  not_clis: [{ name: "claude", title: "Claude Code", api: "Anthropic Messages API" }],
 };
 
 export const LMSTUDIO: ModelServerInfo = {
   name: "LM Studio дома",
   address: "http://localhost:1234",
   kind: "LM Studio",
-  clis: ["kilo", "opencode", "codex"],
   has_key: false,
 };
 

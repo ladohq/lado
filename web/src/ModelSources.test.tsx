@@ -249,7 +249,6 @@ test("Change of a closed server opens it with its result; a later opening shows 
         probe: LMSTUDIO_PROBE,
         notes: ['same address as model server "gateway"'],
         warnings: ["the key goes to gw over plain http://, unencrypted; use https:// if the server has it"],
-        replaced: true,
       }),
     );
   mount();
@@ -265,6 +264,24 @@ test("Change of a closed server opens it with its result; a later opening shows 
   fireEvent.click(toggle); // opened again: read anew, no line of the change
   expect(await within(row).findByRole("checkbox", { name: "qwen3-8b on OpenCode" })).toBeTruthy();
   expect(within(row).queryByText(/Replaced model server/)).toBeNull();
+});
+
+test("a server with a key says so; one whose APIs cannot be told says why", async () => {
+  server.entries = { models: [], servers: [{ ...LMSTUDIO, has_key: true }, { ...LMSTUDIO, name: "plain" }] };
+  server.probes["LM Studio дома"] = {
+    ...LMSTUDIO_PROBE,
+    clis: [],
+    apis_why: "http://localhost:1234 answers 400 to any POST",
+  };
+  mount();
+  const keyed = item(await source(/LM Studio дома/));
+  expect(within(keyed).getByText("key: yes")).toBeTruthy();
+  expect(within(item(await source(/plain/))).queryByText("key: yes")).toBeNull();
+  fireEvent.click(await source(/LM Studio дома/));
+  expect(
+    await within(keyed).findByText("⚠ APIs: cannot be told: http://localhost:1234 answers 400 to any POST"),
+  ).toBeTruthy();
+  expect(within(keyed).getByText("No installed CLI can use this server.")).toBeTruthy();
 });
 
 test("Remove asks with the models saved now, read when it asks", async () => {

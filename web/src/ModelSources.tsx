@@ -299,6 +299,7 @@ function ServerSource({
         </button>
         <span className="badge">{server.kind}</span>
         <span className="mm-addr">{server.address}</span>
+        {server.has_key && <span className="src-sub">key: yes</span>}
         <span className="mm-row-acts">
           {open && (
             <button type="button" className="quiet src-refresh" onClick={onRefresh} disabled={read && "reading" in read}>
@@ -455,6 +456,9 @@ function SourceBody({
       )}
       {"probe" in read && read.probe.models === null && (
         <span className="field-note warn">{`⚠ no list of models: ${read.probe.models_why}`}</span>
+      )}
+      {"probe" in read && read.probe.apis_why && (
+        <span className="field-note warn">{`⚠ APIs: cannot be told: ${read.probe.apis_why}`}</span>
       )}
       {columns.length === 0 && server !== null && (
         <span className="field-note">No installed CLI can use this server.</span>

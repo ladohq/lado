@@ -7128,10 +7128,6 @@
             },
             "type": "array",
             "title": "Warnings"
-          },
-          "replaced": {
-            "type": "boolean",
-            "title": "Replaced"
           }
         },
         "type": "object",
@@ -7139,8 +7135,7 @@
           "server",
           "probe",
           "notes",
-          "warnings",
-          "replaced"
+          "warnings"
         ],
         "title": "ModelServerAdded",
         "description": "A server saved or replaced: as saved, the probe that found it, the notes (another\nserver at its address) and the warnings (its key over plain http://)."
@@ -7159,13 +7154,6 @@
             "type": "string",
             "title": "Kind"
           },
-          "clis": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Clis"
-          },
           "has_key": {
             "type": "boolean",
             "title": "Has Key"
@@ -7176,11 +7164,10 @@
           "name",
           "address",
           "kind",
-          "clis",
           "has_key"
         ],
         "title": "ModelServerInfo",
-        "description": "A saved model server as lado.db keeps it, asking it nothing: the CLIs (providers'\nnames) whose API it proved when saved, and whether it has a key file (never the key)."
+        "description": "A saved model server as lado.db keeps it, asking it nothing, and whether it has a key\nfile (never the key)."
       },
       "ModelSettings": {
         "properties": {
@@ -7689,18 +7676,6 @@
       },
       "ProbeInfo": {
         "properties": {
-          "address": {
-            "type": "string",
-            "title": "Address"
-          },
-          "added_scheme": {
-            "type": "boolean",
-            "title": "Added Scheme"
-          },
-          "kind": {
-            "type": "string",
-            "title": "Kind"
-          },
           "models": {
             "anyOf": [
               {
@@ -7736,29 +7711,18 @@
             },
             "type": "array",
             "title": "Clis"
-          },
-          "not_clis": {
-            "items": {
-              "$ref": "#/components/schemas/CliApi"
-            },
-            "type": "array",
-            "title": "Not Clis"
           }
         },
         "type": "object",
         "required": [
-          "address",
-          "added_scheme",
-          "kind",
           "models",
           "models_why",
           "embeddings",
           "apis_why",
-          "clis",
-          "not_clis"
+          "clis"
         ],
         "title": "ProbeInfo",
-        "description": "What a probe found a model server to be (lado.model_servers.Probe): its models (None\nfor no list, why in `models_why`), those it types as embeddings, why its APIs could not\nbe told (\"\" when they could), the CLIs that can use it and those that cannot."
+        "description": "What a probe found on a saved model server (lado.model_servers.Probe): its models\n(None for no list, why in `models_why`), those it types as embeddings, why its APIs\ncould not be told (\"\" when they could), and the CLIs that can use it."
       },
       "ProjectDeletion": {
         "properties": {

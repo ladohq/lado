@@ -112,7 +112,6 @@ def test_listing_asks_no_server(client, serve):
                 "name": "LM Studio дома",
                 "address": server.url,
                 "kind": "LM Studio",
-                "clis": ["kilo", "opencode", "codex"],
                 "has_key": True,
             }
         ],
@@ -127,20 +126,26 @@ def test_add_server_lmstudio(client, serve):
     server = serve("lmstudio")
     added = ok(add_server(client, "LM Studio дома", server.url.removeprefix("http://")))
     assert added["server"]["name"] == "LM Studio дома"
-    assert (added["notes"], added["warnings"], added["replaced"]) == ([], [], False)
-    probe = added["probe"]
-    assert (probe["kind"], probe["models"], probe["embeddings"], probe["models_why"]) == (
-        "LM Studio",
-        ["qwen3-8b", fake.EMBEDDINGS],
-        [fake.EMBEDDINGS],
-        "",
-    )
-    assert probe["added_scheme"] is True
-    assert [c["name"] for c in probe["clis"]] == ["kilo", "opencode", "codex"]
-    assert probe["not_clis"] == [
-        {"name": "claude", "title": "Claude Code", "api": base.ANTHROPIC_MESSAGES}
-    ]
+    assert (added["server"]["kind"], added["notes"], added["warnings"]) == ("LM Studio", [], [])
+    assert added["probe"] == {
+        "models": ["qwen3-8b", fake.EMBEDDINGS],
+        "models_why": "",
+        "embeddings": [fake.EMBEDDINGS],
+        "apis_why": "",
+        "clis": [
+            {"name": "kilo", "title": "Kilo CLI", "api": base.CHAT_COMPLETIONS},
+            {"name": "opencode", "title": "OpenCode", "api": base.CHAT_COMPLETIONS},
+            {"name": "codex", "title": "Codex CLI", "api": base.RESPONSES},
+        ],
+    }
     assert [s.name for s in state.model_servers()] == ["LM Studio дома"]
+
+
+def test_a_server_whose_apis_cannot_be_told_says_why(client, serve):
+    server = serve("gateway-400-list")
+    added = ok(add_server(client, "gw", server.url))
+    assert added["probe"]["clis"] == []
+    assert added["probe"]["apis_why"] == f"{server.url} answers 400 to any POST"
 
 
 def test_add_server_same_address_note(client, serve):
@@ -198,8 +203,7 @@ def test_change_keeps_key_on_null(client, serve):
     ok(add_server(client, "work", old.url, key="k-1"))
     new = serve("ollama", key="k-1")
     changed = ok(add_server(client, "WORK", new.url, replace=True))
-    assert changed["replaced"] is True
-    assert changed["server"]["address"] == new.url
+    assert (changed["server"]["address"], changed["server"]["kind"]) == (new.url, "Ollama")
     assert {r.headers["Authorization"] for r in new.requests} == {"Bearer k-1"}
     assert model_settings.server_key(state.model_server("work")) == "k-1"
 

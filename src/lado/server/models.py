@@ -486,13 +486,12 @@ class ConfiguredModelInfo(BaseModel):
 
 
 class ModelServerInfo(BaseModel):
-    """A saved model server as lado.db keeps it, asking it nothing: the CLIs (providers'
-    names) whose API it proved when saved, and whether it has a key file (never the key)."""
+    """A saved model server as lado.db keeps it, asking it nothing, and whether it has a key
+    file (never the key)."""
 
     name: str
     address: str
     kind: str
-    clis: list[str]
     has_key: bool
 
 
@@ -512,19 +511,15 @@ class CliApi(BaseModel):
 
 
 class ProbeInfo(BaseModel):
-    """What a probe found a model server to be (lado.model_servers.Probe): its models (None
-    for no list, why in `models_why`), those it types as embeddings, why its APIs could not
-    be told ("" when they could), the CLIs that can use it and those that cannot."""
+    """What a probe found on a saved model server (lado.model_servers.Probe): its models
+    (None for no list, why in `models_why`), those it types as embeddings, why its APIs
+    could not be told ("" when they could), and the CLIs that can use it."""
 
-    address: str
-    added_scheme: bool
-    kind: str
     models: list[str] | None
     models_why: str
     embeddings: list[str]
     apis_why: str
     clis: list[CliApi]
-    not_clis: list[CliApi]
 
 
 class ModelServerAdd(BaseModel):
@@ -545,7 +540,6 @@ class ModelServerAdded(BaseModel):
     probe: ProbeInfo
     notes: list[str]
     warnings: list[str]
-    replaced: bool
 
 
 class ModelAdd(BaseModel):

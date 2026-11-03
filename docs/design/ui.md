@@ -2455,7 +2455,8 @@ how sessions start.
 - **Sources** (below): every agent CLI LADO knows ("CLI", and "logged in", "not logged in"
   or "not installed" from Providers and environment's last check, read again while that
   check runs; a CLI not installed is greyed and does not open), then every saved server
-  (its name, type and address, ↻ Refresh while open, Change, Remove), then **+ Add server**.
+  (its name, type and address, `key: yes` when it has a key, ↻ Refresh while open, Change,
+  Remove), then **+ Add server**.
   Opening the section reads no source and asks no server; all start closed.
 - **A source opened** reads its models now, "reading the models…" meanwhile: a CLI's
   aliases (tagged "alias") and own list through the launch window's route with `fresh`, a
@@ -2476,7 +2477,7 @@ how sessions start.
   embeddings is greyed with `(embeddings)`, its ticks disabled. A configured model whose
   model the read list lacks shows first, ticked, with `⚠ not in the server's list` (a CLI's:
   `not in <CLI>'s list`), and stays saved. A server with no list says `⚠ no list of models:
-  <why>`. A server that does not answer, asks for its key or refuses it shows the probe's
+  <why>`, one whose APIs cannot be told `⚠ APIs: cannot be told: <why>`. A server that does not answer, asks for its key or refuses it shows the probe's
   line as a warning, `Its models stay: <names>.`, and its hint (the container's
   `host.docker.internal` one included).
 - **Other model…** ends an open source: a field with the read list as suggestions (the
@@ -2503,9 +2504,9 @@ how sessions start.
 - **API** (`lado.server.model_entries` over `lado.model_settings`, under the token, no
   change-feed event): `GET /api/model-settings` (`ModelSettings`: the models and the saved
   servers, asking none; no `lado.db` made), `POST /api/model-servers` (`ModelServerAdd
-  {name, address, key, replace}` → `ModelServerAdded {server, probe, notes, warnings,
-  replaced}`), `POST /api/model-servers/{name}/probe` (`ProbeInfo`, probed now with the
-  kept key), `DELETE /api/model-servers/{name}?with_models=` (→ `ModelSettings`), `POST
+  {name, address, key, replace}` → `ModelServerAdded {server, probe, notes, warnings}`),
+  `POST /api/model-servers/{name}/probe` (`ProbeInfo {models, models_why, embeddings,
+  apis_why, clis}`, probed now with the kept key), `DELETE /api/model-servers/{name}?with_models=` (→ `ModelSettings`), `POST
   /api/models/check` (`ModelAdd {name, cli, model, server}` → `ModelCheck`, a refusal of
   kind refused with its `field`; a server's probe kept a minute for this check only), `POST
   /api/models` (→ `ModelAdded`; `name` null for the default name), `PATCH /api/models/{name}`

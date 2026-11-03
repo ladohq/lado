@@ -79,32 +79,23 @@ def _cli_title(cli: str) -> str:
     return providers.get(cli).title if cli in providers.names() else cli
 
 
-def _cli_apis(found: model_servers.Suiting) -> list[models.CliApi]:
-    return [models.CliApi(name=p.name, title=p.title, api=api) for p, api in found]
-
-
 def server_info(server: state.ModelServer) -> models.ModelServerInfo:
     return models.ModelServerInfo(
         name=server.name,
         address=server.address,
         kind=server.kind,
-        clis=[p.name for p, _ in model_servers.suiting(server.apis)[0]],
         has_key=model_settings.has_key(server),
     )
 
 
 def probe_info(found: model_servers.Probe) -> models.ProbeInfo:
-    suits, not_suits = model_servers.suiting(found.apis)
+    suits, _ = model_servers.suiting(found.apis)
     return models.ProbeInfo(
-        address=found.address,
-        added_scheme=found.added_scheme,
-        kind=found.kind,
         models=None if found.models is None else list(found.models),
         models_why=found.models_why,
         embeddings=sorted(found.embeddings),
         apis_why=found.apis_why,
-        clis=_cli_apis(suits),
-        not_clis=_cli_apis(not_suits),
+        clis=[models.CliApi(name=p.name, title=p.title, api=api) for p, api in suits],
     )
 
 
@@ -155,7 +146,6 @@ def add_server(given: models.ModelServerAdd) -> models.ModelServerAdded:
         probe=probe_info(found),
         notes=notes,
         warnings=warnings,
-        replaced=given.replace,
     )
 
 

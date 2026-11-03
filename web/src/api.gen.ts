@@ -2694,13 +2694,11 @@ export interface components {
             notes: string[];
             /** Warnings */
             warnings: string[];
-            /** Replaced */
-            replaced: boolean;
         };
         /**
          * ModelServerInfo
-         * @description A saved model server as lado.db keeps it, asking it nothing: the CLIs (providers'
-         *     names) whose API it proved when saved, and whether it has a key file (never the key).
+         * @description A saved model server as lado.db keeps it, asking it nothing, and whether it has a key
+         *     file (never the key).
          */
         ModelServerInfo: {
             /** Name */
@@ -2709,8 +2707,6 @@ export interface components {
             address: string;
             /** Kind */
             kind: string;
-            /** Clis */
-            clis: string[];
             /** Has Key */
             has_key: boolean;
         };
@@ -2888,17 +2884,11 @@ export interface components {
         };
         /**
          * ProbeInfo
-         * @description What a probe found a model server to be (lado.model_servers.Probe): its models (None
-         *     for no list, why in `models_why`), those it types as embeddings, why its APIs could not
-         *     be told ("" when they could), the CLIs that can use it and those that cannot.
+         * @description What a probe found on a saved model server (lado.model_servers.Probe): its models
+         *     (None for no list, why in `models_why`), those it types as embeddings, why its APIs
+         *     could not be told ("" when they could), and the CLIs that can use it.
          */
         ProbeInfo: {
-            /** Address */
-            address: string;
-            /** Added Scheme */
-            added_scheme: boolean;
-            /** Kind */
-            kind: string;
             /** Models */
             models: string[] | null;
             /** Models Why */
@@ -2909,8 +2899,6 @@ export interface components {
             apis_why: string;
             /** Clis */
             clis: components["schemas"]["CliApi"][];
-            /** Not Clis */
-            not_clis: components["schemas"]["CliApi"][];
         };
         /**
          * ProjectDeletion

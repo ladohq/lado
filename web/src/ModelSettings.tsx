@@ -26,12 +26,14 @@ import {
   clisLine,
   cliKey,
   FieldNotes,
+  KeyNotes,
   listed,
   ModelSources,
   nextRead,
   type Read,
   type Saved,
   serverKey,
+  usePlainHttp,
 } from "./ModelSources";
 import { MODELS_ANCHOR } from "./paths";
 import { SecretField } from "./ProjectVariables";
@@ -117,14 +119,23 @@ export function ModelSettings() {
       return next;
     });
   }, []);
+  // The lines of a server's add or change belong to the last such action: a new one, or a
+  // server removed, makes them old.
   const onSaved = useCallback((key: string, done: Saved | null) => {
     setSaved((now) => {
+      if (done !== null) return { [key]: done };
       const next = { ...now };
-      if (done === null) delete next[key];
-      else next[key] = done;
+      delete next[key];
       return next;
     });
   }, []);
+  const servers = useRef<string[]>([]);
+  useEffect(() => {
+    if (!entries) return;
+    const names = entries.servers.map((s) => s.name);
+    if (servers.current.some((name) => !names.includes(name))) setSaved({});
+    servers.current = names;
+  }, [entries]);
 
   return (
     <section className="setting" id={MODELS_ANCHOR} ref={section} aria-labelledby={id}>
@@ -344,10 +355,15 @@ function AddServer({
   const [address, setAddress] = useState("");
   const [refused, setRefused] = useState<EntryRefused | null>(null);
   const [busy, setBusy] = useState(false);
+  const [filled, setFilled] = useState(false);
   const key = useRef<HTMLInputElement>(null);
+  const live = usePlainHttp(address, filled);
+  // A refusal under a field goes once that field is edited.
+  const edited = (field: string) => setRefused((now) => (now?.field === field ? null : now));
   const add = async () => {
     const given = key.current?.value ?? "";
     if (key.current) key.current.value = "";
+    setFilled(false);
     setBusy(true);
     setRefused(null);
     try {
@@ -371,7 +387,10 @@ function AddServer({
             id={`${id}-name`}
             value={name}
             placeholder="e.g. LM Studio at home"
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              setName(event.target.value);
+              edited("name");
+            }}
           />
           <FieldNotes refused={refused} field="name" />
         </div>
@@ -382,7 +401,10 @@ function AddServer({
             className="mono"
             value={address}
             placeholder="localhost:1234 or https://host/v1"
-            onChange={(event) => setAddress(event.target.value)}
+            onChange={(event) => {
+              setAddress(event.target.value);
+              edited("address");
+            }}
           />
           <FieldNotes refused={refused} field="address" />
         </div>
@@ -394,12 +416,13 @@ function AddServer({
             field={key}
             label="Key"
             placeholder="only if the server asks for one (not shown after saving)"
+            onFilled={(now) => {
+              setFilled(now);
+              edited("key");
+            }}
             onEnter={() => void add()}
           />
-          {refused?.warnings.map((line) => (
-            <span key={line} className="field-note warn">{`⚠ ${line}`}</span>
-          ))}
-          <FieldNotes refused={refused} field="key" />
+          <KeyNotes live={live} refused={refused} />
         </div>
       </div>
       <div className="mm-acts">

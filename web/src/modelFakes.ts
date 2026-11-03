@@ -96,6 +96,14 @@ export class ModelServer {
       return json(this.entries);
     }
     if (where === "/api/models/check") return json({ kind: "ok", text: "in the list", field: "" });
+    if (where === "/api/model-servers/check") {
+      // The core's rule in short: a key over http:// to a host not on the machine.
+      const given = body as { address: string; key: boolean };
+      const host = given.address.replace(/^http:\/\//, "").split(/[:/]/)[0];
+      return given.key && !given.address.startsWith("https://") && host !== "localhost"
+        ? json({ kind: "warn", text: `the key goes to ${host} over plain http://, unencrypted`, field: "key" })
+        : json({ kind: "default", text: "", field: "" });
+    }
     const server = where.match(/^\/api\/model-servers\/(.+)$/);
     if (server && method === "DELETE") {
       const confirmed = new URLSearchParams(path.split("?")[1] ?? "").getAll("confirmed");

@@ -1808,6 +1808,45 @@
         }
       }
     },
+    "/api/model-servers/check": {
+      "post": {
+        "summary": "Check Model Server",
+        "description": "What the server form says before its Add, asking no server: the plain-http\nwarning under Key.",
+        "operationId": "check_model_server_api_model_servers_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelServerCheck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCheck"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/model-servers/{name}/probe": {
       "post": {
         "summary": "Probe Model Server",
@@ -7158,6 +7197,25 @@
         ],
         "title": "ModelServerAdded",
         "description": "A server saved or replaced: as saved, the probe that found it, the notes (another\nserver at its address) and the warnings (its key over plain http://)."
+      },
+      "ModelServerCheck": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "key": {
+            "type": "boolean",
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "address",
+          "key"
+        ],
+        "title": "ModelServerCheck",
+        "description": "A server's address as typed and whether a key goes with it (the key itself never\ndoes): what the form says before its Add."
       },
       "ModelServerInfo": {
         "properties": {

@@ -148,7 +148,7 @@ warning, and name its configured models, which SHALL stay.
 An open source SHALL end with **Other model…**: a field for a model its list lacks (with a
 CLI choice for a server: the CLIs of its columns), the check `lado model add` would make
 shown under the field once the typing settles, and Add, which saves the model with its
-default name as `lado model add` does.
+default name as `lado model add` does, disabled while that check refuses the model.
 
 #### Scenario: Claude Code's full model name
 - **WHEN** the human types `claude-opus-5-5` in Other model… of Claude Code
@@ -195,8 +195,15 @@ server SHALL show in Sources, open, with `Saved model server "<name>".` and its 
 ### Requirement: The same address and plain http are said, not refused
 
 A line `same address as model server "<name>"` SHALL show in a server's source after it is
-added or changed, for each other saved server at its address; the command's plain-http
-warning SHALL show under the Key field. Neither SHALL stop the save.
+added or changed, for each other saved server at its address, until the next server is
+added, changed or removed; the command's plain-http warning SHALL show under the Key field
+as soon as an address and a key that would go there are typed, before anything is sent.
+Neither SHALL stop the save.
+
+#### Scenario: A key over plain http, said before Add
+- **WHEN** the human types the address `gw.example.com:4000` and a key, and has not pressed
+  Add
+- **THEN** under Key it shows the plain-http warning, and no server has been asked
 
 #### Scenario: The same address under a second name
 - **WHEN** `gateway` is saved at `http://10.0.0.5:4000` and the human adds `LiteLLM` at

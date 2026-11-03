@@ -221,6 +221,63 @@ test("Other model…: the check after the typing settles, then Add saves it", as
   expect(await screen.findByText("claude-opus-5-5 (default)")).toBeTruthy();
 });
 
+test("Other model…: Add is off while the check refuses the model", async () => {
+  server.answers["POST /api/models/check"] = () =>
+    new Response(JSON.stringify({ kind: "refused", text: "gpt-9 is not in Codex CLI's list of models", field: "model" }));
+  mount();
+  fireEvent.click(await source(/Claude Code/));
+  const field = await screen.findByRole("combobox");
+  fireEvent.change(field, { target: { value: "gpt-9" } });
+  expect(await screen.findByText("gpt-9 is not in Codex CLI's list of models", {}, { timeout: 3000 })).toBeTruthy();
+  const add = screen.getByRole("button", { name: "Add" }) as HTMLButtonElement;
+  expect(add.disabled).toBe(true);
+  fireEvent.change(field, { target: { value: "gpt-9x" } }); // typing again: Add on until checked
+  expect(add.disabled).toBe(false);
+});
+
+test("Change says the plain-http warning of the kept key before Save; a failed Save drops the old result", async () => {
+  server.entries = { models: [], servers: [{ ...LMSTUDIO, has_key: true }] };
+  server.probes["LM Studio дома"] = LMSTUDIO_PROBE;
+  mount();
+  const row = item(await source(/LM Studio дома/));
+  fireEvent.click(within(row).getByRole("button", { name: "Change" }));
+  fireEvent.change(within(row).getByLabelText("Address"), { target: { value: "http://gw.example.com:4000" } });
+  const keyField = within(row).getByLabelText("New key").closest(".field") as HTMLElement;
+  expect(
+    await within(keyField).findByText("⚠ the key goes to gw.example.com over plain http://, unencrypted", {}, { timeout: 3000 }),
+  ).toBeTruthy();
+  expect(server.of("POST", "/api/model-servers").filter((c) => c.path === "/api/model-servers")).toEqual([]);
+  fireEvent.click(within(row).getByRole("button", { name: "Save" }));
+  expect(await within(row).findByText(/✓ Replaced model server/)).toBeTruthy();
+  server.answers["POST /api/model-servers"] = () => refusal("http://gw:1299 does not answer (connection refused)", "address");
+  fireEvent.click(within(row).getByRole("button", { name: "Change" }));
+  fireEvent.click(within(row).getByRole("button", { name: "Save" }));
+  expect(await within(row).findByText(/does not answer/)).toBeTruthy();
+  expect(within(row).queryByText(/✓ Replaced model server/)).toBeNull();
+});
+
+test("a server's result goes once another server is removed or added", async () => {
+  server.entries = { models: [], servers: [LMSTUDIO, { ...LMSTUDIO, name: "gateway" }] };
+  server.probes["LM Studio дома"] = LMSTUDIO_PROBE;
+  server.answers["POST /api/model-servers"] = () =>
+    new Response(
+      JSON.stringify({ server: LMSTUDIO, probe: LMSTUDIO_PROBE, notes: ['same address as model server "gateway"'], warnings: [] }),
+    );
+  mount();
+  const row = item(await source(/LM Studio дома/));
+  fireEvent.click(within(row).getByRole("button", { name: "Change" }));
+  fireEvent.click(within(row).getByRole("button", { name: "Save" }));
+  expect(await within(row).findByText('same address as model server "gateway"')).toBeTruthy();
+  const gateway = item(await source(/gateway/));
+  fireEvent.click(within(gateway).getByRole("button", { name: "Remove" }));
+  const yes = within(gateway.querySelector(".mm-confirm") as HTMLElement).getByRole("button", { name: "Remove" });
+  await waitFor(() => expect((yes as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(yes);
+  await waitFor(() => expect(screen.queryByRole("button", { name: /^gateway$/ })).toBeNull());
+  await waitFor(() => expect(within(row).queryByText(/same address as model server/)).toBeNull());
+  expect(within(row).queryByText(/✓ Replaced model server/)).toBeNull();
+});
+
 test("Change with an empty New key keeps the key: key null, replace", async () => {
   server.entries = { models: [], servers: [LMSTUDIO] };
   mount();

@@ -9,7 +9,7 @@ import fake_model_server as fake
 import pytest
 from fastapi.testclient import TestClient
 
-from lado import agent_env, model_settings, providers, state
+from lado import agent_env, model_servers, model_settings, providers, state
 from lado.providers import base
 from lado.server import app as server_app
 from lado.server import auth, model_entries
@@ -278,6 +278,26 @@ def test_a_list_given_only_with_the_version_header_has_no_why(client, serve):
 
 def check(client, **given):
     return ok(client.post("/api/models/check", json=given))
+
+
+def test_check_server_says_the_plain_http_warning_before_anything_is_sent(client, serve):
+    server = serve("lmstudio")
+
+    def check(address, key=True):
+        return ok(client.post("/api/model-servers/check", json={"address": address, "key": key}))
+
+    assert check("gw.example.com:4000") == {
+        "kind": "warn",
+        "text": model_servers.PLAIN_HTTP.format(host="gw.example.com"),
+        "field": "key",
+    }
+    assert check("gw.example.com:4000", key=False) == {"kind": "default", "text": "", "field": ""}
+    assert check("https://gw.example.com")["kind"] == "default"
+    assert check("10.0.0.5:4000")["kind"] == "default"
+    assert check("ftp://x")["kind"] == "default"  # Add refuses it under Address
+    assert check(server.url)["kind"] == "default"
+    assert server.requests == []  # asks no server
+    assert state.model_servers() == []
 
 
 def test_check_model_ok_warn_refused(client, serve, monkeypatch):

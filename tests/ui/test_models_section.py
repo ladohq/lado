@@ -210,7 +210,11 @@ def test_refusals_under_their_fields_a_silent_server_and_change(
         moved.close()
 
 
-def test_the_section_at_a_phones_width(browser: Browser, clis, server, lms, shot):
+def test_the_section_at_a_phones_width(browser: Browser, clis, server, lms, shot, monkeypatch):
+    long = "qwen/qwen3-coder-30b-a3b-instruct"
+    listed = dict(fake.PROFILES["lmstudio"])
+    listed[("GET", fake.MODELS)] = fake.openai_list("qwen3-8b", long, fake.EMBEDDINGS)
+    monkeypatch.setitem(fake.PROFILES, "lmstudio", listed)
     context = browser.new_context(
         viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True
     )
@@ -220,6 +224,9 @@ def test_the_section_at_a_phones_width(browser: Browser, clis, server, lms, shot
         add_server(page, "LM Studio дома", lms.url)
         lm = source(page, "LM Studio дома")
         expect(lm.get_by_role("columnheader", name="Codex CLI")).to_be_visible()
+        # A long model's name breaks at its / and -, never a letter or two to a line.
+        cell = lm.locator("td.mono", has_text="coder")
+        assert cell.bounding_box()["width"] >= 120
         lm.get_by_role("checkbox", name="qwen3-8b on OpenCode", exact=True).click()
         expect(your_models(page)).to_contain_text("qwen3-8b · LM Studio дома")
         assert page.evaluate("document.documentElement.scrollWidth") <= 390  # no sideways scroll

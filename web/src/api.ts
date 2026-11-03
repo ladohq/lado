@@ -369,6 +369,11 @@ export const getModelSettings = () => get<ModelSettings>("/api/model-settings");
 export const addModelServer = (name: string, address: string, key: string | null, replace = false) =>
   post<ModelServerAdded>("/api/model-servers", { name, address, key, replace });
 
+// What the server form says before its Add, asking no server: the plain-http warning when
+// a key goes to `address` (`key`: whether one goes; the key itself is never sent here).
+export const checkModelServer = (address: string, key: boolean) =>
+  post<ModelCheck>("/api/model-servers/check", { address, key });
+
 // The saved server asked now with its kept key: its models and the CLIs that can use it.
 export const probeModelServer = (name: string) => post<ProbeInfo>(`${modelServerPath(name)}/probe`);
 

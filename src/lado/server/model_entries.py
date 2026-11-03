@@ -149,6 +149,19 @@ def add_server(given: models.ModelServerAdd) -> models.ModelServerAdded:
     )
 
 
+def check_server(given: models.ModelServerCheck) -> models.ModelCheck:
+    """The plain-http warning `add_server` would give, asking no server: a warn under Key,
+    else none (an address the probe does not take is Add's refusal)."""
+    try:
+        root, _ = model_servers.address(given.address)
+    except ValueError:
+        return models.ModelCheck(kind="default", text="")
+    warning = model_servers.plain_http_warning(root, "" if given.key else None)
+    if warning is None:
+        return models.ModelCheck(kind="default", text="")
+    return models.ModelCheck(kind="warn", text=warning, field=model_servers.KEY)
+
+
 def _saved_server(name: str) -> state.ModelServer:
     server = state.model_server(name)
     if server is None:

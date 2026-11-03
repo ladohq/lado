@@ -775,6 +775,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/model-servers/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Model Server
+         * @description What the server form says before its Add, asking no server: the plain-http
+         *     warning under Key.
+         */
+        post: operations["check_model_server_api_model_servers_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/model-servers/{name}/probe": {
         parameters: {
             query?: never;
@@ -2696,6 +2717,17 @@ export interface components {
             notes: string[];
             /** Warnings */
             warnings: string[];
+        };
+        /**
+         * ModelServerCheck
+         * @description A server's address as typed and whether a key goes with it (the key itself never
+         *     does): what the form says before its Add.
+         */
+        ModelServerCheck: {
+            /** Address */
+            address: string;
+            /** Key */
+            key: boolean;
         };
         /**
          * ModelServerInfo
@@ -5461,6 +5493,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_model_server_api_model_servers_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelServerCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCheck"];
                 };
             };
             /** @description Validation Error */

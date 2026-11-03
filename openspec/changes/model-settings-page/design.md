@@ -38,6 +38,7 @@ token (`guard` reads, `guard.changes` changes):
 |---|---|---|
 | `GET /api/model-settings` | | `ModelSettings{models: [ConfiguredModelInfo], servers: [ModelServerInfo]}` |
 | `POST /api/model-servers` | `ModelServerAdd{name, address, key: str \| None, replace: bool}` | `ModelServerAdded{server, probe: ProbeInfo, notes, warnings}` |
+| `POST /api/model-servers/check` | `ModelServerCheck{address, key: bool}` | `ModelCheck`: the plain-http warning before an Add (the human's manual check: it came only after the key was sent); asks no server, takes no key |
 | `POST /api/model-servers/{name}/probe` | | `ProbeInfo`, probed now with the kept key |
 | `DELETE /api/model-servers/{name}?with_models=true&confirmed=…` | | `ModelSettings` |
 | `POST /api/models` | `ModelAdd{name: str \| None, cli, model, server: str \| None}` | `ModelAdded{model: ConfiguredModelInfo, check: ModelCheck}` |

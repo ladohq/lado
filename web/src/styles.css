@@ -9172,8 +9172,9 @@ del.kit-mcp-name {
 }
 
 .src-models td.mono {
+  min-width: 10em; /* the CLIs' columns never squeeze a model to a letter or two a line */
   font: 13px var(--mono);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .src-models .ck {

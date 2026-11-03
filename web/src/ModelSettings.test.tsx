@@ -167,6 +167,38 @@ test("a refusal shows under its field, warnings under Key; the form keeps all bu
   expect(key.value).toBe("");
 });
 
+test("the plain-http warning shows under Key while a key is typed, before Add", async () => {
+  await openAdd();
+  fireEvent.change(screen.getByLabelText("Address"), { target: { value: "gw.example.com:4000" } });
+  const key = screen.getByLabelText("Key") as HTMLInputElement;
+  const keyField = key.closest(".field") as HTMLElement;
+  fireEvent.change(key, { target: { value: "k-1" } });
+  expect(
+    await within(keyField).findByText("⚠ the key goes to gw.example.com over plain http://, unencrypted", {}, { timeout: 3000 }),
+  ).toBeTruthy();
+  expect(server.calls.filter((c) => c.path === "/api/model-servers")).toEqual([]);
+  expect(JSON.stringify(server.calls)).not.toContain("k-1");
+  fireEvent.change(key, { target: { value: "" } });
+  await waitFor(() => expect(within(keyField).queryByText(/over plain http/)).toBeNull(), { timeout: 3000 });
+});
+
+test("a refusal under a field goes once that field is edited", async () => {
+  server.answers["POST /api/model-servers"] = () =>
+    refusal("https://gw.corp/llm asks for a key (401)", "key");
+  await openAdd();
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  expect(await screen.findByText(/asks for a key \(401\)/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Address"), { target: { value: "https://gw.corp/v2" } });
+  expect(screen.getByText(/asks for a key \(401\)/)).toBeTruthy(); // another field: it stays
+  fireEvent.change(screen.getByLabelText("Key"), { target: { value: "k-1" } });
+  expect(screen.queryByText(/asks for a key \(401\)/)).toBeNull();
+  server.answers["POST /api/model-servers"] = () => refusal("https://gw.corp/v2 does not answer", "address");
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  expect(await screen.findByText(/does not answer/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Address"), { target: { value: "https://gw.corp/v3" } });
+  expect(screen.queryByText(/does not answer/)).toBeNull();
+});
+
 test("an address that does not answer shows under Address, its hint under it", async () => {
   server.answers["POST /api/model-servers"] = () =>
     refusal("http://localhost:4000 does not answer (connection refused)", "address", "LADO runs in a container…");

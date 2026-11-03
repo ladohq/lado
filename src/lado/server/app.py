@@ -934,6 +934,15 @@ def create_app(
         return entries(model_entries.add_server, given)
 
     @app.post(
+        "/api/model-servers/check",
+        dependencies=[Depends(guard.changes)],
+    )
+    def check_model_server(given: models.ModelServerCheck) -> models.ModelCheck:
+        """What the server form says before its Add, asking no server: the plain-http
+        warning under Key."""
+        return model_entries.check_server(given)
+
+    @app.post(
         "/api/model-servers/{name:path}/probe",
         dependencies=[Depends(guard.changes), Depends(database)],
         responses=entry_refused,

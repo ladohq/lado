@@ -11,6 +11,7 @@ import {
   addModel,
   addModelServer,
   checkModel,
+  checkModelServer,
   type ConfiguredModelInfo,
   type EntryRefused,
   getModelSettings,
@@ -176,6 +177,7 @@ export function ModelSources(props: Props) {
               props.onRead(key, { probe });
               props.onSaved(key, saved);
             }}
+            onStale={() => props.onSaved(key, null)}
             onChanged={props.onChanged}
           />
         );
@@ -272,6 +274,7 @@ function ServerSource({
   onToggle,
   onRefresh,
   onProbe,
+  onStale,
   onChanged,
 }: {
   server: ModelServerInfo;
@@ -283,6 +286,7 @@ function ServerSource({
   onToggle: () => void;
   onRefresh: () => void;
   onProbe: (probe: ProbeInfo, saved: Saved) => void;
+  onStale: () => void;
   onChanged: (settings?: ModelSettings) => void;
 }) {
   const [mode, setMode] = useState<"change" | "remove" | null>(null);
@@ -323,6 +327,7 @@ function ServerSource({
       {mode === "change" && (
         <ChangeServer
           server={server}
+          onSaving={onStale}
           onDone={(probe, done) => {
             setMode(null);
             if (probe && done) onProbe(probe, done);
@@ -543,7 +548,8 @@ function OtherModel({
       setBusy(false);
     }
   };
-  const note = refused ?? (check && typed === model.trim() ? check : null);
+  const settled = check && typed === model.trim() ? check : null;
+  const note = refused ?? settled;
   return (
     <div className="mm-other">
       <div className="field">
@@ -574,7 +580,12 @@ function OtherModel({
           </select>
         </div>
       )}
-      <button type="button" className="primary" disabled={busy || !model.trim()} onClick={() => void add()}>
+      <button
+        type="button"
+        className="primary"
+        disabled={busy || !model.trim() || settled?.kind === "refused"}
+        onClick={() => void add()}
+      >
         Add
       </button>
     </div>
@@ -598,6 +609,41 @@ export function CheckNote({ note }: { note: ModelCheck | EntryRefused }) {
   return <span className="field-note">{note.text}</span>;
 }
 
+// The plain-http warning `lado model-server add` gives before it sends anything, for the
+// address once the typing settles, while a key goes with it (`keyGoes`); null for none.
+export function usePlainHttp(address: string, keyGoes: boolean): ModelCheck | null {
+  const typed = useDebounced(address.trim(), MODEL_DEBOUNCE);
+  const [found, setFound] = useState<ModelCheck | null>(null);
+  useEffect(() => {
+    setFound(null);
+    if (!typed || !keyGoes) return;
+    let current = true;
+    checkModelServer(typed, true).then(
+      (check) => current && setFound(check.kind === "warn" ? check : null),
+      () => undefined, // Add says what is wrong
+    );
+    return () => {
+      current = false;
+    };
+  }, [typed, keyGoes]);
+  return keyGoes && typed === address.trim() ? found : null;
+}
+
+// The notes under Key: the plain-http warning while a key is typed, else the one of the
+// last send, then a refusal of the key.
+export function KeyNotes({ live, refused }: { live: ModelCheck | null; refused: EntryRefused | null }) {
+  const sent = (refused?.warnings ?? []).filter((line) => line !== live?.text);
+  return (
+    <>
+      {live && <CheckNote note={live} />}
+      {sent.map((line) => (
+        <span key={line} className="field-note warn">{`⚠ ${line}`}</span>
+      ))}
+      <FieldNotes refused={refused} field="key" />
+    </>
+  );
+}
+
 // A refusal's notes under the field it names (`field`), else none.
 export function FieldNotes({ refused, field }: { refused: EntryRefused | null; field: string }) {
   if (!refused || refused.field !== field) return null;
@@ -607,10 +653,12 @@ export function FieldNotes({ refused, field }: { refused: EntryRefused | null; f
 // Change: the server's Address, filled, and New key, empty (the kept key stays).
 function ChangeServer({
   server,
+  onSaving,
   onDone,
   onCancel,
 }: {
   server: ModelServerInfo;
+  onSaving: () => void;
   onDone: (probe: ProbeInfo | null, saved: Saved | null) => void;
   onCancel: () => void;
 }) {
@@ -618,12 +666,16 @@ function ChangeServer({
   const [address, setAddress] = useState(server.address);
   const [refused, setRefused] = useState<EntryRefused | null>(null);
   const [busy, setBusy] = useState(false);
+  const [filled, setFilled] = useState(false);
   const key = useRef<HTMLInputElement>(null);
+  const live = usePlainHttp(address, filled || server.has_key); // empty: the kept key goes
   const save = async () => {
     const given = key.current?.value ?? "";
     if (key.current) key.current.value = "";
+    setFilled(false);
     setBusy(true);
     setRefused(null);
+    onSaving(); // the result of an earlier change is old now
     try {
       const done = await addModelServer(server.name, address, given === "" ? null : given, true);
       onDone(done.probe, {
@@ -646,17 +698,26 @@ function ChangeServer({
             id={`${id}-address`}
             className="mono"
             value={address}
-            onChange={(event) => setAddress(event.target.value)}
+            onChange={(event) => {
+              setAddress(event.target.value);
+              setRefused((now) => (now?.field === "address" ? null : now));
+            }}
           />
           <FieldNotes refused={refused} field="address" />
         </div>
         <div className="field project-edit-key">
           <label htmlFor={`${id}-key`}>New key</label>
-          <SecretField field={key} label="New key" placeholder="empty: the saved key stays" onEnter={() => void save()} />
-          {refused?.warnings.map((line) => (
-            <span key={line} className="field-note warn">{`⚠ ${line}`}</span>
-          ))}
-          <FieldNotes refused={refused} field="key" />
+          <SecretField
+            field={key}
+            label="New key"
+            placeholder="empty: the saved key stays"
+            onFilled={(now) => {
+              setFilled(now);
+              setRefused((was) => (was?.field === "key" ? null : was));
+            }}
+            onEnter={() => void save()}
+          />
+          <KeyNotes live={live} refused={refused} />
         </div>
       </div>
       <div className="mm-acts">

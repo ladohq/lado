@@ -532,6 +532,14 @@ class ModelServerAdd(BaseModel):
     replace: bool = False
 
 
+class ModelServerCheck(BaseModel):
+    """A server's address as typed and whether a key goes with it (the key itself never
+    does): what the form says before its Add."""
+
+    address: str
+    key: bool
+
+
 class ModelServerAdded(BaseModel):
     """A server saved or replaced: as saved, the probe that found it, the notes (another
     server at its address) and the warnings (its key over plain http://)."""

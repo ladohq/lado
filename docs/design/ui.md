@@ -2483,14 +2483,18 @@ how sessions start.
 - **Other model…** ends an open source: a field with the read list as suggestions (the
   launch window's SuggestField), a CLI choice for a server (its columns), the check `lado
   model add` would make under the field once the typing settles (the launch window's
-  `MODEL_DEBOUNCE`, its note look), and Add.
+  `MODEL_DEBOUNCE`, its note look), and Add, disabled while that check refuses.
 - **+ Add server**: Name, Address and Key ("optional"; the project page's dots field, never
   a password field). Add probes and saves as `lado model-server add` does, disabled with
   "checking the server…" while it probes (no longer than the command); the new server shows
   open with `✓ Saved model server "<name>". For: <CLIs by API>`, its warnings, and `same
   address as model server "<name>"` for each other server at its address (said, not
-  refused). A refusal shows under the field it names (Name, Address or Key; one of no field
-  under the buttons), the plain-http warning under Key; the form keeps all but the key.
+  refused); these lines go once another server is added, changed or removed. A refusal
+  shows under the field it names (Name, Address or Key; one of no field under the buttons)
+  until that field is edited; the form keeps all but the key. The plain-http warning shows
+  under Key as soon as a key is typed for an address it goes to unencrypted, before Add
+  (`POST /api/model-servers/check`, the address and whether a key goes, never the key; in
+  Change the kept key counts).
 - **Change** (a server): Address, filled, and New key, empty ("empty: the saved key
   stays"); Save replaces the server as `lado model-server add <name> <address> [--key]
   --replace` does, the kept key when New key is empty; "Models on <server> keep referring
@@ -2502,11 +2506,14 @@ how sessions start.
 - **The key** lives only in its field: emptied once sent, on Cancel and when the form
   closes; never in the page's state, an address or the browser's storage.
 - **A phone**: the forms' fields one under the other, a source's buttons under its title,
-  its list scrolling sideways within itself; the page never scrolls sideways.
+  its list scrolling sideways within itself (a model's column at least 10em wide, its name
+  broken between words, never a letter or two a line); the page never scrolls sideways.
 - **API** (`lado.server.model_entries` over `lado.model_settings`, under the token, no
   change-feed event): `GET /api/model-settings` (`ModelSettings`: the models and the saved
   servers, asking none; no `lado.db` made), `POST /api/model-servers` (`ModelServerAdd
   {name, address, key, replace}` → `ModelServerAdded {server, probe, notes, warnings}`),
+  `POST /api/model-servers/check` (`ModelServerCheck {address, key: bool}` → `ModelCheck`,
+  the plain-http warning, asking no server),
   `POST /api/model-servers/{name}/probe` (`ProbeInfo {models, models_why, embeddings,
   apis_why, clis}`, probed now with the kept key), `DELETE /api/model-servers/{name}?with_models=&confirmed=` (→ `ModelSettings`; refused unless the server's models are the confirmed ones), `POST
   /api/models/check` (`ModelAdd {name, cli, model, server}` → `ModelCheck`, a refusal of

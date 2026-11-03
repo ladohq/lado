@@ -175,8 +175,8 @@ def add_model(
     verdict (OK, or WARN for no list to check against). Each check refuses before the next
     (Refused): the name, the CLI, the model, the server saved, its CLI's server API, the
     server answering with its kept key, the API among the ones it proves, the model not one
-    the server types as embeddings, the model against the server's list, or for no server against the CLI's own list, read with `env(provider)`
-    (the agents' environment)."""
+    the server types as embeddings, the model against the server's list, or for no server
+    against the CLI's own list, read with `env(provider)` (the agents' environment)."""
     check_name(name, MODEL)
     taken = state.model(name)
     if taken is not None:

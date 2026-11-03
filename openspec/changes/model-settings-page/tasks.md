@@ -43,7 +43,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
 - [x] 4.1 `docs/design/ui.md` (Settings' sections, a section Models),
   `docs/design/modules.md`, AGENTS.md's `server/` line, CHANGELOG.md under `## 0.45.0
   (unreleased)`, `### New`. Check: `uv run pytest tests/test_agents_md.py -n0`.
-- [ ] 4.2 Regression: `make lint`, `make test`, `make web`, the changed integration and UI
+- [x] 4.2 Regression: `make lint`, `make test`, `make web`, the changed integration and UI
   files with their markers, `openspec validate model-settings-page --strict`, `openspec
   validate --specs --strict`, a trial archive on a copy of `openspec/` validated there (the
   result in the pull request), green CI; the manual check in the pull request.

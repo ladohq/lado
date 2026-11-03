@@ -2,6 +2,7 @@
 lado.model_settings): the output, the exit codes and the server's key, against the fake
 servers of tests/fake_model_server.py."""
 
+import io
 import socket
 import sqlite3
 
@@ -10,7 +11,7 @@ import fake_model_server as fake
 import pytest
 from test_cli_model_server import Stdin
 
-from lado import model_settings, providers, runtime, state
+from lado import model_settings, providers, runtime, state, telemetry
 from lado.cli import main
 from lado.providers import base
 
@@ -171,6 +172,21 @@ def test_add_refuses_an_empty_key(serve, capsys, monkeypatch):
     assert capsys.readouterr().err == "lado: the key is empty\n"
     assert server.requests == []
     assert state.model_servers() == []
+
+
+@pytest.mark.parametrize("command", ["probe", "add"])
+def test_a_key_that_is_no_utf_8_is_refused_in_one_line(serve, capsys, monkeypatch, command):
+    """Bytes that are no UTF-8 come as surrogates: refused by the header rule, never a crash
+    (nor a journal line, which an unexpected exception writes)."""
+    server = serve("openai")
+    stdin = Stdin()
+    stdin.buffer = io.BytesIO(b"\xff\xfe")
+    monkeypatch.setattr("sys.stdin", stdin)
+    name = ["work"] if command == "add" else []
+    assert main(["model-server", command, *name, server.url, "--key"]) == 1
+    assert capsys.readouterr().err == ("lado: the key holds a character no HTTP header can carry\n")
+    assert server.requests == []
+    assert not telemetry.journal_path().exists()
 
 
 def test_add_refuses_a_piped_key_over_64_kib_not_cut(serve, capsys, monkeypatch):

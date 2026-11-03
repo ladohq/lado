@@ -165,6 +165,15 @@ def address(text: str) -> tuple[str, bool]:
     return f"{scheme}://{parts.netloc}{path}", added
 
 
+NOT_CARRIABLE = "the key holds a character no HTTP header can carry"
+
+
+def carriable(key: str) -> bool:
+    """Whether every character of `key` can go in an HTTP header (printable Latin-1): not a
+    control character, nor one of no Latin-1 byte (a surrogate for a byte of no UTF-8)."""
+    return all(" " <= c <= "~" or "\xa0" <= c <= "\xff" for c in key)
+
+
 def plain_http_warning(root: str, key: str | None) -> str | None:
     """The warning for a key sent over plain http:// to the server at `root` (an
     `address`'s root) that is not on the human's machine or network; None for none."""
@@ -189,8 +198,8 @@ def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Pr
     server LADO knows. `command` is the command run, without its address, for the messages
     that name one to run again."""
     root, added = address(text)
-    if key is not None and not all(" " <= c <= "~" or "\xa0" <= c <= "\xff" for c in key):
-        raise ProbeError("the key holds a character no HTTP header can carry")
+    if key is not None and not carriable(key):
+        raise ProbeError(NOT_CARRIABLE)
     headers = {
         "Accept": "application/json",
         "anthropic-version": "2023-06-01",

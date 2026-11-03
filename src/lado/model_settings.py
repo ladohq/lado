@@ -14,6 +14,7 @@ uses is not removed. Every refusal is one line (Refused), never holding a key.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import os
 import sqlite3
@@ -121,7 +122,9 @@ def add_server(
     try:
         state.add_model_server(id, name, found.address, found.kind, apis)
     except BaseException as exc:
-        _remove_key(id)
+        # A cleanup that fails leaves the key folder over (doctor names it), never hides why.
+        with contextlib.suppress(OSError, Refused):
+            _remove_key(id)
         if isinstance(exc, state.NameTaken):
             raise _server_taken(exc.name) from None
         raise
@@ -306,8 +309,11 @@ def _write_key(id: str, key: str) -> None:
 
 
 def check_key(key: str) -> None:
-    """Refuse a key larger than its file may hold (agent_env.MAX_VALUE, its stored form),
-    rather than keep or send it cut."""
+    """Refuse a key no HTTP header can carry (a byte of no UTF-8 on stdin among them, which
+    could not be stored either), and one larger than its file may hold (agent_env.MAX_VALUE,
+    its stored form), rather than keep or send it cut."""
+    if not model_servers.carriable(key):
+        raise Refused(model_servers.NOT_CARRIABLE)
     if len(project_secrets.stored(key)) > agent_env.MAX_VALUE:
         raise Refused("the key is larger than 64 KiB")
 

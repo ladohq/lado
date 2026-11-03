@@ -320,6 +320,29 @@ def test_a_key_over_64_kib_is_refused_before_any_request(serve, lado_home):
     assert not (lado_home / model_settings.KEYS).exists()
 
 
+@pytest.mark.parametrize("key", ["\udcff\udcfe", "a\nb", "ключ"])
+def test_a_key_no_header_can_carry_is_refused(serve, key):
+    server = serve("openai")
+    with pytest.raises(model_settings.Refused) as raised:
+        add("work", server.url, key=key)
+    assert str(raised.value) == "the key holds a character no HTTP header can carry"
+    assert server.requests == []
+
+
+def test_a_cleanup_that_fails_keeps_the_first_error(serve, monkeypatch):
+    server = serve("openai", key="k-1")
+    monkeypatch.setattr(
+        state, "add_model_server", lambda *a: (_ for _ in ()).throw(state.NameTaken("Work"))
+    )
+
+    def refused(id):
+        raise OSError(13, "Permission denied")
+
+    monkeypatch.setattr(model_settings, "_remove_key", refused)
+    with pytest.raises(model_settings.Refused, match='a model server "Work" is saved already'):
+        add("work", server.url, key="k-1")
+
+
 def test_a_key_file_over_64_kib_is_not_read_cut(serve):
     server = serve("openai", key="k-1")
     add("work", server.url, key="k-1")

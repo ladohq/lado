@@ -171,10 +171,10 @@ def remove_server(name: str) -> str:
             raise Refused(
                 f'model server "{saved.name}" was used by a model meanwhile; run the command again'
             ) from None
+        quoted = " ".join('"' + m.name + '"' for m in used)
         raise Refused(
             f'model server "{saved.name}" is used by the models '
-            f"{', '.join(m.name for m in used)}; remove them first: "
-            f'lado model remove "{used[0].name}"'
+            f"{', '.join(m.name for m in used)}; remove them first: lado model remove {quoted}"
         ) from None
     try:
         _remove_key(saved.id)
@@ -268,12 +268,36 @@ def _on_server(
     return model_check.verdict(provider, model, listed, whose=server.name)
 
 
-def remove_model(name: str) -> str:
-    """Remove the configured model named `name`; its name as saved. Refused for none."""
-    saved = state.model(name)
-    if saved is None or not state.remove_model(saved.name):
-        raise Refused(f'no model "{name}" is saved; lado model list names them')
-    return saved.name
+def remove_models(names: list[str], removed: Callable[[str], None]) -> None:
+    """Remove the configured models named `names`, in their order, a name given twice
+    (ignoring case) once; `removed` gets each one's name as saved. Every name is found
+    first: Refused for any no model has, nothing removed. A model another process removed
+    in between is Refused once the others are removed."""
+    found: dict[str, state.ConfiguredModel] = {}
+    unknown: dict[str, str] = {}
+    for name in names:
+        saved = state.model(name)
+        if saved is None:
+            unknown.setdefault(name.casefold(), name)
+        else:
+            found.setdefault(saved.name, saved)
+    if unknown:
+        raise _no_models(list(unknown.values()))
+    gone = []
+    for name in found:
+        if state.remove_model(name):
+            removed(name)
+        else:
+            gone.append(name)
+    if gone:
+        raise _no_models(gone)
+
+
+def _no_models(names: list[str]) -> Refused:
+    quoted = ", ".join(f'"{name}"' for name in names)
+    if len(names) == 1:
+        return Refused(f"no model {quoted} is saved; lado model list names them")
+    return Refused(f"no models {quoted} are saved; lado model list names them")
 
 
 def _model_taken(name: str) -> Refused:

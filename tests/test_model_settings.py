@@ -332,7 +332,7 @@ def test_remove_of_a_server_models_use_is_refused_naming_them(serve):
         model_settings.remove_server("LM Studio дома")
     assert str(refused.value) == (
         'model server "LM Studio дома" is used by the models Another, Локальная Qwen; remove '
-        'them first: lado model remove "Another"'
+        'them first: lado model remove "Another" "Локальная Qwen"'
     )
     assert state.model_server("LM Studio дома") is not None
 
@@ -665,12 +665,60 @@ def test_remove_a_model_keeps_its_server(serve):
     server = serve("lmstudio")
     add("LM Studio дома", server.url)
     add_model("Локальная Qwen", "opencode", "qwen3-8b", "LM Studio дома", no_env)
-    assert model_settings.remove_model("локальная QWEN") == "Локальная Qwen"
+    assert remove_models("локальная QWEN") == ["Локальная Qwen"]
     assert state.models() == []
     assert model_settings.remove_server("LM Studio дома") == "LM Studio дома"
 
 
+def remove_models(*names):
+    removed = []
+    model_settings.remove_models(list(names), removed.append)
+    return removed
+
+
+def saved_models(*names):
+    for name in names:
+        state.add_model(name, "claude", "haiku", None)
+
+
+def test_remove_several_models_in_the_order_given():
+    saved_models("coder-codex", "coder-oc", "sp", "kept")
+    assert remove_models("sp", "CODER-codex", "coder-oc", "Sp") == ["sp", "coder-codex", "coder-oc"]
+    assert [m.name for m in state.models()] == ["kept"]
+
+
 def test_remove_of_a_name_no_model_has_is_refused():
     with pytest.raises(model_settings.Refused) as refused:
-        model_settings.remove_model("nope")
+        remove_models("nope")
     assert str(refused.value) == 'no model "nope" is saved; lado model list names them'
+
+
+def test_one_name_not_saved_removes_none():
+    saved_models("coder-codex", "sp")
+    removed = []
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.remove_models(
+            ["coder-codex", "nowhere", "sp", "x", "NOWHERE"], removed.append
+        )
+    assert str(refused.value) == ('no models "nowhere", "x" are saved; lado model list names them')
+    assert removed == []
+    assert [m.name for m in state.models()] == ["coder-codex", "sp"]
+
+
+def test_a_model_removed_meanwhile_is_named_after_the_others(monkeypatch):
+    saved_models("a", "b", "c")
+    real = state.remove_model
+
+    def remove(name):
+        if name == "b":
+            real(name)
+            return False  # another process was first
+        return real(name)
+
+    monkeypatch.setattr(state, "remove_model", remove)
+    removed = []
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.remove_models(["a", "b", "c"], removed.append)
+    assert removed == ["a", "c"]
+    assert str(refused.value) == 'no model "b" is saved; lado model list names them'
+    assert state.models() == []

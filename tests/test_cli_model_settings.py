@@ -3,6 +3,7 @@ lado.model_settings): the output, the exit codes and the server's key, against t
 servers of tests/fake_model_server.py."""
 
 import io
+import shlex
 import socket
 import sqlite3
 
@@ -65,6 +66,25 @@ def test_add_prints_the_probe_and_saves(serve, capsys):
     ]
     assert err == ""
     assert state.model_server("LM Studio дома").address == server.url
+
+
+def test_add_names_a_server_at_the_same_address_before_saved(serve, capsys):
+    server = serve("openai")
+    main(["model-server", "add", "macpro", server.url])
+    capsys.readouterr()
+    assert main(["model-server", "add", "lms", server.url.removeprefix("http://") + "/v1/"]) == 0
+    out, err = capsys.readouterr()
+    assert out.splitlines()[-2:] == [
+        'same address as model server "macpro"',
+        'Saved model server "lms".',
+    ]
+    assert out.splitlines()[-3].startswith("not: ")  # after the probe's lines
+    assert err == ""
+    assert main(["model-server", "add", "lms", server.url, "--replace"]) == 0
+    assert capsys.readouterr().out.splitlines()[-2:] == [
+        'same address as model server "macpro"',
+        'Replaced model server "lms".',
+    ]
 
 
 def test_add_with_a_piped_key(serve, capsys, monkeypatch):
@@ -434,6 +454,41 @@ def test_model_remove(capsys):
     assert (
         capsys.readouterr().err == 'lado: no model "быстрая" is saved; lado model list names them\n'
     )
+
+
+def test_model_remove_several(capsys):
+    for name in ("coder-codex", "coder-oc", "sp"):
+        state.add_model(name, "claude", "haiku", None)
+    assert main(["model", "remove", "coder-codex", "nowhere"]) == 1
+    out, err = capsys.readouterr()
+    assert (out, err) == ("", 'lado: no model "nowhere" is saved; lado model list names them\n')
+    assert main(["model", "remove", "coder-codex", "coder-oc", "sp"]) == 0
+    assert capsys.readouterr().out == (
+        'Removed model "coder-codex".\nRemoved model "coder-oc".\nRemoved model "sp".\n'
+    )
+    assert state.models() == []
+
+
+def test_model_remove_needs_a_name(capsys):
+    with pytest.raises(SystemExit) as exited:
+        main(["model", "remove"])
+    assert exited.value.code == 2
+
+
+def test_a_removal_s_hint_is_one_command_for_all(serve, capsys):
+    main(["model-server", "add", "lms", serve("lmstudio").url])
+    for name, cli in (("coder-codex", "codex"), ("coder-oc", "opencode"), ("sp", "kilo")):
+        main(["model", "add", name, "--cli", cli, "--model", "qwen3-8b", "--server", "lms"])
+    capsys.readouterr()
+    assert main(["model-server", "remove", "lms"]) == 1
+    hint = capsys.readouterr().err.rstrip("\n")
+    assert hint == (
+        'lado: model server "lms" is used by the models coder-codex, coder-oc, sp; remove them '
+        'first: lado model remove "coder-codex" "coder-oc" "sp"'
+    )
+    command = hint.split("remove them first: lado ", 1)[1]
+    assert main(shlex.split(command)) == 0
+    assert main(["model-server", "remove", "lms"]) == 0
 
 
 def test_model_alone_prints_help(capsys):

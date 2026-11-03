@@ -310,6 +310,21 @@ test("a server's model opens its installed CLIs under its row, each saying the n
   expect(screen.getByRole("group", { name: "Agent CLIs for qwen3-8b" })).toBeTruthy();
 });
 
+test("after a tick the other CLIs keep their would-be names while the core is asked again: nothing moves", async () => {
+  server.probes["LM Studio дома"] = LMSTUDIO_PROBE;
+  server.entries = { models: [], servers: [LMSTUDIO] };
+  await mount();
+  fireEvent.click(await source("LM Studio дома"));
+  fireEvent.click(await screen.findByRole("button", { name: "qwen3-8b" }));
+  const pop = screen.getByRole("group", { name: "Agent CLIs for qwen3-8b" });
+  expect(await within(pop).findByText("would be qwen3-8b · LM Studio дома · Codex CLI")).toBeTruthy();
+  server.answers["POST /api/models/check"] = () => new Promise(() => undefined); // asked again: no answer yet
+  fireEvent.click(within(pop).getByRole("checkbox", { name: "qwen3-8b on OpenCode" }));
+  await waitFor(() => expect(within(pop).getByText("as qwen3-8b · LM Studio дома · OpenCode")).toBeTruthy());
+  await waitFor(() => expect(server.of("POST", "/api/models/check").length).toBeGreaterThan(2));
+  expect(within(pop).getByText("would be qwen3-8b · LM Studio дома · Codex CLI")).toBeTruthy();
+});
+
 test("the name a tick would save of a list closed meanwhile is dropped", async () => {
   const pending: ((r: Response) => void)[] = [];
   server.probes["LM Studio дома"] = LMSTUDIO_PROBE;

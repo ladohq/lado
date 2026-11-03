@@ -621,7 +621,8 @@ function SourceBody({
   } | null>(null);
   const columnNames = columns.map((c) => c.name).join(" ");
   useEffect(() => {
-    setWould(pop === null ? null : { model: pop, by: {} });
+    // Another model's names go; this one's stay until the core answers again (nothing moves).
+    setWould((now) => (pop === null ? null : now?.model === pop ? now : { model: pop, by: {} }));
     if (pop === null || server === null) return;
     let current = true;
     for (const name of columnNames.split(" ").filter(Boolean))

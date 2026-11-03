@@ -82,6 +82,12 @@ def top(locator: Locator) -> float:
     return box["y"]
 
 
+def stays(locator: Locator, before: float) -> None:
+    """The locator's top is where it was, to the pixel: the page scrolls by whole pixels, so
+    an anchor set back after a change of x.5 px is off by that half pixel at most."""
+    assert abs(top(locator) - before) < 1, (top(locator), before)
+
+
 def open_settings(page: Page, server) -> None:
     log_in(page, server)
     page.goto(f"{server['url']}/settings#models")
@@ -130,14 +136,14 @@ def test_first_open_and_ticking_claude_sonnet(page: Page, clis, server, lms, sho
     sonnet.click()  # the tick follows the saved model, not the click: no check()
     expect(claude.get_by_text("as Claude Sonnet")).to_be_visible()
     expect(card(page, "Claude Code")).to_be_visible()  # a card above
-    assert top(sonnet) == before  # nothing moved under the pointer
+    stays(sonnet, before)  # nothing moved under the pointer
     expect(models.get_by_role("heading", name="Your models 1")).to_be_visible()
     assert [m.name for m in state.models()] == ["Claude Sonnet"]
     shot(page, "claude-sonnet")
     sonnet.click()
     expect(sonnet).not_to_be_checked()
     expect(card(page, "Claude Code")).to_have_count(0)  # the card above went
-    assert top(sonnet) == before
+    stays(sonnet, before)
     expect(models.get_by_role("button", name="Undo")).to_have_count(0)  # the tick is its undo
     assert state.models() == []
 
@@ -158,7 +164,7 @@ def test_a_tick_in_the_middle_of_a_long_list_moves_nothing(page: Page, clis, ser
     middle.click()
     expect(card(page, "Kilo CLI")).to_be_visible()  # its card added above
     expect(middle).to_be_checked()
-    assert top(middle) == before
+    stays(middle, before)
     shot(page, "kilo")
     kilo.get_by_role("searchbox", name=f"Search {KILO_MODELS} models").fill("model-32")
     expect(kilo.get_by_text(f"4 of {KILO_MODELS} models")).to_be_visible()  # 32, 320-322
@@ -177,13 +183,13 @@ def test_x_undo_and_undo_running_out_move_nothing(page: Page, clis, server, shot
     x.click()
     undo = claude.get_by_role("button", name="Undo")
     expect(undo).to_be_focused()
-    assert top(row) == at  # the row keeps its place and height
+    stays(row, at)  # the row keeps its place and height
     expect(row).to_have_text("Removed Claude Sonnet.Undo")
     shot(page, "your-models-undo")
     undo.click()
     name = claude.get_by_role("button", name="Rename Claude Sonnet")
     expect(name).to_be_focused()
-    assert top(row) == at
+    stays(row, at)
     assert sorted(m.name for m in state.models()) == ["Claude Sonnet", "gpt-5-codex"]
 
     # × again, then the human works below while its Undo runs out.
@@ -196,11 +202,11 @@ def test_x_undo_and_undo_running_out_move_nothing(page: Page, clis, server, shot
     page.wait_for_timeout(UNDO_S * 1000 + 500)
     expect(undo).to_have_count(0)
     expect(row).to_have_text("Removed Claude Sonnet.")  # the line stays
-    assert top(codex) == below
+    stays(codex, below)
     codex.click()  # the next change: the line goes, Claude Code's card above with it
     expect(row).to_have_count(0)
     expect(card(page, "Claude Code")).to_have_count(0)
-    assert top(codex) == below
+    stays(codex, below)
 
 
 def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
@@ -224,7 +230,7 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     lm = source(page, "LM Studio дома")
     expect(lm.get_by_text('Saved model server "LM Studio дома".')).to_be_visible()
     expect(lm.get_by_text("Open a model to tick the agent CLIs that run it.")).to_be_visible()
-    assert top(lm) == at  # the new server takes the form's place
+    stays(lm, at)  # the new server takes the form's place
     expect(toggle(page, "LM Studio дома")).to_be_focused()
     expect(lm.get_by_text(fake.EMBEDDINGS)).to_have_count(0)
     shot(page, "server-added")
@@ -239,7 +245,7 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     opencode.click()
     expect(row).to_contain_text("in OpenCode")
     expect(card(page, "OpenCode")).to_be_visible()  # a card above
-    assert top(opencode) == before
+    stays(opencode, before)
     shot(page, "server-model-clis")
 
     name = "qwen3-8b · LM Studio дома · OpenCode"
@@ -262,12 +268,12 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     before = top(opencode)
     opencode.click()
     expect(clis_of.get_by_text("would be Локальная Qwen")).to_be_visible()
-    assert top(opencode) == before
+    stays(opencode, before)
     assert state.models() == []
     opencode.click()
     expect(clis_of.get_by_text("as Локальная Qwen")).to_be_visible()
     assert [m.name for m in state.models()] == ["Локальная Qwen"]
-    assert top(opencode) == before
+    stays(opencode, before)
 
     # The server's list changes: ↻ shows the new model, the gone one first, marked.
     listed = dict(fake.PROFILES["lmstudio"])
@@ -299,7 +305,7 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     expect(models.get_by_text(removed)).to_be_visible()
     expect(card(page, "OpenCode")).to_have_count(0)  # the card above went
     line = models.locator("li.mx-src").filter(has=page.get_by_text(removed))
-    assert top(line) == at  # its line in its place
+    stays(line, at)  # its line in its place
     assert state.model_servers() == [] and state.models() == []
     assert not model_settings.key_folder(id).exists()
     expect(models.get_by_text(EMPTY)).to_be_visible()
@@ -369,7 +375,7 @@ def test_a_list_read_ending_above_the_focus_moves_nothing(page: Page, clis, serv
     assert len(held) == 1  # the probe, held while the list reads
     held[0].continue_()
     expect(source(page, "LM Studio дома").get_by_role("button", name="qwen3-8b")).to_be_visible()
-    assert top(sonnet) == before
+    stays(sonnet, before)
 
 
 def test_the_section_at_a_phones_width(browser: Browser, clis, server, lms, shot, monkeypatch):

@@ -117,7 +117,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
 - [x] 7.5 `styles.css`: `--row`, `--list-rows`, `--gap-block`; the phone's 44 px targets
   and rows, a server's list of up to 20 models unbounded (D18.13, 14). Check: `make web`,
   7.6.
-- [ ] 7.6 UI e2e (`tests/ui/test_models_section.py`, reworked): the acted element's top
+- [x] 7.6 UI e2e (`tests/ui/test_models_section.py`, reworked): the acted element's top
   unchanged to 0 px after a tick in the middle of a 300-model list, Add server, Remove of a
   server, × and Undo, Undo running out while the focus is in Models of your agent CLIs, a
   list's read ending above; rename by Enter and Esc; the form's check and found panel against

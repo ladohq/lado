@@ -13,6 +13,7 @@ from lado.providers import base
 
 PROBED = [
     ("GET", fake.MODELS),
+    ("GET", fake.MODELS),  # once more with anthropic-version
     ("GET", fake.OLLAMA_VERSION),
     ("GET", fake.LMSTUDIO_MODELS),
     ("POST", fake.CHAT),
@@ -145,6 +146,49 @@ def test_type_by_api_without_models(serve):
     assert ms.probe(serve("responses-only").url).kind == "OpenAI-compatible"
 
 
+def test_a_gateway_of_both_apis_is_openai_compatible(serve):
+    """LiteLLM lists in Anthropic's shape only when asked with anthropic-version."""
+    probe = ms.probe(serve("litellm").url)
+    assert probe.kind == "OpenAI-compatible"
+    assert probe.models == fake.LITELLM_MODELS  # once each
+    assert probe.apis == set(base.SERVER_APIS)
+    assert not any(line.startswith("not:") for line in ms.lines(probe))
+
+
+def test_an_anthropic_api_listing_only_with_its_header(serve):
+    probe = ms.probe(serve("anthropic-versioned").url)
+    assert (probe.kind, probe.models) == ("Anthropic-compatible", ("claude-x",))
+    assert ms.lines(probe)[2] == "models: claude-x"
+
+
+def test_the_list_without_the_header_wins(serve, monkeypatch):
+    monkeypatch.setitem(
+        fake.PROFILES,
+        "mixed",
+        {
+            ("GET", fake.MODELS): fake.openai_list("gpt-oss-20b"),
+            ("GET", fake.MODELS, fake.VERSIONED): fake.anthropic_list("other"),
+            ("POST", fake.CHAT): fake.OPENAI_400,
+        },
+    )
+    probe = ms.probe(serve("mixed").url)
+    assert (probe.kind, probe.models) == ("OpenAI-compatible", ("gpt-oss-20b",))
+
+
+def test_a_headered_list_in_openai_s_shape_fills_no_gap(serve, monkeypatch):
+    monkeypatch.setitem(
+        fake.PROFILES,
+        "headered-openai",
+        {
+            ("GET", fake.MODELS, fake.VERSIONED): fake.openai_list("m1"),
+            ("POST", fake.RESPONSES): fake.OPENAI_400,
+        },
+    )
+    probe = ms.probe(serve("headered-openai").url)
+    assert (probe.kind, probe.models) == ("OpenAI-compatible", None)  # by the API
+    assert probe.models_why == "GET /v1/models: 404"
+
+
 # An API is proven without generating.
 
 
@@ -166,11 +210,26 @@ def test_one_request_per_check_with_empty_bodies(serve):
     assert {r.body for r in server.requests if r.method == "GET"} == {b""}
 
 
+def test_anthropic_version_goes_with_the_posts_and_one_list(serve):
+    server = serve("ollama")
+    ms.probe(server.url)
+    first = server.requests[0]
+    assert (first.method, first.path, first.headers["anthropic-version"]) == (
+        "GET",
+        fake.MODELS,
+        None,
+    )
+    versioned = sorted(
+        (r.method, r.path) for r in server.requests if r.headers["anthropic-version"]
+    )
+    assert versioned == sorted([("GET", fake.MODELS)] + [(m, p) for m, p in PROBED if m == "POST"])
+    assert {r.headers["anthropic-version"] for r in server.requests} == {None, "2023-06-01"}
+
+
 def test_headers_of_each_request(serve):
     server = serve("ollama")
     ms.probe(server.url)
     for request in server.requests:
-        assert request.headers["anthropic-version"] == "2023-06-01"
         assert request.headers["User-Agent"].startswith("lado/")
         assert "Authorization" not in request.headers and "x-api-key" not in request.headers
         if request.method == "POST":

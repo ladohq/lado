@@ -7,7 +7,7 @@
 
 ## 2. Probe
 
-- [ ] 2.1 `model_servers.py`: `anthropic-version` per request, the second `GET
+- [x] 2.1 `model_servers.py`: `anthropic-version` per request, the second `GET
   /v1/models` in the second wave (D1); `_kind` and `_models` by the plain list first (D2);
   the module docstring's request count. Check: `tests/test_model_servers.py` (requests and
   headers on each profile, LiteLLM `OpenAI-compatible`, the Anthropic list with the header,

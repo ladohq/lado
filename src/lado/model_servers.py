@@ -3,7 +3,10 @@ can use it (`lado model-server probe`).
 
 A probe sends at most one request per check and none that generates: the model list
 first, alone; when it got an HTTP answer, at once Ollama's and LM Studio's own endpoints,
-one POST with the body `{}` per API and a control POST to a path no server has. A POST
+the model list in Anthropic's way, one POST with the body `{}` per API and a control POST
+to a path no server has, eight at most. Only the POSTs and the list in Anthropic's way carry
+`anthropic-version`: the type and the models come from the list asked without it, and the
+other only fills a gap, as a gateway of both APIs lists in Anthropic's shape with it. A POST
 proves its API when the server refuses the empty body with 400 or 422 and a JSON object,
 unless the control is refused the same way: then the server answers every POST alike and
 proves nothing. Each request is cut at TIMEOUT, its name lookup included; no redirect is
@@ -51,6 +54,9 @@ API_PATHS = {
     base.ANTHROPIC_MESSAGES: "/v1/messages",
 }
 CONTROL = "/v1/lado-no-such-api"  # no server has it: an API's answer here proves nothing
+# Anthropic's API wants it; a gateway of both APIs (LiteLLM) lists its models in Anthropic's
+# shape when it is sent, so the plain list request goes without it.
+ANTHROPIC_VERSION = {"anthropic-version": "2023-06-01"}
 
 PROBE_COMMAND = "lado model-server probe"
 CONTAINER_HINT = (
@@ -200,15 +206,11 @@ def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Pr
     root, added = address(text)
     if key is not None and not carriable(key):
         raise ProbeError(NOT_CARRIABLE)
-    headers = {
-        "Accept": "application/json",
-        "anthropic-version": "2023-06-01",
-        "User-Agent": f"lado/{lado.__version__}",
-    }
+    headers = {"Accept": "application/json", "User-Agent": f"lado/{lado.__version__}"}
     if key is not None:
         headers |= {"Authorization": f"Bearer {key}", "x-api-key": key}
     opener = urllib.request.build_opener(_NoRedirect())
-    (listed,) = _all(opener, [(root + MODELS, "GET")], headers)
+    (listed,) = _all(opener, [(root + MODELS, "GET", {})], headers)
     if listed.status is None:
         if listed.tls:
             raise ProbeError(
@@ -216,10 +218,14 @@ def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Pr
                 "SSL_CERT_FILE names"
             )
         raise ProbeError(f"{root} does not answer ({listed.why})", _container_hint(root, command))
-    asked = [(root + OLLAMA_VERSION, "GET"), (root + LMSTUDIO_MODELS, "GET")]
-    asked += [(root + path, "POST") for path in [*API_PATHS.values(), CONTROL]]
-    version, lmstudio, *posts, control = _all(opener, asked, headers)
-    for answer in (listed, version, lmstudio, *posts, control):
+    asked = [
+        (root + OLLAMA_VERSION, "GET", {}),
+        (root + LMSTUDIO_MODELS, "GET", {}),
+        (root + MODELS, "GET", ANTHROPIC_VERSION),
+    ]
+    asked += [(root + path, "POST", ANTHROPIC_VERSION) for path in [*API_PATHS.values(), CONTROL]]
+    version, lmstudio, versioned, *posts, control = _all(opener, asked, headers)
+    for answer in (listed, version, lmstudio, versioned, *posts, control):
         if answer.status in (401, 403):
             if key is None:
                 raise ProbeError(
@@ -231,7 +237,9 @@ def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Pr
     if control.refuses_as_an_api():
         apis, apis_why = frozenset(), f"{root} answers {control.status} to any POST"
     models, models_why = _models(listed)
-    kind = _kind(listed, version, lmstudio, apis)
+    if models is None and _anthropic_shaped(versioned):
+        models = _models(versioned)[0]
+    kind = _kind(listed, versioned, version, lmstudio, apis)
     if kind is None:
         why = f"GET {MODELS}: {listed.said()}"
         if apis_why:
@@ -282,19 +290,41 @@ def _models(listed: Answer) -> tuple[tuple[str, ...] | None, str]:
     return tuple(visible.one_line(i) for i in ids if isinstance(i, str)), ""
 
 
-def _kind(listed: Answer, version: Answer, lmstudio: Answer, apis: frozenset[str]) -> str | None:
-    """The server's type, None for none LADO knows."""
+def _listing(answer: Answer) -> list | None:
+    """The items of a model list's answer, None for no list."""
+    if answer.status == 200 and isinstance(answer.body, dict):
+        data = answer.body.get("data")
+        if isinstance(data, list):
+            return data
+    return None
+
+
+def _anthropic_shaped(answer: Answer) -> bool:
+    """Whether a model list's answer is a list in Anthropic's shape: an item of `"type":
+    "model"`, or `has_more`."""
+    data = _listing(answer)
+    if data is None:
+        return False
+    typed = any(isinstance(i, dict) and i.get("type") == "model" for i in data)
+    return typed or "has_more" in answer.body
+
+
+def _kind(
+    listed: Answer, versioned: Answer, version: Answer, lmstudio: Answer, apis: frozenset[str]
+) -> str | None:
+    """The server's type, None for none LADO knows: by the list asked without
+    anthropic-version (`listed`) first; the one asked with it (`versioned`) only when that
+    gives none, so a gateway of both APIs is not read as Anthropic's."""
     if version.status == 200 and isinstance(version.body, dict):
         if isinstance(version.body.get("version"), str):
             return OLLAMA
     if lmstudio.status == 200 and isinstance(lmstudio.body, dict):
         if isinstance(lmstudio.body.get("data"), list):
             return LMSTUDIO
-    if listed.status == 200 and isinstance(listed.body, dict):
-        data = listed.body.get("data")
-        if isinstance(data, list):
-            typed = any(isinstance(i, dict) and i.get("type") == "model" for i in data)
-            return ANTHROPIC if typed or "has_more" in listed.body else OPENAI
+    if _listing(listed) is not None:
+        return ANTHROPIC if _anthropic_shaped(listed) else OPENAI
+    if _anthropic_shaped(versioned):
+        return ANTHROPIC
     if base.ANTHROPIC_MESSAGES in apis:
         return ANTHROPIC
     if apis:
@@ -332,17 +362,20 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
     http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
 
 
-def _all(opener, asked: list[tuple[str, str]], headers: dict[str, str]) -> list[Answer]:
-    """The answers to `asked` (url, method), all at once, each within TIMEOUT: a request
-    still waiting then, on its name lookup too, is left to its daemon thread."""
+def _all(
+    opener, asked: list[tuple[str, str, dict[str, str]]], headers: dict[str, str]
+) -> list[Answer]:
+    """The answers to `asked` (url, method, headers of its own beside `headers`), all at
+    once, each within TIMEOUT: a request still waiting then, on its name lookup too, is left
+    to its daemon thread."""
     answers: list[Answer | None] = [None] * len(asked)
 
-    def ask(i: int, url: str, method: str) -> None:
-        answers[i] = _ask(opener, url, method, headers)
+    def ask(i: int, url: str, method: str, own: dict[str, str]) -> None:
+        answers[i] = _ask(opener, url, method, headers | own)
 
     threads = [
-        threading.Thread(target=ask, args=(i, url, method), daemon=True)
-        for i, (url, method) in enumerate(asked)
+        threading.Thread(target=ask, args=(i, url, method, own), daemon=True)
+        for i, (url, method, own) in enumerate(asked)
     ]
     deadline = time.monotonic() + TIMEOUT
     for thread in threads:

@@ -96,7 +96,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
 
 ## 7. The page after the design review (D18)
 
-- [ ] 7.1 `ModelCheck.name` (the default name for a check without a name) and
+- [x] 7.1 `ModelCheck.name` (the default name for a check without a name) and
   `ModelServerCheck.replace` (the server's own name not taken) in `server/models.py` and
   `server/model_entries.py`; `make web-types`, both generated files committed (D18.7, 10).
   Check: `tests/test_server_model_settings.py`.

@@ -373,8 +373,8 @@ export const addModelServer = (name: string, address: string, key: string | null
 // fields, the plain-http warning while a key is typed (`key_typed`), the address probed with
 // `key` only when the human pressed Check key, and the same-address notes. Saves nothing.
 export type ServerCheck = components["schemas"]["ServerCheck"];
-export const checkModelServer = (name: string, address: string, key: string | null, keyTyped: boolean) =>
-  post<ServerCheck>("/api/model-servers/check", { name, address, key, key_typed: keyTyped });
+export const checkModelServer = (name: string, address: string, key: string | null, keyTyped: boolean, replace = false) =>
+  post<ServerCheck>("/api/model-servers/check", { name, address, key, key_typed: keyTyped, replace });
 
 // The saved server asked now with its kept key: its models and the CLIs that can use it.
 export const probeModelServer = (name: string) => post<ProbeInfo>(`${modelServerPath(name)}/probe`);

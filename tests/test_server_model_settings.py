@@ -279,9 +279,42 @@ def check(client, **given):
     return ok(client.post("/api/models/check", json=given))
 
 
-def check_server(client, name="", address="", key=None, key_typed=False):
+def check_server(client, name="", address="", key=None, key_typed=False, replace=False):
     given = {"name": name, "address": address, "key": key, "key_typed": key_typed}
+    if replace:
+        given["replace"] = True
     return ok(client.post("/api/model-servers/check", json=given))
+
+
+def test_check_server_of_a_change_takes_the_servers_own_name(client, serve):
+    lms = serve("lmstudio")
+    ok(add_server(client, "LM Studio дома", lms.url))
+    moved = serve("lmstudio")
+    change = check_server(client, "lm studio дома", moved.url, replace=True)
+    assert (change["refusals"], change["probe"]["kind"]) == ([], "LM Studio")
+    same = check_server(client, "LM Studio дома", lms.url, replace=True)
+    assert same["notes"] == []  # its own address is no other server's
+    add = check_server(client, "LM Studio дома", moved.url)
+    assert [r["field"] for r in add["refusals"]] == ["name"]
+    none = check_server(client, "nope", moved.url, replace=True)
+    assert [r["field"] for r in none["refusals"]] == ["name"]
+
+
+def test_check_model_says_the_name_a_save_would_take(client, serve, monkeypatch):
+    listing(monkeypatch, "claude", base.ModelList(("sonnet",), None, why="no list"))
+    assert check(client, cli="claude", model="sonnet")["name"] == "Claude Sonnet"
+    assert check(client, cli="claude", model="sonnet", name="Своя")["name"] == "Своя"
+    lms = serve("lmstudio")
+    ok(add_server(client, "LM Studio дома", lms.url))
+    for cli, title in (("opencode", "OpenCode"), ("kilo", "Kilo CLI")):
+        would = check(client, cli=cli, model="qwen3-8b", server="LM Studio дома")
+        assert would["name"] == f"qwen3-8b · LM Studio дома · {title}"
+    listing(monkeypatch, "codex", base.ModelList((), ("gpt-5-codex",), "codex models"))
+    ok(client.post("/api/models", json={"name": "qwen3-8b · LM Studio дома · Kilo CLI",
+                                        "cli": "codex", "model": "gpt-5-codex"}))  # fmt: skip
+    taken = check(client, cli="kilo", model="qwen3-8b", server="LM Studio дома")
+    assert taken["name"] == "qwen3-8b · LM Studio дома · Kilo CLI (2)"
+    assert check(client, cli="gemini", model="x")["name"] == ""  # refused: no name
 
 
 def test_check_server_probes_without_a_key_and_saves_nothing(client, serve):
@@ -357,11 +390,13 @@ def test_check_model_ok_warn_refused(client, serve, monkeypatch):
         "kind": "ok",
         "text": "in Kilo CLI's list of models",
         "field": "",
+        "name": "kilo/a",
     }
     assert check(client, cli="kilo", model="kilo/z") == {
         "kind": "refused",
         "text": "kilo/z is not in Kilo CLI's list of models; ↻ Refresh reads the list again",
         "field": "model",
+        "name": "",
     }
     listing(monkeypatch, "claude", base.ModelList(("opus",), None, why="no list"))
     warned = check(client, cli="claude", model="claude-opus-5-5")
@@ -487,7 +522,7 @@ def test_add_model_default_name(client, serve, monkeypatch):
             "model": "sonnet",
             "server": None,
         },
-        "check": {"kind": "ok", "text": "an alias of Claude Code", "field": ""},
+        "check": {"kind": "ok", "text": "an alias of Claude Code", "field": "", "name": ""},
     }
     server = serve("lmstudio")
     ok(add_server(client, "LiteLLM", server.url))

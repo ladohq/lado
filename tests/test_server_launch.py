@@ -1175,7 +1175,7 @@ def test_a_provider_s_models_and_the_check_of_one(client, monkeypatch, model, ki
         "aliases": [],
         "models": ["kilo/a", "kilo/b"],
         "why": "",
-        "check": {"kind": kind, "text": text, "field": ""},
+        "check": {"kind": kind, "text": text, "field": "", "name": ""},
     }
 
 

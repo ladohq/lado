@@ -155,7 +155,9 @@ def check_server(given: models.ModelServerCheck, has_db: bool = True) -> models.
     refusals `add_server` would meet for the name and the address, the plain-http warning
     while a key is typed, and the probe of the address (the command's, 5 s a request),
     with `given.key` only when the human pressed Check key; then the notes of each saved
-    server at the address it found. An empty name or address is not checked yet."""
+    server at the address it found. With `given.replace` (Change) the name must be a saved
+    server's, which is no other server at its address. An empty name or address is not
+    checked yet."""
     refusals: list[models.EntryRefused] = []
     warnings: list[str] = []
     notes: list[str] = []
@@ -166,7 +168,7 @@ def check_server(given: models.ModelServerCheck, has_db: bool = True) -> models.
     if given.name:
         try:
             if has_db:
-                model_settings.server_to_add(given.name, False)
+                model_settings.server_to_add(given.name, given.replace)
             else:
                 model_settings.check_name(given.name, model_settings.SERVER)
         except model_settings.Refused as exc:
@@ -190,12 +192,14 @@ def check_server(given: models.ModelServerCheck, has_db: bool = True) -> models.
         warnings.append(warning)
     try:
         found = model_servers.probe(
-            given.address, given.key, model_settings.add_command(given.name, False)
+            given.address, given.key, model_settings.add_command(given.name, given.replace)
         )
     except (model_servers.ProbeError, ValueError) as exc:
         refuse(exc)
         return models.ServerCheck(probe=None, refusals=refusals, warnings=warnings, notes=[])
     for other in state.model_servers() if has_db else []:
+        if given.replace and other.name.lower() == given.name.lower():
+            continue
         if model_settings.same_address(other.address, found.address):
             notes.append(f'same address as model server "{other.name}"')
     return models.ServerCheck(
@@ -251,7 +255,9 @@ def check_model(given: models.ModelAdd) -> models.ModelCheck:
             text=getattr(exc, "page", str(exc)),
             field=getattr(exc, "field", ""),
         )
-    return models.ModelCheck(kind=checked.verdict.kind, text=checked.verdict.text)
+    return models.ModelCheck(
+        kind=checked.verdict.kind, text=checked.verdict.text, name=checked.name
+    )
 
 
 def add_model(given: models.ModelAdd) -> models.ModelAdded:

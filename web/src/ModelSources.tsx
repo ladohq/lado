@@ -801,7 +801,7 @@ function ModelId({
     let current = true;
     checkModel({ name: null, cli: chosen, model: typed, server }).then(
       (found) => current && setCheck(found),
-      (error: unknown) => current && setCheck({ kind: "warn", text: messageOf(error), field: "" }),
+      (error: unknown) => current && setCheck({ kind: "warn", text: messageOf(error), field: "", name: "" }),
     );
     return () => {
       current = false;

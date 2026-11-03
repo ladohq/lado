@@ -7064,6 +7064,11 @@
             "type": "string",
             "title": "Field",
             "default": ""
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
           }
         },
         "type": "object",
@@ -7223,6 +7228,11 @@
             "type": "boolean",
             "title": "Key Typed",
             "default": false
+          },
+          "replace": {
+            "type": "boolean",
+            "title": "Replace",
+            "default": false
           }
         },
         "type": "object",
@@ -7231,7 +7241,7 @@
           "address"
         ],
         "title": "ModelServerCheck",
-        "description": "The server form as typed, for its check before Add: the name, the address, whether a\nkey is typed (`key_typed`), and the key itself only when the human pressed Check key.\nNo answer gives the key back."
+        "description": "The server form as typed, for its check before Add: the name, the address, whether a\nkey is typed (`key_typed`), and the key itself only when the human pressed Check key;\n`replace` for Change, where the name is the saved server's own. No answer gives the key\nback."
       },
       "ModelServerInfo": {
         "properties": {

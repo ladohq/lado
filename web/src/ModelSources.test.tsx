@@ -371,6 +371,7 @@ test("Change says the plain-http warning of the kept key before Save", async () 
     address: "http://gw.example.com:4000",
     key: null,
     key_typed: true,
+    replace: false,
   });
 });
 
@@ -432,7 +433,7 @@ test("the form checks the address once the typing settles, without a key, and Ad
   expect(await within(fieldOf("Address")).findByText("✓ LM Studio · 1 model · Kilo CLI, OpenCode, Codex CLI can run them")).toBeTruthy();
   await waitFor(() => expect(addButton().disabled).toBe(false));
   const checks = server.of("POST", "/api/model-servers/check");
-  expect(checks.at(-1)?.body).toEqual({ name: "LM Studio дома", address: "localhost:1234", key: null, key_typed: false });
+  expect(checks.at(-1)?.body).toEqual({ name: "LM Studio дома", address: "localhost:1234", key: null, key_typed: false, replace: false });
   expect(server.calls.filter((c) => c.path === "/api/model-servers")).toEqual([]);
 });
 

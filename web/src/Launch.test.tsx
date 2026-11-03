@@ -111,7 +111,7 @@ function modelsOf(name: string, model: string): ProviderModels {
   const aliases = name === "claude" ? ["sonnet", "opus"] : [];
   const models = name === "claude" ? null : ["kilo/small", "kilo/large"];
   const why = name === "claude" ? "Claude Code gives no list of models beyond its aliases" : "";
-  const verdict: Omit<ProviderModels["check"], "field"> = !model
+  const verdict: Omit<ProviderModels["check"], "field" | "name"> = !model
     ? { kind: "default", text: `empty: ${title}'s default model; type or pick one of its models` }
     : aliases.includes(model)
       ? { kind: "ok", text: `an alias of ${title}` }
@@ -120,7 +120,7 @@ function modelsOf(name: string, model: string): ProviderModels {
         : models.includes(model)
           ? { kind: "ok", text: `in ${title}'s list of models` }
           : { kind: "refused", text: `${model} is not in ${title}'s list of models; kilo models prints the list` };
-  return { aliases, models, why, check: { ...verdict, field: "" } };
+  return { aliases, models, why, check: { ...verdict, field: "", name: "" } };
 }
 let answers: Record<string, () => Response | Promise<Response>>; // "METHOD path" -> the server's answer
 let calls: Call[];

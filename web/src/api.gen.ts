@@ -2668,6 +2668,11 @@ export interface components {
              * @default
              */
             field: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
         };
         /**
          * ModelInfo
@@ -2722,8 +2727,9 @@ export interface components {
         /**
          * ModelServerCheck
          * @description The server form as typed, for its check before Add: the name, the address, whether a
-         *     key is typed (`key_typed`), and the key itself only when the human pressed Check key.
-         *     No answer gives the key back.
+         *     key is typed (`key_typed`), and the key itself only when the human pressed Check key;
+         *     `replace` for Change, where the name is the saved server's own. No answer gives the key
+         *     back.
          */
         ModelServerCheck: {
             /** Name */
@@ -2737,6 +2743,11 @@ export interface components {
              * @default false
              */
             key_typed: boolean;
+            /**
+             * Replace
+             * @default false
+             */
+            replace: boolean;
         };
         /**
          * ModelServerInfo

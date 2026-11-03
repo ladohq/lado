@@ -469,6 +469,9 @@ class ModelCheck(BaseModel):
     kind: Literal["default", "ok", "warn", "refused"]
     text: str
     field: str = ""
+    # The name a save would take: the one given, else its default ("" for a refusal); said
+    # by the check of a model only (Settings → Models' `would be <name>`).
+    name: str = ""
 
 
 # Settings → Models (lado.server.model_entries over lado.model_settings).
@@ -535,13 +538,15 @@ class ModelServerAdd(BaseModel):
 
 class ModelServerCheck(BaseModel):
     """The server form as typed, for its check before Add: the name, the address, whether a
-    key is typed (`key_typed`), and the key itself only when the human pressed Check key.
-    No answer gives the key back."""
+    key is typed (`key_typed`), and the key itself only when the human pressed Check key;
+    `replace` for Change, where the name is the saved server's own. No answer gives the key
+    back."""
 
     name: str
     address: str
     key: str | None = None
     key_typed: bool = False
+    replace: bool = False
 
 
 class ModelServerAdded(BaseModel):

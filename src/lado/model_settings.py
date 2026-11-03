@@ -132,27 +132,26 @@ def remove_server(name: str) -> str:
     saved = state.model_server(name)
     if saved is None:
         raise _no_server(name)
-    used = state.models_on(saved.id)
-    if not used:
-        try:
-            state.remove_model_server(saved.id)
-        except sqlite3.IntegrityError:  # a model added meanwhile
-            used = state.models_on(saved.id)
-    if not used:
-        try:
-            _remove_key(saved.id)
-        except OSError as exc:
-            raise Refused(
-                f'removed model server "{saved.name}", but not its folder '
-                f"{key_folder(saved.id)} ({exc.strerror or type(exc).__name__}); lado doctor "
-                "names it as left over"
-            ) from None
-        return saved.name
-    names = ", ".join(m.name for m in used)
-    raise Refused(
-        f'model server "{saved.name}" is used by the models {names}; remove them first: '
-        f'lado model remove "{used[0].name}"'
-    )
+    try:
+        if state.models_on(saved.id):
+            raise sqlite3.IntegrityError  # refused below, naming them
+        state.remove_model_server(saved.id)  # the foreign key: a model added meanwhile
+    except sqlite3.IntegrityError:
+        used = state.models_on(saved.id)
+        raise Refused(
+            f'model server "{saved.name}" is used by the models '
+            f"{', '.join(m.name for m in used)}; remove them first: "
+            f'lado model remove "{used[0].name}"'
+        ) from None
+    try:
+        _remove_key(saved.id)
+    except OSError as exc:
+        raise Refused(
+            f'removed model server "{saved.name}", but not its folder '
+            f"{key_folder(saved.id)} ({exc.strerror or type(exc).__name__}); lado doctor "
+            "names it as left over"
+        ) from None
+    return saved.name
 
 
 def add_model(

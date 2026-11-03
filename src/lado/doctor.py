@@ -18,6 +18,8 @@ from lado import (
     gui_session,
     kits,
     logins,
+    model_servers,
+    model_settings,
     project_secrets,
     projects,
     providers,
@@ -805,8 +807,6 @@ def check_model_servers() -> Check | None:
     rolled back or a removal the disk refused). Never FAIL: a server in the network being
     off is not LADO's to fix. None with neither a server nor a left-over folder; lado.db is
     read as it is, never made or migrated."""
-    from lado import model_servers, model_settings
-
     name = "Model servers"
     servers: list[state.ModelServer] = []
     if state.schema_version() is not None:
@@ -849,8 +849,6 @@ def check_model_servers() -> Check | None:
 
 def _key_file_problem(server: state.ModelServer) -> str:
     """What is wrong with the key file of `server`, "" for nothing or no file."""
-    from lado import model_settings
-
     path = model_settings.key_folder(server.id) / model_settings.KEY
     try:
         found = os.lstat(path)

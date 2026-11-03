@@ -77,6 +77,19 @@ def _server_taken(name: str) -> Refused:
     )
 
 
+def server_to_add(name: str, replace: bool) -> state.ModelServer | None:
+    """The saved server `add_server` would replace (None for a new one), or Refused for a
+    name it refuses: one that is no name, taken without `replace`, not saved with it. A
+    command checks it before it asks for a key."""
+    check_name(name, SERVER)
+    saved = state.model_server(name)
+    if saved is not None and not replace:
+        raise _server_taken(saved.name)
+    if saved is None and replace:
+        raise _no_server(name)
+    return saved
+
+
 def add_server(
     name: str, address: str, key: str | None, *, replace: bool = False, warn: Callable[[str], None]
 ) -> model_servers.Probe:
@@ -86,12 +99,7 @@ def add_server(
     warning before anything is sent. Refused for a name taken or not saved, ValueError for an
     address the probe does not take, model_servers.ProbeError for a server it does not
     recognise; nothing changes then."""
-    check_name(name, SERVER)
-    saved = state.model_server(name)
-    if saved is not None and not replace:
-        raise _server_taken(saved.name)
-    if saved is None and replace:
-        raise _no_server(name)
+    saved = server_to_add(name, replace)
     root, _ = model_servers.address(address)
     sent = key if key is not None or saved is None else server_key(saved)
     warning = model_servers.plain_http_warning(root, sent)

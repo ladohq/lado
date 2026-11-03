@@ -292,7 +292,8 @@ def test_remove_an_unknown_server_exit_1(capsys):
 
 
 def listing(monkeypatch, name, listed):
-    monkeypatch.setattr(providers.get(name), "model_list", lambda env: listed)
+    # The class, never the shared instance (tests/test_model_settings.py, listing).
+    monkeypatch.setattr(type(providers.get(name)), "model_list", lambda self, env: listed)
 
 
 def test_model_add_of_an_alias(capsys, monkeypatch):
@@ -306,7 +307,9 @@ def test_model_add_of_an_alias(capsys, monkeypatch):
 def test_model_add_reads_the_list_with_the_agents_environment(capsys, monkeypatch):
     seen = []
     monkeypatch.setattr(
-        providers.get("kilo"), "model_list", lambda env: seen.append(env) or base.ModelList()
+        type(providers.get("kilo")),
+        "model_list",
+        lambda self, env: seen.append(env) or base.ModelList(),
     )
     monkeypatch.setattr(runtime, "agent_layers", lambda project: "layers")
     monkeypatch.setattr(runtime, "agents_env", lambda layers, cli: {"FROM": f"{layers} {cli.name}"})
@@ -378,7 +381,9 @@ def test_model_list(capsys, monkeypatch):
     state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
     main(["model", "add", "Быстрая", "--cli", "claude", "--model", "haiku"])
     capsys.readouterr()
-    monkeypatch.setattr(providers.get("claude"), "model_list", lambda env: pytest.fail("ran"))
+    monkeypatch.setattr(
+        type(providers.get("claude")), "model_list", lambda self, env: pytest.fail("ran")
+    )
     assert main(["model", "list"]) == 0
     assert capsys.readouterr().out.splitlines() == [
         "NAME            CLI          MODEL     SERVER",

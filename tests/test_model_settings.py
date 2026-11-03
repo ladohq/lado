@@ -291,10 +291,12 @@ def no_env(provider):
 
 
 def listing(monkeypatch, name, listed):
-    """The CLI `name` gives `listed`, read with the environment the command passes."""
+    """The CLI `name` gives `listed`, read with the environment the command passes. Its
+    class is patched, never the shared instance: undoing an instance's patch would leave
+    the old bound method on it, over any later test's patch of the class."""
     seen = []
-    provider = providers.get(name)
-    monkeypatch.setattr(provider, "model_list", lambda env: seen.append(env) or listed)
+    provider = type(providers.get(name))
+    monkeypatch.setattr(provider, "model_list", lambda self, env: seen.append(env) or listed)
     return seen
 
 
@@ -445,7 +447,7 @@ def test_a_cli_that_speaks_no_server_api_is_refused(serve, monkeypatch):
     server = serve("all")
     add("all", server.url)
     server.requests.clear()
-    monkeypatch.setattr(providers.get("kilo"), "server_api", "")
+    monkeypatch.setattr(type(providers.get("kilo")), "server_api", "")
     with pytest.raises(model_settings.Refused) as refused:
         add_model("K", "kilo", "m1", "all", no_env)
     assert str(refused.value) == "all does not suit Kilo CLI: Kilo CLI speaks no model server's API"

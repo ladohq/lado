@@ -786,8 +786,9 @@ export interface paths {
         put?: never;
         /**
          * Check Model Server
-         * @description What the server form says before its Add, asking no server: the plain-http
-         *     warning under Key.
+         * @description What the server form says before its Add, as the human types: the refusals under
+         *     their fields, the plain-http warning, the probe of the address (with the key only
+         *     after Check key) and the same-address notes; saves nothing.
          */
         post: operations["check_model_server_api_model_servers_check_post"];
         delete?: never;
@@ -2720,14 +2721,22 @@ export interface components {
         };
         /**
          * ModelServerCheck
-         * @description A server's address as typed and whether a key goes with it (the key itself never
-         *     does): what the form says before its Add.
+         * @description The server form as typed, for its check before Add: the name, the address, whether a
+         *     key is typed (`key_typed`), and the key itself only when the human pressed Check key.
+         *     No answer gives the key back.
          */
         ModelServerCheck: {
+            /** Name */
+            name: string;
             /** Address */
             address: string;
             /** Key */
-            key: boolean;
+            key?: string | null;
+            /**
+             * Key Typed
+             * @default false
+             */
+            key_typed: boolean;
         };
         /**
          * ModelServerInfo
@@ -2918,11 +2927,13 @@ export interface components {
         };
         /**
          * ProbeInfo
-         * @description What a probe found on a saved model server (lado.model_servers.Probe): its models
+         * @description What a probe found on a model server (lado.model_servers.Probe): its type, its models
          *     (None for no list, why in `models_why`), those it types as embeddings, why its APIs
          *     could not be told ("" when they could), and the CLIs that can use it.
          */
         ProbeInfo: {
+            /** Kind */
+            kind: string;
             /** Models */
             models: string[] | null;
             /** Models Why */
@@ -3506,6 +3517,21 @@ export interface components {
         Sent: {
             /** Result */
             result: string;
+        };
+        /**
+         * ServerCheck
+         * @description What the server form says before Add: the probe of its address (None when it was not
+         *     probed or failed), the refusals Add would meet, each under its field, the warnings (a
+         *     key over plain http://) and the notes (another server at its address).
+         */
+        ServerCheck: {
+            probe: components["schemas"]["ProbeInfo"] | null;
+            /** Refusals */
+            refusals: components["schemas"]["EntryRefused"][];
+            /** Warnings */
+            warnings: string[];
+            /** Notes */
+            notes: string[];
         };
         /**
          * SessionAbout
@@ -5525,7 +5551,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModelCheck"];
+                    "application/json": components["schemas"]["ServerCheck"];
                 };
             };
             /** @description Validation Error */

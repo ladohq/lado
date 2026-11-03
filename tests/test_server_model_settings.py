@@ -128,6 +128,7 @@ def test_add_server_lmstudio(client, serve):
     assert added["server"]["name"] == "LM Studio дома"
     assert (added["server"]["kind"], added["notes"], added["warnings"]) == ("LM Studio", [], [])
     assert added["probe"] == {
+        "kind": "LM Studio",
         "models": ["qwen3-8b", fake.EMBEDDINGS],
         "models_why": "",
         "embeddings": [fake.EMBEDDINGS],
@@ -278,24 +279,76 @@ def check(client, **given):
     return ok(client.post("/api/models/check", json=given))
 
 
-def test_check_server_says_the_plain_http_warning_before_anything_is_sent(client, serve):
+def check_server(client, name="", address="", key=None, key_typed=False):
+    given = {"name": name, "address": address, "key": key, "key_typed": key_typed}
+    return ok(client.post("/api/model-servers/check", json=given))
+
+
+def test_check_server_probes_without_a_key_and_saves_nothing(client, serve):
     server = serve("lmstudio")
-
-    def check(address, key=True):
-        return ok(client.post("/api/model-servers/check", json={"address": address, "key": key}))
-
-    assert check("gw.example.com:4000") == {
-        "kind": "warn",
-        "text": model_servers.PLAIN_HTTP.format(host="gw.example.com"),
-        "field": "key",
-    }
-    assert check("gw.example.com:4000", key=False) == {"kind": "default", "text": "", "field": ""}
-    assert check("https://gw.example.com")["kind"] == "default"
-    assert check("10.0.0.5:4000")["kind"] == "default"
-    assert check("ftp://x")["kind"] == "default"  # Add refuses it under Address
-    assert check(server.url)["kind"] == "default"
-    assert server.requests == []  # asks no server
+    found = check_server(client, "LM Studio дома", server.url.removeprefix("http://"))
+    assert (found["refusals"], found["warnings"], found["notes"]) == ([], [], [])
+    assert found["probe"]["kind"] == "LM Studio"
+    assert found["probe"]["models"] == ["qwen3-8b", fake.EMBEDDINGS]
+    assert [c["name"] for c in found["probe"]["clis"]] == ["kilo", "opencode", "codex"]
+    assert server.requests and all("Authorization" not in r.headers for r in server.requests)
     assert state.model_servers() == []
+
+
+def test_check_server_with_nothing_typed_asks_nothing(client, lado_home):
+    assert check_server(client) == {"probe": None, "refusals": [], "warnings": [], "notes": []}
+    assert check_server(client, "lab")["refusals"] == []
+    assert not (lado_home / "lado.db").exists()  # a check makes none
+
+
+def test_check_server_refusals_carry_their_fields(client, serve):
+    lms = serve("lmstudio")
+    ok(add_server(client, "lms", lms.url))
+    taken = check_server(client, "LMS", lms.url)
+    assert [r["field"] for r in taken["refusals"]] == ["name"]
+    assert taken["refusals"][0]["message"].startswith('a model server "lms" is saved already')
+    assert taken["probe"]["kind"] == "LM Studio"  # the address is checked all the same
+    assert taken["notes"] == ['same address as model server "lms"']
+    port = closed_port()
+    silent = check_server(client, "lab", f"http://127.0.0.1:{port}")
+    assert silent["probe"] is None
+    assert silent["refusals"] == [
+        {
+            "message": f"http://127.0.0.1:{port} does not answer (connection refused)",
+            "hint": "",
+            "field": "address",
+            "warnings": [],
+        }
+    ]
+    assert [r["field"] for r in check_server(client, "x", "ftp://x")["refusals"]] == ["address"]
+    assert [r["field"] for r in check_server(client, " x")["refusals"]] == ["name"]
+
+
+def test_check_server_says_a_key_is_asked_for_and_sends_one_only_given(client, serve):
+    work = serve("openai", key="k-1")
+    asks = check_server(client, "work", work.url, key_typed=True)
+    assert [(r["field"], r["message"]) for r in asks["refusals"]] == [
+        ("key", f"{work.url} asks for a key (401): enter it in Key")
+    ]
+    assert all("Authorization" not in r.headers for r in work.requests)
+    work.requests.clear()
+    keyed = check_server(client, "work", work.url, key="k-1", key_typed=True)
+    assert (keyed["refusals"], keyed["probe"]["kind"]) == ([], "OpenAI-compatible")
+    assert work.requests and {r.headers["Authorization"] for r in work.requests} == {"Bearer k-1"}
+    wrong = check_server(client, "work", work.url, key="k-2", key_typed=True)
+    assert [r["field"] for r in wrong["refusals"]] == ["key"]
+    empty = check_server(client, "work", work.url, key="", key_typed=True)
+    assert [(r["field"], r["message"]) for r in empty["refusals"]] == [("key", "the key is empty")]
+    assert state.model_servers() == []
+
+
+def test_check_server_says_the_plain_http_warning_with_no_key_sent(client):
+    found = check_server(client, "ext", "http://llm.invalid", key_typed=True)
+    assert found["warnings"] == [model_servers.PLAIN_HTTP.format(host="llm.invalid")]
+    assert [r["field"] for r in found["refusals"]] == ["address"]
+    assert check_server(client, "ext", "http://llm.invalid")["warnings"] == []
+    assert check_server(client, "ext", "https://llm.invalid", key_typed=True)["warnings"] == []
+    assert check_server(client, "ext", "10.0.0.5:4000x", key_typed=True)["warnings"] == []
 
 
 def test_check_model_ok_warn_refused(client, serve, monkeypatch):

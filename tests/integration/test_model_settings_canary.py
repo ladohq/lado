@@ -1,8 +1,8 @@
 """The canary of a model server's key through Settings → Models' API (openspec change
 model-settings-page, "A server's key enters the API and never leaves it"): unique keys sent
-through a real `lado server` to add a server, to change it, in requests it cannot read and in
-one whose probe is refused, reach the fake model server (in a process of its own) and the
-server's key file, and nothing else: no answer, no change feed, no file under LADO_HOME
+through a real `lado server` to check a server, to add one, to change it, in requests it
+cannot read and in one whose probe is refused, reach the fake model server (in a process of its
+own) and the server's key file, and nothing else: no answer, no change feed, no file under LADO_HOME
 (server.log, the error journal and lado.db included) but `model-servers/<id>/key`."""
 
 import json
@@ -26,8 +26,10 @@ def api(lado_home):
 
 
 def test_a_model_server_s_key_is_found_nowhere_else(api, serve, lado_home):  # noqa: F811
-    first, second, unread, refused_key = (f"canary-{n}-{uuid.uuid4().hex}" for n in range(4))
-    canaries = (first, second, unread, refused_key)
+    first, second, unread, refused_key, checked = (
+        f"canary-{n}-{uuid.uuid4().hex}" for n in range(5)
+    )
+    canaries = (first, second, unread, refused_key, checked)
     said: list[str] = []
 
     def call(method, path, body=None, expected=200):
@@ -36,6 +38,14 @@ def test_a_model_server_s_key_is_found_nowhere_else(api, serve, lado_home):  # n
         said.append(answer)
         return json.loads(answer) if answer else None
 
+    gate = serve("all", key=checked)
+    found = call("POST", "/api/model-servers/check",
+                 {"name": "gate", "address": gate, "key": checked, "key_typed": True})  # fmt: skip
+    assert (found["refusals"], found["probe"]["models"]) == ([], ["m1"])
+    found = call("POST", "/api/model-servers/check",
+                 {"name": "gate", "address": gate, "key_typed": True})  # fmt: skip
+    assert [r["field"] for r in found["refusals"]] == ["key"]
+    call("POST", "/api/model-servers/check", {"name": "gate", "key": [checked]}, expected=422)
     old = serve("all", key=first)
     new = serve("all", key=second)
     added = call("POST", "/api/model-servers", {"name": "work", "address": old, "key": first})

@@ -1811,7 +1811,7 @@
     "/api/model-servers/check": {
       "post": {
         "summary": "Check Model Server",
-        "description": "What the server form says before its Add, asking no server: the plain-http\nwarning under Key.",
+        "description": "What the server form says before its Add, as the human types: the refusals under\ntheir fields, the plain-http warning, the probe of the address (with the key only\nafter Check key) and the same-address notes; saves nothing.",
         "operationId": "check_model_server_api_model_servers_check_post",
         "requestBody": {
           "content": {
@@ -1829,7 +1829,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ModelCheck"
+                  "$ref": "#/components/schemas/ServerCheck"
                 }
               }
             }
@@ -7200,22 +7200,38 @@
       },
       "ModelServerCheck": {
         "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
           "address": {
             "type": "string",
             "title": "Address"
           },
           "key": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Key"
+          },
+          "key_typed": {
+            "type": "boolean",
+            "title": "Key Typed",
+            "default": false
           }
         },
         "type": "object",
         "required": [
-          "address",
-          "key"
+          "name",
+          "address"
         ],
         "title": "ModelServerCheck",
-        "description": "A server's address as typed and whether a key goes with it (the key itself never\ndoes): what the form says before its Add."
+        "description": "The server form as typed, for its check before Add: the name, the address, whether a\nkey is typed (`key_typed`), and the key itself only when the human pressed Check key.\nNo answer gives the key back."
       },
       "ModelServerInfo": {
         "properties": {
@@ -7753,6 +7769,10 @@
       },
       "ProbeInfo": {
         "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
           "models": {
             "anyOf": [
               {
@@ -7792,6 +7812,7 @@
         },
         "type": "object",
         "required": [
+          "kind",
           "models",
           "models_why",
           "embeddings",
@@ -7799,7 +7820,7 @@
           "clis"
         ],
         "title": "ProbeInfo",
-        "description": "What a probe found on a saved model server (lado.model_servers.Probe): its models\n(None for no list, why in `models_why`), those it types as embeddings, why its APIs\ncould not be told (\"\" when they could), and the CLIs that can use it."
+        "description": "What a probe found on a model server (lado.model_servers.Probe): its type, its models\n(None for no list, why in `models_why`), those it types as embeddings, why its APIs\ncould not be told (\"\" when they could), and the CLIs that can use it."
       },
       "ProjectDeletion": {
         "properties": {
@@ -9507,6 +9528,50 @@
           "result"
         ],
         "title": "Sent"
+      },
+      "ServerCheck": {
+        "properties": {
+          "probe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProbeInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refusals": {
+            "items": {
+              "$ref": "#/components/schemas/EntryRefused"
+            },
+            "type": "array",
+            "title": "Refusals"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "probe",
+          "refusals",
+          "warnings",
+          "notes"
+        ],
+        "title": "ServerCheck",
+        "description": "What the server form says before Add: the probe of its address (None when it was not\nprobed or failed), the refusals Add would meet, each under its field, the warnings (a\nkey over plain http://) and the notes (another server at its address)."
       },
       "SessionAbout": {
         "properties": {

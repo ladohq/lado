@@ -511,10 +511,11 @@ class CliApi(BaseModel):
 
 
 class ProbeInfo(BaseModel):
-    """What a probe found on a saved model server (lado.model_servers.Probe): its models
+    """What a probe found on a model server (lado.model_servers.Probe): its type, its models
     (None for no list, why in `models_why`), those it types as embeddings, why its APIs
     could not be told ("" when they could), and the CLIs that can use it."""
 
+    kind: str
     models: list[str] | None
     models_why: str
     embeddings: list[str]
@@ -533,11 +534,14 @@ class ModelServerAdd(BaseModel):
 
 
 class ModelServerCheck(BaseModel):
-    """A server's address as typed and whether a key goes with it (the key itself never
-    does): what the form says before its Add."""
+    """The server form as typed, for its check before Add: the name, the address, whether a
+    key is typed (`key_typed`), and the key itself only when the human pressed Check key.
+    No answer gives the key back."""
 
+    name: str
     address: str
-    key: bool
+    key: str | None = None
+    key_typed: bool = False
 
 
 class ModelServerAdded(BaseModel):
@@ -578,6 +582,17 @@ class EntryRefused(BaseModel):
     hint: str
     field: str
     warnings: list[str]
+
+
+class ServerCheck(BaseModel):
+    """What the server form says before Add: the probe of its address (None when it was not
+    probed or failed), the refusals Add would meet, each under its field, the warnings (a
+    key over plain http://) and the notes (another server at its address)."""
+
+    probe: ProbeInfo | None
+    refusals: list[EntryRefused]
+    warnings: list[str]
+    notes: list[str]
 
 
 class ProviderModels(BaseModel):

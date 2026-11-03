@@ -91,6 +91,7 @@ def server_info(server: state.ModelServer) -> models.ModelServerInfo:
 def probe_info(found: model_servers.Probe) -> models.ProbeInfo:
     suits, _ = model_servers.suiting(found.apis)
     return models.ProbeInfo(
+        kind=found.kind,
         models=None if found.models is None else list(found.models),
         models_why=found.models_why,
         embeddings=sorted(found.embeddings),
@@ -149,17 +150,57 @@ def add_server(given: models.ModelServerAdd) -> models.ModelServerAdded:
     )
 
 
-def check_server(given: models.ModelServerCheck) -> models.ModelCheck:
-    """The plain-http warning `add_server` would give, asking no server: a warn under Key,
-    else none (an address the probe does not take is Add's refusal)."""
+def check_server(given: models.ModelServerCheck, has_db: bool = True) -> models.ServerCheck:
+    """What the server form says before Add, as the human types, saving nothing: the
+    refusals `add_server` would meet for the name and the address, the plain-http warning
+    while a key is typed, and the probe of the address (the command's, 5 s a request),
+    with `given.key` only when the human pressed Check key; then the notes of each saved
+    server at the address it found. An empty name or address is not checked yet."""
+    refusals: list[models.EntryRefused] = []
+    warnings: list[str] = []
+    notes: list[str] = []
+
+    def refuse(exc: Exception) -> None:
+        refusals.append(_refusal(exc).detail)
+
+    if given.name:
+        try:
+            if has_db:
+                model_settings.server_to_add(given.name, False)
+            else:
+                model_settings.check_name(given.name, model_settings.SERVER)
+        except model_settings.Refused as exc:
+            refuse(exc)
+    if given.key is not None:
+        try:
+            model_settings.check_key(given.key)
+        except model_settings.Refused as exc:
+            refuse(exc)
+            return models.ServerCheck(probe=None, refusals=refusals, warnings=[], notes=[])
+    if not given.address.strip():
+        return models.ServerCheck(probe=None, refusals=refusals, warnings=[], notes=[])
     try:
         root, _ = model_servers.address(given.address)
-    except ValueError:
-        return models.ModelCheck(kind="default", text="")
-    warning = model_servers.plain_http_warning(root, "" if given.key else None)
-    if warning is None:
-        return models.ModelCheck(kind="default", text="")
-    return models.ModelCheck(kind="warn", text=warning, field=model_servers.KEY)
+    except ValueError as exc:
+        refuse(exc)
+        return models.ServerCheck(probe=None, refusals=refusals, warnings=[], notes=[])
+    sent = given.key if given.key is not None else ("" if given.key_typed else None)
+    warning = model_servers.plain_http_warning(root, sent)
+    if warning:
+        warnings.append(warning)
+    try:
+        found = model_servers.probe(
+            given.address, given.key, model_settings.add_command(given.name, False)
+        )
+    except (model_servers.ProbeError, ValueError) as exc:
+        refuse(exc)
+        return models.ServerCheck(probe=None, refusals=refusals, warnings=warnings, notes=[])
+    for other in state.model_servers() if has_db else []:
+        if model_settings.same_address(other.address, found.address):
+            notes.append(f'same address as model server "{other.name}"')
+    return models.ServerCheck(
+        probe=probe_info(found), refusals=refusals, warnings=warnings, notes=notes
+    )
 
 
 def _saved_server(name: str) -> state.ModelServer:

@@ -937,10 +937,13 @@ def create_app(
         "/api/model-servers/check",
         dependencies=[Depends(guard.changes)],
     )
-    def check_model_server(given: models.ModelServerCheck) -> models.ModelCheck:
-        """What the server form says before its Add, asking no server: the plain-http
-        warning under Key."""
-        return model_entries.check_server(given)
+    def check_model_server(
+        given: models.ModelServerCheck, has_db: bool = Depends(database)
+    ) -> models.ServerCheck:
+        """What the server form says before its Add, as the human types: the refusals under
+        their fields, the plain-http warning, the probe of the address (with the key only
+        after Check key) and the same-address notes; saves nothing."""
+        return model_entries.check_server(given, has_db)
 
     @app.post(
         "/api/model-servers/{name:path}/probe",

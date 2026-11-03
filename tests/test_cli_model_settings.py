@@ -1,0 +1,476 @@
+"""`lado model-server add|list|remove` and `lado model add|list|remove` (lado.cli,
+lado.model_settings): the output, the exit codes and the server's key, against the fake
+servers of tests/fake_model_server.py."""
+
+import io
+import socket
+import sqlite3
+
+import agent_helpers
+import fake_model_server as fake
+import pytest
+from test_cli_model_server import Stdin
+
+from lado import model_settings, providers, runtime, state, telemetry
+from lado.cli import main
+from lado.providers import base
+
+
+@pytest.fixture
+def serve():
+    servers = []
+
+    def start(profile, **kwargs):
+        server = fake.Server(profile, **kwargs)
+        servers.append(server)
+        return server
+
+    yield start
+    for server in servers:
+        server.close()
+
+
+@pytest.fixture(autouse=True)
+def outside_container(monkeypatch):
+    monkeypatch.delenv("LADO_CONTAINER", raising=False)
+    monkeypatch.setattr("sys.stdin", Stdin())  # no terminal, nothing piped
+
+
+def closed_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def piped(monkeypatch, text):
+    stdin = Stdin(text)
+    monkeypatch.setattr("sys.stdin", stdin)
+    return stdin
+
+
+# lado model-server add.
+
+
+def test_add_prints_the_probe_and_saves(serve, capsys):
+    server = serve("lmstudio")
+    assert main(["model-server", "add", "LM Studio дома", server.url.removeprefix("http://")]) == 0
+    out, err = capsys.readouterr()
+    assert out.splitlines() == [
+        f"{server.url} (added http://)",
+        "type: LM Studio",
+        "models: qwen3-8b",
+        "CLIs: Kilo CLI, OpenCode (chat completions); Codex CLI (Responses API)",
+        "not: Claude Code (no Anthropic Messages API)",
+        'Saved model server "LM Studio дома".',
+    ]
+    assert err == ""
+    assert state.model_server("LM Studio дома").address == server.url
+
+
+def test_add_with_a_piped_key(serve, capsys, monkeypatch):
+    server = serve("openai", key="k-123")
+    piped(monkeypatch, "k-123\n")
+    assert main(["model-server", "add", "work", server.url, "--key"]) == 0
+    out, err = capsys.readouterr()
+    assert out.splitlines()[-1] == 'Saved model server "work".'
+    assert "k-123" not in out + err
+    assert model_settings.server_key(state.model_server("work")) == "k-123"
+
+
+def test_replace_says_so(serve, capsys):
+    main(["model-server", "add", "lab", serve("openai").url])
+    new = serve("ollama")
+    assert main(["model-server", "add", "LAB", new.url, "--replace"]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == 'Replaced model server "lab".'
+    assert state.model_server("lab").kind == "Ollama"
+
+
+def test_add_of_a_taken_name_exit_1(serve, capsys):
+    main(["model-server", "add", "lab", serve("openai").url])
+    other = serve("openai")
+    capsys.readouterr()
+    assert main(["model-server", "add", "Lab", other.url]) == 1
+    assert capsys.readouterr().err == (
+        'lado: a model server "lab" is saved already; to change its address or key: lado '
+        'model-server add "lab" <address> [--key] --replace\n'
+    )
+    assert other.requests == []
+
+
+def test_add_of_an_address_that_does_not_answer_exit_1(capsys, monkeypatch):
+    port = closed_port()
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    assert main(["model-server", "add", "LM Studio дома", f"localhost:{port}"]) == 1
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err.splitlines() == [
+        f"lado: http://localhost:{port} does not answer (connection refused)",
+        "lado: LADO runs in a container, where localhost is the container itself; a server on "
+        f'your machine: lado model-server add "LM Studio дома" http://host.docker.internal:{port} '
+        "(not tried)",
+    ]
+    assert state.model_servers() == []
+
+
+def test_add_of_a_server_asking_for_a_key_names_add(serve, capsys):
+    server = serve("openai", key="k")
+    assert main(["model-server", "add", "work", server.url]) == 1
+    assert capsys.readouterr().err == (
+        f'lado: {server.url} asks for a key (401): run lado model-server add "work" {server.url} '
+        "--key\n"
+    )
+
+
+def test_add_of_a_bad_address_exit_2(capsys):
+    assert main(["model-server", "add", "lab", "http://me:pw@h:4000"]) == 2
+    out, err = capsys.readouterr()
+    assert err.startswith("lado: a server's address holds no user or password")
+    assert "pw" not in out + err
+
+
+def test_add_of_a_bad_name_exit_1(capsys, serve):
+    server = serve("openai")
+    assert main(["model-server", "add", "", server.url]) == 1
+    assert capsys.readouterr().err == "lado: a model server's name is empty\n"
+    assert server.requests == []
+
+
+def test_add_warns_of_a_key_over_plain_http(serve, capsys, monkeypatch):
+    server = serve("openai", key="k")
+    piped(monkeypatch, "k")
+    real = model_settings.model_servers.probe
+    monkeypatch.setattr(
+        model_settings.model_servers,
+        "probe",
+        lambda text, key, command: real(server.url, key, command),
+    )
+    assert main(["model-server", "add", "ext", "http://llm.example.com", "--key"]) == 0
+    assert capsys.readouterr().err == (
+        "lado: warning: the key goes to llm.example.com over plain http://, unencrypted; use "
+        "https:// if the server has it\n"
+    )
+
+
+def test_probe_warns_of_a_key_over_plain_http(capsys, monkeypatch):
+    piped(monkeypatch, "k")
+    monkeypatch.setattr(
+        "lado.model_servers.probe", lambda *a, **k: pytest.fail("the warning comes first")
+    )
+    monkeypatch.setattr(
+        "lado.model_servers.plain_http_warning",
+        lambda root, key: f"warned {root}",
+    )
+    with pytest.raises(pytest.fail.Exception):
+        main(["model-server", "probe", "http://llm.example.com", "--key"])
+    assert capsys.readouterr().err == "lado: warning: warned http://llm.example.com\n"
+
+
+def test_add_refuses_an_empty_key(serve, capsys, monkeypatch):
+    server = serve("openai")
+    piped(monkeypatch, "\n")
+    assert main(["model-server", "add", "work", server.url, "--key"]) == 1
+    assert capsys.readouterr().err == "lado: the key is empty\n"
+    assert server.requests == []
+    assert state.model_servers() == []
+
+
+@pytest.mark.parametrize("command", ["probe", "add"])
+def test_a_key_that_is_no_utf_8_is_refused_in_one_line(serve, capsys, monkeypatch, command):
+    """Bytes that are no UTF-8 come as surrogates: refused by the header rule, never a crash
+    (nor a journal line, which an unexpected exception writes)."""
+    server = serve("openai")
+    stdin = Stdin()
+    stdin.buffer = io.BytesIO(b"\xff\xfe")
+    monkeypatch.setattr("sys.stdin", stdin)
+    name = ["work"] if command == "add" else []
+    assert main(["model-server", command, *name, server.url, "--key"]) == 1
+    assert capsys.readouterr().err == ("lado: the key holds a character no HTTP header can carry\n")
+    assert server.requests == []
+    assert not telemetry.journal_path().exists()
+
+
+def test_add_refuses_a_piped_key_over_64_kib_not_cut(serve, capsys, monkeypatch):
+    """stdin is read a little over the limit, so a longer key is refused, never cut to it."""
+    server = serve("openai")
+    piped(monkeypatch, "k" * (10 * 65536))
+    assert main(["model-server", "add", "work", server.url, "--key"]) == 1
+    assert capsys.readouterr().err == "lado: the key is larger than 64 KiB\n"
+    assert server.requests == []
+    assert state.model_servers() == []
+
+
+ADD_TAKES_NO_MORE = (
+    "lado: lado model-server add takes a name, an address, --key and --replace, nothing more; "
+    "a server's key is never given on the command line (ps and the shell's history keep it): "
+    "run lado model-server add <name> <address> --key and type it, or pipe it in"
+)
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        ["--key", "s3cr3t"],
+        ["--key=s3cr3t"],
+        ["--key", "-s3cr3t"],
+        ["--k", "-s3cr3t"],
+        ["--key", "a", "s3cr3t"],
+        ["s3cr3t"],
+        ["--help=s3cr3t"],
+        ["--he=s3cr3t"],
+        ["--key", "-hs3cr3t"],
+    ],
+)
+def test_a_key_on_the_command_line_is_refused_unechoed(
+    serve, capsys, monkeypatch, given, lado_home
+):
+    server = serve("openai")
+    stdin = piped(monkeypatch, "k\n")
+    try:
+        code = main(["model-server", "add", "work", server.url, *given])
+    except SystemExit as exited:
+        code = exited.code
+    out, err = capsys.readouterr()
+    assert "s3cr3t" not in out + err
+    assert code in (0, 1)  # 0: -h... printed the help (Python 3.11+)
+    in_argv = (
+        "lado: a server's key is never given on the command line (ps and the shell's history "
+        f'keep it); run lado model-server add "work" {server.url} --key and type it, or pipe '
+        "it in"
+    )
+    if code == 1:
+        assert err.splitlines()[-1] in (ADD_TAKES_NO_MORE, in_argv)
+    assert server.requests == []
+    assert not stdin.touched
+    assert not (lado_home / "lado.db").exists() or state.model_servers() == []
+
+
+def test_a_missing_address_shows_the_add_usage(capsys):
+    with pytest.raises(SystemExit) as exited:
+        main(["model-server", "add", "work"])
+    assert exited.value.code == 1
+    assert capsys.readouterr().err.splitlines()[-1] == ADD_TAKES_NO_MORE
+
+
+# lado model-server list and remove.
+
+
+def test_list_shows_the_servers_without_asking_them(serve, capsys, monkeypatch):
+    lm = serve("openai")
+    work = serve("all", key="k")
+    main(["model-server", "add", "LM Studio дома", lm.url])
+    piped(monkeypatch, "k")
+    main(["model-server", "add", "work", work.url, "--key"])
+    lm.requests.clear()
+    work.requests.clear()
+    capsys.readouterr()
+    assert main(["model-server", "list"]) == 0
+    width = max(len(lm.url), len(work.url))
+    assert capsys.readouterr().out.splitlines() == [
+        f"NAME            {'ADDRESS'.ljust(width)}  TYPE               KEY  CLIs",
+        f"LM Studio дома  {lm.url.ljust(width)}  OpenAI-compatible  no   Kilo CLI, OpenCode",
+        f"work            {work.url.ljust(width)}  OpenAI-compatible  yes  "
+        "Kilo CLI, OpenCode, Codex CLI, Claude Code",
+    ]
+    assert lm.requests == work.requests == []
+
+
+def test_list_of_no_server(capsys):
+    assert main(["model-server", "list"]) == 0
+    assert capsys.readouterr().out == (
+        "No model servers. Add one: lado model-server add <name> <address> [--key]\n"
+    )
+
+
+def test_list_of_a_server_suiting_no_cli(capsys):
+    state.add_model_server("s1", "bare", "https://x", "OpenAI-compatible", ())
+    main(["model-server", "list"])
+    assert capsys.readouterr().out.splitlines()[1].endswith("no   none")
+
+
+def test_remove_a_server(serve, capsys):
+    main(["model-server", "add", "lab", serve("openai").url])
+    capsys.readouterr()
+    assert main(["model-server", "remove", "LAB"]) == 0
+    assert capsys.readouterr().out == 'Removed model server "lab".\n'
+    assert state.model_servers() == []
+
+
+def test_remove_a_server_a_model_uses_exit_1(serve, capsys):
+    main(["model-server", "add", "LM Studio дома", serve("lmstudio").url])
+    main(["model", "add", "Локальная Qwen", "--cli", "opencode", "--model", "qwen3-8b",
+          "--server", "LM Studio дома"])  # fmt: skip
+    capsys.readouterr()
+    assert main(["model-server", "remove", "LM Studio дома"]) == 1
+    assert capsys.readouterr().err == (
+        'lado: model server "LM Studio дома" is used by the models Локальная Qwen; remove them '
+        'first: lado model remove "Локальная Qwen"\n'
+    )
+
+
+def test_remove_an_unknown_server_exit_1(capsys):
+    assert main(["model-server", "remove", "nope"]) == 1
+    assert capsys.readouterr().err == (
+        'lado: no model server "nope" is saved; lado model-server list names them\n'
+    )
+
+
+# lado model.
+
+
+def listing(monkeypatch, name, listed):
+    # The class, never the shared instance (tests/test_model_settings.py, listing).
+    monkeypatch.setattr(type(providers.get(name)), "model_list", lambda self, env: listed)
+
+
+def test_model_add_of_an_alias(capsys, monkeypatch):
+    listing(monkeypatch, "claude", base.ModelList(("haiku",)))
+    assert main(["model", "add", "Быстрая", "--cli", "claude", "--model", "haiku"]) == 0
+    out, err = capsys.readouterr()
+    assert out == 'Saved model "Быстрая": Claude Code, haiku (an alias of Claude Code)\n'
+    assert err == ""
+
+
+def test_model_add_reads_the_list_with_the_agents_environment(capsys, monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        type(providers.get("kilo")),
+        "model_list",
+        lambda self, env: seen.append(env) or base.ModelList(),
+    )
+    monkeypatch.setattr(runtime, "agent_layers", lambda project: "layers")
+    monkeypatch.setattr(runtime, "agents_env", lambda layers, cli: {"FROM": f"{layers} {cli.name}"})
+    main(["model", "add", "K", "--cli", "kilo", "--model", "x"])
+    assert seen == [{"FROM": "layers kilo"}]
+
+
+def test_model_add_on_a_server(serve, capsys):
+    server = serve("lmstudio")
+    main(["model-server", "add", "LM Studio дома", server.url])
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "model",
+                "add",
+                "Локальная Qwen",
+                "--cli",
+                "opencode",
+                "--model",
+                "qwen3-8b",
+                "--server",
+                "LM Studio дома",
+            ]
+        )  # fmt: skip
+        == 0
+    )
+    assert capsys.readouterr().out == (
+        'Saved model "Локальная Qwen": OpenCode, qwen3-8b on LM Studio дома (in LM Studio '
+        "дома's list of models)\n"
+    )
+
+
+def test_model_add_without_a_list_warns(capsys, monkeypatch):
+    listing(monkeypatch, "kilo", base.ModelList(why="kilo is not installed"))
+    assert main(["model", "add", "K", "--cli", "kilo", "--model", "x/y"]) == 0
+    out, err = capsys.readouterr()
+    text = "kilo is not installed: LADO cannot check x/y; a wrong name stops its agents at their "
+    assert err == f"lado: warning: {text}first turn\n"
+    assert out == f'Saved model "K": Kilo CLI, x/y ({text}first turn)\n'
+
+
+def test_model_add_refused_exit_1(capsys):
+    assert main(["model", "add", "G", "--cli", "gemini", "--model", "x"]) == 1
+    assert capsys.readouterr().err.startswith('lado: LADO knows no agent CLI "gemini"')
+
+
+def test_model_add_on_a_server_that_does_not_answer_gives_its_hint(serve, capsys, monkeypatch):
+    port = closed_port()
+    state.add_model_server("s1", "LM Studio дома", f"http://localhost:{port}", "LM Studio", ())
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    assert (
+        main(
+            ["model", "add", "Q", "--cli", "opencode", "--model", "q", "--server", "LM Studio дома"]
+        )  # fmt: skip
+        == 1
+    )
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: http://localhost:{port} does not answer (connection refused); LADO cannot check q",
+        "lado: LADO runs in a container, where localhost is the container itself; a server on "
+        f'your machine: lado model-server add "LM Studio дома" --replace '
+        f"http://host.docker.internal:{port} (not tried)",
+    ]
+
+
+def test_model_list(capsys, monkeypatch):
+    listing(monkeypatch, "claude", base.ModelList(("haiku",)))
+    state.add_model_server("s1", "LM Studio дома", "http://localhost:1234", "LM Studio", ())
+    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
+    main(["model", "add", "Быстрая", "--cli", "claude", "--model", "haiku"])
+    capsys.readouterr()
+    monkeypatch.setattr(
+        type(providers.get("claude")), "model_list", lambda self, env: pytest.fail("ran")
+    )
+    assert main(["model", "list"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "NAME            CLI          MODEL     SERVER",
+        "Быстрая         Claude Code  haiku     —",
+        "Локальная Qwen  OpenCode     qwen3-8b  LM Studio дома",
+    ]
+
+
+def test_model_list_of_none(capsys):
+    assert main(["model", "list"]) == 0
+    assert capsys.readouterr().out == (
+        "No models. Add one: lado model add <name> --cli <cli> --model <model> "
+        "[--server <server>]\n"
+    )
+
+
+def test_model_remove(capsys):
+    state.add_model("Быстрая", "claude", "haiku", None)
+    assert main(["model", "remove", "быстрая"]) == 0
+    assert capsys.readouterr().out == 'Removed model "Быстрая".\n'
+    assert main(["model", "remove", "быстрая"]) == 1
+    assert (
+        capsys.readouterr().err == 'lado: no model "быстрая" is saved; lado model list names them\n'
+    )
+
+
+def test_model_alone_prints_help(capsys):
+    assert main(["model"]) == 0
+    out = capsys.readouterr().out
+    assert "add" in out and "list" in out and "remove" in out
+
+
+def test_model_server_alone_names_its_commands(capsys):
+    assert main(["model-server"]) == 0
+    out = capsys.readouterr().out
+    assert all(word in out for word in ("probe", "add", "list", "remove"))
+
+
+# lado.db.
+
+
+def _schema(lado_home):
+    with sqlite3.connect(lado_home / "lado.db") as db:
+        return db.execute("PRAGMA user_version").fetchone()[0]
+
+
+def test_probe_does_not_migrate_and_add_does(serve, lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.stop_session("s")
+    agent_helpers.previous_schema()
+    server = serve("openai")
+    assert main(["model-server", "probe", server.url]) == 0
+    assert _schema(lado_home) == state.SCHEMA_VERSION - 1
+    assert main(["model-server", "list"]) == 0
+    assert _schema(lado_home) == state.SCHEMA_VERSION
+
+
+def test_a_session_reads_no_entry(repo, fake_tmux, monkeypatch):
+    state.add_model_server("s1", "LM Studio дома", "http://localhost:1234", "LM Studio", ())
+    state.add_model("Быстрая", "claude", "haiku", None)
+    for name in ("model_servers", "model_server", "models", "model", "models_on"):
+        monkeypatch.setattr(state, name, lambda *a, **k: pytest.fail("an entry was read"))
+    assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
+    assert state.get_session("s").power is None

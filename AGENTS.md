@@ -84,7 +84,7 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `state.py`: SQLite state in `~/.lado/lado.db`. A schema change: bump `SCHEMA_VERSION`,
     add a step to `MIGRATIONS` and update `tests/agent_helpers.previous_schema`.
   - `fingerprint.py`: a read-only agent's git fingerprint; `model_check.py` a session's model;
-    `model_servers.py` what a model server is (`lado model-server probe`).
+    `model_servers.py` what a model server is; `model_settings.py` saved servers and models.
   - `log.py`: `lado log`; `stats.py`: `lado stats`; `loop.py`: the session loop, `lado loop`.
   - `server/`: the UI server (`lado server`, `lado ui`): `app.py`, `auth.py`, `feed.py`,
     `models.py`, `terminals.py`, `clones.py`, `launch.py`, `provider_check.py`, `run.py`;

@@ -592,7 +592,7 @@ def test_the_migration_gives_sessions_no_power(lado_home):
     db.close()
     assert "power" not in columns
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (36, 37)
+    assert (migrated.before, migrated.after) == (36, state.SCHEMA_VERSION)
     assert state.get_session("s").power is None
 
 
@@ -1204,6 +1204,10 @@ def _session_columns(db: sqlite3.Connection) -> list[str]:
     return [row[1] for row in db.execute("PRAGMA table_info(sessions)")]
 
 
+def _tables(db: sqlite3.Connection) -> list[str]:
+    return [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
+
+
 def _schema(path: Path) -> int:
     with contextlib.closing(sqlite3.connect(path)) as db:
         return db.execute("PRAGMA user_version").fetchone()[0]
@@ -1224,8 +1228,8 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
-        columns = _session_columns(db)
-    assert "power" not in columns  # the content before the migration
+        tables = _tables(db)
+    assert "model_servers" not in tables  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -1277,7 +1281,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert "power" not in _session_columns(db)  # rolled back
+        assert "model_servers" not in _tables(db)  # rolled back
 
 
 def test_no_pending_migration_without_a_database(lado_home):
@@ -2737,3 +2741,106 @@ def test_a_workers_end_leaves_the_gates_asked(lado_home):
     state.ask_recommendation("s", "gate", gate.id, "r", "b")
     state.agent_ended("s", "w1", "its CLI exited")
     assert state.get_gate(gate.id).recommendation_state == state.REC_ASKED
+
+
+MODEL_TABLES = "SELECT name, sql FROM sqlite_master WHERE name IN ('model_servers', 'models')"
+CHAT = "chat completions"
+
+
+def _server(id="s1", name="LM Studio дома", address="http://localhost:1234"):
+    return state.add_model_server(id, name, address, "LM Studio", (CHAT,))
+
+
+def test_the_migration_adds_empty_model_tables_as_a_new_database_has_them(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="codex"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
+    with state.connect() as db:
+        fresh = sorted(tuple(row) for row in db.execute(MODEL_TABLES))
+    assert len(fresh) == 2
+    agent_helpers.schema_before(38)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert db.execute(MODEL_TABLES).fetchall() == []
+    db.close()
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (37, 38)
+    with state.connect() as db:
+        assert sorted(tuple(row) for row in db.execute(MODEL_TABLES)) == fresh
+    assert (state.model_servers(), state.models()) == ([], [])
+    assert state.get_session("s").provider == "codex"
+    assert state.get_agent("s", "w1").status == "starting"
+
+
+def test_a_model_server_kept_and_found_ignoring_case(lado_home):
+    saved = _server()
+    assert (saved.id, saved.name, saved.address, saved.kind, saved.apis) == (
+        "s1",
+        "LM Studio дома",
+        "http://localhost:1234",
+        "LM Studio",
+        (CHAT,),
+    )
+    assert state.model_server("lm studio ДОМА") == saved
+    assert state.model_server("nope") is None
+    with pytest.raises(state.NameTaken) as taken:
+        _server("s2", "lm studio ДОМА")
+    assert taken.value.name == "LM Studio дома"
+    assert [s.id for s in state.model_servers()] == ["s1"]
+
+
+def test_a_model_kept_and_found_ignoring_case(lado_home):
+    saved = state.add_model("Быстрая", "claude", "haiku", None)
+    assert (saved.name, saved.cli, saved.model, saved.server) == (
+        "Быстрая",
+        "claude",
+        "haiku",
+        None,
+    )
+    assert state.model("быстрая") == saved
+    with pytest.raises(state.NameTaken) as taken:
+        state.add_model("БЫСТРАЯ", "claude", "sonnet", None)
+    assert taken.value.name == "Быстрая"
+    assert state.model("Быстрая").model == "haiku"
+
+
+def test_a_model_refers_to_a_saved_server_only(lado_home):
+    with pytest.raises(sqlite3.IntegrityError):
+        state.add_model("Q", "opencode", "qwen3-8b", "nowhere")
+    assert state.models() == []
+
+
+def test_a_server_a_model_refers_to_is_not_removed(lado_home):
+    _server()
+    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
+    assert [m.name for m in state.models_on("s1")] == ["Локальная Qwen"]
+    with pytest.raises(sqlite3.IntegrityError):
+        state.remove_model_server("s1")
+    assert state.model_server("LM Studio дома") is not None
+    assert state.remove_model("локальная qwen") is True
+    assert state.remove_model("локальная qwen") is False
+    assert state.models_on("s1") == []
+    assert state.remove_model_server("s1") is True
+    assert state.remove_model_server("s1") is False
+    assert state.model_servers() == []
+
+
+def test_replacing_a_server_keeps_its_models(lado_home):
+    _server()
+    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
+    assert state.replace_model_server("s1", "http://localhost:1235", "Ollama", ())
+    replaced = state.model_server("LM Studio дома")
+    assert (replaced.address, replaced.kind, replaced.apis) == (
+        "http://localhost:1235",
+        "Ollama",
+        (),
+    )
+    assert state.model("Локальная Qwen").server == "s1"
+    assert not state.replace_model_server("nope", "http://x", "Ollama", ())
+
+
+def test_the_lists_are_sorted_ignoring_case(lado_home):
+    for i, name in enumerate(["work", "LM Studio дома", "ext"]):
+        _server(f"s{i}", name)
+    assert [s.name for s in state.model_servers()] == ["ext", "LM Studio дома", "work"]
+    for name in ["Локальная Qwen", "быстрая", "Alpha"]:
+        state.add_model(name, "claude", "haiku", None)
+    assert [m.name for m in state.models()] == ["Alpha", "быстрая", "Локальная Qwen"]

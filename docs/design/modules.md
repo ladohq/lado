@@ -444,8 +444,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `<LADO_HOME>/projects/<id>/secrets/` (`data_folder`, `folder`); the one module that writes
     and removes them, so a review reads the step's security code whole. Every folder from
     `<LADO_HOME>/projects` down is opened relative to the one above with `O_NOFOLLOW`
-    (`_chain`): a link on the way is `LinkRefused`, never followed; `LADO_HOME` itself may be
-    a link. `write` makes missing folders and `fchmod`s each 700, writes `.<name>.<random>.tmp`
+    (`_chain`, `open_chain`): a link on the way is `LinkRefused`, never followed; `LADO_HOME`
+    itself may be a link. Its writer and remover of a folder (`write_at`, `remove_at`) also
+    keep LADO's secrets and a model server's key file (`model_settings.py`). `write` makes missing folders and `fchmod`s each 700, writes `.<name>.<random>.tmp`
     (600, `O_EXCL | O_NOFOLLOW`) with the value's `stored` form (one line break more when it
     ends in one, which the reader drops), `fsync`s, renames it over the name and `fsync`s
     the folder; `held` says a name is taken by any entry of the folder; a secret's file is a
@@ -843,20 +844,46 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     the agents' environment within `base.MODEL_LIST_TIMEOUT`, or its local cache; never a
     model API) and gives a `Verdict`: `default` (no model), `ok`, `warn` (no list, with
     why) or `refused`, with the words the CLI, the API and the UI show. `verdict` gives it
-    for a list read before (the server keeps each for a minute, `server/launch.py`).
+    for a list read before (the server keeps each for a minute, `server/launch.py`), or for
+    another's list named by `whose` (a model server's, `model_settings.py`).
   - `model_servers.py`: what a model server is, from its address (`lado model-server
     probe`): `address` (the root, `http://` added visibly; ValueError for one it does not
     probe), `probe` (the model list, then Ollama's and LM Studio's own endpoints, one
     empty POST per API and a control POST in threads, each within `TIMEOUT`, its name
     lookup included; no redirect followed) giving a frozen `Probe` (address, type, proven
     APIs, models or no list with why) or a `ProbeError` with its hint (the container's
-    `host.docker.internal`), and `lines`, the command's output. `Probe.clis` names the
+    `host.docker.internal`), and `lines`, the command's output. `probe`'s `command` is the
+    command run without its address, named by the asks-for-a-key line and the container's
+    hint (`lado model-server probe`, or `add`). `clis` (and `Probe.clis`) names the
     CLIs whose provider's `server_api` (`providers/base.py`, one of `SERVER_APIS`) the
-    server proved; standard library only, the key only in the requests' headers.
+    server proved; `plain_http_warning` the warning for a key over plain `http://` to a host
+    that is not local (`localhost`, `host.docker.internal`, a loopback, private or
+    link-local IP; no name resolved); standard library only, the key only in the requests'
+    headers.
+  - `model_settings.py`: the human's model servers and configured models under names
+    (`lado model-server add|list|remove`, `lado model add|list|remove`; the coming Settings
+    page calls the same functions): `check_name` (one line of visible text, 1 to 64
+    characters, no spaces at its ends), `add_server` (probe, then the key file, then the
+    row; `--replace` probes with the new or the kept key and updates the row; a failed
+    insert removes the key it wrote), `remove_server` (refused while `state.models_on` names
+    a model; the foreign key backs it), `add_model` (the checks in order: name, CLI, model,
+    server saved, the provider's `server_api`, a fresh probe with the kept key, the API among
+    those proved, the model against the server's list by `model_check.verdict(whose=…)`, or
+    without a server `model_check.check` with the agents' environment), `remove_model`. Each
+    refusal is a one-line `Refused` (with the probe's hint). A server's key is the file
+    `<LADO_HOME>/model-servers/<id>/key` (`key_folder`, `KEY`), written and removed by
+    `project_secrets.write_at`/`remove_at` and read by `server_key` (no link, a regular file);
+    a server has a key exactly when the file is there (`has_key`). `lado doctor`'s `Model
+    servers` line (`doctor.check_model_servers`) probes the saved servers at once in threads,
+    checks each key file's mode (600) and names the folders of `model-servers/` of no saved
+    server as left over; it only warns, and reads lado.db as it is.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory);
     a session's model as a `PowerTable` (rows of `LEVELS`, each a `PowerRow` of a CLI and a
     model; one JSON document in `sessions.power`, the format the user's and the project's
-    tables will reuse),
+    tables will reuse); the human's model servers and configured models (schema 38:
+    `model_servers` and `models`, each name unique by its `casefold` in `folded`, a model's
+    server by its id with a foreign key; `NameTaken`; no key, which is a file of
+    `model_settings.py`),
     in WAL mode with `synchronous = NORMAL`: a commit holds the write lock without waiting
     for an fsync, so a busy disk does not keep the other writers past their busy timeout.
     Schema changes: bump `SCHEMA_VERSION`, add a step to `MIGRATIONS` and update

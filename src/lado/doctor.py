@@ -5,6 +5,7 @@ import platform
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -17,6 +18,8 @@ from lado import (
     gui_session,
     kits,
     logins,
+    model_servers,
+    model_settings,
     project_secrets,
     projects,
     providers,
@@ -797,6 +800,70 @@ def check_project_secrets() -> Check | None:
     return Check("Project secrets", WARN, "; ".join(lines)) if lines else None
 
 
+def check_model_servers() -> Check | None:
+    """The saved model servers (lado.model_settings), all probed at once with their keys:
+    which answer, which do not and why, each key file that is not a regular file of mode
+    600, and each folder of the keys' that is no saved server's (left over, by a lado.db
+    rolled back or a removal the disk refused). Never FAIL: a server in the network being
+    off is not LADO's to fix. None with neither a server nor a left-over folder; lado.db is
+    read as it is, never made or migrated."""
+    name = "Model servers"
+    servers: list[state.ModelServer] = []
+    if state.schema_version() is not None:
+        try:
+            servers = state.model_servers()
+        except state.SchemaError:
+            return Check(name, INFO, NOT_AT_SCHEMA)
+    keys = state.home_path() / model_settings.KEYS
+    try:
+        folders = sorted(os.listdir(keys))
+    except OSError:  # none yet, or not a folder: no key was written there
+        folders = []
+    ids = {server.id for server in servers}
+    left = [
+        f"left over: {keys / entry} (no saved server's)" for entry in folders if entry not in ids
+    ]
+    if not servers and not left:
+        return None
+
+    def probed(server: state.ModelServer) -> tuple[bool, str]:
+        try:
+            key = model_settings.server_key(server)
+            found = model_servers.probe(
+                server.address, key, model_settings.add_command(server.name, True)
+            )
+        except (model_servers.ProbeError, model_settings.Refused) as exc:
+            text = str(exc)
+            if text.startswith(server.address + " "):
+                return False, f"{server.name} {text.removeprefix(server.address + ' ')}"
+            return False, f"{server.name}: {text}"
+        return True, f"{server.name} answers ({found.kind})"
+
+    with ThreadPoolExecutor(max_workers=max(1, len(servers))) as pool:
+        answers = list(pool.map(probed, servers))
+    files = [line for server in servers if (line := _key_file_problem(server))]
+    lines = [text for _, text in answers] + files + left
+    fine = all(ok for ok, _ in answers) and not files and not left
+    return Check(name, OK if fine else WARN, "; ".join(lines))
+
+
+def _key_file_problem(server: state.ModelServer) -> str:
+    """What is wrong with the key file of `server`, "" for nothing or no file."""
+    path = model_settings.key_folder(server.id) / model_settings.KEY
+    try:
+        found = os.lstat(path)
+    except FileNotFoundError:
+        return ""
+    except OSError as exc:
+        return f"the key file of {server.name} cannot be read ({exc.strerror})"
+    if not stat.S_ISREG(found.st_mode):
+        return f"the key file of {server.name} is not a regular file ({path})"
+    mode = stat.S_IMODE(found.st_mode)
+    if mode != project_secrets.FILE_MODE:
+        return f"the key file of {server.name} has mode {mode:o}, not 600"
+    return ""
+
+
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
     graphical = check_graphical_session(which)
     projects_found = check_projects()
@@ -804,6 +871,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
     lado_secrets = check_lado_secrets()
     overridden = check_project_variables()
     unused_secrets = check_project_secrets()
+    servers = check_model_servers()
     author = check_git_author()
     database = check_database()
     return [
@@ -819,6 +887,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         *([lado_secrets] if lado_secrets else []),
         *([overridden] if overridden else []),
         *([unused_secrets] if unused_secrets else []),
+        *([servers] if servers else []),
         *([graphical] if graphical else []),
         *check_agent_env(),
         check_config_folders(),

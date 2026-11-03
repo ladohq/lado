@@ -232,7 +232,17 @@ run, a warning `schema <n>, this LADO knows <m>; the sessions running on it not 
 <tmux's error>`, and the rest of the report follows. Newer: a warning
 with the newer-LADO refusal's words; incompatible: `FAIL` with that refusal's words, and the
 doctor exits 1. The checks that read lado.db (`Projects`, `Artifacts`, `Agent config
-folders`) then say `not checked: lado.db is not at this LADO's schema (see lado.db)`.
+folders`, `Model servers`) then say `not checked: lado.db is not at this LADO's schema (see
+lado.db)`.
+
+When model servers are saved (`lado model-server add`), `lado doctor` prints one `Model
+servers` line: all of them probed at once with their kept keys, so it takes one probe's
+time (about 10 s at most for a server that hangs). `ok` names each with its type
+(`LM Studio at home answers (LM Studio)`); `warn` names each that does not answer, asks for
+a key, refuses its key or is no server LADO knows, with the probe's reason, each key file
+that is not a regular file, cannot be read or has a mode other than 600, and each folder of
+`<LADO_HOME>/model-servers/` of no saved server, as left over (also when none is saved). It
+never fails: doctor's exit status is as without it.
 
 `lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
 own status command in the environment its agents get without a project, the login taken
@@ -568,7 +578,67 @@ argparse would print a word of the command line, the usage and a fixed text inst
 1). An address urllib cannot read is refused with a fixed text, never the address, which
 may hold a password (exit 2). The key is sent as `Authorization: Bearer` and `x-api-key`
 and kept nowhere: no output, log, error journal or file of `LADO_HOME`; the command never
-opens lado.db (`cli.NOT_MIGRATING`).
+opens lado.db (`cli.NOT_MIGRATING`). A key sent over plain `http://` to a host that is not
+`localhost`, `host.docker.internal` or a loopback, private or link-local IP address gets
+`lado: warning: the key goes to <host> over plain http://, unencrypted; use https:// if the
+server has it` on stderr before anything is sent (`model_servers.plain_http_warning`; no
+name is resolved for it), and the probe goes on.
+
+`lado model-server add <name> <address> [--key] [--replace]` probes the address as `probe`
+does, prints its lines, and saves the server LADO recognised under the name
+(`model_settings.py`, lado.db's `model_servers`, schema 38): its address (the probe's root),
+type and the APIs it proved, never its models (they change on the server); then `Saved
+model server "<name>".`, exit 0. A name is one line of visible text of 1 to 64 characters
+without spaces at its ends, any script; it is taken and found ignoring case (`casefold`),
+and a taken one is refused before any request: `a model server "<its name>" is saved
+already; to change its address or key: lado model-server add "<its name>" <address> [--key]
+--replace`. A probe that fails saves nothing and exits 1 with its line, which names this
+command to run again (`… asks for a key (401): run lado model-server add "<name>" <address>
+--key`, the container's hint `… a server on your machine: lado model-server add "<name>"
+http://host.docker.internal:<port> (not tried)`); an address the probe does not take exits
+2. `--key` is read and refused as the probe's (its fixed text names `add`; for both, a key
+larger than 64 KiB is refused, never cut), and the key is
+kept in `<LADO_HOME>/model-servers/<id>/key` alone (the folders 700, the file 600 whatever
+the umask, written by a rename with no symbolic link followed on the way, by the writer of
+LADO's secrets, `project_secrets.write_at`): never in lado.db, an output, a log or the error
+journal. `--replace` probes a saved server's new address with the new key, or without
+`--key` with its kept one, and replaces its address, type and APIs (and key): `Replaced
+model server "<name>".`; its models keep it, and a probe that fails changes nothing. A
+name starting with `-` follows `--` (`lado model-server remove -- -x`).
+
+`lado model-server list` prints `NAME ADDRESS TYPE KEY CLIs`, one line per server sorted by
+name ignoring case: `yes` under KEY when its key file is there, and the CLIs whose API it
+proved when saved (`none` for none). It asks no server. With none: `No model servers. Add
+one: lado model-server add <name> <address> [--key]`. `lado model-server remove <name>`
+removes the server, its key file and folder: `Removed model server "<name>".`; while a
+configured model uses it, it is refused, changing nothing: `model server "<name>" is used by
+the models <model>, …; remove them first: lado model remove "<model>"` (exit 1). The three
+commands migrate lado.db as `lado ls` does; `probe` alone does not.
+
+`lado model add <name> --cli <cli> --model <model> [--server <server>]` saves a configured
+model: a name (the rules of a server's name, its own namespace), an agent CLI by its
+provider's name, the model as that CLI names it (spaces around it dropped) and optionally a
+saved server. A taken name is refused first (`a model "<its name>" is saved already; remove
+it first: lado model remove "<its name>"`), then a CLI LADO does not know (naming those it
+knows), an empty model, a server no one saved. Without a server the model is checked as
+`lado start --model` checks it (`model_check.py`, the CLI's list read with the agents'
+environment): an alias or a listed name is saved, a name the list lacks refused, and with no
+list it is saved after `lado: warning: <why>: LADO cannot check <model>; …` on stderr. With a
+server LADO probes it now with its kept key: one that does not answer, asks for a key,
+refuses it or is no longer a server LADO knows refuses the model (`<the probe's line>; LADO
+cannot check <model>`, the container's hint naming `lado model-server add "<server>"
+--replace`); the API the CLI's provider speaks must be among the APIs it proves (`<server>
+does not suit <CLI>: it has no <API>; it suits <CLIs>`, `it suits no CLI` for none); then
+the model is checked against the server's list as against a CLI's (`<model> is not in
+<server>'s list of models; lado model-server probe <address> prints the list`). Claude Code
+and Codex models on a server are saved by that rule; no session uses a configured model
+yet. Saved: `Saved model "<name>": <CLI>, <model>[ on <server>] (<the check's text>)`, exit
+0; refused: exit 1, nothing saved.
+
+`lado model list` prints `NAME CLI MODEL SERVER` sorted by name ignoring case (`—` for no
+server), running no CLI and asking no server; with none: `No models. Add one: lado model add
+<name> --cli <cli> --model <model> [--server <server>]`. `lado model remove <name>` removes
+it (`Removed model "<name>".`); its server stays. `lado model` alone prints its help.
 
 `lado ui` prints (or opens) the local link with the token, then, when the running server
 has a link for another device, `From another machine: <link>`: it asks the server

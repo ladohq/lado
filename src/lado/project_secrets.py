@@ -37,6 +37,7 @@ class LinkRefused(ValueError):
     """A symbolic link on the way to a project's secrets; lado.projects names it."""
 
     def __init__(self, path: Path):
+        self.path = path
         super().__init__(
             f"{path} is a symbolic link: LADO writes and removes a project's secrets only in "
             "its own folders"
@@ -138,12 +139,12 @@ def _open_folder(fd: int, name: str, path: Path) -> int:
 
 
 def _chain(id: str, *, make: bool, depth: int = 3) -> contextlib.AbstractContextManager:
-    """The folder `depth` levels down `projects/<id>/secrets` (_open_chain)."""
-    return _open_chain((DATA, id, SECRETS)[:depth], make=make)
+    """The folder `depth` levels down `projects/<id>/secrets` (open_chain)."""
+    return open_chain((DATA, id, SECRETS)[:depth], make=make)
 
 
 @contextlib.contextmanager
-def _open_chain(parts: tuple[str, ...], *, make: bool) -> Iterator[int | None]:
+def open_chain(parts: tuple[str, ...], *, make: bool) -> Iterator[int | None]:
     """The folder `parts` down from LADO_HOME, opened with no link followed on the way
     (LinkRefused); a missing one is made 700 with `make`, else None. `make` makes every
     folder of the chain 700."""
@@ -175,14 +176,15 @@ def write(id: str, name: str, value: str) -> None:
     """Set the secret `name` of `id` to `value` (checked by lado.projects), replacing it
     whole. OSError when the disk refuses it, the old value then kept; ValueError for a name
     that is no variable name (lado.projects refuses it first)."""
-    _write((DATA, id, SECRETS), folder(id), name, value)
+    write_at((DATA, id, SECRETS), folder(id), name, value)
 
 
-def _write(parts: tuple[str, ...], where: Path, name: str, value: str) -> None:
-    """Set `name` in the folder `parts` (at `where`) to `value`, as `write` says."""
+def write_at(parts: tuple[str, ...], where: Path, name: str, value: str) -> None:
+    """Set `name` in the folder `parts` (at `where`) to `value`, as `write` says. Also the
+    writer of a model server's key file (lado.model_settings)."""
     if not _is_name(name):
         raise ValueError(f"{name!r} is not a variable name")
-    with _open_chain(parts, make=True) as fd:
+    with open_chain(parts, make=True) as fd:
         assert fd is not None
         _refuse_link(fd, name, where / name)
         temporary = f".{name}.{secrets.token_hex(6)}.tmp"
@@ -209,14 +211,15 @@ def _write(parts: tuple[str, ...], where: Path, name: str, value: str) -> None:
 def remove(id: str, name: str) -> bool:
     """Remove the secret `name` of `id`; False when it has none of that name, which a name
     that is no variable name never is (a path or a file being written is no secret)."""
-    return _remove((DATA, id, SECRETS), folder(id), name)
+    return remove_at((DATA, id, SECRETS), folder(id), name)
 
 
-def _remove(parts: tuple[str, ...], where: Path, name: str) -> bool:
-    """Remove `name` from the folder `parts` (at `where`), as `remove` says."""
+def remove_at(parts: tuple[str, ...], where: Path, name: str) -> bool:
+    """Remove `name` from the folder `parts` (at `where`), as `remove` says. Also the
+    remover of a model server's key file (lado.model_settings)."""
     if not _is_name(name):
         return False
-    with _open_chain(parts, make=False) as fd:
+    with open_chain(parts, make=False) as fd:
         if fd is None:
             return False
         _refuse_link(fd, name, where / name)
@@ -240,12 +243,12 @@ def lado_folder() -> Path:
 def write_lado(name: str, value: str) -> None:
     """Set LADO's secret `name` to `value`, as `write` does for a project's."""
     state.home()  # made when missing, as for lado.db
-    _write((agent_env.LADO_SECRETS,), lado_folder(), name, value)
+    write_at((agent_env.LADO_SECRETS,), lado_folder(), name, value)
 
 
 def remove_lado(name: str) -> bool:
     """Remove LADO's secret `name`, as `remove` does for a project's."""
-    return _remove((agent_env.LADO_SECRETS,), lado_folder(), name)
+    return remove_at((agent_env.LADO_SECRETS,), lado_folder(), name)
 
 
 def read_lado() -> agent_env.Folder:

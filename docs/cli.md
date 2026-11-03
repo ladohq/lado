@@ -265,7 +265,7 @@ cli_auth_credentials_store="file"`, `opencode auth list`, `kilo auth list`; Code
 folder`, `login shell`, `the process that starts LADO`) or the CLI's own login file
 (`Claude Code's login file`, `Codex's login file`, or the file's path), e.g.
 `[ok] Claude Code login: Subscription (token) · LADO's secret`; `[warn] Claude Code login: not logged in: new
-sessions and workers of it are refused, a resumed agent waits (Settings → Providers and
+sessions and workers of it are refused, a resumed agent waits (Settings → Agent CLIs and
 environment)` for a CLI whose agents need one (Claude Code; Codex on OpenAI's models, its
 default, by the model provider of the user's Codex config); `[warn] Codex CLI login: not
 logged in: Your Codex keeps its login in the system keyring, which Codex agents cannot
@@ -286,7 +286,7 @@ not logged in, so the session was not started: … or set OPENAI_API_KEY as LADO
 a project secret`). `lado start <git-url>` and
 `lado start --new` say so before the clone or the new folder when the provider is known
 (`--provider`, or the only one installed). A supervisor's `spawn_worker` of such a CLI gets
-`… so the worker was not started: ask the human to log in in Settings → Providers and
+`… so the worker was not started: ask the human to log in in Settings → Agent CLIs and
 environment, or start the worker with another provider`; each worker is checked by its own
 provider, so a Claude session's supervisor can still start Kilo workers. A resume by hand
 (`lado start` of a stopped session) is refused the same way by the provider of the

@@ -77,12 +77,22 @@ ADDRESS, KEY = "address", "key"  # the field a ProbeError concerns
 
 class ProbeError(Exception):
     """Why a probe found no server, one line; `hint` what the human can try ("" for none);
-    `field` the field of a form it concerns (ADDRESS or KEY), for the UI."""
+    `field` the field of a form it concerns (ADDRESS or KEY), for the UI; `page` and
+    `page_hint` the line and the hint for the UI, which name no command (None: the same)."""
 
-    def __init__(self, text: str, hint: str = "", field: str = ADDRESS):
+    def __init__(
+        self,
+        text: str,
+        hint: str = "",
+        field: str = ADDRESS,
+        page: str | None = None,
+        page_hint: str | None = None,
+    ):
         super().__init__(text)
         self.hint = hint
         self.field = field
+        self.page = text if page is None else page
+        self.page_hint = hint if page_hint is None else page_hint
 
 
 @dataclass(frozen=True)
@@ -214,11 +224,16 @@ def plain_http_warning(root: str, key: str | None) -> str | None:
     return PLAIN_HTTP.format(host=host)
 
 
-def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Probe:
+def probe(
+    text: str,
+    key: str | None = None,
+    command: str = PROBE_COMMAND,
+    key_where: str = "enter it in Key",
+) -> Probe:
     """What the server at `text` is; ValueError for an address LADO does not probe,
     ProbeError for one that does not answer, asks for a key, refuses it, or is no model
     server LADO knows. `command` is the command run, without its address, for the messages
-    that name one to run again."""
+    that name one to run again; `key_where` where the UI takes a key, for its line."""
     root, added = address(text)
     if key is not None and not carriable(key):
         raise ProbeError(NOT_CARRIABLE, field=KEY)
@@ -233,7 +248,11 @@ def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Pr
                 f"{root}: TLS failed ({listed.why}); a company's CA goes in the file "
                 "SSL_CERT_FILE names"
             )
-        raise ProbeError(f"{root} does not answer ({listed.why})", _container_hint(root, command))
+        raise ProbeError(
+            f"{root} does not answer ({listed.why})",
+            _container_hint(root, command),
+            page_hint=_container_hint(root, None),
+        )
     asked = [
         (root + OLLAMA_VERSION, "GET", {}),
         (root + LMSTUDIO_MODELS, "GET", {}),
@@ -247,6 +266,7 @@ def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Pr
                 raise ProbeError(
                     f"{root} asks for a key ({answer.status}): run {command} {root} --key",
                     field=KEY,
+                    page=f"{root} asks for a key ({answer.status}): {key_where}",
                 )
             raise ProbeError(f"{root} refused the key ({answer.status})", field=KEY)
     apis = frozenset(api for api, a in zip(API_PATHS, posts, strict=True) if a.refuses_as_an_api())
@@ -360,9 +380,9 @@ def _kind(
     return None
 
 
-def _container_hint(root: str, command: str) -> str:
+def _container_hint(root: str, command: str | None) -> str:
     """In LADO's container, for a localhost address: the host's address to try instead with
-    `command`."""
+    `command` (None: the address alone, for the UI)."""
     if not update.in_container():
         return ""
     parts = urllib.parse.urlsplit(root)
@@ -374,9 +394,10 @@ def _container_hint(root: str, command: str) -> str:
         except ValueError:
             return ""
     port = parts.port or (443 if parts.scheme == "https" else 80)
-    return CONTAINER_HINT.format(
-        command=command, address=f"{parts.scheme}://host.docker.internal:{port}{parts.path}"
-    )
+    address = f"{parts.scheme}://host.docker.internal:{port}{parts.path}"
+    if command is None:
+        return CONTAINER_HINT.replace("{command} ", "").format(address=address)
+    return CONTAINER_HINT.format(command=command, address=address)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):

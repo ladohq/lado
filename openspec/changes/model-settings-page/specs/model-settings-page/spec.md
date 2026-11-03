@@ -66,7 +66,7 @@ Each model of an open source SHALL have a tick per CLI that can run it: a CLI's 
 tick; a server's source a column per CLI that is installed and whose API the server
 proves. A tick SHALL be on exactly when a configured model has that CLI, model and server.
 Ticking SHALL save one with its default name as `lado model add` would; unticking SHALL
-remove it.
+remove it, offering Undo as Remove does.
 
 #### Scenario: Claude Sonnet
 - **WHEN** the human opens Claude Code and ticks `sonnet`
@@ -177,6 +177,17 @@ installed` as a warning.
 - **WHEN** the human presses Remove on `Claude Sonnet`
 - **THEN** it is gone from Your models and the tick of `sonnet` under Claude Code is off
 
+### Requirement: Undo of a model removed
+
+After a model is removed, by its tick or Remove, Your models SHALL show `Removed "<name>"
+· Undo` for a few seconds; Undo SHALL save the model again with its name, CLI, model and
+server, as `lado model add <name>` would, a refusal shown by it.
+
+#### Scenario: A renamed model unticked and brought back
+- **WHEN** the human renamed `Claude Sonnet` to `Сонет для ревью`, unticks `sonnet` and
+  presses Undo
+- **THEN** `Сонет для ревью` is saved again and the tick of `sonnet` is on
+
 ### Requirement: Renaming a model in place
 
 **✎** by a model's name SHALL turn the name into a field with Save and Cancel; Save SHALL
@@ -222,17 +233,28 @@ Neither SHALL stop the save.
   `10.0.0.5:4000/v1/`
 - **THEN** `LiteLLM` is saved and shows `same address as model server "gateway"`
 
-### Requirement: A refusal is the command's line under its field
+### Requirement: A refusal is the command's rule in the page's words under its field
 
-Every refusal and warning SHALL be the line the matching command prints, its hint under
-it, under the field it concerns: Name, Address or Key of a server; Other model's field or
-CLI; a rename's field; a refusal of no field under the buttons or the tick's row. The form
-SHALL keep its values but the key's.
+Every refusal and warning SHALL be the one the matching command makes, its hint under it,
+under the field it concerns: Name, Address or Key of a server; Other model's field or CLI;
+a rename's field; a refusal of no field under the buttons or the tick's row. Its line and
+hint SHALL name no command to run, but what to do on the page; the commands SHALL print
+their lines as before. The form SHALL keep its values but the key's.
 
 #### Scenario: A gateway that asks for a key
 - **WHEN** the human adds `work` at `https://gw.corp/llm` without a key and it answers 401
-- **THEN** under Key it shows `https://gw.corp/llm asks for a key (401): run lado
-  model-server add "work" https://gw.corp/llm --key`
+- **THEN** under Key it shows `https://gw.corp/llm asks for a key (401): enter it in Key`,
+  and `lado model-server add work https://gw.corp/llm` prints `… asks for a key (401): run
+  lado model-server add "work" https://gw.corp/llm --key`
+
+#### Scenario: A name taken
+- **WHEN** the human renames a model to `claude sonnet` and `Claude Sonnet` is saved
+- **THEN** under the field it shows `the name is taken by the model "Claude Sonnet"`
+
+#### Scenario: A model gone from the server's list
+- **WHEN** the human ticks a model its server no longer lists
+- **THEN** the row shows `<model> is not in <server>'s list of models; ↻ Refresh reads the
+  list again`
 
 #### Scenario: An address that does not answer
 - **WHEN** the human adds `lab` at `http://127.0.0.1:<a closed port>`

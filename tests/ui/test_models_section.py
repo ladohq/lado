@@ -101,6 +101,11 @@ def test_first_open_and_ticking_claude_sonnet(page: Page, clis, server, lms, sho
     sonnet.click()
     expect(models.get_by_text(EMPTY)).to_be_visible()
     assert state.models() == []
+    # Undo brings the model back under its name, ticked; it then goes.
+    models.get_by_role("button", name="Undo").click()
+    expect(sonnet).to_be_checked()
+    assert [m.name for m in state.models()] == ["Claude Sonnet"]
+    expect(models.get_by_role("button", name="Undo")).to_have_count(0)
 
 
 def test_a_server_added_ticked_renamed_refreshed_and_removed(

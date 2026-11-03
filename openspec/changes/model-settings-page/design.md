@@ -195,6 +195,20 @@ server in its own process: the key canary) and a `--with-models` case in
 `web/src/ModelSources.test.tsx`. UI e2e: new `tests/ui/test_models_section.py`. Why:
 AGENTS.md's lowest layer each; the canary and the real command cross processes.
 
+### D15. After the human's manual check
+
+- The page's lines name no command: `Refused` and `ProbeError` carry `page` and `page_hint`
+  (None: the command's), `model_check.Verdict` a refusal's `page`; `model_entries` answers
+  them, the CLI prints `str(exc)` and `hint` as before. `probe(key_where=…)` says where the
+  UI takes a key (`enter it in Key`; a saved server's `Change sets its key`).
+- A model removed (its tick or Remove) offers Undo for `UNDO_MS`: `POST /api/models` with
+  its name, CLI, model and server, so the add's checks run again.
+- Remove of a server sends the models it named (`confirmed`); D7.
+- The plain-http warning before Add: `POST /api/model-servers/check` (D1's table).
+- Names on a server several CLIs suit say their CLI; D4.
+
+Why: the human's manual check of the page (#2935: the three choices by the recommendation).
+
 ## Risks / Trade-offs
 
 - Opening a server's source takes up to ~10 s for one that hangs: the source says

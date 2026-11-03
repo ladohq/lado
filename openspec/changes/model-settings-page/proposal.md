@@ -55,8 +55,8 @@ provider's own list).
 - `lado model-server remove <name> --with-models` removes a server and its models; without
   the flag the refusal stays, its hint naming the flag. `lado doctor` names a configured
   model its server no longer lists.
-- Every refusal is the command's line, under the field it concerns, in the launch window's
-  note look.
+- Every refusal is the command's, in the page's words (no command to run; the human's
+  manual check), under the field it concerns, in the launch window's note look.
 - A new API under `/api/model-settings`, `/api/model-servers` and `/api/models`, and
   `fresh` on `GET /api/providers/{name}/models`. A server's key enters it only in the body
   of a POST and never leaves it (a canary test).

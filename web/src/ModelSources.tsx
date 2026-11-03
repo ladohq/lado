@@ -95,6 +95,7 @@ type Props = {
   saved: Record<string, Saved>;
   onSaved: (key: string, saved: Saved | null) => void;
   onChanged: (settings?: ModelSettings) => void;
+  onRemoved: (model: ConfiguredModelInfo) => void; // a model unticked: Undo offers it back
   // The latest read of each source, by key: whatever fills a source (a read here, an add or
   // a change) counts one up, so an older read's late answer is dropped.
   latest: MutableRefObject<Record<string, number>>;
@@ -155,6 +156,7 @@ export function ModelSources(props: Props) {
             onToggle={() => toggle(key, () => readCli(row.cli.name))}
             onRefresh={() => readCli(row.cli.name)}
             onChanged={props.onChanged}
+            onRemoved={props.onRemoved}
           />
         );
       })}
@@ -179,6 +181,7 @@ export function ModelSources(props: Props) {
             }}
             onStale={() => props.onSaved(key, null)}
             onChanged={props.onChanged}
+            onRemoved={props.onRemoved}
           />
         );
       })}
@@ -202,6 +205,7 @@ function CliSource({
   onToggle,
   onRefresh,
   onChanged,
+  onRemoved,
 }: {
   row: ProviderLogins;
   open: boolean;
@@ -210,6 +214,7 @@ function CliSource({
   onToggle: () => void;
   onRefresh: () => void;
   onChanged: (settings?: ModelSettings) => void;
+  onRemoved: (model: ConfiguredModelInfo) => void;
 }) {
   const cli = row.cli;
   const off = row.ready && !cli.installed;
@@ -255,6 +260,7 @@ function CliSource({
           models={models}
           missing={models.filter((m) => m.cli === cli.name && m.server === null)}
           onChanged={onChanged}
+          onRemoved={onRemoved}
         />
       )}
     </li>
@@ -276,6 +282,7 @@ function ServerSource({
   onProbe,
   onStale,
   onChanged,
+  onRemoved,
 }: {
   server: ModelServerInfo;
   open: boolean;
@@ -288,6 +295,7 @@ function ServerSource({
   onProbe: (probe: ProbeInfo, saved: Saved) => void;
   onStale: () => void;
   onChanged: (settings?: ModelSettings) => void;
+  onRemoved: (model: ConfiguredModelInfo) => void;
 }) {
   const [mode, setMode] = useState<"change" | "remove" | null>(null);
   const own = models.filter((m) => (m.server ?? "").toLowerCase() === server.name.toLowerCase());
@@ -362,6 +370,7 @@ function ServerSource({
           models={models}
           missing={own}
           onChanged={onChanged}
+          onRemoved={onRemoved}
         />
       )}
     </li>
@@ -379,6 +388,7 @@ function SourceBody({
   models,
   missing,
   onChanged,
+  onRemoved,
 }: {
   read: Read | undefined;
   rows: ModelRow[];
@@ -388,6 +398,7 @@ function SourceBody({
   models: ConfiguredModelInfo[];
   missing: ConfiguredModelInfo[];
   onChanged: (settings?: ModelSettings) => void;
+  onRemoved: (model: ConfiguredModelInfo) => void;
 }) {
   const [search, setSearch] = useState("");
   const [refused, setRefused] = useState<{ model: string; text: string } | null>(null);
@@ -416,7 +427,10 @@ function SourceBody({
       if (on) await addModel({ name: null, cli, model, server });
       else {
         const [one] = ticked(models, cli, model, server);
-        if (one) await removeModel(one.name);
+        if (one) {
+          await removeModel(one.name);
+          onRemoved(one);
+        }
       }
     } catch (error) {
       setRefused({ model, text: refusalOf(error).message });

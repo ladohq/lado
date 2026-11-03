@@ -9,6 +9,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useLocation } from "react-router";
 
 import {
+  addModel,
   addModelServer,
   type ConfiguredModelInfo,
   type EntryRefused,
@@ -42,7 +43,8 @@ import { messageOf } from "./SessionControl";
 
 export const EMPTY =
   "No models yet. Without them each agent runs on its CLI's default model. Tick models in Sources below.";
-const LOGIN_POLLS = 30; // reads of the CLIs' rows at most while they are not read yet
+const LOGIN_POLLS = 30;
+export const UNDO_MS = 8000; // how long a removed model's Undo stays // reads of the CLIs' rows at most while they are not read yet
 
 export function ModelSettings() {
   const id = useId();
@@ -129,6 +131,26 @@ export function ModelSettings() {
       return next;
     });
   }, []);
+  // The model removed last, by its tick or Remove: Undo saves it again under its name, for
+  // UNDO_MS (kept while its Undo was refused, to say why).
+  const [removed, setRemoved] = useState<{ model: ConfiguredModelInfo; problem: string | null } | null>(null);
+  const onRemoved = useCallback((model: ConfiguredModelInfo) => setRemoved({ model, problem: null }), []);
+  useEffect(() => {
+    if (!removed || removed.problem) return;
+    const timer = setTimeout(() => setRemoved(null), UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [removed]);
+  const undo = async () => {
+    if (!removed) return;
+    const { model } = removed;
+    try {
+      await addModel({ name: model.name, cli: model.cli, model: model.model, server: model.server });
+      setRemoved(null);
+    } catch (error) {
+      setRemoved({ model, problem: refusalOf(error).message });
+    }
+    void reload();
+  };
   const servers = useRef<string[]>([]);
   useEffect(() => {
     if (!entries) return;
@@ -149,10 +171,20 @@ export function ModelSettings() {
         <>
           <div className="project-section">
             <h3>Your models</h3>
+            {removed && (
+              <p className="mm-line mm-undo" role="status">
+                <span>{`Removed "${removed.model.name}"`}</span>
+                <span aria-hidden="true"> · </span>
+                <button type="button" className="quiet" onClick={() => void undo()}>
+                  Undo
+                </button>
+                {removed.problem && <span className="field-note bad">{removed.problem}</span>}
+              </p>
+            )}
             {entries.models.length === 0 ? (
               <p className="mm-empty">{EMPTY}</p>
             ) : (
-              <YourModels entries={entries} logins={logins} reads={reads} onChanged={reload} />
+              <YourModels entries={entries} logins={logins} reads={reads} onChanged={reload} onRemoved={onRemoved} />
             )}
           </div>
           <div className="project-section">
@@ -171,6 +203,7 @@ export function ModelSettings() {
               onSaved={onSaved}
               onChanged={(given) => void reload(given)}
               latest={reading}
+              onRemoved={onRemoved}
             />
             {adding ? (
               <AddServer
@@ -216,20 +249,23 @@ function YourModels({
   logins,
   reads,
   onChanged,
+  onRemoved,
 }: {
   entries: Entries;
   logins: ProviderLogins[];
   reads: Record<string, Read>;
   onChanged: (given?: Entries) => Promise<void>;
+  onRemoved: (model: ConfiguredModelInfo) => void;
 }) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [problem, setProblem] = useState<{ name: string; text: string } | null>(null);
-  const remove = async (name: string) => {
+  const remove = async (model: ConfiguredModelInfo) => {
     setProblem(null);
     try {
-      await onChanged(await removeModel(name));
+      await onChanged(await removeModel(model.name));
+      onRemoved(model);
     } catch (error) {
-      setProblem({ name, text: refusalOf(error).message });
+      setProblem({ name: model.name, text: refusalOf(error).message });
     }
   };
   return (
@@ -282,7 +318,7 @@ function YourModels({
                 ))}
               </td>
               <td className="project-acts">
-                <button type="button" className="quiet" onClick={() => void remove(model.name)}>
+                <button type="button" className="quiet" onClick={() => void remove(model)}>
                   Remove
                 </button>
               </td>

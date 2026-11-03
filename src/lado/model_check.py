@@ -16,6 +16,7 @@ DEFAULT, OK, WARN, REFUSED = "default", "ok", "warn", "refused"
 class Verdict:
     kind: str  # DEFAULT (no model), OK, WARN or REFUSED
     text: str  # for the human, one line
+    page: str = ""  # a refusal's line naming no command, for Settings → Models ("": text)
 
 
 def check(provider: providers.Provider, model: str, env: Mapping[str, str]) -> Verdict:
@@ -46,5 +47,7 @@ def verdict(
     if model in listed.models:
         return Verdict(OK, f"in {whose}'s list of models")
     return Verdict(
-        REFUSED, f"{model} is not in {whose}'s list of models; {listed.command} prints the list"
+        REFUSED,
+        f"{model} is not in {whose}'s list of models; {listed.command} prints the list",
+        f"{model} is not in {whose}'s list of models",
     )

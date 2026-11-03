@@ -47,12 +47,22 @@ MODEL_FIELD = "model"
 
 class Refused(Exception):
     """Why a command on the entries changed nothing, one line; `hint` what the human can try
-    ("" for none); `field` the field it concerns."""
+    ("" for none); `field` the field it concerns; `page` and `page_hint` the line and the
+    hint for Settings → Models, which names no command (None: the same as the command's)."""
 
-    def __init__(self, text: str, hint: str = "", field: str = ""):
+    def __init__(
+        self,
+        text: str,
+        hint: str = "",
+        field: str = "",
+        page: str | None = None,
+        page_hint: str | None = None,
+    ):
         super().__init__(text)
         self.hint = hint
         self.field = field
+        self.page = text if page is None else page
+        self.page_hint = hint if page_hint is None else page_hint
 
 
 def check_name(name: str, of: str) -> None:
@@ -86,7 +96,9 @@ def add_command(name: str, replace: bool) -> str:
 def no_server(name: str, field: str = "") -> Refused:
     """The refusal of a server name no saved server has."""
     return Refused(
-        f'no model server "{name}" is saved; lado model-server list names them', field=field
+        f'no model server "{name}" is saved; lado model-server list names them',
+        field=field,
+        page=f'no model server "{name}" is saved',
     )
 
 
@@ -95,6 +107,7 @@ def _server_taken(name: str) -> Refused:
         f'a model server "{name}" is saved already; to change its address or key: '
         f'lado model-server add "{name}" <address> [--key] --replace',
         field=NAME,
+        page=f'a model server "{name}" is saved already; its Change sets another address or key',
     )
 
 
@@ -210,13 +223,17 @@ def remove_server(
         used = state.models_on(saved.id)
         if not used:  # added and removed again meanwhile
             raise Refused(
-                f'model server "{saved.name}" was used by a model meanwhile; run the command again'
+                f'model server "{saved.name}" was used by a model meanwhile; run the command again',
+                page=f'model server "{saved.name}" was used by a model meanwhile; try again',
             ) from None
         quoted = " ".join('"' + m.name + '"' for m in used)
+        names = ", ".join(m.name for m in used)
         raise Refused(
             f'model server "{saved.name}" is used by the models '
-            f"{', '.join(m.name for m in used)}; remove them first: lado model remove {quoted}",
+            f"{names}; remove them first: lado model remove {quoted}",
             f'or remove them with it: lado model-server remove "{saved.name}" --with-models',
+            page=f'model server "{saved.name}" is used by the models {names}',
+            page_hint="",
         ) from None
     return _remove_folder(saved)
 
@@ -227,11 +244,11 @@ def _remove_folder(saved: state.ModelServer) -> str:
     try:
         _remove_key(saved.id)
     except OSError as exc:
-        raise Refused(
+        removed = (
             f'removed model server "{saved.name}", but not its folder '
-            f"{key_folder(saved.id)} ({exc.strerror or type(exc).__name__}); lado doctor "
-            "names it as left over"
-        ) from None
+            f"{key_folder(saved.id)} ({exc.strerror or type(exc).__name__})"
+        )
+        raise Refused(f"{removed}; lado doctor names it as left over", page=removed) from None
     return saved.name
 
 
@@ -298,7 +315,11 @@ def check_model(
             raise no_server(server_name, SERVER_FIELD)
         verdict = _on_server(provider, model, server, probe)
     if verdict.kind == model_check.REFUSED:
-        raise Refused(verdict.text, field=MODEL_FIELD)
+        raise Refused(
+            verdict.text,
+            field=MODEL_FIELD,
+            page=f"{verdict.page}; ↻ Refresh reads the list again" if verdict.page else None,
+        )
     if name is None:
         # The name comes from the model: a model no list checked may hold what no name may
         # (a hidden character), refused under the model's field.
@@ -394,6 +415,7 @@ def _on_server(
             f"{model} is an embeddings model on {server.name}; an agent needs a chat model: "
             f"{model_servers.PROBE_COMMAND} {server.address} lists the models",
             field=MODEL_FIELD,
+            page=f"{model} is an embeddings model on {server.name}; an agent needs a chat model",
         )
     listed = base.ModelList(
         models=found.models,
@@ -406,7 +428,12 @@ def _on_server(
 def probe_saved(server: state.ModelServer) -> model_servers.Probe:
     """`server` probed now with its kept key (Refused for a key file LADO does not read,
     model_servers.ProbeError for a probe that fails)."""
-    return model_servers.probe(server.address, server_key(server), add_command(server.name, True))
+    return model_servers.probe(
+        server.address,
+        server_key(server),
+        add_command(server.name, True),
+        key_where="Change sets its key",
+    )
 
 
 def rename_model(name: str, new: str) -> state.ConfiguredModel:
@@ -452,14 +479,21 @@ def remove_models(names: list[str], removed: Callable[[str], None]) -> None:
 def _no_models(names: list[str]) -> Refused:
     quoted = ", ".join(f'"{name}"' for name in names)
     if len(names) == 1:
-        return Refused(f"no model {quoted} is saved; lado model list names them")
-    return Refused(f"no models {quoted} are saved; lado model list names them")
+        return Refused(
+            f"no model {quoted} is saved; lado model list names them",
+            page=f"no model {quoted} is saved",
+        )
+    return Refused(
+        f"no models {quoted} are saved; lado model list names them",
+        page=f"no models {quoted} are saved",
+    )
 
 
 def _model_taken(name: str) -> Refused:
     return Refused(
         f'a model "{name}" is saved already; remove it first: lado model remove "{name}"',
         field=NAME,
+        page=f'the name is taken by the model "{name}"',
     )
 
 

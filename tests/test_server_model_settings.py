@@ -9,7 +9,7 @@ import fake_model_server as fake
 import pytest
 from fastapi.testclient import TestClient
 
-from lado import agent_env, model_servers, model_settings, providers, state
+from lado import agent_env, model_servers, model_settings, providers, state, update
 from lado.providers import base
 from lado.server import app as server_app
 from lado.server import auth, model_entries
@@ -176,9 +176,7 @@ def test_add_server_refusals_carry_fields(client, serve):
     }
     work = serve("openai", key="k-1")
     detail = refused(add_server(client, "work", work.url))
-    assert detail["message"] == (
-        f'{work.url} asks for a key (401): run lado model-server add "work" {work.url} --key'
-    )
+    assert detail["message"] == (f"{work.url} asks for a key (401): enter it in Key")
     assert detail["field"] == "key"
     assert refused(add_server(client, "x", "ftp://x"))["field"] == "address"
     assert refused(add_server(client, " x", work.url))["field"] == "name"
@@ -263,7 +261,7 @@ def test_probe_of_a_server_that_does_not_answer(client, serve):
     detail = refused(client.post("/api/model-servers/lms/probe"))
     assert detail["message"] == f"{server.url} does not answer (connection refused)"
     assert refused(client.post("/api/model-servers/nope/probe"))["message"] == (
-        'no model server "nope" is saved; lado model-server list names them'
+        'no model server "nope" is saved'
     )
 
 
@@ -309,7 +307,7 @@ def test_check_model_ok_warn_refused(client, serve, monkeypatch):
     }
     assert check(client, cli="kilo", model="kilo/z") == {
         "kind": "refused",
-        "text": "kilo/z is not in Kilo CLI's list of models; kilo models prints the list",
+        "text": "kilo/z is not in Kilo CLI's list of models; ↻ Refresh reads the list again",
         "field": "model",
     }
     listing(monkeypatch, "claude", base.ModelList(("opus",), None, why="no list"))
@@ -318,6 +316,67 @@ def test_check_model_ok_warn_refused(client, serve, monkeypatch):
     assert check(client, cli="gemini", model="x")["field"] == "cli"
     assert check(client, cli="kilo", model="kilo/a", server="nope")["field"] == "server"
     assert state.schema_version() is None or state.models() == []
+
+
+def test_the_pages_refusals_name_no_command(client, serve, monkeypatch):
+    """The page's lines say what to do on the page, never a command to run; the CLI prints
+    its own (tests/test_cli_model_settings.py)."""
+    said = []
+
+    def page(answer):
+        detail = refused(answer)
+        said.append(detail)
+        return detail["message"], detail["hint"]
+
+    gateway = serve("openai", key="k-1")
+    assert page(add_server(client, "gw", gateway.url)) == (
+        f"{gateway.url} asks for a key (401): enter it in Key",
+        "",
+    )
+    ok(add_server(client, "gw", gateway.url, key="k-1"))
+    assert page(add_server(client, "GW", gateway.url))[0] == (
+        'a model server "gw" is saved already; its Change sets another address or key'
+    )
+    model_settings._write_key(state.model_server("gw").id, "k-2")  # the server takes no more
+    assert page(client.post("/api/model-servers/gw/probe")) == (
+        f"{gateway.url} refused the key (401)",
+        "",
+    )
+    open_one = serve("openai")
+    ok(add_server(client, "open", open_one.url))
+    open_one.close()
+    asking = serve("openai", key="k-3", port=open_one.port)
+    assert page(client.post("/api/model-servers/open/probe")) == (
+        f"{open_one.url} asks for a key (401): Change sets its key",
+        "",
+    )
+    asking.close()
+    lms = serve("lmstudio")
+    ok(add_server(client, "lms", lms.url))
+    assert page(
+        client.post(
+            "/api/models", json={"cli": "opencode", "model": fake.EMBEDDINGS, "server": "lms"}
+        )
+    )[0] == (  # fmt: skip
+        f"{fake.EMBEDDINGS} is an embeddings model on lms; an agent needs a chat model"
+    )
+    assert page(
+        client.post("/api/models", json={"cli": "opencode", "model": "gone", "server": "lms"})
+    )[0] == (  # fmt: skip
+        "gone is not in lms's list of models; ↻ Refresh reads the list again"
+    )
+    assert page(
+        client.post("/api/models", json={"cli": "opencode", "model": "qwen3-8b", "server": "nope"})
+    )[0] == (  # fmt: skip
+        'no model server "nope" is saved'
+    )
+    monkeypatch.setattr(update, "in_container", lambda: True)
+    port = closed_port()
+    assert page(add_server(client, "lab", f"http://localhost:{port}"))[1] == (
+        "LADO runs in a container, where localhost is the container itself; a server on your "
+        f"machine: http://host.docker.internal:{port} (not tried)"
+    )
+    assert [d for d in said if "lado " in d["message"] + d["hint"]] == []
 
 
 def test_check_model_of_a_cli_reads_its_list_once_a_minute(client, monkeypatch):
@@ -410,7 +469,7 @@ def test_rename_model_route(client):
     detail = refused(client.patch("/api/models/Сильная", json={"name": "OTHER"}))
     assert (detail["field"], detail["message"]) == (
         "name",
-        'a model "Other" is saved already; remove it first: lado model remove "Other"',
+        'the name is taken by the model "Other"',
     )
     assert refused(client.patch("/api/models/nope", json={"name": "x"}))["field"] == ""
 
@@ -426,7 +485,7 @@ def test_remove_model_route(client):
     state.add_model("Claude Sonnet", "claude", "sonnet", None)
     assert ok(client.delete("/api/models/claude%20SONNET"))["models"] == []
     detail = refused(client.delete("/api/models/claude%20sonnet"))
-    assert detail["message"] == 'no model "claude sonnet" is saved; lado model list names them'
+    assert detail["message"] == 'no model "claude sonnet" is saved'
 
 
 def test_remove_server_route(client, serve):
@@ -437,8 +496,9 @@ def test_remove_server_route(client, serve):
         state.add_model(name, "opencode", "qwen3-8b", id)
     state.add_model("own", "claude", "haiku", None)
     detail = refused(client.delete("/api/model-servers/LiteLLM"))
-    assert detail["hint"] == (
-        'or remove them with it: lado model-server remove "LiteLLM" --with-models'
+    assert (detail["message"], detail["hint"]) == (
+        'model server "LiteLLM" is used by the models a, b',
+        "",
     )
     detail = refused(
         client.delete(

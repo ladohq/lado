@@ -47,3 +47,19 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
   files with their markers, `openspec validate model-settings-page --strict`, `openspec
   validate --specs --strict`, a trial archive on a copy of `openspec/` validated there (the
   result in the pull request), green CI; the manual check in the pull request.
+
+## 5. After the human's manual check (D15)
+
+- [x] 5.1 Remove of a server takes only the models it named (`confirmed`, `state.ModelsChanged`).
+  Check: `tests/test_state.py`, `tests/test_model_settings.py`, `tests/test_server_model_settings.py`,
+  `web/src/ModelSources.test.tsx`.
+- [x] 5.2 The plain-http warning under Key before Add (`POST /api/model-servers/check`); stale
+  result lines and refusals go; Add off while the check refuses; a gone model's other ticks off;
+  a model's column at least 10em at a phone's width. Check: `tests/test_server_model_settings.py`,
+  the vitest files, `tests/ui/test_models_section.py`.
+- [x] 5.3 Default names: ` · <CLI>` on a server several CLIs suit, `[1m]` as ` 1M`. Check:
+  `tests/test_model_settings.py`.
+- [x] 5.4 The page's refusals name no command (`page`, `page_hint`); the CLI's lines unchanged.
+  Check: `tests/test_server_model_settings.py`, `tests/test_cli_model_settings.py`.
+- [x] 5.5 Undo of a model removed by its tick or Remove. Check: the vitest files,
+  `tests/ui/test_models_section.py`.

@@ -2439,13 +2439,18 @@ Settings: the human's configured models and model servers, set once under names 
 change model-settings-page; built in `web/src/ModelSettings.tsx` and
 `web/src/ModelSources.tsx` over `lado.server.model_entries`). The section after Providers
 and environment, before Usage statistics; its anchor `#models` scrolls the page to it. It
-does what `lado model-server` and `lado model` do, with their rules and their lines: every
-refusal is the command's line, never a text of the page's own. Using it changes nothing of
-how sessions start.
+does what `lado model-server` and `lado model` do, with their rules: every refusal is the
+command's, in the page's words (`Refused.page`, `ProbeError.page`: no command to run, but
+what to do here, e.g. `asks for a key (401): enter it in Key`, `the name is taken by the
+model "<name>"`, `not in <source>'s list of models; ↻ Refresh reads the list again`; the
+commands print their lines as before). Using it changes nothing of how sessions start.
 
 - **Your models** (above): the configured models by name ignoring case, a table of the
   project page's look: Name with **✎**, CLI (its title), Model, Source (its server, else
-  its CLI, muted) and **Remove** (at once, as `lado model remove`). With none: `No models
+  its CLI, muted) and **Remove** (at once, as `lado model remove`). A model removed, by
+  Remove or its tick, leaves `Removed "<name>" · Undo` above the table for `UNDO_MS` (8 s;
+  kept with its refusal when Undo is refused); Undo saves it again with its name, CLI,
+  model and server (`POST /api/models`, the checks of `lado model add`). With none: `No models
   yet. Without them each agent runs on its CLI's default model. Tick models in Sources
   below.` A model's warnings under its source: `<CLI> is not installed`, and `not in
   <source>'s list of models` once its source's list was read here and lacks it. **✎**
@@ -2466,7 +2471,7 @@ how sessions start.
   installed and whose API the server proves now (its header the CLI's title; none: "No
   installed CLI can use this server."). A tick is on exactly when a configured model has
   that CLI, model and server; ticking saves one with its default name as `lado model add`
-  would, unticking removes it, and a refusal shows in the tick's row. Several models of one
+  would, unticking removes it (with Undo, as Remove), and a refusal shows in the tick's row. Several models of one
   tick: on and disabled, titled `Models: <names>; remove them in Your models`. Default
   names (the core's `model_settings.default_name`): an alias `Claude Sonnet` (the first
   word of the CLI's title and the alias capitalised, `[1m]` as ` 1M`: `Claude Opus 1M`), a

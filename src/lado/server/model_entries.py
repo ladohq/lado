@@ -38,8 +38,8 @@ def _refusal(exc: Exception, warnings: list[str] | None = None) -> Refusal:
     field = getattr(exc, "field", model_servers.ADDRESS if isinstance(exc, ValueError) else "")
     return Refusal(
         models.EntryRefused(
-            message=str(exc),
-            hint=getattr(exc, "hint", ""),
+            message=getattr(exc, "page", str(exc)),  # the page's line: no command in it
+            hint=getattr(exc, "page_hint", getattr(exc, "hint", "")),
             field=field,
             warnings=warnings or [],
         )
@@ -206,7 +206,9 @@ def check_model(given: models.ModelAdd) -> models.ModelCheck:
         )
     except REFUSED as exc:
         return models.ModelCheck(
-            kind=model_check.REFUSED, text=str(exc), field=getattr(exc, "field", "")
+            kind=model_check.REFUSED,
+            text=getattr(exc, "page", str(exc)),
+            field=getattr(exc, "field", ""),
         )
     return models.ModelCheck(kind=checked.verdict.kind, text=checked.verdict.text)
 

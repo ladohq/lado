@@ -1,9 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { LMSTUDIO, LMSTUDIO_PROBE, model, ModelServer, refusal } from "./modelFakes";
-import { EMPTY, ModelSettings } from "./ModelSettings";
+import { EMPTY, ModelSettings, UNDO_MS } from "./ModelSettings";
 import { Settings } from "./Settings";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -86,13 +86,13 @@ test("Your models: sorted as given, the source, a CLI not installed", async () =
 test("✎ renames in place; a refusal shows under the field; Cancel restores", async () => {
   server.entries = { models: [model("Claude Sonnet", "claude", "Claude Code", "sonnet")], servers: [] };
   server.answers["PATCH /api/models/Claude%20Sonnet"] = () =>
-    refusal('a model "Other" is saved already; remove it first: lado model remove "Other"', "name");
+    refusal('the name is taken by the model "Other"', "name");
   mount();
   fireEvent.click(await screen.findByRole("button", { name: "Rename Claude Sonnet" }));
   const field = screen.getByRole("textbox", { name: "New name of Claude Sonnet" });
   fireEvent.change(field, { target: { value: "other" } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  const note = await screen.findByText(/a model "Other" is saved already/);
+  const note = await screen.findByText('the name is taken by the model "Other"');
   expect(note.className).toBe("field-note bad");
   expect(server.of("PATCH", "/api/models/")[0].body).toEqual({ name: "other" });
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -112,6 +112,50 @@ test("Remove removes the model at once", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
   expect(await screen.findByText(EMPTY)).toBeTruthy();
   expect(server.of("DELETE", "/api/models/")[0].path).toBe("/api/models/Claude%20Sonnet");
+});
+
+test("a model removed offers Undo, which saves it again under its name", async () => {
+  server.entries = {
+    models: [model("Сонет для ревью", "opencode", "OpenCode", "qwen3-8b", "LM Studio дома")],
+    servers: [LMSTUDIO],
+  };
+  mount();
+  const table = (await screen.findByText("Сонет для ревью")).closest("table") as HTMLElement;
+  fireEvent.click(within(table).getByRole("button", { name: "Remove" }));
+  const undo = await screen.findByRole("button", { name: "Undo" });
+  expect(screen.getByText('Removed "Сонет для ревью"')).toBeTruthy();
+  fireEvent.click(undo);
+  expect(await screen.findByText("Сонет для ревью")).toBeTruthy();
+  expect(server.of("POST", "/api/models").filter((c) => c.path === "/api/models")[0].body).toEqual({
+    name: "Сонет для ревью",
+    cli: "opencode",
+    model: "qwen3-8b",
+    server: "LM Studio дома",
+  });
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+});
+
+test("Undo goes after a while, and a refused Undo says why", async () => {
+  server.entries = { models: [model("Claude Sonnet", "claude", "Claude Code", "sonnet")], servers: [] };
+  mount();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
+    expect(await screen.findByRole("button", { name: "Undo" })).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(UNDO_MS + 10);
+    });
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+  cleanup();
+  server.entries = { models: [model("Claude Opus", "claude", "Claude Code", "opus")], servers: [] };
+  server.answers["POST /api/models"] = () => refusal("no model server \"gone\" is saved", "server");
+  mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+  expect(await screen.findByText('no model server "gone" is saved')).toBeTruthy();
 });
 
 async function openAdd() {
@@ -149,7 +193,7 @@ test("+ Add server: checking the server…, then the source open with its saved 
 test("a refusal shows under its field, warnings under Key; the form keeps all but the key", async () => {
   server.answers["POST /api/model-servers"] = () =>
     refusal(
-      "https://gw.corp/llm asks for a key (401): run lado model-server add \"work\" https://gw.corp/llm --key",
+      "https://gw.corp/llm asks for a key (401): enter it in Key",
       "key",
       "",
       ["the key goes to gw.corp over plain http://, unencrypted; use https:// if the server has it"],

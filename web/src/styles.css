@@ -9029,6 +9029,18 @@ del.kit-mcp-name {
   width: 30%;
 }
 
+.setting p.mm-undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4px;
+  margin: 0 0 8px;
+}
+
+.mm-undo .field-note {
+  flex-basis: 100%;
+}
+
 .mm-models th:last-child {
   width: 90px;
 }

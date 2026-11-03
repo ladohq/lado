@@ -71,6 +71,15 @@ test("opening a CLI reads its list fresh; ticking saves with no name, unticking 
   fireEvent.click(box);
   await waitFor(() => expect((box as HTMLInputElement).checked).toBe(false));
   expect(server.of("DELETE", "/api/models/")[0].path).toBe("/api/models/sonnet%20(default)");
+  // Unticking offers Undo as Remove does: the model comes back under its name, ticked.
+  fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+  await waitFor(() => expect((box as HTMLInputElement).checked).toBe(true));
+  expect(server.of("POST", "/api/models")[1].body).toEqual({
+    name: "sonnet (default)",
+    cli: "claude",
+    model: "sonnet",
+    server: null,
+  });
 });
 
 test("a refused tick shows in its row, the tick stays off", async () => {

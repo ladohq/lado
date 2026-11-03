@@ -9010,166 +9010,87 @@ del.kit-mcp-name {
   margin-top: 10px;
 }
 
-/* Settings → Models (ModelSettings.tsx, ModelSources.tsx): Your models is a table of the
-   Projects section's (.project-vars); Sources a list of rows, each opening under its head to
-   its models with a tick per CLI, a wide list scrolling sideways within itself. Forms and
-   notes are the launch window's (.launch-grid, .field, .field-note). */
-.setting .project-section h3 {
-  margin: 0 0 4px;
+/* Settings → Models (ModelSettings.tsx, ModelSources.tsx): two tabs over the section's own
+   panel; Your models a card per agent CLI, headed on --ground, a table of fixed columns
+   whose rows keep their height (a removed model's Undo row too); Add models a framed list of
+   sources, each a row the whole of which opens it (a framed arrow that turns), its icons at
+   the right on its line, its models in a list of at most about nine rows that scrolls within
+   itself. Forms and notes are the launch window's (.launch-grid, .field, .field-note). */
+.setting .mx-tabs {
+  margin: 14px -22px 0;
+  padding-left: 18px;
+  background: none;
 }
 
-.mm-empty,
-.setting p.mm-empty {
+.mx-tabs .tab-item {
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mx-tabs .tab-item[data-active] {
+  background: var(--panel);
+}
+
+.mx-panel {
+  padding-top: 14px;
+}
+
+.mx-empty,
+.setting p.mx-empty {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
 }
 
-.mm-models th:first-child {
-  width: 30%;
+.mx-card {
+  margin-bottom: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
 }
 
-.setting p.mm-undo {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 4px;
-  margin: 0 0 8px;
-}
-
-.mm-undo .field-note {
-  flex-basis: 100%;
-}
-
-.mm-models th:last-child {
-  width: 90px;
-}
-
-.mm-models td .field-note {
-  display: block;
-  margin-top: 4px;
-  font-family: var(--sans);
-}
-
-.mm-pen {
-  padding: 0 2px;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  cursor: pointer;
-}
-
-.setting p.mm-hint {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.src-list {
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.src {
-  padding: 10px 0;
-  border-top: 1px solid var(--line);
-  font-size: 14px;
-}
-
-.src-head {
+.mx-card-h {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--ground);
 }
 
-.src-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ink);
-  font: inherit;
-  cursor: pointer;
+.mx-card-h .field-note {
+  margin: 0;
 }
 
-.src-toggle:disabled {
-  cursor: default;
-}
-
-.src-chev {
-  width: 14px;
+.mx-none-p,
+.setting p.mx-none-p {
+  margin: 0;
+  padding: 12px;
   color: var(--muted);
-}
-
-.src-sub,
-.mm-opt {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 400;
-}
-
-.src-off {
-  opacity: 0.55;
-}
-
-.mm-addr {
-  color: var(--muted);
-  font: 13px var(--mono);
-  overflow-wrap: anywhere;
-}
-
-.mm-row-acts {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-}
-
-.src-head > .src-refresh {
-  margin-left: auto;
-}
-
-.src-open > .field-note,
-.src-open > .mm-line,
-.setting .src-open > p.mm-line {
-  display: block;
-  margin: 6px 0 0 22px;
-}
-
-.setting p.mm-line {
   font-size: 13px;
 }
 
-.src-search {
-  display: block;
-  width: calc(100% - 22px);
-  height: 32px;
-  margin: 8px 0 0 22px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--ground);
-  color: var(--ink);
-  font: 13px var(--sans);
-}
-
-.src-scroll {
-  margin: 8px 0 0 22px;
-  overflow-x: auto;
-}
-
-.src-models {
+.mx-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 13px;
 }
 
-.src-models th {
-  padding: 4px 6px;
+.mx-table col.c-name {
+  width: 40%;
+}
+
+.mx-table col.c-act {
+  width: 48px;
+}
+
+.mx-table th {
+  padding: 6px 8px 6px 12px;
   border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-size: 12px;
@@ -9177,80 +9098,469 @@ del.kit-mcp-name {
   text-align: left;
 }
 
-.src-models td {
-  padding: 4px 6px;
+.mx-table td {
+  height: 40px;
+  padding: 0 8px 0 12px;
+  overflow: hidden;
   border-bottom: 1px solid var(--line);
-  vertical-align: top;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
-.src-models td.mono {
-  min-width: 10em; /* the CLIs' columns never squeeze a model to a letter or two a line */
-  font: 13px var(--mono);
-  overflow-wrap: break-word;
+.mx-table tr:last-child td {
+  border-bottom: 0;
 }
 
-.src-models .ck {
-  width: 84px;
-  text-align: center;
+.mx-table td.mx-renaming {
+  overflow: visible;
 }
 
-.src-models .tag {
-  margin-left: 6px;
-  color: var(--muted);
-  font: 12px var(--sans);
+.mx-name {
+  display: inline-block;
+  max-width: 100%;
+  margin-left: -6px;
+  padding: 3px 6px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  cursor: text;
 }
 
-.src-models td .field-note {
+.mx-name:hover,
+.mx-name:focus-visible {
+  border-color: var(--line);
+  background: var(--ground);
+  outline: none;
+}
+
+.mx-rename {
   display: block;
-  margin-top: 4px;
-  font-family: var(--sans);
+  width: 100%;
+  height: 28px;
+  box-sizing: border-box;
+  margin-left: -6px;
+  padding: 0 6px;
+  border: 1px solid var(--action);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 600 13px var(--sans);
+  outline: none;
 }
 
-.src-emb td {
+/* A refusal under the name floats over the next row: the row keeps its height. */
+.mx-table .mx-rename-note {
+  position: absolute;
+  z-index: 2;
+  max-width: 320px;
+  margin-top: 4px;
+  white-space: normal;
+}
+
+.mx-x {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mx-x:hover {
+  border-color: var(--line);
+  background: var(--raised);
+  color: var(--danger);
+}
+
+.mx-undo td {
   color: var(--muted);
 }
 
-.src-missing td:first-child {
-  background: var(--warn-ground);
+.mx-undo .link-button {
+  margin-left: 6px;
 }
 
-.mm-other {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 10px 0 0 22px;
+.mx-undo .field-note {
+  display: inline;
+  margin-left: 8px;
 }
 
-.mm-other .field {
-  flex: 1 1 220px;
+.mx-gone {
+  margin-left: 6px;
+  color: var(--warn);
+  font-family: var(--sans);
+  font-size: 12px;
 }
 
-.mm-other > button {
-  margin-top: 28px;
+.mx-sub,
+.mx-opt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
 }
 
-.mm-form {
-  margin: 12px 0 0;
-  padding-top: 12px;
+.mx-count,
+.setting p.mx-count {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mx-srcs {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  list-style: none;
+}
+
+.mx-src {
   border-top: 1px solid var(--line);
 }
 
-.src-open > .mm-form,
-.src > .mm-form,
-.src > .mm-confirm {
-  margin-left: 22px;
+.mx-src:first-child {
+  border-top: 0;
 }
 
-.mm-form .project-in-secret {
-  font-family: LadoSecretDots;
+.mx-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 10px 0 6px;
 }
 
-.mm-form .project-in-secret::placeholder {
-  font-family: var(--sans);
+.mx-src:not(.mx-off) .mx-head:hover {
+  background: var(--raised);
 }
 
-.mm-acts {
+.mx-open .mx-head {
+  border-bottom: 1px solid var(--line);
+  background: var(--ground);
+}
+
+.mx-hit {
+  display: grid;
+  grid-template-columns: 28px auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mx-hit:disabled {
+  cursor: default;
+}
+
+.mx-chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 11px;
+  transition: transform 0.15s;
+}
+
+.mx-open .mx-chev {
+  transform: rotate(90deg);
+}
+
+.mx-off .mx-chev {
+  visibility: hidden;
+}
+
+.mx-off {
+  opacity: 0.55;
+}
+
+.mx-title {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mx-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mx-meta .mono {
+  font-size: 12px;
+}
+
+.mx-added {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.mx-acts {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.mx-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.mx-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.mx-icon:hover:not(:disabled),
+.mx-icon[aria-pressed="true"] {
+  border-color: var(--line);
+  background: var(--raised);
+  color: var(--ink);
+}
+
+.mx-icon-danger:hover,
+.mx-icon-danger[aria-pressed="true"] {
+  color: var(--danger);
+}
+
+.mx-body {
+  padding: 12px 12px 14px 42px;
+}
+
+.mx-body > .field-note,
+.mx-saved > .field-note {
+  display: block;
+}
+
+.mx-saved {
+  padding: 8px 12px 0 42px;
+}
+
+.mx-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.mx-tools-end {
+  margin-left: auto;
+}
+
+.mx-search {
+  flex: 1 1 200px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 13px var(--sans);
+}
+
+/* About nine rows, then the list scrolls within itself: the page grows by this at most. */
+.mx-list {
+  max-height: 306px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.mx-list > div + div > .mx-row,
+.mx-list > .mx-row + .mx-row,
+.mx-list > div + .mx-row,
+.mx-list > .mx-row + div > .mx-row {
+  border-top: 1px solid var(--line);
+}
+
+.mx-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mx-row:hover,
+.mx-row-on {
+  background: var(--raised);
+}
+
+.mx-row-plain {
+  cursor: default;
+}
+
+.mx-row-plain:hover {
+  background: none;
+}
+
+.mx-row input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--action);
+}
+
+.mx-row .mono {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mx-row-gone .mono {
+  color: var(--warn);
+}
+
+.mx-as {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mx-in {
+  color: var(--action);
+}
+
+.mx-cli-btn {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mx-row-pop:hover .mx-cli-btn {
+  border-color: var(--action);
+  color: var(--action);
+}
+
+.mx-row-note {
+  padding: 0 10px 8px 36px;
+}
+
+.mx-pop {
+  padding: 10px 12px 10px 36px;
+  border-top: 1px solid var(--line);
+  background: var(--ground);
+  font-size: 13px;
+}
+
+.mx-pop-h {
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+
+.mx-pop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  cursor: pointer;
+}
+
+.mx-pop-item input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--action);
+}
+
+.mx-pop-f {
+  margin-top: 6px;
+}
+
+.mx-other {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px 8px;
+  margin-top: 12px;
+}
+
+.mx-other-cli {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 12em) auto;
+}
+
+.mx-other .field {
+  min-width: 0;
+}
+
+.mx-other > button {
+  margin-top: 22px;
+}
+
+.mx-form {
+  padding: 14px 12px 16px 42px;
+  border-top: 1px solid var(--line);
+}
+
+.mx-src > .mx-form:first-child {
+  border-top: 0;
+}
+
+.mx-form .field input {
+  font: 13px var(--mono);
+}
+
+.mx-form .field input.words {
+  font: inherit;
+}
+
+.mx-form .project-in-secret {
+  width: 100%;
+}
+
+.mx-form .field-note {
+  display: block;
+}
+
+.mx-form-acts {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -9258,18 +9568,117 @@ del.kit-mcp-name {
   margin-top: 12px;
 }
 
-.mm-confirm {
-  margin-top: 8px;
+.mx-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.setting .field input.mono {
-  font: 13px var(--mono);
+.mx-spin {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--line);
+  border-top-color: var(--action);
+  border-radius: 50%;
+  animation: mx-spin 0.8s linear infinite;
 }
 
-.mm-confirm .field-note,
-.mm-form > .field-note {
+@keyframes mx-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mx-spin {
+    animation: none;
+  }
+}
+
+.mx-confirm {
+  padding: 12px 12px 14px 42px;
+  border-top: 1px solid var(--line);
+  background: var(--danger-ground);
+  font-size: 13px;
+}
+
+.mx-confirm .field-note {
   display: block;
   margin-top: 8px;
+}
+
+.mx-addrow,
+.mx-gone-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 12px;
+}
+
+.mx-gone-line {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Narrower than 600 px: a source's icons on a line of their own under its name, the forms
+   one field under the other, from the source's left edge; Your models without From. */
+@media (max-width: 600px) {
+  .mx-head {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 4px 8px 4px 4px;
+  }
+
+  .mx-hit {
+    grid-template-columns: 28px auto minmax(0, 1fr);
+    min-height: 44px;
+  }
+
+  .mx-hit .badge {
+    display: none;
+  }
+
+  .mx-hit .mx-meta {
+    grid-row: 2;
+    grid-column: 2 / 4;
+    padding-bottom: 4px;
+  }
+
+  .mx-acts {
+    padding: 0 0 8px 36px;
+  }
+
+  .mx-acts:empty {
+    display: none;
+  }
+
+  .mx-body,
+  .mx-form,
+  .mx-confirm,
+  .mx-saved {
+    padding-left: 12px;
+  }
+
+  .mx-form .launch-grid,
+  .mx-other,
+  .mx-other-cli {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mx-other > button {
+    margin-top: 0;
+    justify-self: start;
+  }
+
+  .setting .mx-tabs {
+    margin: 14px -14px 0;
+    padding-left: 10px;
+  }
+
+  .mx-table col.c-name {
+    width: 44%;
+  }
 }
 
 /* Repositories and Sessions (ProjectRepos.tsx): a block's head with its button at the right;
@@ -9965,29 +10374,5 @@ button.quiet.danger-text {
 }
 
 :root[data-phone] .project-edit .project-in-name {
-  width: 100%;
-}
-
-/* Settings → Models: a source's buttons under its title, narrower tick columns, the forms
-   from the source's left edge. */
-:root[data-phone] .mm-row-acts {
-  flex-wrap: wrap;
-  margin-left: 0;
-}
-
-:root[data-phone] .src-models .ck {
-  width: 56px;
-}
-
-:root[data-phone] .src-scroll,
-:root[data-phone] .src-search,
-:root[data-phone] .mm-other,
-:root[data-phone] .src > .mm-form,
-:root[data-phone] .src > .mm-confirm,
-:root[data-phone] .src-open > .field-note {
-  margin-left: 0;
-}
-
-:root[data-phone] .src-search {
   width: 100%;
 }

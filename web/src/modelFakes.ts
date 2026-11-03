@@ -9,6 +9,7 @@ import { claudeRow, cli, codexRow, opencodeRow } from "./fakes";
 export type Call = { method: string; path: string; body: unknown };
 
 export const LMSTUDIO_PROBE: ProbeInfo = {
+  kind: "LM Studio",
   models: ["qwen3-8b", "text-embedding-nomic"],
   models_why: "",
   embeddings: ["text-embedding-nomic"],
@@ -97,12 +98,30 @@ export class ModelServer {
     }
     if (where === "/api/models/check") return json({ kind: "ok", text: "in the list", field: "" });
     if (where === "/api/model-servers/check") {
-      // The core's rule in short: a key over http:// to a host not on the machine.
-      const given = body as { address: string; key: boolean };
-      const host = given.address.replace(/^http:\/\//, "").split(/[:/]/)[0];
-      return given.key && !given.address.startsWith("https://") && host !== "localhost"
-        ? json({ kind: "warn", text: `the key goes to ${host} over plain http://, unencrypted`, field: "key" })
-        : json({ kind: "default", text: "", field: "" });
+      // The core's rules in short: a name taken; nothing answers at a port 1243; a gateway
+      // (`gw` in its address) asks for a key, takes "right"; a key over http:// to a host not
+      // on the machine; another server at the same address.
+      const given = body as { name: string; address: string; key: string | null; key_typed: boolean };
+      const refusals = [];
+      const taken = this.entries.servers.find((s) => s.name.toLowerCase() === given.name.toLowerCase());
+      if (taken) refusals.push(detail(`a model server "${taken.name}" is saved already`, "name"));
+      const address = given.address.trim();
+      const url = /^https?:\/\//.test(address) ? address : `http://${address}`;
+      const host = url.replace(/^https?:\/\//, "").split(/[:/]/)[0];
+      const warnings =
+        given.key_typed && url.startsWith("http://") && host !== "localhost"
+          ? [`the key goes to ${host} over plain http://, unencrypted`]
+          : [];
+      if (!address) return json({ probe: null, refusals, warnings: [], notes: [] });
+      if (address.includes(":1243"))
+        refusals.push(detail(`${url} does not answer (connection refused)`, "address"));
+      else if (address.includes("gw") && given.key !== "right")
+        refusals.push(detail(given.key === null ? `${url} asks for a key (401): enter it in Key` : `${url} refused the key (401)`, "key"));
+      const probe = refusals.some((r) => r.field !== "name") ? null : { ...LMSTUDIO_PROBE, kind: address.includes("gw") ? "LiteLLM" : "LM Studio" };
+      const notes = probe
+        ? this.entries.servers.filter((s) => s.address === url).map((s) => `same address as model server "${s.name}"`)
+        : [];
+      return json({ probe, refusals, warnings, notes });
     }
     const server = where.match(/^\/api\/model-servers\/(.+)$/);
     if (server && method === "DELETE") {
@@ -130,5 +149,12 @@ export class ModelServer {
   }
 }
 
+export const detail = (message: string, field = "", hint = "", warnings: string[] = []) => ({
+  message,
+  hint,
+  field,
+  warnings,
+});
+
 export const refusal = (message: string, field = "", hint = "", warnings: string[] = []) =>
-  new Response(JSON.stringify({ detail: { message, hint, field, warnings } }), { status: 400 });
+  new Response(JSON.stringify({ detail: detail(message, field, hint, warnings) }), { status: 400 });

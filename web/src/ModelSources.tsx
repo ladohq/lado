@@ -1,11 +1,15 @@
-// Settings → Models, Sources (docs/design/ui.md, Models): every agent CLI LADO knows, then
-// every saved model server. Opening one reads its models now (a CLI's aliases and own list
-// through the launch window's route with `fresh`, a server's by a probe with its kept key),
-// ↻ Refresh reads them again; nothing is read before and no list outlives the page. Each
-// model has a tick per CLI that can run it: on exactly when a configured model has that CLI,
-// model and server (ticking saves one with its default name, unticking removes it). The
-// latest read of a source wins; a closed source takes no late answer.
-import { type MutableRefObject, useEffect, useId, useRef, useState } from "react";
+// Settings → Models, Add models (docs/design/ui.md, Models): every agent CLI LADO knows, then
+// every saved model server, then + Add server. A source opens from its whole row; opening it
+// reads its models now (a CLI's aliases and own list through the launch window's route with
+// `fresh`, a server's by a probe with its kept key), ↻ reads them again; nothing is read
+// before and no list outlives the page. A list's order is set when it is read (the source's
+// configured models first) and no tick changes it; it is bounded and scrolls within itself.
+// A CLI's model has one tick; a server's model opens under its row the installed CLIs that
+// can run it, a tick each. A tick is on exactly when a configured model has that CLI, model
+// and server: ticking saves one with its default name, unticking removes it. A server shows
+// its list, its Change form or its Remove confirmation, one at a time. Nothing above the
+// control acted on moves: a server added takes the form's place, one removed leaves a line.
+import { type MutableRefObject, type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 import {
   addModel,
@@ -26,33 +30,35 @@ import {
   refusalOf,
   removeModel,
   removeModelServer,
+  type ServerCheck,
 } from "./api";
+import { ForgetIcon, PencilIcon } from "./icons";
 import { MODEL_DEBOUNCE, useDebounced } from "./Launch";
 import { SecretField } from "./ProjectVariables";
 import { messageOf } from "./SessionControl";
-import { SuggestField } from "./SuggestField";
 
 export const SEARCH_ABOVE = 10; // a list longer than this has a search field
 
-// A source's models as last read: reading, a CLI's list, a server's probe, or why not.
+// A source's models as last read: reading, a CLI's list or a server's probe with the order
+// set at that read, or why not.
 export type Read =
   | { reading: true }
-  | { cli: ProviderModels }
-  | { probe: ProbeInfo }
+  | { cli: ProviderModels; order: string[] }
+  | { probe: ProbeInfo; order: string[] }
   | { refused: EntryRefused };
 
 // After a server was saved or changed here: the lines its source shows.
-export type Saved = { notes: string[]; warnings: string[]; saved: string | null };
+export type Saved = { notes: string[]; warnings: string[]; saved: string };
 
 export const cliKey = (name: string) => `cli:${name}`;
 export const serverKey = (name: string) => `server:${name.toLowerCase()}`;
+const fold = (text: string) => text.toLowerCase();
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 // The configured models of `model` of `cli` on `server` (null: the CLI's own way); a
 // server's name is found ignoring case.
 const ticked = (models: ConfiguredModelInfo[], cli: string, model: string, server: string | null) =>
-  models.filter(
-    (m) => m.cli === cli && m.model === model && (m.server ?? "").toLowerCase() === (server ?? "").toLowerCase(),
-  );
+  models.filter((m) => m.cli === cli && m.model === model && fold(m.server ?? "") === fold(server ?? ""));
 
 // The tick of `model` of `cli` on `server`: on when a configured model has them; with
 // several, the names of them all (the tick is then disabled).
@@ -66,7 +72,12 @@ export function tickState(
   return { on: same.length > 0, several: same.length > 1 ? same.map((m) => m.name) : [] };
 }
 
-// The models a read list holds (null: it gave no list, so none is missing from it).
+// The configured models a source gave: a CLI's own (no server), or a server's.
+export const fromSource = (models: ConfiguredModelInfo[], cli: string | null, server: string | null) =>
+  models.filter((m) => (server === null ? m.server === null && m.cli === cli : fold(m.server ?? "") === fold(server)));
+
+// The models a read list holds, embeddings left out (null: it gave no list, so none is
+// missing from it).
 export function listed(read: Read | undefined): Set<string> | null {
   if (!read) return null;
   if ("cli" in read) return read.cli.models === null ? null : new Set([...read.cli.aliases, ...read.cli.models]);
@@ -74,15 +85,18 @@ export function listed(read: Read | undefined): Set<string> | null {
   return null;
 }
 
-// What the CLIs a probe found can use the server, grouped by API as `lado model-server
-// probe` prints them.
-export function clisLine(probe: ProbeInfo): string {
-  const groups: string[] = [];
-  for (const api of [...new Set(probe.clis.map((c) => c.api))]) {
-    const titles = probe.clis.filter((c) => c.api === api).map((c) => c.title);
-    groups.push(`${titles.join(", ")} (${api})`);
-  }
-  return groups.join("; ") || "no CLI";
+const listOf = (found: { cli: ProviderModels } | { probe: ProbeInfo }): string[] => {
+  if ("cli" in found) return [...new Set([...found.cli.aliases, ...(found.cli.models ?? [])])];
+  const embeddings = new Set(found.probe.embeddings);
+  return (found.probe.models ?? []).filter((m) => !embeddings.has(m));
+};
+
+// A list's order at its read: the models of the source's configured models it no longer
+// lists, then those it lists, then the rest as it gave them.
+export function orderOf(list: string[], own: ConfiguredModelInfo[]): string[] {
+  const mine = new Set(own.map((m) => m.model));
+  const has = new Set(list);
+  return [...[...mine].filter((m) => !has.has(m)), ...list.filter((m) => mine.has(m)), ...list.filter((m) => !mine.has(m))];
 }
 
 type Props = {
@@ -94,11 +108,13 @@ type Props = {
   onOpen: (key: string, open: boolean) => void;
   saved: Record<string, Saved>;
   onSaved: (key: string, saved: Saved | null) => void;
-  onChanged: (settings?: ModelSettings) => void;
-  onRemoved: (model: ConfiguredModelInfo) => void; // a model unticked: Undo offers it back
+  onChanged: (settings?: ModelSettings) => Promise<void> | void;
+  onRemoved: (model: ConfiguredModelInfo) => void; // a model unticked: Your models offers Undo
   // The latest read of each source, by key: whatever fills a source (a read here, an add or
   // a change) counts one up, so an older read's late answer is dropped.
   latest: MutableRefObject<Record<string, number>>;
+  // A CLI whose source opens when this tab shows (a card's link in Your models), then null.
+  opening?: MutableRefObject<string | null>;
 };
 
 // A new read, add or change of the source `key`: its number in `latest`.
@@ -107,43 +123,73 @@ export const nextRead = (latest: MutableRefObject<Record<string, number>>, key: 
 
 export function ModelSources(props: Props) {
   const { settings, logins, latest } = props;
-  const read = (key: string, ask: () => Promise<Read>) => {
+  const models = useRef(settings.models); // the entries a read's order is set from
+  models.current = settings.models;
+  const read = (key: string, own: (models: ConfiguredModelInfo[]) => ConfiguredModelInfo[], ask: () => Promise<Read>) => {
     const asked = nextRead(latest, key);
     props.onRead(key, { reading: true });
     ask().then(
-      (found) => latest.current[key] === asked && props.onRead(key, found),
-      (error: unknown) =>
-        latest.current[key] === asked &&
-        props.onRead(key, { refused: refusalOf(error) }),
+      (found) => {
+        if (latest.current[key] !== asked) return;
+        if ("cli" in found || "probe" in found) found = { ...found, order: orderOf(listOf(found), own(models.current)) };
+        props.onRead(key, found);
+      },
+      (error: unknown) => latest.current[key] === asked && props.onRead(key, { refused: refusalOf(error) }),
     );
   };
   const readCli = (name: string) =>
-    read(cliKey(name), async () => ({ cli: await getProviderModels(name, "", null, true) }));
+    read(
+      cliKey(name),
+      (all) => fromSource(all, name, null),
+      async () => ({ cli: await getProviderModels(name, "", null, true), order: [] }),
+    );
   const readServer = (name: string) =>
-    read(serverKey(name), async () => ({ probe: await probeModelServer(name) }));
-  const toggle = (key: string, reader: () => void) => {
-    const opening = !props.open.has(key);
-    props.onOpen(key, opening);
-    props.onSaved(key, null); // the lines of a save are said once, in the open source
-    if (opening) reader();
-    else {
-      nextRead(latest, key); // no late answer fills it
-      props.onRead(key, null);
-    }
+    read(
+      serverKey(name),
+      (all) => fromSource(all, null, name),
+      async () => ({ probe: await probeModelServer(name), order: [] }),
+    );
+  const close = (key: string) => {
+    props.onOpen(key, false);
+    nextRead(latest, key); // no late answer fills it
+    props.onRead(key, null);
   };
+  const toggle = (key: string, reader: () => void) => {
+    props.onSaved(key, null); // the lines of a save are said once, in the open source
+    if (props.open.has(key)) return close(key);
+    props.onOpen(key, true);
+    reader();
+  };
+  // A server added or changed shows open with the probe of its save, as a read.
+  const filled = (name: string, probe: ProbeInfo, saved: Saved) => {
+    const key = serverKey(name);
+    nextRead(latest, key);
+    props.onOpen(key, true);
+    props.onRead(key, { probe, order: orderOf(listOf({ probe }), fromSource(models.current, null, name)) });
+    props.onSaved(key, saved);
+  };
+  // A read outlives this tab (the section keeps it): its answer fills the source shown again.
   useEffect(() => {
-    const asked = latest.current;
-    return () => {
-      for (const key of Object.keys(asked)) asked[key]++;
-    };
+    const cli = props.opening?.current;
+    if (props.opening) props.opening.current = null;
+    if (cli && !props.open.has(cliKey(cli))) toggle(cliKey(cli), () => readCli(cli));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the tab shows
   }, []);
   const installed = (cli: string) => {
     const row = logins.find((r) => r.cli.name === cli);
     return !row?.ready || row.cli.installed;
   };
+  // The servers by name at the first render, then each one added here at the end, where its
+  // form was; a server removed here leaves its line in its place.
+  const order = useRef<string[] | null>(null);
+  if (order.current === null) order.current = settings.servers.map((s) => s.name).sort((a, b) => fold(a).localeCompare(fold(b)));
+  for (const server of settings.servers)
+    if (!order.current.some((name) => fold(name) === fold(server.name))) order.current.push(server.name);
+  const [gone, setGone] = useState<Record<string, string>>({});
+  const [adding, setAdding] = useState(false);
 
   return (
-    <ul className="src-list">
+    <ul className="mx-srcs">
       {logins.map((row) => {
         const key = cliKey(row.cli.name);
         return (
@@ -160,8 +206,17 @@ export function ModelSources(props: Props) {
           />
         );
       })}
-      {settings.servers.map((server) => {
-        const key = serverKey(server.name);
+      {order.current.map((name) => {
+        const key = serverKey(name);
+        const server = settings.servers.find((s) => fold(s.name) === fold(name));
+        if (!server)
+          return gone[fold(name)] ? (
+            <li key={key} className="mx-src">
+              <div className="mx-gone-line" role="status">
+                {gone[fold(name)]}
+              </div>
+            </li>
+          ) : null;
         return (
           <ServerSource
             key={key}
@@ -172,19 +227,40 @@ export function ModelSources(props: Props) {
             models={settings.models}
             installed={installed}
             onToggle={() => toggle(key, () => readServer(server.name))}
+            onClose={() => props.open.has(key) && close(key)}
             onRefresh={() => readServer(server.name)}
-            onProbe={(probe, saved) => {
-              nextRead(latest, key);
-              props.onOpen(key, true); // a changed server shows open, as an added one
-              props.onRead(key, { probe });
-              props.onSaved(key, saved);
-            }}
+            onProbe={(probe, saved) => filled(server.name, probe, saved)}
             onStale={() => props.onSaved(key, null)}
+            onGone={(line) => {
+              close(key);
+              props.onSaved(key, null);
+              setGone((now) => ({ ...now, [fold(server.name)]: line }));
+            }}
             onChanged={props.onChanged}
             onRemoved={props.onRemoved}
           />
         );
       })}
+      <li className="mx-src">
+        {adding ? (
+          <AddServer
+            onCancel={() => setAdding(false)}
+            onAdded={(server, probe, saved) => {
+              setAdding(false);
+              order.current?.push(server.name); // where the form was
+              filled(server.name, probe, saved);
+              void props.onChanged();
+            }}
+          />
+        ) : (
+          <div className="mx-addrow">
+            <button type="button" className="quiet" onClick={() => setAdding(true)}>
+              + Add server
+            </button>
+            <span className="mx-sub">LM Studio, Ollama, LiteLLM or another OpenAI-compatible server</span>
+          </div>
+        )}
+      </li>
     </ul>
   );
 }
@@ -195,6 +271,62 @@ function loginWord(row: ProviderLogins): string {
   if (row.login.state === "no") return "not logged in";
   if (row.login.state === "yes") return "logged in";
   return "";
+}
+
+// A source's row: the whole row opens and closes it (its framed arrow turns), its name, its
+// badge, how many models it gave and its state or address; its icons at the right.
+function SourceHead({
+  title,
+  badge,
+  open,
+  off,
+  added,
+  hint,
+  onToggle,
+  children,
+  acts,
+}: {
+  title: string;
+  badge: string;
+  open: boolean;
+  off: boolean;
+  added: number;
+  hint?: string;
+  onToggle: () => void;
+  children: ReactNode;
+  acts?: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div className="mx-head">
+      <button
+        type="button"
+        className="mx-hit"
+        aria-expanded={open}
+        aria-label={title}
+        aria-describedby={id}
+        disabled={off}
+        title={hint}
+        onClick={onToggle}
+      >
+        <span className="mx-chev" aria-hidden="true">
+          ▶
+        </span>
+        <span className="mx-title">{title}</span>
+        <span className="badge">{badge}</span>
+        <span className="mx-meta" id={id}>
+          {added > 0 && (
+            <>
+              <b className="mx-added">{`${added} added`}</b>
+              {" · "}
+            </>
+          )}
+          {children}
+        </span>
+      </button>
+      <span className="mx-acts">{acts}</span>
+    </div>
+  );
 }
 
 function CliSource({
@@ -213,52 +345,34 @@ function CliSource({
   models: ConfiguredModelInfo[];
   onToggle: () => void;
   onRefresh: () => void;
-  onChanged: (settings?: ModelSettings) => void;
+  onChanged: (settings?: ModelSettings) => Promise<void> | void;
   onRemoved: (model: ConfiguredModelInfo) => void;
 }) {
   const cli = row.cli;
   const off = row.ready && !cli.installed;
-  const word = loginWord(row);
-  const list = read && "cli" in read ? read.cli : null;
-  const rows: ModelRow[] = list
-    ? [
-        ...list.aliases.map((value) => ({ value, tag: "alias" })),
-        ...(list.models ?? []).filter((m) => !list.aliases.includes(m)).map((value) => ({ value, tag: "" })),
-      ]
-    : [];
+  const own = fromSource(models, cli.name, null);
   return (
-    <li className={`src${open ? " src-open" : ""}${off ? " src-off" : ""}`}>
-      <div className="src-head">
-        <button
-          type="button"
-          className="src-toggle"
-          aria-expanded={open}
-          disabled={off}
-          onClick={onToggle}
-          title={off ? `${cli.title} is not installed` : undefined}
-        >
-          <span className="src-chev" aria-hidden="true">
-            {open ? "▾" : "▸"}
-          </span>
-          <strong>{cli.title}</strong>
-        </button>
-        <span className="badge">CLI</span>
-        {word && <span className="src-sub">{word}</span>}
-        {open && (
-          <button type="button" className="quiet src-refresh" onClick={onRefresh} disabled={read && "reading" in read}>
-            ↻ Refresh
-          </button>
-        )}
-      </div>
+    <li className={`mx-src${open ? " mx-open" : ""}${off ? " mx-off" : ""}`}>
+      <SourceHead
+        title={cli.title}
+        badge="CLI"
+        open={open}
+        off={off}
+        added={own.length}
+        hint={off ? `${cli.title} is not installed` : undefined}
+        onToggle={onToggle}
+      >
+        {loginWord(row)}
+      </SourceHead>
       {open && (
         <SourceBody
           read={read}
-          rows={rows}
-          columns={[{ name: cli.name, title: cli.title }]}
+          cli={{ name: cli.name, title: cli.title }}
           server={null}
-          whose={`${cli.title}'s list`}
+          columns={[]}
           models={models}
-          missing={models.filter((m) => m.cli === cli.name && m.server === null)}
+          own={own}
+          onRefresh={onRefresh}
           onChanged={onChanged}
           onRemoved={onRemoved}
         />
@@ -267,7 +381,6 @@ function CliSource({
   );
 }
 
-type ModelRow = { value: string; tag: string };
 type Column = { name: string; title: string };
 
 function ServerSource({
@@ -278,9 +391,11 @@ function ServerSource({
   models,
   installed,
   onToggle,
+  onClose,
   onRefresh,
   onProbe,
   onStale,
+  onGone,
   onChanged,
   onRemoved,
 }: {
@@ -291,65 +406,94 @@ function ServerSource({
   models: ConfiguredModelInfo[];
   installed: (cli: string) => boolean;
   onToggle: () => void;
+  onClose: () => void;
   onRefresh: () => void;
   onProbe: (probe: ProbeInfo, saved: Saved) => void;
   onStale: () => void;
-  onChanged: (settings?: ModelSettings) => void;
+  onGone: (line: string) => void;
+  onChanged: (settings?: ModelSettings) => Promise<void> | void;
   onRemoved: (model: ConfiguredModelInfo) => void;
 }) {
   const [mode, setMode] = useState<"change" | "remove" | null>(null);
-  const own = models.filter((m) => (m.server ?? "").toLowerCase() === server.name.toLowerCase());
+  const own = fromSource(models, null, server.name);
   const probe = read && "probe" in read ? read.probe : null;
-  const embeddings = new Set(probe?.embeddings ?? []);
-  const rows: ModelRow[] = (probe?.models ?? []).map((value) => ({
-    value,
-    tag: embeddings.has(value) ? "(embeddings)" : "",
-  }));
   const columns: Column[] = (probe?.clis ?? []).filter((c) => installed(c.name));
+  // One of the list, Change and Remove at a time.
+  const show = (next: "change" | "remove") => {
+    const to = mode === next ? null : next;
+    setMode(to);
+    if (to) {
+      onClose();
+      onStale();
+    }
+  };
   return (
-    <li className={`src${open ? " src-open" : ""}`}>
-      <div className="src-head">
-        <button type="button" className="src-toggle" aria-expanded={open} onClick={onToggle}>
-          <span className="src-chev" aria-hidden="true">
-            {open ? "▾" : "▸"}
-          </span>
-          <strong>{server.name}</strong>
-        </button>
-        <span className="badge">{server.kind}</span>
-        <span className="mm-addr">{server.address}</span>
-        {server.has_key && <span className="src-sub">key: yes</span>}
-        <span className="mm-row-acts">
-          {open && (
-            <button type="button" className="quiet src-refresh" onClick={onRefresh} disabled={read && "reading" in read}>
-              ↻ Refresh
+    <li className={`mx-src${open ? " mx-open" : ""}`}>
+      <SourceHead
+        title={server.name}
+        badge={server.kind}
+        open={open}
+        off={false}
+        added={own.length}
+        hint={server.address}
+        onToggle={() => {
+          setMode(null);
+          onToggle();
+        }}
+        acts={
+          <>
+            <button
+              type="button"
+              className="mx-icon"
+              aria-pressed={mode === "change"}
+              aria-label={`Change ${server.name}`}
+              title="Change the address or key"
+              onClick={() => show("change")}
+            >
+              <PencilIcon />
             </button>
-          )}
-          <button type="button" className="quiet" onClick={() => setMode(mode === "change" ? null : "change")}>
-            Change
-          </button>
-          <button type="button" className="quiet" onClick={() => setMode(mode === "remove" ? null : "remove")}>
-            Remove
-          </button>
-        </span>
-      </div>
+            <button
+              type="button"
+              className="mx-icon mx-icon-danger"
+              aria-pressed={mode === "remove"}
+              aria-label={`Remove ${server.name}`}
+              title="Remove the server"
+              onClick={() => show("remove")}
+            >
+              <ForgetIcon />
+            </button>
+          </>
+        }
+      >
+        <span className="mono">{server.address}</span>
+        {server.has_key ? " · key" : ""}
+      </SourceHead>
       {mode === "change" && (
         <ChangeServer
           server={server}
-          onSaving={onStale}
           onDone={(probe, done) => {
             setMode(null);
-            if (probe && done) onProbe(probe, done);
-            onChanged();
+            onProbe(probe, done);
+            void onChanged();
           }}
           onCancel={() => setMode(null)}
         />
       )}
       {mode === "remove" && (
-        <RemoveServer server={server} own={own} onCancel={() => setMode(null)} onChanged={onChanged} />
+        <RemoveServer
+          server={server}
+          own={own}
+          onCancel={() => setMode(null)}
+          onChanged={onChanged}
+          onGone={(line) => {
+            setMode(null);
+            onGone(line);
+          }}
+        />
       )}
       {open && saved && (
-        <>
-          {saved.saved && <span className="field-note ok">{saved.saved}</span>}
+        <div className="mx-saved">
+          <span className="field-note ok">{`✓ ${saved.saved}`}</span>
           {saved.warnings.map((line) => (
             <span key={line} className="field-note warn">{`⚠ ${line}`}</span>
           ))}
@@ -358,17 +502,17 @@ function ServerSource({
               {line}
             </span>
           ))}
-        </>
+        </div>
       )}
       {open && (
         <SourceBody
           read={read}
-          rows={rows}
-          columns={columns}
+          cli={null}
           server={server.name}
-          whose="the server's list"
+          columns={columns}
           models={models}
-          missing={own}
+          own={own}
+          onRefresh={onRefresh}
           onChanged={onChanged}
           onRemoved={onRemoved}
         />
@@ -377,56 +521,91 @@ function ServerSource({
   );
 }
 
-// An open source's list: reading, the refusal, or its models with their ticks, a search
-// above a long list, then Other model….
+// An open source's list: reading, the refusal, or its models in the order of its read,
+// bounded, with a search above a long one and its count under it; then Model id where the
+// list is not whole.
 function SourceBody({
   read,
-  rows,
-  columns,
+  cli,
   server,
-  whose,
+  columns,
   models,
-  missing,
+  own,
+  onRefresh,
   onChanged,
   onRemoved,
 }: {
   read: Read | undefined;
-  rows: ModelRow[];
-  columns: Column[];
+  cli: Column | null; // a CLI's source, else a server's (`server`, `columns`)
   server: string | null;
-  whose: string;
+  columns: Column[];
   models: ConfiguredModelInfo[];
-  missing: ConfiguredModelInfo[];
-  onChanged: (settings?: ModelSettings) => void;
+  own: ConfiguredModelInfo[];
+  onRefresh: () => void;
+  onChanged: (settings?: ModelSettings) => Promise<void> | void;
   onRemoved: (model: ConfiguredModelInfo) => void;
 }) {
   const [search, setSearch] = useState("");
   const [refused, setRefused] = useState<{ model: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  if (!read || "reading" in read) return <p className="mm-line muted">reading the models…</p>;
-  if ("refused" in read) {
-    const stay = missing.map((m) => m.name);
+  const [pop, setPop] = useState<string | null>(null);
+  const reading = !read || "reading" in read;
+  const tools = (extra?: ReactNode) => (
+    <div className="mx-tools">
+      {extra}
+      <span className="mx-tools-end">
+        <button
+          type="button"
+          className="mx-icon"
+          aria-label="Refresh the list"
+          title="Read the list again"
+          disabled={reading}
+          onClick={onRefresh}
+        >
+          ↻
+        </button>
+      </span>
+    </div>
+  );
+  if (reading)
     return (
-      <>
+      <div className="mx-body">
+        <p className="mx-count">reading the models…</p>
+      </div>
+    );
+  if ("refused" in read) {
+    const stay = own.map((m) => m.name);
+    return (
+      <div className="mx-body">
+        {tools()}
         <span className="field-note warn" role="alert">
           {`⚠ ${read.refused.message}${stay.length ? `. Its models stay: ${stay.join(", ")}.` : ""}`}
         </span>
         {read.refused.hint && <span className="field-note warn">{`⚠ ${read.refused.hint}`}</span>}
-      </>
+      </div>
     );
   }
   const has = listed(read);
-  const values = new Set(rows.map((r) => r.value));
-  const gone = [...new Set(missing.map((m) => m.model).filter((m) => !values.has(m)))];
+  const configured = new Set(own.map((m) => m.model));
+  // The order of the read; a model it no longer lists shows while it is configured, and one
+  // configured since (by Model id) comes last.
+  const rows = [
+    ...read.order.filter((m) => configured.has(m) || has === null || has.has(m)),
+    ...[...configured].filter((m) => !read.order.includes(m)),
+  ];
   const typed = search.trim().toLowerCase();
-  const shown = rows.filter((r) => !typed || r.value.toLowerCase().includes(typed));
-  const tick = async (cli: string, model: string, on: boolean) => {
+  const shown = rows.filter((m) => !typed || m.toLowerCase().includes(typed));
+  const missing = (m: string) => has !== null && !has.has(m);
+  const probe = "probe" in read ? read.probe : null;
+  const embeddings = probe?.embeddings.length ?? 0;
+  const whole = cli ? "cli" in read && read.cli.models !== null : probe?.models !== null;
+  const tick = async (on: string, model: string, add: boolean) => {
     setBusy(true);
     setRefused(null);
     try {
-      if (on) await addModel({ name: null, cli, model, server });
+      if (add) await addModel({ name: null, cli: on, model, server });
       else {
-        const [one] = ticked(models, cli, model, server);
+        const [one] = ticked(models, on, model, server);
         if (one) {
           await removeModel(one.name);
           onRemoved(one);
@@ -436,105 +615,178 @@ function SourceBody({
       setRefused({ model, text: refusalOf(error).message });
     } finally {
       setBusy(false);
-      onChanged();
+      void onChanged();
     }
   };
-  const line = (row: ModelRow, missingTag: string) => {
-    const embeddings = row.tag === "(embeddings)";
+  const box = (on: Column, model: string) => {
+    const state = tickState(models, on.name, model, server);
+    const gone = missing(model) && !state.on; // a model gone from the list is unticked only
     return (
-      <tr key={row.value} className={missingTag ? "src-missing" : embeddings ? "src-emb" : undefined}>
-        <td className="mono">
-          {row.value}
-          {row.tag && <span className="tag">{row.tag}</span>}
-          {missingTag && <span className="tag">{`⚠ ${missingTag}`}</span>}
-          {refused?.model === row.value && <span className="field-note bad">{refused.text}</span>}
-        </td>
-        {columns.map((column) => {
-          const state = tickState(models, column.name, row.value, server);
-          // A model gone from the list is unticked only: its add would be refused.
-          const gone = missingTag !== "" && !state.on;
-          return (
-            <td key={column.name} className="ck">
-              <input
-                type="checkbox"
-                aria-label={`${row.value} on ${column.title}`}
-                checked={state.on}
-                disabled={busy || embeddings || state.several.length > 0 || gone}
-                title={
-                  state.several.length
-                    ? `Models: ${state.several.join(", ")}; remove them in Your models`
-                    : gone
-                      ? `${row.value} is ${missingTag}: ↻ Refresh reads it again`
-                      : undefined
-                }
-                onChange={(event) => void tick(column.name, row.value, event.target.checked)}
-              />
-            </td>
-          );
-        })}
-      </tr>
+      <input
+        type="checkbox"
+        aria-label={`${model} on ${on.title}`}
+        checked={state.on}
+        disabled={busy || state.several.length > 0 || gone}
+        title={
+          state.several.length
+            ? `${state.several.join(", ")}: remove them in Your models`
+            : gone
+              ? `${model} is no longer listed: ↻ reads the list again`
+              : undefined
+        }
+        onChange={(event) => void tick(on.name, model, event.target.checked)}
+      />
+    );
+  };
+  const note = (model: string) =>
+    refused?.model === model && (
+      <div className="mx-row-note">
+        <span className="field-note bad">{refused.text}</span>
+      </div>
+    );
+  const cliRow = (on: Column, model: string) => {
+    const same = ticked(models, on.name, model, null).filter((m) => m.name !== model);
+    return (
+      <div key={model}>
+        <label className={`mx-row${missing(model) ? " mx-row-gone" : ""}`}>
+          {box(on, model)}
+          <span className="mono" title={model}>
+            {model}
+            {missing(model) && " ⚠ no longer listed"}
+          </span>
+          {same.length > 0 && (
+            <span className="mx-as" title={same.map((m) => m.name).join(", ")}>
+              {same.map((m) => `as ${m.name}`).join(", ")}
+            </span>
+          )}
+        </label>
+        {note(model)}
+      </div>
+    );
+  };
+  const serverRow = (model: string) => {
+    const entries = models.filter((m) => m.model === model && fold(m.server ?? "") === fold(server ?? ""));
+    const titles = [...new Set(entries.map((m) => m.cli_title))];
+    const opened = pop === model;
+    if (columns.length === 0)
+      return (
+        <div key={model} className={`mx-row mx-row-plain${missing(model) ? " mx-row-gone" : ""}`}>
+          <span className="mono" title={model}>
+            {model}
+          </span>
+        </div>
+      );
+    return (
+      <div key={model}>
+        <div
+          className={`mx-row mx-row-pop${missing(model) ? " mx-row-gone" : ""}${opened ? " mx-row-on" : ""}`}
+          role="button"
+          tabIndex={0}
+          aria-expanded={opened}
+          aria-label={model}
+          onClick={() => setPop(opened ? null : model)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setPop(opened ? null : model);
+            }
+            if (event.key === "Escape") setPop(null);
+          }}
+        >
+          <span className="mono" title={model}>
+            {model}
+            {missing(model) && " ⚠ no longer listed"}
+          </span>
+          <span className="mx-as mx-in" title={titles.join(", ")}>
+            {titles.length > 0 && `in ${titles.join(", ")}`}
+          </span>
+          <span className="mx-cli-btn" aria-hidden="true">
+            {titles.length ? "CLIs ▾" : "+ Add ▾"}
+          </span>
+        </div>
+        {opened && (
+          <div
+            className="mx-pop"
+            role="group"
+            aria-label={`Agent CLIs for ${model}`}
+            onKeyDown={(event) => event.key === "Escape" && setPop(null)}
+          >
+            <div className="mx-pop-h">
+              These agent CLIs can run <b className="mono">{model}</b>:
+            </div>
+            {columns.map((on) => {
+              const names = ticked(models, on.name, model, server).map((m) => m.name);
+              return (
+                <label key={on.name} className="mx-pop-item">
+                  {box(on, model)}
+                  <span>{on.title}</span>
+                  <span className="mx-sub">{names.join(", ")}</span>
+                </label>
+              );
+            })}
+            <div className="mx-pop-f">
+              <button type="button" className="quiet" onClick={() => setPop(null)}>
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+        {note(model)}
+      </div>
     );
   };
   return (
-    <>
-      {rows.length > SEARCH_ABOVE && (
-        <input
-          className="src-search"
-          type="search"
-          aria-label="Search the models"
-          placeholder={`Search ${rows.length} models`}
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
+    <div className="mx-body">
+      {tools(
+        rows.length > SEARCH_ABOVE && (
+          <input
+            className="mx-search"
+            type="search"
+            aria-label="Search the models"
+            placeholder={`Search ${rows.length} models`}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        ),
       )}
-      {"probe" in read && read.probe.models === null && (
-        <span className="field-note warn">{`⚠ no list of models: ${read.probe.models_why}`}</span>
-      )}
-      {"probe" in read && read.probe.apis_why && (
-        <span className="field-note warn">{`⚠ APIs: cannot be told: ${read.probe.apis_why}`}</span>
-      )}
-      {columns.length === 0 && server !== null && (
+      {probe && probe.models === null && <span className="field-note warn">{`⚠ no list of models: ${probe.models_why}`}</span>}
+      {probe?.apis_why && <span className="field-note warn">{`⚠ APIs: cannot be told: ${probe.apis_why}`}</span>}
+      {server !== null && columns.length === 0 && (
         <span className="field-note">No installed CLI can use this server.</span>
       )}
-      {(rows.length > 0 || gone.length > 0) && columns.length > 0 && (
-        <div className="src-scroll">
-          <table className="src-models">
-            {server !== null && (
-              <thead>
-                <tr>
-                  <th>Model</th>
-                  {columns.map((c) => (
-                    <th key={c.name} className="ck">
-                      {c.title}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-            )}
-            <tbody>
-              {gone.map((model) => line({ value: model, tag: "" }, has === null ? "" : `not in ${whose}`))}
-              {shown.map((row) => line(row, ""))}
-            </tbody>
-          </table>
+      {rows.length > 0 && (
+        <div className="mx-list">
+          {shown.map((model) => (cli ? cliRow(cli, model) : serverRow(model)))}
+          {shown.length === 0 && <div className="mx-row mx-row-plain muted">{`No model matches “${search}”.`}</div>}
         </div>
       )}
-      {columns.length > 0 && <OtherModel rows={rows} columns={columns} server={server} onChanged={onChanged} />}
-    </>
+      {rows.length > 0 && (
+        <p className="mx-count">
+          {typed ? `${shown.length} of ${plural(rows.length, "model")}` : plural(rows.length, "model")}
+        </p>
+      )}
+      {embeddings > 0 && (
+        <p className="mx-count">
+          {`${plural(embeddings, "embeddings model")} hidden: agents cannot run on ${embeddings === 1 ? "it" : "them"}.`}
+        </p>
+      )}
+      {!whole && (cli !== null || columns.length > 0) && (
+        <ModelId columns={cli ? [cli] : columns} server={server} onChanged={onChanged} />
+      )}
+    </div>
   );
 }
 
-// Other model…: a model the list lacks, the check `lado model add` would make under the
-// field once the typing settles, and Add.
-function OtherModel({
-  rows,
+// Model id: a model of a source whose list is not whole, the check `lado model add` would make
+// under the field once the typing settles, and Add (off while refused).
+function ModelId({
   columns,
   server,
   onChanged,
 }: {
-  rows: ModelRow[];
   columns: Column[];
   server: string | null;
-  onChanged: (settings?: ModelSettings) => void;
+  onChanged: (settings?: ModelSettings) => Promise<void> | void;
 }) {
   const id = useId();
   const [model, setModel] = useState("");
@@ -563,7 +815,7 @@ function OtherModel({
       await addModel({ name: null, cli: chosen, model: model.trim(), server });
       setModel("");
       setCheck(null);
-      onChanged();
+      void onChanged();
     } catch (error) {
       setRefused(refusalOf(error));
     } finally {
@@ -573,26 +825,27 @@ function OtherModel({
   const settled = check && typed === model.trim() ? check : null;
   const note = refused ?? settled;
   return (
-    <div className="mm-other">
+    <div className={`mx-other${server !== null ? " mx-other-cli" : ""}`}>
       <div className="field">
-        <label htmlFor={id}>Other model…</label>
-        <SuggestField
+        <label htmlFor={id}>Model id</label>
+        <input
           id={id}
+          className="mono"
           value={model}
-          onValue={(value) => {
-            setModel(value);
+          placeholder="a model id the list lacks"
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(event) => {
+            setModel(event.target.value);
             setRefused(null);
           }}
-          suggestions={rows.filter((r) => r.tag !== "(embeddings)").map((r) => ({ value: r.value, tag: r.tag || undefined }))}
-          arrowLabel="Show the models"
-          listLabel="Models"
-          placeholder="a model the list lacks"
+          onKeyDown={(event) => event.key === "Enter" && settled?.kind !== "refused" && model.trim() && void add()}
         />
         {note && <CheckNote note={note} />}
       </div>
       {server !== null && (
         <div className="field">
-          <label htmlFor={`${id}-cli`}>CLI</label>
+          <label htmlFor={`${id}-cli`}>Agent CLI</label>
           <select id={`${id}-cli`} value={chosen} onChange={(event) => setCli(event.target.value)}>
             {columns.map((c) => (
               <option key={c.name} value={c.name}>
@@ -631,18 +884,228 @@ export function CheckNote({ note }: { note: ModelCheck | EntryRefused }) {
   return <span className="field-note">{note.text}</span>;
 }
 
-// The plain-http warning `lado model-server add` gives before it sends anything, for the
-// address once the typing settles, while a key goes with it (`keyGoes`); null for none.
-export function usePlainHttp(address: string, keyGoes: boolean): ModelCheck | null {
+// A refusal's notes under the field it names (`field`), else none.
+export function FieldNotes({ refused, field }: { refused: EntryRefused | null; field: string }) {
+  if (!refused || refused.field !== field) return null;
+  return <CheckNote note={refused} />;
+}
+
+const warnings = (lines: string[]) =>
+  lines.map((line) => <span key={line} className="field-note warn">{`⚠ ${line}`}</span>);
+
+// What a probe found, said under Address before Add.
+export function probeLine(probe: ProbeInfo): string {
+  const embeddings = new Set(probe.embeddings);
+  const count = probe.models === null ? "no list of models" : plural(probe.models.filter((m) => !embeddings.has(m)).length, "model");
+  const clis = probe.clis.length ? `${probe.clis.map((c) => c.title).join(", ")} can run them` : "no agent CLI can use it";
+  return `${probe.kind} · ${count} · ${clis}`;
+}
+
+// + Add server: Name, Address and Key (optional). Once the typing settles the form checks
+// the name and probes the address without the key; Check key probes it with the key; Add
+// probes and saves as `lado model-server add` does, on only for a free name and a server
+// that answered, or asks for a key with one typed. An older check's answer is dropped.
+function AddServer({
+  onCancel,
+  onAdded,
+}: {
+  onCancel: () => void;
+  onAdded: (server: ModelServerInfo, probe: ProbeInfo, saved: Saved) => void;
+}) {
+  const id = useId();
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [filled, setFilled] = useState(false);
+  const [keyRev, setKeyRev] = useState(0); // counts the key's edits: a check with an older key is old
+  const [refused, setRefused] = useState<EntryRefused | null>(null); // Add's
+  const [busy, setBusy] = useState(false);
+  const key = useRef<HTMLInputElement>(null);
+  const typed = `${name}\n${address}\n${filled}`;
+  const settled = useDebounced(typed, MODEL_DEBOUNCE);
+  const asked = useRef(0);
+  const [auto, setAuto] = useState<{ for: string; found?: ServerCheck } | null>(null);
+  const [keyed, setKeyed] = useState<{ for: string; rev: number; found?: ServerCheck } | null>(null);
+  useEffect(() => {
+    const [n, a, f] = settled.split("\n");
+    const mine = ++asked.current;
+    if (!n && !a.trim()) return setAuto(null);
+    setAuto({ for: settled });
+    checkModelServer(n, a, null, f === "true").then(
+      (found) => mine === asked.current && setAuto({ for: settled, found }),
+      (error: unknown) =>
+        mine === asked.current &&
+        setAuto({ for: settled, found: { probe: null, refusals: [refusalOf(error)], warnings: [], notes: [] } }),
+    );
+  }, [settled]);
+  useEffect(
+    () => () => {
+      asked.current++; // the form goes: no answer fills it
+    },
+    [],
+  );
+  const checkKey = () => {
+    const given = key.current?.value ?? "";
+    if (!given) return;
+    const mine = ++asked.current;
+    const at = { for: typed, rev: keyRev };
+    setKeyed(at);
+    checkModelServer(name, address, given, true).then(
+      (found) => mine === asked.current && setKeyed({ ...at, found }),
+      (error: unknown) =>
+        mine === asked.current &&
+        setKeyed({ ...at, found: { probe: null, refusals: [refusalOf(error)], warnings: [], notes: [] } }),
+    );
+  };
+  const keyedNow = keyed && keyed.for === typed && keyed.rev === keyRev ? keyed : null;
+  const autoNow = auto && auto.for === typed ? auto : null;
+  const result = keyedNow?.found ?? (keyedNow ? undefined : autoNow?.found);
+  const checking = !busy && (typed !== settled || (autoNow !== null && !autoNow.found) || (keyedNow !== null && !keyedNow.found));
+  const of = (field: string) => (result?.refusals ?? []).filter((r) => r.field === field && refused?.field !== field);
+  const asksKey = !keyedNow && (result?.refusals ?? []).some((r) => r.field === "key");
+  const ready =
+    !busy &&
+    !checking &&
+    name !== "" &&
+    address.trim() !== "" &&
+    result !== undefined &&
+    !result.refusals.some((r) => ["name", "address", ""].includes(r.field)) &&
+    (result.probe !== null || (asksKey && filled));
+  // A refusal of Add under a field goes once that field is edited.
+  const edited = (field: string) => setRefused((now) => (now?.field === field ? null : now));
+  const add = async () => {
+    if (!ready) return;
+    const given = key.current?.value ?? "";
+    if (key.current) key.current.value = "";
+    setFilled(false);
+    setBusy(true);
+    setRefused(null);
+    try {
+      const done = await addModelServer(name, address, given === "" ? null : given);
+      onAdded(done.server, done.probe, {
+        notes: done.notes,
+        warnings: done.warnings,
+        saved: `Saved model server "${done.server.name}".`,
+      });
+    } catch (error) {
+      setRefused(refusalOf(error));
+      setBusy(false);
+    }
+  };
+  const notes = (lines: EntryRefused[], look: "bad" | "warn") =>
+    lines.map((r) =>
+      look === "bad" ? (
+        <CheckNote key={r.message} note={r} />
+      ) : (
+        <span key={r.message}>
+          <span className="field-note warn">{`⚠ ${r.message}`}</span>
+          {r.hint && <span className="field-note warn">{`⚠ ${r.hint}`}</span>}
+        </span>
+      ),
+    );
+  return (
+    <div className="mx-form">
+      <div className="launch-grid">
+        <div className="field">
+          <label htmlFor={`${id}-name`}>Name</label>
+          <input
+            id={`${id}-name`}
+            className="words"
+            value={name}
+            placeholder="e.g. LM Studio at home"
+            onChange={(event) => {
+              setName(event.target.value);
+              edited("name");
+            }}
+          />
+          {notes(of("name"), "bad")}
+          <FieldNotes refused={refused} field="name" />
+        </div>
+        <div className="field">
+          <label htmlFor={`${id}-address`}>Address</label>
+          <input
+            id={`${id}-address`}
+            value={address}
+            placeholder="localhost:1234 or https://host/v1"
+            onChange={(event) => {
+              setAddress(event.target.value);
+              edited("address");
+            }}
+          />
+          {checking && address.trim() !== "" ? (
+            <span className="field-note mx-check">
+              <span className="mx-spin" aria-hidden="true" />
+              {` checking ${address.trim()}…`}
+            </span>
+          ) : (
+            <>
+              {result?.probe && <span className="field-note ok">{`✓ ${probeLine(result.probe)}`}</span>}
+              {notes(of("address"), "bad")}
+              {asksKey && notes(of("key"), "warn")}
+              {(result?.notes ?? []).map((line) => (
+                <span key={line} className="field-note">
+                  {line}
+                </span>
+              ))}
+            </>
+          )}
+          <FieldNotes refused={refused} field="address" />
+        </div>
+        <div className="field launch-wide">
+          <label htmlFor={`${id}-key`}>
+            Key <span className="muted mx-opt">optional</span>
+          </label>
+          <SecretField
+            field={key}
+            label="Key"
+            placeholder="only if the server asks for one (not shown after saving)"
+            onFilled={(now) => {
+              setFilled(now);
+              setKeyRev((n) => n + 1);
+              edited("key");
+            }}
+            onEnter={() => void add()}
+          />
+          {filled && warnings(result?.warnings ?? [])}
+          {warnings((refused?.warnings ?? []).filter((line) => !(filled && result?.warnings.includes(line))))}
+          {!checking && !asksKey && notes(of("key"), "bad")}
+          {asksKey && filled && (
+            <span className="field-note">The key is sent to the server only when you press Check key or Add.</span>
+          )}
+          <FieldNotes refused={refused} field="key" />
+        </div>
+      </div>
+      <div className="mx-form-acts">
+        <button type="button" className="primary" disabled={!ready} onClick={() => void add()}>
+          {busy ? "checking the server…" : "Add"}
+        </button>
+        {asksKey && filled && (
+          <button type="button" className="quiet" onClick={checkKey}>
+            Check key
+          </button>
+        )}
+        <button type="button" className="quiet" onClick={onCancel}>
+          Cancel
+        </button>
+        {notes(of(""), "bad")}
+        {refused && !["name", "address", "key"].includes(refused.field) && <CheckNote note={refused} />}
+      </div>
+    </div>
+  );
+}
+
+// The plain-http warning `lado model-server add --replace` gives before it sends anything,
+// for the address once the typing settles, while a key goes with it (`keyGoes`); null for
+// none. The form's check gives it (its probe of the address is not shown here).
+function usePlainHttp(address: string, keyGoes: boolean): string | null {
   const typed = useDebounced(address.trim(), MODEL_DEBOUNCE);
-  const [found, setFound] = useState<ModelCheck | null>(null);
+  const [found, setFound] = useState<string | null>(null);
   useEffect(() => {
     setFound(null);
     if (!typed || !keyGoes) return;
     let current = true;
-    checkModelServer(typed, true).then(
-      (check) => current && setFound(check.kind === "warn" ? check : null),
-      () => undefined, // Add says what is wrong
+    checkModelServer("", typed, null, true).then(
+      (check) => current && setFound(check.warnings[0] ?? null),
+      () => undefined, // Save says what is wrong
     );
     return () => {
       current = false;
@@ -651,37 +1114,15 @@ export function usePlainHttp(address: string, keyGoes: boolean): ModelCheck | nu
   return keyGoes && typed === address.trim() ? found : null;
 }
 
-// The notes under Key: the plain-http warning while a key is typed, else the one of the
-// last send, then a refusal of the key.
-export function KeyNotes({ live, refused }: { live: ModelCheck | null; refused: EntryRefused | null }) {
-  const sent = (refused?.warnings ?? []).filter((line) => line !== live?.text);
-  return (
-    <>
-      {live && <CheckNote note={live} />}
-      {sent.map((line) => (
-        <span key={line} className="field-note warn">{`⚠ ${line}`}</span>
-      ))}
-      <FieldNotes refused={refused} field="key" />
-    </>
-  );
-}
-
-// A refusal's notes under the field it names (`field`), else none.
-export function FieldNotes({ refused, field }: { refused: EntryRefused | null; field: string }) {
-  if (!refused || refused.field !== field) return null;
-  return <CheckNote note={refused} />;
-}
-
-// Change: the server's Address, filled, and New key, empty (the kept key stays).
+// Change: the server's Address, filled, and New key, empty (the kept key stays); Save
+// replaces it as `lado model-server add --replace` does, then its list opens.
 function ChangeServer({
   server,
-  onSaving,
   onDone,
   onCancel,
 }: {
   server: ModelServerInfo;
-  onSaving: () => void;
-  onDone: (probe: ProbeInfo | null, saved: Saved | null) => void;
+  onDone: (probe: ProbeInfo, saved: Saved) => void;
   onCancel: () => void;
 }) {
   const id = useId();
@@ -697,28 +1138,25 @@ function ChangeServer({
     setFilled(false);
     setBusy(true);
     setRefused(null);
-    onSaving(); // the result of an earlier change is old now
     try {
       const done = await addModelServer(server.name, address, given === "" ? null : given, true);
       onDone(done.probe, {
         notes: done.notes,
         warnings: done.warnings,
-        saved: `✓ Replaced model server "${done.server.name}". For: ${clisLine(done.probe)}`,
+        saved: `Saved model server "${done.server.name}".`,
       });
     } catch (error) {
       setRefused(refusalOf(error));
-    } finally {
       setBusy(false);
     }
   };
   return (
-    <div className="mm-form">
+    <div className="mx-form">
       <div className="launch-grid">
         <div className="field">
           <label htmlFor={`${id}-address`}>Address</label>
           <input
             id={`${id}-address`}
-            className="mono"
             value={address}
             onChange={(event) => {
               setAddress(event.target.value);
@@ -727,8 +1165,10 @@ function ChangeServer({
           />
           <FieldNotes refused={refused} field="address" />
         </div>
-        <div className="field project-edit-key">
-          <label htmlFor={`${id}-key`}>New key</label>
+        <div className="field">
+          <label htmlFor={`${id}-key`}>
+            New key <span className="muted mx-opt">empty keeps the key</span>
+          </label>
           <SecretField
             field={key}
             label="New key"
@@ -739,10 +1179,12 @@ function ChangeServer({
             }}
             onEnter={() => void save()}
           />
-          <KeyNotes live={live} refused={refused} />
+          {live && <span className="field-note warn">{`⚠ ${live}`}</span>}
+          {warnings((refused?.warnings ?? []).filter((line) => line !== live))}
+          <FieldNotes refused={refused} field="key" />
         </div>
       </div>
-      <div className="mm-acts">
+      <div className="mx-form-acts">
         <button type="button" className="primary" disabled={busy || !address.trim()} onClick={() => void save()}>
           {busy ? "checking the server…" : "Save"}
         </button>
@@ -750,22 +1192,27 @@ function ChangeServer({
           Cancel
         </button>
         <span className="field-note">{`Models on ${server.name} keep referring to it.`}</span>
+        {refused && !["address", "key"].includes(refused.field) && <CheckNote note={refused} />}
       </div>
-      {refused && !["address", "key"].includes(refused.field) && <CheckNote note={refused} />}
     </div>
   );
 }
 
+// Remove: asks in the server's row, naming the models saved now (the CLI may have added one
+// since the page read them) and saying the key goes too; the removal takes only those,
+// refused when the server has others by then, and then it asks anew.
 function RemoveServer({
   server,
   own,
   onCancel,
   onChanged,
+  onGone,
 }: {
   server: ModelServerInfo;
   own: ConfiguredModelInfo[];
   onCancel: () => void;
-  onChanged: (settings?: ModelSettings) => void;
+  onChanged: (settings?: ModelSettings) => Promise<void> | void;
+  onGone: (line: string) => void;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(true); // until the entries are read again
@@ -776,14 +1223,11 @@ function RemoveServer({
     },
     [],
   );
-  // The models it names are the ones saved now (the CLI may have added one since the page
-  // read them); the removal takes only those, refused when the server has others by then,
-  // and then the entries are read again and it asks anew.
   const reread = () =>
     getModelSettings().then(
       (found) => {
         if (!current.current) return;
-        onChanged(found);
+        void onChanged(found);
         setBusy(false);
       },
       (error: unknown) => current.current && setProblem(refusalOf(error).message),
@@ -793,27 +1237,27 @@ function RemoveServer({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when it asks
   }, []);
   const ask = own.length
-    ? `Remove ${server.name} and its ${own.length} models: ${own.map((m) => m.name).join(", ")}?`
+    ? `Remove ${server.name} and its ${plural(own.length, "model")}: ${own.map((m) => m.name).join(", ")}?`
     : `Remove ${server.name}?`;
   const remove = async () => {
     setBusy(true);
     setProblem(null);
     try {
-      onChanged(
-        await removeModelServer(
-          server.name,
-          own.map((m) => m.name),
-        ),
+      const left = await removeModelServer(
+        server.name,
+        own.map((m) => m.name),
       );
+      onGone(own.length ? `Removed ${server.name} and its ${plural(own.length, "model")}.` : `Removed ${server.name}.`);
+      void onChanged(left);
     } catch (error) {
       setProblem(refusalOf(error).message);
       void reread();
     }
   };
   return (
-    <div className="mm-confirm">
-      <span className="project-ask">{ask}</span>
-      <div className="mm-acts">
+    <div className="mx-confirm">
+      <span>{`${ask} Its key is deleted too; this cannot be undone.`}</span>
+      <div className="mx-form-acts">
         <button type="button" className="danger" disabled={busy} onClick={() => void remove()}>
           {own.length ? "Remove server and models" : "Remove"}
         </button>

@@ -271,17 +271,47 @@ def check_model(
     return Checked(provider, model, server, verdict, aliases)
 
 
+def default_name(
+    provider: providers.Provider,
+    model: str,
+    server: state.ModelServer | None,
+    aliases: tuple[str, ...],
+) -> str:
+    """The name a model gets when the human gives none: for an alias of the CLI (`aliases`),
+    the first word of the CLI's title and the alias capitalised (`Claude Sonnet`); for a
+    model on `server`, `<model> · <server>`; else the model. A name taken ignoring case gets
+    ` · <CLI title>`, then ` (2)`, ` (3)`, … until free; each try is cut to MAX_NAME
+    characters before its suffix."""
+    if server is not None:
+        base_name = f"{model} · {server.name}"
+    elif model in aliases:
+        base_name = f"{provider.title.split()[0]} {model[:1].upper()}{model[1:]}"
+    else:
+        base_name = model
+    suffixes = ["", f" · {provider.title}"]
+    number = 2
+    while True:
+        for suffix in suffixes:
+            name = base_name[: MAX_NAME - len(suffix)].rstrip() + suffix
+            if state.model(name) is None:
+                return name
+        suffixes = [f" · {provider.title} ({number})"]
+        number += 1
+
+
 def add_model(
-    name: str,
+    name: str | None,
     cli: str,
     model: str,
     server_name: str | None,
     env: Callable[[providers.Provider], Mapping[str, str]],
 ) -> tuple[state.ConfiguredModel, model_check.Verdict]:
-    """Check the model as `check_model` does, its server probed now, and save it: the saved
-    entry and the check's verdict."""
+    """Check the model as `check_model` does, its server probed now, and save it under
+    `name`, or None for its `default_name`: the saved entry and the check's verdict."""
     checked = check_model(name, cli, model, server_name, env)
     server = checked.server
+    if name is None:
+        name = default_name(checked.provider, checked.model, server, checked.aliases)
     try:
         saved = state.add_model(name, cli, checked.model, server.id if server else None)
     except state.NameTaken as exc:  # added meanwhile
@@ -335,6 +365,21 @@ def probe_saved(server: state.ModelServer) -> model_servers.Probe:
     """`server` probed now with its kept key (Refused for a key file LADO does not read,
     model_servers.ProbeError for a probe that fails)."""
     return model_servers.probe(server.address, server_key(server), add_command(server.name, True))
+
+
+def rename_model(name: str, new: str) -> state.ConfiguredModel:
+    """Rename the configured model named `name` to `new`, its CLI, model and server kept;
+    the model renamed. Refused for no such model, a new name that is no name, or one another
+    model has ignoring case."""
+    check_name(new, MODEL)
+    try:
+        renamed = state.rename_model(name, new)
+    except state.NameTaken as exc:
+        raise _model_taken(exc.name) from None
+    saved = state.model(new) if renamed else None
+    if saved is None:
+        raise _no_models([name])
+    return saved
 
 
 def remove_models(names: list[str], removed: Callable[[str], None]) -> None:

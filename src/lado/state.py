@@ -3911,6 +3911,25 @@ def models_on(server: str) -> list[ConfiguredModel]:
     return [_configured_model(row) for row in rows]
 
 
+def rename_model(name: str, new: str) -> bool:
+    """Rename the configured model named `name` ignoring case to `new`, its CLI, model and
+    server kept; False when there is none, NameTaken when another has `new` ignoring case."""
+    with connect() as db:
+        try:
+            return (
+                db.execute(
+                    "UPDATE models SET name = ?, folded = ? WHERE folded = ?",
+                    (new, new.casefold(), name.casefold()),
+                ).rowcount
+                == 1
+            )
+        except sqlite3.IntegrityError:
+            taken = _taken(db, "models", new)
+            if taken is None:
+                raise
+            raise taken from None
+
+
 def remove_model(name: str) -> bool:
     """Remove the configured model named `name` ignoring case; False when there is none."""
     with connect() as db:

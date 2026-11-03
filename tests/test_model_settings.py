@@ -841,3 +841,105 @@ def test_check_model_uses_the_probe_given(serve):
     assert checked.verdict.kind == model_check.OK
     assert [s.name for s in seen] == ["lms"]
     assert server.requests == []
+
+
+# A model's default name.
+
+
+def litellm_server():
+    return state.add_model_server("s1", "LiteLLM", "http://gw", "OpenAI-compatible", (CHAT,))
+
+
+def default_name(cli, model, server=None, aliases=()):
+    return model_settings.default_name(providers.get(cli), model, server, aliases)
+
+
+def test_the_default_name_of_an_alias():
+    aliases = ("sonnet", "sonnet[1m]")
+    assert default_name("claude", "sonnet", aliases=aliases) == "Claude Sonnet"
+    assert default_name("claude", "sonnet[1m]", aliases=aliases) == "Claude Sonnet[1m]"
+
+
+def test_the_default_name_of_a_model_of_the_clis_list():
+    assert default_name("codex", "gpt-5-codex") == "gpt-5-codex"
+
+
+def test_the_default_name_of_a_model_on_a_server():
+    assert default_name("opencode", "qwen3-8b", litellm_server()) == "qwen3-8b · LiteLLM"
+
+
+def test_a_taken_default_name_gets_the_cli_then_a_number():
+    server = litellm_server()
+    state.add_model("QWEN3-8B · litellm", "opencode", "qwen3-8b", server.id)
+    assert default_name("codex", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Codex CLI"
+    state.add_model("qwen3-8b · LiteLLM · Codex CLI", "codex", "qwen3-8b", server.id)
+    assert default_name("codex", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Codex CLI (2)"
+    state.add_model("qwen3-8b · LiteLLM · Codex CLI (2)", "codex", "qwen3-8b", server.id)
+    assert default_name("codex", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Codex CLI (3)"
+
+
+def test_a_long_default_name_is_cut_before_its_suffix():
+    server = litellm_server()
+    model = "m" * 70
+    first = default_name("opencode", model, server)
+    assert (len(first), first) == (64, "m" * 64)  # cut: no room for " · LiteLLM"
+    state.add_model(first, "opencode", model, server.id)
+    second = default_name("codex", model, server)
+    assert len(second) == 64
+    assert second.endswith(" · Codex CLI")
+    state.add_model(second, "codex", model, server.id)
+    third = default_name("codex", model, server)
+    assert (len(third), third.endswith(" · Codex CLI (2)")) == (64, True)
+    model_settings.check_name(third, model_settings.MODEL)
+
+
+def test_add_model_without_a_name_names_it(monkeypatch):
+    listing(monkeypatch, "claude", base.ModelList(("sonnet",), None, why="no list"))
+    saved, _ = add_model(None, "claude", "sonnet")
+    assert saved.name == "Claude Sonnet"
+    saved, _ = add_model(None, "claude", "sonnet")
+    assert saved.name == "Claude Sonnet · Claude Code"
+
+
+# Renaming a model.
+
+
+def rename(name, new):
+    return model_settings.rename_model(name, new)
+
+
+def test_rename_a_model():
+    state.add_model("Claude Sonnet", "claude", "sonnet", None)
+    renamed = rename("claude sonnet", "Сильная")
+    assert (renamed.name, renamed.cli, renamed.model) == ("Сильная", "claude", "sonnet")
+    assert [m.name for m in state.models()] == ["Сильная"]
+    assert rename("сильная", "СИЛЬНАЯ").name == "СИЛЬНАЯ"
+
+
+def test_rename_to_a_taken_name_is_refused():
+    saved_models("a", "Other")
+    with pytest.raises(model_settings.Refused) as refused:
+        rename("a", "OTHER")
+    assert (str(refused.value), refused.value.field) == (
+        'a model "Other" is saved already; remove it first: lado model remove "Other"',
+        "name",
+    )
+    assert [m.name for m in state.models()] == ["a", "Other"]
+
+
+@pytest.mark.parametrize("new", ["", "x" * 65, " a"])
+def test_rename_to_no_name_is_refused(new):
+    saved_models("a")
+    with pytest.raises(model_settings.Refused) as refused:
+        rename("a", new)
+    assert refused.value.field == "name"
+    assert [m.name for m in state.models()] == ["a"]
+
+
+def test_rename_of_a_model_not_saved_is_refused():
+    with pytest.raises(model_settings.Refused) as refused:
+        rename("nope", "x")
+    assert (str(refused.value), refused.value.field) == (
+        'no model "nope" is saved; lado model list names them',
+        "",
+    )

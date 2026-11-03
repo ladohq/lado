@@ -9,7 +9,7 @@ import stat
 import fake_model_server as fake
 import pytest
 
-from lado import model_servers, model_settings, state
+from lado import model_check, model_servers, model_settings, providers, state
 from lado.providers import base
 
 CHAT, RESPONSES = base.CHAT_COMPLETIONS, base.RESPONSES
@@ -281,3 +281,194 @@ def test_the_clis_a_saved_server_suits():
     assert model_settings.clis(saved) == ["Kilo CLI", "OpenCode", "Codex CLI"]
     bare = state.add_model_server("s2", "bare", "https://x", "OpenAI-compatible", ())
     assert model_settings.clis(bare) == []
+
+
+# Models.
+
+
+def no_env(provider):
+    raise AssertionError("a model on a server reads no CLI's list")
+
+
+def listing(monkeypatch, name, listed):
+    """The CLI `name` gives `listed`, read with the environment the command passes."""
+    seen = []
+    provider = providers.get(name)
+    monkeypatch.setattr(provider, "model_list", lambda env: seen.append(env) or listed)
+    return seen
+
+
+def add_model(name, cli, model, server=None, env=lambda provider: {"PATH": "/agents"}):
+    return model_settings.add_model(name, cli, model, server, env)
+
+
+def test_an_alias_of_the_cli_is_saved(monkeypatch):
+    seen = listing(monkeypatch, "claude", base.ModelList(("haiku",), None, why="no list"))
+    saved, verdict = add_model("Быстрая", "claude", " haiku ")
+    assert (saved.name, saved.cli, saved.model, saved.server) == (
+        "Быстрая",
+        "claude",
+        "haiku",
+        None,
+    )
+    assert (verdict.kind, verdict.text) == (model_check.OK, "an alias of Claude Code")
+    assert seen == [{"PATH": "/agents"}]
+
+
+def test_a_name_the_cli_does_not_list_is_refused(monkeypatch):
+    listing(
+        monkeypatch,
+        "opencode",
+        base.ModelList((), ("anthropic/claude-sonnet-4",), "opencode models"),
+    )
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("S", "opencode", "anthropic/claude-sonet-4")
+    assert str(refused.value) == (
+        "anthropic/claude-sonet-4 is not in OpenCode's list of models; opencode models prints "
+        "the list"
+    )
+    assert state.models() == []
+
+
+def test_a_cli_without_a_list_saves_with_a_warning(monkeypatch):
+    listing(monkeypatch, "kilo", base.ModelList(why="kilo is not installed"))
+    saved, verdict = add_model("K", "kilo", "x/y")
+    assert verdict.kind == model_check.WARN
+    assert verdict.text.startswith("kilo is not installed: LADO cannot check x/y")
+    assert state.model("K") == saved
+
+
+def test_a_cli_lado_does_not_know_is_refused():
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("G", "gemini", "x")
+    assert str(refused.value) == (
+        'LADO knows no agent CLI "gemini"; --cli takes one of claude, codex, kilo, opencode'
+    )
+
+
+def test_an_empty_model_is_refused():
+    with pytest.raises(model_settings.Refused, match="the model is empty"):
+        add_model("E", "claude", "  ")
+
+
+def test_a_taken_name_is_refused_before_any_check(monkeypatch):
+    listing(monkeypatch, "claude", base.ModelList(("haiku", "sonnet")))
+    add_model("Быстрая", "claude", "haiku")
+    seen = listing(monkeypatch, "claude", base.ModelList(("haiku", "sonnet")))
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("быстрая", "claude", "sonnet")
+    assert str(refused.value) == (
+        'a model "Быстрая" is saved already; remove it first: lado model remove "Быстрая"'
+    )
+    assert seen == []
+    assert state.model("Быстрая").model == "haiku"
+
+
+def test_a_server_no_one_saved_is_refused_without_a_request():
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("Q", "opencode", "q", "nowhere", no_env)
+    assert str(refused.value) == (
+        'no model server "nowhere" is saved; lado model-server list names them'
+    )
+
+
+def test_a_model_on_a_server_in_its_list_is_saved(serve):
+    server = serve("lmstudio")
+    add("LM Studio дома", server.url)
+    saved, verdict = add_model("Локальная Qwen", "opencode", "qwen3-8b", "lm studio дома", no_env)
+    assert saved.server == state.model_server("LM Studio дома").id
+    assert (verdict.kind, verdict.text) == (model_check.OK, "in LM Studio дома's list of models")
+
+
+def test_a_model_the_server_does_not_list_is_refused(serve):
+    server = serve("lmstudio")
+    add("LM Studio дома", server.url)
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("Q", "opencode", "qwen3-14b", "LM Studio дома", no_env)
+    assert str(refused.value) == (
+        f"qwen3-14b is not in LM Studio дома's list of models; lado model-server probe "
+        f"{server.url} prints the list"
+    )
+    assert state.models() == []
+
+
+def test_a_server_with_no_list_saves_with_a_warning(serve):
+    server = serve("responses-only")
+    add("resp", server.url)
+    _, verdict = add_model("C", "codex", "gpt-x", "resp", no_env)
+    assert verdict.kind == model_check.WARN
+    assert verdict.text.startswith("GET /v1/models: 404: LADO cannot check gpt-x")
+
+
+def test_a_server_that_does_not_answer_refuses_the_model(serve):
+    server = serve("lmstudio")
+    add("LM Studio дома", server.url)
+    server.close()
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("Q", "opencode", "qwen3-8b", "LM Studio дома", no_env)
+    assert str(refused.value) == (
+        f"{server.url} does not answer (connection refused); LADO cannot check qwen3-8b"
+    )
+    assert state.models() == []
+
+
+def test_the_server_is_asked_with_its_kept_key(serve):
+    server = serve("openai", key="k-1")
+    add("work", server.url, key="k-1")
+    server.requests.clear()
+    add_model("W", "opencode", "gpt-oss-20b", "work", no_env)
+    assert {r.headers["Authorization"] for r in server.requests} == {"Bearer k-1"}
+
+
+def test_a_server_that_does_not_suit_the_cli_is_refused(serve):
+    server = serve("openai")  # chat completions only
+    add("LM Studio дома", server.url)
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("C", "codex", "gpt-oss-20b", "LM Studio дома", no_env)
+    assert str(refused.value) == (
+        "LM Studio дома does not suit Codex CLI: it has no Responses API; it suits Kilo CLI, "
+        "OpenCode"
+    )
+
+
+def test_a_server_that_suits_no_cli_says_so(serve):
+    server = serve("models-only")
+    add("bare", server.url)
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("C", "opencode", "m1", "bare", no_env)
+    assert str(refused.value) == (
+        "bare does not suit OpenCode: it has no chat completions; it suits no CLI"
+    )
+
+
+def test_a_cli_that_speaks_no_server_api_is_refused(serve, monkeypatch):
+    server = serve("all")
+    add("all", server.url)
+    server.requests.clear()
+    monkeypatch.setattr(providers.get("kilo"), "server_api", "")
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("K", "kilo", "m1", "all", no_env)
+    assert str(refused.value) == "all does not suit Kilo CLI: Kilo CLI speaks no model server's API"
+    assert server.requests == []
+
+
+def test_claude_on_an_anthropic_compatible_server_is_saved(serve):
+    server = serve("anthropic")
+    add("gw", server.url)
+    saved, verdict = add_model("Gw Claude", "claude", "claude-x", "gw", no_env)
+    assert (saved.cli, verdict.kind) == ("claude", model_check.OK)
+
+
+def test_remove_a_model_keeps_its_server(serve):
+    server = serve("lmstudio")
+    add("LM Studio дома", server.url)
+    add_model("Локальная Qwen", "opencode", "qwen3-8b", "LM Studio дома", no_env)
+    assert model_settings.remove_model("локальная QWEN") == "Локальная Qwen"
+    assert state.models() == []
+    assert model_settings.remove_server("LM Studio дома") == "LM Studio дома"
+
+
+def test_remove_of_a_name_no_model_has_is_refused():
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.remove_model("nope")
+    assert str(refused.value) == 'no model "nope" is saved; lado model list names them'

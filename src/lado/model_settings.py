@@ -19,10 +19,10 @@ import os
 import sqlite3
 import stat
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from lado import agent_env, model_servers, project_secrets, state
+from lado import agent_env, model_check, model_servers, project_secrets, providers, state
 from lado import text as visible
 from lado.providers import base
 
@@ -33,7 +33,12 @@ SERVER, MODEL = "model server", "model"  # what a name is of, in its refusals
 
 
 class Refused(Exception):
-    """Why a command on the entries changed nothing, one line."""
+    """Why a command on the entries changed nothing, one line; `hint` what the human can try
+    ("" for none)."""
+
+    def __init__(self, text: str, hint: str = ""):
+        super().__init__(text)
+        self.hint = hint
 
 
 def check_name(name: str, of: str) -> None:
@@ -139,6 +144,96 @@ def remove_server(name: str) -> str:
     raise Refused(
         f'model server "{saved.name}" is used by the models {names}; remove them first: '
         f'lado model remove "{used[0].name}"'
+    )
+
+
+def add_model(
+    name: str,
+    cli: str,
+    model: str,
+    server_name: str | None,
+    env: Callable[[providers.Provider], Mapping[str, str]],
+) -> tuple[state.ConfiguredModel, model_check.Verdict]:
+    """Check and save the model `model` of the CLI `cli` under `name`, on the saved server
+    `server_name` (None for the CLI's own way to its models): the saved entry and the check's
+    verdict (OK, or WARN for no list to check against). Each check refuses before the next
+    (Refused): the name, the CLI, the model, the server saved, its CLI's server API, the
+    server answering with its kept key, the API among the ones it proves, the model against
+    the server's list, or for no server against the CLI's own list, read with `env(provider)`
+    (the agents' environment)."""
+    check_name(name, MODEL)
+    taken = state.model(name)
+    if taken is not None:
+        raise _model_taken(taken.name)
+    if cli not in providers.names():
+        raise Refused(
+            f'LADO knows no agent CLI "{cli}"; --cli takes one of {", ".join(providers.names())}'
+        )
+    provider = providers.get(cli)
+    model = model.strip()
+    if not model:
+        raise Refused(f"the model is empty: --model takes a model as {provider.title} names it")
+    if server_name is None:
+        server = None
+        verdict = model_check.check(provider, model, env(provider))
+    else:
+        server = state.model_server(server_name)
+        if server is None:
+            raise _no_server(server_name)
+        verdict = _on_server(provider, model, server)
+    if verdict.kind == model_check.REFUSED:
+        raise Refused(verdict.text)
+    try:
+        saved = state.add_model(name, cli, model, server.id if server else None)
+    except state.NameTaken as exc:  # added meanwhile
+        raise _model_taken(exc.name) from None
+    except sqlite3.IntegrityError:  # its server removed meanwhile
+        raise _no_server(server_name or "") from None
+    return saved, verdict
+
+
+def _on_server(
+    provider: providers.Provider, model: str, server: state.ModelServer
+) -> model_check.Verdict:
+    """The verdict on `model` of `provider` on `server`, probed now with its kept key: the
+    server may have changed since it was saved."""
+    api = provider.server_api
+    if not api:
+        raise Refused(
+            f"{server.name} does not suit {provider.title}: {provider.title} speaks no model "
+            "server's API"
+        )
+    try:
+        found = model_servers.probe(
+            server.address, server_key(server), add_command(server.name, True)
+        )
+    except model_servers.ProbeError as exc:
+        raise Refused(f"{exc}; LADO cannot check {model}", exc.hint) from None
+    if api not in found.apis:
+        suits = [title for title, _ in found.clis()[0]]
+        raise Refused(
+            f"{server.name} does not suit {provider.title}: it has no {api}; it suits "
+            f"{', '.join(suits) or 'no CLI'}"
+        )
+    listed = base.ModelList(
+        models=found.models,
+        command=f"{model_servers.PROBE_COMMAND} {server.address}",
+        why=found.models_why,
+    )
+    return model_check.verdict(provider, model, listed, whose=server.name)
+
+
+def remove_model(name: str) -> str:
+    """Remove the configured model named `name`; its name as saved. Refused for none."""
+    saved = state.model(name)
+    if saved is None or not state.remove_model(saved.name):
+        raise Refused(f'no model "{name}" is saved; lado model list names them')
+    return saved.name
+
+
+def _model_taken(name: str) -> Refused:
+    return Refused(
+        f'a model "{name}" is saved already; remove it first: lado model remove "{name}"'
     )
 
 

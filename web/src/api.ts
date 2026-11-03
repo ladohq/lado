@@ -337,10 +337,67 @@ export type ProviderModels = components["schemas"]["ProviderModels"];
 
 // The provider's CLI's aliases and own list of models, and the check of `model` against
 // them (lado.model_check), read for the agents of `project` (or of none).
-export const getProviderModels = (name: string, model: string, project: string | null = null) =>
+// `fresh`: read now, not the list the server kept (Settings → Models opening a CLI's source).
+export const getProviderModels = (name: string, model: string, project: string | null = null, fresh = false) =>
   get<ProviderModels>(
-    `/api/providers/${encodeURIComponent(name)}/models?${query({ model, ...(project ? { project } : {}) })}`,
+    `/api/providers/${encodeURIComponent(name)}/models?${query({
+      model,
+      ...(project ? { project } : {}),
+      ...(fresh ? { fresh: "true" } : {}),
+    })}`,
   );
+
+// Settings → Models (docs/design/ui.md): the configured models and model servers, read
+// anew, no feed. A refusal is a 400 whose `detail` is an EntryRefused.
+export type ModelSettings = components["schemas"]["ModelSettings"];
+export type ConfiguredModelInfo = components["schemas"]["ConfiguredModelInfo"];
+export type ModelServerInfo = components["schemas"]["ModelServerInfo"];
+export type ProbeInfo = components["schemas"]["ProbeInfo"];
+export type ModelServerAdded = components["schemas"]["ModelServerAdded"];
+export type ModelAdd = components["schemas"]["ModelAdd"];
+export type ModelAdded = components["schemas"]["ModelAdded"];
+export type ModelCheck = components["schemas"]["ModelCheck"];
+export type EntryRefused = components["schemas"]["EntryRefused"];
+
+const modelServerPath = (name: string) => `/api/model-servers/${encodeURIComponent(name)}`;
+const modelPath = (name: string) => `/api/models/${encodeURIComponent(name)}`;
+
+export const getModelSettings = () => get<ModelSettings>("/api/model-settings");
+
+// Save a server, or with `replace` change a saved one's address and key (`key` null: none, or
+// the kept one). The key goes in this request's body only, never in an address.
+export const addModelServer = (name: string, address: string, key: string | null, replace = false) =>
+  post<ModelServerAdded>("/api/model-servers", { name, address, key, replace });
+
+// The saved server asked now with its kept key: its models and the CLIs that can use it.
+export const probeModelServer = (name: string) => post<ProbeInfo>(`${modelServerPath(name)}/probe`);
+
+export const removeModelServer = (name: string, withModels: boolean) =>
+  post<ModelSettings>(`${modelServerPath(name)}?${query({ with_models: String(withModels) })}`, undefined, "DELETE");
+
+// The check `lado model add` would make, saving nothing; a refusal is a check of kind refused.
+export const checkModel = (given: ModelAdd) => post<ModelCheck>("/api/models/check", given);
+
+// Save a model; `name` null for its default name.
+export const addModel = (given: ModelAdd) => post<ModelAdded>("/api/models", given);
+
+export const renameModel = (name: string, to: string) => post<ModelSettings>(modelPath(name), { name: to }, "PATCH");
+
+export const removeModel = (name: string) => post<ModelSettings>(modelPath(name), undefined, "DELETE");
+
+// A refusal of Settings → Models' API, else null (another error: its message only).
+export function refusalOf(error: unknown): EntryRefused | null {
+  if (!(error instanceof ApiError)) return null;
+  const detail = error.detail as Partial<EntryRefused> | null;
+  if (detail && typeof detail === "object" && typeof detail.message === "string")
+    return {
+      message: detail.message,
+      hint: detail.hint ?? "",
+      field: detail.field ?? "",
+      warnings: detail.warnings ?? [],
+    };
+  return null;
+}
 
 // What the session's head shows besides its settings: its repository, its kits' and its
 // provider's versions as installed now; read anew by the server each time.

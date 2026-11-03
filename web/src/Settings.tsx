@@ -1,6 +1,7 @@
 // Settings: one page, its sections one under the other; a new one goes at the end.
 import { useId, useState } from "react";
 
+import { ModelSettings } from "./ModelSettings";
 import { NotificationsSetting } from "./Notifications";
 import { chooseTheme, storedTheme, type Theme } from "./prefs";
 import { Providers } from "./Providers";
@@ -20,6 +21,7 @@ export function Settings() {
       <Appearance />
       <Notifications />
       <Providers />
+      <ModelSettings />
       <StatisticsSetting />
     </div>
   );

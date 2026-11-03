@@ -9010,6 +9010,255 @@ del.kit-mcp-name {
   margin-top: 10px;
 }
 
+/* Settings → Models (ModelSettings.tsx, ModelSources.tsx): Your models is a table of the
+   Projects section's (.project-vars); Sources a list of rows, each opening under its head to
+   its models with a tick per CLI, a wide list scrolling sideways within itself. Forms and
+   notes are the launch window's (.launch-grid, .field, .field-note). */
+.setting .project-section h3 {
+  margin: 0 0 4px;
+}
+
+.mm-empty,
+.setting p.mm-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mm-models th:first-child {
+  width: 30%;
+}
+
+.mm-models th:last-child {
+  width: 90px;
+}
+
+.mm-models td .field-note {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--sans);
+}
+
+.mm-pen {
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.setting p.mm-hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.src-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.src {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.src-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.src-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.src-toggle:disabled {
+  cursor: default;
+}
+
+.src-chev {
+  width: 14px;
+  color: var(--muted);
+}
+
+.src-sub,
+.mm-opt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.src-off {
+  opacity: 0.55;
+}
+
+.mm-addr {
+  color: var(--muted);
+  font: 13px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.mm-row-acts {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.src-head > .src-refresh {
+  margin-left: auto;
+}
+
+.src-open > .field-note,
+.src-open > .mm-line,
+.setting .src-open > p.mm-line {
+  display: block;
+  margin: 6px 0 0 22px;
+}
+
+.setting p.mm-line {
+  font-size: 13px;
+}
+
+.src-search {
+  display: block;
+  width: calc(100% - 22px);
+  height: 32px;
+  margin: 8px 0 0 22px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ground);
+  color: var(--ink);
+  font: 13px var(--sans);
+}
+
+.src-scroll {
+  margin: 8px 0 0 22px;
+  overflow-x: auto;
+}
+
+.src-models {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.src-models th {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.src-models td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.src-models td.mono {
+  font: 13px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.src-models .ck {
+  width: 84px;
+  text-align: center;
+}
+
+.src-models .tag {
+  margin-left: 6px;
+  color: var(--muted);
+  font: 12px var(--sans);
+}
+
+.src-models td .field-note {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--sans);
+}
+
+.src-emb td {
+  color: var(--muted);
+}
+
+.src-missing td:first-child {
+  background: var(--warn-ground);
+}
+
+.mm-other {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 10px 0 0 22px;
+}
+
+.mm-other .field {
+  flex: 1 1 220px;
+}
+
+.mm-other > button {
+  margin-top: 28px;
+}
+
+.mm-form {
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.src-open > .mm-form,
+.src > .mm-form,
+.src > .mm-confirm {
+  margin-left: 22px;
+}
+
+.mm-form .project-in-secret {
+  font-family: LadoSecretDots;
+}
+
+.mm-form .project-in-secret::placeholder {
+  font-family: var(--sans);
+}
+
+.mm-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.mm-confirm {
+  margin-top: 8px;
+}
+
+.setting .field input.mono {
+  font: 13px var(--mono);
+}
+
+.mm-confirm .field-note,
+.mm-form > .field-note {
+  display: block;
+  margin-top: 8px;
+}
+
 /* Repositories and Sessions (ProjectRepos.tsx): a block's head with its button at the right;
    a repository's row, its name over its branch and remote, its buttons at the right (under
    it in a narrow window); a session's line, its time at the right. */
@@ -9703,5 +9952,29 @@ button.quiet.danger-text {
 }
 
 :root[data-phone] .project-edit .project-in-name {
+  width: 100%;
+}
+
+/* Settings → Models: a source's buttons under its title, narrower tick columns, the forms
+   from the source's left edge. */
+:root[data-phone] .mm-row-acts {
+  flex-wrap: wrap;
+  margin-left: 0;
+}
+
+:root[data-phone] .src-models .ck {
+  width: 56px;
+}
+
+:root[data-phone] .src-scroll,
+:root[data-phone] .src-search,
+:root[data-phone] .mm-other,
+:root[data-phone] .src > .mm-form,
+:root[data-phone] .src > .mm-confirm,
+:root[data-phone] .src-open > .field-note {
+  margin-left: 0;
+}
+
+:root[data-phone] .src-search {
   width: 100%;
 }

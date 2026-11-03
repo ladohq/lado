@@ -3555,6 +3555,90 @@ def test_agents_cannot_set_a_secret_and_stdin_is_not_read(shop, capsys, monkeypa
     assert project_secrets.names("shop") == []
 
 
+# lado project set refuses its command line without repeating it (openspec change
+# project-set-unechoed-refusal)
+
+SET_REFUSED = (
+    "usage: lado project set [-h] [--secret] id name [value]\n"
+    "lado: lado project set takes <id> <NAME>, a value and --secret, nothing more; a value "
+    "starting with - goes after -- (lado project set <id> <NAME> -- -v); a secret's value is "
+    "never given on the command line (ps and the shell's history keep it): run lado project "
+    "set <id> <NAME> --secret and type it, or pipe it in\n"
+)
+
+
+def _files_holding(root: Path, word: str) -> list[Path]:
+    return [p for p in root.rglob("*") if p.is_file() and word.encode() in p.read_bytes()]
+
+
+@pytest.mark.parametrize(
+    ("words", "value"),
+    [
+        (["GH_TOKEN", "-s3cr3t", "--secret"], "s3cr3t"),
+        (["GH_TOKEN", "--secret", "-s3cr3t"], "s3cr3t"),
+        (["GH_TOKEN", "--s", "-s3cr3t"], "s3cr3t"),
+        (["GH_TOKEN", "--secret=s3cr3t"], "s3cr3t"),
+        (["GH_TOKEN", "--secret=-s3cr3t"], "s3cr3t"),
+        (["GH_TOKEN", "--help=s3cr3t"], "s3cr3t"),
+        (["GH_TOKEN", "--he=s3cr3t"], "s3cr3t"),
+        (["GH_TOKEN", "-h=s3cr3t"], "s3cr3t"),
+        (["GH_TOKEN", "-hs3cr3t"], "s3cr3t"),
+        # On 3.10 lado's own parser matches --= against --help and --version
+        (["GH_TOKEN", "--=s3cr3t"], "s3cr3t"),
+        (["GH_TOKEN", "--secret", "--=s3cr3t"], "s3cr3t"),
+        (["GH_TOKEN", "--=-s3cr3t", "--secret"], "s3cr3t"),
+        (["GH_TOKEN", "ghp", "a1", "--secret"], "ghp"),
+        (["GH_TOKEN", "ghp", "a1", "--secret"], "a1"),
+        ([], "shop"),
+    ],
+)
+def test_project_set_refusal_unechoed(shop, capsys, monkeypatch, words, value):
+    stdin = Stdin("piped\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    try:
+        status = main(["project", "set", "shop", *words])
+    except SystemExit as exc:
+        status = exc.code
+    captured = capsys.readouterr()
+    if status == 0:  # -hX on Python 3.11+ is -h: the help, not a refusal
+        assert words == ["GH_TOKEN", "-hs3cr3t"] and sys.version_info >= (3, 11)
+        assert captured.out.startswith("usage: lado project set ")
+    else:
+        assert status == 1
+        assert captured.out == ""
+        assert captured.err == SET_REFUSED
+    assert value not in captured.out + captured.err.replace(SET_REFUSED, "")
+    assert not stdin.touched
+    assert project_secrets.names("shop") == []
+    assert state.project_variables("shop") == {}
+    if value != "shop":  # the project's id is in lado.db already
+        assert _files_holding(Path(os.environ["LADO_HOME"]), value) == []
+
+
+def test_project_set_dashed_plain_value_unechoed(shop, capsys):
+    """Refused before `--secret` could be told from a plain variable; `--` sets it."""
+    with pytest.raises(SystemExit) as exc:
+        main(["project", "set", "shop", "FLAGS", "-v"])
+    assert exc.value.code == 1
+    assert capsys.readouterr().err == SET_REFUSED
+    assert state.project_variables("shop") == {}
+    assert main(["project", "set", "shop", "FLAGS", "--", "-v"]) == 0
+    assert state.project_variables("shop") == {"FLAGS": "-v"}
+
+
+def test_project_set_help_alone_and_other_commands_keep_argparse(shop, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["project", "set", "--help"])
+    assert exc.value.code == 0
+    assert capsys.readouterr().out.startswith(
+        "usage: lado project set [-h] [--secret] id name [value]\n"
+    )
+    with pytest.raises(SystemExit) as exc:
+        main(["project", "show", "shop", "extra"])
+    assert exc.value.code == 2
+    assert capsys.readouterr().err.endswith("lado: error: unrecognized arguments: extra\n")
+
+
 def test_project_show_lists_secrets_by_name_only(shop, capsys, monkeypatch):
     for name, value in [("YOUGILE_API_KEY", "canary-y"), ("GH_TOKEN", "canary-g")]:
         monkeypatch.setattr("sys.stdin", Stdin(value))

@@ -124,5 +124,5 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
   `tests/fake_model_server.py`; 390 px: no sideways scroll, 44 px targets, an unbounded list
   of 12; screenshots for the pull request. Check: `uv run pytest -m ui
   tests/ui/test_models_section.py`.
-- [ ] 7.7 `docs/design/ui.md`'s section Models as built; the manual check in the pull request
+- [x] 7.7 `docs/design/ui.md`'s section Models as built; the manual check in the pull request
   names the three blocks and the new Undo; regression as 4.2.

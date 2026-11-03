@@ -27,4 +27,4 @@ S1: question #2357, gates #196, #197 — approved as recommended
 S2: questions #2471, #2501, gates #200, #202, #203 — approved as recommended
 S2b: questions #2515 (points 1, 3, 4), #2521 (the lead's «нет» against the developer's proposal), gates #206, #207, #208 — approved as recommended
 S3a: questions #2630 (LAD-178), #2699 (Q5 → LAD-181), #2658 (one more build visit for E5, no third external round), gates #210, #220 — approved as recommended
-S3c: question #2733 (as the analyst recommended; the lead's two additions — re-check models after `--replace`, a warning at saving a Claude/Codex model on a server — not taken, carried to S3b) — approved
+S3c: gate #228, question #2733 (as the analyst recommended; the lead's two additions — re-check models after `--replace`, a warning at saving a Claude/Codex model on a server — not taken, carried to S3b) — approved

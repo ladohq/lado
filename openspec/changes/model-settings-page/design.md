@@ -5,189 +5,194 @@ The epic branch has the store and the commands of the human's model settings:
 replace, warn, note)`, `remove_server`, `add_model(name, cli, model, server_name, env)`,
 `_on_server`, `remove_models`, `server_key`, `has_key`, `clis`, `Refused(text, hint)`),
 `model_servers.py` (`address`, `probe(text, key, command)`, `Probe`, `ProbeError(text,
-hint)`, `lines`, `clis`, `plain_http_warning`, `NOT_CARRIABLE`), `model_check.py`
-(`check`, `verdict`, `Verdict`), `state.py` (`ModelServer`, `ConfiguredModel`, their reads
-and writes, schema 38) and `cli.py` (`lado model-server add|list|remove`, `lado model
-add|list|remove`). No API reads them. The launch window's Model field (`Launch.tsx`:
-`SuggestField`, `ModelNote`, `MODEL_DEBOUNCE`, `GET /api/providers/{name}/models`) checks a
-CLI's model as it is typed. A project's secrets are typed in `SecretField`
-(`ProjectVariables.tsx`), sent in the body of a PUT; `server/app.py` keeps a 422 on
-`SECRET_ROUTE` from repeating its body. Settings (`Settings.tsx`) is one page of sections:
-Appearance, Notifications, Providers and environment, Usage statistics.
+hint)`, `lines`, `clis`, `plain_http_warning`, `NOT_CARRIABLE`), `model_check.py`,
+`state.py` (`model_servers` with an id; `models` keyed by `folded`, the name casefolded,
+no id; schema 38) and `cli.py`. No API reads them. The launch window's Model field
+(`Launch.tsx`: `SuggestField`, `ModelNote`, `MODEL_DEBOUNCE`, `GET
+/api/providers/{name}/models`, its lists kept a minute in `server/launch.py`) checks a CLI's
+model as typed. A project's secrets are typed in `SecretField` (`ProjectVariables.tsx`),
+sent in a body; `server/app.py` keeps a 422 on `SECRET_ROUTE` from repeating it. Settings
+(`Settings.tsx`) is one page of sections; Providers and environment reads each CLI's install
+and login (`GET /api/providers/logins`, a snapshot of `provider_check`).
 
-The human's answers (question #2875): the section Models in Settings with an anchor; no
-server asked on opening, Check on demand; Change as `--replace`; ready-made models for
-Claude Code only (haiku, sonnet, opus, one click each, Add all three); refusals as the
-commands' lines; the dots field for the key; models removed one at a time; the Model
-field's suggestions and live check as the launch window's, embeddings models left out of
-the suggestions.
+The human's answers: the first design's #2875 (the section's place, nothing asked on
+opening, Change as `--replace`, refusals as the commands' lines, the dots field for the
+key), then option B with the cases of the epic's `ux-models-cases` and #2890: rename in
+place, references by the entry not its name; removing a server removes its models after a
+confirmation, the CLI with `--with-models`; no "new model" mark; no ready-made chips.
 
 ## Goals / Non-Goals
 
-Goals: the human adds, checks, changes and removes servers and models from Settings with
-the commands' rules and lines, each refusal under its field; the key goes in and never
-out. Non-goals: the proposal's Out of scope.
+Goals: the human sees what each source offers and ticks it; names, renames and removes
+configured models; adds, changes and removes servers with the commands' rules and lines;
+the key goes in and never out. Non-goals: the proposal's Out of scope.
 
 ## Decisions
 
 ### D1. The API
 
-All under the token (`guard` for reads, `guard.changes` for changes), in a new module
-`src/lado/server/model_entries.py` called by thin routes in `app.py`:
+Thin routes in `app.py` over a new module `src/lado/server/model_entries.py`, under the
+token (`guard` reads, `guard.changes` changes):
 
 | Route | Body | Answer |
 |---|---|---|
-| `GET /api/model-settings` | | `ModelSettings{servers: [ModelServerInfo], models: [ConfiguredModelInfo], ready: [ReadyModel]}` |
-| `POST /api/model-servers` | `ModelServerAdd{name, address, key: str \| None, replace: bool}` | `ModelServerAdded{server: ModelServerInfo, probe: ProbeInfo, notes: [str], warnings: [str], replaced: bool}` |
-| `POST /api/model-servers/{name}/probe` | | `ProbeInfo` (probed now with the kept key) |
-| `DELETE /api/model-servers/{name}` | | `ModelSettings` |
-| `POST /api/models/check` | `ModelAdd{name, cli, model, server: str \| None}` | `ModelCheck{kind, text}` plus `field` (D3) |
-| `POST /api/models` | `ModelAdd` | `ModelAdded{model: ConfiguredModelInfo, check: ModelCheck}` |
+| `GET /api/model-settings` | | `ModelSettings{models: [ConfiguredModelInfo], servers: [ModelServerInfo]}` |
+| `POST /api/model-servers` | `ModelServerAdd{name, address, key: str \| None, replace: bool}` | `ModelServerAdded{server, probe: ProbeInfo, notes, warnings, replaced}` |
+| `POST /api/model-servers/{name}/probe` | | `ProbeInfo`, probed now with the kept key |
+| `DELETE /api/model-servers/{name}?with_models=true` | | `ModelSettings` |
+| `POST /api/models` | `ModelAdd{name: str \| None, cli, model, server: str \| None}` | `ModelAdded{model: ConfiguredModelInfo, check: ModelCheck}` |
+| `POST /api/models/check` | `ModelAdd` | `ModelCheck{kind, text, field}` (200 also for a refusal) |
+| `PATCH /api/models/{name}` | `ModelRename{name}` | `ModelSettings` |
 | `DELETE /api/models/{name}` | | `ModelSettings` |
+| `GET /api/providers/{name}/models?fresh=true` | | as now; `fresh` skips the kept list and keeps the new one |
 
-`ModelServerInfo{name, address, kind, clis: [str] (titles), has_key}` (the saved row, no
-request); `ConfiguredModelInfo{name, cli, cli_title, model, server: str | None}` (the
-server's name); `ReadyModel{cli, cli_title, name, model}` (D7); `ProbeInfo{address,
-added_scheme, kind, models: [str] | None, models_why, embeddings: [str], apis_why, clis:
-[{title, api}], not_clis: [{title, api}]}`. A refusal is a 400 whose `detail` is
-`EntryRefused{message, hint, field, warnings}`; an unknown server or model name on a
-`DELETE` or a probe is that 400 too, with `field` `""` (the commands' own "no model server
-… is saved" line). `GET` with no `lado.db` answers empty lists and makes none
-(`database()`); a change makes it as the commands do. A server's name goes in the path
-encoded whole (`encodeURIComponent`), as session names do.
-
-Why: one route per command keeps "the page does what the command does" checkable; `GET`
-lists without asking any server (the human's answer 2); the probe of one server is its own
-route so Check and the Model field's suggestions share it.
+`ModelServerInfo{name, address, kind, clis: [str] (provider names), has_key}` (the saved
+row, no request); `ConfiguredModelInfo{name, cli, cli_title, model, server: str | None}`;
+`ProbeInfo{address, added_scheme, kind, models: [str] | None, models_why, embeddings,
+apis_why, clis: [CliApi{name, title, api}], not_clis: [CliApi]}`. A refusal is a 400 whose
+`detail` is `EntryRefused{message, hint, field, warnings}`. `GET` with no `lado.db` answers
+empty lists and makes none (`database()`); a change makes it, as the commands do. Names go
+in the path encoded whole. The CLI sources need no route of their own: their install and
+login come from `/api/providers` and `/api/providers/logins`, their lists from the launch
+window's route with `fresh`. Why: one route per action keeps "the page does what the
+command does" checkable; nothing in `GET` asks a server (#2875, 2).
 
 ### D2. A refusal names its field, set by the core
 
-`model_settings.Refused` and `model_servers.ProbeError` get an attribute `field: str` (one
-of `name`, `address`, `key`, `cli`, `server`, `model`, `""`), set where they are raised:
+`model_settings.Refused` and `model_servers.ProbeError` get `field: str` (`name`,
+`address`, `key`, `cli`, `server`, `model` or `""`), set where raised: names and their
+taken lines → `name`; `check_key`, `NOT_CARRIABLE` → `key`; asks for / refused the key →
+`key`; does not answer, TLS, unknown server, an address the probe does not take →
+`address`; `add_model`'s unknown CLI → `cli`; empty, embeddings, not in a list → `model`;
+the server not saved, no API, not answering, lacking the CLI's API → `server`; removals and
+disk errors → `""`. The CLI ignores it. Why: each refusal under its field without a second
+copy of the rules mapping texts to fields; texts stay the commands'.
 
-- `check_name` → `name`; the server's and model's name taken → `name`; `check_key` and
-  `NOT_CARRIABLE` → `key`.
-- `ProbeError`: asks for a key and refused the key → `key`; does not answer, TLS failed,
-  unknown server → `address`. `model_servers.address`'s `ValueError` → `address` (the route
-  maps it).
-- `add_model`: the CLI unknown → `cli`; the model empty, embeddings, not in a list →
-  `model`; the server not saved, speaking no API, not answering (`_on_server`'s re-raise
-  of a `ProbeError`), lacking the CLI's API → `server`.
-- `remove_server`, `remove_models`, the meanwhile-cases and the key file's disk errors →
-  `""`.
+### D3. `check_model`: a model's checks without the save
 
-The CLI ignores `field`: its output does not change. Why: the page shows each refusal
-under its field (the human's answer 5, the task's "under the fields") without a second
-copy of the rules in the API or TypeScript mapping texts to fields; texts stay the
-commands' (one source of truth).
+`model_settings.check_model(name, cli, model, server_name, env, *, probe=None) -> Checked`
+runs `add_model`'s checks in their order (the name only when given) and returns
+`Checked(provider, model, server, verdict, aliases)`; `add_model` calls it and saves.
+`probe: Callable[[state.ModelServer], Probe] | None` lets the page's live check use a kept
+probe (D5); `add_model` gives none, so a server is probed now. Why: the live note and a
+tick or Add never disagree on a rule.
 
-### D3. A model's check without the save
+### D4. A model's default name, set by the core
 
-`model_settings.add_model` is split: `check_model(name, cli, model, server_name, env, *,
-probe=None) -> (provider, model, server, Verdict)` runs every check of `add_model` in its
-order and raises `Refused`; `add_model` calls it and saves. `probe` is a function
-`(server) -> Probe` the caller may give (D4); `add_model` gives none, so the server is
-probed now, as the spec requires. `POST /api/models/check` answers `check_model`'s verdict,
-or its refusal as `ModelCheck{kind: "refused", text, field}` with status 200 (a check that
-finds a refusal is an answer, not a failed request). Why: the live note and Add can never
-disagree on a rule; only the age of a server's probe may differ (D4).
+`model_settings.default_name(provider, model, server, aliases) -> str`: an alias, the first
+word of the CLI's title and the alias with its first letter capitalised (`Claude Sonnet`);
+a model of a CLI's own list, the model; on a server, `<model> · <server name>`; a name taken
+(ignoring case) gets ` · <CLI title>`, then ` (2)`, ` (3)`, … and is cut to the name's 64
+characters before its suffix. `add_model` takes `name=None` and names the model so.
+Why: a tick needs a name without a form; the rule lives once, so the CLI could use it later.
 
-### D4. A server's probe kept a minute for the Model field
+### D5. Lists read now; a server's probe kept a minute for the live check only
 
-`model_entries` keeps the last `Probe` of each server by `(id, address)` for 60 seconds
-(the launch window's `MODEL_LIST_KEPT`), under a lock; `POST
-/api/model-servers/{name}/probe` (Check, the field's suggestions) probes now and replaces
-it; `POST /api/models/check` uses a kept one or probes and keeps it; `POST /api/models`,
-`POST /api/model-servers` and Change always probe now. A failed probe is not kept. Why: the
-note is asked at every settled keystroke (`MODEL_DEBOUNCE`), and a probe is up to eight
-requests and ~10 s; Add still checks against the server as it is.
+Opening a source and Refresh read now: a CLI's list through `GET
+/api/providers/{name}/models?fresh=true` (it replaces the kept list), a server's through
+`POST /api/model-servers/{name}/probe`, which also keeps the probe in `model_entries` for a
+minute by `(server.id, server.address)`, under a lock, a failed probe not kept. `POST
+/api/models/check` (Other model…'s note, at every settled keystroke) uses a kept probe or
+probes and keeps it; ticking, Other model's Add, add and Change probe now. The page keeps
+no list after the source closes. Why: the cases' "read again at every opening" (a new model
+shows), and a probe of up to eight requests and ~10 s not repeated per keystroke.
 
-### D5. The key's way in
+### D6. The tick is derived from the entries
 
-The key travels only in `ModelServerAdd.key`, the body of `POST /api/model-servers`
-(add and Change). `SECRET_ROUTE` also matches `/api/model-servers` so a 422 there repeats
-nothing of its body. `null` is no key (add) or the kept key (Change); `""` is refused with the command's line
-`the key is empty`, moved from `cli._server_key` into `model_settings.check_key` so both
-share it, under `key` (the page sends `null` for an empty field).
-No answer type has a key field; `EntryRefused` is built from `Refused`/`ProbeError` texts,
-which never hold the key (the commands' rule). The access log has paths only. Why: the
-spec's key rule and LAD-116's canary pattern; a POST body is not logged by uvicorn.
+The page computes each tick from `ModelSettings.models`: on when a model has the same CLI,
+model and server. Ticking POSTs `ModelAdd{name: null, …}`; unticking DELETEs the one model
+it stands for; with several such models the tick is on and disabled, its title naming
+them, and they are removed in Your models. The columns of a server are its `ProbeInfo.clis`
+(the APIs it proves now) that `/api/providers` says are installed. A configured model whose
+model the read list lacks is shown first, ticked, marked. Why: one source of truth (the
+entries); no second store of ticks.
 
-### D6. Warnings and notes of add
+### D7. A server removed with its models
 
-`add_server`'s `warn` and `note` callbacks collect into `warnings` and `notes` lists; both
-go into `ModelServerAdded`, and `warnings` into `EntryRefused` too (the plain-http warning
-is printed before the probe, also when it then fails). The page shows `warnings` under Key
-and `notes` under the server's row. Why: the core already separates them; the page must
-show them where the spec says without parsing texts.
+`state.remove_model_server(id, with_models=False)`: with it, one transaction deletes the
+models on the server, then the server; `model_settings.remove_server(name, with_models=False,
+removed=callback)` reports each model removed, then removes the key folder as now. Without
+it the refusal stays, its text as now and its hint `or remove them with it: lado
+model-server remove "<name>" --with-models`. `cli.py` adds `--with-models`; the page always
+sends `with_models=true` after its confirmation, which names the models from
+`ModelSettings`. Why: #2890, 2; the refusal remains the CLI's guard against a slip.
 
-### D7. Ready-made models are a provider's declaration
+### D8. Renaming without an id now
 
-`Provider.ready_models: tuple[tuple[str, str], ...] = ()` in `providers/base.py`, each a
-(name, model); `ClaudeProvider.ready_models = (("Claude Haiku", "haiku"), ("Claude Sonnet",
-"sonnet"), ("Claude Opus", "opus"))`, each in `ALIASES` (a unit test holds it). `GET
-/api/model-settings` lists, for each provider that declares some and whose CLI is installed
-(`doctor.provider_status`, the check `/api/providers` makes, run only for these
-providers), each one no saved model of that CLI has with the same model. The page adds one
-with `POST /api/models` (no server); Add all three is those POSTs in order, each refusal
-kept. Why: neutral core (nothing above `providers/` names Claude Code; another CLI gets
-chips by declaring them); one rule of "saved" (the same CLI and model, not the name, so a
-renamed copy hides the chip).
+`state.rename_model(name, new)` updates `name` and `folded` of the row in one statement
+(`NameTaken` on a clash); `model_settings.rename_model(name, new)` checks the new name as a
+name and refuses a taken one with the model's name-taken line (field `name`). The models
+table has no id: its key is the casefolded name. Nothing refers to a model yet, so a rename
+needs no migration now. The first change that stores a reference to a model (the launch
+window's choice, the power tables) SHALL add `models.id` with a migration 38 → 39 that
+gives each existing row an id, and refer by it. Why: #2890, 1 asks that references hold the
+entry, not its name; "only what is used" leaves the column to the change that first uses it.
 
-### D8. The probe's why only with no list
+### D9. The key's way in
 
-`model_servers.probe`: when the plain list gives none and the one asked with
-`anthropic-version` gives models, `models_why` is `""`. Why: the review of the previous
-change found the stale why (E1); `ProbeInfo` shows it, the CLI never did (`lines` prints it
-only with no list).
+The key travels only in `ModelServerAdd.key`, the body of `POST /api/model-servers` (add
+and Change). `SECRET_ROUTE` becomes `r"/api/((projects/[^/]+/secrets|providers/[^/]+/variables)/|model-servers(/|$))"`
+so a 422 there repeats nothing of its body. `null` is no key (add) or the kept key
+(Change); `""` is refused with the command's `the key is empty`, moved from
+`cli._server_key` into `model_settings.check_key` so both share it (field `key`). No answer
+type has a key field; `EntryRefused` is built from texts that never hold the key. Why: the
+spec's key rule and the canary of LAD-116 and the previous change.
 
-### D9. The page
+### D10. Warnings and notes of add
 
-`web/src/ModelSettings.tsx` (new): `ModelSettings` (the section, `id="models"`,
-`MODELS_ANCHOR` in `paths.ts`, scrolled to as Providers' anchor is), `YourModels` (table,
-chips, the add form), `ModelServers` (rows, the add form, Change, Check, Remove). It reuses
-`SecretField` (exported from `ProjectVariables.tsx`), `SuggestField`, the `.field`,
-`.launch-grid`, `.field-note` classes and `useDebounced`/`MODEL_DEBOUNCE` from
-`Launch.tsx`, and `messageOf`. Refusals arrive as `ApiError.detail` (`EntryRefused`) and are
-put under the field `detail.field` names. Rows and notes follow Providers' `.pv` rows and
-the project page's `.project-vars` table and in-row Remove. `Settings.tsx` renders it
-between `Providers` and `StatisticsSetting`. CLI select options from `GET /api/providers`
-(installed or not). The page reads `GET /api/model-settings` on opening and after each of
-its changes; it has no change-feed event (changes made from the CLI show on the next
-opening). New CSS only for what the classes lack (the row's buttons, the chips' line, the
-phone layout), in `styles.css` with tokens only. Why: the human asked for the launch
-window's look of fields and notes (LAD-176); reuse keeps one look.
+`add_server`'s `warn` and `note` callbacks collect into `warnings` and `notes`; both go into
+`ModelServerAdded`, `warnings` into `EntryRefused` too. The page shows `warnings` under Key
+and `notes` in the server's source. Why: the core separates them already.
 
-### D10. Embeddings left out of the suggestions in the page
+### D11. The probe's why only with no list
 
-The page builds the Model field's suggestions from `ProbeInfo.models` minus
-`ProbeInfo.embeddings`; the rule that refuses an embeddings model stays in the core (D3).
-Why: a display filter on the core's own answer, not a second rule; a typed one is refused
-with the core's line.
+`model_servers.probe`: when the plain list gives none and the versioned one gives models,
+`models_why` is `""`. Why: E1 of the previous change's review; `ProbeInfo` shows it.
 
-### D11. Tests
+### D12. doctor names a model gone from its server
 
-Unit: `tests/test_model_settings.py` (fields of each refusal, `check_model` equals
-`add_model`'s checks), `tests/test_model_servers.py` (the why, `ProbeError.field`),
-`tests/test_providers*.py` (Claude's ready models are aliases; others none), new
-`tests/test_server_model_settings.py` (every route against `tests/fake_model_server.py`
-in-process: answers, refusals with fields, warnings and notes, the kept probe, GET makes
-no request and no lado.db, the 422 on the secret route repeats nothing). Integration: new
-`tests/integration/test_model_settings_canary.py`, a real `lado server` and the fake model
-server in its own process: the key canary over answers, server log, error journal and every
-file of `LADO_HOME`. Vitest: `web/src/ModelSettings.test.tsx` (empty, rows, refusals under
-fields, chips, Change keeps an empty key as null, the key field emptied). UI e2e: new
-`tests/ui/test_models_section.py` (add a server against the fake model server, a model with
-suggestions, a refusal under its field, ready-made chips with a fake Claude installed,
-remove refused and done, phone width). Why: AGENTS.md's lowest layer each; the canary
-crosses processes.
+`doctor.check_model_servers`: for each server that answered with a list, each configured
+model on it whose model the list lacks adds `model "<name>" (<model>) is not in <server>'s
+list of models` and makes the line WARN. Why: the cases' 7; the probe is already made.
+
+### D13. The page
+
+`web/src/ModelSettings.tsx` (new): the section (`id="models"`, `MODELS_ANCHOR` in
+`paths.ts`, scrolled to as Providers' anchor is), Your models (table, ✎ rename, Remove),
+the add-server form. `web/src/ModelSources.tsx` (new): the sources, a source's list with
+its ticks, search, embeddings, missing models, Other model…, Refresh, Change and Remove of a
+server. It reuses `SecretField`, `SuggestField` (Other model…'s suggestions are the read
+list), the `.field`, `.launch-grid`, `.field-note`, `.project-vars`, `.project-edit`
+classes, `useDebounced`/`MODEL_DEBOUNCE`, `messageOf`, `ApiError.detail`. `Settings.tsx`
+renders it between `Providers` and `StatisticsSetting`. The page reads `GET
+/api/model-settings` on opening and after each change of its own; no change-feed event. New
+CSS only for what the classes lack (sources, a list's columns, the search, phone layout), in
+`styles.css` with tokens only. The search shows above more than ten models. Why: one look
+with the launch window and the project page (LAD-176's remarks).
+
+### D14. Tests
+
+Unit: `tests/test_model_settings.py` (fields; `check_model` equals `add_model`'s checks;
+`default_name`; `rename_model`; `remove_server(with_models=True)`), `tests/test_state.py`
+(`rename_model`, removal with models in one transaction), `tests/test_model_servers.py`
+(the why), `tests/test_doctor.py` (the missing model), `tests/test_cli_model_server.py`
+(`--with-models`, the hint), new `tests/test_server_model_settings.py` (every route against
+`tests/fake_model_server.py`; `fresh`; the kept probe; GET asks nothing and makes no
+`lado.db`; the 422 on the secret route). Integration: new
+`tests/integration/test_model_settings_canary.py` (a real `lado server`, the fake model
+server in its own process: the key canary) and a `--with-models` case in
+`tests/integration/test_model_settings_process.py`. Vitest: `web/src/ModelSettings.test.tsx`,
+`web/src/ModelSources.test.tsx`. UI e2e: new `tests/ui/test_models_section.py`. Why:
+AGENTS.md's lowest layer each; the canary and the real command cross processes.
 
 ## Risks / Trade-offs
 
-- A probe takes up to ~10 s on a server that hangs: Add shows `checking the server…` and
-  stays disabled; the request runs in the server's thread pool.
+- Opening a server's source takes up to ~10 s for one that hangs: the source says
+  `reading the models…` and the rest of the page stays usable.
+- A tick shown from a list read seconds ago may meet a server changed since: ticking probes
+  again and a refusal shows in the tick's row.
 - The refusals name CLI commands on a page (`run lado model-server add … --key`): accepted
-  by the human (answer 5) as for a project's secrets.
-- A server added from the CLI while the page is open shows only after reopening (no event).
-- The live check may say ✓ from a probe up to a minute old while Add, probing again,
-  refuses: the refusal shows under its field then.
+  by the human (#2875, 5).
+- A change made from the CLI while the page is open shows on the next opening.
+- `default_name` makes long names on servers with long model ids; the name is cut to 64
+  characters and can be renamed.

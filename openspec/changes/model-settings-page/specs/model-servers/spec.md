@@ -16,3 +16,54 @@ model-server probe` and `add`, Settings → Models) SHALL show it only with no l
 #### Scenario: A list that fails both ways
 - **WHEN** the server answers `GET /v1/models` with 500 with and without the header
 - **THEN** the probe has no list and its why is `GET /v1/models: 500`
+
+### Requirement: lado doctor names models their server no longer lists
+
+For each saved server that answered with a list of models, the `Model servers` line of
+`lado doctor` SHALL warn of each configured model on that server whose model the list
+lacks: `model "<name>" (<model>) is not in <server>'s list of models`. A server with no
+list or that does not answer SHALL name no model so.
+
+#### Scenario: A model gone from LM Studio
+- **WHEN** `Локальная Qwen` (`qwen3-8b`) refers to `LM Studio дома`, which answers and no
+  longer lists `qwen3-8b`
+- **THEN** `lado doctor` prints `[WARN] Model servers:` with `model "Локальная Qwen"
+  (qwen3-8b) is not in LM Studio дома's list of models`, and its exit status is as without
+  the line
+
+## MODIFIED Requirements
+
+### Requirement: lado model-server remove refuses a server a model uses
+
+`lado model-server remove <name>` SHALL remove the saved server and its key file, print
+`Removed model server "<name>".` and exit 0. While a configured model refers to the
+server it SHALL be refused, changing nothing, with `model server "<name>" is used by the
+models <model>, <model>; remove them first: lado model remove "<model>" "<model>"`, one
+command naming every model that refers to it, and the hint `or remove them with it: lado
+model-server remove "<name>" --with-models`, and exit 1. With `--with-models` it SHALL
+remove every model that refers to the server, printing `Removed model "<model>".` for each,
+then the server and its key file. A name no server has SHALL be refused with exit 1.
+
+#### Scenario: A server a model uses
+- **WHEN** the model `Локальная Qwen` refers to `LM Studio дома` and the human runs `lado
+  model-server remove "LM Studio дома"`
+- **THEN** it exits 1 with the line naming `Локальная Qwen` and the hint naming
+  `--with-models`, and the server and its key file stay
+
+#### Scenario: A server several models use
+- **WHEN** the models `coder-codex`, `coder-oc` and `sp` refer to `lms` and the human runs
+  `lado model-server remove lms`
+- **THEN** it exits 1 with `model server "lms" is used by the models coder-codex, coder-oc,
+  sp; remove them first: lado model remove "coder-codex" "coder-oc" "sp"`
+- **AND** running that command and then `lado model-server remove lms` removes the server
+
+#### Scenario: A server no model uses
+- **WHEN** no model refers to `work` and the human runs `lado model-server remove work`
+- **THEN** the server is gone from the list, its folder under `<LADO_HOME>/model-servers/`
+  is gone, and it exits 0
+
+#### Scenario: A server with its models
+- **WHEN** the models `coder-oc` and `sp` refer to `lms` and the human runs `lado
+  model-server remove lms --with-models`
+- **THEN** it prints `Removed model "coder-oc".`, `Removed model "sp".` and `Removed model
+  server "lms".`, exits 0, and neither the models, the server nor its key folder is left

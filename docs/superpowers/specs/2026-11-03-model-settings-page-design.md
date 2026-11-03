@@ -1,120 +1,127 @@
-# Settings → Models: the page of model servers and models — design
+# Settings → Models: sources and ticked models — design
 
 Task LAD-187. The change: `openspec/changes/model-settings-page/` (proposal, delta specs
-`model-settings-page` and `model-servers`, design.md D1-D11). The approved mock-up:
-the run's artifact `mockup-models-page.html`.
+`model-settings-page` and `model-servers`, design.md D1-D14). The approved shape: option B
+of the epic's artifact `ux-models-cases` (17 cases) and the human's answers #2875 and
+#2890. The mock-up: the run's artifact `mockup-models-sources.html`.
 
 ## What the human sees
 
-Settings gets a section **Models** after Providers and environment and before Usage
-statistics, at `/settings#models`:
-
 ```
 Models
-Models set once under names; sessions will refer to them by name. No session uses them yet.
-
-┌ Your models ───────────────────────────────────────────────────────────┐
-│ Name            CLI           Model      Server                         │
-│ Claude Opus     Claude Code   opus       —                    [Remove]  │
-│ Локальная Qwen  OpenCode      qwen3-8b   LM Studio дома       [Remove]  │
-│ Ready-made for Claude Code: [+ Claude Haiku · haiku] [+ Claude Sonnet · sonnet]  Add both │
-│ [+ Add model]                                                           │
-└─────────────────────────────────────────────────────────────────────────┘
-┌ Model servers ─────────────────────────────────────────────────────────┐
-│ LM Studio дома  [LM Studio]  http://localhost:1234   [Check][Change][Remove] │
-│ For: Kilo CLI, OpenCode · key: no                                        │
-│ [+ Add server]                                                           │
-└─────────────────────────────────────────────────────────────────────────┘
+┌ Your models ──────────────────────────────────────────────────────────┐
+│ Name                    CLI          Model       Source               │
+│ Claude Sonnet ✎         Claude Code  sonnet      Claude Code  [Remove]│
+│ qwen3-8b · LiteLLM ✎    OpenCode     qwen3-8b    LiteLLM      [Remove]│
+│ mistral-7b · LiteLLM ✎  OpenCode     mistral-7b  LiteLLM ⚠ not in LiteLLM's list │
+└───────────────────────────────────────────────────────────────────────┘
+┌ Sources ──────────────────────────────────────────────────────────────┐
+│ ▸ Claude Code  CLI  logged in                                          │
+│ ▸ Codex CLI    CLI  logged in                                          │
+│ ▸ Kilo CLI     CLI  not installed           (greyed)                   │
+│ ▾ LiteLLM  OpenAI-compatible  http://10.0.0.5:4000  [↻ Refresh][Change][Remove] │
+│   [Search 6 models]                                                    │
+│   Model                     OpenCode  Codex CLI  Claude Code           │
+│   mistral-7b ⚠ not in the server's list   [x]   [ ]   [ ]             │
+│   qwen3-8b                               [x]   [ ]   [ ]               │
+│   text-embedding-… (embeddings)          (greyed, no tick)             │
+│   Other model… [__________] CLI [OpenCode] [Add]                        │
+│ [+ Add server]                                                         │
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
-(The drawing is a map of the parts; the look is the mock-up's.)
+(A map of the parts; the look is the mock-up's.)
 
-- **Add server**: Name, Address, Key (optional, the dots field of a project's secrets). Add
-  probes as `lado model-server add` does (`checking the server…`, up to ~10 s), then the row
-  shows the probe's findings: type, address, models with `(embeddings)` marks or `no list
-  (<why>)`, the CLIs that can use it and those that cannot, the key; `Saved model server
-  "<name>".`; `same address as model server "<other>"` under it; the plain-http warning
-  under Key.
-- **A server's row** shows what was saved, asking nothing. **Check** probes with the kept
-  key and shows models and CLIs, or the probe's line as a warning. **Change** opens Address
-  (filled) and New key (empty keeps the kept key), as `--replace`. **Remove** asks in the
-  row; a server models use is refused with the command's line naming them.
-- **Add model**: Name, CLI (all LADO's CLIs, `(not installed)` marked), Server (`—` or a
-  saved server), Model with suggestions (the CLI's aliases and list, or the server's models
-  without its embeddings ones) and a live check under it (`✓` / `⚠` / refusal), as the
-  launch window's Model field. Add saves as `lado model add`.
-- **Ready-made models**: when Claude Code is installed, chips `+ Claude Haiku · haiku`,
-  `+ Claude Sonnet · sonnet`, `+ Claude Opus · opus`, one click each, and `Add all three`
-  (`Add both` for two); a chip goes once a Claude Code model with that alias is saved. Why
-  aliases: Claude Code itself takes them and maps each to the latest model of its family,
-  so the entry never goes stale and its check is always ✓; the other CLIs have no such
-  names, so they get no chips.
-- **Refusals** are the commands' lines, under the field they concern (Name, Address, Key,
-  CLI, Server, Model), in the launch window's note look; a refusal of no field under the
-  buttons. The form and its values stay; the key's field is emptied.
-- At phone width the forms stack in one column and the page does not scroll sideways.
+- **First open** (case 1): Your models says `No models yet. Without them each agent runs on
+  its CLI's default model. Tick models in Sources below.`; Sources lists every LADO CLI
+  (not installed greyed, not logged in marked) and the saved servers, all closed. Nothing
+  is asked.
+- **A source opened** reads its list now (`reading the models…`), Refresh reads again: a
+  CLI's aliases and own list; a server's by a probe with its kept key. A tick per model and
+  CLI: one for a CLI; for a server a column per installed CLI whose API it proves. Ticking
+  saves a model with its default name, unticking removes it (cases 2, 3, 5, 6, 13).
+- **Default names**: `Claude Sonnet` (an alias: the CLI title's first word and the alias),
+  `gpt-5-codex` (a CLI's own list), `qwen3-8b · LiteLLM` (a server); taken → `· Codex CLI`,
+  then `(2)`. Renamed in place with ✎ (case 12).
+- **Long lists, embeddings, gone models, silent servers**: search above more than ten
+  models; embeddings greyed, not tickable; a saved model the read list lacks shows first,
+  ticked, marked, and in Your models with a warning, never removed by itself; a server that
+  does not answer says why (the container's hint too) and its models stay (cases 7, 8, 10).
+- **Other model…** in each source: a model the list lacks, the launch window's live check
+  under it, Add (case 11).
+- **Servers**: + Add server (Name, Address, Key in the dots field), probed as `lado
+  model-server add`; the new server shows open with `Saved model server "<name>".`, `same
+  address as …`, the plain-http warning under Key (case 4). Change: Address and New key,
+  empty keeps the key (case 9). Remove: `Remove LiteLLM and its 3 models: …?`, then the
+  server goes with its models (case 14).
+- **CLI not logged in / not installed** (cases 15, 16): the source is marked; a model of a
+  CLI not installed shows `<CLI> is not installed` in Your models.
+- **Refusals** are the commands' lines under the field they concern, in the launch window's
+  note look. At phone width the forms stack; a wide list scrolls inside itself.
 
 ## Root cause and options
 
 The store and its rules (`model_settings.py`) have no API, and the UI has no place for the
 human's model settings: by "only what is used", the previous change left both to this one.
 
-- **A (taken):** a thin API over `model_settings.py`, the commands' own functions; the core
-  marks each refusal with its field. Long-term cost: an attribute on two exception types.
-  One source of truth for rules and texts.
-- **B:** the API re-implements the checks with UI words. Two rule sets that drift.
-- **C:** the browser probes the server itself. The key would leave LADO's server, CORS and
-  networks LADO's machine alone sees would break it, and the probe would exist twice.
+- **A:** explicit entries through forms, ready-made chips. The human picks every name; new
+  models on a server stay unseen. The first design; replaced by the human's choice.
+- **B (taken):** sources read when opened, ticks are entries. Cost: a probe per opening, a
+  naming rule, ticks derived from entries.
+- **C:** no entries. Loses the names the power tables and roles refer to.
+
+Where the rules live: a thin API over the core, each refusal marked with its field (taken);
+an API with its own checks and texts (drifts); the browser probing (the key leaves LADO).
 
 ## Held against the roadmap and the design principles
 
-- **Coming work.** The next change chooses a configured model in the launch window and
-  `lado start --model <name>`: it reads `GET /api/model-settings`'s list; effort and the
-  power tables add fields to the same entries and the same page.
-- **Neutral core.** No route or component names a provider; ready-made models are
-  `Provider.ready_models`, declared by Claude Code alone today and shown for any provider
-  that declares some. The page works for all four CLIs; only the chips are Claude Code's,
-  said in the proposal's Out of scope.
-- **One source of truth.** Every check and text is `model_settings.py`'s; the live check is
-  `check_model`, the same function `add_model` runs (D3); the field of a refusal is set
-  where it is raised (D2); the embeddings filter of the suggestions reads the probe's own
-  `embeddings` (D10).
-- **No silent drops.** Every refusal shows under a field or the buttons; warnings
-  (plain-http, no list to check) show where the human looks; a chip's refusal shows under
-  the chips; nothing is saved on a failed probe.
-- **Only what is used.** One route per thing the page does; no rename, no edit of a model,
-  no bulk removal, no change-feed event.
-- **The key.** In through the body of one POST, out never (D5): the canary of LAD-116 and
-  the previous change, extended to the API.
+- **Coming work.** The launch window and `lado start --model <name>` pick configured models
+  from `GET /api/model-settings`; they add `models.id` and refer by it (D8), so a rename
+  never breaks a reference. Effort and power tables add to the same entries and page.
+- **Neutral core.** No route or component names a provider; an alias's name comes from the
+  CLI's title and its provider's own alias list; the columns of a server come from the
+  APIs it proves and each provider's `server_api`.
+- **One source of truth.** Rules and texts are `model_settings.py`'s; the live check is
+  `check_model`, which `add_model` runs; a refusal's field is set where it is raised; a
+  tick is derived from the entries; the default name is one function.
+- **No silent drops.** A model gone from its server is marked, never removed by itself; a
+  server that does not answer says why; doctor names a gone model; a refusal shows under a
+  field or the tick's row.
+- **Only what is used.** No id column until a reference needs it; no "new" mark; no chips;
+  no rename in the CLI.
+- **The key.** In through the body of one POST, out never (D9), the canary.
 
 ## Decisions (design.md)
 
-D1 the API routes and models · D2 a refusal's field set by the core · D3 `check_model`, the
-checks without the save · D4 a server's probe kept a minute for the Model field · D5 the
-key's way in, `SECRET_ROUTE`, the empty key · D6 warnings and notes of add · D7
-`Provider.ready_models` · D8 the probe's why only with no list · D9 the page's components
-and reuse · D10 embeddings left out of the suggestions · D11 the tests.
+D1 the API · D2 a refusal's field · D3 `check_model` · D4 the default name · D5 lists read
+now, a probe kept a minute for the live check · D6 ticks derived from the entries · D7 a
+server removed with its models, `--with-models` · D8 rename without an id now, the id with
+the first reference · D9 the key's way in · D10 warnings and notes · D11 the probe's why ·
+D12 doctor's gone model · D13 the page's components · D14 the tests.
 
 ## Test layers per requirement
 
 | Requirement | Layer | Why that layer |
 |---|---|---|
-| Settings has a section Models; the anchor | vitest + UI e2e | the order of sections and the scroll need the DOM; e2e proves the real page |
-| Opening the section asks no server | unit (`tests/test_server_model_settings.py`, the fake server's request record) | the route alone decides it |
-| The page adds a server as the command does; what the probe found; same address and plain http | unit (routes against `tests/fake_model_server.py`) + UI e2e (one add) | the route's answer is unit; the rendered row needs a browser |
-| A refusal is the command's line; under its field (server and model) | unit (`tests/test_model_settings.py`: each raise's `field`; the routes' `EntryRefused`) + vitest (placement) + UI e2e (one under Address, one under Server) | field set in the core, placed by the page |
-| The notes look as the launch window's | vitest (classes) + UI e2e screenshot | look |
-| A server's row shows what was saved; Check | unit + vitest | |
-| Change replaces address or key | unit (route with `replace`, key kept on `null`) + vitest (empty New key sends `null`) | |
-| Removing a server asks in its row; refused naming models | unit + UI e2e | |
-| The page adds a model; the table | unit + vitest + UI e2e | |
-| The Model field suggests; checks as typed | unit (`check_model`, the kept probe) + vitest (debounce, embeddings filtered) + UI e2e (suggestion from the fake server) | |
-| Removing a model | unit + vitest | |
-| Ready-made models; several at once; each CLI's | unit (`ready_models` are aliases; listing hides saved; installed only) + vitest + UI e2e (fake `claude` on PATH) | |
-| The key enters the API and never leaves it | integration (`tests/integration/test_model_settings_canary.py`, a real `lado server`) + unit (422 on the secret route) | crosses processes: server log, journal, files |
-| The page keeps the key only in its field | vitest | DOM and state |
+| Settings has a section Models; Your models without a model | vitest + UI e2e | DOM order, scroll |
+| Opening the section reads no list | unit (routes: the fake server's request record; no CLI list read) + vitest (no read before opening) | |
+| The sources | vitest (installed/login from `/api/providers*`) + UI e2e | |
+| Opening a source reads its list now | unit (`fresh`, the probe route) + vitest + UI e2e (Refresh shows a model added to the fake) | |
+| A tick is a configured model; a tick of several models | vitest (ticks from entries, POST/DELETE) + UI e2e | |
+| A model's default name | unit (`default_name`) | pure rule |
+| Search; embeddings; a model its source no longer lists; a server that does not answer | vitest + UI e2e (the fake's `lmstudio` profile, a closed port) | |
+| Other model | unit (`check_model`, kept probe) + vitest (debounce, note) | |
+| The table of Your models; renaming | unit (`rename_model`, routes) + vitest + UI e2e | |
+| The page adds a server; same address and plain http; refusals under fields | unit (routes, fields) + vitest (placement) + UI e2e | |
+| The notes look as the launch window's | vitest (classes) + UI e2e screenshots | |
+| Change | unit (`replace`, key kept on `null`) + vitest (empty New key → `null`) | |
+| Removing a server removes its models | unit (state transaction, routes) + vitest + UI e2e | |
+| model-servers: `--with-models`, the hint | unit (`tests/test_cli_model_server.py`) + integration (`test_model_settings_process.py`) | the real command |
+| model-servers: doctor's gone model | unit (`tests/test_doctor.py`) | fake server in-process |
+| model-servers: why only with no list | unit (`tests/test_model_servers.py`) | |
+| The key enters the API and never leaves it | integration canary + unit (422) | crosses processes |
+| The page keeps the key only in its field | vitest | |
 | The section fits a phone | UI e2e at 390 px | layout |
-| Without the page everything is as before | the regression run (`make test`, integration `test_session_model.py` in CI) | behaviour unchanged |
-| model-servers: why only with no list | unit (`tests/test_model_servers.py`) | pure probe |
+| Without the page everything is as before | regression run | unchanged behaviour |
 
 The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settings-page.md`.

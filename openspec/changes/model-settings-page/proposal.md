@@ -35,17 +35,22 @@ provider's own list).
 
 ## What Changes
 
-- Settings gets a section **Models** after Providers and environment, before Usage
-  statistics, at `/settings#models`, with two tabs: **Your models** (a card per CLI, its
-  models by name: Name, renamed by a click on it, Model, From, × with Undo) and **Add models** (every LADO CLI, not
-  installed ones greyed, not logged in ones marked; every saved server; `+ Add server`).
-  Nothing on the page moves under the pointer: no scroll to the anchor after a change, a
-  removed row keeps its place as its Undo.
+- Settings gets a section **Models** after Agent CLIs and environment, before Usage
+  statistics, at `/settings#models`, with no tabs: three blocks one under the other, **Your
+  models** (a card per agent CLI with models, its models by name: Name, renamed by a click
+  on it, Model, From, × with Undo; the agent CLIs without models in one line), **Model
+  servers** (every saved server, then `Add server`) and **Models of your agent CLIs** (every
+  LADO agent CLI, not installed ones greyed and last, not logged in ones marked). Nothing
+  under the pointer moves: the page keeps the element acted on in place when the blocks
+  above it change height, and no row leaves on a timer (design.md D18, after the human had
+  the page reviewed by a designer and a critic).
 - Opening a source (its whole row) reads its list now (a CLI's aliases and own list; a
   server's by a probe with its kept key), Refresh reads it again; nothing is read when the
   page opens and no list is kept. A CLI's model has one tick; a server's model opens, under
-  its row, a tick per CLI that can run it. Ticking saves a configured model with a default name (`Claude
-  Sonnet`, `gpt-5-codex`, `qwen3-8b · LM Studio · OpenCode`), unticking removes it.
+  its row, a tick per CLI that can run it, with the name a tick would save. Ticking saves a
+  configured model with a default name (`Claude Sonnet`, `gpt-5-codex`, `qwen3-8b · LM Studio
+  · OpenCode`), unticking removes it, and ticking again while the page is open brings back
+  the name it had.
 - A list scrolls within a bounded height, its configured models first, with a search above
   ten models; embeddings models are hidden and counted; a configured model its source no
   longer lists shows first, ticked, marked, and is never removed by itself; a server that
@@ -90,6 +95,12 @@ provider's own list).
   "provider" in the code or in lowercase texts: scripts and links keep working; only the
   labels the human reads change (design.md D17).
 - Undo of a server removed: its key is deleted with it and LADO keeps no copy of a key.
+- An Undo row for a model unticked: the tick is its own undo, and a row added in Your models
+  would move the page (D18.5).
+- Tabs: the human had them replaced by three blocks after the design review (#3107).
+- The page following changes made by `lado model …` while it is open: it reads the entries
+  on opening and after its own changes (D13); a change feed for them is not needed by any
+  work yet.
 
 ## Capabilities
 
@@ -117,7 +128,7 @@ provider's own list).
   `src/lado/server/model_entries.py`; `web/src/Settings.tsx`, new
   `web/src/ModelSettings.tsx` and `web/src/ModelSources.tsx`, `web/src/api.ts`,
   `web/src/paths.ts`, `web/src/styles.css`; `web/openapi.json` and `web/src/api.gen.ts`
-  regenerated. About 22 code files with `src/lado/logins.py`, `web/src/Launch.tsx`, `web/src/Providers.tsx`, `web/src/SystemPanel.tsx`, `src/lado/server/provider_check.py`, `docker/Dockerfile` and `docker/compose.yaml` for the agent CLI wording; the redesign after the human's UI remarks changes the page's two components, `styles.css`, `model_entries.py`, `models.py` and `app.py` (the form's check) of them.
+  regenerated. About 22 code files with `src/lado/logins.py`, `web/src/Launch.tsx`, `web/src/Providers.tsx`, `web/src/SystemPanel.tsx`, `src/lado/server/provider_check.py`, `docker/Dockerfile` and `docker/compose.yaml` for the agent CLI wording; the redesign after the human's UI remarks changes the page's two components, `styles.css`, `model_entries.py`, `models.py` and `app.py` (the form's check) of them; the design review's layout (D18) rewrites the two components and their styles and adds `web/src/useScrollAnchor.ts`: 27 code files in all.
 - Docs: `docs/design/ui.md`, `docs/design/modules.md`, AGENTS.md's line of `server/`,
   `docs/cli.md` (`--with-models`, doctor's line), CHANGELOG.md (0.45.0, New).
 - Tests: unit, integration (the key canary, `--with-models` in the real command), vitest,

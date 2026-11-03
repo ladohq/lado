@@ -214,6 +214,7 @@ Why: the human's manual check of the page (#2935: the three choices by the recom
 
 The human's twelve remarks on the built page (#2949) and their answers (#2950: a clickable
 mock-up first; #2969: 1A, 2A, 3A) change the page, not the core's rules or the commands.
+D18 replaces item 1 (the tabs) and changes items 6, 9 and 12.
 
 1. **Tabs, not two blocks one above the other.** Your models and Add models are tabs of the
    section, the first named with the number of models. A tick then adds no row above the
@@ -302,6 +303,104 @@ Why: one word for one thing; "provider" is ambiguous on the Models page. Cost: s
 files more (about 22 in all, under the ~25 threshold) and the tests that quote the old
 labels.
 
+### D18. The page after the design review: three blocks, no tabs
+
+The human had the built page reviewed by a designer and a critic (the session's run
+`ui-design/models-page`: its `mockup.html`, `spec`, `design-system`, `critique`) and took
+its mock-up whole, without tabs, in this change (#3107, "(B)"). It replaces D16.1 (the
+tabs, gate #244) and changes D16.6, D16.9 and D16.12; the core, the commands, the
+refusals, the key's way in (D9, #3081) and the rest of D16 stay. The mock-up's texts marked
+Sample (its hints, lists, addresses) are not taken: a refusal's hint is the command's.
+
+1. **One section, three blocks** under an intro paragraph, each with an h3 and its
+   count: **Your models**, **Model servers**, **Models of your agent CLIs**. Servers come
+   before the agent CLIs' lists: the main scenario is a server, and the two kinds of source
+   are no longer one accordion. `Add server` ends the servers' block; its form opens in its
+   place and the server saved takes the form's place (the critique's F7: a server added
+   above would break the order by name).
+2. **Your models: a card only for an agent CLI with models**; the others in one line under
+   the cards (`Kilo CLI has no models: its agents run on its default model.`). A name wraps,
+   never cut. From says `the agent CLI` for a CLI's own model. The `Add from <CLI>` link and
+   the empty state's `Add models` link go: the blocks are on the same page.
+3. **Nothing moves under the pointer, by an anchor** (the review's spec §4.1). Before each
+   render of the section after a change, the page notes an anchor and its
+   `getBoundingClientRect().top`: the focused element inside the section, else the element
+   just acted on, else the first element of the section in view; after the render it
+   scrolls the scrolling container (`.content` above 900 px, the window at or under it) by
+   the difference. It runs on every change of the section's height: a tick, ×, Undo, a
+   rename, adding, changing or removing a server, the reload of the entries, a list read
+   ending. `overflow-anchor` is not relied on (Safari has none). It lives in a small hook
+   of its own (`web/src/useScrollAnchor.ts`) with its vitest. The anchor `#models` still
+   scrolls only when the page opens (D16.6).
+4. **No row leaves on a timer** (§4.2). After ×, the row says `Removed <name>. Undo` at the
+   row's height; after `UNDO_MS` only the Undo goes, `Removed <name>.` stays until the
+   human's next change in the section (a tick, ×, Undo, a rename, a server added, changed
+   or removed) or the page's next opening.
+5. **A tick is its own undo** (§4.3). Unticking in Model servers or Models of your agent
+   CLIs removes the model and leaves no Undo row in Your models; Undo rows come only from
+   ×, under the pointer. This changes AC-8 and AC-14 of the design before.
+6. **A renamed model unticked keeps its name for the page's life** (the critique's open
+   F11; the recommendation the human confirms at design_ok). The page remembers, until it
+   is reloaded, the name of each model it removed by a tick when that name was not the
+   default; ticking the same agent CLI, model and server again saves it under that name
+   (the default name if it is taken meanwhile), and the unticked row says `would be <name>`
+   in place of `as <name>`. A ticked model with a name of its own has the title `Unticking
+   removes <name>.`. Weighed: an Undo row in the source's list (one more row type and its
+   timer rules in two blocks), the name lost knowingly (sessions refer to the name; a
+   mis-click would break them silently).
+7. **`would be <name>`** by each unticked agent CLI under a server's model: the name a tick
+   would save. It comes from the core, never computed in the browser: `POST
+   /api/models/check` answers `ModelCheck.name`, `model_settings.default_name` for a check
+   without a name (the given name otherwise). The page asks it for each CLI when a model's
+   list of CLIs opens, the answers of a list closed meanwhile dropped. Why: one rule of
+   default names (D4).
+8. **The source rows.** No `CLI` badge; a CLI's second line `aliases` (Claude Code) or `its
+   list`, then its login state, then `<n> added`; a server's `<n> model(s) added` (`no
+   models added`) then its address, the address cut, not the count. The arrow is a chevron in
+   a framed 28 px box. Under 600 px a server's address wraps whole and has no tooltip, and
+   its icons go on a line of their own. The whole address shows on hover and on
+   `:focus-visible` of the row.
+9. **The form's found panel.** An answer of the check shows under Address as a panel: `✓
+   <type> answers at <address>`, then `Models <n>` with the hidden embeddings' line, then
+   `Agent CLIs <titles>`. Key is labelled `optional`, or `required by this server` once the
+   check says it asks for one; under it `Kept in a file only LADO reads; never shown
+   again.` After a server is saved its open list starts with `Open a model to tick the agent
+   CLIs that run it.`
+10. **Change checks as the form does.** Change's Address is checked as it is typed, by the
+    same route with `replace: true` (`ModelServerCheck.replace`: the server's own name is
+    not "taken"); its note says what answers there; its line `Its <n> models keep their
+    names and move with it.` The key goes only with Save, empty New key keeping the kept
+    one, as before.
+11. **Remove's question** says `Its key is deleted too.` only when the server has a key,
+    then `This cannot be undone.`; its button `Remove server and <n> models` (`Remove
+    server` without models); `role=alertdialog`, the focus on Cancel.
+12. **Focus after an action**: after Add, the new server's row; after ×, its Undo; after
+    Undo, the model's name; after Esc in a name, the name.
+13. **Phone (≤ 600 px)**: ✎ 🗑 ↻ × and Undo 44×44, a list row 44 px; a server's list of up
+    to 20 models not bounded (no scroll inside a scroll on touch), a longer one bounded as
+    on a desktop; a model's row in two lines (name; model · from), × at the right; the CLIs
+    under a server's model without indent, each CLI and its name in two lines.
+14. **Looks.** The section's spacing tokens `--row` (36 px), `--list-rows` (9),
+    `--gap-block` (24 px) in `styles.css`; no colour added. An ok note stays LADO's
+    `.field-note.ok` (`--action`), not the mock-up's green: the fields and notes look as the
+    launch window's (an accepted requirement, LAD-176's remarks); green (`--done`) only for
+    the found panel, `Saved model server …` and a server model's `in <CLI>, …`, as the mock-up.
+    The mock-up's 2e hint "the field is emptied after each send" is not taken: Check key
+    leaves the key in its field (#3081).
+
+What is rewritten: `web/src/ModelSettings.tsx`, `web/src/ModelSources.tsx`, the section's
+part of `web/src/styles.css`, their vitest files and `tests/ui/test_models_section.py`; new
+`web/src/useScrollAnchor.ts`. What changes a little: `server/models.py`
+(`ModelCheck.name`, `ModelServerCheck.replace`), `server/model_entries.py`, `web/openapi.json`
+and `web/src/api.gen.ts`, `tests/test_server_model_settings.py`, `docs/design/ui.md`. What
+stays: the core and the commands, every other route, the refusals, the key's way in and its
+canary, D17's wording. Code files of the change: 26 now (6 of them the wording of D17), 27
+with the hook.
+
+Why: the review's findings on the built page (the result of an action hidden on another
+tab, the main scenario at the bottom of a long accordion, nine empty cards of ten, the
+probe's result a 12 px line, cut names) and the human's choice.
+
 ## Risks / Trade-offs
 
 - Opening a server's source takes up to ~10 s for one that hangs: the source says
@@ -311,8 +410,12 @@ labels.
 - The form's check probes a server while the human types: at most one check runs at a
   time per form and an older answer is dropped; a slow server shows `checking …` up to the
   command's time.
-- An Undo row of a model removed by its tick is in Your models, not in Add models; the tick
-  itself undoes it there.
+- Without tabs a change in one block changes the height of the blocks above it; the anchor
+  (D18.3) keeps what is under the pointer in place, and a UI e2e test measures it to 0 px.
+  A layout change no render of the section causes (a font loading late) is not covered.
+- `Removed <name>.` rows stay until the next change; several × in a row leave several of
+  them until then.
+- A renamed model's name is remembered only while the page is open (D18.6).
 - A change made from the CLI while the page is open shows on the next opening.
 - `default_name` makes long names on servers with long model ids; the name is cut to 64
   characters and can be renamed.

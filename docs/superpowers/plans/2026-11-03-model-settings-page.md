@@ -347,3 +347,59 @@ vitest files); docs `docs/cli.md`, `docs/install.md`, `docs/design/ui.md`,
   docker docs/*.md docs/design` finds nothing; run the tests above, `make web`.
 - [ ] Commit `The UI says agent CLI (LAD-187)`.
 
+
+### Task 12: The page after the design review (D18)
+
+The page of Task 10 is built with tabs; this task rebuilds it to the design review's
+mock-up (the session's run `ui-design/models-page`: `mockup.html`, `spec` §§1–6,
+`design-system`), without tabs. The core, the commands, the refusals, the key's way in and
+D17's wording stay. The review's texts marked Sample are not taken.
+
+**Files:** modify `src/lado/server/models.py` (`ModelCheck.name`, `ModelServerCheck.replace`),
+`src/lado/server/model_entries.py`, `web/openapi.json`, `web/src/api.gen.ts` (`make
+web-types`), `web/src/api.ts`, `web/src/ModelSettings.tsx`, `web/src/ModelSources.tsx`,
+`web/src/styles.css` and their vitest files, `tests/test_server_model_settings.py`,
+`tests/ui/test_models_section.py`, `docs/design/ui.md`; create `web/src/useScrollAnchor.ts`
+and `web/src/useScrollAnchor.test.ts`.
+
+**Interfaces (produces):** `useScrollAnchor(section: RefObject<HTMLElement>): { hold(acted?:
+Element): void }`, called before every change of the section's entries or lists; the
+check's answer `ModelCheck.name: str`.
+
+- [ ] Unit first, `tests/test_server_model_settings.py`: `POST /api/models/check` without a
+  name answers `name` = `model_settings.default_name` (a taken name gets ` · <CLI>`), with a
+  name the name; `POST /api/model-servers/check` with `replace: true` and a saved server's
+  name gives no name refusal, without it the name-taken refusal as before. Implement;
+  `make web-types`.
+- [ ] Vitest first, `useScrollAnchor.test.ts`: the focused element inside the section is the
+  anchor, else the acted one, else the first in view; after a render that grows the content
+  above it by 120 px the container scrolls by 120 (`.content` when wider than 900 px, the
+  window otherwise); an anchor gone from the DOM scrolls nothing.
+- [ ] Vitest first, `ModelSettings.test.tsx`: no `tablist`; the intro and three h3 in order,
+  `Your models 4`, `Model servers 2`; a card only per agent CLI with models, the line `Kilo
+  CLI has no models: …` and its plural; a long name wraps (no `text-overflow`); From `the
+  agent CLI`; × leaves `Removed <name>. Undo` with the focus on Undo; after `UNDO_MS` (fake
+  timers) the row says `Removed <name>.` at the same height; the next tick or × clears it;
+  Undo POSTs and focuses the name; Esc in a rename focuses the name.
+- [ ] Vitest first, `ModelSources.test.tsx`: servers before agent CLIs; not installed last;
+  the second lines (`2 models added · <address>`, `aliases · logged in · 1 added`); no `CLI`
+  badge; untick DELETEs and adds no Undo row; a server model's CLIs each ask
+  `checkModel` and say `would be <name>` from its answer, answers of a closed list dropped;
+  untick of a renamed model, then tick, POSTs its old name, and between them the row says
+  `would be <old name>`; a taken old name falls back to the default (name omitted); the
+  title `Unticking removes <name>.`; the found panel's three lines; Key `optional`, then
+  `required by this server`; `Open a model to tick…` after Add with the focus on the new
+  row; Change checks its address with `replace: true`; Remove's question with and without a
+  key, its button's text, `role=alertdialog`, the focus on Cancel.
+- [ ] Implement to the mock-up; `make web`.
+- [ ] UI e2e (`test_models_section.py`, reworked): `test_no_shift` (the acted element's
+  `getBoundingClientRect().top` unchanged to 0 px after a tick in the middle of the
+  300-model list that adds a card above, Add server, Remove of a server, × and Undo, Undo
+  running out with the focus in Models of your agent CLIs, a list's read ending above the
+  focus); `test_long_list`; `test_rename_enter_esc`; `test_add_form_checks` (the found
+  panel against `lmstudio`, a closed port refused before Add); `test_phone_width` (390 px:
+  `scrollWidth` equals the width, ✎ 🗑 × at least 44×44, LM Studio's 12 models without an
+  inner scroll); screenshots for the pull request.
+- [ ] `docs/design/ui.md` as built; the manual check in the pull request names the three
+  blocks, the Undo row staying and the re-tick's name; regression as Task 9; commit
+  `Settings → Models in three blocks, without tabs (LAD-187)`.

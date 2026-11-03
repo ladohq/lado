@@ -99,6 +99,46 @@ Each remark and its answer: D16 of design.md. At gate #244 the human took the ta
 remarked on the rest (#2983); the second round (#2984) took a card per CLI and a server
 model's list of CLIs under its row.
 
+## After the design review (#3107)
+
+At merge_ok the human had the built page reviewed by a designer and a critic (the session's
+run `ui-design/models-page`) and took its mock-up whole, without tabs, in this change. The
+page becomes three blocks one under the other:
+
+```
+Models
+Name the models your agents run on: … Without any, each agent runs on its default model.
+
+Your models 4
+ ┌ Claude Code 1 ─────────────────────────────────────────────┐
+ │ Claude Sonnet          sonnet         the agent CLI      × │
+ │ Removed Claude Opus 1M. Undo        (after 10 s: "Removed Claude Opus 1M.") │
+ └────────────────────────────────────────────────────────────┘
+ ┌ OpenCode 2 … ┐
+ Kilo CLI has no models: its agents run on its default model.
+
+Model servers 2
+ [›] LM Studio дома  [LM Studio]   2 models added · http://localhost:1234      ✎ 🗑
+     Open a model to tick the agent CLIs that run it.
+     qwen3-8b                                   in OpenCode   [⌄]
+        ☑ OpenCode   as qwen3-8b · LM Studio дома · OpenCode
+        ☐ Kilo CLI   would be qwen3-8b · LM Studio дома · Kilo CLI
+ [+ Add server] → Name · Address [✓ LM Studio answers at … / Models 12 / Agent CLIs …] · Key
+
+Models of your agent CLIs
+ [›] Claude Code   aliases · logged in · 1 added
+ [›] Kilo CLI      its list · logged in
+```
+
+What changes and why: design.md D18. The review's findings it answers: the result of a tick
+hidden on another tab, the main scenario at the end of a long list of sources, nine empty
+cards of ten, the probe's result a 12 px line, names cut. Its price: without tabs a change
+in one block changes the height above another, so the page holds the element under the
+pointer by an anchor (D18.3), no row leaves on a timer (D18.4), and an untick leaves no Undo
+row (D18.5). The critic's open finding F11 (a renamed model unticked by mistake loses its
+name) is answered by the page remembering the name while it is open (D18.6); the human
+confirms it at design_ok.
+
 ## Root cause and options
 
 The store and its rules (`model_settings.py`) have no API, and the UI has no place for the
@@ -143,7 +183,11 @@ D12 doctor's gone model · D13 the page's components · D14 the tests.
 
 | Requirement | Layer | Why that layer |
 |---|---|---|
-| Nothing moves under the pointer | UI e2e (`scrollY` and the element's top before and after) | layout, real scrolling |
+| Nothing moves under the pointer | vitest (`useScrollAnchor`) + UI e2e (the acted element's top before and after, 0 px; Undo running out; a list read ending) | layout, real scrolling |
+| A source's row; the form says what answers; Remove's question says what goes | vitest + UI e2e screenshots | |
+| The name before the tick | unit (`ModelCheck.name` = `default_name`) + vitest (from the answer, never computed) | one rule of names |
+| A renamed model unticked keeps its name | vitest (the old name POSTed, a taken one falls back) | the page's memory only |
+| Agent CLIs without models | vitest | |
 | The form checks the server as the human types | unit (the check route, no key unless sent) + vitest (debounce, stale answers dropped, Add on/off) + UI e2e | |
 | A source's list keeps its height; embeddings hidden | vitest + UI e2e (323 models) | |
 | A server's model opens its CLIs; Your models by CLI; one panel at a time | vitest + UI e2e | |
@@ -166,7 +210,7 @@ D12 doctor's gone model · D13 the page's components · D14 the tests.
 | model-servers: why only with no list | unit (`tests/test_model_servers.py`) | |
 | The key enters the API and never leaves it | integration canary + unit (422) | crosses processes |
 | The page keeps the key only in its field | vitest | |
-| The section fits a phone | UI e2e at 390 px | layout |
+| The section fits a phone | UI e2e at 390 px (`scrollWidth`, 44 px targets, an unbounded list of 12) | layout |
 | Without the page everything is as before | regression run | unchanged behaviour |
 
 The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settings-page.md`.

@@ -14,7 +14,10 @@ ci_rerun = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ci_rerun)
 
 NOT_ACQUIRED = "The job was not acquired by Runner of type hosted even after multiple attempts"
-CAPACITY = "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+CAPACITY = (
+    "Due to capacity constraints, jobs targeting macOS arm64 runners may experience"
+    " longer queue times."
+)
 SUPERSEDED = "Canceling since a higher priority waiting request for ci-207 exists"
 
 

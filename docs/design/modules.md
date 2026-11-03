@@ -464,7 +464,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     store keeps LADO's secrets in `<LADO_HOME>/secrets/` (`write_lado`, `remove_lado`,
     `read_lado`, `lado_names`, `lado_folder`; `_open_chain` over the folder's parts): the
     agent CLIs' login variables the human sets in Settings (lado.logins checks the names).
-  - `logins.py`: the agent CLIs' logins (docs/design/ui.md, Providers and environment):
+  - `logins.py`: the agent CLIs' logins (docs/design/ui.md, Agent CLIs and environment):
     `refusal` is why a new session or worker (`SESSION`, `WORKER`) of a CLI that needs a
     login there (`Provider.needs_login(env)`) and has none is not started
     (lado.runtime.check_login raises it), `wait_reason` why a resumed agent waits;
@@ -1197,7 +1197,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `launch.provider_infos(project)` sets `login_missing` by `logins.refusal` in
     `runtime.agents_env` of the provider over `runtime.agent_layers(project)`, false when those cannot be had; `?project=`
     unknown is 404);
-    `provider_check.py`: Settings → Providers and environment's rows (LAD-163): the last
+    `provider_check.py`: Settings → Agent CLIs and environment's rows (LAD-163): the last
     `ProviderLogins` of each provider (`launch.provider_logins`, which names the agents
     waiting for a login only while it is missing), kept for the server's lifetime, never on
     disk; `start()` runs one check at a time in a daemon thread, every provider at once

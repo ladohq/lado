@@ -3150,7 +3150,7 @@ export interface components {
         };
         /**
          * ProviderLogins
-         * @description One agent CLI in Settings → Providers and environment (lado.logins).
+         * @description One agent CLI in Settings → Agent CLIs and environment (lado.logins).
          */
         ProviderLogins: {
             cli: components["schemas"]["ProviderInfo"];

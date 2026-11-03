@@ -226,7 +226,7 @@ test("live is a button that opens the system panel", async () => {
     ["Statistics", "not chosen"],
   ]);
   expect(within(shown).getByRole("button", { name: "Copy path" })).toBeTruthy();
-  const providers = within(shown).getByRole("region", { name: "Providers" });
+  const providers = within(shown).getByRole("region", { name: "Agent CLIs" });
   expect(Array.from(providers.querySelectorAll("li"), (li) => [li.querySelector(".provider-dot")!.className, li.textContent])).toEqual([
     ["provider-dot provider-ok", "Claude Code2.1.295"],
     ["provider-dot provider-warn", "Kilo7.9.0 · tested 7.8.3"],

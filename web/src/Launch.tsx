@@ -852,7 +852,7 @@ function LaunchDialog({
           />
 
           <div className="field">
-            <label htmlFor={`${ids}-provider`}>Provider</label>
+            <label htmlFor={`${ids}-provider`}>Agent CLI</label>
             <select
               id={`${ids}-provider`}
               value={providers ? (chosenProvider ?? "") : ""}

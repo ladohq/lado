@@ -312,7 +312,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   it may give the agent its login, Codex's link), LADO asks the provider (`needs_login`,
   `login_status`) with the agent's launch environment (`runtime._held_for_login`); at `no`
   the agent is `waiting` with `logins.wait_reason` (`<CLI> is not
-  logged in: log in in Settings → Providers and environment, or set <variable>; the agent
+  logged in: log in in Settings → Agent CLIs and environment, or set <variable>; the agent
   starts by itself once you do`), told and logged as a blocker's reason is; what needs no
   login is settled at once (`first_hook_blocker`: Claude Code's trust, its note in
   `loop.log` only; a question it would still ask waits for the window), and its window

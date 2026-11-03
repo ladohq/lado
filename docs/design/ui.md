@@ -691,7 +691,7 @@ Sessions for now. The UI's texts are in English.
   the tab's title while above zero: `(<n>) <page> · LADO`. A gate has no page of its
   own: it is a tab of its session's waiting card.
 - **Settings**: one page, its sections one under the other: Appearance (theme: system,
-  light, dark), Notifications (the switch Browser notifications, below), Providers and
+  light, dark), Notifications (the switch Browser notifications, below), Agent CLIs and
   environment (what `lado doctor` checks; a task of its
   own), Models (below) and Usage statistics (below). New sections go below.
 - **Placeholders**: one component, with the section's name, one sentence on what it will
@@ -1393,7 +1393,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   the installed and the built-in kits, the same for every folder; the window still sends
   its folder as `where`, which the server ignores; one that does not load is listed off
   with `lado kits check <name>`),
-  **Provider** (`/api/providers`: each provider of the registry with
+  **Agent CLI** (`/api/providers`: each provider of the registry with
   `doctor.provider_status`; "checking…" while the CLIs answer, one not installed is off,
   a version warning shows under it; a chosen name the list lacks, a resumed session's, is
   an option of its own, `<name> · unknown`, off, so the select shows it: LAD-122; a CLI
@@ -1412,15 +1412,15 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   is not installed stays off too, with its install hint. A suggested one without its login
   is not taken: the field stays at "choose…" with the red note `<CLI> is not logged in: its
   agents cannot start.` and **Log in first**, which closes the window and opens Settings →
-  Providers and environment; Start stays off, as the start would be refused (lado.logins).
+  Agent CLIs and environment; Start stays off, as the start would be refused (lado.logins).
   The human's own pick is kept
   when the folder changes. **Advanced** (folded; its row `Advanced: model, switch off
   agents, skills, MCP servers or flows`, folded with a model `Advanced: model <model>`, the
   model in `.launch-first-peek`): **Model** first, the session's model (`lado start
   --model`), in the left column of a `.launch-grid` of its own (the whole row on a narrow
-  window), its label bold as Provider's: free text in the window's own combobox
+  window), its label bold as Agent CLI's: free text in the window's own combobox
   (`SuggestField.tsx`, not a native `<datalist>`): the height, frame and font of
-  Provider, a drawn chevron at its right end that opens or closes the whole list; typing
+  Agent CLI, a drawn chevron at its right end that opens or closes the whole list; typing
   or ↓ opens it filtered by what is typed (case-insensitive), ↑↓ move, Enter picks the
   highlighted one (else it is the form's), Esc or leaving the field closes it, a click
   picks; the suggestions are the chosen CLI's aliases (tagged `alias`, muted) then its own
@@ -1505,7 +1505,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   the .env file next to compose.yaml, then restart LADO there:` `docker compose up -d`,
   else `Tell git who you are, once for this computer:` and the `git config --global`
   command; the window has no fields for them and LADO sets no author of its own. There is
-  no separate session Name; Kits, Provider (`ScratchTarget.provider`), Permission mode, the
+  no separate session Name; Kits, Agent CLI (`ScratchTarget.provider`), Permission mode, the
   first message and Advanced are as for a clone's folder. **Create and start** is on with
   a name, a folder new or empty, the author known and the name free; it sends `where:
   {kind: "scratch", path}` with the name and the title (`Launch.title`): the server makes
@@ -1529,7 +1529,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   the URL with the core's text (`CloneRefused`: `message`, `kind`, `hint`) and, where the
   human can act (an ssh key refused, an unknown host key, a GitHub login, a GitHub
   repository not shown), the hint's sentence and command with Copy, before anything is
-  pressed. Name, Kits, Provider (the server's suggestion for a folder with no sessions,
+  pressed. Name, Kits, Agent CLI (the server's suggestion for a folder with no sessions,
   `CloneTarget.provider`) and Permission mode are the folder's. The one button **Clone and
   start** is on once the branches are listed and the folder is new or empty. A folder
   that holds a clone of the same repository (same host and path; scheme, user and port
@@ -1596,7 +1596,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   (`runtime.project_session_name`) until edited, with the folder check's notes
   (`name_state`, where a session of the name in another project or in none is
   `taken_elsewhere`); Kits and Permission mode come from the repository's last session in
-  the project (`ProjectLaunch.last`), Provider from `ProjectLaunch.provider`, as Folder
+  the project (`ProjectLaunch.last`), Agent CLI from `ProjectLaunch.provider`, as Folder
   takes them. The start button reads **Start in <title>** (the id without one): the window
   opens on the last project used, and a quick click in another project would give the
   session another client's keys (the supervisor's condition at gate #107). It sends
@@ -1968,7 +1968,7 @@ M2, P1–P3 of round 3, F3 and U1–U3).
   socket), git (`SystemInfo.git`: its version, `not installed` or `does not run`, by the
   folder check's own `runtime.git_version`; never its path), on a Mac Graphical session (`process remote · server gui`, or `no tmux
   server`: `SystemInfo.gui_session`, where the server's process and LADO's tmux server run,
-  lado.gui_session), the providers (a dot: ok, an untested version, not installed; the version, and
+  lado.gui_session), Agent CLIs (a dot: ok, an untested version, not installed; the version, and
   the tested one when it differs), and last the update check: `Up to date · checked 09:12`,
   `checked yesterday`, `Checking…`, `Check failed · 09:12` with the reason in its tooltip,
   each with ↻ (`POST /api/update/check`). Esc or a press outside closes it. It ends 8 px
@@ -2310,12 +2310,12 @@ time. Each task is one `feature` run, useful on its own.
       server, with subfolders and recent folders).
    7. **Flows** (decided with the human 2026-10-04, task feature/flows-tab). Done: Flows
       below. Then **Agents** (decided with the human 2026-10-04, task feature/agents-tab).
-      Done: Agents below. Then Providers and environment; a pass over the look with a designer role
+      Done: Agents below. Then Agent CLIs and environment; a pass over the look with a designer role
       (BACKLOG), with it the rework of the rail (later, with the look pass: names under the
       icons when collapsed; Launch moved onto it with Launch and session control); then the
       rest; later the desktop app.
 
-### Providers and environment
+### Agent CLIs and environment
 
 Settings: the agent CLIs LADO can run, their versions and logins, and of what `lado doctor`
 checks only what the user can fix (LAD-157, LAD-160 and LAD-163, openspec changes
@@ -2458,7 +2458,7 @@ commands print their lines as before). Using it changes nothing of how sessions 
   ignoring case, no name) shows under it. Under the table: "Rename in place (✎): the name
   is yours; sessions will refer to the model, not to its name."
 - **Sources** (below): every agent CLI LADO knows ("CLI", and "logged in", "not logged in"
-  or "not installed" from Providers and environment's last check, read again while that
+  or "not installed" from Agent CLIs and environment's last check, read again while that
   check runs; a CLI not installed is greyed and does not open), then every saved server
   (its name, type and address, `key: yes` when it has a key, ↻ Refresh while open, Change,
   Remove), then **+ Add server**.

@@ -44,7 +44,7 @@ const FOUR = [
   model("beta", "opencode", "OpenCode", "devstral"),
 ];
 
-test("the section comes after Providers and environment, before Usage statistics", async () => {
+test("the section comes after Agent CLIs and environment, before Usage statistics", async () => {
   vi.stubGlobal("WebSocket", class {});
   render(
     <MemoryRouter>
@@ -54,7 +54,7 @@ test("the section comes after Providers and environment, before Usage statistics
   await screen.findByRole("heading", { name: "Models" });
   const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
   const at = headings.indexOf("Models");
-  expect(headings[at - 1]).toBe("Providers and environment");
+  expect(headings[at - 1]).toBe("Agent CLIs and environment");
   expect(headings[at + 1]).toBe("Usage statistics");
 });
 

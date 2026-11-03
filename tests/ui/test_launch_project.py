@@ -65,7 +65,7 @@ def test_a_session_starts_in_a_projects_repository(page: Page, shop, server, sho
     expect(repo(dialog, "frontend")).to_have_attribute("aria-checked", "true")
     expect(dialog.get_by_role("textbox", name="Name")).to_have_value("shop-frontend")
     expect(dialog).to_contain_text("✓ git repository · branch main")
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     shot(page, "window")
     page.emulate_media(color_scheme="dark")
     shot(page, "window-dark")
@@ -96,7 +96,7 @@ def test_another_project_than_the_last_used_gets_the_session(page: Page, shop, s
     project.select_option("acme")
     expect(repo(dialog, "crm")).to_have_attribute("aria-checked", "true")
     expect(dialog.get_by_role("textbox", name="Name")).to_have_value("acme-crm")
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     start = dialog.get_by_role("button", name="Start in ACME CRM")
     expect(start).to_be_enabled()
     shot(page, "chosen")
@@ -126,7 +126,7 @@ def test_the_last_repository_is_chosen_and_a_taken_name_is_refused(page: Page, s
     expect(dialog.get_by_role("combobox", name="Project")).to_have_value("shop")
     expect(repo(dialog, "frontend")).to_have_attribute("aria-checked", "true")
     expect(dialog).to_contain_text("a stopped session shop-frontend exists for this folder")
-    expect(dialog.get_by_label("Provider")).to_have_value("fake")  # its last session's
+    expect(dialog.get_by_label("Agent CLI")).to_have_value("fake")  # its last session's
     dialog.get_by_role("button", name="Start in Shop").click()
     alert = dialog.get_by_role("alert")
     expect(alert).to_have_text(

@@ -8522,7 +8522,7 @@
           "ready"
         ],
         "title": "ProviderLogins",
-        "description": "One agent CLI in Settings \u2192 Providers and environment (lado.logins)."
+        "description": "One agent CLI in Settings \u2192 Agent CLIs and environment (lado.logins)."
       },
       "ProviderModels": {
         "properties": {

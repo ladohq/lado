@@ -280,7 +280,7 @@ name with why, never a value).
 A new session of a CLI that needs a login and has none, read in the environment its agents
 would get (with the project's secrets for `--project`), is refused with exit 1 before
 anything is stored: `lado: Claude Code is not logged in, so the session was not started: log
-in in LADO's UI (Settings → Providers and environment, `lado ui`), or set
+in in LADO's UI (Settings → Agent CLIs and environment, `lado ui`), or set
 CLAUDE_CODE_OAUTH_TOKEN as LADO's secret or a project secret` (Codex: `lado: Codex CLI is
 not logged in, so the session was not started: … or set OPENAI_API_KEY as LADO's secret or
 a project secret`). `lado start <git-url>` and
@@ -295,7 +295,7 @@ supervisor it starts: `lado: Claude Code is not logged in, so the session was no
 own resume is not refused (at the container's start, and `lado update`'s, which runs
 `lado start --wait-for-login`, a flag for LADO, not listed in `--help`): its Claude agent
 waits, and `lado ls` prints under it `waiting: Claude Code is not
-logged in: log in in Settings → Providers and environment, or set CLAUDE_CODE_OAUTH_TOKEN;
+logged in: log in in Settings → Agent CLIs and environment, or set CLAUDE_CODE_OAUTH_TOKEN;
 the agent starts by itself once you do`; it starts by itself once there is one. A login
 that cannot be read refuses nothing and holds no agent: `lado start` warns `cannot tell
 whether Claude Code is logged in: <why>; the agent starts all the same`.

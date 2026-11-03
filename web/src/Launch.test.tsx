@@ -259,7 +259,7 @@ function type(path: string) {
 }
 
 const startButton = () => screen.getByRole("button", { name: "Start session" }) as HTMLButtonElement;
-const providerSelect = () => screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
+const providerSelect = () => screen.getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement;
 
 // A folder that will do, with claude suggested unless `more` says otherwise; the providers
 // answered.
@@ -451,7 +451,7 @@ test("a recent folder is one click, and its last session gives kits, provider an
   await waitFor(() => expect(within(kitsField).getByText("team")).toBeTruthy());
   expect(within(kitsField).queryByText("default")).toBeNull();
   expect(screen.getAllByText("from the last session of this folder").length).toBeGreaterThan(0);
-  await waitFor(() => expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement).value).toBe("kilo"));
+  await waitFor(() => expect((screen.getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement).value).toBe("kilo"));
   expect(screen.getByText("from the folder's last session")).toBeTruthy();
   expect((screen.getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement).value).toBe("plan");
 });
@@ -686,7 +686,7 @@ test("providers show checking while their CLIs are asked, a missing one is off, 
   let release: (found: ProviderInfo[]) => void = () => {};
   providers = () => new Promise((resolve) => (release = resolve));
   await openLaunch();
-  const select = screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
+  const select = screen.getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement;
   expect(select.disabled).toBe(true);
   expect(select.textContent).toContain("checking…");
   await act(async () =>
@@ -774,7 +774,7 @@ test("Log in first closes the window and opens Settings' providers", async () =>
   await ready("/src/app", { provider: { name: "claude", reason: "only_installed" } }, true);
   fireEvent.click(await screen.findByRole("button", { name: "Log in first" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
-  expect(await screen.findByRole("heading", { name: "Providers and environment" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Agent CLIs and environment" })).toBeTruthy();
 });
 
 test("the Project way asks for the chosen project's providers, where its own login counts", async () => {
@@ -814,7 +814,7 @@ test("Resume of a CLI without its login is off, says Log in first, and another C
 
 test("a mode the new provider does not support goes back to default, and the window says so", async () => {
   await openLaunch();
-  const providerSelect = (await screen.findByRole("combobox", { name: "Provider" })) as HTMLSelectElement;
+  const providerSelect = (await screen.findByRole("combobox", { name: "Agent CLI" })) as HTMLSelectElement;
   await waitFor(() => expect(providerSelect.disabled).toBe(false));
   fireEvent.change(providerSelect, { target: { value: "claude" } });
   const mode = screen.getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement;
@@ -836,7 +836,7 @@ test("Start sends the window's fields, says Starting… and opens the new sessio
   };
   await openLaunch();
   await ready("/src/app");
-  const providerSelect = screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
+  const providerSelect = screen.getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement;
   await waitFor(() => expect(providerSelect.disabled).toBe(false));
   fireEvent.click(screen.getByText(/Advanced/));
   fireEvent.change(screen.getByRole("textbox", { name: /Switch off/ }), { target: { value: "agent:rev, skill:x" } });
@@ -872,7 +872,7 @@ test("a start's warnings show on the new session's page, such as what its superv
     });
   await openLaunch();
   await ready("/src/app");
-  await waitFor(() => expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement).disabled).toBe(false));
+  await waitFor(() => expect((screen.getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement).disabled).toBe(false));
   fireEvent.click(startButton());
   expect(await screen.findByRole("region", { name: "Session app" })).toBeTruthy();
   const alert = await screen.findByRole("alert");
@@ -1175,7 +1175,7 @@ test("Resume fills the window from the session, sends only what changed and show
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
   expect(where().value).toBe("/src/lado");
   expect(within(within(dialog).getByRole("group", { name: "Kits" })).getByText("team")).toBeTruthy();
-  const providerSelect = within(dialog).getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
+  const providerSelect = within(dialog).getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement;
   await waitFor(() => expect(providerSelect.value).toBe("kilo"));
   const mode = within(dialog).getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement;
   expect(mode.value).toBe("plan");
@@ -1199,7 +1199,7 @@ test("Resume session is off while the session's provider is not installed, on on
   expect(refusal.classList).toContain("bad");
   const resume = within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement;
   expect(resume.disabled).toBe(true);
-  fireEvent.change(within(dialog).getByRole("combobox", { name: "Provider" }), { target: { value: "claude" } });
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "Agent CLI" }), { target: { value: "claude" } });
   await waitFor(() => expect(resume.disabled).toBe(false));
   expect(within(dialog).queryByText("kilo not found; install kilo")).toBeNull();
   fireEvent.click(resume);
@@ -1216,7 +1216,7 @@ test("Resume session is off while the session's provider is not among the provid
   expect((within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement).disabled).toBe(true);
   // The select shows the session's provider, not the first listed one: picking that one
   // is a change, which a select only reports for another option.
-  const select = within(dialog).getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
+  const select = within(dialog).getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement;
   expect(select.value).toBe("gone");
   const gone = within(select).getByRole("option", { name: "gone · unknown" }) as HTMLOptionElement;
   expect(gone.disabled).toBe(true);

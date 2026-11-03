@@ -299,7 +299,7 @@ test("Open terminal goes to the agent's terminal in its session, and the address
 
 test("an agent that waits for its CLI's login offers Log in…, which leads to Settings' section", async () => {
   const reason =
-    "Claude Code is not logged in: log in in Settings → Providers and environment, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do";
+    "Claude Code is not logged in: log in in Settings → Agent CLIs and environment, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do";
   const waits_ = { ...agent("supervisor", reason), login_wait: "claude" };
   waiting = [waits.agent("lado", waits_)];
   open();

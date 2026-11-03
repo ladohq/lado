@@ -240,7 +240,7 @@ def test_a_project_secret_is_found_nowhere_else(shop, tmp_path, monkeypatch, fak
     assert status == 200, body
     page = json.loads(body)
     assert page["overrides"] == [CLI_NAME]
-    # A login variable kept as LADO's secret in Settings → Providers and environment: every
+    # A login variable kept as LADO's secret in Settings → Agent CLIs and environment: every
     # agent gets it (the project does not set it), no answer gives it back.
     token = f"/api/providers/fake-login/variables/{fake_provider.TOKEN}"
     for method, path, sent, expected in [

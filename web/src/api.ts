@@ -478,7 +478,7 @@ export const putSecret = (id: string, name: string, value: string) =>
 export const deleteSecret = (id: string, name: string) =>
   post<VariableChange>(variablePath(id, "secrets", name), undefined, "DELETE");
 
-// Settings → Providers and environment: each agent CLI's login (docs/design/ui.md).
+// Settings → Agent CLIs and environment: each agent CLI's login (docs/design/ui.md).
 export type ProvidersPage = components["schemas"]["ProvidersPage"];
 export type ProviderLogins = components["schemas"]["ProviderLogins"];
 const providerPath = (name: string) => `/api/providers/${encodeURIComponent(name)}`;

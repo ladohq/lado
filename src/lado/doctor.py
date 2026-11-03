@@ -182,7 +182,7 @@ def with_logins(versions: list[Check], login_lines: list[Check]) -> list[Check]:
 def provider_checks(
     versions: list[Check], login_lines: list[Check], which: Callable[[str], str | None]
 ) -> list[Check]:
-    """The checks Settings → Providers and environment shows (lado.server.launch): each
+    """The checks Settings → Agent CLIs and environment shows (lado.server.launch): each
     CLI's version and login, the graphical session (macOS) and the agents' environment, as
     `lado doctor` prints them."""
     graphical = check_graphical_session(which)

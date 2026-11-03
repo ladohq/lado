@@ -2434,7 +2434,7 @@ def test_a_git_url_without_the_login_is_refused_before_the_clone(
     assert main(argv) == 1
     assert capsys.readouterr().err.splitlines() == [
         "lado: Claude Code is not logged in, so the session was not started: log in in LADO's "
-        "UI (Settings → Providers and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN "
+        "UI (Settings → Agent CLIs and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN "
         "as LADO's secret or a project secret"
     ]
     assert agent_helpers.fake_git_calls(tmp_path / "fake") == []

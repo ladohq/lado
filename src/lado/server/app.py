@@ -867,7 +867,7 @@ def create_app(
         except projects.NoSuchProject as unknown:
             raise HTTPException(404, str(unknown)) from unknown
 
-    # Settings → Providers and environment (docs/design/ui.md): each agent CLI's login, read
+    # Settings → Agent CLIs and environment (docs/design/ui.md): each agent CLI's login, read
     # by its own command (lado.logins), its login window, and the login variables kept as
     # LADO's secrets, written and removed, never read back.
 

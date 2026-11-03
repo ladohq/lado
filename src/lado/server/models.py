@@ -646,7 +646,7 @@ class AgentRefInfo(BaseModel):
 
 
 class ProviderLogins(BaseModel):
-    """One agent CLI in Settings → Providers and environment (lado.logins)."""
+    """One agent CLI in Settings → Agent CLIs and environment (lado.logins)."""
 
     cli: ProviderInfo
     login: LoginInfo

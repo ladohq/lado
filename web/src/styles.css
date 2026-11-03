@@ -1967,7 +1967,7 @@ h3 {
   border: 0;
 }
 
-/* Settings → Providers and environment (Providers.tsx): a row per agent CLI. */
+/* Settings → Agent CLIs and environment (Providers.tsx): a row per agent CLI. */
 
 .pv-list {
   display: flex;

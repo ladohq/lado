@@ -37,7 +37,7 @@ import { MODEL_DEBOUNCE, useDebounced } from "./Launch";
 import { SecretField } from "./ProjectVariables";
 import { messageOf } from "./SessionControl";
 
-export const SEARCH_ABOVE = 10; // a list longer than this has a search field
+const SEARCH_ABOVE = 10; // a list longer than this has a search field
 
 // A source's models as last read: reading, a CLI's list or a server's probe with the order
 // set at that read, or why not.
@@ -73,7 +73,7 @@ export function tickState(
 }
 
 // The configured models a source gave: a CLI's own (no server), or a server's.
-export const fromSource = (models: ConfiguredModelInfo[], cli: string | null, server: string | null) =>
+const fromSource = (models: ConfiguredModelInfo[], cli: string | null, server: string | null) =>
   models.filter((m) => (server === null ? m.server === null && m.cli === cli : fold(m.server ?? "") === fold(server)));
 
 // The models a read list holds, embeddings left out (null: it gave no list, so none is
@@ -118,7 +118,7 @@ type Props = {
 };
 
 // A new read, add or change of the source `key`: its number in `latest`.
-export const nextRead = (latest: MutableRefObject<Record<string, number>>, key: string) =>
+const nextRead = (latest: MutableRefObject<Record<string, number>>, key: string) =>
   (latest.current[key] = (latest.current[key] ?? 0) + 1);
 
 export function ModelSources(props: Props) {
@@ -867,7 +867,7 @@ function ModelId({
 }
 
 // A check or a refusal under its field, in the launch window's note look.
-export function CheckNote({ note }: { note: ModelCheck | EntryRefused }) {
+function CheckNote({ note }: { note: ModelCheck | EntryRefused }) {
   if ("message" in note)
     return (
       <>
@@ -884,7 +884,7 @@ export function CheckNote({ note }: { note: ModelCheck | EntryRefused }) {
 }
 
 // A refusal's notes under the field it names (`field`), else none.
-export function FieldNotes({ refused, field }: { refused: EntryRefused | null; field: string }) {
+function FieldNotes({ refused, field }: { refused: EntryRefused | null; field: string }) {
   if (!refused || refused.field !== field) return null;
   return <CheckNote note={refused} />;
 }
@@ -893,7 +893,7 @@ const warnings = (lines: string[]) =>
   lines.map((line) => <span key={line} className="field-note warn">{`⚠ ${line}`}</span>);
 
 // What a probe found, said under Address before Add.
-export function probeLine(probe: ProbeInfo): string {
+function probeLine(probe: ProbeInfo): string {
   const embeddings = new Set(probe.embeddings);
   const count = probe.models === null ? "no list of models" : plural(probe.models.filter((m) => !embeddings.has(m)).length, "model");
   const clis = probe.clis.length ? `${probe.clis.map((c) => c.title).join(", ")} can run them` : "no agent CLI can use it";

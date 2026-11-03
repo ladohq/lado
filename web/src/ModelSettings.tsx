@@ -153,12 +153,11 @@ export function ModelSettings() {
     void reload();
   };
   // Opens a CLI's source in Add models, as its card's link asks.
+  const opening = useRef<string | null>(null);
   const goTo = (cli: string) => {
     setTab("add");
-    const key = cliKey(cli);
-    if (!open.has(key)) pending.current = cli;
+    if (!open.has(cliKey(cli))) opening.current = cli;
   };
-  const pending = useRef<string | null>(null);
 
   const count = entries?.models.length ?? 0;
   return (
@@ -224,7 +223,7 @@ export function ModelSettings() {
                 onChanged={reload}
                 latest={reading}
                 onRemoved={onRemoved}
-                opening={pending}
+                opening={opening}
               />
             )}
           </div>

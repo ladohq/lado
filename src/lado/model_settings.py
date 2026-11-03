@@ -225,15 +225,15 @@ def _remove_folder(saved: state.ModelServer) -> str:
 
 @dataclass(frozen=True)
 class Checked:
-    """A model `check_model` lets through: its CLI's provider, the model as saved, its
-    server (None for none), the check's verdict (OK, or WARN for no list to check against)
-    and the CLI's aliases (none for a model on a server)."""
+    """A model `check_model` lets through: its name (the one given, or its `default_name`),
+    its CLI's provider, the model as saved, its server (None for none) and the check's
+    verdict (OK, or WARN for no list to check against)."""
 
+    name: str
     provider: providers.Provider
     model: str
     server: state.ModelServer | None
     verdict: model_check.Verdict
-    aliases: tuple[str, ...]
 
 
 Prober = Callable[[state.ModelServer], model_servers.Probe]
@@ -287,7 +287,15 @@ def check_model(
         verdict = _on_server(provider, model, server, probe)
     if verdict.kind == model_check.REFUSED:
         raise Refused(verdict.text, field=MODEL_FIELD)
-    return Checked(provider, model, server, verdict, aliases)
+    if name is None:
+        # The name comes from the model: a model no list checked may hold what no name may
+        # (a hidden character), refused under the model's field.
+        name = default_name(provider, model, server, aliases)
+        try:
+            check_name(name, MODEL)
+        except Refused as exc:
+            raise Refused(str(exc), field=MODEL_FIELD) from None
+    return Checked(name, provider, model, server, verdict)
 
 
 def default_name(
@@ -329,10 +337,8 @@ def add_model(
     `name`, or None for its `default_name`: the saved entry and the check's verdict."""
     checked = check_model(name, cli, model, server_name, env)
     server = checked.server
-    if name is None:
-        name = default_name(checked.provider, checked.model, server, checked.aliases)
     try:
-        saved = state.add_model(name, cli, checked.model, server.id if server else None)
+        saved = state.add_model(checked.name, cli, checked.model, server.id if server else None)
     except state.NameTaken as exc:  # added meanwhile
         raise _model_taken(exc.name) from None
     except sqlite3.IntegrityError:  # its server removed meanwhile

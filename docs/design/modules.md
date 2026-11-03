@@ -878,7 +878,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     the kept key (`probe_saved`, or the `probe` given: the page's kept one), the API among
     those proved, not an embeddings model, the model against the server's list by
     `model_check.verdict(whose=…)`, or without a server against the CLI's list read with the
-    agents' environment; a `Checked`), `add_model` (`check_model`, its server probed now,
+    agents' environment; without a name, its `default_name` checked by `check_name`, a
+    refusal under the model's field; a `Checked`), `add_model` (`check_model`, its server probed now,
     then the row; `name` None takes `default_name`: an alias `Claude Sonnet`, a CLI's model
     itself, a server's `<model> · <server>`, a taken one ` · <CLI>`, then ` (2)`…, cut to 64
     before its suffix), `rename_model` (`state.rename_model`: the row's name and `folded`,

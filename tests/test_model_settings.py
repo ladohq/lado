@@ -871,7 +871,7 @@ def test_check_model_without_a_name_checks_no_name(monkeypatch):
     listing(monkeypatch, "claude", base.ModelList(("haiku",), None, why="no list"))
     add_model("haiku", "claude", "haiku")
     checked = check_model(None, "claude", "haiku")
-    assert (checked.verdict.kind, checked.aliases) == (model_check.OK, ("haiku",))
+    assert (checked.verdict.kind, checked.name) == (model_check.OK, "Claude Haiku")
 
 
 def test_check_model_uses_the_list_given(monkeypatch):
@@ -960,6 +960,22 @@ def test_add_model_without_a_name_names_it(monkeypatch):
     assert saved.name == "Claude Sonnet"
     saved, _ = add_model(None, "claude", "sonnet")
     assert saved.name == "Claude Sonnet · Claude Code"
+
+
+def test_a_model_whose_default_name_is_no_name_is_refused_under_the_model(monkeypatch):
+    """A model of no list (a warning) with a hidden character would be named by it: the
+    name's rule refuses it, under the model's field, in the check and the save alike."""
+    listing(monkeypatch, "claude", base.ModelList(("sonnet",), None, why="no list"))
+    hidden = "claude-opus​-5-5"  # U+200B
+    says = "a model's name is one line of visible text: U+200B ZERO WIDTH SPACE is not allowed"
+    with pytest.raises(model_settings.Refused) as checked:
+        check_model(None, "claude", hidden)
+    with pytest.raises(model_settings.Refused) as added:
+        add_model(None, "claude", hidden)
+    for refused in (checked.value, added.value):
+        assert (str(refused), refused.field) == (says, "model")
+    assert state.models() == []
+    assert check_model(None, "claude", "sonnet").name == "Claude Sonnet"
 
 
 # Renaming a model.

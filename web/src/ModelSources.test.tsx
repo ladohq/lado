@@ -239,6 +239,50 @@ test("Change with an empty New key keeps the key: key null, replace", async () =
   });
 });
 
+test("Change of a closed server opens it with its result; a later opening shows no old line", async () => {
+  server.entries = { models: [], servers: [LMSTUDIO, { ...LMSTUDIO, name: "gateway" }] };
+  server.probes["LM Studio дома"] = LMSTUDIO_PROBE;
+  server.answers["POST /api/model-servers"] = () =>
+    new Response(
+      JSON.stringify({
+        server: LMSTUDIO,
+        probe: LMSTUDIO_PROBE,
+        notes: ['same address as model server "gateway"'],
+        warnings: ["the key goes to gw over plain http://, unencrypted; use https:// if the server has it"],
+        replaced: true,
+      }),
+    );
+  mount();
+  const toggle = await source(/LM Studio дома/);
+  const row = item(toggle);
+  fireEvent.click(within(row).getByRole("button", { name: "Change" }));
+  fireEvent.click(within(row).getByRole("button", { name: "Save" }));
+  expect(await within(row).findByText(/✓ Replaced model server "LM Studio дома"/)).toBeTruthy();
+  expect(within(row).getByText('same address as model server "gateway"')).toBeTruthy();
+  expect(within(row).getByText(/⚠ the key goes to gw over plain http/)).toBeTruthy();
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  fireEvent.click(toggle); // closed
+  fireEvent.click(toggle); // opened again: read anew, no line of the change
+  expect(await within(row).findByRole("checkbox", { name: "qwen3-8b on OpenCode" })).toBeTruthy();
+  expect(within(row).queryByText(/Replaced model server/)).toBeNull();
+});
+
+test("Remove asks with the models saved now, read when it asks", async () => {
+  server.entries = {
+    models: [model("a", "opencode", "OpenCode", "qwen3-8b", "LM Studio дома")],
+    servers: [LMSTUDIO],
+  };
+  mount();
+  const row = item(await source(/LM Studio дома/));
+  // A model added from the CLI while the page is open.
+  server.entries = {
+    ...server.entries,
+    models: [...server.entries.models, model("from-cli", "codex", "Codex CLI", "qwen3-8b", "LM Studio дома")],
+  };
+  fireEvent.click(within(row).getByRole("button", { name: "Remove" }));
+  expect(await within(row).findByText("Remove LM Studio дома and its 2 models: a, from-cli?")).toBeTruthy();
+});
+
 test("Remove of a server with models asks, naming them, then removes it with them", async () => {
   server.entries = {
     models: [
@@ -254,7 +298,9 @@ test("Remove of a server with models asks, naming them, then removes it with the
   fireEvent.click(within(row).getByRole("button", { name: "Cancel" }));
   expect(server.of("DELETE", "/api/model-servers/")).toEqual([]);
   fireEvent.click(within(row).getByRole("button", { name: "Remove" }));
-  fireEvent.click(within(row).getByRole("button", { name: "Remove server and models" }));
+  const confirm = within(row).getByRole("button", { name: "Remove server and models" }) as HTMLButtonElement;
+  await waitFor(() => expect(confirm.disabled).toBe(false)); // once the models are read again
+  fireEvent.click(confirm);
   await waitFor(() => expect(screen.queryByRole("button", { name: /LM Studio дома/ })).toBeNull());
   expect(server.of("DELETE", "/api/model-servers/")[0].path).toBe(
     `/api/model-servers/${encodeURIComponent("LM Studio дома")}?with_models=true`,

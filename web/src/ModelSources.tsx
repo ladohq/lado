@@ -13,6 +13,7 @@ import {
   checkModel,
   type ConfiguredModelInfo,
   type EntryRefused,
+  getModelSettings,
   getProviderModels,
   type ModelCheck,
   type ModelServerInfo,
@@ -115,11 +116,11 @@ export function ModelSources(props: Props) {
   const toggle = (key: string, reader: () => void) => {
     const opening = !props.open.has(key);
     props.onOpen(key, opening);
+    props.onSaved(key, null); // the lines of a save are said once, in the open source
     if (opening) reader();
     else {
       latest.current[key] = (latest.current[key] ?? 0) + 1; // no late answer fills it
       props.onRead(key, null);
-      props.onSaved(key, null);
     }
   };
   useEffect(() => {
@@ -165,6 +166,7 @@ export function ModelSources(props: Props) {
             onRefresh={() => readServer(server.name)}
             onProbe={(probe, saved) => {
               latest.current[key] = (latest.current[key] ?? 0) + 1;
+              props.onOpen(key, true); // a changed server shows open, as an added one
               props.onRead(key, { probe });
               props.onSaved(key, saved);
             }}
@@ -673,7 +675,24 @@ function RemoveServer({
   onChanged: (settings?: ModelSettings) => void;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(true); // until the entries are read again
+  // The models it names are the ones saved now (the CLI may have added one since the page
+  // read them): the removal takes every model of the server.
+  useEffect(() => {
+    let current = true;
+    getModelSettings().then(
+      (found) => {
+        if (!current) return;
+        onChanged(found);
+        setBusy(false);
+      },
+      (error: unknown) => current && setProblem(refusalOf(error).message),
+    );
+    return () => {
+      current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when it asks
+  }, []);
   const ask = own.length
     ? `Remove ${server.name} and its ${own.length} models: ${own.map((m) => m.name).join(", ")}?`
     : `Remove ${server.name}?`;

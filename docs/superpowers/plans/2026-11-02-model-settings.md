@@ -176,7 +176,7 @@ Tests:
 
 ### Task 7: Integration and the key canary
 
-**Files:** `tests/integration/test_model_settings.py` (new).
+**Files:** `tests/integration/test_model_settings_process.py` (new).
 
 Tests (real `lado` processes, `tests/fake_model_server.py` in its own process, a temp
 `LADO_HOME`):
@@ -189,7 +189,7 @@ Tests (real `lado` processes, `tests/fake_model_server.py` in its own process, a
 - `test_address_does_not_answer_refused`.
 - `test_container_hint_on_add` (`LADO_CONTAINER=1`).
 
-Run: `uv run pytest -m integration -n auto tests/integration/test_model_settings.py
+Run: `uv run pytest -m integration -n auto tests/integration/test_model_settings_process.py
 tests/integration/test_model_server_probe.py`.
 
 ### Task 8: Docs and regression
@@ -201,7 +201,7 @@ line), AGENTS.md's Layout line (`model_settings.py` saved model servers and mode
 CHANGELOG.md (`### New`: **Save model servers and models under names.**).
 
 Regression: `make lint`; `make test`; `uv run pytest -m integration -n auto
-tests/integration/test_model_settings.py tests/integration/test_model_server_probe.py
+tests/integration/test_model_settings_process.py tests/integration/test_model_server_probe.py
 tests/integration/test_session_model.py tests/integration/test_uninstall_process.py`;
 `openspec validate model-settings --strict`; `openspec validate --specs --strict`; the
 trial archive in a copy of `openspec/` outside the tree (`openspec archive model-settings

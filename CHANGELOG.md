@@ -13,6 +13,9 @@
 - **Find out what a model server is.** `lado model-server probe <address>` names the type
   of a server in your network (Ollama, LM Studio, OpenAI- or Anthropic-compatible), its
   models and which agent CLIs can use it, without generating anything; `--key` for its key.
+- **Save model servers and models under names.** `lado model-server add|list|remove` keeps
+  a server, its key in a private file of its own; `lado model add|list|remove` keeps a CLI's
+  model, maybe on a saved server, checked against its list. `lado doctor` checks the servers.
 
 ### Fixed
 

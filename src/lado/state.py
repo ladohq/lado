@@ -22,7 +22,7 @@ from lado.flows import IDENTIFIER
 
 # `lado update` of a later LADO reads this line from this release's wheel to learn the schema
 # it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
-SCHEMA_VERSION = 37
+SCHEMA_VERSION = 38
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -978,6 +978,33 @@ MIGRATIONS[35] = AGENTS_MODEL
 SESSIONS_POWER = "ALTER TABLE sessions ADD COLUMN power TEXT"
 SCHEMA += SESSIONS_POWER + ";\n"
 MIGRATIONS[36] = [SESSIONS_POWER]
+
+# From version 38: the human's model servers and configured models, each under a name
+# taken ignoring case (`folded`, the name's casefold: SQLite's NOCASE folds ASCII only).
+# A server's key is no column: it is the file `<LADO_HOME>/model-servers/<id>/key`
+# (lado.model_settings), there exactly when the server has one. A server's models are not
+# kept: they change on the server. A model refers to its server by id, which never changes.
+MODEL_SERVERS_TABLE = """
+CREATE TABLE IF NOT EXISTS model_servers (
+    id TEXT PRIMARY KEY,          -- never changes: the key file's folder
+    name TEXT NOT NULL,           -- as the human gave it
+    folded TEXT NOT NULL UNIQUE,  -- name.casefold()
+    address TEXT NOT NULL,        -- the probe's root (lado.model_servers.address)
+    kind TEXT NOT NULL,           -- the probe's type
+    apis TEXT NOT NULL,           -- JSON list of the APIs it proved
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))  -- UTC
+)"""
+MODELS_TABLE = """
+CREATE TABLE IF NOT EXISTS models (
+    folded TEXT PRIMARY KEY,  -- name.casefold()
+    name TEXT NOT NULL,
+    cli TEXT NOT NULL,        -- a provider's name
+    model TEXT NOT NULL,      -- as the CLI names it
+    server TEXT REFERENCES model_servers(id),  -- NULL: the CLI's own way to its models
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))  -- UTC
+)"""
+SCHEMA += MODEL_SERVERS_TABLE + ";\n" + MODELS_TABLE + ";\n"
+MIGRATIONS[37] = [MODEL_SERVERS_TABLE, MODELS_TABLE]
 
 # Where an agent's model or effort came from. Each later way of choosing one adds a token;
 # a token this LADO does not know (a newer LADO's row) is shown as itself (source_words).
@@ -3731,3 +3758,160 @@ def unset_project_variable(id: str, name: str) -> bool:
             ).rowcount
             == 1
         )
+
+
+# The human's model servers and configured models (lado.model_settings keeps their rules).
+
+
+class NameTaken(Exception):
+    """A model server's or a model's name another one has, ignoring case: `name` is its."""
+
+    def __init__(self, name: str):
+        super().__init__(name)
+        self.name = name
+
+
+@dataclass(frozen=True)
+class ModelServer:
+    id: str
+    name: str
+    address: str
+    kind: str
+    apis: tuple[str, ...]
+    created_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+
+
+@dataclass(frozen=True)
+class ConfiguredModel:
+    name: str
+    cli: str
+    model: str
+    server: str | None  # the id of its ModelServer
+    created_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+
+
+def _model_server(row: sqlite3.Row) -> ModelServer:
+    return ModelServer(
+        row["id"],
+        row["name"],
+        row["address"],
+        row["kind"],
+        tuple(json.loads(row["apis"])),
+        row["created_at"],
+    )
+
+
+def _configured_model(row: sqlite3.Row) -> ConfiguredModel:
+    return ConfiguredModel(row["name"], row["cli"], row["model"], row["server"], row["created_at"])
+
+
+def _taken(db: sqlite3.Connection, table: str, name: str) -> NameTaken | None:
+    """NameTaken naming the entry of `table` whose name is `name` ignoring case."""
+    row = db.execute(f"SELECT name FROM {table} WHERE folded = ?", (name.casefold(),)).fetchone()
+    return NameTaken(row["name"]) if row else None
+
+
+def add_model_server(
+    id: str, name: str, address: str, kind: str, apis: Sequence[str]
+) -> ModelServer:
+    """Save a model server; NameTaken when another has its name ignoring case."""
+    with connect() as db:
+        try:
+            db.execute(
+                "INSERT INTO model_servers (id, name, folded, address, kind, apis)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (id, name, name.casefold(), address, kind, json.dumps(list(apis))),
+            )
+        except sqlite3.IntegrityError:
+            taken = _taken(db, "model_servers", name)
+            if taken is None:
+                raise
+            raise taken from None
+        row = db.execute("SELECT * FROM model_servers WHERE id = ?", (id,)).fetchone()
+    return _model_server(row)
+
+
+def replace_model_server(id: str, address: str, kind: str, apis: Sequence[str]) -> bool:
+    """Replace a saved server's address, type and APIs; False when there is no such server.
+    Its models keep referring to it."""
+    with connect() as db:
+        return (
+            db.execute(
+                "UPDATE model_servers SET address = ?, kind = ?, apis = ? WHERE id = ?",
+                (address, kind, json.dumps(list(apis)), id),
+            ).rowcount
+            == 1
+        )
+
+
+def model_servers() -> list[ModelServer]:
+    """Every saved model server, by name ignoring case."""
+    with connect() as db:
+        rows = db.execute("SELECT * FROM model_servers ORDER BY folded, id").fetchall()
+    return [_model_server(row) for row in rows]
+
+
+def model_server(name: str) -> ModelServer | None:
+    """The saved model server named `name` ignoring case."""
+    with connect() as db:
+        row = db.execute(
+            "SELECT * FROM model_servers WHERE folded = ?", (name.casefold(),)
+        ).fetchone()
+    return _model_server(row) if row else None
+
+
+def remove_model_server(id: str) -> bool:
+    """False when there was no such server; sqlite3.IntegrityError while a model refers to
+    it."""
+    with connect() as db:
+        return db.execute("DELETE FROM model_servers WHERE id = ?", (id,)).rowcount == 1
+
+
+def add_model(name: str, cli: str, model: str, server: str | None) -> ConfiguredModel:
+    """Save a configured model on the server of id `server` (None for none); NameTaken when
+    another has its name ignoring case, sqlite3.IntegrityError for a server not saved."""
+    with connect() as db:
+        taken = _taken(db, "models", name)
+        if taken is not None:
+            raise taken
+        try:
+            db.execute(
+                "INSERT INTO models (folded, name, cli, model, server) VALUES (?, ?, ?, ?, ?)",
+                (name.casefold(), name, cli, model, server),
+            )
+        except sqlite3.IntegrityError:
+            taken = _taken(db, "models", name)
+            if taken is None:
+                raise
+            raise taken from None
+        row = db.execute("SELECT * FROM models WHERE folded = ?", (name.casefold(),)).fetchone()
+    return _configured_model(row)
+
+
+def models() -> list[ConfiguredModel]:
+    """Every configured model, by name ignoring case."""
+    with connect() as db:
+        rows = db.execute("SELECT * FROM models ORDER BY folded").fetchall()
+    return [_configured_model(row) for row in rows]
+
+
+def model(name: str) -> ConfiguredModel | None:
+    """The configured model named `name` ignoring case."""
+    with connect() as db:
+        row = db.execute("SELECT * FROM models WHERE folded = ?", (name.casefold(),)).fetchone()
+    return _configured_model(row) if row else None
+
+
+def models_on(server: str) -> list[ConfiguredModel]:
+    """The configured models on the server of id `server`, by name ignoring case."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM models WHERE server = ? ORDER BY folded", (server,)
+        ).fetchall()
+    return [_configured_model(row) for row in rows]
+
+
+def remove_model(name: str) -> bool:
+    """Remove the configured model named `name` ignoring case; False when there is none."""
+    with connect() as db:
+        return db.execute("DELETE FROM models WHERE folded = ?", (name.casefold(),)).rowcount == 1

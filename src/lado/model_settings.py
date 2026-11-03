@@ -174,12 +174,23 @@ def add_server(
     return found
 
 
-def remove_server(name: str) -> str:
+def remove_server(
+    name: str, *, with_models: bool = False, removed: Callable[[str], None] = lambda _: None
+) -> str:
     """Remove the saved server named `name` and its key file; its name as saved. Refused for
-    no such server, or one a configured model refers to."""
+    no such server, or, without `with_models`, one a configured model refers to; with it,
+    the models on the server go first, in the same transaction, `removed` getting each
+    one's name."""
     saved = state.model_server(name)
     if saved is None:
         raise _no_server(name)
+    if with_models:
+        models = state.remove_model_server_with_models(saved.id)
+        if models is None:  # removed meanwhile
+            raise _no_server(name)
+        for model in models:
+            removed(model)
+        return _remove_folder(saved)
     try:
         if state.models_on(saved.id):
             raise sqlite3.IntegrityError  # refused below, naming them
@@ -193,8 +204,15 @@ def remove_server(name: str) -> str:
         quoted = " ".join('"' + m.name + '"' for m in used)
         raise Refused(
             f'model server "{saved.name}" is used by the models '
-            f"{', '.join(m.name for m in used)}; remove them first: lado model remove {quoted}"
+            f"{', '.join(m.name for m in used)}; remove them first: lado model remove {quoted}",
+            f'or remove them with it: lado model-server remove "{saved.name}" --with-models',
         ) from None
+    return _remove_folder(saved)
+
+
+def _remove_folder(saved: state.ModelServer) -> str:
+    """Remove the key folder of `saved`, removed from lado.db: its name. Refused when the
+    disk refuses it."""
     try:
         _remove_key(saved.id)
     except OSError as exc:

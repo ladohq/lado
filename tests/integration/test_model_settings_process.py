@@ -137,8 +137,10 @@ def test_embeddings_same_address_and_several_removed(serve, lado_home):  # noqa:
         assert runs[-1].returncode == 0, runs[-1].stderr
     runs.append(lado("model-server", "remove", "lms"))
     assert runs[-1].returncode == 1
-    assert runs[-1].stderr.endswith(
-        'remove them first: lado model remove "coder-codex" "coder-oc" "sp"\n'
+    assert (
+        runs[-1]
+        .stderr.splitlines()[0]
+        .endswith('remove them first: lado model remove "coder-codex" "coder-oc" "sp"')
     )
     runs.append(lado("model", "remove", "coder-codex", "coder-oc", "sp"))
     assert (runs[-1].returncode, runs[-1].stdout) == (
@@ -151,6 +153,27 @@ def test_embeddings_same_address_and_several_removed(serve, lado_home):  # noqa:
         assert canary not in done.stdout + done.stderr
     held = [p for p in _files(lado_home) if canary.encode() in p.read_bytes()]
     assert [p.parent.parent for p in held] == [lado_home / "model-servers"]  # macpro's key
+
+
+def test_remove_a_server_with_its_models(serve, lado_home):  # noqa: F811
+    url = serve("lmstudio")
+    assert lado("model-server", "add", "lms", url).returncode == 0
+    for name, cli in (("sp", "kilo"), ("coder-oc", "opencode")):
+        added = lado("model", "add", name, "--cli", cli, "--model", "qwen3-8b", "--server", "lms")
+        assert added.returncode == 0, added.stderr
+    refused = lado("model-server", "remove", "lms")
+    assert refused.returncode == 1
+    assert refused.stderr.splitlines()[-1] == (
+        'lado: or remove them with it: lado model-server remove "lms" --with-models'
+    )
+    removed = lado("model-server", "remove", "lms", "--with-models")
+    assert (removed.returncode, removed.stdout) == (
+        0,
+        'Removed model "coder-oc".\nRemoved model "sp".\nRemoved model server "lms".\n',
+    )
+    assert lado("model", "list").stdout.startswith("No models")
+    assert lado("model-server", "list").stdout.startswith("No model servers.")
+    assert not any((lado_home / "model-servers").glob("*"))
 
 
 def test_a_key_on_the_command_line_is_refused_unechoed(serve, lado_home):  # noqa: F811

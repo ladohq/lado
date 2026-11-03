@@ -1652,12 +1652,16 @@ def cmd_model_server_list(args: argparse.Namespace) -> int:
 
 
 def cmd_model_server_remove(args: argparse.Namespace) -> int:
-    """`lado model-server remove <name>`: the server and its key file; refused while a model
-    uses it."""
+    """`lado model-server remove <name> [--with-models]`: the server and its key file;
+    refused while a model uses it, unless `--with-models` removes those models first."""
     from lado import model_settings
 
     try:
-        name = model_settings.remove_server(args.name)
+        name = model_settings.remove_server(
+            args.name,
+            with_models=args.with_models,
+            removed=lambda model: print(f'Removed model "{model}".'),
+        )
     except model_settings.Refused as exc:
         return _refused(exc)
     print(f'Removed model server "{name}".')
@@ -2328,9 +2332,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     model_server_list.set_defaults(func=cmd_model_server_list)
     model_server_remove = model_server_sub.add_parser(
-        "remove", help="remove a saved server and its key; refused while a model uses it"
+        "remove",
+        help="remove a saved server and its key; refused while a model uses it, unless "
+        "--with-models",
     )
     model_server_remove.add_argument("name")
+    model_server_remove.add_argument(
+        "--with-models", action="store_true", help="remove the models that use it too"
+    )
     model_server_remove.set_defaults(func=cmd_model_server_remove)
 
     model_cmd = commands.add_parser(

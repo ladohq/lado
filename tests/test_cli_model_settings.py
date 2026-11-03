@@ -324,7 +324,22 @@ def test_remove_a_server_a_model_uses_exit_1(serve, capsys):
     assert capsys.readouterr().err == (
         'lado: model server "LM Studio дома" is used by the models Локальная Qwen; remove them '
         'first: lado model remove "Локальная Qwen"\n'
+        'lado: or remove them with it: lado model-server remove "LM Studio дома" --with-models\n'
     )
+    assert state.model_server("LM Studio дома") is not None
+
+
+def test_remove_a_server_with_its_models(serve, capsys):
+    main(["model-server", "add", "lms", serve("lmstudio").url])
+    for name, cli in (("sp", "kilo"), ("coder-oc", "opencode")):
+        main(["model", "add", name, "--cli", cli, "--model", "qwen3-8b", "--server", "lms"])
+    capsys.readouterr()
+    assert main(["model-server", "remove", "LMS", "--with-models"]) == 0
+    assert capsys.readouterr() == (
+        'Removed model "coder-oc".\nRemoved model "sp".\nRemoved model server "lms".\n',
+        "",
+    )
+    assert (state.model_servers(), state.models()) == ([], [])
 
 
 def test_remove_an_unknown_server_exit_1(capsys):
@@ -481,7 +496,7 @@ def test_a_removal_s_hint_is_one_command_for_all(serve, capsys):
         main(["model", "add", name, "--cli", cli, "--model", "qwen3-8b", "--server", "lms"])
     capsys.readouterr()
     assert main(["model-server", "remove", "lms"]) == 1
-    hint = capsys.readouterr().err.rstrip("\n")
+    hint = capsys.readouterr().err.splitlines()[0]
     assert hint == (
         'lado: model server "lms" is used by the models coder-codex, coder-oc, sp; remove them '
         'first: lado model remove "coder-codex" "coder-oc" "sp"'

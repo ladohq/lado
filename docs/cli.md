@@ -641,7 +641,11 @@ one: lado model-server add <name> <address> [--key]`. `lado model-server remove 
 removes the server, its key file and folder: `Removed model server "<name>".`; while a
 configured model uses it, it is refused, changing nothing: `model server "<name>" is used by
 the models <model>, …; remove them first: lado model remove "<model>" …`, one command
-naming every model on it (exit 1). The three
+naming every model on it, and the hint `or remove them with it: lado model-server remove
+"<name>" --with-models` (exit 1). With `--with-models` it removes the models on the server
+and the server in one transaction, `Removed model "<model>".` a line for each, then the key
+folder and `Removed model server "<name>".` (Settings → Models removes a server so after
+its confirmation). The three
 commands migrate lado.db as `lado ls` does; `probe` alone does not.
 
 `lado model add <name> --cli <cli> --model <model> [--server <server>]` saves a configured

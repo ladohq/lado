@@ -2837,6 +2837,19 @@ def test_replacing_a_server_keeps_its_models(lado_home):
     assert not state.replace_model_server("nope", "http://x", "Ollama", ())
 
 
+def test_a_server_removed_with_its_models(lado_home):
+    _server()
+    _server("s2", "other")
+    state.add_model("sp", "kilo", "qwen3-8b", "s1")
+    state.add_model("Coder", "opencode", "qwen3-8b", "s1")
+    state.add_model("kept", "opencode", "qwen3-8b", "s2")
+    state.add_model("own", "claude", "haiku", None)
+    assert state.remove_model_server_with_models("s1") == ["Coder", "sp"]
+    assert [s.id for s in state.model_servers()] == ["s2"]
+    assert [m.name for m in state.models()] == ["kept", "own"]
+    assert state.remove_model_server_with_models("s1") is None
+
+
 def test_a_model_renamed_keeps_its_cli_model_and_server(lado_home):
     _server()
     state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")

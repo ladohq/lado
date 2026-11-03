@@ -334,7 +334,52 @@ def test_remove_of_a_server_models_use_is_refused_naming_them(serve):
         'model server "LM Studio дома" is used by the models Another, Локальная Qwen; remove '
         'them first: lado model remove "Another" "Локальная Qwen"'
     )
+    assert refused.value.hint == (
+        'or remove them with it: lado model-server remove "LM Studio дома" --with-models'
+    )
     assert state.model_server("LM Studio дома") is not None
+
+
+def test_remove_with_models_removes_them_then_the_server(serve, lado_home):
+    server = serve("lmstudio", key="k-1")
+    add("lms", server.url, key="k-1")
+    id = state.model_server("lms").id
+    state.add_model("sp", "kilo", "qwen3-8b", id)
+    state.add_model("coder-oc", "opencode", "qwen3-8b", id)
+    state.add_model("own", "claude", "haiku", None)
+    folder = key_file("lms").parent
+    removed = []
+    assert model_settings.remove_server("LMS", with_models=True, removed=removed.append) == "lms"
+    assert removed == ["coder-oc", "sp"]
+    assert state.model_servers() == []
+    assert [m.name for m in state.models()] == ["own"]
+    assert not folder.exists()
+
+
+def test_remove_with_models_takes_a_model_added_after_the_listing(serve, monkeypatch):
+    """The models are found in the transaction that removes the server: one added after the
+    page listed them goes too, never a foreign-key refusal."""
+    add("lms", serve("lmstudio").url)
+    id = state.model_server("lms").id
+    state.add_model("listed", "opencode", "qwen3-8b", id)
+    real = state.remove_model_server_with_models
+
+    def late(server_id):
+        state.add_model("late", "kilo", "qwen3-8b", server_id)
+        return real(server_id)
+
+    monkeypatch.setattr(state, "remove_model_server_with_models", late)
+    removed = []
+    model_settings.remove_server("lms", with_models=True, removed=removed.append)
+    assert removed == ["late", "listed"]
+    assert state.models() == []
+
+
+def test_remove_with_models_of_a_server_no_model_uses(serve):
+    add("lms", serve("lmstudio").url)
+    removed = []
+    assert model_settings.remove_server("lms", with_models=True, removed=removed.append) == "lms"
+    assert (removed, state.model_servers()) == ([], [])
 
 
 def test_remove_of_a_name_no_server_has_is_refused():

@@ -3867,6 +3867,23 @@ def remove_model_server(id: str) -> bool:
         return db.execute("DELETE FROM model_servers WHERE id = ?", (id,)).rowcount == 1
 
 
+def remove_model_server_with_models(id: str) -> list[str] | None:
+    """Remove the server of id `id` and every configured model on it, in one transaction:
+    the names of the models removed, by name ignoring case; None when there was no such
+    server."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        rows = db.execute(
+            "SELECT name FROM models WHERE server = ? ORDER BY folded", (id,)
+        ).fetchall()
+        db.execute("DELETE FROM models WHERE server = ?", (id,))
+        if db.execute("DELETE FROM model_servers WHERE id = ?", (id,)).rowcount != 1:
+            db.execute("ROLLBACK")
+            return None
+        db.execute("COMMIT")
+    return [row["name"] for row in rows]
+
+
 def add_model(name: str, cli: str, model: str, server: str | None) -> ConfiguredModel:
     """Save a configured model on the server of id `server` (None for none); NameTaken when
     another has its name ignoring case, sqlite3.IntegrityError for a server not saved."""

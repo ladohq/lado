@@ -2437,100 +2437,138 @@ your agents use. Changes apply to agents started afterwards."
 
 Settings: the human's configured models and model servers, set once under names (openspec
 change model-settings-page; built in `web/src/ModelSettings.tsx` and
-`web/src/ModelSources.tsx` over `lado.server.model_entries`). The section after Providers
-and environment, before Usage statistics; its anchor `#models` scrolls the page to it. It
-does what `lado model-server` and `lado model` do, with their rules: every refusal is the
-command's, in the page's words (`Refused.page`, `ProbeError.page`: no command to run, but
-what to do here, e.g. `asks for a key (401): enter it in Key`, `the name is taken by the
-model "<name>"`, `not in <source>'s list of models; ↻ Refresh reads the list again`; the
-commands print their lines as before). Using it changes nothing of how sessions start.
+`web/src/ModelSources.tsx` over `lado.server.model_entries`). The section after Agent CLIs
+and environment, before Usage statistics; its anchor `#models` scrolls the page to it once,
+when the page opens there, never after a change of the entries. It does what `lado
+model-server` and `lado model` do, with their rules: every refusal is the command's, in the
+page's words (`Refused.page`, `ProbeError.page`: no command to run, but what to do here,
+e.g. `asks for a key (401): enter it in Key`, `the name is taken by the model "<name>"`; the
+commands print their lines as before). It says "agent CLI", or "CLI" where room is short.
+Using it changes nothing of how sessions start.
 
-- **Your models** (above): the configured models by name ignoring case, a table of the
-  project page's look: Name with **✎**, CLI (its title), Model, Source (its server, else
-  its CLI, muted) and **Remove** (at once, as `lado model remove`). A model removed, by
-  Remove or its tick, leaves `Removed "<name>" · Undo` above the table for `UNDO_MS` (8 s;
-  kept with its refusal when Undo is refused); Undo saves it again with its name, CLI,
-  model and server (`POST /api/models`, the checks of `lado model add`). With none: `No models
-  yet. Without them each agent runs on its CLI's default model. Tick models in Sources
-  below.` A model's warnings under its source: `<CLI> is not installed`, and `not in
-  <source>'s list of models` once its source's list was read here and lacks it. **✎**
-  turns the name into a field with Save and Cancel (Enter, Esc); the refusal (a name taken
-  ignoring case, no name) shows under it. Under the table: "Rename in place (✎): the name
-  is yours; sessions will refer to the model, not to its name."
-- **Sources** (below): every agent CLI LADO knows ("CLI", and "logged in", "not logged in"
-  or "not installed" from Agent CLIs and environment's last check, read again while that
-  check runs; a CLI not installed is greyed and does not open), then every saved server
-  (its name, type and address, `key: yes` when it has a key, ↻ Refresh while open, Change,
-  Remove), then **+ Add server**.
-  Opening the section reads no source and asks no server; all start closed.
+- **Two tabs**: **Your models `<n>`** (open first) and **Add models**, the bar of the
+  Kits page's tabs. A tick adds no row above the pointer: nothing above the control acted
+  on moves (a tick, a rename, a removal and its Undo, adding, changing or removing a
+  server, the reload after any of them).
+- **Your models**: a card per agent CLI LADO knows, in the order of Add models (then one
+  for a model of a CLI it does not know), headed `<CLI title> <n>` on `--ground`, a gap
+  between cards; `not logged in`, or `⚠ <CLI> is not installed`, in the head. Its models by
+  name ignoring case: Name, Model, From (its server, the address in the title, else `the
+  CLI itself`) and **×** (at once, as `lado model remove`). A card without models: `No
+  models: its agents run on <CLI>'s default model.` with **Add from <CLI>**, which opens
+  that source in Add models. With no model at all: `No models yet. Without them each agent
+  runs on its CLI's default model.` with **Add models**. A model's marks after its model:
+  `⚠ <CLI> is not installed`, and `⚠ not in list` (its title: agents on it will stop at
+  their first turn) once its source's list was read here and lacks it. Under the cards:
+  "Click a name to rename it. Sessions will refer to the model, not to its name."
+- **Rename** on the name itself: a button with a frame on hover, titled `Click to rename`;
+  a click or Enter turns it into a field of its cell, the name selected; Enter or leaving
+  the field renames (`PATCH`), Esc restores; no Save or Cancel. A refusal (a name taken
+  ignoring case, no name) keeps the field with the refusal under it, over the next row;
+  leaving it then restores the name. The model takes its sorted place in its card only.
+- **Undo**: a model removed, by × or its tick, leaves in its row `Removed <name>. Undo`,
+  of the row's height, for `UNDO_MS` (10 s; kept while Undo runs, off meanwhile, and with
+  its refusal when refused); Undo saves it again with its name, CLI, model and server
+  (`POST /api/models`, the checks of `lado model add`). A server removed has no Undo: its
+  key goes with it and LADO keeps no copy.
+- **Add models**: every agent CLI LADO knows (badge `CLI`, then `<n> added` and `logged
+  in`, `not logged in` or `not installed` from Agent CLIs and environment's last check,
+  read again while that check runs; one not installed greyed and closed), then every saved
+  server (its name, its type as badge, `<n> added`, its address cut with `…`, whole in the
+  title, `· key` when it has one), by name at the first showing and one added here at the
+  end, where the form was; then **+ Add server**. Opening the section or a tab reads no
+  source and asks no server; all start closed. The whole row opens a source (Enter and
+  Space too), its framed arrow turning; a server's **✎** (Change) and **🗑** (Remove) are
+  icons at its right, never wrapped, its name in their label and title.
 - **A source opened** reads its models now, "reading the models…" meanwhile: a CLI's
-  aliases (tagged "alias") and own list through the launch window's route with `fresh`, a
-  server's by a probe with its kept key. ↻ Refresh reads again. The latest read wins; a
-  source closed meanwhile takes no late answer, and no list is kept once it closes.
-- **The ticks**: a CLI's source has one per model; a server's a column per CLI that is
-  installed and whose API the server proves now (its header the CLI's title; none: "No
-  installed CLI can use this server."). A tick is on exactly when a configured model has
-  that CLI, model and server; ticking saves one with its default name as `lado model add`
-  would, unticking removes it (with Undo, as Remove), and a refusal shows in the tick's row. Several models of one
-  tick: on and disabled, titled `Models: <names>; remove them in Your models`. Default
-  names (the core's `model_settings.default_name`): an alias `Claude Sonnet` (the first
-  word of the CLI's title and the alias capitalised, `[1m]` as ` 1M`: `Claude Opus 1M`), a
-  model of a CLI's list the model, a model on a server `<model> · <server>`, with ` · <CLI>`
-  when the server suits more than one CLI (so each says its CLI); a taken name gets ` · <CLI>`, then ` (2)`, ` (3)`,
-  each cut to 64 characters before its suffix.
-- **A long list** (more than ten models): a search field above it, `Search <n> models`,
-  that keeps the models holding the text ignoring case. A model the server types as
-  embeddings is greyed with `(embeddings)`, its ticks disabled. A configured model whose
-  model the read list lacks shows first, ticked, with `⚠ not in the server's list` (a CLI's:
-  `not in <CLI>'s list`), and stays saved; its other ticks are disabled, titled `<model> is
-  not in …: ↻ Refresh reads it again` (the add would be refused). A server with no list says `⚠ no list of models:
-  <why>`, one whose APIs cannot be told `⚠ APIs: cannot be told: <why>`. A server that does not answer, asks for its key or refuses it shows the probe's
-  line as a warning, `Its models stay: <names>.`, and its hint (the container's
-  `host.docker.internal` one included).
-- **Other model…** ends an open source: a field with the read list as suggestions (the
-  launch window's SuggestField), a CLI choice for a server (its columns), the check `lado
-  model add` would make under the field once the typing settles (the launch window's
-  `MODEL_DEBOUNCE`, its note look), and Add, disabled while that check refuses.
-- **+ Add server**: Name, Address and Key ("optional"; the project page's dots field, never
-  a password field). Add probes and saves as `lado model-server add` does, disabled with
-  "checking the server…" while it probes (no longer than the command); the new server shows
-  open with `✓ Saved model server "<name>". For: <CLIs by API>`, its warnings, and `same
-  address as model server "<name>"` for each other server at its address (said, not
-  refused); these lines go once another server is added, changed or removed. A refusal
-  shows under the field it names (Name, Address or Key; one of no field under the buttons)
-  until that field is edited; the form keeps all but the key. The plain-http warning shows
-  under Key as soon as a key is typed for an address it goes to unencrypted, before Add
-  (`POST /api/model-servers/check`, the address and whether a key goes, never the key; in
-  Change the kept key counts).
-- **Change** (a server): Address, filled, and New key, empty ("empty: the saved key
-  stays"); Save replaces the server as `lado model-server add <name> <address> [--key]
-  --replace` does, the kept key when New key is empty; "Models on <server> keep referring
-  to it."; a failed probe changes nothing. **Remove** (a server) asks in its row: `Remove
-  <name>?`, or `Remove <name> and its <n> models: <names>?` with **Remove server and
-  models**; only that removes them, as `lado model-server remove <name> --with-models`,
-  and only the models it named: when the server has others by then (the CLI added one),
-  nothing is removed, the refusal shows and it asks again with the entries read anew.
-- **The key** lives only in its field: emptied once sent, on Cancel and when the form
-  closes; never in the page's state, an address or the browser's storage.
-- **A phone**: the forms' fields one under the other, a source's buttons under its title,
-  its list scrolling sideways within itself (a model's column at least 10em wide, its name
-  broken between words, never a letter or two a line); the page never scrolls sideways.
+  aliases and own list through the launch window's route with `fresh`, a server's by a
+  probe with its kept key; **↻** at the right above the list reads again. The latest read
+  wins; a source closed meanwhile takes no late answer; a read outlives the tab (the section
+  keeps it); no list is kept once the source closes. The list's order is set at its read:
+  the models of the source's configured models it no longer lists, then those it lists,
+  then the rest; no tick changes it (a model configured since by Model id comes last). The
+  list shows about nine rows (306 px) and scrolls within itself; under it `<n> models`;
+  above more than ten a search, `Search <n> models`, and then `<shown> of <n> models`.
+- **The ticks**: a CLI's model has one tick, `as <name>` beside it when its model's name
+  differs. A server's model is a row that opens, on a click or Enter, under it the
+  installed CLIs whose API the server proves, a tick each with the names of its models,
+  one under the other whatever their number; Esc or **Done** closes it. The row says `in
+  <CLI>, …` and ends in `+ Add ▾`, or `CLIs ▾` once it is in one; a server no installed
+  CLI can use says `No installed CLI can use this server.` and its rows have no ticks. A
+  tick is on exactly when a configured model has that CLI, model and server; ticking saves
+  one with its default name as `lado model add` would, unticking removes it (with Undo in
+  Your models), and a refusal shows in the tick's row. Several models of one tick: on and
+  disabled, titled `<names>: remove them in Your models`. Default names (the core's
+  `model_settings.default_name`): an alias `Claude Sonnet` (the first word of the CLI's
+  title and the alias capitalised, `[1m]` as ` 1M`: `Claude Opus 1M`), a model of a CLI's
+  list the model, a model on a server `<model> · <server>`, with ` · <CLI>` when the server
+  suits more than one CLI; a taken name gets ` · <CLI>`, then ` (2)`, ` (3)`, each cut to
+  64 characters before its suffix.
+- **Embeddings and gone models**: a model the server types as embeddings is not listed;
+  `<n> embeddings model(s) hidden: agents cannot run on it (them).` under the list. A
+  configured model whose model the read list lacks shows first, ticked, `⚠ no longer
+  listed`, and stays saved; unticking it removes it from the list too; its other ticks are
+  off (the add would be refused). A server with no list says `⚠ no list of models: <why>`,
+  one whose APIs cannot be told `⚠ APIs: cannot be told: <why>`. A server that does not
+  answer, asks for its key or refuses it shows the probe's line as a warning, `Its models
+  stay: <names>.`, and its hint (the container's `host.docker.internal` one included).
+- **Model id** ends an open source only where its list is not whole: Claude Code (its
+  aliases), a CLI whose list cannot be read, a server that gives none (with an **Agent
+  CLI** choice, a `.field` select of the launch window's look). The check `lado model add`
+  would make shows under it once the typing settles (`MODEL_DEBOUNCE`); Add saves the model
+  with its default name, off while refused.
+- **+ Add server** opens a form in the list's last row: Name, Address and Key ("optional";
+  the project page's dots field, never a password field). Once the typing settles
+  (`MODEL_DEBOUNCE`) it checks without a key (`POST /api/model-servers/check`): a name
+  refused or taken under Name; under Address `checking <address>…`, then `✓ <type> · <n>
+  models · <CLIs> can run them`, or the probe's refusal, or, for a server that asks for a
+  key, that line as a warning, and `same address as model server "<name>"` for each saved
+  server there; the plain-http warning under Key while a key is typed for an address it
+  would cross unencrypted. An older check's answer is dropped. A key goes only with **Check
+  key** (shown while the server asks for a key and one is typed; its refusal under Key, its
+  ok under Address; the key stays in its field for Add) or Add. **Add** is on only for a
+  free name and a server that answered, or asks for a key with one typed; it probes and
+  saves as `lado model-server add` does ("checking the server…" meanwhile, each request no
+  longer than the command's). The new server takes the form's place, open, with `✓ Saved
+  model server "<name>".`, its warnings and same-address notes; these lines go once another
+  server is added, changed or removed. Add's refusal shows under the field it names (one of
+  no field under the buttons) until that field is edited; the form keeps all but the key.
+- **A server's panels**, one at a time: its list, **Change** or **Remove**; opening one
+  closes the others. Change: Address, filled, and New key, empty ("empty keeps the key"),
+  the plain-http warning of a typed or kept key under it once the typing settles (the
+  form's check, its probe not shown); Save replaces the server as `lado model-server add
+  <name> <address> [--key] --replace` does, then its list opens with the save's probe;
+  "Models on <server> keep referring to it."; a failed probe changes nothing. Remove asks
+  in its row: `Remove <name>?`, or `Remove <name> and its <n> models: <names>?`, then `Its
+  key is deleted too; this cannot be undone.`, with **Remove server and models**; only that
+  removes them, as `lado model-server remove <name> --with-models`, and only the models it
+  named: when the server has others by then (the CLI added one), nothing is removed, the
+  refusal shows and it asks again with the entries read anew. The row then says `Removed
+  <name> and its <n> models.` in its place.
+- **The key** lives only in its field: emptied once Add or Save sends it, on Cancel and
+  when the form closes; never in the page's state, an address or the browser's storage.
+- **Narrower than 600 px**: a source's icons on a line of their own under its name, its
+  badge hidden, the forms' fields one under the other; the page never scrolls sideways.
 - **API** (`lado.server.model_entries` over `lado.model_settings`, under the token, no
   change-feed event): `GET /api/model-settings` (`ModelSettings`: the models and the saved
   servers, asking none; no `lado.db` made), `POST /api/model-servers` (`ModelServerAdd
   {name, address, key, replace}` → `ModelServerAdded {server, probe, notes, warnings}`),
-  `POST /api/model-servers/check` (`ModelServerCheck {address, key: bool}` → `ModelCheck`,
-  the plain-http warning, asking no server),
-  `POST /api/model-servers/{name}/probe` (`ProbeInfo {models, models_why, embeddings,
-  apis_why, clis}`, probed now with the kept key), `DELETE /api/model-servers/{name}?with_models=&confirmed=` (→ `ModelSettings`; refused unless the server's models are the confirmed ones), `POST
-  /api/models/check` (`ModelAdd {name, cli, model, server}` → `ModelCheck`, a refusal of
-  kind refused with its `field`; a server's probe kept a minute for this check only), `POST
-  /api/models` (→ `ModelAdded`; `name` null for the default name), `PATCH /api/models/{name}`
-  (`{name}`) and `DELETE /api/models/{name}` (→ `ModelSettings`). A name in a path is
-  encoded whole (a `/` in it included). A refusal is a 400 whose `detail` is `EntryRefused
-  {message, hint, field, warnings}`, its field set by the core where it refuses. The key
-  enters only in the body of `POST /api/model-servers` (a route of `SECRET_ROUTE`: a 422
-  there repeats none of its input) and is in no answer, log, journal or file but its own.
+  `POST /api/model-servers/check` (`ModelServerCheck {name, address, key, key_typed}` →
+  `ServerCheck {probe, refusals, warnings, notes}`: the form's check, saving nothing, the
+  address probed as the command probes it, with `key` only after Check key; no `lado.db`
+  made), `POST /api/model-servers/{name}/probe` (`ProbeInfo {kind, models, models_why,
+  embeddings, apis_why, clis}`, probed now with the kept key), `DELETE
+  /api/model-servers/{name}?with_models=&confirmed=` (→ `ModelSettings`; refused unless the
+  server's models are the confirmed ones), `POST /api/models/check` (`ModelAdd {name, cli,
+  model, server}` → `ModelCheck`, a refusal of kind refused with its `field`; a server's
+  probe kept a minute for this check only), `POST /api/models` (→ `ModelAdded`; `name` null
+  for the default name), `PATCH /api/models/{name}` (`{name}`) and `DELETE
+  /api/models/{name}` (→ `ModelSettings`). A name in a path is encoded whole (a `/` in it
+  included). A refusal is a 400 whose `detail` is `EntryRefused {message, hint, field,
+  warnings}`, its field set by the core where it refuses. The key enters only in the body
+  of `POST /api/model-servers` and `POST /api/model-servers/check` (routes of
+  `SECRET_ROUTE`: a 422 there repeats none of its input) and is in no answer, log, journal
+  or file but its own.
 
 ### Activity
 

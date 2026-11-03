@@ -16,9 +16,13 @@
 - **Save model servers and models under names.** `lado model-server add|list|remove` keeps
   a server, its key in a private file; `lado model add|list|remove` a CLI's model, maybe on
   a saved server, checked against its list (no embeddings model). `lado doctor` checks them.
-- **Set models in Settings.** Settings → Models shows what each agent CLI and model server
-  offers; tick a model to save it, rename it in place; add, change and remove servers, a
-  server's models with it (`lado model-server remove --with-models`).
+- **Set models in Settings.** Settings → Models shows your models in a card per agent CLI
+  and, in its tab Add models, what each agent CLI and model server offers; tick a model to
+  save it, click its name to rename it, undo a removal; add a server, checked as you type,
+  change it and remove it with its models (`lado model-server remove --with-models`).
+- **One word for what runs an agent: agent CLI.** The launch window's field is Agent CLI,
+  Settings' section Agent CLIs and environment, the system panel's Agent CLIs; old links to
+  the section and `lado start --provider` keep working.
 
 ### Fixed
 

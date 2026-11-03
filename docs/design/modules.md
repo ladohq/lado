@@ -1214,13 +1214,14 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `model_entries.py`: Settings → Models' routes (docs/design/ui.md, Models) over
     `model_settings.py`, one per action of the commands: `listing` (asks no server; empty
     with no lado.db), `add_server` (the warnings and notes as lists), `check_server` (the
-    plain-http warning before an Add, from the address and whether a key goes, asking no
-    server), `probe_server`, `remove_server` (with its models only when they are the
+    form's check before an Add, saving nothing: the name's and the address's refusals, the
+    plain-http warning while a key is typed, the probe of the address with the key only
+    after Check key, the same-address notes), `probe_server`, `remove_server` (with its models only when they are the
     confirmed ones), `check_model`, `add_model`, `rename_model`, `remove_model`; each
     refusal a `Refusal` holding `EntryRefused` (the core's line, hint and field), a 400 in
     `app.py`; a server's probe kept `KEPT` seconds by its id and address for `check_model`
-    only (a failed one not kept), and a CLI's list taken there from `launch.model_list`; the key comes in only in `ModelServerAdd`, whose route is
-    in `app.SECRET_ROUTE`;
+    only (a failed one not kept), and a CLI's list taken there from `launch.model_list`; the key comes in only in `ModelServerAdd` and `ModelServerCheck`,
+    whose routes are in `app.SECRET_ROUTE`;
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
     Session head) is what the session's head shows besides its settings, read anew: `repos`
     (path, public remote, branch; one now), each kit by `kits.find` with its version and

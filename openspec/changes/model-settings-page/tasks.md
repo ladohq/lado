@@ -66,27 +66,27 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
 
 ## 6. The page after the human's UI remarks (D16)
 
-- [ ] 6.1 The form's check as the human types: `POST /api/model-servers/check` with name,
+- [x] 6.1 The form's check as the human types: `POST /api/model-servers/check` with name,
   address, `key_typed`, the key only on Check key; name, same address, plain http, the
   probe, `kind` in `ProbeInfo`; `make web-types`; the canary sends a key through it (D16.5).
   Check: `tests/test_server_model_settings.py`, `uv run pytest -m integration -n auto
   tests/integration/test_model_settings_canary.py`.
-- [ ] 6.2 Tabs Your models / Add models with the count; a card per CLI, its models by name,
+- [x] 6.2 Tabs Your models / Add models with the count; a card per CLI, its models by name,
   the empty card's line and link; the anchor scrolled once; rename on the name (Enter,
   blur, Esc, no buttons); × and the Undo row in place (D16.1, 6, 7, 12).
   Check: `web/src/ModelSettings.test.tsx`, `make web`.
-- [ ] 6.3 Sources: whole-row toggle with the framed arrow, `<n> added`, the cut address,
+- [x] 6.3 Sources: whole-row toggle with the framed arrow, `<n> added`, the cut address,
   ✎ and 🗑 icons, one of list / Change / Remove at a time, ↻ above the list; a CLI's model
   one tick, a server's model its list of CLIs under its row; a bounded list with the configured
   first and its count; embeddings hidden and counted; Model id only where the list is not
   whole; the form with its live notes, Check key and Add on by the check; a server removed
   leaves its row (D16.2–4, 8–13). Check: `web/src/ModelSources.test.tsx`, `make web`.
-- [ ] 6.4 UI e2e: no scroll after a tick, a removal, an add and a remove of a server
+- [x] 6.4 UI e2e: no scroll after a tick, a removal, an add and a remove of a server
   (`scrollY` and the acted element's top unchanged); Kilo-sized list (300 models from the
   fake CLI list) bounded; rename by Enter and Esc; the add form's check against
   `tests/fake_model_server.py`; 390 px without sideways scroll; screenshots for the pull
   request. Check: `uv run pytest -m ui tests/ui/test_models_section.py`.
-- [ ] 6.5 Agent CLI in the UI (D17): the labels in `Launch.tsx`, `Providers.tsx`,
+- [x] 6.5 Agent CLI in the UI (D17): the labels in `Launch.tsx`, `Providers.tsx`,
   `SystemPanel.tsx`, `logins.SETTINGS`, the Docker headers, the docstrings that name the
   section; the tests quoting them; `docs/cli.md`, `docs/install.md`, `docs/design/*.md`.
   Check: `make test`, `make web`, `uv run pytest -m ui tests/ui/test_launch.py

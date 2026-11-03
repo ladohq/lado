@@ -25,6 +25,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 import lado
@@ -108,17 +109,22 @@ class Probe:
     apis_why: str = ""
 
     def clis(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-        """The (title, API) of each CLI that can use the server and of each that cannot, by
-        the API its provider declares, in the order of base.SERVER_APIS, then of the
-        registry; a provider that declares none is left out."""
-        suits: list[tuple[str, str]] = []
-        not_suits: list[tuple[str, str]] = []
-        for api in base.SERVER_APIS:
-            for name in providers.names():
-                provider = providers.get(name)
-                if provider.server_api == api:
-                    (suits if api in self.apis else not_suits).append((provider.title, api))
-        return suits, not_suits
+        return clis(self.apis)
+
+
+def clis(apis: Iterable[str]) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """The (title, API) of each CLI that can use a server proving `apis` and of each that
+    cannot, by the API its provider declares, in the order of base.SERVER_APIS, then of the
+    registry; a provider that declares none is left out."""
+    apis = frozenset(apis)
+    suits: list[tuple[str, str]] = []
+    not_suits: list[tuple[str, str]] = []
+    for api in base.SERVER_APIS:
+        for name in providers.names():
+            provider = providers.get(name)
+            if provider.server_api == api:
+                (suits if api in apis else not_suits).append((provider.title, api))
+    return suits, not_suits
 
 
 def address(text: str) -> tuple[str, bool]:

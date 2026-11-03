@@ -51,9 +51,17 @@ API_PATHS = {
 }
 CONTROL = "/v1/lado-no-such-api"  # no server has it: an API's answer here proves nothing
 
+PROBE_COMMAND = "lado model-server probe"
 CONTAINER_HINT = (
     "LADO runs in a container, where localhost is the container itself; a server on your "
-    "machine: lado model-server probe {address} (not tried)"
+    "machine: {command} {address} (not tried)"
+)
+# Hosts a key may go to over plain http://: the human's own machine (seen from LADO's
+# container too) and, by address, loopback, private and link-local networks. A name is never
+# resolved for the rule: it would depend on the network and send the name out.
+LOCAL_HOSTS = ("localhost", "host.docker.internal")
+PLAIN_HTTP = (
+    "the key goes to {host} over plain http://, unencrypted; use https:// if the server has it"
 )
 
 
@@ -151,10 +159,29 @@ def address(text: str) -> tuple[str, bool]:
     return f"{scheme}://{parts.netloc}{path}", added
 
 
-def probe(text: str, key: str | None = None) -> Probe:
+def plain_http_warning(root: str, key: str | None) -> str | None:
+    """The warning for a key sent over plain http:// to the server at `root` (an
+    `address`'s root) that is not on the human's machine or network; None for none."""
+    parts = urllib.parse.urlsplit(root)
+    if key is None or parts.scheme != "http":
+        return None
+    host = parts.hostname or ""
+    if host in LOCAL_HOSTS:
+        return None
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return PLAIN_HTTP.format(host=host)
+    if ip.is_loopback or ip.is_private or ip.is_link_local:
+        return None
+    return PLAIN_HTTP.format(host=host)
+
+
+def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Probe:
     """What the server at `text` is; ValueError for an address LADO does not probe,
     ProbeError for one that does not answer, asks for a key, refuses it, or is no model
-    server LADO knows."""
+    server LADO knows. `command` is the command run, without its address, for the messages
+    that name one to run again."""
     root, added = address(text)
     if key is not None and not all(" " <= c <= "~" or "\xa0" <= c <= "\xff" for c in key):
         raise ProbeError("the key holds a character no HTTP header can carry")
@@ -173,7 +200,7 @@ def probe(text: str, key: str | None = None) -> Probe:
                 f"{root}: TLS failed ({listed.why}); a company's CA goes in the file "
                 "SSL_CERT_FILE names"
             )
-        raise ProbeError(f"{root} does not answer ({listed.why})", _container_hint(root))
+        raise ProbeError(f"{root} does not answer ({listed.why})", _container_hint(root, command))
     asked = [(root + OLLAMA_VERSION, "GET"), (root + LMSTUDIO_MODELS, "GET")]
     asked += [(root + path, "POST") for path in [*API_PATHS.values(), CONTROL]]
     version, lmstudio, *posts, control = _all(opener, asked, headers)
@@ -181,8 +208,7 @@ def probe(text: str, key: str | None = None) -> Probe:
         if answer.status in (401, 403):
             if key is None:
                 raise ProbeError(
-                    f"{root} asks for a key ({answer.status}): run lado model-server probe "
-                    f"{root} --key"
+                    f"{root} asks for a key ({answer.status}): run {command} {root} --key"
                 )
             raise ProbeError(f"{root} refused the key ({answer.status})")
     apis = frozenset(api for api, a in zip(API_PATHS, posts, strict=True) if a.refuses_as_an_api())
@@ -261,8 +287,9 @@ def _kind(listed: Answer, version: Answer, lmstudio: Answer, apis: frozenset[str
     return None
 
 
-def _container_hint(root: str) -> str:
-    """In LADO's container, for a localhost address: the host's address to try instead."""
+def _container_hint(root: str, command: str) -> str:
+    """In LADO's container, for a localhost address: the host's address to try instead with
+    `command`."""
     if not update.in_container():
         return ""
     parts = urllib.parse.urlsplit(root)
@@ -275,7 +302,7 @@ def _container_hint(root: str) -> str:
             return ""
     port = parts.port or (443 if parts.scheme == "https" else 80)
     return CONTAINER_HINT.format(
-        address=f"{parts.scheme}://host.docker.internal:{port}{parts.path}"
+        command=command, address=f"{parts.scheme}://host.docker.internal:{port}{parts.path}"
     )
 
 

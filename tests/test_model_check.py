@@ -177,6 +177,18 @@ def test_the_check_s_verdicts(listed, model, kind, text):
     assert (verdict.kind, verdict.text) == (kind, text)
 
 
+def test_a_verdict_names_whose_list_it_is():
+    """A server's list: the texts name the server, not the CLI."""
+    provider = _Listed(LISTED)
+    found = model_check.verdict(provider, "big-1", LISTED, whose="LM Studio дома")
+    assert found.text == "in LM Studio дома's list of models"
+    refused = model_check.verdict(provider, "big-9", LISTED, whose="LM Studio дома")
+    assert refused.text == (
+        "big-9 is not in LM Studio дома's list of models; listed models prints the list"
+    )
+    assert model_check.verdict(provider, "fast", LISTED, whose="x").text == "an alias of Listed CLI"
+
+
 def test_the_check_lists_nothing_for_an_empty_model():
     class _Unlisted(_Listed):
         def model_list(self, env):

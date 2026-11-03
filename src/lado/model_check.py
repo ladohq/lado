@@ -26,9 +26,13 @@ def check(provider: providers.Provider, model: str, env: Mapping[str, str]) -> V
     return verdict(provider, model, provider.model_list(env))
 
 
-def verdict(provider: providers.Provider, model: str, listed: base.ModelList) -> Verdict:
-    """The verdict on `model` against `listed`, the CLI's aliases and list."""
+def verdict(
+    provider: providers.Provider, model: str, listed: base.ModelList, whose: str | None = None
+) -> Verdict:
+    """The verdict on `model` against `listed`, the CLI's aliases and list, or another's
+    list named `whose` (a model server's, lado.model_settings)."""
     title = provider.title
+    whose = whose or title
     if not model:
         return Verdict(DEFAULT, f"empty: {title}'s default model; type or pick one of its models")
     if model in listed.aliases:
@@ -40,7 +44,7 @@ def verdict(provider: providers.Provider, model: str, listed: base.ModelList) ->
             "first turn",
         )
     if model in listed.models:
-        return Verdict(OK, f"in {title}'s list of models")
+        return Verdict(OK, f"in {whose}'s list of models")
     return Verdict(
-        REFUSED, f"{model} is not in {title}'s list of models; {listed.command} prints the list"
+        REFUSED, f"{model} is not in {whose}'s list of models; {listed.command} prints the list"
     )

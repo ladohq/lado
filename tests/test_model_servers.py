@@ -368,6 +368,17 @@ def test_container_hint(host, monkeypatch):
     )
 
 
+def test_container_hint_names_the_command_run(monkeypatch):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    port = closed_port()
+    with pytest.raises(ms.ProbeError) as raised:
+        ms.probe(f"localhost:{port}", command='lado model-server add "LM Studio дома" --replace')
+    assert raised.value.hint.endswith(
+        f'machine: lado model-server add "LM Studio дома" --replace '
+        f"http://host.docker.internal:{port} (not tried)"
+    )
+
+
 def test_container_hint_takes_the_scheme_s_port(monkeypatch):
     monkeypatch.setenv("LADO_CONTAINER", "1")
     monkeypatch.setattr(ms, "_ask", lambda *a: ms.Answer(why="connection refused"))
@@ -420,6 +431,56 @@ def test_asks_for_a_key(serve):
     assert str(raised.value) == (
         f"{server.url} asks for a key (401): run lado model-server probe {server.url} --key"
     )
+
+
+def test_asks_for_a_key_names_the_command_run(serve):
+    server = serve("openai", key="k-123")
+    with pytest.raises(ms.ProbeError) as raised:
+        ms.probe(server.url, command='lado model-server add "work"')
+    assert str(raised.value) == (
+        f'{server.url} asks for a key (401): run lado model-server add "work" {server.url} --key'
+    )
+
+
+@pytest.mark.parametrize(
+    ("root", "host"),
+    [
+        ("http://llm.example.com", "llm.example.com"),
+        ("http://llm.example.com:8080/llm", "llm.example.com"),
+        ("http://8.8.8.8:4000", "8.8.8.8"),
+        ("http://[2001:4860::8888]:4000", "2001:4860::8888"),
+        ("http://localhost.example.com", "localhost.example.com"),
+    ],
+)
+def test_a_key_over_plain_http_to_a_public_host_is_warned(root, host):
+    assert ms.plain_http_warning(root, "k") == (
+        f"the key goes to {host} over plain http://, unencrypted; use https:// if the server has it"
+    )
+
+
+@pytest.mark.parametrize(
+    "root",
+    [
+        "http://localhost:1234",
+        "http://LOCALHOST:1234",
+        "http://127.0.0.1:1234",
+        "http://[::1]:1234",
+        "http://10.0.0.5:4000",
+        "http://192.168.1.10:11434",
+        "http://172.16.0.1",
+        "http://169.254.1.1",
+        "http://[fd00::1]:4000",
+        "http://[fe80::1]:4000",
+        "http://host.docker.internal:1234",
+    ],
+)
+def test_no_warning_for_a_local_host(root):
+    assert ms.plain_http_warning(root, "k") is None
+
+
+def test_no_warning_without_a_key_or_over_https():
+    assert ms.plain_http_warning("http://llm.example.com", None) is None
+    assert ms.plain_http_warning("https://llm.example.com", "k") is None
 
 
 def test_asks_for_a_key_on_403(serve):

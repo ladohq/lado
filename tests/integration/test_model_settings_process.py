@@ -79,11 +79,30 @@ def test_the_key_canary(serve, lado_home):  # noqa: F811
     for path in _files(lado_home):
         if path != key_file:
             assert canary.encode() not in path.read_bytes(), path
+    # A new key the server (moved) takes replaces the old one in the same file, private.
+    second = f"canary-key-{uuid.uuid4().hex}"
+    moved = serve("openai", key=second)
+    replaced = lado("model-server", "add", "work", moved, "--key", "--replace", stdin=second)
+    assert replaced.returncode == 0, replaced.stderr
+    assert replaced.stdout.splitlines()[-1] == 'Replaced model server "work".'
+    assert key_file.read_text() == second
+    assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+    assert stat.S_IMODE(key_file.parent.stat().st_mode) == 0o700
+    checked = lado("doctor")
+    assert "work answers (OpenAI-compatible)" in checked.stdout
+    for done in (replaced, checked):
+        assert second not in done.stdout + done.stderr
+        assert canary not in done.stdout + done.stderr
+    for path in _files(lado_home):
+        assert canary.encode() not in path.read_bytes(), path  # the old key is gone
+        if path != key_file:
+            assert second.encode() not in path.read_bytes(), path
     assert lado("model", "remove", "W").returncode == 0
     assert lado("model-server", "remove", "work").returncode == 0
     assert not key_file.parent.exists()
     for path in _files(lado_home):
         assert canary.encode() not in path.read_bytes(), path
+        assert second.encode() not in path.read_bytes(), path
 
 
 def test_a_key_on_the_command_line_is_refused_unechoed(serve, lado_home):  # noqa: F811

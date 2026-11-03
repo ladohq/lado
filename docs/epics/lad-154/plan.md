@@ -227,6 +227,10 @@ Check:
 - From S3a (E3): a key sent over `http://` to an address that is neither `localhost` nor
   a private network gives a loud warning (at saving the server in S3c, and before the
   start).
+- From S3d (question #2995): the UI calls Claude Code, Codex CLI, OpenCode and Kilo CLI
+  «agent CLI» everywhere (the launch window's field `Agent CLI`, Settings «Agent CLIs and
+  environment»); the launch window's model choice uses the same word, and Settings → Models
+  shows models by agent CLI in cards (D26), which the launch window's choice follows.
 - LAD-188 (question #2913): two flaky tests of the epic's own, seen on PR #211's CI and
   green on rerun — `web/src/Launch.test.tsx:1077` (the Model field's listbox looked up
   synchronously after `findByText`, LAD-176) and `test_session_model.py::

@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from fake_model_server import EMBEDDINGS
 from test_model_server_probe import closed_port, lado, serve  # noqa: F401 - a fixture
 
 pytestmark = pytest.mark.integration
@@ -103,6 +104,53 @@ def test_the_key_canary(serve, lado_home):  # noqa: F811
     for path in _files(lado_home):
         assert canary.encode() not in path.read_bytes(), path
         assert second.encode() not in path.read_bytes(), path
+
+
+def test_embeddings_same_address_and_several_removed(serve, lado_home):  # noqa: F811
+    """LM Studio under two names, its embeddings model refused, then several models removed
+    and their server; a canary key in none of these lines, nor any file but its own."""
+    canary = f"canary-key-{uuid.uuid4().hex}"
+    url = serve("lmstudio", key=canary)
+    runs = [lado("model-server", "add", "macpro", url, "--key", stdin=canary)]
+    assert runs[-1].returncode == 0, runs[-1].stderr
+    assert f"models: qwen3-8b, {EMBEDDINGS} (embeddings)" in runs[-1].stdout
+    runs.append(
+        lado("model-server", "add", "lms", url.removeprefix("http://") + "/v1/", "--key",
+             stdin=canary)
+    )  # fmt: skip
+    assert runs[-1].returncode == 0, runs[-1].stderr
+    assert runs[-1].stdout.splitlines()[-2:] == [
+        'same address as model server "macpro"',
+        'Saved model server "lms".',
+    ]
+    runs.append(lado("model", "add", "emb", "--cli", "opencode", "--model", EMBEDDINGS,
+                     "--server", "lms"))  # fmt: skip
+    assert runs[-1].returncode == 1
+    assert runs[-1].stderr == (
+        f"lado: {EMBEDDINGS} is an embeddings model on lms; an agent needs a chat model: "
+        f"lado model-server probe {url} lists the models\n"
+    )
+    assert lado("model", "list").stdout.startswith("No models")
+    for name, cli in (("coder-codex", "codex"), ("coder-oc", "opencode"), ("sp", "kilo")):
+        runs.append(lado("model", "add", name, "--cli", cli, "--model", "qwen3-8b",
+                         "--server", "lms"))  # fmt: skip
+        assert runs[-1].returncode == 0, runs[-1].stderr
+    runs.append(lado("model-server", "remove", "lms"))
+    assert runs[-1].returncode == 1
+    assert runs[-1].stderr.endswith(
+        'remove them first: lado model remove "coder-codex" "coder-oc" "sp"\n'
+    )
+    runs.append(lado("model", "remove", "coder-codex", "coder-oc", "sp"))
+    assert (runs[-1].returncode, runs[-1].stdout) == (
+        0,
+        'Removed model "coder-codex".\nRemoved model "coder-oc".\nRemoved model "sp".\n',
+    )
+    runs.append(lado("model-server", "remove", "lms"))
+    assert runs[-1].returncode == 0, runs[-1].stderr
+    for done in runs:
+        assert canary not in done.stdout + done.stderr
+    held = [p for p in _files(lado_home) if canary.encode() in p.read_bytes()]
+    assert [p.parent.parent for p in held] == [lado_home / "model-servers"]  # macpro's key
 
 
 def test_a_key_on_the_command_line_is_refused_unechoed(serve, lado_home):  # noqa: F811

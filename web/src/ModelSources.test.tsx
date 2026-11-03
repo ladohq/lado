@@ -533,3 +533,18 @@ test("Add's refusal shows under its field; the form keeps all but the key; Cance
   fireEvent.click(screen.getByRole("button", { name: "+ Add server" }));
   expect((screen.getByLabelText("Key") as HTMLInputElement).value).toBe("");
 });
+
+test("a server's saved lines go once another server is removed", async () => {
+  server.entries = { models: [], servers: [{ ...LMSTUDIO, name: "zeta", address: "http://zeta:1" }] };
+  await openForm("alpha", "localhost:1234");
+  await waitFor(() => expect(addButton().disabled).toBe(false));
+  fireEvent.click(addButton());
+  expect(await screen.findByText('✓ Saved model server "alpha".')).toBeTruthy();
+  const zeta = item(await source("zeta"));
+  fireEvent.click(within(zeta).getByRole("button", { name: "Remove zeta" }));
+  const confirm = within(zeta).getByRole("button", { name: "Remove" }) as HTMLButtonElement;
+  await waitFor(() => expect(confirm.disabled).toBe(false));
+  fireEvent.click(confirm);
+  expect(await screen.findByText("Removed zeta.")).toBeTruthy();
+  expect(screen.queryByText('✓ Saved model server "alpha".')).toBeNull();
+});

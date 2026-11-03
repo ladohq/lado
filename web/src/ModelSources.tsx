@@ -233,7 +233,7 @@ export function ModelSources(props: Props) {
             onStale={() => props.onSaved(key, null)}
             onGone={(line) => {
               close(key);
-              props.onSaved(key, null);
+              for (const one of Object.keys(props.saved)) props.onSaved(one, null); // old now
               setGone((now) => ({ ...now, [fold(server.name)]: line }));
             }}
             onChanged={props.onChanged}

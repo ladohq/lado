@@ -36,15 +36,15 @@ provider's own list).
 ## What Changes
 
 - Settings gets a section **Models** after Providers and environment, before Usage
-  statistics, at `/settings#models`, with two tabs: **Your models** (Name, renamed by a
-  click on it, Model, Runs in, From, × with Undo) and **Add models** (every LADO CLI, not
+  statistics, at `/settings#models`, with two tabs: **Your models** (a card per CLI, its
+  models by name: Name, renamed by a click on it, Model, From, × with Undo) and **Add models** (every LADO CLI, not
   installed ones greyed, not logged in ones marked; every saved server; `+ Add server`).
   Nothing on the page moves under the pointer: no scroll to the anchor after a change, a
   removed row keeps its place as its Undo.
 - Opening a source (its whole row) reads its list now (a CLI's aliases and own list; a
   server's by a probe with its kept key), Refresh reads it again; nothing is read when the
-  page opens and no list is kept. Each model has one tick; on a server the CLI is the one
-  chosen in **Run in**. Ticking saves a configured model with a default name (`Claude
+  page opens and no list is kept. A CLI's model has one tick; a server's model opens, under
+  its row, a tick per CLI that can run it. Ticking saves a configured model with a default name (`Claude
   Sonnet`, `gpt-5-codex`, `qwen3-8b · LM Studio · OpenCode`), unticking removes it.
 - A list scrolls within a bounded height, its configured models first, with a search above
   ten models; embeddings models are hidden and counted; a configured model its source no
@@ -83,8 +83,8 @@ provider's own list).
   page; a source is read when the human opens it.
 - UI texts of their own for the refusals: a second set of texts drifting from the commands'.
 - Removing several models at once other than with their server.
-- A second CLI for the same model of a server from the page: one tick per model; `lado
-  model add` makes it, and the page shows both under one disabled tick.
+- Renaming Settings' "Providers and environment" to say CLI: the page says CLI; a rename of
+  the section is a task of its own if wanted (the human's answer #2978).
 - Undo of a server removed: its key is deleted with it and LADO keeps no copy of a key.
 
 ## Capabilities

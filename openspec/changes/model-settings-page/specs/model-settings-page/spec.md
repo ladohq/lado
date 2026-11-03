@@ -81,20 +81,29 @@ SHALL turn when open.
 ### Requirement: A long address stays on one line
 
 A server's address SHALL be cut with `…` to the row's room, the whole address shown on
-hover; the server's buttons (Refresh, Change, Remove) SHALL stay on the row's line and
-never wrap under the address. On a window narrower than 600 px they SHALL go on a line of
-their own under the name.
+hover; the server's **Change** (✎) and **Remove** (🗑) SHALL be icons with their names in
+their titles, staying on the row's line. On a window narrower than 600 px they SHALL go on
+a line of their own under the name.
 
 #### Scenario: A gateway with a long address
 - **WHEN** a server's address is
   `https://litellm-gateway.platform.internal.example.com:4000/v1`
-- **THEN** its row is one line ending in Change and Remove, and hovering it shows the
-  whole address
+- **THEN** its row is one line ending in ✎ and 🗑, and hovering it shows the whole address
+
+### Requirement: A source shows its list, Change or Remove, one at a time
+
+A server SHALL show at most one of its list of models, its Change form and its Remove
+confirmation: opening one SHALL close the others. After Change saves, the list SHALL open
+and be read again.
+
+#### Scenario: Change of an open server
+- **WHEN** LM Studio's list is open and the human presses ✎
+- **THEN** the list closes and the Change form shows in its place
 
 ### Requirement: Opening a source reads its list now
 
-Opening a source SHALL read its models now, and **Refresh** in an open source SHALL read
-them again: a CLI's aliases and its own list as the launch window's Model field reads them;
+Opening a source SHALL read its models now, and **Refresh** (↻, at the right above the
+list) SHALL read them again: a CLI's aliases and its own list as the launch window's Model field reads them;
 a server's list by a probe with its kept key; while it reads, the source SHALL say `reading
 the models…`. LADO SHALL keep no source's list between reads.
 
@@ -117,33 +126,34 @@ has.
 
 ### Requirement: A tick is a configured model
 
-Each model of an open source SHALL have one tick, on exactly when a configured model of
-that source has that model. Ticking SHALL save one with its default name as `lado model
-add` would: on a CLI, of that CLI; on a server, of the CLI chosen in **Run in**. Unticking
-SHALL remove it, offering Undo as Remove does. A ticked row SHALL say its name when it
-differs from the model, on a server its CLI.
+Each model of an open CLI's source SHALL have one tick, on exactly when a configured model
+of that CLI, no server, has that model; a server's model SHALL have one tick per CLI
+(below). Ticking SHALL save a model with its default name as `lado model add` would;
+unticking SHALL remove it, offering Undo as Remove does. A ticked row of a CLI SHALL say
+`as <name>` when the name differs from the model.
 
 #### Scenario: Claude Sonnet
 - **WHEN** the human opens Claude Code and ticks `sonnet`
 - **THEN** `Claude Sonnet` (Claude Code, sonnet, no server) shows in Your models and the
   row says `as Claude Sonnet`
 
-#### Scenario: A model of LM Studio for Kilo CLI
-- **WHEN** the human opens `LM Studio`, picks Kilo CLI in Run in and ticks `qwen3-8b`
-- **THEN** a model of Kilo CLI, `qwen3-8b`, on `LM Studio` is saved and the row says `in
-  Kilo CLI`
+### Requirement: A server's model opens its CLIs
 
-### Requirement: Run in picks a server model's CLI
+A click on a model of an open server, or Enter on it, SHALL open under its row a list of
+the installed CLIs whose API the server proves, each with its tick, the name of its model
+by it; Esc or **Done** SHALL close it. The row SHALL say `in <CLI title>, …` for the CLIs it
+is configured in and end in `+ Add ▾`, or `CLIs ▾` once it is in one. A server no installed
+CLI can use SHALL say `No installed CLI can use this server.` and have no ticks.
 
-An open server SHALL show **Run in**, a choice of the installed CLIs whose API the server
-proves, the first of them chosen; it SHALL change no saved model, only the CLI of the next
-tick. A server only one installed CLI can use SHALL say `Runs in <CLI title>` instead; one
-none can use SHALL say `No installed CLI can use this server.` and have no ticks.
+#### Scenario: qwen3-8b in OpenCode and Kilo CLI
+- **WHEN** the human opens `LM Studio`, clicks `qwen3-8b` and ticks OpenCode and Kilo CLI
+- **THEN** two models of `qwen3-8b` on `LM Studio` are saved, one of each CLI, and the row
+  says `in OpenCode, Kilo CLI`
 
-#### Scenario: LM Studio proving three APIs
-- **WHEN** `LM Studio` proves chat completions, the Responses API and Anthropic's Messages
-  API, and all four CLIs are installed
-- **THEN** Run in offers OpenCode, Kilo CLI, Codex CLI and Claude Code
+#### Scenario: More CLIs
+- **WHEN** a server suits six installed CLIs
+- **THEN** the list under the row shows six ticks one under the other, and the row is no
+  wider
 
 ### Requirement: A model's default name
 
@@ -160,8 +170,8 @@ free.
 - **THEN** the new model is named `gpt-5-codex · Codex CLI`
 
 #### Scenario: A server several CLIs suit
-- **WHEN** `LM Studio дома` suits OpenCode and Kilo CLI and the human ticks `qwen3-8b`
-  with OpenCode in Run in
+- **WHEN** `LM Studio дома` suits OpenCode and Kilo CLI and the human ticks OpenCode for
+  `qwen3-8b`
 - **THEN** the model is named `qwen3-8b · LM Studio дома · OpenCode`
 
 #### Scenario: An alias with [1m]
@@ -170,9 +180,8 @@ free.
 
 ### Requirement: A tick of several models
 
-When several configured models of a source have the same model (two names, or two CLIs on
-a server), its tick SHALL be on and disabled, its title naming them; they SHALL be removed
-in Your models.
+When several configured models have the same CLI, model and server, their tick SHALL be on
+and disabled, its title naming them; they SHALL be removed in Your models.
 
 #### Scenario: Two names for one model
 - **WHEN** `Claude Opus` and `Сильная` are both Claude Code's `opus`
@@ -228,7 +237,7 @@ warning, and name its configured models, which SHALL stay.
 
 A field **Model id** with Add SHALL end an open source only when its list is not whole:
 Claude Code (aliases only), a CLI whose list cannot be read, and a server that gives no
-list (Run in naming the CLI). Its note SHALL be the check `lado model add` would make, once
+list (with a choice of the CLI). Its note SHALL be the check `lado model add` would make, once
 the typing settles; Add SHALL save the model with its default name, off while refused.
 
 #### Scenario: Claude Code's full model id
@@ -239,16 +248,34 @@ the typing settles; Add SHALL save the model with its default name, off while re
 - **WHEN** the human opens Codex CLI logged in to OpenAI
 - **THEN** its source has no Model id field
 
-### Requirement: The table of Your models
+### Requirement: Your models by CLI
 
-Your models SHALL show the configured models by name ignoring case: Name, Model, Runs in
-(its CLI's title), From (its server, else its CLI, the server's address on hover) and ×,
-which removes the model at once as `lado model remove` does. A model of a CLI not installed
-SHALL show `<CLI title> is not installed` as a warning. On a phone Runs in SHALL be left out.
+Your models SHALL show a card per agent CLI LADO knows, in the order of Add models, headed
+by its title and its number of models on a ground of its own, apart from the next. A card
+SHALL list its models by name ignoring case: Name, Model, From (its server, the address on
+hover, else `the CLI itself`) and ×, which removes the model at once as `lado model remove`
+does.
 
 #### Scenario: Removing a model
 - **WHEN** the human presses × on `Claude Sonnet`
-- **THEN** it is gone from Your models and the tick of `sonnet` under Claude Code is off
+- **THEN** it is gone from Claude Code's card and the tick of `sonnet` under Claude Code is
+  off
+
+#### Scenario: A renamed model
+- **WHEN** the human renames `qwen3-8b · LM Studio · OpenCode` to `Alpha`
+- **THEN** `Alpha` shows first in OpenCode's card, and no other card moves
+
+### Requirement: A CLI's card without models or not installed
+
+A card of a CLI without models SHALL say `No models: its agents run on <CLI title>'s
+default model.` with a link that opens its source in Add models; a card of a CLI not
+installed SHALL say so, and each model in it SHALL show `<CLI title> is not installed` as a
+warning.
+
+#### Scenario: Kilo CLI without models
+- **WHEN** no model of Kilo CLI is saved
+- **THEN** Kilo CLI's card says `No models: its agents run on Kilo CLI's default model.`
+  and its link opens Kilo CLI in Add models
 
 ### Requirement: Undo of a model removed
 
@@ -357,8 +384,8 @@ Every field, choice and button of the section SHALL have the size and font of th
 window's; a warning, a refusal and an ok SHALL look as the launch window's notes do, and no
 note SHALL cover a field or another note.
 
-#### Scenario: Run in
-- **WHEN** the human opens the choice Run in
+#### Scenario: The CLI of a model id on a server
+- **WHEN** the human opens the CLI choice by Model id of a server without a list
 - **THEN** its options show in the font and size of the launch window's choices
 
 #### Scenario: Two notes under one field
@@ -439,7 +466,7 @@ other, and no part of the section SHALL make the page scroll sideways.
 
 #### Scenario: A server's list on a phone
 - **WHEN** the human opens a server with a long address in a window 390 px wide
-- **THEN** the page does not scroll sideways and the server's buttons show under its name
+- **THEN** the page does not scroll sideways and the server's ✎ and 🗑 show under its name
 
 ### Requirement: Without the page everything is as before
 

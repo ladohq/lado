@@ -296,14 +296,18 @@ the form's check stay.
   warning, no key in the request the fake records; with `key` the fake records it once;
   a second server at the address the same-address note. Implement; `make web-types`.
 - [ ] The canary (`test_model_settings_canary.py`) also sends its key through the check.
-- [ ] Vitest first, `ModelSettings.test.tsx`: two tabs, `Your models 4`; the empty line's
+- [ ] Vitest first, `ModelSettings.test.tsx`: two tabs, `Your models 4`; a card per CLI in
+  the order of the sources, its models sorted by name ignoring case, a renamed one moving
+  within its card only, an empty card's line and its link opening that source; the empty line's
   link opens Add models; `#models` scrolls once at mount, not after a change of the entries;
   a click on a name gives a field, Enter PATCHes, Esc restores without a request, blur
   PATCHes, a refusal stays under the field, blur then restores; × DELETEs and leaves the
   row `Removed <name>. Undo` for `UNDO_MS`, Undo POSTs it back.
 - [ ] Vitest first, `ModelSources.test.tsx`: a click on the row's name toggles (and Enter);
-  `<n> added`; the address in the title; Run in lists `probe.clis` ∩ installed, the tick
-  POSTs that CLI; one CLI → `Runs in …`; none → the line and no ticks; the order set at
+  `<n> added`; the address in the title; ✎ and 🗑 with `aria-label`s; list, Change and
+  Remove one at a time, Change's Save opening the list; ↻ above the list; a server's model
+  row click (and Enter) opens its CLIs = `probe.clis` ∩ installed, each tick POSTs that CLI
+  and the row says `in …`, Esc and Done close it; none → the line and no ticks; the order set at
   reading and kept across ticks; `<n> models` and `<shown> of <n> models`; no embeddings
   row, the count line; Model id for Claude Code, for a CLI with `models: null`, for a server
   with `models: null`, none for Codex with a list; the form: the check after

@@ -105,12 +105,12 @@ shows), and a probe of up to eight requests and ~10 s not repeated per keystroke
 
 ### D6. The tick is derived from the entries
 
-The page computes each tick from `ModelSettings.models`: on when a model of the source has
-the same model (on a CLI: that CLI and no server; on a server: that server, any CLI).
-Ticking POSTs `ModelAdd{name: null, …}`, on a server with the CLI of Run in; unticking
-DELETEs the one model it stands for; with several such models the tick is on and disabled,
-its title naming them, and they are removed in Your models. Run in offers the server's
-`ProbeInfo.clis` (the APIs it proves now) that `/api/providers` says are installed (D16.2).
+The page computes each tick from `ModelSettings.models`: on when a model has the same CLI,
+model and server. Ticking POSTs `ModelAdd{name: null, …}`; unticking DELETEs the one model
+it stands for; with several such models the tick is on and disabled, its title naming
+them, and they are removed in Your models. A server's model has a tick per CLI in the list
+under its row: the server's `ProbeInfo.clis` (the APIs it proves now) that `/api/providers`
+says are installed (D16.2).
 A configured model whose model the read list lacks is shown first, ticked, marked. Why: one
 source of truth (the entries); no second store of ticks.
 
@@ -170,9 +170,9 @@ list of models` and makes the line WARN. Why: the cases' 7; the probe is already
 ### D13. The page
 
 `web/src/ModelSettings.tsx`: the section (`id="models"`, `MODELS_ANCHOR` in `paths.ts`),
-its two tabs (D16.1), Your models (table, rename in place, ×, Undo rows). `web/src/
-ModelSources.tsx`: the sources, a source's list with its ticks, Run in, search, the
-embeddings line, missing models, Model id, Refresh, the add-server form, Change and Remove
+its two tabs (D16.1), Your models (a card per CLI, rename in place, ×, Undo rows). `web/src/
+ModelSources.tsx`: the sources, a source's list with its ticks, a server model's list of
+CLIs, search, the embeddings line, missing models, Model id, ↻, the add-server form, Change and Remove
 of a server. It reuses `SecretField`, the `.tab-bar`/`.tab-item`/`.tab-count`, `.field`,
 `.launch-grid`, `.field-note` classes, `useDebounced`/`MODEL_DEBOUNCE`, `messageOf`,
 `ApiError.detail`. `Settings.tsx` renders it between `Providers` and `StatisticsSetting`.
@@ -218,12 +218,16 @@ mock-up first; #2969: 1A, 2A, 3A) change the page, not the core's rules or the c
 1. **Tabs, not two blocks one above the other.** Your models and Add models are tabs of the
    section, the first named with the number of models. A tick then adds no row above the
    pointer; the number in the tab is the only thing that changes outside the list. The
-   other layout weighed (sources above, Your models under them) is in the mock-up too; it
-   keeps both in sight but puts the human's models under a long list. Why: remarks 2, 11.
-2. **One tick per model; Run in for a server.** A model entry stays "how to run an agent":
-   CLI, the CLI's model, server (#2969, 1A; the concept's Q3a). A server's columns of CLIs
-   give way to one tick and a choice Run in above the list; a second CLI for the same
-   server model is the command's (`lado model add`). Why: remark 5, the human's answer.
+   other layout weighed (sources above, Your models under them) keeps both in sight but
+   puts the human's models under a long list; the human took the tabs (gate #244). Why:
+   remarks 2, 11.
+2. **A server's model opens its CLIs.** A model entry stays "how to run an agent": CLI, the
+   CLI's model, server (#2969, 1A; the concept's Q3a). A click on a server's model opens
+   under its row a list of the CLIs that can run it, a tick each; the row says `in
+   OpenCode, Kilo CLI`. Weighed: a column per CLI (remark 5: confusing), a chip per CLI in
+   the row (gate #2983: stops working with more CLIs), a CLI chosen above the list (one CLI
+   at a time: the human's gate remark "search the model again for each CLI"). The list
+   under the row grows downwards, never wider, whatever the number of CLIs (#2984, 2A).
 3. **Model id only where a list is not whole** (#2969, 2A): Claude Code (its aliases are its
    only list; it takes full ids LADO cannot check), a CLI whose `model_list` gives `models
    is None`, a server whose probe gives no list. Codex, Kilo, OpenCode and a server with a
@@ -249,13 +253,29 @@ mock-up first; #2969: 1A, 2A, 3A) change the page, not the core's rules or the c
 8. **A list's height is bounded**: about nine rows, scrolled within; search above ten
    models; the configured ones first. Why: remark 4.
 9. **The row of a source**: the whole row toggles, a framed arrow turns; `<n> added`, then
-   the login state or the address, cut with `…` and whole in the title; the buttons never
-   wrap (a grid of the row and its buttons; under 600 px the buttons get a line of their
-   own). Why: remarks 8, 12.
-10. **Run in is a `.field` select** of the launch window's size and font. Why: remark 7
-    (the CLI choice of Other model… inherited the browser's font).
+   the login state or the address, cut with `…` and whole in the title; the icons never
+   wrap (a grid of the row and its icons; under 600 px they get a line of their own). Why:
+   remarks 8, 12.
+10. **The CLI choice of Model id on a server is a `.field` select** of the launch window's
+    size and font. Why: remark 7 (the CLI choice of Other model… inherited the browser's
+    font).
 11. **A server removed is not undone**: its key file goes with it, and LADO keeps no copy of
     a key; the confirmation says so. Models removed one by one keep their Undo.
+12. **Your models: a card per CLI** (#2984, 1A): every CLI LADO knows, in the order of Add
+    models, headed `<CLI title> <n>` on `--ground`, a gap between cards; a CLI without
+    models one line and a link to its source. Its models by name ignoring case, the table's
+    `Runs in` gone (the card says it), From `the CLI itself` for a CLI's own models. A
+    rename or an add takes its sorted place in its card only. Weighed: group headers in one
+    table (gate #2983: they merge into one list), CLIs on the left and one CLI's models on
+    the right (one CLI at a time). Why: the human's gate remark "which models each CLI has".
+13. **Icons and one panel at a time** (gate #2983): Change ✎ and Remove 🗑 are icon buttons
+    (`icons.tsx`'s `PencilIcon` and `ForgetIcon`, their names in `aria-label` and title); ↻
+    is at the right above the list, as Providers' ↻; a server shows its list, its Change
+    form or its Remove confirmation, opening one closing the others.
+14. **"CLI", not "provider", on the page**: in LADO a provider is the support of one agent
+    CLI, but "provider" also names a model's company (`anthropic/…`, Codex's
+    `model_provider`). Renaming Settings' "Providers and environment" is not this change
+    (#2978, 3A).
 
 ## Risks / Trade-offs
 

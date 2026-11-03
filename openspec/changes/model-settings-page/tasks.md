@@ -71,14 +71,16 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
   probe, `kind` in `ProbeInfo`; `make web-types`; the canary sends a key through it (D16.5).
   Check: `tests/test_server_model_settings.py`, `uv run pytest -m integration -n auto
   tests/integration/test_model_settings_canary.py`.
-- [ ] 6.2 Tabs Your models / Add models with the count; the anchor scrolled once; rename on
-  the name (Enter, blur, Esc, no buttons); × and the Undo row in place (D16.1, 6, 7).
+- [ ] 6.2 Tabs Your models / Add models with the count; a card per CLI, its models by name,
+  the empty card's line and link; the anchor scrolled once; rename on the name (Enter,
+  blur, Esc, no buttons); × and the Undo row in place (D16.1, 6, 7, 12).
   Check: `web/src/ModelSettings.test.tsx`, `make web`.
-- [ ] 6.3 Sources: whole-row toggle with the framed arrow, `<n> added`, the cut address and
-  unwrapped buttons; one tick per model and Run in; a bounded list with the configured
+- [ ] 6.3 Sources: whole-row toggle with the framed arrow, `<n> added`, the cut address,
+  ✎ and 🗑 icons, one of list / Change / Remove at a time, ↻ above the list; a CLI's model
+  one tick, a server's model its list of CLIs under its row; a bounded list with the configured
   first and its count; embeddings hidden and counted; Model id only where the list is not
   whole; the form with its live notes, Check key and Add on by the check; a server removed
-  leaves its row (D16.2–4, 8–11). Check: `web/src/ModelSources.test.tsx`, `make web`.
+  leaves its row (D16.2–4, 8–13). Check: `web/src/ModelSources.test.tsx`, `make web`.
 - [ ] 6.4 UI e2e: no scroll after a tick, a removal, an add and a remove of a server
   (`scrollY` and the acted element's top unchanged); Kilo-sized list (300 models from the
   fake CLI list) bounded; rename by Enter and Esc; the add form's check against

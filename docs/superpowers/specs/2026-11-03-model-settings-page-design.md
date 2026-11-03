@@ -67,29 +67,37 @@ Model id only where a list is not whole, embeddings hidden. The page becomes:
 
 ```
 Models
-[Your models 4] [Add models]
- Name (click)          Model        Runs in      From
- Claude Sonnet         sonnet       Claude Code  Claude Code     ×
- Removed gpt-5-codex. Undo                                         (10 s, same height)
+[Your models 5] [Add models]
+ ┌ Claude Code 1 ─────────────────────────────────────────────┐
+ │ Name (click)       Model        From                      × │
+ │ Claude Sonnet      sonnet       the CLI itself            × │
+ └────────────────────────────────────────────────────────────┘
+ ┌ OpenCode 2 ────────────────────────────────────────────────┐
+ │ Removed mistral-7b · LiteLLM · OpenCode. Undo   (10 s)      │
+ │ qwen3-8b · LM Studio · OpenCode  qwen3-8b  LM Studio      × │
+ └────────────────────────────────────────────────────────────┘
+ ┌ Kilo CLI 0 ── No models: its agents run on Kilo CLI's default model. Add from Kilo CLI
 
 [Add models]
  [▶] Claude Code  CLI  1 added · logged in
- [▼] Kilo CLI     CLI  logged in                          [Refresh]
-     [Search 323 models]
+ [▼] Kilo CLI     CLI  logged in
+     [Search 323 models]                                         ↻
      ┌ ☑ qwen/qwen3-8b                           added ┐  ≤ 9 rows, scrolls inside
-     │ ☐ anthropic/claude-3.5-haiku                    │
-     └ …                                               ┘
+     └ ☐ anthropic/claude-3.5-haiku …                  ┘
      323 models · the ones you added are at the top
- [▼] LM Studio  LM Studio  1 added · http://localhost:1234   [Refresh][Change][Remove]
-     [Search 12 models]  Run in [OpenCode ▾]
-     ☑ qwen3-8b                               in OpenCode
+ [▼] LM Studio  LM Studio  2 added · http://localhost:1234        ✎ 🗑
+     [Search 12 models]                                          ↻
+     qwen3-8b               in OpenCode, Kilo CLI   [CLIs ▾]
+       ☑ OpenCode  ☑ Kilo CLI  ☐ Codex CLI  ☐ Claude Code   [Done]   (one under the other)
+     qwen3-coder-30b…                               [+ Add ▾]
      1 embeddings model hidden: agents cannot run on it.
- [▶] LiteLLM  LiteLLM  https://litellm-gateway.platform.inte…  [Change][Remove]
+ [▶] LiteLLM  LiteLLM  https://litellm-gateway.platform.inte…    ✎ 🗑
  [+ Add server]  → Name · Address (checked as typed) · Key (sent on Check key / Add)
 ```
 
-Each remark and its answer: D16 of design.md. The two layouts of the mock-up: tabs (taken,
-recommended) and one page with the sources above Your models.
+Each remark and its answer: D16 of design.md. At gate #244 the human took the tabs and
+remarked on the rest (#2983); the second round (#2984) took a card per CLI and a server
+model's list of CLIs under its row.
 
 ## Root cause and options
 
@@ -138,7 +146,8 @@ D12 doctor's gone model · D13 the page's components · D14 the tests.
 | Nothing moves under the pointer | UI e2e (`scrollY` and the element's top before and after) | layout, real scrolling |
 | The form checks the server as the human types | unit (the check route, no key unless sent) + vitest (debounce, stale answers dropped, Add on/off) + UI e2e | |
 | A source's list keeps its height; embeddings hidden | vitest + UI e2e (323 models) | |
-| Run in; a model id only where the list is not whole | vitest (`models === null`) + unit (`ProbeInfo.kind`) | |
+| A server's model opens its CLIs; Your models by CLI; one panel at a time | vitest + UI e2e | |
+| A model id only where the list is not whole | vitest (`models === null`) + unit (`ProbeInfo.kind`) | |
 | Settings has a section Models; Your models without a model | vitest + UI e2e | DOM order, scroll |
 | Opening the section reads no list | unit (routes: the fake server's request record; no CLI list read) + vitest (no read before opening) | |
 | The sources | vitest (installed/login from `/api/providers*`) + UI e2e | |

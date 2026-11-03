@@ -487,8 +487,7 @@ function Rename({ name, onDone, onCancel }: { name: string; onDone: (given: Entr
       done.current = true;
       onDone(given);
     } catch (error) {
-      if (leaving) onCancel();
-      else setRefused(refusalOf(error));
+      setRefused(refusalOf(error));
     } finally {
       busy.current = false;
     }

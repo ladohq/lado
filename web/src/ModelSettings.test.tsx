@@ -178,6 +178,24 @@ test("a refused name stays under the field; leaving it then restores the name", 
   expect(server.of("PATCH", "/api/models/")).toHaveLength(1);
 });
 
+test("a name refused on leaving the field stays under it too; leaving again restores the name", async () => {
+  server.entries = { models: FOUR.slice(0, 2), servers: [] };
+  server.answers["PATCH /api/models/Claude%20Sonnet"] = () =>
+    refusal('the name is taken by the model "gpt-5-codex"', "name");
+  mount();
+  const claude = await card("Claude Code");
+  fireEvent.click(within(claude).getByRole("button", { name: "Rename Claude Sonnet" }));
+  const field = within(claude).getByRole("textbox", { name: "Name of Claude Sonnet" });
+  fireEvent.change(field, { target: { value: "GPT-5-codex" } });
+  fireEvent.blur(field);
+  const note = await within(claude).findByText('the name is taken by the model "gpt-5-codex"');
+  expect(note.className).toContain("field-note bad");
+  expect(within(claude).getByRole("textbox")).toBe(field);
+  fireEvent.blur(field);
+  expect(within(claude).getByRole("button", { name: "Rename Claude Sonnet" })).toBeTruthy();
+  expect(server.of("PATCH", "/api/models/")).toHaveLength(1);
+});
+
 test("× removes at once and leaves its row as Undo, which saves the model again", async () => {
   server.entries = {
     models: [model("Сонет для ревью", "opencode", "OpenCode", "qwen3-8b", "LM Studio дома"), FOUR[3]],

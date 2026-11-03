@@ -1,26 +1,45 @@
 ## Purpose
 Settings → Models: the page where the human sees what each agent CLI and saved model
 server offers and ticks the models to keep under names, renames them, and adds, changes
-and removes servers, with the rules and lines of `lado model-server` and `lado model`; and
-the API it uses, which a server's key enters and never leaves.
+and removes servers, with the rules of `lado model-server` and `lado model`; and the API it
+uses, which a server's key enters and never leaves.
 
 ## ADDED Requirements
 
 ### Requirement: Settings has a section Models
 
 The Settings page SHALL show a section **Models** after Providers and environment and
-before Usage statistics, at the anchor `#models`, with two blocks: **Your models**, the
-configured models, and under it **Sources**, where models come from: the agent CLIs and the
-saved model servers.
+before Usage statistics, at the anchor `#models`, with two tabs: **Your models**, the
+configured models, its tab naming their number, and **Add models**, the sources models come
+from: the agent CLIs and the saved model servers. The section SHALL open on Your models.
 
 #### Scenario: The anchor
 - **WHEN** the human opens `/settings#models`
-- **THEN** the page scrolls to the section Models, Your models above Sources
+- **THEN** the page scrolls to the section Models once, showing Your models
+
+#### Scenario: Four models
+- **WHEN** four models are saved
+- **THEN** the tab reads `Your models 4`
+
+### Requirement: Nothing moves under the pointer
+
+No action in the section SHALL scroll the page or move what lies above the control acted
+on: a tick, a rename, a removal and its Undo, adding, changing or removing a server, and
+the section's own reload after any of them. The page SHALL scroll to `#models` only when it
+opens with that anchor.
+
+#### Scenario: A tick
+- **WHEN** the human ticks a model in the middle of an open source's list
+- **THEN** the tick stays under the pointer and the page does not scroll
+
+#### Scenario: A server added
+- **WHEN** the human adds a server
+- **THEN** the page does not scroll and the new server takes the place of the form
 
 ### Requirement: Your models without a model
 
 With no configured model, Your models SHALL say `No models yet. Without them each agent
-runs on its CLI's default model. Tick models in Sources below.`
+runs on its CLI's default model.` with a link **Add models** that opens that tab.
 
 #### Scenario: Nothing saved
 - **WHEN** no model is saved and the human opens Settings
@@ -28,25 +47,49 @@ runs on its CLI's default model. Tick models in Sources below.`
 
 ### Requirement: Opening the section reads no list
 
-Opening the section Models SHALL send no request to any model server and read no CLI's list
-of models; Sources SHALL show each source closed.
+Opening the section Models or its tabs SHALL send no request to any model server and read
+no CLI's list of models; every source SHALL show closed.
 
 #### Scenario: Two servers saved
-- **WHEN** `LM Studio дома` and `LiteLLM` are saved and the human opens Settings
+- **WHEN** `LM Studio дома` and `LiteLLM` are saved and the human opens Add models
 - **THEN** no request reaches either server, and every source is closed
 
 ### Requirement: The sources
 
-Sources SHALL list every agent CLI LADO knows, then every saved server by name ignoring
-case. A CLI not installed SHALL be greyed with `not installed` and not open; one installed
-but not logged in SHALL be marked `not logged in` and open. A server SHALL show its name,
-type and address; `+ Add server` SHALL follow the list.
+Add models SHALL list every agent CLI LADO knows, then every saved server by name ignoring
+case, then `+ Add server`. Each source SHALL be one row: an open/close arrow in a framed
+box, its name, `CLI` or the server's type, then how many models it gave (`2 added`) and its
+login state or its address. A CLI not installed SHALL be greyed with `not installed` and
+not open; one not logged in SHALL be marked `not logged in` and open.
 
 #### Scenario: First open
 - **WHEN** Claude Code, Codex CLI and OpenCode are installed and logged in, Kilo CLI is not
   installed, and no server is saved
-- **THEN** Sources shows Claude Code, Codex CLI and OpenCode, Kilo CLI greyed with `not
+- **THEN** Add models shows Claude Code, Codex CLI and OpenCode, Kilo CLI greyed with `not
   installed`, and `+ Add server`
+
+### Requirement: A source opens from its whole row
+
+A click anywhere on a source's row but its buttons SHALL open or close it, and so SHALL
+Enter and Space on the row; the row SHALL show it can be clicked on hover, and its arrow
+SHALL turn when open.
+
+#### Scenario: A click on the name
+- **WHEN** the human clicks the name `Kilo CLI`
+- **THEN** Kilo CLI opens and its arrow points down
+
+### Requirement: A long address stays on one line
+
+A server's address SHALL be cut with `…` to the row's room, the whole address shown on
+hover; the server's buttons (Refresh, Change, Remove) SHALL stay on the row's line and
+never wrap under the address. On a window narrower than 600 px they SHALL go on a line of
+their own under the name.
+
+#### Scenario: A gateway with a long address
+- **WHEN** a server's address is
+  `https://litellm-gateway.platform.internal.example.com:4000/v1`
+- **THEN** its row is one line ending in Change and Remove, and hovering it shows the
+  whole address
 
 ### Requirement: Opening a source reads its list now
 
@@ -60,22 +103,47 @@ the models…`. LADO SHALL keep no source's list between reads.
   presses Refresh
 - **THEN** `gemma-3-12b` shows in the list without a tick
 
+### Requirement: A source's list keeps its height
+
+An open source's list SHALL show at most about nine models and scroll within itself; the
+models of the source's configured models SHALL come first, in the order read at opening or
+Refresh, which no tick SHALL change; under the list a line SHALL say how many models it
+has.
+
+#### Scenario: Kilo CLI's 323 models
+- **WHEN** the human opens Kilo CLI, which lists 323 models, one of them configured
+- **THEN** the configured one is first, the list scrolls within itself, the page grows by
+  the list's height only, and the line says `323 models`
+
 ### Requirement: A tick is a configured model
 
-Each model of an open source SHALL have a tick per CLI that can run it: a CLI's source one
-tick; a server's source a column per CLI that is installed and whose API the server
-proves. A tick SHALL be on exactly when a configured model has that CLI, model and server.
-Ticking SHALL save one with its default name as `lado model add` would; unticking SHALL
-remove it, offering Undo as Remove does.
+Each model of an open source SHALL have one tick, on exactly when a configured model of
+that source has that model. Ticking SHALL save one with its default name as `lado model
+add` would: on a CLI, of that CLI; on a server, of the CLI chosen in **Run in**. Unticking
+SHALL remove it, offering Undo as Remove does. A ticked row SHALL say its name when it
+differs from the model, on a server its CLI.
 
 #### Scenario: Claude Sonnet
 - **WHEN** the human opens Claude Code and ticks `sonnet`
-- **THEN** `Claude Sonnet` (Claude Code, sonnet, no server) shows in Your models
+- **THEN** `Claude Sonnet` (Claude Code, sonnet, no server) shows in Your models and the
+  row says `as Claude Sonnet`
 
-#### Scenario: One model on two CLIs
-- **WHEN** the human opens `LiteLLM`, which proves chat completions and the Responses API,
-  and ticks `qwen3-8b` under OpenCode and under Codex CLI
-- **THEN** Your models shows two models of `qwen3-8b` on `LiteLLM`, one of each CLI
+#### Scenario: A model of LM Studio for Kilo CLI
+- **WHEN** the human opens `LM Studio`, picks Kilo CLI in Run in and ticks `qwen3-8b`
+- **THEN** a model of Kilo CLI, `qwen3-8b`, on `LM Studio` is saved and the row says `in
+  Kilo CLI`
+
+### Requirement: Run in picks a server model's CLI
+
+An open server SHALL show **Run in**, a choice of the installed CLIs whose API the server
+proves, the first of them chosen; it SHALL change no saved model, only the CLI of the next
+tick. A server only one installed CLI can use SHALL say `Runs in <CLI title>` instead; one
+none can use SHALL say `No installed CLI can use this server.` and have no ticks.
+
+#### Scenario: LM Studio proving three APIs
+- **WHEN** `LM Studio` proves chat completions, the Responses API and Anthropic's Messages
+  API, and all four CLIs are installed
+- **THEN** Run in offers OpenCode, Kilo CLI, Codex CLI and Claude Code
 
 ### Requirement: A model's default name
 
@@ -86,14 +154,14 @@ Sonnet`, `Claude Opus 1M`); a model of a CLI's own list, the model; a model on a
 than one CLI. A name taken SHALL get ` · <CLI title>` added, and then ` (2)`, ` (3)` until
 free.
 
-#### Scenario: The same model on a second CLI
-- **WHEN** `qwen3-8b · LiteLLM` of OpenCode is saved and the human ticks `qwen3-8b` under
-  Codex CLI
-- **THEN** the new model is named `qwen3-8b · LiteLLM · Codex CLI`
+#### Scenario: A taken name
+- **WHEN** `gpt-5-codex` is saved as a name of another model and the human ticks
+  `gpt-5-codex` under Codex CLI
+- **THEN** the new model is named `gpt-5-codex · Codex CLI`
 
 #### Scenario: A server several CLIs suit
 - **WHEN** `LM Studio дома` suits OpenCode and Kilo CLI and the human ticks `qwen3-8b`
-  under OpenCode
+  with OpenCode in Run in
 - **THEN** the model is named `qwen3-8b · LM Studio дома · OpenCode`
 
 #### Scenario: An alias with [1m]
@@ -102,8 +170,9 @@ free.
 
 ### Requirement: A tick of several models
 
-When several configured models have the same CLI, model and server, their tick SHALL be on
-and disabled, its title naming them; they SHALL be removed in Your models.
+When several configured models of a source have the same model (two names, or two CLIs on
+a server), its tick SHALL be on and disabled, its title naming them; they SHALL be removed
+in Your models.
 
 #### Scenario: Two names for one model
 - **WHEN** `Claude Opus` and `Сильная` are both Claude Code's `opus`
@@ -112,37 +181,37 @@ and disabled, its title naming them; they SHALL be removed in Your models.
 
 ### Requirement: Search in a long list
 
-An open source with more than ten models SHALL have a search field above its list that
-shows only the models whose name holds the typed text, ignoring case; the models missing
-from the list (below) SHALL always show.
+An open source with more than ten models SHALL have a search field above its list,
+`Search <n> models`, that shows only the models whose name holds the typed text, ignoring
+case; the line under the list SHALL say `<shown> of <n> models`.
 
-#### Scenario: A server with a hundred models
-- **WHEN** the human types `qwen` in the search of a server with 100 models
-- **THEN** only the models whose name holds `qwen` show
+#### Scenario: Kilo CLI searched
+- **WHEN** the human types `qwen3-8` in the search of Kilo CLI
+- **THEN** only the models whose name holds `qwen3-8` show
 
-### Requirement: Embeddings models are shown, not ticked
+### Requirement: Embeddings models are hidden and counted
 
-A model the server types embeddings SHALL be shown greyed with `(embeddings)` and its
-ticks disabled.
+A model the server types embeddings SHALL NOT be listed; under the list a line SHALL say
+`<n> embeddings model(s) hidden: agents cannot run on it (them).`
 
 #### Scenario: LM Studio's embeddings model
-- **WHEN** the human opens `LM Studio дома`, which types
-  `text-embedding-nomic-embed-text-v1.5` embeddings
-- **THEN** it shows greyed with `(embeddings)` and cannot be ticked
+- **WHEN** the human opens `LM Studio`, which types `text-embedding-nomic-embed-text-v1.5`
+  embeddings
+- **THEN** it is not listed and the line says `1 embeddings model hidden: agents cannot run
+  on it.`
 
 ### Requirement: A model its source no longer lists
 
 When a source's list was read and lacks the model of a configured model of that source,
-the model SHALL show first in the list, ticked, with `not in the server's list` (a CLI's:
-`not in <CLI title>'s list`), and in Your models with the warning `not in <source>'s list
-of models`. Nothing SHALL remove it but the human. Its ticks not on SHALL be disabled, their
-title saying why: the add would be refused.
+the model SHALL show first in the list, ticked, marked `no longer listed`, and in Your
+models with `⚠ not in list`, its title saying agents on it stop at their first turn.
+Nothing SHALL remove it but the human; unticking it SHALL remove it from the list too.
 
 #### Scenario: A model gone from the server
 - **WHEN** `mistral-7b · LiteLLM` is saved and `LiteLLM` no longer lists `mistral-7b`, and
   the human opens `LiteLLM`
-- **THEN** `mistral-7b` shows first, ticked, marked `not in the server's list`, and the
-  model stays saved
+- **THEN** `mistral-7b` shows first, ticked, marked `no longer listed`, and the model stays
+  saved
 
 ### Requirement: A server that does not answer
 
@@ -155,33 +224,37 @@ warning, and name its configured models, which SHALL stay.
 - **THEN** it shows `⚠ http://localhost:1234 does not answer (connection refused)` and
   `Локальная Gemma` stays saved
 
-### Requirement: Other model
+### Requirement: A model id only where the list is not whole
 
-An open source SHALL end with **Other model…**: a field for a model its list lacks (with a
-CLI choice for a server: the CLIs of its columns), the check `lado model add` would make
-shown under the field once the typing settles, and Add, which saves the model with its
-default name as `lado model add` does, disabled while that check refuses the model.
+A field **Model id** with Add SHALL end an open source only when its list is not whole:
+Claude Code (aliases only), a CLI whose list cannot be read, and a server that gives no
+list (Run in naming the CLI). Its note SHALL be the check `lado model add` would make, once
+the typing settles; Add SHALL save the model with its default name, off while refused.
 
-#### Scenario: Claude Code's full model name
-- **WHEN** the human types `claude-opus-5-5` in Other model… of Claude Code
-- **THEN** the note is a warning that LADO cannot check `claude-opus-5-5`, and Add saves it
+#### Scenario: Claude Code's full model id
+- **WHEN** the human types `claude-opus-4-1-20250805` in Model id of Claude Code
+- **THEN** the note is a warning that LADO cannot check it, and Add saves it
+
+#### Scenario: Codex CLI with its list
+- **WHEN** the human opens Codex CLI logged in to OpenAI
+- **THEN** its source has no Model id field
 
 ### Requirement: The table of Your models
 
-Your models SHALL show the configured models by name ignoring case: Name, CLI (its title),
-Model, Source (its server, else its CLI) and Remove, which removes the model at once as
-`lado model remove` does. A model of a CLI not installed SHALL show `<CLI title> is not
-installed` as a warning.
+Your models SHALL show the configured models by name ignoring case: Name, Model, Runs in
+(its CLI's title), From (its server, else its CLI, the server's address on hover) and ×,
+which removes the model at once as `lado model remove` does. A model of a CLI not installed
+SHALL show `<CLI title> is not installed` as a warning. On a phone Runs in SHALL be left out.
 
 #### Scenario: Removing a model
-- **WHEN** the human presses Remove on `Claude Sonnet`
+- **WHEN** the human presses × on `Claude Sonnet`
 - **THEN** it is gone from Your models and the tick of `sonnet` under Claude Code is off
 
 ### Requirement: Undo of a model removed
 
-After a model is removed, by its tick or Remove, Your models SHALL show `Removed "<name>"
-· Undo` for a few seconds; Undo SHALL save the model again with its name, CLI, model and
-server, as `lado model add <name>` would, a refusal shown by it.
+A model removed, by its tick or ×, SHALL leave in its row of Your models `Removed <name>.
+Undo` for ten seconds, the row's height kept; Undo SHALL save the model again with its
+name, CLI, model and server, as `lado model add <name>` would, a refusal shown in the row.
 
 #### Scenario: A renamed model unticked and brought back
 - **WHEN** the human renamed `Claude Sonnet` to `Сонет для ревью`, unticks `sonnet` and
@@ -190,62 +263,84 @@ server, as `lado model add <name>` would, a refusal shown by it.
 
 ### Requirement: Renaming a model in place
 
-**✎** by a model's name SHALL turn the name into a field with Save and Cancel; Save SHALL
-rename the model under the rules of a model's name, a refusal under the field; its CLI,
-model and server SHALL stay.
+A click on a model's name, or Enter on it, SHALL turn it into a field no wider than its
+cell, the name selected; Enter or leaving the field SHALL rename the model under the rules
+of a model's name, Esc SHALL restore it; there SHALL be no Save or Cancel button. A refused
+name SHALL keep the field with the refusal under it; leaving it then restores the name. On
+hover the name SHALL show a frame and the title `Click to rename`.
 
 #### Scenario: Claude Sonnet becomes Сильная
-- **WHEN** the human renames `Claude Sonnet` to `Сильная`
+- **WHEN** the human clicks `Claude Sonnet`, types `Сильная` and presses Enter
 - **THEN** Your models shows `Сильная` with Claude Code and sonnet, and `lado model list`
   shows it too
 
 #### Scenario: A name taken
-- **WHEN** the human renames a model to the name of another, in another case
+- **WHEN** the human renames a model to the name of another, in another case, and presses
+  Enter
 - **THEN** under the field it shows the name-taken line, and nothing changes
+
+#### Scenario: Esc
+- **WHEN** the human types a new name and presses Esc
+- **THEN** the old name shows and nothing is saved
 
 ### Requirement: The page adds a server as lado model-server add does
 
-`+ Add server` SHALL open a form with Name, Address and Key (optional); Add SHALL probe and
-save the server as `lado model-server add <name> <address> [--key]` does, Add disabled
-with `checking the server…` while it probes, no longer than the command. On success the
-server SHALL show in Sources, open, with `Saved model server "<name>".` and its CLIs.
+`+ Add server` SHALL open, at the end of the sources, a form with Name, Address and Key
+(optional); Add SHALL probe and save the server as `lado model-server add <name> <address>
+[--key]` does, each request no longer than the command's. On success the server SHALL show
+in place of the form, open, with `Saved model server "<name>".`
 
 #### Scenario: LiteLLM
 - **WHEN** the human adds `LiteLLM` at `10.0.0.5:4000` with its key, and it answers
-- **THEN** `LiteLLM` shows open in Sources with its models and `Saved model server
+- **THEN** `LiteLLM` shows open where the form was, with its models and `Saved model server
   "LiteLLM".`, and `lado model-server list` shows it
+
+### Requirement: The form checks the server as the human types
+
+Once the typing settles, the form SHALL check without a key: the name under Name, the
+address by the probe under Address (`checking …` meanwhile), an ok naming the type, models
+and CLIs. A key SHALL go only with **Check key** or Add. Add SHALL be on only for a free
+name and a server that answered, or that asks for a key with one typed.
+
+#### Scenario: A gateway that asks for a key
+- **WHEN** the human types `https://gw.corp/llm`, which answers 401
+- **THEN** Address says the server asks for a key, Check key shows once a key is typed,
+  and no key has been sent
+
+#### Scenario: A typo in the port
+- **WHEN** the human types `http://localhost:1243` and nothing answers there
+- **THEN** Address shows `http://localhost:1243 does not answer (connection refused)`
+  before any Add, and Add stays off
 
 ### Requirement: The same address and plain http are said, not refused
 
-A line `same address as model server "<name>"` SHALL show in a server's source after it is
-added or changed, for each other saved server at its address, until the next server is
-added, changed or removed; the command's plain-http warning SHALL show under the Key field
-as soon as an address and a key that would go there are typed, before anything is sent.
-Neither SHALL stop the save.
+The line `same address as model server "<name>"` SHALL show under Address for each saved
+server at the typed address, and after the server is saved, in its source until the next
+server is added, changed or removed; the plain-http warning SHALL show under Key once an
+address and a key that would go there are typed, nothing sent. Neither SHALL stop Add.
 
 #### Scenario: A key over plain http, said before Add
 - **WHEN** the human types the address `gw.example.com:4000` and a key, and has not pressed
   Add
-- **THEN** under Key it shows the plain-http warning, and no server has been asked
+- **THEN** under Key it shows the plain-http warning, and no key has been sent
 
 #### Scenario: The same address under a second name
-- **WHEN** `gateway` is saved at `http://10.0.0.5:4000` and the human adds `LiteLLM` at
+- **WHEN** `gateway` is saved at `http://10.0.0.5:4000` and the human types `LiteLLM` at
   `10.0.0.5:4000/v1/`
-- **THEN** `LiteLLM` is saved and shows `same address as model server "gateway"`
+- **THEN** Address shows `same address as model server "gateway"`, and Add saves it
 
 ### Requirement: A refusal is the command's rule in the page's words under its field
 
 Every refusal and warning SHALL be the one the matching command makes, its hint under it,
-under the field it concerns: Name, Address or Key of a server; Other model's field or CLI;
-a rename's field; a refusal of no field under the buttons or the tick's row. Its line and
-hint SHALL name no command to run, but what to do on the page; the commands SHALL print
-their lines as before. The form SHALL keep its values but the key's.
+under the field it concerns: Name, Address or Key of a server; Model id; a rename's field;
+a refusal of no field under the buttons or in the tick's row. Its line and hint SHALL name
+no command to run, but what to do on the page; the commands SHALL print their lines as
+before. The form SHALL keep its values but the key's.
 
-#### Scenario: A gateway that asks for a key
-- **WHEN** the human adds `work` at `https://gw.corp/llm` without a key and it answers 401
-- **THEN** under Key it shows `https://gw.corp/llm asks for a key (401): enter it in Key`,
-  and `lado model-server add work https://gw.corp/llm` prints `… asks for a key (401): run
-  lado model-server add "work" https://gw.corp/llm --key`
+#### Scenario: A key refused
+- **WHEN** the human adds `work` at `https://gw.corp/llm` with a key it answers 401 to
+- **THEN** under Key it shows the refusal, and `lado model-server add work
+  https://gw.corp/llm --key` prints its own line as before
 
 #### Scenario: A name taken
 - **WHEN** the human renames a model to `claude sonnet` and `Claude Sonnet` is saved
@@ -253,18 +348,18 @@ their lines as before. The form SHALL keep its values but the key's.
 
 #### Scenario: A model gone from the server's list
 - **WHEN** the human ticks a model its server no longer lists
-- **THEN** the row shows `<model> is not in <server>'s list of models; ↻ Refresh reads the
-  list again`
+- **THEN** the row shows `<model> is not in <server>'s list of models`, and the tick is
+  off
 
-#### Scenario: An address that does not answer
-- **WHEN** the human adds `lab` at `http://127.0.0.1:<a closed port>`
-- **THEN** under Address it shows `http://127.0.0.1:<port> does not answer (connection
-  refused)`, and the form keeps `lab` and the address
+### Requirement: The fields and notes look as the launch window's
 
-### Requirement: The notes look as the launch window's
+Every field, choice and button of the section SHALL have the size and font of the launch
+window's; a warning, a refusal and an ok SHALL look as the launch window's notes do, and no
+note SHALL cover a field or another note.
 
-A warning, a refusal and an ok SHALL look as the launch window's notes do, and no note SHALL
-cover a field or another note.
+#### Scenario: Run in
+- **WHEN** the human opens the choice Run in
+- **THEN** its options show in the font and size of the launch window's choices
 
 #### Scenario: Two notes under one field
 - **WHEN** an address does not answer in LADO's container
@@ -273,10 +368,10 @@ cover a field or another note.
 
 ### Requirement: Change replaces a server's address or key
 
-**Change** of a server SHALL open its Address, filled, and New key, empty; Save SHALL
-replace the server as `lado model-server add <name> <address> [--key] --replace` does, with
-the kept key, kept, when New key is empty. Its models SHALL keep referring to it; a failed
-probe SHALL change nothing.
+**Change** of a server SHALL open, in its row, its Address, filled, and New key, empty;
+Save SHALL replace the server as `lado model-server add <name> <address> [--key] --replace`
+does, with the kept key, kept, when New key is empty. Its models SHALL keep referring to
+it; a failed probe SHALL change nothing.
 
 #### Scenario: A new key for a gateway
 - **WHEN** `work` is saved with a key and the human saves a new key in New key, which the
@@ -290,11 +385,12 @@ probe SHALL change nothing.
 
 ### Requirement: Removing a server removes its models after a confirmation
 
-**Remove** of a server SHALL ask in its source: `Remove <name>?`, or with models `Remove
-<name> and its <n> models: <name>, <name>?`; only its confirmation SHALL remove them as
-`lado model-server remove <name> --with-models` does, and only the models it named: when
-the server has others by then, nothing SHALL be removed and it SHALL ask again, naming
-them.
+**Remove** of a server SHALL ask in its row: `Remove <name>?`, or with models `Remove
+<name> and its <n> models: <name>, <name>?`, saying its key goes too and it cannot be
+undone; only its confirmation SHALL remove them as `lado model-server remove <name>
+--with-models` does, and only the models it named: when the server has others by then,
+nothing SHALL be removed and it SHALL ask again, naming them. The row SHALL then say
+`Removed <name> and its <n> models.`
 
 #### Scenario: A model added after it asked
 - **WHEN** the confirmation names `a`, and `lado model add` puts `late` on the server before
@@ -304,7 +400,8 @@ them.
 
 #### Scenario: A server with three models
 - **WHEN** three models refer to `LiteLLM` and the human removes it and confirms
-- **THEN** the models, the server and its key folder are gone
+- **THEN** the models, the server and its key folder are gone, and the row says `Removed
+  LiteLLM and its 3 models.`
 
 #### Scenario: Cancel
 - **WHEN** the human presses Cancel at the confirmation
@@ -318,8 +415,9 @@ journal, the change feed, `lado.db` or any file of `LADO_HOME` but the server's 
 SHALL hold its value.
 
 #### Scenario: The canary
-- **WHEN** a unique key is sent through a real server's API to add a server, to change it,
-  in a request the server refuses as unreadable and in one whose probe is refused
+- **WHEN** a unique key is sent through a real server's API to check a server, to add one,
+  to change it, in a request the server refuses as unreadable and in one whose probe is
+  refused
 - **THEN** no answer, no line of the server's log or the error journal, and no file of
   `LADO_HOME` but `model-servers/<id>/key` holds the key
 
@@ -336,13 +434,12 @@ form closes.
 
 ### Requirement: The section fits a phone
 
-On a window narrower than 464 px the section's forms SHALL show their fields one under the
-other and no part of the section SHALL make the page scroll sideways; a wide source's list
-MAY scroll sideways within itself.
+On a window narrower than 600 px the section's forms SHALL show their fields one under the
+other, and no part of the section SHALL make the page scroll sideways.
 
 #### Scenario: A server's list on a phone
-- **WHEN** the human opens a server with three CLI columns in a window 390 px wide
-- **THEN** the page does not scroll sideways
+- **WHEN** the human opens a server with a long address in a window 390 px wide
+- **THEN** the page does not scroll sideways and the server's buttons show under its name
 
 ### Requirement: Without the page everything is as before
 

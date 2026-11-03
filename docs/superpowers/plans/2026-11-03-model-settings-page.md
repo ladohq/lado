@@ -271,3 +271,54 @@ and remove servers, a server's models with it (`lado model-server remove --with-
   separate `LADO_HOME` and `LADO_TMUX_SOCKET` (schema 38), `make web`, `uv run lado ui`,
   `/settings#models`, LM Studio on localhost and an outside server, the screenshots.
 - [ ] Commit `Docs of Settings → Models (LAD-187)`.
+
+### Task 10: The page after the human's UI remarks (D16)
+
+The page of Tasks 7 and 8 is built; this task reworks it to the clickable mock-up
+(`mockup-models-clickable.html`, layout 1: tabs). The core, the commands and the routes but
+the form's check stay.
+
+**Files:** modify `src/lado/server/model_entries.py` (`check_server`), `src/lado/server/models.py`
+(`ModelServerCheck{name, address, key: str | None, key_typed}`, `ServerCheck`, `kind` in
+`ProbeInfo`), `src/lado/server/app.py`; `web/openapi.json`, `web/src/api.gen.ts`
+(`make web-types`); `web/src/ModelSettings.tsx`, `web/src/ModelSources.tsx`, `web/src/api.ts`,
+`web/src/styles.css` and their vitest files; `tests/test_server_model_settings.py`,
+`tests/integration/test_model_settings_canary.py`, `tests/ui/test_models_section.py`;
+`docs/design/ui.md`.
+
+**Interfaces (produces):** `checkModelServer(body: ModelServerCheck): Promise<ServerCheck>`;
+`model_entries.check_server(given) -> models.ServerCheck`.
+
+- [ ] Unit first, `tests/test_server_model_settings.py`: the check with a free name and the
+  fake `lmstudio` gives `probe.kind`, its models and CLIs, no refusal; a taken name gives a
+  refusal of field `name`; a closed port a refusal of field `address`; `anthropic-versioned`
+  without a key a refusal of field `key` (asks for a key); `key_typed` over plain http the
+  warning, no key in the request the fake records; with `key` the fake records it once;
+  a second server at the address the same-address note. Implement; `make web-types`.
+- [ ] The canary (`test_model_settings_canary.py`) also sends its key through the check.
+- [ ] Vitest first, `ModelSettings.test.tsx`: two tabs, `Your models 4`; the empty line's
+  link opens Add models; `#models` scrolls once at mount, not after a change of the entries;
+  a click on a name gives a field, Enter PATCHes, Esc restores without a request, blur
+  PATCHes, a refusal stays under the field, blur then restores; × DELETEs and leaves the
+  row `Removed <name>. Undo` for `UNDO_MS`, Undo POSTs it back.
+- [ ] Vitest first, `ModelSources.test.tsx`: a click on the row's name toggles (and Enter);
+  `<n> added`; the address in the title; Run in lists `probe.clis` ∩ installed, the tick
+  POSTs that CLI; one CLI → `Runs in …`; none → the line and no ticks; the order set at
+  reading and kept across ticks; `<n> models` and `<shown> of <n> models`; no embeddings
+  row, the count line; Model id for Claude Code, for a CLI with `models: null`, for a server
+  with `models: null`, none for Codex with a list; the form: the check after
+  `MODEL_DEBOUNCE` without the key, an older answer dropped, Add off until an ok or an
+  asked key with a key typed, Check key sends the key once; Remove's question says the key
+  goes and it cannot be undone; the removed server's row says `Removed … and its <n>
+  models.`
+- [ ] Implement to the mock-up; `make web`.
+- [ ] UI e2e (`test_models_section.py`, reworked): `test_no_shift` (tick, ×, add and remove
+  a server: `window.scrollY` and the acted element's top unchanged); `test_long_list` (the
+  fake's profile with 323 models: the list's height bounded, the page's height grows by
+  less than 400 px, search narrows); `test_rename_enter_esc`; `test_add_form_checks`
+  (a closed port refused before Add, Add off; `lmstudio` ok, Add on);
+  `test_phone_width` (390 px, a long address: no sideways scroll, the buttons under the
+  name); screenshots for the pull request.
+- [ ] `docs/design/ui.md` as built; the manual check in the pull request names the new
+  steps (tabs, rename by Enter/Esc, the form's check); regression as Task 9; commit
+  `Settings → Models after the human's UI remarks (LAD-187)`.

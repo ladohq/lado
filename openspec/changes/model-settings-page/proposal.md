@@ -36,19 +36,25 @@ provider's own list).
 ## What Changes
 
 - Settings gets a section **Models** after Providers and environment, before Usage
-  statistics, at `/settings#models`: **Your models** (the configured models: Name with ✎
-  rename, CLI, Model, Source, Remove) above **Sources** (every LADO CLI, not installed ones
-  greyed, not logged in ones marked; every saved server; `+ Add server`).
-- Opening a source reads its list now (a CLI's aliases and own list; a server's by a probe
-  with its kept key), Refresh reads it again; nothing is read when the page opens and no
-  list is kept. Each model has a tick per CLI that can run it (a server: a column per
-  installed CLI whose API it proves); ticking saves a configured model with a default name
-  (`Claude Sonnet`, `gpt-5-codex`, `qwen3-8b · LiteLLM`), unticking removes it.
-- A long list has a search field; embeddings models show greyed with `(embeddings)`, not
-  tickable; a configured model its source no longer lists shows first, ticked, marked, and
-  is never removed by itself; a server that does not answer says why and its models stay.
-- **Other model…** in each source: a model the list lacks, with the launch window's live
-  check.
+  statistics, at `/settings#models`, with two tabs: **Your models** (Name, renamed by a
+  click on it, Model, Runs in, From, × with Undo) and **Add models** (every LADO CLI, not
+  installed ones greyed, not logged in ones marked; every saved server; `+ Add server`).
+  Nothing on the page moves under the pointer: no scroll to the anchor after a change, a
+  removed row keeps its place as its Undo.
+- Opening a source (its whole row) reads its list now (a CLI's aliases and own list; a
+  server's by a probe with its kept key), Refresh reads it again; nothing is read when the
+  page opens and no list is kept. Each model has one tick; on a server the CLI is the one
+  chosen in **Run in**. Ticking saves a configured model with a default name (`Claude
+  Sonnet`, `gpt-5-codex`, `qwen3-8b · LM Studio · OpenCode`), unticking removes it.
+- A list scrolls within a bounded height, its configured models first, with a search above
+  ten models; embeddings models are hidden and counted; a configured model its source no
+  longer lists shows first, ticked, marked, and is never removed by itself; a server that
+  does not answer says why and its models stay.
+- **Model id** only where a source's list is not whole (Claude Code's full ids, a CLI or a
+  server with no list), with the launch window's live check.
+- The add-server form checks the name and probes the address as the human types, without
+  the key; the key goes only with Check key or Add; Add is on only for a server that
+  answered.
 - Adding a server probes it as `lado model-server add` does; **Change** replaces its address
   and/or key as `--replace` does (an empty key keeps the kept one); **Remove** of a server
   asks, listing its models, and removes them with it.
@@ -77,6 +83,9 @@ provider's own list).
   page; a source is read when the human opens it.
 - UI texts of their own for the refusals: a second set of texts drifting from the commands'.
 - Removing several models at once other than with their server.
+- A second CLI for the same model of a server from the page: one tick per model; `lado
+  model add` makes it, and the page shows both under one disabled tick.
+- Undo of a server removed: its key is deleted with it and LADO keeps no copy of a key.
 
 ## Capabilities
 
@@ -100,7 +109,7 @@ provider's own list).
   `src/lado/server/model_entries.py`; `web/src/Settings.tsx`, new
   `web/src/ModelSettings.tsx` and `web/src/ModelSources.tsx`, `web/src/api.ts`,
   `web/src/paths.ts`, `web/src/styles.css`; `web/openapi.json` and `web/src/api.gen.ts`
-  regenerated. About 15 code files.
+  regenerated. About 15 code files; the redesign after the human's UI remarks changes the page's two components, `styles.css`, `model_entries.py`, `models.py` and `app.py` (the form's check) of them.
 - Docs: `docs/design/ui.md`, `docs/design/modules.md`, AGENTS.md's line of `server/`,
   `docs/cli.md` (`--with-models`, doctor's line), CHANGELOG.md (0.45.0, New).
 - Tests: unit, integration (the key canary, `--with-models` in the real command), vitest,

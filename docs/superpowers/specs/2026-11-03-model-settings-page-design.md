@@ -59,6 +59,38 @@ Models
 - **Refusals** are the commands' lines under the field they concern, in the launch window's
   note look. At phone width the forms stack; a wide list scrolls inside itself.
 
+## After the human's UI remarks (#2949, #2950, #2969)
+
+The built page met twelve remarks; the human asked for a clickable mock-up first (the
+run's artifact `mockup-models-clickable.html`) and took 1A, 2A, 3A: a model keeps its CLI,
+Model id only where a list is not whole, embeddings hidden. The page becomes:
+
+```
+Models
+[Your models 4] [Add models]
+ Name (click)          Model        Runs in      From
+ Claude Sonnet         sonnet       Claude Code  Claude Code     ×
+ Removed gpt-5-codex. Undo                                         (10 s, same height)
+
+[Add models]
+ [▶] Claude Code  CLI  1 added · logged in
+ [▼] Kilo CLI     CLI  logged in                          [Refresh]
+     [Search 323 models]
+     ┌ ☑ qwen/qwen3-8b                           added ┐  ≤ 9 rows, scrolls inside
+     │ ☐ anthropic/claude-3.5-haiku                    │
+     └ …                                               ┘
+     323 models · the ones you added are at the top
+ [▼] LM Studio  LM Studio  1 added · http://localhost:1234   [Refresh][Change][Remove]
+     [Search 12 models]  Run in [OpenCode ▾]
+     ☑ qwen3-8b                               in OpenCode
+     1 embeddings model hidden: agents cannot run on it.
+ [▶] LiteLLM  LiteLLM  https://litellm-gateway.platform.inte…  [Change][Remove]
+ [+ Add server]  → Name · Address (checked as typed) · Key (sent on Check key / Add)
+```
+
+Each remark and its answer: D16 of design.md. The two layouts of the mock-up: tabs (taken,
+recommended) and one page with the sources above Your models.
+
 ## Root cause and options
 
 The store and its rules (`model_settings.py`) have no API, and the UI has no place for the
@@ -103,6 +135,10 @@ D12 doctor's gone model · D13 the page's components · D14 the tests.
 
 | Requirement | Layer | Why that layer |
 |---|---|---|
+| Nothing moves under the pointer | UI e2e (`scrollY` and the element's top before and after) | layout, real scrolling |
+| The form checks the server as the human types | unit (the check route, no key unless sent) + vitest (debounce, stale answers dropped, Add on/off) + UI e2e | |
+| A source's list keeps its height; embeddings hidden | vitest + UI e2e (323 models) | |
+| Run in; a model id only where the list is not whole | vitest (`models === null`) + unit (`ProbeInfo.kind`) | |
 | Settings has a section Models; Your models without a model | vitest + UI e2e | DOM order, scroll |
 | Opening the section reads no list | unit (routes: the fake server's request record; no CLI list read) + vitest (no read before opening) | |
 | The sources | vitest (installed/login from `/api/providers*`) + UI e2e | |

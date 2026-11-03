@@ -38,7 +38,7 @@ token (`guard` reads, `guard.changes` changes):
 |---|---|---|
 | `GET /api/model-settings` | | `ModelSettings{models: [ConfiguredModelInfo], servers: [ModelServerInfo]}` |
 | `POST /api/model-servers` | `ModelServerAdd{name, address, key: str \| None, replace: bool}` | `ModelServerAdded{server, probe: ProbeInfo, notes, warnings}` |
-| `POST /api/model-servers/check` | `ModelServerCheck{address, key: bool}` | `ModelCheck`: the plain-http warning before an Add (the human's manual check: it came only after the key was sent); asks no server, takes no key |
+| `POST /api/model-servers/check` | `ModelServerCheck{name, address, key: str \| None, key_typed: bool}` | `ServerCheck{probe: ProbeInfo \| None, refusals: [EntryRefused], warnings, notes}`: the form's check as the human types (D16.5); probes the address, with `key` only when the human pressed Check key |
 | `POST /api/model-servers/{name}/probe` | | `ProbeInfo`, probed now with the kept key |
 | `DELETE /api/model-servers/{name}?with_models=true&confirmed=…` | | `ModelSettings` |
 | `POST /api/models` | `ModelAdd{name: str \| None, cli, model, server: str \| None}` | `ModelAdded{model: ConfiguredModelInfo, check: ModelCheck}` |
@@ -105,13 +105,14 @@ shows), and a probe of up to eight requests and ~10 s not repeated per keystroke
 
 ### D6. The tick is derived from the entries
 
-The page computes each tick from `ModelSettings.models`: on when a model has the same CLI,
-model and server. Ticking POSTs `ModelAdd{name: null, …}`; unticking DELETEs the one model
-it stands for; with several such models the tick is on and disabled, its title naming
-them, and they are removed in Your models. The columns of a server are its `ProbeInfo.clis`
-(the APIs it proves now) that `/api/providers` says are installed. A configured model whose
-model the read list lacks is shown first, ticked, marked. Why: one source of truth (the
-entries); no second store of ticks.
+The page computes each tick from `ModelSettings.models`: on when a model of the source has
+the same model (on a CLI: that CLI and no server; on a server: that server, any CLI).
+Ticking POSTs `ModelAdd{name: null, …}`, on a server with the CLI of Run in; unticking
+DELETEs the one model it stands for; with several such models the tick is on and disabled,
+its title naming them, and they are removed in Your models. Run in offers the server's
+`ProbeInfo.clis` (the APIs it proves now) that `/api/providers` says are installed (D16.2).
+A configured model whose model the read list lacks is shown first, ticked, marked. Why: one
+source of truth (the entries); no second store of ticks.
 
 ### D7. A server removed with its models
 
@@ -140,8 +141,9 @@ entry, not its name; "only what is used" leaves the column to the change that fi
 
 ### D9. The key's way in
 
-The key travels only in `ModelServerAdd.key`, the body of `POST /api/model-servers` (add
-and Change). `SECRET_ROUTE` becomes `r"/api/((projects/[^/]+/secrets|providers/[^/]+/variables)/|model-servers(/|$))"`
+The key travels only in the body of a POST: `ModelServerAdd.key` of `POST
+/api/model-servers` (add and Change) and `ModelServerCheck.key` of `POST
+/api/model-servers/check` (Check key, D16.5). `SECRET_ROUTE` becomes `r"/api/((projects/[^/]+/secrets|providers/[^/]+/variables)/|model-servers(/|$))"`
 so a 422 there repeats nothing of its body. `null` is no key (add) or the kept key
 (Change); `""` is refused with the command's `the key is empty`, moved from
 `cli._server_key` into `model_settings.check_key` so both share it (field `key`). No answer
@@ -167,18 +169,17 @@ list of models` and makes the line WARN. Why: the cases' 7; the probe is already
 
 ### D13. The page
 
-`web/src/ModelSettings.tsx` (new): the section (`id="models"`, `MODELS_ANCHOR` in
-`paths.ts`, scrolled to as Providers' anchor is), Your models (table, ✎ rename, Remove),
-the add-server form. `web/src/ModelSources.tsx` (new): the sources, a source's list with
-its ticks, search, embeddings, missing models, Other model…, Refresh, Change and Remove of a
-server. It reuses `SecretField`, `SuggestField` (Other model…'s suggestions are the read
-list), the `.field`, `.launch-grid`, `.field-note`, `.project-vars`, `.project-edit`
-classes, `useDebounced`/`MODEL_DEBOUNCE`, `messageOf`, `ApiError.detail`. `Settings.tsx`
-renders it between `Providers` and `StatisticsSetting`. The page reads `GET
-/api/model-settings` on opening and after each change of its own; no change-feed event. New
-CSS only for what the classes lack (sources, a list's columns, the search, phone layout), in
-`styles.css` with tokens only. The search shows above more than ten models. Why: one look
-with the launch window and the project page (LAD-176's remarks).
+`web/src/ModelSettings.tsx`: the section (`id="models"`, `MODELS_ANCHOR` in `paths.ts`),
+its two tabs (D16.1), Your models (table, rename in place, ×, Undo rows). `web/src/
+ModelSources.tsx`: the sources, a source's list with its ticks, Run in, search, the
+embeddings line, missing models, Model id, Refresh, the add-server form, Change and Remove
+of a server. It reuses `SecretField`, the `.tab-bar`/`.tab-item`/`.tab-count`, `.field`,
+`.launch-grid`, `.field-note` classes, `useDebounced`/`MODEL_DEBOUNCE`, `messageOf`,
+`ApiError.detail`. `Settings.tsx` renders it between `Providers` and `StatisticsSetting`.
+The page reads `GET /api/model-settings` on opening and after each change of its own; no
+change-feed event. New CSS only for what the classes lack, in `styles.css` with tokens
+only. The look is the clickable mock-up's (`mockup-models-clickable.html`). Why: one look
+with the launch window and the project page (LAD-176's remarks, the human's remarks #2949).
 
 ### D14. Tests
 
@@ -209,14 +210,64 @@ AGENTS.md's lowest layer each; the canary and the real command cross processes.
 
 Why: the human's manual check of the page (#2935: the three choices by the recommendation).
 
+### D16. The page after the human's UI remarks
+
+The human's twelve remarks on the built page (#2949) and their answers (#2950: a clickable
+mock-up first; #2969: 1A, 2A, 3A) change the page, not the core's rules or the commands.
+
+1. **Tabs, not two blocks one above the other.** Your models and Add models are tabs of the
+   section, the first named with the number of models. A tick then adds no row above the
+   pointer; the number in the tab is the only thing that changes outside the list. The
+   other layout weighed (sources above, Your models under them) is in the mock-up too; it
+   keeps both in sight but puts the human's models under a long list. Why: remarks 2, 11.
+2. **One tick per model; Run in for a server.** A model entry stays "how to run an agent":
+   CLI, the CLI's model, server (#2969, 1A; the concept's Q3a). A server's columns of CLIs
+   give way to one tick and a choice Run in above the list; a second CLI for the same
+   server model is the command's (`lado model add`). Why: remark 5, the human's answer.
+3. **Model id only where a list is not whole** (#2969, 2A): Claude Code (its aliases are its
+   only list; it takes full ids LADO cannot check), a CLI whose `model_list` gives `models
+   is None`, a server whose probe gives no list. Codex, Kilo, OpenCode and a server with a
+   list have none: their checks refuse a name outside the list. Why: remarks 1, 6.
+4. **Embeddings hidden and counted** (#2969, 3A): `ProbeInfo.embeddings` is not listed; a
+   line counts them. Why: remark 9.
+5. **The form checks as the human types.** `POST /api/model-servers/check` takes the name,
+   the address, `key_typed` and the key only after Check key; it runs `check_name`, the
+   name taken, `server_to_add`'s same-address notes, the plain-http warning and the probe
+   (`model_servers.probe`, the command's: 5 s a request); `kind` comes back in `ProbeInfo`.
+   The page sends it `MODEL_DEBOUNCE` after the last keystroke and drops an answer to an
+   older request. Add stays the command's probe and save: a server that changed between the
+   check and Add is refused at Add. Why: remark 10; the key goes only on the human's act.
+6. **Nothing moves under the pointer.** The anchor `#models` scrolls the page once, when it
+   opens, never after a reload of the entries (the cause of remark 11: `scrollIntoView` on
+   every change of the entries while the hash was `#models`). A removal keeps its row's
+   height as the Undo row; a server added takes the form's place; a server removed leaves a
+   one-line row; a confirmation and Change open under their row. A list's order is set at
+   reading, never by a tick. Why: remarks 2, 11.
+7. **Rename on the name itself.** The name is a button with a frame on hover and the title
+   `Click to rename`; the field fills the cell; Enter or blur saves, Esc restores; no ✎, no
+   Save/Cancel. Why: remark 3.
+8. **A list's height is bounded**: about nine rows, scrolled within; search above ten
+   models; the configured ones first. Why: remark 4.
+9. **The row of a source**: the whole row toggles, a framed arrow turns; `<n> added`, then
+   the login state or the address, cut with `…` and whole in the title; the buttons never
+   wrap (a grid of the row and its buttons; under 600 px the buttons get a line of their
+   own). Why: remarks 8, 12.
+10. **Run in is a `.field` select** of the launch window's size and font. Why: remark 7
+    (the CLI choice of Other model… inherited the browser's font).
+11. **A server removed is not undone**: its key file goes with it, and LADO keeps no copy of
+    a key; the confirmation says so. Models removed one by one keep their Undo.
+
 ## Risks / Trade-offs
 
 - Opening a server's source takes up to ~10 s for one that hangs: the source says
   `reading the models…` and the rest of the page stays usable.
 - A tick shown from a list read seconds ago may meet a server changed since: ticking probes
   again and a refusal shows in the tick's row.
-- The refusals name CLI commands on a page (`run lado model-server add … --key`): accepted
-  by the human (#2875, 5).
+- The form's check probes a server while the human types: at most one check runs at a
+  time per form and an older answer is dropped; a slow server shows `checking …` up to the
+  command's time.
+- An Undo row of a model removed by its tick is in Your models, not in Add models; the tick
+  itself undoes it there.
 - A change made from the CLI while the page is open shows on the next opening.
 - `default_name` makes long names on servers with long model ids; the name is cut to 64
   characters and can be renamed.

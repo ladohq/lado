@@ -18,7 +18,7 @@ function scroller(section: HTMLElement): HTMLElement | Window {
   return narrow ? window : ((section.closest(".content") as HTMLElement | null) ?? window);
 }
 
-const viewTop = (on: HTMLElement | Window) => (on instanceof Window ? 0 : on.getBoundingClientRect().top);
+const viewTop = (on: HTMLElement | Window) => (on === window ? 0 : (on as HTMLElement).getBoundingClientRect().top);
 
 function firstInView(section: HTMLElement): Element | null {
   const top = viewTop(scroller(section));
@@ -26,7 +26,9 @@ function firstInView(section: HTMLElement): Element | null {
   return null;
 }
 
-export function useScrollAnchor(section: RefObject<HTMLElement | null>): { hold: (acted?: Element | null) => void } {
+export function useScrollAnchor(section: RefObject<HTMLElement | null>): {
+  hold: (acted?: Element | null) => void;
+} {
   const held = useRef<Held | null>(null);
   const acted = useRef<Element | null>(null);
 

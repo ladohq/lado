@@ -7,6 +7,7 @@ import type { ConfiguredModelInfo, ModelServerInfo, ModelSettings, ProbeInfo, Pr
 import { claudeRow, cli, codexRow, opencodeRow } from "./fakes";
 
 export type Call = { method: string; path: string; body: unknown };
+type Added = { name: string | null; cli: string; model: string; server: string | null };
 
 export const LMSTUDIO_PROBE: ProbeInfo = {
   kind: "LM Studio",
@@ -78,11 +79,11 @@ export class ModelServer {
       return found ? json(found) : json({ detail: { message: "no", hint: "", field: "", warnings: [] } }, 400);
     }
     if (where === "/api/models" && method === "POST") {
-      const given = body as { name: string | null; cli: string; model: string; server: string | null };
-      const title = this.logins.find((r) => r.cli.name === given.cli)?.cli.title ?? given.cli;
-      const added = model(given.name ?? `${given.model} (default)`, given.cli, title, given.model, given.server);
+      const given = body as Added;
+      if (given.name && this.taken(given.name)) return refusal(`the name is taken by the model "${given.name}"`, "name");
+      const added = model(given.name ?? this.named(given), given.cli, this.title(given.cli), given.model, given.server);
       this.entries = { ...this.entries, models: [...this.entries.models, added] };
-      return json({ model: added, check: { kind: "ok", text: "fine", field: "" } });
+      return json({ model: added, check: { kind: "ok", text: "fine", field: "", name: "" } });
     }
     const named = where.match(/^\/api\/models\/(.+)$/);
     if (named && method === "DELETE") {
@@ -97,15 +98,18 @@ export class ModelServer {
       };
       return json(this.entries);
     }
-    if (where === "/api/models/check") return json({ kind: "ok", text: "in the list", field: "" });
+    if (where === "/api/models/check") {
+      const given = body as Added;
+      return json({ kind: "ok", text: "in the list", field: "", name: given.name ?? this.named(given) });
+    }
     if (where === "/api/model-servers/check") {
       // The core's rules in short: a name taken; nothing answers at a port 1243; a gateway
       // (`gw` in its address) asks for a key, takes "right"; a key over http:// to a host not
       // on the machine; another server at the same address.
-      const given = body as { name: string; address: string; key: string | null; key_typed: boolean };
+      const given = body as { name: string; address: string; key: string | null; key_typed: boolean; replace: boolean };
       const refusals = [];
       const taken = this.entries.servers.find((s) => s.name.toLowerCase() === given.name.toLowerCase());
-      if (taken) refusals.push(detail(`a model server "${taken.name}" is saved already`, "name"));
+      if (taken && !given.replace) refusals.push(detail(`a model server "${taken.name}" is saved already`, "name"));
       const address = given.address.trim();
       const url = /^https?:\/\//.test(address) ? address : `http://${address}`;
       const host = url.replace(/^https?:\/\//, "").split(/[:/]/)[0];
@@ -120,7 +124,9 @@ export class ModelServer {
         refusals.push(detail(given.key === null ? `${url} asks for a key (401): enter it in Key` : `${url} refused the key (401)`, "key"));
       const probe = refusals.some((r) => r.field !== "name") ? null : { ...LMSTUDIO_PROBE, kind: address.includes("gw") ? "LiteLLM" : "LM Studio", address: url };
       const notes = probe
-        ? this.entries.servers.filter((s) => s.address === url).map((s) => `same address as model server "${s.name}"`)
+        ? this.entries.servers
+            .filter((s) => s.address === url && !(given.replace && s === taken))
+            .map((s) => `same address as model server "${s.name}"`)
         : [];
       return json({ probe, refusals, warnings, notes });
     }
@@ -143,6 +149,16 @@ export class ModelServer {
       return json({ server: saved, probe: LMSTUDIO_PROBE, notes: [], warnings: [], replaced: false });
     }
     return json({ detail: `no fake for ${method} ${path}` }, 404);
+  }
+
+  title = (cli: string) => this.logins.find((r) => r.cli.name === cli)?.cli.title ?? cli;
+  taken = (name: string) => this.entries.models.some((m) => m.name.toLowerCase() === name.toLowerCase());
+
+  // The core's default name in short: `<model> · <server> · <CLI title>` on a server, else
+  // the model, then ` (default)`; ` (2)` when taken.
+  named(given: Added): string {
+    const base = given.server ? `${given.model} · ${given.server} · ${this.title(given.cli)}` : `${given.model} (default)`;
+    return this.taken(base) ? `${base} (2)` : base;
   }
 
   of(method: string, start: string): Call[] {

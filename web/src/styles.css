@@ -9010,46 +9010,78 @@ del.kit-mcp-name {
   margin-top: 10px;
 }
 
-/* Settings → Models (ModelSettings.tsx, ModelSources.tsx): two tabs over the section's own
-   panel; Your models a card per agent CLI, headed on --ground, a table of fixed columns
-   whose rows keep their height (a removed model's Undo row too); Add models a framed list of
-   sources, each a row the whole of which opens it (a framed arrow that turns), its icons at
-   the right on its line, its models in a list of at most about nine rows that scrolls within
-   itself. Forms and notes are the launch window's (.launch-grid, .field, .field-note). */
-.setting .mx-tabs {
-  margin: 14px -22px 0;
-  padding-left: 18px;
-  background: none;
+/* Settings → Models (ModelSettings.tsx, ModelSources.tsx): one section, three blocks one
+   under the other. Your models a card per agent CLI with models, headed on --raised, rows of
+   fixed columns that keep their height (a removed model's Undo row too), a name wrapped,
+   never cut; Model servers and Models of your agent CLIs framed rows, the whole of which
+   opens a source (a framed arrow that turns), its icons at the right on its line, its models
+   in a list of at most --list-rows rows that scrolls within itself. Forms and notes are the
+   launch window's (.launch-grid, .field, .field-note); green (--done) only for what answered
+   and what was saved. */
+.setting.mx {
+  --row: 36px; /* one row of a list of models */
+  --list-rows: 9; /* a list's rows before it scrolls within itself */
+  --gap-block: 24px; /* between the section's blocks */
 }
 
-.mx-tabs .tab-item {
-  background: none;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
+.setting p.mx-intro {
+  margin: 6px 0 0;
 }
 
-.mx-tabs .tab-item[data-active] {
-  background: var(--panel);
+.mx-block {
+  margin-top: var(--gap-block);
 }
 
-.mx-panel {
-  padding-top: 14px;
+.mx-block h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
-.mx-empty,
-.setting p.mx-empty {
-  margin: 0;
+.mx-count {
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--muted);
+  font: 500 11px/18px var(--mono);
+}
+
+.setting p.mx-lead {
+  margin: -4px 0 10px;
   color: var(--muted);
   font-size: 13px;
 }
 
+.mx-empty {
+  padding: 14px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+
+.setting .mx-empty p {
+  margin: 0;
+}
+
+.setting .mx-empty p + p {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+/* Your models. */
+.mx-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .mx-card {
-  margin-bottom: 14px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel);
 }
 
 .mx-card-h {
@@ -9057,76 +9089,82 @@ del.kit-mcp-name {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line);
-  background: var(--ground);
+  padding: 6px 12px;
+  background: var(--raised);
+  font-size: 14px;
+  font-weight: 600;
 }
 
-.mx-card-h .field-note {
-  margin: 0;
+.mx-card-h .mx-count {
+  background: var(--panel);
 }
 
-.mx-none-p,
-.setting p.mx-none-p {
-  margin: 0;
-  padding: 12px;
-  color: var(--muted);
-  font-size: 13px;
+.mx-card-warn {
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 400;
 }
 
-.mx-table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  font-size: 13px;
+.mx-mrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.9fr) 28px;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 8px 4px 6px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
 }
 
-.mx-table col.c-name {
-  width: 40%;
+.mx-mrow > * {
+  min-width: 0;
 }
 
-.mx-table col.c-act {
-  width: 48px;
-}
-
-.mx-table th {
-  padding: 6px 8px 6px 12px;
-  border-bottom: 1px solid var(--line);
+.mx-mrow.mx-mhead {
+  min-height: 30px;
+  padding-left: 12px;
+  border-top: 0;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 600;
-  text-align: left;
+  font-weight: 500;
 }
 
-.mx-table td {
-  height: 40px;
-  padding: 0 8px 0 12px;
+.mx-meta {
+  display: contents;
+}
+
+.mx-model,
+.mx-from {
   overflow: hidden;
-  border-bottom: 1px solid var(--line);
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  vertical-align: middle;
 }
 
-.mx-table tr:last-child td {
-  border-bottom: 0;
+.mx-model {
+  font-family: var(--mono);
 }
 
-.mx-table td.mx-renaming {
-  overflow: visible;
+.mx-nm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
 }
 
 .mx-name {
-  display: inline-block;
+  display: block;
   max-width: 100%;
-  margin-left: -6px;
-  padding: 3px 6px;
-  overflow: hidden;
+  padding: 4px 6px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink);
+  font-size: 14px;
   font-weight: 600;
-  text-overflow: ellipsis;
-  vertical-align: middle;
+  line-height: 1.35;
+  text-align: left;
+  overflow-wrap: anywhere;
   cursor: text;
 }
 
@@ -9134,203 +9172,77 @@ del.kit-mcp-name {
 .mx-name:focus-visible {
   border-color: var(--line);
   background: var(--ground);
-  outline: none;
+}
+
+.mx-name-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
 }
 
 .mx-rename {
-  display: block;
   width: 100%;
-  height: 28px;
-  box-sizing: border-box;
-  margin-left: -6px;
+  height: 30px;
   padding: 0 6px;
   border: 1px solid var(--action);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--panel);
   color: var(--ink);
-  font: 600 13px var(--sans);
-  outline: none;
+  font: 600 14px var(--sans);
+  outline: 2px solid var(--action);
+  outline-offset: 0;
 }
 
-/* A refusal under the name floats over the next row: the row keeps its height. */
-.mx-table .mx-rename-note {
-  position: absolute;
-  z-index: 2;
-  max-width: 320px;
-  margin-top: 4px;
-  white-space: normal;
+.mx-rename[aria-invalid="true"] {
+  border-color: var(--danger);
+  outline-color: var(--danger);
 }
 
-.mx-x {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: none;
+.mx-flag {
+  padding-left: 7px;
+  color: var(--warn);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mx-x-cell {
+  display: flex;
+  justify-content: center;
+}
+
+.mx-mrow.mx-undo {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-left: 12px;
+  background: var(--ground);
   color: var(--muted);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.mx-x:hover {
-  border-color: var(--line);
-  background: var(--raised);
-  color: var(--danger);
-}
-
-.mx-undo td {
-  color: var(--muted);
-}
-
-.mx-undo .link-button {
-  margin-left: 6px;
+  font-size: 13px;
 }
 
 .mx-undo .field-note {
-  display: inline;
-  margin-left: 8px;
+  display: block;
+  margin-top: 4px;
 }
 
-.mx-gone {
-  margin-left: 6px;
-  color: var(--warn);
-  font-family: var(--sans);
-  font-size: 12px;
-}
-
-.mx-sub,
-.mx-opt {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 400;
-}
-
-.mx-count,
-.setting p.mx-count {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.mx-srcs {
+.mx-undo .link-button {
   margin: 0;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  list-style: none;
 }
 
-.mx-src {
-  border-top: 1px solid var(--line);
-}
-
-.mx-src:first-child {
-  border-top: 0;
-}
-
-.mx-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  min-height: 48px;
-  padding: 0 10px 0 6px;
-}
-
-.mx-src:not(.mx-off) .mx-head:hover {
-  background: var(--raised);
-}
-
-.mx-open .mx-head {
-  border-bottom: 1px solid var(--line);
-  background: var(--ground);
-}
-
-.mx-hit {
-  display: grid;
-  grid-template-columns: 28px auto auto minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  min-height: 48px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.mx-hit:disabled {
-  cursor: default;
-}
-
-.mx-chev {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
-  font-size: 11px;
-  transition: transform 0.15s;
-}
-
-.mx-open .mx-chev {
-  transform: rotate(90deg);
-}
-
-.mx-off .mx-chev {
-  visibility: hidden;
-}
-
-.mx-off {
-  opacity: 0.55;
-}
-
-.mx-title {
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.mx-meta {
-  min-width: 0;
-  overflow: hidden;
+.setting p.mx-rest {
+  margin: 10px 0 0;
   color: var(--muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 13px;
 }
 
-.mx-meta .mono {
-  font-size: 12px;
-}
-
-.mx-added {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.mx-acts {
-  display: flex;
-  flex: none;
-  gap: 6px;
-}
-
+/* An icon button: ✎, 🗑, ↻ and ×. */
 .mx-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 6px;
   background: none;
   color: var(--muted);
@@ -9340,98 +9252,312 @@ del.kit-mcp-name {
 
 .mx-icon svg {
   display: block;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .mx-icon:hover:not(:disabled),
 .mx-icon[aria-pressed="true"] {
-  border-color: var(--line);
   background: var(--raised);
   color: var(--ink);
 }
 
-.mx-icon-danger:hover,
 .mx-icon-danger[aria-pressed="true"] {
+  background: var(--danger-ground);
   color: var(--danger);
 }
 
-.mx-body {
-  padding: 12px 12px 14px 42px;
+.mx-icon:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
-.mx-body > .field-note,
-.mx-saved > .field-note {
+/* The sources: one framed row each. */
+.mx-srcs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mx-src {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.mx-src:has(> .mx-done),
+.mx-add-slot {
+  border: 0;
+  background: none;
+}
+
+.mx-done {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 6px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mx-add-slot > .mx-form {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.mx-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mx-head {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+}
+
+.mx-head:hover {
+  background: var(--ground);
+}
+
+.mx-open > .mx-head {
+  border-bottom: 1px solid var(--line);
+  border-radius: 8px 8px 0 0;
+}
+
+.mx-hit {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 6px 8px 6px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mx-disc {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.mx-disc svg {
+  width: 16px;
+  height: 16px;
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+
+.mx-disc-s {
+  width: 24px;
+  height: 24px;
+}
+
+[aria-expanded="true"] > .mx-disc svg,
+[aria-expanded="true"] .mx-right .mx-disc svg {
+  transform: none;
+}
+
+.mx-src-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mx-l1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mx-src-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mx-l2 {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mx-l2 .mono {
+  font-size: 12px;
+}
+
+/* The whole address of a server, on hover and on keyboard focus of its row. */
+.mx-tip {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 44px;
+  z-index: 5;
+  display: none;
+  max-width: calc(100% - 52px);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--ink);
+  box-shadow: 0 4px 12px var(--shadow);
+  color: var(--panel);
+  font: 12px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.mx-hit:hover .mx-tip,
+.mx-hit:focus-visible .mx-tip {
+  display: block;
+}
+
+.mx-acts {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 8px;
+}
+
+.mx-off .mx-hit {
+  cursor: default;
+}
+
+.mx-off .mx-src-name {
+  color: var(--muted);
+}
+
+.mx-off .mx-disc {
+  visibility: hidden;
+}
+
+.mx-off .mx-head:hover {
+  background: none;
+}
+
+.mx-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.mx-body > .field-note {
   display: block;
 }
 
 .mx-saved {
-  padding: 8px 12px 0 42px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.setting p.mx-saved-line {
+  margin: 0;
+  color: var(--done);
+  font-size: 13px;
+}
+
+.mx-saved-line::before {
+  content: "✓ ";
+}
+
+.setting p.mx-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mx-reading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mx-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .mx-tools {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-  margin-bottom: 8px;
+  gap: 8px;
 }
 
-.mx-tools-end {
+.mx-refresh {
   margin-left: auto;
 }
 
 .mx-search {
-  flex: 1 1 200px;
-  height: 32px;
+  flex: 1;
+  min-width: 0;
+  height: 34px;
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel);
   color: var(--ink);
-  font: 13px var(--sans);
+  font: 14px var(--sans);
 }
 
-/* About nine rows, then the list scrolls within itself: the page grows by this at most. */
+/* At most --list-rows rows, then the list scrolls within itself: the page grows by this at most. */
 .mx-list {
-  max-height: 306px;
-  overflow-y: auto;
+  max-height: calc(var(--row) * var(--list-rows));
+  overflow: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--panel);
 }
 
-.mx-list > div + div > .mx-row,
-.mx-list > .mx-row + .mx-row,
-.mx-list > div + .mx-row,
-.mx-list > .mx-row + div > .mx-row {
+.mx-pick + .mx-pick {
   border-top: 1px solid var(--line);
+}
+
+.mx-pick.mx-on > .mx-row {
+  background: var(--action-ground);
 }
 
 .mx-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 34px;
-  padding: 0 10px;
-  font-size: 13px;
+  min-height: var(--row);
+  padding: 4px 10px;
+  font-size: 14px;
   cursor: pointer;
-}
-
-.mx-row:hover,
-.mx-row-on {
-  background: var(--raised);
 }
 
 .mx-row-plain {
   cursor: default;
 }
 
-.mx-row-plain:hover {
-  background: none;
-}
-
-.mx-row input {
+.mx-row input[type="checkbox"],
+.mx-sub-item input[type="checkbox"] {
   flex: none;
   width: 16px;
   height: 16px;
@@ -9439,21 +9565,17 @@ del.kit-mcp-name {
   accent-color: var(--action);
 }
 
-.mx-row .mono {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.mx-id {
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
-.mx-row-gone .mono {
-  color: var(--warn);
+.mx-srvrow .mx-id {
+  flex: 1;
+  min-width: 0;
 }
 
 .mx-as {
-  flex: none;
-  max-width: 45%;
   overflow: hidden;
   color: var(--muted);
   font-size: 12px;
@@ -9461,58 +9583,74 @@ del.kit-mcp-name {
   white-space: nowrap;
 }
 
-.mx-in {
-  color: var(--action);
+.mx-gone {
+  color: var(--warn);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
-.mx-cli-btn {
+.mx-right {
+  display: flex;
   flex: none;
-  padding: 2px 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.mx-in {
+  color: var(--done);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mx-sub {
+  padding: 6px 10px 10px 36px;
+  border-top: 1px dashed var(--line);
+  background: var(--ground);
+}
+
+.setting .mx-sub p {
+  margin: 0 0 4px;
   color: var(--muted);
   font-size: 12px;
 }
 
-.mx-row-pop:hover .mx-cli-btn {
-  border-color: var(--action);
-  color: var(--action);
-}
-
-.mx-row-note {
-  padding: 0 10px 8px 36px;
-}
-
-.mx-pop {
-  padding: 10px 12px 10px 36px;
-  border-top: 1px solid var(--line);
-  background: var(--ground);
-  font-size: 13px;
-}
-
-.mx-pop-h {
-  margin-bottom: 6px;
-  color: var(--muted);
-}
-
-.mx-pop-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.mx-sub-item {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 10px;
   min-height: 30px;
+  padding: 3px 0;
+  font-size: 14px;
   cursor: pointer;
 }
 
-.mx-pop-item input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--action);
+.mx-sub-item input[type="checkbox"] {
+  grid-row: span 2;
+  transform: translateY(3px);
 }
 
-.mx-pop-f {
-  margin-top: 6px;
+.mx-sub-item .mx-as {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mx-row-note {
+  padding: 0 10px 8px;
+}
+
+.mx-row-note .field-note {
+  display: block;
+}
+
+.setting p.mx-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .mx-other {
@@ -9520,7 +9658,6 @@ del.kit-mcp-name {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 6px 8px;
-  margin-top: 12px;
 }
 
 .mx-other-cli {
@@ -9532,16 +9669,16 @@ del.kit-mcp-name {
 }
 
 .mx-other > button {
-  margin-top: 22px;
+  margin-top: 28px;
 }
 
+/* The forms: Add server, Change, and Remove's question. */
 .mx-form {
-  padding: 14px 12px 16px 42px;
-  border-top: 1px solid var(--line);
+  padding: 14px;
 }
 
-.mx-src > .mx-form:first-child {
-  border-top: 0;
+.mx-src > .mx-form {
+  border-bottom: 1px solid var(--line);
 }
 
 .mx-form .field input {
@@ -9560,12 +9697,53 @@ del.kit-mcp-name {
   display: block;
 }
 
+.mx-opt {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
 .mx-form-acts {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 14px;
+}
+
+.mx-form .mx-note {
+  margin-top: 10px;
+}
+
+/* What answered the form's check: the moment of the main scenario. */
+.mx-found {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--done);
+  border-radius: 6px;
+  background: var(--done-ground);
+  font-size: 13px;
+}
+
+.mx-found-t {
+  font-weight: 600;
+}
+
+.mx-found dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 4px 0 0;
+}
+
+.mx-found dt {
+  color: var(--muted);
+}
+
+.mx-found dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .mx-check {
@@ -9576,6 +9754,7 @@ del.kit-mcp-name {
 
 .mx-spin {
   display: inline-block;
+  flex: none;
   width: 10px;
   height: 10px;
   border: 2px solid var(--line);
@@ -9594,13 +9773,25 @@ del.kit-mcp-name {
   .mx-spin {
     animation: none;
   }
+
+  .mx-disc svg {
+    transition: none;
+  }
 }
 
 .mx-confirm {
-  padding: 12px 12px 14px 42px;
-  border-top: 1px solid var(--line);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
   background: var(--danger-ground);
-  font-size: 13px;
+  font-size: 14px;
+}
+
+.setting .mx-confirm p {
+  margin: 0 0 10px;
+}
+
+.mx-confirm .mx-form-acts {
+  margin-top: 0;
 }
 
 .mx-confirm .field-note {
@@ -9608,62 +9799,20 @@ del.kit-mcp-name {
   margin-top: 8px;
 }
 
-.mx-addrow,
-.mx-gone-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 48px;
-  padding: 0 12px;
-}
-
-.mx-gone-line {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-/* Narrower than 600 px: a source's icons on a line of their own under its name, the forms
-   one field under the other, from the source's left edge; Your models without From. */
+/* Narrower than 600 px: the forms one field under the other; a model's row in two lines
+   (its name, then model · from) with × at the right; a source's icons on a line of their own
+   under its name and a server's address wrapped whole (no hover on touch); targets 44 px; a
+   server's list of up to 20 models not bounded (no scroll within a scroll on touch). */
 @media (max-width: 600px) {
-  .mx-head {
-    grid-template-columns: minmax(0, 1fr);
-    padding: 4px 8px 4px 4px;
-  }
-
-  .mx-hit {
-    grid-template-columns: 28px auto minmax(0, 1fr);
-    min-height: 44px;
-  }
-
-  .mx-hit .badge {
-    display: none;
-  }
-
-  .mx-hit .mx-meta {
-    grid-row: 2;
-    grid-column: 2 / 4;
-    padding-bottom: 4px;
-  }
-
-  .mx-acts {
-    padding: 0 0 8px 36px;
-  }
-
-  .mx-acts:empty {
-    display: none;
-  }
-
-  .mx-body,
-  .mx-form,
-  .mx-confirm,
-  .mx-saved {
-    padding-left: 12px;
-  }
-
   .mx-form .launch-grid,
+  .mx-found dl,
   .mx-other,
   .mx-other-cli {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mx-found dt {
+    margin-top: 4px;
   }
 
   .mx-other > button {
@@ -9671,13 +9820,86 @@ del.kit-mcp-name {
     justify-self: start;
   }
 
-  .setting .mx-tabs {
-    margin: 14px -14px 0;
-    padding-left: 10px;
+  .mx-mrow {
+    grid-template-areas: "name x" "meta x";
+    grid-template-columns: minmax(0, 1fr) 44px;
+    row-gap: 0;
+    padding: 6px 6px 8px;
   }
 
-  .mx-table col.c-name {
-    width: 44%;
+  .mx-mrow.mx-mhead {
+    display: none;
+  }
+
+  .mx-nm {
+    grid-area: name;
+  }
+
+  .mx-x-cell {
+    grid-area: x;
+    align-self: center;
+  }
+
+  .mx-meta {
+    display: flex;
+    grid-area: meta;
+    gap: 6px;
+    min-width: 0;
+    padding-left: 7px;
+  }
+
+  .mx-meta .mx-from::before {
+    content: "· ";
+  }
+
+  .mx-mrow.mx-undo {
+    grid-template-areas: none;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 44px;
+  }
+
+  .mx-undo .link-button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 8px;
+  }
+
+  .mx-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .mx-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mx-acts {
+    padding: 0 0 4px 30px;
+  }
+
+  .mx-l2 {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .mx-tip {
+    display: none !important;
+  }
+
+  .mx-body {
+    padding: 10px 10px 12px;
+  }
+
+  .mx-list.mx-short {
+    max-height: none;
+  }
+
+  .mx-row {
+    min-height: 44px;
+  }
+
+  .mx-sub {
+    padding-left: 12px;
   }
 }
 

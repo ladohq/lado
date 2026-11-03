@@ -103,18 +103,18 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
 - [x] 7.2 `web/src/useScrollAnchor.ts`: the anchor noted before a render and the scroll by
   its moved top after it, on `.content` above 900 px and the window at or under it (D18.3).
   Check: `web/src/useScrollAnchor.test.tsx`.
-- [ ] 7.3 `ModelSettings.tsx` without tabs: the intro, the three blocks with their counts;
+- [x] 7.3 `ModelSettings.tsx` without tabs: the intro, the three blocks with their counts;
   Your models' cards only for agent CLIs with models, the line of those without, names
   wrapped, From `the agent CLI`; × with `Removed <name>. Undo`, Undo going after `UNDO_MS`
   and the row staying until the next change; focus after ×, Undo and Esc (D18.1, 2, 4, 12).
   Check: `web/src/ModelSettings.test.tsx`, `make web`.
-- [ ] 7.4 `ModelSources.tsx`: Model servers before Models of your agent CLIs; rows with the
+- [x] 7.4 `ModelSources.tsx`: Model servers before Models of your agent CLIs; rows with the
   chevron, the badges and the second line; the address on hover and focus, wrapped under 600
   px; untick without Undo; `would be <name>` from `checkModel`; the page's memory of
   unticked renamed models and their re-tick; `Unticking removes <name>.`; the found panel,
   Key's label and line; `Open a model to tick…`; Change's live check; Remove's question
   and button (D18.5–11). Check: `web/src/ModelSources.test.tsx`, `make web`.
-- [ ] 7.5 `styles.css`: `--row`, `--list-rows`, `--gap-block`; the phone's 44 px targets
+- [x] 7.5 `styles.css`: `--row`, `--list-rows`, `--gap-block`; the phone's 44 px targets
   and rows, a server's list of up to 20 models unbounded (D18.13, 14). Check: `make web`,
   7.6.
 - [ ] 7.6 UI e2e (`tests/ui/test_models_section.py`, reworked): the acted element's top

@@ -3,11 +3,15 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { kiloRow, LMSTUDIO, model, ModelServer, refusal } from "./modelFakes";
-import { EMPTY, ModelSettings, UNDO_MS } from "./ModelSettings";
+import { EMPTY, EMPTY_HOW, INTRO, ModelSettings, UNDO_MS } from "./ModelSettings";
 import { Settings } from "./Settings";
 
-vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
-vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
+vi.mock("@xterm/xterm", async () => ({
+  Terminal: (await import("./fakes")).FakeXterm,
+}));
+vi.mock("@xterm/addon-fit", async () => ({
+  FitAddon: (await import("./fakes")).FakeFit,
+}));
 vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: class {} }));
 
 let server: ModelServer;
@@ -36,6 +40,7 @@ const names = (group: HTMLElement) =>
   within(group)
     .queryAllByRole("button", { name: /^Rename / })
     .map((b) => b.textContent);
+const rowsOf = (group: HTMLElement) => within(group).getAllByRole("row").slice(1); // the head row first
 
 const FOUR = [
   model("Claude Sonnet", "claude", "Claude Code", "sonnet"),
@@ -58,61 +63,65 @@ test("the section comes after Agent CLIs and environment, before Usage statistic
   expect(headings[at + 1]).toBe("Usage statistics");
 });
 
-test("two tabs, Your models with its count, open first; opening reads no source", async () => {
-  server.entries = { models: FOUR, servers: [LMSTUDIO] };
+test("no tabs: the intro, then three blocks with their counts; opening reads no source", async () => {
+  server.entries = {
+    models: FOUR,
+    servers: [LMSTUDIO, { ...LMSTUDIO, name: "LiteLLM" }],
+  };
   mount();
-  const tabs = await screen.findAllByRole("tab");
-  expect(tabs.map((t) => t.textContent)).toEqual(["Your models 4", "Add models"]);
-  expect(tabs[0].getAttribute("aria-selected")).toBe("true");
   await card("Claude Code");
-  fireEvent.click(tabs[1]);
-  await screen.findByRole("button", { name: "LM Studio дома" });
+  expect(screen.queryByRole("tablist")).toBeNull();
+  expect(screen.getByText(INTRO)).toBeTruthy();
+  const blocks = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+  expect(blocks).toEqual(["Your models 4", "Model servers 2", "Models of your agent CLIs"]);
   expect(server.calls.filter((c) => c.path.includes("/models?") || c.path.endsWith("/probe"))).toEqual([]);
   expect(server.of("POST", "/api/providers/check")).toEqual([]); // no check of its own
 });
 
-test("with no model it says so, and its link opens Add models", async () => {
+test("with no model Your models says so and how to add one, with no card", async () => {
   mount();
-  const line = await screen.findByText(EMPTY, { exact: false });
-  expect(screen.queryByRole("table")).toBeNull();
-  fireEvent.click(within(line).getByRole("button", { name: "Add models" }));
-  expect(screen.getByRole("tab", { name: "Add models" }).getAttribute("aria-selected")).toBe("true");
-  expect(await screen.findByRole("button", { name: "+ Add server" })).toBeTruthy();
+  expect(await screen.findByText(EMPTY)).toBeTruthy();
+  expect(screen.getByText(EMPTY_HOW)).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Your models 0" })).toBeTruthy();
+  expect(screen.queryByRole("group")).toBeNull();
 });
 
-test("a card per CLI in the order of the sources, its models by name ignoring case", async () => {
-  server.entries = { models: [...FOUR, model("Alpha", "opencode", "OpenCode", "a")], servers: [LMSTUDIO] };
+test("a card only per agent CLI with models, in LADO's order; the others in one line", async () => {
+  server.entries = {
+    models: [...FOUR, model("Alpha", "opencode", "OpenCode", "a")],
+    servers: [LMSTUDIO],
+  };
   mount();
   await card("Claude Code");
   const titles = screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"));
-  expect(titles).toEqual(["Claude Code", "Codex CLI", "OpenCode", "Kilo CLI"]);
+  expect(titles).toEqual(["Claude Code", "Codex CLI", "OpenCode"]);
+  expect(screen.getByText("Kilo CLI has no models: its agents run on its default model.")).toBeTruthy();
   const opencode = await card("OpenCode");
   expect(names(opencode)).toEqual(["Alpha", "beta", "qwen3-8b · LM Studio дома · OpenCode"]);
-  expect(within(opencode).getByText("3", { selector: ".tab-count" })).toBeTruthy();
-  const row = within(opencode).getByRole("button", { name: "Rename beta" }).closest("tr") as HTMLElement;
-  expect(within(row).getByText("the CLI itself")).toBeTruthy();
-  const served = within(opencode).getByText("LM Studio дома");
-  expect(served.closest("td")?.getAttribute("title")).toBe(LMSTUDIO.address);
+  expect(within(opencode).getByText("3", { selector: ".mx-count" })).toBeTruthy();
+  const row = within(opencode).getByRole("button", { name: "Rename beta" }).closest("[role=row]") as HTMLElement;
+  expect(within(row).getByText("the agent CLI")).toBeTruthy();
+  expect(within(opencode).getByText("LM Studio дома").getAttribute("title")).toBe(LMSTUDIO.address);
 });
 
-test("a card without models says so, its link opens that CLI's source", async () => {
+test("two agent CLIs without models are named in one line", async () => {
   server.entries = { models: FOUR.slice(0, 1), servers: [] };
   mount();
-  const codex = await card("Codex CLI");
-  expect(within(codex).getByText(/No models: its agents run on Codex CLI's default model\./)).toBeTruthy();
-  fireEvent.click(within(codex).getByRole("button", { name: "Add from Codex CLI" }));
-  const toggle = await screen.findByRole("button", { name: "Codex CLI" });
-  expect(toggle.getAttribute("aria-expanded")).toBe("true");
-  expect(await screen.findByRole("checkbox", { name: "gpt-5-codex on Codex CLI" })).toBeTruthy();
-  expect(server.of("GET", "/api/providers/codex/models")).toHaveLength(1);
+  await card("Claude Code");
+  expect(
+    screen.getByText("Codex CLI, OpenCode, Kilo CLI have no models: their agents run on their default model."),
+  ).toBeTruthy();
 });
 
-test("a CLI not installed: its card and each of its models say so", async () => {
+test("an agent CLI not installed: its card says its models cannot run", async () => {
   server.logins = [...server.logins.slice(0, 3), kiloRow(false)];
-  server.entries = { models: [model("Old Opus", "kilo", "Kilo CLI", "anthropic/claude-opus")], servers: [] };
+  server.entries = {
+    models: [model("Old Opus", "kilo", "Kilo CLI", "anthropic/claude-opus")],
+    servers: [],
+  };
   mount();
   const kilo = await card("Kilo CLI");
-  await waitFor(() => expect(within(kilo).getAllByText(/Kilo CLI is not installed/)).toHaveLength(2));
+  expect(await within(kilo).findByText("⚠ not installed: its models cannot run")).toBeTruthy();
 });
 
 test("#models scrolls once, when the page opens, never after a change of the entries", async () => {
@@ -123,8 +132,7 @@ test("#models scrolls once, when the page opens, never after a change of the ent
   const claude = await card("Claude Code");
   await waitFor(() => expect(scrolled).toHaveBeenCalledTimes(1));
   fireEvent.click(within(claude).getByRole("button", { name: "Remove Claude Sonnet" }));
-  await screen.findByRole("button", { name: "Undo" });
-  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
   await screen.findByRole("button", { name: "Rename Claude Sonnet" });
   expect(scrolled).toHaveBeenCalledTimes(1);
 });
@@ -133,8 +141,14 @@ test("a click on a name gives a field: Enter renames, the model takes its place 
   server.entries = { models: FOUR, servers: [LMSTUDIO] };
   mount();
   const opencode = await card("OpenCode");
-  fireEvent.click(within(opencode).getByRole("button", { name: "Rename qwen3-8b · LM Studio дома · OpenCode" }));
-  const field = within(opencode).getByRole("textbox", { name: "Name of qwen3-8b · LM Studio дома · OpenCode" });
+  const name = within(opencode).getByRole("button", {
+    name: "Rename qwen3-8b · LM Studio дома · OpenCode",
+  });
+  expect(name.getAttribute("title")).toBe("Click to rename");
+  fireEvent.click(name);
+  const field = within(opencode).getByRole("textbox", {
+    name: "Name of qwen3-8b · LM Studio дома · OpenCode",
+  });
   expect(screen.queryByRole("button", { name: "Save" })).toBeNull(); // no buttons
   fireEvent.change(field, { target: { value: "Alpha" } });
   fireEvent.keyDown(field, { key: "Enter" });
@@ -143,18 +157,25 @@ test("a click on a name gives a field: Enter renames, the model takes its place 
   expect(names(await card("Claude Code"))).toEqual(["Claude Sonnet"]);
 });
 
-test("Esc restores the name with no request; leaving the field renames", async () => {
+test("Esc restores the name with no request and gives the focus back to it; leaving the field renames", async () => {
   server.entries = { models: FOUR.slice(0, 1), servers: [] };
   mount();
   const claude = await card("Claude Code");
-  fireEvent.keyDown(within(claude).getByRole("button", { name: "Rename Claude Sonnet" }), { key: "Enter" });
-  let field = within(claude).getByRole("textbox", { name: "Name of Claude Sonnet" });
+  fireEvent.click(within(claude).getByRole("button", { name: "Rename Claude Sonnet" }));
+  let field = within(claude).getByRole("textbox", {
+    name: "Name of Claude Sonnet",
+  });
   fireEvent.change(field, { target: { value: "Другая" } });
   fireEvent.keyDown(field, { key: "Escape" });
-  expect(within(claude).getByRole("button", { name: "Rename Claude Sonnet" })).toBeTruthy();
+  const name = within(claude).getByRole("button", {
+    name: "Rename Claude Sonnet",
+  });
+  await waitFor(() => expect(document.activeElement).toBe(name));
   expect(server.of("PATCH", "/api/models/")).toEqual([]);
-  fireEvent.click(within(claude).getByRole("button", { name: "Rename Claude Sonnet" }));
-  field = within(claude).getByRole("textbox", { name: "Name of Claude Sonnet" });
+  fireEvent.click(name);
+  field = within(claude).getByRole("textbox", {
+    name: "Name of Claude Sonnet",
+  });
   fireEvent.change(field, { target: { value: "Сильная" } });
   fireEvent.blur(field);
   expect(await within(claude).findByRole("button", { name: "Rename Сильная" })).toBeTruthy();
@@ -167,11 +188,14 @@ test("a refused name stays under the field; leaving it then restores the name", 
   mount();
   const claude = await card("Claude Code");
   fireEvent.click(within(claude).getByRole("button", { name: "Rename Claude Sonnet" }));
-  const field = within(claude).getByRole("textbox", { name: "Name of Claude Sonnet" });
+  const field = within(claude).getByRole("textbox", {
+    name: "Name of Claude Sonnet",
+  });
   fireEvent.change(field, { target: { value: "GPT-5-codex" } });
   fireEvent.keyDown(field, { key: "Enter" });
   const note = await within(claude).findByText('the name is taken by the model "gpt-5-codex"');
   expect(note.className).toContain("field-note bad");
+  expect(field.getAttribute("aria-invalid")).toBe("true");
   expect(within(claude).getByRole("textbox")).toBe(field);
   fireEvent.blur(field);
   expect(within(claude).getByRole("button", { name: "Rename Claude Sonnet" })).toBeTruthy();
@@ -185,18 +209,19 @@ test("a name refused on leaving the field stays under it too; leaving again rest
   mount();
   const claude = await card("Claude Code");
   fireEvent.click(within(claude).getByRole("button", { name: "Rename Claude Sonnet" }));
-  const field = within(claude).getByRole("textbox", { name: "Name of Claude Sonnet" });
+  const field = within(claude).getByRole("textbox", {
+    name: "Name of Claude Sonnet",
+  });
   fireEvent.change(field, { target: { value: "GPT-5-codex" } });
   fireEvent.blur(field);
-  const note = await within(claude).findByText('the name is taken by the model "gpt-5-codex"');
-  expect(note.className).toContain("field-note bad");
+  expect(await within(claude).findByText('the name is taken by the model "gpt-5-codex"')).toBeTruthy();
   expect(within(claude).getByRole("textbox")).toBe(field);
   fireEvent.blur(field);
   expect(within(claude).getByRole("button", { name: "Rename Claude Sonnet" })).toBeTruthy();
   expect(server.of("PATCH", "/api/models/")).toHaveLength(1);
 });
 
-test("× removes at once and leaves its row as Undo, which saves the model again", async () => {
+test("× leaves its row as Removed … Undo with the focus on Undo; Undo saves it again and focuses its name", async () => {
   server.entries = {
     models: [model("Сонет для ревью", "opencode", "OpenCode", "qwen3-8b", "LM Studio дома"), FOUR[3]],
     servers: [LMSTUDIO],
@@ -205,12 +230,20 @@ test("× removes at once and leaves its row as Undo, which saves the model again
   const opencode = await card("OpenCode");
   fireEvent.click(within(opencode).getByRole("button", { name: "Remove Сонет для ревью" }));
   const undo = await within(opencode).findByRole("button", { name: "Undo" });
-  const rows = within(opencode).getAllByRole("row").slice(1);
-  expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining("beta"), "Removed Сонет для ревью.Undo"]);
-  expect(server.of("DELETE", "/api/models/")[0].path).toBe("/api/models/%D0%A1%D0%BE%D0%BD%D0%B5%D1%82%20%D0%B4%D0%BB%D1%8F%20%D1%80%D0%B5%D0%B2%D1%8C%D1%8E");
-  expect(screen.getByRole("tab", { name: "Your models 1" })).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(undo));
+  expect(rowsOf(opencode).map((r) => r.textContent)).toEqual([
+    expect.stringContaining("beta"),
+    "Removed Сонет для ревью.Undo",
+  ]);
+  expect(server.of("DELETE", "/api/models/")[0].path).toBe(
+    "/api/models/%D0%A1%D0%BE%D0%BD%D0%B5%D1%82%20%D0%B4%D0%BB%D1%8F%20%D1%80%D0%B5%D0%B2%D1%8C%D1%8E",
+  );
+  expect(screen.getByRole("heading", { name: "Your models 1" })).toBeTruthy();
   fireEvent.click(undo);
-  expect(await within(opencode).findByRole("button", { name: "Rename Сонет для ревью" })).toBeTruthy();
+  const name = await within(opencode).findByRole("button", {
+    name: "Rename Сонет для ревью",
+  });
+  await waitFor(() => expect(document.activeElement).toBe(name));
   expect(server.of("POST", "/api/models").filter((c) => c.path === "/api/models")[0].body).toEqual({
     name: "Сонет для ревью",
     cli: "opencode",
@@ -228,8 +261,14 @@ test("Undo is off while it runs: a second press sends nothing", async () => {
       release = () => resolve(server.answer("POST", "/api/models", body));
     });
   mount();
-  fireEvent.click(within(await card("Claude Code")).getByRole("button", { name: "Remove Claude Sonnet" }));
-  const undo = (await screen.findByRole("button", { name: "Undo" })) as HTMLButtonElement;
+  fireEvent.click(
+    within(await card("Claude Code")).getByRole("button", {
+      name: "Remove Claude Sonnet",
+    }),
+  );
+  const undo = (await screen.findByRole("button", {
+    name: "Undo",
+  })) as HTMLButtonElement;
   fireEvent.click(undo);
   await waitFor(() => expect(undo.disabled).toBe(true));
   fireEvent.click(undo);
@@ -251,29 +290,43 @@ test("after Undo its row stays until the reload brings the model back: nothing m
     });
   fireEvent.click(undo);
   await waitFor(() => expect(server.of("GET", "/api/model-settings").length).toBeGreaterThan(1));
-  expect(within(claude).getAllByRole("row").slice(1)).toHaveLength(1);
+  expect(rowsOf(claude)).toHaveLength(1);
   release();
   expect(await within(claude).findByRole("button", { name: "Rename Claude Sonnet" })).toBeTruthy();
-  expect(within(claude).getAllByRole("row").slice(1)).toHaveLength(1);
+  expect(rowsOf(claude)).toHaveLength(1);
 });
 
-test("Undo goes after UNDO_MS, and a refused Undo says why", async () => {
-  server.entries = { models: FOUR.slice(0, 1), servers: [] };
+test("after UNDO_MS only Undo goes: Removed … stays at its place until the next change", async () => {
+  server.entries = { models: FOUR.slice(0, 2), servers: [] };
   mount();
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  fireEvent.click(within(await card("Claude Code")).getByRole("button", { name: "Remove Claude Sonnet" }));
+  const claude = await card("Claude Code");
+  fireEvent.click(within(claude).getByRole("button", { name: "Remove Claude Sonnet" }));
   expect(await screen.findByRole("button", { name: "Undo" })).toBeTruthy();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(UNDO_MS + 10);
   });
   expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
-  expect(screen.getByText(EMPTY, { exact: false })).toBeTruthy();
-  vi.useRealTimers();
-  cleanup();
-  server.entries = { models: [model("Claude Opus", "claude", "Claude Code", "opus")], servers: [] };
+  expect(rowsOf(claude).map((r) => r.textContent)).toEqual(["Removed Claude Sonnet."]);
+  const codex = await card("Codex CLI");
+  fireEvent.click(within(codex).getByRole("button", { name: "Remove gpt-5-codex" }));
+  await within(codex).findByRole("button", { name: "Undo" });
+  expect(screen.queryByText("Removed Claude Sonnet.")).toBeNull(); // the next change took it
+});
+
+test("a refused Undo says why in its row", async () => {
+  server.entries = {
+    models: [model("Claude Opus", "claude", "Claude Code", "opus")],
+    servers: [],
+  };
   server.answers["POST /api/models"] = () => refusal('no model server "gone" is saved', "server");
   mount();
-  fireEvent.click(within(await card("Claude Code")).getByRole("button", { name: "Remove Claude Opus" }));
+  fireEvent.click(
+    within(await card("Claude Code")).getByRole("button", {
+      name: "Remove Claude Opus",
+    }),
+  );
   fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
-  expect(await screen.findByText('no model server "gone" is saved')).toBeTruthy();
+  const note = await screen.findByText('no model server "gone" is saved');
+  expect(note.closest("[role=row]")?.textContent).toContain("Removed Claude Opus.");
 });

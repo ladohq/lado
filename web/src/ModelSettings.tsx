@@ -1,10 +1,12 @@
-// Settings → Models (docs/design/ui.md, Models): two tabs, Your models, the configured models
-// in a card per agent CLI, and Add models, where models come from (ModelSources.tsx). What the
+// Settings → Models (docs/design/ui.md, Models): one section, no tabs, an intro and three
+// blocks: Your models, the configured models in a card per agent CLI that has some; Model
+// servers and Models of your agent CLIs, where models come from (ModelSources.tsx). What the
 // commands `lado model-server` and `lado model` do, with their rules and lines: every refusal
 // is the core's line under the field it names. The entries are read when the section opens
 // and after each change of its own (GET /api/model-settings asks no server); opening it reads
-// no source. Nothing above the control acted on moves: the page scrolls to the section once,
-// when it opens at #models; a model removed leaves its row as Undo, of the same height.
+// no source. Nothing under the pointer moves (useScrollAnchor) and no row leaves on a timer:
+// the page scrolls to the section once, when it opens at #models; a model removed by × leaves
+// its row as Undo, then as a line, until the human's next change here.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useLocation } from "react-router";
 
@@ -20,20 +22,38 @@ import {
   removeModel,
   renameModel,
 } from "./api";
-import { cliKey, listed, ModelSources, type Read, type Saved, serverKey } from "./ModelSources";
+import { CloseIcon } from "./icons";
+import {
+  CliModels,
+  cliKey,
+  listed,
+  ModelServers,
+  type Read,
+  type Saved,
+  serverKey,
+  type Sources,
+} from "./ModelSources";
 import { MODELS_ANCHOR } from "./paths";
 import { POLL_MS } from "./Providers";
 import { messageOf } from "./SessionControl";
+import { useScrollAnchor } from "./useScrollAnchor";
 
-export const EMPTY = "No models yet. Without them each agent runs on its CLI's default model.";
+export const INTRO =
+  "Name the models your agents run on: an agent CLI, its model and, if the model lives elsewhere, a model server. Without any, each agent runs on its agent CLI's default model.";
+export const EMPTY = "No models yet. Without them each agent runs on its agent CLI's default model.";
+export const EMPTY_HOW = "Add a model server below, or tick the models your agent CLIs already offer.";
 // Reads of the CLIs' rows at most while they are not read yet.
 const LOGIN_POLLS = 30;
-// How long a removed model's Undo stays.
+// How long a model removed by × offers Undo; its row then stays as a line.
 export const UNDO_MS = 10000;
 
-type Tab = "mine" | "add";
-// A model removed here, by its tick or ×: its row offers Undo, saying why Undo was refused.
-type Removed = { model: ConfiguredModelInfo; problem: string | null; busy: boolean };
+// A model removed by ×: its row offers Undo (`expired`: no more), saying why Undo was refused.
+type Removed = {
+  model: ConfiguredModelInfo;
+  problem: string | null;
+  busy: boolean;
+  expired: boolean;
+};
 
 const fold = (text: string) => text.toLowerCase();
 const byName = (a: ConfiguredModelInfo, b: ConfiguredModelInfo) => fold(a.name).localeCompare(fold(b.name));
@@ -43,16 +63,20 @@ export function ModelSettings() {
   const [entries, setEntries] = useState<Entries | null>(null);
   const [logins, setLogins] = useState<ProviderLogins[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("mine");
   const [reads, setReads] = useState<Record<string, Read>>({});
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState<Record<string, Saved>>({});
   const [removed, setRemoved] = useState<Record<string, Removed>>({});
+  // The names of models unticked here, by their tick's key, while the page stays open: a
+  // tick again saves the model under its name (a mis-click loses no name).
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [focusName, setFocusName] = useState<string | null>(null); // after Undo
   const section = useRef<HTMLElement>(null);
   const latest = useRef(0);
   const reading = useRef<Record<string, number>>({}); // each source's latest read (ModelSources)
   const scrolled = useRef(false);
   const { hash } = useLocation();
+  useScrollAnchor(section);
 
   const reload = useCallback(async (given?: Entries) => {
     const asked = ++latest.current;
@@ -127,49 +151,79 @@ export function ModelSettings() {
       return next;
     });
   }, []);
-  const onRemoved = useCallback(
-    (model: ConfiguredModelInfo) =>
-      setRemoved((now) => ({ ...now, [fold(model.name)]: { model, problem: null, busy: false } })),
+  // The human's next change in the section: the lines of models removed by × whose Undo ran
+  // out go.
+  const onTouch = useCallback(
+    () => setRemoved((now) => Object.fromEntries(Object.entries(now).filter(([, gone]) => !gone.expired))),
     [],
   );
-  const forget = useCallback(
-    (name: string) =>
-      setRemoved((now) => {
+  const onName = useCallback(
+    (key: string, name: string | null) =>
+      setNames((now) => {
         const next = { ...now };
-        delete next[fold(name)];
+        if (name === null) delete next[key];
+        else next[key] = name;
         return next;
       }),
     [],
   );
+  const set = (name: string, gone: Removed | null) =>
+    setRemoved((now) => {
+      const next = { ...now };
+      if (gone) next[fold(name)] = gone;
+      else delete next[fold(name)];
+      return next;
+    });
+  const onRemoved = (model: ConfiguredModelInfo) => {
+    onTouch();
+    set(model.name, { model, problem: null, busy: false, expired: false });
+  };
   const undo = async (gone: Removed) => {
     const { model } = gone;
-    setRemoved((now) => ({ ...now, [fold(model.name)]: { ...gone, busy: true, problem: null } }));
+    onTouch();
+    set(model.name, { ...gone, busy: true, problem: null });
     try {
-      await addModel({ name: model.name, cli: model.cli, model: model.model, server: model.server });
+      await addModel({
+        name: model.name,
+        cli: model.cli,
+        model: model.model,
+        server: model.server,
+      });
     } catch (error) {
-      setRemoved((now) => ({ ...now, [fold(model.name)]: { model, busy: false, problem: refusalOf(error).message } }));
+      set(model.name, {
+        ...gone,
+        busy: false,
+        problem: refusalOf(error).message,
+      });
       void reload();
       return;
     }
     // The Undo row goes only once the reload has brought the model back: nothing moves.
     await reload();
-    forget(model.name);
-  };
-  // Opens a CLI's source in Add models, as its card's link asks.
-  const opening = useRef<string | null>(null);
-  const goTo = (cli: string) => {
-    setTab("add");
-    if (!open.has(cliKey(cli))) opening.current = cli;
+    setFocusName(model.name);
+    set(model.name, null);
   };
 
+  const sources: Sources = {
+    settings: entries ?? { models: [], servers: [] },
+    logins,
+    reads,
+    onRead,
+    open,
+    onOpen,
+    saved,
+    onSaved,
+    onChanged: reload,
+    latest: reading,
+    onTouch,
+    names,
+    onName,
+  };
   const count = entries?.models.length ?? 0;
   return (
-    <section className="setting" id={MODELS_ANCHOR} ref={section} aria-labelledby={id}>
+    <section className="setting mx" id={MODELS_ANCHOR} ref={section} aria-labelledby={id}>
       <h2 id={id}>Models</h2>
-      <p className="muted">
-        The models your agents can run on, each with the agent CLI that runs it. Without any, each agent runs on its
-        agent CLI's default model.
-      </p>
+      <p className="mx-intro">{INTRO}</p>
       {problem && (
         <p className="problem" role="alert">
           {problem}
@@ -177,186 +231,142 @@ export function ModelSettings() {
       )}
       {entries && (
         <>
-          <div className="tab-bar mx-tabs" role="tablist" aria-label="Models">
-            <button
-              type="button"
-              role="tab"
-              className="tab-item"
-              aria-selected={tab === "mine"}
-              data-active={tab === "mine" ? "" : undefined}
-              onClick={() => setTab("mine")}
-            >
-              Your models <span className="tab-count">{count}</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              className="tab-item"
-              aria-selected={tab === "add"}
-              data-active={tab === "add" ? "" : undefined}
-              onClick={() => setTab("add")}
-            >
-              Add models
-            </button>
+          <div className="mx-block">
+            <h3>
+              Your models <span className="mx-count">{count}</span>
+            </h3>
+            <YourModels
+              entries={entries}
+              logins={logins}
+              reads={reads}
+              removed={removed}
+              focusName={focusName}
+              onFocused={() => setFocusName(null)}
+              onChanged={reload}
+              onTouch={onTouch}
+              onRemoved={onRemoved}
+              onUndo={(gone) => void undo(gone)}
+              onExpired={(gone) => set(gone.model.name, { ...gone, expired: true })}
+            />
           </div>
-          <div className="mx-panel" role="tabpanel">
-            {tab === "mine" ? (
-              <YourModels
-                entries={entries}
-                logins={logins}
-                reads={reads}
-                removed={removed}
-                onChanged={reload}
-                onRemoved={onRemoved}
-                onUndo={(gone) => void undo(gone)}
-                onExpired={forget}
-                onAdd={() => setTab("add")}
-                onGoTo={goTo}
-              />
-            ) : (
-              <ModelSources
-                settings={entries}
-                logins={logins}
-                reads={reads}
-                onRead={onRead}
-                open={open}
-                onOpen={onOpen}
-                saved={saved}
-                onSaved={onSaved}
-                onChanged={reload}
-                latest={reading}
-                onRemoved={onRemoved}
-                opening={opening}
-              />
-            )}
-          </div>
+          <ModelServers {...sources} />
+          <CliModels {...sources} />
         </>
       )}
     </section>
   );
 }
 
-// The warnings of a configured model: its CLI not installed, its model not in the list its
-// source gave when last read here.
-function warningsOf(model: ConfiguredModelInfo, logins: ProviderLogins[], reads: Record<string, Read>) {
-  const out: { short: string; long: string }[] = [];
-  const row = logins.find((r) => r.cli.name === model.cli);
-  if (row?.ready && !row.cli.installed)
-    out.push({ short: `${model.cli_title} is not installed`, long: `${model.cli_title} is not installed` });
-  const source = model.server ?? model.cli_title;
+// The warning of a configured model whose source's list, as last read here, lacks it.
+function goneOf(model: ConfiguredModelInfo, reads: Record<string, Read>): string | null {
   const has = listed(reads[model.server === null ? cliKey(model.cli) : serverKey(model.server)]);
-  if (has !== null && !has.has(model.model))
-    out.push({
-      short: "not in list",
-      long: `not in ${source}'s list of models: agents on it will stop at their first turn`,
-    });
-  return out;
+  if (has === null || has.has(model.model)) return null;
+  return `${model.server ?? model.cli_title} no longer lists ${model.model}: agents on it stop at their first turn.`;
 }
 
-type Card = { cli: string; title: string; row: ProviderLogins | null };
+type Card = { cli: string; title: string; off: boolean };
 
-// Your models: a card per agent CLI LADO knows, in the order of Add models, then one for a
-// model of a CLI it does not know; a card's models by name ignoring case, a removed one's
-// Undo row in its place.
+// Your models: a card per agent CLI that has models, in LADO's order of agent CLIs, then one
+// for a model of a CLI it does not know; a card's models by name ignoring case, a model removed
+// by × in its place as its Undo row; under the cards one line names the CLIs without models.
 function YourModels({
   entries,
   logins,
   reads,
   removed,
+  focusName,
+  onFocused,
   onChanged,
+  onTouch,
   onRemoved,
   onUndo,
   onExpired,
-  onAdd,
-  onGoTo,
 }: {
   entries: Entries;
   logins: ProviderLogins[];
   reads: Record<string, Read>;
   removed: Record<string, Removed>;
+  focusName: string | null;
+  onFocused: () => void;
   onChanged: (given?: Entries) => Promise<void>;
+  onTouch: () => void;
   onRemoved: (model: ConfiguredModelInfo) => void;
   onUndo: (gone: Removed) => void;
-  onExpired: (name: string) => void;
-  onAdd: () => void;
-  onGoTo: (cli: string) => void;
+  onExpired: (gone: Removed) => void;
 }) {
   const gone = Object.values(removed);
-  if (entries.models.length === 0 && gone.length === 0)
+  const all = [...entries.models, ...gone.map((g) => g.model)];
+  if (all.length === 0)
     return (
-      <p className="mx-empty">
-        {EMPTY}{" "}
-        <button type="button" className="link-button" onClick={onAdd}>
-          Add models
-        </button>
-      </p>
+      <div className="mx-empty">
+        <p>{EMPTY}</p>
+        <p className="muted">{EMPTY_HOW}</p>
+      </div>
     );
-  const cards: Card[] = logins.map((row) => ({ cli: row.cli.name, title: row.cli.title, row }));
-  for (const m of [...entries.models, ...gone.map((g) => g.model)])
-    if (!cards.some((c) => c.cli === m.cli)) cards.push({ cli: m.cli, title: m.cli_title, row: null });
+  const cards: Card[] = logins.map((row) => ({
+    cli: row.cli.name,
+    title: row.cli.title,
+    off: row.ready && !row.cli.installed,
+  }));
+  for (const m of all)
+    if (!cards.some((c) => c.cli === m.cli)) cards.push({ cli: m.cli, title: m.cli_title, off: false });
+  const shown = cards.filter((c) => all.some((m) => m.cli === c.cli));
+  const none = cards.filter((c) => !shown.includes(c)).map((c) => c.title);
   const servers = new Map(entries.servers.map((s) => [fold(s.name), s.address]));
   return (
     <>
-      {cards.map((card) => {
-        const live = entries.models.filter((m) => m.cli === card.cli);
-        const rows = [
-          ...live.map((model) => ({ model, gone: null as Removed | null })),
-          ...gone.filter((g) => g.model.cli === card.cli && !live.some((m) => fold(m.name) === fold(g.model.name))).map((g) => ({ model: g.model, gone: g })),
-        ].sort((a, b) => byName(a.model, b.model));
-        const off = card.row?.ready && !card.row.cli.installed;
-        const word = off ? "not installed" : card.row?.ready && card.row.login.state === "no" ? "not logged in" : "";
-        return (
-          <div key={card.cli} className="mx-card" role="group" aria-label={card.title}>
-            <div className="mx-card-h">
-              <span className="mx-title">{card.title}</span>
-              <span className="tab-count">{live.length}</span>
-              {word && <span className={off ? "field-note warn mx-card-warn" : "mx-sub"}>{off ? `⚠ ${card.title} is not installed` : word}</span>}
+      <div className="mx-cards">
+        {shown.map((card) => {
+          const live = entries.models.filter((m) => m.cli === card.cli);
+          const rows = [
+            ...live.map((model) => ({ model, gone: null as Removed | null })),
+            ...gone
+              .filter((g) => g.model.cli === card.cli && !live.some((m) => fold(m.name) === fold(g.model.name)))
+              .map((g) => ({ model: g.model, gone: g })),
+          ].sort((a, b) => byName(a.model, b.model));
+          return (
+            <div key={card.cli} className="mx-card" role="group" aria-label={card.title} data-anchor="">
+              <div className="mx-card-h">
+                <span>{card.title}</span>
+                <span className="mx-count">{live.length}</span>
+                {card.off && <span className="mx-card-warn">⚠ not installed: its models cannot run</span>}
+              </div>
+              <div className="mx-table" role="table" aria-label={`${card.title}'s models`}>
+                <div className="mx-mrow mx-mhead" role="row">
+                  <span role="columnheader">Name</span>
+                  <span role="columnheader">Model</span>
+                  <span role="columnheader">From</span>
+                  <span role="columnheader" aria-label="Remove" />
+                </div>
+                {rows.map(({ model, gone }) =>
+                  gone ? (
+                    <UndoRow key={`removed:${model.name}`} gone={gone} onUndo={onUndo} onExpired={onExpired} />
+                  ) : (
+                    <ModelRow
+                      key={model.name}
+                      model={model}
+                      address={model.server ? servers.get(fold(model.server)) : undefined}
+                      gone={goneOf(model, reads)}
+                      focus={focusName !== null && fold(focusName) === fold(model.name)}
+                      onFocused={onFocused}
+                      onChanged={onChanged}
+                      onTouch={onTouch}
+                      onRemoved={onRemoved}
+                    />
+                  ),
+                )}
+              </div>
             </div>
-            {rows.length === 0 ? (
-              <p className="mx-none-p">
-                {`No models: its agents run on ${card.title}'s default model. `}
-                <button type="button" className="link-button" onClick={() => onGoTo(card.cli)}>
-                  {`Add from ${card.title}`}
-                </button>
-              </p>
-            ) : (
-              <table className="mx-table">
-                <colgroup>
-                  <col className="c-name" />
-                  <col />
-                  <col />
-                  <col className="c-act" />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Model</th>
-                    <th>From</th>
-                    <th aria-label="Remove" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(({ model, gone }) =>
-                    gone ? (
-                      <UndoRow key={`removed:${model.name}`} gone={gone} onUndo={onUndo} onExpired={onExpired} />
-                    ) : (
-                      <ModelRow
-                        key={model.name}
-                        model={model}
-                        address={model.server ? servers.get(fold(model.server)) : undefined}
-                        warnings={warningsOf(model, logins, reads)}
-                        onChanged={onChanged}
-                        onRemoved={onRemoved}
-                      />
-                    ),
-                  )}
-                </tbody>
-              </table>
-            )}
-          </div>
-        );
-      })}
-      <p className="mx-count">Click a name to rename it. Sessions will refer to the model, not to its name.</p>
+          );
+        })}
+      </div>
+      {none.length > 0 && (
+        <p className="mx-rest">
+          {none.length === 1
+            ? `${none[0]} has no models: its agents run on its default model.`
+            : `${none.join(", ")} have no models: their agents run on their default model.`}
+        </p>
+      )}
     </>
   );
 }
@@ -368,121 +378,165 @@ function UndoRow({
 }: {
   gone: Removed;
   onUndo: (gone: Removed) => void;
-  onExpired: (name: string) => void;
+  onExpired: (gone: Removed) => void;
 }) {
-  const { model, problem, busy } = gone;
-  // Gone after UNDO_MS, kept while its Undo runs or was refused (to say why).
+  const { model, problem, busy, expired } = gone;
+  // Undo goes after UNDO_MS, kept while it runs or was refused (to say why); the row stays.
+  const latest = useRef(gone);
+  latest.current = gone;
   useEffect(() => {
-    if (problem || busy) return;
-    const timer = setTimeout(() => onExpired(model.name), UNDO_MS);
+    if (problem || busy || expired) return;
+    const timer = setTimeout(() => onExpired(latest.current), UNDO_MS);
     return () => clearTimeout(timer);
-  }, [model.name, problem, busy, onExpired]);
+  }, [problem, busy, expired, onExpired]);
   return (
-    <tr className="mx-undo">
-      <td colSpan={4}>
+    <div className="mx-mrow mx-undo" role="row">
+      <span role="cell">
         <span role="status">
           Removed <b>{model.name}</b>.
         </span>
-        <button type="button" className="link-button" disabled={busy} onClick={() => onUndo(gone)}>
+        {problem && <span className="field-note bad">{problem}</span>}
+      </span>
+      {!expired && (
+        // × hands the focus to its Undo.
+        <button type="button" className="link-button" autoFocus disabled={busy} onClick={() => onUndo(gone)}>
           Undo
         </button>
-        {problem && <span className="field-note bad">{problem}</span>}
-      </td>
-    </tr>
+      )}
+    </div>
   );
 }
 
 function ModelRow({
   model,
   address,
-  warnings,
+  gone,
+  focus,
+  onFocused,
   onChanged,
+  onTouch,
   onRemoved,
 }: {
   model: ConfiguredModelInfo;
   address: string | undefined;
-  warnings: { short: string; long: string }[];
+  gone: string | null;
+  focus: boolean;
+  onFocused: () => void;
   onChanged: (given?: Entries) => Promise<void>;
+  onTouch: () => void;
   onRemoved: (model: ConfiguredModelInfo) => void;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const name = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (!focus) return;
+    name.current?.focus();
+    onFocused();
+  }, [focus, onFocused]);
+  useEffect(() => {
+    if (renaming || !refocus.current) return;
+    refocus.current = false;
+    name.current?.focus();
+  }, [renaming]);
   const remove = async () => {
     setProblem(null);
     try {
-      await onChanged(await removeModel(model.name));
+      const left = await removeModel(model.name);
       onRemoved(model);
+      await onChanged(left);
     } catch (error) {
       setProblem(refusalOf(error).message);
     }
   };
   return (
-    <tr>
-      <td className={renaming ? "mx-renaming" : undefined}>
+    <div className="mx-mrow" role="row">
+      <span className="mx-nm" role="cell">
         {renaming ? (
           <Rename
             name={model.name}
             onDone={(given) => {
+              onTouch();
               setRenaming(false);
               void onChanged(given);
             }}
-            onCancel={() => setRenaming(false)}
+            onCancel={(back) => {
+              refocus.current = back;
+              setRenaming(false);
+            }}
           />
         ) : (
-          <span
+          <button
+            ref={name}
+            type="button"
             className="mx-name"
-            role="button"
-            tabIndex={0}
-            title="Click to rename · Enter saves, Esc cancels"
+            title="Click to rename"
             aria-label={`Rename ${model.name}`}
             onClick={() => setRenaming(true)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                setRenaming(true);
-              }
-            }}
           >
             {model.name}
+          </button>
+        )}
+        {gone && (
+          <span className="mx-flag" title={gone}>
+            ⚠ not in list
           </span>
         )}
-        {problem && <span className="field-note bad mx-rename-note">{problem}</span>}
-      </td>
-      <td className="mono" title={model.model}>
-        {model.model}
-        {warnings.map((w) => (
-          <span key={w.short} className="mx-gone" title={w.long}>{`⚠ ${w.short}`}</span>
-        ))}
-      </td>
-      <td title={address}>{model.server ?? <span className="mx-sub">the CLI itself</span>}</td>
-      <td>
+        {problem && <span className="field-note bad">{problem}</span>}
+      </span>
+      <span className="mx-meta">
+        <span className="mx-model mono" role="cell" title={model.model}>
+          {model.model}
+        </span>
+        {model.server ? (
+          <span className="mx-from" role="cell" title={address}>
+            {model.server}
+          </span>
+        ) : (
+          <span className="mx-from muted" role="cell">
+            the agent CLI
+          </span>
+        )}
+      </span>
+      <span className="mx-x-cell" role="cell">
         <button
           type="button"
-          className="mx-x"
-          title={`Remove ${model.name}`}
+          className="mx-icon"
+          title="Remove"
           aria-label={`Remove ${model.name}`}
           onClick={() => void remove()}
         >
-          ×
+          <CloseIcon />
         </button>
-      </td>
-    </tr>
+      </span>
+    </div>
   );
 }
 
-// The name as a field of its cell: Enter or leaving it renames, Esc restores; a refusal
-// keeps the field with the refusal under it, and leaving it then restores the name.
-function Rename({ name, onDone, onCancel }: { name: string; onDone: (given: Entries) => void; onCancel: () => void }) {
+// The name as a field of its cell: Enter or leaving it renames, Esc restores (the focus back
+// on the name); a refusal keeps the field with the refusal under it, and leaving it then
+// restores the name.
+function Rename({
+  name,
+  onDone,
+  onCancel,
+}: {
+  name: string;
+  onDone: (given: Entries) => void;
+  onCancel: (focusBack: boolean) => void;
+}) {
+  const id = useId();
   const [text, setText] = useState(name);
   const [refused, setRefused] = useState<EntryRefused | null>(null);
   const busy = useRef(false);
   const done = useRef(false);
   const save = async (leaving: boolean) => {
     if (busy.current || done.current) return;
-    if (leaving && refused) return onCancel();
+    if (leaving && refused) return onCancel(false);
     if (text === name) {
       done.current = true;
-      return onCancel();
+      return onCancel(!leaving);
     }
     busy.current = true;
     try {
@@ -496,10 +550,12 @@ function Rename({ name, onDone, onCancel }: { name: string; onDone: (given: Entr
     }
   };
   return (
-    <>
+    <span className="mx-name-edit">
       <input
         className="mx-rename"
         aria-label={`Name of ${name}`}
+        aria-invalid={refused ? true : undefined}
+        aria-describedby={refused ? id : undefined}
         value={text}
         maxLength={64}
         autoFocus
@@ -516,16 +572,16 @@ function Rename({ name, onDone, onCancel }: { name: string; onDone: (given: Entr
           if (event.key === "Escape") {
             event.preventDefault();
             done.current = true;
-            onCancel();
+            onCancel(true);
           }
         }}
         onBlur={() => void save(true)}
       />
       {refused && (
-        <span className="field-note bad mx-rename-note" role="alert">
+        <span className="field-note bad" id={id} role="alert">
           {refused.message}
         </span>
       )}
-    </>
+    </span>
   );
 }

@@ -14,11 +14,23 @@ let tops: Record<string, number> = {};
 const topOf = (el: Element) => tops[(el as HTMLElement).dataset.t ?? ""] ?? 0;
 Element.prototype.getBoundingClientRect = function (this: Element) {
   const top = topOf(this);
-  return { top, bottom: top + 30, left: 0, right: 100, width: 100, height: 30, x: 0, y: top, toJSON: () => ({}) };
+  return {
+    top,
+    bottom: top + 30,
+    left: 0,
+    right: 100,
+    width: 100,
+    height: 30,
+    x: 0,
+    y: top,
+    toJSON: () => ({}),
+  };
 };
 
 function wide(on: boolean) {
-  vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("max-width") ? !on : on }));
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query.includes("max-width") ? !on : on,
+  }));
 }
 
 let hold: (acted?: Element | null) => void = () => undefined;

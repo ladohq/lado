@@ -1,9 +1,10 @@
-"""Settings → Models in a browser (openspec change model-settings-page): its tabs Your models
-and Add models against a real `lado server`, the fake model server of tests/fake_model_server.py
-in the test's process, and stand-ins of Claude Code, Codex CLI, OpenCode and Kilo CLI on the
-server's PATH that print a version (Claude Code's aliases are its provider's own list; Kilo
-CLI's `kilo models` prints 323 models). Nothing moves under the pointer: each action keeps
-the top of what it acted on. On a computer and at a phone's width."""
+"""Settings → Models in a browser (openspec change model-settings-page): its three blocks, Your
+models, Model servers and Models of your agent CLIs, against a real `lado server`, the fake
+model server of tests/fake_model_server.py in the test's process, and stand-ins of Claude Code,
+Codex CLI, OpenCode and Kilo CLI on the server's PATH that print a version (Claude Code's
+aliases are its provider's own list; Kilo CLI's `kilo models` prints 323 models). Nothing moves
+under the pointer: each action keeps the top of what it acted on, or of what holds the focus,
+to the pixel, whatever it changes above. On a computer and at a phone's width."""
 
 import os
 import re
@@ -12,15 +13,17 @@ import stat
 
 import fake_model_server as fake
 import pytest
-from playwright.sync_api import Browser, Locator, Page, expect
+from playwright.sync_api import Browser, Locator, Page, Route, expect
 from test_main_screen import log_in
 
 from lado import model_settings, state
 
 pytestmark = pytest.mark.ui
 
-EMPTY = "No models yet. Without them each agent runs on its CLI's default model."
+EMPTY = "No models yet. Without them each agent runs on its agent CLI's default model."
+EMPTY_HOW = "Add a model server below, or tick the models your agent CLIs already offer."
 KILO_MODELS = 323
+UNDO_S = 10
 
 
 @pytest.fixture
@@ -59,14 +62,14 @@ def section(page: Page):
     return page.get_by_role("region", name="Models")
 
 
-def tab(page: Page, name: str):
-    return section(page).get_by_role("tab", name=re.compile(rf"^{re.escape(name)}"))
-
-
 def source(page: Page, name: str):
-    """A source's row in Add models, by its toggle's name."""
+    """A source's row, by its toggle's name."""
     toggle = page.get_by_role("button", name=name, exact=True)  # within the row
     return section(page).locator("li.mx-src").filter(has=toggle)
+
+
+def toggle(page: Page, name: str):
+    return source(page, name).get_by_role("button", name=name, exact=True)
 
 
 def card(page: Page, title: str):
@@ -82,7 +85,7 @@ def top(locator: Locator) -> float:
 def open_settings(page: Page, server) -> None:
     log_in(page, server)
     page.goto(f"{server['url']}/settings#models")
-    expect(tab(page, "Your models")).to_be_visible()
+    expect(section(page).get_by_role("heading", name="Models of your agent CLIs")).to_be_visible()
     # Agent CLIs and environment, above, grows once its check ends: measured after that.
     expect(page.locator(".pv-refresh.spinning")).to_have_count(0, timeout=30_000)
     expect(page.locator(".pv-list")).to_be_visible()
@@ -90,94 +93,162 @@ def open_settings(page: Page, server) -> None:
 
 def start_form(page: Page, name: str, address: str) -> None:
     models = section(page)
-    models.get_by_role("button", name="+ Add server").click()
+    models.get_by_role("button", name="Add server", exact=True).click()
     models.get_by_label("Name").fill(name)
     models.get_by_label("Address").fill(address)
+
+
+def add_server(page: Page, name: str, address: str) -> Locator:
+    start_form(page, name, address)
+    add = section(page).get_by_role("button", name="Add server", exact=True)
+    expect(add).to_be_enabled()
+    add.click()
+    lm = source(page, name)
+    expect(lm.get_by_text(f'Saved model server "{name}".')).to_be_visible()
+    return lm
 
 
 def test_first_open_and_ticking_claude_sonnet(page: Page, clis, server, lms, shot):
     page.set_viewport_size({"width": 1280, "height": 900})
     open_settings(page, server)
     models = section(page)
+    expect(models.get_by_role("tablist")).to_have_count(0)
+    expect(models.get_by_role("heading", level=3)).to_have_text(
+        ["Your models 0", "Model servers", "Models of your agent CLIs"]
+    )
     expect(models.get_by_text(EMPTY)).to_be_visible()
+    expect(models.get_by_text(EMPTY_HOW)).to_be_visible()
+    expect(models.locator(".mx-hit[aria-expanded=true]")).to_have_count(0)  # all closed
+    assert lms.requests == []
     shot(page, "first-open")
-    models.get_by_role("button", name="Add models").click()  # the empty line's link
     claude = source(page, "Claude Code")
-    expect(claude.get_by_role("checkbox")).to_have_count(0)  # closed: nothing read
-    expect(claude.locator(".badge")).to_have_text("CLI")
+    expect(claude.locator(".badge")).to_have_count(0)
     claude.get_by_text("Claude Code", exact=True).click()  # the row's name opens it
     sonnet = claude.get_by_role("checkbox", name="sonnet on Claude Code", exact=True)
     sonnet.scroll_into_view_if_needed()  # where the click would scroll it: measured there
     before = top(sonnet)
     sonnet.click()  # the tick follows the saved model, not the click: no check()
     expect(claude.get_by_text("as Claude Sonnet")).to_be_visible()
-    expect(sonnet).to_be_checked()
+    expect(card(page, "Claude Code")).to_be_visible()  # a card above
     assert top(sonnet) == before  # nothing moved under the pointer
-    expect(tab(page, "Your models")).to_have_text("Your models 1")
+    expect(models.get_by_role("heading", name="Your models 1")).to_be_visible()
     assert [m.name for m in state.models()] == ["Claude Sonnet"]
     shot(page, "claude-sonnet")
     sonnet.click()
     expect(sonnet).not_to_be_checked()
+    expect(card(page, "Claude Code")).to_have_count(0)  # the card above went
     assert top(sonnet) == before
+    expect(models.get_by_role("button", name="Undo")).to_have_count(0)  # the tick is its undo
     assert state.models() == []
-    # Undo, in Your models, brings the model back under its name; the tick follows.
-    tab(page, "Your models").click()
-    undo = card(page, "Claude Code").get_by_role("button", name="Undo")
+
+
+def test_a_tick_in_the_middle_of_a_long_list_moves_nothing(page: Page, clis, server, shot):
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_settings(page, server)
+    kilo = source(page, "Kilo CLI")
+    toggle(page, "Kilo CLI").click()
+    expect(kilo.get_by_text(f"{KILO_MODELS} models", exact=True)).to_be_visible()
+    listing = kilo.locator(".mx-list")
+    box = listing.bounding_box()
+    assert box and box["height"] <= 9 * 36 + 2  # nine rows, scrolled within
+    listing.evaluate("list => { list.scrollTop = list.scrollHeight / 2; }")
+    middle = kilo.get_by_role("checkbox", name="vendor/model-160 on Kilo CLI", exact=True)
+    middle.scroll_into_view_if_needed()
+    before = top(middle)
+    middle.click()
+    expect(card(page, "Kilo CLI")).to_be_visible()  # its card added above
+    expect(middle).to_be_checked()
+    assert top(middle) == before
+    shot(page, "kilo")
+    kilo.get_by_role("searchbox", name=f"Search {KILO_MODELS} models").fill("model-32")
+    expect(kilo.get_by_text(f"4 of {KILO_MODELS} models")).to_be_visible()  # 32, 320-322
+
+
+def test_x_undo_and_undo_running_out_move_nothing(page: Page, clis, server, shot):
+    state.add_model("Claude Sonnet", "claude", "sonnet", None)
+    state.add_model("gpt-5-codex", "codex", "gpt-5-codex", None)
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_settings(page, server)
+    claude = card(page, "Claude Code")
+    x = claude.get_by_role("button", name="Remove Claude Sonnet")
+    x.scroll_into_view_if_needed()
+    row = claude.get_by_role("row").nth(1)
+    at = top(row)
+    x.click()
+    undo = claude.get_by_role("button", name="Undo")
+    expect(undo).to_be_focused()
+    assert top(row) == at  # the row keeps its place and height
+    expect(row).to_have_text("Removed Claude Sonnet.Undo")
+    shot(page, "your-models-undo")
     undo.click()
-    expect(
-        card(page, "Claude Code").get_by_role("button", name="Rename Claude Sonnet")
-    ).to_be_visible()
-    assert [m.name for m in state.models()] == ["Claude Sonnet"]
-    tab(page, "Add models").click()
-    expect(
-        source(page, "Claude Code").get_by_role("checkbox", name="sonnet on Claude Code")
-    ).to_be_checked()
+    name = claude.get_by_role("button", name="Rename Claude Sonnet")
+    expect(name).to_be_focused()
+    assert top(row) == at
+    assert sorted(m.name for m in state.models()) == ["Claude Sonnet", "gpt-5-codex"]
+
+    # × again, then the human works below while its Undo runs out.
+    claude.get_by_role("button", name="Remove Claude Sonnet").click()
+    expect(undo).to_be_visible()
+    toggle(page, "Codex CLI").click()
+    codex = source(page, "Codex CLI").get_by_role("checkbox", name="gpt-5-codex on Codex CLI")
+    codex.focus()
+    below = top(codex)
+    page.wait_for_timeout(UNDO_S * 1000 + 500)
+    expect(undo).to_have_count(0)
+    expect(row).to_have_text("Removed Claude Sonnet.")  # the line stays
+    assert top(codex) == below
+    codex.click()  # the next change: the line goes, Claude Code's card above with it
+    expect(row).to_have_count(0)
+    expect(card(page, "Claude Code")).to_have_count(0)
+    assert top(codex) == below
 
 
-def test_a_server_added_ticked_renamed_refreshed_and_removed(
+def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     page: Page, clis, server, lms, shot, monkeypatch
 ):
     page.set_viewport_size({"width": 1280, "height": 900})
     open_settings(page, server)
     assert lms.requests == []  # opening the page asks no server
-    tab(page, "Add models").click()
     start_form(page, "LM Studio дома", lms.url.removeprefix("http://"))
     models = section(page)
-    expect(
-        models.get_by_text(re.compile(r"✓ LM Studio · 1 model · .*can run them"))
-    ).to_be_visible()
+    found = models.locator(".mx-found")
+    expect(found).to_contain_text(f"✓ LM Studio answers at {lms.url}")
+    expect(found).to_contain_text("1 embeddings model hidden: agents cannot run on it.")
+    expect(found).to_contain_text("Kilo CLI, OpenCode, Codex CLI")
+    expect(models.locator("label", has_text="Key")).to_contain_text("optional")
     shot(page, "form-checked")
-    add = models.get_by_role("button", name="Add", exact=True)
+    add = models.get_by_role("button", name="Add server", exact=True)
     add.scroll_into_view_if_needed()
-    at = top(models.locator("li.mx-src").filter(has=page.locator(".mx-form")))
+    at = top(models.locator(".mx-form"))
     add.click()
     lm = source(page, "LM Studio дома")
-    expect(lm.get_by_text('✓ Saved model server "LM Studio дома".')).to_be_visible()
+    expect(lm.get_by_text('Saved model server "LM Studio дома".')).to_be_visible()
+    expect(lm.get_by_text("Open a model to tick the agent CLIs that run it.")).to_be_visible()
     assert top(lm) == at  # the new server takes the form's place
-    expect(lm.get_by_text("1 embeddings model hidden: agents cannot run on it.")).to_be_visible()
+    expect(toggle(page, "LM Studio дома")).to_be_focused()
     expect(lm.get_by_text(fake.EMBEDDINGS)).to_have_count(0)
     shot(page, "server-added")
 
     row = lm.get_by_role("button", name="qwen3-8b", exact=True)
     row.click()
     clis_of = lm.get_by_role("group", name="Agent CLIs for qwen3-8b")
+    expect(clis_of.get_by_text("would be qwen3-8b · LM Studio дома · Kilo CLI")).to_be_visible()
     opencode = clis_of.get_by_role("checkbox", name="qwen3-8b on OpenCode", exact=True)
     opencode.scroll_into_view_if_needed()
     before = top(opencode)
     opencode.click()
     expect(row).to_contain_text("in OpenCode")
+    expect(card(page, "OpenCode")).to_be_visible()  # a card above
     assert top(opencode) == before
     shot(page, "server-model-clis")
-    clis_of.get_by_role("button", name="Done").click()
 
-    tab(page, "Your models").click()
     name = "qwen3-8b · LM Studio дома · OpenCode"
     opencode_card = card(page, "OpenCode")
     opencode_card.get_by_role("button", name=f"Rename {name}").click()
     field = opencode_card.get_by_role("textbox", name=f"Name of {name}")
     field.fill("Другое")
-    field.press("Escape")  # restores, saves nothing
-    expect(opencode_card.get_by_role("button", name=f"Rename {name}")).to_be_visible()
+    field.press("Escape")  # restores, saves nothing, the focus back on the name
+    expect(opencode_card.get_by_role("button", name=f"Rename {name}")).to_be_focused()
     assert [m.name for m in state.models()] == [name]
     opencode_card.get_by_role("button", name=f"Rename {name}").click()
     field.fill("Локальная Qwen")
@@ -186,73 +257,82 @@ def test_a_server_added_ticked_renamed_refreshed_and_removed(
     assert [m.name for m in state.models()] == ["Локальная Qwen"]
     shot(page, "renamed")
 
+    # A mis-click: unticked and ticked again, the model keeps its name.
+    opencode.scroll_into_view_if_needed()
+    before = top(opencode)
+    opencode.click()
+    expect(clis_of.get_by_text("would be Локальная Qwen")).to_be_visible()
+    assert top(opencode) == before
+    assert state.models() == []
+    opencode.click()
+    expect(clis_of.get_by_text("as Локальная Qwen")).to_be_visible()
+    assert [m.name for m in state.models()] == ["Локальная Qwen"]
+    assert top(opencode) == before
+
     # The server's list changes: ↻ shows the new model, the gone one first, marked.
     listed = dict(fake.PROFILES["lmstudio"])
     listed[("GET", fake.MODELS)] = fake.openai_list("gemma-3-12b", fake.EMBEDDINGS)
     monkeypatch.setitem(fake.PROFILES, "lmstudio", listed)
-    tab(page, "Add models").click()
-    lm.get_by_role("button", name="Refresh the list").click()
+    lm.get_by_role("button", name="Read the models again").click()
     expect(lm.get_by_role("button", name="gemma-3-12b", exact=True)).to_be_visible()
     first = lm.locator(".mx-list .mx-row").first
-    expect(first).to_contain_text("qwen3-8b ⚠ no longer listed")
+    expect(first).to_contain_text("no longer listed")
     expect(first).to_contain_text("in OpenCode")
-    tab(page, "Your models").click()
     expect(card(page, "OpenCode").get_by_text("⚠ not in list")).to_be_visible()
     shot(page, "refreshed")
 
     id = state.model_server("LM Studio дома").id
-    tab(page, "Add models").click()
     lm.get_by_role("button", name="Remove LM Studio дома").click()
-    expect(
-        lm.get_by_text(
-            "Remove LM Studio дома and its 1 model: Локальная Qwen? Its key is deleted too; "
-            "this cannot be undone."
+    ask = lm.get_by_role("alertdialog")
+    expect(ask).to_have_text(
+        re.compile(
+            r"^Remove LM Studio дома and its 1 model: Локальная Qwen\? This cannot be undone\."
         )
-    ).to_be_visible()
+    )
+    expect(ask.get_by_role("button", name="Cancel")).to_be_focused()
     shot(page, "remove-asks")
-    confirm = lm.get_by_role("button", name="Remove server and models")
+    confirm = lm.get_by_role("button", name="Remove server and 1 model")
     confirm.scroll_into_view_if_needed()
     at = top(lm)
     confirm.click()
     removed = "Removed LM Studio дома and its 1 model."
     expect(models.get_by_text(removed)).to_be_visible()
+    expect(card(page, "OpenCode")).to_have_count(0)  # the card above went
     line = models.locator("li.mx-src").filter(has=page.get_by_text(removed))
     assert top(line) == at  # its line in its place
     assert state.model_servers() == [] and state.models() == []
     assert not model_settings.key_folder(id).exists()
-    tab(page, "Your models").click()
-    expect(section(page).get_by_text(EMPTY)).to_be_visible()
+    expect(models.get_by_text(EMPTY)).to_be_visible()
 
 
-def test_the_form_checks_before_add_and_a_silent_server(page: Page, clis, server, lms, shot):
+def test_the_form_checks_before_add_a_silent_server_and_change(page: Page, clis, server, lms, shot):
     page.set_viewport_size({"width": 1280, "height": 900})
     open_settings(page, server)
-    tab(page, "Add models").click()
     port = closed_port()
     start_form(page, "lab", f"127.0.0.1:{port}")
     models = section(page)
     address = models.get_by_label("Address")
     note = models.get_by_text(re.compile(rf"http://127\.0\.0\.1:{port} does not answer"))
     expect(note).to_be_visible()  # before any Add
-    expect(models.get_by_role("button", name="Add", exact=True)).to_be_disabled()
+    expect(models.get_by_role("button", name="Add server", exact=True)).to_be_disabled()
     field_box, note_box = address.bounding_box(), note.bounding_box()
     assert field_box and note_box and note_box["y"] >= field_box["y"] + field_box["height"]
     assert state.model_servers() == []
     shot(page, "refused")
     address.fill(lms.url)
-    expect(models.get_by_role("button", name="Add", exact=True)).to_be_enabled()
-    models.get_by_role("button", name="Add", exact=True).click()
+    add = models.get_by_role("button", name="Add server", exact=True)
+    expect(add).to_be_enabled()
+    add.click()
     lm = source(page, "lab")
     lm.get_by_role("button", name="qwen3-8b", exact=True).click()
     lm.get_by_role("checkbox", name="qwen3-8b on OpenCode", exact=True).click()
     expect(lm.get_by_role("button", name="qwen3-8b", exact=True)).to_contain_text("in OpenCode")
-    lm.get_by_role("button", name="lab", exact=True).click()  # closed
+    toggle(page, "lab").click()  # closed
     lms.close()
-    lm.get_by_role("button", name="lab", exact=True).click()
+    toggle(page, "lab").click()
+    expect(lm.get_by_role("alert")).to_contain_text("does not answer")
     expect(
-        lm.get_by_text(
-            re.compile(r"does not answer .*Its models stay: qwen3-8b · lab · OpenCode\.")
-        )
+        lm.get_by_text(re.compile(r"^Its model stays saved: qwen3-8b · lab · OpenCode\."))
     ).to_be_visible()
     shot(page, "silent")
     assert [m.name for m in state.models()] == ["qwen3-8b · lab · OpenCode"]
@@ -260,9 +340,12 @@ def test_the_form_checks_before_add_and_a_silent_server(page: Page, clis, server
     moved = fake.Server("lmstudio")
     try:
         lm.get_by_role("button", name="Change lab").click()
+        expect(lm.get_by_text("Its 1 model keeps its name and moves with it.")).to_be_visible()
         lm.get_by_label("Address").fill(moved.url)
+        expect(lm.get_by_text("✓ LM Studio answers · 1 model")).to_be_visible()  # before Save
+        shot(page, "change")
         lm.get_by_role("button", name="Save").click()
-        expect(lm.get_by_text('✓ Saved model server "lab".')).to_be_visible()
+        expect(lm.get_by_text('Saved model server "lab".')).to_be_visible()
         expect(lm.get_by_role("button", name="qwen3-8b", exact=True)).to_be_visible()  # opened
         assert state.model_server("lab").address == moved.url
         assert state.model("qwen3-8b · lab · OpenCode").server == state.model_server("lab").id
@@ -270,28 +353,29 @@ def test_the_form_checks_before_add_and_a_silent_server(page: Page, clis, server
         moved.close()
 
 
-def test_a_long_list_is_bounded_and_searched(page: Page, clis, server, shot):
+def test_a_list_read_ending_above_the_focus_moves_nothing(page: Page, clis, server, lms):
+    state.add_model_server("s1", "LM Studio дома", lms.url, "LM Studio", ["chat completions"])
+    held: list[Route] = []
+    page.route(re.compile(r".*/api/model-servers/.*/probe$"), lambda route: held.append(route))
     page.set_viewport_size({"width": 1280, "height": 900})
     open_settings(page, server)
-    tab(page, "Add models").click()
-    height = page.evaluate("document.querySelector('#models').scrollHeight")
-    kilo = source(page, "Kilo CLI")
-    kilo.get_by_role("button", name="Kilo CLI", exact=True).click()
-    expect(kilo.get_by_text(f"{KILO_MODELS} models", exact=True)).to_be_visible()
-    listing = kilo.locator(".mx-list")
-    box = listing.bounding_box()
-    assert box and box["height"] <= 320  # about nine rows, scrolled within
-    grown = page.evaluate("document.querySelector('#models').scrollHeight") - height
-    assert grown < 400
-    shot(page, "kilo")
-    kilo.get_by_role("searchbox", name="Search the models").fill("model-32")
-    expect(kilo.get_by_text(f"4 of {KILO_MODELS} models")).to_be_visible()  # 32, 320-322
+    toggle(page, "LM Studio дома").click()
+    expect(source(page, "LM Studio дома").get_by_text("reading the models…")).to_be_visible()
+    toggle(page, "Claude Code").click()
+    sonnet = source(page, "Claude Code").get_by_role("checkbox", name="sonnet on Claude Code")
+    sonnet.focus()
+    sonnet.scroll_into_view_if_needed()
+    before = top(sonnet)
+    assert len(held) == 1  # the probe, held while the list reads
+    held[0].continue_()
+    expect(source(page, "LM Studio дома").get_by_role("button", name="qwen3-8b")).to_be_visible()
+    assert top(sonnet) == before
 
 
 def test_the_section_at_a_phones_width(browser: Browser, clis, server, lms, shot, monkeypatch):
-    long = "qwen/qwen3-coder-30b-a3b-instruct"
+    twelve = [f"vendor/model-{i}" for i in range(11)] + ["qwen/qwen3-coder-30b-a3b-instruct"]
     listed = dict(fake.PROFILES["lmstudio"])
-    listed[("GET", fake.MODELS)] = fake.openai_list("qwen3-8b", long, fake.EMBEDDINGS)
+    listed[("GET", fake.MODELS)] = fake.openai_list(*twelve, fake.EMBEDDINGS)
     monkeypatch.setitem(fake.PROFILES, "lmstudio", listed)
     gateway = "https://litellm-gateway.platform.internal.example.com:4000/v1"
     state.add_model_server("g1", "LiteLLM", gateway, "LiteLLM", ["chat"])
@@ -301,26 +385,37 @@ def test_the_section_at_a_phones_width(browser: Browser, clis, server, lms, shot
     try:
         page = context.new_page()
         open_settings(page, server)
-        tab(page, "Add models").click()
         gw = source(page, "LiteLLM")
-        toggle = gw.get_by_role("button", name="LiteLLM", exact=True)
-        expect(toggle).to_have_attribute("title", gateway)
-        expect(gw.get_by_role("button", name="Change LiteLLM")).to_be_visible()
+        expect(gw.locator(".mx-l2")).to_contain_text(gateway)  # whole, wrapped
+        assert gw.evaluate(
+            "li => { const l = li.querySelector('.mx-l2'); return l.scrollWidth <= l.clientWidth; }"
+        )
+        change = gw.get_by_role("button", name="Change LiteLLM")
+        expect(change).to_be_visible()
+        box = change.bounding_box()
+        assert box and box["width"] >= 44 and box["height"] >= 44
         # The icons under the name, measured at one moment.
         assert gw.evaluate(
             "li => li.querySelector('.mx-acts').getBoundingClientRect().top >= "
-            "li.querySelector('.mx-title').getBoundingClientRect().bottom"
+            "li.querySelector('.mx-src-name').getBoundingClientRect().bottom"
         )
-        start_form(page, "LM Studio дома", lms.url)
-        section(page).get_by_role("button", name="Add", exact=True).click()
-        lm = source(page, "LM Studio дома")
+        lm = add_server(page, "LM Studio дома", lms.url)
+        listing = lm.locator(".mx-list")
+        expect(listing.get_by_role("button")).to_have_count(12)
+        assert listing.evaluate("l => l.scrollHeight <= l.clientHeight")  # no scroll within
+        row = listing.get_by_role("button").first.bounding_box()
+        assert row and row["height"] >= 44
+        long = twelve[-1]
         lm.get_by_role("button", name=long, exact=True).click()
         lm.get_by_role("checkbox", name=f"{long} on OpenCode", exact=True).click()
         expect(lm.get_by_role("button", name=long, exact=True)).to_contain_text("in OpenCode")
         assert page.evaluate("document.documentElement.scrollWidth") <= 390  # no sideways scroll
         shot(page, "phone", full_page=False)
-        tab(page, "Your models").click()
-        expect(card(page, "OpenCode")).to_contain_text(long)
+        opencode = card(page, "OpenCode")
+        opencode.scroll_into_view_if_needed()
+        expect(opencode).to_contain_text(long)
+        x = opencode.get_by_role("button", name=re.compile("^Remove ")).bounding_box()
+        assert x and x["width"] >= 44 and x["height"] >= 44
         assert page.evaluate("document.documentElement.scrollWidth") <= 390
         shot(page, "phone-your-models", full_page=False)
     finally:

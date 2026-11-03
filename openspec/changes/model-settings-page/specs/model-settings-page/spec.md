@@ -452,12 +452,17 @@ SHALL hold its value.
 
 The Key and New key fields SHALL be the dots field of a project's secrets, not a password
 field; the page SHALL keep the key only in its field, never in the page's state, an address
-or the browser's storage, and SHALL empty the field after a send, on Cancel and when the
-form closes.
+or the browser's storage, and SHALL empty the field after Add or Save, on Cancel and when
+the form closes. Check key SHALL leave the key in its field, so that Add or Save can send it
+next.
 
 #### Scenario: Cancel
 - **WHEN** the human types a key, presses Cancel and opens + Add server again
 - **THEN** the Key field is empty
+
+#### Scenario: Check key, then Add
+- **WHEN** the human types a key and presses Check key
+- **THEN** the Key field still holds the key, and Add sends it
 
 ### Requirement: The section fits a phone
 

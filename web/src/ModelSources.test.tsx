@@ -470,6 +470,9 @@ test("a gateway that asks for a key: said under Address; Check key sends the key
   const sent = server.calls.filter((c) => JSON.stringify(c.body ?? "").includes("right"));
   expect(sent.map((c) => c.path)).toEqual(["/api/model-servers/check"]);
   expect(key.value).toBe("right"); // kept for Add
+  fireEvent.click(addButton());
+  await waitFor(() => expect(server.of("POST", "/api/model-servers").filter((c) => c.path === "/api/model-servers")).toHaveLength(1));
+  expect((server.of("POST", "/api/model-servers").find((c) => c.path === "/api/model-servers")?.body as { key: string }).key).toBe("right");
 });
 
 test("an older check's answer is dropped", async () => {

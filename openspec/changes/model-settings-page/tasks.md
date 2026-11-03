@@ -2,27 +2,27 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
 
 ## 1. Core
 
-- [ ] 1.1 `model_settings.py`, `model_servers.py`, `cli.py`: `field` on `Refused` and
+- [x] 1.1 `model_settings.py`, `model_servers.py`, `cli.py`: `field` on `Refused` and
   `ProbeError` at every raise; `check_model`; the empty key in `check_key`; the probe's
   `models_why` empty when the versioned list gives the models (D2, D3, D9, D11). Check:
   `tests/test_model_settings.py`, `tests/test_model_servers.py`, the CLI tests unchanged.
-- [ ] 1.2 `default_name` and `add_model(name=None)`; `rename_model` in `state.py` and
+- [x] 1.2 `default_name` and `add_model(name=None)`; `rename_model` in `state.py` and
   `model_settings.py` (D4, D8). Check: `tests/test_model_settings.py`, `tests/test_state.py`.
-- [ ] 1.3 A server removed with its models: `state.remove_model_server(id, with_models)`,
+- [x] 1.3 A server removed with its models: `state.remove_model_server_with_models(id)`,
   `model_settings.remove_server(…, with_models, removed)`, `lado model-server remove
   --with-models` and the refusal's hint; `docs/cli.md` (D7). Check:
-  `tests/test_model_settings.py`, `tests/test_state.py`, `tests/test_cli_model_server.py`,
+  `tests/test_model_settings.py`, `tests/test_state.py`, `tests/test_cli_model_settings.py`,
   `uv run pytest -m integration -n auto tests/integration/test_model_settings_process.py`.
-- [ ] 1.4 doctor names a model its server no longer lists; `docs/cli.md`'s doctor line
+- [x] 1.4 doctor names a model its server no longer lists; `docs/cli.md`'s doctor line
   (D12). Check: `tests/test_doctor.py`.
 
 ## 2. API
 
-- [ ] 2.1 `server/model_entries.py`, the routes in `server/app.py`, the models in
+- [x] 2.1 `server/model_entries.py`, the routes in `server/app.py`, the models in
   `server/models.py`, `fresh` in `server/launch.py`, `SECRET_ROUTE`, the kept probes (D1,
   D5, D9, D10); `make web-types`, both generated files committed. Check:
   `tests/test_server_model_settings.py`, the existing `tests/test_server_*.py`.
-- [ ] 2.2 The key canary through a real `lado server`. Check: `uv run pytest -m integration
+- [x] 2.2 The key canary through a real `lado server`. Check: `uv run pytest -m integration
   -n auto tests/integration/test_model_settings_canary.py`.
 
 ## 3. Page

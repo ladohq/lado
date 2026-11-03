@@ -22,6 +22,7 @@ import stat
 import urllib.parse
 import uuid
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from lado import agent_env, model_check, model_servers, project_secrets, providers, state
@@ -34,27 +35,42 @@ MAX_NAME = 64
 SERVER, MODEL = "model server", "model"  # what a name is of, in its refusals
 
 
+# The field of a form a refusal concerns, for the UI ("" for none); the CLI ignores it.
+NAME, ADDRESS, KEY_FIELD, CLI, SERVER_FIELD, MODEL_FIELD = (
+    "name",
+    model_servers.ADDRESS,
+    model_servers.KEY,
+    "cli",
+    "server",
+    "model",
+)
+
+
 class Refused(Exception):
     """Why a command on the entries changed nothing, one line; `hint` what the human can try
-    ("" for none)."""
+    ("" for none); `field` the field it concerns."""
 
-    def __init__(self, text: str, hint: str = ""):
+    def __init__(self, text: str, hint: str = "", field: str = ""):
         super().__init__(text)
         self.hint = hint
+        self.field = field
 
 
 def check_name(name: str, of: str) -> None:
     """Refuse a name of a `of` (SERVER or MODEL) that is not one line of visible text of 1
     to MAX_NAME characters without spaces at its ends."""
     if not name:
-        raise Refused(f"a {of}'s name is empty")
+        raise Refused(f"a {of}'s name is empty", field=NAME)
     char = visible.first_hidden(name)
     if char is not None:
-        raise Refused(f"a {of}'s name is one line {visible.refusal(char)}")
+        raise Refused(f"a {of}'s name is one line {visible.refusal(char)}", field=NAME)
     if name.strip() != name:
-        raise Refused(f"a {of}'s name has no spaces at its ends")
+        raise Refused(f"a {of}'s name has no spaces at its ends", field=NAME)
     if len(name) > MAX_NAME:
-        raise Refused(f"a {of}'s name is at most {MAX_NAME} characters (this one has {len(name)})")
+        raise Refused(
+            f"a {of}'s name is at most {MAX_NAME} characters (this one has {len(name)})",
+            field=NAME,
+        )
 
 
 def key_folder(id: str) -> Path:
@@ -68,14 +84,17 @@ def add_command(name: str, replace: bool) -> str:
     return f'lado model-server add "{name}"' + (" --replace" if replace else "")
 
 
-def _no_server(name: str) -> Refused:
-    return Refused(f'no model server "{name}" is saved; lado model-server list names them')
+def _no_server(name: str, field: str = "") -> Refused:
+    return Refused(
+        f'no model server "{name}" is saved; lado model-server list names them', field=field
+    )
 
 
 def _server_taken(name: str) -> Refused:
     return Refused(
         f'a model server "{name}" is saved already; to change its address or key: '
-        f'lado model-server add "{name}" <address> [--key] --replace'
+        f'lado model-server add "{name}" <address> [--key] --replace',
+        field=NAME,
     )
 
 
@@ -88,7 +107,7 @@ def server_to_add(name: str, replace: bool) -> state.ModelServer | None:
     if saved is not None and not replace:
         raise _server_taken(saved.name)
     if saved is None and replace:
-        raise _no_server(name)
+        raise _no_server(name, NAME)
     return saved
 
 
@@ -187,6 +206,71 @@ def remove_server(name: str) -> str:
     return saved.name
 
 
+@dataclass(frozen=True)
+class Checked:
+    """A model `check_model` lets through: its CLI's provider, the model as saved, its
+    server (None for none), the check's verdict (OK, or WARN for no list to check against)
+    and the CLI's aliases (none for a model on a server)."""
+
+    provider: providers.Provider
+    model: str
+    server: state.ModelServer | None
+    verdict: model_check.Verdict
+    aliases: tuple[str, ...]
+
+
+Prober = Callable[[state.ModelServer], model_servers.Probe]
+
+
+def check_model(
+    name: str | None,
+    cli: str,
+    model: str,
+    server_name: str | None,
+    env: Callable[[providers.Provider], Mapping[str, str]],
+    *,
+    probe: Prober | None = None,
+) -> Checked:
+    """The checks of `add_model` on the model `model` of the CLI `cli` under `name` (None:
+    no name to check), on the saved server `server_name` (None for the CLI's own way to its
+    models), saving nothing. Each check refuses before the next (Refused): the name, the CLI,
+    the model, the server saved, its CLI's server API, the server answering with its kept key
+    (asked with `probe`, else probed now), the API among the ones it proves, the model not one
+    the server types as embeddings, the model against the server's list, or for no server
+    against the CLI's own list, read with `env(provider)` (the agents' environment)."""
+    if name is not None:
+        check_name(name, MODEL)
+        taken = state.model(name)
+        if taken is not None:
+            raise _model_taken(taken.name)
+    if cli not in providers.names():
+        raise Refused(
+            f'LADO knows no agent CLI "{cli}"; --cli takes one of {", ".join(providers.names())}',
+            field=CLI,
+        )
+    provider = providers.get(cli)
+    model = model.strip()
+    if not model:
+        raise Refused(
+            f"the model is empty: --model takes a model as {provider.title} names it",
+            field=MODEL_FIELD,
+        )
+    aliases: tuple[str, ...] = ()
+    if server_name is None:
+        server = None
+        listed = provider.model_list(env(provider))
+        aliases = listed.aliases
+        verdict = model_check.verdict(provider, model, listed)
+    else:
+        server = state.model_server(server_name)
+        if server is None:
+            raise _no_server(server_name, SERVER_FIELD)
+        verdict = _on_server(provider, model, server, probe)
+    if verdict.kind == model_check.REFUSED:
+        raise Refused(verdict.text, field=MODEL_FIELD)
+    return Checked(provider, model, server, verdict, aliases)
+
+
 def add_model(
     name: str,
     cli: str,
@@ -194,71 +278,50 @@ def add_model(
     server_name: str | None,
     env: Callable[[providers.Provider], Mapping[str, str]],
 ) -> tuple[state.ConfiguredModel, model_check.Verdict]:
-    """Check and save the model `model` of the CLI `cli` under `name`, on the saved server
-    `server_name` (None for the CLI's own way to its models): the saved entry and the check's
-    verdict (OK, or WARN for no list to check against). Each check refuses before the next
-    (Refused): the name, the CLI, the model, the server saved, its CLI's server API, the
-    server answering with its kept key, the API among the ones it proves, the model not one
-    the server types as embeddings, the model against the server's list, or for no server
-    against the CLI's own list, read with `env(provider)` (the agents' environment)."""
-    check_name(name, MODEL)
-    taken = state.model(name)
-    if taken is not None:
-        raise _model_taken(taken.name)
-    if cli not in providers.names():
-        raise Refused(
-            f'LADO knows no agent CLI "{cli}"; --cli takes one of {", ".join(providers.names())}'
-        )
-    provider = providers.get(cli)
-    model = model.strip()
-    if not model:
-        raise Refused(f"the model is empty: --model takes a model as {provider.title} names it")
-    if server_name is None:
-        server = None
-        verdict = model_check.check(provider, model, env(provider))
-    else:
-        server = state.model_server(server_name)
-        if server is None:
-            raise _no_server(server_name)
-        verdict = _on_server(provider, model, server)
-    if verdict.kind == model_check.REFUSED:
-        raise Refused(verdict.text)
+    """Check the model as `check_model` does, its server probed now, and save it: the saved
+    entry and the check's verdict."""
+    checked = check_model(name, cli, model, server_name, env)
+    server = checked.server
     try:
-        saved = state.add_model(name, cli, model, server.id if server else None)
+        saved = state.add_model(name, cli, checked.model, server.id if server else None)
     except state.NameTaken as exc:  # added meanwhile
         raise _model_taken(exc.name) from None
     except sqlite3.IntegrityError:  # its server removed meanwhile
-        raise _no_server(server_name or "") from None
-    return saved, verdict
+        raise _no_server(server_name or "", SERVER_FIELD) from None
+    return saved, checked.verdict
 
 
 def _on_server(
-    provider: providers.Provider, model: str, server: state.ModelServer
+    provider: providers.Provider,
+    model: str,
+    server: state.ModelServer,
+    probe: Prober | None = None,
 ) -> model_check.Verdict:
-    """The verdict on `model` of `provider` on `server`, probed now with its kept key: the
-    server may have changed since it was saved."""
+    """The verdict on `model` of `provider` on `server`, asked with `probe`, else probed now
+    with its kept key: the server may have changed since it was saved."""
     api = provider.server_api
     if not api:
         raise Refused(
             f"{server.name} does not suit {provider.title}: {provider.title} speaks no model "
-            "server's API"
+            "server's API",
+            field=SERVER_FIELD,
         )
     try:
-        found = model_servers.probe(
-            server.address, server_key(server), add_command(server.name, True)
-        )
+        found = probe(server) if probe is not None else probe_saved(server)
     except model_servers.ProbeError as exc:
-        raise Refused(f"{exc}; LADO cannot check {model}", exc.hint) from None
+        raise Refused(f"{exc}; LADO cannot check {model}", exc.hint, SERVER_FIELD) from None
     if api not in found.apis:
         suits = [title for title, _ in found.clis()[0]]
         raise Refused(
             f"{server.name} does not suit {provider.title}: it has no {api}; it suits "
-            f"{', '.join(suits) or 'no CLI'}"
+            f"{', '.join(suits) or 'no CLI'}",
+            field=SERVER_FIELD,
         )
     if model in found.embeddings:
         raise Refused(
             f"{model} is an embeddings model on {server.name}; an agent needs a chat model: "
-            f"{model_servers.PROBE_COMMAND} {server.address} lists the models"
+            f"{model_servers.PROBE_COMMAND} {server.address} lists the models",
+            field=MODEL_FIELD,
         )
     listed = base.ModelList(
         models=found.models,
@@ -266,6 +329,12 @@ def _on_server(
         why=found.models_why,
     )
     return model_check.verdict(provider, model, listed, whose=server.name)
+
+
+def probe_saved(server: state.ModelServer) -> model_servers.Probe:
+    """`server` probed now with its kept key (Refused for a key file LADO does not read,
+    model_servers.ProbeError for a probe that fails)."""
+    return model_servers.probe(server.address, server_key(server), add_command(server.name, True))
 
 
 def remove_models(names: list[str], removed: Callable[[str], None]) -> None:
@@ -302,7 +371,8 @@ def _no_models(names: list[str]) -> Refused:
 
 def _model_taken(name: str) -> Refused:
     return Refused(
-        f'a model "{name}" is saved already; remove it first: lado model remove "{name}"'
+        f'a model "{name}" is saved already; remove it first: lado model remove "{name}"',
+        field=NAME,
     )
 
 
@@ -362,13 +432,15 @@ def _write_key(id: str, key: str) -> None:
 
 
 def check_key(key: str) -> None:
-    """Refuse a key no HTTP header can carry (a byte of no UTF-8 on stdin among them, which
-    could not be stored either), and one larger than its file may hold (agent_env.MAX_VALUE,
-    its stored form), rather than keep or send it cut."""
+    """Refuse an empty key, one no HTTP header can carry (a byte of no UTF-8 on stdin among
+    them, which could not be stored either), and one larger than its file may hold
+    (agent_env.MAX_VALUE, its stored form), rather than keep or send it cut."""
+    if not key:
+        raise Refused("the key is empty", field=KEY_FIELD)
     if not model_servers.carriable(key):
-        raise Refused(model_servers.NOT_CARRIABLE)
+        raise Refused(model_servers.NOT_CARRIABLE, field=KEY_FIELD)
     if len(project_secrets.stored(key)) > agent_env.MAX_VALUE:
-        raise Refused("the key is larger than 64 KiB")
+        raise Refused("the key is larger than 64 KiB", field=KEY_FIELD)
 
 
 def _remove_key(id: str) -> None:

@@ -72,12 +72,17 @@ PLAIN_HTTP = (
 )
 
 
-class ProbeError(Exception):
-    """Why a probe found no server, one line; `hint` what the human can try ("" for none)."""
+ADDRESS, KEY = "address", "key"  # the field a ProbeError concerns
 
-    def __init__(self, text: str, hint: str = ""):
+
+class ProbeError(Exception):
+    """Why a probe found no server, one line; `hint` what the human can try ("" for none);
+    `field` the field of a form it concerns (ADDRESS or KEY), for the UI."""
+
+    def __init__(self, text: str, hint: str = "", field: str = ADDRESS):
         super().__init__(text)
         self.hint = hint
+        self.field = field
 
 
 @dataclass(frozen=True)
@@ -207,7 +212,7 @@ def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Pr
     that name one to run again."""
     root, added = address(text)
     if key is not None and not carriable(key):
-        raise ProbeError(NOT_CARRIABLE)
+        raise ProbeError(NOT_CARRIABLE, field=KEY)
     headers = {"Accept": "application/json", "User-Agent": f"lado/{lado.__version__}"}
     if key is not None:
         headers |= {"Authorization": f"Bearer {key}", "x-api-key": key}
@@ -231,16 +236,17 @@ def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Pr
         if answer.status in (401, 403):
             if key is None:
                 raise ProbeError(
-                    f"{root} asks for a key ({answer.status}): run {command} {root} --key"
+                    f"{root} asks for a key ({answer.status}): run {command} {root} --key",
+                    field=KEY,
                 )
-            raise ProbeError(f"{root} refused the key ({answer.status})")
+            raise ProbeError(f"{root} refused the key ({answer.status})", field=KEY)
     apis = frozenset(api for api, a in zip(API_PATHS, posts, strict=True) if a.refuses_as_an_api())
     apis_why = ""
     if control.refuses_as_an_api():
         apis, apis_why = frozenset(), f"{root} answers {control.status} to any POST"
     models, models_why = _models(listed)
     if models is None and _anthropic_shaped(versioned):
-        models = _models(versioned)[0]
+        models, models_why = _models(versioned)
     kind = _kind(listed, versioned, version, lmstudio, apis)
     if kind is None:
         why = f"GET {MODELS}: {listed.said()}"

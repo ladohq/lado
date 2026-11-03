@@ -205,6 +205,46 @@ def test_an_anthropic_api_listing_only_with_its_header(serve):
     probe = ms.probe(serve("anthropic-versioned").url)
     assert (probe.kind, probe.models) == ("Anthropic-compatible", ("claude-x",))
     assert ms.lines(probe)[2] == "models: claude-x"
+    assert probe.models_why == ""  # a list: no why left over from the plain request
+
+
+def test_a_list_that_fails_both_ways_keeps_its_why(serve, monkeypatch):
+    monkeypatch.setitem(
+        fake.PROFILES,
+        "list-500-both",
+        {
+            ("GET", fake.MODELS): fake.Answer(500, {"error": "internal error"}),
+            ("GET", fake.MODELS, fake.VERSIONED): fake.Answer(500, {"error": "internal error"}),
+            ("POST", fake.MESSAGES): fake.ANTHROPIC_400,
+        },
+    )
+    probe = ms.probe(serve("list-500-both").url)
+    assert (probe.models, probe.models_why) == (None, "GET /v1/models: 500")
+
+
+@pytest.mark.parametrize(
+    ("profile", "field"),
+    [("closed", "address"), ("forbidden", "key"), ("unknown", "address")],
+)
+def test_a_probe_error_names_its_field(serve, profile, field):
+    if profile == "closed":
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            url = f"http://127.0.0.1:{s.getsockname()[1]}"
+    else:
+        url = serve(profile).url
+    with pytest.raises(ms.ProbeError) as raised:
+        ms.probe(url)
+    assert raised.value.field == field
+
+
+def test_a_refused_key_and_an_uncarriable_one_name_the_key(serve):
+    with pytest.raises(ms.ProbeError) as raised:
+        ms.probe(serve("openai", key="k-1").url, "wrong")
+    assert raised.value.field == "key"
+    with pytest.raises(ms.ProbeError) as raised:
+        ms.probe(serve("openai").url, "a\nb")
+    assert raised.value.field == "key"
 
 
 def test_the_list_without_the_header_wins(serve, monkeypatch):

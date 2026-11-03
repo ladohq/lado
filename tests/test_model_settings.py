@@ -722,3 +722,122 @@ def test_a_model_removed_meanwhile_is_named_after_the_others(monkeypatch):
     assert removed == ["a", "c"]
     assert str(refused.value) == 'no model "b" is saved; lado model list names them'
     assert state.models() == []
+
+
+# The field a refusal concerns (the page shows it under that field).
+
+
+def test_name_refusals_name_the_name():
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.check_name("", model_settings.MODEL)
+    assert refused.value.field == "name"
+
+
+def test_server_refusals_name_their_field(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    for call, field in [
+        (lambda: add("LMS", server.url), "name"),
+        (lambda: add("nope", server.url, replace=True), "name"),
+        (lambda: add("work", server.url, key="a\nb"), "key"),
+        (lambda: add("work", server.url, key=""), "key"),
+        (lambda: model_settings.remove_server("nope"), ""),
+    ]:
+        with pytest.raises(model_settings.Refused) as refused:
+            call()
+        assert refused.value.field == field, refused.value
+    state.add_model("Q", "opencode", "qwen3-8b", state.model_server("lms").id)
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.remove_server("lms")
+    assert refused.value.field == ""
+
+
+def test_the_empty_key_is_refused():
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.check_key("")
+    assert (str(refused.value), refused.value.field) == ("the key is empty", "key")
+
+
+def test_model_refusals_name_their_field(serve, monkeypatch):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    add("chat", serve("openai").url)
+    listing(monkeypatch, "claude", base.ModelList(("haiku",), ("claude-x",), "claude models"))
+    add_model("Taken", "claude", "haiku")
+    cases = [
+        (("", "claude", "haiku", None), "name"),
+        (("taken", "claude", "haiku", None), "name"),
+        (("N", "gemini", "x", None), "cli"),
+        (("N", "claude", " ", None), "model"),
+        (("N", "claude", "claude-y", None), "model"),
+        (("N", "opencode", fake.EMBEDDINGS, "lms"), "model"),
+        (("N", "opencode", "qwen3-14b", "lms"), "model"),
+        (("N", "opencode", "q", "nowhere"), "server"),
+        (("N", "codex", "gpt-oss-20b", "chat"), "server"),
+    ]
+    for (name, cli, model, on), field in cases:
+        with pytest.raises(model_settings.Refused) as refused:
+            add_model(name, cli, model, on)
+        assert refused.value.field == field, refused.value
+    server.close()
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("N", "opencode", "qwen3-8b", "lms", no_env)
+    assert refused.value.field == "server"
+
+
+# A model's check without the save.
+
+
+def check_model(name, cli, model, server=None, probe=None):
+    return model_settings.check_model(
+        name, cli, model, server, lambda provider: {"PATH": "/agents"}, probe=probe
+    )
+
+
+def test_check_model_refuses_as_add_model_does_and_saves_nothing(serve, monkeypatch):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    listing(monkeypatch, "claude", base.ModelList(("haiku",), ("claude-x",), "claude models"))
+    add_model("Taken", "claude", "haiku")
+    cases = [
+        ("taken", "claude", "haiku", None),
+        ("N", "gemini", "x", None),
+        ("N", "claude", "claude-y", None),
+        ("N", "opencode", fake.EMBEDDINGS, "lms"),
+        ("N", "opencode", "q", "nowhere"),
+    ]
+    for case in cases:
+        with pytest.raises(model_settings.Refused) as checked:
+            check_model(*case)
+        with pytest.raises(model_settings.Refused) as added:
+            add_model(*case, env=lambda provider: {})
+        assert (str(checked.value), checked.value.field) == (str(added.value), added.value.field)
+    checked = check_model("N", "opencode", "qwen3-8b", "lms")
+    assert (checked.verdict.kind, checked.model, checked.server.name) == (
+        model_check.OK,
+        "qwen3-8b",
+        "lms",
+    )
+    assert checked.provider is providers.get("opencode")
+    assert [m.name for m in state.models()] == ["Taken"]
+
+
+def test_check_model_without_a_name_checks_no_name(monkeypatch):
+    listing(monkeypatch, "claude", base.ModelList(("haiku",), None, why="no list"))
+    add_model("haiku", "claude", "haiku")
+    checked = check_model(None, "claude", "haiku")
+    assert (checked.verdict.kind, checked.aliases) == (model_check.OK, ("haiku",))
+
+
+def test_check_model_uses_the_probe_given(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    kept = model_servers.probe(server.url)
+    server.requests.clear()
+    seen = []
+    checked = check_model(
+        "N", "opencode", "qwen3-8b", "lms", probe=lambda s: seen.append(s) or kept
+    )
+    assert checked.verdict.kind == model_check.OK
+    assert [s.name for s in seen] == ["lms"]
+    assert server.requests == []

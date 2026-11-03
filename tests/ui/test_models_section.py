@@ -83,6 +83,9 @@ def open_settings(page: Page, server) -> None:
     log_in(page, server)
     page.goto(f"{server['url']}/settings#models")
     expect(tab(page, "Your models")).to_be_visible()
+    # Agent CLIs and environment, above, grows once its check ends: measured after that.
+    expect(page.locator(".pv-refresh.spinning")).to_have_count(0, timeout=30_000)
+    expect(page.locator(".pv-list")).to_be_visible()
 
 
 def start_form(page: Page, name: str, address: str) -> None:
@@ -104,6 +107,7 @@ def test_first_open_and_ticking_claude_sonnet(page: Page, clis, server, lms, sho
     expect(claude.locator(".badge")).to_have_text("CLI")
     claude.get_by_text("Claude Code", exact=True).click()  # the row's name opens it
     sonnet = claude.get_by_role("checkbox", name="sonnet on Claude Code", exact=True)
+    sonnet.scroll_into_view_if_needed()  # where the click would scroll it: measured there
     before = top(sonnet)
     sonnet.click()  # the tick follows the saved model, not the click: no check()
     expect(claude.get_by_text("as Claude Sonnet")).to_be_visible()
@@ -143,8 +147,10 @@ def test_a_server_added_ticked_renamed_refreshed_and_removed(
         models.get_by_text(re.compile(r"✓ LM Studio · 1 model · .*can run them"))
     ).to_be_visible()
     shot(page, "form-checked")
+    add = models.get_by_role("button", name="Add", exact=True)
+    add.scroll_into_view_if_needed()
     at = top(models.locator("li.mx-src").filter(has=page.locator(".mx-form")))
-    models.get_by_role("button", name="Add", exact=True).click()
+    add.click()
     lm = source(page, "LM Studio дома")
     expect(lm.get_by_text('✓ Saved model server "LM Studio дома".')).to_be_visible()
     assert top(lm) == at  # the new server takes the form's place
@@ -156,6 +162,7 @@ def test_a_server_added_ticked_renamed_refreshed_and_removed(
     row.click()
     clis_of = lm.get_by_role("group", name="Agent CLIs for qwen3-8b")
     opencode = clis_of.get_by_role("checkbox", name="qwen3-8b on OpenCode", exact=True)
+    opencode.scroll_into_view_if_needed()
     before = top(opencode)
     opencode.click()
     expect(row).to_contain_text("in OpenCode")
@@ -195,7 +202,6 @@ def test_a_server_added_ticked_renamed_refreshed_and_removed(
 
     id = state.model_server("LM Studio дома").id
     tab(page, "Add models").click()
-    at = top(lm)
     lm.get_by_role("button", name="Remove LM Studio дома").click()
     expect(
         lm.get_by_text(
@@ -204,7 +210,10 @@ def test_a_server_added_ticked_renamed_refreshed_and_removed(
         )
     ).to_be_visible()
     shot(page, "remove-asks")
-    lm.get_by_role("button", name="Remove server and models").click()
+    confirm = lm.get_by_role("button", name="Remove server and models")
+    confirm.scroll_into_view_if_needed()
+    at = top(lm)
+    confirm.click()
     removed = "Removed LM Studio дома and its 1 model."
     expect(models.get_by_text(removed)).to_be_visible()
     line = models.locator("li.mx-src").filter(has=page.get_by_text(removed))
@@ -296,8 +305,12 @@ def test_the_section_at_a_phones_width(browser: Browser, clis, server, lms, shot
         gw = source(page, "LiteLLM")
         toggle = gw.get_by_role("button", name="LiteLLM", exact=True)
         expect(toggle).to_have_attribute("title", gateway)
-        change = gw.get_by_role("button", name="Change LiteLLM")
-        assert top(change) > top(toggle.locator(".mx-title"))  # under the name
+        expect(gw.get_by_role("button", name="Change LiteLLM")).to_be_visible()
+        # The icons under the name, measured at one moment.
+        assert gw.evaluate(
+            "li => li.querySelector('.mx-acts').getBoundingClientRect().top >= "
+            "li.querySelector('.mx-title').getBoundingClientRect().bottom"
+        )
         start_form(page, "LM Studio дома", lms.url)
         section(page).get_by_role("button", name="Add", exact=True).click()
         lm = source(page, "LM Studio дома")

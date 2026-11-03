@@ -91,5 +91,5 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
   section; the tests quoting them; `docs/cli.md`, `docs/install.md`, `docs/design/*.md`.
   Check: `make test`, `make web`, `uv run pytest -m ui tests/ui/test_launch.py
   tests/ui/test_providers_section.py`, `tests/test_docker.py`.
-- [ ] 6.6 `docs/design/ui.md`'s section Models as built; the manual check in the pull
+- [x] 6.6 `docs/design/ui.md`'s section Models as built; the manual check in the pull
   request updated; regression as 4.2.

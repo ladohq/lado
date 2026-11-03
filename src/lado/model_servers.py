@@ -332,9 +332,8 @@ def _kind(
     if version.status == 200 and isinstance(version.body, dict):
         if isinstance(version.body.get("version"), str):
             return OLLAMA
-    if lmstudio.status == 200 and isinstance(lmstudio.body, dict):
-        if isinstance(lmstudio.body.get("data"), list):
-            return LMSTUDIO
+    if _listing(lmstudio) is not None:
+        return LMSTUDIO
     if _listing(listed) is not None:
         return ANTHROPIC if _anthropic_shaped(listed) else OPENAI
     if _anthropic_shaped(versioned):

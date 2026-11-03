@@ -273,14 +273,14 @@ def remove_models(names: list[str], removed: Callable[[str], None]) -> None:
     (ignoring case) once; `removed` gets each one's name as saved. Every name is found
     first: Refused for any no model has, nothing removed. A model another process removed
     in between is Refused once the others are removed."""
-    found: dict[str, state.ConfiguredModel] = {}
+    found: dict[str, None] = {}  # the names as saved, in order, once each
     unknown: dict[str, str] = {}
     for name in names:
         saved = state.model(name)
         if saved is None:
             unknown.setdefault(name.casefold(), name)
         else:
-            found.setdefault(saved.name, saved)
+            found.setdefault(saved.name)
     if unknown:
         raise _no_models(list(unknown.values()))
     gone = []

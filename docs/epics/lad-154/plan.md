@@ -380,6 +380,10 @@ Check:
   a `model_providers` entry in the agent's `CODEX_HOME` (on top of the carried user values),
   the key from the server's entry (D15) only in the agent's environment; a server
   without the Responses API refuses Codex loudly before the start.
+- From S3d (the human's manual check of PR #211): Settings → Models offers a Codex column on
+  LM Studio, but LM Studio's Responses API drops Codex's MCP tools (type `namespace`,
+  `tests/local_models.py`, `docs/testing.md`), so a Codex agent there cannot talk to LADO:
+  either refused loudly before the start (and the column says so), or proven to work.
 - Smoke (CI) with a fake endpoint; the human's manual check (D7); `docs/install.md`,
   `docs/design/agents.md`.
 

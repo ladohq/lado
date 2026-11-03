@@ -104,6 +104,10 @@ check` failed in vitest on Launch.test.tsx:197 "the folder is checked by the ser
 `expect(startButton().disabled).toBe(false)` right after `await ready("/src/lado")` got
 true (a synchronous check of what a later render sets); `make web` and `make check` passed
 right after.
+Also (2026-11-03, lado/lad-154-epic/task-lad-187, LAD-187): the UI test
+test_providers_section::test_the_section_shows_the_last_rows_at_once failed 1 of 5
+parallel runs of three UI files, waiting 5 s for the end of the CLIs' check; 5 of 5 green
+alone and in CI. That change did not touch the check.
 
 ### Vitest tests time out at vitest's default 5 s under load, one entry per test
 

@@ -227,6 +227,9 @@ Check:
 - From S3a (E3): a key sent over `http://` to an address that is neither `localhost` nor
   a private network gives a loud warning (at saving the server in S3c, and before the
   start).
+- From S3d (LAD-187, D8 of its design): a configured model has no id yet, its name is its
+  key and it is renamable; S3b, the first to keep a reference to a model, adds `models.id`
+  (migration 38 → 39, with the way back) and refers to the id, so a rename breaks nothing.
 - From S2 (F2): `PowerTable.from_json` reads a row with an unknown or missing key and a
   broken row without breaking every session (or the schema is bumped with a migration of
   the rows); a unit test of each case. A row now names a configured model: the migration
@@ -473,3 +476,7 @@ Check:
 - A server saved with a wrong type before S3e keeps it until `--replace` (LAD-186, D7, no
   migration: unreleased, test stands only) — on the human's stand: replace the LiteLLM entry
   once.
+- The project's mockup rule (`.lado/sdlc.md`, the Analyst and Review traps) names only
+  `html, body`; a mockup shown in LADO also needs `.content` overridden (`overflow`,
+  `overscroll-behavior`, `min-height`), or the wheel sticks in it past 900 px (LAD-187's
+  analyst) — the human edits the rule; not the epic's file.

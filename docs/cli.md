@@ -232,7 +232,17 @@ run, a warning `schema <n>, this LADO knows <m>; the sessions running on it not 
 <tmux's error>`, and the rest of the report follows. Newer: a warning
 with the newer-LADO refusal's words; incompatible: `FAIL` with that refusal's words, and the
 doctor exits 1. The checks that read lado.db (`Projects`, `Artifacts`, `Agent config
-folders`) then say `not checked: lado.db is not at this LADO's schema (see lado.db)`.
+folders`, `Model servers`) then say `not checked: lado.db is not at this LADO's schema (see
+lado.db)`.
+
+When model servers are saved (`lado model-server add`), `lado doctor` prints one `Model
+servers` line: all of them probed at once with their kept keys, so it takes one probe's
+time (about 10 s at most for a server that hangs). `ok` names each with its type
+(`LM Studio at home answers (LM Studio)`); `warn` names each that does not answer, asks for
+a key, refuses its key or is no server LADO knows, with the probe's reason, each key file
+that is not a regular file or has a mode other than 600, and each folder of
+`<LADO_HOME>/model-servers/` of no saved server, as left over (also when none is saved). It
+never fails: doctor's exit status is as without it.
 
 `lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
 own status command in the environment its agents get without a project, the login taken

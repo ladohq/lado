@@ -137,6 +137,52 @@ def test_lmstudio_type(serve):
     assert ms.probe(serve("lmstudio").url).kind == "LM Studio"
 
 
+# Embeddings models are marked.
+
+
+def test_lmstudio_s_embeddings_models_are_marked(serve):
+    probe = ms.probe(serve("lmstudio").url)
+    assert probe.embeddings == {fake.EMBEDDINGS}
+    assert ms.lines(probe)[2] == f"models: qwen3-8b, {fake.EMBEDDINGS} (embeddings)"
+
+
+def test_no_mark_without_lm_studio_s_types(serve, monkeypatch):
+    probe = ms.probe(serve("ollama").url)
+    assert probe.embeddings == frozenset()
+    assert ms.lines(probe)[2] == "models: llama3.1:8b, qwen2.5-coder:7b"
+    # An answer of /api/v0/models without types, or with odd ones, marks nothing.
+    monkeypatch.setitem(
+        fake.PROFILES,
+        "lmstudio-untyped",
+        {
+            ("GET", fake.MODELS): fake.openai_list("a", "b"),
+            ("GET", fake.LMSTUDIO_MODELS): fake.Answer(
+                200, {"data": [{"id": "a"}, {"id": "b", "type": ["embeddings"]}, "c"]}
+            ),
+            ("POST", fake.CHAT): fake.OPENAI_400,
+        },
+    )
+    probe = ms.probe(serve("lmstudio-untyped").url)
+    assert (probe.kind, probe.embeddings) == ("LM Studio", frozenset())
+    assert ms.lines(probe)[2] == "models: a, b"
+
+
+def test_an_embeddings_id_is_one_line_of_visible_text(serve, monkeypatch):
+    monkeypatch.setitem(
+        fake.PROFILES,
+        "lmstudio-odd",
+        {
+            ("GET", fake.MODELS): fake.openai_list("e\nx"),
+            ("GET", fake.LMSTUDIO_MODELS): fake.Answer(
+                200, {"data": [{"id": "e\nx", "type": "embeddings"}]}
+            ),
+            ("POST", fake.CHAT): fake.OPENAI_400,
+        },
+    )
+    probe = ms.probe(serve("lmstudio-odd").url)
+    assert ms.lines(probe)[2] == "models: e x (embeddings)"
+
+
 def test_anthropic_shape_type(serve):
     assert ms.probe(serve("anthropic").url).kind == "Anthropic-compatible"
 

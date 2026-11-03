@@ -12,7 +12,7 @@
   the module docstring's request count. Check: `tests/test_model_servers.py` (requests and
   headers on each profile, LiteLLM `OpenAI-compatible`, the Anthropic list with the header,
   the old header test replaced).
-- [ ] 2.2 `Probe.embeddings` and the `(embeddings)` mark in `lines` (D3). Check:
+- [x] 2.2 `Probe.embeddings` and the `(embeddings)` mark in `lines` (D3). Check:
   `tests/test_model_servers.py`.
 
 ## 3. Settings

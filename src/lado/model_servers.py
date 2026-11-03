@@ -104,7 +104,8 @@ class Answer:
 @dataclass(frozen=True)
 class Probe:
     """A server a probe recognised. `models` is None for no list, with why in `models_why`;
-    `apis_why` says why no API could be told, "" when they could."""
+    `apis_why` says why no API could be told, "" when they could; `embeddings` the models the
+    server types as embeddings (LM Studio's own list), none for a server that types none."""
 
     address: str
     added_scheme: bool
@@ -113,6 +114,7 @@ class Probe:
     models: tuple[str, ...] | None
     models_why: str = ""
     apis_why: str = ""
+    embeddings: frozenset[str] = frozenset()
 
     def clis(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
         return clis(self.apis)
@@ -248,7 +250,7 @@ def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Pr
             f"unknown server: {root} answered, but not as an OpenAI-compatible, "
             f"Anthropic-compatible, Ollama or LM Studio server ({why})"
         )
-    return Probe(root, added, kind, apis, models, models_why, apis_why)
+    return Probe(root, added, kind, apis, models, models_why, apis_why, _embeddings(lmstudio))
 
 
 def lines(found: Probe) -> list[str]:
@@ -260,7 +262,8 @@ def lines(found: Probe) -> list[str]:
     if found.models is None:
         out.append(f"models: no list ({found.models_why})")
     else:
-        out.append(f"models: {', '.join(found.models) or 'none'}")
+        shown = [m + (" (embeddings)" if m in found.embeddings else "") for m in found.models]
+        out.append(f"models: {', '.join(shown) or 'none'}")
     if found.apis_why:
         out.append(f"APIs: cannot be told: {found.apis_why}")
     suits, not_suits = found.clis()
@@ -288,6 +291,17 @@ def _models(listed: Answer) -> tuple[tuple[str, ...] | None, str]:
     # The server's words: one line of visible text each, so none forges a line or drives
     # the terminal (lado.text).
     return tuple(visible.one_line(i) for i in ids if isinstance(i, str)), ""
+
+
+def _embeddings(lmstudio: Answer) -> frozenset[str]:
+    """The ids LM Studio's own list types `embeddings`, one line of visible text each as
+    `_models` makes them; none for any other answer."""
+    data = _listing(lmstudio) or []
+    return frozenset(
+        visible.one_line(i["id"])
+        for i in data
+        if isinstance(i, dict) and i.get("type") == "embeddings" and isinstance(i.get("id"), str)
+    )
 
 
 def _listing(answer: Answer) -> list | None:

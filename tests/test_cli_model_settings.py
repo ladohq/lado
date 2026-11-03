@@ -58,7 +58,7 @@ def test_add_prints_the_probe_and_saves(serve, capsys):
     assert out.splitlines() == [
         f"{server.url} (added http://)",
         "type: LM Studio",
-        "models: qwen3-8b, text-embedding-nomic-embed-text-v1.5",
+        "models: qwen3-8b, text-embedding-nomic-embed-text-v1.5 (embeddings)",
         "CLIs: Kilo CLI, OpenCode (chat completions); Codex CLI (Responses API)",
         "not: Claude Code (no Anthropic Messages API)",
         'Saved model server "LM Studio дома".',

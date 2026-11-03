@@ -27,6 +27,10 @@
   Docker, so in the mode `default` every command asked "retry without sandbox?". They now
   run without it there, and the session's start says so.
 
+- **`lado project set` no longer prints a secret in its error.** A value typed with a
+  leading `-` before `--`, or as `--secret=…`, was repeated by the refusal; the refusal
+  now names none of the command line's words and says how to give the value.
+
 ## 0.44.0 (2026-11-02)
 
 ### New

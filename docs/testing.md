@@ -281,7 +281,11 @@ library `not found` (the missing ones in the failure), and launches Chromium, wh
 a page with Latin and Cyrillic text and gives it back, its screenshot in `<temp
 dir>/lado-container-shots/` (in CI's artifact `container-<arch>`); a new home volume has no
 `~/.cache/ms-playwright` and no `chromium`, `chromium-browser` or `google-chrome` on
-`PATH`. So the UI tests run in LADO's image after `make browser`. A
+`PATH`. So the UI tests run in LADO's image after `make browser`. The
+toolchains' Go test (`test_toolchains.py`) has mise install Go from a mirror inside the
+container (`python3 -m http.server` on its loopback), fed by one download of the archive on
+the host per run, checked against its sha256; each install is bounded by `timeout` and its
+failure shows both exit codes and mise's debug logs (LAD-178). A
 test that fails in its setup or its
 call keeps, for each container it started (a compose project's too), `docker logs` and
 LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before

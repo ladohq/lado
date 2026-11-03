@@ -848,11 +848,14 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     another's list named by `whose` (a model server's, `model_settings.py`).
   - `model_servers.py`: what a model server is, from its address (`lado model-server
     probe`): `address` (the root, `http://` added visibly; ValueError for one it does not
-    probe), `probe` (the model list, then Ollama's and LM Studio's own endpoints, one
-    empty POST per API and a control POST in threads, each within `TIMEOUT`, its name
-    lookup included; no redirect followed) giving a frozen `Probe` (address, type, proven
-    APIs, models or no list with why) or a `ProbeError` with its hint (the container's
-    `host.docker.internal`), and `lines`, the command's output. `probe`'s `command` is the
+    probe), `probe` (the model list, then Ollama's and LM Studio's own endpoints, the model
+    list with `anthropic-version`, one empty POST per API and a control POST in threads,
+    each within `TIMEOUT`, its name lookup included; only the POSTs and that second list
+    carry `anthropic-version`, the plain list decides the type and the models; no redirect
+    followed) giving a frozen `Probe` (address, type, proven APIs, models or no list with
+    why, the models LM Studio types as `embeddings`) or a `ProbeError` with its hint (the
+    container's `host.docker.internal`), and `lines`, the command's output (`(embeddings)`
+    after such a model). `probe`'s `command` is the
     command run without its address, named by the asks-for-a-key line and the container's
     hint (`lado model-server probe`, or `add`). `clis` (and `Probe.clis`) names the
     CLIs whose provider's `server_api` (`providers/base.py`, one of `SERVER_APIS`) the
@@ -865,11 +868,14 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     page calls the same functions): `check_name` (one line of visible text, 1 to 64
     characters, no spaces at its ends), `add_server` (probe, then the key file, then the
     row; `--replace` probes with the new or the kept key and updates the row; a failed
-    insert removes the key it wrote), `remove_server` (refused while `state.models_on` names
-    a model; the foreign key backs it), `add_model` (the checks in order: name, CLI, model,
-    server saved, the provider's `server_api`, a fresh probe with the kept key, the API among
-    those proved, the model against the server's list by `model_check.verdict(whose=…)`, or
-    without a server `model_check.check` with the agents' environment), `remove_model`. Each
+    insert removes the key it wrote; `note` gets a line for each other saved server at the
+    same address by `same_address`), `remove_server` (refused while `state.models_on` names
+    models, the hint one `lado model remove` for all; the foreign key backs it), `add_model`
+    (the checks in order: name, CLI, model, server saved, the provider's `server_api`, a
+    fresh probe with the kept key, the API among those proved, not an embeddings model, the
+    model against the server's list by `model_check.verdict(whose=…)`, or without a server
+    `model_check.check` with the agents' environment), `remove_models` (every name found
+    before any is removed). Each
     refusal is a one-line `Refused` (with the probe's hint). A server's key is the file
     `<LADO_HOME>/model-servers/<id>/key` (`key_folder`, `KEY`), written and removed by
     `project_secrets.write_at`/`remove_at` and read by `server_key` (no link, a regular file);

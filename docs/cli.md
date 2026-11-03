@@ -542,9 +542,18 @@ fragment in it is refused with exit 2. `lado model-server` alone prints its help
 
 It sends nothing that generates, at most one request per check, each cut at 5 s (its name
 lookup included): `GET /v1/models` first, alone; when that gets an HTTP answer, at once
-`GET /api/version` (Ollama), `GET /api/v0/models` (LM Studio), one `POST` with the body
-`{}` to each of `/v1/chat/completions`, `/v1/responses` and `/v1/messages`, and a control
-`POST {}` to `/v1/lado-no-such-api`, a path no server has. A POST proves its API when the
+`GET /api/version` (Ollama), `GET /api/v0/models` (LM Studio), `GET /v1/models` once more
+with `anthropic-version: 2023-06-01`, one `POST` with the body `{}` to each of
+`/v1/chat/completions`, `/v1/responses` and `/v1/messages`, and a control `POST {}` to
+`/v1/lado-no-such-api`, a path no server has: eight requests at most. Only the POSTs and
+that second list request carry `anthropic-version`. The type is Ollama's or LM Studio's by
+their own endpoints, else by the shape of the list asked without the header (Anthropic's:
+an item `"type": "model"` or `has_more`; else OpenAI-compatible); the list asked with it
+counts only when the first gives no list, so a gateway of both APIs (LiteLLM, which lists
+in Anthropic's shape when it sees the header) is `OpenAI-compatible`, and an Anthropic API
+that lists only with its header is `Anthropic-compatible` with its models; with no list
+either way, by the APIs proved (the Messages API: Anthropic-compatible). The models come
+from the same list. A POST proves its API when the
 server refuses the empty body with 400 or 422 and a JSON object; when the control is
 refused that way too, the server answers every POST alike and no API counts. No redirect is
 followed (it would carry the key to another host); proxies and `SSL_CERT_FILE` come from
@@ -560,8 +569,11 @@ CLIs: Kilo CLI, OpenCode (chat completions); Codex CLI (Responses API)
 not: Claude Code (no Anthropic Messages API)
 ```
 
-`models: none` for an empty list, `models: no list (GET /v1/models: <status> | the answer
-is larger than 4 MiB)` for a list it cannot read (not a failure); `CLIs: none` when no API
+A model LM Studio types `embeddings` in `GET /api/v0/models` is marked in the `models:`
+line (`models: qwen3-8b, text-embedding-nomic-embed-text-v1.5 (embeddings)`); other servers
+give no such type, and their models are not marked. `models: none` for an empty list,
+`models: no list (GET /v1/models: <status> | the answer is larger than 4 MiB)` for a list
+it cannot read (not a failure); `CLIs: none` when no API
 was proven, after `APIs: cannot be told: <address> answers <status> to any POST` when the
 control was refused like an API; no `not:` line when every CLI suits. What the server
 says (its model ids, a redirect's location) is shown as one line of visible text
@@ -598,7 +610,13 @@ name is resolved for it), and the probe goes on.
 does, prints its lines, and saves the server LADO recognised under the name
 (`model_settings.py`, lado.db's `model_servers`, schema 38): its address (the probe's root),
 type and the APIs it proved, never its models (they change on the server); then `Saved
-model server "<name>".`, exit 0. A name is one line of visible text of 1 to 64 characters
+model server "<name>".`, exit 0. Before that line, `same address as model server "<its
+name>"` on stdout for each other saved server at the same address (not a warning: two
+names on one address may carry two keys; the server is saved). Two addresses are the same
+when, as the probe's roots, their scheme, host ignoring case, port (80 for `http`, 443 for
+`https` when none is given) and path are, so `http://h:1234`, `h:1234/v1/` and
+`http://H:1234/` are one; `--replace` does not count the server it replaces, and a probe
+that fails prints no such line. A name is one line of visible text of 1 to 64 characters
 without spaces at its ends, any script; it is taken and found ignoring case (`casefold`),
 and a taken one is refused before any request: `a model server "<its name>" is saved
 already; to change its address or key: lado model-server add "<its name>" <address> [--key]
@@ -622,7 +640,8 @@ proved when saved (`none` for none). It asks no server. With none: `No model ser
 one: lado model-server add <name> <address> [--key]`. `lado model-server remove <name>`
 removes the server, its key file and folder: `Removed model server "<name>".`; while a
 configured model uses it, it is refused, changing nothing: `model server "<name>" is used by
-the models <model>, …; remove them first: lado model remove "<model>"` (exit 1). The three
+the models <model>, …; remove them first: lado model remove "<model>" …`, one command
+naming every model on it (exit 1). The three
 commands migrate lado.db as `lado ls` does; `probe` alone does not.
 
 `lado model add <name> --cli <cli> --model <model> [--server <server>]` saves a configured
@@ -638,8 +657,10 @@ server LADO probes it now with its kept key: one that does not answer, asks for 
 refuses it or is no longer a server LADO knows refuses the model (`<the probe's line>; LADO
 cannot check <model>`, the container's hint naming `lado model-server add "<server>"
 --replace`); the API the CLI's provider speaks must be among the APIs it proves (`<server>
-does not suit <CLI>: it has no <API>; it suits <CLIs>`, `it suits no CLI` for none); then
-the model is checked against the server's list as against a CLI's (`<model> is not in
+does not suit <CLI>: it has no <API>; it suits <CLIs>`, `it suits no CLI` for none); a
+model the server types as embeddings (LM Studio's `(embeddings)` mark) is refused (`<model>
+is an embeddings model on <server>; an agent needs a chat model: lado model-server probe
+<address> lists the models`); then the model is checked against the server's list as against a CLI's (`<model> is not in
 <server>'s list of models; lado model-server probe <address> prints the list`). Claude Code
 and Codex models on a server are saved by that rule; no session uses a configured model
 yet. Saved: `Saved model "<name>": <CLI>, <model>[ on <server>] (<the check's text>)`, exit
@@ -647,8 +668,13 @@ yet. Saved: `Saved model "<name>": <CLI>, <model>[ on <server>] (<the check's te
 
 `lado model list` prints `NAME CLI MODEL SERVER` sorted by name ignoring case (`—` for no
 server), running no CLI and asking no server; with none: `No models. Add one: lado model add
-<name> --cli <cli> --model <model> [--server <server>]`. `lado model remove <name>` removes
-it (`Removed model "<name>".`); its server stays. `lado model` alone prints its help.
+<name> --cli <cli> --model <model> [--server <server>]`. `lado model remove <name>…` finds
+every name first (ignoring case, a name given twice once): one no model has refuses the
+command and removes nothing (`no model "<name>" is saved; lado model list names them`, `no
+models "<name>", "<name>" are saved; …` for several, exit 1). Then it removes each in the
+order given, `Removed model "<name>".` a line; their servers stay. A model another process
+removed in between is named by that refusal after the others are removed (exit 1). `lado
+model` alone prints its help.
 
 `lado ui` prints (or opens) the local link with the token, then, when the running server
 has a link for another device, `From another machine: <link>`: it asks the server

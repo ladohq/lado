@@ -32,7 +32,7 @@
 
 ## 5. Integration
 
-- [ ] 5.1 `tests/integration/test_model_server_probe.py`: `litellm` in its own process is
+- [x] 5.1 `tests/integration/test_model_server_probe.py`: `litellm` in its own process is
   `type: OpenAI-compatible`. `tests/integration/test_model_settings_process.py`: the
   embeddings model refused, the same address named, several models removed then their
   server; the key canary scans the new lines. Check: `uv run pytest -m integration -n auto
@@ -40,7 +40,7 @@
 
 ## 6. Docs and regression
 
-- [ ] 6.1 `docs/cli.md` (the probe's requests and header, the type, the `(embeddings)` mark,
+- [x] 6.1 `docs/cli.md` (the probe's requests and header, the type, the `(embeddings)` mark,
   the embeddings refusal, the same-address line, `lado model remove` with several names and
   the removal's hint); CHANGELOG.md: the lines **Find out what a model server is** and
   **Save model servers and models under names** under `## 0.45.0 (unreleased)`, `### New`,

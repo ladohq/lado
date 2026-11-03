@@ -129,6 +129,7 @@ def test_add_server_lmstudio(client, serve):
     assert (added["server"]["kind"], added["notes"], added["warnings"]) == ("LM Studio", [], [])
     assert added["probe"] == {
         "kind": "LM Studio",
+        "address": server.url,
         "models": ["qwen3-8b", fake.EMBEDDINGS],
         "models_why": "",
         "embeddings": [fake.EMBEDDINGS],
@@ -322,6 +323,7 @@ def test_check_server_probes_without_a_key_and_saves_nothing(client, serve):
     found = check_server(client, "LM Studio дома", server.url.removeprefix("http://"))
     assert (found["refusals"], found["warnings"], found["notes"]) == ([], [], [])
     assert found["probe"]["kind"] == "LM Studio"
+    assert found["probe"]["address"] == server.url  # what answered, its scheme filled in
     assert found["probe"]["models"] == ["qwen3-8b", fake.EMBEDDINGS]
     assert [c["name"] for c in found["probe"]["clis"]] == ["kilo", "opencode", "codex"]
     assert server.requests and all("Authorization" not in r.headers for r in server.requests)

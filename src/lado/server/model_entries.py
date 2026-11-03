@@ -92,6 +92,7 @@ def probe_info(found: model_servers.Probe) -> models.ProbeInfo:
     suits, _ = model_servers.suiting(found.apis)
     return models.ProbeInfo(
         kind=found.kind,
+        address=found.address,
         models=None if found.models is None else list(found.models),
         models_why=found.models_why,
         embeddings=sorted(found.embeddings),

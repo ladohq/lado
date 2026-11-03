@@ -10,6 +10,7 @@ export type Call = { method: string; path: string; body: unknown };
 
 export const LMSTUDIO_PROBE: ProbeInfo = {
   kind: "LM Studio",
+  address: "http://localhost:1234",
   models: ["qwen3-8b", "text-embedding-nomic"],
   models_why: "",
   embeddings: ["text-embedding-nomic"],
@@ -117,7 +118,7 @@ export class ModelServer {
         refusals.push(detail(`${url} does not answer (connection refused)`, "address"));
       else if (address.includes("gw") && given.key !== "right")
         refusals.push(detail(given.key === null ? `${url} asks for a key (401): enter it in Key` : `${url} refused the key (401)`, "key"));
-      const probe = refusals.some((r) => r.field !== "name") ? null : { ...LMSTUDIO_PROBE, kind: address.includes("gw") ? "LiteLLM" : "LM Studio" };
+      const probe = refusals.some((r) => r.field !== "name") ? null : { ...LMSTUDIO_PROBE, kind: address.includes("gw") ? "LiteLLM" : "LM Studio", address: url };
       const notes = probe
         ? this.entries.servers.filter((s) => s.address === url).map((s) => `same address as model server "${s.name}"`)
         : [];

@@ -2938,13 +2938,16 @@ export interface components {
         };
         /**
          * ProbeInfo
-         * @description What a probe found on a model server (lado.model_servers.Probe): its type, its models
+         * @description What a probe found on a model server (lado.model_servers.Probe): its type, the
+         *     address that answered (the typed one with its scheme and path filled in), its models
          *     (None for no list, why in `models_why`), those it types as embeddings, why its APIs
          *     could not be told ("" when they could), and the CLIs that can use it.
          */
         ProbeInfo: {
             /** Kind */
             kind: string;
+            /** Address */
+            address: string;
             /** Models */
             models: string[] | null;
             /** Models Why */

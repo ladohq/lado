@@ -79,19 +79,8 @@ def _cli_title(cli: str) -> str:
     return providers.get(cli).title if cli in providers.names() else cli
 
 
-def _server_clis(apis) -> list[str]:
-    """The providers' names whose API is among `apis`, in model_servers.clis' order."""
-    return [name for name, _, _ in _clis(apis)[0]]
-
-
-def _clis(apis) -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
-    """model_servers.clis with each provider's name: (name, title, API)."""
-    by_title = {providers.get(name).title: name for name in providers.names()}
-    suits, not_suits = model_servers.clis(apis)
-    return (
-        [(by_title[title], title, api) for title, api in suits],
-        [(by_title[title], title, api) for title, api in not_suits],
-    )
+def _cli_apis(found: model_servers.Suiting) -> list[models.CliApi]:
+    return [models.CliApi(name=p.name, title=p.title, api=api) for p, api in found]
 
 
 def server_info(server: state.ModelServer) -> models.ModelServerInfo:
@@ -99,13 +88,13 @@ def server_info(server: state.ModelServer) -> models.ModelServerInfo:
         name=server.name,
         address=server.address,
         kind=server.kind,
-        clis=_server_clis(server.apis),
+        clis=[p.name for p, _ in model_servers.suiting(server.apis)[0]],
         has_key=model_settings.has_key(server),
     )
 
 
 def probe_info(found: model_servers.Probe) -> models.ProbeInfo:
-    suits, not_suits = _clis(found.apis)
+    suits, not_suits = model_servers.suiting(found.apis)
     return models.ProbeInfo(
         address=found.address,
         added_scheme=found.added_scheme,
@@ -114,8 +103,8 @@ def probe_info(found: model_servers.Probe) -> models.ProbeInfo:
         models_why=found.models_why,
         embeddings=sorted(found.embeddings),
         apis_why=found.apis_why,
-        clis=[models.CliApi(name=n, title=t, api=a) for n, t, a in suits],
-        not_clis=[models.CliApi(name=n, title=t, api=a) for n, t, a in not_suits],
+        clis=_cli_apis(suits),
+        not_clis=_cli_apis(not_suits),
     )
 
 

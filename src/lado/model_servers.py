@@ -125,19 +125,28 @@ class Probe:
         return clis(self.apis)
 
 
-def clis(apis: Iterable[str]) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """The (title, API) of each CLI that can use a server proving `apis` and of each that
+Suiting = list[tuple[providers.Provider, str]]
+
+
+def suiting(apis: Iterable[str]) -> tuple[Suiting, Suiting]:
+    """The (provider, API) of each CLI that can use a server proving `apis` and of each that
     cannot, by the API its provider declares, in the order of base.SERVER_APIS, then of the
     registry; a provider that declares none is left out."""
     apis = frozenset(apis)
-    suits: list[tuple[str, str]] = []
-    not_suits: list[tuple[str, str]] = []
+    suits: Suiting = []
+    not_suits: Suiting = []
     for api in base.SERVER_APIS:
         for name in providers.names():
             provider = providers.get(name)
             if provider.server_api == api:
-                (suits if api in apis else not_suits).append((provider.title, api))
+                (suits if api in apis else not_suits).append((provider, api))
     return suits, not_suits
+
+
+def clis(apis: Iterable[str]) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """`suiting` with each CLI's title: (title, API)."""
+    suits, not_suits = suiting(apis)
+    return [(p.title, api) for p, api in suits], [(p.title, api) for p, api in not_suits]
 
 
 def address(text: str) -> tuple[str, bool]:

@@ -36,14 +36,12 @@ SERVER, MODEL = "model server", "model"  # what a name is of, in its refusals
 
 
 # The field of a form a refusal concerns, for the UI ("" for none); the CLI ignores it.
-NAME, ADDRESS, KEY_FIELD, CLI, SERVER_FIELD, MODEL_FIELD = (
-    "name",
-    model_servers.ADDRESS,
-    model_servers.KEY,
-    "cli",
-    "server",
-    "model",
-)
+# A probe's refusals name model_servers.ADDRESS or model_servers.KEY.
+NAME = "name"
+KEY_FIELD = model_servers.KEY
+CLI = "cli"
+SERVER_FIELD = "server"
+MODEL_FIELD = "model"
 
 
 class Refused(Exception):

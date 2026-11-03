@@ -214,7 +214,7 @@ function YourModels({
     try {
       await onChanged(await removeModel(name));
     } catch (error) {
-      setProblem({ name, text: refusalOf(error)?.message ?? messageOf(error) });
+      setProblem({ name, text: refusalOf(error).message });
     }
   };
   return (
@@ -298,7 +298,7 @@ function Rename({
     try {
       onDone(await renameModel(name, text));
     } catch (error) {
-      setRefused(refusalOf(error) ?? { message: messageOf(error), hint: "", field: "", warnings: [] });
+      setRefused(refusalOf(error));
       setBusy(false);
     }
   };
@@ -354,7 +354,7 @@ function AddServer({
         saved: `✓ Saved model server "${done.server.name}". For: ${clisLine(done.probe)}`,
       });
     } catch (error) {
-      setRefused(refusalOf(error) ?? { message: messageOf(error), hint: "", field: "", warnings: [] });
+      setRefused(refusalOf(error));
       setBusy(false);
     }
   };

@@ -45,17 +45,22 @@ export type Saved = { notes: string[]; warnings: string[]; saved: string | null 
 export const cliKey = (name: string) => `cli:${name}`;
 export const serverKey = (name: string) => `server:${name.toLowerCase()}`;
 
-// The tick of `model` of `cli` on `server` (null: the CLI's own way): on when a configured
-// model has them; with several, the names of them all (the tick is then disabled).
+// The configured models of `model` of `cli` on `server` (null: the CLI's own way); a
+// server's name is found ignoring case.
+const ticked = (models: ConfiguredModelInfo[], cli: string, model: string, server: string | null) =>
+  models.filter(
+    (m) => m.cli === cli && m.model === model && (m.server ?? "").toLowerCase() === (server ?? "").toLowerCase(),
+  );
+
+// The tick of `model` of `cli` on `server`: on when a configured model has them; with
+// several, the names of them all (the tick is then disabled).
 export function tickState(
   models: ConfiguredModelInfo[],
   cli: string,
   model: string,
   server: string | null,
 ): { on: boolean; several: string[] } {
-  const same = models.filter(
-    (m) => m.cli === cli && m.model === model && (m.server ?? "").toLowerCase() === (server ?? "").toLowerCase(),
-  );
+  const same = ticked(models, cli, model, server);
   return { on: same.length > 0, several: same.length > 1 ? same.map((m) => m.name) : [] };
 }
 
@@ -100,9 +105,7 @@ export function ModelSources(props: Props) {
       (found) => latest.current[key] === asked && props.onRead(key, found),
       (error: unknown) =>
         latest.current[key] === asked &&
-        props.onRead(key, {
-          refused: refusalOf(error) ?? { message: messageOf(error), hint: "", field: "", warnings: [] },
-        }),
+        props.onRead(key, { refused: refusalOf(error) }),
     );
   };
   const readCli = (name: string) =>
@@ -398,13 +401,11 @@ function SourceBody({
     try {
       if (on) await addModel({ name: null, cli, model, server });
       else {
-        const one = models.find(
-          (m) => m.cli === cli && m.model === model && (m.server ?? "").toLowerCase() === (server ?? "").toLowerCase(),
-        );
+        const [one] = ticked(models, cli, model, server);
         if (one) await removeModel(one.name);
       }
     } catch (error) {
-      setRefused({ model, text: refusalOf(error)?.message ?? messageOf(error) });
+      setRefused({ model, text: refusalOf(error).message });
     } finally {
       setBusy(false);
       onChanged();
@@ -525,7 +526,7 @@ function OtherModel({
       setCheck(null);
       onChanged();
     } catch (error) {
-      setRefused(refusalOf(error) ?? { message: messageOf(error), hint: "", field: "", warnings: [] });
+      setRefused(refusalOf(error));
     } finally {
       setBusy(false);
     }
@@ -619,7 +620,7 @@ function ChangeServer({
         saved: `✓ Replaced model server "${done.server.name}". For: ${clisLine(done.probe)}`,
       });
     } catch (error) {
-      setRefused(refusalOf(error) ?? { message: messageOf(error), hint: "", field: "", warnings: [] });
+      setRefused(refusalOf(error));
     } finally {
       setBusy(false);
     }
@@ -681,7 +682,7 @@ function RemoveServer({
     try {
       onChanged(await removeModelServer(server.name, true));
     } catch (error) {
-      setProblem(refusalOf(error)?.message ?? messageOf(error));
+      setProblem(refusalOf(error).message);
       setBusy(false);
     }
   };

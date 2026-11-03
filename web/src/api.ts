@@ -385,10 +385,10 @@ export const renameModel = (name: string, to: string) => post<ModelSettings>(mod
 
 export const removeModel = (name: string) => post<ModelSettings>(modelPath(name), undefined, "DELETE");
 
-// A refusal of Settings → Models' API, else null (another error: its message only).
-export function refusalOf(error: unknown): EntryRefused | null {
-  if (!(error instanceof ApiError)) return null;
-  const detail = error.detail as Partial<EntryRefused> | null;
+// A failed request of Settings → Models as a refusal: the API's EntryRefused, or any other
+// error's message with no field.
+export function refusalOf(error: unknown): EntryRefused {
+  const detail = (error instanceof ApiError ? error.detail : null) as Partial<EntryRefused> | null;
   if (detail && typeof detail === "object" && typeof detail.message === "string")
     return {
       message: detail.message,
@@ -396,7 +396,7 @@ export function refusalOf(error: unknown): EntryRefused | null {
       field: detail.field ?? "",
       warnings: detail.warnings ?? [],
     };
-  return null;
+  return { message: error instanceof Error ? error.message : String(error), hint: "", field: "", warnings: [] };
 }
 
 // What the session's head shows besides its settings: its repository, its kits' and its

@@ -136,7 +136,10 @@ Into an epic branch:
   otherwise propose a task to the human at once with `ask_human` (as LAD-57), go on
   without waiting, and create it only on their "yes, create"; the reviewer, who has no
   tracker, leaves the search and the proposal to the supervisor with `send_message`.
-  Red after the second rerun follows kit sdlc's "A red check".
+  Red after the second rerun follows kit sdlc's "A red check". A cell cancelled with "was
+  not acquired by Runner" (no step, no runner) is rerun once by `ci-rerun.yml`: wait for
+  the run's second attempt, rerun by this trap only when its `CI rerun` run says it reruns
+  nothing or that attempt fails so too, and count it as no test's flake.
 - `web/openapi.json` or `web/src/api.gen.ts` stale after an API model change — `make web`
   fails its stale-types check — run `make web-types` and commit both files.
 - A live test added or changed — it only collects without real CLIs — say "written, not

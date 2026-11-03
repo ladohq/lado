@@ -1519,9 +1519,15 @@ def _server_key(args: argparse.Namespace, again: str) -> str | None:
             "a server's key is never given on the command line (ps and the shell's history "
             f"keep it); run {again} --key and type it, or pipe it in"
         )
+    from lado import model_settings
+
     key = _read_secret("Key of the server (not shown): ")
     if not key:
         raise runtime.LadoError("the key is empty")
+    try:
+        model_settings.check_key(key)  # stdin is read past the limit: refused, never cut
+    except model_settings.Refused as exc:
+        raise runtime.LadoError(str(exc)) from None
     return key
 
 

@@ -4,12 +4,13 @@ in process."""
 
 import os
 import socket
+import sqlite3
 import stat
 
 import fake_model_server as fake
 import pytest
 
-from lado import model_check, model_servers, model_settings, providers, state
+from lado import agent_env, model_check, model_servers, model_settings, providers, state
 from lado.providers import base
 
 CHAT, RESPONSES = base.CHAT_COMPLETIONS, base.RESPONSES
@@ -259,6 +260,74 @@ def test_remove_of_a_server_models_use_is_refused_naming_them(serve):
 def test_remove_of_a_name_no_server_has_is_refused():
     with pytest.raises(model_settings.Refused, match='no model server "work" is saved'):
         model_settings.remove_server("work")
+
+
+def test_remove_refused_by_a_model_gone_again_meanwhile(serve, monkeypatch):
+    """The foreign key refused the removal for a model added meanwhile, removed again before
+    it could be named: a refusal, never an IndexError."""
+    add("lab", serve("openai").url)
+
+    def refused(id):
+        raise sqlite3.IntegrityError("FOREIGN KEY constraint failed")
+
+    monkeypatch.setattr(state, "remove_model_server", refused)
+    with pytest.raises(model_settings.Refused) as raised:
+        model_settings.remove_server("lab")
+    assert str(raised.value) == (
+        'model server "lab" was used by a model meanwhile; run the command again'
+    )
+
+
+@pytest.fixture
+def unreadable(lado_home):
+    """Make a server's key folder unreadable (mode 000); restored after the test."""
+    made = []
+
+    def make(name):
+        folder = model_settings.key_folder(state.model_server(name).id)
+        folder.chmod(0)
+        made.append(folder)
+        return folder
+
+    yield make
+    for folder in made:
+        folder.chmod(0o700)
+
+
+def test_a_key_that_cannot_be_read_refuses_in_one_line(serve, unreadable):
+    server = serve("openai", key="k-1")
+    add("work", server.url, key="k-1")
+    folder = unreadable("work")
+    with pytest.raises(model_settings.Refused) as raised:
+        model_settings.server_key(state.model_server("work"))
+    assert str(raised.value) == f"{folder / 'key'} cannot be read (Permission denied)"
+    with pytest.raises(model_settings.Refused, match="cannot be read"):
+        add_model("W", "opencode", "gpt-oss-20b", "work", no_env)
+    with pytest.raises(model_settings.Refused, match="cannot be read"):
+        add("work", server.url, replace=True)
+    with pytest.raises(model_settings.Refused, match="cannot be written"):
+        add("work", server.url, key="k-1", replace=True)
+    assert state.models() == []
+
+
+def test_a_key_over_64_kib_is_refused_before_any_request(serve, lado_home):
+    server = serve("openai")
+    with pytest.raises(model_settings.Refused) as raised:
+        add("work", server.url, key="k" * (agent_env.MAX_VALUE + 1))
+    assert str(raised.value) == "the key is larger than 64 KiB"
+    assert server.requests == []
+    assert state.model_servers() == []
+    assert not (lado_home / model_settings.KEYS).exists()
+
+
+def test_a_key_file_over_64_kib_is_not_read_cut(serve):
+    server = serve("openai", key="k-1")
+    add("work", server.url, key="k-1")
+    path = model_settings.key_folder(state.model_server("work").id) / model_settings.KEY
+    path.write_text("k" * (agent_env.MAX_VALUE + 1))
+    with pytest.raises(model_settings.Refused) as raised:
+        model_settings.server_key(state.model_server("work"))
+    assert str(raised.value) == f"{path} is larger than 64 KiB"
 
 
 def test_a_failed_insert_removes_the_key_it_wrote(serve, monkeypatch, lado_home):

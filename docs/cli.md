@@ -240,7 +240,7 @@ servers` line: all of them probed at once with their kept keys, so it takes one 
 time (about 10 s at most for a server that hangs). `ok` names each with its type
 (`LM Studio at home answers (LM Studio)`); `warn` names each that does not answer, asks for
 a key, refuses its key or is no server LADO knows, with the probe's reason, each key file
-that is not a regular file or has a mode other than 600, and each folder of
+that is not a regular file, cannot be read or has a mode other than 600, and each folder of
 `<LADO_HOME>/model-servers/` of no saved server, as left over (also when none is saved). It
 never fails: doctor's exit status is as without it.
 
@@ -596,7 +596,8 @@ already; to change its address or key: lado model-server add "<its name>" <addre
 command to run again (`… asks for a key (401): run lado model-server add "<name>" <address>
 --key`, the container's hint `… a server on your machine: lado model-server add "<name>"
 http://host.docker.internal:<port> (not tried)`); an address the probe does not take exits
-2. `--key` is read and refused as the probe's (its fixed text names `add`), and the key is
+2. `--key` is read and refused as the probe's (its fixed text names `add`; for both, a key
+larger than 64 KiB is refused, never cut), and the key is
 kept in `<LADO_HOME>/model-servers/<id>/key` alone (the folders 700, the file 600 whatever
 the umask, written by a rename with no symbolic link followed on the way, by the writer of
 LADO's secrets, `project_secrets.write_at`): never in lado.db, an output, a log or the error

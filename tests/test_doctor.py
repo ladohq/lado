@@ -1471,6 +1471,23 @@ def test_a_key_file_with_a_loose_mode_warns(serve):
     )
 
 
+def test_a_key_folder_that_cannot_be_read_warns_and_keeps_the_report(serve):
+    server = serve("openai", key="k")
+    _saved("work", server, key="k")
+    folder = model_settings.key_folder(state.model_server("work").id)
+    folder.chmod(0)
+    try:
+        found = doctor.check_model_servers()
+    finally:
+        folder.chmod(0o700)
+    assert found == doctor.Check(
+        "Model servers",
+        doctor.WARN,
+        f"work: {folder / 'key'} cannot be read (Permission denied); the key file of work "
+        "cannot be read (Permission denied)",
+    )
+
+
 def test_a_key_file_that_is_a_link_warns(serve, tmp_path):
     server = serve("openai")
     _saved("work", server)

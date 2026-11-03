@@ -100,6 +100,8 @@ def add_server(
     address the probe does not take, model_servers.ProbeError for a server it does not
     recognise; nothing changes then."""
     saved = server_to_add(name, replace)
+    if key is not None:
+        check_key(key)
     root, _ = model_servers.address(address)
     sent = key if key is not None or saved is None else server_key(saved)
     warning = model_servers.plain_http_warning(root, sent)
@@ -138,6 +140,10 @@ def remove_server(name: str) -> str:
         state.remove_model_server(saved.id)  # the foreign key: a model added meanwhile
     except sqlite3.IntegrityError:
         used = state.models_on(saved.id)
+        if not used:  # added and removed again meanwhile
+            raise Refused(
+                f'model server "{saved.name}" was used by a model meanwhile; run the command again'
+            ) from None
         raise Refused(
             f'model server "{saved.name}" is used by the models '
             f"{', '.join(m.name for m in used)}; remove them first: "
@@ -246,7 +252,7 @@ def _model_taken(name: str) -> Refused:
 
 def server_key(server: state.ModelServer) -> str | None:
     """The kept key of `server`, None for none; Refused for a key file LADO does not read (a
-    link, not a regular file)."""
+    link, not a regular file, larger than the limit, or one the disk refuses)."""
     path = key_folder(server.id) / KEY
     try:
         with project_secrets.open_chain((KEYS, server.id), make=False) as fd:
@@ -263,9 +269,13 @@ def server_key(server: state.ModelServer) -> str | None:
             with os.fdopen(out, "rb") as file:
                 if not stat.S_ISREG(os.fstat(file.fileno()).st_mode):
                     raise Refused(f"{path} is not a regular file")
-                data = file.read(agent_env.MAX_VALUE + 2)
+                data = file.read(agent_env.MAX_VALUE + 1)
     except project_secrets.LinkRefused as exc:
         raise _link(exc.path) from None
+    except OSError as exc:
+        raise Refused(f"{path} cannot be read ({exc.strerror or type(exc).__name__})") from None
+    if len(data) > agent_env.MAX_VALUE:  # never a key cut to the limit
+        raise Refused(f"{path} is larger than 64 KiB")
     text = data.decode("utf-8", "surrogateescape")
     return text[:-1] if text.endswith("\n") else text  # project_secrets.stored's line break
 
@@ -289,6 +299,17 @@ def _write_key(id: str, key: str) -> None:
         project_secrets.write_at((KEYS, id), key_folder(id), KEY, key)
     except project_secrets.LinkRefused as exc:
         raise _link(exc.path) from None
+    except OSError as exc:
+        raise Refused(
+            f"{key_folder(id) / KEY} cannot be written ({exc.strerror or type(exc).__name__})"
+        ) from None
+
+
+def check_key(key: str) -> None:
+    """Refuse a key larger than its file may hold (agent_env.MAX_VALUE, its stored form),
+    rather than keep or send it cut."""
+    if len(project_secrets.stored(key)) > agent_env.MAX_VALUE:
+        raise Refused("the key is larger than 64 KiB")
 
 
 def _remove_key(id: str) -> None:

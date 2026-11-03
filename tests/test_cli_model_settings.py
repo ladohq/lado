@@ -173,6 +173,16 @@ def test_add_refuses_an_empty_key(serve, capsys, monkeypatch):
     assert state.model_servers() == []
 
 
+def test_add_refuses_a_piped_key_over_64_kib_not_cut(serve, capsys, monkeypatch):
+    """stdin is read a little over the limit, so a longer key is refused, never cut to it."""
+    server = serve("openai")
+    piped(monkeypatch, "k" * (10 * 65536))
+    assert main(["model-server", "add", "work", server.url, "--key"]) == 1
+    assert capsys.readouterr().err == "lado: the key is larger than 64 KiB\n"
+    assert server.requests == []
+    assert state.model_servers() == []
+
+
 ADD_TAKES_NO_MORE = (
     "lado: lado model-server add takes a name, an address, --key and --replace, nothing more; "
     "a server's key is never given on the command line (ps and the shell's history keep it): "

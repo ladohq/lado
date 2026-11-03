@@ -27,20 +27,20 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-03-model-settin
 
 ## 3. Page
 
-- [ ] 3.1 `ModelSettings.tsx`: the section in `Settings.tsx`, `MODELS_ANCHOR`, the API
+- [x] 3.1 `ModelSettings.tsx`: the section in `Settings.tsx`, `MODELS_ANCHOR`, the API
   functions in `api.ts`, Your models (table, ✎ rename, Remove, marks), the add-server form
   with the key in `SecretField` only, refusals under their fields (D13). Check:
   `web/src/ModelSettings.test.tsx`, `make web`.
-- [ ] 3.2 `ModelSources.tsx`: the sources, reading a list on opening and Refresh, ticks
+- [x] 3.2 `ModelSources.tsx`: the sources, reading a list on opening and Refresh, ticks
   and a server's columns, several models of one tick, search, embeddings, missing models,
   a server that does not answer, Other model… with the live check, Change, Remove with
   its models (D5, D6, D13). Check: `web/src/ModelSources.test.tsx`, `make web`.
-- [ ] 3.3 UI e2e of the section, the phone width, screenshots for the pull request. Check:
+- [x] 3.3 UI e2e of the section, the phone width, screenshots for the pull request. Check:
   `uv run pytest -m ui tests/ui/test_models_section.py`.
 
 ## 4. Docs and regression
 
-- [ ] 4.1 `docs/design/ui.md` (Settings' sections, a section Models),
+- [x] 4.1 `docs/design/ui.md` (Settings' sections, a section Models),
   `docs/design/modules.md`, AGENTS.md's `server/` line, CHANGELOG.md under `## 0.45.0
   (unreleased)`, `### New`. Check: `uv run pytest tests/test_agents_md.py -n0`.
 - [ ] 4.2 Regression: `make lint`, `make test`, `make web`, the changed integration and UI

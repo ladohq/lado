@@ -2586,7 +2586,9 @@ Using it changes nothing of how sessions start.
   `✓ <type> answers · <n> models` or its refusal, and under New key the plain-http warning
   of a typed or kept key; `Its <n> models keep their names and move with it.` when it has
   models; Save (and Enter in New key) is off while the check runs or the address does not
-  answer, and its refusal takes the check line's place until the address changes; Save
+  answer, and its refusal (any but one of the key, which shows under New key) takes the
+  check line's place under Address until the address changes, Save staying on unless the
+  refusal is the address's; Save
   replaces the server as `lado model-server add <name> <address> [--key]
   --replace` does, then its list opens with the save's probe; a failed probe changes
   nothing. Remove asks under the row (`role=alertdialog`, the focus on Cancel): `Remove

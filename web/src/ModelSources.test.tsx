@@ -589,6 +589,40 @@ test("Change: Save off while the address does not answer; a refused Save takes t
   expect(save().disabled).toBe(true);
 });
 
+test.each([
+  ["no field (the server failed)", ""],
+  ["the name (removed meanwhile by the CLI)", "name"],
+])("Change: a Save refused for %s shows under Address in the check's place; Save stays on", async (_, field) => {
+  server.entries = { models: [], servers: [LMSTUDIO] };
+  await mount();
+  const row = item(await source("LM Studio дома"));
+  fireEvent.click(within(row).getByRole("button", { name: "Change LM Studio дома" }));
+  const address = within(row).getByLabelText("Address");
+  fireEvent.change(address, { target: { value: "http://localhost:1235" } });
+  expect(await within(row).findByText("✓ LM Studio answers · 1 model", {}, { timeout: 3000 })).toBeTruthy();
+  server.answers["POST /api/model-servers"] = () => refusal("it went wrong", field);
+  fireEvent.click(within(row).getByRole("button", { name: "Save" }));
+  const line = await within(row).findByText("it went wrong");
+  expect(line.closest(".field")).toBe(address.closest(".field"));
+  expect(within(row).queryByText("✓ LM Studio answers · 1 model")).toBeNull();
+  expect(within(row).getAllByText("it went wrong")).toHaveLength(1);
+  expect((within(row).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+test.each([
+  ["no field", "", "Add server"],
+  ["the name", "name", "Name"],
+])("Add server: a refusal for %s shows where its field is", async (_, field, where) => {
+  server.entries = { models: [], servers: [] };
+  await openForm("alpha", "localhost:1234");
+  await waitFor(() => expect(addButton().disabled).toBe(false));
+  server.answers["POST /api/model-servers"] = () => refusal("it went wrong", field);
+  fireEvent.click(addButton());
+  const line = await screen.findByText("it went wrong");
+  const at = where === "Name" ? screen.getByLabelText("Name").closest(".field") : addButton().parentElement;
+  expect(at?.contains(line)).toBe(true);
+});
+
 test("Change checks with the kept key: its plain-http warning and what answers before Save", async () => {
   server.entries = { models: [], servers: [{ ...LMSTUDIO, has_key: true }] };
   await mount();

@@ -1322,10 +1322,12 @@ function ChangeServer({
       setBusy(false);
     }
   };
-  // A refused Save takes the place of the check it followed, until the address changes.
-  const checked = refused && refused.field !== "key" ? undefined : found;
+  // A refused Save, but for its key, takes the place of the check it followed, under Address,
+  // until the address changes; only one of the address keeps Save off (a failure may pass).
+  const saveBad = refused && refused.field !== "key" ? refused : null;
+  const checked = saveBad ? undefined : found;
   const silent = (checked?.refusals ?? []).filter((r) => r.field === "address" || r.field === "");
-  const addressBad = [...silent, ...(refused?.field === "address" ? [refused] : [])];
+  const addressBad = [...silent, ...(saveBad?.field === "address" ? [saveBad] : [])];
   const asksKey = !server.has_key && !filled && (checked?.refusals ?? []).some((r) => r.field === "key");
   const off = busy || !address.trim() || checking || addressBad.length > 0; // Save, and Enter in New key
   const live = keyGoes ? (found?.warnings ?? []) : [];
@@ -1355,7 +1357,7 @@ function ChangeServer({
               {checked?.probe && (
                 <span className="field-note ok">{`✓ ${checked.probe.kind} answers · ${models(checked.probe)}`}</span>
               )}
-              {addressBad.map((r) => (
+              {[...silent, ...(saveBad ? [saveBad] : [])].map((r) => (
                 <CheckNote key={r.message} note={r} />
               ))}
               {asksKey && <span className="field-note warn">⚠ The server asks for a key: type it in New key.</span>}
@@ -1393,7 +1395,6 @@ function ChangeServer({
         <button type="button" className="quiet" onClick={onCancel}>
           Cancel
         </button>
-        {refused && !["address", "key"].includes(refused.field) && <CheckNote note={refused} />}
       </div>
       {own.length > 0 && (
         <p className="mx-note">

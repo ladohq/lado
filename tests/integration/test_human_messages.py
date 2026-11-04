@@ -137,6 +137,8 @@ def test_a_question_a_stop_closed_reaches_the_new_supervisor_and_takes_no_answer
     assert "Choices: yes, no" in notice["body"]
     [stopped] = [m for m in chat(api) if m["kind"] == "question"]
     assert stopped["question_state"] == "stopped"
+    assert stopped["answered_by"] == notice["id"]
+    assert notice["id"] not in [m["id"] for m in chat(api)]  # it is the supervisor's alone
     refused = api.post(
         f"/api/sessions/{SESSION}/answers",
         json={"answers": [{"question": question["id"], "choice": "yes"}]},

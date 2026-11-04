@@ -462,6 +462,16 @@ test.each([
   expect(within(card).queryByRole("button")).toBeNull();
 });
 
+test("a stopped question takes LADO's message to the supervisor for no reply, with agents' messages shown", async () => {
+  storeAgentMessages(true);
+  const notice = message(9, "lado", "supervisor", "1 question to the human closed unanswered by the stop");
+  serve([question(5, { question_state: "stopped", answered_by: 9 }), notice]);
+  open();
+  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
+  expect(card.querySelector(".chat-outcome")?.textContent).toBe("Closed: the session stopped");
+  expect(card.querySelector(".answer-head, .chosen")).toBeNull();
+});
+
 test("the composer sends with Enter, keeps Shift+Enter for a new line and shows nothing ahead of the feed", async () => {
   const { posted } = serve([]);
   open();

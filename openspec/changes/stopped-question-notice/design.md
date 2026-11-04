@@ -19,8 +19,9 @@ notice, lists it again, as `_stop_session` drops the notice (the rule of "the ne
 writes them anew"). Rejected: a new column (a migration for one flag), and a time floor from
 the last `session_resume` event, which a failed resume moves past the questions.
 `answered_by` of a `stopped` question is not a reply: the UI reads it for `answered` and
-`dismissed` only, and the chat's `byId` lookup finds no such row, as the notice is not in
-the human's chat; the field's comment in `models.py` says so.
+`dismissed` only: the human's chat (`with=human`) holds no such row, and with agents' messages
+shown, where `byId` finds the notice, the card of a `stopped` question takes no reply from
+it; the field's comment in `models.py` says so.
 
 **D4. The notice's text is English, agent-facing, provider-neutral.** Summary: `<n>
 question(s) to the human closed unanswered by the stop`, cut as any summary; a CLI that takes

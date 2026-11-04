@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- **A stop no longer loses questions to you without a word.** Stop and `lado stop` say how
+  many open questions close, a closed card reads "Closed: the session stopped", and after a
+  resume the supervisor gets the unanswered ones to ask again.
+
 - **The supervisor no longer asks again for a report it already got.** A message that
   comes while an agent works reaches it with its next LADO tool call, and a reminder to an
   agent whose message waits is refused.

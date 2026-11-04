@@ -374,7 +374,8 @@ stopped: the error says its agents may still run and gives `tmux -L <socket> kil
 <session>`, after which `lado start` resumes it (`lado stop` refuses a stopped session). Its history,
 runs and gates stay, and so do worktrees and branches. Its agents are forgotten (their names
 are free again; `lado log` keeps what they did), and messages they never got or whose body
-they never read are dropped, with the count in the output: new agents start fresh.
+they never read are dropped, with the count in the output: new agents start fresh. Its
+open questions to the human are closed, also with their count (`; 1 open question closed`).
 `lado stop --all` stops every session not stopped yet (also one whose tmux or loop is gone),
 prints each as soon as it is stopped and says which tmux socket it sees; one it cannot stop
 does not keep the others running, and the error names it and the ones stopped (exit 1). On an older `lado.db` (a LADO upgraded by hand) this
@@ -389,7 +390,9 @@ its tmux server died without `lado stop`): the repo must be the same, and `--kit
 (the output says what changed). The new supervisor starts with one message from `lado`,
 `session resumed: <n> open runs`, whose body says per open run what waits: the human at a
 gate (answer with `lado answer`), the supervisor's own step (its step message follows), or a
-worker to start with `spawn_worker(run=...)`. Such a worker opens in the run's worktree on
+worker to start with `spawn_worker(run=...)`. When a stop closed questions to the human no
+supervisor was told of, a second message from `lado` lists them, to ask again what is still
+needed. Such a worker opens in the run's worktree on
 its branch, made again from the branch if the folder is gone. An open run that needs a role
 the resumed session lacks is reported on stderr and in that body; `flow_cancel` or
 `lado flow-set` move it on. While a session is stopped, nothing starts or moves in it:

@@ -471,6 +471,35 @@ def test_a_section_above_growing_is_no_change_to_undo(page: Page, clis, server):
     assert page.evaluate("document.querySelector('.content').scrollTop") == before
 
 
+def test_the_focus_out_of_view_holds_nothing(page: Page, clis, server):
+    """The focus on Kilo CLI's row, the human scrolled up so that Your models shows and Kilo
+    CLI is below the view: 300 px growing between them moves nothing that shows."""
+    state.add_model("Claude Sonnet", "claude", "sonnet", None)
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_settings(page, server)
+    kilo = toggle(page, "Kilo CLI")
+    kilo.focus()
+    page.mouse.move(640, 450)
+    page.mouse.wheel(0, -1)  # the human's: #models no longer kept at the top
+    page.evaluate(
+        "(at) => { const c = document.querySelector('.content');"
+        " c.scrollTop += at - c.getBoundingClientRect().bottom - 100; }",
+        top(kilo),
+    )
+    page.wait_for_timeout(300)
+    heading = section(page).get_by_role("heading", name=re.compile(r"^Your models"))
+    before = top(heading)
+    assert 0 < before < 900 and top(kilo) > 900, (before, top(kilo))
+    assert page.evaluate("document.activeElement.textContent").startswith("Kilo CLI")
+    page.evaluate(
+        "() => { const h = [...document.querySelectorAll('.setting.mx h3')]"
+        ".find((e) => e.textContent.startsWith('Models of your agent CLIs'));"
+        " const d = document.createElement('div'); d.style.height = '300px'; h.after(d); }"
+    )
+    page.wait_for_timeout(300)
+    stays(heading, before)
+
+
 def test_a_list_read_ending_above_the_focus_moves_nothing(page: Page, clis, server, lms):
     state.add_model_server("s1", "LM Studio дома", lms.url, "LM Studio", ["chat completions"])
     held: list[Route] = []

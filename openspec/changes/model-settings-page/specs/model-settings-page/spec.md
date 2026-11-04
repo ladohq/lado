@@ -67,6 +67,11 @@ No row SHALL leave the section on a timer.
   read
 - **THEN** the list's read ending scrolls nothing to make up for the section above
 
+#### Scenario: The focus out of view
+- **WHEN** the focus is on Kilo CLI's row, the human scrolled up so that Your models shows and
+  Kilo CLI is below the view, and the blocks between them grow
+- **THEN** the page scrolls nothing: what shows stays where it is
+
 #### Scenario: Undo runs out while the human is below
 - **WHEN** the human pressed × on a model, then works in Models of your agent CLIs, and ten
   seconds pass
@@ -515,8 +520,7 @@ note SHALL cover a field or another note.
 
 **Change** of a server SHALL open, under its row, its Address, filled, and New key, empty,
 with `Its <n> models keep their names and move with it.` when it has models; the address
-SHALL be checked as the human types as the add form's is, the server's own name not taken,
-with the kept key while New key is empty.
+SHALL be checked as the human types as the add form's is, the server's own name not taken.
 Save SHALL replace the server as `lado model-server add <name> <address> [--key] --replace`
 does, with the kept key, kept, when New key is empty. Its models SHALL keep referring to
 it; a failed probe SHALL change nothing.
@@ -528,8 +532,9 @@ it; a failed probe SHALL change nothing.
 
 #### Scenario: Another port, the key kept
 - **WHEN** `LM Studio дома` moved to port 1235 and the human types it in Change's Address
-- **THEN** the note under Address says what answers there before Save, and after Save with
-  New key empty it shows `http://localhost:1235` and its key, if any, stays
+- **THEN** the note under Address says what answers there before Save, its check sent with
+  the kept key while New key is empty, and after Save with New key empty it shows
+  `http://localhost:1235` and its key, if any, stays
 
 ### Requirement: Removing a server removes its models after a confirmation
 

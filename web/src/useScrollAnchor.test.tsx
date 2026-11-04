@@ -9,18 +9,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// Each element's top on the screen, set by the test before a render (jsdom lays nothing out).
+// Each element's top on the screen, set by the test before a render (jsdom lays nothing out);
+// each is 30 px high, `.content` 900 px.
 let tops: Record<string, number> = {};
 const topOf = (el: Element) => tops[(el as HTMLElement).dataset.t ?? ""] ?? 0;
 Element.prototype.getBoundingClientRect = function (this: Element) {
   const top = topOf(this);
+  const height = (this as HTMLElement).dataset.t === "content" ? 900 : 30;
   return {
     top,
-    bottom: top + 30,
+    bottom: top + height,
     left: 0,
     right: 100,
     width: 100,
-    height: 30,
+    height,
     x: 0,
     y: top,
     toJSON: () => ({}),
@@ -126,6 +128,30 @@ test("a correction made, the next render with nothing changed scrolls nothing", 
   view.rerender(page(["x", "a", "b"], "b"));
   expect(by).toHaveBeenCalledTimes(1);
   expect(tops.b).toBe(300);
+});
+
+test("the focus out of view holds nothing: what shows stays, and the focus is noted where it is now", () => {
+  wide(true);
+  tops = { section: 0, a: 300, b: 1000 }; // b, focused, below the view
+  const view = render(page(["a", "b"], "b"));
+  const by = scrolls(view.container.querySelector(".content") as HTMLElement, true);
+  tops = { section: 0, a: 300, x: 330, b: 1300 }; // 300 px grow between a and b
+  view.rerender(page(["a", "x", "b"], "b"));
+  expect(by).not.toHaveBeenCalled();
+  // The human scrolled b into view by 600 px, then 60 px grow above it.
+  tops = { section: -600, a: -300, x: -270, y: -240, b: 760 };
+  view.rerender(page(["a", "x", "y", "b"], "b"));
+  expect(by).toHaveBeenLastCalledWith(0, 60); // from its place after the change it did not hold
+});
+
+test("the focus in view, pushed out of it by what grows above, is kept", () => {
+  wide(true);
+  tops = { section: 0, a: 10, b: 800 };
+  const view = render(page(["a", "b"], "b"));
+  const by = scrolls(view.container.querySelector(".content") as HTMLElement);
+  tops = { section: 0, x: 10, a: 310, b: 1100 };
+  view.rerender(page(["x", "a", "b"], "b"));
+  expect(by).toHaveBeenCalledWith(0, 300);
 });
 
 test("at or under 900 px the window scrolls", () => {

@@ -2461,7 +2461,9 @@ Using it changes nothing of how sessions start.
   of the section and each change of its size the scrolling container (`.content` above 900
   px, the window at or under it) goes to the exact place that makes up for what that
   distance gained (the page rounds to whole pixels; the next change starts from the exact
-  place, so half pixels do not add up). When the anchor leaves the page (× turned into Undo,
+  place, so half pixels do not add up, unless the page stopped at its top or bottom). An
+  anchor out of the container's view before a change is not held through it, so what the
+  human sees stays: its distance is noted anew. When the anchor leaves the page (× turned into Undo,
   a name's field into the name, a server into its line) the nearest `[data-anchor]` that held
   it (a card, a source's row) keeps its place instead; a scroll inside the section (a list's
   own) notes it anew. The browser's own scroll anchoring is off in the section and the ones

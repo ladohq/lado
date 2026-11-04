@@ -2,13 +2,15 @@
 // section whose blocks grow and shrink above the place acted on, that place stays on the
 // screen. The anchor is the focused element inside the section, else the one last pressed
 // there (a button a click does not focus, as Safari's) until a press elsewhere; with neither,
-// nothing is held and the hook never scrolls. Its place is its distance from the section's top, so whatever moves the
-// whole section (a section above growing, the window resized, the human's scroll, the hook's
-// own) changes nothing; after each render of the section, and whenever its size changes, the
-// scrolling container (`.content` above 900 px, the window at or under it) is scrolled by what
-// that distance gained. When the anchor leaves the page (× turned into Undo, a field into a
-// name, a server into its line), the nearest `[data-anchor]` that held it stands for it. The
-// page scrolls by whole pixels: the anchor keeps the distance it was first noted at, so half
+// nothing is held and the hook never scrolls. Its place is its distance from the section's
+// top, so whatever moves the whole section (a section above growing, the window resized, the
+// human's scroll, the hook's own) changes nothing; after each render of the section, and
+// whenever its size changes, the scrolling container (`.content` above 900 px, the window at
+// or under it) is scrolled by what that distance gained. An anchor out of that container's
+// view before a change is not held through it (the page stays as the human sees it), only
+// noted anew. When the anchor leaves the page (× turned into Undo, a field into a name, a
+// server into its line), the nearest `[data-anchor]` that held it stands for it. The page
+// scrolls by whole pixels: the anchor keeps the distance it was first noted at, so half
 // pixels do not add up; a scroll inside the section (a list's own) notes it anew.
 // `overflow-anchor` is not relied on: Safari has none.
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef } from "react";
@@ -26,6 +28,12 @@ function scroller(section: HTMLElement): Scroller {
 }
 
 const position = (on: Scroller) => (on === window ? window.scrollY : (on as HTMLElement).scrollTop);
+
+// Whether a box from `top` to `bottom` on the screen showed in what scrolls.
+function shown(on: Scroller, top: number, bottom: number): boolean {
+  const view = on === window ? { top: 0, bottom: window.innerHeight } : (on as HTMLElement).getBoundingClientRect();
+  return bottom > view.top && top < view.bottom;
+}
 
 export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
   const held = useRef<Held | null>(null);
@@ -65,9 +73,10 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
     const was = held.current;
     const spot = was?.own.el.isConnected ? was.own : was?.around?.el.isConnected ? was.around : null;
     if (root && spot) {
-      const moved = spot.el.getBoundingClientRect().top - root.getBoundingClientRect().top - spot.at;
-      if (moved !== 0) {
-        const on = scroller(root);
+      const box = spot.el.getBoundingClientRect();
+      const moved = box.top - root.getBoundingClientRect().top - spot.at;
+      const on = scroller(root);
+      if (moved !== 0 && shown(on, box.top - moved, box.bottom - moved)) {
         const last = ours.current;
         const now = position(on);
         // The place it wanted, while the page is where that put it and it put it there (a scroll
@@ -76,8 +85,8 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
         const want = (kept ? last.want : now) + moved;
         on.scrollTo(0, want);
         ours.current = { on, want, left: position(on) };
-        spot.at += moved; // made up for: the distance it has now
       }
+      spot.at += moved; // made up for, or not held: the distance it has now
     }
     note(was);
   }, [section, note]);

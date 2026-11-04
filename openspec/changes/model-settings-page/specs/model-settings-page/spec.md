@@ -83,13 +83,19 @@ in SHALL say `not logged in` and open.
 
 Each source SHALL be one row: an open/close arrow in a framed box, its name, for a server
 its type as a badge and `key` when it has one, and a second line: for a server how many
-models it gave (`2 models added`, `no models added`) then its address; for an agent CLI
-`aliases` or `its list`, its login state and how many models it gave.
+models it gave (`2 models added`, `no models added`) then its address; for an agent CLI its
+login state and how many models it gave, after `aliases` or `its list` once its list was
+read on the page (before a read the page cannot tell them apart without reading a list).
 
 #### Scenario: LM Studio with two models
 - **WHEN** `LM Studio дома` at `http://localhost:1234`, without a key, gave two models
 - **THEN** its row says `LM Studio дома`, the badge `LM Studio`, and `2 models added ·
   http://localhost:1234`
+
+#### Scenario: Claude Code read
+- **WHEN** Claude Code is logged in with one model saved, and the human opens its source
+- **THEN** its second line says `logged in · 1 added` before, and `aliases · logged in · 1
+  added` once its list was read
 
 ### Requirement: A source opens from its whole row
 

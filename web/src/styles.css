@@ -9018,6 +9018,13 @@ del.kit-mcp-name {
    in a list of at most --list-rows rows that scrolls within itself. Forms and notes are the
    launch window's (.launch-grid, .field, .field-note); green (--done) only for what answered
    and what was saved. */
+/* The browser's own scroll anchoring would move the page a second time after useScrollAnchor
+   (Safari has none): off in the section and the ones after it, so the page acts alike in all. */
+.setting.mx,
+.setting.mx ~ .setting {
+  overflow-anchor: none;
+}
+
 .setting.mx {
   --row: 36px; /* one row of a list of models */
   --list-rows: 9; /* a list's rows before it scrolls within itself */

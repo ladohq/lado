@@ -42,6 +42,16 @@ No row SHALL leave the section on a timer.
 - **THEN** the new server takes the place of the form, and the form's place on the screen
   does not move
 
+#### Scenario: Nothing acted on
+- **WHEN** the human opens `/settings` and presses nothing in Models while the sections above
+  grow and Models renders its rows
+- **THEN** the page stays where it is: only what the human acts on in Models is held in place
+
+#### Scenario: A section above grows
+- **WHEN** the human opened a source in Models and a section above grows while its list is
+  read
+- **THEN** the list's read ending scrolls nothing to make up for the section above
+
 #### Scenario: Undo runs out while the human is below
 - **WHEN** the human pressed × on a model, then works in Models of your agent CLIs, and ten
   seconds pass

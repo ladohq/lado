@@ -1,44 +1,40 @@
-// Nothing moves under the pointer (docs/design/ui.md, Models): a section whose blocks grow and
-// shrink above the human's place keeps that place on the screen. After each render of the
-// section, and whenever its size changes, the anchor noted before is put back where it was by
-// scrolling the scrolling container (`.content` above 900 px, the window at or under it) by
-// the distance it moved. The anchor is the focused element inside the section, else the one
-// last pressed in the section (a button a click does not focus, as Safari's), else the first
-// element in view.
-// When it leaves the page (× turns into Undo, a field into a name, a server into its line), the
-// nearest `[data-anchor]` that held it stands for it, so a card or a server's row keeps its
-// place. The page scrolls by whole pixels: an anchor keeps the place first noted, so the half
-// pixels of one change and the next do not add up. The human's own scroll is noted, never
-// undone; an anchor gone with nothing around it scrolls nothing. `overflow-anchor` is not
-// relied on: Safari has none.
+// Nothing moves under the pointer (docs/design/ui.md, Models): when the human acts in a
+// section whose blocks grow and shrink above the place acted on, that place stays on the
+// screen. The anchor is the focused element inside the section, else the one last pressed
+// there (a button a click does not focus, as Safari's) until a press elsewhere; with neither,
+// nothing is held and the hook never scrolls. Its place is its distance from the section's top, so whatever moves the
+// whole section (a section above growing, the window resized, the human's scroll, the hook's
+// own) changes nothing; after each render of the section, and whenever its size changes, the
+// scrolling container (`.content` above 900 px, the window at or under it) is scrolled by what
+// that distance gained. When the anchor leaves the page (× turned into Undo, a field into a
+// name, a server into its line), the nearest `[data-anchor]` that held it stands for it. The
+// page scrolls by whole pixels: the anchor keeps the distance it was first noted at, so half
+// pixels do not add up; a scroll inside the section (a list's own) notes it anew.
+// `overflow-anchor` is not relied on: Safari has none.
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
-type Spot = { el: Element; top: number };
+type Spot = { el: Element; at: number }; // `at`: its top less the section's
 type Held = { own: Spot; around: Spot | null };
-type Scroller = HTMLElement | Window;
 
 const NARROW = "(max-width: 900px)"; // the app scrolls its window, not `.content`
+
+type Scroller = HTMLElement | Window;
 
 function scroller(section: HTMLElement): Scroller {
   const narrow = typeof window.matchMedia === "function" && window.matchMedia(NARROW).matches;
   return narrow ? window : ((section.closest(".content") as HTMLElement | null) ?? window);
 }
 
-const viewTop = (on: Scroller) => (on === window ? 0 : (on as HTMLElement).getBoundingClientRect().top);
 const position = (on: Scroller) => (on === window ? window.scrollY : (on as HTMLElement).scrollTop);
-
-function firstInView(section: HTMLElement): Element | null {
-  const top = viewTop(scroller(section));
-  for (const el of section.querySelectorAll("*")) if (el.getBoundingClientRect().top >= top) return el;
-  return null;
-}
 
 export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
   const held = useRef<Held | null>(null);
   const acted = useRef<Element | null>(null);
-  const ours = useRef<{ on: Scroller; at: number } | null>(null); // the scroll it made last
+  // Where the hook scrolled last: the exact place it wants (`want`) and where the page, which
+  // scrolls by whole pixels, put it (`left`); a page found elsewhere was scrolled by another.
+  const ours = useRef<{ on: Scroller; want: number; left: number } | null>(null);
 
-  // The anchor now; an element `kept` held already keeps the place noted for it then.
+  // The anchor now; an element `kept` held already keeps the distance noted for it then.
   const note = useCallback(
     (kept?: Held | null) => {
       const root = section.current;
@@ -52,10 +48,10 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
           ? focused
           : last && last.isConnected && root.contains(last)
             ? last
-            : (gone ?? firstInView(root)); // what held it, while the change goes on
+            : gone; // what held it, while the change goes on
       if (!el) return;
-      // What holds the anchor is noted where it is now: only the anchor keeps its first place.
-      const now = (at: Element): Spot => ({ el: at, top: at.getBoundingClientRect().top });
+      const top = root.getBoundingClientRect().top;
+      const now = (spot: Element): Spot => ({ el: spot, at: spot.getBoundingClientRect().top - top });
       const own = (kept?.own.el === el ? kept.own : kept?.around?.el === el ? kept.around : null) ?? now(el);
       const around = el.closest("[data-anchor]");
       held.current = { own, around: around && around !== el && root.contains(around) ? now(around) : null };
@@ -63,20 +59,24 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
     [section],
   );
 
-  // The anchor back at its place, then noted anew.
+  // The anchor back at its distance from the section's top, then noted anew.
   const settle = useCallback(() => {
     const root = section.current;
-    const at = held.current;
-    const was = at?.own.el.isConnected ? at.own : at?.around?.el.isConnected ? at.around : null;
-    if (root && was) {
-      const moved = was.el.getBoundingClientRect().top - was.top;
-      if (Math.abs(moved) >= 1) {
+    const was = held.current;
+    const spot = was?.own.el.isConnected ? was.own : was?.around?.el.isConnected ? was.around : null;
+    if (root && spot) {
+      const moved = spot.el.getBoundingClientRect().top - root.getBoundingClientRect().top - spot.at;
+      if (moved !== 0) {
         const on = scroller(root);
-        on.scrollBy(0, moved);
-        ours.current = { on, at: position(on) };
+        const last = ours.current;
+        const now = position(on);
+        const want = (last && last.on === on && Math.abs(now - last.left) < 1 ? last.want : now) + moved;
+        on.scrollTo(0, want);
+        ours.current = { on, want, left: position(on) };
+        spot.at += moved; // made up for: the distance it has now
       }
     }
-    note(at);
+    note(was);
   }, [section, note]);
 
   useLayoutEffect(settle);
@@ -84,31 +84,25 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
   useEffect(() => {
     const root = section.current;
     if (!root) return;
-    // A press or a focus on what is held already keeps its place; a scroll the human made is a
-    // new place, the one this hook made is not.
+    // A press or a focus on what is held already keeps its distance; a scroll inside the
+    // section moves things within it, so what it moved is noted where it is now.
+    // A press elsewhere on the page: the human is no longer in the section.
     const press = (event: Event) => {
-      acted.current = event.target as Element;
-      note(held.current);
+      const inside = root.contains(event.target as Node);
+      acted.current = inside ? (event.target as Element) : null;
+      note(inside ? held.current : null);
     };
     const fresh = () => note(held.current);
-    const scrolled = (event: Event) => {
-      const mine = ours.current;
-      const on = event.target === document ? window : event.target;
-      if (mine && on === mine.on) {
-        ours.current = null;
-        if (position(mine.on) === mine.at) return;
-      }
-      note();
-    };
-    root.addEventListener("pointerdown", press, true);
+    const scrolled = () => note();
+    document.addEventListener("pointerdown", press, true);
     root.addEventListener("focusin", fresh);
-    document.addEventListener("scroll", scrolled, { capture: true, passive: true });
+    root.addEventListener("scroll", scrolled, { capture: true, passive: true });
     const sized = typeof ResizeObserver === "function" ? new ResizeObserver(settle) : null;
     sized?.observe(root);
     return () => {
-      root.removeEventListener("pointerdown", press, true);
+      document.removeEventListener("pointerdown", press, true);
       root.removeEventListener("focusin", fresh);
-      document.removeEventListener("scroll", scrolled, { capture: true });
+      root.removeEventListener("scroll", scrolled, { capture: true });
       sized?.disconnect();
     };
   }, [section, note, settle]);

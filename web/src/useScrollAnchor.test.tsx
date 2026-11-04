@@ -45,9 +45,20 @@ function Page({ children }: { children: ReactNode }) {
   );
 }
 
-function scrolls(target: { scrollBy: unknown }) {
-  const by = vi.fn();
-  target.scrollBy = by;
+// The container's scrollTo, recorded; with `browser`, the page moves as a browser's does:
+// every top on the screen by what the scroll changed, the scroll by whole pixels.
+function scrolls(target: { scrollTo: unknown }, browser = false) {
+  let at = 0;
+  const by = vi.fn((_x: number, y: number) => {
+    if (!browser) return;
+    const to = Math.round(y);
+    tops = Object.fromEntries(Object.entries(tops).map(([k, t]) => [k, t - (to - at)]));
+    at = to;
+    if (target !== window) (target as HTMLElement & { _top?: number })._top = to;
+  });
+  target.scrollTo = by;
+  if (browser && target !== window)
+    Object.defineProperty(target, "scrollTop", { get: () => at, configurable: true });
   return by;
 }
 
@@ -76,22 +87,31 @@ test("the focused element keeps its place: 120 px grown above it scroll .content
 
 test("half pixels the page cannot scroll do not add up: the anchor keeps its first place", () => {
   wide(true);
-  tops = { a: 10, b: 300 };
+  tops = { section: 0, a: 10, b: 300 };
   const view = render(page(["a", "b"], "b"));
-  const content = view.container.querySelector(".content") as HTMLElement;
-  const by = scrolls(content);
-  tops = { new: 10, a: 130.5, b: 420.5 };
-  view.rerender(page(["new", "a", "b"], "b"));
-  expect(by).toHaveBeenLastCalledWith(0, 120.5);
-  act(() => {
-    content.dispatchEvent(new Event("scroll")); // the scroll it made, by whole pixels
-  });
-  tops = { new: -110, a: 10.5, b: 300.5 };
-  view.rerender(page(["new", "a", "b"], "b"));
-  expect(by).toHaveBeenCalledTimes(1); // half a pixel off: not scrolled for
-  tops = { new: -110, a: 10.5, b: 360.5 };
-  view.rerender(page(["new", "a", "b", "c"], "b"));
-  expect(by).toHaveBeenLastCalledWith(0, 60.5); // back to 300, not to 300.5
+  const by = scrolls(view.container.querySelector(".content") as HTMLElement, true);
+  tops = { section: 0, x: 10, a: 130.5, b: 420.5 };
+  view.rerender(page(["x", "a", "b"], "b"));
+  expect(by).toHaveBeenLastCalledWith(0, 120.5); // the page goes to 121: b at 299.5
+  expect(tops.b).toBe(299.5);
+  tops = Object.fromEntries(Object.entries(tops).map(([k, t]) => [k, k === "b" ? t + 60.5 : t]));
+  view.rerender(page(["x", "y", "a", "b"], "b")); // 60.5 more above b
+  expect(by).toHaveBeenLastCalledWith(0, 181); // from where it wanted, not from where it went
+  expect(tops.b).toBe(300);
+});
+
+test("a correction made, the next render with nothing changed scrolls nothing", () => {
+  wide(true);
+  tops = { section: 0, a: 10, b: 300 };
+  const view = render(page(["a", "b"], "b"));
+  const by = scrolls(view.container.querySelector(".content") as HTMLElement, true);
+  tops = { section: 0, x: 10, a: 130, b: 420 };
+  view.rerender(page(["x", "a", "b"], "b"));
+  expect(by).toHaveBeenCalledWith(0, 120);
+  view.rerender(page(["x", "a", "b"], "b"));
+  view.rerender(page(["x", "a", "b"], "b"));
+  expect(by).toHaveBeenCalledTimes(1);
+  expect(tops.b).toBe(300);
 });
 
 test("at or under 900 px the window scrolls", () => {
@@ -104,7 +124,7 @@ test("at or under 900 px the window scrolls", () => {
   expect(by).toHaveBeenCalledWith(0, 120);
 });
 
-test("with no focus in the section the element acted on is the anchor, else the first in view", () => {
+test("with no focus in the section the element pressed there is the anchor, until a press elsewhere", () => {
   wide(true);
   tops = { a: -50, b: 40, c: 300 };
   const view = render(page(["a", "b", "c"]));
@@ -115,12 +135,46 @@ test("with no focus in the section the element acted on is the anchor, else the 
   view.rerender(page(["a", "b", "c", "d"]));
   expect(by).toHaveBeenLastCalledWith(0, 60);
   by.mockClear();
-  tops = { a: -50, b: 40, d: 300 }; // c gone: nothing around it, nothing scrolled
-  view.rerender(page(["a", "b", "d"]));
+  fireEvent.pointerDown(document.body); // the human goes elsewhere
+  tops = { x: -80, a: -50, b: 70, c: 390 };
+  view.rerender(page(["x", "a", "b", "c", "d"]));
   expect(by).not.toHaveBeenCalled();
-  tops = { x: -80, a: -50, b: 70, d: 330 }; // b, the first in view, moved by 30
-  view.rerender(page(["x", "a", "b", "d"]));
-  expect(by).toHaveBeenLastCalledWith(0, 30);
+});
+
+test("with nothing focused or pressed in the section, nothing scrolls whatever grows", () => {
+  wide(true);
+  tops = { a: 40, b: 300 };
+  const view = render(page(["a", "b"]));
+  const by = scrolls(view.container.querySelector(".content") as HTMLElement);
+  tops = { x: 40, a: 160, b: 420 };
+  view.rerender(page(["x", "a", "b"]));
+  expect(by).not.toHaveBeenCalled();
+});
+
+test("a section above growing moves the whole section: nothing scrolls", () => {
+  wide(true);
+  tops = { section: 0, a: 10, b: 300 };
+  const view = render(page(["a", "b"], "b"));
+  const by = scrolls(view.container.querySelector(".content") as HTMLElement);
+  tops = { section: 300, a: 310, b: 600 }; // 300 px grew above the section, nothing in it
+  view.rerender(page(["a", "b"], "b"));
+  expect(by).not.toHaveBeenCalled();
+  tops = { section: 300, x: 310, a: 370, b: 660 }; // then 60 px in it, above b
+  view.rerender(page(["x", "a", "b"], "b"));
+  expect(by).toHaveBeenLastCalledWith(0, 60);
+});
+
+test("a scroll inside the section notes the anchor where it is now", () => {
+  wide(true);
+  tops = { a: 10, b: 300 };
+  const view = render(page(["a", "b"], "b"));
+  const by = scrolls(view.container.querySelector(".content") as HTMLElement);
+  tops = { a: -40, b: 250 }; // a list in the section scrolled within itself
+  act(() => {
+    view.getByText("a").dispatchEvent(new Event("scroll"));
+  });
+  view.rerender(page(["a", "b"], "b"));
+  expect(by).not.toHaveBeenCalled();
 });
 
 const inCard = (rows: string[], focus: string) => (
@@ -185,11 +239,7 @@ test("what held an anchor is noted where it is now, not where it was when first 
   tops = { card: 100, a: 100, b: 130 };
   const view = render(inCard(["a", "b"], "b"));
   const content = view.container.querySelector(".content") as HTMLElement;
-  // A scroll moves everything on the screen at once, as a browser's does.
-  const by = vi.fn((_x: number, y: number) => {
-    tops = Object.fromEntries(Object.entries(tops).map(([k, t]) => [k, t - y]));
-  });
-  content.scrollBy = by as unknown as typeof content.scrollBy;
+  const by = scrolls(content, true);
   tops = { card: 100, x: 100, a: 130, b: 160 }; // a line in the card above b: b kept in place
   view.rerender(inCard(["x", "a", "b"], "b"));
   expect(by).toHaveBeenLastCalledWith(0, 30);
@@ -210,13 +260,13 @@ test("an anchor gone from the page with nothing around it scrolls nothing", () =
   expect(by).not.toHaveBeenCalled();
 });
 
-test("the human's own scroll is no change to undo", () => {
+test("the human's own scroll moves the whole section: no change to undo", () => {
   wide(true);
-  tops = { a: 10, b: 300 };
+  tops = { section: 0, a: 10, b: 300 };
   const view = render(page(["a", "b"], "b"));
   const content = view.container.querySelector(".content") as HTMLElement;
   const by = scrolls(content);
-  tops = { a: -90, b: 200 };
+  tops = { section: -100, a: -90, b: 200 };
   act(() => {
     content.dispatchEvent(new Event("scroll"));
   });

@@ -2450,16 +2450,21 @@ Using it changes nothing of how sessions start.
   then **Your models `<n>`**, **Model servers `<n>`** (its count once a server is saved)
   and **Models of your agent CLIs**, one under the other, `--gap-block` (24 px) apart, each
   an h3 with its count and, for the last two, a lead line.
-- **Nothing moves under the pointer** (`web/src/useScrollAnchor.ts`): after each render of
-  the section and each change of its size, the element the human acts on keeps its place
-  on the screen, the scrolling container (`.content` above 900 px, the window at or under
-  it) scrolled by what grew or shrank above it. The anchor is the focused element in the
-  section, else the one last pressed, else the first in view; when it leaves the page (×
-  turned into Undo, a name's field into the name, a server into its line) the nearest
-  `[data-anchor]` that held it (a card, a source's row) keeps its place instead. The page
-  scrolls by whole pixels, so an anchor keeps the place it was first noted at and half
-  pixels do not add up; the human's own scroll is a new place. `overflow-anchor` is not
-  relied on (Safari has none). No row leaves the section on a timer.
+- **Nothing moves under the pointer** (`web/src/useScrollAnchor.ts`): when the human acts
+  in the section, what they act on keeps its place on the screen whatever grows or shrinks
+  above it in the section. The anchor is the focused element in the section, else the one
+  last pressed there until a press elsewhere; with neither, nothing is held and the page is
+  never scrolled. Its place is its distance from the section's top, so what moves the whole
+  section (a section above growing, the human's scroll) is left as it is; after each render
+  of the section and each change of its size the scrolling container (`.content` above 900
+  px, the window at or under it) goes to the exact place that makes up for what that
+  distance gained (the page rounds to whole pixels; the next change starts from the exact
+  place, so half pixels do not add up). When the anchor leaves the page (× turned into Undo,
+  a name's field into the name, a server into its line) the nearest `[data-anchor]` that held
+  it (a card, a source's row) keeps its place instead; a scroll inside the section (a list's
+  own) notes it anew. The browser's own scroll anchoring is off in the section and the ones
+  after it (`overflow-anchor: none`), else it would move the page a second time; Safari has
+  none. No row leaves the section on a timer.
 - **Your models**: a card only for an agent CLI with models, in LADO's order of agent CLIs
   (then one for a model of a CLI it does not know), headed `<CLI title> <n>` on `--raised`;
   `⚠ not installed: its models cannot run` in the head of one not installed. Its models by

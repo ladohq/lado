@@ -359,6 +359,49 @@ def test_the_form_checks_before_add_a_silent_server_and_change(page: Page, clis,
         moved.close()
 
 
+def test_the_page_never_scrolls_by_itself(page: Page, clis, server, lms):
+    """Opened at /settings, no #models, nothing pressed: the sections above grow as their
+    rows come and Models renders as its rows come, and the page stays at its top."""
+    state.add_model("Claude Sonnet", "claude", "sonnet", None)
+    state.add_model_server("s1", "LM Studio дома", lms.url, "LM Studio", ["chat completions"])
+    page.set_viewport_size({"width": 1280, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/settings")
+    expect(section(page).get_by_role("heading", name="Models of your agent CLIs")).to_be_visible()
+    seen = []
+    for _ in range(16):
+        seen.append(page.evaluate("document.querySelector('.content').scrollTop"))
+        page.wait_for_timeout(250)
+    expect(page.locator(".pv-refresh.spinning")).to_have_count(0, timeout=30_000)
+    seen.append(page.evaluate("document.querySelector('.content').scrollTop"))
+    assert set(seen) == {0}, seen
+
+
+def test_a_section_above_growing_is_no_change_to_undo(page: Page, clis, server):
+    """The human acted in Models (opened Claude Code, its list still reading); then a section
+    above grows by 300 px, the page not following it (Safari has no scroll anchoring): the
+    list's read ending scrolls nothing to make up for it."""
+    held: list[Route] = []
+    page.route(re.compile(r".*/api/providers/claude/models.*"), lambda route: held.append(route))
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_settings(page, server)
+    page.add_style_tag(content=".content { overflow-anchor: none; }")  # as Safari, which has none
+    toggle(page, "Claude Code").click()
+    expect(source(page, "Claude Code").get_by_text("reading the models…")).to_be_visible()
+    page.evaluate(
+        "() => { const d = document.createElement('div'); d.style.height = '300px';"
+        " document.querySelector('.pv-list').prepend(d); }"
+    )
+    before = page.evaluate("document.querySelector('.content').scrollTop")
+    assert len(held) == 1
+    held[0].continue_()
+    expect(
+        source(page, "Claude Code").get_by_role("checkbox", name="sonnet on Claude Code")
+    ).to_be_visible()
+    page.wait_for_timeout(300)
+    assert page.evaluate("document.querySelector('.content').scrollTop") == before
+
+
 def test_a_list_read_ending_above_the_focus_moves_nothing(page: Page, clis, server, lms):
     state.add_model_server("s1", "LM Studio дома", lms.url, "LM Studio", ["chat completions"])
     held: list[Route] = []

@@ -2439,7 +2439,9 @@ Settings: the human's configured models and model servers, set once under names 
 change model-settings-page; built in `web/src/ModelSettings.tsx` and
 `web/src/ModelSources.tsx` over `lado.server.model_entries`). The section after Agent CLIs
 and environment, before Usage statistics; its anchor `#models` scrolls the page to it once,
-when the page opens there, never after a change of the entries. It does what `lado
+when the page opens there, never after a change of the entries, and keeps it at the top of
+the view while the page around it grows (Agent CLIs and environment, above, once its check
+ends) until the human presses, scrolls, touches or types anywhere (`keepAtTop`). It does what `lado
 model-server` and `lado model` do, with their rules: every refusal is the command's, in the
 page's words (`Refused.page`, `ProbeError.page`: no command to run, but what to do here,
 e.g. `asks for a key (401): enter it in Key`, `the name is taken by the model "<name>"`; the

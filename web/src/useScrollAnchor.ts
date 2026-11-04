@@ -70,7 +70,10 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
         const on = scroller(root);
         const last = ours.current;
         const now = position(on);
-        const want = (last && last.on === on && Math.abs(now - last.left) < 1 ? last.want : now) + moved;
+        // The place it wanted, while the page is where that put it and it put it there (a scroll
+        // stopped at the top or the bottom is no place wanted): else where the page is.
+        const kept = last && last.on === on && Math.abs(now - last.left) < 1 && Math.abs(last.left - last.want) < 1;
+        const want = (kept ? last.want : now) + moved;
         on.scrollTo(0, want);
         ours.current = { on, want, left: position(on) };
         spot.at += moved; // made up for: the distance it has now
@@ -106,4 +109,23 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
       sized?.disconnect();
     };
   }, [section, note, settle]);
+}
+
+const ACTS = ["pointerdown", "wheel", "touchstart", "keydown"] as const;
+
+// The page opened at the section's anchor: the section at the top of what scrolls, put back
+// there whenever the page around it changes size (a section above growing once its check
+// ends), until the human presses, scrolls or types anywhere; what it returns stops it too.
+export function keepAtTop(section: HTMLElement): () => void {
+  const put = () => section.scrollIntoView({ block: "start" });
+  put();
+  const page = section.parentElement;
+  const sized = typeof ResizeObserver === "function" && page ? new ResizeObserver(put) : null;
+  if (page) sized?.observe(page);
+  const stop = () => {
+    sized?.disconnect();
+    for (const act of ACTS) document.removeEventListener(act, stop, true);
+  };
+  for (const act of ACTS) document.addEventListener(act, stop, { capture: true, passive: true });
+  return stop;
 }

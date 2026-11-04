@@ -377,6 +377,54 @@ def test_the_page_never_scrolls_by_itself(page: Page, clis, server, lms):
     assert set(seen) == {0}, seen
 
 
+def models_top(page: Page) -> float:
+    """The top of Models less the top of the area that scrolls."""
+    return page.evaluate(
+        "() => document.querySelector('.setting.mx').getBoundingClientRect().top"
+        " - document.querySelector('.content').getBoundingClientRect().top"
+    )
+
+
+def test_opened_at_models_the_section_stays_at_the_top_while_the_sections_above_grow(
+    page: Page, clis, server, lms
+):
+    """Opened at /settings#models, nothing pressed: Agent CLIs and environment, above, grows
+    once its check ends, and Models stays at the top; a section above growing after the
+    human's own scroll no longer moves the page."""
+    state.add_model("Claude Sonnet", "claude", "sonnet", None)
+    page.set_viewport_size({"width": 1280, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/settings#models")
+    expect(section(page).get_by_role("heading", name="Models of your agent CLIs")).to_be_visible()
+    page.wait_for_function(
+        "() => Math.abs(document.querySelector('.setting.mx').getBoundingClientRect().top"
+        " - document.querySelector('.content').getBoundingClientRect().top) < 1"
+    )  # scrolled to it once its entries came
+    seen = []
+    for _ in range(16):
+        seen.append(models_top(page))
+        page.wait_for_timeout(200)
+    expect(page.locator(".pv-refresh.spinning")).to_have_count(0, timeout=30_000)
+    page.wait_for_timeout(300)
+    seen.append(models_top(page))
+    assert all(abs(at) < 1 for at in seen), seen
+    grow = (
+        "() => { const d = document.createElement('div'); d.style.height = '300px';"
+        " document.querySelector('.pv-list').prepend(d); }"
+    )
+    page.evaluate(grow)
+    page.wait_for_timeout(300)
+    assert abs(models_top(page)) < 1, models_top(page)
+    page.add_style_tag(content=".content { overflow-anchor: none; }")  # as Safari, which has none
+    page.mouse.move(640, 450)
+    page.mouse.wheel(0, 100)  # the human scrolls: the page is theirs
+    page.wait_for_timeout(300)
+    before = page.evaluate("document.querySelector('.content').scrollTop")
+    page.evaluate(grow)
+    page.wait_for_timeout(300)
+    assert page.evaluate("document.querySelector('.content').scrollTop") == before
+
+
 def test_a_section_above_growing_is_no_change_to_undo(page: Page, clis, server):
     """The human acted in Models (opened Claude Code, its list still reading); then a section
     above grows by 300 px, the page not following it (Safari has no scroll anchoring): the

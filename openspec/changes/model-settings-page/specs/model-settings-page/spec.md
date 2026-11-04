@@ -23,6 +23,21 @@ server`; **Models of your agent CLIs**, the agent CLIs LADO knows with their lis
 - **WHEN** four models and two servers are saved
 - **THEN** the blocks read `Your models 4` and `Model servers 2`
 
+### Requirement: Opened at its anchor, Models stays at the top
+
+When the page opens at `#models`, the page SHALL keep the top of Models at the top of the
+view while the page around it grows, until the human first presses, scrolls, touches or
+types; from then on the page is the human's.
+
+#### Scenario: The anchor while the sections above grow
+- **WHEN** the human opened `/settings#models` and Agent CLIs and environment, above, grows
+  once its check ends, nothing pressed, scrolled or typed yet
+- **THEN** the top of Models stays at the top of the view
+
+#### Scenario: After the human's scroll
+- **WHEN** the human scrolled the page opened at `#models` and a section above grows
+- **THEN** the page scrolls nothing
+
 ### Requirement: Nothing moves under the pointer
 
 No change in the section SHALL scroll the page or move the element the human acts on or

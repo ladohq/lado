@@ -5,8 +5,9 @@
 // is the core's line under the field it names. The entries are read when the section opens
 // and after each change of its own (GET /api/model-settings asks no server); opening it reads
 // no source. Nothing under the pointer moves (useScrollAnchor) and no row leaves on a timer:
-// the page scrolls to the section once, when it opens at #models; a model removed by × leaves
-// its row as Undo, then as a line, until the human's next change here.
+// the page scrolls to the section once, when it opens at #models, and keeps it at the top while
+// the sections above grow, until the human acts; a model removed by × leaves its row as Undo,
+// then as a line, until the human's next change here.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useLocation } from "react-router";
 
@@ -36,7 +37,7 @@ import {
 import { MODELS_ANCHOR } from "./paths";
 import { POLL_MS } from "./Providers";
 import { messageOf } from "./SessionControl";
-import { useScrollAnchor } from "./useScrollAnchor";
+import { keepAtTop, useScrollAnchor } from "./useScrollAnchor";
 
 export const INTRO =
   "Name the models your agents run on: an agent CLI, its model and, if the model lives elsewhere, a model server. Without any, each agent runs on its agent CLI's default model.";
@@ -119,12 +120,15 @@ export function ModelSettings() {
       clearTimeout(timer);
     };
   }, []);
-  // Once, when the page opens at #models: never after a change of the entries.
+  // Once, when the page opens at #models, kept at the top until the human acts: never after
+  // a change of the entries.
+  const keeping = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (!entries || scrolled.current) return;
     scrolled.current = true;
-    if (hash === `#${MODELS_ANCHOR}`) section.current?.scrollIntoView({ block: "start" });
+    if (hash === `#${MODELS_ANCHOR}` && section.current) keeping.current = keepAtTop(section.current);
   }, [entries, hash]);
+  useEffect(() => () => keeping.current?.(), []);
 
   const onRead = useCallback((key: string, read: Read | null) => {
     setReads((now) => {

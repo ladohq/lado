@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { type ReactNode, useRef } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 
-import { useScrollAnchor } from "./useScrollAnchor";
+import { keepAtTop, useScrollAnchor } from "./useScrollAnchor";
 
 afterEach(() => {
   cleanup();
@@ -46,12 +46,12 @@ function Page({ children }: { children: ReactNode }) {
 }
 
 // The container's scrollTo, recorded; with `browser`, the page moves as a browser's does:
-// every top on the screen by what the scroll changed, the scroll by whole pixels.
+// every top on the screen by what the scroll changed, the scroll by whole pixels, never above 0.
 function scrolls(target: { scrollTo: unknown }, browser = false) {
   let at = 0;
   const by = vi.fn((_x: number, y: number) => {
     if (!browser) return;
-    const to = Math.round(y);
+    const to = Math.max(0, Math.round(y));
     tops = Object.fromEntries(Object.entries(tops).map(([k, t]) => [k, t - (to - at)]));
     at = to;
     if (target !== window) (target as HTMLElement & { _top?: number })._top = to;
@@ -98,6 +98,20 @@ test("half pixels the page cannot scroll do not add up: the anchor keeps its fir
   view.rerender(page(["x", "y", "a", "b"], "b")); // 60.5 more above b
   expect(by).toHaveBeenLastCalledWith(0, 181); // from where it wanted, not from where it went
   expect(tops.b).toBe(300);
+});
+
+test("a scroll stopped at the top is no place wanted: the next correction counts from where the page is", () => {
+  wide(true);
+  tops = { section: 0, a: 10, b: 300 };
+  const view = render(page(["a", "b"], "b"));
+  const by = scrolls(view.container.querySelector(".content") as HTMLElement, true);
+  tops = { section: 0, b: 250 }; // 50 px gone above b, the page at its top already
+  view.rerender(page(["b"], "b"));
+  expect(by).toHaveBeenLastCalledWith(0, -50);
+  tops = { section: 0, x: 10, b: 370 }; // then 120 px grow above it
+  view.rerender(page(["x", "b"], "b"));
+  expect(by).toHaveBeenLastCalledWith(0, 120);
+  expect(tops.b).toBe(250);
 });
 
 test("a correction made, the next render with nothing changed scrolls nothing", () => {
@@ -272,4 +286,61 @@ test("the human's own scroll moves the whole section: no change to undo", () => 
   });
   view.rerender(page(["a", "b"], "b"));
   expect(by).not.toHaveBeenCalled();
+});
+
+test("opened at its anchor, the section is kept at the top while the page around it grows, until the human acts", () => {
+  const sized: (() => void)[] = [];
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(private readonly callback: () => void) {}
+      observe() {
+        sized.push(this.callback);
+      }
+      disconnect() {
+        sized.splice(sized.indexOf(this.callback), 1);
+      }
+    },
+  );
+  const page = document.createElement("div");
+  const section = document.createElement("section");
+  page.append(document.createElement("section"), section);
+  document.body.append(page);
+  const put = vi.fn();
+  section.scrollIntoView = put;
+  keepAtTop(section);
+  expect(put).toHaveBeenLastCalledWith({ block: "start" });
+  expect(sized).toHaveLength(1);
+  sized.forEach((resized) => resized()); // a section above grew
+  expect(put).toHaveBeenCalledTimes(2);
+  fireEvent.wheel(document.body); // the human scrolls: the page is theirs
+  expect(sized).toHaveLength(0);
+  page.remove();
+});
+
+test.each([
+  ["a press", (el: Element) => fireEvent.pointerDown(el)],
+  ["a key", (el: Element) => fireEvent.keyDown(el, { key: "Tab" })],
+  ["a touch", (el: Element) => fireEvent.touchStart(el)],
+])("%s ends the keeping too; so does what it returns", (_, act_) => {
+  const stops: string[] = [];
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {
+        stops.push("stopped");
+      }
+    },
+  );
+  const section = document.createElement("section");
+  document.body.append(section);
+  section.scrollIntoView = vi.fn();
+  act_(document.body);
+  expect(stops).toEqual([]); // not keeping yet
+  const stop = keepAtTop(section);
+  act_(document.body);
+  expect(stops).toEqual(["stopped"]);
+  stop(); // twice is harmless
+  section.remove();
 });

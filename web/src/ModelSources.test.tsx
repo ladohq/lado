@@ -568,6 +568,27 @@ test("Change, Remove and the list: one at a time; Change checks what is typed; S
   });
 });
 
+test("Change: Save off while the address does not answer; a refused Save takes the check's place", async () => {
+  server.entries = { models: [], servers: [LMSTUDIO] };
+  await mount();
+  const row = item(await source("LM Studio дома"));
+  fireEvent.click(within(row).getByRole("button", { name: "Change LM Studio дома" }));
+  const save = () => within(row).getByRole("button", { name: "Save" }) as HTMLButtonElement;
+  const address = within(row).getByLabelText("Address");
+  fireEvent.change(address, { target: { value: "http://localhost:1243" } });
+  expect(await within(row).findByText(/does not answer/, {}, { timeout: 3000 })).toBeTruthy();
+  expect(save().disabled).toBe(true);
+  fireEvent.change(address, { target: { value: "http://localhost:1235" } });
+  expect(await within(row).findByText("✓ LM Studio answers · 1 model", {}, { timeout: 3000 })).toBeTruthy();
+  expect(save().disabled).toBe(false);
+  server.answers["POST /api/model-servers"] = () =>
+    refusal("http://localhost:1235 does not answer (connection refused)", "address");
+  fireEvent.click(save());
+  expect(await within(row).findByText(/localhost:1235 does not answer/)).toBeTruthy();
+  expect(within(row).queryByText("✓ LM Studio answers · 1 model")).toBeNull();
+  expect(save().disabled).toBe(true);
+});
+
 test("Change checks with the kept key: its plain-http warning and what answers before Save", async () => {
   server.entries = { models: [], servers: [{ ...LMSTUDIO, has_key: true }] };
   await mount();
@@ -838,6 +859,19 @@ test("Add's refusal shows under its field; the form keeps all but the key; Cance
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   fireEvent.click(screen.getByRole("button", { name: "Add server" }));
   expect((screen.getByLabelText("Key") as HTMLInputElement).value).toBe("");
+});
+
+test("a server's saved line goes with the human's next change, as a Removed line does", async () => {
+  server.entries = { models: [], servers: [] };
+  await openForm("alpha", "localhost:1234");
+  await waitFor(() => expect(addButton().disabled).toBe(false));
+  fireEvent.click(addButton());
+  expect(await screen.findByText('Saved model server "alpha".')).toBeTruthy();
+  fireEvent.click(await source("Claude Code"));
+  const box = (await screen.findByRole("checkbox", { name: "sonnet on Claude Code" })) as HTMLInputElement;
+  fireEvent.click(box);
+  await waitFor(() => expect(box.checked).toBe(true));
+  expect(screen.queryByText('Saved model server "alpha".')).toBeNull();
 });
 
 test("a server's saved lines go once another server is removed", async () => {

@@ -15,6 +15,7 @@ import fake_model_server as fake
 import pytest
 from playwright.sync_api import Browser, Locator, Page, Route, expect
 from test_main_screen import log_in
+from test_projects_section import masked
 
 from lado import model_settings, state
 
@@ -357,6 +358,21 @@ def test_the_form_checks_before_add_a_silent_server_and_change(page: Page, clis,
         assert state.model("qwen3-8b · lab · OpenCode").server == state.model_server("lab").id
     finally:
         moved.close()
+
+
+def test_key_and_new_key_are_dots_as_a_projects_secret(page: Page, clis, server, lms):
+    """Key and New key: text fields drawn in the font of dots, as a project's secret."""
+    model_settings.add_server("lab", lms.url, None, warn=lambda _: None, note=lambda _: None)
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_settings(page, server)
+    start_form(page, "gw", "127.0.0.1:1")
+    key = section(page).get_by_label("Key", exact=True)
+    key.fill("sk_live Пароль")
+    masked(page, key)
+    source(page, "lab").get_by_role("button", name="Change lab").click()
+    new_key = source(page, "lab").get_by_label("New key", exact=True)
+    new_key.fill("sk_live Пароль")
+    masked(page, new_key)
 
 
 def test_change_of_a_server_with_a_kept_key_says_what_answers(page: Page, clis, server):

@@ -1322,11 +1322,12 @@ function ChangeServer({
       setBusy(false);
     }
   };
-  const addressBad = [
-    ...(found?.refusals ?? []).filter((r) => r.field === "address" || r.field === ""),
-    ...(refused?.field === "address" ? [refused] : []),
-  ];
-  const asksKey = !server.has_key && !filled && (found?.refusals ?? []).some((r) => r.field === "key");
+  // A refused Save takes the place of the check it followed, until the address changes.
+  const checked = refused && refused.field !== "key" ? undefined : found;
+  const silent = (checked?.refusals ?? []).filter((r) => r.field === "address" || r.field === "");
+  const addressBad = [...silent, ...(refused?.field === "address" ? [refused] : [])];
+  const asksKey = !server.has_key && !filled && (checked?.refusals ?? []).some((r) => r.field === "key");
+  const off = busy || !address.trim() || checking || addressBad.length > 0; // Save, and Enter in New key
   const live = keyGoes ? (found?.warnings ?? []) : [];
   const models = (probe: ProbeInfo) =>
     probe.models === null ? "no list of models" : plural(probe.models.length - probe.embeddings.length, "model");
@@ -1341,7 +1342,7 @@ function ChangeServer({
             aria-invalid={addressBad.length ? true : undefined}
             onChange={(event) => {
               setAddress(event.target.value);
-              setRefused((was) => (was?.field === "address" ? null : was));
+              setRefused((was) => (was?.field === "key" ? was : null));
             }}
           />
           {checking ? (
@@ -1351,8 +1352,8 @@ function ChangeServer({
             </span>
           ) : (
             <>
-              {found?.probe && (
-                <span className="field-note ok">{`✓ ${found.probe.kind} answers · ${models(found.probe)}`}</span>
+              {checked?.probe && (
+                <span className="field-note ok">{`✓ ${checked.probe.kind} answers · ${models(checked.probe)}`}</span>
               )}
               {addressBad.map((r) => (
                 <CheckNote key={r.message} note={r} />
@@ -1373,7 +1374,7 @@ function ChangeServer({
               setFilled(on);
               setRefused((was) => (was?.field === "key" ? null : was));
             }}
-            onEnter={() => void save()}
+            onEnter={() => !off && void save()}
           />
           {warnings(live)}
           {warnings((refused?.warnings ?? []).filter((line) => !live.includes(line)))}
@@ -1381,7 +1382,12 @@ function ChangeServer({
         </div>
       </div>
       <div className="mx-form-acts">
-        <button type="button" className="primary" disabled={busy || !address.trim()} onClick={() => void save()}>
+        <button
+          type="button"
+          className="primary"
+          disabled={off}
+          onClick={() => void save()}
+        >
           {busy ? "checking the server…" : "Save"}
         </button>
         <button type="button" className="quiet" onClick={onCancel}>

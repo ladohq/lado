@@ -156,11 +156,11 @@ export function ModelSettings() {
     });
   }, []);
   // The human's next change in the section: the lines of models removed by × whose Undo ran
-  // out go.
-  const onTouch = useCallback(
-    () => setRemoved((now) => Object.fromEntries(Object.entries(now).filter(([, gone]) => !gone.expired))),
-    [],
-  );
+  // out go, and the lines of the last server added or changed.
+  const onTouch = useCallback(() => {
+    setRemoved((now) => Object.fromEntries(Object.entries(now).filter(([, gone]) => !gone.expired)));
+    setSaved((now) => (Object.keys(now).length ? {} : now));
+  }, []);
   const onName = useCallback(
     (key: string, name: string | null) =>
       setNames((now) => {

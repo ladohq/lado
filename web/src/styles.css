@@ -9700,6 +9700,15 @@ del.kit-mcp-name {
   width: 100%;
 }
 
+/* Key and New key: dots, as a project's secret (above .mx-form .field input's mono). */
+.mx-form .field input.project-in-secret {
+  font-family: LadoSecretDots;
+}
+
+.mx-form .field input.project-in-secret::placeholder {
+  font-family: var(--sans);
+}
+
 .mx-form .field-note {
   display: block;
 }

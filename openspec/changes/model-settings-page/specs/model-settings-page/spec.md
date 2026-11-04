@@ -422,6 +422,11 @@ a model to tick the agent CLIs that run it.` above its list, the focus on its ro
 - **THEN** `LiteLLM` shows open where the form was, with its models and `Saved model server
   "LiteLLM".`, and `lado model-server list` shows it
 
+#### Scenario: The next change
+- **WHEN** the human, after adding `LiteLLM`, ticks one of its models
+- **THEN** `Saved model server "LiteLLM".` and `Open a model to tick…` go, as a model's
+  `Removed <name>.` line goes with the next change
+
 ### Requirement: The form checks the server as the human types
 
 Once the typing settles, the form SHALL check without a key: the name under Name, the
@@ -536,6 +541,11 @@ it; a failed probe SHALL change nothing.
   the kept key while New key is empty, and after Save with New key empty it shows
   `http://localhost:1235` and its key, if any, stays
 
+#### Scenario: An address that does not answer
+- **WHEN** the human types in Change's Address a port where nothing answers
+- **THEN** the refusal shows under Address and Save is off; a Save refused otherwise shows
+  its refusal in the check line's place, never both
+
 ### Requirement: Removing a server removes its models after a confirmation
 
 **Remove** of a server SHALL ask under its row, the focus on Cancel: `Remove <name>?`, or
@@ -604,6 +614,11 @@ next.
 - **WHEN** the human types a key and presses Check key
 - **THEN** the Key field still holds the key, and Add sends it
 
+#### Scenario: Dots, never letters
+- **WHEN** the human types a key in Key or in New key
+- **THEN** the field is drawn in the font of dots of a project's secret (`LadoSecretDots`),
+  every character one dot
+
 ### Requirement: The section fits a phone
 
 On a window narrower than 600 px the section's forms SHALL show their fields one under the
@@ -616,6 +631,18 @@ section SHALL make the page scroll sideways.
   wide
 - **THEN** the page does not scroll sideways, the address wraps whole, ✎ and 🗑 show under
   its name, and all 12 models show without a scroll inside the list
+
+#### Scenario: A model with marks on a phone
+- **WHEN** a server's model `qwen/qwen-gone-7b-instruct-q4` is no longer listed and saved
+  for OpenCode, in a window 390 px wide
+- **THEN** its id takes the row's width and `no longer listed` and `in OpenCode` show under
+  it
+
+#### Scenario: Names and ids whole on a phone
+- **WHEN** a server `LiteLLM на работе` has the badges `OpenAI-compatible` and `key`, and
+  Your models holds `claude-opus-4-1-20250805` on its agent CLI, in a window 390 px wide
+- **THEN** the server's name, the model's id and `the agent CLI` show whole, wrapped,
+  never cut with `…`
 
 ### Requirement: The UI calls Claude Code, Codex CLI, OpenCode and Kilo CLI agent CLIs
 

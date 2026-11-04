@@ -9393,18 +9393,19 @@ del.kit-mcp-name {
   min-width: 0;
 }
 
+/* The name whole, wrapped, its badges after it (on the next line when it is full). */
 .mx-l1 {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 2px 8px;
   min-width: 0;
 }
 
 .mx-src-name {
-  overflow: hidden;
+  min-width: 0;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .mx-l2 {
@@ -9579,7 +9580,7 @@ del.kit-mcp-name {
 
 .mx-srvrow .mx-id {
   flex: 1;
-  min-width: 0;
+  min-width: 40%; /* its marks wrap before the id is squeezed */
 }
 
 .mx-as {
@@ -9607,7 +9608,7 @@ del.kit-mcp-name {
 .mx-in {
   color: var(--done);
   font-size: 12px;
-  white-space: nowrap;
+  text-align: right;
 }
 
 .mx-sub {
@@ -9894,6 +9895,60 @@ del.kit-mcp-name {
   }
 
   .mx-l2 {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* A model's row in two lines: its id the whole width, its marks under it. */
+  .mx-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    row-gap: 2px;
+  }
+
+  .mx-row > * {
+    grid-column: 1;
+  }
+
+  label.mx-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  label.mx-row > input {
+    grid-row: 1;
+  }
+
+  label.mx-row > :not(input) {
+    grid-column: 2;
+  }
+
+  .mx-srvrow > .mx-right {
+    display: contents;
+  }
+
+  .mx-srvrow .mx-in {
+    grid-column: 1;
+    text-align: left;
+  }
+
+  .mx-srvrow .mx-disc {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .mx-row .mx-as,
+  .mx-row .mx-gone {
+    white-space: normal;
+  }
+
+  /* Your models: a model's whole id and where it runs, wrapped. */
+  .mx-meta {
+    flex-wrap: wrap;
+  }
+
+  .mx-model,
+  .mx-from {
     white-space: normal;
     overflow-wrap: anywhere;
   }

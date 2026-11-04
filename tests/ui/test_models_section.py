@@ -535,6 +535,53 @@ def test_a_list_read_ending_above_the_focus_moves_nothing(page: Page, clis, serv
     stays(sonnet, before)
 
 
+def whole(locator: Locator) -> bool:
+    """The element shows its whole text: nothing cut by an ellipsis or hidden."""
+    return locator.evaluate("e => e.scrollWidth <= e.clientWidth + 1")
+
+
+def test_a_phones_rows_keep_the_whole_id_and_name(browser: Browser, clis, server, lms, shot):
+    """At 390 px: a server model's marks go under its id, which keeps its width; a server's
+    name is not cut by its badges; Your models shows a model's whole id and where it runs."""
+    gone = "qwen/qwen-gone-7b-instruct-q4"
+    state.add_model_server("s1", "LM Studio дома", lms.url, "LM Studio", ["chat completions"])
+    state.add_model("Gone", "opencode", gone, "s1")
+    state.add_model("Opus", "claude", "claude-opus-4-1-20250805", None)
+    gateway = "http://vm-litellm-gw.example.com:4000"
+    state.add_model_server(
+        "g1", "LiteLLM на работе", gateway, "OpenAI-compatible", ["chat completions"]
+    )
+    model_settings._write_key("g1", "k-1")  # its badges: OpenAI-compatible, key
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True
+    )
+    try:
+        page = context.new_page()
+        open_settings(page, server)
+        name = source(page, "LiteLLM на работе").locator(".mx-src-name")
+        expect(name).to_have_text("LiteLLM на работе")
+        assert whole(name)
+        toggle(page, "LM Studio дома").click()
+        row = source(page, "LM Studio дома").get_by_role("button", name=gone, exact=True)
+        expect(row).to_contain_text("no longer listed")
+        expect(row).to_contain_text("in OpenCode")
+        ident = row.locator(".mx-id")
+        box = ident.bounding_box()
+        assert box and box["width"] >= 200, box  # not squeezed to a letter a line
+        for mark in (row.locator(".mx-gone"), row.locator(".mx-in")):
+            assert top(mark) >= box["y"] + box["height"] - 1, (top(mark), box)
+        row.scroll_into_view_if_needed()
+        shot(page, "phone-marks", full_page=False)
+        your = card(page, "Claude Code")
+        your.scroll_into_view_if_needed()
+        for cell in (your.locator(".mx-model"), your.locator(".mx-from")):
+            assert whole(cell), cell.text_content()
+        shot(page, "phone-whole-ids", full_page=False)
+        assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    finally:
+        context.close()
+
+
 def test_the_section_at_a_phones_width(browser: Browser, clis, server, lms, shot, monkeypatch):
     twelve = [f"vendor/model-{i}" for i in range(11)] + ["qwen/qwen3-coder-30b-a3b-instruct"]
     listed = dict(fake.PROFILES["lmstudio"])

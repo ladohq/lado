@@ -2499,7 +2499,8 @@ Using it changes nothing of how sessions start.
   and one added here at the end, where the form was, then **+ Add server**; Models of your
   agent CLIs lists every agent CLI LADO knows, the ones not installed last, greyed and
   closed. Each is a framed row: a chevron in a framed 28 px box that turns when open, its
-  name, for a server its type and `key` (when it has one) as badges, and a second line:
+  name, whole and wrapped, never cut by its badges (for a server its type and `key` when it
+  has one, after the name or on the next line), and a second line:
   for a server `<n> model(s) added` or `no models added`, then its address, cut with `…`
   (the address, not the count) and whole in a tooltip on hover and on keyboard focus of the
   row; for an agent CLI its login state from Agent CLIs and environment's last check (read
@@ -2554,7 +2555,8 @@ Using it changes nothing of how sessions start.
   with its default name, off while refused.
 - **+ Add server** opens, in its place at the end of Model servers, a form: Name (focused),
   Address and Key (`optional`, or `required by this server` once the check says it asks for
-  one; the project page's dots field, never a password field; under it `Kept in a file
+  one; the project page's dots field, drawn in its font of dots (`LadoSecretDots`, as New
+  key), never a password field; under it `Kept in a file
   only LADO reads; never shown again.`). Once the typing settles (`MODEL_DEBOUNCE`) it
   checks without a key (`POST /api/model-servers/check`): a name refused or taken under
   Name, else `free`; under Address `checking <address> …`, then the probe's refusal, or,
@@ -2562,7 +2564,8 @@ Using it changes nothing of how sessions start.
   server "<name>"` for each saved server there; a server that answered shows a panel under
   Address (green, `--done`): `✓ <type> answers at <address>` (the address that answered,
   `ProbeInfo.address`), `Models <n>` with the hidden embeddings' line, `Agent CLIs
-  <titles>`. The plain-http warning shows under Key while a key is typed for an address it
+  <titles>` (in LADO's order of the agent CLIs, as everywhere on the page and in `lado
+  model-server`). The plain-http warning shows under Key while a key is typed for an address it
   would cross unencrypted. An older check's answer is dropped. A key goes only with **Check
   key** (shown while the server asks for a key and one is typed; its refusal under Key, its
   panel under Address; the key stays in its field for Add) or **Add server**, which is on
@@ -2571,7 +2574,8 @@ Using it changes nothing of how sessions start.
   request no longer than the command's). The buttons: Check key, Add server, Cancel. The
   new server takes the form's place, open, the focus on its row, with `✓ Saved model server
   "<name>".`, its warnings and same-address notes, and `Open a model to tick the agent CLIs
-  that run it.` above its list; these lines go once another server is added, changed or
+  that run it.` above its list; these lines go with the human's next change in the section
+  (as a model's `Removed <name>.` line does) or once another server is added, changed or
   removed. Add's refusal shows under the field it names (one of no field under the buttons)
   until that field is edited; the form keeps all but the key.
 - **A server's panels**, one at a time: its list, **Change** or **Remove**; opening one
@@ -2581,7 +2585,9 @@ Using it changes nothing of how sessions start.
   while New key is empty, as Save sends it) says under Address
   `✓ <type> answers · <n> models` or its refusal, and under New key the plain-http warning
   of a typed or kept key; `Its <n> models keep their names and move with it.` when it has
-  models; Save replaces the server as `lado model-server add <name> <address> [--key]
+  models; Save (and Enter in New key) is off while the check runs or the address does not
+  answer, and its refusal takes the check line's place until the address changes; Save
+  replaces the server as `lado model-server add <name> <address> [--key]
   --replace` does, then its list opens with the save's probe; a failed probe changes
   nothing. Remove asks under the row (`role=alertdialog`, the focus on Cancel): `Remove
   <name>?`, or `Remove <name> and its <n> models: <names>?`, then `Its key is deleted too.`
@@ -2597,7 +2603,9 @@ Using it changes nothing of how sessions start.
   (`--done`) only for the found panel, `Saved model server …` and a server model's `in
   <CLI>, …`. No colour of its own.
 - **Narrower than 600 px**: the forms' fields one under the other; a model's row in two
-  lines (its name, then model · from) with × at the right, the table's head hidden; a
+  lines (its name, then model · from, each whole and wrapped) with × at the right, the
+  table's head hidden; a source's model the whole width, its marks (`no longer listed`, `in
+  <CLI>`, `as`/`would be`) on lines of their own under it; a
   source's icons on a line of their own under its name and a server's address wrapped
   whole (no tooltip); ✎, 🗑, ↻, × and Undo at least 44 by 44 px and a list's row 44 px; a
   server's list of up to 20 models not bounded (no scroll within a scroll on touch); the

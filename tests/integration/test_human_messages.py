@@ -120,6 +120,31 @@ def test_the_agents_question_is_answered_through_the_api(api, session):
     assert chat(api)[1]["question_state"] == "answered"
 
 
+def test_a_question_a_stop_closed_reaches_the_new_supervisor_and_takes_no_answer(
+    api, session, repo
+):
+    api.post(f"/api/sessions/{SESSION}/messages", json={"text": "askhuman Ship it? | yes, no"})
+    [_, question] = wait_for(lambda: len(chat(api)) == 2 and chat(api), "the question", SESSION)
+    wait_for(lambda: state.get_agent(SESSION, "supervisor").status == state.IDLE, "idle", SESSION)
+    preview = api.get(f"/api/sessions/{SESSION}/stop-preview").json()
+    assert preview["questions"] == 1
+    runtime.stop_session(SESSION)
+    runtime.start_session(str(repo), SESSION, None)
+    wait_for(lambda: "first_read" in seen(), "the new supervisor reads its first input", SESSION)
+    [notice] = [m for m in seen()["first_read"] if "closed unanswered" in m["summary"]]
+    assert notice["summary"] == "1 question to the human closed unanswered by the stop"
+    assert f"#{question['id']} from supervisor: Ship it?" in notice["body"]
+    assert "Choices: yes, no" in notice["body"]
+    [stopped] = [m for m in chat(api) if m["kind"] == "question"]
+    assert stopped["question_state"] == "stopped"
+    refused = api.post(
+        f"/api/sessions/{SESSION}/answers",
+        json={"answers": [{"question": question["id"], "choice": "yes"}]},
+    )
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == f"question #{question['id']} is stopped"
+
+
 def test_an_answer_of_files_only_reaches_the_agent_which_reads_the_file(api, session):
     """The waiting card's path: an upload, then an own answer with its name and no text."""
     api.post(f"/api/sessions/{SESSION}/messages", json={"text": "askhuman Which log?"})

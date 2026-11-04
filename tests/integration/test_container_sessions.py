@@ -150,6 +150,24 @@ def test_the_container_stops_its_sessions_and_resumes_them_at_its_start(
     loop_ended("s")
 
 
+def test_the_containers_stop_closes_a_question_and_its_start_tells_the_new_supervisor(repo, server):
+    start(repo, "s")
+    runtime.ask_human("s", "supervisor", "Which port?", None, ["8123", "8200"])
+    [asked] = state.list_messages("s")
+    first = server()
+    assert first.stop() == 0
+    loop_ended("s")
+    assert state.get_message("s", asked.id).question_state == state.QUESTION_STOPPED
+
+    second = server()
+    wait_for(lambda: idle("s"), "the resumed supervisor idle", "s")
+    [notice] = [m for m in state.list_messages("s") if "closed unanswered" in m.summary]
+    assert (notice.sender, notice.recipient) == (state.LADO, "supervisor")
+    assert f"#{asked.id} from supervisor: Which port?" in notice.body
+    assert second.stop() == 0
+    loop_ended("s")
+
+
 def test_a_container_killed_without_its_stop_resumes_its_sessions(repo, server):
     start(repo, "s")
     first = server()

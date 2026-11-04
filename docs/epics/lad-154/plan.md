@@ -248,6 +248,11 @@ Check:
   of S2's rows (a CLI + a model) and the way back (rules above).
 - S1's card: «Локальная Qwen · qwen3-8b · server <address>» with its source; Kilo's card
   shows the session's model even when Kilo reports none.
+- UI/UX design first (D32, question #3263): in the run's `design` step the analyst runs
+  the flow `ui-design` (designer and critic) on the launch window's model choice, its empty
+  state, the refusals before the start (a silent server, a model gone, Claude Code or Codex
+  on a server before S9a/S9b) and the agent's card, then writes the design on the checked
+  mock-up; `design_ok` shows the mock-up, its spec and the critique together.
 - The human's manual check before the merge on LM Studio at localhost and an external
   LiteLLM (Q2); the lead tells them when it is due. In Docker, LM Studio on their machine
   is `host.docker.internal`.

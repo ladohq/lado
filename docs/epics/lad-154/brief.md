@@ -50,12 +50,6 @@ roles and flow steps, kit sdlc marked, ready-made tables; 8 power when the super
 spawns a worker; 9 a model server for Claude Code and Codex; 10 a model for one role, if
 needed.
 
-Scope cut at S3d's review (2026-11-04, the human asked for it; D31, step_ok gate #266):
-this epic delivers statement steps 1–4 and 9 (the agent's model visible, one model per
-session, models and model servers in Settings → Models, agents of all four CLIs on a model
-server, effort) and ships in 0.45.0; steps 5–8 (the power tables, power on roles, flow steps
-and the supervisor's spawn) go to a second epic. Unset still means today's behaviour.
-
 Known thin places (statement, checked against the code on 2026-11-01):
 - An agent has no model in `lado.db` (`agents` table, `state.py`, `SCHEMA_VERSION` 35):
   a migration.

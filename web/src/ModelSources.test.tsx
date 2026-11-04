@@ -273,23 +273,23 @@ test("a server's model opens its installed CLIs under its row, each saying the n
   fireEvent.click(row);
   const pop = screen.getByRole("group", { name: "Agent CLIs for qwen3-8b" });
   expect(within(pop).getByText("qwen3-8b", { selector: "b" })).toBeTruthy();
-  expect(ticks(pop)).toEqual(["qwen3-8b on OpenCode", "qwen3-8b on Codex CLI"]);
+  expect(ticks(pop)).toEqual(["qwen3-8b on Codex CLI", "qwen3-8b on OpenCode"]);
   expect(await within(pop).findByText("would be qwen3-8b · LM Studio дома · OpenCode")).toBeTruthy();
   expect(await within(pop).findByText("would be qwen3-8b · LM Studio дома · Codex CLI")).toBeTruthy();
   expect(server.of("POST", "/api/models/check").map((c) => c.body)).toEqual([
+    { name: null, cli: "codex", model: "qwen3-8b", server: "LM Studio дома" },
     {
       name: null,
       cli: "opencode",
       model: "qwen3-8b",
       server: "LM Studio дома",
     },
-    { name: null, cli: "codex", model: "qwen3-8b", server: "LM Studio дома" },
   ]);
   fireEvent.click(within(pop).getByRole("checkbox", { name: "qwen3-8b on OpenCode" }));
   await waitFor(() => expect(row.textContent).toContain("in OpenCode"));
   expect(within(pop).getByText("as qwen3-8b · LM Studio дома · OpenCode")).toBeTruthy();
   fireEvent.click(within(pop).getByRole("checkbox", { name: "qwen3-8b on Codex CLI" }));
-  await waitFor(() => expect(row.textContent).toContain("in OpenCode, Codex CLI"));
+  await waitFor(() => expect(row.textContent).toContain("in Codex CLI, OpenCode"));
   expect(
     server
       .of("POST", "/api/models")
@@ -486,7 +486,7 @@ test("Model id only where the list is not whole: Claude Code, a CLI without a li
   const lm = item(await source("LM Studio дома"));
   const choice = within(lm).getByLabelText("Agent CLI") as HTMLSelectElement;
   expect(choice.closest(".field")).toBeTruthy(); // the launch window's field look
-  expect([...choice.options].map((o) => o.textContent)).toEqual(["OpenCode", "Codex CLI"]);
+  expect([...choice.options].map((o) => o.textContent)).toEqual(["Codex CLI", "OpenCode"]);
 });
 
 test("Model id: the check after the typing settles, Add saves it, off while refused", async () => {
@@ -677,7 +677,7 @@ test("the form checks once the typing settles, without a key: the found panel, t
   expect(within(found).getByText("Models").nextElementSibling?.textContent).toBe(
     "1 · 1 embeddings model hidden: agents cannot run on it.",
   );
-  expect(within(found).getByText("Agent CLIs").nextElementSibling?.textContent).toBe("Kilo CLI, OpenCode, Codex CLI");
+  expect(within(found).getByText("Agent CLIs").nextElementSibling?.textContent).toBe("Codex CLI, Kilo CLI, OpenCode");
   expect(within(fieldOf("Name")).getByText("free").className).toBe("field-note ok");
   expect(keyLabel()).toBe("optional");
   expect(within(fieldOf("Key")).getByText("Kept in a file only LADO reads; never shown again.")).toBeTruthy();

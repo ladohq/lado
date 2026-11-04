@@ -17,9 +17,9 @@ export const LMSTUDIO_PROBE: ProbeInfo = {
   embeddings: ["text-embedding-nomic"],
   apis_why: "",
   clis: [
+    { name: "codex", title: "Codex CLI", api: "Responses API" },
     { name: "kilo", title: "Kilo CLI", api: "chat completions" },
     { name: "opencode", title: "OpenCode", api: "chat completions" },
-    { name: "codex", title: "Codex CLI", api: "Responses API" },
   ],
 };
 

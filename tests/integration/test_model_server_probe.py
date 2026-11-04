@@ -67,7 +67,7 @@ def test_probe_a_fake_server_process(serve):
         url,
         "type: Ollama",
         "models: llama3.1:8b, qwen2.5-coder:7b",
-        "CLIs: Kilo CLI, OpenCode (chat completions); Codex CLI (Responses API)",
+        "CLIs: Codex CLI (Responses API); Kilo CLI, OpenCode (chat completions)",
         "not: Claude Code (no Anthropic Messages API)",
     ]
 

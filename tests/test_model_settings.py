@@ -516,7 +516,7 @@ def test_the_clis_a_saved_server_suits():
     saved = state.add_model_server(
         "s1", "work", "https://gw", "OpenAI-compatible", (CHAT, RESPONSES)
     )
-    assert model_settings.clis(saved) == ["Kilo CLI", "OpenCode", "Codex CLI"]
+    assert model_settings.clis(saved) == ["Codex CLI", "Kilo CLI", "OpenCode"]
     bare = state.add_model_server("s2", "bare", "https://x", "OpenAI-compatible", ())
     assert model_settings.clis(bare) == []
 

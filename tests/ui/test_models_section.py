@@ -220,7 +220,7 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     found = models.locator(".mx-found")
     expect(found).to_contain_text(f"✓ LM Studio answers at {lms.url}")
     expect(found).to_contain_text("1 embeddings model hidden: agents cannot run on it.")
-    expect(found).to_contain_text("Kilo CLI, OpenCode, Codex CLI")
+    expect(found).to_contain_text("Codex CLI, Kilo CLI, OpenCode")
     expect(models.locator("label", has_text="Key")).to_contain_text("optional")
     shot(page, "form-checked")
     add = models.get_by_role("button", name="Add server", exact=True)

@@ -770,7 +770,12 @@ function SourceBody({
   );
   const serverRow = (model: string) => {
     const entries = models.filter((m) => m.model === model && fold(m.server ?? "") === fold(server ?? ""));
-    const titles = [...new Set(entries.map((m) => m.cli_title))];
+    // In LADO's order of the agent CLIs, as the probe names them; one it does not, after them.
+    const place = (cli: string) => {
+      const at = columns.findIndex((c) => c.name === cli);
+      return at < 0 ? columns.length : at;
+    };
+    const titles = [...new Set([...entries].sort((a, b) => place(a.cli) - place(b.cli)).map((m) => m.cli_title))];
     const opened = pop === model;
     if (columns.length === 0)
       return (

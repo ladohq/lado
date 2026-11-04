@@ -561,13 +561,15 @@ refused that way too, the server answers every POST alike and no API counts. No 
 followed (it would carry the key to another host); proxies and `SSL_CERT_FILE` come from
 the environment. A CLI suits the server when the server proved the API its provider
 declares (`Provider.server_api`): chat completions for OpenCode and Kilo, the Responses API
-for Codex, the Anthropic Messages API for Claude Code; the type is only shown. Exit 0:
+for Codex, the Anthropic Messages API for Claude Code; the type is only shown. The CLIs come
+in LADO's order (Claude Code, Codex CLI, Kilo CLI, OpenCode), here and in `lado model-server
+list`, as in the UI. Exit 0:
 
 ```
 http://192.168.1.10:11434 (added http://)
 type: Ollama
 models: llama3.1:8b, qwen2.5-coder:7b
-CLIs: Kilo CLI, OpenCode (chat completions); Codex CLI (Responses API)
+CLIs: Codex CLI (Responses API); Kilo CLI, OpenCode (chat completions)
 not: Claude Code (no Anthropic Messages API)
 ```
 

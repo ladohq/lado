@@ -140,16 +140,16 @@ Suiting = list[tuple[providers.Provider, str]]
 
 def suiting(apis: Iterable[str]) -> tuple[Suiting, Suiting]:
     """The (provider, API) of each CLI that can use a server proving `apis` and of each that
-    cannot, by the API its provider declares, in the order of base.SERVER_APIS, then of the
-    registry; a provider that declares none is left out."""
+    cannot, by the API its provider declares, in the registry's order (LADO's one order of
+    the CLIs); a provider that declares none of base.SERVER_APIS is left out."""
     apis = frozenset(apis)
     suits: Suiting = []
     not_suits: Suiting = []
-    for api in base.SERVER_APIS:
-        for name in providers.names():
-            provider = providers.get(name)
-            if provider.server_api == api:
-                (suits if api in apis else not_suits).append((provider, api))
+    for name in providers.names():
+        provider = providers.get(name)
+        api = provider.server_api
+        if api in base.SERVER_APIS:
+            (suits if api in apis else not_suits).append((provider, api))
     return suits, not_suits
 
 
@@ -303,10 +303,9 @@ def lines(found: Probe) -> list[str]:
         out.append(f"APIs: cannot be told: {found.apis_why}")
     suits, not_suits = found.clis()
     groups = []
-    for api in base.SERVER_APIS:
+    for api in dict.fromkeys(of for _, of in suits):  # each API where its first CLI comes
         titles = [title for title, of in suits if of == api]
-        if titles:
-            groups.append(f"{', '.join(titles)} ({api})")
+        groups.append(f"{', '.join(titles)} ({api})")
     out.append(f"CLIs: {'; '.join(groups) or 'none'}")
     if not_suits:
         out.append("not: " + ", ".join(f"{title} (no {api})" for title, api in not_suits))

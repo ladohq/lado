@@ -60,7 +60,7 @@ def test_add_prints_the_probe_and_saves(serve, capsys):
         f"{server.url} (added http://)",
         "type: LM Studio",
         "models: qwen3-8b, text-embedding-nomic-embed-text-v1.5 (embeddings)",
-        "CLIs: Kilo CLI, OpenCode (chat completions); Codex CLI (Responses API)",
+        "CLIs: Codex CLI (Responses API); Kilo CLI, OpenCode (chat completions)",
         "not: Claude Code (no Anthropic Messages API)",
         'Saved model server "LM Studio дома".',
     ]
@@ -289,7 +289,7 @@ def test_list_shows_the_servers_without_asking_them(serve, capsys, monkeypatch):
         f"NAME            {'ADDRESS'.ljust(width)}  TYPE               KEY  CLIs",
         f"LM Studio дома  {lm.url.ljust(width)}  OpenAI-compatible  no   Kilo CLI, OpenCode",
         f"work            {work.url.ljust(width)}  OpenAI-compatible  yes  "
-        "Kilo CLI, OpenCode, Codex CLI, Claude Code",
+        "Claude Code, Codex CLI, Kilo CLI, OpenCode",
     ]
     assert lm.requests == work.requests == []
 

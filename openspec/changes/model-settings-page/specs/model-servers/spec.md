@@ -71,3 +71,46 @@ refused with exit 1.
 - **WHEN** no model refers to `work` and the human runs `lado model-server remove work`
 - **THEN** the server is gone from the list, its folder under `<LADO_HOME>/model-servers/`
   is gone, and it exits 0
+
+### Requirement: lado model-server probe names a server's type, models and CLIs
+
+`lado model-server probe <address>` SHALL print the server's address, its type (Ollama,
+LM Studio, OpenAI-compatible or Anthropic-compatible), its models, the agent CLIs that can
+use it with the API each uses, and each CLI that cannot with the API it lacks, and exit 0.
+The CLIs SHALL come in LADO's one order of the agent CLIs (Claude Code, Codex CLI, Kilo CLI,
+OpenCode), the order of Settings → Models. `lado model-server` alone SHALL print its help.
+Nothing else in LADO SHALL change.
+
+#### Scenario: An Ollama server that speaks two APIs
+- **WHEN** the human runs `lado model-server probe http://192.168.1.10:11434` and the
+  server is Ollama with the models `llama3.1:8b` and `qwen2.5-coder:7b`, answering chat
+  completions and the Responses API but not the Anthropic Messages API
+- **THEN** it prints `http://192.168.1.10:11434`, `type: Ollama`,
+  `models: llama3.1:8b, qwen2.5-coder:7b`,
+  `CLIs: Codex CLI (Responses API); Kilo CLI, OpenCode (chat completions)` and
+  `not: Claude Code (no Anthropic Messages API)`, and exits 0
+
+#### Scenario: A server every CLI can use
+- **WHEN** the server answers all three APIs
+- **THEN** the output has no `not:` line
+
+### Requirement: lado model-server list shows the saved servers without asking them
+
+`lado model-server list` SHALL print one line per saved server, sorted by name ignoring
+case, under the header `NAME ADDRESS TYPE KEY CLIs`: its name, address, type, `yes` when its
+key file is there and `no` otherwise, and the titles of the CLIs whose API it proved when
+it was saved (`none` for none), in LADO's one order of the agent CLIs. It SHALL send no
+request. With no server saved it SHALL print `No model servers. Add one: lado model-server
+add <name> <address> [--key]`.
+
+#### Scenario: Two servers
+- **WHEN** `LM Studio дома` (LM Studio, chat completions, no key) and `work`
+  (OpenAI-compatible, chat completions and the Responses API, a key) are saved
+- **THEN** the list shows `LM Studio дома  http://localhost:1234  LM Studio  no  Kilo CLI,
+  OpenCode` and `work  https://gw.corp/llm  OpenAI-compatible  yes  Codex CLI, Kilo CLI,
+  OpenCode`, and no request reaches either server
+
+#### Scenario: None saved
+- **WHEN** no server is saved
+- **THEN** it prints `No model servers. Add one: lado model-server add <name> <address>
+  [--key]` and exits 0

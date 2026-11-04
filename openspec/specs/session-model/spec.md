@@ -231,7 +231,7 @@ model.` and a button `Use <CLI>'s default` that empties the field.
 ### Requirement: The Model field looks like the window's other fields
 
 The Model field SHALL have the height, frame, font and a chevron like the window's
-Provider field and take a column of the window's grid as Provider does (the whole row on
+Agent CLI field and take a column of the window's grid as Agent CLI does (the whole row on
 a narrow window). Its note SHALL stand under it as far below as the notes of the
 window's other fields, out of the reach of its focus ring.
 
@@ -242,7 +242,7 @@ window's other fields, out of the reach of its focus ring.
 
 #### Scenario: The field beside Provider
 - **WHEN** the window is wider than 760 px and Advanced is open
-- **THEN** the Model field has Provider's height and width and a chevron at its right end
+- **THEN** the Model field has Agent CLI's height and width and a chevron at its right end
 
 ### Requirement: The server reads again a list of models it could not read
 

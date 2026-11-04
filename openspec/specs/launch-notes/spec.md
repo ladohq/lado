@@ -71,6 +71,6 @@ from starting SHALL NOT be a refusal.
 
 - **WHEN** the Resume window opens for a stopped session whose provider is not among
   `/api/providers`, or is listed as not installed
-- **THEN** the provider's refusal shows under Provider and Resume session is disabled;
+- **THEN** the provider's refusal shows under Agent CLI and Resume session is disabled;
   once the human picks an installed provider the refusal is gone and Resume session is
   on

@@ -38,5 +38,5 @@
 - [x] 3.2 CHANGELOG.md under `0.45.0 (unreleased)`, Fixed. Check: docs/release.md's rules.
 - [x] 3.3 BACKLOG.md, in a commit of its own: `lado server stop` by hand in the container
   stops every session of its `LADO_HOME`.
-- [ ] 3.4 Regression: the settings' **Checks** for the changed files; `openspec validate
+- [x] 3.4 Regression: the settings' **Checks** for the changed files; `openspec validate
   stopped-question-notice --strict` and `openspec validate --specs --strict`.

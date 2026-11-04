@@ -390,10 +390,10 @@ its tmux server died without `lado stop`): the repo must be the same, and `--kit
 (the output says what changed). The new supervisor starts with one message from `lado`,
 `session resumed: <n> open runs`, whose body says per open run what waits: the human at a
 gate (answer with `lado answer`), the supervisor's own step (its step message follows), or a
-worker to start with `spawn_worker(run=...)`. When a stop closed questions to the human no
-supervisor was told of, a second message from `lado` lists them, to ask again what is still
-needed. Such a worker opens in the run's worktree on
-its branch, made again from the branch if the folder is gone. An open run that needs a role
+worker to start with `spawn_worker(run=...)`. Such a worker opens in the run's worktree on
+its branch, made again from the branch if the folder is gone. When a stop closed questions
+to the human no supervisor was told of, a second message from `lado` lists them, to ask
+again what is still needed. An open run that needs a role
 the resumed session lacks is reported on stderr and in that body; `flow_cancel` or
 `lado flow-set` move it on. While a session is stopped, nothing starts or moves in it:
 `lado answer`, `lado flow-set`, spawning workers and starting, advancing or cancelling runs

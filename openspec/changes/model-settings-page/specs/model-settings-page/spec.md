@@ -602,9 +602,9 @@ SHALL hold its value.
 
 The Key and New key fields SHALL be the dots field of a project's secrets, not a password
 field; the page SHALL keep the key only in its field, never in the page's state, an address
-or the browser's storage, and SHALL empty the field after Add or Save, on Cancel and when
-the form closes. Check key SHALL leave the key in its field, so that Add or Save can send it
-next.
+or the browser's storage, and SHALL empty the field once Add or Save is done or refused for
+anything but the key, on Cancel and when the form closes. Check key, and a refusal of the
+key, SHALL leave the key in its field.
 
 #### Scenario: Cancel
 - **WHEN** the human types a key, presses Cancel and opens + Add server again
@@ -613,6 +613,11 @@ next.
 #### Scenario: Check key, then Add
 - **WHEN** the human types a key and presses Check key
 - **THEN** the Key field still holds the key, and Add sends it
+
+#### Scenario: A refused key
+- **WHEN** Add or Save is refused for the key (the server answers 401 to it)
+- **THEN** the key stays in its field with the refusal under it, and Add or Save stays off
+  until the key is edited or erased; erased in Change, Save sends the kept key
 
 #### Scenario: Dots, never letters
 - **WHEN** the human types a key in Key or in New key

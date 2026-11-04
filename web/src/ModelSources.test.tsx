@@ -623,6 +623,51 @@ test.each([
   expect(at?.contains(line)).toBe(true);
 });
 
+test("Change: a refused New key stays in its field, the refusal under it, Save off until the key is edited or erased", async () => {
+  server.entries = { models: [], servers: [{ ...LMSTUDIO, has_key: true }] };
+  await mount();
+  const row = item(await source("LM Studio дома"));
+  fireEvent.click(within(row).getByRole("button", { name: "Change LM Studio дома" }));
+  const save = () => within(row).getByRole("button", { name: "Save" }) as HTMLButtonElement;
+  const key = within(row).getByLabelText("New key") as HTMLInputElement;
+  fireEvent.change(key, { target: { value: "sk-wrong" } });
+  await waitFor(() => expect(save().disabled).toBe(false), { timeout: 3000 });
+  server.answers["POST /api/model-servers"] = () => refusal("http://localhost:1234 refused the key (401)", "key");
+  fireEvent.click(save());
+  const line = await within(row).findByText("http://localhost:1234 refused the key (401)");
+  expect(line.closest(".field")).toBe(key.closest(".field"));
+  expect(key.value).toBe("sk-wrong");
+  expect(save().disabled).toBe(true);
+  fireEvent.keyDown(key, { key: "Enter" });
+  expect(server.of("POST", "/api/model-servers").filter((c) => c.path === "/api/model-servers")).toHaveLength(1);
+  fireEvent.change(key, { target: { value: "sk-wrong2" } });
+  expect(within(row).queryByText(/refused the key/)).toBeNull();
+  await waitFor(() => expect(save().disabled).toBe(false), { timeout: 3000 });
+  fireEvent.click(save());
+  await within(row).findByText("http://localhost:1234 refused the key (401)");
+  fireEvent.change(key, { target: { value: "" } });
+  expect(within(row).queryByText(/refused the key/)).toBeNull();
+  await waitFor(() => expect(save().disabled).toBe(false), { timeout: 3000 });
+  expect(JSON.stringify(server.calls.filter((c) => c.path !== "/api/model-servers"))).not.toContain("sk-wrong");
+});
+
+test("Add server: a refused key stays in Key, the refusal under it, Add off until the key is edited", async () => {
+  server.entries = { models: [], servers: [] };
+  await openForm("alpha", "localhost:1234");
+  const key = screen.getByLabelText("Key") as HTMLInputElement;
+  fireEvent.change(key, { target: { value: "k-wrong" } });
+  await waitFor(() => expect(addButton().disabled).toBe(false));
+  server.answers["POST /api/model-servers"] = () => refusal("http://localhost:1234 refused the key (401)", "key");
+  fireEvent.click(addButton());
+  const line = await screen.findByText("http://localhost:1234 refused the key (401)");
+  expect(line.closest(".field")).toBe(key.closest(".field"));
+  expect(key.value).toBe("k-wrong");
+  expect(addButton().disabled).toBe(true);
+  fireEvent.change(key, { target: { value: "k-right" } });
+  expect(screen.queryByText(/refused the key/)).toBeNull();
+  await waitFor(() => expect(addButton().disabled).toBe(false));
+});
+
 test("Change checks with the kept key: its plain-http warning and what answers before Save", async () => {
   server.entries = { models: [], servers: [{ ...LMSTUDIO, has_key: true }] };
   await mount();

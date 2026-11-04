@@ -11,7 +11,7 @@
 // one, unticking removes it with no Undo (a tick again brings it back under its name while the
 // page stays open). A server shows its list, its Change form or its Remove question, one at a
 // time. A server added takes the form's place, one removed leaves a line in its own.
-import { type MutableRefObject, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type MutableRefObject, type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
 
 import {
   addModel,
@@ -1111,6 +1111,7 @@ function AddServer({
   const ready =
     !busy &&
     !checking &&
+    refused?.field !== "key" &&
     name !== "" &&
     address.trim() !== "" &&
     result !== undefined &&
@@ -1122,12 +1123,11 @@ function AddServer({
     if (!ready) return;
     onTouch();
     const given = key.current?.value ?? "";
-    if (key.current) key.current.value = "";
-    setFilled(false);
     setBusy(true);
     setRefused(null);
     try {
       const done = await addModelServer(name, address, given === "" ? null : given);
+      emptyKey(key, setFilled);
       onAdded(done.server, done.probe, {
         notes: done.notes,
         warnings: done.warnings,
@@ -1135,7 +1135,9 @@ function AddServer({
         added: true,
       });
     } catch (error) {
-      setRefused(refusalOf(error));
+      const why = refusalOf(error);
+      if (why.field !== "key") emptyKey(key, setFilled);
+      setRefused(why);
       setBusy(false);
     }
   };
@@ -1248,6 +1250,13 @@ function AddServer({
 // address or a key is typed, the form's check says what answers there and the plain-http
 // warning of the key that would go (the server's own name is not taken); Save replaces it as
 // `lado model-server add --replace` does, then its list opens.
+// Empties a key's field once its form has sent it: Add or Save is done, or refused for another
+// field than the key (a refused key stays, for the human to edit or erase).
+function emptyKey(key: RefObject<HTMLInputElement | null>, setFilled: (filled: boolean) => void) {
+  if (key.current) key.current.value = "";
+  setFilled(false);
+}
+
 function ChangeServer({
   server,
   own,
@@ -1305,12 +1314,11 @@ function ChangeServer({
   const save = async () => {
     onTouch();
     const given = key.current?.value ?? "";
-    if (key.current) key.current.value = "";
-    setFilled(false);
     setBusy(true);
     setRefused(null);
     try {
       const done = await addModelServer(server.name, address, given === "" ? null : given, true);
+      emptyKey(key, setFilled);
       onDone(done.probe, {
         notes: done.notes,
         warnings: done.warnings,
@@ -1318,7 +1326,9 @@ function ChangeServer({
         added: false,
       });
     } catch (error) {
-      setRefused(refusalOf(error));
+      const why = refusalOf(error);
+      if (why.field !== "key") emptyKey(key, setFilled);
+      setRefused(why);
       setBusy(false);
     }
   };
@@ -1329,7 +1339,7 @@ function ChangeServer({
   const silent = (checked?.refusals ?? []).filter((r) => r.field === "address" || r.field === "");
   const addressBad = [...silent, ...(saveBad?.field === "address" ? [saveBad] : [])];
   const asksKey = !server.has_key && !filled && (checked?.refusals ?? []).some((r) => r.field === "key");
-  const off = busy || !address.trim() || checking || addressBad.length > 0; // Save, and Enter in New key
+  const off = busy || !address.trim() || checking || addressBad.length > 0 || refused?.field === "key"; // Save, and Enter in New key
   const live = keyGoes ? (found?.warnings ?? []) : [];
   const models = (probe: ProbeInfo) =>
     probe.models === null ? "no list of models" : plural(probe.models.length - probe.embeddings.length, "model");

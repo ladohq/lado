@@ -396,6 +396,51 @@ def test_change_of_a_server_with_a_kept_key_says_what_answers(page: Page, clis, 
         moved.close()
 
 
+def test_change_keeps_a_refused_new_key_in_its_field_and_save_off_until_it_is_edited(
+    page: Page, clis, server
+):
+    """A saved server with its key: Change with a wrong New key, Save is refused for the key;
+    the key stays in New key with the refusal under it and Save off, so a second Save cannot
+    save the server with its old key; erased, Save saves with the kept key. No answer of
+    LADO's carries the typed key: it stays in the browser's field."""
+    lab_server = fake.Server("lmstudio", key="k-1")
+    bodies: list[str] = []
+    page.on("response", lambda r: "/api/" in r.url and bodies.append(r.text()))
+    try:
+        model_settings.add_server(
+            "lab", lab_server.url, "k-1", warn=lambda _: None, note=lambda _: None
+        )
+        page.set_viewport_size({"width": 1280, "height": 900})
+        open_settings(page, server)
+        lab = source(page, "lab")
+        lab.get_by_role("button", name="Change lab").click()
+        new_key = lab.get_by_label("New key")
+        new_key.fill("sk-wrong-key-000")
+        save = lab.get_by_role("button", name="Save")
+        save.click()
+        refusal = (
+            lab.locator(".field")
+            .filter(has=page.get_by_label("New key"))
+            .get_by_text("refused the key (401)")
+        )
+        expect(refusal).to_be_visible()
+        expect(new_key).to_have_value("sk-wrong-key-000")
+        expect(save).to_be_disabled()
+        new_key.press("Enter")
+        expect(lab.get_by_text('Saved model server "lab".')).to_have_count(0)
+        new_key.fill("sk-wrong-key-001")
+        expect(refusal).to_have_count(0)
+        expect(save).to_be_enabled()
+        new_key.fill("")
+        expect(save).to_be_enabled()
+        save.click()
+        expect(lab.get_by_text('Saved model server "lab".')).to_be_visible()
+        assert model_settings.server_key(state.model_server("lab")) == "k-1"
+        assert not [b for b in bodies if "sk-wrong" in b]
+    finally:
+        lab_server.close()
+
+
 def test_the_page_never_scrolls_by_itself(page: Page, clis, server, lms):
     """Opened at /settings, no #models, nothing pressed: the sections above grow as their
     rows come and Models renders as its rows come, and the page stays at its top."""

@@ -2598,9 +2598,10 @@ Using it changes nothing of how sessions start.
   <name> --with-models`, and only the models it named: when the server has others by then
   (the CLI added one), nothing is removed, the refusal shows and it asks again with the
   entries read anew. The row then says `Removed <name> and its <n> models.` in its place.
-- **The key** lives only in its field: emptied once Add server or Save sends it, on Cancel
-  and when the form closes; Check key leaves it there; never in the page's state, an
-  address or the browser's storage.
+- **The key** lives only in its field: emptied once Add server or Save is done or refused
+  for anything but the key, on Cancel and when the form closes; Check key leaves it there,
+  and a refusal of the key too, under it, with Add server or Save off until the key is
+  edited or erased; never in the page's state, an address or the browser's storage.
 - **Looks**: the fields and notes are the launch window's (an ok note in `--action`); green
   (`--done`) only for the found panel, `Saved model server …` and a server model's `in
   <CLI>, …`. No colour of its own.

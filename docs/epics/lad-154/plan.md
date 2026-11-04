@@ -1,13 +1,14 @@
 # Plan: Model and power choice for agents (LAD-154)
 
 ## State
+Proposed at S3d's review (2026-11-04, the human asked for it; taken on `step_ok`, D31): the epic ends after S3b and S4 and ships in 0.45.0; S5c, S5d, S6, S7, S7b, S8, S9a and S9b move to a second epic (power tables, power on roles and the supervisor's spawn, Claude Code and Codex on a model server), a new tracker epic created at `close`.
 Revised at S3b's design (D18, questions #2715, #2721, 2026-11-02): models and model servers are set once in Settings → Models under names; everything else refers to a name (the concept `concept-models`). S3b's run cancelled; S3c «Models in settings» runs before S3b; S5a and S5b dropped into S3c. At the review S3c split into S3c (store, servers and models from the CLI) and S3d (Settings → Models).
 Rejected at `step_ok` (gate #234, 2026-11-03): «сначала S3e: LAD-183…186» (D19, D20; S3e added before S3d)
 Rejected at `step_ok` (gate #204, 2026-11-02): «сначала S2b» (D13; S2b added before S3a, question #2509, D12)
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: none (S3d ended, step review) · Next: S3b (LAD-180), then S4 · Open checks: the human's manual check of S3e on LM Studio and LiteLLM 1.105.1 (LiteLLM's header behaviour reproduced only by a fake), before S3d's design or with it; at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes); an external provider by key (OpenRouter, Qwen through Alibaba Model Studio) checked by the human at the epic's end, before the final pull request: `probe` and `add` on its address (its path: `/api/v1`, `/compatible-mode/v1`), OpenCode/Kilo agents on it, and a model of a provider the CLI logged in to itself (`openrouter/<model>` from the CLI's list) (the human, 2026-11-03)
+In work: none (S3d ended, step review) · Next: S3b (LAD-180), then S4, then readiness · Open checks: Settings → Models in Safari (and Firefox if at hand) by the human before the final pull request: the page does not scroll by itself, the key in dots, the phone width (S3d checked in Chromium only; N5 of its ledger); the human's manual check of S3e on LM Studio and LiteLLM 1.105.1 (LiteLLM's header behaviour reproduced only by a fake), before S3d's design or with it; at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes); an external provider by key (OpenRouter, Qwen through Alibaba Model Studio) checked by the human at the epic's end, before the final pull request: `probe` and `add` on its address (its path: `/api/v1`, `/compatible-mode/v1`), OpenCode/Kilo agents on it, and a model of a provider the CLI logged in to itself (`openrouter/<model>` from the CLI's list) (the human, 2026-11-03)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9). 0.45.0 is released from `main` together with the epic: `main` waits for it (step_ok #222, Q4, D17).
@@ -18,6 +19,7 @@ Last review: S2, 2026-11-02, base at 228a1de2 (0.44.0 + the unreleased 0.44.1 ho
 Last review: S2b, 2026-11-02, base at 228a1de2 (unchanged since S2's review); S2b merged as f2cbf119; `openspec validate --specs --strict` (57) green on the epic branch; the CI of the LAD-151 merge passed with PR #202
 Last review: S3a, 2026-11-02, base at 84c8f7c4 (hotfixes LAD-175, LAD-172; `main`'s heading is now `## 0.45.0 (unreleased)`), merged into the epic branch as d6ded361: CHANGELOG resolved into one 0.45.0 section (the epic's lines under `### New`, `main`'s under `### Fixed`); schema on `main` 35, the epic's 37; `make lint`, `make test` (4958 passed, 7 skipped), integration of the merged files (17 passed), `openspec validate --specs --strict` (59) green
 Last review: S3c, 2026-11-03, base at 22940ebc (hotfixes LAD-178 #206, LAD-181 #207), merged into the epic branch as 95db9d78: one conflict in `src/lado/cli.py` resolved by keeping both guards (S3c's `model-server` refusal of extra words, then LAD-181's quiet refusal); CHANGELOG merged without conflict (LAD-181's line under `### Fixed`); schema on `main` 35, the epic's 38; `make lint`, `make test` (5112 passed, 7 skipped), integration `test_session_model.py` (3 passed), `openspec validate --specs --strict` (60) green
+Last review: S3d, 2026-11-04, base at 931818bb (unchanged since S3e's review): nothing to merge; S3d merged as e52a547f; CI 23/23 on its last head
 Last review: S3e, 2026-11-03, base at 931818bb (LAD-179 #209: CI reruns jobs GitHub gave no runner; its first live run passed on PR #210), merged into the epic branch as 132552ce without conflict; `make lint`, `make test` (5183 passed, 7 skipped), `openspec validate --specs --strict` (60) green
 
 ## Steps
@@ -251,6 +253,13 @@ Check:
   is `host.docker.internal`.
 - Smoke (CI): OpenCode and Kilo with a fake server; UI e2e of the field; `docs/install.md`
   (local models, Docker), `docs/cli.md`, `docs/design/ui.md`, `docs/design/agents.md`.
+- From S3d's review (D31): with S9a and S9b in the second epic, this release runs no
+  Claude Code or Codex agent on a model server. Settings → Models offers ticks of Claude
+  Code and Codex on a server's model today (and a Codex column on LM Studio, whose
+  Responses API drops Codex's MCP tools): the page, `lado model add --server` and the launch
+  window say so plainly (no tick, or a tick refused with the reason), and a model saved
+  that way before is refused loudly before the start, naming the CLIs the server runs in
+  this release (OpenCode, Kilo CLI).
 Notes: the core value of the epic. Rests on S3c's store, entries and check and S3d's page.
 
 ### S4 — Effort with the model (S)
@@ -268,6 +277,10 @@ Check:
 - From S1: Claude Code reports no effort in its events, so its card shows the effort
   S4 sets with the source "session"; Codex's effort after a `/model` in the CLI stays
   "your Codex config" (no hook reports it): S4's design says whether that holds.
+- From S3d (LAD-187, the ledger's N9 and the human's manual check r4): the key field of
+  Add server and Change is off while Save or Add checks the server, so a key typed then
+  is not lost; Check key is off after a refused key until the key is edited, as Add
+  server is. S4 changes the model form anyway (effort).
 Notes: the CLIs' scales differ (research §1.3); LADO passes the CLI's own value and keeps
 no common scale.
 
@@ -296,7 +309,7 @@ Check:
 - UI e2e, mockup at `design_ok`; `docs/design/ui.md`.
 
 ### S5c — The user's power table (M)
-Status: planned
+Status: moved to the second epic (D31, proposed at S3d's review)
 Check:
 - The user's table light / normal / heavy → a configured model by its name (S3c, D18),
   set in Settings → Models and by a `lado` command; an empty row is the CLI's default; with no one choosing
@@ -315,7 +328,7 @@ a row. Ready-made models for the installed CLIs come with S3c (D18, answer 4); a
 ready-made table over them («Claude: haiku / sonnet / opus») here (Q1).
 
 ### S5d — The session's table row by row (S)
-Status: planned
+Status: moved to the second epic (D31, proposed at S3d's review)
 Check:
 - The launch window's Advanced («Модели этой сессии») and `lado start --model
   <row>=<name>` set the session's table row by row, each row a configured model or «as in
@@ -328,7 +341,7 @@ Notes: the statement's session level is a table (critic P6); S2's one model stay
 shortcut.
 
 ### S6 — The project's power table (S)
-Status: planned
+Status: moved to the second epic (D31, proposed at S3d's review)
 Check:
 - The project page and `lado project` set the project's table next to its variables, each
   row a configured model by its name (D18);
@@ -337,7 +350,7 @@ Check:
 - UI e2e, mockup; `docs/design/projects.md`, `docs/design/ui.md`, `docs/cli.md`.
 
 ### S7 — Power on roles and flow steps (M)
-Status: planned
+Status: moved to the second epic (D31, proposed at S3d's review)
 Check:
 - A role (`agents/<role>.md`) and a flow step take a power (light / normal / heavy); an
   agent of that role or step gets that row; a value outside the three is a load error; the
@@ -349,7 +362,7 @@ Notes: the strict keys (`kits.AGENT_KEYS`, `flows.STATE_KEYS`) mean an older LAD
 such a kit; `dependencies.lado` makes the refusal clear.
 
 ### S7b — Kit sdlc's roles and steps marked (S)
-Status: planned
+Status: moved to the second epic (D31, proposed at S3d's review)
 Check: kit sdlc (its own repository) marks its roles and steps with a power and
 `dependencies.lado` on the LADO release that ships S7; a session with that kit shows each
 role's row on its cards (checked against LADO's epic branch before that release).
@@ -359,7 +372,7 @@ Notes: tracker task with `component kit-sdlc` (D6). With no LADO release mid-epi
 is built during the epic and waits for that release to merge.
 
 ### S8 — Power when the supervisor spawns a worker (S)
-Status: planned
+Status: moved to the second epic (D31, proposed at S3d's review)
 Check:
 - `spawn_worker` takes a power, not a model; it overrides the role's and the step's; the
   card names the source ("supervisor"); a model name passed there is refused loudly;
@@ -368,7 +381,7 @@ Check:
   MCP tool's description.
 
 ### S9a — A model server for Claude Code (M)
-Status: planned
+Status: moved to the second epic (D31, proposed at S3d's review)
 Check:
 - A configured model of Claude Code whose server is Anthropic-compatible (S3a names it)
   runs Claude Code agents through `ANTHROPIC_BASE_URL` in the agent's own environment, the
@@ -378,7 +391,7 @@ Check:
   server (D7); `docs/install.md`, `docs/design/agents.md`.
 
 ### S9b — A model server for Codex (M)
-Status: planned
+Status: moved to the second epic (D31, proposed at S3d's review)
 Check:
 - A configured model of Codex whose server has the Responses API runs Codex agents through
   a `model_providers` entry in the agent's `CODEX_HOME` (on top of the carried user values),
@@ -428,6 +441,14 @@ Check:
 
 ## Later
 
+- The second epic (D31): S5c, S5d, S6, S7, S7b, S8, S9a, S9b with their Checks and
+  leftovers as this plan has them, Q1 and Q3 with them; a new tracker epic created at
+  `close`, linked to LAD-154.
+- The sidebar stays expanded when the window is narrowed (seen in S3d's manual checks,
+  outside the epic) — a tracker task on the human's yes (question at S3d's review).
+- Flaky `tests/test_tmux.py::test_popup_opens_on_the_clients_attached_to_the_session`
+  (seen on PR #211's CI, green on rerun, outside the epic's code) — a tracker task on the
+  human's yes (question at S3d's review).
 - A model for one role (statement step 10) — not needed yet (D3) — LAD-154 — after S7, if
   a power row is too coarse.
 - Profiles with a default model set — LAD-80 — the table's format is the "saved table"

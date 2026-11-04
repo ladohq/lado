@@ -1037,7 +1037,9 @@ def cmd_stop(args: argparse.Namespace) -> int:
 def _print_stopped(name: str, stopped: runtime.Stopped) -> None:
     n = stopped.dropped
     dropped = f"; {n} undelivered message{'' if n == 1 else 's'} dropped" if n else ""
-    print(f'Stopped session "{name}"{dropped}.')
+    q = stopped.questions
+    questions = f"; {q} open question{'' if q == 1 else 's'} closed" if q else ""
+    print(f'Stopped session "{name}"{dropped}{questions}.')
     _kept(runtime.session_worktrees(state.get_session(name).repo, name), "kept")
     print(
         "History, open runs and gates are kept: lado start resumes the session, "

@@ -82,6 +82,8 @@ export function Question({
       <RecommendationLine rec={question.recommendation} />
       {question.question_state === "closed" ? (
         <p className="chat-outcome">Closed: the agent left</p>
+      ) : question.question_state === "stopped" ? (
+        <p className="chat-outcome">Closed: the session stopped</p>
       ) : (
         <Given session={session} question={question} answer={answer} anchored={anchored} />
       )}

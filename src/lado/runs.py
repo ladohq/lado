@@ -29,6 +29,10 @@ NOTE_LIMIT = state.SUMMARY_LIMIT
 SLUG_WORDS = 4
 SLUG_LENGTH = 30
 LANGUAGE_LIMIT = 40
+STOPPED_QUESTIONS = (
+    "No one answered these. Ask again with ask_human what is still needed; a run's new worker "
+    "may ask its own again in its step."
+)
 
 # What the human can answer at a gate. An approval gate's options name its outcomes.
 LOOP = "loop"  # the kind of gate a loop limit opens
@@ -444,8 +448,9 @@ def _restore_worktree(repo: str, run: state.Run) -> None:
 
 def resume(sess: state.Session, env: kits.Environment) -> list[str]:
     """Queue LADO's messages for the new supervisor of a resumed session: one about the
-    open runs, then the steps of the runs at a supervisor state again. Returns a line for
-    each run that needs a role the session has no more or whose flow cannot be read."""
+    open runs, one about the questions a stop closed unanswered if any, then the steps of
+    the runs at a supervisor state again. Returns a line for each run that needs a role the
+    session has no more or whose flow cannot be read."""
     lines, problems, steps, asks = [], [], [], []
     read_only = env.lead.read_only  # the supervisor is not stored yet
     open_runs = state.list_runs(sess.name, open_only=True)
@@ -507,6 +512,7 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
     summary = f"session resumed: {count} open run{'' if count == 1 else 's'}"
     # Before the supervisor is stored: they wait in its queue for its first hook.
     state.queue_message(sess.name, LADO, SUPERVISOR, summary, "\n".join(lines), before_start=True)
+    _tell_stopped_questions(sess.name)
     for run in steps:
         summary = f"flow {run.name}: step {run.state}"
         text = step_text(run, flow_of(run))
@@ -514,6 +520,25 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
     for gate in asks:
         _queue_request(gate, before_start=True)
     return problems
+
+
+def _tell_stopped_questions(session: str) -> None:
+    """Queue LADO's one message to the new supervisor about the questions a stop closed that
+    no supervisor was told of, with their artifacts; none without such questions."""
+    questions = state.untold_questions(session)
+    if not questions:
+        return
+    count = len(questions)
+    summary = runtime.cut_summary(
+        f"{count} question{'' if count == 1 else 's'} to the human closed unanswered by the stop"
+    )
+    lines = []
+    for question in questions:
+        lines.append(f"#{question.id} from {question.sender}: {question.summary}")
+        lines += runtime.question_lines(question)
+    lines.append(STOPPED_QUESTIONS)
+    attachments = [a for q in questions for a in state.message_attachments(q.id)]
+    state.tell_questions(session, [q.id for q in questions], summary, "\n".join(lines), attachments)
 
 
 class SnapshotError(LadoError):

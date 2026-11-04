@@ -451,6 +451,7 @@ test("a dismissal's comment shows in the card, in its late line and in its line 
 test.each([
   [{ question_state: "dismissed" as const, answered_by: 9 }, "You · skipped"],
   [{ question_state: "closed" as const }, "Closed: the agent left"],
+  [{ question_state: "stopped" as const, answered_by: 9 }, "Closed: the session stopped"],
   [{ question_state: "answered" as const, answered_by: 9 }, "You · answered"],
 ])("a question no longer open says what became of it, also without the reply in the window", async (state, outcome) => {
   serve([question(5, state)]);

@@ -612,11 +612,13 @@ def transition(detail: str) -> tuple[str, str, str] | None:
 MESSAGE = "message"
 QUESTION = "question"  # an agent's question to the human (ask_human)
 # Question states: waiting for the human; answered or dismissed by them; closed when the
-# agent that asked was forgotten (finished, or its session stopped).
+# agent that asked ended or was finished in a running session; stopped when its session
+# stopped (older rows closed by a stop stay closed).
 OPEN_QUESTION = "open"
 ANSWERED = "answered"
 DISMISSED = "dismissed"
 CLOSED = "closed"
+QUESTION_STOPPED = "stopped"
 # Reply states of the human's message to an agent, set when the turn it started ends.
 REPLIED = "replied"
 MISSING = "missing"  # the agent wrote nothing to the human: it replied only in its terminal
@@ -1036,7 +1038,8 @@ class Message:
     sent_at: float | None = None  # when it was last typed or handed over (time.time())
     kind: str = "message"  # MESSAGE | QUESTION
     # A question's (ask_human): its choices (None for none), whether the human may answer in
-    # their own words, its QUESTION_STATES and the id of its answer.
+    # their own words, its state and the id of its answer; of a QUESTION_STOPPED one, the
+    # id of LADO's message that told the supervisor of it (tell_questions).
     choices: list[str] | None = None
     free_answer: bool = False
     question_state: str | None = None
@@ -1442,19 +1445,19 @@ def delete_session(name: str) -> None:
         db.execute("DELETE FROM sessions WHERE name = ?", (name,))
 
 
-def stop_session(name: str, gone: bool = False) -> tuple[list[Agent], int]:
+def stop_session(name: str, gone: bool = False) -> tuple[list[Agent], int, int]:
     """Mark the session stopped and forget its agents, so their names can be used again;
     their messages and events stay. Messages they never got, and bodies they never read,
     are dropped. `gone`: its runtime was found gone, so a session not stopped yet gets a
-    `session_gone` at its last sign of life first. Returns the agents
-    and how many messages were dropped."""
+    `session_gone` at its last sign of life first. Returns the agents, how many messages
+    were dropped and how many open questions were closed."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         if gone:
             _session_gone(db, name)
-        rows, dropped = _stop_session(db, name, "")
+        rows, dropped, questions = _stop_session(db, name, "")
         db.execute("COMMIT")
-    return [_agent(r) for r in rows], dropped
+    return [_agent(r) for r in rows], dropped, questions
 
 
 def unreceived(name: str) -> int:
@@ -1463,6 +1466,15 @@ def unreceived(name: str) -> int:
         return db.execute(
             f"SELECT count(*) FROM messages WHERE session = ? AND {UNRECEIVED}",
             (name, *UNRECEIVED_ARGS),
+        ).fetchone()[0]
+
+
+def open_questions(name: str) -> int:
+    """How many open questions of the session a stop would close now."""
+    with connect() as db:
+        return db.execute(
+            "SELECT count(*) FROM messages WHERE session = ? AND kind = ? AND question_state = ?",
+            (name, QUESTION, OPEN_QUESTION),
         ).fetchone()[0]
 
 
@@ -1506,7 +1518,7 @@ def span_events(name: str) -> list[Event]:
     return [Event(*r) for r in rows]
 
 
-def _stop_session(db: sqlite3.Connection, name: str, note: str) -> tuple[list, int]:
+def _stop_session(db: sqlite3.Connection, name: str, note: str) -> tuple[list, int, int]:
     rows = db.execute(
         "SELECT * FROM agents WHERE session = ? ORDER BY created_at, rowid", (name,)
     ).fetchall()
@@ -1515,7 +1527,7 @@ def _stop_session(db: sqlite3.Connection, name: str, note: str) -> tuple[list, i
             _add_event(db, name, row["name"], STATUS, STOPPED)
     db.execute("DELETE FROM agents WHERE session = ?", (name,))
     _missed(db, name)
-    _close_questions(db, name)
+    questions = _close_questions(db, name, state=QUESTION_STOPPED)
     dropped = db.execute(
         f"UPDATE messages SET state = ? WHERE session = ? AND {UNRECEIVED}",
         (DROPPED, name, *UNRECEIVED_ARGS),
@@ -1526,7 +1538,7 @@ def _stop_session(db: sqlite3.Connection, name: str, note: str) -> tuple[list, i
     )
     detail = f"{dropped} message{'' if dropped == 1 else 's'} dropped{note}"
     _add_event(db, name, LADO, SESSION_STOP, detail)
-    return rows, dropped
+    return rows, dropped, questions
 
 
 def resume_session(session: Session, detail: str) -> bool:
@@ -1707,14 +1719,18 @@ def delete_agent(session: str, name: str) -> None:
         db.execute("COMMIT")
 
 
-def _close_questions(db: sqlite3.Connection, session: str, sender: str | None = None) -> None:
-    """Close the open questions of `sender` (default: of every agent of the session): no
-    agent is left to get their answer. A request for the lead's recommendation on one of
-    them still in its queue is dropped."""
+def _close_questions(
+    db: sqlite3.Connection, session: str, sender: str | None = None, state: str = CLOSED
+) -> int:
+    """Close the open questions of `sender` (default: of every agent of the session), to
+    `state`: no agent is left to get their answer. A request for the lead's recommendation
+    on one of them still in its queue is dropped. Returns how many were closed."""
     where = "session = ? AND kind = ? AND question_state = ? AND (? IS NULL OR sender = ?)"
     args = (session, QUESTION, OPEN_QUESTION, sender, sender)
     _drop_requests(db, "messages", where, args)
-    db.execute(f"UPDATE messages SET question_state = ? WHERE {where}", (CLOSED, *args))
+    return db.execute(
+        f"UPDATE messages SET question_state = ? WHERE {where}", (state, *args)
+    ).rowcount
 
 
 def agent_ended(session: str, name: str, reason: str) -> list["Message"] | None:
@@ -2662,6 +2678,45 @@ def add_question(
         return cur.lastrowid or 0
 
 
+def untold_questions(session: str) -> list[Message]:
+    """The session's QUESTION_STOPPED questions no supervisor was told of, oldest first:
+    none named them, or the message that did was dropped (a stop or a failed resume before
+    the supervisor read it)."""
+    with connect() as db:
+        rows = db.execute(
+            f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE session = ? AND kind = ?"
+            " AND question_state = ? AND (answered_by IS NULL OR answered_by IN"
+            " (SELECT id FROM messages WHERE state = ?)) ORDER BY id",
+            (session, QUESTION, QUESTION_STOPPED, DROPPED),
+        ).fetchall()
+    return [_message(r) for r in rows]
+
+
+def tell_questions(
+    session: str,
+    questions: Sequence[int],
+    summary: str,
+    body: str,
+    attachments: Attached = (),
+) -> int:
+    """Queue LADO's message to the supervisor of a session being resumed about the stopped
+    `questions`, and note it as their `answered_by`, in one transaction. Returns its id."""
+    marks = ", ".join("?" * len(questions))
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        notice = db.execute(
+            "INSERT INTO messages (session, sender, recipient, summary, body, created_at)"
+            " VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+            (session, LADO, LEAD, summary, body),
+        ).lastrowid
+        _attach(db, "message", notice, attachments)
+        db.execute(
+            f"UPDATE messages SET answered_by = ? WHERE id IN ({marks})", (notice, *questions)
+        )
+        db.execute("COMMIT")
+    return notice
+
+
 @dataclass(frozen=True)
 class Reply:
     """The human's reply to one open question as it is queued (lado.runtime builds it): its
@@ -2677,8 +2732,8 @@ class Reply:
 
 
 class QuestionClosed(Exception):
-    """A question to reply to is not open: answered, dismissed, closed, or no question of
-    the session ("gone")."""
+    """A question to reply to is not open: answered, dismissed, closed, stopped, or no
+    question of the session ("gone")."""
 
     def __init__(self, question: int, question_state: str):
         super().__init__(f"question #{question} is {question_state}")

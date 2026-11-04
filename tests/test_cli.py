@@ -1674,6 +1674,23 @@ def test_stop_and_start_again_resumes_the_session(repo, fake_tmux, capsys):
     assert capsys.readouterr().out.splitlines()[0].startswith(f"s  {repo}  (session loop not")
 
 
+@pytest.mark.parametrize(
+    ("asked", "tail"),
+    [
+        (0, '"s".'),
+        (1, '"s"; 1 open question closed.'),
+        (2, '"s"; 2 open questions closed.'),
+    ],
+)
+def test_stop_says_how_many_open_questions_it_closes(repo, fake_tmux, capsys, asked, tail):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    for n in range(asked):
+        runtime.ask_human("s", "supervisor", f"question {n}?")
+    capsys.readouterr()
+    assert main(["stop", "s"]) == 0
+    assert f"Stopped session {tail}\n" in capsys.readouterr().out
+
+
 def test_forget_drops_a_stopped_session(repo, fake_tmux, capsys):
     run = _session_with_run(repo)
     capsys.readouterr()

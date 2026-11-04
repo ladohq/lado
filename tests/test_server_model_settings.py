@@ -3,6 +3,7 @@ configured models and model servers through lado.server.model_entries over
 lado.model_settings. In process, with FastAPI's test client and the fake model servers of
 tests/fake_model_server.py."""
 
+import json
 import socket
 
 import fake_model_server as fake
@@ -299,6 +300,21 @@ def test_check_server_of_a_change_takes_the_servers_own_name(client, serve):
     assert [r["field"] for r in add["refusals"]] == ["name"]
     none = check_server(client, "nope", moved.url, replace=True)
     assert [r["field"] for r in none["refusals"]] == ["name"]
+
+
+def test_check_server_of_a_change_sends_the_kept_key(client, serve):
+    old = serve("openai", key="k-1")
+    ok(add_server(client, "work", old.url, key="k-1"))
+    moved = serve("ollama", key="k-1")
+    change = check_server(client, "work", moved.url, replace=True)
+    assert (change["refusals"], change["probe"]["kind"]) == ([], "Ollama")
+    assert {r.headers["Authorization"] for r in moved.requests} == {"Bearer k-1"}
+    assert "k-1" not in json.dumps(change)
+    other = serve("ollama", key="k-1")
+    add = check_server(client, "new", other.url)  # a new server has no kept key
+    assert [r["field"] for r in add["refusals"]] == ["key"]
+    typed = check_server(client, "work", other.url, key_typed=True, replace=True)
+    assert [r["field"] for r in typed["refusals"]] == ["key"]  # a new key typed, not checked
 
 
 def test_check_model_says_the_name_a_save_would_take(client, serve, monkeypatch):

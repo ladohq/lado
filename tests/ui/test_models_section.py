@@ -359,6 +359,27 @@ def test_the_form_checks_before_add_a_silent_server_and_change(page: Page, clis,
         moved.close()
 
 
+def test_change_of_a_server_with_a_kept_key_says_what_answers(page: Page, clis, server):
+    """A server saved with its key moves to another port: Change's check sends the kept key,
+    as Save does, and says what answers there before Save."""
+    old, moved = fake.Server("lmstudio", key="k-1"), fake.Server("lmstudio", key="k-1")
+    try:
+        model_settings.add_server("lab", old.url, "k-1", warn=lambda _: None, note=lambda _: None)
+        page.set_viewport_size({"width": 1280, "height": 900})
+        open_settings(page, server)
+        lab = source(page, "lab")
+        lab.get_by_role("button", name="Change lab").click()
+        lab.get_by_label("Address").fill(moved.url)
+        expect(lab.get_by_text("✓ LM Studio answers · 1 model")).to_be_visible()  # before Save
+        assert {r.headers.get("Authorization") for r in moved.requests} == {"Bearer k-1"}
+        lab.get_by_role("button", name="Save").click()
+        expect(lab.get_by_text('Saved model server "lab".')).to_be_visible()
+        assert model_settings.server_key(state.model_server("lab")) == "k-1"
+    finally:
+        old.close()
+        moved.close()
+
+
 def test_the_page_never_scrolls_by_itself(page: Page, clis, server, lms):
     """Opened at /settings, no #models, nothing pressed: the sections above grow as their
     rows come and Models renders as its rows come, and the page stays at its top."""

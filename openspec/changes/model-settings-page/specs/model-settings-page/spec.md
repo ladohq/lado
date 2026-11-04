@@ -515,7 +515,8 @@ note SHALL cover a field or another note.
 
 **Change** of a server SHALL open, under its row, its Address, filled, and New key, empty,
 with `Its <n> models keep their names and move with it.` when it has models; the address
-SHALL be checked as the human types as the add form's is, the server's own name not taken.
+SHALL be checked as the human types as the add form's is, the server's own name not taken,
+with the kept key while New key is empty.
 Save SHALL replace the server as `lado model-server add <name> <address> [--key] --replace`
 does, with the kept key, kept, when New key is empty. Its models SHALL keep referring to
 it; a failed probe SHALL change nothing.

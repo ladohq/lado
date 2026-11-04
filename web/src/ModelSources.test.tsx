@@ -568,7 +568,7 @@ test("Change, Remove and the list: one at a time; Change checks what is typed; S
   });
 });
 
-test("Change says the plain-http warning of the kept key before Save", async () => {
+test("Change checks with the kept key: its plain-http warning and what answers before Save", async () => {
   server.entries = { models: [], servers: [{ ...LMSTUDIO, has_key: true }] };
   await mount();
   const row = item(await source("LM Studio дома"));
@@ -581,9 +581,10 @@ test("Change says the plain-http warning of the kept key before Save", async () 
     name: "LM Studio дома",
     address: "http://gw.example.com:4000",
     key: null,
-    key_typed: true,
+    key_typed: false, // New key empty: the server sends the kept key
     replace: true,
   });
+  expect(within(row).getByText("✓ LiteLLM answers · 1 model")).toBeTruthy(); // with the kept key
 });
 
 test("Remove asks under the row as an alertdialog, the focus on Cancel; with a key it says so", async () => {

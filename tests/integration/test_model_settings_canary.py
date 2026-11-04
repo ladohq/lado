@@ -1,9 +1,10 @@
 """The canary of a model server's key through Settings → Models' API (openspec change
 model-settings-page, "A server's key enters the API and never leaves it"): unique keys sent
-through a real `lado server` to check a server, to add one, to change it, in requests it
-cannot read and in one whose probe is refused, reach the fake model server (in a process of its
-own) and the server's key file, and nothing else: no answer, no change feed, no file under LADO_HOME
-(server.log, the error journal and lado.db included) but `model-servers/<id>/key`."""
+through a real `lado server` to check a server, to add one, to change it and check a change
+with its kept key, in requests it cannot read and in one whose probe is refused, reach the
+fake model server (in a process of its own) and the server's key file, and nothing else: no
+answer, no change feed, no file under LADO_HOME (server.log, the error journal and lado.db
+included) but `model-servers/<id>/key`."""
 
 import json
 import uuid
@@ -54,6 +55,9 @@ def test_a_model_server_s_key_is_found_nowhere_else(api, serve, lado_home):  # n
                                         "replace": True})  # fmt: skip
     folder = model_settings.key_folder(state.model_server("work").id)
     assert (folder / model_settings.KEY).read_text() == second
+    kept = call("POST", "/api/model-servers/check",
+                {"name": "work", "address": new, "replace": True})  # fmt: skip
+    assert (kept["refusals"], kept["probe"]["models"]) == ([], ["m1"])  # with its kept key
     for body in (
         {"name": 1, "address": new, "key": unread},
         {"name": "x", "address": new, "key": [unread]},

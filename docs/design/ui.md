@@ -2575,7 +2575,8 @@ Using it changes nothing of how sessions start.
 - **A server's panels**, one at a time: its list, **Change** or **Remove**; opening one
   closes the others. Change, under the row: Address, filled, and New key, empty (`empty
   keeps the key`); once the address or a key is typed, the form's check with `replace`
-  (the server's own name not taken, no same-address note of itself) says under Address
+  (the server's own name not taken, no same-address note of itself, the kept key sent
+  while New key is empty, as Save sends it) says under Address
   `✓ <type> answers · <n> models` or its refusal, and under New key the plain-http warning
   of a typed or kept key; `Its <n> models keep their names and move with it.` when it has
   models; Save replaces the server as `lado model-server add <name> <address> [--key]
@@ -2606,7 +2607,8 @@ Using it changes nothing of how sessions start.
   `POST /api/model-servers/check` (`ModelServerCheck {name, address, key, key_typed,
   replace}` → `ServerCheck {probe, refusals, warnings, notes}`: the form's check, saving
   nothing, the address probed as the command probes it, with `key` only after Check key;
-  with `replace` the name must be a saved server's; no `lado.db` made), `POST
+  with `replace` the name must be a saved server's, whose kept key is sent when no key is
+  typed (`key_typed` false), never in the answer; no `lado.db` made), `POST
   /api/model-servers/{name}/probe` (`ProbeInfo {kind, address, models, models_why,
   embeddings, apis_why, clis}`, probed now with the kept key), `DELETE
   /api/model-servers/{name}?with_models=&confirmed=` (→ `ModelSettings`; refused unless the

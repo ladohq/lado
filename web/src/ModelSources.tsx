@@ -1263,7 +1263,8 @@ function ChangeServer({
   const [filled, setFilled] = useState(false);
   const key = useRef<HTMLInputElement>(null);
   const keyGoes = filled || server.has_key; // empty: the kept key goes
-  const asking = address.trim() !== server.address || filled ? `${address.trim()}\n${keyGoes}` : "";
+  // The check sends the kept key itself while New key is empty (key_typed false), as Save does.
+  const asking = address.trim() !== server.address || filled ? `${address.trim()}\n${filled}` : "";
   const settled = useDebounced(asking, MODEL_DEBOUNCE);
   const [check, setCheck] = useState<{
     for: string;

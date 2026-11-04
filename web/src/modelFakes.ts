@@ -104,8 +104,8 @@ export class ModelServer {
     }
     if (where === "/api/model-servers/check") {
       // The core's rules in short: a name taken; nothing answers at a port 1243; a gateway
-      // (`gw` in its address) asks for a key, takes "right"; a key over http:// to a host not
-      // on the machine; another server at the same address.
+      // (`gw` in its address) asks for a key, takes "right" or a Change's kept key; a key over
+      // http:// to a host not on the machine; another server at the same address.
       const given = body as { name: string; address: string; key: string | null; key_typed: boolean; replace: boolean };
       const refusals = [];
       const taken = this.entries.servers.find((s) => s.name.toLowerCase() === given.name.toLowerCase());
@@ -113,14 +113,15 @@ export class ModelServer {
       const address = given.address.trim();
       const url = /^https?:\/\//.test(address) ? address : `http://${address}`;
       const host = url.replace(/^https?:\/\//, "").split(/[:/]/)[0];
+      const kept = given.replace && !given.key_typed && given.key === null && taken?.has_key; // Change sends it
       const warnings =
-        given.key_typed && url.startsWith("http://") && host !== "localhost"
+        (given.key_typed || kept) && url.startsWith("http://") && host !== "localhost"
           ? [`the key goes to ${host} over plain http://, unencrypted`]
           : [];
       if (!address) return json({ probe: null, refusals, warnings: [], notes: [] });
       if (address.includes(":1243"))
         refusals.push(detail(`${url} does not answer (connection refused)`, "address"));
-      else if (address.includes("gw") && given.key !== "right")
+      else if (address.includes("gw") && given.key !== "right" && !kept)
         refusals.push(detail(given.key === null ? `${url} asks for a key (401): enter it in Key` : `${url} refused the key (401)`, "key"));
       const probe = refusals.some((r) => r.field !== "name") ? null : { ...LMSTUDIO_PROBE, kind: address.includes("gw") ? "LiteLLM" : "LM Studio", address: url };
       const notes = probe

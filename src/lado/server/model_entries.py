@@ -157,11 +157,13 @@ def check_server(given: models.ModelServerCheck, has_db: bool = True) -> models.
     while a key is typed, and the probe of the address (the command's, 5 s a request),
     with `given.key` only when the human pressed Check key; then the notes of each saved
     server at the address it found. With `given.replace` (Change) the name must be a saved
-    server's, which is no other server at its address. An empty name or address is not
+    server's, which is no other server at its address, and with no new key typed the probe
+    sends its kept key, as Save does (never in the answer). An empty name or address is not
     checked yet."""
     refusals: list[models.EntryRefused] = []
     warnings: list[str] = []
     notes: list[str] = []
+    saved: state.ModelServer | None = None
 
     def refuse(exc: Exception) -> None:
         refusals.append(_refusal(exc).detail)
@@ -169,11 +171,18 @@ def check_server(given: models.ModelServerCheck, has_db: bool = True) -> models.
     if given.name:
         try:
             if has_db:
-                model_settings.server_to_add(given.name, given.replace)
+                saved = model_settings.server_to_add(given.name, given.replace)
             else:
                 model_settings.check_name(given.name, model_settings.SERVER)
         except model_settings.Refused as exc:
             refuse(exc)
+    key = given.key
+    if key is None and saved is not None and not given.key_typed:
+        try:
+            key = model_settings.server_key(saved)
+        except model_settings.Refused as exc:
+            refuse(exc)
+            return models.ServerCheck(probe=None, refusals=refusals, warnings=[], notes=[])
     if given.key is not None:
         try:
             model_settings.check_key(given.key)
@@ -187,13 +196,13 @@ def check_server(given: models.ModelServerCheck, has_db: bool = True) -> models.
     except ValueError as exc:
         refuse(exc)
         return models.ServerCheck(probe=None, refusals=refusals, warnings=[], notes=[])
-    sent = given.key if given.key is not None else ("" if given.key_typed else None)
+    sent = key if key is not None else ("" if given.key_typed else None)
     warning = model_servers.plain_http_warning(root, sent)
     if warning:
         warnings.append(warning)
     try:
         found = model_servers.probe(
-            given.address, given.key, model_settings.add_command(given.name, given.replace)
+            given.address, key, model_settings.add_command(given.name, given.replace)
         )
     except (model_servers.ProbeError, ValueError) as exc:
         refuse(exc)

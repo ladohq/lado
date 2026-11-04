@@ -1934,7 +1934,7 @@ def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(l
         state.queue_message("s", "lado", recipient, "hi", body)
         if mark:
             state.take_pending("s", recipient, mark)
-    agents, dropped = state.stop_session("s")
+    agents, dropped, _ = state.stop_session("s")
     assert [a.name for a in agents] == ["supervisor", "w1"]
     assert dropped == 3
     assert state.get_session("s").stopped_at

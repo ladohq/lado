@@ -691,9 +691,9 @@ Sessions for now. The UI's texts are in English.
   the tab's title while above zero: `(<n>) <page> · LADO`. A gate has no page of its
   own: it is a tab of its session's waiting card.
 - **Settings**: one page, its sections one under the other: Appearance (theme: system,
-  light, dark), Notifications (the switch Browser notifications, below), Providers and
+  light, dark), Notifications (the switch Browser notifications, below), Agent CLIs and
   environment (what `lado doctor` checks; a task of its
-  own) and Usage statistics (below). New sections go below.
+  own), Models (below) and Usage statistics (below). New sections go below.
 - **Placeholders**: one component, with the section's name, one sentence on what it will
   hold, and a link to the plan item that builds it. A placeholder is allowed only when its
   section has an item in ROADMAP.md or in Tasks below: they are Tasks here. Projects was
@@ -1393,7 +1393,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   the installed and the built-in kits, the same for every folder; the window still sends
   its folder as `where`, which the server ignores; one that does not load is listed off
   with `lado kits check <name>`),
-  **Provider** (`/api/providers`: each provider of the registry with
+  **Agent CLI** (`/api/providers`: each provider of the registry with
   `doctor.provider_status`; "checking…" while the CLIs answer, one not installed is off,
   a version warning shows under it; a chosen name the list lacks, a resumed session's, is
   an option of its own, `<name> · unknown`, off, so the select shows it: LAD-122; a CLI
@@ -1412,15 +1412,15 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   is not installed stays off too, with its install hint. A suggested one without its login
   is not taken: the field stays at "choose…" with the red note `<CLI> is not logged in: its
   agents cannot start.` and **Log in first**, which closes the window and opens Settings →
-  Providers and environment; Start stays off, as the start would be refused (lado.logins).
+  Agent CLIs and environment; Start stays off, as the start would be refused (lado.logins).
   The human's own pick is kept
   when the folder changes. **Advanced** (folded; its row `Advanced: model, switch off
   agents, skills, MCP servers or flows`, folded with a model `Advanced: model <model>`, the
   model in `.launch-first-peek`): **Model** first, the session's model (`lado start
   --model`), in the left column of a `.launch-grid` of its own (the whole row on a narrow
-  window), its label bold as Provider's: free text in the window's own combobox
+  window), its label bold as Agent CLI's: free text in the window's own combobox
   (`SuggestField.tsx`, not a native `<datalist>`): the height, frame and font of
-  Provider, a drawn chevron at its right end that opens or closes the whole list; typing
+  Agent CLI, a drawn chevron at its right end that opens or closes the whole list; typing
   or ↓ opens it filtered by what is typed (case-insensitive), ↑↓ move, Enter picks the
   highlighted one (else it is the form's), Esc or leaving the field closes it, a click
   picks; the suggestions are the chosen CLI's aliases (tagged `alias`, muted) then its own
@@ -1505,7 +1505,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   the .env file next to compose.yaml, then restart LADO there:` `docker compose up -d`,
   else `Tell git who you are, once for this computer:` and the `git config --global`
   command; the window has no fields for them and LADO sets no author of its own. There is
-  no separate session Name; Kits, Provider (`ScratchTarget.provider`), Permission mode, the
+  no separate session Name; Kits, Agent CLI (`ScratchTarget.provider`), Permission mode, the
   first message and Advanced are as for a clone's folder. **Create and start** is on with
   a name, a folder new or empty, the author known and the name free; it sends `where:
   {kind: "scratch", path}` with the name and the title (`Launch.title`): the server makes
@@ -1529,7 +1529,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   the URL with the core's text (`CloneRefused`: `message`, `kind`, `hint`) and, where the
   human can act (an ssh key refused, an unknown host key, a GitHub login, a GitHub
   repository not shown), the hint's sentence and command with Copy, before anything is
-  pressed. Name, Kits, Provider (the server's suggestion for a folder with no sessions,
+  pressed. Name, Kits, Agent CLI (the server's suggestion for a folder with no sessions,
   `CloneTarget.provider`) and Permission mode are the folder's. The one button **Clone and
   start** is on once the branches are listed and the folder is new or empty. A folder
   that holds a clone of the same repository (same host and path; scheme, user and port
@@ -1596,7 +1596,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   (`runtime.project_session_name`) until edited, with the folder check's notes
   (`name_state`, where a session of the name in another project or in none is
   `taken_elsewhere`); Kits and Permission mode come from the repository's last session in
-  the project (`ProjectLaunch.last`), Provider from `ProjectLaunch.provider`, as Folder
+  the project (`ProjectLaunch.last`), Agent CLI from `ProjectLaunch.provider`, as Folder
   takes them. The start button reads **Start in <title>** (the id without one): the window
   opens on the last project used, and a quick click in another project would give the
   session another client's keys (the supervisor's condition at gate #107). It sends
@@ -1968,7 +1968,7 @@ M2, P1–P3 of round 3, F3 and U1–U3).
   socket), git (`SystemInfo.git`: its version, `not installed` or `does not run`, by the
   folder check's own `runtime.git_version`; never its path), on a Mac Graphical session (`process remote · server gui`, or `no tmux
   server`: `SystemInfo.gui_session`, where the server's process and LADO's tmux server run,
-  lado.gui_session), the providers (a dot: ok, an untested version, not installed; the version, and
+  lado.gui_session), Agent CLIs (a dot: ok, an untested version, not installed; the version, and
   the tested one when it differs), and last the update check: `Up to date · checked 09:12`,
   `checked yesterday`, `Checking…`, `Check failed · 09:12` with the reason in its tooltip,
   each with ↻ (`POST /api/update/check`). Esc or a press outside closes it. It ends 8 px
@@ -2310,12 +2310,12 @@ time. Each task is one `feature` run, useful on its own.
       server, with subfolders and recent folders).
    7. **Flows** (decided with the human 2026-10-04, task feature/flows-tab). Done: Flows
       below. Then **Agents** (decided with the human 2026-10-04, task feature/agents-tab).
-      Done: Agents below. Then Providers and environment; a pass over the look with a designer role
+      Done: Agents below. Then Agent CLIs and environment; a pass over the look with a designer role
       (BACKLOG), with it the rework of the rail (later, with the look pass: names under the
       icons when collapsed; Launch moved onto it with Launch and session control); then the
       rest; later the desktop app.
 
-### Providers and environment
+### Agent CLIs and environment
 
 Settings: the agent CLIs LADO can run, their versions and logins, and of what `lado doctor`
 checks only what the user can fix (LAD-157, LAD-160 and LAD-163, openspec changes
@@ -2432,6 +2432,210 @@ your agents use. Changes apply to agents started afterwards."
   it), and all but opening a window start a check. No answer holds a value. `GET /api/providers` stays the System panel's and New session's list; it
   runs the status command of the CLIs whose agents need a login (`login_missing`), in the
   environment the agents of that CLI in `?project=` (404 for an unknown one) or in none get.
+
+### Models
+
+Settings: the human's configured models and model servers, set once under names (openspec
+change model-settings-page; built in `web/src/ModelSettings.tsx` and
+`web/src/ModelSources.tsx` over `lado.server.model_entries`). The section after Agent CLIs
+and environment, before Usage statistics; its anchor `#models` scrolls the page to it once,
+when the page opens there, never after a change of the entries, and keeps it at the top of
+the view while the page around it grows (Agent CLIs and environment, above, once its check
+ends) until the human presses, scrolls, touches or types anywhere (`keepAtTop`). It does what `lado
+model-server` and `lado model` do, with their rules: every refusal is the command's, in the
+page's words (`Refused.page`, `ProbeError.page`: no command to run, but what to do here,
+e.g. `asks for a key (401): enter it in Key`, `the name is taken by the model "<name>"`; the
+commands print their lines as before). It says "agent CLI", or "CLI" where room is short.
+Using it changes nothing of how sessions start.
+
+- **One section, three blocks**, no tabs: an intro ("Name the models your agents run on…"),
+  then **Your models `<n>`**, **Model servers `<n>`** (its count once a server is saved)
+  and **Models of your agent CLIs**, one under the other, `--gap-block` (24 px) apart, each
+  an h3 with its count and, for the last two, a lead line.
+- **Nothing moves under the pointer** (`web/src/useScrollAnchor.ts`): when the human acts
+  in the section, what they act on keeps its place on the screen whatever grows or shrinks
+  above it in the section. The anchor is the focused element in the section, else the one
+  last pressed there until a press elsewhere; with neither, nothing is held and the page is
+  never scrolled. Its place is its distance from the section's top, so what moves the whole
+  section (a section above growing, the human's scroll) is left as it is; after each render
+  of the section and each change of its size the scrolling container (`.content` above 900
+  px, the window at or under it) goes to the exact place that makes up for what that
+  distance gained (the page rounds to whole pixels; the next change starts from the exact
+  place, so half pixels do not add up, unless the page stopped at its top or bottom). An
+  anchor out of the container's view before a change is not held through it, so what the
+  human sees stays: its distance is noted anew. When the anchor leaves the page (× turned into Undo,
+  a name's field into the name, a server into its line) the nearest `[data-anchor]` that held
+  it (a card, a source's row) keeps its place instead; a scroll inside the section (a list's
+  own) notes it anew. The browser's own scroll anchoring is off in the section and the ones
+  after it (`overflow-anchor: none`), else it would move the page a second time; Safari has
+  none. No row leaves the section on a timer.
+- **Your models**: a card only for an agent CLI with models, in LADO's order of agent CLIs
+  (then one for a model of a CLI it does not know), headed `<CLI title> <n>` on `--raised`;
+  `⚠ not installed: its models cannot run` in the head of one not installed. Its models by
+  name ignoring case: Name (wrapped, never cut), Model, From (its server, the address in
+  the title, else `the agent CLI`) and **×** (at once, as `lado model remove`). Under the
+  cards one line names the CLIs without models: `<CLI> has no models: its agents run on its
+  default model.`, or `<CLIs> have no models: their agents run on their default model.`
+  With no model at all: `No models yet. Without them each agent runs on its agent CLI's
+  default model.` and `Add a model server below, or tick the models your agent CLIs already
+  offer.` A model's mark under its name: `⚠ not in list` (its title: `<source> no longer
+  lists <model>: agents on it stop at their first turn.`) once its source's list was read
+  here and lacks it.
+- **Rename** on the name itself: a button with a frame on hover, titled `Click to rename`;
+  a click or Enter turns it into a field of its cell, the name selected; Enter or leaving
+  the field renames (`PATCH`), Esc restores and gives the focus back to the name; no Save
+  or Cancel. A refusal (a name taken ignoring case, no name), on Enter or on leaving, keeps
+  the field with the refusal under it (`aria-invalid`); leaving it then restores the name.
+  The model takes its sorted place in its card only.
+- **× and Undo**: × leaves in its row `Removed <name>. Undo`, of the row's height, the
+  focus on Undo; Undo (off while it runs) saves the model again with its name, CLI, model
+  and server (`POST /api/models`, the checks of `lado model add`), the focus then on its
+  name, a refusal in the row; the row goes once the reload brought the model back. After
+  `UNDO_MS` (10 s) only Undo goes: `Removed <name>.` stays until the human's next change in
+  the section (a tick, ×, Undo, a rename, a model id added, a server added, changed or
+  removed) or the page's next opening. A server removed has no Undo: its key goes with it
+  and LADO keeps no copy.
+- **The sources**: Model servers lists every saved server, by name at the first showing
+  and one added here at the end, where the form was, then **+ Add server**; Models of your
+  agent CLIs lists every agent CLI LADO knows, the ones not installed last, greyed and
+  closed. Each is a framed row: a chevron in a framed 28 px box that turns when open, its
+  name, whole and wrapped, never cut by its badges (for a server its type and `key` when it
+  has one, after the name or on the next line), and a second line:
+  for a server `<n> model(s) added` or `no models added`, then its address, cut with `…`
+  (the address, not the count) and whole in a tooltip on hover and on keyboard focus of the
+  row; for an agent CLI its login state from Agent CLIs and environment's last check (read
+  again while that check runs) and `<n> added`, after its list was read here `aliases`
+  (aliases only) or `its list` first. The whole row opens a source (Enter and Space too);
+  a server's **✎** (Change) and **🗑** (Remove) are icons at its right, its name in their
+  labels, titled `Change` and `Remove`. Opening the section reads no source and asks no
+  server; all start closed.
+- **A source opened** reads its models now, `reading the models…` meanwhile: a CLI's
+  aliases and own list through the launch window's route with `fresh`, a server's by a
+  probe with its kept key; **↻** (`Read the models again`) at the right above the list reads
+  again. The latest read wins; a source closed meanwhile takes no late answer; no list is
+  kept once the source closes. The list's order is set at its read: the models of the
+  source's configured models it no longer lists, then those it lists, then the rest; no
+  tick changes it (a model configured since by Model id comes last). The list shows at most
+  `--list-rows` (9) rows of `--row` (36 px) and scrolls within itself; under it `<n> models`;
+  above more than ten a search, `Search <n> models`, and then `<shown> of <n> models`.
+- **The ticks**: a CLI's model has one tick, `as <name>` beside it when its model's name
+  differs. A server's model is a row that opens, on a click or Enter, under it `Agent CLIs
+  that can run <model> on <server>:` and the installed CLIs whose API the server proves,
+  one under the other whatever their number, each with its tick and under its title `as
+  <name>` when on, `would be <name>` when off: the name a tick would save, which the core
+  gives (`POST /api/models/check` without a name answers `ModelCheck.name`, one request per
+  CLI when the model opens; the answers of a list closed meanwhile are dropped, and a line
+  stays while the core is asked again). Esc closes it. The row says `in <CLI>, …` in green
+  and ends in a framed chevron; a server no installed CLI can use says `No installed CLI
+  can use this server.` and its rows have no ticks. A tick is on exactly when a configured
+  model has that CLI, model and server; ticking saves one, unticking removes it with no
+  Undo row (the tick is its own undo), and a refusal shows in the tick's row. While the page
+  stays open it remembers the name of each model it unticked: its row says `would be
+  <name>`, and a tick again saves the model under that name, or under its default when the
+  name was taken meanwhile; a ticked model is titled `Unticking removes <name>.`. Several
+  models of one tick: on and disabled, titled `<names>: remove them in Your models`.
+  Default names (the core's `model_settings.default_name`): an alias `Claude Sonnet` (the
+  first word of the CLI's title and the alias capitalised, `[1m]` as ` 1M`: `Claude Opus
+  1M`), a model of a CLI's list the model, a model on a server `<model> · <server>`, with
+  ` · <CLI>` when the server suits more than one CLI; a taken name gets ` · <CLI>`, then
+  ` (2)`, ` (3)`, each cut to 64 characters before its suffix.
+- **Embeddings and gone models**: a model the server types as embeddings is not listed;
+  `<n> embeddings model(s) hidden: agents cannot run on it (them).` under the list. A
+  configured model whose model the read list lacks shows first, ticked, `no longer listed`,
+  and stays saved; unticking it removes it from the list too; its other ticks are off (the
+  add would be refused). A server with no list says `⚠ no list of models: <why>`, one whose
+  APIs cannot be told `⚠ APIs: cannot be told: <why>`. A server that does not answer, asks
+  for its key or refuses it shows the probe's line as a warning with its hint under it (the
+  container's `host.docker.internal` one included), then `Its model(s) stay(s) saved:
+  <names>. Agents on it stop at their first turn until the server answers.`
+- **Model id** ends an open source only where its list is not whole: Claude Code (its
+  aliases), a CLI whose list cannot be read, a server that gives none (with an **Agent
+  CLI** choice, a `.field` select of the launch window's look). The check `lado model add`
+  would make shows under it once the typing settles (`MODEL_DEBOUNCE`); Add saves the model
+  with its default name, off while refused.
+- **+ Add server** opens, in its place at the end of Model servers, a form: Name (focused),
+  Address and Key (`optional`, or `required by this server` once the check says it asks for
+  one; the project page's dots field, drawn in its font of dots (`LadoSecretDots`, as New
+  key), never a password field; under it `Kept in a file
+  only LADO reads; never shown again.`). Once the typing settles (`MODEL_DEBOUNCE`) it
+  checks without a key (`POST /api/model-servers/check`): a name refused or taken under
+  Name, else `free`; under Address `checking <address> …`, then the probe's refusal, or,
+  for a server that asks for a key, that line as a warning, and `same address as model
+  server "<name>"` for each saved server there; a server that answered shows a panel under
+  Address (green, `--done`): `✓ <type> answers at <address>` (the address that answered,
+  `ProbeInfo.address`), `Models <n>` with the hidden embeddings' line, `Agent CLIs
+  <titles>` (in LADO's order of the agent CLIs, as everywhere on the page and in `lado
+  model-server`). The plain-http warning shows under Key while a key is typed for an address it
+  would cross unencrypted. An older check's answer is dropped. A key goes only with **Check
+  key** (shown while the server asks for a key and one is typed; its refusal under Key, its
+  panel under Address; the key stays in its field for Add) or **Add server**, which is on
+  only for a free name and a server that answered, or asks for a key with one typed; it
+  probes and saves as `lado model-server add` does (`checking the server…` meanwhile, each
+  request no longer than the command's). The buttons: Check key, Add server, Cancel. The
+  new server takes the form's place, open, the focus on its row, with `✓ Saved model server
+  "<name>".`, its warnings and same-address notes, and `Open a model to tick the agent CLIs
+  that run it.` above its list; these lines go with the human's next change in the section
+  (as a model's `Removed <name>.` line does) or once another server is added, changed or
+  removed. Add's refusal shows under the field it names (one of no field under the buttons)
+  until that field is edited; the form keeps all but the key.
+- **A server's panels**, one at a time: its list, **Change** or **Remove**; opening one
+  closes the others. Change, under the row: Address, filled, and New key, empty (`empty
+  keeps the key`); once the address or a key is typed, the form's check with `replace`
+  (the server's own name not taken, no same-address note of itself, the kept key sent
+  while New key is empty, as Save sends it) says under Address
+  `✓ <type> answers · <n> models` or its refusal, and under New key the plain-http warning
+  of a typed or kept key; `Its <n> models keep their names and move with it.` when it has
+  models; Save (and Enter in New key) is off while the check runs or the address does not
+  answer, and its refusal (any but one of the key, which shows under New key) takes the
+  check line's place under Address until the address changes, Save staying on unless the
+  refusal is the address's; Save
+  replaces the server as `lado model-server add <name> <address> [--key]
+  --replace` does, then its list opens with the save's probe; a failed probe changes
+  nothing. Remove asks under the row (`role=alertdialog`, the focus on Cancel): `Remove
+  <name>?`, or `Remove <name> and its <n> models: <names>?`, then `Its key is deleted too.`
+  only when it has a key, then `This cannot be undone.`, with **Remove server**, or
+  **Remove server and <n> models**; only that removes them, as `lado model-server remove
+  <name> --with-models`, and only the models it named: when the server has others by then
+  (the CLI added one), nothing is removed, the refusal shows and it asks again with the
+  entries read anew. The row then says `Removed <name> and its <n> models.` in its place.
+- **The key** lives only in its field: emptied once Add server or Save is done or refused
+  for anything but the key, on Cancel and when the form closes; Check key leaves it there,
+  and a refusal of the key too, under it, with Add server or Save off until the key is
+  edited or erased; never in the page's state, an address or the browser's storage.
+- **Looks**: the fields and notes are the launch window's (an ok note in `--action`); green
+  (`--done`) only for the found panel, `Saved model server …` and a server model's `in
+  <CLI>, …`. No colour of its own.
+- **Narrower than 600 px**: the forms' fields one under the other; a model's row in two
+  lines (its name, then model · from, each whole and wrapped) with × at the right, the
+  table's head hidden; a source's model the whole width, its marks (`no longer listed`, `in
+  <CLI>`, `as`/`would be`) on lines of their own under it; a
+  source's icons on a line of their own under its name and a server's address wrapped
+  whole (no tooltip); ✎, 🗑, ↻, × and Undo at least 44 by 44 px and a list's row 44 px; a
+  server's list of up to 20 models not bounded (no scroll within a scroll on touch); the
+  CLIs under a server's model without indent. The page never scrolls sideways.
+- **API** (`lado.server.model_entries` over `lado.model_settings`, under the token, no
+  change-feed event): `GET /api/model-settings` (`ModelSettings`: the models and the saved
+  servers, asking none; no `lado.db` made), `POST /api/model-servers` (`ModelServerAdd
+  {name, address, key, replace}` → `ModelServerAdded {server, probe, notes, warnings}`),
+  `POST /api/model-servers/check` (`ModelServerCheck {name, address, key, key_typed,
+  replace}` → `ServerCheck {probe, refusals, warnings, notes}`: the form's check, saving
+  nothing, the address probed as the command probes it, with `key` only after Check key;
+  with `replace` the name must be a saved server's, whose kept key is sent when no key is
+  typed (`key_typed` false), never in the answer; no `lado.db` made), `POST
+  /api/model-servers/{name}/probe` (`ProbeInfo {kind, address, models, models_why,
+  embeddings, apis_why, clis}`, probed now with the kept key), `DELETE
+  /api/model-servers/{name}?with_models=&confirmed=` (→ `ModelSettings`; refused unless the
+  server's models are the confirmed ones), `POST /api/models/check` (`ModelAdd {name, cli,
+  model, server}` → `ModelCheck {kind, text, field, name}`, a refusal of kind refused with
+  its `field`; `name` the name a save would take, the given one or the default, empty for a
+  refusal; a server's probe kept a minute for this check only), `POST /api/models` (→
+  `ModelAdded`; `name` null for the default name), `PATCH /api/models/{name}` (`{name}`)
+  and `DELETE /api/models/{name}` (→ `ModelSettings`). A name in a path is encoded whole (a
+  `/` in it included). A refusal is a 400 whose `detail` is `EntryRefused {message, hint,
+  field, warnings}`, its field set by the core where it refuses. The key enters only in the
+  body of `POST /api/model-servers` and `POST /api/model-servers/check` (routes of
+  `SECRET_ROUTE`: a 422 there repeats none of its input) and is in no answer, log, journal
+  or file but its own.
 
 ### Activity
 

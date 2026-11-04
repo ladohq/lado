@@ -161,7 +161,7 @@ def test_in_a_container_a_folder_outside_the_repositories_folder_is_warned_about
     assert warned["ground"] != hint["ground"], (warned, hint)
     assert warned["stripe"] != hint["stripe"] and warned["stripeWidth"] == "3px", (warned, hint)
     assert warned["size"] == "13px", warned
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     expect(dialog.get_by_role("button", name="Start session")).to_be_enabled()
     where.blur()
     shot(page, "outside")
@@ -194,7 +194,7 @@ def test_a_session_starts_from_the_new_session_window(page: Page, server, repo, 
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
     expect(dialog).to_contain_text("✓ git repository · branch main")
     expect(dialog.get_by_role("textbox", name="Name")).to_have_value("my-repo")
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     shot(page, "window")
 
     dialog.get_by_role("button", name="Start session").click()
@@ -226,7 +226,7 @@ def test_a_session_starts_on_the_model_typed_in_advanced(
     dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
     expect(dialog).to_contain_text("✓ git repository · branch main")
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     row = dialog.locator("details.launch-advanced").last  # after the first message's
     advanced = row.locator("summary")
     expect(advanced).to_have_text(
@@ -238,7 +238,7 @@ def test_a_session_starts_on_the_model_typed_in_advanced(
     expect(note).to_have_text("empty: Fake agent's default model; type or pick one of its models")
     shot(page, "empty")
     # Beside Provider: its height and width, and a chevron of its own.
-    provider = dialog.get_by_label("Provider").bounding_box()
+    provider = dialog.get_by_label("Agent CLI").bounding_box()
     box = model.bounding_box()
     assert (box["height"], box["width"]) == (provider["height"], provider["width"])
     arrow = dialog.get_by_role("button", name="Show the models")
@@ -305,7 +305,7 @@ def test_the_model_field_warns_when_the_cli_gives_no_list(page: Page, server, re
     dialog.get_by_role("button", name="Folder", exact=True).click()
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
     expect(dialog).to_contain_text("✓ git repository · branch main")
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     row = dialog.locator("details.launch-advanced").last
     row.locator("summary").click()
     dialog.get_by_role("combobox", name="Model").fill("fake-any")
@@ -363,7 +363,7 @@ def test_a_session_starts_with_a_first_message(page: Page, server, repo, shot):
     dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
     expect(dialog).to_contain_text("✓ git repository · branch main")
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     field = dialog.get_by_role("textbox", name="First message")
     expect(field).to_be_hidden()  # folded when the window opens
     row = dialog.locator("details.launch-first > summary")
@@ -407,7 +407,7 @@ def test_a_role_in_two_kits_is_switched_off_from_the_refusal(page: Page, server,
     dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
     expect(dialog).to_contain_text("✓ git repository · branch main")
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     dialog.get_by_label("Add kit").select_option("kit-a")
     dialog.get_by_label("Add kit").select_option("kit-b")
     dialog.get_by_role("button", name="Start session").click()
@@ -437,7 +437,7 @@ def test_a_folder_that_will_not_do_shows_the_cores_reason(page: Page, server, tm
     expect(dialog).to_contain_text(f"{plain} is not inside a git repository")
     expect(dialog.get_by_role("button", name="Start session")).to_be_disabled()
     # The CLIs checked: each `--version` may take seconds on a loaded machine.
-    expect(dialog.get_by_label("Provider")).to_be_enabled(timeout=30_000)
+    expect(dialog.get_by_label("Agent CLI")).to_be_enabled(timeout=30_000)
     shot(page)
     # A refusal is a red panel: its ground is neither a hint's nor a warning's.
     refusal = dialog.locator(".field-note.bad", has_text="is not inside a git repository")
@@ -468,7 +468,7 @@ def test_on_a_phone_the_window_with_a_warning_scrolls_to_start(
     where = dialog.get_by_role("combobox", name=re.compile("Where"))
     where.fill(str(repo))
     expect(dialog.locator(".field-note.warn")).to_contain_text(OUTSIDE.format(repos))
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     where.blur()
     shot(page, full_page=False)
     start = dialog.get_by_role("button", name="Start session")
@@ -494,7 +494,7 @@ def test_a_folder_without_commits_shows_the_command_that_makes_one(
     expect(dialog.locator("code", has_text=command)).to_be_visible()
     expect(dialog.get_by_role("button", name="Copy command")).to_be_visible()
     expect(dialog.get_by_role("button", name="Start session")).to_be_disabled()
-    expect(dialog.get_by_label("Provider")).to_be_enabled(timeout=30_000)
+    expect(dialog.get_by_label("Agent CLI")).to_be_enabled(timeout=30_000)
     shot(page)
 
 
@@ -531,7 +531,7 @@ def test_a_folder_in_a_project_is_refused_with_the_projects_command(
     expect(refusal.locator("code")).to_have_text("lado start --project shop --repo frontend")
     expect(refusal.get_by_role("button", name="Copy command")).to_be_visible()
     expect(dialog.get_by_role("button", name="Start session")).to_be_disabled()
-    expect(dialog.get_by_label("Provider")).to_be_enabled(timeout=30_000)
+    expect(dialog.get_by_label("Agent CLI")).to_be_enabled(timeout=30_000)
     where.blur()
     shot(page, "refused")
 
@@ -627,7 +627,7 @@ def test_resume_a_stopped_session(page: Page, server, repo, shot):
     dialog = page.get_by_role("dialog", name="Resume session")
     expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_have_value(str(repo))
     expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_be_disabled()
-    expect(dialog.get_by_label("Provider")).to_have_value("fake", timeout=30_000)  # CLIs checked
+    expect(dialog.get_by_label("Agent CLI")).to_have_value("fake", timeout=30_000)  # CLIs checked
     shot(page, "window")
 
     dialog.get_by_role("button", name="Resume session").click()
@@ -650,10 +650,10 @@ def test_resume_is_off_while_the_sessions_provider_cannot_run(page: Page, server
     expect(refusal).to_have_text("unknown provider gone", timeout=30_000)  # CLIs checked
     resume = dialog.get_by_role("button", name="Resume session")
     expect(resume).to_be_disabled()
-    expect(dialog.get_by_label("Provider")).to_have_value("gone")
+    expect(dialog.get_by_label("Agent CLI")).to_have_value("gone")
     shot(page, "refused")
 
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     expect(refusal).to_have_count(0)
     expect(resume).to_be_enabled()
     shot(page, "picked")
@@ -685,7 +685,7 @@ def test_a_cli_without_its_login_is_greyed_out_and_leads_to_settings(
     dialog.get_by_role("button", name="Folder", exact=True).click()
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
     expect(dialog).to_contain_text("✓ git repository · branch main")
-    select = dialog.get_by_label("Provider")
+    select = dialog.get_by_label("Agent CLI")
     option = select.locator("option", has_text="fake-login · not logged in")
     expect(option).to_be_disabled(timeout=30_000)  # CLIs checked
     expect(select).to_have_value("")
@@ -698,7 +698,7 @@ def test_a_cli_without_its_login_is_greyed_out_and_leads_to_settings(
     note.get_by_role("button", name="Log in first").click()
     expect(dialog).to_have_count(0)
     expect(page).to_have_url(re.compile("/settings#providers-and-environment$"))
-    expect(page.get_by_role("heading", name="Providers and environment")).to_be_visible()
+    expect(page.get_by_role("heading", name="Agent CLIs and environment")).to_be_visible()
 
     logins.write_text("logged in")
     launch.click()
@@ -727,7 +727,7 @@ def test_resume_without_the_login_is_disabled_and_leads_to_settings(
         "Fake agent is not logged in: its agents cannot start. Log in first",
         timeout=30_000,  # CLIs checked
     )
-    select = dialog.get_by_label("Provider")
+    select = dialog.get_by_label("Agent CLI")
     expect(select).to_have_value("fake-login")
     expect(select.locator("option", has_text="fake-login · not logged in")).to_be_disabled()
     expect(dialog.get_by_role("button", name="Resume session")).to_be_disabled()
@@ -746,7 +746,7 @@ def test_a_start_that_records_the_trust_shows_no_warnings(page: Page, trusting, 
     dialog.get_by_role("button", name="Folder", exact=True).click()
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
     expect(dialog).to_contain_text("✓ git repository · branch main")
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     dialog.get_by_role("button", name="Start session").click()
     expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
     idle("my-repo")
@@ -774,8 +774,8 @@ def test_the_resume_notice_stands_above_the_tabs(page: Page, server, repo, shot)
     log_in(page, server, f"/sessions/{session}")
     page.get_by_role("button", name="Resume…").click()
     dialog = page.get_by_role("dialog", name="Resume session")
-    expect(dialog.get_by_label("Provider")).to_have_value("fake", timeout=30_000)  # CLIs checked
-    dialog.get_by_label("Provider").select_option("fake-paste")
+    expect(dialog.get_by_label("Agent CLI")).to_have_value("fake", timeout=30_000)  # CLIs checked
+    dialog.get_by_label("Agent CLI").select_option("fake-paste")
     dialog.get_by_role("button", name="Resume session").click()
     expect(dialog).to_have_count(0)
     idle(session)
@@ -965,7 +965,7 @@ def test_a_session_starts_in_a_clone_of_a_url(page: Page, server, tmp_path, shot
     expect(dialog).to_contain_text("✓ a new folder")
     expect(dialog.get_by_label("Branch")).to_have_value("main")
     dialog.get_by_label("Branch").select_option("develop")
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     expect(dialog.get_by_role("textbox", name="Name")).to_have_value("app")
     shot(page, "form")
 
@@ -981,7 +981,7 @@ def test_a_clone_shows_its_progress_and_cancel_clone_stops_it(
 ):
     into = tmp_path / "work" / "app"
     dialog = clone_window(page, server, slow_clone, into)
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     dialog.get_by_role("button", name="Clone and start").click()
     expect(dialog.get_by_role("progressbar", name="Clone")).to_be_visible()
     expect(dialog).to_contain_text("Receiving objects")
@@ -1017,7 +1017,7 @@ def test_a_page_reloaded_during_a_clone_cancels_it_at_once(
 ):
     into = tmp_path / "work" / "app"
     dialog = clone_window(page, server, slow_clone, into)
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     dialog.get_by_role("button", name="Clone and start").click()
     expect(dialog).to_contain_text("Receiving objects")
     [call] = agent_helpers.fake_git_calls(tmp_path / "fake")
@@ -1062,7 +1062,7 @@ def test_a_first_session_from_scratch(page: Page, projects, server, shot):
         str(projects / "sait-kofeini")
     )
     expect(dialog).to_contain_text("✓ a new folder")
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     create = dialog.get_by_role("button", name="Create and start")
     expect(create).to_be_enabled()
     shot(page, "window")
@@ -1127,7 +1127,7 @@ def test_no_author_says_what_to_do(page: Page, projects, git_config, server, sho
     expect(dialog).to_contain_text(NO_AUTHOR)
     expect(dialog).to_contain_text("Tell git who you are, once for this computer:")
     expect(dialog.get_by_role("button", name="Copy command")).to_be_visible()
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     expect(dialog.get_by_role("button", name="Create and start")).to_be_disabled()
     shot(page)
 

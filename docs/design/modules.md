@@ -464,7 +464,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     store keeps LADO's secrets in `<LADO_HOME>/secrets/` (`write_lado`, `remove_lado`,
     `read_lado`, `lado_names`, `lado_folder`; `_open_chain` over the folder's parts): the
     agent CLIs' login variables the human sets in Settings (lado.logins checks the names).
-  - `logins.py`: the agent CLIs' logins (docs/design/ui.md, Providers and environment):
+  - `logins.py`: the agent CLIs' logins (docs/design/ui.md, Agent CLIs and environment):
     `refusal` is why a new session or worker (`SESSION`, `WORKER`) of a CLI that needs a
     login there (`Provider.needs_login(env)`) and has none is not started
     (lado.runtime.check_login raises it), `wait_reason` why a resumed agent waits;
@@ -864,23 +864,37 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     link-local IP; no name resolved); standard library only, the key only in the requests'
     headers.
   - `model_settings.py`: the human's model servers and configured models under names
-    (`lado model-server add|list|remove`, `lado model add|list|remove`; the coming Settings
-    page calls the same functions): `check_name` (one line of visible text, 1 to 64
-    characters, no spaces at its ends), `add_server` (probe, then the key file, then the
+    (`lado model-server add|list|remove`, `lado model add|list|remove`, and Settings →
+    Models through `server/model_entries.py`): `check_name` (one line of visible text, 1 to
+    64 characters, no spaces at its ends), `add_server` (probe, then the key file, then the
     row; `--replace` probes with the new or the kept key and updates the row; a failed
     insert removes the key it wrote; `note` gets a line for each other saved server at the
     same address by `same_address`), `remove_server` (refused while `state.models_on` names
-    models, the hint one `lado model remove` for all; the foreign key backs it), `add_model`
-    (the checks in order: name, CLI, model, server saved, the provider's `server_api`, a
-    fresh probe with the kept key, the API among those proved, not an embeddings model, the
-    model against the server's list by `model_check.verdict(whose=…)`, or without a server
-    `model_check.check` with the agents' environment), `remove_models` (every name found
-    before any is removed). Each
-    refusal is a one-line `Refused` (with the probe's hint). A server's key is the file
+    models, the hint one `lado model remove` for all and a second hint naming
+    `--with-models`; the foreign key backs it; `with_models` removes the server's models and
+    the server in one transaction, `state.remove_model_server_with_models`, reporting each
+    model to `removed`; with `confirmed`, refused, nothing removed, when the server's models
+    are not those names), `check_model` (the checks of `add_model` in order, saving nothing:
+    name (unless None), CLI, model, server saved, the provider's `server_api`, a probe with
+    the kept key (`probe_saved`, or the `probe` given: the page's kept one), the API among
+    those proved, not an embeddings model, the model against the server's list by
+    `model_check.verdict(whose=…)`, or without a server against the CLI's list read with the
+    agents' environment; without a name, its `default_name` checked by `check_name`, a
+    refusal under the model's field; a `Checked`), `add_model` (`check_model`, its server probed now,
+    then the row; `name` None takes `default_name`: an alias `Claude Sonnet` (`[1m]` as
+    ` 1M`), a CLI's model itself, a server's `<model> · <server>` (with ` · <CLI>` when
+    `model_servers.suiting` gives the server more than one CLI), a taken one ` · <CLI>`, then ` (2)`…, cut to 64
+    before its suffix), `rename_model` (`state.rename_model`: the row's name and `folded`,
+    its CLI, model and server kept; nothing refers to a model by name yet),
+    `remove_models` (every name found before any is removed). Each refusal is a one-line
+    `Refused` (with the probe's hint) and its `field` (`name`, `address`, `key`, `cli`,
+    `server`, `model` or ""), set where it is raised, which the page shows it under and the
+    CLI ignores; `model_servers.ProbeError` has one too. A server's key is the file
     `<LADO_HOME>/model-servers/<id>/key` (`key_folder`, `KEY`), written and removed by
     `project_secrets.write_at`/`remove_at` and read by `server_key` (no link, a regular file);
     a server has a key exactly when the file is there (`has_key`). `lado doctor`'s `Model
     servers` line (`doctor.check_model_servers`) probes the saved servers at once in threads,
+    names each configured model on a server that answered with a list lacking its model,
     checks each key file's mode (600) and names the folders of `model-servers/` of no saved
     server as left over; it only warns, and reads lado.db as it is.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory);
@@ -1183,7 +1197,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `launch.provider_infos(project)` sets `login_missing` by `logins.refusal` in
     `runtime.agents_env` of the provider over `runtime.agent_layers(project)`, false when those cannot be had; `?project=`
     unknown is 404);
-    `provider_check.py`: Settings → Providers and environment's rows (LAD-163): the last
+    `provider_check.py`: Settings → Agent CLIs and environment's rows (LAD-163): the last
     `ProviderLogins` of each provider (`launch.provider_logins`, which names the agents
     waiting for a login only while it is missing), kept for the server's lifetime, never on
     disk; `start()` runs one check at a time in a daemon thread, every provider at once
@@ -1194,7 +1208,21 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     fresh row, which an older read of the running pass does not replace; `snapshot()` the
     `ProvidersPage` (`ready: false` for a provider never read, `checking`, `environment`).
     `GET /api/providers/logins` answers it, `POST /api/providers/check` starts a check, and
-    the login actions put their row and start one;
+    the login actions put their row and start one; `GET /api/providers/{name}/models` reads
+    the CLI's list kept a minute (`launch.provider_models` over `launch.model_list`), with
+    `fresh` read now and kept;
+    `model_entries.py`: Settings → Models' routes (docs/design/ui.md, Models) over
+    `model_settings.py`, one per action of the commands: `listing` (asks no server; empty
+    with no lado.db), `add_server` (the warnings and notes as lists), `check_server` (the
+    form's check before an Add, saving nothing: the name's and the address's refusals, the
+    plain-http warning while a key is typed, the probe of the address with the key only
+    after Check key, the same-address notes; with `replace`, Change's, the name a saved
+    server's and no note of itself), `probe_server`, `remove_server` (with its models only when they are the
+    confirmed ones), `check_model` (with the name a save would take, `ModelCheck.name`), `add_model`, `rename_model`, `remove_model`; each
+    refusal a `Refusal` holding `EntryRefused` (the core's line, hint and field), a 400 in
+    `app.py`; a server's probe kept `KEPT` seconds by its id and address for `check_model`
+    only (a failed one not kept), and a CLI's list taken there from `launch.model_list`; the key comes in only in `ModelServerAdd` and `ModelServerCheck`,
+    whose routes are in `app.SECRET_ROUTE`;
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
     Session head) is what the session's head shows besides its settings, read anew: `repos`
     (path, public remote, branch; one now), each kit by `kits.find` with its version and

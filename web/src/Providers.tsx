@@ -1,4 +1,4 @@
-// Settings → Providers and environment (docs/design/ui.md): each agent CLI LADO can run, its
+// Settings → Agent CLIs and environment (docs/design/ui.md): each agent CLI LADO can run, its
 // version, one line that says whether it is logged in, how and from which layer, as its own
 // status command says, the agents that wait for its login and the projects with a login of
 // their own, and one button that opens its login sheet (LoginSheet.tsx). Of `lado doctor`'s
@@ -72,7 +72,7 @@ export function Providers() {
   return (
     <section className="setting" id={PROVIDERS_ANCHOR} ref={section} aria-labelledby={id}>
       <div className="pv-title">
-        <h2 id={id}>Providers and environment</h2>
+        <h2 id={id}>Agent CLIs and environment</h2>
         <button
           type="button"
           className={`pv-refresh${checking ? " spinning" : ""}`}

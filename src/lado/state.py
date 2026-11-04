@@ -13,7 +13,7 @@ import sqlite3
 import time
 import uuid
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import closing, contextmanager, suppress
 from dataclasses import asdict, astuple, dataclass, field, replace
 from pathlib import Path
@@ -3867,6 +3867,41 @@ def remove_model_server(id: str) -> bool:
         return db.execute("DELETE FROM model_servers WHERE id = ?", (id,)).rowcount == 1
 
 
+class ModelsChanged(Exception):
+    """The models on a server are not the ones confirmed: `names` are the ones on it now, by
+    name ignoring case."""
+
+    def __init__(self, names: list[str]):
+        super().__init__(", ".join(names))
+        self.names = names
+
+
+def remove_model_server_with_models(
+    id: str, confirmed: Collection[str] | None = None
+) -> list[str] | None:
+    """Remove the server of id `id` and every configured model on it, in one transaction:
+    the names of the models removed, by name ignoring case; None when there was no such
+    server. With `confirmed`, ModelsChanged and nothing removed unless the models on it are
+    those names, ignoring case."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        rows = db.execute(
+            "SELECT name FROM models WHERE server = ? ORDER BY folded", (id,)
+        ).fetchall()
+        names = [row["name"] for row in rows]
+        if confirmed is not None and {n.casefold() for n in names} != {
+            n.casefold() for n in confirmed
+        }:
+            db.execute("ROLLBACK")
+            raise ModelsChanged(names)
+        db.execute("DELETE FROM models WHERE server = ?", (id,))
+        if db.execute("DELETE FROM model_servers WHERE id = ?", (id,)).rowcount != 1:
+            db.execute("ROLLBACK")
+            return None
+        db.execute("COMMIT")
+    return names
+
+
 def add_model(name: str, cli: str, model: str, server: str | None) -> ConfiguredModel:
     """Save a configured model on the server of id `server` (None for none); NameTaken when
     another has its name ignoring case, sqlite3.IntegrityError for a server not saved."""
@@ -3909,6 +3944,25 @@ def models_on(server: str) -> list[ConfiguredModel]:
             "SELECT * FROM models WHERE server = ? ORDER BY folded", (server,)
         ).fetchall()
     return [_configured_model(row) for row in rows]
+
+
+def rename_model(name: str, new: str) -> bool:
+    """Rename the configured model named `name` ignoring case to `new`, its CLI, model and
+    server kept; False when there is none, NameTaken when another has `new` ignoring case."""
+    with connect() as db:
+        try:
+            return (
+                db.execute(
+                    "UPDATE models SET name = ?, folded = ? WHERE folded = ?",
+                    (new, new.casefold(), name.casefold()),
+                ).rowcount
+                == 1
+            )
+        except sqlite3.IntegrityError:
+            taken = _taken(db, "models", new)
+            if taken is None:
+                raise
+            raise taken from None
 
 
 def remove_model(name: str) -> bool:

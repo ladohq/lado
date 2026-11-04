@@ -431,7 +431,7 @@ export function setVisible(visible: boolean) {
   });
 }
 
-// Rows of Settings → Providers and environment (Providers.tsx, LoginSheet.tsx).
+// Rows of Settings → Agent CLIs and environment (Providers.tsx, LoginSheet.tsx).
 
 export function cli(name: string, title: string) {
   return {

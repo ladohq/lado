@@ -55,7 +55,7 @@ def test_probe_prints_the_server(serve, capsys):
         f"{server.url} (added http://)",
         "type: Ollama",
         "models: llama3.1:8b, qwen2.5-coder:7b",
-        "CLIs: Kilo CLI, OpenCode (chat completions); Codex CLI (Responses API)",
+        "CLIs: Codex CLI (Responses API); Kilo CLI, OpenCode (chat completions)",
         "not: Claude Code (no Anthropic Messages API)",
     ]
     assert err == ""

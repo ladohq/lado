@@ -13,7 +13,7 @@ import threading
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import Annotated, Literal, TypeVar
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket
@@ -52,7 +52,7 @@ from lado import (
     tmux,
     update,
 )
-from lado.server import clones, feed, launch, models, provider_check, terminals
+from lado.server import clones, feed, launch, model_entries, models, provider_check, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
     AccessInfo,
@@ -148,7 +148,9 @@ T = TypeVar("T")
 STATIC = Path(__file__).parent / "static"  # the built bundle (make web); not in git
 BUILD_HINT = "build it with `make web` in a LADO checkout"
 # The routes whose body is a secret's value: a 422 there repeats none of what it was given.
-SECRET_ROUTE = re.compile(r"/api/(projects/[^/]+/secrets|providers/[^/]+/variables)/")
+SECRET_ROUTE = re.compile(
+    r"/api/((projects/[^/]+/secrets|providers/[^/]+/variables)/|model-servers(/|$))"
+)
 
 
 class Health(BaseModel):
@@ -865,7 +867,7 @@ def create_app(
         except projects.NoSuchProject as unknown:
             raise HTTPException(404, str(unknown)) from unknown
 
-    # Settings → Providers and environment (docs/design/ui.md): each agent CLI's login, read
+    # Settings → Agent CLIs and environment (docs/design/ui.md): each agent CLI's login, read
     # by its own command (lado.logins), its login window, and the login variables kept as
     # LADO's secrets, written and removed, never read back.
 
@@ -888,19 +890,120 @@ def create_app(
             404: {"description": "no such provider or project"},
         },
     )
-    def provider_models(name: str, model: str = "", project: str | None = None) -> ProviderModels:
-        """The provider's CLI's aliases and own list of models, kept a minute, and the
-        check of `model` against them, as `lado start --model` checks it; read for the
-        agents of `project` (404 for an unknown one) or of no project."""
+    def provider_models(
+        name: str, model: str = "", project: str | None = None, fresh: bool = False
+    ) -> ProviderModels:
+        """The provider's CLI's aliases and own list of models, kept a minute (`fresh`:
+        read now, as Settings → Models opens a CLI's source), and the check of `model`
+        against them, as `lado start --model` checks it; read for the agents of `project`
+        (404 for an unknown one) or of no project."""
         provider = provider_named(name)
         try:
             if project is not None and not database():  # asking makes no lado.db
                 raise projects.NoSuchProject(f'unknown project "{project}"')
-            return launch.provider_models(provider, model, project)
+            return launch.provider_models(provider, model, project, fresh)
         except projects.NoSuchProject as unknown:
             raise HTTPException(404, str(unknown)) from unknown
         except runtime.LadoError as refused:
             raise HTTPException(400, str(refused)) from refused
+
+    # Settings → Models: one route per action of `lado model-server` and `lado model`
+    # (lado.server.model_entries). Reading the entries asks no server; a refusal is a 400
+    # with EntryRefused. A server's key comes in only in the body of POST
+    # /api/model-servers (SECRET_ROUTE) and is in no answer.
+    entry_refused = {400: {"model": models.EntryRefused, "description": "refused"}}
+
+    def entries(action: Callable[..., T], *args) -> T:
+        try:
+            return action(*args)
+        except model_entries.Refusal as refused:
+            raise HTTPException(400, refused.detail.model_dump(mode="json")) from None
+
+    @app.get("/api/model-settings", dependencies=[Depends(guard)])
+    def model_settings_listing(has_db: bool = Depends(database)) -> models.ModelSettings:
+        """The configured models and saved servers, asking none; no lado.db made."""
+        return model_entries.listing(has_db)
+
+    @app.post(
+        "/api/model-servers",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=entry_refused,
+    )
+    def add_model_server(given: models.ModelServerAdd) -> models.ModelServerAdded:
+        """Probe and save a server as `lado model-server add` does (`replace`: --replace)."""
+        return entries(model_entries.add_server, given)
+
+    @app.post(
+        "/api/model-servers/check",
+        dependencies=[Depends(guard.changes)],
+    )
+    def check_model_server(
+        given: models.ModelServerCheck, has_db: bool = Depends(database)
+    ) -> models.ServerCheck:
+        """What the server form says before its Add, as the human types: the refusals under
+        their fields, the plain-http warning, the probe of the address (with the key only
+        after Check key) and the same-address notes; saves nothing."""
+        return model_entries.check_server(given, has_db)
+
+    @app.post(
+        "/api/model-servers/{name:path}/probe",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=entry_refused,
+    )
+    def probe_model_server(name: str) -> models.ProbeInfo:
+        """The saved server probed now with its kept key: its models and CLIs."""
+        return entries(model_entries.probe_server, name)
+
+    @app.delete(
+        "/api/model-servers/{name:path}",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=entry_refused,
+    )
+    def remove_model_server(
+        name: str,
+        with_models: bool = False,
+        confirmed: Annotated[list[str] | None, Query()] = None,
+    ) -> models.ModelSettings:
+        """Remove a server as `lado model-server remove [--with-models]` does; with
+        `with_models`, refused unless its models are `confirmed`, the ones the human was
+        asked about."""
+        return entries(model_entries.remove_server, name, with_models, confirmed or [])
+
+    @app.post(
+        "/api/models/check",
+        dependencies=[Depends(guard.changes), Depends(database)],
+    )
+    def check_configured_model(given: models.ModelAdd) -> models.ModelCheck:
+        """The check `lado model add` would make, saving nothing; a refusal is a 200 of
+        kind refused with its field."""
+        return model_entries.check_model(given)
+
+    @app.post(
+        "/api/models",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=entry_refused,
+    )
+    def add_configured_model(given: models.ModelAdd) -> models.ModelAdded:
+        """Save a model as `lado model add` does; named by default without a name."""
+        return entries(model_entries.add_model, given)
+
+    @app.patch(
+        "/api/models/{name:path}",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=entry_refused,
+    )
+    def rename_configured_model(name: str, given: models.ModelRename) -> models.ModelSettings:
+        """Rename a model, its CLI, model and server kept."""
+        return entries(model_entries.rename_model, name, given)
+
+    @app.delete(
+        "/api/models/{name:path}",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=entry_refused,
+    )
+    def remove_configured_model(name: str) -> models.ModelSettings:
+        """Remove a model as `lado model remove` does."""
+        return entries(model_entries.remove_model, name)
 
     @app.get("/api/providers/logins", dependencies=[Depends(guard)])
     def provider_logins() -> ProvidersPage:

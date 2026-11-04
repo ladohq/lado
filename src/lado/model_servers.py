@@ -72,12 +72,27 @@ PLAIN_HTTP = (
 )
 
 
-class ProbeError(Exception):
-    """Why a probe found no server, one line; `hint` what the human can try ("" for none)."""
+ADDRESS, KEY = "address", "key"  # the field a ProbeError concerns
 
-    def __init__(self, text: str, hint: str = ""):
+
+class ProbeError(Exception):
+    """Why a probe found no server, one line; `hint` what the human can try ("" for none);
+    `field` the field of a form it concerns (ADDRESS or KEY), for the UI; `page` and
+    `page_hint` the line and the hint for the UI, which name no command (None: the same)."""
+
+    def __init__(
+        self,
+        text: str,
+        hint: str = "",
+        field: str = ADDRESS,
+        page: str | None = None,
+        page_hint: str | None = None,
+    ):
         super().__init__(text)
         self.hint = hint
+        self.field = field
+        self.page = text if page is None else page
+        self.page_hint = hint if page_hint is None else page_hint
 
 
 @dataclass(frozen=True)
@@ -120,19 +135,28 @@ class Probe:
         return clis(self.apis)
 
 
-def clis(apis: Iterable[str]) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """The (title, API) of each CLI that can use a server proving `apis` and of each that
-    cannot, by the API its provider declares, in the order of base.SERVER_APIS, then of the
-    registry; a provider that declares none is left out."""
+Suiting = list[tuple[providers.Provider, str]]
+
+
+def suiting(apis: Iterable[str]) -> tuple[Suiting, Suiting]:
+    """The (provider, API) of each CLI that can use a server proving `apis` and of each that
+    cannot, by the API its provider declares, in the registry's order (LADO's one order of
+    the CLIs); a provider that declares none of base.SERVER_APIS is left out."""
     apis = frozenset(apis)
-    suits: list[tuple[str, str]] = []
-    not_suits: list[tuple[str, str]] = []
-    for api in base.SERVER_APIS:
-        for name in providers.names():
-            provider = providers.get(name)
-            if provider.server_api == api:
-                (suits if api in apis else not_suits).append((provider.title, api))
+    suits: Suiting = []
+    not_suits: Suiting = []
+    for name in providers.names():
+        provider = providers.get(name)
+        api = provider.server_api
+        if api in base.SERVER_APIS:
+            (suits if api in apis else not_suits).append((provider, api))
     return suits, not_suits
+
+
+def clis(apis: Iterable[str]) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """`suiting` with each CLI's title: (title, API)."""
+    suits, not_suits = suiting(apis)
+    return [(p.title, api) for p, api in suits], [(p.title, api) for p, api in not_suits]
 
 
 def address(text: str) -> tuple[str, bool]:
@@ -200,14 +224,19 @@ def plain_http_warning(root: str, key: str | None) -> str | None:
     return PLAIN_HTTP.format(host=host)
 
 
-def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Probe:
+def probe(
+    text: str,
+    key: str | None = None,
+    command: str = PROBE_COMMAND,
+    key_where: str = "enter it in Key",
+) -> Probe:
     """What the server at `text` is; ValueError for an address LADO does not probe,
     ProbeError for one that does not answer, asks for a key, refuses it, or is no model
     server LADO knows. `command` is the command run, without its address, for the messages
-    that name one to run again."""
+    that name one to run again; `key_where` where the UI takes a key, for its line."""
     root, added = address(text)
     if key is not None and not carriable(key):
-        raise ProbeError(NOT_CARRIABLE)
+        raise ProbeError(NOT_CARRIABLE, field=KEY)
     headers = {"Accept": "application/json", "User-Agent": f"lado/{lado.__version__}"}
     if key is not None:
         headers |= {"Authorization": f"Bearer {key}", "x-api-key": key}
@@ -219,7 +248,11 @@ def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Pr
                 f"{root}: TLS failed ({listed.why}); a company's CA goes in the file "
                 "SSL_CERT_FILE names"
             )
-        raise ProbeError(f"{root} does not answer ({listed.why})", _container_hint(root, command))
+        raise ProbeError(
+            f"{root} does not answer ({listed.why})",
+            _container_hint(root, command),
+            page_hint=_container_hint(root, None),
+        )
     asked = [
         (root + OLLAMA_VERSION, "GET", {}),
         (root + LMSTUDIO_MODELS, "GET", {}),
@@ -231,16 +264,18 @@ def probe(text: str, key: str | None = None, command: str = PROBE_COMMAND) -> Pr
         if answer.status in (401, 403):
             if key is None:
                 raise ProbeError(
-                    f"{root} asks for a key ({answer.status}): run {command} {root} --key"
+                    f"{root} asks for a key ({answer.status}): run {command} {root} --key",
+                    field=KEY,
+                    page=f"{root} asks for a key ({answer.status}): {key_where}",
                 )
-            raise ProbeError(f"{root} refused the key ({answer.status})")
+            raise ProbeError(f"{root} refused the key ({answer.status})", field=KEY)
     apis = frozenset(api for api, a in zip(API_PATHS, posts, strict=True) if a.refuses_as_an_api())
     apis_why = ""
     if control.refuses_as_an_api():
         apis, apis_why = frozenset(), f"{root} answers {control.status} to any POST"
     models, models_why = _models(listed)
     if models is None and _anthropic_shaped(versioned):
-        models = _models(versioned)[0]
+        models, models_why = _models(versioned)
     kind = _kind(listed, versioned, version, lmstudio, apis)
     if kind is None:
         why = f"GET {MODELS}: {listed.said()}"
@@ -268,10 +303,9 @@ def lines(found: Probe) -> list[str]:
         out.append(f"APIs: cannot be told: {found.apis_why}")
     suits, not_suits = found.clis()
     groups = []
-    for api in base.SERVER_APIS:
+    for api in dict.fromkeys(of for _, of in suits):  # each API where its first CLI comes
         titles = [title for title, of in suits if of == api]
-        if titles:
-            groups.append(f"{', '.join(titles)} ({api})")
+        groups.append(f"{', '.join(titles)} ({api})")
     out.append(f"CLIs: {'; '.join(groups) or 'none'}")
     if not_suits:
         out.append("not: " + ", ".join(f"{title} (no {api})" for title, api in not_suits))
@@ -345,9 +379,9 @@ def _kind(
     return None
 
 
-def _container_hint(root: str, command: str) -> str:
+def _container_hint(root: str, command: str | None) -> str:
     """In LADO's container, for a localhost address: the host's address to try instead with
-    `command`."""
+    `command` (None: the address alone, for the UI)."""
     if not update.in_container():
         return ""
     parts = urllib.parse.urlsplit(root)
@@ -359,9 +393,10 @@ def _container_hint(root: str, command: str) -> str:
         except ValueError:
             return ""
     port = parts.port or (443 if parts.scheme == "https" else 80)
-    return CONTAINER_HINT.format(
-        command=command, address=f"{parts.scheme}://host.docker.internal:{port}{parts.path}"
-    )
+    address = f"{parts.scheme}://host.docker.internal:{port}{parts.path}"
+    if command is None:
+        return CONTAINER_HINT.replace("{command} ", "").format(address=address)
+    return CONTAINER_HINT.format(command=command, address=address)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):

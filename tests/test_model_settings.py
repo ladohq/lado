@@ -334,7 +334,73 @@ def test_remove_of_a_server_models_use_is_refused_naming_them(serve):
         'model server "LM Studio дома" is used by the models Another, Локальная Qwen; remove '
         'them first: lado model remove "Another" "Локальная Qwen"'
     )
+    assert refused.value.hint == (
+        'or remove them with it: lado model-server remove "LM Studio дома" --with-models'
+    )
     assert state.model_server("LM Studio дома") is not None
+
+
+def test_remove_with_models_removes_them_then_the_server(serve, lado_home):
+    server = serve("lmstudio", key="k-1")
+    add("lms", server.url, key="k-1")
+    id = state.model_server("lms").id
+    state.add_model("sp", "kilo", "qwen3-8b", id)
+    state.add_model("coder-oc", "opencode", "qwen3-8b", id)
+    state.add_model("own", "claude", "haiku", None)
+    folder = key_file("lms").parent
+    removed = []
+    assert model_settings.remove_server("LMS", with_models=True, removed=removed.append) == "lms"
+    assert removed == ["coder-oc", "sp"]
+    assert state.model_servers() == []
+    assert [m.name for m in state.models()] == ["own"]
+    assert not folder.exists()
+
+
+def test_remove_with_models_takes_a_model_added_after_the_listing(serve, monkeypatch):
+    """The models are found in the transaction that removes the server: one added after the
+    page listed them goes too, never a foreign-key refusal."""
+    add("lms", serve("lmstudio").url)
+    id = state.model_server("lms").id
+    state.add_model("listed", "opencode", "qwen3-8b", id)
+    real = state.remove_model_server_with_models
+
+    def late(server_id, confirmed):
+        state.add_model("late", "kilo", "qwen3-8b", server_id)
+        return real(server_id, confirmed)
+
+    monkeypatch.setattr(state, "remove_model_server_with_models", late)
+    removed = []
+    model_settings.remove_server("lms", with_models=True, removed=removed.append)
+    assert removed == ["late", "listed"]
+    assert state.models() == []
+
+
+def test_remove_with_the_models_confirmed_refuses_one_added_after_the_confirmation(serve):
+    """The page names the models it removes: one added after it asked keeps the server and
+    every model, and the refusal names them all."""
+    add("lms", serve("lmstudio").url)
+    id = state.model_server("lms").id
+    state.add_model("listed", "opencode", "qwen3-8b", id)
+    state.add_model("late", "kilo", "qwen3-8b", id)
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.remove_server("lms", with_models=True, confirmed=["listed"])
+    assert str(refused.value) == (
+        'model server "lms" has other models now: late, listed; nothing was removed'
+    )
+    assert (refused.value.hint, refused.value.field) == ("", "")
+    assert [m.name for m in state.models()] == ["late", "listed"]
+    removed = []
+    model_settings.remove_server(
+        "lms", with_models=True, confirmed=["late", "LISTED"], removed=removed.append
+    )
+    assert (removed, state.model_servers()) == (["late", "listed"], [])
+
+
+def test_remove_with_models_of_a_server_no_model_uses(serve):
+    add("lms", serve("lmstudio").url)
+    removed = []
+    assert model_settings.remove_server("lms", with_models=True, removed=removed.append) == "lms"
+    assert (removed, state.model_servers()) == ([], [])
 
 
 def test_remove_of_a_name_no_server_has_is_refused():
@@ -450,7 +516,7 @@ def test_the_clis_a_saved_server_suits():
     saved = state.add_model_server(
         "s1", "work", "https://gw", "OpenAI-compatible", (CHAT, RESPONSES)
     )
-    assert model_settings.clis(saved) == ["Kilo CLI", "OpenCode", "Codex CLI"]
+    assert model_settings.clis(saved) == ["Codex CLI", "Kilo CLI", "OpenCode"]
     bare = state.add_model_server("s2", "bare", "https://x", "OpenAI-compatible", ())
     assert model_settings.clis(bare) == []
 
@@ -722,3 +788,268 @@ def test_a_model_removed_meanwhile_is_named_after_the_others(monkeypatch):
     assert removed == ["a", "c"]
     assert str(refused.value) == 'no model "b" is saved; lado model list names them'
     assert state.models() == []
+
+
+# The field a refusal concerns (the page shows it under that field).
+
+
+def test_name_refusals_name_the_name():
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.check_name("", model_settings.MODEL)
+    assert refused.value.field == "name"
+
+
+def test_server_refusals_name_their_field(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    for call, field in [
+        (lambda: add("LMS", server.url), "name"),
+        (lambda: add("nope", server.url, replace=True), "name"),
+        (lambda: add("work", server.url, key="a\nb"), "key"),
+        (lambda: add("work", server.url, key=""), "key"),
+        (lambda: model_settings.remove_server("nope"), ""),
+    ]:
+        with pytest.raises(model_settings.Refused) as refused:
+            call()
+        assert refused.value.field == field, refused.value
+    state.add_model("Q", "opencode", "qwen3-8b", state.model_server("lms").id)
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.remove_server("lms")
+    assert refused.value.field == ""
+
+
+def test_the_empty_key_is_refused():
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.check_key("")
+    assert (str(refused.value), refused.value.field) == ("the key is empty", "key")
+
+
+def test_model_refusals_name_their_field(serve, monkeypatch):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    add("chat", serve("openai").url)
+    listing(monkeypatch, "claude", base.ModelList(("haiku",), ("claude-x",), "claude models"))
+    add_model("Taken", "claude", "haiku")
+    cases = [
+        (("", "claude", "haiku", None), "name"),
+        (("taken", "claude", "haiku", None), "name"),
+        (("N", "gemini", "x", None), "cli"),
+        (("N", "claude", " ", None), "model"),
+        (("N", "claude", "claude-y", None), "model"),
+        (("N", "opencode", fake.EMBEDDINGS, "lms"), "model"),
+        (("N", "opencode", "qwen3-14b", "lms"), "model"),
+        (("N", "opencode", "q", "nowhere"), "server"),
+        (("N", "codex", "gpt-oss-20b", "chat"), "server"),
+    ]
+    for (name, cli, model, on), field in cases:
+        with pytest.raises(model_settings.Refused) as refused:
+            add_model(name, cli, model, on)
+        assert refused.value.field == field, refused.value
+    server.close()
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("N", "opencode", "qwen3-8b", "lms", no_env)
+    assert refused.value.field == "server"
+
+
+# A model's check without the save.
+
+
+def check_model(name, cli, model, server=None, probe=None):
+    return model_settings.check_model(
+        name, cli, model, server, lambda provider: {"PATH": "/agents"}, probe=probe
+    )
+
+
+def test_check_model_refuses_as_add_model_does_and_saves_nothing(serve, monkeypatch):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    listing(monkeypatch, "claude", base.ModelList(("haiku",), ("claude-x",), "claude models"))
+    add_model("Taken", "claude", "haiku")
+    cases = [
+        ("taken", "claude", "haiku", None),
+        ("N", "gemini", "x", None),
+        ("N", "claude", "claude-y", None),
+        ("N", "opencode", fake.EMBEDDINGS, "lms"),
+        ("N", "opencode", "q", "nowhere"),
+    ]
+    for case in cases:
+        with pytest.raises(model_settings.Refused) as checked:
+            check_model(*case)
+        with pytest.raises(model_settings.Refused) as added:
+            add_model(*case, env=lambda provider: {})
+        assert (str(checked.value), checked.value.field) == (str(added.value), added.value.field)
+    checked = check_model("N", "opencode", "qwen3-8b", "lms")
+    assert (checked.verdict.kind, checked.model, checked.server.name) == (
+        model_check.OK,
+        "qwen3-8b",
+        "lms",
+    )
+    assert checked.provider is providers.get("opencode")
+    assert [m.name for m in state.models()] == ["Taken"]
+
+
+def test_check_model_without_a_name_checks_no_name(monkeypatch):
+    listing(monkeypatch, "claude", base.ModelList(("haiku",), None, why="no list"))
+    add_model("haiku", "claude", "haiku")
+    checked = check_model(None, "claude", "haiku")
+    assert (checked.verdict.kind, checked.name) == (model_check.OK, "Claude Haiku")
+
+
+def test_check_model_uses_the_list_given(monkeypatch):
+    seen = listing(monkeypatch, "kilo", base.ModelList((), ("kilo/a",), "kilo models"))
+    given = []
+    checked = model_settings.check_model(
+        None,
+        "kilo",
+        "kilo/b",
+        None,
+        lambda provider: {},
+        listing=lambda provider: (
+            given.append(provider.name) or base.ModelList((), ("kilo/b",), "kilo models")
+        ),
+    )
+    assert (checked.verdict.kind, given, seen) == (model_check.OK, ["kilo"], [])
+
+
+def test_check_model_uses_the_probe_given(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    kept = model_servers.probe(server.url)
+    server.requests.clear()
+    seen = []
+    checked = check_model(
+        "N", "opencode", "qwen3-8b", "lms", probe=lambda s: seen.append(s) or kept
+    )
+    assert checked.verdict.kind == model_check.OK
+    assert [s.name for s in seen] == ["lms"]
+    assert server.requests == []
+
+
+# A model's default name.
+
+
+def litellm_server(apis=(RESPONSES,)):
+    """A server one CLI suits (Codex CLI, by the Responses API), unless `apis` say more."""
+    return state.add_model_server("s1", "LiteLLM", "http://gw", "OpenAI-compatible", apis)
+
+
+def default_name(cli, model, server=None, aliases=()):
+    return model_settings.default_name(providers.get(cli), model, server, aliases)
+
+
+def test_the_default_name_of_an_alias():
+    aliases = ("sonnet", "sonnet[1m]", "opus[1m]")
+    assert default_name("claude", "sonnet", aliases=aliases) == "Claude Sonnet"
+    assert default_name("claude", "sonnet[1m]", aliases=aliases) == "Claude Sonnet 1M"
+    assert default_name("claude", "opus[1m]", aliases=aliases) == "Claude Opus 1M"
+
+
+def test_the_default_name_of_a_model_of_the_clis_list():
+    assert default_name("codex", "gpt-5-codex") == "gpt-5-codex"
+
+
+def test_the_default_name_of_a_model_on_a_server():
+    assert default_name("codex", "qwen3-8b", litellm_server()) == "qwen3-8b · LiteLLM"
+
+
+def test_the_default_name_on_a_server_several_clis_suit_names_its_cli():
+    """Ticked for OpenCode and then Kilo CLI, each name says its CLI, the first too."""
+    server = litellm_server((CHAT, RESPONSES))
+    assert default_name("opencode", "qwen3-8b", server) == "qwen3-8b · LiteLLM · OpenCode"
+    state.add_model("qwen3-8b · LiteLLM · OpenCode", "opencode", "qwen3-8b", server.id)
+    assert default_name("kilo", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Kilo CLI"
+    state.add_model("qwen3-8b · LiteLLM · kilo cli", "kilo", "qwen3-8b", server.id)
+    assert default_name("kilo", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Kilo CLI (2)"
+
+
+def test_a_taken_default_name_gets_the_cli_then_a_number():
+    server = litellm_server()
+    state.add_model("QWEN3-8B · litellm", "opencode", "qwen3-8b", server.id)
+    assert default_name("codex", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Codex CLI"
+    state.add_model("qwen3-8b · LiteLLM · Codex CLI", "codex", "qwen3-8b", server.id)
+    assert default_name("codex", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Codex CLI (2)"
+    state.add_model("qwen3-8b · LiteLLM · Codex CLI (2)", "codex", "qwen3-8b", server.id)
+    assert default_name("codex", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Codex CLI (3)"
+
+
+def test_a_long_default_name_is_cut_before_its_suffix():
+    server = litellm_server()
+    model = "m" * 70
+    first = default_name("opencode", model, server)
+    assert (len(first), first) == (64, "m" * 64)  # cut: no room for " · LiteLLM"
+    state.add_model(first, "opencode", model, server.id)
+    second = default_name("codex", model, server)
+    assert len(second) == 64
+    assert second.endswith(" · Codex CLI")
+    state.add_model(second, "codex", model, server.id)
+    third = default_name("codex", model, server)
+    assert (len(third), third.endswith(" · Codex CLI (2)")) == (64, True)
+    model_settings.check_name(third, model_settings.MODEL)
+
+
+def test_add_model_without_a_name_names_it(monkeypatch):
+    listing(monkeypatch, "claude", base.ModelList(("sonnet",), None, why="no list"))
+    saved, _ = add_model(None, "claude", "sonnet")
+    assert saved.name == "Claude Sonnet"
+    saved, _ = add_model(None, "claude", "sonnet")
+    assert saved.name == "Claude Sonnet · Claude Code"
+
+
+def test_a_model_whose_default_name_is_no_name_is_refused_under_the_model(monkeypatch):
+    """A model of no list (a warning) with a hidden character would be named by it: the
+    name's rule refuses it, under the model's field, in the check and the save alike."""
+    listing(monkeypatch, "claude", base.ModelList(("sonnet",), None, why="no list"))
+    hidden = "claude-opus​-5-5"  # U+200B
+    says = "a model's name is one line of visible text: U+200B ZERO WIDTH SPACE is not allowed"
+    with pytest.raises(model_settings.Refused) as checked:
+        check_model(None, "claude", hidden)
+    with pytest.raises(model_settings.Refused) as added:
+        add_model(None, "claude", hidden)
+    for refused in (checked.value, added.value):
+        assert (str(refused), refused.field) == (says, "model")
+    assert state.models() == []
+    assert check_model(None, "claude", "sonnet").name == "Claude Sonnet"
+
+
+# Renaming a model.
+
+
+def rename(name, new):
+    return model_settings.rename_model(name, new)
+
+
+def test_rename_a_model():
+    state.add_model("Claude Sonnet", "claude", "sonnet", None)
+    renamed = rename("claude sonnet", "Сильная")
+    assert (renamed.name, renamed.cli, renamed.model) == ("Сильная", "claude", "sonnet")
+    assert [m.name for m in state.models()] == ["Сильная"]
+    assert rename("сильная", "СИЛЬНАЯ").name == "СИЛЬНАЯ"
+
+
+def test_rename_to_a_taken_name_is_refused():
+    saved_models("a", "Other")
+    with pytest.raises(model_settings.Refused) as refused:
+        rename("a", "OTHER")
+    assert (str(refused.value), refused.value.field) == (
+        'a model "Other" is saved already; remove it first: lado model remove "Other"',
+        "name",
+    )
+    assert [m.name for m in state.models()] == ["a", "Other"]
+
+
+@pytest.mark.parametrize("new", ["", "x" * 65, " a"])
+def test_rename_to_no_name_is_refused(new):
+    saved_models("a")
+    with pytest.raises(model_settings.Refused) as refused:
+        rename("a", new)
+    assert refused.value.field == "name"
+    assert [m.name for m in state.models()] == ["a"]
+
+
+def test_rename_of_a_model_not_saved_is_refused():
+    with pytest.raises(model_settings.Refused) as refused:
+        rename("nope", "x")
+    assert (str(refused.value), refused.value.field) == (
+        'no model "nope" is saved; lado model list names them',
+        "",
+    )

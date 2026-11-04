@@ -58,16 +58,16 @@ def test_ollama_two_apis(serve):
     assert probe.models == fake.OLLAMA_MODELS
     suits, not_suits = probe.clis()
     assert suits == [
+        ("Codex CLI", base.RESPONSES),
         ("Kilo CLI", base.CHAT_COMPLETIONS),
         ("OpenCode", base.CHAT_COMPLETIONS),
-        ("Codex CLI", base.RESPONSES),
     ]
     assert not_suits == [("Claude Code", base.ANTHROPIC_MESSAGES)]
     assert ms.lines(probe) == [
         server.url,
         "type: Ollama",
         "models: llama3.1:8b, qwen2.5-coder:7b",
-        "CLIs: Kilo CLI, OpenCode (chat completions); Codex CLI (Responses API)",
+        "CLIs: Codex CLI (Responses API); Kilo CLI, OpenCode (chat completions)",
         "not: Claude Code (no Anthropic Messages API)",
     ]
 
@@ -78,9 +78,9 @@ def test_openai_chat_only(serve):
     assert probe.apis == {base.CHAT_COMPLETIONS}
     suits, not_suits = probe.clis()
     assert [t for t, _ in suits] == ["Kilo CLI", "OpenCode"]
-    assert not_suits == [("Codex CLI", base.RESPONSES), ("Claude Code", base.ANTHROPIC_MESSAGES)]
+    assert not_suits == [("Claude Code", base.ANTHROPIC_MESSAGES), ("Codex CLI", base.RESPONSES)]
     assert ms.lines(probe)[-1] == (
-        "not: Codex CLI (no Responses API), Claude Code (no Anthropic Messages API)"
+        "not: Claude Code (no Anthropic Messages API), Codex CLI (no Responses API)"
     )
 
 
@@ -96,7 +96,7 @@ def test_anthropic_messages_only(serve):
     assert probe.kind == "Anthropic-compatible"
     assert probe.models == ("claude-x",)
     assert probe.clis()[0] == [("Claude Code", base.ANTHROPIC_MESSAGES)]
-    assert [t for t, _ in probe.clis()[1]] == ["Kilo CLI", "OpenCode", "Codex CLI"]
+    assert [t for t, _ in probe.clis()[1]] == ["Codex CLI", "Kilo CLI", "OpenCode"]
 
 
 def test_models_only_proves_no_api(serve):
@@ -106,8 +106,8 @@ def test_models_only_proves_no_api(serve):
     lines = ms.lines(probe)
     assert "CLIs: none" in lines
     assert lines[-1] == (
-        "not: Kilo CLI (no chat completions), OpenCode (no chat completions), "
-        "Codex CLI (no Responses API), Claude Code (no Anthropic Messages API)"
+        "not: Claude Code (no Anthropic Messages API), Codex CLI (no Responses API), "
+        "Kilo CLI (no chat completions), OpenCode (no chat completions)"
     )
 
 
@@ -117,10 +117,20 @@ def test_all_three_apis(serve):
     assert probe.clis()[1] == []
     lines = ms.lines(probe)
     assert lines[-1] == (
-        "CLIs: Kilo CLI, OpenCode (chat completions); Codex CLI (Responses API); "
-        "Claude Code (Anthropic Messages API)"
+        "CLIs: Claude Code (Anthropic Messages API); Codex CLI (Responses API); "
+        "Kilo CLI, OpenCode (chat completions)"
     )
     assert not any(line.startswith("not:") for line in lines)
+
+
+def test_the_clis_come_in_lados_order(serve):
+    """One order of the agent CLIs wherever LADO names them: the registry's (the UI's cards,
+    `lado model-server list`, a probe's lines), not the order of the APIs."""
+    titles = [ms.providers.get(name).title for name in ms.providers.names()]
+    suits, _ = ms.probe(serve("all").url).clis()
+    assert [t for t, _ in suits] == titles
+    _, not_suits = ms.probe(serve("models-only").url).clis()
+    assert [t for t, _ in not_suits] == titles
 
 
 def test_a_provider_without_an_api_is_left_out(serve, monkeypatch):
@@ -205,6 +215,46 @@ def test_an_anthropic_api_listing_only_with_its_header(serve):
     probe = ms.probe(serve("anthropic-versioned").url)
     assert (probe.kind, probe.models) == ("Anthropic-compatible", ("claude-x",))
     assert ms.lines(probe)[2] == "models: claude-x"
+    assert probe.models_why == ""  # a list: no why left over from the plain request
+
+
+def test_a_list_that_fails_both_ways_keeps_its_why(serve, monkeypatch):
+    monkeypatch.setitem(
+        fake.PROFILES,
+        "list-500-both",
+        {
+            ("GET", fake.MODELS): fake.Answer(500, {"error": "internal error"}),
+            ("GET", fake.MODELS, fake.VERSIONED): fake.Answer(500, {"error": "internal error"}),
+            ("POST", fake.MESSAGES): fake.ANTHROPIC_400,
+        },
+    )
+    probe = ms.probe(serve("list-500-both").url)
+    assert (probe.models, probe.models_why) == (None, "GET /v1/models: 500")
+
+
+@pytest.mark.parametrize(
+    ("profile", "field"),
+    [("closed", "address"), ("forbidden", "key"), ("unknown", "address")],
+)
+def test_a_probe_error_names_its_field(serve, profile, field):
+    if profile == "closed":
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            url = f"http://127.0.0.1:{s.getsockname()[1]}"
+    else:
+        url = serve(profile).url
+    with pytest.raises(ms.ProbeError) as raised:
+        ms.probe(url)
+    assert raised.value.field == field
+
+
+def test_a_refused_key_and_an_uncarriable_one_name_the_key(serve):
+    with pytest.raises(ms.ProbeError) as raised:
+        ms.probe(serve("openai", key="k-1").url, "wrong")
+    assert raised.value.field == "key"
+    with pytest.raises(ms.ProbeError) as raised:
+        ms.probe(serve("openai").url, "a\nb")
+    assert raised.value.field == "key"
 
 
 def test_the_list_without_the_header_wins(serve, monkeypatch):
@@ -305,8 +355,8 @@ def test_gateway_400_with_list_tells_no_api(serve):
         "models: m1",
         f"APIs: cannot be told: {server.url} answers 400 to any POST",
         "CLIs: none",
-        "not: Kilo CLI (no chat completions), OpenCode (no chat completions), "
-        "Codex CLI (no Responses API), Claude Code (no Anthropic Messages API)",
+        "not: Claude Code (no Anthropic Messages API), Codex CLI (no Responses API), "
+        "Kilo CLI (no chat completions), OpenCode (no chat completions)",
     ]
 
 

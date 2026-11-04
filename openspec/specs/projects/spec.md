@@ -1792,7 +1792,7 @@ one of the project's repositories: it SHALL NOT add, clone or make one.
 
 In Project, Name SHALL be the default name until the human edits it, with the folder
 check's notes for a taken name; Kits and Permission mode SHALL come from the repository's
-last session, as Folder takes them from a folder's, and Provider from the server's
+last session, as Folder takes them from a folder's, and Agent CLI from the server's
 suggestion. A refused start SHALL show the core's text, with `Resume it` or `Open it` as
 for a folder, only when the session that has the name is of this project.
 

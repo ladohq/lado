@@ -148,7 +148,7 @@ def test_start_session_and_the_sessions_block(page: Page, shop, server, shot):
         "radio", name=re.compile("^frontend")
     )
     expect(frontend).to_have_attribute("aria-checked", "true")
-    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Agent CLI").select_option("fake")
     dialog.get_by_role("button", name="Start in Shop").click()
     expect(page).to_have_url(f"{server['url']}/sessions/shop-frontend/activity")
     idle("shop-frontend")

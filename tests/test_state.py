@@ -2837,6 +2837,53 @@ def test_replacing_a_server_keeps_its_models(lado_home):
     assert not state.replace_model_server("nope", "http://x", "Ollama", ())
 
 
+def test_a_server_removed_with_its_models(lado_home):
+    _server()
+    _server("s2", "other")
+    state.add_model("sp", "kilo", "qwen3-8b", "s1")
+    state.add_model("Coder", "opencode", "qwen3-8b", "s1")
+    state.add_model("kept", "opencode", "qwen3-8b", "s2")
+    state.add_model("own", "claude", "haiku", None)
+    assert state.remove_model_server_with_models("s1") == ["Coder", "sp"]
+    assert [s.id for s in state.model_servers()] == ["s2"]
+    assert [m.name for m in state.models()] == ["kept", "own"]
+    assert state.remove_model_server_with_models("s1") is None
+
+
+def test_a_server_removed_with_the_models_confirmed_only(lado_home):
+    _server()
+    state.add_model("sp", "kilo", "qwen3-8b", "s1")
+    state.add_model("late", "opencode", "qwen3-8b", "s1")
+    with pytest.raises(state.ModelsChanged) as changed:
+        state.remove_model_server_with_models("s1", confirmed=["SP"])
+    assert changed.value.names == ["late", "sp"]
+    assert [m.name for m in state.models()] == ["late", "sp"]
+    assert state.model_server("LM Studio дома") is not None
+    assert state.remove_model_server_with_models("s1", confirmed=["Late", "sp"]) == ["late", "sp"]
+
+
+def test_a_model_renamed_keeps_its_cli_model_and_server(lado_home):
+    _server()
+    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
+    state.add_model("Other", "claude", "haiku", None)
+    assert state.rename_model("локальная qwen", "Сильная") is True
+    renamed = state.model("сильная")
+    assert (renamed.name, renamed.cli, renamed.model, renamed.server) == (
+        "Сильная",
+        "opencode",
+        "qwen3-8b",
+        "s1",
+    )
+    assert state.model("Локальная Qwen") is None
+    assert state.rename_model("Сильная", "СИЛЬНАЯ") is True  # its own name in another case
+    assert state.model("сильная").name == "СИЛЬНАЯ"
+    with pytest.raises(state.NameTaken) as taken:
+        state.rename_model("сильная", "other")
+    assert taken.value.name == "Other"
+    assert state.model("сильная").name == "СИЛЬНАЯ"
+    assert state.rename_model("nope", "x") is False
+
+
 def test_the_lists_are_sorted_ignoring_case(lado_home):
     for i, name in enumerate(["work", "LM Studio дома", "ext"]):
         _server(f"s{i}", name)

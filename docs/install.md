@@ -295,7 +295,7 @@ secrets. For clients that must not mix, run a separate LADO.
 
 Logins made inside the container stay on its home volume, through updates.
 
-The easiest way is the UI, also from a phone: **Settings → Providers and environment**
+The easiest way is the UI, also from a phone: **Settings → Agent CLIs and environment**
 shows for each CLI whether it is logged in, how and from where ("Logged in · Subscription
 (token) · LADO's secret"). For Claude Code, **Log in…** asks how you pay for Claude:
 **Subscription** (Claude Pro or Max): run `claude setup-token` on any computer where

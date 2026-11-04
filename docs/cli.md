@@ -249,7 +249,9 @@ When model servers are saved (`lado model-server add`), `lado doctor` prints one
 servers` line: all of them probed at once with their kept keys, so it takes one probe's
 time (about 10 s at most for a server that hangs). `ok` names each with its type
 (`LM Studio at home answers (LM Studio)`); `warn` names each that does not answer, asks for
-a key, refuses its key or is no server LADO knows, with the probe's reason, each key file
+a key, refuses its key or is no server LADO knows, with the probe's reason, each configured
+model on a server that answered with a list lacking its model (`model "<name>" (<model>) is
+not in <server>'s list of models`; never removed for it), each key file
 that is not a regular file, cannot be read or has a mode other than 600, and each folder of
 `<LADO_HOME>/model-servers/` of no saved server, as left over (also when none is saved). It
 never fails: doctor's exit status is as without it.
@@ -263,7 +265,7 @@ cli_auth_credentials_store="file"`, `opencode auth list`, `kilo auth list`; Code
 folder`, `login shell`, `the process that starts LADO`) or the CLI's own login file
 (`Claude Code's login file`, `Codex's login file`, or the file's path), e.g.
 `[ok] Claude Code login: Subscription (token) · LADO's secret`; `[warn] Claude Code login: not logged in: new
-sessions and workers of it are refused, a resumed agent waits (Settings → Providers and
+sessions and workers of it are refused, a resumed agent waits (Settings → Agent CLIs and
 environment)` for a CLI whose agents need one (Claude Code; Codex on OpenAI's models, its
 default, by the model provider of the user's Codex config); `[warn] Codex CLI login: not
 logged in: Your Codex keeps its login in the system keyring, which Codex agents cannot
@@ -278,13 +280,13 @@ name with why, never a value).
 A new session of a CLI that needs a login and has none, read in the environment its agents
 would get (with the project's secrets for `--project`), is refused with exit 1 before
 anything is stored: `lado: Claude Code is not logged in, so the session was not started: log
-in in LADO's UI (Settings → Providers and environment, `lado ui`), or set
+in in LADO's UI (Settings → Agent CLIs and environment, `lado ui`), or set
 CLAUDE_CODE_OAUTH_TOKEN as LADO's secret or a project secret` (Codex: `lado: Codex CLI is
 not logged in, so the session was not started: … or set OPENAI_API_KEY as LADO's secret or
 a project secret`). `lado start <git-url>` and
 `lado start --new` say so before the clone or the new folder when the provider is known
 (`--provider`, or the only one installed). A supervisor's `spawn_worker` of such a CLI gets
-`… so the worker was not started: ask the human to log in in Settings → Providers and
+`… so the worker was not started: ask the human to log in in Settings → Agent CLIs and
 environment, or start the worker with another provider`; each worker is checked by its own
 provider, so a Claude session's supervisor can still start Kilo workers. A resume by hand
 (`lado start` of a stopped session) is refused the same way by the provider of the
@@ -293,7 +295,7 @@ supervisor it starts: `lado: Claude Code is not logged in, so the session was no
 own resume is not refused (at the container's start, and `lado update`'s, which runs
 `lado start --wait-for-login`, a flag for LADO, not listed in `--help`): its Claude agent
 waits, and `lado ls` prints under it `waiting: Claude Code is not
-logged in: log in in Settings → Providers and environment, or set CLAUDE_CODE_OAUTH_TOKEN;
+logged in: log in in Settings → Agent CLIs and environment, or set CLAUDE_CODE_OAUTH_TOKEN;
 the agent starts by itself once you do`; it starts by itself once there is one. A login
 that cannot be read refuses nothing and holds no agent: `lado start` warns `cannot tell
 whether Claude Code is logged in: <why>; the agent starts all the same`.
@@ -559,13 +561,15 @@ refused that way too, the server answers every POST alike and no API counts. No 
 followed (it would carry the key to another host); proxies and `SSL_CERT_FILE` come from
 the environment. A CLI suits the server when the server proved the API its provider
 declares (`Provider.server_api`): chat completions for OpenCode and Kilo, the Responses API
-for Codex, the Anthropic Messages API for Claude Code; the type is only shown. Exit 0:
+for Codex, the Anthropic Messages API for Claude Code; the type is only shown. The CLIs come
+in LADO's order (Claude Code, Codex CLI, Kilo CLI, OpenCode), here and in `lado model-server
+list`, as in the UI. Exit 0:
 
 ```
 http://192.168.1.10:11434 (added http://)
 type: Ollama
 models: llama3.1:8b, qwen2.5-coder:7b
-CLIs: Kilo CLI, OpenCode (chat completions); Codex CLI (Responses API)
+CLIs: Codex CLI (Responses API); Kilo CLI, OpenCode (chat completions)
 not: Claude Code (no Anthropic Messages API)
 ```
 
@@ -641,7 +645,11 @@ one: lado model-server add <name> <address> [--key]`. `lado model-server remove 
 removes the server, its key file and folder: `Removed model server "<name>".`; while a
 configured model uses it, it is refused, changing nothing: `model server "<name>" is used by
 the models <model>, …; remove them first: lado model remove "<model>" …`, one command
-naming every model on it (exit 1). The three
+naming every model on it, and the hint `or remove them with it: lado model-server remove
+"<name>" --with-models` (exit 1). With `--with-models` it removes the models on the server
+and the server in one transaction, `Removed model "<model>".` a line for each, then the key
+folder and `Removed model server "<name>".` (Settings → Models removes a server so after
+its confirmation). The three
 commands migrate lado.db as `lado ls` does; `probe` alone does not.
 
 `lado model add <name> --cli <cli> --model <model> [--server <server>]` saves a configured

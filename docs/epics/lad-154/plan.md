@@ -255,6 +255,10 @@ Check:
 - The session's model is where an agent starts, not a limit (D44): whatever is chosen, a
   built-in model, an external one or nothing, an OpenCode or Kilo agent has its built-in
   models and every external model ticked for its CLI in `/model`; a test of each case.
+  Each server's provider is marked as LADO's (D45): an id `lado-…` from the server's
+  unchanging id, a label with LADO and the server's name in `/model` (which config field
+  shows it in each CLI: checked in the design); a model switched by `/model` is told by
+  that id and shown on the card as external.
   Claude Code and Codex hold one model per process: the choice there is per agent (S3g,
   S9a, S9b).
 - The launch window: the Model field stays optional in Advanced, S3f's picker, the list by

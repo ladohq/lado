@@ -34,8 +34,8 @@ export function kiloRow(installed = false): ProviderLogins {
   return { ...opencodeRow(), cli: { ...cli("kilo", "Kilo CLI"), installed } };
 }
 
-export const model = (name: string, cliName: string, title: string, m: string, server: string | null = null) =>
-  ({ name, cli: cliName, cli_title: title, model: m, server }) satisfies ConfiguredModelInfo;
+export const model = (name: string, cliName: string, title: string, m: string, server = "LM Studio дома") =>
+  ({ id: `id-${name}`, name, cli: cliName, cli_title: title, model: m, server }) satisfies ConfiguredModelInfo;
 
 export class ModelServer {
   entries: ModelSettings = { models: [], servers: [] };

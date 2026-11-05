@@ -397,6 +397,28 @@ export const renameModel = (name: string, to: string) => post<ModelSettings>(mod
 
 export const removeModel = (name: string) => post<ModelSettings>(modelPath(name), undefined, "DELETE");
 
+// What an agent CLI can run, as the core computes it (a list that cannot be read says why), and
+// the check of the built-in `model` against it; `fresh`: read now, else kept a minute.
+export type ModelChoices = components["schemas"]["ModelChoices"];
+export type CliDefault = components["schemas"]["CliDefault"];
+export type ModelDefaultSet = components["schemas"]["ModelDefaultSet"];
+export type ModelDefaultSaved = components["schemas"]["ModelDefaultSaved"];
+export const getModelChoices = (name: string, model = "", fresh = false) =>
+  get<ModelChoices>(
+    `/api/providers/${encodeURIComponent(name)}/model-choices?${query({
+      model,
+      ...(fresh ? { fresh: "true" } : {}),
+    })}`,
+  );
+
+const modelDefaultPath = (cli: string) => `/api/model-defaults/${encodeURIComponent(cli)}`;
+
+// Set an agent CLI's default model by reference: a saved model's id, or the CLI's own name.
+export const setModelDefault = (cli: string, given: ModelDefaultSet) =>
+  post<ModelDefaultSaved>(modelDefaultPath(cli), given, "PUT");
+
+export const clearModelDefault = (cli: string) => post<ModelSettings>(modelDefaultPath(cli), undefined, "DELETE");
+
 // A failed request of Settings → Models as a refusal: the API's EntryRefused, or any other
 // error's message with no field.
 export function refusalOf(error: unknown): EntryRefused {

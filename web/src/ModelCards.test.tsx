@@ -75,6 +75,8 @@ test("the blocks are Your agent CLIs then Model servers; the lead says how to ad
   mount();
   await card("OpenCode");
   expect(screen.getByText(LEAD)).toBeTruthy();
+  expect(LEAD).toMatch(/^New sessions and workers of each agent CLI start on its default model\. /);
+  expect(LEAD_NO_MODELS).toMatch(/^New sessions and workers of each agent CLI start on its default model\. /);
 });
 
 test("a model of a CLI LADO does not know has a card of its own, its field off", async () => {
@@ -759,12 +761,12 @@ test("five models and a removed row: no Show all, as nothing is folded", async (
   expect(names(opencode)).toHaveLength(5);
 });
 
-test("the page says nothing of sessions using a default", async () => {
+test("the page says new sessions and workers start on a default", async () => {
   server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN, true)] };
   mount();
   await card("OpenCode");
   const text = (document.querySelector(".setting.mx") as HTMLElement).textContent ?? "";
-  expect(text).not.toMatch(/session/i);
+  expect(text).toContain("New sessions and workers of each agent CLI start on its default model.");
 });
 
 test("Other name: the check of the typed name is a status tied to its field; the saved one's warning waits", async () => {

@@ -382,6 +382,34 @@ test("an agent's page names its model in the head and its model and effort first
   expect(effort.textContent).toBe("high · your Codex config, profile work");
 });
 
+test.each([
+  ["chosen for the session", "session"],
+  ["default in Settings", "default"],
+  ["changed in the agent CLI", "cli-changed"],
+])("an agent on a server's model names it, its id, server and address: %s", async (words, source) => {
+  const model = {
+    name: "qwen3-8b",
+    source,
+    detail: null,
+    words,
+    configured: "Локальная Qwen",
+    server: "LM Studio дома",
+    address: "http://localhost:1234",
+  };
+  serve({ agents: [SUPERVISOR, agent("developer", { provider: "opencode", model })] });
+  open("/sessions/lado/agents/developer");
+  const region = await page("developer");
+  expect(within(region).getByRole("banner").textContent).toContain("developer · opencode · Локальная Qwen");
+  const fact = region.querySelector("dl dd")!;
+  expect(fact.textContent).toBe(
+    `Локальная Qwen · qwen3-8b · server LM Studio дома, http://localhost:1234 · ${words}`,
+  );
+  expect([...fact.querySelectorAll("code")].map((code) => code.textContent)).toEqual([
+    "qwen3-8b",
+    "http://localhost:1234",
+  ]);
+});
+
 test("an agent whose CLI has named no model says CLI default, with no name", async () => {
   serve({ agents: [SUPERVISOR, agent("developer", { provider: "kilo" })] });
   open("/sessions/lado/agents/developer");

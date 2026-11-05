@@ -197,7 +197,7 @@ function AgentPage({ session, agent, lists }: { session: string; agent: AgentInf
         <div className="agent-title">
           <h3>{agent.name}</h3>
           <span className="muted">
-            {agent.role} · {agent.provider} · {agent.model.name ?? "CLI default model"}
+            {agent.role} · {agent.provider} · {agent.model.configured ?? agent.model.name ?? "CLI default model"}
           </span>
         </div>
         <p className="agent-now">
@@ -284,9 +284,21 @@ function AgentPage({ session, agent, lists }: { session: string; agent: AgentInf
 }
 
 // An agent's model or effort: its name, then where it came from in the server's words; only
-// those words while the CLI has named none.
+// those words while the CLI has named none. A model of a saved server says its saved name, its
+// id and the server first.
 function ModelFact({ fact }: { fact: ModelInfo }) {
   if (fact.name === null) return <span className="muted">{fact.words}</span>;
+  if (fact.configured)
+    return (
+      <>
+        <b>{fact.configured}</b>
+        <span className="muted"> · </span>
+        <code>{fact.name}</code>
+        <span className="muted">{` · server ${fact.server}, `}</span>
+        <code>{fact.address}</code>
+        <span className="muted"> · {fact.words}</span>
+      </>
+    );
   return (
     <>
       <code>{fact.name}</code>

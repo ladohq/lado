@@ -1565,3 +1565,90 @@ def test_the_line_follows_the_project_secrets(serve, monkeypatch):
     _saved("lab", serve("openai"))
     found = [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
     assert "Model servers" in found
+    assert "Default models" not in found  # no default set
+
+
+def _default_on_server(name, cli, model):
+    server = state.model_server(name)
+    saved = state.add_model(f"{model} saved", cli, model, server.id)
+    state.set_cli_default(state.ModelRef(cli, saved.id, None))
+
+
+def _listing(monkeypatch, *models):
+    listed = providers.base.ModelList(models=models, command="codex debug models")
+    monkeypatch.setattr(type(providers.get("codex")), "model_list", lambda self, env: listed)
+
+
+def test_no_default_no_line(serve):
+    _saved("lab", serve("openai"))
+    assert doctor.check_default_models({}) is None
+
+
+def test_a_default_on_a_server_that_has_it(serve):
+    server = serve("openai")
+    _saved("lab", server)
+    known = fake_model_server.PROFILES["openai"][("GET", fake_model_server.MODELS)].body
+    _default_on_server("lab", "opencode", known["data"][0]["id"])
+    probes = {}
+    doctor.check_model_servers(probes)
+    found = doctor.check_default_models(probes)
+    assert found.level == doctor.OK and "OpenCode" in found.detail
+
+
+def test_a_default_on_a_silent_server_is_named(serve):
+    server = serve("openai")
+    _saved("lab", server)
+    _default_on_server("lab", "opencode", "qwen3-8b")
+    server.close()
+    probes = {}
+    doctor.check_model_servers(probes)
+    found = doctor.check_default_models(probes)
+    assert found.name == "Default models" and found.level == doctor.WARN
+    assert "OpenCode's default qwen3-8b saved" in found.detail
+    assert "lab does not answer" in found.detail
+
+
+def test_a_default_its_server_lacks_is_named(serve):
+    _saved("lab", serve("openai"))
+    _default_on_server("lab", "opencode", "no-such-model")
+    probes = {}
+    doctor.check_model_servers(probes)
+    found = doctor.check_default_models(probes)
+    assert found.level == doctor.WARN
+    assert "no-such-model is not in lab's list of models" in found.detail
+
+
+def test_the_defaults_ask_each_server_no_more_than_the_servers_line(serve, monkeypatch):
+    _saved("lab", serve("openai"))
+    _default_on_server("lab", "opencode", "qwen3-8b")
+    asked = []
+    real = model_settings.probe_saved
+    monkeypatch.setattr(
+        model_settings, "probe_saved", lambda server: asked.append(server.name) or real(server)
+    )
+    probes = {}
+    doctor.check_model_servers(probes)
+    doctor.check_default_models(probes)
+    assert asked == ["lab"]
+
+
+def test_a_built_in_default_the_list_lost_is_named(monkeypatch):
+    state.set_cli_default(state.ModelRef("codex", None, "gpt-5.4-old"))
+    _listing(monkeypatch, "gpt-5.6-sol")
+    found = doctor.check_default_models({})
+    assert found.level == doctor.WARN
+    assert found.detail == "Codex CLI's default gpt-5.4-old: its list no longer has it"
+
+
+def test_a_built_in_default_the_list_has_is_fine(monkeypatch):
+    state.set_cli_default(state.ModelRef("codex", None, "gpt-5.6-sol"))
+    _listing(monkeypatch, "gpt-5.6-sol")
+    assert doctor.check_default_models({}).level == doctor.OK
+
+
+def test_the_line_of_the_defaults_is_in_the_checks(monkeypatch):
+    _versions(monkeypatch)
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+    state.set_cli_default(state.ModelRef("codex", None, "gpt-5.6-sol"))
+    _listing(monkeypatch, "gpt-5.6-sol")
+    assert "Default models" in [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]

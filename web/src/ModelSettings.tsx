@@ -41,9 +41,9 @@ import { keepAtTop, useScrollAnchor } from "./useScrollAnchor";
 
 export const INTRO = "Choose a default model for each agent CLI, and add the models of your own servers.";
 export const LEAD =
-  "A default model for each agent CLI. Left on its settings, the agent CLI chooses. Your models come from the model servers below.";
+  "New sessions and workers of each agent CLI start on its default model. Left on its settings, the agent CLI chooses. Your models come from the model servers below.";
 export const LEAD_NO_MODELS =
-  "A default model for each agent CLI. To add models of your own, add a model server below and tick the agent CLIs that run them.";
+  "New sessions and workers of each agent CLI start on its default model. To add models of your own, add a model server below and tick the agent CLIs that run them.";
 // Reads of the CLIs' rows at most while they are not read yet.
 const LOGIN_POLLS = 30;
 // How long a model removed by × offers Undo; its row then stays as a line.

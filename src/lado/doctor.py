@@ -18,6 +18,7 @@ from lado import (
     gui_session,
     kits,
     logins,
+    model_check,
     model_servers,
     model_settings,
     project_secrets,
@@ -800,15 +801,19 @@ def check_project_secrets() -> Check | None:
     return Check("Project secrets", WARN, "; ".join(lines)) if lines else None
 
 
-def check_model_servers() -> Check | None:
+def check_model_servers(
+    probes: dict[str, model_servers.Probe | None] | None = None,
+) -> Check | None:
     """The saved model servers (lado.model_settings), all probed at once with their keys:
     which answer, which do not and why, each configured model on a server whose list lacks
     its model, each key file that is not a regular file of mode
     600, and each folder of the keys' that is no saved server's (left over, by a lado.db
     rolled back or a removal the disk refused). Never FAIL: a server in the network being
     off is not LADO's to fix. None with neither a server nor a left-over folder; lado.db is
-    read as it is, never made or migrated."""
+    read as it is, never made or migrated. `probes` gets each server's probe by its id, None
+    for one that failed, for check_default_models."""
     name = "Model servers"
+    probes = {} if probes is None else probes
     servers: list[state.ModelServer] = []
     if state.schema_version() is not None:
         try:
@@ -830,8 +835,9 @@ def check_model_servers() -> Check | None:
     models = state.models() if servers else []
 
     def probed(server: state.ModelServer) -> tuple[bool, list[str]]:
+        probes[server.id] = None
         try:
-            found = model_settings.probe_saved(server)
+            found = probes[server.id] = model_settings.probe_saved(server)
         except (model_servers.ProbeError, model_settings.Refused) as exc:
             text = str(exc)
             if text.startswith(server.address + " "):
@@ -852,6 +858,42 @@ def check_model_servers() -> Check | None:
     lines = [text for _, texts in answers for text in texts] + files + left
     fine = all(ok for ok, _ in answers) and not files and not left
     return Check(name, OK if fine else WARN, "; ".join(lines))
+
+
+def check_default_models(probes: dict[str, model_servers.Probe | None]) -> Check | None:
+    """Whether each agent CLI's default model can start, by `probes` of check_model_servers,
+    asking no server again: a server that does not answer, one whose list lacks the model, a
+    built-in name its CLI no longer lists. Never FAIL: the start refuses it, with its way out.
+    None with no default; lado.db is read as it is, never made or migrated."""
+    name = "Default models"
+    if state.schema_version() is None:
+        return None
+    try:
+        defaults = model_settings.defaults()
+        by_name = {server.name: server for server in state.model_servers()}
+    except state.SchemaError:
+        return None
+    if not defaults:
+        return None
+    lines = []
+    for default in defaults:
+        title = model_settings.cli_title(default.ref.cli)
+        said = f"{title}'s default {default.name}"
+        if default.server is not None:
+            found = probes.get(by_name[default.server].id)
+            if found is None:
+                lines.append(f"{said}: {default.server} does not answer")
+            elif found.models is not None and default.model not in found.models:
+                lines.append(f"{said}: {default.model} is not in {default.server}'s list of models")
+        elif default.ref.cli in providers.names():
+            provider = providers.get(default.ref.cli)
+            listed = provider.model_list(agent_env.resolve(None, provider.login_variables))
+            if model_check.verdict(provider, default.model, listed).kind == model_check.REFUSED:
+                lines.append(f"{said}: its list no longer has it")
+    if lines:
+        return Check(name, WARN, "; ".join(lines))
+    words = [f"{model_settings.cli_title(d.ref.cli)}: {d.name}" for d in defaults]
+    return Check(name, OK, "; ".join(words))
 
 
 def _key_file_problem(server: state.ModelServer) -> str:
@@ -878,7 +920,9 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
     lado_secrets = check_lado_secrets()
     overridden = check_project_variables()
     unused_secrets = check_project_secrets()
-    servers = check_model_servers()
+    probes: dict[str, model_servers.Probe | None] = {}
+    servers = check_model_servers(probes)
+    default_models = check_default_models(probes)
     author = check_git_author()
     database = check_database()
     return [
@@ -895,6 +939,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         *([overridden] if overridden else []),
         *([unused_secrets] if unused_secrets else []),
         *([servers] if servers else []),
+        *([default_models] if default_models else []),
         *([graphical] if graphical else []),
         *check_agent_env(),
         check_config_folders(),

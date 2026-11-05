@@ -3,11 +3,40 @@
 // each request recorded; a test sets an answer of its own by "METHOD path".
 import { vi } from "vitest";
 
-import type { ConfiguredModelInfo, ModelServerInfo, ModelSettings, ProbeInfo, ProviderLogins } from "./api";
+import type {
+  CliDefault,
+  ConfiguredModelInfo,
+  ModelChoices,
+  ModelServerInfo,
+  ModelSettings,
+  ProbeInfo,
+  ProviderLogins,
+} from "./api";
 import { claudeRow, cli, codexRow, opencodeRow } from "./fakes";
 
 export type Call = { method: string; path: string; body: unknown };
-type Added = { name: string | null; cli: string; model: string; server: string | null };
+type Added = { name: string | null; cli: string; model: string; server: string };
+
+// An agent CLI's default as the API gives it: a built-in model, or a configured one.
+export const builtinDefault = (cliName: string, name: string, wholeProcess = false): CliDefault => ({
+  cli: cliName,
+  external: null,
+  builtin: name,
+  name,
+  model: name,
+  server: null,
+  whole_process: wholeProcess,
+});
+
+export const externalDefault = (saved: ConfiguredModelInfo, wholeProcess = false): CliDefault => ({
+  cli: saved.cli,
+  external: saved.id,
+  builtin: null,
+  name: saved.name,
+  model: saved.model,
+  server: saved.server,
+  whole_process: wholeProcess,
+});
 
 export const LMSTUDIO_PROBE: ProbeInfo = {
   kind: "LM Studio",
@@ -38,9 +67,17 @@ export const model = (name: string, cliName: string, title: string, m: string, s
   ({ id: `id-${name}`, name, cli: cliName, cli_title: title, model: m, server }) satisfies ConfiguredModelInfo;
 
 export class ModelServer {
-  entries: ModelSettings = { models: [], servers: [] };
+  private saved: ModelSettings = { models: [], servers: [], defaults: [] };
+  get entries(): ModelSettings {
+    return this.saved;
+  }
+  // A test where no default plays a part gives none.
+  set entries(given: Omit<ModelSettings, "defaults"> & { defaults?: CliDefault[] }) {
+    this.saved = { defaults: [], ...given };
+  }
   logins: ProviderLogins[] = [claudeRow({ login: { ...claudeRow().login, state: "yes" } }), codexRow(), opencodeRow(), kiloRow()];
   probes: Record<string, ProbeInfo | (() => Response | Promise<Response>)> = {};
+  lists: Record<string, Partial<ModelChoices>> = {}; // by CLI, over a list of `a/one`, `b/two`
   calls: Call[] = [];
   answers: Record<string, (body: unknown) => Response | Promise<Response>> = {};
 
@@ -72,6 +109,23 @@ export class ModelServer {
       });
     if (where.startsWith("/api/providers/") && where.endsWith("/models"))
       return json({ aliases: [], models: ["gpt-5-codex"], why: "", check: { kind: "default", text: "", field: "" } });
+    const listOf = where.match(/^\/api\/providers\/(.+)\/model-choices$/);
+    if (listOf) return json(this.choices(listOf[1], new URLSearchParams(path.split("?")[1] ?? "").get("model") ?? ""));
+    const defaultOf = where.match(/^\/api\/model-defaults\/(.+)$/);
+    if (defaultOf && method === "PUT") {
+      const given = body as { external?: string; builtin?: string };
+      const saved = this.entries.models.find((m) => m.id === given.external);
+      const set = saved ? externalDefault(saved) : builtinDefault(defaultOf[1], given.builtin ?? "");
+      this.entries = {
+        ...this.entries,
+        defaults: [...this.entries.defaults.filter((d) => d.cli !== defaultOf[1]), set],
+      };
+      return json({ settings: this.entries, check: saved ? null : { kind: "ok", text: "fine", field: "", name: "" } });
+    }
+    if (defaultOf && method === "DELETE") {
+      this.entries = { ...this.entries, defaults: this.entries.defaults.filter((d) => d.cli !== defaultOf[1]) };
+      return json(this.entries);
+    }
     const probed = where.match(/^\/api\/model-servers\/(.+)\/probe$/);
     if (probed && method === "POST") {
       const found = this.probes[probed[1]];
@@ -87,7 +141,12 @@ export class ModelServer {
     }
     const named = where.match(/^\/api\/models\/(.+)$/);
     if (named && method === "DELETE") {
-      this.entries = { ...this.entries, models: this.entries.models.filter((m) => m.name !== named[1]) };
+      const gone = this.entries.models.find((m) => m.name === named[1]);
+      this.entries = {
+        ...this.entries,
+        models: this.entries.models.filter((m) => m.name !== named[1]),
+        defaults: this.entries.defaults.filter((d) => d.external !== gone?.id),
+      };
       return json(this.entries);
     }
     if (named && method === "PATCH") {
@@ -140,6 +199,7 @@ export class ModelServer {
       this.entries = {
         models: this.entries.models.filter((m) => m.server !== server[1]),
         servers: this.entries.servers.filter((s) => s.name !== server[1]),
+        defaults: this.entries.defaults.filter((d) => d.server !== server[1]),
       };
       return json(this.entries);
     }
@@ -152,13 +212,38 @@ export class ModelServer {
     return json({ detail: `no fake for ${method} ${path}` }, 404);
   }
 
+  // The core's list in short: the CLI's own, its configured models, and a model checked as the
+  // core does: listed, refused, or warned of with no list.
+  choices(name: string, asked: string): ModelChoices {
+    const list: ModelChoices = {
+      aliases: [],
+      models: ["a/one", "b/two"],
+      why: "",
+      external: this.entries.models.filter((m) => m.cli === name),
+      other_name: false,
+      whole_process: false,
+      read_again: true,
+      check: { kind: "default", text: "", field: "", name: "" },
+      ...this.lists[name],
+    };
+    const kind =
+      asked === ""
+        ? "default"
+        : list.aliases.includes(asked) || list.models?.includes(asked)
+          ? "ok"
+          : list.models === null
+            ? "warn"
+            : "refused";
+    const text = kind === "warn" ? `${list.why}: LADO cannot check ${asked}` : "";
+    return { ...list, check: { kind, text, field: "", name: "" } };
+  }
+
   title = (cli: string) => this.logins.find((r) => r.cli.name === cli)?.cli.title ?? cli;
   taken = (name: string) => this.entries.models.some((m) => m.name.toLowerCase() === name.toLowerCase());
 
-  // The core's default name in short: `<model> · <server> · <CLI title>` on a server, else
-  // the model, then ` (default)`; ` (2)` when taken.
+  // The core's default name in short: `<model> · <server> · <CLI title>`; ` (2)` when taken.
   named(given: Added): string {
-    const base = given.server ? `${given.model} · ${given.server} · ${this.title(given.cli)}` : `${given.model} (default)`;
+    const base = `${given.model} · ${given.server} · ${this.title(given.cli)}`;
     return this.taken(base) ? `${base} (2)` : base;
   }
 

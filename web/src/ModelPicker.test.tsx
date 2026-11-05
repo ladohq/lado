@@ -32,6 +32,7 @@ const choices = (given: Partial<ModelChoices> = {}): ModelChoices => ({
 
 const list = (given: Partial<ModelRead> = {}): ModelRead => ({
   choices: choices(),
+  checked: "",
   reading: false,
   problem: null,
   read: vi.fn(),

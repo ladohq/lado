@@ -1,15 +1,13 @@
 // Settings → Models, where models come from (docs/design/ui.md, Models): the block Model
-// servers, every saved server by name then Add server, and the block Models of your agent
-// CLIs, every agent CLI LADO knows, the ones not installed last. A source opens from its whole
-// row; opening it reads its models now (a CLI's aliases and own list through the launch
-// window's route with `fresh`, a server's by a probe with its kept key), ↻ reads them again;
-// nothing is read before and no list outlives the page. A list's order is set when it is read
-// (the source's configured models first) and no tick changes it; it is bounded and scrolls
-// within itself. A CLI's model has one tick; a server's model opens under its row the
-// installed CLIs that can run it, a tick each, with the name a tick would save (the core's).
-// A tick is on exactly when a configured model has that CLI, model and server: ticking saves
-// one, unticking removes it with no Undo (a tick again brings it back under its name while the
-// page stays open). A server shows its list, its Change form or its Remove question, one at a
+// servers, every saved server by name then Add server. A source opens from its whole row;
+// opening it reads its models now by a probe with its kept key, ↻ reads them again; nothing is
+// read before and no list outlives the page. A list's order is set when it is read (the
+// source's configured models first) and no tick changes it; it is bounded and scrolls within
+// itself. A server's model opens under its row the installed CLIs that can run it, a tick each,
+// with the name a tick would save (the core's). A tick is on exactly when a configured model
+// has that CLI, model and server: ticking saves one, unticking removes it with no Undo (a tick
+// again brings it back under its name while the page stays open), after a question when it is
+// its CLI's default. A server shows its list, its Change form or its Remove question, one at a
 // time. A server added takes the form's place, one removed leaves a line in its own.
 import { type MutableRefObject, type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
 
@@ -18,17 +16,16 @@ import {
   addModelServer,
   checkModel,
   checkModelServer,
+  type CliDefault,
   type ConfiguredModelInfo,
   type EntryRefused,
   getModelSettings,
-  getProviderModels,
   type ModelCheck,
   type ModelServerInfo,
   type ModelSettings,
   type ProbeInfo,
   probeModelServer,
   type ProviderLogins,
-  type ProviderModels,
   refusalOf,
   removeModel,
   removeModelServer,
@@ -44,16 +41,10 @@ const SHORT = 20; // a server's list this long shows whole on a phone
 
 export const SERVERS_LEAD =
   "LM Studio, Ollama, vLLM, LiteLLM or another OpenAI-compatible server. Type its address: LADO finds its type, its models and the agent CLIs that can use it.";
-export const CLIS_LEAD =
-  "The aliases and lists each agent CLI offers. A tick saves a model under a name you can change.";
 
-// A source's models as last read: reading, a CLI's list or a server's probe with the order
-// set at that read, or why not.
-export type Read =
-  | { reading: true }
-  | { cli: ProviderModels; order: string[] }
-  | { probe: ProbeInfo; order: string[] }
-  | { refused: EntryRefused };
+// A source's models as last read: reading, a server's probe with the order set at that read,
+// or why not.
+export type Read = { reading: true } | { probe: ProbeInfo; order: string[] } | { refused: EntryRefused };
 
 // After a server was saved or changed here: the lines its source shows (`added`: it was added
 // now, so its list says how to go on).
@@ -83,16 +74,14 @@ export type Sources = {
   onName: (key: string, name: string | null) => void;
 };
 
-export const cliKey = (name: string) => `cli:${name}`;
 export const serverKey = (name: string) => `server:${name.toLowerCase()}`;
 const fold = (text: string) => text.toLowerCase();
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
-const tickKey = (cli: string, model: string, server: string | null) => `${cli}\n${model}\n${fold(server ?? "")}`;
+const tickKey = (cli: string, model: string, server: string) => `${cli}\n${model}\n${fold(server)}`;
 
-// The configured models of `model` of `cli` on `server` (null: the CLI's own way); a
-// server's name is found ignoring case.
-const ticked = (models: ConfiguredModelInfo[], cli: string, model: string, server: string | null) =>
-  models.filter((m) => m.cli === cli && m.model === model && fold(m.server ?? "") === fold(server ?? ""));
+// The configured models of `model` of `cli` on `server`, its name found ignoring case.
+const ticked = (models: ConfiguredModelInfo[], cli: string, model: string, server: string) =>
+  models.filter((m) => m.cli === cli && m.model === model && fold(m.server) === fold(server));
 
 // The tick of `model` of `cli` on `server`: on when a configured model has them; with
 // several, the names of them all (the tick is then disabled).
@@ -100,7 +89,7 @@ export function tickState(
   models: ConfiguredModelInfo[],
   cli: string,
   model: string,
-  server: string | null,
+  server: string,
 ): { on: boolean; several: string[] } {
   const same = ticked(models, cli, model, server);
   return {
@@ -109,23 +98,21 @@ export function tickState(
   };
 }
 
-// The configured models a source gave: a CLI's own (no server), or a server's.
-const fromSource = (models: ConfiguredModelInfo[], cli: string | null, server: string | null) =>
-  models.filter((m) => (server === null ? m.server === null && m.cli === cli : fold(m.server ?? "") === fold(server)));
+// The configured models on a server.
+const fromSource = (models: ConfiguredModelInfo[], server: string) =>
+  models.filter((m) => fold(m.server) === fold(server));
 
 // The models a read list holds, embeddings left out (null: it gave no list, so none is
 // missing from it).
 export function listed(read: Read | undefined): Set<string> | null {
   if (!read) return null;
-  if ("cli" in read) return read.cli.models === null ? null : new Set([...read.cli.aliases, ...read.cli.models]);
   if ("probe" in read) return read.probe.models === null ? null : new Set(read.probe.models);
   return null;
 }
 
-const listOf = (found: { cli: ProviderModels } | { probe: ProbeInfo }): string[] => {
-  if ("cli" in found) return [...new Set([...found.cli.aliases, ...(found.cli.models ?? [])])];
-  const embeddings = new Set(found.probe.embeddings);
-  return (found.probe.models ?? []).filter((m) => !embeddings.has(m));
+const listOf = (probe: ProbeInfo): string[] => {
+  const embeddings = new Set(probe.embeddings);
+  return (probe.models ?? []).filter((m) => !embeddings.has(m));
 };
 
 // A list's order at its read: the models of the source's configured models it no longer
@@ -149,41 +136,18 @@ function useReads(props: Sources) {
   const { latest } = props;
   const models = useRef(props.settings.models); // the entries a read's order is set from
   models.current = props.settings.models;
-  const read = (
-    key: string,
-    own: (models: ConfiguredModelInfo[]) => ConfiguredModelInfo[],
-    ask: () => Promise<Read>,
-  ) => {
+  const readServer = (name: string) => {
+    const key = serverKey(name);
     const asked = nextRead(latest, key);
     props.onRead(key, { reading: true });
-    ask().then(
-      (found) => {
+    probeModelServer(name).then(
+      (probe) => {
         if (latest.current[key] !== asked) return;
-        if ("cli" in found || "probe" in found)
-          found = {
-            ...found,
-            order: orderOf(listOf(found), own(models.current)),
-          };
-        props.onRead(key, found);
+        props.onRead(key, { probe, order: orderOf(listOf(probe), fromSource(models.current, name)) });
       },
       (error: unknown) => latest.current[key] === asked && props.onRead(key, { refused: refusalOf(error) }),
     );
   };
-  const readCli = (name: string) =>
-    read(
-      cliKey(name),
-      (all) => fromSource(all, name, null),
-      async () => ({
-        cli: await getProviderModels(name, "", null, true),
-        order: [],
-      }),
-    );
-  const readServer = (name: string) =>
-    read(
-      serverKey(name),
-      (all) => fromSource(all, null, name),
-      async () => ({ probe: await probeModelServer(name), order: [] }),
-    );
   const close = (key: string) => {
     props.onOpen(key, false);
     nextRead(latest, key); // no late answer fills it
@@ -202,11 +166,11 @@ function useReads(props: Sources) {
     props.onOpen(key, true);
     props.onRead(key, {
       probe,
-      order: orderOf(listOf({ probe }), fromSource(models.current, null, name)),
+      order: orderOf(listOf(probe), fromSource(models.current, name)),
     });
     props.onSaved(key, saved);
   };
-  return { readCli, readServer, close, toggle, filled };
+  return { readServer, close, toggle, filled };
 }
 
 export function ModelServers(props: Sources) {
@@ -289,37 +253,7 @@ export function ModelServers(props: Sources) {
   );
 }
 
-export function CliModels(props: Sources) {
-  const reads = useReads(props);
-  const off = (row: ProviderLogins) => row.ready && !row.cli.installed;
-  const rows = [...props.logins.filter((r) => !off(r)), ...props.logins.filter(off)];
-  return (
-    <div className="mx-block">
-      <h3>Models of your agent CLIs</h3>
-      <p className="mx-lead">{CLIS_LEAD}</p>
-      <ul className="mx-srcs">
-        {rows.map((row) => {
-          const key = cliKey(row.cli.name);
-          const open = props.open.has(key);
-          return (
-            <li key={key} className={`mx-src${open ? " mx-open" : ""}${off(row) ? " mx-off" : ""}`} data-anchor="">
-              <CliSource
-                row={row}
-                sources={props}
-                open={open}
-                read={props.reads[key]}
-                onToggle={() => reads.toggle(key, () => reads.readCli(row.cli.name))}
-                onRefresh={() => reads.readCli(row.cli.name)}
-              />
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-function loginWord(row: ProviderLogins): string {
+export function loginWord(row: ProviderLogins): string {
   if (!row.ready) return "";
   if (!row.cli.installed) return "not installed";
   if (row.login.state === "no") return "not logged in";
@@ -334,7 +268,6 @@ function SourceHead({
   title,
   badges,
   open,
-  off,
   tip,
   focus,
   onToggle,
@@ -344,7 +277,6 @@ function SourceHead({
   title: string;
   badges?: ReactNode;
   open: boolean;
-  off: boolean;
   tip?: string;
   focus?: boolean;
   onToggle: () => void;
@@ -365,7 +297,6 @@ function SourceHead({
         aria-expanded={open}
         aria-label={title}
         aria-describedby={id}
-        disabled={off}
         onClick={onToggle}
       >
         <span className="mx-disc" aria-hidden="true">
@@ -388,52 +319,6 @@ function SourceHead({
       </button>
       {acts && <span className="mx-acts">{acts}</span>}
     </div>
-  );
-}
-
-const joined = (parts: (string | false)[]) => parts.filter(Boolean).join(" · ");
-
-function CliSource({
-  row,
-  sources,
-  open,
-  read,
-  onToggle,
-  onRefresh,
-}: {
-  row: ProviderLogins;
-  sources: Sources;
-  open: boolean;
-  read: Read | undefined;
-  onToggle: () => void;
-  onRefresh: () => void;
-}) {
-  const cli = row.cli;
-  const off = row.ready && !cli.installed;
-  const own = fromSource(sources.settings.models, cli.name, null);
-  // What the CLI gives, once its list was read here: aliases only, or a list of its own.
-  const kind =
-    read && "cli" in read ? (read.cli.models !== null ? "its list" : read.cli.aliases.length ? "aliases" : "") : "";
-  return (
-    <>
-      <SourceHead title={cli.title} open={open} off={off} onToggle={onToggle}>
-        {joined([kind, loginWord(row), own.length > 0 && `${own.length} added`])}
-      </SourceHead>
-      {open && (
-        <div className="mx-body">
-          <SourceBody
-            read={read}
-            sources={sources}
-            cli={{ name: cli.name, title: cli.title }}
-            server={null}
-            columns={[]}
-            own={own}
-            hint={false}
-            onRefresh={onRefresh}
-          />
-        </div>
-      )}
-    </>
   );
 }
 
@@ -466,7 +351,7 @@ function ServerSource({
 }) {
   const [mode, setMode] = useState<"change" | "remove" | null>(null);
   const open = sources.open.has(serverKey(server.name));
-  const own = fromSource(sources.settings.models, null, server.name);
+  const own = fromSource(sources.settings.models, server.name);
   const probe = read && "probe" in read ? read.probe : null;
   const columns: Column[] = (probe?.clis ?? []).filter((c) => installed(c.name));
   // One of the list, Change and Remove at a time.
@@ -489,7 +374,6 @@ function ServerSource({
           </>
         }
         open={open}
-        off={false}
         tip={server.address}
         focus={focus}
         onToggle={() => {
@@ -542,6 +426,7 @@ function ServerSource({
         <RemoveServer
           server={server}
           own={own}
+          defaults={sources.settings.defaults}
           onTouch={sources.onTouch}
           onCancel={() => setMode(null)}
           onChanged={sources.onChanged}
@@ -571,7 +456,6 @@ function ServerSource({
           <SourceBody
             read={read}
             sources={sources}
-            cli={null}
             server={server.name}
             columns={columns}
             own={own}
@@ -590,7 +474,6 @@ function ServerSource({
 function SourceBody({
   read,
   sources,
-  cli,
   server,
   columns,
   own,
@@ -599,8 +482,7 @@ function SourceBody({
 }: {
   read: Read | undefined;
   sources: Sources;
-  cli: Column | null; // a CLI's source, else a server's (`server`, `columns`)
-  server: string | null;
+  server: string;
   columns: Column[];
   own: ConfiguredModelInfo[];
   hint: boolean; // say how to go on: the server was just added
@@ -614,6 +496,8 @@ function SourceBody({
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [pop, setPop] = useState<string | null>(null);
+  // A tick off on its CLI's default: asked first, the tick staying on until the answer.
+  const [asking, setAsking] = useState<ConfiguredModelInfo | null>(null);
   // The name a tick would save under each CLI of the open server model, by the core.
   const [would, setWould] = useState<{
     model: string;
@@ -623,7 +507,7 @@ function SourceBody({
   useEffect(() => {
     // Another model's names go; this one's stay until the core answers again (nothing moves).
     setWould((now) => (pop === null ? null : now?.model === pop ? now : { model: pop, by: {} }));
-    if (pop === null || server === null) return;
+    if (pop === null) return;
     let current = true;
     for (const name of columnNames.split(" ").filter(Boolean))
       checkModel({ name: null, cli: name, model: pop, server }).then(
@@ -665,7 +549,7 @@ function SourceBody({
           {`⚠ ${read.refused.message}`}
           {read.refused.hint && <span className="mx-hint">{read.refused.hint}</span>}
         </span>
-        {server !== null && stay.length > 0 && (
+        {stay.length > 0 && (
           <p className="mx-note">
             {stay.length === 1 ? "Its model stays saved: " : "Its models stay saved: "}
             <b>{stay.join(", ")}</b>. Agents on it stop at their first turn until the server answers.
@@ -687,8 +571,16 @@ function SourceBody({
   const missing = (m: string) => has !== null && !has.has(m);
   const probe = "probe" in read ? read.probe : null;
   const embeddings = probe?.embeddings.length ?? 0;
-  const whole = cli ? "cli" in read && read.cli.models !== null : probe?.models !== null;
+  const whole = probe?.models !== null;
   const tick = async (on: string, model: string, add: boolean) => {
+    const [one] = ticked(models, on, model, server);
+    if (!add && one && sources.settings.defaults.some((d) => d.external === one.id)) {
+      setAsking(one);
+      return;
+    }
+    await change(on, model, add);
+  };
+  const change = async (on: string, model: string, add: boolean) => {
     sources.onTouch();
     setBusy(true);
     setRefused(null);
@@ -729,7 +621,7 @@ function SourceBody({
         disabled={busy || state.several.length > 0 || gone}
         title={
           state.several.length
-            ? `${state.several.join(", ")}: remove them in Your models`
+            ? `${state.several.join(", ")}: remove them on the card of ${on.title}`
             : gone
               ? `${model} is no longer listed: ↻ reads the list again`
               : one
@@ -748,28 +640,14 @@ function SourceBody({
     );
   // `as <name>` by a tick that is on, `would be <name>` by one that is off: the name kept from
   // an untick here, else the core's (`core`), else nothing yet.
-  const named = (on: Column, model: string, core: string | undefined, plain: boolean) => {
+  const named = (on: Column, model: string, core: string | undefined) => {
     const same = ticked(models, on.name, model, server);
-    if (same.length) {
-      const shown = plain ? same.filter((m) => m.name !== model) : same;
-      return shown.length > 0 && <span className="mx-as">{shown.map((m) => `as ${m.name}`).join(", ")}</span>;
-    }
+    if (same.length) return <span className="mx-as">{same.map((m) => `as ${m.name}`).join(", ")}</span>;
     const next = sources.names[tickKey(on.name, model, server)] ?? core;
     return next && <span className="mx-as">{`would be ${next}`}</span>;
   };
-  const cliRow = (on: Column, model: string) => (
-    <div key={model} className={`mx-pick${tickState(models, on.name, model, null).on ? " mx-on" : ""}`}>
-      <label className="mx-row">
-        {box(on, model)}
-        <span className="mx-id mono">{model}</span>
-        {missing(model) && <span className="mx-gone">no longer listed</span>}
-        {named(on, model, undefined, true)}
-      </label>
-      {note(model)}
-    </div>
-  );
   const serverRow = (model: string) => {
-    const entries = models.filter((m) => m.model === model && fold(m.server ?? "") === fold(server ?? ""));
+    const entries = models.filter((m) => m.model === model && fold(m.server) === fold(server));
     // In LADO's order of the agent CLIs, as the probe names them; one it does not, after them.
     const place = (cli: string) => {
       const at = columns.findIndex((c) => c.name === cli);
@@ -826,9 +704,42 @@ function SourceBody({
               <label key={on.name} className="mx-sub-item">
                 {box(on, model)}
                 <span>{on.title}</span>
-                {named(on, model, would?.model === model ? would.by[on.name] : undefined, false)}
+                {named(on, model, would?.model === model ? would.by[on.name] : undefined)}
               </label>
             ))}
+            {asking?.model === model && (
+              <div
+                className="mx-confirm"
+                role="alertdialog"
+                aria-label={`Remove ${asking.name}?`}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.stopPropagation();
+                    setAsking(null);
+                  }
+                }}
+              >
+                <p>
+                  <b>{`Remove ${asking.name}?`}</b>
+                  {` It is ${asking.cli_title}'s default model: ${asking.cli_title} goes back to its settings.`}
+                </p>
+                <div className="mx-form-acts">
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => {
+                      setAsking(null);
+                      void change(asking.cli, model, false);
+                    }}
+                  >
+                    Remove model
+                  </button>
+                  <button type="button" className="quiet" autoFocus onClick={() => setAsking(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
         {note(model)}
@@ -855,10 +766,10 @@ function SourceBody({
         <span className="field-note warn">{`⚠ no list of models: ${probe.models_why}`}</span>
       )}
       {probe?.apis_why && <span className="field-note warn">{`⚠ APIs: cannot be told: ${probe.apis_why}`}</span>}
-      {server !== null && columns.length === 0 && <p className="mx-note">No installed CLI can use this server.</p>}
+      {columns.length === 0 && <p className="mx-note">No installed CLI can use this server.</p>}
       {rows.length > 0 && (
-        <div className={`mx-list${server !== null && rows.length <= SHORT ? " mx-short" : ""}`}>
-          {shown.map((model) => (cli ? cliRow(cli, model) : serverRow(model)))}
+        <div className={`mx-list${rows.length <= SHORT ? " mx-short" : ""}`}>
+          {shown.map((model) => serverRow(model))}
           {shown.length === 0 && <div className="mx-row mx-row-plain muted">{`No model matches “${search}”.`}</div>}
         </div>
       )}
@@ -872,9 +783,9 @@ function SourceBody({
           )}
         </p>
       )}
-      {!whole && (cli !== null || columns.length > 0) && (
+      {!whole && columns.length > 0 && (
         <ModelId
-          columns={cli ? [cli] : columns}
+          columns={columns}
           server={server}
           onTouch={sources.onTouch}
           onChanged={sources.onChanged}
@@ -893,7 +804,7 @@ function ModelId({
   onChanged,
 }: {
   columns: Column[];
-  server: string | null;
+  server: string;
   onTouch: () => void;
   onChanged: (settings?: ModelSettings) => Promise<void> | void;
 }) {
@@ -935,7 +846,7 @@ function ModelId({
   const settled = check && typed === model.trim() ? check : null;
   const note = refused ?? settled;
   return (
-    <div className={`mx-other${server !== null ? " mx-other-cli" : ""}`}>
+    <div className="mx-other mx-other-cli">
       <div className="field">
         <label htmlFor={id}>Model id</label>
         <input
@@ -953,18 +864,16 @@ function ModelId({
         />
         {note && <CheckNote note={note} />}
       </div>
-      {server !== null && (
-        <div className="field">
-          <label htmlFor={`${id}-cli`}>Agent CLI</label>
-          <select id={`${id}-cli`} value={chosen} onChange={(event) => setCli(event.target.value)}>
-            {columns.map((c) => (
-              <option key={c.name} value={c.name}>
-                {c.title}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+      <div className="field">
+        <label htmlFor={`${id}-cli`}>Agent CLI</label>
+        <select id={`${id}-cli`} value={chosen} onChange={(event) => setCli(event.target.value)}>
+          {columns.map((c) => (
+            <option key={c.name} value={c.name}>
+              {c.title}
+            </option>
+          ))}
+        </select>
+      </div>
       <button
         type="button"
         className="primary"
@@ -1423,6 +1332,7 @@ function ChangeServer({
 function RemoveServer({
   server,
   own,
+  defaults,
   onTouch,
   onCancel,
   onChanged,
@@ -1430,6 +1340,7 @@ function RemoveServer({
 }: {
   server: ModelServerInfo;
   own: ConfiguredModelInfo[];
+  defaults: CliDefault[];
   onTouch: () => void;
   onCancel: () => void;
   onChanged: (settings?: ModelSettings) => Promise<void> | void;
@@ -1461,6 +1372,15 @@ function RemoveServer({
   const ask = own.length
     ? `Remove ${server.name} and its ${plural(own.length, "model")}: ${own.map((m) => m.name).join(", ")}?`
     : `Remove ${server.name}?`;
+  // The defaults on those models, in one sentence for all of them.
+  const on = own.filter((m) => defaults.some((d) => d.external === m.id));
+  const lost = on.length
+    ? on.length === 1
+      ? `${on[0].name} is ${on[0].cli_title}'s default model: ${on[0].cli_title} goes back to its settings. `
+      : `${on
+          .map((m, at) => `${m.name} is ${m.cli_title}'s${at === 0 ? " default model" : ""}`)
+          .join(" and ")}: they go back to their settings. `
+    : "";
   const remove = async () => {
     onTouch();
     setBusy(true);
@@ -1480,7 +1400,8 @@ function RemoveServer({
   return (
     <div className="mx-confirm" role="alertdialog" aria-labelledby={id}>
       <p id={id}>
-        <b>{ask}</b> {server.has_key && "Its key is deleted too. "}This cannot be undone.
+        <b>{ask}</b> {lost}
+        {server.has_key && "Its key is deleted too. "}This cannot be undone.
       </p>
       <div className="mx-form-acts">
         <button type="button" className="danger" disabled={busy} onClick={() => void remove()}>

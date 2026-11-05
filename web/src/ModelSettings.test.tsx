@@ -2,8 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { kiloRow, LMSTUDIO, model, ModelServer, refusal } from "./modelFakes";
-import { EMPTY, EMPTY_HOW, INTRO, ModelSettings, UNDO_MS } from "./ModelSettings";
+import { LMSTUDIO, model, ModelServer, refusal } from "./modelFakes";
+import { INTRO, ModelSettings, UNDO_MS } from "./ModelSettings";
 import { Settings } from "./Settings";
 
 vi.mock("@xterm/xterm", async () => ({
@@ -63,7 +63,7 @@ test("the section comes after Agent CLIs and environment, before Usage statistic
   expect(headings[at + 1]).toBe("Usage statistics");
 });
 
-test("no tabs: the intro, then three blocks with their counts; opening reads no source", async () => {
+test("no tabs: the intro, then the two blocks; opening reads no source", async () => {
   server.entries = {
     models: FOUR,
     servers: [LMSTUDIO, { ...LMSTUDIO, name: "LiteLLM" }],
@@ -73,55 +73,9 @@ test("no tabs: the intro, then three blocks with their counts; opening reads no 
   expect(screen.queryByRole("tablist")).toBeNull();
   expect(screen.getByText(INTRO)).toBeTruthy();
   const blocks = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
-  expect(blocks).toEqual(["Your models 4", "Model servers 2", "Models of your agent CLIs"]);
+  expect(blocks).toEqual(["Your agent CLIs", "Model servers 2"]);
   expect(server.calls.filter((c) => c.path.includes("/models?") || c.path.endsWith("/probe"))).toEqual([]);
   expect(server.of("POST", "/api/providers/check")).toEqual([]); // no check of its own
-});
-
-test("with no model Your models says so and how to add one, with no card", async () => {
-  mount();
-  expect(await screen.findByText(EMPTY)).toBeTruthy();
-  expect(screen.getByText(EMPTY_HOW)).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Your models 0" })).toBeTruthy();
-  expect(screen.queryByRole("group")).toBeNull();
-});
-
-test("a card only per agent CLI with models, in LADO's order; the others in one line", async () => {
-  server.entries = {
-    models: [...FOUR, model("Alpha", "opencode", "OpenCode", "a")],
-    servers: [LMSTUDIO],
-  };
-  mount();
-  await card("Claude Code");
-  const titles = screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"));
-  expect(titles).toEqual(["Claude Code", "Codex CLI", "OpenCode"]);
-  expect(screen.getByText("Kilo CLI has no models: its agents run on its default model.")).toBeTruthy();
-  const opencode = await card("OpenCode");
-  expect(names(opencode)).toEqual(["Alpha", "beta", "qwen3-8b · LM Studio дома · OpenCode"]);
-  expect(within(opencode).getByText("3", { selector: ".mx-count" })).toBeTruthy();
-  const row = within(opencode).getByRole("button", { name: "Rename beta" }).closest("[role=row]") as HTMLElement;
-  expect(within(row).getByText("the agent CLI")).toBeTruthy();
-  expect(within(opencode).getByText("LM Studio дома").getAttribute("title")).toBe(LMSTUDIO.address);
-});
-
-test("two agent CLIs without models are named in one line", async () => {
-  server.entries = { models: FOUR.slice(0, 1), servers: [] };
-  mount();
-  await card("Claude Code");
-  expect(
-    screen.getByText("Codex CLI, OpenCode, Kilo CLI have no models: their agents run on their default model."),
-  ).toBeTruthy();
-});
-
-test("an agent CLI not installed: its card says its models cannot run", async () => {
-  server.logins = [...server.logins.slice(0, 3), kiloRow(false)];
-  server.entries = {
-    models: [model("Old Opus", "kilo", "Kilo CLI", "anthropic/claude-opus")],
-    servers: [],
-  };
-  mount();
-  const kilo = await card("Kilo CLI");
-  expect(await within(kilo).findByText("⚠ not installed: its models cannot run")).toBeTruthy();
 });
 
 test("#models scrolls once, when the page opens, never after a change of the entries", async () => {
@@ -238,7 +192,7 @@ test("× leaves its row as Removed … Undo with the focus on Undo; Undo saves i
   expect(server.of("DELETE", "/api/models/")[0].path).toBe(
     "/api/models/%D0%A1%D0%BE%D0%BD%D0%B5%D1%82%20%D0%B4%D0%BB%D1%8F%20%D1%80%D0%B5%D0%B2%D1%8C%D1%8E",
   );
-  expect(screen.getByRole("heading", { name: "Your models 1" })).toBeTruthy();
+  expect(within(opencode).getByText("1", { selector: ".mx-count" })).toBeTruthy();
   fireEvent.click(undo);
   const name = await within(opencode).findByRole("button", {
     name: "Rename Сонет для ревью",

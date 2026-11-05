@@ -9063,53 +9063,392 @@ del.kit-mcp-name {
   font-size: 13px;
 }
 
-.mx-empty {
-  padding: 14px 12px;
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-}
-
-.setting .mx-empty p {
-  margin: 0;
-}
-
-.setting .mx-empty p + p {
-  margin-top: 6px;
-  font-size: 13px;
-}
-
-/* Your models. */
+/* Your agent CLIs: a card per agent CLI. No `overflow: hidden`: the picker's list leaves it. */
 .mx-cards {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.mx-card {
-  overflow: hidden;
+.mc-cli {
+  padding: 10px 12px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
+  background: var(--panel);
 }
 
-.mx-card-h {
+.mc-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
-  padding: 6px 12px;
-  background: var(--raised);
+  margin-bottom: 8px;
+}
+
+.mc-name {
   font-size: 14px;
   font-weight: 600;
 }
 
-.mx-card-h .mx-count {
-  background: var(--panel);
+.mc-off .mc-name {
+  color: var(--muted);
+}
+
+.mc-state {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .mx-card-warn {
   color: var(--warn);
   font-size: 12px;
   font-weight: 400;
+}
+
+.mc-row {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.mc-label {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 38px;
+}
+
+.mc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mc-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mc-notes .way-out {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.mc-other {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mc-other-l {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mc-other-row {
+  display: flex;
+  gap: 6px;
+}
+
+.mc-other-row input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+}
+
+/* A card's models, flush with its edges. */
+.mc-models {
+  margin: 10px -12px -12px;
+  overflow: hidden;
+  border-radius: 0 0 7px 7px;
+}
+
+.mc-more {
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.mx-mrow.mc-ask {
+  display: block;
+  margin: 0;
+  border-radius: 0;
+}
+
+/* The picker: a field, and a list that lies over the page (position: fixed, set by the field's
+   box in ModelPicker). */
+.mp-box {
+  position: relative;
+  min-width: 0;
+}
+
+.model-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 14px var(--sans);
+  text-align: left;
+}
+
+.model-pick:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
+.model-pick:focus-visible,
+.model-pick[aria-expanded="true"] {
+  border-color: var(--action);
+  outline: 3px solid var(--action-ground);
+}
+
+.model-pick:disabled {
+  background: var(--ground);
+  color: var(--muted);
+}
+
+.mp-value {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.mp-value .mp-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mp-id {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+.mp-arrow {
+  display: inline-flex;
+  flex: none;
+  transform: rotate(90deg);
+}
+
+.srv {
+  display: inline-flex;
+  flex: none;
+  max-width: 45%;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.srv.down {
+  background: var(--danger-ground);
+  color: var(--ink);
+}
+
+.srv-t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mp-pop {
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+
+.mp-search {
+  flex: none;
+  margin: 6px;
+  width: calc(100% - 12px);
+}
+
+.mp-list {
+  flex: 1;
+  min-height: 0;
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.mp-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.mp-opt.mp-active {
+  background: var(--raised);
+  outline: 2px solid var(--action);
+  outline-offset: -2px;
+}
+
+.mp-opt.mp-selected {
+  background: var(--action-ground);
+}
+
+.mp-opt.mp-other {
+  position: sticky;
+  bottom: -4px;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--panel);
+}
+
+.mp-check {
+  flex: none;
+  width: 14px;
+  color: var(--action);
+}
+
+.mp-names {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mp-title.mono {
+  font-size: 13px;
+}
+
+.mp-sub {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mp-group {
+  padding: 8px 10px 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.setting p.mp-say,
+.setting p.mp-none {
+  margin: 0;
+  padding: 2px 10px 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mp-why {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--warn-ground);
+  color: var(--warn);
+  font-size: 13px;
+}
+
+.setting p.mp-reading {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mp-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  padding: 2px 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .mp-opt {
+    min-height: 44px;
+  }
+
+  .mp-id {
+    display: none;
+  }
+
+  .mp-opt {
+    flex-wrap: wrap;
+  }
+
+  .mp-opt .srv {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .mc-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .mc-label {
+    line-height: 20px;
+  }
+
+  .model-pick {
+    height: 44px;
+  }
+
+  .mp-search {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .mc-other-row {
+    flex-wrap: wrap;
+  }
+
+  .mc-other-row input {
+    flex-basis: 100%;
+    height: 44px;
+  }
+
+  .mc-other-row button {
+    flex: 1;
+    min-height: 44px;
+  }
+
+  .mc-more .link-button {
+    min-height: 44px;
+  }
 }
 
 .mx-mrow {
@@ -9233,12 +9572,6 @@ del.kit-mcp-name {
 
 .mx-undo .link-button {
   margin: 0;
-}
-
-.setting p.mx-rest {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 13px;
 }
 
 /* An icon button: ✎, 🗑, ↻ and ×. */
@@ -9447,22 +9780,6 @@ del.kit-mcp-name {
   align-items: center;
   gap: 2px;
   padding-right: 8px;
-}
-
-.mx-off .mx-hit {
-  cursor: default;
-}
-
-.mx-off .mx-src-name {
-  color: var(--muted);
-}
-
-.mx-off .mx-disc {
-  visibility: hidden;
-}
-
-.mx-off .mx-head:hover {
-  background: none;
 }
 
 .mx-body {

@@ -5,7 +5,16 @@
 // read when the picker opens; its owner keeps the read (useModelChoices), so a warning from it
 // can stand outside the picker. Choosing only reports a pick: its owner saves it. Plain rows,
 // no virtual list: 321 rows draw at once and the search filters in place.
-import { type KeyboardEvent, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { type CliDefault, type ConfiguredModelInfo, getModelChoices, type ModelChoices } from "./api";
 import { ChevronIcon } from "./icons";
@@ -25,6 +34,7 @@ export type Health = { down: string } | { models: string[] | null };
 
 export type ModelRead = {
   choices: ModelChoices | null;
+  checked: string; // the model `choices.check` is of
   reading: boolean;
   problem: string | null; // the request failed: not a list that cannot be read
   read: (fresh: boolean, model: string) => void;
@@ -36,6 +46,7 @@ const fold = (text: string) => text.toLowerCase();
 // after the page was left, changes nothing.
 export function useModelChoices(cli: string): ModelRead {
   const [choices, setChoices] = useState<ModelChoices | null>(null);
+  const [checked, setChecked] = useState("");
   const [reading, setReading] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const latest = useRef(0);
@@ -54,6 +65,7 @@ export function useModelChoices(cli: string): ModelRead {
         (found) => {
           if (asked !== latest.current) return;
           setChoices(found);
+          setChecked(model);
           setReading(false);
         },
         (error: unknown) => {
@@ -65,7 +77,7 @@ export function useModelChoices(cli: string): ModelRead {
     },
     [cli],
   );
-  return { choices, reading, problem, read };
+  return { choices, checked, reading, problem, read };
 }
 
 // What a server's state says of `model` on it: a row's words, or nothing when all is well.
@@ -119,6 +131,7 @@ export function ModelPicker({
   health,
   describedBy,
   invalid,
+  fieldRef,
   onOpen,
   onPick,
   onOther,
@@ -133,6 +146,7 @@ export function ModelPicker({
   health: Record<string, Health>; // by server, its name folded
   describedBy?: string;
   invalid?: boolean;
+  fieldRef?: RefObject<HTMLButtonElement | null>; // the owner hands the focus back to the field
   onOpen: () => void;
   onPick: (pick: Pick) => void;
   onOther: (typed: string) => void;
@@ -140,7 +154,8 @@ export function ModelPicker({
   const id = useId();
   const listId = `${id}-list`;
   const root = useRef<HTMLDivElement>(null);
-  const field = useRef<HTMLButtonElement>(null);
+  const ownField = useRef<HTMLButtonElement>(null);
+  const field = fieldRef ?? ownField;
   const pop = useRef<HTMLDivElement>(null);
   const searchBox = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -221,7 +236,7 @@ export function ModelPicker({
     setPlace(null);
     setSearch("");
     if (refocus) field.current?.focus();
-  }, []);
+  }, [field]);
 
   const opening = () => {
     if (off) return;
@@ -253,7 +268,7 @@ export function ModelPicker({
       view?.removeEventListener("resize", again);
       view?.removeEventListener("scroll", again);
     };
-  }, [open]);
+  }, [open, field]);
 
   // A press outside closes it; so does a scroll the human starts outside the list, never one
   // of the page's own, which only moves it.

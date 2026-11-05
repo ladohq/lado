@@ -1258,9 +1258,11 @@ h3 {
   display: contents;
 }
 
-/* One line that never wraps: what lacks room is cut by flex-shrink, largest first the title
-   down to 8ch, then the project, then the words and the run time; the actions and the link
-   are never cut. The box-sizing keeps the bar's border inside --head-h. */
+/* One line that never wraps: what lacks room is cut by flex-shrink, the title down to 8ch,
+   then the project, then the words and the run time; the actions and the link never. Shrinking
+   is shared in proportion, and a share of a pixel already shows the "…": the weights stand a
+   million apart, so each item's share is nothing until the one before it is at its least.
+   The box-sizing keeps the bar's border inside --head-h. */
 .topbar:has(.session-head) {
   box-sizing: border-box;
   height: var(--head-h);
@@ -1292,7 +1294,7 @@ h3 {
 
 /* The project as a breadcrumb, before the title. */
 .session-crumb {
-  flex: 0 100 auto;
+  flex: 0 1000000 auto;
   min-width: 4ch;
   max-width: 16ch;
   overflow: hidden;
@@ -1318,14 +1320,15 @@ h3 {
 .session-title-box {
   position: relative;
   display: flex;
-  flex: 0 1000 auto;
+  flex: 0 1000000000000 auto;
   min-width: 8ch;
+  font-size: 18px; /* its ch is the title's */
 }
 
 .session-head h1 {
   min-width: 8ch;
   max-width: 100%;
-  font-size: 18px;
+  font-size: inherit;
   line-height: 24px;
 }
 
@@ -1488,6 +1491,7 @@ h3 {
   border-radius: 10px;
   background: var(--panel);
   box-shadow: 0 8px 28px var(--shadow);
+  font-size: 14px;
   white-space: normal;
 }
 
@@ -1745,7 +1749,7 @@ h3 {
 }
 
 .session-title-box:has(.title-edit) {
-  flex: 1 1000 320px;
+  flex: 1 1000000000000 320px;
 }
 
 .session-head .title-edit {

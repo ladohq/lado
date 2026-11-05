@@ -13,7 +13,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from test_main_screen import log_in, running_session
 
-from lado import kits, projects, runtime, state
+from lado import kits, projects, runtime, state, tmux
 
 pytestmark = pytest.mark.ui
 
@@ -159,26 +159,39 @@ LONG_TITLE = "Экран сессии: шапка в одну строку, фа
 
 
 def line_is_whole(page: Page) -> None:
-    """The top bar is 48 px, its items on one line inside it, none over another, and the page
-    does not scroll sideways."""
+    """The top bar is 48 px, its items on one line inside it, none over another, the page does
+    not scroll sideways, and what is cut goes by D7's order: the title down to its least, then
+    the project, then the words and the run time."""
     found = page.evaluate(
         """() => {
             const bar = document.querySelector('.topbar').getBoundingClientRect();
             const shown = (e) => e.getClientRects().length > 0;
+            const one = (name) => document.querySelector(name);
+            const px = (e, side) => parseFloat(getComputedStyle(e)[side]);
+            const width = (e) => e.getBoundingClientRect().width;
+            const least = (e) => !e || width(e) <= px(e, 'minWidth') + 1;
+            const cut = (e) => !!e && e.scrollWidth > e.clientWidth;
+            const title = one('.session-head h1'), crumb = one('.session-crumb');
+            const order = [];
+            if (crumb && width(crumb) < px(crumb, 'maxWidth') - 1 && cut(crumb) && !least(title))
+                order.push('project cut before the title');
+            for (const name of ['.session-state', '.session-ran'])
+                if (cut(one(name)) && !(least(title) && least(crumb)))
+                    order.push(`${name} cut too early`);
             const items = [...document.querySelectorAll('.session-dot, .session-crumb,'
-                + ' .session-title-box, .session-state, .session-ran, .session-branch,'
-                + ' .session-head-actions, .system')].filter(shown);
+                + ' .session-title-box:has(.title-edit), .session-chevron, .session-state,'
+                + ' .session-ran, .session-branch, .session-head-actions, .system')].filter(shown);
             const boxes = items.map((e) => [e.className, e.getBoundingClientRect()]);
             const middle = bar.top + bar.height / 2;
             const off = boxes.filter(([, r]) => r.top > middle || r.bottom < middle
                     || r.left < bar.left - 1 || r.right > bar.right + 1).map(([name]) => name);
             const over = boxes.flatMap(([a, r], at) => boxes.slice(at + 1)
                 .filter(([, s]) => r.right > s.left + 1).map(([b]) => `${a} over ${b}`));
-            return { height: bar.height, off, over,
+            return { height: bar.height, off, over, order,
                      wide: document.documentElement.scrollWidth > innerWidth };
         }"""
     )
-    assert found == {"height": 48, "off": [], "over": [], "wide": False}
+    assert found == {"height": 48, "off": [], "over": [], "order": [], "wide": False}
 
 
 @pytest.fixture
@@ -202,10 +215,58 @@ def long_session(tmp_path, monkeypatch, shop_long):
             ('["default", "tracker-yougile", "design-studio", "sdlc"]', "shop-frontend"),
         )
     yield "shop-frontend"
-    runtime.stop_session("shop-frontend")
+    if state.get_session("shop-frontend").stopped_at is None:
+        runtime.stop_session("shop-frontend")
 
 
-@pytest.mark.parametrize("width", [601, 768, 1101, 1280, 1440, 1600, 1920])
+WIDTHS = [601, 768, 1101, 1280, 1440, 1600, 1920]
+
+
+def actions_are_whole(page: Page, names: list[str]) -> None:
+    """The head's actions are these, each at least its 32 px, and the link is not cut."""
+    actions = head(page).locator(".session-head-actions").get_by_role("button")
+    expect(actions).to_have_count(len(names))
+    for at, name in enumerate(names):
+        expect(actions.nth(at)).to_have_accessible_name(name)
+        assert actions.nth(at).bounding_box()["width"] >= 32, name
+    link = page.get_by_role("button", name="System")
+    assert link.evaluate("e => e.scrollWidth <= e.clientWidth + 1")
+
+
+@pytest.mark.parametrize("width", WIDTHS)
+def test_the_line_of_a_session_whose_tmux_is_gone_is_48_px(
+    page: Page, long_session, server, shot, width
+):
+    page.set_viewport_size({"width": width, "height": 800})
+    tmux.kill_session(long_session)
+    open_session(page, server, long_session)
+    expect(head(page).locator(".session-state")).to_have_text("tmux session is gone")
+    expect(head(page).locator(".session-crumb")).to_be_visible()
+    line_is_whole(page)
+    actions_are_whole(page, ["Resume…", "Stop session…"])
+    shot(page)
+
+
+@pytest.mark.parametrize("width", WIDTHS)
+def test_the_line_of_a_stopped_session_is_48_px(page: Page, long_session, server, shot, width):
+    page.set_viewport_size({"width": width, "height": 800})
+    runtime.stop_session(long_session)
+    with state.connect() as db:  # 4 h of work that ended 2 days ago
+        db.execute(
+            "UPDATE sessions SET"
+            " created_at = strftime('%Y-%m-%d %H:%M:%f', 'now', '-4 hours', '-30 seconds'),"
+            " stopped_at = strftime('%Y-%m-%d %H:%M:%f', 'now', '-2 days') WHERE name = ?",
+            (long_session,),
+        )
+    open_session(page, server, long_session)
+    expect(head(page).locator(".session-ran")).to_have_text("stopped 2 d ago · ran 4 h")
+    expect(head(page).locator(".session-crumb")).to_be_visible()
+    line_is_whole(page)
+    actions_are_whole(page, ["Resume…", "Forget…"])
+    shot(page)
+
+
+@pytest.mark.parametrize("width", WIDTHS)
 def test_the_line_is_48_px_at_every_width_with_long_names(
     page: Page, long_session, server, shot, width
 ):

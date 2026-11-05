@@ -4032,7 +4032,8 @@ h3 {
   font-size: 14px;
 }
 
-.rec-bar.opened {
+.rec-bar.opened,
+.rec-bar.whole {
   flex: 0 10 auto;
   min-height: 21px;
 }
@@ -10124,6 +10125,13 @@ button.quiet.danger-text {
 :root[data-phone] .activity:has(> .chat > .waiting-card.typing) > .team-row,
 :root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-context-frame,
 :root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-choices-frame {
+  display: none;
+}
+
+/* Needs you: an expanded card has the page's room, so what stands over it gives way to its
+   field. */
+:root[data-phone] .needs-you:has(.waiting-card.expanded .waiting-field:focus) > .notify-offer,
+:root[data-phone] .waits-session:has(.waiting-card.expanded .waiting-field:focus) > h2 {
   display: none;
 }
 

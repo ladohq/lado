@@ -127,6 +127,15 @@ scrolls it under the top bar again, or a window narrowed would strand it (F27). 
 its left edge would need the rail's width. The phone layout, whose app does not scroll, sets all
 this back. The rest of LAD-193's layout stays.
 
+**D17. A phone's field on Needs you** (the human's device check of 2026-11-05 at `merge_ok`, video
+and report `pr218-phone-check-report`: the expanded card shrank to its tabs and the human typed
+blind). `typing` now holds on any phone page, but only the chat's card takes `.typing`, whose rules
+fold the chat. Needs you scrolls as a page, so while a field has the focus the visual viewport's
+`resize` scrolls the footer into view. An expanded card has the page's room: `:has` hides the
+notifications' offer and the session's heading while its field has the focus, and `.rec-bar.whole`
+gives way as an opened one does, so the footer stays whole in 350 px. The button press keeps the
+focus here too.
+
 ## Risks
 
 - `:has` and `dvh` are in use already; nothing new for the browsers supported.
@@ -136,6 +145,8 @@ this back. The rest of LAD-193's layout stays.
 - A window of 900 px or less: the card sticks over the feed, and expanded it holds the page, so
   the session's tabs and Team are out of reach until it folds. The composer may stay past the
   window's edge: LAD-193 (D16).
+- Single frames of the recording show the card cut while the keyboard moves (the report's
+  "Minor"); whether an eye sees them, and whether they are Safari's own, is open.
 - A real keyboard may leave less than 440 px (a small iPhone leaves about 350). Then the top goes
   to 0 first, as D4 says; the tests hold at 350 and 340 px, an imitation, not verified on a device.
 - An Android back button closes the keyboard without a blur (F8): `typing` stays until a touch

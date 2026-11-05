@@ -75,8 +75,8 @@ same pull request. The minor is not bumped by this change: `0.45.0 (unreleased)`
   card only), C2 (placeholders), C3 (a phone's tabs) and C4 (the opened recommendation's fade)
   are done here; C5–C14 are accepted as they are. The composer cut at 768 stays LAD-193's, is
   not touched here and counts as no finding.
-- A real iOS Safari keyboard: nobody in the run has a device. Frame g3-390-kbd is an imitation;
-  the human checks it before the merge, and the build report says "not verified".
+- A real iOS Safari keyboard: the human checked the PR's build on an iPhone on 2026-11-05 and sent
+  back Needs you (D17); the chat's card worked. Android's back button stays not verified.
 
 ## Acceptance criteria
 

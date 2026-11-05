@@ -2286,7 +2286,9 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   click. Below 440 px of app (imitated down to 340 px; a real keyboard is the human's to check) the
   top goes first, the meta before the title. An expanded card, by its button or sideways, hides the
   session's tabs and the Team row: it fills the page under the top bar, until its fold button,
-  Esc, or nothing waits. Needs you, which scrolls as a page, changes nothing on a field's focus.
+  Esc, or nothing waits. Needs you scrolls as a page: a field's focus folds nothing, and the page
+  brings the footer above the keyboard (LAD-194); an expanded card keeps its context, and the
+  notifications' offer and the session's heading give way to it while its field has the focus.
 - **Sideways** (`short`): the chat's card is minimized by the layout (its tabs and one
   line), not by the human: `lado.waitingMinimized.<session>` is not written. A tab or the
   line shows it expanded over the chat; Esc or its fold button minimizes it again; turned

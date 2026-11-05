@@ -687,6 +687,91 @@ def test_a_field_hides_the_choices_under_a_recommendation_above_the_keyboard(
     shot(page, "closed", full_page=False)
 
 
+def needs_you_with_a_gate_and_a_question(repo) -> str:
+    """A long note's gate under a long recommendation, and the supervisor's question."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, "A reason to approve. " * 40, choice="approve")
+    runtime.ask_human(session, "supervisor", "Which one?", "Long details.\n" * 30, ["yes", "no"])
+    return session
+
+
+def settles_above_the_keyboard(page: Page, card, visible: float, *parts) -> None:
+    """Each part ends up between the top bar and the keyboard, and not cut by the panel."""
+    for part in parts:
+        page.wait_for_function(
+            "([p, bottom]) => p.getBoundingClientRect().bottom <= bottom + 1",
+            arg=[part.element_handle(), visible],
+            timeout=3000,
+        )
+    bar = box(top_bar(page))
+    for part in parts:
+        within(part, bar["y"] + bar["height"], visible)
+        uncut(card, part)
+
+
+@pytest.mark.parametrize("visible", [ABOVE_KEYBOARD, 380, 350])
+@pytest.mark.parametrize("expanded", [False, True], ids=["card", "expanded"])
+@pytest.mark.parametrize("tab", ["gate", "question"])
+def test_on_needs_you_a_field_and_its_buttons_stay_above_the_keyboard(
+    device, server, repo, shot, visible, expanded, tab
+):
+    """Needs you scrolls as a page: the footer comes into the visible part; expanded, what
+    stands over the card gives way and the card keeps its context, until the focus leaves."""
+    session = needs_you_with_a_gate_and_a_question(repo)
+    phone = device(KEYBOARD)
+    phone.add_init_script(FAKE_VIEWPORT)
+    page = opened(phone, server, "/needs-you")
+    card = waiting_card(page, session)
+    expect(card.get_by_role("tab", name="ship/x 1")).to_be_visible()
+    if tab == "question":
+        card.get_by_role("tab", name="supervisor 1").tap()
+    if expanded:
+        card.get_by_role("button", name="Expand the card").tap()
+        expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    if tab == "gate":
+        field = card.get_by_role("textbox", name="Comment for the next step (optional)")
+        field.tap()
+        buttons = [
+            card.get_by_role("button", name="Approve", exact=True),
+            card.get_by_role("button", name="Reject", exact=True),
+        ]
+    else:
+        card.get_by_role("button", name="Other…").evaluate("b => b.click()")
+        field = card.get_by_role("textbox", name="Your own answer")
+        buttons = [card.get_by_role("button", name="Send answer to supervisor")]
+    expect(field).to_be_focused()
+    page.evaluate(f"window.moveViewport({visible}, 0)")
+    expect(page.locator(".app")).to_have_css("height", f"{visible}px")
+    settles_above_the_keyboard(page, card, visible, field, *buttons)
+    context = card.get_by_role("region", name="Context of the card")
+    expect(context).to_be_attached()
+    shot(page, "keyboard", full_page=False)
+
+    page.evaluate(f"window.moveViewport({KEYBOARD[1]}, 0)")  # the keyboard closes
+    expect(page.locator(".app")).to_have_css("height", f"{KEYBOARD[1]}px")
+    field.blur()
+    expect(page.get_by_role("region", name=f"Session {session}").locator("h2")).to_be_visible()
+
+
+def test_on_needs_you_a_tap_on_approve_with_the_field_in_focus_answers_the_gate(
+    device, server, repo
+):
+    """Expanded, the heading coming back with the focus would move Approve under the finger."""
+    session = gated_session(repo)
+    phone = device(KEYBOARD)
+    phone.add_init_script(FAKE_VIEWPORT)
+    page = opened(phone, server, "/needs-you")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Expand the card").tap()
+    comment = card.get_by_role("textbox", name="Comment for the next step (optional)")
+    comment.tap()
+    page.evaluate(f"window.moveViewport({ABOVE_KEYBOARD}, 0)")
+    approve = card.get_by_role("button", name="Approve", exact=True)
+    settles_above_the_keyboard(page, card, ABOVE_KEYBOARD, approve)
+    approve.tap()
+    expect(page.get_by_text("Nothing waits for you")).to_be_visible()
+
+
 def test_a_field_in_the_context_of_several_questions_stays_in_its_view(device, server, repo, shot):
     """A tab of several questions has its fields in the context: a field's focus hides the
     Team row, never the context it stands in, and the keyboard opening brings the field back

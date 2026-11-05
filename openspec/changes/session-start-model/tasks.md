@@ -22,10 +22,10 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-session-star
 
 ## 3. End to end
 
-- [ ] 3.1 The start model's cases, all ticked models in each case, refusals, LADO's own resume,
+- [x] 3.1 The start model's cases, all ticked models in each case, refusals, LADO's own resume,
   a silent other server. Check: `uv run pytest -m integration -n auto
   tests/integration/test_session_model.py tests/integration/test_session_model_server.py`.
-- [ ] 3.2 The key canary with a worker of another CLI. Check: `uv run pytest -m integration -n auto
+- [x] 3.2 The key canary with a worker of another CLI. Check: `uv run pytest -m integration -n auto
   tests/integration/test_session_model_canary.py`.
 
 ## 4. API

@@ -107,6 +107,11 @@ Use the `lado` MCP tools:
 from your current HEAD. Give it the goal, the relevant files and how to check the result. \
 `role` picks the kind of worker{default_role} Roles:
 {roles}
+`model` is a name from list_models, "" the CLI's own settings. Leave it out unless the human \
+or the task names one: the worker then starts on the session's model. It holds for that one \
+spawn, so give it again for a next worker of a run or after a resume. When a model is refused, \
+tell the human the reason and ask: never pick another by yourself.
+- list_models: the models of each installed agent CLI, for spawn_worker's `model`.
 - send_message: talk to another agent, e.g. to answer a worker's question, or to the human.
 - ask_human: ask the human a question, with choices and, by default, a free answer. It \
 does not wait: the answer or the dismissal comes as a message from human.

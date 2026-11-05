@@ -6,13 +6,13 @@
 // grouped by sender, with a divider between days; an open question or gate is a quiet line
 // leading to its tab. What the human sends shows only once the feed brings it: nothing
 // ahead of the server.
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Link, useLocation } from "react-router";
 
 import { HUMAN, type GateInfo, type MessageInfo, type RunEventInfo, type RunInfo } from "./api";
 import { Attachments, ImagePreviews } from "./Attachments";
 import { Body, clock, day, dayName, MESSAGE_LINES, MESSAGE_OVER, Preview, repeatsSummary } from "./ChatText";
-import { Composer } from "./Composer";
+import { Composer, ComposerFold } from "./Composer";
 import { FeedRow, MiniAvatar } from "./FeedRow";
 import { OutcomeChip } from "./flowSteps";
 import { gateAnchor, GateLine } from "./GateCard";
@@ -30,8 +30,9 @@ import {
 import { runPath } from "./paths";
 import { messageAnchor, Question, replyOf, type Reply } from "./Question";
 import { quoteArea } from "./quote";
+import { useMedia, usePhone } from "./phone";
 import { useHeight } from "./Splitter";
-import { agentTab, gateTab, WaitingCard, type Focus } from "./WaitingCard";
+import { agentTab, gateTab, NARROW, stopFiles, WaitingCard, type Fold, type Focus } from "./WaitingCard";
 
 // The run events the feed shows as lines, and the word each kind's line says: the one list.
 // A flow event's line shows its move instead (a gate's answer is the human's move, so
@@ -178,6 +179,25 @@ export function focusChat() {
   (card ?? document.querySelector<HTMLElement>(".chat-feed"))?.focus();
 }
 
+// Where `box` stands on the page, while `on`. What moves it changes the height of `box` or of
+// a box around it, whatever came or went above: those are observed. `again`: measure anew, for
+// a box that comes later.
+function usePageTop(box: RefObject<HTMLElement | null>, on: boolean, again: unknown) {
+  const [top, setTop] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!on) return;
+    const measure = () => {
+      if (box.current) setTop(Math.round(box.current.getBoundingClientRect().top + window.scrollY));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    for (let around = box.current; around; around = around.parentElement) observer.observe(around);
+    return () => observer.disconnect();
+  }, [box, on, again]);
+  return top;
+}
+
 export function Chat({ session, stopped, agentMessages }: { session: string; stopped: boolean; agentMessages: boolean }) {
   const live = useLiveStore();
   const state = useLive();
@@ -194,6 +214,33 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
     },
     [measured],
   );
+  // The chat's height, where it has one of its own: a narrow window scrolls as a page, the
+  // phone layout does not (the waiting card's limit).
+  const [chatMeasured, chatHeight] = useHeight<HTMLElement>();
+  const narrow = useMedia(NARROW);
+  const phone = usePhone();
+  const ownHeight = !narrow || phone !== null;
+  // Where the chat stands on the page, in a window that scrolls: the card sticks no higher, so
+  // it is no taller than from there down (styles.css).
+  const chat = useRef<HTMLElement | null>(null);
+  const chatRef = useCallback(
+    (element: HTMLElement | null) => {
+      chat.current = element;
+      chatMeasured(element);
+    },
+    [chatMeasured],
+  );
+  const chatTop = usePageTop(chat, !ownHeight, chatHeight);
+  // What the waiting card's open field has folded the composer into; the link back gives the
+  // composer the focus once it shows.
+  const [fold, setFold] = useState<Fold | null>(null);
+  const composerField = useRef<HTMLTextAreaElement>(null);
+  const toComposer = useRef(false);
+  useEffect(() => {
+    if (fold !== null || !toComposer.current) return;
+    toComposer.current = false;
+    composerField.current?.focus();
+  }, [fold]);
   const top = useRef<HTMLDivElement>(null);
   const scroll = useRef<Scroll>({ window: null, first: null, last: null, height: 0, top: 0, bottom: true });
   useEffect(() => live.watchMessages(session, spec), [live, session, key]); // key: the spec's
@@ -307,7 +354,15 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   }, [ready, hash, waitsLoaded]);
 
   return (
-    <section className="chat" aria-label="Chat">
+    <section
+      ref={chatRef}
+      className="chat"
+      style={!ownHeight && chatTop !== null ? ({ "--chat-top": `${chatTop}px` } as CSSProperties) : undefined}
+      aria-label="Chat"
+      // A folded composer takes no files; dropped on the chat, nowhere: the browser opens none.
+      onDragOver={fold ? stopFiles : undefined}
+      onDrop={fold ? stopFiles : undefined}
+    >
       <div className="chat-feed" role="log" aria-label="Chat with the session" tabIndex={-1} ref={feedRef} onScroll={scrolled}>
         {loaded === null && <p className="muted">Loading…</p>}
         {loaded && "error" in loaded && (
@@ -336,9 +391,19 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
         runs={runs && "items" in runs ? runs.items : null}
         stopped={stopped}
         focus={focus}
-        chat={{ feed: feedHeight, loaded: ready && waits !== null }}
+        chat={{ feed: feedHeight, height: ownHeight ? chatHeight : null, loaded: ready && waits !== null }}
+        onFold={setFold}
       />
-      <Composer session={session} stopped={stopped} />
+      {fold && (
+        <ComposerFold
+          fold={fold}
+          write={() => {
+            toComposer.current = true;
+            fold.write?.();
+          }}
+        />
+      )}
+      <Composer session={session} stopped={stopped} folded={fold !== null} inputRef={composerField} />
     </section>
   );
 }

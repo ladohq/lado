@@ -150,18 +150,22 @@ lead SHALL get a request for each open gate whose recommendation is not `given`.
 
 ### Requirement: The card shows the recommendation as part of the gate or question
 
-The web UI SHALL show an open gate's or question's recommendation inside its card (in the
-chat's waiting card, on Needs you and on a run's page in Flows), between the question's
-text and the answer: under the supervisor's small avatar and "Supervisor's
-recommendation", with its time, and "disagrees with <agent>" in orange when the lead
-disagrees, the whole text as Markdown. The human SHALL be able to
-answer in every state.
+The web UI SHALL show an open gate's or question's recommendation inside its card, and the
+human SHALL be able to answer in every state. On a run's page in Flows it SHALL be a block
+between the question's text and the answer: under the supervisor's small avatar and "Supervisor's
+recommendation", with its time, and "disagrees with <agent>" in orange when the lead disagrees,
+the whole text as Markdown.
 
 #### Scenario: A recommendation that disagrees
 - **WHEN** gate #7's note says "ready to merge" and the lead recommends `reject` with
   disagrees set
-- **THEN** the card shows the block with "disagrees with reviewer" in orange and the text,
-  and Reject is the primary button, Approve quiet
+- **THEN** the card shows the line "Supervisor recommends Reject · disagrees with reviewer:"
+  in orange and the text, and Reject is the primary button, Approve quiet
+
+#### Scenario: A long recommendation on a phone
+- **WHEN** a recommendation of ten lines waits on a phone and the human taps it
+- **THEN** it opens to 3 lines and the rest scrolls inside them, with a fade at the lower edge
+  until the text is scrolled to its end
 
 ### Requirement: On a gate the recommended option is the primary button
 
@@ -178,14 +182,15 @@ the first option is primary as before.
 
 On a question, in its tab of the waiting card,
 whose choices are picks and whose primary button is Send, the recommended choice SHALL be
-picked ahead when it is one of the question's choices, and SHALL count and be sent as any
+picked ahead when it is one of the question's choices, marked ✓ while it stays picked, and
+SHALL count and be sent as any
 pick; the human's own pick, also unpicking it, SHALL win, and a recommendation given later
 SHALL pick its choice only in a question the human has not touched.
 
 #### Scenario: A question's recommended choice is picked ahead
 - **WHEN** w1 asks question #12 with the choices "yes" and "later", and the lead recommends
   "later"
-- **THEN** w1's tab shows the block under the question and "later" picked, and Send sends
+- **THEN** w1's tab shows the line over the choices and "✓ later" picked, and Send sends
   "later" unless the human picks otherwise
 
 #### Scenario: The human unpicks the recommended choice
@@ -195,7 +200,7 @@ SHALL pick its choice only in a question the human has not touched.
 #### Scenario: A recommendation without a choice
 - **WHEN** the lead recommends on question #13 with text only, or with a choice the
   question does not have
-- **THEN** the tab shows the block and picks nothing
+- **THEN** the tab shows the line and picks nothing
 
 ### Requirement: The card says when a recommendation is being prepared or missing
 
@@ -261,3 +266,29 @@ no recommendation." when `missing`.
 - **WHEN** the human runs `lado answer s 8` and gate #8's recommendation is `asked`
 - **THEN** the output has "Supervisor is preparing a recommendation… (v shows it once it
   is given)"
+
+### Requirement: The waiting card's recommendation is one line
+
+In the waiting card (the chat's and Needs you's) the recommendation SHALL be one line above the
+answer, the avatar of 20 px then "**Supervisor recommends <option>:** <text>", or
+"**Supervisor's recommendation:** <text>" without an option of the card's, cut with "…" (on a
+phone 2 lines); " · disagrees with <agent>" in orange SHALL stand right after the option, so a cut
+never takes it.
+
+#### Scenario: A cut line that disagrees
+- **WHEN** a long recommendation of Reject that disagrees with reviewer waits in the card
+- **THEN** the line shows "Supervisor recommends Reject · disagrees with reviewer:" whole, and
+  its text is cut with "…"
+
+### Requirement: The waiting card's line opens to its text
+
+The line's tooltip SHALL hold the recommendation's whole text and time, and a click SHALL open it
+to 3 lines of Markdown that scroll inside; in the expanded card it SHALL show whole.
+
+#### Scenario: Opened by a click
+- **WHEN** the human clicks the line of a long recommendation
+- **THEN** its text shows as Markdown in 3 lines that scroll inside
+
+#### Scenario: The expanded card
+- **WHEN** the human expands the card in the chat
+- **THEN** the recommendation shows whole

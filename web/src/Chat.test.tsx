@@ -1,6 +1,6 @@
 // The chat in a session's Activity tab: the messages with the human and the agents'
 // questions, live from the feed; the composer and the answers go to the API.
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -10,6 +10,7 @@ import { messageText } from "./Chat";
 import { clock, day, dayName } from "./ChatText";
 import { FakeEventSource, FakeIntersectionObserver, FakeSocket, stream } from "./fakes";
 import { storeAgentMessages } from "./prefs";
+import { sendQuote } from "./quotes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -1633,7 +1634,7 @@ const buttons = (card: HTMLElement) =>
 const picked = (item: HTMLElement) =>
   within(item)
     .getAllByRole("button")
-    .filter((one) => !one.classList.contains("other"))
+    .filter((one) => one.classList.contains("waiting-option") && !one.classList.contains("other"))
     .map((one) => `${one.textContent}:${one.getAttribute("aria-pressed")}`);
 
 test("a gate's recommendation is a block in its tab; the primary button moves to the recommended option", async () => {
@@ -1645,12 +1646,13 @@ test("a gate's recommendation is a block in its tab; the primary button moves to
   expect((within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false);
   stream().send("change", gateChanged(gate(1, { recommendation: given("reject", true) })), "11");
   const block = await within(card).findByRole("region", { name: "Supervisor's recommendation" });
-  expect(block.querySelector(".rec-differs")?.textContent).toBe("disagrees with w1");
+  expect(block.querySelector(".rec-differs")?.textContent).toBe(" · disagrees with w1");
+  fireEvent.click(within(block).getByRole("button"));
   expect(within(block).getByText("not").tagName).toBe("STRONG");
   expect(buttons(card)).toEqual(["Approve:quiet", "Reject:primary"]);
   // Between the note and the answer.
-  const order = Array.from(card.querySelectorAll(".gate-note, .rec, form.answer")).map((one) => one.className);
-  expect(order).toEqual(["gate-note", "rec differs", "answer"]);
+  const order = Array.from(card.querySelectorAll(".gate-note, .rec-bar, form.answer")).map((one) => one.className);
+  expect(order).toEqual(["gate-note", "rec-bar differs opened", "answer"]);
 });
 
 test("a stopped session's gate keeps its buttons off and shows the recommendation", async () => {
@@ -1665,9 +1667,9 @@ test("a stopped session's gate keeps its buttons off and shows the recommendatio
 test("a question's recommended choice is picked ahead in its tab; closed, its quiet line names it and the choice stays marked once", async () => {
   serve([question(5, { recommendation: given("later") })]);
   open();
-  const item = within(await waitingCard()).getByRole("listitem", { name: "Question #5" });
+  const item = within(await waitingCard()).getByRole("tabpanel");
   expect(within(item).getByRole("region", { name: "Supervisor's recommendation" })).toBeTruthy();
-  expect(picked(item)).toEqual(["yes:false", "later:true"]);
+  expect(picked(item)).toEqual(["yes:false", "✓ later:true"]);
   const done = { question_state: "answered" as const, answered_by: 6, recommendation: given("later") };
   stream().send("change", changed(question(5, done)), "11");
   stream().send("change", changed(message(6, "human", "w1", "Answer to #5: later", { reply_to: 5, choice: "later" })), "12");
@@ -1682,8 +1684,8 @@ test("a question's recommended choice is picked ahead in its tab; closed, its qu
 test("a question with no recommendation asked shows no block and picks nothing", async () => {
   serve([question(5)]);
   open();
-  const item = within(await waitingCard()).getByRole("listitem", { name: "Question #5" });
-  expect(item.querySelector(".rec")).toBeNull();
+  const item = within(await waitingCard()).getByRole("tabpanel");
+  expect(item.querySelector(".rec-bar")).toBeNull();
   expect(picked(item)).toEqual(["yes:false", "later:false"]);
 });
 
@@ -1967,4 +1969,50 @@ test("Skip to chat from another tab opens Activity with the focus on the feed", 
   fireEvent.click(await screen.findByRole("link", { name: "Skip to chat" }));
   const log = await chat();
   await waitFor(() => expect(document.activeElement).toBe(log));
+});
+
+// The composer's fold (docs/design/ui.md, The waiting card)
+
+const composerField = () => screen.getByRole("textbox", { name: "Write to the supervisor…", hidden: true }) as HTMLTextAreaElement;
+const composerForm = () => document.querySelector("form.composer") as HTMLFormElement;
+
+test("while Other… is open the composer folds into a line, its text kept; the link brings it back with the focus", async () => {
+  serve([question(5)]);
+  open();
+  const card = await waitingCard();
+  fireEvent.change(composerField(), { target: { value: "my own words" } });
+  fireEvent.click(within(card).getByRole("button", { name: "Other…" }));
+  const line = await screen.findByText(/Answering question #5 above/);
+  expect(line.closest(".composer-fold")?.textContent).toContain("Answering question #5 above · Write to supervisor instead");
+  expect(composerForm().hidden).toBe(true);
+  fireEvent.change(within(card).getByRole("textbox", { name: "Your own answer" }), { target: { value: "keep the worker" } });
+  fireEvent.click(screen.getByRole("button", { name: "Write to supervisor instead" }));
+  await waitFor(() => expect(composerForm().hidden).toBe(false));
+  await waitFor(() => expect(document.activeElement).toBe(composerField()));
+  expect(composerField().value).toBe("my own words");
+  expect(document.querySelector(".composer-fold")).toBeNull();
+  fireEvent.click(within(card).getByRole("button", { name: "Other…" }));
+  expect((within(card).getByRole("textbox", { name: "Your own answer" }) as HTMLTextAreaElement).value).toBe("keep the worker");
+});
+
+test("a file dropped on the chat while the composer is folded goes nowhere, and the browser opens none", async () => {
+  serve([question(5)]);
+  open();
+  fireEvent.click(within(await waitingCard()).getByRole("button", { name: "Other…" }));
+  await waitFor(() => expect(composerForm().hidden).toBe(true));
+  const dragged = { dataTransfer: { types: ["Files"], files: [new File(["x"], "x.txt")] } };
+  expect(fireEvent.drop(await chat(), dragged)).toBe(false); // its default prevented
+  expect(document.querySelector(".composer .file-chip")).toBeNull();
+});
+
+test("a quote brings the composer back with the quote and the focus", async () => {
+  serve([question(5)]);
+  open();
+  const card = await waitingCard();
+  fireEvent.click(within(card).getByRole("button", { name: "Other…" }));
+  await waitFor(() => expect(composerForm().hidden).toBe(true));
+  act(() => sendQuote("lado", "> A", () => {}));
+  await waitFor(() => expect(composerForm().hidden).toBe(false));
+  await waitFor(() => expect(document.activeElement).toBe(composerField()));
+  expect(composerField().value).toBe("> A\n");
 });

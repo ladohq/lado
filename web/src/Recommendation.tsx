@@ -1,17 +1,21 @@
 // The lead's recommendation on a gate or on another agent's question to the human
 // (docs/design/ui.md, Flow gates and A question; lado.runtime.recommend): part of the card,
-// never an entry of its own. Open, a block between the question's text and the answer; the
+// never an entry of its own. Open, a block between the question's text and the answer on a
+// run's page, and one line over the answer in the waiting card (RecommendationBar); the
 // recommended option is a gate's one primary button (primaryOf), and a question's choice
 // picked ahead in its tab (WaitingCard.tsx); closed, one quiet line whose text opens on a
 // click. The human answers in every state: nothing waits for it.
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
 import type { RecommendationInfo } from "./api";
 import { Body, clock } from "./ChatText";
 import { avatar, MiniAvatar } from "./FeedRow";
+import { Tooltip } from "./Tooltip";
+import { useMore } from "./waitingParts";
 
 const LEAD = "supervisor";
 const TITLE = "Supervisor's recommendation";
+const WAITING = { asked: "Supervisor is preparing a recommendation…", missing: "The supervisor gave no recommendation" };
 
 // The option a card makes its primary button: the recommended one when it is one of
 // `options`, else the first, as without a recommendation.
@@ -33,7 +37,7 @@ export function Recommendation({ rec }: { rec?: RecommendationInfo | null }) {
         <div className="rec-head">
           <MiniAvatar who={LEAD} />
           <span className="rec-title">
-            {rec.state === "asked" ? "Supervisor is preparing a recommendation…" : "The supervisor gave no recommendation"}
+            {WAITING[rec.state]}
           </span>
         </div>
       </section>
@@ -50,6 +54,114 @@ export function Recommendation({ rec }: { rec?: RecommendationInfo | null }) {
         {rec.at && <time dateTime={rec.at}>{clock(rec.at)}</time>}
       </div>
       <Body text={rec.text} />
+    </section>
+  );
+}
+
+// Markdown's paired marks out of a text whose code stands aside. A mark counts only at a
+// word's edge, so max_retries and 2*3 stay.
+const unmarked = (text: string) =>
+  text
+    .replace(/(^|[^\w*])\*\*(\S(?:.*?\S)??)\*\*(?![\w*])/g, "$1$2")
+    .replace(/(^|[^\w_])__(\S(?:.*?\S)??)__(?![\w_])/g, "$1$2")
+    .replace(/(^|[^\w*])\*(\S(?:[^*]*\S)?)\*(?![\w*])/g, "$1$2")
+    .replace(/(^|[^\w_])_(\S(?:[^_]*\S)?)_(?![\w_])/g, "$1$2")
+    .replace(/~~(\S(?:.*?\S)??)~~/g, "$1");
+
+const FENCE = /^ {0,3}(`{3,}|~{3,})[^`\n]*\n([\s\S]*?)(?:^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm; // to its end, closed or not
+const CODE = /(`+)([\s\S]+?)\1(?!`)/g;
+
+// Markdown on one line: its links, line marks and paired marks out, its white space collapsed.
+// Code stands aside meanwhile, so it stays as it is and a mark around it still finds its pair.
+export const oneLine = (text: string) => {
+  const code: string[] = [];
+  const aside = (_: string, _mark: string, inner: string) => `\uE000${code.push(inner) - 1}\uE001`;
+  const marked = text
+    .replace(FENCE, aside)
+    .replace(CODE, aside)
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "");
+  return unmarked(marked)
+    .replace(/\uE000(\d+)\uE001/g, (_, n: string) => code[Number(n)])
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+// The text under the line, in a box that scrolls: a fade at its lower edge says there is more.
+function RecBody({ text }: { text: string }) {
+  const { box, more, scrolled } = useMore<HTMLDivElement>();
+  return (
+    <div className={`rec-bar-frame${more ? " cut" : ""}`}>
+      <div ref={box} className="rec-bar-body" tabIndex={0} onScroll={scrolled}>
+        <Body text={text} />
+      </div>
+    </div>
+  );
+}
+
+// The waiting card's line over the answer: the supervisor's avatar, "Supervisor recommends
+// <option>:" as the card's buttons name it, the disagreement right after it so a cut never
+// takes it, then the text cut on one line (a phone: two). Its whole text and time in the
+// tooltip; a click opens the text to 3 lines that scroll; `whole`, in the expanded card, it
+// shows all of it. A choice not among `options` counts as none, as in primaryOf.
+export function RecommendationBar({
+  rec,
+  options,
+  label = (option) => option,
+  whole = false,
+  area,
+}: {
+  rec?: RecommendationInfo | null;
+  options: string[];
+  label?: (option: string) => string;
+  whole?: boolean;
+  area?: Record<string, string>; // the selection bar's (quote.ts)
+}) {
+  const [opened, setOpened] = useState(false);
+  if (!rec) return null;
+  if (rec.state !== "given") {
+    return (
+      <section className="rec-bar waiting" aria-label={TITLE}>
+        <span className="rec-bar-line">
+          <MiniAvatar who={LEAD} />
+          <span className="rec-bar-text">{WAITING[rec.state]}</span>
+        </span>
+      </section>
+    );
+  }
+  const option = rec.choice && options.includes(rec.choice) ? label(rec.choice) : null;
+  const name = (
+    <b className="rec-bar-name">
+      {option ? `Supervisor recommends ${option}` : TITLE}
+      {rec.disagrees && <span className="rec-differs"> · {disagreed(rec, "disagrees")}</span>}:
+    </b>
+  );
+  const body = <RecBody text={rec.text} />;
+  const classes = `rec-bar${rec.disagrees ? " differs" : ""}${whole ? " whole" : ""}${opened && !whole ? " opened" : ""}`;
+  if (whole) {
+    return (
+      <section className={classes} aria-label={TITLE} {...area}>
+        <span className="rec-bar-line">
+          <MiniAvatar who={LEAD} />
+          {name}
+        </span>
+        {body}
+      </section>
+    );
+  }
+  return (
+    <section className={classes} aria-label={TITLE} {...area}>
+      <Tooltip tip={`${rec.text}${rec.at ? ` · ${clock(rec.at)}` : ""}`}>
+        <button type="button" className="rec-bar-line" aria-expanded={opened} onClick={() => setOpened(!opened)}>
+          <MiniAvatar who={LEAD} />
+          <span className="rec-bar-cut">
+            {name}
+            {!opened && " "}
+            {!opened && <span className="rec-bar-text">{oneLine(rec.text)}</span>}
+          </span>
+        </button>
+      </Tooltip>
+      {opened && body}
     </section>
   );
 }

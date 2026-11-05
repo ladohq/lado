@@ -656,11 +656,13 @@ Sessions for now. The UI's texts are in English.
   first, by session, each session's name a link to its chat and beside it "In the chat"
   (also to its chat); then the session's open questions and gates as the chat's waiting
   card (The waiting card, LAD-28; before, a card per item with its own link), answered in
-  place; expanded, a card fills the page's content area under its session's name line,
-  the other sessions and the agents' rows hidden until it folds (LAD-48). A chip in a
+  place. The card is whole (LAD-194, the human's decision of 2026-11-05 after a check on an
+  iPhone): no limit on its context, no fade, no "↓ more", no Expand; the page scrolls, the
+  footer right under the context, and the browser leads the keyboard, so the buttons under a
+  field may lie under it until the human scrolls. A chip in a
   card opens the artifact panel over Needs you (`?view=<record>&session=<name>`,
-  `paths.VIEW_SESSION_PARAM`; Artifacts, The panel), so the cards, their picks and an
-  expanded card stay as they were (LAD-48; before, it went to the session's Activity tab
+  `paths.VIEW_SESSION_PARAM`; Artifacts, The panel), so the cards and their picks stay as they
+  were (LAD-48; before, it went to the session's Activity tab
   and the picks not sent were lost); then the agents in `waiting` with their role, since when, and why (`status_reason`, or
   "waits for you in its terminal" when LADO knows no reason), with **Open terminal**
   (`/sessions/<name>/activity?terminal=<agent>`: the panel opens that agent's tab and
@@ -978,29 +980,51 @@ Built in the chat task (2026-10-03):
   row scrolls sideways (the wheel too), with no bar, which would lie between the shown tab
   and the panel; the shown tab scrolls into view, and the expand button at the right never
   moves (review of LAD-28, F2). The shown tab is the human's: it stays while items come or go
-  on other tabs, and when it empties the first one shows. **An agent's tab**: its
-  questions, numbered when more than one, each with its text in bold, its details
-  (Markdown, muted) and chips, its choices as 32 px buttons (one picked, `--action` on
-  `--action-ground`; a second click unpicks), **Other…** (only for a question with a free
-  answer: a field "Your own answer") and **Skip** (a field "Why you skip it (optional)");
-  the three exclude each other, and a pick is kept per question across tab switches.
-  **Fields** (decided 2026-10-15, LAD-70, mockup `task/lad-70/mockup-answer-field.html`,
-  option A; before, one row for an own answer and a skip's comment, two for a gate's
-  comment, with a resize handle that grew the field under the Send row and off the
-  screen): those two and a gate's comment for the next step, as wide as their question,
-  open 3 lines high, grow with their text to 8 (the composer's rule, `fieldHeight.ts`),
-  then scroll inside, with no resize handle, in every view of the card and on the Flows
-  tab's gate card alike; while the human types and the field grows, its lower edge comes
-  into view (`scrollIntoView({block: "nearest"})`: the card's list scrolls, else the
-  page). A ring around an item of the card shows whole (decided 2026-10-16, LAD-78,
-  mockup `task/lad-78/mockup-focus-ring.html`; before, the list kept room only below and
-  on the right, and cut the left side of a field's focus ring and the top of a question
-  marked at its top): the list keeps `--ring-room` (4 px, the largest ring: the
-  `:focus-visible` outline of a gate's comment; the 3 px ring of a focused own answer or
-  skip's comment and of a marked question) on every side and pulls itself back by as much
-  at the top and the left, so the items and the Send row stand where they would without
-  it, and a field scrolled into view keeps that room at whichever edge (`scroll-margin`;
-  also the Flows tab's gate card, whose run page scrolls it into view).
+  on other tabs, and when it empties the first one shows. **A tab's parts** (decided
+  2026-11-05, LAD-194, audit LAD-189 F14, F18, F19, frames g3-*; before, a list that scrolled
+  and a Send row, so the comment and the recommendation lay under a scroll with no sign of
+  them): `waitingParts.tsx`, shared by an agent's tab and a gate's. A title of at most 2
+  lines, 16 px 600, cut with "…", the whole text then first in the context; the item's meta
+  at its right, mono 12 `--muted` (`<run> · <state> · gate #<id>`, `#<id>`), under it on a
+  phone. A context, the one part that scrolls, a region "Context of the card" the keyboard
+  reaches: a gate's note and what it reads, a question's details and chips; cut, it fades
+  over 28 px into the panel's ground and shows "↓ more" (24 px, next in the Tab order; the
+  card's Expand), both gone at its end and in the expanded card. A footer, always whole,
+  under a line of `--human` at 30 %: the recommendation's line, a gate's comment or a
+  question's choices and field, the buttons. Nothing to show in the context (a gate with no
+  note), no context. **An agent's tab**: one question has its text as the title, its details
+  in the context, and in the footer its choices as chips (32 px, radius 16; one picked,
+  `--action` on `--action-ground`, ✓ on the recommended choice while it stays picked; a second
+  click unpicks), **Other…** (only for a question with a free answer: a field "Your own
+  answer"), then Send and **Skip question**, a text button in `--action` with no frame (a
+  field "Why you skip it (optional)"; a second click takes it back; it goes with Send, as any
+  answer). The three exclude each other, and a pick is kept per question across tab switches.
+  The choices' area is as high as its content up to 4 rows (`--waiting-choices-max`, 160 px; a
+  phone 148 px), then scrolls inside with a fade, a focusable group "Choices" (F43). Several
+  questions have no title: numbered in the context, each with its details, recommendation,
+  choices, Skip question and field; the footer holds Send and the count (the human's decision
+  of 2026-11-05: no pager). **The composer's fold** (LAD-194): while the shown tab of the chat's
+  card has a field of Other… or Skip question open, and the card is neither minimized nor
+  expanded, the composer gives way to a line of 40 px in a dashed `--line` frame, "Answering
+  question #<id> above · Write to supervisor instead" (the first such question), so only one
+  field talks to the agent. The card reports it (`onFold`), the chat shows `ComposerFold`, and
+  the composer stays mounted and hidden, its text, files and quotes kept; it takes no files
+  meanwhile, and a file dropped on the chat goes nowhere. The link closes the tab's fields and
+  gives the composer the focus; a quote does the same; the fields' words stay as drafts for
+  the next Other… or Skip question, their files per question. A stopped session's composer
+  does not fold. **Fields** (LAD-70, mockup `task/lad-70/mockup-answer-field.html`; LAD-194):
+  those two and a gate's comment for the next step, as wide as their question, open on 1 line
+  (36 px, a phone 44 px), grow with their text, not by the focus (frame g3-390-kbd), to 4 lines,
+  in the expanded card to 8 (`cardLines`, the composer's rule, `fieldHeight.ts`), then scroll
+  inside, with no resize handle; a gate's comment on the Flows tab's card opens 3 lines high
+  and grows to 8, as it did. A field in the footer grows in place; one in the context of several
+  questions brings its lower edge into view (`scrollIntoView({block: "nearest"})`). A ring
+  around an item of the card shows whole (LAD-78, mockup `task/lad-78/mockup-focus-ring.html`;
+  LAD-194): the boxes that scroll (the context, the choices' area) keep `--ring-room` (4 px, the
+  largest ring) as padding, pulled back where the items must stand at the footer's edge, the
+  footer's padding holds a field's 3 px ring, and a field scrolled into view keeps that room
+  (`scroll-margin`; also the Flows tab's gate card). A single item marked from the feed fills
+  the top, so its ring stands inside it (`inset`); a question of several keeps its ring around it.
   **Files in the fields** (decided 2026-10-18, LAD-86, mockup
   `task/lad-86/mockup-answer-files.html`, option A): Other…'s field, Skip's and a gate's
   comment take files as the composer does (Files in the composer, below; one module,
@@ -1014,32 +1038,48 @@ Built in the chat task (2026-10-03):
   server's limits (`GET /api/limits`) load with the card. A file dropped on the card but
   not on a field goes nowhere (the browser does not open it); the composer leaves the card
   to its fields, and takes what is dropped anywhere else in the chat. The
-  Send row, always shown: **Send answer to <agent>** / **Send <n> answers to <agent>**, on
-  once each question has a choice, own words that are not blank or files, or Skip, with
-  "<k> of <n> answered" beside it until then; it uploads the files of the tab's fields not
+  Send row, the footer's last: **Send answer to <agent>** / **Send <n> answers to <agent>**, on
+  once each question has a choice, own words that are not blank or files, or a skip, with
+  "<k> of <n> answered" beside it until then; off for want of an answer it has the tooltip
+  "Choose an answer first" (F45: on a `span` around it, a hint, as a button that is off takes no
+  pointer or focus, so a tap shows it too); in a stopped session it says "The session is
+  stopped: resume it to answer." beside it, as a gate does. It uploads the files of the tab's fields not
   uploaded yet, then posts the tab in one request (`POST …/answers`, each reply with its
   files' names), and the agent gets the replies in one hand-over. A failed upload stops it,
   its chip red with the reason. A refusal shows in the Send row with the
   core's reason and the picks stay (as a gate's comment does: the card keeps the picks and
   the comments across its tabs and its expanded view); the tab goes only when `waiting` brings its questions
-  closed. Each question shows the supervisor's recommendation (below) under its details,
+  closed. Each question shows the supervisor's recommendation (below) over its choices,
   and its recommended choice is picked ahead (decided 2026-10-13, LAD-28, mockup
   `task/lad-28/mockup-recommendation-in-tab.html`, option B): the counter counts it and Send
   sends it as any pick; the human's own pick, also an unpick, wins, and a recommendation
   given later picks its choice then only in a question the human has not touched. A comment with a choice is not offered (the API keeps `text` with `choice`).
-  **A gate's tab**: the gate's panel (Flow gates, above), its buttons in the Send row,
-  which answer at once. **Look**: the panel on `--human-ground` in a 1 px `--human` frame,
+  **A gate's tab**: the gate's panel (Flow gates, above), its question the title, its note and
+  reads the context, its recommendation, comment and buttons the footer; they answer at once. **Look**: the panel on `--human-ground` in a 1 px `--human` frame,
   radius `0 10px 10px 10px`; the shown tab lies on it, tinted with 10 % of its colour, its
-  text `--ink` 600; the others `--raised` and `--muted`. **Height**: at most half the
-  chat's; the list scrolls inside, the tabs and the Send row stay in view. In a session's
-  chat on a window wider than 900 px, the edge above the card is a splitter (decided
+  text `--ink` 600; the others `--raised` and `--muted`. **Height** (LAD-194): as high as its
+  content. Title and context together are at most 40 % of the chat, measured (`useHeight` on
+  `.chat`, `--waiting-top-max`), and of the window (`40dvh`) where the chat has no height of its
+  own (a window of 900 px or less): a percentage or a size container there would
+  measure itself. The footer is not in that limit and is not cut by it. Short of room the feed
+  goes first (no least height while a card shows), then the context and the title, then the
+  choices' area to one row, an opened recommendation to one line, then the field stops at its
+  height and scrolls inside; the buttons stay. The order is a ratio of `flex-shrink` weights
+  (styles.css), no measuring in JS; on a phone a field in the footer takes the choices out at
+  once (Phone layout). On a window of 900 px or less, which scrolls as a page, the chat's card
+  sticks to its lower edge over the feed, at most the room from the chat's top down
+  (`--chat-top`, measured also when a block above the chat comes or goes), so the footer stays
+  in sight wherever the page stands (the human's decision of 2026-11-05; the composer past the edge is LAD-193's). It keeps at least 220 px and
+  half the window: under an open sessions' list, or in a window under about 400 px, the page's
+  scroll brings the footer up. In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
   2026-10-14, LAD-54, mockup `task/lad-54/mockup-gate-card.html`, screen D; before, the
   card could not be made smaller, and the human talking a gate over with the supervisor
   read the replies in the other half): dragged, or ↑ / ↓ on it by 40 px, it gives the
-  card a height from its least one (`WAITING_MIN`, 166 px: its head, two lines of its list
-  and its Send row) to the room it shares with the feed less the feed's 160 px
-  (`FEED_MIN`); a double click forgets it, back to the stylesheet's half. The height is one
-  value for every session, as the columns' widths are (`lado.waitingHeight`); a chat too
+  card a height from its least one (`WAITING_MIN`, 166 px) to the room it shares with the
+  feed less the feed's 160 px (`FEED_MIN`); a double click forgets it, back to the content's
+  height. The height is the whole card's but goes to the top, less the tabs and the footer
+  (`--waiting-rest`), so the footer never gives way to it: lower than they are, they show whole
+  with no title or context. It is one value for every session, as the columns' widths are (`lado.waitingHeight`); a chat too
   short for it shows the card lower and keeps the chosen height. Dragged down past the
   least height, the card stays at it and minimizes (below) when the edge is let go, while
   the edge still holds the pointer, so the release lands on no line or tab of the
@@ -1072,11 +1112,11 @@ Built in the chat task (2026-10-03):
   a scrim, under which an artifact panel opened from it stayed hidden): in the chat over
   the chat's whole area, the feed and the composer hidden, the session's head, tabs and
   team row seen and usable (but on a phone, which hides the tabs and the team row too:
-  Phone layout, The chat); on Needs you over the page's content area (Needs you, above).
+  Phone layout, The chat); Needs you has no Expand (Needs you, above).
   Its host hides the rest by CSS (`:has(.waiting-card.expanded)`), so the artifact panel
   and its scrim, fixed over the page, are over the card too. On a window of 900 px or
-  less, which scrolls, it is the window's height under the top bar and expanding scrolls
-  it there. Its other icon ("Collapse the card") or Esc brings it back, the focus
+  less, which scrolls, it is the window's height under the top bar, expanding scrolls
+  it there, again when the window resizes, and the page stays there until it folds (LAD-194). Its other icon ("Collapse the card") or Esc brings it back, the focus
   returning to the expand button, and it comes back by itself when nothing waits. While
   an artifact panel is open (`?view=`), Esc closes the panel only; the next Esc folds the
   card. **Lines lead to tabs**: an open question's or gate's line in the feed
@@ -1089,8 +1129,15 @@ Built in the chat task (2026-10-03):
   supervisor for its view on each gate and each other agent's question (docs/design/agents.md), and it is part of that card, never an entry of its own: `recommendation`
   of `GateInfo` and of a question's `MessageInfo` (`RecommendationInfo`: state, text,
   choice, disagrees, by, at; none when never asked), brought by the feed with the item.
-  Open, a block between the question's text (the gate's note and what it reads) and the
-  answer, also in Needs you and on a run's page in Flows: the supervisor's small avatar,
+  In the waiting card, in the chat and on Needs you (`RecommendationBar`, LAD-194; the human's
+  decision of 2026-11-05), one line over the answer: the avatar of 20 px, "**Supervisor
+  recommends <option>:** <text>" (the option as the card's button names it) or "**Supervisor's
+  recommendation:** <text>" without an option of the card's, cut with "…" (a phone: 2 lines);
+  " · disagrees with <agent>" in orange stands right after the option, so a cut never takes it.
+  Its whole text and time are in its tooltip; a click opens it to 3 lines of Markdown that scroll
+  inside, with a fade at the lower edge until the end; in the expanded card it shows whole, at most 40 % of the window's height. On a run's page
+  in Flows, a block between the question's text (the gate's note and what it reads) and the
+  answer: the supervisor's small avatar,
   "Supervisor's recommendation", "disagrees with <agent>" as an orange chip when the
   supervisor disagrees with the agent whose report led to the gate or who asks, the time
   on the right, then the whole text as Markdown (no length limit or Show more: the
@@ -2256,19 +2303,29 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
 - **Sessions**: no strip; `/sessions` is the list across the screen, a session's page the
   session alone. `lado.sessionsList` is neither read nor written.
 - **Tabs**: a session's four tabs without their icons fit 360 px; the Kits page's three too.
-- **The chat**: the feed scrolls by itself, the waiting card (at most half the chat, no
-  edge, no height of its own) and the composer stay at the bottom; the composer's text is
+- **The chat**: the feed scrolls by itself, the waiting card (its title and context at most
+  40 % of the chat, no edge, no height of its own) and the composer stay at the bottom; the composer's text is
   16 px (Safari zooms into a smaller field) and its keys hint is not shown; so is the text
   of the card's fields that take files (an own answer, a skip's or a gate's comment; LAD-86). A flow event's
   line starts at the feed's left edge, its actor, chips and time on the first line, its
-  text wrapped under them, whole. With the keyboard open the chat has no room for the
-  card above the composer (LAD-126), so a field of the card (a gate's comment, an own
-  answer, a skip's comment) taking the focus expands it, the focus kept in the field, and
-  the field scrolls into the card's view, again whenever the card is laid out anew (the
-  keyboard opening). An expanded card, by its button, a field or sideways, also hides the
-  session's tabs and the Team row: it fills the page under the top bar. It stays expanded
-  when the keyboard closes, until its fold button, Esc, or nothing waits. Needs you, which
-  scrolls as a page, keeps the card as it is.
+  text wrapped under them, whole. The card's tabs, Minimize and Expand (44×44), fields, chips
+  and buttons are 44 px high; "↓ more" stays 24 px, as Expand does the same. Its tabs draw in
+  (a name down to 48 px, less padding), so a gate's and a question's stand whole. A field of the card
+  in focus does not expand it (LAD-194, the human's decision of 2026-11-05; since LAD-126 it
+  did, as the field lay in a list with no room above the keyboard): the footer is always whole,
+  so the session's tabs, the Team row, the context and a question's choices step aside (`typing`)
+  and the composer folds, a gate's comment into "Commenting on gate #<id> above", until the focus
+  leaves. The session's tabs go too, unlike frame g3-390-kbd: the human's decision of 2026-11-05,
+  as the buttons were cut under about 375 px. So do the choices, whole and at once, ahead of the
+  recommendation and against spec §3's order: the human's decision of 2026-11-05 (F16), as Send
+  was cut under about 378 px under a recommendation of two lines; the field closed, they are
+  back. A field in the context of several questions keeps the context it stands
+  in, and comes back into its view when the keyboard opens; an expanded card keeps its context.
+  A button pressed keeps the focus in the field, so nothing moves under the finger before its
+  click. Below 440 px of app (imitated down to 340 px; a real keyboard is the human's to check) the
+  top goes first, the meta before the title. An expanded card, by its button or sideways, hides the
+  session's tabs and the Team row: it fills the page under the top bar, until its fold button,
+  Esc, or nothing waits. Needs you, which scrolls as a page, changes nothing on a field's focus.
 - **Sideways** (`short`): the chat's card is minimized by the layout (its tabs and one
   line), not by the human: `lado.waitingMinimized.<session>` is not written. A tab or the
   line shows it expanded over the chat; Esc or its fold button minimizes it again; turned
@@ -3256,12 +3313,12 @@ trigger, so the arrow never touches it.
 
 **The cards' buttons** (feature/question-answer, 2026-10-10, mockup B v3; the waiting
 card, LAD-28): in the form of a gate's panel (`form.answer`) and in the waiting card (its
-options `.waiting-option` and its Send row `.waiting-send`) every button is 32 px high,
-14 px, radius 8, by one rule each (`.answer .primary, .answer .quiet`; `.waiting-send
+options `.waiting-option`, radius 16, and its Send row `.waiting-send`) every button is 32 px
+high, 14 px, radius 8, by one rule each (`.answer .primary, .answer .quiet`; `.waiting-send
 .primary, .waiting-send .quiet`), and the fields take radius 8 with them; the global
 `.primary` (32 px, radius 6) and `.quiet` (28 px, 13 px) stay as they are elsewhere (one
 UI-wide scale: BACKLOG.md). The main action is `.primary`, the others `.quiet`; a
-question's options are neutral until picked, Other… and Skip in `--muted`.
+question's options are neutral until picked, Other… in `--muted`, Skip question in `--action`.
 
 **Time**: every time of day in the UI is written in 24 hours (`clock()`, `hourCycle:
 "h23"`), whatever the browser's locale.

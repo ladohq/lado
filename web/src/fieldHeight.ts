@@ -6,7 +6,7 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 // scrolls.
 export const MOST_LINES = 8;
 
-// The lines the waiting card's fields and a gate's comment open with.
+// The lines a gate's comment on a run's page opens with (the waiting card's: waitingParts.tsx).
 export const CARD_LINES = 3;
 
 // The field as tall as its text, from `least` lines to `most`, then it scrolls inside. Lines
@@ -27,7 +27,7 @@ export function grow(field: HTMLTextAreaElement, least: number, most: number): n
 }
 
 // `grow` on each change of the text. A field with the focus that grew brings its lower edge
-// into view: the nearest box that scrolls (the waiting card's list, else the page) moves by
+// into view: the nearest box that scrolls (the waiting card's context, else the page) moves by
 // as much as the field passed its edge. A field inside a frame that draws its ring (a field
 // that takes files, attachFiles.AnswerBox) brings that `frame` into view instead.
 export function useGrow(

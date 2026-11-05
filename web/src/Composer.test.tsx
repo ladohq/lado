@@ -327,3 +327,32 @@ test("a quote kept for the session is in the composer when it mounts", () => {
   open();
   expect(field().value).toBe("> A\n");
 });
+
+test("folded it is hidden, its text kept, and it takes no files dropped on the chat", () => {
+  const { rerender } = open();
+  fireEvent.change(field(), { target: { value: "half a thought" } });
+  const hide = (folded: boolean) =>
+    rerender(
+      <section className="chat" aria-label="Chat">
+        <p>the feed</p>
+        <Composer session="lado" stopped={false} folded={folded} />
+      </section>,
+    );
+  hide(true);
+  const form = document.querySelector("form.composer") as HTMLFormElement;
+  expect(form.hidden).toBe(true);
+  const dragged = { dataTransfer: { types: ["Files"], files: [file("a.png")] } };
+  fireEvent.dragEnter(screen.getByRole("region", { name: "Chat" }), dragged);
+  expect(document.querySelector(".composer-box.dropping")).toBeNull();
+  hide(false);
+  expect(form.hidden).toBe(false);
+  expect(field().value).toBe("half a thought");
+});
+
+test("a quote that comes while it is folded takes the focus once it shows", async () => {
+  const { rerender } = render(<Composer session="lado" stopped={false} folded />);
+  act(() => sendQuote("lado", "> A", () => {}));
+  expect((screen.getByRole("textbox", { hidden: true }) as HTMLTextAreaElement).value).toBe("> A\n");
+  rerender(<Composer session="lado" stopped={false} folded={false} />);
+  await waitFor(() => expect(document.activeElement).toBe(field()));
+});

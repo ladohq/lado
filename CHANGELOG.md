@@ -39,7 +39,15 @@
   link moved to Details, which a click on the title opens; the chat gets the height back,
   and `Skip to chat` takes the keyboard straight to it.
 
+- **The card that waits for you always shows what you act on.** The recommendation, the
+  comment or choices and the buttons stay in sight, only the context scrolls, and the card
+  is as high as its content. While you write your own answer, the composer folds into a line.
+  On Needs you the card is whole and the page scrolls, with nothing to expand.
+
 ### Fixed
+
+- **Placeholders read well in the dark theme.** Every field's hint now has the muted text
+  colour instead of the browser's pale grey.
 
 - **A stop no longer loses questions to you without a word.** Stop and `lado stop` say how
   many open questions close, a closed card reads "Closed: the session stopped", and after a

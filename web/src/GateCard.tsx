@@ -18,7 +18,8 @@ import { OutcomeChip } from "./flowSteps";
 import { ChevronIcon, GateIcon } from "./icons";
 import { useLive } from "./live";
 import { quoteArea } from "./quote";
-import { disagreed, primaryOf, Recommendation } from "./Recommendation";
+import { disagreed, primaryOf, Recommendation, RecommendationBar } from "./Recommendation";
+import { CardFoot, cardLines, CardTop, STOPPED_NOTE, type CardShape } from "./waitingParts";
 
 const NOTE_LINES = 20; // the lines of the note before the gate shown before Show more
 const CLOSED_NOTE_LINES = 6; // the same in a closed gate's card, its Note line opened
@@ -62,9 +63,9 @@ export function GateCard({
 // card): the question, the note that led to it in full with its chips, the artifacts it
 // reads, the supervisor's recommendation (Recommendation.tsx), the comment for the next step
 // and a button per option, the recommended one primary. `compact`: without the note and the
-// artifacts. `inTab`: the question, note, reads and comment as the tab's list
-// (`.waiting-list`, it scrolls), the buttons in its Send row (`.waiting-send`, always shown);
-// `marked`, the gate a link asked for. `comment` and `onComment`, `files` and `onFiles`: the
+// artifacts. `card`: as a tab of the waiting card (waitingParts.tsx), the question its title,
+// the note and reads its context, the recommendation's line, the comment and the buttons
+// its footer; `marked`, the gate a link asked for. `comment` and `onComment`, `files` and `onFiles`: the
 // comment and its files kept by who shows the panel (the waiting card, across its tabs and
 // its expanded view), else here. The comment takes files as the composer does
 // (attachFiles.AnswerBox); their count and size stand beside the buttons, and a button
@@ -74,7 +75,7 @@ export function GatePanel({
   gate,
   stopped,
   compact = false,
-  inTab = false,
+  card,
   marked = false,
   comment: kept,
   onComment,
@@ -86,7 +87,7 @@ export function GatePanel({
   gate: GateInfo;
   stopped: boolean;
   compact?: boolean;
-  inTab?: boolean;
+  card?: CardShape;
   marked?: boolean;
   comment?: string;
   onComment?: (comment: string) => void;
@@ -124,7 +125,7 @@ export function GatePanel({
   }
 
   // A readable area of the selection bar, laid out as if it were not there.
-  const about = (
+  const about = !card && (
     <div className="gate-about" {...quoteArea(session)}>
       <p className="gate-question">{gate.question}</p>
       {!compact && <Note session={session} gate={gate} />}
@@ -138,11 +139,12 @@ export function GatePanel({
       label="Comment for the next step (optional)"
       text={comment}
       change={setComment}
-      off={inTab && stopped}
+      off={card !== undefined && stopped}
       locked={busy}
       files={files}
       setFiles={setFiles}
       limits={limits}
+      lines={card && cardLines(card.expanded)}
     />
   );
   const buttons = [
@@ -165,7 +167,7 @@ export function GatePanel({
   ];
   const said = (
     <>
-      {stopped && <p className="chat-note">The session is stopped: resume it to answer.</p>}
+      {stopped && <p className="chat-note">{STOPPED_NOTE}</p>}
       {problem && (
         <p className="field-problem" role="alert">
           {problem}
@@ -173,19 +175,42 @@ export function GatePanel({
       )}
     </>
   );
-  if (inTab) {
+  if (card) {
+    const context = gate.note || gate.note_body || gate.attachments.length > 0 || gate.problem || (gate.reads ?? []).length > 0;
     return (
       <>
-        <div className={`waiting-list waiting-gate${marked ? " marked" : ""}`} data-item={gate.id}>
-          {about}
+        <CardTop
+          card={card}
+          title={gate.question}
+          meta={`${gate.run} · ${gate.state} · gate #${gate.id}`}
+          item={gate.id}
+          marked={marked}
+          area={quoteArea(session)}
+        >
+          {context && (
+            <>
+              <Note session={session} gate={gate} />
+              {gate.problem && <p className="problem gate-problem">Artifacts it reads cannot be shown: {gate.problem}</p>}
+              <Reads session={session} names={gate.reads ?? []} />
+            </>
+          )}
+        </CardTop>
+        <CardFoot card={card}>
+          <RecommendationBar
+            rec={gate.recommendation}
+            options={gate.options}
+            label={label(gate)}
+            whole={card.expanded}
+            area={quoteArea(session)}
+          />
           <form className="answer" onSubmit={(event) => event.preventDefault()}>
             {field}
           </form>
-        </div>
-        <div className="waiting-send">
-          {buttons}
-          {said}
-        </div>
+          <div className="waiting-send">
+            {buttons}
+            {said}
+          </div>
+        </CardFoot>
       </>
     );
   }

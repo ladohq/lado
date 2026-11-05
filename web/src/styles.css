@@ -11,6 +11,12 @@ body {
   font: 15px/1.5 var(--sans);
 }
 
+/* The browser's own grey is too pale on a dark field. */
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
 code {
   font-family: var(--mono);
   font-size: 13px;
@@ -21,7 +27,7 @@ a {
 }
 
 /* The room a field keeps around it for its ring when a box that scrolls brings it into view
-   (scroll-margin), and the waiting card's list on every side, as it scrolls and so cuts
+   (scroll-margin), and the waiting card's boxes that scroll on every side, as they cut
    what is outside: the largest ring, the outline below (2 px at a 2 px offset); the 3 px
    ring of .waiting-field:focus and of .marked fits in it. */
 :root {
@@ -4015,6 +4021,93 @@ h3 {
   font-weight: 400;
 }
 
+/* The waiting card's line (RecommendationBar): cut on one line; opened, its text in a box of
+   3 lines that scrolls; in the expanded card, whole. A disagreement is plain orange there. */
+.rec-bar {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.rec-bar.opened,
+.rec-bar.whole {
+  flex: 0 10 auto;
+  min-height: 21px;
+}
+
+.rec-bar-line {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.rec-bar-line {
+  cursor: pointer;
+}
+
+.rec-bar .avatar.mini {
+  width: 20px;
+  height: 20px;
+}
+
+.rec-bar-cut {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rec-bar-name {
+  font-weight: 600;
+}
+
+.rec-bar .rec-differs {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.rec-bar.waiting {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.rec-bar-frame {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rec-bar-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: calc(3 * 1.5em);
+  padding-left: 28px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
+.rec-bar.whole .rec-bar-body {
+  max-height: none;
+}
+
+.rec-bar-body .chat-body {
+  margin: 0;
+}
+
 .rec-differs {
   padding: 0 8px;
   border: 1px solid var(--human);
@@ -4313,16 +4406,24 @@ h3 {
 }
 
 /* The waiting card (WaitingCard.tsx; docs/design/ui.md, The waiting card): above the
-   composer, at most half the chat's height; its tabs on top, each with its agent's or run's
-   colour (--who) on its top edge, dashed for a gate; the panel on the "waits for you"
-   ground, its list scrolling, its Send row always shown. */
+   composer, as high as its content; its tabs on top, each with its agent's or run's colour
+   (--who) on its top edge, dashed for a gate; the panel on the "waits for you" ground, its
+   title and context at most 40 % of the chat, its footer always whole. Short of room, the
+   feed goes first (it has no least height while a card shows; the edge's bounds still keep
+   its 160 px), then the context and the title, then the footer's parts, by the weights of
+   flex-shrink: choices 100, an opened recommendation 10, the field 1, the buttons none. */
 .waiting-card {
+  --waiting-choices-max: 160px;
+  --waiting-field-h: 36px;
   display: flex;
   flex: 0 1 auto;
   flex-direction: column;
   min-height: 0;
-  max-height: 50%;
   max-width: 860px;
+}
+
+.chat:has(> .waiting-card) > .chat-feed {
+  min-height: 0;
 }
 
 .chat > .waiting-card {
@@ -4501,51 +4602,217 @@ h3 {
   color: var(--ink);
 }
 
-/* The height the human gave it by its edge (--waiting-height, WaitingCard.tsx): its panel
-   and list fill it. Not on a narrow window, which scrolls and has no edge. */
+/* The height the human gave it by its edge (--waiting-height, WaitingCard.tsx) goes to the
+   top, less the tabs and the footer (--waiting-rest), so the footer never gives way to it.
+   Not on a narrow window, which scrolls and has no edge. */
 @media (min-width: 901px) {
-  .chat > .waiting-card.sized {
-    height: var(--waiting-height);
+  .waiting-card.sized .waiting-top {
+    height: max(0px, var(--waiting-height) - var(--waiting-rest, 0px));
     max-height: none;
-  }
-
-  .waiting-card.sized .waiting-panel,
-  .waiting-card.sized .waiting-list {
-    flex: 1;
   }
 }
 
 .waiting-panel {
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column;
-  gap: 12px;
   min-height: 0;
-  padding: 14px 16px;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--human);
   border-radius: 0 10px 10px 10px;
   background: var(--human-ground);
 }
 
-.waiting-list {
+/* Title and context. Where the chat has no height of its own the limit is the window's;
+   on a phone the meta under the title is cut first, then the title. */
+.waiting-top {
+  display: flex;
+  flex: 0 10000 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: var(--waiting-top-max, 40dvh);
+  overflow: clip;
+  border-radius: 0 9px 0 0;
+  transition: box-shadow 0.3s;
+}
+
+.waiting-title {
+  display: flex;
+  flex: none;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 12px 16px 4px;
+}
+
+.waiting-title-text {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.waiting-meta {
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  color: var(--muted);
+  font: 12px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waiting-whole {
+  margin: 0 0 6px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* The context: the one part that scrolls; its padding is the room for a ring too. A cut one
+   fades into the panel's ground, "↓ more" over the fade. */
+.waiting-context-frame {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.waiting-context {
+  flex: 0 1 auto;
+  min-height: 0;
+  padding: var(--ring-room) 16px 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: 14px;
+}
+
+/* Its ring stands inside it: the top around it would cut one outside. */
+.waiting-context:focus-visible {
+  outline-offset: -2px;
+}
+
+.waiting-top:not(:has(.waiting-title)) .waiting-context {
+  padding-top: 12px;
+}
+
+.waiting-context .gate-note {
+  margin-top: 0;
+}
+
+.waiting-context .chat-body {
+  margin: 0;
+}
+
+.waiting-context-frame.cut::after,
+.waiting-choices-frame.cut::after,
+.rec-bar-frame.cut::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 28px;
+  background: linear-gradient(transparent, var(--human-ground));
+  content: "";
+  pointer-events: none;
+}
+
+.waiting-more {
+  position: absolute;
+  right: 12px;
+  bottom: 2px;
+  z-index: 1;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--human-ground);
+  color: var(--action);
+  font: 12px var(--sans);
+}
+
+/* The footer, always whole: the recommendation, a gate's comment or a question's choices and
+   field, the buttons. */
+.waiting-foot {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 10px 16px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--human) 30%, transparent);
+}
+
+.waiting-foot .answer {
+  flex: 0 1 auto;
+  min-height: var(--waiting-field-h);
+  margin-top: 0;
+}
+
+/* The field: a line of --waiting-field-h, as high as its text after that; with no room left
+   it stops at the height it has and scrolls inside. */
+.waiting-card .answer-box {
+  justify-content: center;
+  min-height: var(--waiting-field-h);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.waiting-foot .answer-box {
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+.waiting-foot .composer-row {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+/* A placeholder wider than the field stays on its line: it would count as text in the height. */
+.waiting-foot .waiting-field::placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waiting-foot .waiting-field {
+  max-height: 100%;
+  overflow-y: auto !important; /* over fieldHeight.ts's hidden: the room can be less than its text */
+}
+
+/* The choices of a single question: by content up to their limit, then they scroll. The
+   padding is the room for a ring, pulled back so the chips stand at the footer's edge. */
+.waiting-choices-frame {
+  position: relative;
+  display: flex;
+  flex: 0 100 auto;
+  flex-direction: column;
+  min-height: 40px;
+  max-height: var(--waiting-choices-max);
+  margin: calc(-1 * var(--ring-room));
+}
+
+.waiting-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 0;
+  padding: var(--ring-room);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.waiting-questions {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-height: 0;
-  /* The room for a ring (--ring-room), pulled back at the top and the left, so the items
-     stand where they would without it; the bottom keeps it, above the Send row. */
-  margin: calc(-1 * var(--ring-room)) 0 0 calc(-1 * var(--ring-room));
-  padding: var(--ring-room) 6px var(--ring-room) var(--ring-room);
-  overflow: auto;
+  margin: 0;
+  padding: 0;
   list-style: none;
-}
-
-.waiting-gate {
-  gap: 8px;
-}
-
-.waiting-gate .answer {
-  margin-top: 0;
 }
 
 .waiting-question {
@@ -4556,9 +4823,13 @@ h3 {
   transition: box-shadow 0.3s;
 }
 
-.waiting-question.marked,
-.waiting-gate.marked {
+.waiting-question.marked {
   box-shadow: 0 0 0 3px var(--action-ground);
+}
+
+/* A single item fills the top, which the panel cuts: its ring stands inside it. */
+.waiting-top.marked {
+  box-shadow: inset 0 0 0 3px var(--action-ground);
 }
 
 .waiting-question-text {
@@ -4584,13 +4855,14 @@ h3 {
 }
 
 .waiting-option {
-  height: 32px;
-  padding: 0 14px;
+  min-height: 32px;
+  padding: 4px 14px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 16px;
   background: var(--panel);
   color: var(--ink);
   font-size: 14px;
+  text-align: left;
 }
 
 .waiting-option.on {
@@ -4634,9 +4906,39 @@ h3 {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding-top: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
   font-size: 13px;
+}
+
+/* A Send that is off: the hint around it takes the pointer it does not. */
+.waiting-send-off {
+  display: inline-flex;
+  border-radius: 8px;
+}
+
+.waiting-send-off > button {
+  pointer-events: none;
+}
+
+.waiting-skip {
+  height: 32px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--action);
+  font-size: 14px;
+}
+
+.waiting-skip:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.waiting-skip[aria-pressed="true"] {
+  font-weight: 600;
+}
+
+.waiting-skip:disabled {
+  color: var(--muted);
 }
 
 .waiting-send .primary,
@@ -4660,7 +4962,7 @@ h3 {
 
 /* Expanded: in its place, over its page's area, nothing dimmed; its host hides the rest
    (the chat its feed and composer, Needs you the other sessions and the agents' rows), so
-   a panel over the page (the artifact panel, z 30-31) is over it too. Its list fills the
+   a panel over the page (the artifact panel, z 30-31) is over it too. Its context fills the
    height. */
 .waiting-card.expanded {
   flex: 1;
@@ -4681,32 +4983,46 @@ h3 {
   margin-inline: 0;
 }
 
-.content:has(> .needs-you .waiting-card.expanded) {
-  display: flex;
-  flex-direction: column;
+/* Needs you scrolls as a page: the card is whole, its context in the page's flow. */
+.waits-session .waiting-top {
+  max-height: none;
 }
 
-.needs-you:has(.waiting-card.expanded) {
-  flex: 1;
-  min-height: 0;
+.waits-session .waiting-context {
+  overflow: visible;
 }
 
-.needs-you:has(.waiting-card.expanded) .waits-session:not(:has(.waiting-card.expanded)),
-.needs-you:has(.waiting-card.expanded) .waits-item {
-  display: none;
-}
-
-.waits-session:has(.waiting-card.expanded) {
-  flex: 1;
-  min-height: 0;
-}
-
-/* A narrow window scrolls, so the chat has no height of its own: the card is the window's
-   less the top bar, and expanding scrolls it under that bar. */
+/* A narrow window scrolls, so the chat has no height of its own: the card sticks to the
+   window's lower edge, so its footer stays in sight wherever the page stands. It sticks no
+   higher than the chat's top, so it is at most the room from there down (--chat-top, Chat.tsx),
+   its parts giving way as in any low chat, but never less than a footer's least height nor
+   half the window, for a chat low on the page (the sessions' list open over it), which the
+   page's scroll then brings up. `.content` clips instead of hiding, which would make it the
+   box the card sticks in. Expanded it is the window's height under the top bar, expanding
+   scrolls it there, and the page stays there until it folds. */
 @media (max-width: 900px) {
+  .content:has(> .sessions .chat > .waiting-card) {
+    overflow: clip;
+  }
+
+  html:has(.waiting-card.expanded) {
+    overflow: hidden;
+  }
+
+  .chat > .waiting-card {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    max-height: max(220px, 50vh, 100vh - var(--chat-top, var(--head-h)));
+    max-height: max(220px, 50dvh, 100dvh - var(--chat-top, var(--head-h)));
+    background: var(--ground);
+  }
+
   .waiting-card.expanded {
     min-height: calc(100vh - var(--head-h));
     min-height: calc(100dvh - var(--head-h));
+    max-height: calc(100vh - var(--head-h));
+    max-height: calc(100dvh - var(--head-h));
     scroll-margin-top: var(--head-h);
   }
 }
@@ -4715,8 +5031,18 @@ h3 {
   flex: 1;
 }
 
-.waiting-card.expanded .waiting-list {
-  flex: 1;
+.waiting-card.expanded .waiting-top {
+  flex-grow: 1;
+  max-height: none;
+}
+
+.waiting-card.expanded .waiting-context-frame,
+.waiting-card.expanded .waiting-context {
+  flex-grow: 1;
+}
+
+.waiting-card.expanded .waiting-foot .rec-bar-body {
+  max-height: 40dvh;
 }
 
 .chat-summary {
@@ -5001,6 +5327,39 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* The composer folded (ComposerFold): a line of 40 px in a dashed frame. */
+.composer-fold {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  max-width: 860px;
+  min-height: 40px;
+  margin: 0;
+  margin-inline: max(0px, (100% - 860px) / 2);
+  padding: 0 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.composer-fold .icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.composer-fold .link-button {
+  margin: 0;
+  font-size: 14px;
+}
+
+.composer[hidden] {
+  display: none;
 }
 
 .composer-box {
@@ -11091,20 +11450,86 @@ button.quiet.danger-text {
   order: 1;
 }
 
-/* The waiting card: at most half the chat (its stylesheet's), no edge; expanded, it fills
-   the chat, whose height is the window's here. */
+/* The waiting card: no edge; expanded, it fills the chat, whose height is the window's here.
+   Its targets are 44 px; "↓ more" stays 24 px, as Expand does the same. */
 :root[data-phone] .waiting-card > .splitter-top {
   display: none;
 }
 
-:root[data-phone] .waiting-card.expanded {
+:root[data-phone] .waiting-card.expanded,
+:root[data-phone] .chat > .waiting-card {
+  position: static;
   min-height: 0;
+  max-height: none;
 }
 
-/* Expanded (its button, sideways, or a field's focus with the keyboard open: LAD-126), the
-   card fills the page under the top bar: the session's tabs and the Team row go too. */
+:root[data-phone] .waiting-card {
+  --waiting-choices-max: 148px;
+  --waiting-field-h: 44px;
+}
+
+:root[data-phone] .waiting-option {
+  min-height: 44px;
+}
+
+/* A tab's frame goes in closer, so a gate's and a question's stand whole in the row. */
+:root[data-phone] .waiting-tab {
+  --name: min(48px, calc(var(--chars) * 1ch));
+  gap: 5px;
+  min-width: calc(var(--name) + 62px);
+  padding: 0 8px;
+}
+
+:root[data-phone] .waiting-tab,
+:root[data-phone] .waiting-send .primary,
+:root[data-phone] .waiting-send .quiet,
+:root[data-phone] .waiting-skip {
+  height: 44px;
+}
+
+:root[data-phone] .waiting-expand {
+  width: 44px;
+  height: 44px;
+}
+
+:root[data-phone] .waiting-choices-frame {
+  min-height: 52px;
+}
+
+:root[data-phone] .waiting-title {
+  flex-direction: column;
+  gap: 0;
+}
+
+:root[data-phone] .waiting-title-text {
+  font-size: 15px;
+}
+
+:root[data-phone] .waiting-meta {
+  max-width: 100%;
+}
+
+:root[data-phone] .rec-bar-cut {
+  display: -webkit-box;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* Expanded (its button, or sideways), the card fills the page under the top bar: the
+   session's tabs and the Team row go too. */
 :root[data-phone] .session:has(.waiting-card.expanded) .session-tabs,
 :root[data-phone] .activity:has(> .chat > .waiting-card.expanded) > .team-row {
+  display: none;
+}
+
+/* A field of the card with the focus: the session's tabs and the Team row go, and with a field
+   in the footer the context and the choices, so the footer fits above the keyboard (a field in
+   the context stays in it). */
+:root[data-phone] .session:has(.waiting-card.typing) .session-tabs,
+:root[data-phone] .activity:has(> .chat > .waiting-card.typing) > .team-row,
+:root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-context-frame,
+:root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-choices-frame {
   display: none;
 }
 
@@ -11112,6 +11537,11 @@ button.quiet.danger-text {
 :root[data-phone] .composer textarea,
 :root[data-phone] .answer-box textarea {
   font-size: 16px;
+}
+
+/* A card's placeholder keeps the frames' 14 px, so it fits a phone's field. */
+:root[data-phone] .waiting-card .answer-box textarea::placeholder {
+  font-size: 14px;
 }
 
 :root[data-phone] .composer-keys {

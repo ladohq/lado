@@ -22,10 +22,10 @@ CLI; **Model servers**, the saved servers and `Add server`.
 
 No change in the section SHALL scroll the page or move the element the human acts on or
 holds the focus on, whatever it changes above it: a tick, a rename, × and Undo, a default
-model picked, adding, changing or removing a server, the section's reload after any of them,
-and a list's read ending. The page SHALL keep that element at its place on the screen by scrolling by the
-height changed above it, and SHALL scroll to `#models` only when it opens with that anchor.
-No row SHALL leave the section on a timer.
+picked, a server added, changed or removed, the reload after any of them, and a list's read
+ending. The page SHALL keep that element at its place on the screen by scrolling by the height
+changed above it, and SHALL scroll to `#models` only when it opens with that anchor. No row
+SHALL leave the section on a timer.
 
 #### Scenario: A tick adds a card above
 - **WHEN** the human ticks an agent CLI under a model in the middle of a server's open list
@@ -131,8 +131,7 @@ Nothing SHALL remove it but the human; unticking it SHALL remove it from the lis
 A model removed by × SHALL leave in its row `Removed <name>. Undo`, the row's height kept,
 the focus on Undo; Undo SHALL save the model again with its name, agent CLI, model and
 server, as `lado model add <name>` would, a refusal shown in the row, the focus then on the
-model's name. A model that was its CLI's default SHALL say `Removed <name>. <CLI> is back
-on its settings.`, and Undo SHALL set the default again. After ten seconds only Undo SHALL go: `Removed <name>.` SHALL stay until the
+model's name. After ten seconds only Undo SHALL go: `Removed <name>.` SHALL stay until the
 human's next change in the section or the page's next opening.
 
 #### Scenario: Undo
@@ -148,12 +147,10 @@ human's next change in the section or the page's next opening.
 ### Requirement: Removing a server removes its models after a confirmation
 
 **Remove** of a server SHALL ask under its row, the focus on Cancel: `Remove <name>?`, or
-with models `Remove <name> and its <n> models: <name>, <name>?`; when a model named is an agent CLI's default the question SHALL go on with
-`<A> is <CLI>'s default model: <CLI> goes back to its settings.`, one such sentence for all of
-them. Only its confirmation SHALL remove them as `lado model-server remove <name>
---with-models` does, clearing those defaults, and only the models it named: when the
-server has others by then, nothing SHALL be removed and it SHALL ask again, naming them.
-The row SHALL then say `Removed <name> and its <n> models.`
+with models `Remove <name> and its <n> models: <name>, <name>?`. Only its confirmation SHALL
+remove them as `lado model-server remove <name> --with-models` does, and only the models it
+named: when the server has others by then, nothing SHALL be removed and it SHALL ask again,
+naming them. The row SHALL then say `Removed <name> and its <n> models.`
 
 #### Scenario: A model added after it asked
 - **WHEN** the confirmation names `a`, and `lado model add` puts `late` on the server before
@@ -170,21 +167,14 @@ The row SHALL then say `Removed <name> and its <n> models.`
 - **WHEN** the human presses Cancel at the confirmation
 - **THEN** the server and its models stay
 
-#### Scenario: A default on the server
-- **WHEN** `Локальная Qwen` on `LM Studio дома` is OpenCode's default and the human removes the
-  server
-- **THEN** the question names it, and once confirmed OpenCode's card shows `OpenCode's settings`
-  and `Its default model Локальная Qwen was removed with LM Studio дома.` until the human's next
-  change in the section
-
 ### Requirement: The section fits a phone
 
 On a window narrower than 600 px the section's forms SHALL show their fields one under the
-other; its icon buttons, ×, Undo, the Default model field and the picker's search
-SHALL be at least 44 px high and a list's row 44 px high; a card's label SHALL show over its
-field; the field SHALL hide the id and keep the name and the server's mark; the picker SHALL
-be at most `min(420px, 60dvh)` high; a server's list of up to 20 models SHALL not scroll within itself; and no part of the
-section SHALL make the page scroll sideways.
+other; its icon buttons, ×, Undo, the Default model field and the picker's search SHALL be at
+least 44 px high and a list's row 44 px high; a card's label SHALL show over its field; the
+field SHALL hide the id and keep the name and the server's mark; a server's list of up to 20
+models SHALL not scroll within itself; and no part of the section SHALL make the page scroll
+sideways.
 
 #### Scenario: A server's list on a phone
 - **WHEN** the human opens a server with a long address and 12 models in a window 390 px
@@ -431,8 +421,9 @@ the value.
 ### Requirement: The picker lies over the page
 
 The list SHALL lie over the page and not push it: placed by the field, opening upward when fewer
-than 240 px are below and more above, at most 420 px high, scrolling within itself, kept above a
-phone's keyboard. Only a scroll the human starts outside the list SHALL close it.
+than 240 px are below and more above, at most 420 px high (`min(420px, 60dvh)` on a window
+narrower than 600 px), scrolling within itself, kept above a phone's keyboard. Only a scroll the
+human starts outside the list SHALL close it.
 
 #### Scenario: The last card
 - **WHEN** the human opens the picker of the last card at the bottom of the window
@@ -527,6 +518,28 @@ external default the card SHALL say `On <CLI> this model takes the whole process
 - **WHEN** Claude Code's default is `Шлюз Opus` on `work`
 - **THEN** the card says `On Claude Code this model takes the whole process: an agent on it runs
   only on work.`
+
+### Requirement: Undo of a default removed
+
+A model that was its CLI's default SHALL say `Removed <name>. <CLI> is back on its settings.`,
+and Undo SHALL set the default again.
+
+#### Scenario: Undo of a default
+- **WHEN** the human removes `Локальная Qwen`, OpenCode's default, and presses Undo
+- **THEN** the model is saved again and OpenCode's field shows it
+
+### Requirement: Removing a server clears the defaults on it
+
+When a model a server's question names is an agent CLI's default, the question SHALL go on with
+`<A> is <CLI>'s default model: <CLI> goes back to its settings.`, one such sentence for all of
+them, and its confirmation SHALL clear those defaults.
+
+#### Scenario: A default on the server
+- **WHEN** `Локальная Qwen` on `LM Studio дома` is OpenCode's default and the human removes the
+  server
+- **THEN** the question names it, and once confirmed OpenCode's card shows `OpenCode's settings`
+  and `Its default model Локальная Qwen was removed with LM Studio дома.` until the human's next
+  change in the section
 
 ### Requirement: Removing a default model asks first
 

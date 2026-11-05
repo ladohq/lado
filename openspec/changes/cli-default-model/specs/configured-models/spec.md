@@ -4,12 +4,9 @@
 
 `lado model add <name> --cli <cli> --model <model> --server <server>` SHALL save a
 configured model: a name, an agent CLI (a provider's name), the model as that CLI names it
-(spaces around it dropped), and a saved model server by its name. A configured model SHALL
-always live on a server: without `--server` the command SHALL be refused with exit 1 and
-`a CLI's own models need no saving; only a model on a server is added: --server <server>`,
-and the hint `to make one its default: lado model default <cli> <model>`. On success it
-SHALL print `Saved model "<name>": <CLI title>, <model> on <server> (<the check's text>)`
-and exit 0. `lado model` alone SHALL print its help.
+(spaces around it dropped), and a saved model server by its name. On success it SHALL print
+`Saved model "<name>": <CLI title>, <model> on <server> (<the check's text>)` and exit 0.
+`lado model` alone SHALL print its help.
 
 #### Scenario: A model on LM Studio
 - **WHEN** `LM Studio дома` is saved, answers and lists `qwen3-8b`, and the human runs
@@ -82,9 +79,8 @@ SHALL print `No models. Add one: lado model add <name> --cli <cli> --model <mode
 given twice counted once) before it removes any; when one is no model's, it SHALL be
 refused with `no model "<name>" is saved; lado model list names them` (`no models "<name>",
 "<name>" are saved; …` for several), remove nothing and exit 1. Otherwise it SHALL remove
-each model in the order given, print `Removed model "<name>".` for each and exit 0. A model
-that is its CLI's default SHALL be removed with the default cleared in one transaction, the
-next line saying `<CLI title>'s default model is cleared.` Their servers SHALL stay.
+each model in the order given, print `Removed model "<name>".` for each and exit 0. Their
+servers SHALL stay.
 
 #### Scenario: Removing the last model of a server
 - **WHEN** `Локальная Qwen` is the only model on `LM Studio дома` and the human removes it
@@ -103,20 +99,13 @@ next line saying `<CLI title>'s default model is cleared.` Their servers SHALL s
 - **THEN** it exits 1 with `no model "nowhere" is saved; lado model list names them`, and
   `coder-codex` stays
 
-#### Scenario: A model that is a default
-- **WHEN** `Локальная Qwen` is Kilo CLI's default model and the human removes it
-- **THEN** it prints `Removed model "Локальная Qwen".` and `Kilo CLI's default model is
-  cleared.`, and `lado model default` shows Kilo CLI with no default
-
 ### Requirement: The configured models are kept in lado.db and used by no session yet
 
 The configured models SHALL be kept in `lado.db` (from schema 38), each with an id that
 never changes (from schema 39), its name, CLI, model and its server's id; a model SHALL NOT
-exist without a saved server. A `lado.db` of schema 38 SHALL be upgraded by the migration:
-each model on a server SHALL keep its name, CLI, model and server and get an id; a model
-without a server SHALL be dropped. No session, agent, launch or resume SHALL read the
-configured models, the saved servers or the agent CLIs' default models: with them or without
-them, `lado start`, the launch window and every agent SHALL behave as before.
+exist without a saved server. No session, agent, launch or resume SHALL read the configured
+models, the saved servers or the agent CLIs' default models: with them or without them,
+`lado start`, the launch window and every agent SHALL behave as before.
 
 #### Scenario: A session with models saved
 - **WHEN** models and servers are saved and the human runs `lado start <repo>` without
@@ -127,12 +116,6 @@ them, `lado start`, the launch window and every agent SHALL behave as before.
 - **WHEN** OpenCode's default model is set and the human starts a session on OpenCode
 - **THEN** the session's agents start as without it
 
-#### Scenario: Upgrading from schema 38
-- **WHEN** a `lado.db` of schema 38 holds `Быстрая` (Claude Code, haiku, no server) and
-  `Локальная Qwen` on `LM Studio дома`
-- **THEN** at schema 39 `lado model list` shows `Локальная Qwen` alone, with its server, and
-  `lado model default` shows every agent CLI with no default
-
 ## REMOVED Requirements
 
 ### Requirement: A model without a server is checked against its CLI
@@ -142,6 +125,37 @@ them, `lado start`, the launch window and every agent SHALL behave as before.
 `A CLI's default model is checked when set`.
 
 ## ADDED Requirements
+
+### Requirement: lado model add takes a server's models only
+
+A configured model SHALL always live on a server: without `--server` `lado model add` SHALL be
+refused with exit 1 and `a CLI's own models need no saving; only a model on a server is added:
+--server <server>`, and the hint `to make one its default: lado model default <cli> <model>`.
+
+#### Scenario: A model of a CLI's own list
+- **WHEN** the human runs `lado model add Сонет --cli opencode --model a/b`
+- **THEN** it exits 1 with that line and hint, reads no list, and nothing is saved
+
+### Requirement: Removing a model clears the default on it
+
+A model that is its CLI's default SHALL be removed with the default cleared in one
+transaction, the next line after its own saying `<CLI title>'s default model is cleared.`
+
+#### Scenario: A model that is a default
+- **WHEN** `Локальная Qwen` is Kilo CLI's default model and the human removes it
+- **THEN** it prints `Removed model "Локальная Qwen".` and `Kilo CLI's default model is
+  cleared.`, and `lado model default` shows Kilo CLI with no default
+
+### Requirement: The migration to model ids
+
+A `lado.db` of schema 38 SHALL be upgraded by the migration: each model on a server SHALL keep
+its name, CLI, model and server and get an id; a model without a server SHALL be dropped.
+
+#### Scenario: Upgrading from schema 38
+- **WHEN** a `lado.db` of schema 38 holds `Быстрая` (Claude Code, haiku, no server) and
+  `Локальная Qwen` on `LM Studio дома`
+- **THEN** at schema 39 `lado model list` shows `Локальная Qwen` alone, with its server, and
+  `lado model default` shows every agent CLI with no default
 
 ### Requirement: A model reference is external or built-in
 

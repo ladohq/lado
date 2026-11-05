@@ -86,6 +86,11 @@ which the page's scroll then brings up. The composer past the window's edge is L
 - **WHEN** the sessions' list stands open over the chat in a window 768×700
 - **THEN** the card keeps half the window, and the page's scroll brings its footer into it
 
+#### Scenario: The sessions' list opens or closes
+- **WHEN** the human opens the sessions' list over the chat in a window 768×700, or closes it
+- **THEN** the card takes the room as it is at once: its footer stays in sight, and closed, the
+  card has its height back
+
 ### Requirement: In a window that scrolls the expanded card holds the page
 
 In a window of 900 px or less outside the phone layout, the expanded card SHALL be the window's

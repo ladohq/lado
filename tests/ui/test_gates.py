@@ -473,7 +473,6 @@ def test_a_chat_low_on_the_page_keeps_the_context_and_the_footer(page: Page, ser
     card = waiting_card(page, session)
     expect(page.locator(".session-list")).to_be_visible()
     page.add_style_tag(content=".session-list { min-height: 500px; }")  # many sessions
-    page.evaluate("window.dispatchEvent(new Event('resize'))")
     page.wait_for_function(
         "c => c.getBoundingClientRect().height >= window.innerHeight / 2",
         arg=card.element_handle(),
@@ -486,6 +485,80 @@ def test_a_chat_low_on_the_page_keeps_the_context_and_the_footer(page: Page, ser
     page.wait_for_timeout(200)
     in_sight(page, card.get_by_role("button", name="Approve", exact=True))
     shot(page, full_page=False)
+
+
+def narrow_session(page: Page, server, repo):
+    """A long note's gate in a window 768×700: its card, Approve, and the card's height, which
+    the room from the chat's top down limits, with the chat at its usual place."""
+    session = gated_session(repo, LONG_NOTE)
+    page.set_viewport_size({"width": 768, "height": 700})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    approve = card.get_by_role("button", name="Approve", exact=True)
+    expect(approve).to_be_visible()
+    in_sight(page, approve)
+    return card, approve, card.bounding_box()["height"]
+
+
+def settles_in_sight(page: Page, button) -> None:
+    page.wait_for_function(
+        "b => b.getBoundingClientRect().bottom <= window.innerHeight",
+        arg=button.element_handle(),
+        timeout=3000,
+    )
+    page.evaluate("window.scrollTo(0, 0)")
+    in_sight(page, button)
+
+
+def gets_its_height_back(page: Page, card, height: float) -> None:
+    page.wait_for_function(
+        "([c, height]) => Math.abs(c.getBoundingClientRect().height - height) <= 1",
+        arg=[card.element_handle(), height],
+        timeout=3000,
+    )
+
+
+def test_the_sessions_list_opening_leaves_the_footer_in_sight(page: Page, server, repo, shot):
+    """The list moves the chat down with no change of its height: the card follows."""
+    card, approve, _ = narrow_session(page, server, repo)
+    page.get_by_role("button", name="Sessions", exact=True).click()
+    expect(page.locator(".session-list")).to_be_visible()
+    settles_in_sight(page, approve)
+    shot(page, full_page=False)
+
+
+def test_the_sessions_list_closing_gives_the_card_its_room_back(page: Page, server, repo, shot):
+    """Opened with the list standing open, the card has the less room; the list closing gives
+    it back."""
+    card, approve, height = narrow_session(page, server, repo)
+    page.get_by_role("button", name="Sessions", exact=True).click()
+    expect(page.locator(".session-list")).to_be_visible()
+    page.reload()
+    expect(page.locator(".session-list")).to_be_visible()
+    expect(approve).to_be_visible()
+    page.get_by_role("button", name="Collapse sessions").click()
+    expect(page.locator(".session-list")).to_have_count(0)
+    gets_its_height_back(page, card, height)
+    in_sight(page, approve)
+    shot(page, full_page=False)
+
+
+def test_a_block_over_the_chat_moves_the_cards_limit_with_it(page: Page, server, repo, shot):
+    """Any block that comes over the chat or goes, not only the list."""
+    card, approve, height = narrow_session(page, server, repo)
+    page.evaluate(
+        """() => {
+          const block = document.createElement('div');
+          block.id = 'over-the-chat';
+          block.style.height = '120px';
+          document.querySelector('.session').prepend(block);
+        }"""
+    )
+    settles_in_sight(page, approve)
+    page.evaluate("document.getElementById('over-the-chat').remove()")
+    gets_its_height_back(page, card, height)
+    in_sight(page, approve)
 
 
 def test_a_window_768_wide_keeps_the_expanded_cards_footer_on_needs_you(

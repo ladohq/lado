@@ -114,8 +114,9 @@ Reproduced on main under load, 7 of 160: the field at 384–464 in an app of 400
 At 900 px or less `.chat` has no height of its own and the page scrolls, so nothing above could
 hold the footer. The card takes `position: sticky; bottom: 0`, on `--ground`, so nothing shows through beside its
 tabs. Sticky stops at `.chat`'s top, so a limit counted from the top bar left a grown card past
-the window (F28): `Chat` measures where it stands on the page (`--chat-top`) and the card is at
-most the room from there down, its parts giving way by D4, held in tests down to 420 px. The
+the window (F28): `Chat` measures where it stands on the page (`--chat-top`; a `ResizeObserver` on it and every
+box around it, as whatever comes or goes above changes one of their heights, F29) and the card
+is at most the room from there down, its parts giving way by D4, held in tests down to 420 px. The
 floor, 220 px (a footer's least height) or half the window, keeps the context of a chat low on
 the page, under an open sessions' list; there, and in a window under about 400 px, the footer
 comes up with the page's scroll. `.content` had

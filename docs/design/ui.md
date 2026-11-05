@@ -1066,8 +1066,8 @@ Built in the chat task (2026-10-03):
   (styles.css), no measuring in JS; on a phone a field in the footer takes the choices out at
   once (Phone layout). On a window of 900 px or less, which scrolls as a page, the chat's card
   sticks to its lower edge over the feed, at most the room from the chat's top down
-  (`--chat-top`, measured), so the footer stays in sight wherever the page stands (the human's
-  decision of 2026-11-05; the composer past the edge is LAD-193's). It keeps at least 220 px and
+  (`--chat-top`, measured also when a block above the chat comes or goes), so the footer stays
+  in sight wherever the page stands (the human's decision of 2026-11-05; the composer past the edge is LAD-193's). It keeps at least 220 px and
   half the window: under an open sessions' list, or in a window under about 400 px, the page's
   scroll brings the footer up. In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
   2026-10-14, LAD-54, mockup `task/lad-54/mockup-gate-card.html`, screen D; before, the

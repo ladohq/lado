@@ -179,7 +179,9 @@ export function focusChat() {
   (card ?? document.querySelector<HTMLElement>(".chat-feed"))?.focus();
 }
 
-// Where `box` stands on the page, while `on`: measured when the window resizes or `again` changes.
+// Where `box` stands on the page, while `on`. What moves it changes the height of `box` or of
+// a box around it, whatever came or went above: those are observed. `again`: measure anew, for
+// a box that comes later.
 function usePageTop(box: RefObject<HTMLElement | null>, on: boolean, again: unknown) {
   const [top, setTop] = useState<number | null>(null);
   useLayoutEffect(() => {
@@ -188,8 +190,10 @@ function usePageTop(box: RefObject<HTMLElement | null>, on: boolean, again: unkn
       if (box.current) setTop(Math.round(box.current.getBoundingClientRect().top + window.scrollY));
     };
     measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    for (let around = box.current; around; around = around.parentElement) observer.observe(around);
+    return () => observer.disconnect();
   }, [box, on, again]);
   return top;
 }

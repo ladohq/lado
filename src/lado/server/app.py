@@ -1005,6 +1005,15 @@ def create_app(
         """Remove a model as `lado model remove` does, the default on it cleared and named."""
         return entries(model_entries.remove_model, name)
 
+    @app.post(
+        "/api/session-model/check",
+        dependencies=[Depends(guard.changes), Depends(database)],
+    )
+    def check_session_model(given: models.SessionModelAsked) -> models.SessionModelCheck:
+        """The check a start would make of the model given for a session, saving nothing; a
+        refusal is a 200 of kind refused."""
+        return model_entries.check_session_model(given)
+
     @app.get(
         "/api/providers/{name}/model-choices",
         dependencies=[Depends(guard)],
@@ -1464,7 +1473,7 @@ def create_app(
     @app.post(
         "/api/sessions",
         dependencies=[Depends(guard.changes), Depends(database)],
-        responses={400: {"model": Refused}, 409: {"model": Taken}},
+        responses={400: {"model": Refused}, 409: {"model": Taken | models.ModelRefusal}},
     )
     def start(given: Launch) -> Started:
         """Start a new session, as `lado start` does, without attaching to it; for `where`
@@ -1492,7 +1501,7 @@ def create_app(
                 title=given.title,
                 project=where.project,
                 repo_name=where.repo,
-                model=given.model or None,
+                model=given.model,
             )
         except runtime.SessionExists as taken:
             detail = Taken(message=str(taken), status=taken.status, repo=taken.repo)
@@ -1501,6 +1510,8 @@ def create_app(
             raise HTTPException(404, str(unknown)) from unknown
         except kits.KitError as refused:
             raise _kits_refused(refused) from refused
+        except runtime.ModelRefused as refused:
+            raise HTTPException(409, models.model_refusal(refused).model_dump()) from refused
         except runtime.LadoError as refused:
             raise HTTPException(400, str(refused)) from refused
         return models.started(done)
@@ -1508,7 +1519,7 @@ def create_app(
     @app.post(
         "/api/sessions/{name}/resume",
         dependencies=[Depends(guard.changes)],
-        responses={400: {"model": Refused}},
+        responses={400: {"model": Refused}, 409: {"model": models.ModelRefusal}},
     )
     def resume(name: str, given: Resume, has_db: bool = Depends(database)) -> Started:
         """Start a stopped session again, in its folder; the settings given replace its
@@ -1532,6 +1543,8 @@ def create_app(
             raise HTTPException(404, str(gone)) from gone
         except kits.KitError as refused:
             raise _kits_refused(refused) from refused
+        except runtime.ModelRefused as refused:
+            raise HTTPException(409, models.model_refusal(refused).model_dump()) from refused
         except runtime.LadoError as refused:
             raise HTTPException(400, str(refused)) from refused
         return models.started(done)

@@ -366,7 +366,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Taken"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Taken"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ModelRefusal"
+                    }
+                  ],
+                  "title": "Response 409 Start Api Sessions Post"
                 }
               }
             }
@@ -2155,6 +2163,45 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/session-model/check": {
+      "post": {
+        "summary": "Check Session Model",
+        "description": "The check a start would make of the model given for a session, saving nothing; a\nrefusal is a 200 of kind refused.",
+        "operationId": "check_session_model_api_session_model_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionModelAsked"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionModelCheck"
                 }
               }
             }
@@ -4247,6 +4294,16 @@
               }
             },
             "description": "Bad Request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelRefusal"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "422": {
             "description": "Validation Error",
@@ -7531,6 +7588,39 @@
           "words": {
             "type": "string",
             "title": "Words"
+          },
+          "configured": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configured"
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
           }
         },
         "type": "object",
@@ -7542,6 +7632,46 @@
         ],
         "title": "ModelInfo",
         "description": "An agent's model or effort, and where it came from."
+      },
+      "ModelRefusal": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "field": {
+            "type": "string",
+            "const": "model",
+            "title": "Field",
+            "default": "model"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "short": {
+            "type": "string",
+            "title": "Short"
+          },
+          "peek": {
+            "type": "string",
+            "title": "Peek"
+          },
+          "retry": {
+            "type": "boolean",
+            "title": "Retry"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "text",
+          "short",
+          "peek",
+          "retry"
+        ],
+        "title": "ModelRefusal",
+        "description": "The detail of a 409 to a start or resume refused for its model: the core's line, and\nwhat the launch window shows (SessionModelCheck)."
       },
       "ModelRemoved": {
         "properties": {
@@ -10249,6 +10379,11 @@
               }
             ],
             "title": "Model"
+          },
+          "model_missing": {
+            "type": "boolean",
+            "title": "Model Missing",
+            "default": false
           }
         },
         "type": "object",
@@ -10311,6 +10446,105 @@
         ],
         "title": "SessionKitInfo",
         "description": "A kit of a session as the next agent would take it now (kits.find in its repo)."
+      },
+      "SessionModelAsked": {
+        "properties": {
+          "cli": {
+            "type": "string",
+            "title": "Cli"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cli",
+          "model"
+        ],
+        "title": "SessionModelAsked",
+        "description": "A model for a session of the agent CLI `cli`, as `lado start --model` reads it, in the\nenvironment of the agents of `project` (or of none)."
+      },
+      "SessionModelCheck": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "default",
+              "ok",
+              "warn",
+              "refused"
+            ],
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "default": ""
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "retry": {
+            "type": "boolean",
+            "title": "Retry",
+            "default": false
+          },
+          "short": {
+            "type": "string",
+            "title": "Short",
+            "default": ""
+          },
+          "peek": {
+            "type": "string",
+            "title": "Peek",
+            "default": ""
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "SessionModelCheck",
+        "description": "The check a start would make of a model, for the launch window: `text` the line under\nits field. For a refusal, `short` the same to point at the field, `peek` a few words for\nthe folded Advanced, `retry` whether a new check can help. `warnings` of the chosen\nmodel's server only; `server` its name."
       },
       "SessionStatus": {
         "type": "string",

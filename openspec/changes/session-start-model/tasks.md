@@ -30,7 +30,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-session-star
 
 ## 4. API
 
-- [ ] 4.1 `session-model/check`, `NewSession`, `Resume`, `SessionInfo`, `ModelInfo` (D14);
+- [x] 4.1 `session-model/check`, `NewSession`, `Resume`, `SessionInfo`, `ModelInfo` (D14);
   `make web-types`, both files committed. Check: `tests/test_server_launch.py`,
   `tests/test_server_agents.py`, `make web`.
 

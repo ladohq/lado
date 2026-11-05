@@ -39,6 +39,7 @@ KEY_VARIABLE = "LADO_MODEL_KEY_"  # + the server's id in capitals: an agent's va
 MAX_NAME = 64
 SERVER, MODEL = "model server", "model"  # what a name is of, in its refusals
 REFUSED_PEEK = "refused"
+NOT_LISTED_PEEK = "not in its list"
 # What OpenCode and Kilo CLI substitute in their config's text ({env:…} checked on both, {file:…}
 # taken to work the same): text LADO did not write there must hold neither.
 EXPANDED = ("{env:", "{file:")
@@ -620,7 +621,13 @@ def _builtin(
         raise Refused(f"a model is one line {visible.refusal(char)}", field=MODEL_FIELD)
     verdict = model_check.verdict(provider, model, listed)
     if verdict.kind == model_check.REFUSED:
-        raise Refused(verdict.text, field=MODEL_FIELD, page=verdict.page or None)
+        raise Refused(
+            verdict.text,
+            field=MODEL_FIELD,
+            page=verdict.page or None,
+            peek=NOT_LISTED_PEEK,
+            retry=not listed.fixed,
+        )
     return state.ModelRef(provider.name, None, model), verdict
 
 
@@ -846,7 +853,7 @@ def check_start(
             verdict.text,
             field=MODEL_FIELD,
             page=verdict.page or None,
-            peek="not in its list",
+            peek=NOT_LISTED_PEEK,
             retry=retry,
         )
     return verdict

@@ -395,11 +395,12 @@ def spawn_worker(
     provider: str | None = None,
     without: list[str] | None = None,
     warnings: list[str] | None = None,
+    model: str | None = None,
 ) -> state.Agent:
     """Start a worker for an open run, in the run's worktree. If the run's current step is
     for its role and no worker has it yet, the step is the worker's task (after `task`, if
-    one is given). `role` defaults to the role of the current step. `warnings`: as
-    lado.runtime.spawn_worker's."""
+    one is given). `role` defaults to the role of the current step. `warnings` and `model`: as
+    lado.runtime.spawn_worker's; a model refused leaves the step waiting."""
     runtime.running_session(session)
     run = _run(session, run_name)
     if run.status not in state.OPEN:
@@ -423,7 +424,7 @@ def spawn_worker(
     _restore_worktree(_session(session).repo, run)
     task = "\n\n".join(parts)
     worker = runtime.spawn_worker(
-        session, task, name, provider, role, without, run, has_step, warnings
+        session, task, name, provider, role, without, run, has_step, warnings, model
     )
     if has_step:
         # The step has its worker: LADO's request for one is stale if not delivered yet.

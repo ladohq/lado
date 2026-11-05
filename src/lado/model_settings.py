@@ -1,8 +1,9 @@
 """The human's model servers, configured models and agent CLIs' default models (openspec
 capabilities `model-servers` and `configured-models`): their rules, the servers' key files,
 the checks on adding and what a CLI can run. `lado model-server add|list|remove` and `lado
-model add|list|remove|default` call it; a launch asks it what an agent starts on (start_model),
-whether that can start (check_start) and which servers go into the agent (agent_servers).
+model add|list|remove|default` call it; a launch asks it what an agent starts on (start_model,
+for a worker with a model of its own worker_start), whether that can start (check_start) and
+which servers go into the agent (agent_servers); list_models asks it what can run (cli_models).
 
 The entries are kept in lado.db (lado.state: `model_servers`, `models`, `cli_defaults`); a
 name is taken and found ignoring case. A configured model always lives on a server: a CLI's
@@ -922,8 +923,7 @@ def _runs_on(server: state.ModelServer) -> str:
 
 def check_launch(start: StartModel, provider: providers.Provider) -> None:
     """What refuses `start` for an agent of `provider`'s CLI with no request and no list: an
-    entry no longer saved, a server its CLI does not run on, text its CLI would expand. A
-    spawned worker takes these only; its server's check is not made yet."""
+    entry no longer saved, a server its CLI does not run on, text its CLI would expand."""
     if start.gone:
         raise Refused(
             f"the session ran on the model {start.name}, which is no longer saved; "
@@ -1000,6 +1000,10 @@ def check_start(
             retry=retry,
         )
     return verdict
+
+
+# What a spawn's refusal of a model not given adds: an agent has no --model (way_out).
+WORKER_WAY_OUT = '; list_models shows the others, model="" is the CLI\'s own settings'
 
 
 def way_out(start: StartModel, provider: providers.Provider, *, given: bool) -> str:

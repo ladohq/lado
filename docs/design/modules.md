@@ -863,30 +863,38 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     that is not local (`localhost`, `host.docker.internal`, a loopback, private or
     link-local IP; no name resolved); standard library only, the key only in the requests'
     headers.
-  - `model_settings.py`: the human's model servers and configured models under names
-    (`lado model-server add|list|remove`, `lado model add|list|remove`, and Settings →
-    Models through `server/model_entries.py`): `check_name` (one line of visible text, 1 to
+  - `model_settings.py`: the human's model servers, configured models under names and agent
+    CLIs' default models (`lado model-server add|list|remove`, `lado model
+    add|list|remove|default`, and Settings → Models through `server/model_entries.py`):
+    `check_name` (one line of visible text, 1 to
     64 characters, no spaces at its ends), `add_server` (probe, then the key file, then the
     row; `--replace` probes with the new or the kept key and updates the row; a failed
     insert removes the key it wrote; `note` gets a line for each other saved server at the
     same address by `same_address`), `remove_server` (refused while `state.models_on` names
     models, the hint one `lado model remove` for all and a second hint naming
-    `--with-models`; the foreign key backs it; `with_models` removes the server's models and
-    the server in one transaction, `state.remove_model_server_with_models`, reporting each
-    model to `removed`; with `confirmed`, refused, nothing removed, when the server's models
+    `--with-models`; the foreign key backs it; `with_models` removes the server's models, the
+    defaults on them and the server in one transaction,
+    `state.remove_model_server_with_models`, reporting each model to `removed` and each CLI to
+    `cleared`; with `confirmed`, refused, nothing removed, when the server's models
     are not those names), `check_model` (the checks of `add_model` in order, saving nothing:
-    name (unless None), CLI, model, server saved, the provider's `server_api`, a probe with
-    the kept key (`probe_saved`, or the `probe` given: the page's kept one), the API among
-    those proved, not an embeddings model, the model against the server's list by
-    `model_check.verdict(whose=…)`, or without a server against the CLI's list read with the
-    agents' environment; without a name, its `default_name` checked by `check_name`, a
-    refusal under the model's field; a `Checked`), `add_model` (`check_model`, its server probed now,
-    then the row; `name` None takes `default_name`: an alias `Claude Sonnet` (`[1m]` as
-    ` 1M`), a CLI's model itself, a server's `<model> · <server>` (with ` · <CLI>` when
-    `model_servers.suiting` gives the server more than one CLI), a taken one ` · <CLI>`, then ` (2)`…, cut to 64
-    before its suffix), `rename_model` (`state.rename_model`: the row's name and `folded`,
-    its CLI, model and server kept; nothing refers to a model by name yet),
-    `remove_models` (every name found before any is removed). Each refusal is a one-line
+    name (unless None), CLI, model, a server given, server saved, the provider's `server_api`,
+    a probe with the kept key (`probe_saved`, or the `probe` given: the page's kept one), the
+    API among those proved, not an embeddings model, the model against the server's list by
+    `model_check.verdict(whose=…)`; without a name, its `default_name` checked by `check_name`,
+    a refusal under the model's field; a `Checked`), `add_model` (`check_model`, its server
+    probed now, then the row; `name` None takes `default_name`: `<model> · <server>` (with
+    ` · <CLI>` when `model_servers.suiting` gives the server more than one CLI), a taken one
+    ` · <CLI>`, then ` (2)`…, cut to 64 before its suffix), `rename_model`
+    (`state.rename_model`: the row's name and `folded`, its id, CLI, model and server kept:
+    references hold the id), `remove_models` (every name found before any is removed, each
+    with the default on it, reported to `cleared`), `choices` (the one place that computes what
+    a CLI can run: its aliases and list by the `listing` given, its configured models, whether
+    `other_name` is offered and `read_again` may help (`ModelList.fixed`); kept nowhere),
+    `defaults` (each default as shown), `set_default` (by name: the CLI known and installed
+    (`shutil.which` on the agents' PATH), the list read, a configured model of that CLI unless
+    the name is also a built-in one, another CLI's refused, else a built-in name by
+    `model_check.verdict`), `set_default_ref` (the page's form, by `state.ModelRef`),
+    `clear_default`. Each refusal is a one-line
     `Refused` (with the probe's hint) and its `field` (`name`, `address`, `key`, `cli`,
     `server`, `model` or ""), set where it is raised, which the page shows it under and the
     CLI ignores; `model_servers.ProbeError` has one too. A server's key is the file
@@ -1218,10 +1226,13 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     plain-http warning while a key is typed, the probe of the address with the key only
     after Check key, the same-address notes; with `replace`, Change's, the name a saved
     server's and no note of itself), `probe_server`, `remove_server` (with its models only when they are the
-    confirmed ones), `check_model` (with the name a save would take, `ModelCheck.name`), `add_model`, `rename_model`, `remove_model`; each
+    confirmed ones), `check_model` (with the name a save would take, `ModelCheck.name`), `add_model`, `rename_model`, `remove_model`,
+    `model_choices` (`model_settings.choices` over `launch.model_list`, kept a minute, `fresh`
+    read now; an environment that cannot be read is a list with why; no lado.db made),
+    `set_default` (by reference, `ModelDefaultSet`), `clear_default`; each
     refusal a `Refusal` holding `EntryRefused` (the core's line, hint and field), a 400 in
     `app.py`; a server's probe kept `KEPT` seconds by its id and address for `check_model`
-    only (a failed one not kept), and a CLI's list taken there from `launch.model_list`; the key comes in only in `ModelServerAdd` and `ModelServerCheck`,
+    only (a failed one not kept); the key comes in only in `ModelServerAdd` and `ModelServerCheck`,
     whose routes are in `app.SECRET_ROUTE`;
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
     Session head) is what the session's head shows besides its settings, read anew: `repos`

@@ -1216,7 +1216,7 @@ def test_the_check_of_the_cli_s_settings_asks_nothing(client, monkeypatch):
     assert found["kind"] == "default"
 
 
-def test_the_check_of_a_model_on_a_server_says_it_answers(client, monkeypatch):
+def test_the_check_of_a_model_on_a_server_says_it_answers(client, monkeypatch, fake_clis):
     _models(monkeypatch, "opencode", "opencode/big-pickle")
     server_launch.forget_model_lists()
     _saved()
@@ -1227,7 +1227,7 @@ def test_the_check_of_a_model_on_a_server_says_it_answers(client, monkeypatch):
     assert found["warnings"] == []
 
 
-def test_the_check_of_a_silent_server_says_what_the_window_shows(client, monkeypatch):
+def test_the_check_of_a_silent_server_says_what_the_window_shows(client, monkeypatch, fake_clis):
     _models(monkeypatch, "opencode", "opencode/big-pickle")
     server_launch.forget_model_lists()
     _saved()
@@ -1243,7 +1243,9 @@ def test_the_check_of_a_silent_server_says_what_the_window_shows(client, monkeyp
     assert found["server"] == "LM Studio дома"
 
 
-def test_the_check_warns_of_a_key_over_http_of_the_chosen_model_only(client, monkeypatch):
+def test_the_check_warns_of_a_key_over_http_of_the_chosen_model_only(
+    client, monkeypatch, fake_clis
+):
     _models(monkeypatch, "opencode", "opencode/big-pickle")
     server_launch.forget_model_lists()
     saved = _saved(address="http://llm.example.com")
@@ -1260,7 +1262,7 @@ def test_the_check_warns_of_a_key_over_http_of_the_chosen_model_only(client, mon
     assert client.post(CHECK, json=asked).json()["warnings"] == []
 
 
-def test_the_check_of_a_cli_on_no_server_has_no_way_to_try_again(client, monkeypatch):
+def test_the_check_of_a_cli_on_no_server_has_no_way_to_try_again(client, monkeypatch, fake_clis):
     _models(monkeypatch, "claude", "sonnet")
     server_launch.forget_model_lists()
     _saved("Шлюз Opus", "claude", "gw-opus")

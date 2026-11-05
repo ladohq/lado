@@ -573,7 +573,9 @@ def test_a_long_recommendation_opens_to_three_lines_that_scroll(device, server, 
     line.tap()
     body = block.locator(".rec-bar-body")
     expect(body).to_be_visible()
-    assert body.evaluate("b => b.clientHeight <= 3 * parseFloat(getComputedStyle(b).lineHeight) + 1")
+    assert body.evaluate(
+        "b => b.clientHeight <= 3 * parseFloat(getComputedStyle(b).lineHeight) + 1"
+    )
     assert body.evaluate("b => b.scrollHeight > b.clientHeight")
     shot(page, "opened", full_page=False)
 

@@ -1223,7 +1223,9 @@ def test_a_title_of_more_than_two_lines_is_cut_and_stands_whole_in_the_context(
     expect(title).to_be_visible()
     line = title.evaluate("t => parseFloat(getComputedStyle(t).lineHeight)")
     assert height(title) <= 2 * line + 1
-    expect(card.locator(".waiting-context .waiting-whole")).to_contain_text("Which way shall I take?")
+    expect(card.locator(".waiting-context .waiting-whole")).to_contain_text(
+        "Which way shall I take?"
+    )
     expect(card.locator(".waiting-meta")).to_have_text(re.compile(r"^#\d+$"))
     shot(page, full_page=False)
 
@@ -1268,9 +1270,7 @@ def test_in_a_low_chat_the_footer_gives_way_and_the_buttons_stay(page: Page, ser
     card = waiting_card(page, session)
     expect(card.get_by_role("group", name="Choices")).to_be_visible()
     chat = page.get_by_role("region", name="Chat", exact=True)
-    page.evaluate(
-        "h => { document.querySelector('.chat').style.flex = `0 0 ${h}px`; }", 420
-    )
+    page.evaluate("h => { document.querySelector('.chat').style.flex = `0 0 ${h}px`; }", 420)
     settles_at(page, chat, 420)
     assert height(card.get_by_role("group", name="Choices")) >= 32
     in_sight(
@@ -1374,7 +1374,9 @@ def test_the_composer_folds_while_an_own_answer_is_open_and_comes_back(
     expect(own).to_be_focused()
     own.fill("keep the worker")
     line = page.locator(".composer-fold")
-    expect(line).to_have_text(f"Answering question #{asked_id(session)} above · Write to supervisor instead")
+    expect(line).to_have_text(
+        f"Answering question #{asked_id(session)} above · Write to supervisor instead"
+    )
     assert round(height(line)) == 40
     assert line.evaluate("l => getComputedStyle(l).borderTopStyle") == "dashed"
     expect(composer).to_be_hidden()

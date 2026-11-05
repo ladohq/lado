@@ -598,7 +598,9 @@ def test_a_gate_with_a_recommendation_that_disagrees(page: Page, server, repo, s
     line.click()
     body = block.locator(".rec-bar-body")
     expect(body.locator("strong")).to_have_text("no test")
-    assert body.evaluate("b => b.clientHeight <= 3 * parseFloat(getComputedStyle(b).lineHeight) + 1")
+    assert body.evaluate(
+        "b => b.clientHeight <= 3 * parseFloat(getComputedStyle(b).lineHeight) + 1"
+    )
     shot(page, "opened")
     # The expanded card shows it whole.
     waiting_card(page, session).get_by_role("button", name="Expand the card").click()

@@ -55,7 +55,7 @@ other CLI, and the agent's model SHALL have the source `cli` with the detail `th
 
 ### Requirement: Each agent of the session's CLI starts on the session's model
 
-Every agent of the `normal` row's CLI, but a worker with its own `model`, SHALL start on its model
+Every agent of the `normal` row's CLI, but a worker with a `model`, SHALL start on its model
 through its CLI's own way, never through the user's global config: Claude Code by `--model`, Codex by `model` in its
 own `CODEX_HOME`'s config.toml (top level and carried profile), OpenCode and Kilo by `model` in
 their config content and by `--model`. The agent's record SHALL have that model with the source

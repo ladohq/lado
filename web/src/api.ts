@@ -395,11 +395,45 @@ export const addModel = (given: ModelAdd) => post<ModelAdded>("/api/models", giv
 
 export const renameModel = (name: string, to: string) => post<ModelSettings>(modelPath(name), { name: to }, "PATCH");
 
-export const removeModel = (name: string) => post<ModelSettings>(modelPath(name), undefined, "DELETE");
+// `cleared` names the agent CLIs whose default the model was, which a stale page may not know.
+export type ModelRemoved = components["schemas"]["ModelRemoved"];
+export const removeModel = (name: string) => post<ModelRemoved>(modelPath(name), undefined, "DELETE");
+
+// What an agent CLI can run, as the core computes it (a list that cannot be read says why), and
+// the check of the built-in `model` against it; `fresh`: read now, else kept a minute.
+export type ModelChoices = components["schemas"]["ModelChoices"];
+export type CliDefault = components["schemas"]["CliDefault"];
+export type ModelDefaultSet = components["schemas"]["ModelDefaultSet"];
+export type ModelDefaultSaved = components["schemas"]["ModelDefaultSaved"];
+export const getModelChoices = (name: string, model = "", fresh = false) =>
+  get<ModelChoices>(
+    `/api/providers/${encodeURIComponent(name)}/model-choices?${query({
+      model,
+      ...(fresh ? { fresh: "true" } : {}),
+    })}`,
+  );
+
+const modelDefaultPath = (cli: string) => `/api/model-defaults/${encodeURIComponent(cli)}`;
+
+// Set an agent CLI's default model: a row picked by reference (a saved model's id, or the CLI's
+// own name), or `typed`, read as `lado model default` reads a name.
+export const setModelDefault = (cli: string, given: ModelDefaultSet) =>
+  post<ModelDefaultSaved>(modelDefaultPath(cli), given, "PUT");
+
+// The check `lado model default` would make of a typed name, saving nothing.
+export const checkModelDefault = (cli: string, name: string) =>
+  post<ModelCheck>(`${modelDefaultPath(cli)}/check`, { name });
+
+export const clearModelDefault = (cli: string) => post<ModelSettings>(modelDefaultPath(cli), undefined, "DELETE");
+
+// A request that never reached LADO's server: fetch rejects with a TypeError, with no answer.
+export const unreachable = (error: unknown) => error instanceof TypeError;
+export const LADO_DOWN = "LADO's server does not answer: nothing was done.";
 
 // A failed request of Settings → Models as a refusal: the API's EntryRefused, or any other
 // error's message with no field.
 export function refusalOf(error: unknown): EntryRefused {
+  if (unreachable(error)) return { message: LADO_DOWN, hint: "", field: "", warnings: [] };
   const detail = (error instanceof ApiError ? error.detail : null) as Partial<EntryRefused> | null;
   if (detail && typeof detail === "object" && typeof detail.message === "string")
     return {

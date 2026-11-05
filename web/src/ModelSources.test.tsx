@@ -4,9 +4,9 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { ProbeInfo } from "./api";
 import { MODEL_DEBOUNCE } from "./Launch";
-import { kiloRow, LMSTUDIO, LMSTUDIO_PROBE, model, ModelServer, refusal } from "./modelFakes";
+import { LMSTUDIO, LMSTUDIO_PROBE, model, ModelServer, refusal } from "./modelFakes";
 import { ModelSettings } from "./ModelSettings";
-import { CLIS_LEAD, orderOf, SERVERS_LEAD, tickState } from "./ModelSources";
+import { orderOf, SERVERS_LEAD, tickState } from "./ModelSources";
 
 let server: ModelServer;
 
@@ -46,21 +46,29 @@ const settle = async () => {
 };
 const card = (title: string) => screen.findByRole("group", { name: title });
 
+// LM Studio дома open, the model `name` open under its row: its ticks show.
+async function openModel(name: string, probe: ProbeInfo = LMSTUDIO_PROBE) {
+  server.probes[LMSTUDIO.name] = probe;
+  fireEvent.click(await source(LMSTUDIO.name));
+  fireEvent.click(await screen.findByRole("button", { name }));
+}
+const tickOf = async (name: string) => (await screen.findByRole("checkbox", { name })) as HTMLInputElement;
+
 test("tickState: on for a model saved with that CLI, model and server; several named", () => {
   const models = [
-    model("Claude Opus", "claude", "Claude Code", "opus"),
-    model("Сильная", "claude", "Claude Code", "opus"),
+    model("Быстрая", "opencode", "OpenCode", "qwen3-8b", "work"),
+    model("Сильная", "opencode", "OpenCode", "qwen3-8b", "work"),
     model("q", "opencode", "OpenCode", "qwen3-8b", "LM Studio дома"),
   ];
-  expect(tickState(models, "claude", "opus", null)).toEqual({
+  expect(tickState(models, "opencode", "qwen3-8b", "work")).toEqual({
     on: true,
-    several: ["Claude Opus", "Сильная"],
+    several: ["Быстрая", "Сильная"],
   });
   expect(tickState(models, "opencode", "qwen3-8b", "lm studio ДОМА")).toEqual({
     on: true,
     several: [],
   });
-  expect(tickState(models, "opencode", "qwen3-8b", null)).toEqual({
+  expect(tickState(models, "opencode", "qwen3-8b", "elsewhere")).toEqual({
     on: false,
     several: [],
   });
@@ -71,12 +79,7 @@ test("orderOf: the configured models gone from the list, then those listed, then
   expect(orderOf(["a", "b", "c"], own)).toEqual(["gone", "b", "a", "c"]);
 });
 
-test("servers before agent CLIs, all closed; not installed last and greyed, not logged in marked", async () => {
-  server.logins = [kiloRow(false), ...server.logins.slice(0, 3)];
-  server.logins[3] = {
-    ...server.logins[3],
-    login: { ...server.logins[3].login, state: "no" },
-  };
+test("the servers by name, all closed, each saying its models and address", async () => {
   server.entries = {
     models: [
       model("q", "opencode", "OpenCode", "qwen3-8b", "LM Studio дома"),
@@ -86,16 +89,8 @@ test("servers before agent CLIs, all closed; not installed last and greyed, not 
   };
   await mount();
   expect(screen.getByText(SERVERS_LEAD)).toBeTruthy();
-  expect(screen.getByText(CLIS_LEAD)).toBeTruthy();
   const rows = screen.getAllByRole("button", { expanded: false }).map((b) => b.getAttribute("aria-label"));
-  expect(rows).toEqual(["LM Studio дома", "zeta", "Claude Code", "Codex CLI", "OpenCode", "Kilo CLI"]);
-  const kilo = await source("Kilo CLI");
-  expect((kilo as HTMLButtonElement).disabled).toBe(true);
-  expect(item(kilo).className).toContain("mx-off");
-  expect(within(item(kilo)).getByText("not installed")).toBeTruthy();
-  expect(within(item(await source("OpenCode"))).getByText("not logged in")).toBeTruthy();
-  expect(within(item(await source("Claude Code"))).getByText("logged in")).toBeTruthy();
-  expect(within(item(await source("Claude Code"))).queryByText("CLI")).toBeNull(); // no badge
+  expect(rows).toEqual(["LM Studio дома", "zeta"]);
   const lm = item(await source("LM Studio дома"));
   expect(lm.querySelector(".mx-l2")?.textContent).toBe("2 models added · http://localhost:1234");
   expect(within(lm).getByRole("tooltip").textContent).toBe(LMSTUDIO.address);
@@ -109,69 +104,54 @@ test("servers before agent CLIs, all closed; not installed last and greyed, not 
   expect(server.calls.filter((c) => c.path.includes("/models?") || c.path.endsWith("/probe"))).toEqual([]);
 });
 
-test("a click on the row's name opens the source, its second line then says what it gives; ↻ is above its list", async () => {
-  server.entries = {
-    models: [model("gpt-5-codex", "codex", "Codex CLI", "gpt-5-codex")],
-    servers: [],
-  };
+test("a click on the row's name opens the source; ↻ is above its list and reads it again", async () => {
+  server.entries = { models: [], servers: [LMSTUDIO] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
   await mount();
-  const codex = await source("Codex CLI");
-  expect(item(codex).querySelector(".mx-l2")?.textContent).toBe("logged in · 1 added");
-  fireEvent.click(within(codex).getByText("Codex CLI"));
-  expect(codex.getAttribute("aria-expanded")).toBe("true");
-  expect(await screen.findByRole("checkbox", { name: "gpt-5-codex on Codex CLI" })).toBeTruthy();
-  expect(item(codex).querySelector(".mx-l2")?.textContent).toBe("its list · logged in · 1 added");
-  expect(server.of("GET", "/api/providers/codex/models")[0].path).toContain("fresh=true");
-  const refresh = within(item(codex)).getByRole("button", {
-    name: "Read the models again",
-  });
-  expect(
-    refresh.compareDocumentPosition(within(item(codex)).getByRole("checkbox")) & Node.DOCUMENT_POSITION_FOLLOWING,
-  ).toBeTruthy();
+  const lm = await source(LMSTUDIO.name);
+  fireEvent.click(within(lm).getByText(LMSTUDIO.name));
+  expect(lm.getAttribute("aria-expanded")).toBe("true");
+  const row = await within(item(lm)).findByRole("button", { name: "qwen3-8b" });
+  const refresh = within(item(lm)).getByRole("button", { name: "Read the models again" });
+  expect(refresh.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const probes = () => server.calls.filter((c) => c.path.endsWith("/probe"));
+  expect(probes()).toHaveLength(1);
   fireEvent.click(refresh);
-  await waitFor(() => expect(server.of("GET", "/api/providers/codex/models")).toHaveLength(2));
-  fireEvent.click(codex);
-  expect(codex.getAttribute("aria-expanded")).toBe("false");
-  fireEvent.click(await source("Claude Code"));
-  await screen.findByRole("checkbox", { name: "sonnet on Claude Code" });
-  expect(item(await source("Claude Code")).querySelector(".mx-l2")?.textContent).toBe("aliases · logged in");
+  await waitFor(() => expect(probes()).toHaveLength(2));
+  fireEvent.click(lm);
+  expect(lm.getAttribute("aria-expanded")).toBe("false");
 });
 
-test("a CLI's model has one tick: ticking saves with no name, unticking removes it with no Undo row", async () => {
+test("a tick saves the model with no name; unticking removes it with no Undo row", async () => {
+  server.entries = { models: [], servers: [LMSTUDIO] };
   await mount();
-  fireEvent.click(await source("Claude Code"));
-  expect(await screen.findByText("reading the models…")).toBeTruthy();
-  const box = (await screen.findByRole("checkbox", {
-    name: "sonnet on Claude Code",
-  })) as HTMLInputElement;
+  await openModel("qwen3-8b");
+  const box = await tickOf("qwen3-8b on OpenCode");
   fireEvent.click(box);
   await waitFor(() => expect(box.checked).toBe(true));
-  expect(server.of("POST", "/api/models")[0].body).toEqual({
+  expect(server.of("POST", "/api/models").filter((c) => c.path === "/api/models")[0].body).toEqual({
     name: null,
-    cli: "claude",
-    model: "sonnet",
-    server: null,
+    cli: "opencode",
+    model: "qwen3-8b",
+    server: LMSTUDIO.name,
   });
-  expect(within(box.closest("label") as HTMLElement).getByText("as sonnet (default)")).toBeTruthy();
-  expect(box.title).toBe("Unticking removes sonnet (default).");
-  expect(await card("Claude Code")).toBeTruthy();
+  const name = "qwen3-8b · LM Studio дома · OpenCode";
+  expect(within(box.closest("label") as HTMLElement).getByText(`as ${name}`)).toBeTruthy();
+  expect(box.title).toBe(`Unticking removes ${name}.`);
   fireEvent.click(box);
   await waitFor(() => expect(box.checked).toBe(false));
-  expect(server.of("DELETE", "/api/models/")[0].path).toBe("/api/models/sonnet%20(default)");
-  await waitFor(() => expect(screen.queryByRole("group", { name: "Claude Code" })).toBeNull());
+  expect(server.of("DELETE", "/api/models/")).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
 });
 
 test("a renamed model unticked by mistake: its row says would be <name>, a tick saves it under that name", async () => {
   server.entries = {
-    models: [model("Сильная", "claude", "Claude Code", "opus")],
-    servers: [],
+    models: [model("Сильная", "opencode", "OpenCode", "qwen3-8b")],
+    servers: [LMSTUDIO],
   };
   await mount();
-  fireEvent.click(await source("Claude Code"));
-  const box = (await screen.findByRole("checkbox", {
-    name: "opus on Claude Code",
-  })) as HTMLInputElement;
+  await openModel("qwen3-8b");
+  const box = await tickOf("qwen3-8b on OpenCode");
   expect(box.title).toBe("Unticking removes Сильная.");
   fireEvent.click(box);
   await waitFor(() => expect(box.checked).toBe(false));
@@ -181,23 +161,21 @@ test("a renamed model unticked by mistake: its row says would be <name>, a tick 
   await waitFor(() => expect(box.checked).toBe(true));
   expect(server.of("POST", "/api/models").filter((c) => c.path === "/api/models")[0].body).toEqual({
     name: "Сильная",
-    cli: "claude",
-    model: "opus",
-    server: null,
+    cli: "opencode",
+    model: "qwen3-8b",
+    server: LMSTUDIO.name,
   });
   expect(within(label).getByText("as Сильная")).toBeTruthy();
 });
 
 test("a kept name taken meanwhile: the tick saves the model under its default name", async () => {
   server.entries = {
-    models: [model("Сильная", "claude", "Claude Code", "opus")],
-    servers: [],
+    models: [model("Сильная", "opencode", "OpenCode", "qwen3-8b")],
+    servers: [LMSTUDIO],
   };
   await mount();
-  fireEvent.click(await source("Claude Code"));
-  const box = (await screen.findByRole("checkbox", {
-    name: "opus on Claude Code",
-  })) as HTMLInputElement;
+  await openModel("qwen3-8b");
+  const box = await tickOf("qwen3-8b on OpenCode");
   fireEvent.click(box);
   await waitFor(() => expect(box.checked).toBe(false));
   server.entries = {
@@ -212,32 +190,30 @@ test("a kept name taken meanwhile: the tick saves the model under its default na
 
 test("ticks change no order: the configured models first as read", async () => {
   server.entries = {
-    models: [model("Opus", "claude", "Claude Code", "opus")],
-    servers: [],
+    models: [model("Вторая", "opencode", "OpenCode", "second")],
+    servers: [LMSTUDIO],
   };
   await mount();
-  fireEvent.click(await source("Claude Code"));
-  await screen.findByRole("checkbox", { name: "opus on Claude Code" });
-  const claude = item(await source("Claude Code"));
-  expect(ticks(claude)).toEqual(["opus on Claude Code", "sonnet on Claude Code"]);
-  fireEvent.click(screen.getByRole("checkbox", { name: "sonnet on Claude Code" }));
+  await openModel("first", { ...LMSTUDIO_PROBE, models: ["first", "second"], embeddings: [] });
+  const rows = () =>
+    within(document.querySelector(".mx-list") as HTMLElement)
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label"));
+  expect(rows()).toEqual(["second", "first"]);
+  fireEvent.click(await tickOf("first on OpenCode"));
   await waitFor(() => expect(server.entries.models).toHaveLength(2));
-  fireEvent.click(screen.getByRole("checkbox", { name: "opus on Claude Code" }));
-  await waitFor(() => expect(server.entries.models.map((m) => m.model)).toEqual(["sonnet"]));
-  expect(ticks(claude)).toEqual(["opus on Claude Code", "sonnet on Claude Code"]);
+  expect(rows()).toEqual(["second", "first"]);
 });
 
 test("a refused tick shows in its row, the tick stays off", async () => {
+  server.entries = { models: [], servers: [LMSTUDIO] };
   server.answers["POST /api/models"] = () => refusal("the server went away", "server");
   await mount();
-  fireEvent.click(await source("Claude Code"));
-  const box = await screen.findByRole("checkbox", {
-    name: "opus on Claude Code",
-  });
+  await openModel("qwen3-8b");
+  const box = await tickOf("qwen3-8b on OpenCode");
   fireEvent.click(box);
-  const note = await screen.findByText("the server went away");
-  expect((box.closest("label")?.parentElement as HTMLElement).contains(note)).toBe(true);
-  await waitFor(() => expect((box as HTMLInputElement).checked).toBe(false));
+  expect(await screen.findByText("the server went away")).toBeTruthy();
+  await waitFor(() => expect(box.checked).toBe(false));
 });
 
 test("the latest read wins and none fills a closed source", async () => {
@@ -405,43 +381,41 @@ test("embeddings are hidden and counted; a model gone from the list first, ticke
 
 test("several models of one tick: on, disabled, titled with them", async () => {
   server.entries = {
-    models: [model("Claude Opus", "claude", "Claude Code", "opus"), model("Сильная", "claude", "Claude Code", "opus")],
-    servers: [],
+    models: [model("Быстрая", "opencode", "OpenCode", "qwen3-8b"), model("Сильная", "opencode", "OpenCode", "qwen3-8b")],
+    servers: [LMSTUDIO],
   };
   await mount();
-  fireEvent.click(await source("Claude Code"));
-  const box = (await screen.findByRole("checkbox", {
-    name: "opus on Claude Code",
-  })) as HTMLInputElement;
+  await openModel("qwen3-8b");
+  const box = await tickOf("qwen3-8b on OpenCode");
   expect([box.checked, box.disabled]).toEqual([true, true]);
-  expect(box.title).toBe("Claude Opus, Сильная: remove them in Your models");
+  expect(box.title).toBe("Быстрая, Сильная: remove them on the card of OpenCode");
 });
 
-test("a list longer than ten: search above it, its count under it, bounded", async () => {
+test("a list longer than ten: search above it, its count under it", async () => {
   const many = Array.from({ length: 12 }, (_, i) => `model-${i}`);
-  server.answers["GET /api/providers/codex/models"] = () =>
-    json({
-      aliases: [],
-      models: many,
-      why: "",
-      check: { kind: "default", text: "", field: "", name: "" },
-    });
+  server.entries = { models: [], servers: [LMSTUDIO] };
+  server.probes[LMSTUDIO.name] = { ...LMSTUDIO_PROBE, models: many, embeddings: [] };
   await mount();
-  fireEvent.click(await source("Codex CLI"));
+  fireEvent.click(await source(LMSTUDIO.name));
   const search = await screen.findByRole("searchbox", {
     name: "Search 12 models",
   });
   expect(search.getAttribute("placeholder")).toBe("Search 12 models");
   expect(screen.getByText("12 models")).toBeTruthy();
-  const list = screen.getByRole("checkbox", { name: "model-0 on Codex CLI" }).closest(".mx-list") as HTMLElement;
-  expect(list.className).not.toContain("mx-short"); // a CLI's list stays bounded on a phone
   fireEvent.change(search, { target: { value: "MODEL-1" } });
-  expect(ticks(item(await source("Codex CLI")))).toEqual([
-    "model-1 on Codex CLI",
-    "model-10 on Codex CLI",
-    "model-11 on Codex CLI",
-  ]);
+  const rows = within(document.querySelector(".mx-list") as HTMLElement).getAllByRole("button");
+  expect(rows.map((b) => b.getAttribute("aria-label"))).toEqual(["model-1", "model-10", "model-11"]);
   expect(screen.getByText("3 of 12 models")).toBeTruthy();
+});
+
+test("a server's list past twenty models stays bounded on a phone", async () => {
+  server.entries = { models: [], servers: [LMSTUDIO] };
+  const many = Array.from({ length: 21 }, (_, i) => `model-${i}`);
+  server.probes[LMSTUDIO.name] = { ...LMSTUDIO_PROBE, models: many, embeddings: [] };
+  await mount();
+  fireEvent.click(await source(LMSTUDIO.name));
+  await screen.findByRole("button", { name: "model-0" });
+  expect((document.querySelector(".mx-list") as HTMLElement).className).not.toContain("mx-short");
 });
 
 test("a server that does not answer says why with its hint, and that its models stay saved", async () => {
@@ -463,63 +437,55 @@ test("a server that does not answer says why with its hint, and that its models 
   );
 });
 
-test("Model id only where the list is not whole: Claude Code, a CLI without a list, a server without one", async () => {
-  server.probes["LM Studio дома"] = {
-    ...LMSTUDIO_PROBE,
-    models: null,
-    models_why: "GET /v1/models: 404",
-  } as ProbeInfo;
+const NO_LIST = { ...LMSTUDIO_PROBE, models: null, models_why: "GET /v1/models: 404" } as ProbeInfo;
+
+test("Model id only for a server without a list, with a choice of its installed CLIs", async () => {
+  server.probes[LMSTUDIO.name] = NO_LIST;
   server.entries = { models: [], servers: [LMSTUDIO] };
-  server.answers["GET /api/providers/opencode/models"] = () =>
-    json({
-      aliases: [],
-      models: null,
-      why: "no list",
-      check: { kind: "default", text: "", field: "", name: "" },
-    });
   await mount();
-  for (const name of ["Claude Code", "Codex CLI", "OpenCode", "LM Studio дома"]) fireEvent.click(await source(name));
-  await screen.findByRole("checkbox", { name: "gpt-5-codex on Codex CLI" });
-  const has = async (name: string) => within(item(await source(name))).queryByLabelText("Model id") !== null;
-  await waitFor(async () => expect(await has("LM Studio дома")).toBe(true));
-  expect([await has("Claude Code"), await has("Codex CLI"), await has("OpenCode")]).toEqual([true, false, true]);
-  const lm = item(await source("LM Studio дома"));
+  fireEvent.click(await source(LMSTUDIO.name));
+  const lm = item(await source(LMSTUDIO.name));
+  await within(lm).findByLabelText("Model id");
   const choice = within(lm).getByLabelText("Agent CLI") as HTMLSelectElement;
   expect(choice.closest(".field")).toBeTruthy(); // the launch window's field look
   expect([...choice.options].map((o) => o.textContent)).toEqual(["Codex CLI", "OpenCode"]);
+  cleanup();
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  await mount();
+  fireEvent.click(await source(LMSTUDIO.name));
+  await screen.findByRole("button", { name: "qwen3-8b" });
+  expect(screen.queryByLabelText("Model id")).toBeNull();
 });
 
 test("Model id: the check after the typing settles, Add saves it, off while refused", async () => {
+  server.probes[LMSTUDIO.name] = NO_LIST;
+  server.entries = { models: [], servers: [LMSTUDIO] };
   await mount();
-  fireEvent.click(await source("Claude Code"));
+  fireEvent.click(await source(LMSTUDIO.name));
   const field = await screen.findByLabelText("Model id");
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  fireEvent.change(field, { target: { value: "claude-opus-5-5" } });
+  fireEvent.change(field, { target: { value: "gpt-x" } });
   expect(server.of("POST", "/api/models/check")).toEqual([]);
   await settle();
   vi.useRealTimers();
   expect((await screen.findByText("✓ in the list")).className).toBe("field-note ok");
   expect(server.of("POST", "/api/models/check")[0].body).toEqual({
     name: null,
-    cli: "claude",
-    model: "claude-opus-5-5",
-    server: null,
+    cli: "codex",
+    model: "gpt-x",
+    server: LMSTUDIO.name,
   });
-  const claude = item(await source("Claude Code"));
-  fireEvent.click(within(claude).getByRole("button", { name: "Add" }));
+  const lm = item(await source(LMSTUDIO.name));
+  fireEvent.click(within(lm).getByRole("button", { name: "Add" }));
   await waitFor(() => expect(server.calls.filter((c) => c.path === "/api/models")).toHaveLength(1));
-  expect(
-    await screen.findByRole("checkbox", {
-      name: "claude-opus-5-5 on Claude Code",
-    }),
-  ).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "gpt-x" })).toBeTruthy();
   server.answers["POST /api/models/check"] = () =>
     json({ kind: "refused", text: "a refusal", field: "model", name: "" });
-  fireEvent.change(within(claude).getByLabelText("Model id"), {
+  fireEvent.change(within(lm).getByLabelText("Model id"), {
     target: { value: "x" },
   });
   expect(await screen.findByText("a refusal", {}, { timeout: 3000 })).toBeTruthy();
-  expect((within(claude).getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((within(lm).getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 // A server's Change and Remove.
@@ -946,8 +912,8 @@ test("a server's saved line goes with the human's next change, as a Removed line
   await waitFor(() => expect(addButton().disabled).toBe(false));
   fireEvent.click(addButton());
   expect(await screen.findByText('Saved model server "alpha".')).toBeTruthy();
-  fireEvent.click(await source("Claude Code"));
-  const box = (await screen.findByRole("checkbox", { name: "sonnet on Claude Code" })) as HTMLInputElement;
+  fireEvent.click(await screen.findByRole("button", { name: "qwen3-8b" }));
+  const box = await tickOf("qwen3-8b on OpenCode");
   fireEvent.click(box);
   await waitFor(() => expect(box.checked).toBe(true));
   expect(screen.queryByText('Saved model server "alpha".')).toBeNull();

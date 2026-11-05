@@ -84,6 +84,7 @@ def test_codex_on_another_model_provider_has_no_list(clis):
     listed = providers.get("codex").model_list(env)
     assert listed.models is None
     assert listed.why == "Codex CLI gives no list of models for the model provider `ollama`"
+    assert listed.fixed is True
 
 
 @pytest.mark.parametrize(

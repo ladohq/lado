@@ -6,7 +6,7 @@ import datetime
 import logging
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from lado import (
     artifacts,
@@ -478,14 +478,15 @@ class ModelCheck(BaseModel):
 
 
 class ConfiguredModelInfo(BaseModel):
-    """A configured model: its name, CLI (a provider's name, and its title), the model as
-    the CLI names it, and its server's name (None for the CLI's own way to its models)."""
+    """A configured model: its id, which references hold, its name, CLI (a provider's name,
+    and its title), the model as the CLI names it, and its server's name."""
 
+    id: str
     name: str
     cli: str
     cli_title: str
     model: str
-    server: str | None
+    server: str
 
 
 class ModelServerInfo(BaseModel):
@@ -498,11 +499,74 @@ class ModelServerInfo(BaseModel):
     has_key: bool
 
 
+class CliDefault(BaseModel):
+    """An agent CLI's default model: `external` the configured model's id or `builtin` the
+    CLI's name for it, its name as shown, the model as the CLI names it, the server's name
+    (None for a built-in one), and whether a model on a server takes the CLI's whole process:
+    the page says so with no list read."""
+
+    cli: str
+    external: str | None
+    builtin: str | None
+    name: str
+    model: str
+    server: str | None
+    whole_process: bool
+
+
 class ModelSettings(BaseModel):
-    """The human's configured models and model servers, each by name ignoring case."""
+    """The human's configured models and model servers, each by name ignoring case, and the
+    agent CLIs' default models, by CLI."""
 
     models: list[ConfiguredModelInfo]
     servers: list[ModelServerInfo]
+    defaults: list[CliDefault]
+
+
+class ModelChoices(BaseModel):
+    """What an agent CLI can run (lado.model_settings.choices): its aliases and own list
+    (`models` None for no full list, `why` saying so), its configured models, whether a name
+    outside the list may be given, whether a model on a server takes its whole process,
+    whether reading the list again may change the answer, and the check of the built-in model
+    asked about against this list."""
+
+    aliases: list[str]
+    models: list[str] | None
+    why: str
+    external: list[ConfiguredModelInfo]
+    other_name: bool
+    whole_process: bool
+    read_again: bool
+    check: ModelCheck
+
+
+class ModelRemoved(ModelSettings):
+    """The settings after a model was removed, and the agent CLIs whose default it was: a page
+    gone stale knows of no default to ask about, so the answer says one went."""
+
+    cleared: list[str]
+
+
+class ModelDefaultSet(BaseModel):
+    """The default model to set, exactly one of: a row picked, by reference (`external` a
+    configured model's id, `builtin` the CLI's name for it), or `typed`, a name read as `lado
+    model default` reads it."""
+
+    external: str | None = None
+    builtin: str | None = None
+    typed: str | None = None
+
+    @model_validator(mode="after")
+    def exactly_one(self) -> "ModelDefaultSet":
+        if sum(given is not None for given in (self.external, self.builtin, self.typed)) != 1:
+            raise ValueError("give external, builtin or typed, exactly one")
+        return self
+
+
+class ModelDefaultCheck(BaseModel):
+    """A name typed for a default model, to check before it is set."""
+
+    name: str
 
 
 class CliApi(BaseModel):
@@ -562,18 +626,25 @@ class ModelServerAdded(BaseModel):
 
 
 class ModelAdd(BaseModel):
-    """A configured model to check or save: `name` None for its default name, `server` None
-    for the CLI's own way to its models."""
+    """A configured model to check or save: `name` None for its default name."""
 
     name: str | None = None
     cli: str
     model: str
-    server: str | None = None
+    server: str
 
 
 class ModelAdded(BaseModel):
     model: ConfiguredModelInfo
     check: ModelCheck
+
+
+class ModelDefaultSaved(BaseModel):
+    """A default model set: the settings after it and, for a built-in model, the check's
+    verdict (None for an external one, which asks no server)."""
+
+    settings: ModelSettings
+    check: ModelCheck | None
 
 
 class ModelRename(BaseModel):

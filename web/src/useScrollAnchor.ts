@@ -29,6 +29,14 @@ function scroller(section: HTMLElement): Scroller {
 
 const position = (on: Scroller) => (on === window ? window.scrollY : (on as HTMLElement).scrollTop);
 
+// Whether the page is scrolled to its very end, where a page getting shorter stops the scroll
+// earlier by itself.
+function atEnd(on: Scroller): boolean {
+  const box = on === window ? document.documentElement : (on as HTMLElement);
+  const seen = on === window ? window.innerHeight : box.clientHeight;
+  return box.scrollHeight > seen && position(on) >= box.scrollHeight - seen - 1;
+}
+
 // Whether a box from `top` to `bottom` on the screen showed in what scrolls.
 function shown(on: Scroller, top: number, bottom: number): boolean {
   const view = on === window ? { top: 0, bottom: window.innerHeight } : (on as HTMLElement).getBoundingClientRect();
@@ -41,6 +49,7 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
   // Where the hook scrolled last: the exact place it wants (`want`) and where the page, which
   // scrolls by whole pixels, put it (`left`); a page found elsewhere was scrolled by another.
   const ours = useRef<{ on: Scroller; want: number; left: number } | null>(null);
+  const noted = useRef(0); // where the page was at the last note
 
   // The anchor now; an element `kept` held already keeps the distance noted for it then.
   const note = useCallback(
@@ -48,6 +57,7 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
       const root = section.current;
       held.current = null;
       if (!root) return;
+      noted.current = position(scroller(root));
       const focused = document.activeElement;
       const last = acted.current;
       const gone = kept && !kept.own.el.isConnected && kept.around?.el.isConnected ? kept.around.el : null;
@@ -79,12 +89,18 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
       if (moved !== 0 && shown(on, box.top - moved, box.bottom - moved)) {
         const last = ours.current;
         const now = position(on);
-        // The place it wanted, while the page is where that put it and it put it there (a scroll
-        // stopped at the top or the bottom is no place wanted): else where the page is.
-        const kept = last && last.on === on && Math.abs(now - last.left) < 1 && Math.abs(last.left - last.want) < 1;
-        const want = (kept ? last.want : now) + moved;
-        on.scrollTo(0, want);
-        ours.current = { on, want, left: position(on) };
+        // A page got shorter under a scroll near its end: the browser stopped the scroll at the
+        // new end, all or part of what went above. That much is made up for; scrolling it again
+        // would move the anchor by as much. No human scroll ends above where the page ends.
+        const stopped = atEnd(on) && noted.current > now ? noted.current - now : 0;
+        if (moved + stopped !== 0) {
+          // The place it wanted, while the page is where that put it and it put it there (a
+          // scroll stopped at the top or the bottom is no place wanted): else where the page is.
+          const kept = last && last.on === on && Math.abs(now - last.left) < 1 && Math.abs(last.left - last.want) < 1;
+          const want = (kept ? last.want : now) + moved + stopped;
+          on.scrollTo(0, want);
+          ours.current = { on, want, left: position(on) };
+        }
       }
       spot.at += moved; // made up for, or not held: the distance it has now
     }

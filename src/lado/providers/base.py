@@ -254,12 +254,14 @@ class LoginPrompt:
 class ModelList:
     """The models a CLI takes (Provider.model_list): its own aliases, and the names of its
     own list, from `command` (what the human runs to print it); `models` None when there is
-    no list, with `why`."""
+    no list, with `why`; `fixed` when reading again cannot change the answer (no list is what
+    the CLI gives, not a read that failed)."""
 
     aliases: tuple[str, ...] = ()
     models: tuple[str, ...] | None = None
     command: str = ""
     why: str = ""
+    fixed: bool = False
 
 
 # The APIs of a model server an agent CLI can speak (lado.model_servers), in the order they
@@ -338,6 +340,9 @@ class Provider(ABC):
     permission_modes: tuple[str, ...]
     # The model server API its CLI speaks (one of SERVER_APIS); "" for none.
     server_api: str = ""
+    # Whether a model on a server takes the CLI's whole process (its one endpoint), rather
+    # than being one provider among the others in its config.
+    external_whole_process: bool = True
 
     def check_permission_mode(self, mode: str | None) -> None:
         """Raise ValueError for a permission mode this provider cannot honour."""

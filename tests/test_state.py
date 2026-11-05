@@ -1229,7 +1229,7 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
         tables = _tables(db)
-    assert "model_servers" not in tables  # the content before the migration
+    assert "cli_defaults" not in tables  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -1281,7 +1281,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert "model_servers" not in _tables(db)  # rolled back
+        assert "cli_defaults" not in _tables(db)  # rolled back
 
 
 def test_no_pending_migration_without_a_database(lado_home):
@@ -2743,7 +2743,9 @@ def test_a_workers_end_leaves_the_gates_asked(lado_home):
     assert state.get_gate(gate.id).recommendation_state == state.REC_ASKED
 
 
-MODEL_TABLES = "SELECT name, sql FROM sqlite_master WHERE name IN ('model_servers', 'models')"
+MODEL_TABLES = (
+    "SELECT name, sql FROM sqlite_master WHERE name IN ('model_servers', 'models', 'cli_defaults')"
+)
 CHAT = "chat completions"
 
 
@@ -2756,16 +2758,16 @@ def test_the_migration_adds_empty_model_tables_as_a_new_database_has_them(lado_h
     state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
     with state.connect() as db:
         fresh = sorted(tuple(row) for row in db.execute(MODEL_TABLES))
-    assert len(fresh) == 2
+    assert len(fresh) == 3
     agent_helpers.schema_before(38)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     assert db.execute(MODEL_TABLES).fetchall() == []
     db.close()
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (37, 38)
+    assert (migrated.before, migrated.after) == (37, 39)
     with state.connect() as db:
         assert sorted(tuple(row) for row in db.execute(MODEL_TABLES)) == fresh
-    assert (state.model_servers(), state.models()) == ([], [])
+    assert (state.model_servers(), state.models(), state.cli_defaults()) == ([], [], [])
     assert state.get_session("s").provider == "codex"
     assert state.get_agent("s", "w1").status == "starting"
 
@@ -2788,16 +2790,18 @@ def test_a_model_server_kept_and_found_ignoring_case(lado_home):
 
 
 def test_a_model_kept_and_found_ignoring_case(lado_home):
-    saved = state.add_model("Быстрая", "claude", "haiku", None)
+    _server()
+    saved = state.add_model("Быстрая", "claude", "haiku", "s1")
     assert (saved.name, saved.cli, saved.model, saved.server) == (
         "Быстрая",
         "claude",
         "haiku",
-        None,
+        "s1",
     )
+    assert saved.id
     assert state.model("быстрая") == saved
     with pytest.raises(state.NameTaken) as taken:
-        state.add_model("БЫСТРАЯ", "claude", "sonnet", None)
+        state.add_model("БЫСТРАЯ", "claude", "sonnet", "s1")
     assert taken.value.name == "Быстрая"
     assert state.model("Быстрая").model == "haiku"
 
@@ -2815,8 +2819,8 @@ def test_a_server_a_model_refers_to_is_not_removed(lado_home):
     with pytest.raises(sqlite3.IntegrityError):
         state.remove_model_server("s1")
     assert state.model_server("LM Studio дома") is not None
-    assert state.remove_model("локальная qwen") is True
-    assert state.remove_model("локальная qwen") is False
+    assert state.remove_model("локальная qwen") == state.ModelsRemoved(["Локальная Qwen"], [])
+    assert state.remove_model("локальная qwen") is None
     assert state.models_on("s1") == []
     assert state.remove_model_server("s1") is True
     assert state.remove_model_server("s1") is False
@@ -2843,10 +2847,9 @@ def test_a_server_removed_with_its_models(lado_home):
     state.add_model("sp", "kilo", "qwen3-8b", "s1")
     state.add_model("Coder", "opencode", "qwen3-8b", "s1")
     state.add_model("kept", "opencode", "qwen3-8b", "s2")
-    state.add_model("own", "claude", "haiku", None)
-    assert state.remove_model_server_with_models("s1") == ["Coder", "sp"]
+    assert state.remove_model_server_with_models("s1").names == ["Coder", "sp"]
     assert [s.id for s in state.model_servers()] == ["s2"]
-    assert [m.name for m in state.models()] == ["kept", "own"]
+    assert [m.name for m in state.models()] == ["kept"]
     assert state.remove_model_server_with_models("s1") is None
 
 
@@ -2859,13 +2862,14 @@ def test_a_server_removed_with_the_models_confirmed_only(lado_home):
     assert changed.value.names == ["late", "sp"]
     assert [m.name for m in state.models()] == ["late", "sp"]
     assert state.model_server("LM Studio дома") is not None
-    assert state.remove_model_server_with_models("s1", confirmed=["Late", "sp"]) == ["late", "sp"]
+    removed = state.remove_model_server_with_models("s1", confirmed=["Late", "sp"])
+    assert removed.names == ["late", "sp"]
 
 
 def test_a_model_renamed_keeps_its_cli_model_and_server(lado_home):
     _server()
     state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
-    state.add_model("Other", "claude", "haiku", None)
+    state.add_model("Other", "claude", "haiku", "s1")
     assert state.rename_model("локальная qwen", "Сильная") is True
     renamed = state.model("сильная")
     assert (renamed.name, renamed.cli, renamed.model, renamed.server) == (
@@ -2889,5 +2893,142 @@ def test_the_lists_are_sorted_ignoring_case(lado_home):
         _server(f"s{i}", name)
     assert [s.name for s in state.model_servers()] == ["ext", "LM Studio дома", "work"]
     for name in ["Локальная Qwen", "быстрая", "Alpha"]:
-        state.add_model(name, "claude", "haiku", None)
+        state.add_model(name, "claude", "haiku", "s0")
     assert [m.name for m in state.models()] == ["Alpha", "быстрая", "Локальная Qwen"]
+
+
+def _schema_38_with_models(lado_home):
+    """lado.db at schema 38 holding a model on a server and one without."""
+    _server()
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    db.execute(
+        "INSERT INTO models (folded, name, cli, model, server, created_at)"
+        " VALUES ('локальная qwen', 'Локальная Qwen', 'opencode', 'qwen3-8b', 's1',"
+        " '2026-10-01 10:00:00')"
+    )
+    db.execute(
+        "INSERT INTO models (folded, name, cli, model, server)"
+        " VALUES ('быстрая', 'Быстрая', 'claude', 'haiku', NULL)"
+    )
+    db.commit()
+    db.close()
+
+
+def test_the_migration_keeps_a_model_on_a_server_and_drops_one_without(lado_home):
+    _schema_38_with_models(lado_home)
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (38, 39)
+    (kept,) = state.models()
+    assert (kept.name, kept.cli, kept.model, kept.server, kept.created_at) == (
+        "Локальная Qwen",
+        "opencode",
+        "qwen3-8b",
+        "s1",
+        "2026-10-01 10:00:00",
+    )
+    assert re.fullmatch("[0-9a-f]{12}", kept.id)
+    assert state.cli_defaults() == []
+    with state.connect() as db:
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert "models_38" not in _tables(db)
+
+
+def test_a_failed_migration_to_ids_leaves_the_rows_of_schema_38(lado_home, monkeypatch):
+    _schema_38_with_models(lado_home)
+    broken = [*state.MIGRATIONS[38], "SELECT * FROM no_such_table"]
+    monkeypatch.setitem(state.MIGRATIONS, 38, broken)
+    with pytest.raises(state.MigrationFailed):
+        state.migrate()
+    db = sqlite3.connect(lado_home / "lado.db")
+    assert db.execute("SELECT name FROM models ORDER BY folded").fetchall() == [
+        ("Быстрая",),
+        ("Локальная Qwen",),
+    ]
+    assert _schema(lado_home / "lado.db") == 38
+    db.close()
+
+
+def test_a_model_on_no_server_is_refused_by_the_store(lado_home):
+    with pytest.raises(sqlite3.IntegrityError):
+        state.add_model("Быстрая", "claude", "haiku", None)
+    assert state.models() == []
+
+
+def test_a_model_is_found_by_its_id(lado_home):
+    _server()
+    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
+    assert state.model_by_id(saved.id) == saved
+    assert state.model_by_id("nope") is None
+
+
+def test_a_default_is_external_or_built_in_never_both_or_neither(lado_home):
+    _server()
+    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
+    with pytest.raises(sqlite3.IntegrityError):
+        state.set_cli_default(state.ModelRef("opencode", saved.id, "qwen3-8b"))
+    with pytest.raises(sqlite3.IntegrityError):
+        state.set_cli_default(state.ModelRef("opencode", None, None))
+    assert state.cli_defaults() == []
+
+
+def test_a_default_is_replaced_and_cleared(lado_home):
+    _server()
+    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    state.set_cli_default(state.ModelRef("opencode", None, "anthropic/claude-sonnet-4"))
+    assert state.cli_defaults() == [
+        state.ModelRef("claude", None, "opus"),
+        state.ModelRef("opencode", None, "anthropic/claude-sonnet-4"),
+    ]
+    assert state.clear_cli_default("claude") is True
+    assert state.clear_cli_default("claude") is False
+    assert [ref.cli for ref in state.cli_defaults()] == ["opencode"]
+
+
+def test_a_default_survives_a_rename_of_its_model(lado_home):
+    _server()
+    saved = state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
+    ref = state.ModelRef("opencode", saved.id, None)
+    state.set_cli_default(ref)
+    assert state.rename_model("Локальная Qwen", "Alpha") is True
+    assert state.cli_defaults() == [ref]
+    assert state.model_by_id(saved.id).name == "Alpha"
+
+
+def test_a_default_on_no_saved_model_is_refused(lado_home):
+    with pytest.raises(sqlite3.IntegrityError):
+        state.set_cli_default(state.ModelRef("opencode", "nope", None))
+
+
+def test_removing_a_model_clears_the_default_on_it(lado_home):
+    _server()
+    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
+    state.add_model("Other", "opencode", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    assert state.remove_model("Other") == state.ModelsRemoved(["Other"], [])
+    assert len(state.cli_defaults()) == 2
+    assert state.remove_model("q") == state.ModelsRemoved(["Q"], ["opencode"])
+    assert state.cli_defaults() == [state.ModelRef("claude", None, "opus")]
+
+
+def test_removing_a_server_clears_the_defaults_on_its_models(lado_home):
+    _server()
+    a = state.add_model("a", "opencode", "qwen3-8b", "s1")
+    b = state.add_model("b", "kilo", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("opencode", a.id, None))
+    state.set_cli_default(state.ModelRef("kilo", b.id, None))
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    removed = state.remove_model_server_with_models("s1")
+    assert removed == state.ModelsRemoved(["a", "b"], ["kilo", "opencode"])
+    assert state.cli_defaults() == [state.ModelRef("claude", None, "opus")]
+
+
+def test_a_stray_delete_of_a_default_s_model_is_refused_by_the_foreign_key(lado_home):
+    _server()
+    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
+    with state.connect() as db, pytest.raises(sqlite3.IntegrityError):
+        db.execute("DELETE FROM models WHERE id = ?", (saved.id,))

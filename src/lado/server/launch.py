@@ -282,8 +282,8 @@ def model_list(
 ) -> providers.base.ModelList:
     """The CLI's aliases and list of models in the environment of the agents of `project`
     (or of none), kept MODEL_LIST_KEPT seconds once read (`fresh`: read now, and kept);
-    LadoError for an environment that cannot be read. Settings → Models' live check of a
-    CLI's model takes it too (lado.server.model_entries)."""
+    LadoError for an environment that cannot be read. Settings → Models' picker takes it too
+    (lado.server.model_entries)."""
     key, now = (provider.name, project), time.monotonic()
     with _model_lists_lock:
         kept = _model_lists.get(key)

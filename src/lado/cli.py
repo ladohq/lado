@@ -1661,6 +1661,7 @@ def cmd_model_server_remove(args: argparse.Namespace) -> int:
             args.name,
             with_models=args.with_models,
             removed=lambda model: print(f'Removed model "{model}".'),
+            cleared=_print_cleared,
         )
     except model_settings.Refused as exc:
         return _refused(exc)
@@ -1668,27 +1669,86 @@ def cmd_model_server_remove(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_cleared(cli: str) -> None:
+    from lado import model_settings
+
+    print(f"{model_settings.cli_title(cli)}'s default model is cleared.")
+
+
 def cmd_model_add(args: argparse.Namespace) -> int:
-    """`lado model add <name> --cli <cli> --model <model> [--server <server>]`: check the
-    model against its CLI's list, read with the agents' environment, or its server's, and
-    save it under the name (lado.model_settings)."""
+    """`lado model add <name> --cli <cli> --model <model> --server <server>`: check the model
+    against its server's list and save it under the name (lado.model_settings)."""
     from lado import model_check, model_settings
 
-    def agents_env(provider: providers.Provider) -> dict[str, str]:
-        return runtime.agents_env(runtime.agent_layers(None), provider)
-
     try:
-        saved, verdict = model_settings.add_model(
-            args.name, args.cli, args.model, args.server, agents_env
-        )
+        saved, verdict = model_settings.add_model(args.name, args.cli, args.model, args.server)
     except model_settings.Refused as exc:
         return _refused(exc)
     if verdict.kind == model_check.WARN:
         _warn_line(verdict.text)
-    server = state.model_server(args.server) if args.server is not None else None
+    server = state.model_server(args.server)
     on = f" on {server.name}" if server else ""
     title = providers.get(saved.cli).title
     print(f'Saved model "{saved.name}": {title}, {saved.model}{on} ({verdict.text})')
+    return 0
+
+
+def _print_defaults(clis: list[str]) -> None:
+    """The default models of `clis`, running no CLI and asking no server."""
+    from lado import model_settings
+
+    shown = {default.ref.cli: default for default in model_settings.defaults()}
+    rows = []
+    for cli in clis:
+        default = shown.get(cli)
+        name = default.name if default else "—"
+        server = default.server if default and default.server else "—"
+        rows.append([model_settings.cli_title(cli), name, server])
+    _table(["CLI", "DEFAULT MODEL", "SERVER"], rows)
+
+
+def cmd_model_default(args: argparse.Namespace) -> int:
+    """`lado model default [<cli> [<model> | --clear]]`: print the agent CLIs' default models,
+    set one or clear it (lado.model_settings)."""
+    from lado import model_check, model_settings
+
+    if args.clear and (args.cli is None or args.model is not None):
+        args.default_parser.error("--clear takes an agent CLI and no model")
+    if args.cli is None:
+        _print_defaults(list(providers.names()))
+        return 0
+    try:
+        if args.clear:
+            title = model_settings.cli_title(args.cli)
+            cleared = model_settings.clear_default(args.cli)
+            print(
+                f"{title}'s default model is cleared."
+                if cleared
+                else f"{title} has no default model."
+            )
+            return 0
+        if args.model is None:
+            model_settings.known_cli(args.cli)
+            _print_defaults([args.cli])
+            return 0
+        ref, verdict = model_settings.set_default(
+            args.cli,
+            args.model,
+            lambda provider: runtime.agents_env(runtime.agent_layers(None), provider),
+        )
+    except model_settings.Refused as exc:
+        return _refused(exc)
+    title = model_settings.cli_title(ref.cli)
+    if verdict is None:
+        saved = state.model_by_id(ref.model_id or "")
+        servers = {server.id: server.name for server in state.model_servers()}
+        if saved is not None:
+            on = servers.get(saved.server, saved.server)
+            print(f"{title}'s default model: {saved.name} ({saved.model} on {on})")
+        return 0
+    if verdict.kind == model_check.WARN:
+        _warn_line(verdict.text)
+    print(f"{title}'s default model: {ref.builtin} ({verdict.text})")
     return 0
 
 
@@ -1698,7 +1758,7 @@ def cmd_model_list(args: argparse.Namespace) -> int:
     if not models:
         print(
             "No models. Add one: lado model add <name> --cli <cli> --model <model> "
-            "[--server <server>]"
+            "--server <server>"
         )
         return 0
     servers = {server.id: server.name for server in state.model_servers()}
@@ -1708,7 +1768,7 @@ def cmd_model_list(args: argparse.Namespace) -> int:
             model.name,
             providers.get(model.cli).title if model.cli in known else model.cli,
             model.model,
-            servers.get(model.server, model.server) if model.server else "—",
+            servers.get(model.server, model.server),
         ]
         for model in models
     ]
@@ -1722,7 +1782,9 @@ def cmd_model_remove(args: argparse.Namespace) -> int:
     from lado import model_settings
 
     try:
-        model_settings.remove_models(args.names, lambda name: print(f'Removed model "{name}".'))
+        model_settings.remove_models(
+            args.names, lambda name: print(f'Removed model "{name}".'), _print_cleared
+        )
     except model_settings.Refused as exc:
         return _refused(exc)
     return 0
@@ -2343,12 +2405,12 @@ def main(argv: list[str] | None = None) -> int:
     model_server_remove.set_defaults(func=cmd_model_server_remove)
 
     model_cmd = commands.add_parser(
-        "model", help="your models under names: an agent CLI, its model, maybe a model server"
+        "model", help="your servers' models under names, and each agent CLI's default model"
     )
     model_cmd.set_defaults(func=lambda _: model_cmd.print_help() or 0)
     model_sub = model_cmd.add_subparsers(dest="sub", metavar="<command>")
     model_add = model_sub.add_parser(
-        "add", help="save a model under a name, checked against its CLI's or server's list"
+        "add", help="save a model of a server under a name, checked against the server's list"
     )
     model_add.add_argument("name", help='e.g. "Fast" (any case finds it)')
     model_add.add_argument(
@@ -2370,6 +2432,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     model_remove.add_argument("names", nargs="+", metavar="name")
     model_remove.set_defaults(func=cmd_model_remove)
+    model_default = model_sub.add_parser(
+        "default", help="print the agent CLIs' default models, set one or clear it"
+    )
+    model_default.add_argument(
+        "cli", nargs="?", metavar="<cli>", help=f"one of {', '.join(providers.names())}"
+    )
+    model_default.add_argument(
+        "model", nargs="?", metavar="<model>", help="a saved model's name, or one of the CLI's own"
+    )
+    model_default.add_argument("--clear", action="store_true", help="back to the CLI's settings")
+    model_default.set_defaults(func=cmd_model_default, default_parser=model_default)
 
     bug_report_cmd = commands.add_parser(
         "bug-report", help="print a bug report for a new GitHub issue, and open it"

@@ -13,6 +13,8 @@ import pytest
 from fake_model_server import EMBEDDINGS
 from test_model_server_probe import closed_port, lado, serve  # noqa: F401 - a fixture
 
+from lado import agent_env
+
 pytestmark = pytest.mark.integration
 
 
@@ -48,6 +50,54 @@ def test_add_list_remove_a_server_and_a_model(serve):  # noqa: F811
     removed = lado("model-server", "remove", "LM Studio дома")
     assert (removed.returncode, removed.stdout) == (0, 'Removed model server "LM Studio дома".\n')
     assert lado("model-server", "list").stdout.startswith("No model servers.")
+
+
+def test_a_default_model_set_read_and_cleared_with_its_server(serve, tmp_path):  # noqa: F811
+    """Across processes: a default set by one command, read by the next, and gone with its
+    server in the same transaction; a stand-in of OpenCode on PATH gives the CLI's list."""
+    folder = tmp_path / "clis"
+    folder.mkdir()
+    opencode = folder / "opencode"
+    opencode.write_text('#!/bin/sh\nif [ "$1" = models ]; then echo a/one; fi\n')
+    opencode.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{folder}{os.pathsep}{os.environ['PATH']}",
+        agent_env.SOURCE_VAR: agent_env.INHERIT,
+    }
+    url = serve("lmstudio")
+    assert lado("model-server", "add", "lms", url).returncode == 0
+    added = lado(
+        "model", "add", "Локальная Qwen", "--cli", "opencode", "--model", "qwen3-8b",
+        "--server", "lms",
+    )  # fmt: skip
+    assert added.returncode == 0, added.stderr
+    no_server = lado("model", "add", "Быстрая", "--cli", "claude", "--model", "haiku")
+    assert no_server.returncode == 1
+    assert "lado model default <cli> <model>" in no_server.stderr
+
+    built_in = lado("model", "default", "opencode", "a/one", env=env)
+    assert (built_in.returncode, built_in.stderr) == (0, "")
+    assert built_in.stdout == "OpenCode's default model: a/one (in OpenCode's list of models)\n"
+    refused = lado("model", "default", "opencode", "a/two", env=env)
+    assert refused.returncode == 1
+    assert "a/two is not in OpenCode's list of models" in refused.stderr
+    external = lado("model", "default", "opencode", "локальная qwen", env=env)
+    assert external.stdout == ("OpenCode's default model: Локальная Qwen (qwen3-8b on lms)\n")
+    rows = lado("model", "default").stdout.splitlines()
+    assert rows[0].split() == ["CLI", "DEFAULT", "MODEL", "SERVER"]
+    [row] = [line for line in rows if line.startswith("OpenCode")]
+    assert row.split() == ["OpenCode", "Локальная", "Qwen", "lms"]
+
+    removed = lado("model-server", "remove", "lms", "--with-models")
+    assert removed.stdout.splitlines() == [
+        'Removed model "Локальная Qwen".',
+        "OpenCode's default model is cleared.",
+        'Removed model server "lms".',
+    ]
+    [row] = [line for line in lado("model", "default").stdout.splitlines() if "OpenCode" in line]
+    assert row.split() == ["OpenCode", "—", "—"]
+    assert lado("model", "default", "opencode", "x", "--clear").returncode == 2
 
 
 def test_the_key_canary(serve, lado_home):  # noqa: F811

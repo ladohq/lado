@@ -647,21 +647,20 @@ configured model uses it, it is refused, changing nothing: `model server "<name>
 the models <model>, …; remove them first: lado model remove "<model>" …`, one command
 naming every model on it, and the hint `or remove them with it: lado model-server remove
 "<name>" --with-models` (exit 1). With `--with-models` it removes the models on the server
-and the server in one transaction, `Removed model "<model>".` a line for each, then the key
-folder and `Removed model server "<name>".` (Settings → Models removes a server so after
-its confirmation). The three
+and the server in one transaction, with the defaults on those models, `Removed model
+"<model>".` a line for each, `<CLI>'s default model is cleared.` a line for each default
+that went, then the key folder and `Removed model server "<name>".` (Settings → Models
+removes a server so after its confirmation). The three
 commands migrate lado.db as `lado ls` does; `probe` alone does not.
 
-`lado model add <name> --cli <cli> --model <model> [--server <server>]` saves a configured
+`lado model add <name> --cli <cli> --model <model> --server <server>` saves a configured
 model: a name (the rules of a server's name, its own namespace), an agent CLI by its
-provider's name, the model as that CLI names it (spaces around it dropped) and optionally a
-saved server. A taken name is refused first (`a model "<its name>" is saved already; remove
+provider's name, the model as that CLI names it (spaces around it dropped) and a saved
+server. A taken name is refused first (`a model "<its name>" is saved already; remove
 it first: lado model remove "<its name>"`), then a CLI LADO does not know (naming those it
-knows), an empty model, a server no one saved. Without a server the model is checked as
-`lado start --model` checks it (`model_check.py`, the CLI's list read with the agents'
-environment): an alias or a listed name is saved, a name the list lacks refused, and with no
-list it is saved after `lado: warning: <why>: LADO cannot check <model>; …` on stderr. With a
-server LADO probes it now with its kept key: one that does not answer, asks for a key,
+knows), an empty model, no server (`a CLI's own models need no saving; only a model on a
+server is added: --server <server>`, the hint naming `lado model default`), a server no one
+saved. LADO probes the server now with its kept key: one that does not answer, asks for a key,
 refuses it or is no longer a server LADO knows refuses the model (`<the probe's line>; LADO
 cannot check <model>`, the container's hint naming `lado model-server add "<server>"
 --replace`); the API the CLI's provider speaks must be among the APIs it proves (`<server>
@@ -671,18 +670,36 @@ is an embeddings model on <server>; an agent needs a chat model: lado model-serv
 <address> lists the models`); then the model is checked against the server's list as against a CLI's (`<model> is not in
 <server>'s list of models; lado model-server probe <address> prints the list`). Claude Code
 and Codex models on a server are saved by that rule; no session uses a configured model
-yet. Saved: `Saved model "<name>": <CLI>, <model>[ on <server>] (<the check's text>)`, exit
+yet. Saved: `Saved model "<name>": <CLI>, <model> on <server> (<the check's text>)`, exit
 0; refused: exit 1, nothing saved.
 
-`lado model list` prints `NAME CLI MODEL SERVER` sorted by name ignoring case (`—` for no
-server), running no CLI and asking no server; with none: `No models. Add one: lado model add
-<name> --cli <cli> --model <model> [--server <server>]`. `lado model remove <name>…` finds
+`lado model list` prints `NAME CLI MODEL SERVER` sorted by name ignoring case, running no CLI
+and asking no server; with none: `No models. Add one: lado model add <name> --cli <cli>
+--model <model> --server <server>`. `lado model remove <name>…` finds
 every name first (ignoring case, a name given twice once): one no model has refuses the
 command and removes nothing (`no model "<name>" is saved; lado model list names them`, `no
 models "<name>", "<name>" are saved; …` for several, exit 1). Then it removes each in the
-order given, `Removed model "<name>".` a line; their servers stay. A model another process
+order given, `Removed model "<name>".` a line, and `<CLI>'s default model is cleared.` after
+a model that was one, in the same transaction; their servers stay. A model another process
 removed in between is named by that refusal after the others are removed (exit 1). `lado
 model` alone prints its help.
+
+`lado model default` prints `CLI DEFAULT MODEL SERVER`, one line per agent CLI in LADO's order
+(`—` for none), running no CLI and asking no server; `lado model default <cli>` that CLI's
+line. No session reads a default yet. `lado model default <cli> <model>` sets the CLI's
+default, replacing the one it had: `<model>` is a configured model of that CLI by its name
+ignoring case, else a built-in model. An external one asks no server: `<CLI>'s default model:
+<name> (<model> on <server>)`. A built-in one is checked as `lado start --model` checks a
+model (`model_check.py`, the CLI's list read with the agents' environment): an alias or a
+listed name is set, `<CLI>'s default model: <model> (<the check's text>)`; a name the list
+lacks is refused; with no list it is set after `lado: warning: <why>: LADO cannot check
+<model>; …` on stderr. Refused, exit 1, nothing changed: a CLI LADO does not know, a CLI not
+installed (`<CLI> is not installed`), a name both a configured and a built-in model of the
+CLI (`"<name>" is both a saved model of <CLI> and one of its own; rename the saved one:
+Settings → Models`), a name only another CLI's configured model has (`"<name>" is a model of
+<other CLI>, not of <CLI>`). `lado model default <cli> --clear` clears it, the CLI installed
+or not: `<CLI>'s default model is cleared.`, or `<CLI> has no default model.`; a model with
+`--clear`, or `--clear` with no CLI, exits 2.
 
 `lado ui` prints (or opens) the local link with the token, then, when the running server
 has a link for another device, `From another machine: <link>`: it asks the server

@@ -14,12 +14,15 @@
   of a server in your network (Ollama, LM Studio, OpenAI- or Anthropic-compatible), its
   models, embeddings ones marked, and the CLIs that can use it, generating nothing; `--key`.
 - **Save model servers and models under names.** `lado model-server add|list|remove` keeps
-  a server, its key in a private file; `lado model add|list|remove` a CLI's model, maybe on
-  a saved server, checked against its list (no embeddings model). `lado doctor` checks them.
-- **Set models in Settings.** Settings → Models shows your models in a card per agent CLI,
-  then your model servers and what each agent CLI offers; tick a model to save it, click
-  its name to rename it, undo a removal; add a server, checked as you type, change it and
-  remove it with its models (`lado model-server remove --with-models`).
+  a server, its key in a private file; `lado model add|list|remove` a model on a saved
+  server, checked against its list (no embeddings model). `lado doctor` checks them.
+- **A default model for each agent CLI.** `lado model default` and Settings → Models keep one
+  per agent CLI: one of its own or of your servers, picked from one searchable list. It is
+  kept and shown only: no session uses it yet.
+- **Set models in Settings.** Settings → Models shows a card per agent CLI with its default
+  model and the models it runs, then your model servers; tick a server's model to save it,
+  click its name to rename it, undo a removal; add a server, checked as you type, change it
+  and remove it with its models (`lado model-server remove --with-models`).
 - **One word for what runs an agent: agent CLI.** The launch window's field is Agent CLI,
   Settings' section Agent CLIs and environment, the system panel's Agent CLIs; old links to
   the section and `lado start --provider` keep working.

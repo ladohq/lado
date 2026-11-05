@@ -357,25 +357,19 @@ def listing(monkeypatch, name, listed):
     monkeypatch.setattr(type(providers.get(name)), "model_list", lambda self, env: listed)
 
 
-def test_model_add_of_an_alias(capsys, monkeypatch):
-    listing(monkeypatch, "claude", base.ModelList(("haiku",)))
-    assert main(["model", "add", "Быстрая", "--cli", "claude", "--model", "haiku"]) == 0
-    out, err = capsys.readouterr()
-    assert out == 'Saved model "Быстрая": Claude Code, haiku (an alias of Claude Code)\n'
-    assert err == ""
-
-
-def test_model_add_reads_the_list_with_the_agents_environment(capsys, monkeypatch):
-    seen = []
+def test_model_add_without_a_server_is_refused_naming_the_default(capsys, monkeypatch):
     monkeypatch.setattr(
-        type(providers.get("kilo")),
-        "model_list",
-        lambda self, env: seen.append(env) or base.ModelList(),
+        type(providers.get("claude")), "model_list", lambda self, env: pytest.fail("read a list")
     )
-    monkeypatch.setattr(runtime, "agent_layers", lambda project: "layers")
-    monkeypatch.setattr(runtime, "agents_env", lambda layers, cli: {"FROM": f"{layers} {cli.name}"})
-    main(["model", "add", "K", "--cli", "kilo", "--model", "x"])
-    assert seen == [{"FROM": "layers kilo"}]
+    assert main(["model", "add", "Быстрая", "--cli", "claude", "--model", "haiku"]) == 1
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err.splitlines() == [
+        "lado: a CLI's own models need no saving; only a model on a server is added: "
+        "--server <server>",
+        "lado: to make one its default: lado model default <cli> <model>",
+    ]
+    assert state.models() == []
 
 
 def test_model_add_on_a_server(serve, capsys):
@@ -404,13 +398,14 @@ def test_model_add_on_a_server(serve, capsys):
     )
 
 
-def test_model_add_without_a_list_warns(capsys, monkeypatch):
-    listing(monkeypatch, "kilo", base.ModelList(why="kilo is not installed"))
-    assert main(["model", "add", "K", "--cli", "kilo", "--model", "x/y"]) == 0
+def test_model_add_on_a_server_without_a_list_warns(serve, capsys):
+    main(["model-server", "add", "resp", serve("responses-only").url])
+    capsys.readouterr()
+    assert main(["model", "add", "C", "--cli", "codex", "--model", "x", "--server", "resp"]) == 0
     out, err = capsys.readouterr()
-    text = "kilo is not installed: LADO cannot check x/y; a wrong name stops its agents at their "
+    text = "GET /v1/models: 404: LADO cannot check x; a wrong name stops its agents at their "
     assert err == f"lado: warning: {text}first turn\n"
-    assert out == f'Saved model "K": Kilo CLI, x/y ({text}first turn)\n'
+    assert out == f'Saved model "C": Codex CLI, x on resp ({text}first turn)\n'
 
 
 def test_model_add_refused_exit_1(capsys):
@@ -436,33 +431,35 @@ def test_model_add_on_a_server_that_does_not_answer_gives_its_hint(serve, capsys
     ]
 
 
+def saved_server():
+    return state.add_model_server("s1", "LM Studio дома", "http://localhost:1234", "LM Studio", ())
+
+
 def test_model_list(capsys, monkeypatch):
-    listing(monkeypatch, "claude", base.ModelList(("haiku",)))
-    state.add_model_server("s1", "LM Studio дома", "http://localhost:1234", "LM Studio", ())
+    saved_server()
     state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
-    main(["model", "add", "Быстрая", "--cli", "claude", "--model", "haiku"])
-    capsys.readouterr()
+    state.add_model("Быстрая", "kilo", "qwen3-8b", "s1")
     monkeypatch.setattr(
-        type(providers.get("claude")), "model_list", lambda self, env: pytest.fail("ran")
+        type(providers.get("opencode")), "model_list", lambda self, env: pytest.fail("ran")
     )
     assert main(["model", "list"]) == 0
     assert capsys.readouterr().out.splitlines() == [
-        "NAME            CLI          MODEL     SERVER",
-        "Быстрая         Claude Code  haiku     —",
-        "Локальная Qwen  OpenCode     qwen3-8b  LM Studio дома",
+        "NAME            CLI       MODEL     SERVER",
+        "Быстрая         Kilo CLI  qwen3-8b  LM Studio дома",
+        "Локальная Qwen  OpenCode  qwen3-8b  LM Studio дома",
     ]
 
 
 def test_model_list_of_none(capsys):
     assert main(["model", "list"]) == 0
     assert capsys.readouterr().out == (
-        "No models. Add one: lado model add <name> --cli <cli> --model <model> "
-        "[--server <server>]\n"
+        "No models. Add one: lado model add <name> --cli <cli> --model <model> --server <server>\n"
     )
 
 
 def test_model_remove(capsys):
-    state.add_model("Быстрая", "claude", "haiku", None)
+    saved_server()
+    state.add_model("Быстрая", "kilo", "qwen3-8b", "s1")
     assert main(["model", "remove", "быстрая"]) == 0
     assert capsys.readouterr().out == 'Removed model "Быстрая".\n'
     assert main(["model", "remove", "быстрая"]) == 1
@@ -472,8 +469,9 @@ def test_model_remove(capsys):
 
 
 def test_model_remove_several(capsys):
+    saved_server()
     for name in ("coder-codex", "coder-oc", "sp"):
-        state.add_model(name, "claude", "haiku", None)
+        state.add_model(name, "kilo", "qwen3-8b", "s1")
     assert main(["model", "remove", "coder-codex", "nowhere"]) == 1
     out, err = capsys.readouterr()
     assert (out, err) == ("", 'lado: no model "nowhere" is saved; lado model list names them\n')
@@ -482,6 +480,151 @@ def test_model_remove_several(capsys):
         'Removed model "coder-codex".\nRemoved model "coder-oc".\nRemoved model "sp".\n'
     )
     assert state.models() == []
+
+
+def test_model_remove_of_a_default_says_it_is_cleared(capsys):
+    saved_server()
+    saved = state.add_model("Локальная Qwen", "kilo", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("kilo", saved.id, None))
+    assert main(["model", "remove", "Локальная Qwen"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        'Removed model "Локальная Qwen".',
+        "Kilo CLI's default model is cleared.",
+    ]
+    assert state.cli_defaults() == []
+
+
+def test_a_server_removed_with_a_default_says_it_is_cleared(capsys):
+    saved_server()
+    state.add_model("coder-oc", "opencode", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("opencode", state.model("coder-oc").id, None))
+    assert main(["model-server", "remove", "LM Studio дома", "--with-models"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        'Removed model "coder-oc".',
+        "OpenCode's default model is cleared.",
+        'Removed model server "LM Studio дома".',
+    ]
+
+
+# lado model default.
+
+
+@pytest.fixture
+def on_path(tmp_path, monkeypatch):
+    """`on_path(cli, …)`: the agents' PATH holds those CLIs and no other."""
+
+    def put(*clis):
+        for cli in clis:
+            command = tmp_path / providers.get(cli).command
+            command.write_text("#!/bin/sh\n")
+            command.chmod(0o755)
+
+    monkeypatch.setattr(runtime, "agent_layers", lambda project: None)
+    monkeypatch.setattr(runtime, "agents_env", lambda layers, cli: {"PATH": str(tmp_path)})
+    return put
+
+
+CLAUDE = base.ModelList(
+    ("opus",), None, why="Claude Code gives no list of models beyond its aliases"
+)
+
+
+def test_default_prints_every_cli_running_none(capsys, monkeypatch):
+    saved_server()
+    saved = state.add_model("Локальная Qwen", "kilo", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("kilo", saved.id, None))
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    for name in providers.names():
+        monkeypatch.setattr(
+            type(providers.get(name)), "model_list", lambda self, env: pytest.fail("ran")
+        )
+    assert main(["model", "default"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "CLI          DEFAULT MODEL   SERVER",
+        "Claude Code  opus            —",
+        "Codex CLI    —               —",
+        "Kilo CLI     Локальная Qwen  LM Studio дома",
+        "OpenCode     —               —",
+    ]
+
+
+def test_default_of_one_cli_prints_its_row(capsys):
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    assert main(["model", "default", "claude"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "CLI          DEFAULT MODEL  SERVER",
+        "Claude Code  opus           —",
+    ]
+    assert main(["model", "default", "gemini"]) == 1
+    assert capsys.readouterr().err.startswith('lado: LADO knows no agent CLI "gemini"')
+
+
+def test_default_sets_an_external_model(capsys, on_path, monkeypatch):
+    on_path("kilo")
+    listing(monkeypatch, "kilo", base.ModelList(why="no list"))
+    saved_server()
+    saved = state.add_model("Локальная Qwen", "kilo", "qwen3-8b", "s1")
+    assert main(["model", "default", "kilo", "локальная qwen"]) == 0
+    assert capsys.readouterr() == (
+        "Kilo CLI's default model: Локальная Qwen (qwen3-8b on LM Studio дома)\n",
+        "",
+    )
+    assert state.cli_defaults() == [state.ModelRef("kilo", saved.id, None)]
+
+
+def test_default_sets_an_alias(capsys, on_path, monkeypatch):
+    on_path("claude")
+    listing(monkeypatch, "claude", CLAUDE)
+    assert main(["model", "default", "claude", "opus"]) == 0
+    assert capsys.readouterr() == (
+        "Claude Code's default model: opus (an alias of Claude Code)\n",
+        "",
+    )
+
+
+def test_default_of_a_name_no_list_can_check_warns(capsys, on_path, monkeypatch):
+    on_path("claude")
+    listing(monkeypatch, "claude", CLAUDE)
+    assert main(["model", "default", "claude", "claude-opus-4-1-20250805"]) == 0
+    out, err = capsys.readouterr()
+    text = (
+        "Claude Code gives no list of models beyond its aliases: LADO cannot check "
+        "claude-opus-4-1-20250805; a wrong name stops its agents at their first turn"
+    )
+    assert err == f"lado: warning: {text}\n"
+    assert out == f"Claude Code's default model: claude-opus-4-1-20250805 ({text})\n"
+    assert state.cli_defaults() == [state.ModelRef("claude", None, "claude-opus-4-1-20250805")]
+
+
+def test_default_refused_changes_nothing(capsys, on_path, monkeypatch):
+    on_path("opencode")
+    listing(monkeypatch, "opencode", base.ModelList((), ("a/b",), "opencode models"))
+    state.set_cli_default(state.ModelRef("opencode", None, "a/b"))
+    assert main(["model", "default", "opencode", "a/c"]) == 1
+    assert capsys.readouterr().err == (
+        "lado: a/c is not in OpenCode's list of models; opencode models prints the list\n"
+    )
+    assert main(["model", "default", "kilo", "x"]) == 1
+    assert capsys.readouterr().err == "lado: Kilo CLI is not installed\n"
+    assert state.cli_defaults() == [state.ModelRef("opencode", None, "a/b")]
+
+
+def test_default_clear(capsys):
+    state.set_cli_default(state.ModelRef("kilo", None, "x/y"))
+    assert main(["model", "default", "kilo", "--clear"]) == 0
+    assert capsys.readouterr().out == "Kilo CLI's default model is cleared.\n"
+    assert main(["model", "default", "kilo", "--clear"]) == 0
+    assert capsys.readouterr().out == "Kilo CLI has no default model.\n"
+    assert main(["model", "default", "gemini", "--clear"]) == 1
+
+
+@pytest.mark.parametrize("argv", [["default", "kilo", "x/y", "--clear"], ["default", "--clear"]])
+def test_default_clear_takes_a_cli_and_no_model(capsys, argv):
+    state.set_cli_default(state.ModelRef("kilo", None, "x/y"))
+    with pytest.raises(SystemExit) as exited:
+        main(["model", *argv])
+    assert exited.value.code == 2
+    assert len(state.cli_defaults()) == 1
 
 
 def test_model_remove_needs_a_name(capsys):
@@ -538,9 +681,18 @@ def test_probe_does_not_migrate_and_add_does(serve, lado_home):
 
 
 def test_a_session_reads_no_entry(repo, fake_tmux, monkeypatch):
-    state.add_model_server("s1", "LM Studio дома", "http://localhost:1234", "LM Studio", ())
-    state.add_model("Быстрая", "claude", "haiku", None)
-    for name in ("model_servers", "model_server", "models", "model", "models_on"):
+    saved_server()
+    saved = state.add_model("Быстрая", "claude", "haiku", "s1")
+    state.set_cli_default(state.ModelRef("claude", saved.id, None))
+    for name in (
+        "model_servers",
+        "model_server",
+        "models",
+        "model",
+        "model_by_id",
+        "models_on",
+        "cli_defaults",
+    ):
         monkeypatch.setattr(state, name, lambda *a, **k: pytest.fail("an entry was read"))
     assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
     assert state.get_session("s").power is None

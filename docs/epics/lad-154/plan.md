@@ -9,7 +9,7 @@ Rejected at `step_ok` (gate #204, 2026-11-02): «сначала S2b» (D13; S2b 
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: S3f (LAD-200, run task/lad-200) · Next: S3b, S3g, S4, S9a, S9b, S5c, S7, S7b, S8, then readiness · Open checks: Settings → Models in Safari (and Firefox if at hand) by the human before the final pull request: the page does not scroll by itself, the key in dots, the phone width (S3d checked in Chromium only; N5 of its ledger); the human's manual check of S3e on LM Studio and LiteLLM 1.105.1 (LiteLLM's header behaviour reproduced only by a fake), before S3d's design or with it; at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes); an external provider by key (OpenRouter, Qwen through Alibaba Model Studio) checked by the human at the epic's end, before the final pull request: `probe` and `add` on its address (its path: `/api/v1`, `/compatible-mode/v1`), OpenCode/Kilo agents on it, and a model of a provider the CLI logged in to itself (`openrouter/<model>` from the CLI's list) (the human, 2026-11-03)
+In work: none · Next: S3b (LAD-180), S3g, S4, S9a, S9b, S5c, S7, S7b, S8, then readiness · Open checks: Settings → Models in Safari (and Firefox if at hand) by the human before the final pull request: the page does not scroll by itself, the key in dots, the phone width, S3f's picker above a real phone's keyboard (S3d and S3f checked in Chromium only; N5 of S3d's ledger, F21 of S3f's); the human's manual check of S3e on LM Studio and LiteLLM 1.105.1 (LiteLLM's header behaviour reproduced only by a fake), before S3d's design or with it; at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes); an external provider by key (OpenRouter, Qwen through Alibaba Model Studio) checked by the human at the epic's end, before the final pull request: `probe` and `add` on its address (its path: `/api/v1`, `/compatible-mode/v1`), OpenCode/Kilo agents on it, and a model of a provider the CLI logged in to itself (`openrouter/<model>` from the CLI's list) (the human, 2026-11-03)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9). 0.45.0 is released from `main` together with the epic: `main` waits for it (step_ok #222, Q4, D17).
@@ -21,6 +21,7 @@ Last review: S2b, 2026-11-02, base at 228a1de2 (unchanged since S2's review); S2
 Last review: S3a, 2026-11-02, base at 84c8f7c4 (hotfixes LAD-175, LAD-172; `main`'s heading is now `## 0.45.0 (unreleased)`), merged into the epic branch as d6ded361: CHANGELOG resolved into one 0.45.0 section (the epic's lines under `### New`, `main`'s under `### Fixed`); schema on `main` 35, the epic's 37; `make lint`, `make test` (4958 passed, 7 skipped), integration of the merged files (17 passed), `openspec validate --specs --strict` (59) green
 Last review: S3c, 2026-11-03, base at 22940ebc (hotfixes LAD-178 #206, LAD-181 #207), merged into the epic branch as 95db9d78: one conflict in `src/lado/cli.py` resolved by keeping both guards (S3c's `model-server` refusal of extra words, then LAD-181's quiet refusal); CHANGELOG merged without conflict (LAD-181's line under `### Fixed`); schema on `main` 35, the epic's 38; `make lint`, `make test` (5112 passed, 7 skipped), integration `test_session_model.py` (3 passed), `openspec validate --specs --strict` (60) green
 Last review: S3b's cancelled run (task/lad-180b), 2026-11-05, base at 931818bb (unchanged): nothing to merge
+Last review: S3f, 2026-11-05, base at ae840669 (LAD-199 #215, LAD-192 #217), merged into the epic branch as d82bdfba on the human's yes (#3505): one conflict in CHANGELOG, both sides kept; `make lint`, `make test` (5338 passed, 7 skipped), `make web` (1358), `openspec validate --specs --strict` (63) green; UI e2e and integration not run for the merge
 Last review: S3d, 2026-11-04, base at 931818bb (unchanged since S3e's review): nothing to merge; S3d merged as e52a547f; CI 23/23 on its last head
 Last review: S3e, 2026-11-03, base at 931818bb (LAD-179 #209: CI reruns jobs GitHub gave no runner; its first live run passed on PR #210), merged into the epic branch as 132552ce without conflict; `make lint`, `make test` (5183 passed, 7 skipped), `openspec validate --specs --strict` (60) green
 
@@ -213,7 +214,7 @@ it helps; `Probe.models_why` keeps a stale reason when the list came from the re
 `anthropic-version` (E1, invisible today): clear it if the page's API shows the reason.
 
 ### S3f — Settings → Models: external models and a default per CLI (M)
-Status: in progress (LAD-200, run task/lad-200; approved at step_ok #272)
+Status: done (LAD-200, PR #216, merged as 540ab41a; two design QA passes, the human's manual check on a fake server; gate #276)
 Check:
 - Settings → Models keeps only external models (D34): the ticks of built-in models and
   their custom names go, the ticks of a server's model × CLI stay; the block of agent CLIs
@@ -243,7 +244,7 @@ Check:
   and 390 px included.
 - UI e2e, vitest, `make web-types`; the human's manual check; `docs/design/ui.md`,
   `docs/cli.md`.
-Notes: the default is stored and shown here and applied to agents in S3b.
+Notes: the default is stored and shown here and applied to agents in S3b. Measured: 18 code files of the threshold's 25; the migration 38 → 39 and `models.id` are done here.
 
 ### S3b — A session on a model reference (L)
 Status: planned (LAD-180; runs task/lad-180 and task/lad-180b cancelled at design, D18 and D43; rewritten by D34–D43)
@@ -283,10 +284,11 @@ Check:
   model reference (D34): an external one is new, S2's rows stay as they are.
 - S1's card: «Локальная Qwen · qwen3-8b · server <address>» with its source; Kilo's card
   shows the session's model even when Kilo reports none.
+- From S3f (proposal, Out of scope): `lado doctor` says what it finds on a default once agents run on it (a default on a server gone silent, a built-in name no longer listed). Its picker is `web/src/ModelPicker.tsx`, a typed name goes through `model_settings.check_default`, the list through `model_settings.choices`: S3b adds no second way.
 - UI: the launch window follows S3f's checked mock-up; a further `ui-design` only for what
   it left out (the refusals, the agent's card).
 - The human's manual check before the merge on LM Studio at localhost and an external
-  LiteLLM (Q2); the lead tells them when it is due. In Docker, LM Studio on their machine
+  LiteLLM (Q2), with a real session (S3f's manual check ran on a fake server and read item 8 in the code); the lead tells them when it is due. In Docker, LM Studio on their machine
   is `host.docker.internal`.
 - Smoke (CI): OpenCode and Kilo with a fake server; UI e2e of the field; `docs/install.md`
   (local models, Docker), `docs/cli.md`, `docs/design/ui.md`, `docs/design/agents.md`.
@@ -477,6 +479,10 @@ Check:
 
 ## Later
 
+- At the very end of Settings → Models, closing a form moves what the human works with (89 px; the known limit of S3f's one block, #3421) — LAD-201 (derived from LAD-200).
+- The picker: model ids in mono as the mock-up says, the highlight after a failed request to LADO (F22, F24 of S3f's review, declined; the human's check was clean) — LAD-202 (derived from LAD-200).
+- `web/src/SystemPanel.test.tsx` depends on the locale, `make web` fails on a Russian one (S3f's manual check; also on `main`) — LAD-203 (derived from LAD-200).
+- Flaky UI test of the section Models staying at the top, one 451 for 0, cause not proved (S3f's review) — LAD-204 (derived from LAD-200).
 - The project's power table (S6) — dropped from the epic (D42) — LAD-154 — if a project ever needs its own rows.
 - The session's table row by row (S5d) — dropped (D42), no plan to bring it back.
 - The sidebar stays expanded when the window is narrowed (seen in S3d's manual checks,

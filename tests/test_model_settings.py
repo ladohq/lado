@@ -1949,3 +1949,96 @@ def test_an_empty_name_is_the_cli_s_own_settings_past_a_default(installed):
 def test_an_empty_name_with_a_provider_is_that_cli(installed):
     cli, start = worker_start("", KILO, OPENCODE, installed("opencode"), Lists())
     assert (cli, start) == (KILO, model_settings.StartModel())
+
+
+# What list_models gives.
+
+
+def session_of(provider, power=None):
+    return state.Session("s", "/repo", None, provider, power=power)
+
+
+def test_each_installed_cli_is_listed_with_the_session_s_first(installed):
+    saved = entry()
+    env = installed("claude", "opencode")
+    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS)
+    clis = model_settings.cli_models(session_of("opencode"), None, env, lists)
+    assert clis == [
+        {
+            "cli": "opencode",
+            "title": "OpenCode",
+            "session": True,
+            "starts_on": None,
+            "note": None,
+            "builtin": ["opencode/big-pickle", SHARED],
+            "external": [{"name": saved.name, "server": "LM Studio дома", "blocked": None}],
+        },
+        {
+            "cli": "claude",
+            "title": "Claude Code",
+            "session": False,
+            "starts_on": None,
+            "note": "Claude Code gives no list beyond its aliases",
+            "builtin": ["opus"],
+            "external": [],
+        },
+    ]
+
+
+def test_a_provider_narrows_the_list_to_its_cli(installed):
+    env = installed("claude", "kilo", "opencode")
+    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
+    clis = model_settings.cli_models(session_of("claude"), KILO, env, lists)
+    assert [cli["cli"] for cli in clis] == ["kilo"]
+    assert lists.reads == ["kilo"]
+
+
+def test_a_provider_not_installed_is_refused(installed):
+    env = installed("claude")
+    with pytest.raises(model_settings.Refused, match="^Kilo CLI is not installed$"):
+        model_settings.cli_models(session_of("claude"), KILO, env, Lists())
+
+
+def test_an_external_model_of_a_cli_on_no_server_says_why_it_cannot_start(installed):
+    entry("Шлюз Opus", cli="claude", server="Шлюз")
+    env = installed("claude")
+    [claude] = model_settings.cli_models(session_of("claude"), None, env, Lists(claude=CLAUDE_LIST))
+    [external] = claude["external"]
+    assert external["blocked"] == (
+        "Шлюз Opus is on the model server Шлюз; Claude Code does not run on a model server yet, "
+        "Kilo CLI and OpenCode do"
+    )
+
+
+def test_starts_on_is_what_a_worker_of_each_cli_starts_on_with_no_model(installed):
+    saved = entry()
+    env = installed("kilo", "opencode")
+    lists = Lists(opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
+    session = session_of("opencode", external_table(saved))
+    clis = model_settings.cli_models(session, None, env, lists)
+    assert {cli["cli"]: cli["starts_on"] for cli in clis} == {
+        "opencode": "Локальная Qwen",
+        "kilo": None,
+    }
+
+
+def test_a_table_that_cannot_be_read_starts_on_nothing_named(installed):
+    session = session_of("opencode", state.PowerTable.unreadable())
+    env = installed("opencode")
+    [cli] = model_settings.cli_models(session, None, env, Lists(opencode=OPENCODE_MODELS))
+    assert cli["starts_on"] is None
+
+
+def test_the_list_asks_no_server_and_holds_no_address_or_key(serve, installed):
+    key = "secret-key-of-the-canary"
+    listening = serve("all", key=key)
+    model_settings.add_server("Шлюз", listening.url, key, warn=print, note=print)
+    server = state.model_server("Шлюз")
+    state.add_model("Шлюз Qwen", "opencode", "m1", server.id)
+    listening.requests.clear()
+    clis = model_settings.cli_models(
+        session_of("opencode"), None, installed("opencode"), Lists(opencode=OPENCODE_MODELS)
+    )
+    assert listening.requests == []
+    assert clis[0]["external"][0]["server"] == "Шлюз"
+    assert key not in str(clis) and listening.url not in str(clis)

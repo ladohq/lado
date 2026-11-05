@@ -859,6 +859,52 @@ def worker_start(
     return cli, replace(start, source=state.SUPERVISOR_CHOICE) if name else start
 
 
+def _starts_on(session: state.Session, provider: providers.Provider) -> str | None:
+    try:
+        return start_model(session.power, provider).name
+    except Refused:  # a table that cannot be read names nothing
+        return None
+
+
+def _shown_external(saved: state.ConfiguredModel, provider: providers.Provider) -> dict:
+    start = _external(saved, state.SUPERVISOR_CHOICE)
+    blocked = None
+    try:
+        check_launch(start, provider)
+    except Refused as refused:
+        blocked = str(refused)
+    server = start.server.name if start.server is not None else None
+    return {"name": saved.name, "server": server, "blocked": blocked}
+
+
+def cli_models(
+    session: state.Session, only: providers.Provider | None, env: Env, listing: Listing
+) -> list[dict]:
+    """What the supervisor of `session` can name, for each installed agent CLI, the session's
+    first, or for `only`: `choices` by CLI, a name each, as a CLI may list hundreds. Asks no
+    server and holds a server's saved name alone. Refused for `only` not installed."""
+    if only is not None:
+        chosen = [_installed_cli(only.name, env)]
+    else:
+        names = sorted(providers.names(), key=lambda cli: cli != session.provider)
+        chosen = [p for p in map(providers.get, names) if _installed(p, env)]
+    shown = []
+    for provider in chosen:
+        found = choices(provider, listing)
+        shown.append(
+            {
+                "cli": provider.name,
+                "title": provider.title,
+                "session": provider.name == session.provider,
+                "starts_on": _starts_on(session, provider),
+                "note": found.why or None,
+                "builtin": list(dict.fromkeys((*found.aliases, *(found.models or ())))),
+                "external": [_shown_external(saved, provider) for saved in found.external],
+            }
+        )
+    return shown
+
+
 def _expands(*texts: str) -> bool:
     return any(mark in text for text in texts for mark in EXPANDED)
 

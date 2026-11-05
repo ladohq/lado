@@ -1,3 +1,9 @@
+## Purpose
+
+What becomes of the open questions to the human when a session stops: each closes saying
+the session stopped, the stop names how many it closes, and the resumed supervisor is told
+once of those left unanswered, so that no question is lost without a word.
+
 ## ADDED Requirements
 
 ### Requirement: A question a stop closes says the session stopped

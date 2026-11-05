@@ -1153,8 +1153,8 @@ def test_a_resume_keeps_changes_or_drops_the_model(client, repo, fake_tmux, monk
     assert answer.json()["changes"] == ["model: kilo kilo/a -> kilo kilo/b"]
     runtime.stop_session("s")
     answer = client.post("/api/sessions/s/resume", json={"model": ""})
-    assert answer.json()["changes"] == ["model: kilo kilo/b -> CLI default"]
-    assert answer.json()["session"]["model"] is None
+    assert answer.json()["changes"] == ["model: kilo kilo/b -> Kilo CLI's settings"]
+    assert answer.json()["session"]["model"] == ""
 
 
 @pytest.mark.parametrize(

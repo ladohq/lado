@@ -19,7 +19,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import yaml
 
@@ -41,6 +41,11 @@ from lado import (
     tmux,
 )
 from lado import text as visible
+
+# lado.model_settings is imported by the launches that use it: it brings the HTTP client, and
+# every hook process imports this module.
+if TYPE_CHECKING:
+    from lado import model_settings
 
 SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 # In the lead's config folder: its lead skills (kits.LeadSkill), and the copies of the
@@ -275,6 +280,16 @@ REPORT_REMINDER = (
 
 class LadoError(RuntimeError):
     pass
+
+
+class ModelRefused(LadoError):
+    """A start refused for its model: its line, with the way out; `refused` the core's
+    refusal, for the launch window."""
+
+    def __init__(self, refused: "model_settings.Refused", tail: str = ""):
+        hint = f"; {refused.hint}" if refused.hint else ""
+        super().__init__(f"{refused}{tail}{hint}")
+        self.refused = refused
 
 
 FolderProblemKind = Literal[
@@ -680,11 +695,12 @@ def start_session(
     a resume alike (check_prompt): queued from `human` after LADO's own messages. `reason`
     begins a resume's event detail (why it was resumed: resume_at_start). `title` is a new
     session's (check_title); a resume keeps its own, which `lado title` changes. `model` is
-    the session's model for its provider's CLI, taken without the spaces around it: None
+    the session's model for its provider's CLI, a name as `lado model default` reads it: None
     keeps a resumed session's (unless the provider changes: a model is its CLI's) and gives
-    a new one none, "" (or only spaces) drops it. The model the session runs on, given or
-    kept, is checked against the CLI (lado.model_check); a refusal of a kept one names the
-    way out.
+    a new one none, "" (or only spaces) is the CLI's own settings, past any default. The model
+    the supervisor starts on, given, kept or its CLI's default, is checked against the CLI or
+    its server (lado.model_settings.check_start); a refusal of one not given names the way
+    out.
 
     A stopped session of that name, or one whose tmux server is gone, is resumed: it keeps
     its history, open runs and gates, and the settings given replace its stored ones. The
@@ -709,8 +725,6 @@ def start_session(
     if first is not None and resume is not False:
         raise LadoError("a first input is only for a new session (resume=False)")
     text = check_prompt(prompt) if prompt is not None else None
-    if model is not None:
-        model = model.strip()
     refused = None
     if project is not None:
         assert path is None and repo_name is not None
@@ -766,7 +780,7 @@ def start_session(
         without if without is not None else (old.without if old else []),
         title=old.title if old else stored_title,
         project=old.project if old else project,
-        power=_power(old, agent_cli, model),
+        power=_kept_power(old, agent_cli),
     )
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.kits, sess.without)
@@ -774,19 +788,7 @@ def start_session(
         layers = agent_layers(sess.project)
     base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
-    checked = []
-    chosen_model, _ = session_model(sess, agent_cli)
-    if chosen_model:
-        verdict = model_check.check(agent_cli, chosen_model, base_env)
-        if verdict.kind == model_check.REFUSED:
-            if model is None:  # the model a resume keeps
-                raise LadoError(
-                    f"{verdict.text}; the session ran on it before: resume it with --model '' "
-                    f"for {agent_cli.title}'s default or --model <model> for another"
-                )
-            raise LadoError(verdict.text)
-        if verdict.kind == model_check.WARN:
-            checked.append(verdict.text)
+    start, servers, checked = _start_model(sess, agent_cli, base_env, model)
     if not old:
         check_login(agent_cli, base_env, logins.SESSION)
     elif not (wait_for_login or reason == AT_START):
@@ -797,7 +799,16 @@ def start_session(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
     instructions = _supervisor_instructions(env, session)
-    spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env, model=chosen_model)
+    spec = _spec(
+        agent_cli,
+        env,
+        env.lead.name,
+        agent,
+        instructions,
+        base_env,
+        start=start,
+        servers=servers,
+    )
     agent.read_only = spec.read_only  # stored anew at each resume, as the kit says now
     started = Started(sess, chosen, lead=env.lead_line(), warnings=[*env.warnings, *checked])
     if outside := outside_workspace(repo):
@@ -807,8 +818,13 @@ def start_session(
         terminal.close_viewers(session)  # they may keep its agents' windows alive
     # Taking the session is one step, so of two `lado start` at once only one goes on; the
     # other changes nothing.
+    last = state.last_start_model(session)
     if old:
         started.resumed, started.changes = True, _changes(old, sess)
+        if moved := _default_moved(old, sess, last, start, agent_cli):
+            started.changes.append(moved)
+            checked.append(f"changed {moved}")
+            started.warnings.append(f"changed {moved}")
         detail = "; ".join(started.changes) or "same settings"
         taken_over = state.resume_session(sess, f"{reason}; {detail}" if reason else detail)
     else:
@@ -845,7 +861,7 @@ def start_session(
         # Written once the session is taken, as the provider's config: a start that lost
         # does not touch the running lead's files.
         _write_lead_skills(agent, env.lead_skills())
-        launch = _launch_command(agent_cli, agent, sess, spec)
+        launch = _launch_command(agent_cli, agent, sess, spec, start.note)
         started.warnings += launch.warnings
         started.warnings += _layer_warnings(agent, launch, sess.project, files=True)
         blocker, command = _before_window(
@@ -862,6 +878,8 @@ def start_session(
             before_attempt=lambda: gui_session.ensure_server(tmux.socket()),
         )
         state.window_opened(session, SUPERVISOR)
+        if last != (spec.model or ""):
+            state.add_event(session, SUPERVISOR, state.START_MODEL, spec.model or "")
         placed += _keychain_warnings(agent_cli, base_env)
     except Exception as error:
         steps: list[tuple[str, Callable[[], object]]] = [
@@ -889,20 +907,84 @@ def start_session(
     return started
 
 
-def _power(
-    old: state.Session | None, agent_cli: providers.Provider, model: str | None
+def _kept_power(
+    old: state.Session | None, agent_cli: providers.Provider
 ) -> state.PowerTable | None:
-    """The session's power table (start_session's `model`): a model given is the table of
-    one model for the session's CLI, "" none; else a resume keeps a table of its CLI."""
-    if model is not None:
-        return state.PowerTable.single(agent_cli.name, model) if model else None
-    if old and old.power and old.power.row().cli == agent_cli.name:
+    """The power table a resume keeps: one of its CLI, and one that cannot be read, which says
+    no CLI and is refused unless a model is given (_start_model)."""
+    if old is None or old.power is None:
+        return None
+    if not old.power.readable or old.power.row().cli == agent_cli.name:
         return old.power
     return None
 
 
+def _start_model(
+    sess: state.Session,
+    agent_cli: providers.Provider,
+    base_env: Mapping[str, str],
+    model: str | None,
+) -> tuple["model_settings.StartModel", tuple[providers.base.ServerEntry, ...], list[str]]:
+    """What the supervisor of `sess` starts on, checked, with a `model` given made the table of
+    `sess`: the model, the servers of its config and the warnings of both. ModelRefused
+    otherwise; nothing is stored. The CLI's list is read at most once."""
+    from lado import model_settings
+
+    lists: dict[str, providers.base.ModelList] = {}
+
+    def listing(provider: providers.Provider) -> providers.base.ModelList:
+        if provider.name not in lists:
+            lists[provider.name] = provider.model_list(base_env)
+        return lists[provider.name]
+
+    start = None
+    try:
+        if model is not None:
+            row = model_settings.session_row(model, agent_cli, base_env, listing)
+            sess.power = state.PowerTable.of(row)
+        start = model_settings.start_model(sess.power, agent_cli)
+        verdict = model_settings.check_start(start, agent_cli, base_env, listing=listing)
+        servers, warnings = model_settings.agent_servers(agent_cli, start)
+    except model_settings.Refused as refused:
+        given = model is not None
+        tail = model_settings.way_out(start, agent_cli, given=given) if start else ""
+        raise ModelRefused(refused, tail) from None
+    if verdict.kind == model_check.WARN:
+        warnings.insert(0, verdict.text)
+    return start, servers, warnings
+
+
 def _model_words(power: state.PowerTable | None) -> str:
-    return f"{power.row().cli} {power.row().model}" if power else "CLI default"
+    if power is None:
+        return "CLI default"
+    if not power.readable:
+        return "an unreadable model"
+    row = power.row()
+    if not row.model:
+        title = providers.get(row.cli).title if row.cli in providers.names() else row.cli
+        return f"{title}'s settings"
+    return f"{row.cli} {row.shown}"
+
+
+def _default_moved(
+    old: state.Session,
+    new: state.Session,
+    last: str,
+    start: "model_settings.StartModel",
+    agent_cli: providers.Provider,
+) -> str | None:
+    """The change a resume of a session with no table makes by a default set, changed or
+    cleared since its last start on `last` (state.last_start_model), as "model: <old> ->
+    <new>"; None for none. A table's change is _changes'."""
+    from lado import model_settings
+
+    if old.power is not None or new.power is not None:
+        return None
+    if last == (start.launch_name(agent_cli) or ""):
+        return None
+    found = model_settings.shown(providers.get(old.provider), last) if last else None
+    before = found.name if found else last or "CLI default"
+    return f"model: {before} -> {start.name or 'CLI default'}"
 
 
 def _changes(old: state.Session, new: state.Session) -> list[str]:
@@ -981,9 +1063,24 @@ def spawn_worker(
     base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
     check_login(agent_cli, base_env, logins.WORKER)
-    chosen_model, _ = session_model(sess, agent_cli)
+    from lado import model_settings
+
+    try:
+        start = model_settings.start_model(sess.power, agent_cli)
+        model_settings.check_launch(start, agent_cli)  # no server's check yet
+        servers, server_warnings = model_settings.agent_servers(agent_cli, start)
+    except model_settings.Refused as refused:
+        raise ModelRefused(refused) from None
     spec = _spec(
-        agent_cli, env, role_def.name, agent, instructions, base_env, without or [], chosen_model
+        agent_cli,
+        env,
+        role_def.name,
+        agent,
+        instructions,
+        base_env,
+        without or [],
+        start,
+        servers,
     )
     agent.read_only = spec.read_only
     if not run:
@@ -995,8 +1092,9 @@ def spawn_worker(
         text = task if has_step else task + REPORT_REMINDER
         summary = f"flow {run.name}: step {run.state}" if has_step else "your task"
         state.queue_message(session, state.LADO, worker, summary, text)
-        launch = _launch_command(agent_cli, agent, sess, spec)
-        held = launch.warnings + _layer_warnings(agent, launch, sess.project, files=False)
+        launch = _launch_command(agent_cli, agent, sess, spec, start.note)
+        held = [*server_warnings, *launch.warnings]
+        held += _layer_warnings(agent, launch, sess.project, files=False)
         before, command = _before_window(
             agent_cli, agent, base_env, layers.shell, launch, sess.project
         )
@@ -1032,26 +1130,12 @@ def spawn_worker(
     return agent
 
 
-def session_model(
-    sess: state.Session, agent_cli: providers.Provider
-) -> tuple[str | None, str | None]:
-    """The model of the session's power table for an agent of `agent_cli`, and the note for
-    one of another CLI: the default row's model when its CLI is the agent's; else None
-    and, when the session has a table, `the session's model <model> is for <CLI>`."""
-    if sess.power is None:
-        return None, None
-    row = sess.power.row()
-    if row.cli == agent_cli.name:
-        return row.model, None
-    title = providers.get(row.cli).title if row.cli in providers.names() else row.cli
-    return None, f"the session's model {row.model} is for {title}"
-
-
 def _launch_command(
     agent_cli: providers.Provider,
     agent: state.Agent,
     sess: state.Session,
     spec: providers.AgentSpec,
+    note: str | None = None,
 ) -> providers.Launch:
     """The provider's launch of the agent. A CLI that loses what is typed into it right
     after its start (Capabilities.notice_on_argv) takes the lines of its queue (its task, a
@@ -1061,8 +1145,8 @@ def _launch_command(
     session only at its first input (Capabilities.session_start_on_first_input) and has
     nothing in its queue gets FIRST_INPUT from LADO, a message like any other. The model
     and effort the launch set up become the agent's (state.set_model); an agent of another
-    CLI than the session's model's runs its CLI's default, with a warning and the note as
-    its model's detail (session_model)."""
+    CLI than the session's model's, with no default of its own, runs as its CLI chooses, with
+    a warning and `note` as its model's detail (StartModel.note)."""
     if agent_cli.capabilities.notice_on_argv:
         taken = state.take_pending(agent.session, agent.name, state.SENT, channel=state.TYPED)
         if not taken and agent_cli.capabilities.session_start_on_first_input:
@@ -1073,7 +1157,6 @@ def _launch_command(
     else:
         launch = agent_cli.launch_command(agent, sess, spec)
     model = launch.model
-    _, note = session_model(sess, agent_cli)
     if note:
         launch = replace(
             launch,
@@ -2935,12 +3018,13 @@ def _spec(
     instructions: str,
     base_env: dict[str, str],
     without: list[str] | None = None,
-    model: str | None = None,
+    start: "model_settings.StartModel | None" = None,
+    servers: tuple[providers.base.ServerEntry, ...] = (),
 ) -> providers.AgentSpec:
     """What `agent` is given: its role from the kits plus LADO's instructions, its skills
     and MCP servers, each ${ENV_VAR} of theirs checked in the agent's `base_env` (the value
-    stays there: lado.mcp_exec), and the session's `model` for it (session_model). Fails
-    on anything its CLI cannot do."""
+    stays there: lado.mcp_exec), the model it starts on (`start`) and the model `servers` of
+    its config. Fails on anything its CLI cannot do."""
     resolved = env.resolve(role, without or [])
     read_only = resolved.agent.read_only
     if read_only and not agent_cli.capabilities.deny_edit_tools:
@@ -2989,7 +3073,9 @@ def _spec(
         read=read,
         environ=base_env,
         read_only=read_only,
-        model=model,
+        model=start.launch_name(agent_cli) if start else None,
+        model_source=start.source if start else state.SESSION,
+        servers=servers,
     )
 
 
@@ -3070,8 +3156,10 @@ def _launch_env(
     agent: state.Agent, base_env: dict[str, str], launch: providers.Launch
 ) -> dict[str, str]:
     """The agent CLI's environment: `base_env`, LADO's variables and its provider's, in that
-    order."""
-    return {**base_env, **providers.agent_env(agent), **launch.env}
+    order, and the names of the last two, which a worker it spawns must not take over
+    (agent_env.without_launch)."""
+    ours = {**providers.agent_env(agent), **launch.env}
+    return {**base_env, **ours, agent_env.LAUNCH_VARS: ",".join(sorted(ours))}
 
 
 def _layer_warnings(

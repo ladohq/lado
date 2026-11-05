@@ -132,8 +132,10 @@ def cmd_start(args: argparse.Namespace) -> int:
     if started.chosen:
         print(f"provider: {started.chosen.line()}")
     print(started.lead)
+    said = {f"changed {change}" for change in started.changes}
     for warning in started.warnings:
-        print(f"lado: {warning}", file=sys.stderr)
+        if warning not in said:
+            print(f"lado: {warning}", file=sys.stderr)
     if args.no_attach or not sys.stdout.isatty():
         print(f"Attach with: lado attach {sess.name}")
         return 0
@@ -590,6 +592,8 @@ def _agents_path(kits_: list[kits.Kit]) -> str | agent_env.AgentEnvError | None:
 
 
 def cmd_ls(args: argparse.Namespace) -> int:
+    from lado import model_settings
+
     _unfinished_update()
     sessions = state.list_sessions()
     if not sessions:
@@ -615,7 +619,7 @@ def cmd_ls(args: argparse.Namespace) -> int:
             when = since.get(agent.name)
             took = format_duration((now - when).total_seconds()) if when else "-"
             line = f"  {agent.name:<12} {agent.role:<10} {agent.provider:<8} {agent.status:<10}"
-            model = agent.model or "-"
+            model = model_settings.model_name(agent) or "-"
             print(f"{line} {took:<6}  {model:<18} {agent.branch or ''}".rstrip())
             if agent.name in reasons:
                 print(f"    {agent.status}: {reasons[agent.name]}")
@@ -1982,9 +1986,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     start.add_argument(
         "--model",
-        help="the model of the session's agents of its provider's CLI, an alias or a name "
-        "of the CLI's own list (checked before the start); '' on a resume goes back to the "
-        "CLI's default; without it, a resume keeps the session's",
+        help="the model the session's agents of its provider's CLI start on: a name of the "
+        "CLI's own or of a model saved for it (lado model list), checked before the start; '' "
+        "is the CLI's own settings, past its default model; without it, a resume keeps the "
+        "session's, and a session with none starts on the default model",
     )
     start.add_argument(
         "--kit",

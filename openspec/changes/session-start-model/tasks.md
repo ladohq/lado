@@ -6,10 +6,10 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-session-star
   (D1, D2, D12). Check: `tests/test_state.py`.
 - [x] 1.2 `start_model`, `session_row`, `check_start`, `agent_servers`, `shown`, names left out
   (D3, D4, D5, D7, D10, D13). Check: `tests/test_model_settings.py`.
-- [ ] 1.3 `runtime.start_session`, `spawn_worker`, `_changes`, `cli.py` help and warnings, refusals'
+- [x] 1.3 `runtime.start_session`, `spawn_worker`, `_changes`, `cli.py` help and warnings, refusals'
   tails, `list_agents`, `lado ls` (D3-D5, D11, D13). Check: `tests/test_runtime.py`,
   `tests/test_cli.py`, `tests/test_mcp_server.py`.
-- [ ] 1.4 `LADO_LAUNCH_VARS` (D16). Check: `tests/test_agent_env.py`; the test of the other CLI
+- [x] 1.4 `LADO_LAUNCH_VARS` (D16). Check: `tests/test_agent_env.py`; the test of the other CLI
   fails before and passes after: `uv run pytest -m integration -n0
   tests/integration/test_session_model.py::test_a_worker_of_another_cli_runs_its_default_and_says_so`.
 

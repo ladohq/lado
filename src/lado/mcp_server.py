@@ -14,7 +14,7 @@ from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import CallToolResult, TextContent
 
-from lado import artifacts, kits, runs, runtime, state, telemetry, tmux
+from lado import artifacts, kits, model_settings, runs, runtime, state, telemetry, tmux
 
 
 @contextmanager
@@ -156,7 +156,7 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
                     "worktree": a.cwd,
                     "run": a.run,
                     "task": (a.task or "")[:200],
-                    "model": a.model,
+                    "model": model_settings.model_name(a),
                     "model_source": a.model_source,
                     "model_detail": a.model_detail,
                     "effort": a.effort,

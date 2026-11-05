@@ -318,7 +318,7 @@ def test_start_help_names_the_model(capsys):
         main(["start", "--help"])
     out = " ".join(capsys.readouterr().out.split())
     assert "--model MODEL" in out
-    assert "'' on a resume goes back to the CLI's default" in out
+    assert "'' is the CLI's own settings, past its default model" in out
 
 
 def test_start_passes_the_model_through(repo, fake_tmux, capsys):
@@ -329,7 +329,33 @@ def test_start_passes_the_model_through(repo, fake_tmux, capsys):
     assert "lado: Claude Code gives no list of models beyond its aliases: LADO cannot check" in err
     runtime.stop_session("s")
     assert main(["start", str(repo), "--name", "s", "--no-attach", "--model", ""]) == 0
-    assert "  changed model: claude claude-opus-5-5 -> CLI default" in capsys.readouterr().out
+    assert "  changed model: claude claude-opus-5-5 -> Claude Code's settings" in (
+        capsys.readouterr().out
+    )
+
+
+def test_start_says_a_default_changed_since_the_last_start_once(repo, fake_tmux, capsys):
+    args = ["start", str(repo), "--name", "s", "--no-attach"]
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    assert main([*args, "--provider", "claude"]) == 0
+    runtime.stop_session("s")
+    state.set_cli_default(state.ModelRef("claude", None, "sonnet"))
+    capsys.readouterr()
+    assert main(args) == 0
+    out, err = capsys.readouterr()
+    assert "  changed model: lado" not in out
+    assert "  changed model: opus -> sonnet" in out
+    assert "changed model" not in err
+
+
+def test_ls_names_a_model_of_a_server_by_its_saved_name(repo, fake_tmux, capsys):
+    server = state.add_model_server("gw", "Шлюз", "http://gw", "OpenAI-compatible", [])
+    state.add_model("Шлюз Qwen", "opencode", "gw-qwen", server.id)
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    state.report_model("s", "supervisor", "lado-gw/gw-qwen", None)
+    capsys.readouterr()
+    assert main(["ls"]) == 0
+    assert "Шлюз Qwen" in capsys.readouterr().out
 
 
 def test_start_takes_the_model_without_its_spaces(repo, fake_tmux):

@@ -139,6 +139,15 @@ def test_list_agents_gives_each_agents_model_and_effort_with_their_sources(repo,
     assert [supervisor[k] for k in keys] == [None, "cli", None, None, "cli", None]
 
 
+def test_list_agents_names_a_model_of_a_server_by_its_saved_name(repo, fake_tmux):
+    server = state.add_model_server("gw", "Шлюз", "http://gw", "OpenAI-compatible", [])
+    state.add_model("Шлюз Qwen", "opencode", "gw-qwen", server.id)
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    state.report_model("s", "supervisor", "lado-gw/gw-qwen", None)
+    result = asyncio.run(mcp_server.build("s", "supervisor").call_tool("list_agents", {}))
+    assert result.structured_content["result"][0]["model"] == "Шлюз Qwen"
+
+
 def test_list_agents_shows_an_agent_in_background_with_its_time_and_nothing_more(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")

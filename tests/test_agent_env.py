@@ -151,6 +151,17 @@ def test_inherit_takes_the_callers_environment_without_the_exclusions(monkeypatc
     assert agent_env.source() == "inherit"
 
 
+def test_inherit_takes_nothing_of_the_launch_of_the_agent_it_runs_in(monkeypatch):
+    monkeypatch.setenv(agent_env.SOURCE_VAR, "inherit")
+    monkeypatch.setenv("ONLY_IN_CALLER", "1")
+    monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", '{"model": "a/b"}')
+    monkeypatch.setenv("LADO_MODEL_KEY_GW", "KEY-CANARY")
+    monkeypatch.setenv(agent_env.LAUNCH_VARS, "LADO_MODEL_KEY_GW,OPENCODE_CONFIG_CONTENT")
+    env = agent_env.resolve()
+    assert env["ONLY_IN_CALLER"] == "1"
+    assert not {"OPENCODE_CONFIG_CONTENT", "LADO_MODEL_KEY_GW", agent_env.LAUNCH_VARS} & env.keys()
+
+
 def test_an_unknown_source_is_an_error(monkeypatch):
     monkeypatch.setenv(agent_env.SOURCE_VAR, "login")
     with pytest.raises(agent_env.AgentEnvError, match='LADO_AGENT_ENV="login"'):

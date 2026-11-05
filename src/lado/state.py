@@ -586,6 +586,10 @@ GATE_UNANSWERED = (GATE_CANCELLED, GATE_OVERRIDDEN)
 # Session events, by LADO.
 SESSION_STOP = "session_stop"  # detail: what was dropped
 SESSION_RESUME = "session_resume"  # detail: what changed
+# The supervisor's window opened on another model than the last time; detail: the model as its
+# CLI was told it, "" for none. The agents' rows go at a stop: a resume reads here what the
+# session last started on.
+START_MODEL = "start_model"
 # Its runtime was found gone at a stop or resume: created_at is the last sign of life
 # (last_alive), not when it was found; the session_stop follows.
 SESSION_GONE = "session_gone"
@@ -2379,6 +2383,16 @@ def list_events(session: str, after: int = 0) -> list[Event]:
             (session, after),
         ).fetchall()
     return [Event(*r) for r in rows]
+
+
+def last_start_model(session: str) -> str:
+    """What the session's supervisor last started on (START_MODEL), "" for no model."""
+    with connect() as db:
+        row = db.execute(
+            "SELECT detail FROM events WHERE session = ? AND kind = ? ORDER BY id DESC LIMIT 1",
+            (session, START_MODEL),
+        ).fetchone()
+    return row["detail"] if row else ""
 
 
 def run_events(session: str) -> list[Event]:

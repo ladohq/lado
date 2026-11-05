@@ -680,19 +680,11 @@ def test_probe_does_not_migrate_and_add_does(serve, lado_home):
     assert _schema(lado_home) == state.SCHEMA_VERSION
 
 
-def test_a_session_reads_no_entry(repo, fake_tmux, monkeypatch):
+def test_a_session_with_models_saved_and_no_default_asks_no_server(repo, fake_tmux, monkeypatch):
     saved_server()
-    saved = state.add_model("Быстрая", "claude", "haiku", "s1")
-    state.set_cli_default(state.ModelRef("claude", saved.id, None))
-    for name in (
-        "model_servers",
-        "model_server",
-        "models",
-        "model",
-        "model_by_id",
-        "models_on",
-        "cli_defaults",
-    ):
-        monkeypatch.setattr(state, name, lambda *a, **k: pytest.fail("an entry was read"))
+    state.add_model("Быстрая", "claude", "haiku", "s1")
+    monkeypatch.setattr(
+        model_settings, "probe_saved", lambda server: pytest.fail("a server was asked")
+    )
     assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
     assert state.get_session("s").power is None

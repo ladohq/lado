@@ -116,9 +116,9 @@ a stopped session the composer SHALL not fold.
 
 ### Requirement: Write to supervisor instead keeps the field's draft
 
-A click on "Write to supervisor instead" SHALL close that field and bring the composer back with
-the focus in it; the field's words and files SHALL be kept and SHALL come back when the human
-opens Other… or Skip question again. A quote sent to the composer SHALL do the same.
+A click on "Write to supervisor instead" SHALL close the open fields of the shown tab and bring the
+composer back with the focus in it; each field's words and files SHALL be kept and SHALL come back
+when the human opens Other… or Skip question again. A quote sent to the composer SHALL do the same.
 
 #### Scenario: Other… and back
 - **WHEN** the human opens Other… on question #5, types "keep the worker" and clicks Write to

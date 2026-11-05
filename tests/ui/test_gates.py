@@ -359,6 +359,8 @@ def test_a_cut_context_fades_says_more_and_goes_at_its_end(page: Page, server, r
     fade = frame.evaluate("f => getComputedStyle(f, '::after').height")
     assert fade == "28px"
     context.focus()
+    # Its ring stands inside it: the top around it would cut one outside.
+    assert context.evaluate("c => parseFloat(getComputedStyle(c).outlineOffset)") < 0
     page.keyboard.press("End")
     expect(more).to_have_count(0)
     expect(frame).not_to_have_class(re.compile(r"\bcut\b"))

@@ -3,16 +3,16 @@
 ### Requirement: On a phone a field in focus keeps the card and folds what is around it
 
 In the phone layout, in a session's chat, while a field of the waiting card has the focus, the
-card SHALL not expand: the Team row and the card's context SHALL not be shown, and the composer
-SHALL be a line: on a gate's tab "Commenting on gate #<id> above", on a question's the line of
-capability chat-question-card. When the field loses the focus all of it SHALL show again. On
-Needs you, and outside the phone layout, a field's focus SHALL change nothing.
+card SHALL not expand: the session's tabs, the Team row and the card's context SHALL not be shown,
+and the composer SHALL be a line: on a gate's tab "Commenting on gate #<id> above", on a question's
+the line of capability chat-question-card. When the field loses the focus all of it SHALL show
+again. On Needs you, and outside the phone layout, a field's focus SHALL change nothing.
 
 #### Scenario: A gate's comment above the keyboard
 - **WHEN** a gate waits in the session's chat on a phone 402×874, the human taps the
   gate's comment field and the keyboard leaves 440 px of the window visible
-- **THEN** the card is not expanded, the session's tabs show, the Team row and the context do
-  not, and the field, Approve, Reject and "Commenting on gate #1 above" lie within the
+- **THEN** the card is not expanded, the session's tabs, the Team row and the context do not
+  show, and the field, Approve, Reject and "Commenting on gate #1 above" lie within the
   visible 440 px
 
 #### Scenario: An own answer
@@ -23,12 +23,26 @@ Needs you, and outside the phone layout, a field's focus SHALL change nothing.
 
 #### Scenario: The keyboard closes
 - **WHEN** the human closes the keyboard and the field loses the focus
-- **THEN** the context, the Team row and the composer show again, and the comment typed stays
-  in the field
+- **THEN** the session's tabs, the context, the Team row and the composer show again, and the
+  comment typed stays in the field
 
 #### Scenario: A computer
 - **WHEN** the human clicks a gate's comment field with a mouse in a window 390 px wide
 - **THEN** the card and the composer stay as they were
+
+### Requirement: On a phone a field keeps the context it needs
+
+A field in the context of several questions SHALL keep that context, and SHALL stay in its view
+when the keyboard opens. An expanded card SHALL keep its context with a field in focus.
+
+#### Scenario: Several questions
+- **WHEN** a tab of three questions waits and the human taps Other… on the last, and the keyboard
+  leaves 440 px visible
+- **THEN** the context still shows, and the field lies within its visible part
+
+#### Scenario: The expanded card
+- **WHEN** the human expands the card to read its note and taps the comment field
+- **THEN** the context stays
 
 ### Requirement: On a phone the card's field and buttons stay above the keyboard
 
@@ -37,9 +51,15 @@ the on-screen keyboard, by the order of capability chat-question-card, requireme
 taller than its room gives way in order"; the title's meta SHALL go before the title.
 
 #### Scenario: Less room than the frame
-- **WHEN** the keyboard leaves 380 px of the window visible and a gate's comment has the focus
+- **WHEN** the keyboard leaves 350 px of the window visible and a gate's comment has the focus,
+  under a recommendation of two lines
 - **THEN** the title's meta is gone or the title too, and the field, Approve, Reject and the
-  line lie within the visible 380 px
+  line lie within the visible 350 px
+
+#### Scenario: Six choices
+- **WHEN** the keyboard leaves 350 px of the window visible and Other… of a question of six
+  choices has the focus
+- **THEN** the field, Send answer and Skip question lie within the visible 350 px
 
 ### Requirement: On a phone the waiting card's targets are 44 px
 

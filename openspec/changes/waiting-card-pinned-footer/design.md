@@ -53,7 +53,7 @@ Gate meta `<run> · <state> · gate #<id>`, question `#<id>`, mono 12 `--muted`.
 stays for Flows. Given: a button with `aria-expanded`, the name, the orange part, then the text
 flattened to one line (`oneLine`: Markdown marks out, white space collapsed) with CSS ellipsis; on a
 phone `line-clamp: 2`. Opened: `Body` in a box of 3 lines, `overflow-y: auto`, `tabindex="0"`. In
-the expanded card it is opened with no line limit, at most 40 % of the panel. Tooltip: the text
+the expanded card it is opened with no line limit, at most 40 % of the window (`40dvh`: the panel has no definite height for a percentage). Tooltip: the text
 and the time. `asked` and `missing` keep their words, italic `--muted`; none asked, nothing, as
 the living spec has it. The option's name goes through the card's `label` (`Continue`, `Cancel
 run`); a choice the card lacks counts as none, as in `primaryOf`.
@@ -66,8 +66,8 @@ in the context of several questions.
 **D9. The composer's fold.** `WaitingCard` takes `onFold(fold | null)` from `Chat`, reporting
 `{ line: string, write?: () => void }` by an effect; `Chat` keeps it and renders `ComposerFold`
 instead of showing the composer, whose `folded` prop hides it (`hidden`) and switches off its drop
-zone: it stays mounted, so its text, files and quote handling live on. `write` closes the first
-open field of the shown tab and focuses the composer. Reported only while `chat`, not `stopped`,
+zone: it stays mounted, so its text, files and quote handling live on. `write` closes all the open
+fields of the shown tab, so that the composer does come back, and focuses the composer. Reported only while `chat`, not `stopped`,
 not `folds`, not `expanded`, or on a phone (D11). Needs you has no composer and passes nothing.
 A quote: `onQuote` calls the same closing, besides folding an expanded card.
 
@@ -76,10 +76,14 @@ them. Closing a field by the link stores `pickText` and sets the pick to `null`,
 Other… and Skip question open with `drafts[id] ?? text`. Files already stay per question.
 
 **D11. A phone's field in focus.** `onFocus` and `onBlur` on the panel set `typing` (phone, chat,
-target matches `FIELD`, the next focus not in a field). `typing` puts `.typing` on the card: the
-context is `display: none`, and `:has` hides the Team row, as for the expanded card. The fold
-reports "Commenting on gate #<id> above" with no `write`. `fromField`, `fieldIntoView` and the
-expanding `onFocus` of LAD-126 go. The session's tabs stay, as frame g3-390-kbd has them.
+target matches `FIELD`, the next focus not in a field). `typing` puts `.typing` on the card, but
+for the expanded card, which keeps its context to be read and has hidden the rest already. `:has`
+hides the session's tabs (the human's decision of 2026-11-05, F2: under about 375 px the buttons
+were cut; frame g3-390-kbd keeps them) and the Team row, and a field in the footer hides the
+context. A field in the context of several questions keeps it, and comes back into its view
+when the card is laid out anew (the keyboard opening). The fold reports "Commenting on gate #<id>
+above" with no `write`. A button pressed keeps the focus in the field, so nothing moves under
+the finger. `fromField` and the expanding `onFocus` of LAD-126 go.
 
 **D12. Send's reason.** A disabled button gets no pointer or focus events, so `Tooltip` wraps a
 `span` around it while it is off for want of an answer, with `tabIndex={0}`: that makes it a
@@ -106,4 +110,6 @@ run or names why it cannot be, then removes the BACKLOG.md entry and says which 
   few pixels while the top is still above 0. The tests in a 420 px chat and at 440 px check that
   the buttons hold; a strict order would need JS measuring.
 - A real keyboard may leave less than 440 px (a small iPhone leaves about 350). Then the top goes
-  to 0 first, as D4 says; not verified on a device.
+  to 0 first, as D4 says; the tests hold at 350 and 340 px, an imitation, not verified on a device.
+- An Android back button closes the keyboard without a blur (F8): `typing` stays until a touch
+  elsewhere. To be checked on a device with the iOS keyboard.

@@ -259,6 +259,11 @@ export function WaitingCard({
   useEffect(() => {
     if (typing && !document.activeElement?.matches(FIELD)) setTyping(false);
   });
+  // The keyboard opening lowers the context: a field in it comes back into its view.
+  useEffect(() => {
+    const field = typing ? document.activeElement : null;
+    if (field?.closest(".waiting-context")) (field.closest(".answer-box") ?? field).scrollIntoView?.({ block: "nearest" });
+  }, [cardHeight, typing]);
   // A quote of the session goes to the composer: the card folds and its fields close, so the
   // composer shows (the focus goes there).
   useEffect(
@@ -450,7 +455,7 @@ export function WaitingCard({
   return (
     <section
       ref={cardRef}
-      className={`waiting-card${expanded ? " expanded" : ""}${folds ? " minimized" : ""}${given !== null ? " sized" : ""}${typing ? " typing" : ""}`}
+      className={`waiting-card${expanded ? " expanded" : ""}${folds ? " minimized" : ""}${given !== null ? " sized" : ""}${typing && !expanded ? " typing" : ""}`}
       aria-label={`What waits for you in ${session}`}
       style={style}
       // Files go to a field under them (its own drop zone); dropped elsewhere on the card,

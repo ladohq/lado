@@ -4615,7 +4615,6 @@ button.rec-bar-line {
   flex: 0 10000 auto;
   flex-direction: column;
   min-height: 0;
-  max-height: var(--waiting-top-max, 40vh);
   max-height: var(--waiting-top-max, 40dvh);
   overflow: clip;
   border-radius: 0 9px 0 0;
@@ -4675,6 +4674,11 @@ button.rec-bar-line {
   overflow-y: auto;
   overscroll-behavior: contain;
   font-size: 14px;
+}
+
+/* Its ring stands inside it: the top around it would cut one outside. */
+.waiting-context:focus-visible {
+  outline-offset: -2px;
 }
 
 .waiting-top:not(:has(.waiting-title)) .waiting-context {
@@ -10062,8 +10066,10 @@ button.quiet.danger-text {
   display: none;
 }
 
-/* A field of the card with the focus: the Team row goes, and with a field in the footer the
-   context, so the footer fits above the keyboard (a field in the context stays in it). */
+/* A field of the card with the focus: the session's tabs and the Team row go, and with a field
+   in the footer the context, so the footer fits above the keyboard (a field in the context
+   stays in it). */
+:root[data-phone] .session:has(.waiting-card.typing) .session-tabs,
 :root[data-phone] .activity:has(> .chat > .waiting-card.typing) > .team-row,
 :root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-context-frame {
   display: none;
@@ -10073,6 +10079,11 @@ button.quiet.danger-text {
 :root[data-phone] .composer textarea,
 :root[data-phone] .answer-box textarea {
   font-size: 16px;
+}
+
+/* A card's placeholder keeps the frames' 14 px, so it fits a phone's field. */
+:root[data-phone] .answer-box textarea::placeholder {
+  font-size: 14px;
 }
 
 :root[data-phone] .composer-keys {

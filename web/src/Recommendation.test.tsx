@@ -147,3 +147,13 @@ test("none asked shows no line", () => {
 test("a text on one line loses its Markdown's marks and its breaks", () => {
   expect(oneLine("# Head\n\n- **a** and _b_\n> `c` [d](http://e) ![f](g.png)")).toBe("Head a and b c d f");
 });
+
+test.each([
+  ["set max_retries in test_chat.py", "set max_retries in test_chat.py"],
+  ["2*3 and 4*5 pages", "2*3 and 4*5 pages"],
+  ["see ~/.lado/lado.db", "see ~/.lado/lado.db"],
+  ["`max_retries` and `*.py` stay", "max_retries and *.py stay"],
+  ["**bold** _em_ *em* ~~gone~~", "bold em em gone"],
+])("a text on one line keeps what is no mark: %s", (text, line) => {
+  expect(oneLine(text)).toBe(line);
+});

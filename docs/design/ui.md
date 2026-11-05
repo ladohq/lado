@@ -2267,12 +2267,14 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   and buttons are 44 px high; "↓ more" stays 24 px, as Expand does the same. A field of the card
   in focus does not expand it (LAD-194, the human's decision of 2026-11-05; since LAD-126 it
   did, as the field lay in a list with no room above the keyboard): the footer is always whole,
-  so the Team row and the context step aside (`typing`) and the composer folds, a gate's comment
-  into "Commenting on gate #<id> above", until the focus leaves. The session's tabs stay, as in
-  frame g3-390-kbd. A field in the context of several questions keeps the context it stands in.
+  so the session's tabs, the Team row and the context step aside (`typing`) and the composer folds,
+  a gate's comment into "Commenting on gate #<id> above", until the focus leaves. The session's
+  tabs go too, unlike frame g3-390-kbd: the human's decision of 2026-11-05, as the buttons were
+  cut under about 375 px. A field in the context of several questions keeps the context it stands
+  in, and comes back into its view when the keyboard opens; an expanded card keeps its context.
   A button pressed keeps the focus in the field, so nothing moves under the finger before its
-  click. Below 440 px of app (an imitation; a real keyboard is the human's to check) the top goes
-  first, the meta before the title. An expanded card, by its button or sideways, hides the
+  click. Below 440 px of app (imitated down to 340 px; a real keyboard is the human's to check) the
+  top goes first, the meta before the title. An expanded card, by its button or sideways, hides the
   session's tabs and the Team row: it fills the page under the top bar, until its fold button,
   Esc, or nothing waits. Needs you, which scrolls as a page, changes nothing on a field's focus.
 - **Sideways** (`short`): the chat's card is minimized by the layout (its tabs and one

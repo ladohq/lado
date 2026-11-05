@@ -450,22 +450,22 @@ def session_around_card_hidden(page: Page, hidden: bool) -> None:
 
 
 def typing_around_card(page: Page, card, typing: bool) -> None:
-    """A field in focus hides the Team row and the context; the session's tabs stay."""
-    expect(page.get_by_role("navigation", name="Session sections")).to_be_visible()
-    team = page.get_by_role("group", name="Team")
-    (expect(team).to_be_hidden if typing else expect(team).to_be_visible)()
+    """A field in focus hides the session's tabs, the Team row and the context."""
+    session_around_card_hidden(page, typing)
     context = card.get_by_role("region", name="Context of the card")
     (expect(context).to_be_hidden if typing else expect(context).to_be_visible)()
 
 
-@pytest.mark.parametrize("visible", [ABOVE_KEYBOARD, 380])
+@pytest.mark.parametrize("visible", [ABOVE_KEYBOARD, 380, 350])
 def test_a_gates_comment_stays_above_the_keyboard_and_folds_what_is_around(
     device, server, repo, shot, visible
 ):
-    """A tap on the gate's comment does not expand the card: the context and the Team row go,
-    the composer folds into a line, and the field and Approve / Reject stay in sight; the
-    keyboard closed, it all comes back, the comment kept."""
+    """A tap on the gate's comment does not expand the card: the session's tabs, the Team row
+    and the context go, the composer folds into a line, and the field and Approve / Reject
+    stay in sight, a recommendation of two lines over them; the keyboard closed, it all comes
+    back, the comment kept."""
     session = gated_session(repo)
+    recommended(session, "A reason to approve. " * 40, choice="approve")  # two lines
     phone = device(KEYBOARD)
     phone.add_init_script(FAKE_VIEWPORT)
     page = opened(phone, server, f"/sessions/{session}")
@@ -483,8 +483,8 @@ def test_a_gates_comment_stays_above_the_keyboard_and_folds_what_is_around(
     comment.fill("check the migration")
     for part in (
         comment,
-        card.get_by_role("button", name="Approve"),
-        card.get_by_role("button", name="Reject"),
+        card.get_by_role("button", name="Approve", exact=True),
+        card.get_by_role("button", name="Reject", exact=True),
         line,
     ):
         within(part, 0, visible)
@@ -580,20 +580,73 @@ def test_a_long_recommendation_opens_to_three_lines_that_scroll(device, server, 
     shot(page, "opened", full_page=False)
 
 
-def test_a_field_in_the_context_of_several_questions_keeps_it(device, server, repo, shot):
-    """A tab of several questions has its fields in the context: a field's focus hides the
-    Team row, never the context it stands in."""
+@pytest.mark.parametrize("visible", [350, 340])
+def test_six_choices_keep_the_buttons_above_the_keyboard(device, server, repo, shot, visible):
+    """A question of six choices with Other… open, little left: the field, Send and Skip
+    question whole."""
     session = gated_session(repo)
-    for n in range(2):
-        runtime.ask_human(session, "supervisor", f"Question {n}?", None, ["yes", "no"])
-    page = opened(device(KEYBOARD), server, f"/sessions/{session}")
-    card = waiting_card(page, session)
-    card.get_by_role("tab", name="supervisor 2").tap()
-    card.get_by_role("button", name="Other…").first.tap()
+    choices = [f"Choice {n}: what it does twice" for n in range(6)]
+    runtime.ask_human(session, "supervisor", "Which one?", None, choices)
+    phone = device(KEYBOARD)
+    phone.add_init_script(FAKE_VIEWPORT)
+    page = opened(phone, server, f"/sessions/{session}")
+    card, send = question_tab(page, session)
+    card.get_by_role("button", name="Other…").evaluate("b => b.click()")
     own = card.get_by_role("textbox", name="Your own answer")
     expect(own).to_be_focused()
-    expect(card.get_by_role("region", name="Context of the card")).to_be_visible()
+    page.evaluate(f"window.moveViewport({visible}, 0)")
+    expect(page.locator(".app")).to_have_css("height", f"{visible}px")
+    within(send, 0, visible)
+    within(card.get_by_role("button", name="Skip question"), 0, visible)
+    within(own, 0, visible)
+    shot(page, full_page=False)
+
+
+def test_a_field_in_the_context_of_several_questions_stays_in_its_view(device, server, repo, shot):
+    """A tab of several questions has its fields in the context: a field's focus hides the
+    Team row, never the context it stands in, and the keyboard opening brings the field back
+    into the context's view."""
+    session = gated_session(repo)
+    for n in range(3):
+        runtime.ask_human(session, "supervisor", f"Question {n}?", "Details.\n" * 6, ["yes", "no"])
+    phone = device(KEYBOARD)
+    phone.add_init_script(FAKE_VIEWPORT)
+    page = opened(phone, server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("tab", name="supervisor 3").tap()
+    card.get_by_role("button", name="Other…").last.evaluate("b => b.click()")
+    own = card.get_by_role("textbox", name="Your own answer")
+    expect(own).to_be_focused()
+    context = card.get_by_role("region", name="Context of the card")
+    expect(context).to_be_visible()
     expect(page.get_by_role("group", name="Team")).to_be_hidden()
+    page.evaluate(f"window.moveViewport({ABOVE_KEYBOARD}, 0)")
+    expect(page.locator(".app")).to_have_css("height", f"{ABOVE_KEYBOARD}px")
+    expect(own).to_be_in_viewport()
+    found = box(context)
+    page.wait_for_function(
+        """([field, top, bottom]) => {
+          const box = field.getBoundingClientRect();
+          return box.top >= top - 1 && box.bottom <= bottom + 1;
+        }""",
+        arg=[own.element_handle(), found["y"], found["y"] + found["height"]],
+        timeout=5000,
+    )
+    shot(page, full_page=False)
+
+
+def test_the_expanded_card_keeps_its_context_with_a_field_in_focus(device, server, repo, shot):
+    """Expanded to read the note, the human comments on it: the context stays."""
+    session = gated_session(repo)
+    page = opened(device(KEYBOARD), server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Expand the card").tap()
+    comment = card.get_by_role("textbox", name="Comment for the next step (optional)")
+    comment.tap()
+    expect(comment).to_be_focused()
+    expect(card.get_by_role("region", name="Context of the card")).to_be_visible()
+    session_around_card_hidden(page, True)
+    shot(page, full_page=False)
 
 
 def test_the_cards_targets_are_44_px_on_a_phone(device, server, repo, shot):

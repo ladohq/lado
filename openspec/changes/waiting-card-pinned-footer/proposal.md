@@ -39,8 +39,8 @@ Options weighed:
 - While a field of Other… or Skip question is open, the composer folds into a line, and its link
   brings the composer back and keeps the field's words.
 - A Send that is off has the tooltip "Choose an answer first".
-- On a phone a field's focus no longer expands the card: the context and the Team row go, the
-  composer folds. The card's targets are 44 px.
+- On a phone a field's focus no longer expands the card: the session's tabs, the Team row and the
+  context go, the composer folds. The card's targets are 44 px.
 
 ## Scope
 
@@ -65,6 +65,9 @@ same pull request. The minor is not bumped by this change: `0.45.0 (unreleased)`
   dismissal cannot be taken back, and a tab of several questions is sent as one.
 - One question at a time in a tab of several: the human's decision of 2026-11-05; it needs a
   pager that neither spec nor frames have, and hides the other questions.
+- The session's tabs in frame g3-390-kbd: the human's decision of 2026-11-05 at the review (F2)
+  hides them while a field has the focus, as the buttons were cut under about 375 px. The height
+  by content wins over frame g3-1440's 292 px (F9).
 - A real iOS Safari keyboard: nobody in the run has a device. Frame g3-390-kbd is an imitation;
   the human checks it before the merge, and the build report says "not verified".
 
@@ -74,7 +77,8 @@ same pull request. The minor is not bumped by this change: `0.45.0 (unreleased)`
   recommendation, the field or choices and the buttons are in sight without scrolling; only the
   context scrolls.
 - AC-2: the card is as high as its content; title and context together are at most 40 % of the
-  chat; at 1440×900 with terminals open a usual gate's card is about 292 px high (was 372).
+  chat. 292 px is an example, not a limit: at 1440×900 with terminals open a gate with a short
+  note is about that high (was 372); with a longer context it is as high as its content.
 - AC-3: a cut context fades over 28 px and shows "↓ more", which expands the card; both go at
   the end of the scroll and in the expanded card. The context is a focusable region.
 - AC-4: the title is at most 2 lines with "…", the whole text first in the context; the meta
@@ -97,7 +101,8 @@ same pull request. The minor is not bumped by this change: `0.45.0 (unreleased)`
 - AC-12: the height the edge gives is kept for all cards, the footer never gives way to it, and a
   double click gives back the content's height.
 - AC-13: on a phone with the app 440 px high a field's focus keeps the card unexpanded, hides the
-  Team row and the context, folds the composer, and keeps field, buttons and line in sight.
+  session's tabs, the Team row and the context, folds the composer, and keeps field, buttons and
+  line in sight, at 350 px too.
 - AC-14: on a phone the card's tabs, Minimize, Expand, fields, chips and buttons are 44 px high.
 - AC-15: on Needs you, and on a window of 900 px or less, title and context are at most 40 % of
   the window, and the footer follows them.

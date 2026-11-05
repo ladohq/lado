@@ -15,8 +15,8 @@ chips, the composer below folds into "Answering question #5 above · Write to su
 so only one field talks to the agent. Skip question stands beside Send and does what Skip did. A
 tab of several questions keeps today's list inside the context, with Send and the count below.
 
-On a phone the footer fits the keyboard by itself, so a field's focus expands nothing: the context
-and the Team row step aside, and the composer folds, until the focus leaves.
+On a phone the footer fits the keyboard by itself, so a field's focus expands nothing: the session's
+tabs, the Team row and the context step aside, and the composer folds, until the focus leaves.
 
 ## Layout
 

@@ -57,12 +57,25 @@ export function Recommendation({ rec }: { rec?: RecommendationInfo | null }) {
   );
 }
 
-// Markdown on one line: its marks out, its white space collapsed.
+// Markdown's paired marks out of a text with no code in it. A mark counts only at a word's
+// edge, so max_retries and 2*3 stay.
+const unmarked = (text: string) =>
+  text
+    .replace(/(^|[^\w*])\*\*(\S(?:.*?\S)?)\*\*(?![\w*])/g, "$1$2")
+    .replace(/(^|[^\w_])__(\S(?:.*?\S)?)__(?![\w_])/g, "$1$2")
+    .replace(/(^|[^\w*])\*(\S(?:[^*]*\S)?)\*(?![\w*])/g, "$1$2")
+    .replace(/(^|[^\w_])_(\S(?:[^_]*\S)?)_(?![\w_])/g, "$1$2")
+    .replace(/~~(\S(?:.*?\S)?)~~/g, "$1");
+
+// Markdown on one line: its links, line marks and paired marks out, code as it is, its white
+// space collapsed.
 export const oneLine = (text: string) =>
   text
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
-    .replace(/[*_`~]/g, "")
+    .split(/`([^`]+)`/)
+    .map((part, n) => (n % 2 === 1 ? part : unmarked(part)))
+    .join("")
     .replace(/\s+/g, " ")
     .trim();
 

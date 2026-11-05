@@ -995,6 +995,35 @@ test("on a phone Other… keeps the card unexpanded, the own answer focused", ()
   expect(fold.mock.lastCall?.[0].line).toBe("Answering question #5 above · ");
 });
 
+test("on a phone the expanded card keeps its context with a field in focus", () => {
+  FakeScreen.phone();
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+  fireEvent.click(iconButton("Expand the card"));
+  act(() => commentField().focus());
+  expect([isExpanded(), card().classList.contains("typing")]).toEqual([true, false]);
+});
+
+test("on a phone a field in the context comes back into view when the card is laid out anew", () => {
+  FakeScreen.phone();
+  columnWidth(null);
+  const scrolled: Element[] = [];
+  Element.prototype.scrollIntoView = function (this: Element) {
+    scrolled.push(this);
+  };
+  try {
+    show({ questions: [question(5, "w1"), question(6, "w1")], chat: IN_CHAT });
+    fireEvent.click(within(card()).getAllByRole("button", { name: "Other…" })[0]);
+    scrolled.length = 0;
+    FakeResizeObserver.resize(
+      () => 400,
+      () => 300,
+    );
+    expect(scrolled).toEqual([card().querySelector(".answer-box")]);
+  } finally {
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  }
+});
+
 test("a field's focus changes nothing on a computer, nor on Needs you on a phone", () => {
   new FakeScreen("fine", 390, 844);
   const fold = vi.fn();

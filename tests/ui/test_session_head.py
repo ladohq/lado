@@ -326,6 +326,19 @@ def test_details_opens_by_click_enter_and_space_and_gives_the_focus_back(
     expect(composer).to_have_value("hello")
 
 
+def test_the_line_and_details_take_the_dark_theme(page: Page, long_session, server, shot):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.emulate_media(color_scheme="dark")
+    open_session(page, server, long_session)
+    line_is_whole(page)
+    shot(page, "line")
+    title_button(page).click()
+    ground = details(page).evaluate("e => getComputedStyle(e).backgroundColor")
+    assert ground == page.locator(".topbar").evaluate("e => getComputedStyle(e).backgroundColor")
+    assert ground != "rgb(255, 255, 255)"
+    shot(page, "details")
+
+
 def test_details_stays_inside_a_narrow_window(page: Page, server, repo, shot):
     page.set_viewport_size({"width": 480, "height": 800})
     session = running_session(repo)
@@ -373,6 +386,19 @@ def test_tab_goes_through_skip_the_rail_and_the_heads_four_stops(page: Page, sho
         assert stops == ["Shop", "shop-frontend", "Stop session…", "System"]
     finally:
         runtime.stop_session("shop-frontend")
+
+
+def test_with_the_terminals_folded_the_first_tab_is_skip_to_chat(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session = running_session(repo)
+    log_in(page, server)
+    page.evaluate("localStorage.setItem('lado.terminals', JSON.stringify({collapsed: true}))")
+    page.goto(f"{server['url']}/sessions/{session}/flows")
+    expect(title_button(page)).to_be_visible()
+    page.keyboard.press("Tab")
+    expect(page.get_by_role("link", name="Skip to chat")).to_be_focused()
+    page.keyboard.press("Enter")
+    expect(page.get_by_role("log", name="Chat with the session")).to_be_focused()
 
 
 @pytest.mark.parametrize("tab", ["activity", "flows"])

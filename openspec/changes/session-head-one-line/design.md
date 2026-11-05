@@ -69,6 +69,12 @@ session's two actions leave the title less room, which it takes with "…".
 breadcrumb comes from `about.project`, as the spec says, so it appears when the about comes,
 and is absent when the about fails, like the other facts.
 
+**D14. Found while building.** `useMedia` in `phone.ts` serves the link's tooltip and replaces
+`Projects.tsx`'s own copy of the same listener. `Tooltip` shows on focus only when the focus
+is the keyboard's (`:focus-visible`), or opening Details by mouse would put Copy path's
+tooltip over the Git row. `.session-details` sets `white-space: normal`: the sheet is drawn in
+the top bar, whose line must not wrap.
+
 ## Test layers
 
 UI only, nothing crosses processes, so no integration test: vitest for logic and DOM, UI e2e

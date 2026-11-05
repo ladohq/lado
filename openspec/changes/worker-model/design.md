@@ -22,7 +22,7 @@ never starts. Non-goals: the proposal's Out of scope.
 `model_settings.worker_start(name, given, session_cli, env, listing)` returns the worker's
 `(Provider, StartModel)`. It only picks the CLI (`_name_cli`, D2) and then goes the session's way:
 `session_row(name, cli, env(cli), listing)`, `PowerTable.of(row)`, `start_model(table, cli)`, with
-`dataclasses.replace(start, source=state.SUPERVISOR)` when a model was named. So `check_default`
+`dataclasses.replace(start, source=state.SUPERVISOR_CHOICE)` when a model was named. So `check_default`
 stays the one reading of a typed name: the saved-and-built-in clash, a hidden character, an entry
 removed meanwhile are refused by the code that refuses them at a start.
 
@@ -38,7 +38,7 @@ alias or listed model.
 | given | nobody | `check_default`'s own refusal: `<name> is not in <given>'s list…` |
 | none | `owns(session_cli)` | the session's CLI |
 | none | exactly one other | that CLI |
-| none | several others | Refused: `<name> is a model of <A> and <B>; give provider` |
+| none | several others | Refused: `<name> is a model of <A> and <B>; give provider`, in the order of `providers.names()` |
 | none | nobody | Refused: `<name> is in no agent CLI's list of models; list_models shows them`, with `; <title> gives no full list: provider="<cli>" starts it with a warning` for a session's CLI with none |
 
 A saved model of another CLI uses the existing `_not_its_model` line. Other CLIs are the installed

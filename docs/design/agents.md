@@ -194,9 +194,14 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   holds `{env:` or `{file:` is left out with a warning, as the CLI would expand it. Claude Code and
   Codex hold one model per process and get none of it; a model on a server is refused for them
   (`model_settings.check_launch`). A start or resume checks the supervisor's model
-  (`check_start`, by the probe of saving a model, within its timeout); `spawn_worker` makes the
-  local checks only. An agent of another CLI (a worker
-  spawned with another provider) takes its own CLI's default; with none it gets no model: its
+  (`check_start`, by the probe of saving a model, within its timeout), and `spawn_worker` its
+  worker's in the same way (`runtime._worker_start`), before anything of the worker exists; a
+  worker with no model asks nothing. A worker takes a model by name (`spawn_worker(model=…)`, from
+  `list_models`, which asks no server): the name picks its CLI (`model_settings.worker_start`),
+  the source is `supervisor`, the session's table does not change, and nothing keeps the choice
+  past that spawn. `""` is the CLI's own settings. An agent of another CLI (a worker
+  spawned with another provider and no `model`) takes its own CLI's default; with none it gets no
+  model: its
   record has no name, the source `cli`
   and the detail `the session's model <model> is for <CLI>`, and its launch warns, as
   `spawn_worker` returns and loop.log keeps its launch warnings. The agents' rows go at a stop, so

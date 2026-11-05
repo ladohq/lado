@@ -13,6 +13,9 @@
 - **Run a session on your own model.** A session starts on a saved model or its CLI's default
   from Settings → Models, checked on its server first. OpenCode and Kilo CLI keep every saved
   model in `/model` beside their own; `--model ''` is the CLI's own settings.
+- **Start a worker on another model.** The supervisor sees every agent CLI's models with
+  `list_models` and names one in `spawn_worker(model=…)`; a silent server or a missing model
+  refuses the worker at once, instead of failing at its first turn.
 - **Find out what a model server is.** `lado model-server probe <address>` names the type
   of a server in your network (Ollama, LM Studio, OpenAI- or Anthropic-compatible), its
   models, embeddings ones marked, and the CLIs that can use it, generating nothing; `--key`.

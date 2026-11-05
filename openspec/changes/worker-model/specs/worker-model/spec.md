@@ -1,3 +1,9 @@
+## Purpose
+
+The supervisor sees what the session's machine can run and starts a worker on a model by name: the
+name picks the worker's agent CLI, and a model that cannot run refuses the spawn before anything of
+the worker exists.
+
 ## ADDED Requirements
 
 ### Requirement: list_models shows the supervisor what can run
@@ -82,7 +88,7 @@ other CLIs' lists SHALL be read only when the session's CLI lacks the name.
 
 #### Scenario: Two other CLIs
 - **WHEN** that name is asked for in a Claude Code session
-- **THEN** `spawn_worker` fails with `<name> is a model of OpenCode and Kilo CLI; give provider`, and no
+- **THEN** `spawn_worker` fails with `<name> is a model of Kilo CLI and OpenCode; give provider`, and no
   worker exists
 
 #### Scenario: No list has it
@@ -155,7 +161,7 @@ not given SHALL name `list_models` and `model=""`. A worker with no model SHALL 
 #### Scenario: Claude Code on an external model
 - **WHEN** the supervisor calls `spawn_worker(model="Шлюз Opus")`, which is Claude Code's, on `Шлюз`
 - **THEN** it fails with `Шлюз Opus is on the model server Шлюз; Claude Code does not run on a model
-  server yet, OpenCode does`, and `Шлюз` is not asked
+  server yet, Kilo CLI and OpenCode do`, and `Шлюз` is not asked
 
 ### Requirement: A worker's key stays in its own environment
 

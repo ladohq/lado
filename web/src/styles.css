@@ -9241,7 +9241,6 @@ del.kit-mcp-name {
 .mp-arrow {
   display: inline-flex;
   flex: none;
-  transform: rotate(90deg);
 }
 
 .srv {
@@ -9278,10 +9277,10 @@ del.kit-mcp-name {
   box-shadow: 0 8px 24px var(--shadow);
 }
 
-.mp-search {
+.mp-pop .mp-search {
   flex: none;
-  margin: 6px;
   width: calc(100% - 12px);
+  margin: 6px;
 }
 
 .mp-list {
@@ -9427,8 +9426,8 @@ del.kit-mcp-name {
     height: 44px;
   }
 
-  .mp-search {
-    min-height: 44px;
+  .mp-pop .mp-search {
+    height: 44px;
     font-size: 16px;
   }
 

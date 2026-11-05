@@ -2435,9 +2435,10 @@ your agents use. Changes apply to agents started afterwards."
 
 ### Models
 
-Settings: the human's configured models and model servers, set once under names (openspec
-change model-settings-page; built in `web/src/ModelSettings.tsx` and
-`web/src/ModelSources.tsx` over `lado.server.model_entries`). The section after Agent CLIs
+Settings: each agent CLI's default model and the human's configured models and model
+servers, set once under names (openspec capability model-settings-page; built in
+`web/src/ModelSettings.tsx`, `web/src/ModelPicker.tsx` and `web/src/ModelSources.tsx` over
+`lado.server.model_entries`). The section after Agent CLIs
 and environment, before Usage statistics; its anchor `#models` scrolls the page to it once,
 when the page opens there, never after a change of the entries, and keeps it at the top of
 the view while the page around it grows (Agent CLIs and environment, above, once its check
@@ -2446,12 +2447,13 @@ model-server` and `lado model` do, with their rules: every refusal is the comman
 page's words (`Refused.page`, `ProbeError.page`: no command to run, but what to do here,
 e.g. `asks for a key (401): enter it in Key`, `the name is taken by the model "<name>"`; the
 commands print their lines as before). It says "agent CLI", or "CLI" where room is short.
-Using it changes nothing of how sessions start.
+Using it changes nothing of how sessions start, and it says nothing of sessions using a
+default: none does yet.
 
-- **One section, three blocks**, no tabs: an intro ("Name the models your agents run on…"),
-  then **Your models `<n>`**, **Model servers `<n>`** (its count once a server is saved)
-  and **Models of your agent CLIs**, one under the other, `--gap-block` (24 px) apart, each
-  an h3 with its count and, for the last two, a lead line.
+- **One section, two blocks**, no tabs: an intro (`Choose a default model for each agent CLI,
+  and add the models of your own servers.`), then **Your agent CLIs** and **Model servers
+  `<n>`** (its count once a server is saved), one under the other, `--gap-block` (24 px)
+  apart, each an h3 with a lead line.
 - **Nothing moves under the pointer** (`web/src/useScrollAnchor.ts`): when the human acts
   in the section, what they act on keeps its place on the screen whatever grows or shrinks
   above it in the section. The anchor is the focused element in the section, else the one
@@ -2468,19 +2470,47 @@ Using it changes nothing of how sessions start.
   it (a card, a source's row) keeps its place instead; a scroll inside the section (a list's
   own) notes it anew. The browser's own scroll anchoring is off in the section and the ones
   after it (`overflow-anchor: none`), else it would move the page a second time; Safari has
-  none. No row leaves the section on a timer.
-- **Your models**: a card only for an agent CLI with models, in LADO's order of agent CLIs
-  (then one for a model of a CLI it does not know), headed `<CLI title> <n>` on `--raised`;
-  `⚠ not installed: its models cannot run` in the head of one not installed. Its models by
-  name ignoring case: Name (wrapped, never cut), Model, From (its server, the address in
-  the title, else `the agent CLI`) and **×** (at once, as `lado model remove`). Under the
-  cards one line names the CLIs without models: `<CLI> has no models: its agents run on its
-  default model.`, or `<CLIs> have no models: their agents run on their default model.`
-  With no model at all: `No models yet. Without them each agent runs on its agent CLI's
-  default model.` and `Add a model server below, or tick the models your agent CLIs already
-  offer.` A model's mark under its name: `⚠ not in list` (its title: `<source> no longer
-  lists <model>: agents on it stop at their first turn.`) once its source's list was read
-  here and lacks it.
+  none. No row leaves the section on a timer. A window scrolled to the very end of the page
+  has nothing left to scroll: a change that makes the page shorter (a form closing) moves
+  what shows there.
+- **Your agent CLIs**: a card per agent CLI, the installed ones in LADO's order, then the ones
+  not installed, then one for a model of a CLI LADO does not know, its field off. The head
+  gives the title and the login state from Agent CLIs and environment's last check; one not
+  installed says `⚠ not installed`, `⚠ not installed: its default model cannot run` or
+  `⚠ not installed: its models cannot run`. The row **Default model** holds the picker;
+  notes stand under it, tied to the field by `aria-describedby`: a refusal as an alert, a
+  warning from a background read as a status. The lead names how to add models while none is
+  saved.
+- **What is read when**: opening the section asks no server and reads, in the background, only
+  the lists of CLIs whose default is built-in (a list that lost it shows on the card); opening
+  a picker reads its CLI's list `fresh` and probes each server of that CLI's models once. So a
+  silent server shows only from the picker's opening on, until the page closes or Check again
+  finds it well. An older read's late answer changes nothing.
+- **The picker** (`ModelPicker.tsx`, the one component any place that picks a model uses): a
+  combobox `Default model of <CLI>`, its value `<CLI>'s settings`, a built-in id, or a name,
+  id and server's mark. Its list lies over the page, `position: fixed` by the field's box and
+  the visual viewport, opening upward with fewer than 240 px below and more above, at most
+  420 px high (60% of the window under 600 px); a press outside or a scroll the human starts
+  outside the list closes it. Rows in one order, an empty group not shown: `<CLI>'s settings`,
+  YOUR MODELS, BUILT-IN (`BUILT-IN · aliases` for aliases only), `Other name…` kept at the
+  bottom, only with no full list. Above ten models a search by name, id and server. The footer
+  counts, with ↻ unless reading again cannot help (`ModelChoices.read_again`). A pick saves at
+  once, by reference (`PUT /api/model-defaults/{cli}`), the focus back on the field; a refusal
+  shows under it and the value stays. `Other name…` opens a field under the picker with Use
+  and Cancel, checked once the typing settles. The keyboard: Enter, Space and the arrows open
+  it on the selected row, ↑ ↓ Home End move, Enter picks (Space too with no search), Esc and
+  Tab close without a pick, Esc first clearing a search.
+- **A default in trouble** stays: nothing but the human changes it. A built-in one the list
+  lost shows `⚠ no longer listed` with `Use <CLI>'s settings`; one the list cannot check shows
+  the core's warning, with `Check again` when reading may help; an external one on a silent
+  server or gone from it shows why with `Check again` and `Use <CLI>'s settings`. On a CLI whose
+  provider says a server's model takes the whole process, the picker and the card say so.
+- **An agent CLI's models** on its card under the head `Your models <n>`: the default first, the
+  others by name ignoring case, Name (wrapped, never cut), Model, From (its server, the address
+  in the title) and **×**. Above five they fold to five with `Show all <n> models`, `Show fewer`
+  once open, a state kept while the page stays open. A model's mark under its name:
+  `⚠ not in list` (its title: `<server> no longer lists <model>: agents on it stop at their
+  first turn.`) once its server's list was read here and lacks it.
 - **Rename** on the name itself: a button with a frame on hover, titled `Click to rename`;
   a click or Enter turns it into a field of its cell, the name selected; Enter or leaving
   the field renames (`PATCH`), Esc restores and gives the focus back to the name; no Save
@@ -2490,28 +2520,28 @@ Using it changes nothing of how sessions start.
 - **× and Undo**: × leaves in its row `Removed <name>. Undo`, of the row's height, the
   focus on Undo; Undo (off while it runs) saves the model again with its name, CLI, model
   and server (`POST /api/models`, the checks of `lado model add`), the focus then on its
-  name, a refusal in the row; the row goes once the reload brought the model back. After
+  name, a refusal in the row; the row goes once the reload brought the model back. × on a
+  CLI's default asks in place first, the focus on Cancel, Esc as Cancel (`Remove <name>? It is
+  <CLI>'s default model: <CLI> goes back to its settings.`); its row then adds `<CLI> is back on
+  its settings.` and Undo sets the default again by the id the model got back
+  (`PUT /api/model-defaults/{cli}`), a refusal of that second call in the model's row. Unticking
+  a default asks the same under its CLI's row, the tick on until the answer, and leaves no
+  Undo. A page gone stale may remove a default without asking: another window set it. After
   `UNDO_MS` (10 s) only Undo goes: `Removed <name>.` stays until the human's next change in
   the section (a tick, ×, Undo, a rename, a model id added, a server added, changed or
   removed) or the page's next opening. A server removed has no Undo: its key goes with it
   and LADO keeps no copy.
 - **The sources**: Model servers lists every saved server, by name at the first showing
-  and one added here at the end, where the form was, then **+ Add server**; Models of your
-  agent CLIs lists every agent CLI LADO knows, the ones not installed last, greyed and
-  closed. Each is a framed row: a chevron in a framed 28 px box that turns when open, its
-  name, whole and wrapped, never cut by its badges (for a server its type and `key` when it
-  has one, after the name or on the next line), and a second line:
-  for a server `<n> model(s) added` or `no models added`, then its address, cut with `…`
-  (the address, not the count) and whole in a tooltip on hover and on keyboard focus of the
-  row; for an agent CLI its login state from Agent CLIs and environment's last check (read
-  again while that check runs) and `<n> added`, after its list was read here `aliases`
-  (aliases only) or `its list` first. The whole row opens a source (Enter and Space too);
-  a server's **✎** (Change) and **🗑** (Remove) are icons at its right, its name in their
-  labels, titled `Change` and `Remove`. Opening the section reads no source and asks no
-  server; all start closed.
-- **A source opened** reads its models now, `reading the models…` meanwhile: a CLI's
-  aliases and own list through the launch window's route with `fresh`, a server's by a
-  probe with its kept key; **↻** (`Read the models again`) at the right above the list reads
+  and one added here at the end, where the form was, then **+ Add server**. Each is a framed
+  row: a chevron in a framed 28 px box that turns when open, its name, whole and wrapped,
+  never cut by its badges (its type and `key` when it has one, after the name or on the next
+  line), and a second line: `<n> model(s) added` or `no models added`, then its address, cut
+  with `…` (the address, not the count) and whole in a tooltip on hover and on keyboard focus
+  of the row. The whole row opens a source (Enter and Space too); a server's **✎** (Change) and
+  **🗑** (Remove) are icons at its right, its name in their labels, titled `Change` and
+  `Remove`. Opening the section reads no source and asks no server; all start closed.
+- **A source opened** reads its models now, `reading the models…` meanwhile, by a probe with
+  its kept key; **↻** (`Read the models again`) at the right above the list reads
   again. The latest read wins; a source closed meanwhile takes no late answer; no list is
   kept once the source closes. The list's order is set at its read: the models of the
   source's configured models it no longer lists, then those it lists, then the rest; no

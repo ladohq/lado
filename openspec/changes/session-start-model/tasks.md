@@ -17,7 +17,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-session-star
 
 - [x] 2.1 `runs_on_server`, `AgentSpec.servers`, `model_source`, `server_model`, `on_server`, the
   family's config, keys, `--model` (D6-D9). Check: `tests/test_providers.py`.
-- [ ] 2.2 Smoke of OpenCode and Kilo CLI on two fake servers, with `--agent plan`, and the first run
+- [x] 2.2 Smoke of OpenCode and Kilo CLI on two fake servers, with `--agent plan`, and the first run
   in the container. Check: `tests/smoke/test_smoke.py` in CI.
 
 ## 3. End to end

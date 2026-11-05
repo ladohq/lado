@@ -11,10 +11,11 @@ import time
 from pathlib import Path
 
 import agent_helpers
+import fake_model_server
 import pytest
 from real_clis import CLASSES, SANDBOX_ERROR, agent_processes, answer_dialogs, check_gone, status
 
-from lado import logins, loop, projects, providers, runtime, state, tmux
+from lado import logins, loop, model_settings, projects, providers, runtime, state, tmux
 from lado.providers import codex
 
 pytestmark = pytest.mark.smoke
@@ -163,6 +164,65 @@ def test_the_session_s_model_reaches_the_cli(
         runtime.write_as_human(SESSION, HUMAN_SAYS)
     wait_for(lambda: asked in fake_endpoint.models, f"a request for {asked}", 120)
     print(f"{provider}: models asked {fake_endpoint.models}")
+    runtime.stop_session(SESSION)
+
+
+@pytest.fixture
+def two_servers():
+    """Two model servers of OpenAI's kind, each taking a key of its own, and saved."""
+    found = []
+    for name, key in (("first", "smoke-server-key-one"), ("second", "smoke-server-key-two")):
+        server = fake_model_server.Server("all", key=key)
+        found.append(server)
+        model_settings.add_server(name, server.url, key, warn=print, note=print)
+    yield found
+    for server in found:
+        server.close()
+
+
+def chats(server: fake_model_server.Server) -> list[fake_model_server.Request]:
+    return [
+        r for r in server.requests if r.path == fake_model_server.CHAT and b"messages" in r.body
+    ]
+
+
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+@pytest.mark.parametrize("mode", ["bypassPermissions", "plan"])
+def test_a_session_on_a_server_s_model_asks_it_with_its_key(
+    smoke_repo, smoke_provider, two_servers, monkeypatch, mode
+):
+    """Both servers are in the agent's config beside the CLI's own models, under `--model` the
+    CLI runs the session's, in each mode, and its server gets the key of its own."""
+    provider = smoke_provider
+    monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
+    for name in ("first", "second"):
+        state.add_model(f"Модель {name}", provider, "m1", state.model_server(name).id)
+    started = runtime.start_session(str(smoke_repo), SESSION, mode, provider, model="Модель first")
+    print(f"{provider}: started, warnings {started.warnings}")
+    agent = state.get_agent(SESSION, "supervisor")
+    first = state.model_server("first")
+    assert (agent.model, agent.model_source) == (f"lado-{first.id}/m1", state.SESSION)
+
+    # Its servers alone: the whole config would run LADO's plugin, whose hooks are the agent's.
+    config = providers.base.config_path(agent) / f"{provider}.json"
+    servers = json.dumps({"provider": json.loads(config.read_text())["provider"]})
+    env = {**os.environ, **CLASSES[provider]().env(config, servers)}
+    listed = subprocess.run(
+        [provider, "models"], env=env, capture_output=True, text=True, timeout=60
+    ).stdout.split()
+    for name in ("first", "second"):
+        assert f"lado-{state.model_server(name).id}/m1" in listed
+    assert "smoke/smoke-model" in listed  # the CLI's own stay
+
+    idle = answering(provider, "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    one, other = two_servers
+    wait_for(lambda: chats(one), "a request to the session's server", 120)
+    print(f"{provider}: asked {[r.path for r in one.requests]}")
+    assert chats(one)[0].headers.get("Authorization") == "Bearer smoke-server-key-one"
+    assert json.loads(chats(one)[0].body)["model"] == "m1"
+    assert chats(other) == []
     runtime.stop_session(SESSION)
 
 

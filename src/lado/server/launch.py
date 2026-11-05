@@ -17,7 +17,6 @@ from lado import (
     doctor,
     kits,
     logins,
-    model_check,
     project_secrets,
     projects,
     providers,
@@ -295,26 +294,6 @@ def model_list(
         with _model_lists_lock:
             _model_lists[key] = (now, listed)
     return listed
-
-
-def provider_models(
-    provider: providers.Provider, model: str, project: str | None = None, fresh: bool = False
-) -> models.ProviderModels:
-    """The CLI's aliases and list of models, read in the environment of the agents of
-    `project` (or of none) as a start reads it and, once read, kept MODEL_LIST_KEPT seconds
-    (`fresh`: read now, and kept), and the check of `model` against them (lado.model_check);
-    NoSuchProject for an unknown `project`, LadoError for an environment that cannot be
-    read."""
-    if project is not None:
-        projects.get(project)
-    listed = model_list(provider, project, fresh)
-    verdict = model_check.verdict(provider, model, listed)
-    return models.ProviderModels(
-        aliases=list(listed.aliases),
-        models=None if listed.models is None else list(listed.models),
-        why=listed.why,
-        check=models.ModelCheck(kind=verdict.kind, text=verdict.text),
-    )
 
 
 def provider_info(

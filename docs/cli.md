@@ -258,9 +258,10 @@ never fails: doctor's exit status is as without it.
 
 With a default model set (`lado model default`), `lado doctor` prints one `Default models` line
 after it, from the same probes, asking no server again: `ok` names each default; `warn` names each
-that cannot start (`OpenCode's default Локальная Qwen: LM Studio дома does not answer`, `…: qwen3-8b
-is not in LM Studio дома's list of models`, `Codex CLI's default gpt-5.4-old: its list no longer has
-it`). It never fails either.
+that cannot start (`OpenCode's default Локальная Qwen: LM Studio дома does not answer (…)`, with
+the reason of the server's probe, `…: qwen3-8b is not in LM Studio дома's list of models`, `Codex
+CLI's default gpt-5.4-old: its list no longer has it`), or that it cannot check as the agents'
+environment cannot be read. It never fails either.
 
 `lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
 own status command in the environment its agents get without a project, the login taken
@@ -320,8 +321,9 @@ profile's too, as that wins), OpenCode and Kilo with `model` in their config con
 the user's own config. A session's model is where an agent starts, not a limit: every model saved
 for OpenCode or Kilo CLI goes into each of their agents' config, one provider per server
 (`lado-<server id>`, shown as `LADO · <server>` in `/model`), beside their built-in ones, whatever
-the session chose; each server's key reaches the agent only as a variable of its launch. One whose
-key file cannot be read is left out with a warning, unless the agent starts on it. Each key sent
+the session chose; each server's key reaches the agent only as a variable of its launch. A server
+whose key file cannot be read, or whose key holds `"` or `\`, which those CLIs put into their config
+as it is, is left out with a warning; an agent that starts on it is refused. Each key sent
 over plain http to an address outside the machine and network is warned about, and the session
 starts.
 
@@ -348,7 +350,7 @@ check claude-opus-5-5; a wrong name stops its agents at their first turn`). The 
 `sessions.power`, a saved model by its id, so a rename applies): a resume without `--model` keeps
 it, `--model ''` goes to the CLI's settings, a resume with another `--provider` and no `--model`
 drops it; each prints `changed model: codex gpt-5.6-sol -> Codex CLI's settings` (`-> CLI default`
-for a dropped one, or one model to another). A
+for a dropped one, the name of the default it goes to, or one model to another). A
 resume checks the model it keeps as a given one: one its CLI's list no longer has is
 refused before anything starts, the session stays stopped with its model, and the refusal
 names the way out (`lado: gpt-5.4-old is not in Codex CLI's list of models; codex debug

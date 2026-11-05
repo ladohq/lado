@@ -1315,32 +1315,28 @@ def test_a_resume_keeps_changes_or_drops_the_model(client, repo, fake_tmux, monk
     assert answer.json()["session"]["model"] == ""
 
 
+CHOICES = "/api/providers/{}/model-choices"
+
+
 @pytest.mark.parametrize(
     ("model", "kind", "text"),
     [
         ("", "default", "empty: Kilo CLI's default model; type or pick one of its models"),
         ("kilo/a", "ok", "in Kilo CLI's list of models"),
-        (
-            "kilo/z",
-            "refused",
-            "kilo/z is not in Kilo CLI's list of models; kilo models prints the list",
-        ),
+        ("kilo/z", "refused", "kilo/z is not in Kilo CLI's list of models"),
     ],
 )
 def test_a_provider_s_models_and_the_check_of_one(client, monkeypatch, model, kind, text):
     _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
-    answer = client.get("/api/providers/kilo/models", params={"model": model})
+    answer = client.get(CHOICES.format("kilo"), params={"model": model})
     assert answer.status_code == 200, answer.text
-    assert answer.json() == {
-        "aliases": [],
-        "models": ["kilo/a", "kilo/b"],
-        "why": "",
-        "check": {"kind": kind, "text": text, "field": "", "name": ""},
-    }
+    found = answer.json()
+    assert (found["aliases"], found["models"], found["why"]) == ([], ["kilo/a", "kilo/b"], "")
+    assert found["check"] == {"kind": kind, "text": text, "field": "", "name": ""}
 
 
 def test_a_provider_s_aliases_and_no_list(client):
-    found = client.get("/api/providers/claude/models", params={"model": "x-1"}).json()
+    found = client.get(CHOICES.format("claude"), params={"model": "x-1"}).json()
     assert "opus" in found["aliases"]
     assert (found["models"], found["check"]["kind"]) == (None, "warn")
     assert found["why"] == "Claude Code gives no list of models beyond its aliases"
@@ -1351,11 +1347,11 @@ def test_the_server_keeps_a_provider_s_list_a_while(client, monkeypatch):
     clock = [1000.0]
     monkeypatch.setattr(server_launch.time, "monotonic", lambda: clock[0])
     server_launch.forget_model_lists()
-    client.get("/api/providers/kilo/models", params={"model": "kilo/a"})
-    client.get("/api/providers/kilo/models", params={"model": "kilo/b"})
+    client.get(CHOICES.format("kilo"), params={"model": "kilo/a"})
+    client.get(CHOICES.format("kilo"), params={"model": "kilo/b"})
     assert len(asked) == 1
     clock[0] += server_launch.MODEL_LIST_KEPT + 1
-    client.get("/api/providers/kilo/models", params={"model": "kilo/a"})
+    client.get(CHOICES.format("kilo"), params={"model": "kilo/a"})
     assert len(asked) == 2
 
 
@@ -1366,12 +1362,12 @@ def test_the_server_reads_again_a_list_it_could_not_read(client, monkeypatch):
     ]
     monkeypatch.setattr(type(providers.get("kilo")), "model_list", lambda self, env: answers[0])
     server_launch.forget_model_lists()
-    found = client.get("/api/providers/kilo/models", params={"model": "kilo/a"}).json()
+    found = client.get(CHOICES.format("kilo"), params={"model": "kilo/a"}).json()
     assert found["check"]["kind"] == "warn"
     answers.pop(0)
-    found = client.get("/api/providers/kilo/models", params={"model": "kilo/a"}).json()
+    found = client.get(CHOICES.format("kilo"), params={"model": "kilo/a"}).json()
     assert (found["models"], found["check"]["kind"]) == (["kilo/a"], "ok")
 
 
 def test_an_unknown_provider_s_models_are_404(client):
-    assert client.get("/api/providers/nope/models").status_code == 404
+    assert client.get(CHOICES.format("nope")).status_code == 404

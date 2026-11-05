@@ -1640,6 +1640,48 @@ def test_a_built_in_default_the_list_lost_is_named(monkeypatch):
     assert found.detail == "Codex CLI's default gpt-5.4-old: its list no longer has it"
 
 
+def test_a_default_on_a_server_that_refuses_its_key_says_so(serve):
+    server = serve("openai", key="k")
+    _saved("lab", server, key="k")
+    _default_on_server("lab", "opencode", "qwen3-8b")
+    (model_settings.key_folder(state.model_server("lab").id) / model_settings.KEY).write_text("x")
+    probes = {}
+    doctor.check_model_servers(probes)
+    found = doctor.check_default_models(probes)
+    assert found.level == doctor.WARN
+    assert "lab refused the key (401)" in found.detail
+    assert "does not answer" not in found.detail
+
+
+def test_defaults_whose_environment_cannot_be_read_are_said_and_read_once(monkeypatch):
+    state.set_cli_default(state.ModelRef("codex", None, "gpt-5.6-sol"))
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    asked = []
+
+    def layers():
+        asked.append(1)
+        raise agent_env.AgentEnvError("your shell failed")
+
+    monkeypatch.setattr(doctor.agent_env, "layers", layers)
+    found = doctor.check_default_models({})
+    assert found.level == doctor.WARN
+    assert (
+        "Codex CLI's default gpt-5.6-sol: LADO cannot check it: your shell failed" in found.detail
+    )
+    assert len(asked) == 1
+
+
+def test_the_agents_environment_is_read_once_for_all_built_in_defaults(monkeypatch):
+    state.set_cli_default(state.ModelRef("codex", None, "gpt-5.6-sol"))
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    _listing(monkeypatch, "gpt-5.6-sol")
+    asked = []
+    real = doctor.agent_env.layers
+    monkeypatch.setattr(doctor.agent_env, "layers", lambda: asked.append(1) or real())
+    assert doctor.check_default_models({}).level == doctor.OK
+    assert len(asked) == 1
+
+
 def test_a_built_in_default_the_list_has_is_fine(monkeypatch):
     state.set_cli_default(state.ModelRef("codex", None, "gpt-5.6-sol"))
     _listing(monkeypatch, "gpt-5.6-sol")

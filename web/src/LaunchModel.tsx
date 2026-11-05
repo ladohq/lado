@@ -111,16 +111,18 @@ export function useLaunchModel({
   const missing = choice.kind === "kept" && resuming?.model_missing === true;
 
   // A model is its CLI's: another agent CLI takes the field to that CLI's default, or back to
-  // what a resumed session has.
+  // what a resumed session has. No CLI says nothing of that: the agent CLIs are being read again
+  // (another project), and the same one comes back.
   const shownCli = useRef(cli);
   useEffect(() => {
+    if (cli === null) return;
     const before = shownCli.current;
     shownCli.current = cli;
-    if (before?.name === cli?.name) return;
-    if (before !== null && cli !== null && value !== null && choice.kind !== "default") {
+    if (before === null || before.name === cli.name) return;
+    if (value !== null && choice.kind !== "default") {
       setLostNote(`${nameOf(value)} belongs to ${before.title}, so the model is back to ${cli.title}'s default.`);
     }
-    setChoice(cli?.name === resuming?.provider ? cameWith(resuming) : { kind: "default" });
+    setChoice(cli.name === resuming?.provider ? cameWith(resuming) : { kind: "default" });
     setOther(null);
     onClearRefusal();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- when the agent CLI changes

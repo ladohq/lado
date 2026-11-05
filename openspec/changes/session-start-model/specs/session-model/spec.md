@@ -275,7 +275,8 @@ the provider changes to another CLI: it is then dropped, and the resume's change
 #### Scenario: A resume changes the provider
 - **WHEN** the human resumes that session with `--provider claude` and no `--model`
 - **THEN** it has no table, its agents start on Claude Code's default model, and the
-  changes printed include `model: codex gpt-5.6-sol -> CLI default`
+  changes printed include `model: codex gpt-5.6-sol -> CLI default`, or the default's name when
+  Claude Code has one set
 
 #### Scenario: Past a default
 - **WHEN** OpenCode's default is `Локальная Qwen` and the human runs `lado start ~/shop --provider

@@ -11,9 +11,9 @@ import type {
   CloneTarget,
   FolderInfo,
   KitInfo,
+  ModelChoices,
   ProjectLaunch,
   ProviderInfo,
-  ProviderModels,
   RecentFolder,
   ScratchTarget,
   SessionAbout,
@@ -103,19 +103,17 @@ let workspace: { path: string; made: boolean }; // LADO_REPOS, else ~/workspace
 let kits: KitInfo[];
 let abouts: Record<string, SessionAbout>; // by session; none: 404
 let providers: (project: string | null) => Promise<ProviderInfo[]>; // GET /api/providers?project=
-// GET /api/providers/{name}/models?model=: the CLI's aliases, its list and the verdict
-let providerModels: (name: string, model: string) => ProviderModels;
 // GET /api/model-settings and POST /api/session-model/check.
 let modelEntries: { models: { cli: string }[]; servers: unknown[]; defaults: unknown[] };
 let sessionCheck: (asked: unknown) => unknown;
 
 // As lado.model_check words them: Claude Code has aliases and no list; Kilo a list.
-function modelsOf(name: string, model: string): ProviderModels {
+function modelsOf(name: string, model: string): Pick<ModelChoices, "aliases" | "models" | "why" | "check"> {
   const title = name === "claude" ? "Claude Code" : "Kilo CLI";
   const aliases = name === "claude" ? ["sonnet", "opus"] : [];
   const models = name === "claude" ? null : ["kilo/small", "kilo/large"];
   const why = name === "claude" ? "Claude Code gives no list of models beyond its aliases" : "";
-  const verdict: Omit<ProviderModels["check"], "field" | "name"> = !model
+  const verdict: Omit<ModelChoices["check"], "field" | "name"> = !model
     ? { kind: "default", text: `empty: ${title}'s default model; type or pick one of its models` }
     : aliases.includes(model)
       ? { kind: "ok", text: `an alias of ${title}` }
@@ -181,7 +179,6 @@ beforeEach(() => {
   kits = [kit("default"), kit("team")];
   abouts = {};
   providers = async () => [provider("claude"), provider("kilo")];
-  providerModels = modelsOf;
   modelEntries = { models: [], servers: [], defaults: [] };
   sessionCheck = () => ({
     kind: "ok",
@@ -228,8 +225,6 @@ beforeEach(() => {
       }
       if (url.pathname === "/api/kits") return json(kits);
       if (url.pathname === "/api/providers") return json(await providers(url.searchParams.get("project")));
-      const models = /^\/api\/providers\/([^/]+)\/models$/.exec(url.pathname);
-      if (models) return json(providerModels(decodeURIComponent(models[1]), url.searchParams.get("model") ?? ""));
       const choices = /^\/api\/providers\/([^/]+)\/model-choices$/.exec(url.pathname);
       if (choices) {
         const cli = decodeURIComponent(choices[1]);
@@ -1173,6 +1168,19 @@ test("a built-in pick with no default has no such note, and sends the model", as
   await waitFor(() => expect(modelField().textContent).toContain("kilo/large"));
   expect(screen.queryByText(/For this session only/)).toBeNull();
   expect((await startedWith()).model).toBe("kilo/large");
+});
+
+test("a pick stays while the providers are read again, as the same agent CLI comes back", async () => {
+  await kiloWindow();
+  await pickRow("kilo/large");
+  await waitFor(() => expect(modelField().textContent).toContain("kilo/large"));
+  const dialog = screen.getByRole("dialog", { name: "New session" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Project" })); // no project yet: no providers
+  await waitFor(() => expect(modelField().disabled).toBe(true));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Folder" }));
+  await waitFor(() => expect(modelField().disabled).toBe(false));
+  expect(modelField().textContent).toContain("kilo/large");
+  expect(screen.queryByText(/belongs to/)).toBeNull();
 });
 
 test("the CLI's settings past a default send an empty model", async () => {

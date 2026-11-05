@@ -174,7 +174,7 @@ LISTED = base.ModelList(("fast",), ("big-1", "small-1"), "listed models")
     ],
 )
 def test_the_check_s_verdicts(listed, model, kind, text):
-    verdict = model_check.check(_Listed(listed), model, {})
+    verdict = model_check.verdict(_Listed(listed), model, listed)
     assert (verdict.kind, verdict.text) == (kind, text)
 
 
@@ -190,18 +190,11 @@ def test_a_verdict_names_whose_list_it_is():
     assert model_check.verdict(provider, "fast", LISTED, whose="x").text == "an alias of Listed CLI"
 
 
-def test_the_check_lists_nothing_for_an_empty_model():
-    class _Unlisted(_Listed):
-        def model_list(self, env):
-            raise AssertionError("no list for an empty model")
-
-    assert model_check.check(_Unlisted(LISTED), "", {}).kind == model_check.DEFAULT
-
-
 def test_a_provider_without_a_list_warns():
     class _Plain(_Listed):
         model_list = base.Provider.model_list
 
-    verdict = model_check.check(_Plain(LISTED), "x", {})
+    provider = _Plain(LISTED)
+    verdict = model_check.verdict(provider, "x", provider.model_list({}))
     assert verdict.kind == model_check.WARN
     assert verdict.text.startswith("LADO knows no list of this CLI's models: LADO cannot check x")

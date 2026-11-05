@@ -333,8 +333,6 @@ export const getKits = (where: string | null) =>
 export const getProviders = (project: string | null = null) =>
   get<ProviderInfo[]>(project ? `/api/providers?${query({ project })}` : "/api/providers");
 
-export type ProviderModels = components["schemas"]["ProviderModels"];
-
 // Settings → Models (docs/design/ui.md): the configured models and model servers, read
 // anew, no feed. A refusal is a 400 whose `detail` is an EntryRefused.
 export type ModelSettings = components["schemas"]["ModelSettings"];

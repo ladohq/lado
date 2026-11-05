@@ -1226,9 +1226,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     fresh row, which an older read of the running pass does not replace; `snapshot()` the
     `ProvidersPage` (`ready: false` for a provider never read, `checking`, `environment`).
     `GET /api/providers/logins` answers it, `POST /api/providers/check` starts a check, and
-    the login actions put their row and start one; `GET /api/providers/{name}/models` reads
-    the CLI's list kept a minute (`launch.provider_models` over `launch.model_list`), with
-    `fresh` read now and kept;
+    the login actions put their row and start one; `GET /api/providers/{name}/model-choices`
+    reads the CLI's list kept a minute (`launch.model_list`), with `fresh` read now and kept;
     `model_entries.py`: Settings → Models' routes (docs/design/ui.md, Models) over
     `model_settings.py`, one per action of the commands: `listing` (asks no server; empty
     with no lado.db), `add_server` (the warnings and notes as lists), `check_server` (the

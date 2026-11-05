@@ -897,10 +897,11 @@ def test_clear_a_default(client):
 def test_provider_models_fresh_skips_the_kept_list(client, monkeypatch):
     asked = listing(monkeypatch, "kilo", base.ModelList((), ("kilo/a",), "kilo models"))
     server_launch.forget_model_lists()
-    client.get("/api/providers/kilo/models")
-    client.get("/api/providers/kilo/models")
+    choices = "/api/providers/kilo/model-choices"
+    client.get(choices)
+    client.get(choices)
     assert len(asked) == 1
-    client.get("/api/providers/kilo/models", params={"fresh": True})
+    client.get(choices, params={"fresh": True})
     assert len(asked) == 2
-    client.get("/api/providers/kilo/models")
+    client.get(choices)
     assert len(asked) == 2  # the fresh list is kept

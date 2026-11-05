@@ -710,16 +710,6 @@ class ServerCheck(BaseModel):
     notes: list[str]
 
 
-class ProviderModels(BaseModel):
-    """What a provider's CLI takes as a model (Provider.model_list), and the check of the
-    one asked about: its aliases, its own list (None: it gives none, `why`)."""
-
-    aliases: list[str]
-    models: list[str] | None
-    why: str
-    check: ModelCheck
-
-
 class LoginInfo(BaseModel):
     """A CLI's login as its own status command says (Provider.login_status); no value."""
 

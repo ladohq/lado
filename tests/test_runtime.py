@@ -6494,6 +6494,17 @@ def test_a_key_over_plain_http_warns_at_a_start_and_a_spawn(repo, fake_tmux, mon
     assert "KEY-CANARY" not in env["OPENCODE_CONFIG_CONTENT"]
 
 
+def test_another_provider_names_the_default_the_session_goes_to(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    _default(_on_server())
+    _answers(monkeypatch, "qwen3-8b")
+    started = runtime.start_session(str(repo), "s", None, provider="opencode")
+    assert "model: kilo kilo/a -> Локальная Qwen" in started.changes
+
+
 def test_a_worker_takes_the_default_as_it_is_at_its_spawn(repo, fake_tmux, monkeypatch):
     _answers(monkeypatch, "qwen3-8b")
     runtime.start_session(str(repo), "s", None, provider="opencode")

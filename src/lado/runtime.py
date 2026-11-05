@@ -820,7 +820,7 @@ def start_session(
     # other changes nothing.
     last = state.last_start_model(session)
     if old:
-        started.resumed, started.changes = True, _changes(old, sess)
+        started.resumed, started.changes = True, _changes(old, sess, start.name)
         if moved := _default_moved(old, sess, last, start, agent_cli):
             started.changes.append(moved)
             checked.append(f"changed {moved}")
@@ -987,8 +987,9 @@ def _default_moved(
     return f"model: {before} -> {start.name or 'CLI default'}"
 
 
-def _changes(old: state.Session, new: state.Session) -> list[str]:
-    """The settings a resume replaced, as "<what>: <old> -> <new>"."""
+def _changes(old: state.Session, new: state.Session, default: str | None = None) -> list[str]:
+    """The settings a resume replaced, as "<what>: <old> -> <new>"; `default`, the CLI's default
+    model it starts on, is what a table it dropped gives way to."""
     changes = []
     for what, before, after in (
         ("provider", old.provider, new.provider),
@@ -999,7 +1000,8 @@ def _changes(old: state.Session, new: state.Session) -> list[str]:
         if before != after:
             changes.append(f"{what}: {before or 'none'} -> {after or 'none'}")
     if old.power != new.power:
-        changes.append(f"model: {_model_words(old.power)} -> {_model_words(new.power)}")
+        after = default if new.power is None and default else _model_words(new.power)
+        changes.append(f"model: {_model_words(old.power)} -> {after}")
     return changes
 
 

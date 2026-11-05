@@ -712,29 +712,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/providers/{name}/models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Provider Models
-         * @description The provider's CLI's aliases and own list of models, kept a minute (`fresh`:
-         *     read now, as Settings → Models opens a CLI's source), and the check of `model`
-         *     against them, as `lado start --model` checks it; read for the agents of `project`
-         *     (404 for an unknown one) or of no project.
-         */
-        get: operations["provider_models_api_providers__name__models_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/model-settings": {
         parameters: {
             query?: never;
@@ -3409,20 +3386,6 @@ export interface components {
             /** Ready */
             ready: boolean;
         };
-        /**
-         * ProviderModels
-         * @description What a provider's CLI takes as a model (Provider.model_list), and the check of the
-         *     one asked about: its aliases, its own list (None: it gives none, `why`).
-         */
-        ProviderModels: {
-            /** Aliases */
-            aliases: string[];
-            /** Models */
-            models: string[] | null;
-            /** Why */
-            why: string;
-            check: components["schemas"]["ModelCheck"];
-        };
         /** ProviderSuggestion */
         ProviderSuggestion: {
             /** Name */
@@ -5701,55 +5664,6 @@ export interface operations {
                 };
             };
             /** @description no such project */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    provider_models_api_providers__name__models_get: {
-        parameters: {
-            query?: {
-                model?: string;
-                project?: string | null;
-                fresh?: boolean;
-            };
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProviderModels"];
-                };
-            };
-            /** @description refused, with the reason */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description no such provider or project */
             404: {
                 headers: {
                     [name: string]: unknown;

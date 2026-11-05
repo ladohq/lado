@@ -1615,6 +1615,33 @@ def test_a_key_that_cannot_be_read_refuses_the_server_of_the_start():
         model_settings.agent_servers(OPENCODE, start)
 
 
+@pytest.mark.parametrize("key", ['ab"cd', "ab\\cd"], ids=["quote", "backslash"])
+def test_a_key_that_would_break_the_config_leaves_its_server_out(key):
+    saved = entry()
+    other = entry("Шлюз Qwen", model="gw-qwen", server="Шлюз")
+    write_key(saved, key)
+    found, warnings = model_settings.agent_servers(OPENCODE)
+    assert [server.id for server in found] == [other.server]
+    assert len(warnings) == 1 and "LM Studio дома" in warnings[0] and "left out" in warnings[0]
+    assert key not in warnings[0]
+
+
+@pytest.mark.parametrize("key", ['ab"cd', "ab\\cd"], ids=["quote", "backslash"])
+def test_a_key_that_would_break_the_config_refuses_the_start_on_its_server(key):
+    saved = entry()
+    default_on(saved)
+    write_key(saved, key)
+    start = model_settings.start_model(None, OPENCODE)
+    probe = counting_probe(found_on_server("m1"))
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.check_start(start, OPENCODE, {}, probe)
+    assert 'the key of model server "LM Studio дома"' in str(refused.value)
+    assert key not in str(refused.value)
+    assert probe.asked == []
+    with pytest.raises(model_settings.Refused):
+        model_settings.agent_servers(OPENCODE, start)
+
+
 @pytest.mark.parametrize(
     ("model", "name", "server"),
     [

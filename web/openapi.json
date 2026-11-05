@@ -1666,88 +1666,6 @@
         }
       }
     },
-    "/api/providers/{name}/models": {
-      "get": {
-        "summary": "Provider Models",
-        "description": "The provider's CLI's aliases and own list of models, kept a minute (`fresh`:\nread now, as Settings \u2192 Models opens a CLI's source), and the check of `model`\nagainst them, as `lado start --model` checks it; read for the agents of `project`\n(404 for an unknown one) or of no project.",
-        "operationId": "provider_models_api_providers__name__models_get",
-        "parameters": [
-          {
-            "name": "name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Name"
-            }
-          },
-          {
-            "name": "model",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "",
-              "title": "Model"
-            }
-          },
-          {
-            "name": "project",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Project"
-            }
-          },
-          {
-            "name": "fresh",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Fresh"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProviderModels"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "refused, with the reason"
-          },
-          "404": {
-            "description": "no such provider or project"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/model-settings": {
       "get": {
         "summary": "Model Settings Listing",
@@ -9138,47 +9056,6 @@
         ],
         "title": "ProviderLogins",
         "description": "One agent CLI in Settings \u2192 Agent CLIs and environment (lado.logins)."
-      },
-      "ProviderModels": {
-        "properties": {
-          "aliases": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Aliases"
-          },
-          "models": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Models"
-          },
-          "why": {
-            "type": "string",
-            "title": "Why"
-          },
-          "check": {
-            "$ref": "#/components/schemas/ModelCheck"
-          }
-        },
-        "type": "object",
-        "required": [
-          "aliases",
-          "models",
-          "why",
-          "check"
-        ],
-        "title": "ProviderModels",
-        "description": "What a provider's CLI takes as a model (Provider.model_list), and the check of the\none asked about: its aliases, its own list (None: it gives none, `why`)."
       },
       "ProviderSuggestion": {
         "properties": {

@@ -44,6 +44,10 @@ NOT_LISTED_PEEK = "not in its list"
 # taken to work the same): text LADO did not write there must hold neither.
 EXPANDED = ("{env:", "{file:")
 WOULD_EXPAND = f"the agent CLI would expand ({' or '.join(EXPANDED)})"
+# Both put a variable's value into their config's text as it is, inside its JSON string (OpenCode
+# 1.18.35 then stops and prints the text with the key, Kilo 7.8.8 drops all of the config, checked
+# with `debug config`): a key that holds one of these cannot reach them.
+BREAKS_CONFIG = ('"', "\\")
 
 
 # The field of a form a refusal concerns, for the UI ("" for none); the CLI ignores it.
@@ -826,6 +830,21 @@ def check_launch(start: StartModel, provider: providers.Provider) -> None:
             "it, or pick another model",
             field=MODEL_FIELD,
         )
+    _config_key(start.server)
+
+
+def _config_key(server: state.ModelServer) -> str | None:
+    """The kept key of `server` for an agent's config; Refused, naming no part of it, for one
+    LADO does not read or one that would break the config."""
+    key = server_key(server)
+    if key is not None and any(mark in key for mark in BREAKS_CONFIG):
+        raise Refused(
+            f'the key of model server "{server.name}" holds {" or ".join(BREAKS_CONFIG)}, which '
+            "would break the agent CLI's config; give the server another key",
+            field=MODEL_FIELD,
+            retry=True,
+        )
+    return key
 
 
 def check_start(
@@ -878,8 +897,9 @@ def agent_servers(
 ) -> tuple[tuple[base.ServerEntry, ...], list[str]]:
     """The model servers for the config of an agent of `provider`'s CLI, with the models ticked
     for that CLI, whatever it starts on, and the warnings of a launch: a key sent over plain
-    http, what is left out. None for a CLI that holds one model per process. A key file LADO
-    does not read leaves its server out, but is Refused for the server of `start`."""
+    http, what is left out. None for a CLI that holds one model per process. A key LADO does not
+    read, or that would break the config, leaves its server out, but is Refused for the server of
+    `start`."""
     if not provider.runs_on_server or provider.external_whole_process:
         return (), []
     ticked = [model for model in state.models() if model.cli == provider.name]
@@ -906,7 +926,7 @@ def agent_servers(
         if not kept:
             continue
         try:
-            key = server_key(server)
+            key = _config_key(server)
         except Refused as exc:
             if start is not None and start.server is not None and start.server.id == server.id:
                 raise

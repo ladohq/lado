@@ -15,8 +15,9 @@ const clamp = (value: number, { min, max }: Bounds) => Math.round(Math.min(max, 
 export const fitWidth = (width: number, bounds: Bounds, room: number | null) =>
   room === null ? width : Math.max(bounds.min, Math.min(width, Math.floor(room)));
 
-// The width (or height) of an element as it is laid out, or null before its first layout
-// (and in jsdom, which has no ResizeObserver and lays out nothing). The element is the one
+// The width of an element's content, or the height of its border box, as it is laid out, or
+// null before its first layout (and in jsdom, which has no ResizeObserver and lays out
+// nothing). The element is the one
 // the returned ref is set on: it is observed as soon as it is drawn, however late, and again
 // when another element takes its place.
 function useSize<T extends HTMLElement>(side: "width" | "height"): [(element: T | null) => void, number | null] {
@@ -24,7 +25,9 @@ function useSize<T extends HTMLElement>(side: "width" | "height"): [(element: T 
   const [size, setSize] = useState<number | null>(null);
   useEffect(() => {
     if (element === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => setSize(entry.contentRect[side]));
+    const observer = new ResizeObserver(([entry]) =>
+      setSize((side === "height" && entry.borderBoxSize?.[0]?.blockSize) || entry.contentRect[side]),
+    );
     observer.observe(element);
     return () => observer.disconnect();
   }, [element, side]);

@@ -5,7 +5,7 @@ import { afterEach, expect, test } from "vitest";
 
 import type { RecommendationInfo } from "./api";
 import { clock } from "./ChatText";
-import { primaryOf, Recommendation, RecommendationLine } from "./Recommendation";
+import { oneLine, primaryOf, Recommendation, RecommendationBar, RecommendationLine } from "./Recommendation";
 
 const AT = "2026-10-03T12:04:00.000Z";
 
@@ -80,4 +80,103 @@ test("the primary option is the recommended one, else the first", () => {
   expect(primaryOf(options, rec({ state: "asked", choice: null }))).toBe("approve");
   expect(primaryOf(options, rec({ choice: "maybe" }))).toBe("approve");
   expect(primaryOf(options, null)).toBe("approve");
+});
+
+// The waiting card's line (docs/design/ui.md, The waiting card).
+const OPTIONS = ["approve", "reject"];
+const label = (option: string) => option.toUpperCase();
+const bar = (given: RecommendationInfo | null, more: { whole?: boolean } = {}) =>
+  render(<RecommendationBar rec={given} options={OPTIONS} label={label} {...more} />);
+
+test("the card's line names the option as its button does, then the text on one line", () => {
+  bar(rec({ text: "Reject:\n\n**no** `test`, see [the log](http://x)." }));
+  const line = block().querySelector("button") as HTMLButtonElement;
+  expect(block().className).toBe("rec-bar");
+  expect(line.querySelector(".avatar.mini")?.textContent).toBe("S");
+  expect(line.querySelector(".rec-bar-name")?.textContent).toBe("Supervisor recommends REJECT:");
+  expect(line.querySelector(".rec-bar-text")?.textContent).toBe("Reject: no test, see the log.");
+  expect(line.getAttribute("aria-expanded")).toBe("false");
+});
+
+test("a disagreement stands right after the option, in orange, so a cut never takes it", () => {
+  bar(rec({ disagrees: true }));
+  expect(block().querySelector(".rec-bar-name")?.textContent).toBe("Supervisor recommends REJECT · disagrees with reviewer:");
+  expect(block().querySelector(".rec-bar-name .rec-differs")?.textContent).toBe(" · disagrees with reviewer");
+});
+
+test.each([[null], ["maybe"]])("with the choice %s the line has no option of the card's", (choice) => {
+  bar(rec({ choice }));
+  expect(block().querySelector(".rec-bar-name")?.textContent).toBe("Supervisor's recommendation:");
+});
+
+test("a click opens the line to its text as Markdown in a box that scrolls, a second closes it", () => {
+  bar(rec());
+  const line = block().querySelector("button") as HTMLButtonElement;
+  fireEvent.click(line);
+  expect(line.getAttribute("aria-expanded")).toBe("true");
+  const box = block().querySelector(".rec-bar-body") as HTMLElement;
+  expect(box.getAttribute("tabindex")).toBe("0");
+  expect(box.querySelector(".chat-body strong")?.textContent).toBe("no");
+  expect(block().querySelector(".rec-bar-text")).toBeNull();
+  fireEvent.click(line);
+  expect(block().querySelector(".rec-bar-body")).toBeNull();
+});
+
+test("in the expanded card the text is whole, with nothing to open", () => {
+  bar(rec(), { whole: true });
+  expect(block().className).toBe("rec-bar whole");
+  expect(block().querySelector("button")).toBeNull();
+  expect(block().querySelector(".rec-bar-body .chat-body strong")?.textContent).toBe("no");
+});
+
+test.each([
+  ["asked", "Supervisor is preparing a recommendation…"],
+  ["missing", "The supervisor gave no recommendation"],
+] as const)("a recommendation %s is a muted line in the card too", (state, text) => {
+  bar(rec({ state, text: "", choice: null, at: null }));
+  expect(block().className).toBe("rec-bar waiting");
+  expect(block().textContent).toContain(text);
+  expect(block().querySelector("button")).toBeNull();
+});
+
+test("none asked shows no line", () => {
+  const { container } = bar(null);
+  expect(container.innerHTML).toBe("");
+});
+
+test("a text on one line loses its Markdown's marks and its breaks", () => {
+  expect(oneLine("# Head\n\n- **a** and _b_\n> `c` [d](http://e) ![f](g.png)")).toBe("Head a and b c d f");
+});
+
+test.each([
+  ["set max_retries in test_chat.py", "set max_retries in test_chat.py"],
+  ["2*3 and 4*5 pages", "2*3 and 4*5 pages"],
+  ["see ~/.lado/lado.db", "see ~/.lado/lado.db"],
+  ["`max_retries` and `*.py` stay", "max_retries and *.py stay"],
+  ["**bold** _em_ *em* ~~gone~~", "bold em em gone"],
+])("a text on one line keeps what is no mark: %s", (text, line) => {
+  expect(oneLine(text)).toBe(line);
+});
+
+test.each([
+  ["**a** **b**", "a b"],
+  ["__a__ and __b__, ~~c~~ ~~d~~", "a and b, c d"],
+  ["***both***", "both"],
+  ["**Approve: `x.py` is green**", "Approve: x.py is green"],
+  ["_see `a_b`_ now", "see a_b now"],
+  ["[`x.py`](http://e) is it", "x.py is it"],
+])("a text on one line takes each pair of marks, around code too: %s", (text, line) => {
+  expect(oneLine(text)).toBe(line);
+});
+
+test.each([
+  ["call `arr[0](x)` first", "call arr[0](x) first"],
+  ["`**not bold**` stays", "**not bold** stays"],
+  ["``a`b`` stays", "a`b stays"],
+  ["run:\n```py\nfoo()\nbar()\n```\ndone", "run: foo() bar() done"],
+  ["~~~\n- a_b_\n~~~", "- a_b_"],
+  ["run:\n```\nfoo()", "run: foo()"],
+  ["```foo``` is wrong\nThe rest.", "foo is wrong The rest."],
+])("a text on one line keeps its code as it is: %s", (text, line) => {
+  expect(oneLine(text)).toBe(line);
 });

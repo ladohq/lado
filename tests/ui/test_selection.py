@@ -241,7 +241,7 @@ def test_no_bar_for_an_own_answer_typed_in_the_waiting_card(page: Page, server, 
     own.evaluate("f => { f.focus(); f.setSelectionRange(0, 4); }")
     page.wait_for_timeout(200)
     expect(bar(page)).to_have_count(0)
-    select(card.get_by_role("listitem").first, "Pick one")
+    select(card.get_by_role("region", name="Context of the card"), "Pick one")
     expect(bar(page)).to_be_visible()
     shot(page)
 

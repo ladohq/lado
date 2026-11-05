@@ -4,7 +4,9 @@
 // send. Send uploads each file not uploaded yet (an artifact of the session's scope, so a
 // file uploaded before a failure is not uploaded again, whoever it goes to), then sends the
 // message with their names. Its file handling is the module the waiting card's fields share
-// (attachFiles.tsx).
+// (attachFiles.tsx). While a field of the waiting card answers, the chat folds it (`folded`):
+// it stays mounted and hidden, so its text, files and quotes live on, and ComposerFold
+// stands in its place.
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type RefObject } from "react";
 
 import { ApiError, writeMessage } from "./api";
@@ -22,19 +24,23 @@ import {
   useOwnFiles,
 } from "./attachFiles";
 import { MOST_LINES, useGrow } from "./fieldHeight";
+import { ActivityIcon } from "./icons";
 import { withQuote } from "./quote";
 import { registerComposer, takePending } from "./quotes";
+import type { Fold } from "./WaitingCard";
 
 export function Composer({
   session,
   stopped,
   to,
   inputRef,
+  folded = false,
 }: {
   session: string;
   stopped: boolean;
   to?: string;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
+  folded?: boolean;
 }) {
   const [text, setText] = useState("");
   const [files, setFiles] = useOwnFiles();
@@ -59,14 +65,14 @@ export function Composer({
     return registerComposer(session, insert);
   }, [session]);
   useEffect(() => {
-    if (!quoted.current) return;
+    if (!quoted.current || folded) return;
     quoted.current = false;
     const box = field.current;
     if (!box) return;
     box.focus();
     box.setSelectionRange(box.value.length, box.value.length);
     box.scrollTop = box.scrollHeight;
-  }, [text, field]);
+  }, [text, field, folded]);
 
   // Attach what the limits allow; each file refused is named at the field, the rest stay.
   function attach(all: File[]) {
@@ -79,7 +85,7 @@ export function Composer({
   // zone in its frame; dropped anywhere there, they are attached to this composer, but on
   // the waiting card, whose fields take their own (WaitingCard.tsx).
   const form = useRef<HTMLFormElement>(null);
-  const dropping = useDropZone(form, attach, { closest: ".chat, .agent-page", ignoreInside: ".waiting-card", off: stopped });
+  const dropping = useDropZone(form, attach, { closest: ".chat, .agent-page", ignoreInside: ".waiting-card", off: stopped || folded });
 
   function remove(key: number) {
     release(files.filter((one) => one.key === key));
@@ -128,6 +134,7 @@ export function Composer({
     <form
       ref={form}
       className="composer"
+      hidden={folded}
       onPaste={paste}
       onSubmit={(event) => {
         event.preventDefault();
@@ -170,5 +177,22 @@ export function Composer({
         </p>
       )}
     </form>
+  );
+}
+
+// The composer folded: what the waiting card's field in its place answers, and the way back.
+export function ComposerFold({ fold, write }: { fold: Fold; write: () => void }) {
+  return (
+    <p className="composer-fold">
+      <ActivityIcon />
+      <span>
+        {fold.line}
+        {fold.write && (
+          <button type="button" className="link-button" onClick={write}>
+            Write to supervisor instead
+          </button>
+        )}
+      </span>
+    </p>
   );
 }

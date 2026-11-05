@@ -104,7 +104,11 @@ choices' limit is `--waiting-choices-max`: 160 px, on a phone 148 px.
 **D15. The flaky test.** `test_an_own_answer_expands_the_card_above_the_keyboard` measures a field
 scrolled into a list by the expansion, after `moveViewport`. The expansion and the scroll go, so
 the test is replaced by AC-13's. The developer first reproduces the failure on main in a parallel
-run or names why it cannot be, then removes the BACKLOG.md entry and says which it was.
+run or names why it cannot be, then removes the BACKLOG.md entry and says which it was. It was a
+race of the test: `.app`'s height shows at once, but the field comes into view only after the next
+frame (ResizeObserver, `cardHeight`, an effect), and `within` read it once, between the two.
+Reproduced on main under load, 7 of 160: the field at 384–464 in an app of 400 px, 226–306 by
+500 ms later. A footer's field needs no such scroll, so AC-13's test has no race (0 of 160).
 
 ## Risks
 

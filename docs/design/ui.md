@@ -839,7 +839,7 @@ Built in the chat task (2026-10-03):
   most 6 choices of at most 160 characters each, no duplicates; no choices and no free
   answer is refused. A question is a message of kind `question` to `human` with its
   `choices`, `free_answer` and `question_state` (`open`, `answered`, `dismissed`,
-  `closed`). The answer (`Answer to #<id>: <choice or the first line>`, the rest in the
+  `closed`, `stopped`). The answer (`Answer to #<id>: <choice or the first line>`, the rest in the
   body) or the dismissal (`Dismissed #<id>`, the human's comment as its body when they
   wrote one; feature/question-answer, 2026-10-10) is a message from `human` to the agent with
   `reply_to` and `choice`, queued in the transaction that sets the question's outcome and
@@ -851,8 +851,9 @@ Built in the chat task (2026-10-03):
   attached to its message, checked first (at most 10, every name found, else the call is
   refused whole); an own answer of files only is an answer, its summary
   `Answer to #<id>: <n> file(s): <names>`. `lado answer` and the popup attach none. When the agent is forgotten
-  (`runtime.close_worker`: finish, a run's end or cancel, a failed spawn; `lado stop`), its
-  open questions are `closed` in the same transaction.
+  (`runtime.close_worker`: finish, a run's end or cancel, a failed spawn), its open
+  questions are `closed` in the same transaction; every stop of the session makes the
+  session's open questions `stopped` (docs/design/agents.md).
 - **Where the human asked**: LADO's instructions to the supervisor say to answer
   `[from human] …` with `send_message(to="human")` or `ask_human`, and text typed into its
   window in the window. The forgotten-reply check: at a turn's end, before the queue is
@@ -960,8 +961,9 @@ Built in the chat task (2026-10-03):
   its choices faded, the chosen one marked "✓" in `--done` (the only place the choice
   shows), the supervisor's recommendation's quiet line, if one was given (The
   supervisor's recommendation, below), and the human's reply in the card (Answer in the
-  question card); "Closed: the agent left" when its agent was
-  forgotten. The reply's text comes from the answer's fields, never from parsing the
+  question card); "Closed: the agent left" when its agent ended or was finished in a
+  running session (`closed`), "Closed: the session stopped" when a stop closed it
+  (`stopped`; its `answered_by` is LADO's message to the supervisor, no reply). The reply's text comes from the answer's fields, never from parsing the
   core's line (`replyOf`): the `choice` with the body under it as a comment; else a body
   that is not empty (the whole text, `runtime._human_text`); else the summary without
   `Answer to #N: ` (as `runtime.answer_question` writes it). A dismissal is told by its
@@ -1635,7 +1637,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   webview may open a new tab in the system browser, without the cookie; the Desktop stage
   decides.
 - **Stop** asks in a popover by its button: `Stop session "<name>"?`, what it does from
-  `stop-preview` (its agents are closed, the messages they did not get are dropped,
+  `stop-preview` (its agents are closed, the messages they did not get are dropped, the
+  open questions to the human are closed, each of these two only when there are any,
   branches, worktrees, open runs and the history stay, it can be resumed) and the buttons
   `Stop and forget` and `Stop <name>`; the name is in the request's address. The page
   stays on the session. **Stop and forget** (decided 2026-10-18, LAD-92; mockup

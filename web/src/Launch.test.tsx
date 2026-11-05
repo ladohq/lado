@@ -1386,6 +1386,27 @@ test("Stop from the head says what it does, stops the session and the page stays
   expect(screen.getByRole("region", { name: "Session lado" })).toBeTruthy(); // the page stays
 });
 
+test.each([
+  [0, []],
+  [1, ["1 open question to you is closed"]],
+  [2, ["2 open questions to you are closed"]],
+])("Stop says how many open questions it closes: %i", async (questions, line) => {
+  answers["GET /api/sessions/lado/stop-preview"] = () =>
+    json({ agents: ["supervisor"], dropped: 1, questions, open_runs: [], worktrees: [] });
+  open("/sessions/lado");
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(head()).getByRole("button", { name: "Stop session…" }));
+  const asked = await screen.findByRole("dialog", { name: 'Stop session "lado"?' });
+  await within(asked).findByText("its agent is closed");
+  expect(within(asked).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+    "its agent is closed",
+    "1 message they have not got is dropped",
+    ...line,
+    "branches, worktrees and the history stay",
+    "you can resume it later",
+  ]);
+});
+
 test("Stop of a session whose tmux session is gone is in its head beside Resume", async () => {
   sessions = [session("lado", { status: "tmux_gone" })];
   answers["GET /api/sessions/lado/stop-preview"] = () => json({ agents: [], dropped: 0, open_runs: [], worktrees: [] });

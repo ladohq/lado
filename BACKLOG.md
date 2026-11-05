@@ -575,6 +575,18 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## `lado server stop` by hand in the container stops every session
+
+Size: S. Why here: only a human in the container's shell gets there, and a restart of the
+server there costs the sessions' agents and open questions, where outside it costs nothing.
+
+In LADO's container the UI server's end stops every session of its `LADO_HOME`
+(`runtime.stop_for_container`), which is right when the container stops, but `lado server
+stop` typed by hand ends the server the same way, with the container still running.
+Wanted: a stop by hand in a running container either leaves the sessions, as outside a
+container, or says first what it stops.
+Found: 2026-11-04, lado/lad-199/task-lad-199 (LAD-199).
+
 ## On a phone the composer lies over the waiting card's tabs when its keyboard opens
 
 Size: S. Why here: the human writes to the supervisor with a card waiting and sees the

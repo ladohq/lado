@@ -5094,8 +5094,112 @@ def test_stopping_the_session_closes_its_open_questions(repo, fake_tmux):
     _session_with_worker(repo)
     runtime.ask_human("s", "w1", "first?")
     runtime.ask_human("s", "supervisor", "second?")
+    assert runtime.stop_preview("s").questions == 2
+    assert runtime.stop_session("s").questions == 2
+    assert _question_states() == [state.QUESTION_STOPPED, state.QUESTION_STOPPED]
+
+
+def test_the_containers_stop_marks_the_open_questions_stopped(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.ask_human("s", "supervisor", "which port?")
+    assert runtime.stop_for_container() == ["s"]
+    assert _question_states() == [state.QUESTION_STOPPED]
+
+
+def test_a_reply_to_a_stopped_question_says_so_and_queues_nothing(repo, fake_tmux):
+    question = _asked(repo)
     runtime.stop_session("s")
-    assert _question_states() == [state.CLOSED, state.CLOSED]
+    before = state.list_messages("s")
+    refused = f"question #{question.id} is stopped"
+    with pytest.raises(runtime.LadoError, match=refused):  # the session stopped
+        runtime.answer_question("s", question.id, text="yes")
+    assert state.list_messages("s") == before
+    runtime.start_session(str(repo), "s", None)
+    before = state.list_messages("s")
+    with pytest.raises(runtime.LadoError, match=refused):  # and resumed
+        runtime.answer_question("s", question.id, text="yes")
+    assert state.list_messages("s") == before
+
+
+def _notices():
+    return [m for m in state.list_messages("s") if "closed unanswered" in m.summary]
+
+
+def test_the_resumed_supervisor_gets_the_questions_the_stop_closed(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.ask_human("s", "supervisor", "Which port?", "The preview needs one.", ["8123", "8200"])
+    runtime.ask_human("s", "w1", "Merge now?", None, ["yes"], False)
+    runtime.ask_human("s", "w1", "Why red?")
+    first, second, third = [m.id for m in state.list_messages("s") if m.kind == state.QUESTION]
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    to_lead = [m for m in state.list_messages("s") if m.state == state.PENDING]
+    assert [(m.sender, m.summary) for m in to_lead] == [
+        ("lado", "session resumed: 0 open runs"),
+        ("lado", "3 questions to the human closed unanswered by the stop"),
+    ]
+    assert to_lead[1].recipient == "supervisor"
+    assert to_lead[1].body == (
+        f"#{first} from supervisor: Which port?\n"
+        "The preview needs one.\n"
+        "Choices: 8123, 8200 (or an answer in the human's own words)\n"
+        f"#{second} from w1: Merge now?\n"
+        "Choices: yes\n"
+        f"#{third} from w1: Why red?\n"
+        "No choices: the human answers in their own words.\n"
+        "No one answered these. Ask again with ask_human what is still needed; a run's new "
+        "worker may ask its own again in its step."
+    )
+
+
+def test_one_stopped_question_is_named_in_the_singular(repo, fake_tmux):
+    _asked(repo)
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    [notice] = _notices()
+    assert notice.summary == "1 question to the human closed unanswered by the stop"
+
+
+def test_with_nothing_open_a_resume_says_nothing_of_questions(repo, fake_tmux):
+    question = _asked(repo)
+    runtime.answer_question("s", question.id, text="yes")
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    assert _notices() == []
+
+
+def test_a_question_is_told_once_after_its_notice_was_read(repo, fake_tmux):
+    _asked(repo)
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    [notice] = _notices()
+    with state.connect() as db:
+        db.execute("UPDATE messages SET state = ? WHERE id = ?", (state.READ, notice.id))
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    assert [m.id for m in _notices()] == [notice.id]
+
+
+def test_a_stop_before_the_notice_was_read_tells_the_question_again(repo, fake_tmux):
+    question = _asked(repo)
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    dropped, told = _notices()
+    assert (dropped.state, told.state) == (state.DROPPED, state.PENDING)
+    assert state.get_message("s", question.id).answered_by == told.id
+
+
+def test_a_failed_resume_leaves_the_question_to_the_next_one(repo, fake_tmux, monkeypatch):
+    _asked(repo)
+    runtime.stop_session("s")
+    with monkeypatch.context() as m:
+        m.setattr(tmux, "new_session", _fail)
+        with pytest.raises(tmux.TmuxError):
+            runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None)
+    assert [m.state for m in _notices()] == [state.DROPPED, state.PENDING]
 
 
 def _human_writes(text="merge w1?", agent="supervisor"):

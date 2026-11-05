@@ -1934,7 +1934,7 @@ def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(l
         state.queue_message("s", "lado", recipient, "hi", body)
         if mark:
             state.take_pending("s", recipient, mark)
-    agents, dropped = state.stop_session("s")
+    agents, dropped, _ = state.stop_session("s")
     assert [a.name for a in agents] == ["supervisor", "w1"]
     assert dropped == 3
     assert state.get_session("s").stopped_at
@@ -2117,6 +2117,100 @@ def test_an_answer_goes_only_to_a_running_agent(lado_home):
 
 def _yes(question):
     return state.Reply(question, f"Answer to #{question}: yes", "", "yes", state.ANSWERED)
+
+
+@pytest.mark.parametrize(
+    "stop",
+    [
+        lambda: state.stop_session("s"),
+        lambda: state.stop_session("s", gone=True),
+        state.stop_for_container,
+        lambda: state.give_up_resume("s"),
+        lambda: state.fail_resume(state.get_session("s"), ""),
+    ],
+    ids=["stop_session", "gone", "stop_for_container", "give_up_resume", "fail_resume"],
+)
+def test_every_stop_marks_the_open_questions_stopped(lado_home, stop):
+    _session_with(_agent(status=state.IDLE))
+    question = state.add_question("s", "w1", "Merge?", "", ["yes"], True)
+    stop()
+    assert state.get_message("s", question).question_state == state.QUESTION_STOPPED
+
+
+@pytest.mark.parametrize(
+    "end",
+    [
+        lambda: state.delete_agent("s", "w1"),
+        lambda: state.agent_ended("s", "w1", "its CLI exited"),
+    ],
+    ids=["delete_agent", "agent_ended"],
+)
+def test_an_agents_end_in_a_running_session_keeps_closed(lado_home, end):
+    _session_with(_agent(status=state.IDLE))
+    question = state.add_question("s", "w1", "Merge?", "", ["yes"], True)
+    end()
+    assert state.get_message("s", question).question_state == state.CLOSED
+
+
+def test_a_stop_counts_the_open_questions_it_closes(lado_home):
+    _session_with(_agent(status=state.IDLE))
+    state.add_question("s", "w1", "Merge?", "", None, True)
+    state.add_question("s", "w1", "Port?", "", None, True)
+    state.reply_to_questions("s", [_yes(state.add_question("s", "w1", "Done?", "", None, True))])
+    assert state.open_questions("s") == 2
+    assert state.stop_session("s")[2] == 2
+    assert state.open_questions("s") == 0
+
+
+def _stopped_question():
+    _session_with(_agent(status=state.IDLE))
+    question = state.add_question("s", "w1", "Merge?", "", None, True)
+    state.stop_session("s")
+    return question
+
+
+def test_a_stopped_question_is_untold_until_a_notice_names_it(lado_home):
+    question = _stopped_question()
+    [untold] = state.untold_questions("s")
+    assert untold.id == question
+    notice = state.tell_questions("s", [question], "closed", "#1", [("a", "r")])
+    assert state.untold_questions("s") == []
+    assert state.get_message("s", question).answered_by == notice
+    sent = state.get_message("s", notice)
+    assert (sent.sender, sent.recipient, sent.state) == ("lado", "supervisor", state.PENDING)
+    assert (sent.summary, sent.body) == ("closed", "#1")
+    assert state.message_attachments(notice) == [("a", "r")]
+
+
+def test_a_question_whose_notice_a_stop_dropped_is_untold_again(lado_home):
+    question = _stopped_question()
+    state.tell_questions("s", [question], "closed", "#1")
+    state.stop_session("s")
+    assert [m.id for m in state.untold_questions("s")] == [question]
+
+
+def test_a_question_whose_notice_was_read_stays_told(lado_home):
+    question = _stopped_question()
+    notice = state.tell_questions("s", [question], "closed", "#1")
+    with state.connect() as db:
+        db.execute("UPDATE messages SET state = ? WHERE id = ?", (state.READ, notice))
+    state.stop_session("s")
+    assert state.untold_questions("s") == []
+
+
+def test_only_the_sessions_stopped_questions_are_untold(lado_home):
+    _session_with(_agent(status=state.IDLE))
+    closed = state.add_question("s", "w1", "Agent left?", "", None, True)
+    state.delete_agent("s", "w1")
+    state.add_agent(_agent(status=state.IDLE))
+    answered = state.add_question("s", "w1", "Answered?", "", None, True)
+    state.reply_to_questions("s", [_yes(answered)])
+    state.add_session(state.Session("other", "/r", None, provider="claude"))
+    state.add_question("other", "w1", "Elsewhere?", "", None, True)
+    state.stop_session("other")
+    state.stop_session("s")
+    assert state.get_message("s", closed).question_state == state.CLOSED
+    assert state.untold_questions("s") == []
 
 
 def test_the_replies_to_questions_are_written_together(lado_home):

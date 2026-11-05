@@ -6206,7 +6206,8 @@
                   "open",
                   "answered",
                   "dismissed",
-                  "closed"
+                  "closed",
+                  "stopped"
                 ]
               },
               {
@@ -8835,6 +8836,10 @@
             "type": "integer",
             "title": "Dropped"
           },
+          "questions": {
+            "type": "integer",
+            "title": "Questions"
+          },
           "open_runs": {
             "items": {
               "type": "string"
@@ -8854,6 +8859,7 @@
         "required": [
           "agents",
           "dropped",
+          "questions",
           "open_runs",
           "worktrees"
         ],

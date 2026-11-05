@@ -379,7 +379,16 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   turn; one the core refuses refuses them all, with nothing changed (`answer_question` and
   `dismiss_question` are one-reply calls of it).
   No agent may be named `human` or `lado` (`state.RESERVED`). Messages to `human` are never
-  dropped (stop, finish), and a forgotten agent's open questions are `closed`. LADO's
+  dropped (stop, finish). The open questions of an agent that ended or was finished in a
+  running session are `closed`; every stop of a session (`state._stop_session`) makes the
+  session's open questions `stopped`, as no agent is left to get an answer and a resume
+  starts a new conversation. A resume (`runs.resume`, the one way back) then queues for the
+  new supervisor, after its `session resumed`, one message from LADO listing the `stopped`
+  questions no supervisor was told of, with their artifacts, to ask again what is still
+  needed. `answered_by` of a `stopped` question holds that message's id: it is told once,
+  and again only when the message was `dropped` (a failed resume, or a stop before the
+  supervisor read it). A reply to a `stopped` question is refused, also while the session
+  is stopped (`question #<id> is stopped`). LADO's
   instructions tell the supervisor to answer where the human asked: a `[from human]`
   message with `send_message(to="human")` or `ask_human`, text typed into its window in the
   window. At each turn's end, before the queue is handed over, the human's messages the

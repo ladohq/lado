@@ -117,6 +117,13 @@ function stopItems(preview: StopPreview): string[] {
             : `${preview.dropped} messages they have not got are dropped`,
         ]
       : []),
+    ...(preview.questions > 0
+      ? [
+          preview.questions === 1
+            ? "1 open question to you is closed"
+            : `${preview.questions} open questions to you are closed`,
+        ]
+      : []),
     runs > 0
       ? `branches, worktrees, ${plural(runs, "open run")} and the history stay`
       : "branches, worktrees and the history stay",

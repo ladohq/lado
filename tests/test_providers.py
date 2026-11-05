@@ -1,3 +1,4 @@
+import dataclasses
 import importlib
 import inspect
 import json
@@ -1376,6 +1377,29 @@ GATEWAY = base.ServerEntry(
     "KEY-CANARY",
     (("gw-opus", "Шлюз Opus"),),
 )
+
+
+def _limit_of(repo, provider, limit):
+    server = dataclasses.replace(HOME_SERVER, limits={"qwen3-8b": limit})
+    launch = _family_launch(repo, provider, servers=(server,))
+    models = json.loads(launch.env[FAMILY[provider]])["provider"]["lado-aaaa1111"]["models"]
+    assert models["qwen/qwen3-coder"] == {"name": "Рабочая Qwen"}
+    return models["qwen3-8b"]
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+@pytest.mark.parametrize(
+    ("limit", "written"),
+    [
+        (base.Limit(65536), {"context": 65536, "output": 8192}),
+        (base.Limit(24000), {"context": 24000, "output": 6000}),
+        (base.Limit(65536, 2048), {"context": 65536, "output": 2048}),
+        (base.Limit(65536, 100000), {"context": 65536, "output": 16384}),
+        (base.Limit(3), {"context": 3, "output": 1}),
+    ],
+)
+def test_a_known_context_goes_to_the_config_with_its_output(repo, provider, limit, written):
+    assert _limit_of(repo, provider, limit) == {"name": "Локальная Qwen", "limit": written}
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))

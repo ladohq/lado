@@ -692,3 +692,63 @@ def test_redirect_to_no_url_is_named_so(serve):
     with pytest.raises(ms.ProbeError) as raised:
         ms.probe(server.url)
     assert "(GET /v1/models: 301 to a location that is not a URL)" in str(raised.value)
+
+
+# What a server reports of a model's context.
+
+
+def test_lm_studio_reports_what_it_loaded_not_what_a_model_can_take(serve):
+    server = serve("lmstudio-loaded")
+    assert ms.context_limits(server.url, None) == {"qwen": base.Limit(65536)}
+
+
+def test_ollama_reports_its_running_model(serve):
+    server = serve("ollama-running")
+    assert ms.context_limits(server.url, None) == {fake.OLLAMA_MODELS[0]: base.Limit(8192)}
+
+
+def test_a_gateway_reports_in_its_list(serve):
+    server = serve("gateway-limits")
+    assert ms.context_limits(server.url, None) == {
+        "small": base.Limit(16000, 2048),
+        "float": base.Limit(16000),
+        "bad-output": base.Limit(16000),
+    }
+
+
+@pytest.mark.parametrize("profile", ["openai", "unknown", "forbidden", "gateway-400"])
+def test_a_server_that_reports_nothing_has_no_limits(serve, profile):
+    assert ms.context_limits(serve(profile).url, None) == {}
+
+
+def test_limits_of_a_closed_port_are_none():
+    assert ms.context_limits(f"http://127.0.0.1:{closed_port()}", None) == {}
+
+
+def test_a_silent_server_costs_one_ceiling(serve, monkeypatch):
+    monkeypatch.setattr(ms, "LIMIT_TIMEOUT", 0.2)
+    server = serve("hang")
+    began = time.monotonic()
+    assert ms.context_limits(server.url, None) == {}
+    assert time.monotonic() - began < 1
+
+
+def test_limits_are_asked_with_the_key_of_the_server(serve):
+    server = serve("gateway-limits", key="secret")
+    assert ms.context_limits(server.url, None) == {}
+    assert "small" in ms.context_limits(server.url, "secret")
+
+
+def test_limits_follow_no_redirect(serve):
+    target = serve("gateway-limits")
+    server = serve("redirect", location=target.url)
+    assert ms.context_limits(server.url, "secret") == {}
+    assert target.requests == []
+
+
+def test_limits_ask_with_no_post(serve):
+    server = serve("gateway-limits")
+    ms.context_limits(server.url, None)
+    assert sorted(server.paths()) == sorted(
+        [("GET", fake.LMSTUDIO_MODELS), ("GET", fake.OLLAMA_RUNNING), ("GET", fake.MODELS)]
+    )

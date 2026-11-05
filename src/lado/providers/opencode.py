@@ -23,6 +23,9 @@ class OpenCodeProvider(opencode_family.OpenCodeFamily):
     install_hint = "install it: `npm install -g opencode-ai`"
     tested_version = TESTED_VERSION
     config_file_name = "opencode.json"
+    # The fixed part of an agent's request is about 21K tokens on a real model (role, skills,
+    # tools; 1.18.35, measured in the human's check), plus room to work.
+    min_context = 32768
     # `opencode agent list`, 1.18.35, but compaction, summary and title.
     BUILT_IN_AGENTS = ("build", "plan", "general", "explore")
     # How launch_command maps them, against OpenCode's own defaults (`opencode debug agent

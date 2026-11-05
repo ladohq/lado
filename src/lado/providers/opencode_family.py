@@ -58,6 +58,10 @@ ABORTED = "MessageAbortedError"
 SERVER_PROVIDER = "lado-"
 SERVER_PACKAGE = "@ai-sdk/openai-compatible"  # ships with both; nothing to fetch at a first run
 MODEL_MEMORY = "model.json"  # the CLI's last /model picks, in its state folder
+# `max_tokens` of a model with no output reported. OpenCode compacts near context - output and
+# sends output as max_tokens (1.18.35, Kilo 7.8.8 alike): their default of 32000 leaves a small
+# model nothing, so it is a quarter of the context at most.
+DEFAULT_OUTPUT = 8192
 
 
 def without_servers(found: object) -> object:
@@ -78,6 +82,15 @@ def without_servers(found: object) -> object:
     if isinstance(found, list):
         return [without_servers(item) for item in found if not ours(item)]
     return found
+
+
+def model_entry(name: str, limit: base.Limit | None) -> dict:
+    """A model of a server in the config. `limit` holds both numbers or is left out: OpenCode
+    1.18.35 refuses a config whose `limit` has no `output`."""
+    if limit is None:
+        return {"name": name}
+    output = max(1, min(limit.output or DEFAULT_OUTPUT, limit.context // 4))
+    return {"name": name, "limit": {"context": limit.context, "output": output}}
 
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")  # the colours of `auth list`
@@ -237,7 +250,9 @@ class OpenCodeFamily(base.Provider):
             "npm": SERVER_PACKAGE,
             "name": f"LADO · {server.name}",
             "options": options,
-            "models": {model: {"name": name} for model, name in server.models},
+            "models": {
+                model: model_entry(name, server.limits.get(model)) for model, name in server.models
+            },
         }
 
     def config(

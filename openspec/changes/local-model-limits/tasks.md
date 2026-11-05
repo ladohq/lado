@@ -7,11 +7,11 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-local-model-
 
 ## 2. Limits
 
-- [ ] 2.1 `model_servers.context_limits`, `Limit` (D1). Check: `tests/test_model_servers.py`.
-- [ ] 2.2 `ServerEntry.limits`, `agent_servers` reads the servers at once (D2). Check:
+- [x] 2.1 `model_servers.context_limits`, `Limit` (D1). Check: `tests/test_model_servers.py`.
+- [x] 2.2 `ServerEntry.limits`, `agent_servers` reads the servers at once (D2). Check:
   `tests/test_model_settings.py`.
-- [ ] 2.3 `server_provider` writes `limit`, the rule of `output` (D3). Check: `tests/test_providers.py`.
-- [ ] 2.4 `Provider.min_context`, `context_warning`, the window (D4, D5). Check:
+- [x] 2.3 `server_provider` writes `limit`, the rule of `output` (D3). Check: `tests/test_providers.py`.
+- [x] 2.4 `Provider.min_context`, `context_warning`, the window (D4, D5). Check:
   `tests/test_model_settings.py`, `tests/test_server_model_settings.py`.
 
 ## 3. Honest ends

@@ -6,6 +6,7 @@ import os
 import socket
 import sqlite3
 import stat
+import time
 
 import fake_model_server as fake
 import pytest
@@ -1584,6 +1585,76 @@ def test_the_ticked_models_are_grouped_by_server():
     assert gate.key == "secret-key"
     assert gate.key_variable == f"LADO_MODEL_KEY_{gateway.server.upper()}"
     assert "secret-key" not in repr(gate)
+
+
+def on_fake(fake_server, name="Малая", model="small", cli="opencode"):
+    """A saved model on the fake server, by a server of its own name."""
+    saved = state.model_server(fake_server.url) or state.add_model_server(
+        f"{fake_server.port:012x}", fake_server.url, fake_server.url, "LiteLLM", [CHAT]
+    )
+    return state.add_model(name, cli, model, saved.id)
+
+
+def test_a_server_s_limits_go_with_its_entry(serve):
+    on_fake(serve("gateway-limits"))
+    (found,), warnings = model_settings.agent_servers(OPENCODE)
+    assert found.limits["small"] == base.Limit(16000, 2048)
+    assert warnings == []
+
+
+def test_a_server_that_reports_nothing_has_no_limits_and_no_warning():
+    default_on(entry())
+    start = model_settings.start_model(None, OPENCODE)
+    (found,), warnings = model_settings.agent_servers(OPENCODE, start)
+    assert found.limits == {}
+    assert warnings == []
+
+
+def test_silent_servers_cost_one_ceiling_together(serve, monkeypatch):
+    monkeypatch.setattr(model_servers, "LIMIT_TIMEOUT", 0.5)
+    on_fake(serve("hang"), "Первая")
+    on_fake(serve("hang"), "Вторая")
+    on_fake(serve("hang"), "Третья")
+    began = time.monotonic()
+    found, warnings = model_settings.agent_servers(OPENCODE)
+    assert time.monotonic() - began < 1.2
+    assert len(found) == 3 and warnings == []
+
+
+def warned(server, cli, model="small"):
+    saved = on_fake(server, model=model, cli=cli.name)
+    default_on(saved)
+    return model_settings.agent_servers(cli, model_settings.start_model(None, cli))[1]
+
+
+@pytest.mark.parametrize(("cli", "need"), [(OPENCODE, "32,768"), (providers.get("kilo"), "49,152")])
+def test_a_start_below_the_cli_s_need_warns(serve, cli, need):
+    server = serve("gateway-limits")
+    assert warned(server, cli) == [
+        f"Малая on {server.url} has a context of 16,000 tokens; {cli.title} needs about "
+        f"{need} for its instructions and tools: load the model with a larger context"
+    ]
+
+
+def test_a_context_at_the_need_does_not_warn():
+    start = model_settings.StartModel(name="m", model="m", server=None)
+    assert model_settings.context_warning(start, OPENCODE, base.Limit(32768)) is None
+    assert model_settings.context_warning(start, OPENCODE, base.Limit(32767)) is not None
+
+
+def test_an_unknown_context_does_not_warn():
+    start = model_settings.StartModel(name="m", model="m", server=None)
+    assert model_settings.context_warning(start, OPENCODE, None) is None
+
+
+def test_a_cli_with_no_need_never_warns():
+    start = model_settings.StartModel(name="m", model="m", server=None)
+    assert model_settings.context_warning(start, CLAUDE, base.Limit(1)) is None
+
+
+def test_a_small_model_the_agent_does_not_start_on_does_not_warn(serve):
+    on_fake(serve("gateway-limits"))
+    assert model_settings.agent_servers(OPENCODE)[1] == []
 
 
 def test_a_cli_on_no_server_gets_no_servers():

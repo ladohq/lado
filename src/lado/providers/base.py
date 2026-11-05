@@ -121,10 +121,18 @@ class McpServer:
 
 
 @dataclass(frozen=True)
+class Limit:
+    """What a server reports of a model: its context in tokens, its output when it says."""
+
+    context: int
+    output: int | None = None
+
+
+@dataclass(frozen=True)
 class ServerEntry:
     """A model server for an agent's config: its id, name and base URL, the variable that
-    carries its key to the agent ("" for a server with no key), the key, and its models as
-    (model, saved name)."""
+    carries its key to the agent ("" for a server with no key), the key, its models as
+    (model, saved name), and the limits it reported, by model, read at this start."""
 
     id: str
     name: str
@@ -132,6 +140,7 @@ class ServerEntry:
     key_variable: str
     key: str | None = field(repr=False)
     models: tuple[tuple[str, str], ...]
+    limits: Mapping[str, Limit] = field(default_factory=dict, hash=False)
 
 
 @dataclass(frozen=True)
@@ -363,6 +372,8 @@ class Provider(ABC):
     external_whole_process: bool = True
     # Whether LADO can put a model of a server into its agent yet.
     runs_on_server: bool = False
+    # The context in tokens an agent of this CLI needs to take a turn, 0 for no number known.
+    min_context: int = 0
 
     def check_permission_mode(self, mode: str | None) -> None:
         """Raise ValueError for a permission mode this provider cannot honour."""

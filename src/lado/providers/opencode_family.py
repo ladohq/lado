@@ -57,6 +57,29 @@ ABORTED = "MessageAbortedError"
 # its row, a model id may hold a slash, a server with no key takes no apiKey).
 SERVER_PROVIDER = "lado-"
 SERVER_PACKAGE = "@ai-sdk/openai-compatible"  # ships with both; nothing to fetch at a first run
+MODEL_MEMORY = "model.json"  # the CLI's last /model picks, in its state folder
+
+
+def without_servers(found: object) -> object:
+    """`found`, a CLI's model memory, without what names a provider of LADO's servers: an entry
+    `{"providerID": "lado-…"}` or a key `lado-…/<model>`, at any depth: its shape is the CLI's."""
+
+    def ours(entry: object) -> bool:
+        return isinstance(entry, dict) and str(entry.get("providerID", "")).startswith(
+            SERVER_PROVIDER
+        )
+
+    if isinstance(found, dict):
+        return {
+            key: without_servers(value)
+            for key, value in found.items()
+            if not key.startswith(SERVER_PROVIDER) and not ours(value)
+        }
+    if isinstance(found, list):
+        return [without_servers(item) for item in found if not ours(item)]
+    return found
+
+
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")  # the colours of `auth list`
 
 
@@ -161,8 +184,39 @@ class OpenCodeFamily(base.Provider):
         if notice:
             argv[1:1] = ["--prompt", notice]
         keys = {s.key_variable: s.key for s in spec.servers if s.key is not None}
-        env = {**self.env(config_file, text), **keys}
-        return base.Launch(argv, env, model=self.session_choice(spec))
+        state_env, warnings = self.own_state(agent, spec)
+        env = {**self.env(config_file, text), **keys, **state_env}
+        return base.Launch(argv, env, warnings, model=self.session_choice(spec))
+
+    def own_state(
+        self, agent: state.Agent, spec: base.AgentSpec
+    ) -> tuple[dict[str, str], list[str]]:
+        """The agent's own XDG_STATE_HOME, and what its launch has to say. Both CLIs keep the last
+        /model pick in `<state>/<cli>/model.json` of the user, shared by every run, and an agent
+        would write a provider there that only its own config has: LADO's own session on the
+        CLI's settings, and the user's own CLI, then start from it. `debug paths` (OpenCode
+        1.18.35, Kilo 7.8.8): this variable moves `state` alone; logins and sessions stay.
+        A new folder starts from the user's memory, without LADO's servers, so a session with no
+        model behaves as the user's CLI; the user's file is only read."""
+        folder = base.state_path(agent)
+        own = folder / self.name / MODEL_MEMORY
+        warnings = []
+        home = spec.environ.get("HOME")
+        users = spec.environ.get("XDG_STATE_HOME") or (home and str(Path(home, ".local/state")))
+        if users and not own.exists():
+            source = Path(users, self.name, MODEL_MEMORY)
+            try:
+                text = source.read_text()
+                remembered = json.loads(text)
+            except FileNotFoundError:
+                pass
+            except (OSError, ValueError) as error:
+                warnings.append(f"{source} cannot be read, so the agent starts without it: {error}")
+            else:
+                own.parent.mkdir(parents=True, exist_ok=True)
+                own.write_text(json.dumps(without_servers(remembered)))
+        folder.mkdir(parents=True, exist_ok=True)
+        return {"XDG_STATE_HOME": str(folder)}, warnings
 
     def server_model(self, server: str, model: str) -> str:
         return f"{SERVER_PROVIDER}{server}/{model}"

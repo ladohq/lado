@@ -912,6 +912,7 @@ def test_opencode_launch_writes_config_and_env(repo, lado_home):
     assert launch.env == {
         "OPENCODE_CONFIG_CONTENT": launch.env["OPENCODE_CONFIG_CONTENT"],
         "OPENCODE_DISABLE_AUTOUPDATE": "1",
+        "XDG_STATE_HOME": str(lado_home / "agent-state" / "s" / "w1"),
     }
     file = lado_home / "agents" / "s" / "w1" / "opencode.json"
     assert file.read_text() == launch.env["OPENCODE_CONFIG_CONTENT"]
@@ -1257,6 +1258,106 @@ def _family_launch(repo, provider, mode=None, notice=None, **spec):
     return providers.get(provider).launch_command(
         agent, sess, providers.AgentSpec("the role", **spec), notice=notice
     )
+
+
+def _user_state(tmp_path, provider, text):
+    """The user's `/model` memory of `provider`'s CLI, as a home the agent's environment names."""
+    file = tmp_path / "user" / ".local" / "state" / provider / "model.json"
+    file.parent.mkdir(parents=True)
+    file.write_text(text)
+    return file, {"HOME": str(tmp_path / "user")}
+
+
+def _agent_state(lado_home, provider):
+    return lado_home / "agent-state" / "s" / "w1" / provider / "model.json"
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_family_keeps_its_state_in_a_folder_of_the_agent(repo, provider, lado_home):
+    launch = _family_launch(repo, provider)
+    assert launch.env["XDG_STATE_HOME"] == str(lado_home / "agent-state" / "s" / "w1")
+    assert launch.warnings == []
+
+
+@pytest.mark.parametrize("provider", ["claude", "codex"])
+def test_a_cli_of_one_model_per_process_keeps_the_user_s_state_folder(repo, provider):
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
+    spec = providers.AgentSpec("the role")
+    assert "XDG_STATE_HOME" not in providers.get(provider).launch_command(agent, sess, spec).env
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_agent_starts_from_the_user_s_memory_never_writing_it(
+    repo, provider, lado_home, tmp_path
+):
+    remembered = {"provider": "x", "modelID": "m"}
+    text = json.dumps({"recent": [{"providerID": "x", "modelID": "m"}], "other": remembered})
+    file, environ = _user_state(tmp_path, provider, text)
+    before = file.stat().st_mtime_ns
+    _family_launch(repo, provider, environ=environ)
+    assert json.loads(_agent_state(lado_home, provider).read_text()) == json.loads(text)
+    assert file.read_text() == text and file.stat().st_mtime_ns == before
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_lado_s_servers_do_not_come_from_the_user_s_memory(repo, provider, lado_home, tmp_path):
+    ours = {"providerID": "lado-aaaa1111", "modelID": "m1"}
+    theirs = {"providerID": "anthropic", "modelID": "m2"}
+    _, environ = _user_state(
+        tmp_path,
+        provider,
+        json.dumps(
+            {
+                "recent": [ours, theirs],
+                "model": {"code": ours, "plan": theirs},
+                "variant": {"lado-aaaa1111/m1": "high", "anthropic/m2": "low"},
+            }
+        ),
+    )
+    _family_launch(repo, provider, environ=environ)
+    assert json.loads(_agent_state(lado_home, provider).read_text()) == {
+        "recent": [theirs],
+        "model": {"plan": theirs},
+        "variant": {"anthropic/m2": "low"},
+    }
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_agent_s_own_memory_stands_at_a_new_launch(repo, provider, lado_home, tmp_path):
+    _, environ = _user_state(tmp_path, provider, '{"recent": []}')
+    _family_launch(repo, provider, environ=environ)
+    own = _agent_state(lado_home, provider)
+    own.write_text('{"recent": [{"providerID": "lado-a", "modelID": "m"}]}')
+    _family_launch(repo, provider, environ=environ)
+    assert "lado-a" in own.read_text()
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_state_of_xdg_state_home_is_the_user_s_when_set(repo, provider, lado_home, tmp_path):
+    file = tmp_path / "elsewhere" / provider / "model.json"
+    file.parent.mkdir(parents=True)
+    file.write_text('{"recent": []}')
+    environ = {"HOME": str(tmp_path / "user"), "XDG_STATE_HOME": str(tmp_path / "elsewhere")}
+    _family_launch(repo, provider, environ=environ)
+    assert _agent_state(lado_home, provider).exists()
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_no_memory_of_the_user_copies_nothing_and_says_nothing(repo, provider, lado_home, tmp_path):
+    launch = _family_launch(repo, provider, environ={"HOME": str(tmp_path / "nobody")})
+    assert launch.warnings == []
+    assert not _agent_state(lado_home, provider).exists()
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_memory_that_cannot_be_read_is_said_and_stops_nothing(
+    repo, provider, lado_home, tmp_path
+):
+    file, environ = _user_state(tmp_path, provider, "not json")
+    launch = _family_launch(repo, provider, environ=environ)
+    assert len(launch.warnings) == 1 and str(file) in launch.warnings[0]
+    assert not _agent_state(lado_home, provider).exists()
 
 
 HOME_SERVER = base.ServerEntry(

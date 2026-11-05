@@ -897,6 +897,7 @@ def start_session(
                     ("remove the copied brief", lambda: artifacts.store().remove_session(session))
                 )
             steps.append(("forget the session", lambda: state.delete_session(session)))
+            steps.append(("remove its state", lambda: providers.base.remove_session_state(session)))
         _undo(session, f"the start of {session}", error, steps)
         raise
     started.warnings += placed
@@ -1112,6 +1113,7 @@ def spawn_worker(
             ("close its window", lambda: tmux.kill_window(session, worker)),
             ("forget the worker", lambda: _forget_worker(session, agent, how)),
             ("remove its config", lambda: providers.base.remove_config_dir(agent)),
+            ("remove its state", lambda: providers.base.remove_agent_state(agent)),
         ]
         if not run:
             steps += [
@@ -1507,6 +1509,7 @@ def close_worker(
             f"`tmux -L {tmux.socket()} kill-window -t {session}:{worker.name}`"
         ) from error
     providers.base.remove_config_dir(worker)
+    providers.base.remove_agent_state(worker)
     return finished
 
 
@@ -2952,6 +2955,7 @@ def forget_session(session: str, force: bool = False) -> Forgotten:
     state.delete_session(session)
     loop.forget(session)
     providers.base.remove_session_config_dirs(session)
+    providers.base.remove_session_state(session)
     return forgotten
 
 

@@ -179,7 +179,14 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   config.toml, the OpenCode family `model` in its config content and `--model`, the only one that
   beats Kilo's remembered `/model` pick, the fake agent
   `FAKE_AGENT_MODEL`) and returns as `Launch.model` with that source, so a Kilo
-  agent shows it also while its plugin names none. A CLI whose models on a server sit beside its
+  agent shows it also while its plugin names none. Both family CLIs remember the last `/model`
+  pick in `<state>/<cli>/model.json`, read by every run: each of their agents has its own
+  `XDG_STATE_HOME`, `LADO_HOME/agent-state/<session>/<agent>` (`OpenCodeFamily.own_state`), so an
+  agent's pick of a server, a provider only its config has, stays out of the user's file, which
+  LADO only reads. A new folder starts from a copy of that file without LADO's servers. The
+  variable moves `state` alone, logins stay; the agent's tools see it, and its prompt history and
+  `locks` live there too. It is apart from the config folder: it outlasts a stop and a resume, and
+  goes with the worker or the session. A CLI whose models on a server sit beside its
   own (`Provider.runs_on_server`, the OpenCode family) gets every model ticked for it in
   `AgentSpec.servers` (`model_settings.agent_servers`), whatever it starts on: one OpenAI-compatible
   provider per server, `lado-<server id>`, so a rename changes nothing, labelled `LADO · <server>`,

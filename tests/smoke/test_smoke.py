@@ -187,6 +187,33 @@ def chats(server: fake_model_server.Server) -> list[fake_model_server.Request]:
 
 
 @pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+def test_an_agent_starts_from_the_user_s_memory_and_leaves_it_as_it_is(
+    smoke_repo, smoke_provider, fake_endpoint, monkeypatch
+):
+    """The CLI's own settings: the agent asks for the model the user last picked, in the user's
+    state folder, not for one of LADO's servers, and that file stays as it was."""
+    provider = smoke_provider
+    monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
+    pick = {"providerID": "smoke", "modelID": "smoke-model-2"}
+    ours = {"providerID": "lado-gone", "modelID": "m1"}
+    memory = Path(os.environ["XDG_STATE_HOME"], provider, "model.json")
+    memory.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps({"recent": [ours, pick], "model": {"code": pick}, "favorite": []})
+    memory.write_text(text)
+    runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", provider, model="")
+    agent = state.get_agent(SESSION, "supervisor")
+    idle = answering(provider, "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    wait_for(lambda: "smoke-model-2" in fake_endpoint.models, "a request for the user's pick", 120)
+    own = providers.base.state_path(agent) / provider / "model.json"
+    print(f"{provider}: the agent's state: {sorted(p.name for p in own.parent.iterdir())}")
+    assert "lado-gone" not in own.read_text()
+    runtime.stop_session(SESSION)
+    assert memory.read_text() == text
+
+
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
 @pytest.mark.parametrize("mode", ["bypassPermissions", "plan"])
 def test_a_session_on_a_server_s_model_asks_it_with_its_key(
     smoke_repo, smoke_provider, two_servers, monkeypatch, mode

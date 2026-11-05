@@ -200,6 +200,29 @@ default; under `<CLI>'s settings` with a default `For this session only: the age
 - **THEN** the note reads `For this session only: the agent CLI chooses, not Локальная Qwen.`, and
   starting sends `''`
 
+### Requirement: An agent's memory of its models is its own
+
+An agent of a CLI whose models on a server sit beside its own SHALL keep the CLI's state in a folder
+of its own under `LADO_HOME`. A new folder SHALL start from a copy of the user's remembered models,
+without LADO's servers. The user's file SHALL NOT be written. The folder SHALL stay over a stop and
+a resume, and go with the agent or its session.
+
+#### Scenario: A pick in the agent
+- **WHEN** the human picks a model of a server through `/model` in an OpenCode or Kilo agent
+- **THEN** the user's `model.json` is as it was, and the user's own CLI remembers no such provider
+
+#### Scenario: The CLI's settings
+- **WHEN** the user's memory names a model of LADO's servers and a session runs with `--model ''`
+- **THEN** the agent does not start on that model
+
+#### Scenario: Nothing set
+- **WHEN** the user's last pick in Kilo is a model of its own and a session has no model
+- **THEN** the agent starts on that pick
+
+#### Scenario: A resume
+- **WHEN** an agent's pick stands in its folder and its session stops and resumes
+- **THEN** the folder is there; forgetting the session removes it
+
 ### Requirement: A pick follows its agent CLI
 
 A pick lost to another agent CLI SHALL leave `<name> belongs to <CLI>, so the model is back to <new

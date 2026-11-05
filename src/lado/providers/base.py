@@ -508,6 +508,7 @@ CLI_VARIABLES = frozenset(
         "KILO_CONFIG_CONTENT",
         "KILO_DISABLE_AUTOUPDATE",
         "KILO_NO_DAEMON",
+        "XDG_STATE_HOME",
     }
 )
 
@@ -554,6 +555,22 @@ def remove_config_dir(agent: state.Agent) -> None:
 def remove_session_config_dirs(session: str) -> None:
     """Remove the config folders of all the session's agents, when none of them runs."""
     shutil.rmtree(configs_root() / session, ignore_errors=True)
+
+
+def state_path(agent: state.Agent) -> Path:
+    """Where the agent's CLI keeps what it remembers, not made. Beside the config folders, not
+    in them: it stays over a stop and a resume, and goes with the agent or its session."""
+    return state.home() / "agent-state" / agent.session / agent.name
+
+
+def remove_agent_state(agent: state.Agent) -> None:
+    """Remove the agent's state folder, for an agent LADO forgets."""
+    shutil.rmtree(state_path(agent), ignore_errors=True)
+
+
+def remove_session_state(session: str) -> None:
+    """Remove the state folders of all the session's agents, for a session LADO forgets."""
+    shutil.rmtree(state.home() / "agent-state" / session, ignore_errors=True)
 
 
 # Seconds a turn-end hook may run before its CLI kills it, given explicitly where the CLI

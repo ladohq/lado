@@ -6505,6 +6505,43 @@ def test_another_provider_names_the_default_the_session_goes_to(repo, fake_tmux,
     assert "model: kilo kilo/a -> Локальная Qwen" in started.changes
 
 
+def test_an_agent_s_state_outlives_a_resume_and_goes_with_its_session(repo, fake_tmux, lado_home):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    folder = lado_home / "agent-state" / "s" / "supervisor"
+    env, _ = agent_helpers.launched(fake_tmux[0])
+    assert env["XDG_STATE_HOME"] == str(folder)
+    memory = folder / "opencode" / "model.json"
+    memory.parent.mkdir(parents=True)
+    memory.write_text('{"recent": []}')
+    runtime.stop_session("s")
+    assert memory.exists()  # the agent's /model pick is the agent's
+    runtime.start_session(str(repo), "s", None)
+    assert memory.exists()
+    runtime.stop_session("s")
+    runtime.forget_session("s")
+    assert not (lado_home / "agent-state" / "s").exists()
+
+
+def test_a_finished_worker_s_state_goes_with_it(repo, fake_tmux, lado_home):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.spawn_worker("s", "a task", name="w1")
+    folder = lado_home / "agent-state" / "s" / "w1"
+    folder.mkdir(parents=True, exist_ok=True)
+    runtime.finish_worker("s", "w1", discard=True)
+    assert not folder.exists()
+
+
+def test_a_failed_start_leaves_no_state(repo, fake_tmux, lado_home, monkeypatch):
+    def fails(*_args, **_kwargs):
+        (lado_home / "agent-state" / "s" / "supervisor").mkdir(parents=True, exist_ok=True)
+        raise tmux.TmuxError("no tmux")
+
+    monkeypatch.setattr(tmux, "new_session", fails)
+    with pytest.raises(tmux.TmuxError):
+        runtime.start_session(str(repo), "s", None, provider="opencode")
+    assert not (lado_home / "agent-state" / "s").exists()
+
+
 def test_a_worker_takes_the_default_as_it_is_at_its_spawn(repo, fake_tmux, monkeypatch):
     _answers(monkeypatch, "qwen3-8b")
     runtime.start_session(str(repo), "s", None, provider="opencode")

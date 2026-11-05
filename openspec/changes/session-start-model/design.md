@@ -121,8 +121,24 @@ package, did not show: both CLIs ship it; the developer confirms it in the conta
 Kilo CLI keeps the last `/model` pick in its user state and prefers it to `model` of the config;
 OpenCode does not; `--model` beats it on both. `OpenCodeFamily.argv` adds `--model <spec.model>`
 when one is chosen, `model` stays in the config for what reads it there. With nothing chosen the
-CLI's memory stands: that is its own settings. Not checked: `--model` with `--agent plan`, to be
-covered by the smoke.
+CLI's memory stands: that is its own settings. `--model` with `--agent plan` runs: smoke.
+
+The manual check found that memory shared: `/model` in an agent wrote `lado-<id>` into
+`~/.local/state/{opencode,kilo}/model.json`, read by every run, so `--model ''` started on a server
+of LADO's, and the user's own CLI remembered a provider its config does not have. So each agent of
+the family has its own `XDG_STATE_HOME`, `LADO_HOME/agent-state/<session>/<agent>`, set in its
+launch (`OpenCodeFamily.own_state`). `debug paths` on both CLIs: only `state` moves; `data`,
+`config` and `cache`, the logins with them, stay. A new folder starts from a copy of the user's
+`model.json` without LADO's servers, so with nothing chosen an agent starts as the user's CLI does;
+the user's file is only read, and a file that cannot be read is a warning. The folder is apart from
+the config folder, which a stop removes: an agent's picks outlast a resume, and go with the agent
+or its session; a chosen model still goes as `--model`.
+
+What it changes for the human: the agent's prompt history (`prompt-history.jsonl`) and `locks`, and
+Kilo CLI's `background-process`, are the agent's own too, so ↑ in an agent's TUI shows that agent's
+prompts; the variable is in the environment of the agent's tools, so a tool that keeps state under
+`XDG_STATE_HOME` keeps it in the agent's folder. `XDG_STATE_HOME` joins the names a project cannot
+set (`CLI_VARIABLES`).
 
 ### D9. The keys
 

@@ -83,7 +83,8 @@ provider's `runs_on_server` alone; the power table's later rows take the same re
 - Keeping a default fixed for a session: option B above.
 - Settings → Models beyond the words about the default being used.
 - A proxy for the key (option B above).
-- Changing Kilo CLI's remembered pick when nothing is chosen: that is the CLI's own settings.
+- Changing the user's remembered pick when nothing is chosen: that is the CLI's own settings. An
+  agent starts from it, and its own later picks stay with the agent (D8).
 
 ## Capabilities
 

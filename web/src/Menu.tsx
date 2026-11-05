@@ -42,15 +42,15 @@ export function useBelow(
   return style;
 }
 
-// Closes on a press outside `box`; `close` gets the press, to see what was pressed.
 // Whether Esc belongs to a layer over the page, not to an expanded card or panel under it: a
-// dialog, a menu or the title's field the focus is in, or what is open from the top bar,
-// wherever the focus went.
+// dialog, a menu or the title's field the focus is in, or Details, the one popover that hears
+// Esc with the focus outside it.
 export function escapeIsTaken(target: EventTarget | null): boolean {
   if (target instanceof Element && target.closest("dialog, [role=dialog], [role=menu], .title-edit")) return true;
-  return document.querySelector(".topbar [role=dialog]") !== null;
+  return document.querySelector(".session-popover") !== null;
 }
 
+// Closes on a press outside `box`; `close` gets the press, to see what was pressed.
 export function useDismiss(open: boolean, box: RefObject<HTMLElement | null>, close: (event: MouseEvent) => void) {
   useEffect(() => {
     if (!open) return;

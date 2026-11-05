@@ -82,7 +82,8 @@ Tab of a page with the terminals open went past `Skip to chat` (AC-10); on a lat
 still scrolls, the page of a narrow window too. `escapeIsTaken` in `Menu.tsx` is the one rule
 of whose Esc it is: the expanded card, the expanded terminals and the rail's drawer knew only
 the `<dialog>` tag, not a `div role="dialog"`, so one Esc closed two layers. `focusChat` in
-`Chat.tsx` chooses the feed or an expanded card's tab, as the card hides the feed.
+`Chat.tsx` chooses the feed or an expanded card's tab, as the card hides the feed; Skip to chat
+also puts back expanded terminals (`usePutBackTerminals`), which lie over the chat.
 
 **D15. After the design QA** (the human's answer #3441). `HeadLine` closes Details when the
 focus went past it and the title, looked at after the event, as the legacy copy takes the focus

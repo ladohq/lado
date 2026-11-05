@@ -96,12 +96,12 @@ sheet. Until the about comes, or when it fails, it SHALL show the session's sett
 
 ### Requirement: Details names every fact of the session
 
-Details SHALL hold: the whole title; the mark's words without `running`, the run time (a
-stopped session's words said once, by its time), `id <name>` and, in a project, `project` with a link to its page; Folder, the whole path wrapped anywhere, with Copy
-path; Git, the short remote and branch, with Copy URL when there is a remote; Kits, each with
-its version; CLI with its version and `permissions: <mode>` when the session has a mode; then
-Rename, Copy link and All sessions. Each kit's and the CLI's tooltip and the mark of an
-untested version SHALL stay.
+Details SHALL hold: the whole title; the state line, `id <name>` and, in a project, `project`
+with a link to its page; Folder, the whole path wrapped anywhere, with Copy path; Git, the
+short remote and branch, with Copy URL when there is a remote; Kits, each with its version;
+CLI with its version and `permissions: <mode>` when the session has a mode; then Rename, Copy
+link and All sessions. Each kit's and the CLI's tooltip and the mark of an untested version
+SHALL stay.
 
 #### Scenario: The facts
 - **WHEN** the human opens Details of a session in the project `LADO`
@@ -113,19 +113,39 @@ untested version SHALL stay.
 - **WHEN** a kit of the session does not load and the human hovers its name in Details
 - **THEN** the tooltip says why
 
+### Requirement: Details' state line says the state once
+
+The state line SHALL be the mark's words without `running`, then the run time. A stopped
+session's line SHALL say `stopped` once, in its time.
+
+#### Scenario: A running session
+- **WHEN** the human opens Details of an idle session of 2 agents
+- **THEN** the state line starts with `idle · 2 agents`, then the run time
+
+#### Scenario: A stopped session
+- **WHEN** the human opens Details of a session stopped 2 days ago after 4 hours
+- **THEN** the state line starts with `stopped 2 d ago · ran 4 h`
+
+### Requirement: Details takes Esc first and goes with the focus
+
+Esc SHALL close only Details: an expanded waiting card or expanded terminals under it SHALL
+stay. When the focus leaves Details and the title, Details SHALL close and the focus SHALL stay
+where it went.
+
+#### Scenario: Tab past its last control
+- **WHEN** the focus is on All sessions and the human presses Tab
+- **THEN** Details closes and the focus is on what follows it, not on the title
+
+#### Scenario: Esc over the expanded terminals
+- **WHEN** Details is open over the expanded terminals and the human presses Esc
+- **THEN** Details closes and the terminals stay expanded
+
 ### Requirement: Details closes and gives the focus back
 
 Esc, a click outside Details and a second click on the title SHALL close it. After Esc or a
 second click the focus SHALL be on the title. After a click outside, the focus SHALL stay on
 what was clicked when that is a field, a button, a link or another element that takes the
-focus by a click, the terminal's input among them, and otherwise SHALL be on the title. Esc
-SHALL close only Details: an expanded waiting card or expanded terminals under it SHALL stay.
-When the focus leaves Details and the title by the keyboard, Details SHALL close and the focus
-SHALL stay where it went.
-
-#### Scenario: Tab past its last control
-- **WHEN** the focus is on All sessions and the human presses Tab
-- **THEN** Details closes and the focus is on what follows it, not on the title
+focus by a click, the terminal's input among them, and otherwise SHALL be on the title.
 
 #### Scenario: A click on an empty place
 - **WHEN** Details is open and the human clicks an empty place of the page
@@ -134,10 +154,6 @@ SHALL stay where it went.
 #### Scenario: A click in the terminal
 - **WHEN** Details is open and the human clicks in a terminal
 - **THEN** it closes and the focus is in the terminal's input
-
-#### Scenario: Esc over the expanded terminals
-- **WHEN** Details is open over the expanded terminals and the human presses Esc
-- **THEN** Details closes and the terminals stay expanded
 
 #### Scenario: A click in the composer
 - **WHEN** Details is open and the human clicks in the composer
@@ -158,8 +174,8 @@ focus SHALL be on the title.
 
 A session's page SHALL start with a link `Skip to chat`, hidden until it has the focus, that
 SHALL put the focus on the Activity tab's feed, opening that tab when another is open, or on
-the selected tab of the waiting card when the card is expanded and hides the feed. On a
-computer the head of a running session SHALL have four Tab stops, in order: the project, the
+the selected tab of the waiting card when the card is expanded and hides the feed; expanded
+terminals, which lie over the chat, SHALL be put back. On a computer the head of a running session SHALL have four Tab stops, in order: the project, the
 title, Stop, the link; the status dot SHALL be no stop.
 
 #### Scenario: From another tab
@@ -169,6 +185,10 @@ title, Stop, the link; the status dot SHALL be no stop.
 #### Scenario: With the waiting card expanded
 - **WHEN** the waiting card is expanded and the human presses Enter on `Skip to chat`
 - **THEN** the focus is on the card's selected tab
+
+#### Scenario: With the terminals expanded
+- **WHEN** the terminals are expanded and the human presses Enter on `Skip to chat`
+- **THEN** the terminals go back to their place and the focus is on the chat's feed
 
 #### Scenario: Through the head
 - **WHEN** the focus is before the head of a running session in a project

@@ -44,7 +44,7 @@ import { useBelow, useDismiss } from "./Menu";
 import { SessionActions } from "./SessionControl";
 import { label } from "./sessionLabel";
 import { SessionRowMenu } from "./SessionRowMenu";
-import { MAIN_MIN, TerminalPanel } from "./Terminals";
+import { MAIN_MIN, TerminalPanel, usePutBackTerminals } from "./Terminals";
 import { NotFound } from "./pages";
 import { FIND_PARAM, isTab, projectPath, sessionPath, TABS, VIEW_PARAM, type Tab } from "./paths";
 import {
@@ -752,6 +752,7 @@ function SessionHead({ session, tab }: { session: SessionInfo; tab: Tab }) {
 // address from another tab, as the feed is not there yet (Chat, FOCUS_CHAT).
 function SkipToChat({ name, tab }: { name: string; tab: Tab }) {
   const slot = useSkipSlot();
+  const putBackTerminals = usePutBackTerminals();
   if (slot === null) return null;
   return createPortal(
     <Link
@@ -759,6 +760,7 @@ function SkipToChat({ name, tab }: { name: string; tab: Tab }) {
       to={sessionPath(name)}
       state={FOCUS_CHAT}
       onClick={(event) => {
+        putBackTerminals(); // expanded, they lie over the chat
         if (tab !== "activity") return;
         event.preventDefault();
         focusChat();

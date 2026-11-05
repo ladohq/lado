@@ -440,6 +440,11 @@ def test_tab_out_of_details_closes_it_and_the_focus_goes_on(page: Page, server, 
     expect(details(page)).to_have_count(0)
     expect(title).not_to_be_focused()
 
+    title.click()  # the terminal's input takes Esc: Details must not wait for it
+    expect(details(page)).to_be_visible()
+    page.locator(".xterm-helper-textarea").first.focus()
+    expect(details(page)).to_have_count(0)
+
 
 def test_details_scrolls_in_a_low_window_and_its_note_stays_inside(
     page: Page, long_session, server, shot
@@ -448,6 +453,7 @@ def test_details_scrolls_in_a_low_window_and_its_note_stays_inside(
     page.context.grant_permissions(["clipboard-read", "clipboard-write"])
     open_session(page, server, long_session)
     title_button(page).click()
+    expect(details(page)).to_contain_text("design-studio")  # the about came: its whole height
     placed = details(page).bounding_box()
     assert placed["y"] + placed["height"] <= 420 - 8, placed
     copy_link = details(page).get_by_role("button", name="Copy link")
@@ -462,7 +468,9 @@ def test_details_scrolls_in_a_low_window_and_its_note_stays_inside(
     shot(page)
 
 
-@pytest.mark.parametrize("button, words", [("Copy path", "Path copied"), ("Copy URL", "URL copied")])
+@pytest.mark.parametrize(
+    "button, words", [("Copy path", "Path copied"), ("Copy URL", "URL copied")]
+)
 def test_details_note_of_a_copy_grows_to_the_left_of_its_button(
     page: Page, server, repo, shot, button, words
 ):
@@ -592,6 +600,23 @@ def test_skip_to_chat_goes_to_the_expanded_cards_tab_as_it_hides_the_feed(
     expect(card.get_by_role("tab", selected=True)).to_be_focused()
 
 
+@pytest.mark.parametrize("tab", ["activity", "flows"])
+def test_skip_to_chat_puts_the_expanded_terminals_back_as_they_hide_the_feed(
+    page: Page, server, repo, tab
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/{tab}")
+    panel = page.get_by_role("complementary", name="Terminals")
+    panel.get_by_role("button", name="Expand terminal").click()
+    expect(panel).to_have_class("terminals expanded")
+    page.get_by_role("link", name="Skip to chat").focus()
+    page.keyboard.press("Enter")
+    expect(panel).to_have_class("terminals")
+    expect(page.get_by_role("log", name="Chat with the session")).to_be_focused()
+
+
 def open_layer(page: Page, layer: str):
     """What drops from the top bar, or the title's field, open with the focus in it."""
     if layer == "details":
@@ -652,6 +677,22 @@ def test_esc_closes_the_layer_over_the_expanded_card_and_it_not(page: Page, serv
     expect(shown).to_have_count(0)
     expect(fold).to_be_visible()
     page.keyboard.press("Escape")  # the next Esc is the card's
+    expect(card.get_by_role("button", name="Expand the card")).to_be_visible()
+
+
+@pytest.mark.parametrize("layer", ["stop", "system"])
+def test_esc_with_the_focus_out_of_a_popover_is_not_swallowed(page: Page, server, repo, layer):
+    """Stop's popover and System hear Esc only with the focus in them: left open with the focus
+    elsewhere, the key is the card's."""
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Expand the card").click()
+    expect(open_layer(page, layer)).to_be_visible()
+    card.get_by_role("tab", selected=True).focus()
+    page.keyboard.press("Escape")
     expect(card.get_by_role("button", name="Expand the card")).to_be_visible()
 
 

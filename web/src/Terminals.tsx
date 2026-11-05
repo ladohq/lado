@@ -48,7 +48,7 @@ import { TermLink, terminalUrl, type LinkState, type Mode } from "./terminalLink
 // The least width of the session beside the panel: the panel is narrowed to leave it.
 export const MAIN_MIN = 360;
 
-type Terminals = { open: (agent: string) => void; active: string | null };
+type Terminals = { open: (agent: string) => void; active: string | null; putBack: () => void };
 
 const TerminalsContext = createContext<Terminals | null>(null);
 
@@ -66,6 +66,11 @@ export function useOpenTerminal(): (agent: string) => void {
 // The agent whose terminal the panel shows, or null while the panel is collapsed.
 export function useShownTerminal(): string | null {
   return useTerminals().active;
+}
+
+// Puts back a panel that lies over the page, whose chat the human goes to.
+export function usePutBackTerminals(): () => void {
+  return useTerminals().putBack;
 }
 
 // Esc on an expanded panel puts it back, except where Esc is someone else's: a layer over
@@ -208,23 +213,25 @@ export function TerminalPanel({ session, children }: { session: string; children
     if (made !== shown) setShown(made);
   });
 
+  const putBack = useCallback(() => {
+    if (phone) closePhone();
+    else setExpanded(false);
+  }, [phone, closePhone]);
   useEffect(() => {
     if (!over) return;
     const restore = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !escapeIsOurs(event.target)) return;
-      if (phone) closePhone();
-      else setExpanded(false);
+      if (event.key === "Escape" && escapeIsOurs(event.target)) putBack();
     };
     // Captured: xterm.js takes the keys it handles, so they never bubble up to the window.
     window.addEventListener("keydown", restore, true);
     return () => window.removeEventListener("keydown", restore, true);
-  }, [over, phone, closePhone]);
+  }, [over, putBack]);
 
   const width = fitWidth(panel.width, PANEL_WIDTH, room === null ? null : room - MAIN_MIN);
   const classes = ["terminals", collapsed && "collapsed", over && "expanded"].filter(Boolean).join(" ");
 
   return (
-    <TerminalsContext.Provider value={{ open, active: collapsed ? null : active }}>
+    <TerminalsContext.Provider value={{ open, active: collapsed ? null : active, putBack }}>
       <div ref={page} className="session-page">
         <div className="session-main" style={{ minWidth: `${MAIN_MIN}px` }}>
           {missing !== null && (

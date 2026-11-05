@@ -26,5 +26,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     css: true, // tokens.test.ts reads the stylesheets (?raw); left out, they are empty
+    // The UI formats and sorts in the human's locale; the tests expect en-US's on any machine.
+    env: { LC_ALL: "en_US.UTF-8" },
   },
 });

@@ -1950,3 +1950,21 @@ test("each message, run event, closed gate and open gate's text is a text area o
   expect(area(within(await gateTab()).getByRole("textbox"))).toBeNull(); // the comment is no area
   expect(area(screen.getByRole("textbox", { name: "Write to the supervisor…" }))).toBeFalsy();
 });
+
+// Skip to chat (docs/design/ui.md, Session head)
+
+test("Skip to chat on the Activity tab puts the focus on the feed", async () => {
+  serve([]);
+  open("/sessions/lado/activity");
+  const log = await chat();
+  fireEvent.click(await screen.findByRole("link", { name: "Skip to chat" }));
+  expect(document.activeElement).toBe(log);
+});
+
+test("Skip to chat from another tab opens Activity with the focus on the feed", async () => {
+  serve([]);
+  open("/sessions/lado/flows");
+  fireEvent.click(await screen.findByRole("link", { name: "Skip to chat" }));
+  const log = await chat();
+  await waitFor(() => expect(document.activeElement).toBe(log));
+});

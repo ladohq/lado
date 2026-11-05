@@ -125,7 +125,9 @@ export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElem
     },
     onFocus: (event) => {
       own.onFocus?.(event);
-      if (!pressed.current) show(event.currentTarget);
+      // A focus given by code after a press elsewhere (Details' Copy path) is no keyboard's.
+      const target = event.currentTarget;
+      if (!pressed.current && (!target.matches(":focus") || target.matches(":focus-visible"))) show(target);
       pressed.current = false;
     },
     onBlur: (event) => {

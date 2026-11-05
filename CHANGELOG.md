@@ -2,6 +2,12 @@
 
 ## 0.45.0 (unreleased)
 
+### Improved
+
+- **A session's head is one line at any width.** The folder, git, kits, CLI, Rename and Copy
+  link moved to Details, which a click on the title opens; the chat gets the height back,
+  and `Skip to chat` takes the keyboard straight to it.
+
 ### Fixed
 
 - **A stop no longer loses questions to you without a word.** Stop and `lado stop` say how

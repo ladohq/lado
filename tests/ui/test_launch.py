@@ -679,7 +679,7 @@ def test_forget_a_stopped_session(page: Page, server, repo, shot):
     # The name stays on one line beside the status and the icons, its whole text in a tooltip.
     head = page.get_by_role("banner").locator(".session-head")
     name = head.locator("h1")
-    expect(name).to_have_attribute("title", session)
+    expect(name.get_by_role("button")).to_have_attribute("title", session)
     assert name.bounding_box()["height"] < 36
     expect(head.get_by_role("button", name="Session actions")).to_have_count(0)
     head.get_by_role("button", name="Forget…").focus()

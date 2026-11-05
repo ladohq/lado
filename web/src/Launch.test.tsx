@@ -1081,18 +1081,21 @@ test("Resume session is off while the session's provider is not among the provid
 // the entry's menu
 
 const head = () => document.querySelector(".topbar .session-head") as HTMLElement;
+const details = () => screen.getByRole("dialog", { name: "Session details" });
+const openDetails = () => fireEvent.click(head().querySelector("h1 button") as HTMLElement);
+const facts = () => [...details().querySelectorAll("dt, dd")].map((one) => one.textContent);
 
 test.each([
   ["running", ["Stop session…"]],
   ["loop_down", ["Stop session…"]],
   ["stopped", ["Resume…", "Forget…"]],
   ["tmux_gone", ["Resume…", "Stop session…"]],
-] as const)("a %s session's head has Rename session, Copy path, Copy link and the icons %j, each with its tooltip, and no menu", async (status, labels) => {
+] as const)("a %s session's head has the actions %j, each with its icon and tooltip, and no menu", async (status, labels) => {
   sessions = [session("lado", { status })];
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
-  const buttons = within(head()).getAllByRole("button");
-  expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Rename session", "Copy path", "Copy link", ...labels]);
+  const buttons = within(head().querySelector(".session-head-actions") as HTMLElement).getAllByRole("button");
+  expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(labels);
   for (const button of buttons) {
     expect(button.querySelector("svg")).toBeTruthy();
     expect(button.getAttribute("title")).toBeNull(); // the UI's tooltip, not the browser's
@@ -1154,24 +1157,22 @@ test("a stopped session's head counts on how long ago it stopped", async () => {
   }
 });
 
-test("the head's second line has the folder, whole in its title, the kits and the provider, no mode", async () => {
+test("before its about comes, Details has the session's settings: the folder, the kits, the provider and the mode", async () => {
   sessions = [
     session("lado", { repo: "/Users/me/src/lado", kits: ["team", "default"], provider: "kilo", permission_mode: "plan" }),
     session("app"),
   ];
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
-  const meta = head().querySelector(".session-meta") as HTMLElement;
-  const path = meta.querySelector(".session-path") as HTMLElement;
-  expect(path.textContent).toBe("/Users/me/src/lado");
-  expect(path.getAttribute("title")).toBe("/Users/me/src/lado");
-  expect(meta.querySelector(".session-kits")?.textContent).toBe("team, default");
-  expect(meta.querySelector(".session-agent-cli")?.textContent).toBe("kilo");
-  expect(within(meta).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Copy path"]);
+  openDetails();
+  expect(facts()).toEqual(["Folder", "/Users/me/src/lado", "", "Kits", "teamdefault", "CLI", "kilopermissions: plan"]);
+  expect(within(details()).getByRole("button", { name: "Copy path" })).toBeTruthy();
+  expect(within(details()).queryByRole("button", { name: "Copy URL" })).toBeNull();
   cleanup();
   open("/sessions/app");
   await screen.findByRole("region", { name: "Session app" });
-  expect(head().querySelector(".session-agent-cli")?.textContent).toBe("claude");
+  openDetails();
+  expect(facts().at(-1)).toBe("claude");
 });
 
 test.each([
@@ -1186,6 +1187,7 @@ test.each([
     sessions = [session("my app")];
     open("/sessions/my%20app?token=secret");
     await screen.findByRole("region", { name: "Session my app" });
+    openDetails();
     fireEvent.click(within(head()).getByRole("button", { name: label }));
     await waitFor(() => expect(within(head()).getByText(said).getAttribute("role")).toBe("status"));
     expect(writeText).toHaveBeenCalledWith(text());
@@ -1207,12 +1209,13 @@ test.each([
   sessions = [session("my app")];
   open("/sessions/my%20app");
   await screen.findByRole("region", { name: "Session my app" });
+  openDetails();
   const button = within(head()).getByRole("button", { name: label });
   button.focus();
   fireEvent.click(button);
   await waitFor(() => expect(within(head()).getByText(said).getAttribute("role")).toBe("status"));
   expect(legacy).toEqual([text()]);
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.querySelector(".link-popover")).toBeNull();
   expect(document.querySelector("body > textarea")).toBeNull();
   expect(document.activeElement).toBe(button);
 });
@@ -1222,10 +1225,11 @@ test("a refused Clipboard API copy falls back to the legacy copy", async () => {
   const legacy = stubLegacyCopy();
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
+  openDetails();
   fireEvent.click(within(head()).getByRole("button", { name: "Copy path" }));
   await waitFor(() => expect(within(head()).getByText("Path copied")).toBeTruthy());
   expect(legacy).toEqual(["/src/lado"]);
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.querySelector(".link-popover")).toBeNull();
   expect(document.querySelector("body > textarea")).toBeNull();
 });
 
@@ -1237,6 +1241,7 @@ test.each([
   stubLegacyCopy(false);
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
+  openDetails();
   fireEvent.click(within(head()).getByRole("button", { name: label }));
   const asked = await screen.findByRole("dialog", { name: dialog });
   const field = within(asked).getByRole("textbox", { name }) as HTMLInputElement;
@@ -1585,7 +1590,7 @@ function about(more: Partial<SessionAbout> = {}): SessionAbout {
   };
 }
 
-const meta = () => head().querySelector(".session-meta") as HTMLElement;
+const meta = details;
 const tip = () => screen.getByRole("tooltip").textContent;
 const aboutCalls = () => calls.filter((call) => call.path.endsWith("/about")).length;
 
@@ -1594,40 +1599,68 @@ async function openHead(given: SessionAbout, mode: string | null = "plan") {
   abouts = { lado: given };
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
+  openDetails();
   await waitFor(() => expect(meta().querySelector(".session-kit")).toBeTruthy());
+  (document.activeElement as HTMLElement).blur(); // Copy path's tooltip goes: a test looks at one
 }
 
-test("with its about, the head's second line has the folder, the remote and branch, the kits and the CLI", async () => {
+test("with its about, Details has the folder, the remote and branch, the kits and the CLI with versions", async () => {
   await openHead(about());
-  const facts = [...meta().children].map((fact) => fact.textContent);
-  expect(facts).toEqual(["/src/lado", "github.com/ladohq/lado · main", "team, default", "claude"]);
-  expect(within(meta()).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
-    "Copy path",
-    "Copy URL",
+  expect(facts()).toEqual([
+    "Folder",
+    "/src/lado",
+    "",
+    "Git",
+    "github.com/ladohq/lado · main",
+    "",
+    "Kits",
+    "team 1.2.0default 0.25.0",
+    "CLI",
+    "claude 2.1.300permissions: plan",
   ]);
+  expect(within(meta()).getByRole("button", { name: "Copy path" }).closest("dd")).toBeTruthy();
+  expect(within(meta()).getByRole("button", { name: "Copy URL" }).closest("dd")).toBeTruthy();
   expect(within(meta()).queryByRole("img", { name: "untested version" })).toBeNull();
 });
 
-test("a session in a project has the project as the first fact, its title shown and its id in the tooltip", async () => {
+const crumb = () => head().querySelector(".session-crumb") as HTMLElement;
+
+test("a session in a project has it as the head's breadcrumb and in Details, a link to its page", async () => {
   await openHead(about({ project: { id: "shop", title: "Shop" } }));
-  const [first, second] = [...meta().children];
-  expect(first.textContent).toBe("projectShop");
-  expect(first.getAttribute("title")).toBe("Project shop");
-  expect(first.querySelector(".session-project-title")?.textContent).toBe("Shop");
-  expect(second.textContent).toBe("/src/lado");
-  // The title is a link to the project's page (the Projects section).
-  expect(within(first as HTMLElement).getByRole("link", { name: "Shop" }).getAttribute("href")).toBe("/projects/shop");
+  expect(crumb().textContent).toBe("Shop");
+  expect(crumb().getAttribute("href")).toBe("/projects/shop");
+  expect(crumb().compareDocumentPosition(head().querySelector("h1")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(head().querySelector(".session-crumb-sep")!.getAttribute("aria-hidden")).toBe("true");
+  fireEvent.focus(crumb());
+  expect(tip()).toBe("ShopProject shop");
+  fireEvent.blur(crumb());
+  const state = meta().querySelector(".session-details-state") as HTMLElement;
+  expect(state.textContent).toMatch(/ · id lado · project Shop$/);
+  const link = within(state).getByRole("link", { name: "Shop" });
+  expect(link.getAttribute("href")).toBe("/projects/shop");
+  expect(link.getAttribute("title")).toBe("Project shop");
 });
 
-test("a project without a title is shown by its id; a session without one shows nothing new", async () => {
+test("a project without a title is shown by its id; a session without one has no breadcrumb", async () => {
   await openHead(about({ project: { id: "acme", title: null } }));
-  expect(meta().querySelector(".session-project")?.textContent).toBe("projectacme");
+  expect(crumb().textContent).toBe("acme");
   cleanup();
   await openHead(about());
-  expect(meta().querySelector(".session-project")).toBeNull();
+  expect(crumb()).toBeNull();
+  expect(head().querySelector(".session-crumb-sep")).toBeNull();
+  expect(meta().querySelector(".session-details-state")!.textContent).not.toContain("project");
 });
 
-test("Copy URL on the git icon copies the remote's whole URL", async () => {
+test("the head's branch has the remote and the path in its tooltip, and no Tab stop", async () => {
+  await openHead(about());
+  const branch = head().querySelector(".session-branch") as HTMLElement;
+  expect(branch.textContent).toBe("main");
+  expect(branch.getAttribute("tabindex")).toBeNull();
+  fireEvent.focus(branch);
+  expect(tip()).toBe("git@github.com:ladohq/lado.gitbranch main · /src/lado");
+});
+
+test("Copy URL copies the remote's whole URL", async () => {
   const writeText = vi.fn(async () => {});
   clipboard(writeText);
   await openHead(about());
@@ -1642,7 +1675,7 @@ test("Copy URL copies without the Clipboard API", async () => {
   fireEvent.click(within(meta()).getByRole("button", { name: "Copy URL" }));
   await waitFor(() => expect(within(meta()).getByText("URL copied")).toBeTruthy());
   expect(legacy).toEqual(["git@github.com:ladohq/lado.git"]);
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.querySelector(".link-popover")).toBeNull();
 });
 
 test("the git fact is the branch alone without a remote, and none without either", async () => {
@@ -1671,7 +1704,7 @@ test("each kit's tooltip has its version, where it is and that the next agent st
   expect(tip()).toBe('default: kit "default" not found');
 });
 
-test("the CLI's tooltip has its version; ! in the line only for an untested version", async () => {
+test("the CLI's tooltip has its version; ! after it only for an untested version", async () => {
   const untested = provider("claude", { version: "2.1.300", tested_version: "2.1.291", warning: "untested version" });
   await openHead(about({ provider: untested }), null);
   expect(within(meta()).getByRole("img", { name: "untested version" }).textContent).toBe("!");
@@ -1685,7 +1718,7 @@ test("the CLI's tooltip has its version; ! in the line only for an untested vers
 
 test("the CLI's tooltip has the session's permission mode as its last line, when it has one", async () => {
   await openHead(about(), "bypassPermissions");
-  expect(meta().querySelector(".session-agent-cli")?.textContent).toBe("claude");
+  expect(meta().querySelector(".session-agent-cli")?.textContent).toBe("claude 2.1.300permissions: bypassPermissions");
   fireEvent.focus(meta().querySelector(".session-agent-cli .session-hint") as HTMLElement);
   const lines = () => [...screen.getByRole("tooltip").querySelectorAll(".tooltip-line")].map((line) => line.textContent);
   expect(lines()).toEqual(["Claude Code 2.1.300", "installed now: the next agent starts with it", "mode bypassPermissions"]);

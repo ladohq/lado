@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { Health, SystemInfo, UpdateInfo, UpdatePlan, UpdateResultInfo } from "./api";
 import { App } from "./App";
-import { FakeEventSource, stream, stubDialogs } from "./fakes";
+import { FakeEventSource, FakeScreen, stream, stubDialogs } from "./fakes";
 import { browserLine, checkLine, finished, GIVE_UP_MS, POLL_MS, shortHome, when, type Waiting } from "./SystemPanel";
 import { BUNDLE_VERSION } from "./version";
 
@@ -597,4 +597,25 @@ test("the wait ends only once the update's lock is released", () => {
   const notStarted = result({ outcome: "failed", log: null });
   expect(finished(waiting, same, info({ last: notStarted, running: true }))).toBe(false);
   expect(finished(waiting, same, info({ last: notStarted, running: false }))).toBe(true);
+});
+
+test.each([
+  [1100, "live · LADO server"],
+  [1101, `The LADO server this page talks to: ${window.location.host}`],
+])("in a window %i px wide the link's tooltip reads %j", async (width, tip) => {
+  new FakeScreen("fine", width, 800);
+  open();
+  const link = await live();
+  await waitFor(() => expect(link.textContent).toBe("live"));
+  fireEvent.focus(link);
+  expect(screen.getByRole("tooltip").textContent).toBe(tip);
+});
+
+test("a narrow window's link says a new version when there is one", async () => {
+  new FakeScreen("fine", 768, 800);
+  update = info({ latest: "99.0.0", available: "99.0.0" });
+  open();
+  const link = await screen.findByRole("button", { name: "System: LADO 99.0.0 is available" });
+  fireEvent.focus(link);
+  expect(screen.getByRole("tooltip").textContent).toBe("LADO 99.0.0 is available");
 });

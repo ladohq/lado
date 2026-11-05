@@ -1,6 +1,6 @@
 // Copying a text for the human (docs/design/ui.md, Launch and session control): a session's
-// link from its list row's menu and its head, its folder from its head, a kit's address or
-// folder from its card's menu (RowMenu.tsx). The Clipboard API
+// link from its list row's menu and its details, its folder from its details, a kit's address
+// or folder from its card's menu (RowMenu.tsx). The Clipboard API
 // first; without it (a page not served from localhost or https) or when it refuses, the
 // legacy copy (execCommand); what was copied is said for COPIED_MS in the caller's
 // role="status". Only when both fail is the text shown selected, to copy by hand.
@@ -114,7 +114,7 @@ export function CopyIconButton({ label, text, field }: { label: string; text: st
 
 // An icon button that copies `text`, with its tooltip, its note and, when the copy fails,
 // the field below it. `named`: a quiet button that shows its label beside the icon (the
-// session's details on a phone), with no tooltip.
+// session's details), with no tooltip.
 export function CopyButton({
   label,
   copied,

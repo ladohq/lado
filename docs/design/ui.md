@@ -541,15 +541,16 @@ Sessions for now. The UI's texts are in English.
   ended (killed in `/tasks`) keeps its agent `background`, and the session working, until
   the agent's next turn's end, which any message to it brings (no timer: docs/design/agents.md). The **session**
   in the middle: its head is the top bar's line (task feature/session-head, 2026-10-05; in
-  the top bar since feature/session-head-topbar, 2026-10-08), then the
+  the top bar since feature/session-head-topbar, 2026-10-08; 48 px, `--head-h`, since
+  LAD-192), then the
   tabs **Activity | Agents | Flows |
   Artifacts** (their look: Look, Tabs; its gates come as cards in the feed): Activity is the
   feed (The human in the session, below), Agents the agents and what each does (Agents
   below), Flows the runs (Flows below), Artifacts the documents the agents write
   (Artifacts below). The head, one line of the top bar, left to right: the status as a dot,
-  the name (`h1`, the browser tab's title too), how long the session ran, a thin line, the
-  facts (below); on the right Copy link, its actions (Launch and session control, below),
-  a thin line and the feed's link. The dot is the list's mark (`sessionMark`, since
+  the project, the title (`h1`, the browser tab's title too), how long the session ran; on
+  the right its actions (Launch and session control, below), a thin line and the feed's
+  link; the facts are in Details (Session head, below). The dot is the list's mark (`sessionMark`, since
   LAD-108, 2026-10-19), with no word, its name and tooltip the mark's words: needs you
   the orange diamond of a waiting agent (`needs you · 1 question`); working the row's
   full `--done` dot with its pulse (`running · 2 of 3 agents working`); idle the row's
@@ -561,18 +562,8 @@ Sessions for now. The UI's texts are in English.
   `running_since` and counts on each minute ("2 h 14 min"); a stopped session says
   `stopped 5 h ago · ran 3 h 2 min` (from `stopped_at`), one whose tmux is gone `ran …`.
   One formatter (`ChatText.duration`) says every duration: exact to the next unit here,
-  roughly (its largest unit) for `since` in Agents and Flows. The facts, small and
-  quiet: Copy path (a folder icon, no other copy button), the folder in mono on one line,
-  cut with "…" at its start so its end stays in view, whole in its `title`; its git remote
-  and branch; the kits; the provider; versions and the permission mode in tooltips
-  (Session head, below). The facts take the room between the run time and the icons, the
-  folder at most half of it; facts that do not fit there go to a line of their own in that
-  room (a fact wider than all of it wraps its own text), so none lies over the icons, and
-  the other items stay on the top line. The name keeps a third of the bar. In a narrow
-  window (up to 1100 px) the first line keeps the dot, the name,
-  the run time, the icons and the link's dot (its word for the ear only), and the facts go
-  to a second line of the top bar, with no sideways scrolling; only the name and the
-  folder are cut. The Activity chat (its feed and composer) is at most 860 px wide and
+  roughly (its largest unit) for `since` in Agents and Flows. In a narrow window (up to
+  1100 px) the link keeps its dot (its word for the ear only). The Activity chat (its feed and composer) is at most 860 px wide and
   stands in the middle of a wider column (the terminals folded), as much room on each
   side; an agent's composer (Agents) stays at its page's left edge. The **terminal panel** on the
   right, on every tab (Terminal above), is always there, so the page never jumps (the UI
@@ -1610,11 +1601,12 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   in the light theme and light in the dark one; decided 2026-10-07,
   feature/activity-team): running and `loop_down`: Stop session…; stopped:
   Resume… and Forget… (in the colour of a dangerous action); `tmux_gone`: Resume… and Stop
-  session… (which marks it stopped). The head has no ⋯. Before them **Copy link** (a link
-  icon) copies the session page's address as the list row's Copy link does, and among the
-  head's facts **Copy path** its folder (Structure, above); both say what was copied
+  session… (which marks it stopped). Stop has its word too above 900 px (Session head,
+  below). The head has no ⋯. In the session's details **Copy link** (a link icon) copies the
+  session page's address as the list row's Copy link does, and **Copy path** its folder;
+  both say what was copied
   ("Link copied", "Path copied") under the button for 2 s, or show the text selected when
-  the copy fails. Copying is one module, `Copy.tsx`, for the head, the row's menu (and a kit
+  the copy fails. Copying is one module, `Copy.tsx`, for the details, the row's menu (and a kit
   card's), and the artifact panel's Copy link, in one order: the Clipboard API; without it (the page not on
   localhost or https, e.g. `--host` over http) or when it refuses, the legacy copy (a
   hidden read-only field selected, `document.execCommand("copy")`, removed, the focus back
@@ -1652,7 +1644,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   failed, Stop's popover; `useBelow` in `Menu.tsx`) is fixed 6px under the button, so a
   scrolling box around it does not cut it: from the button's left edge, Stop's from its
   right edge, and moved along, measured with its own width, so it stays 8px inside both of
-  the window's edges (a Copy link near the window's right edge, e.g. a session's head).
+  the window's edges (a Copy link near the window's right edge, e.g. an artifact's panel).
 - **Forget** asks in a modal window: the history is deleted for good, the worktrees and
   branches left on disk (`forget-preview`), and with open runs a box to tick
   ("Also forget its N open runs (…)") before `Forget <name>` can be pressed. After it,
@@ -1820,40 +1812,70 @@ New session (LAD-137) is in Launch and session control.
 On a phone the head is one line and its facts are in a sheet its title opens (Phone
 layout, below).
 
-- The head is the top bar's line (decided with the human 2026-10-08, run
-  feature/session-head-topbar: its mockup `feature/session-head-topbar/mockup-topbar.html`,
-  variant A with "A, status as an icon"; a head under the top bar, or two lines in it, or
-  the facts behind an ⓘ were turned down): the tabs and the chat start about 90 px
-  higher. The Shell knows nothing of sessions: `SessionHead` draws itself into the top
-  bar's slot (`useTopBar`); while the sessions load or a session is not found nothing
-  claims the bar and it keeps the title "Sessions".
-- The head's first items: the status dot (the session list's mark, its words in its
-  tooltip; LAD-108), the title (or the name), the name when there is a title, the pencil
-  **Rename session**, the run time (Session title, below).
-- A session in a project (LAD-125, the human's answer #810, mockup
-  `task/lad-125/mockup-session-project.html` variant A) has the project as the head's first
-  fact, before the folder: the muted word `project` and the project's title (its id
-  without one) in `--ink`, the tooltip `Project <id>` (a `title`, as the name's), no icon
-  (the folder's icon is the Projects section's). It wraps with the other facts. The title
-  comes with `SessionAbout.project`, read when the head opens, so a rename shows on the
-  next look; the feed's `SessionInfo.project` carries the id only. On a phone the details
-  sheet has a line **Project** `<title>` above **Folder**. A session without a project
-  shows nothing new. The title, in the head and in the sheet, is a link to the project's
-  page `/projects/<id>` (LAD-134), the tooltip kept.
-- The head's facts, left to right: where (the folder, then its git: the origin
-  remote short, `github.com/ladohq/lado`, without scheme, user and `.git`, and `· <branch>`),
-  the kits, the CLI (its permission mode is in its tooltip, below; decided 2026-10-08,
-  fix/head-mode-tooltip). The git icon is Copy URL (the whole remote, "URL
-  copied"), and its tooltip has the whole URL, the branch and the path. Without a remote
-  only the branch shows, without either no git fact.
-- Versions are in tooltips (the UI's `Tooltip`, never a `title`), on each kit's name:
-  `<name> v<version>`, where it is (`Kit.source`, as `lado kits` says it), "installed now:
-  the next agent starts with it"; a kit not found or not loading shows why. On the
-  provider's name: `<title> <version>`, with an untested version also `tested with
-  <tested>` and an orange `!` in the line (`var(--human)`, named "untested version"), as
-  `lado doctor` warns; a CLI not installed says so; then, when the session has one,
-  `mode <permission mode>`. Until the about comes there is no tooltip, so no mode in the
-  head either. The versions are the ones installed
+- The head is the top bar's one line of `--head-h` (48 px), which never wraps, at any width
+  above 600 px, and the session's facts are in the popover **Details** its title opens
+  (decided with the human 2026-11-05, LAD-192, LAD-189 spec §1, frames g1-*). This reverses
+  the record of 2026-10-08 (run feature/session-head-topbar), which kept the facts in the
+  line and turned down the facts behind an ⓘ: that line wrapped to 66-98 px once LAD-125's
+  fact `project` joined it, and every new fact would do the same. The Shell knows nothing of
+  sessions: `SessionHead` draws itself into the top bar's slot (`useTopBar`); while the
+  sessions load or a session is not found nothing claims the bar and it keeps the title
+  "Sessions".
+- The line, left to right: the status dot (the session list's mark, its words in its
+  tooltip; LAD-108; no Tab stop on a computer), the project and `/`, the title with a
+  chevron, a broken session's status in words (`tmux session is gone`), the run time, on a
+  window of 1600 px or more the branch (at most 24ch; the remote and the path in its
+  tooltip; no Tab stop), then at the right end the actions, a line and the link. Stop is 32
+  px high, with its word above 900 px, only its icon at 900 px and less; the link has its
+  word above 1100 px, only its dot and the tooltip `live · LADO server` at 1100 px and less
+  (on every page: `LiveButton` does not know the page, so a narrow window's tooltip has no
+  server address; the system panel has it). Resume and Forget stay icons.
+- What lacks room is cut with "…" by `flex-shrink`, largest first: the title down to 8ch of
+  its text, the project (at most 16ch), the run time, then the words; the actions and the
+  link never.
+- The title is a button in the page's `h1` (`aria-haspopup="dialog"`, `aria-expanded`), on a
+  `--raised` ground on hover and while Details is open. No double click: one click opens
+  Details and a second would only close it.
+- **Details** is a non-modal `role="dialog"` named `Session details` (`DetailsPopover`),
+  under the title, 470 px wide and at most the window less 32 px, scrolling inside in a low
+  window, with no focus trap: a focus that goes past it and the title closes it and stays
+  where it went (over the page it would hide the focus). A click, Enter or Space opens it with the focus on Copy path. Esc and a second click close
+  it with the focus on the title, and Esc goes to it first: an expanded card or expanded
+  terminals under it stay (`escapeIsTaken`, as under Stop's popover or System with the focus
+  in them, and the title's field). A press outside closes it too: on a field, a button, a link or what else takes the
+  focus by a press (the terminal's input, a summary) the focus stays there, on an empty
+  place, the feed too, it goes to the title (the human's answer #3389). It holds the whole title and `SessionFacts`, the content the phone's sheet shares
+  (Phone layout, below): the mark's words without `running`, the run time (a stopped session
+  says `stopped` once, in its time), `id <name>`, in a project
+  `project <link>`; Folder, whole and wrapped anywhere, with Copy path; Git with Copy URL;
+  Kits; CLI; then Rename, Copy link and All sessions. It lies in the top bar's stacking
+  context, so over the terminals.
+- **Skip to chat** is the first stop of a session's page, hidden until it has the focus: the
+  page draws it into the Shell's second slot (`useSkipSlot`). It puts the focus on the
+  Activity feed, by way of the address's state from another tab (`FOCUS_CHAT`), or on the
+  selected tab of an expanded card, which hides the feed; expanded terminals, which lie over
+  the chat, go back to their place. The terminals' selected tab scrolls
+  into view when it changes, not as the page opens: Chromium's Tab would start from it, past
+  this link. The head has four stops: project, title, Stop, link.
+- A session in a project (LAD-125, LAD-192) has the project as a breadcrumb before the
+  title: its title (its id without one) in `--muted` at 14 px, at most 16ch, then a `/` in
+  `--line` hidden from assistive technology; `--ink` and underlined on hover and focus. It
+  is a link to the project's page `/projects/<id>` (LAD-134), its tooltip the whole title
+  and `Project <id>`. The title comes with `SessionAbout.project`, read when the head opens,
+  so a rename shows on the next look; the feed's `SessionInfo.project` carries the id only.
+  A session without a project has neither, nor has a phone.
+- Git in Details: the origin remote short, `github.com/ladohq/lado`, without scheme, user
+  and `.git`, and `· <branch>`, its tooltip the whole URL, the branch and the path. Copy URL
+  copies the whole remote ("URL copied"). Without a remote only the branch shows, without
+  either no Git row.
+- Versions stand after each kit's and the CLI's name, and the tooltips stay (the UI's
+  `Tooltip`, never a `title`), on each kit's name: `<name> v<version>`, where it is
+  (`Kit.source`, as `lado kits` says it), "installed now: the next agent starts with it"; a
+  kit not found or not loading shows why. On the provider's name: `<title> <version>`, with
+  an untested version also `tested with <tested>` and an orange `!` after the version
+  (`var(--human)`, named "untested version"), as `lado doctor` warns; a CLI not installed
+  says so; then, when the session has one, `mode <permission mode>`. Under the CLI stands
+  `permissions: <mode>`, from the session's settings. The versions are the ones installed
   now, which the next agent starts with; a version per agent is not kept.
 - They come from `GET /api/sessions/{name}/about` (`SessionAbout`), not from
   `SessionInfo`: git, `<cli> --version` and loading kits are too dear for the change feed,
@@ -1861,7 +1883,8 @@ layout, below).
   changes the session's `repo`, `kits` or `provider` (a resume), on any change of kind
   `kits` (an install, update or remove) and after a gap in the feed. No event says the
   CLI's version changed: it is read again only when the head opens. Until the about comes,
-  or when it fails, the line has the session's settings alone, with no error.
+  or when it fails, Details has the session's settings alone and the line no project or
+  branch, with no error.
 - The remote reaches the API only through `runtime.public_remote`: no userinfo for a URL
   scheme but ssh (a token alone too), a password dropped from `ssh://`, the scp form and a
   local path as they are.
@@ -1893,7 +1916,7 @@ Where it shows:
 | list row | the title in bold; the grey line starts with the name, `lado-2 · 3 agents · 1h 12m` (every kind of grey line) | as before |
 | collapsed list's icon | its letters from the title, its accessible name the title | as before |
 | row's and icon's card | first line `<b>title</b> · lado-2 · <status> · …` | as before |
-| session head | `<h1>` the title, then the name small and grey (`.session-name-id`), then the pencil | `<h1>` the name, then the pencil |
+| session head | `<h1>` the title; the name in Details, `id <name>` | `<h1>` the name; Details too says `id <name>` |
 | browser tab | `<title> · LADO` (`(n)` before it when something waits) | the name |
 | Needs you | the session's line: the title, then the name in grey | the name |
 | notification | `LADO · <title>` | `LADO · <name>` |
@@ -1904,10 +1927,9 @@ name.
 
 Where it is set (`TitleEdit.tsx`, one field for both):
 
-- **Head**: the pencil **Rename session** after the title (and the name), shown on the
-  title's hover, its own focus, and always on a device without hover; a double click on
-  the title does the same. The title becomes a field of its room (a third of the bar),
-  holding the title (empty without one, the name as placeholder), selected; under it
+- **Head**: **Rename** in Details (Session head, above) closes it and turns the title into
+  a field in the line (font 18 px), holding the title (empty without one, the name as
+  placeholder), selected; under the line, so it stays 48 px high,
   `Enter to save · Esc to cancel · empty shows the name`.
 - **List**: **Rename…**, first in the row's ⋯, turns the row into the same field (no link
   while it edits), with `lado-2 · Enter to save · Esc to cancel` under it.
@@ -1916,8 +1938,8 @@ Where it is set (`TitleEdit.tsx`, one field for both):
   the limit (counted in characters, as the server does): `<n> characters, the limit is 80`
   under the field, nothing sent. A refusal: the server's text under the field
   (`role="alert"`), the field kept open with the text. The answer, the session as stored,
-  is shown at once, before the feed's item. After it closes the focus goes back to the
-  pencil or the ⋯.
+  is shown at once, before the feed's item. After it closes the focus goes to the head's
+  title or back to the ⋯.
 - **Tab takes the name** (decided 2026-10-16, LAD-84; mockup
   `task/lad-84/mockup-title-tab.html`, variant A): the name is the field's one suggestion
   while its text is a proper start of the name (case and all, the empty text included),
@@ -2183,15 +2205,17 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   with its names, over a dimmed page. An item, the dimmed page or Esc closes it, the focus
   back on Menu. The computer's collapsed rail (`lado.rail`) is neither read nor written.
 - **Top bar**: one line, 52 px upright, 44 px sideways. On a session's page: Menu, the
-  status dot, the title (or name) as a button cut with "…", the change feed's mark (a dot
-  while live, "reconnecting…" otherwise; it opens the system panel), Stop.
+  status dot, the title (or name) with a chevron as a button cut with "…", the change feed's
+  mark (a dot while live, "reconnecting…" otherwise; it opens the system panel), Stop. Menu
+  and the session's actions are 44 by 44 px (LAD-192). No breadcrumb or branch.
 - **The session's details**: the title opens a sheet over the page's bottom
-  (`SessionDetails.tsx`, a modal `<dialog>` named by the session): the words of the
-  status dot's mark (`needs you · 1 question`; LAD-108) and the run time,
-  the whole folder, git, the kits with their versions, the CLI with its version and
-  permission mode, and Rename (the title edited in place), Copy path, Copy link, All
-  sessions. Close, Esc or a tap beside it closes it. It reuses the head's pieces (`GitFact`,
-  `KitTip`, `CliTip`), so the two never say different things.
+  (`SessionDetails`, a modal `<dialog>` named by the session) around the content of Details
+  on a computer (`SessionFacts`, Session head, above; LAD-192), so the two never say
+  different things: the words of the status dot's mark (`needs you · 1 question`; LAD-108),
+  the run time, the id and the project; the whole folder with Copy path, git with Copy URL,
+  the kits and the CLI with their versions and the permission mode; Rename, Copy link, All
+  sessions. Its Rename edits the title in the sheet, the focus going back to Rename. Close,
+  Esc or a tap beside it closes it.
 - **Sessions**: no strip; `/sessions` is the list across the screen, a session's page the
   session alone. `lado.sessionsList` is neither read nor written.
 - **Tabs**: a session's four tabs without their icons fit 360 px; the Kits page's three too.

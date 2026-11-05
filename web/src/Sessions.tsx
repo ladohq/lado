@@ -3,7 +3,7 @@
 // the list collapses to a strip of the sessions' icons (remembered too). On a phone the list
 // is the Sessions page and a session's page shows the session alone (docs/design/ui.md,
 // Phone layout).
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import {
   Link,
@@ -20,36 +20,33 @@ import { Agents } from "./Agents";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { Artifacts } from "./ArtifactsTable";
 import { getSessionAbout, setSessionTitle, type SessionAbout, type SessionInfo, type SessionStatus } from "./api";
-import { Chat } from "./Chat";
+import { Chat, FOCUS_CHAT, focusChat } from "./Chat";
 import { duration } from "./ChatText";
-import { CopyButton } from "./Copy";
 import { Flows, isOpen } from "./Flows";
 import { ForgetManyDialog } from "./ForgetMany";
 import { GroupHead, type Tone } from "./GroupHead";
 import {
   ActivityIcon,
-  AgentCliIcon,
   AgentsIcon,
   ArtifactsIcon,
   BetweenIcon,
+  ChevronIcon,
   CollapsePanelIcon,
   FindIcon,
   FlowsIcon,
-  FolderIcon,
   ForgetIcon,
-  KitsIcon,
-  LinkIcon,
-  PencilIcon,
+  GitIcon,
   ProblemIcon,
 } from "./icons";
 import { useLaunch, type StartedState } from "./Launch";
 import { isLive, useLive, useLiveStore, type Loaded } from "./live";
+import { useBelow, useDismiss } from "./Menu";
 import { SessionActions } from "./SessionControl";
 import { label } from "./sessionLabel";
 import { SessionRowMenu } from "./SessionRowMenu";
-import { MAIN_MIN, TerminalPanel } from "./Terminals";
+import { MAIN_MIN, TerminalPanel, usePutBackTerminals } from "./Terminals";
 import { NotFound } from "./pages";
-import { FIND_PARAM, isTab, projectPath, sessionLink, sessionPath, TABS, VIEW_PARAM, type Tab } from "./paths";
+import { FIND_PARAM, isTab, projectPath, sessionPath, TABS, VIEW_PARAM, type Tab } from "./paths";
 import {
   PANEL_WIDTH,
   SESSIONS_WIDTH,
@@ -63,8 +60,8 @@ import {
   type SessionGroup,
 } from "./prefs";
 import { usePhone } from "./phone";
-import { CliTip, GitFact, KitTip, SessionDetails } from "./SessionDetails";
-import { useTitle, useTopBar } from "./Shell";
+import { DetailsPopover, GitTip, SessionDetails } from "./SessionDetails";
+import { useSkipSlot, useTitle, useTopBar } from "./Shell";
 import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
 import { Team } from "./Team";
 import { TitleEdit } from "./TitleEdit";
@@ -342,6 +339,13 @@ export function sessionMark(session: SessionInfo): { mark: Mark; words: string }
   return { mark: session.busy > 0 ? "working" : "idle", words: `${STATUS.running} · ${work(session)}` };
 }
 
+// The state line of Details: the mark's words and the run time, without `running`, which the
+// work says, and a stopped session's `stopped` once, which `ran` says.
+const detailsState = (session: SessionInfo, ran: string): string => {
+  if (session.status === "stopped" && session.stopped_at) return ran;
+  return `${sessionMark(session).words.replace(`${STATUS.running} · `, "")} · ${ran}`;
+};
+
 // A running session's agents at work, in its card's and its head's words.
 const work = (session: SessionInfo) => {
   const agents = count(session.agents, "agent");
@@ -523,11 +527,12 @@ const HEAD_MARKS: Record<Mark, string> = {
   loop_down: "session-dot-loop_down",
 };
 
-export function StatusDot({ session }: { session: SessionInfo }) {
+// `stop`: a Tab stop, for a tap's or the keyboard's tooltip; a computer's head has none.
+export function StatusDot({ session, stop = true }: { session: SessionInfo; stop?: boolean }) {
   const { mark, words } = sessionMark(session);
   return (
     <Tooltip tip={words}>
-      <span className={`session-dot ${HEAD_MARKS[mark]}`} role="img" aria-label={words} tabIndex={0} />
+      <span className={`session-dot ${HEAD_MARKS[mark]}`} role="img" aria-label={words} tabIndex={stop ? 0 : undefined} />
     </Tooltip>
   );
 }
@@ -613,7 +618,7 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
   const view = useSearchParams()[0].get(VIEW_PARAM); // a chip's record, in the panel over the tab
   return (
     <section className="session" aria-label={`Session ${name}`}>
-      <SessionHead session={session} />
+      <SessionHead session={session} tab={tab} />
       <StartedNotice name={name} />
       <nav className="tab-bar session-tabs" aria-label="Session sections">
         {TABS.map((one) => {
@@ -729,147 +734,175 @@ function Find({ label }: { label: string }) {
   );
 }
 
-// The session's head, one line of the top bar (docs/design/ui.md, Structure and Session
-// head): its status as a dot, its name and how long it ran; then, small, its folder (Copy
-// path on the folder's icon), its git remote and branch (Copy URL on the git icon), its kits
-// and its agents' CLI, the versions, and the permission mode, in their tooltips; then Copy
-// link and its actions. Until its about comes, or when it fails, the facts are the
-// session's settings alone, the mode not shown. Drawn in the top bar's slot (useTopBar).
-function SessionHead({ session }: { session: SessionInfo }) {
+// The session's head in the top bar's slot (useTopBar), and `Skip to chat` before everything
+// else of the page.
+function SessionHead({ session, tab }: { session: SessionInfo; tab: Tab }) {
   const slot = useTopBar();
   const phone = usePhone();
   if (slot === null) return null;
-  return createPortal(phone ? <PhoneHead session={session} /> : <HeadLine session={session} />, slot);
+  return (
+    <>
+      <SkipToChat name={session.name} tab={tab} />
+      {createPortal(phone ? <PhoneHead session={session} /> : <HeadLine session={session} />, slot)}
+    </>
+  );
 }
 
+// Hidden until it has the focus. It puts the focus on the Activity tab's feed, by way of the
+// address from another tab, as the feed is not there yet (Chat, FOCUS_CHAT).
+function SkipToChat({ name, tab }: { name: string; tab: Tab }) {
+  const slot = useSkipSlot();
+  const putBackTerminals = usePutBackTerminals();
+  if (slot === null) return null;
+  return createPortal(
+    <Link
+      className="skip-link"
+      to={sessionPath(name)}
+      state={FOCUS_CHAT}
+      onClick={(event) => {
+        putBackTerminals(); // expanded, they lie over the chat
+        if (tab !== "activity") return;
+        event.preventDefault();
+        focusChat();
+      }}
+    >
+      Skip to chat
+    </Link>,
+    slot,
+  );
+}
+
+// What a press outside Details leaves the focus on (docs/design/ui.md, Session head).
+const TAKES_FOCUS = "a, button, input, textarea, select, [contenteditable]";
+
+// The head on a computer, one line of the top bar (docs/design/ui.md, Structure and Session
+// head): the status as a dot, the project as a breadcrumb, the title as a button that opens
+// Details, a broken session's status in words, the run time, the branch on a wide window
+// (styles.css), the actions. The rest of the facts are in Details (DetailsPopover).
 function HeadLine({ session }: { session: SessionInfo }) {
-  const { name, repo, kits, provider, permission_mode: mode, status } = session;
+  const { status } = session;
   const about = useAbout(session);
   const repository = about?.repos[0];
-  const cli = about?.provider;
   const trouble = status === "tmux_gone" || status === "loop_down";
-  // The title edited in place (Session title): the pencil or a double click opens the field,
-  // which gives the focus back to the pencil when it closes.
-  const pencil = useRef<HTMLButtonElement>(null);
-  const { editing, edit, closed } = useTitleEdit(() => pencil.current?.focus());
+  const ran = useRan(session);
+  const [details, setDetails] = useState(false);
+  const title = useRef<HTMLButtonElement>(null);
+  const box = useRef<HTMLDivElement>(null); // the title and Details: a second click is no press outside
+  const popover = useRef<HTMLDivElement>(null);
+  const below = useBelow(title, popover, details);
+  const close = useCallback(() => {
+    setDetails(false);
+    title.current?.focus();
+  }, []);
+  // After the press: its own default would take the focus from the title again. What took
+  // the focus by the press keeps it (the terminal's input, a summary); the body and what only
+  // a script focuses (the feed) have a tabIndex below 0, and count as an empty place.
+  const pressedAway = useCallback((event: MouseEvent) => {
+    setDetails(false);
+    if ((event.target as Element).closest(TAKES_FOCUS)) return;
+    setTimeout(() => {
+      if (((document.activeElement as HTMLElement | null)?.tabIndex ?? -1) < 0) title.current?.focus();
+    });
+  }, []);
+  useDismiss(details, box, pressedAway);
+  // Tab went on past the title: open, Details would lie over the focus, which stays where it
+  // went. Looked at after the event, as the legacy copy takes the focus for a moment.
+  const focusLeft = useCallback(() => {
+    setTimeout(() => {
+      const now = document.activeElement;
+      if (now && now !== document.body && !box.current?.contains(now)) setDetails(false);
+    });
+  }, []);
+  // The title edited in place (Session title), from Details; the focus goes back to the
+  // title when the field closes.
+  const { editing, edit, closed } = useTitleEdit(() => title.current?.focus());
   return (
     <div className="session-head">
-      <StatusDot session={session} />
-      {editing ? (
-        <TitleEdit
-          name={session.name}
-          title={session.title}
-          label="Session title"
-          save={(title) => setSessionTitle(session.name, title)}
-          hint="Enter to save · Esc to cancel · empty shows the name"
-          suggestionHint="Tab takes the name · Enter to save · Esc to cancel"
-          onClose={closed}
-        />
-      ) : (
-        <h1 title={label(session)} onDoubleClick={edit}>
-          {label(session)}
-        </h1>
-      )}
-      {session.title !== null && (
-        <span className="session-name-id" title={`Session ${name}`}>
-          {name}
-        </span>
-      )}
-      {!editing && (
-        <Tooltip tip="Rename session">
-          <button
-            ref={pencil}
-            type="button"
-            className="icon-button session-rename"
-            aria-label="Rename session"
-            onClick={edit}
-          >
-            <PencilIcon />
-          </button>
+      <StatusDot session={session} stop={false} />
+      {about?.project && <ProjectCrumb project={about.project} />}
+      <div ref={box} className="session-title-box" onBlur={focusLeft}>
+        {editing ? (
+          <TitleEdit
+            name={session.name}
+            title={session.title}
+            label="Session title"
+            save={(saved) => setSessionTitle(session.name, saved)}
+            hint="Enter to save · Esc to cancel · empty shows the name"
+            suggestionHint="Tab takes the name · Enter to save · Esc to cancel"
+            onClose={closed}
+          />
+        ) : (
+          <h1 className="session-title">
+            <button
+              ref={title}
+              type="button"
+              title={label(session)}
+              aria-haspopup="dialog"
+              aria-expanded={details}
+              onClick={() => (details ? close() : setDetails(true))}
+            >
+              <span className="session-title-text">{label(session)}</span>
+              <span className="session-chevron">
+                <ChevronIcon />
+              </span>
+            </button>
+          </h1>
+        )}
+        {details && (
+          <DetailsPopover
+            ref={popover}
+            style={below}
+            session={session}
+            about={about}
+            state={detailsState(session, ran)}
+            onRename={() => {
+              setDetails(false);
+              edit();
+            }}
+            onClose={close}
+          />
+        )}
+      </div>
+      {trouble && <span className="session-state danger-text">{STATUS[status]}</span>}
+      <span className="session-ran">{ran}</span>
+      {repository?.branch && (
+        <Tooltip tip={<GitTip repo={repository} />}>
+          <span className="session-branch">
+            <GitIcon />
+            <span>{repository.branch}</span>
+          </span>
         </Tooltip>
       )}
-      {trouble && <span className="session-state danger-text">{STATUS[status]}</span>}
-      <Ran session={session} />
-      <span className="topbar-sep meta-sep" aria-hidden="true" />
-      <div className="session-meta">
-        {about?.project && (
-          // The project's title, read with the about: a rename shows on the next look; a link to
-          // the project's page.
-          <span className="session-fact session-project" title={`Project ${about.project.id}`}>
-            <span>project</span>
-            <Link className="session-project-title" to={projectPath(about.project.id)}>
-              {about.project.title ?? about.project.id}
-            </Link>
-          </span>
-        )}
-        <span className="session-folder">
-          <CopyButton
-            label="Copy path"
-            copied="Path copied"
-            text={repo}
-            field={{ title: `Path of ${name}`, label: "Path" }}
-            icon={<FolderIcon />}
-          />
-          {/* Cut at its start, so the end of the path stays in view. */}
-          <span className="session-path" title={repo}>
-            <bdi>{repo}</bdi>
-          </span>
-        </span>
-        {repository && <GitFact name={name} repo={repository} />}
-        <span className="session-fact">
-          <KitsIcon />
-          <span className="session-kits">
-            {kits.map((kit, at) => {
-              const found = about?.kits.find((one) => one.name === kit);
-              return (
-                <span key={kit}>
-                  {at > 0 && ", "}
-                  {found ? (
-                    <Tooltip tip={<KitTip kit={found} />}>
-                      <span className="session-kit session-hint" tabIndex={0}>
-                        {kit}
-                      </span>
-                    </Tooltip>
-                  ) : (
-                    kit
-                  )}
-                </span>
-              );
-            })}
-          </span>
-        </span>
-        <span className="session-fact">
-          <AgentCliIcon />
-          <span className="session-agent-cli">
-            {cli ? (
-              <Tooltip tip={<CliTip cli={cli} mode={mode} />}>
-                <span className="session-hint" tabIndex={0}>
-                  {provider}
-                </span>
-              </Tooltip>
-            ) : (
-              provider
-            )}
-            {cli?.warning && (
-              <span role="img" aria-label="untested version" className="session-warn">
-                !
-              </span>
-            )}
-          </span>
-        </span>
-      </div>
       <div className="session-head-actions">
-        <CopyButton
-          label="Copy link"
-          copied="Link copied"
-          text={sessionLink(name)}
-          field={{ title: `Link to ${name}`, label: "Link" }}
-          icon={<LinkIcon />}
-        />
         <SessionActions session={session} />
       </div>
       <span className="topbar-sep" aria-hidden="true" />
     </div>
+  );
+}
+
+// The project's title, read with the about: a rename shows on the next look; a link to its
+// page, then a `/` that only the eye needs.
+function ProjectCrumb({ project }: { project: NonNullable<SessionAbout["project"]> }) {
+  const shown = project.title ?? project.id;
+  return (
+    <>
+      <Tooltip
+        tip={
+          <>
+            <div className="tooltip-line">{shown}</div>
+            <div className="tooltip-line">Project {project.id}</div>
+          </>
+        }
+      >
+        <Link className="session-crumb" to={projectPath(project.id)}>
+          {shown}
+        </Link>
+      </Tooltip>
+      <span className="session-crumb-sep" aria-hidden="true">
+        /
+      </span>
+    </>
   );
 }
 
@@ -891,7 +924,10 @@ function PhoneHead({ session }: { session: SessionInfo }) {
           aria-expanded={details}
           onClick={() => setDetails(true)}
         >
-          {label(session)}
+          <span className="session-title-text">{label(session)}</span>
+          <span className="session-chevron">
+            <ChevronIcon />
+          </span>
         </button>
       </h1>
       <div className="session-head-actions">
@@ -901,7 +937,7 @@ function PhoneHead({ session }: { session: SessionInfo }) {
         <SessionDetails
           session={session}
           about={about}
-          state={`${sessionMark(session).words} · ${ran}`}
+          state={detailsState(session, ran)}
           onSaved={(saved) => live.sessionChanged(saved)}
           onClose={() => setDetails(false)}
         />
@@ -965,9 +1001,6 @@ function useRan(session: SessionInfo): string {
   return ranText(session, now);
 }
 
-function Ran({ session }: { session: SessionInfo }) {
-  return <span className="session-ran">{useRan(session)}</span>;
-}
 
 // What a start or resume from the New session window said: the settings a resume changed,
 // open runs that cannot go on as they are, and its warnings (e.g. what the supervisor's CLI

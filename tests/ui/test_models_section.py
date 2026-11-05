@@ -866,6 +866,11 @@ def test_the_picker_at_a_phones_width(browser: Browser, clis, server, lms, shot)
         assert shown["x"] >= 0 and shown["x"] + shown["width"] <= 390, shown
         row = section(page).get_by_role("option").first.bounding_box()
         assert row and row["height"] >= 44
+        long = section(page).get_by_role("option", name=re.compile("Локальная Qwen"))
+        names = long.locator(".mp-names").bounding_box()
+        assert names and names["width"] >= 200, names  # not squeezed to letters by its marks
+        mark = long.locator(".srv").bounding_box()
+        assert mark and mark["y"] >= names["y"] + names["height"] - 1, (mark, names)  # under it
         assert page.evaluate("document.documentElement.scrollWidth") <= 390
         shot(page, "phone-picker", full_page=False)
     finally:

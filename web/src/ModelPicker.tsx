@@ -26,6 +26,7 @@ const OPEN_UP_BELOW = 240; // fewer pixels than this under the field: it may ope
 const GAP = 4; // between the field and the list
 const EDGE = 8; // between the list and the window's edge
 const PHONE = 600; // a narrower window keeps the list to 60% of its height
+const LONG_SERVER = 24; // a server's name longer than this goes under the id in a row
 
 export type Pick = { external: string } | { builtin: string } | null;
 
@@ -370,7 +371,7 @@ export function ModelPicker({
         aria-selected={row.selected}
         className={`mp-opt${at === active ? " mp-active" : ""}${row.selected ? " mp-selected" : ""}${
           row.pick === "other" ? " mp-other" : ""
-        }`}
+        }${(row.server?.length ?? 0) > LONG_SERVER ? " mp-long" : ""}`}
         onPointerMove={() => setActive(at)}
         onClick={() => choose(row)}
       >

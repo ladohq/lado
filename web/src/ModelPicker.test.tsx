@@ -266,6 +266,13 @@ test("a server's state marks its rows and the field", () => {
   expect(texts()[2]).toContain("not on the server");
 });
 
+test("a server's name past 24 characters goes under the id in its row", () => {
+  const long = model("Длинная", "opencode", "OpenCode", "m", "LM Studio дома на втором компьютере");
+  fireEvent.click(mount({ own: [QWEN, long] }).field);
+  expect(screen.getByRole("option", { name: /Длинная/ }).className).toContain("mp-long");
+  expect(screen.getByRole("option", { name: /Локальная Qwen/ }).className).not.toContain("mp-long");
+});
+
 test("a field that is off shows its value and does not open", () => {
   const { field } = mount({ off: true, value: builtin("a/one") });
   expect((field as HTMLButtonElement).disabled).toBe(true);

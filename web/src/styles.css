@@ -9320,6 +9320,28 @@ del.kit-mcp-name {
   background: var(--panel);
 }
 
+/* In the list a server's name shows whole; a long one goes under the id. */
+.mp-opt .srv {
+  max-width: 100%;
+}
+
+.mp-opt .srv-t {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.mp-opt.mp-long {
+  flex-wrap: wrap;
+}
+
+.mp-opt.mp-long .mp-names {
+  flex-basis: calc(100% - 22px);
+}
+
+.mp-opt.mp-long .srv {
+  margin-left: 22px;
+}
+
 .mp-check {
   flex: none;
   width: 14px;
@@ -9404,8 +9426,17 @@ del.kit-mcp-name {
     display: none;
   }
 
-  .mp-opt .srv {
-    max-width: 100%;
+  .mp-opt .mp-names {
+    flex-basis: calc(100% - 22px);
+  }
+
+  .mp-opt .srv,
+  .mp-opt .mx-gone {
+    margin-left: 22px;
+  }
+
+  .mp-opt .mx-gone + .srv {
+    margin-left: 0;
   }
 }
 

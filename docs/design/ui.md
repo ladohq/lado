@@ -3006,7 +3006,9 @@ painted over the card's border so the frame runs on with no seam. It points at t
 trigger's horizontal centre (`--arrow-x`), also when the window's edge pushes the card,
 and stays 16 px from the card's ends, off its rounded corners; for a narrow trigger the
 card starts left of it so the arrow still reaches its centre. The card is 11 px from its
-trigger, so the arrow never touches it.
+trigger, so the arrow never touches it. A focus that comes back to its trigger with the tab
+or window shows no tooltip, whatever the last input was, and one shown at the leaving goes;
+Tab or the pointer shows it again (LAD-207).
 
 **The cards' buttons** (feature/question-answer, 2026-10-10, mockup B v3; the waiting
 card, LAD-28): in the form of a gate's panel (`form.answer`) and in the waiting card (its

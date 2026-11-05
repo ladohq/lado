@@ -1,6 +1,7 @@
 """The session list's groups in a browser (docs/design/ui.md, Structure: Sessions): each
 heading folds its group by a click, Enter or Space, remembered over a reload; the open
-session is seen in its folded group; a row shows the session's card under the pointer."""
+session is seen in its folded group; a row shows the session's card under the pointer, and
+not when the focus comes back to it with the tab."""
 
 import agent_helpers
 import pytest
@@ -89,6 +90,100 @@ def test_a_row_shows_its_sessions_card_under_the_pointer(page: Page, server, rep
     expect(card).to_contain_text("stopped <1 min ago · ran <1 min")
     expect(card).to_contain_text("Stopped: open it and press Resume")
     shot(page, "stopped")
+
+
+@pytest.fixture
+def tabs(browser_type, server, repo):
+    """A session's row and a second tab, for real tab switches. In full Chromium with the
+    focus emulation off: the default headless shell sends no blur or focus on a switch, and
+    a test there passes with the defect in place (openspec tooltip-focus)."""
+    browser = browser_type.launch(channel="chromium")
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    page = context.new_page()
+    other = context.new_page()
+    session = running_session(repo)
+    page.bring_to_front()
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions")
+    row = page.get_by_role("navigation", name="Sessions").get_by_role("link", name=session)
+    expect(row).to_be_visible()
+    for tab in (page, other):  # after the navigation, which brings the emulation back
+        context.new_cdp_session(tab).send("Emulation.setFocusEmulationEnabled", {"enabled": False})
+    yield page, other, row
+    browser.close()
+
+
+def wait_for_focus(page: Page, wanted: bool) -> None:
+    # By asking, as a page in the background runs no wait_for_function's polling.
+    for _ in range(200):
+        if page.evaluate("document.hasFocus()") == wanted:
+            return
+        page.wait_for_timeout(50)
+    pytest.fail(f"the page's document.hasFocus() never became {wanted}")
+
+
+def away_and_back(page: Page, other: Page) -> None:
+    other.bring_to_front()
+    wait_for_focus(page, False)
+    page.bring_to_front()
+    wait_for_focus(page, True)
+    page.wait_for_timeout(500)  # past the tooltip's delay: one that would show has shown
+
+
+def test_a_clicked_row_shows_no_tooltip_when_the_focus_returns_with_the_tab(tabs, shot):
+    page, other, row = tabs
+    row.click()
+    page.mouse.move(800, 600)
+    card = page.get_by_role("tooltip")
+    expect(card).to_have_count(0)
+    away_and_back(page, other)
+    expect(row).to_be_focused()
+    expect(card).to_have_count(0)
+    shot(page, "returned")
+
+
+def test_a_clicked_row_and_a_key_show_no_tooltip_when_the_focus_returns_with_the_tab(tabs):
+    page, other, row = tabs
+    row.click()
+    page.mouse.move(800, 600)
+    page.keyboard.press("Shift")
+    card = page.get_by_role("tooltip")
+    expect(card).to_have_count(0)
+    away_and_back(page, other)
+    expect(row).to_be_focused()
+    expect(card).to_have_count(0)
+
+
+def test_a_keyboards_tooltip_goes_and_stays_away_when_the_focus_returns_with_the_tab(tabs):
+    page, other, row = tabs
+    row.focus()
+    card = page.get_by_role("tooltip")
+    expect(card).to_be_visible()
+    away_and_back(page, other)
+    expect(row).to_be_focused()
+    expect(card).to_have_count(0)
+
+
+def test_after_the_focus_returns_tab_and_back_shows_the_rows_tooltip(tabs):
+    page, other, row = tabs
+    row.focus()
+    away_and_back(page, other)
+    expect(page.get_by_role("tooltip")).to_have_count(0)
+    page.keyboard.press("Tab")
+    expect(row).not_to_be_focused()
+    page.keyboard.press("Shift+Tab")
+    expect(row).to_be_focused()
+    expect(page.get_by_role("tooltip")).to_be_visible()
+
+
+def test_after_the_focus_returns_the_pointer_shows_the_rows_tooltip(tabs):
+    page, other, row = tabs
+    row.focus()
+    away_and_back(page, other)
+    card = page.get_by_role("tooltip")
+    expect(card).to_have_count(0)
+    row.hover()
+    expect(card).to_be_visible()
 
 
 def test_a_running_row_says_whether_its_agents_work_and_follows_their_hooks(

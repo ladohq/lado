@@ -15,6 +15,9 @@
 
 ### Fixed
 
+- **A tooltip no longer pops up when you come back to LADO's tab.** A session's card and
+  other tooltips stay hidden on your return; Tab or the pointer shows them as usual.
+
 - **Placeholders read well in the dark theme.** Every field's hint now has the muted text
   colour instead of the browser's pale grey.
 

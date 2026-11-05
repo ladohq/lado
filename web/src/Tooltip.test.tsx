@@ -56,6 +56,73 @@ test("the focus shows it at once; Esc and leaving the focus hide it", () => {
   expect(screen.queryByRole("tooltip")).toBeNull();
 });
 
+// A trigger the browser counts as :focus-visible. The answer is given here: jsdom's depends
+// on the events of the tests before, and the real one is tests/ui/test_session_list.py's.
+function visiblyFocusable() {
+  const button = show();
+  const matches = button.matches.bind(button);
+  vi.spyOn(button, "matches").mockImplementation(
+    (selector) => selector === ":focus-visible" || matches(selector),
+  );
+  return button;
+}
+
+// The tab or window leaves and comes back, as the browser sends it: a blur that leaves
+// `activeElement` on the element (fireEvent.blur moves nothing), then a focus from nowhere.
+function awayAndBack(element: HTMLElement) {
+  fireEvent.blur(element);
+  expect(document.activeElement).toBe(element);
+  fireEvent.focus(element);
+}
+
+test("a focus that returns with the window to a pressed trigger shows no tooltip", () => {
+  const button = visiblyFocusable();
+  fireEvent.pointerDown(button);
+  act(() => button.focus());
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  awayAndBack(button);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test("a tooltip shown at the window's leaving goes, and does not come back with it", () => {
+  const button = visiblyFocusable();
+  act(() => button.focus());
+  expect(screen.getByRole("tooltip")).toBeTruthy();
+  fireEvent.blur(button);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  fireEvent.focus(button);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test("after the window's return the keyboard shows the tooltip: away by Tab and back", () => {
+  const button = visiblyFocusable();
+  act(() => button.focus());
+  awayAndBack(button);
+  act(() => button.blur()); // the focus really goes: Tab
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  act(() => button.focus()); // and back: Shift+Tab
+  expect(screen.getByRole("tooltip")).toBeTruthy();
+});
+
+test("after the window's return the pointer shows the tooltip after its delay", () => {
+  const button = visiblyFocusable();
+  act(() => button.focus());
+  awayAndBack(button);
+  fireEvent.mouseEnter(button);
+  act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS - 50));
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  act(() => vi.advanceTimersByTime(50));
+  expect(screen.getByRole("tooltip")).toBeTruthy();
+});
+
+test("a focus moved away while the window was away does not eat the next one from an element", () => {
+  const button = visiblyFocusable();
+  act(() => button.focus());
+  fireEvent.blur(button); // the window leaves, and comes back with the focus elsewhere
+  fireEvent.focus(button, { relatedTarget: document.createElement("button") });
+  expect(screen.getByRole("tooltip")).toBeTruthy();
+});
+
 // A tap on a touch screen, as the browser sends it: the pointer's down and up, then the
 // mouse it emulates enters the trigger, the focus and the click.
 function tap(element: HTMLElement) {

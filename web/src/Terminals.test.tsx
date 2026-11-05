@@ -574,6 +574,7 @@ test("a tab's name is cut to fit (its whole name in its tooltip), and the select
   const scrolled = vi.fn();
   Element.prototype.scrollIntoView = scrolled;
   await open();
+  expect(scrolled).not.toHaveBeenCalled(); // as the page opens it would move where Tab starts
   await openTerminal("w1");
   expect(tab("w1").querySelector(".term-tab-name")!.textContent).toBe("w1");
   expect(tab("w1").hasAttribute("title")).toBe(false);

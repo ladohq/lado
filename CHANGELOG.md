@@ -27,7 +27,17 @@
   Settings' section Agent CLIs and environment, the system panel's Agent CLIs; old links to
   the section and `lado start --provider` keep working.
 
+### Improved
+
+- **A session's head is one line at any width.** The folder, git, kits, CLI, Rename and Copy
+  link moved to Details, which a click on the title opens; the chat gets the height back,
+  and `Skip to chat` takes the keyboard straight to it.
+
 ### Fixed
+
+- **A stop no longer loses questions to you without a word.** Stop and `lado stop` say how
+  many open questions close, a closed card reads "Closed: the session stopped", and after a
+  resume the supervisor gets the unanswered ones to ask again.
 
 - **The supervisor no longer asks again for a report it already got.** A message that
   comes while an agent works reaches it with its next LADO tool call, and a reminder to an

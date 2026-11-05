@@ -1793,8 +1793,11 @@ def _reply_of(session: str, question: state.Message, reply: HumanReply) -> state
 
 
 def _open_question(session: str, question_id: int) -> state.Message:
-    running_session(session)
     question = state.get_message(session, question_id)
+    # Before the session's check: a resume does not bring this question back.
+    if question is not None and question.question_state == state.QUESTION_STOPPED:
+        raise LadoError(f"question #{question_id} is {question.question_state}")
+    running_session(session)
     if question is None or question.kind != state.QUESTION:
         raise LadoError(f"no question #{question_id} in session {session}")
     if question.question_state != state.OPEN_QUESTION:
@@ -1866,22 +1869,28 @@ def cut_summary(summary: str) -> str:
     return summary if len(summary) <= limit else summary[: limit - 1] + "…"
 
 
+def question_lines(question: state.Message) -> list[str]:
+    """A question's details, if any, and how the human may answer, for a message to the
+    lead."""
+    choices = (
+        f"Choices: {', '.join(question.choices)}"
+        + (" (or an answer in the human's own words)" if question.free_answer else "")
+        if question.choices
+        else "No choices: the human answers in their own words."
+    )
+    return [question.body, choices] if question.body else [choices]
+
+
 def ask_recommendation(session: str, question: state.Message) -> None:
     """Ask the lead for its recommendation on another agent's open question to the human,
     with the question's attachments. A lead that does not run is not asked: the question
     is asked all the same."""
     summary = cut_summary(f"recommend on question #{question.id} of {question.sender}")
-    lines = [question.summary]
-    if question.body:
-        lines.append(question.body)
-    if question.choices:
-        lines.append(
-            f"Choices: {', '.join(question.choices)}"
-            + (" (or an answer in the human's own words)" if question.free_answer else "")
-        )
-    else:
-        lines.append("No choices: the human answers in their own words.")
-    lines.append(RECOMMEND_REQUEST.format(item=f"question={question.id}"))
+    lines = [
+        question.summary,
+        *question_lines(question),
+        RECOMMEND_REQUEST.format(item=f"question={question.id}"),
+    ]
     attachments = state.message_attachments(question.id)
     try:
         request = state.ask_recommendation(
@@ -2547,6 +2556,7 @@ def format_messages(messages: list[state.Message]) -> str:
 class Stopped:
     workers: list[state.Agent]  # their worktrees stay on disk
     dropped: int  # messages no agent got
+    questions: int  # open questions to the human it closed
 
 
 @dataclass
@@ -2598,6 +2608,7 @@ def kit_users(kit: str) -> KitUsers:
 class StopPreview:
     agents: list[str]  # the agents a stop closes
     dropped: int  # messages no agent got, dropped by a stop now
+    questions: int  # open questions to the human, closed by a stop now
     open_runs: list[str]  # they stay, and go on after a resume
     worktrees: dict[str, str]  # worktree -> branch, they stay on disk
 
@@ -2616,6 +2627,7 @@ def stop_preview(session: str) -> StopPreview:
     return StopPreview(
         [a.name for a in state.list_agents(session)],
         state.unreceived(session),
+        state.open_questions(session),
         [r.name for r in state.list_runs(session, open_only=True)],
         session_worktrees(sess.repo, session),
     )
@@ -2798,7 +2810,7 @@ def _kill_for_migration(sessions: list[str]) -> dict[str, bool]:
 def _mark_stopped(session: str, gone: bool, kill: bool = False) -> Stopped:
     """Mark the session stopped; with `kill`, then kill its tmux session. A kill that fails
     leaves it marked stopped, and the error says how to kill it by hand."""
-    agents, dropped = state.stop_session(session, gone=gone)
+    agents, dropped, questions = state.stop_session(session, gone=gone)
     failed = None
     if kill:
         try:
@@ -2816,7 +2828,7 @@ def _mark_stopped(session: str, gone: bool, kill: bool = False) -> Stopped:
             "session after that"
         ) from failed
     providers.base.remove_session_config_dirs(session)
-    return Stopped([a for a in agents if a.name != SUPERVISOR], dropped)
+    return Stopped([a for a in agents if a.name != SUPERVISOR], dropped, questions)
 
 
 @dataclass

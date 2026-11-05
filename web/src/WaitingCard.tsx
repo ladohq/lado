@@ -24,6 +24,7 @@ import { Attachments } from "./Attachments";
 import { Body } from "./ChatText";
 import { avatar } from "./FeedRow";
 import { GatePanel } from "./GateCard";
+import { escapeIsTaken } from "./Menu";
 import { Recommendation } from "./Recommendation";
 import { ExpandIcon, FlowsIcon, MinimizeIcon, RestoreIcon } from "./icons";
 import { VIEW_PARAM } from "./paths";
@@ -270,8 +271,7 @@ export function WaitingCard({
   useEffect(() => {
     if (!expanded || viewing) return;
     const escape = (event: KeyboardEvent) => {
-      // A dialog over the page (the session's details) takes its own Esc.
-      if (event.key !== "Escape" || (event.target as Element | null)?.closest?.("dialog")) return;
+      if (event.key !== "Escape" || event.defaultPrevented || escapeIsTaken(event.target)) return;
       event.preventDefault();
       folded.current = true;
       setExpanded(false);

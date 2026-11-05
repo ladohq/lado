@@ -39,6 +39,7 @@ import { useLive, useLiveStore } from "./live";
 import { TERMINAL_PARAM } from "./paths";
 import { usePhone } from "./phone";
 import { PANEL_WIDTH, storeAskControl, storedAskControl, storedPanel, storePanel, type ColumnPrefs } from "./prefs";
+import { escapeIsTaken } from "./Menu";
 import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
 import { AgentTip, StatusDot, SUPERVISOR } from "./Team";
 import { Tooltip } from "./Tooltip";
@@ -47,7 +48,7 @@ import { TermLink, terminalUrl, type LinkState, type Mode } from "./terminalLink
 // The least width of the session beside the panel: the panel is narrowed to leave it.
 export const MAIN_MIN = 360;
 
-type Terminals = { open: (agent: string) => void; active: string | null };
+type Terminals = { open: (agent: string) => void; active: string | null; putBack: () => void };
 
 const TerminalsContext = createContext<Terminals | null>(null);
 
@@ -67,11 +68,16 @@ export function useShownTerminal(): string | null {
   return useTerminals().active;
 }
 
-// Esc on an expanded panel puts it back, except where Esc is someone else's: a dialog and
-// the terminal of an agent the human controls (Esc goes to the agent).
+// Puts back a panel that lies over the page, whose chat the human goes to.
+export function usePutBackTerminals(): () => void {
+  return useTerminals().putBack;
+}
+
+// Esc on an expanded panel puts it back, except where Esc is someone else's: a layer over
+// the page and the terminal of an agent the human controls (Esc goes to the agent).
 function escapeIsOurs(target: EventTarget | null): boolean {
+  if (escapeIsTaken(target)) return false;
   if (!(target instanceof Element)) return true;
-  if (target.closest("dialog")) return false;
   return !(target.closest(".term-xterm") && target.closest('[data-mode="control"]'));
 }
 
@@ -121,11 +127,17 @@ export function TerminalPanel({ session, children }: { session: string; children
     return () => document.removeEventListener("visibilitychange", hidden);
   }, [releaseAll]);
 
-  // The selected tab, chosen here or by a chip, scrolls into the tabs' view.
+  // The selected tab, chosen here or by a chip, scrolls into the tabs' view, and a narrow
+  // window's page to the panel. Not as the page opens: Chromium's Tab would start from the
+  // tab, past Skip to chat.
+  const opened = useRef(false);
   useEffect(() => {
-    tabList.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+    if (opened.current) {
+      tabList.current
+        ?.querySelector('[aria-selected="true"]')
+        ?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+    }
+    opened.current = true;
   }, [active, collapsed]);
 
   const keep = useCallback((change: Partial<ColumnPrefs>) => {
@@ -201,23 +213,25 @@ export function TerminalPanel({ session, children }: { session: string; children
     if (made !== shown) setShown(made);
   });
 
+  const putBack = useCallback(() => {
+    if (phone) closePhone();
+    else setExpanded(false);
+  }, [phone, closePhone]);
   useEffect(() => {
     if (!over) return;
     const restore = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !escapeIsOurs(event.target)) return;
-      if (phone) closePhone();
-      else setExpanded(false);
+      if (event.key === "Escape" && escapeIsOurs(event.target)) putBack();
     };
     // Captured: xterm.js takes the keys it handles, so they never bubble up to the window.
     window.addEventListener("keydown", restore, true);
     return () => window.removeEventListener("keydown", restore, true);
-  }, [over, phone, closePhone]);
+  }, [over, putBack]);
 
   const width = fitWidth(panel.width, PANEL_WIDTH, room === null ? null : room - MAIN_MIN);
   const classes = ["terminals", collapsed && "collapsed", over && "expanded"].filter(Boolean).join(" ");
 
   return (
-    <TerminalsContext.Provider value={{ open, active: collapsed ? null : active }}>
+    <TerminalsContext.Provider value={{ open, active: collapsed ? null : active, putBack }}>
       <div ref={page} className="session-page">
         <div className="session-main" style={{ minWidth: `${MAIN_MIN}px` }}>
           {missing !== null && (

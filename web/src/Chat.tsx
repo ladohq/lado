@@ -169,6 +169,15 @@ type Scroll = { window: string | null; first: string | null; last: string | null
 
 const atBottom = (element: HTMLElement) => element.scrollHeight - element.scrollTop - element.clientHeight < 40;
 
+// The address's state that opens the chat with the focus on its feed (Skip to chat).
+export const FOCUS_CHAT = { focusChat: true };
+
+// The focus on the chat: its feed, or the selected tab of an expanded card, which hides it.
+export function focusChat() {
+  const card = document.querySelector<HTMLElement>('.chat > .waiting-card.expanded [role="tab"][aria-selected="true"]');
+  (card ?? document.querySelector<HTMLElement>(".chat-feed"))?.focus();
+}
+
 export function Chat({ session, stopped, agentMessages }: { session: string; stopped: boolean; agentMessages: boolean }) {
   const live = useLiveStore();
   const state = useLive();
@@ -257,7 +266,10 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   // A link to an open question or gate (#message-<id>, #gate-<id>: Needs you, a
   // notification, a line's arrow) shows its tab in the waiting card and marks it. A link to
   // another card scrolls to it; one before the window first loads up to it, in one load.
-  const { hash } = useLocation();
+  const { hash, state: arrival } = useLocation();
+  useEffect(() => {
+    if ((arrival as typeof FOCUS_CHAT | null)?.focusChat) focusChat();
+  }, [arrival]);
   const [goal, setGoal] = useState<string | null>(null);
   const go = (anchor: string) => {
     if (!ready) return;
@@ -296,7 +308,7 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
 
   return (
     <section className="chat" aria-label="Chat">
-      <div className="chat-feed" role="log" aria-label="Chat with the session" ref={feedRef} onScroll={scrolled}>
+      <div className="chat-feed" role="log" aria-label="Chat with the session" tabIndex={-1} ref={feedRef} onScroll={scrolled}>
         {loaded === null && <p className="muted">Loading…</p>}
         {loaded && "error" in loaded && (
           <p className="problem" role="alert">

@@ -2676,7 +2676,7 @@ export interface components {
             /** Free Answer */
             free_answer: boolean;
             /** Question State */
-            question_state: ("open" | "answered" | "dismissed" | "closed") | null;
+            question_state: ("open" | "answered" | "dismissed" | "closed" | "stopped") | null;
             /** Answered By */
             answered_by: number | null;
             /** Reply To */
@@ -3826,6 +3826,8 @@ export interface components {
             agents: string[];
             /** Dropped */
             dropped: number;
+            /** Questions */
+            questions: number;
             /** Open Runs */
             open_runs: string[];
             /** Worktrees */

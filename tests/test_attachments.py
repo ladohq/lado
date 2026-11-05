@@ -148,6 +148,18 @@ def test_a_question_to_the_human_carries_artifacts(session):
     assert state.message_attachments(question.id) == [(written.artifact.id, written.record.id)]
 
 
+def test_the_notice_of_stopped_questions_carries_their_artifacts(session, repo):
+    written = artifacts.write(session, "supervisor", "mockup.html", content="<p>hi</p>")
+    _call(
+        session, "supervisor", "ask_human", {"question": "Ship it?", "artifacts": ["mockup.html"]}
+    )
+    runtime.stop_session(session)
+    runtime.start_session(str(repo), session, None)
+    notice = _last_message(session)
+    assert notice.summary == "1 question to the human closed unanswered by the stop"
+    assert state.message_attachments(notice.id) == [(written.artifact.id, written.record.id)]
+
+
 @pytest.mark.parametrize("end", ["stop", "finish"])
 def test_an_unread_message_with_only_artifacts_is_dropped_and_counted(session, end):
     artifacts.write(session, "supervisor", "plan", content="v1")

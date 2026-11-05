@@ -235,8 +235,7 @@ def test_rename_in_place(page: Page, shop, server, shot):
     expect(listed).to_be_visible()
     assert projects.get("shop").title == "Shop EU"
     page.goto(f"{server['url']}/sessions/shop-frontend/activity")
-    facts = page.get_by_role("banner").locator(".session-meta > *")
-    expect(facts.first).to_have_text("projectShop EU")
+    expect(page.get_by_role("banner").locator(".session-crumb")).to_have_text("Shop EU")
 
     # An untitled project: Tab takes the id.
     page.goto(f"{server['url']}/projects/acme")

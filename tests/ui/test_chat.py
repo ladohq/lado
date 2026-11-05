@@ -231,6 +231,20 @@ def test_a_workers_question_with_the_supervisors_recommendation_open_and_closed(
     shot(page, "closed")
 
 
+def test_a_question_a_stop_closed_says_the_session_stopped(page: Page, server, repo, shot):
+    session = running_session(repo)
+    runtime.ask_human(session, "supervisor", "Which port?", None, ["8123", "8200"])
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    expect(waiting_card(page, session).get_by_role("tab", name="supervisor 1")).to_be_visible()
+    runtime.stop_session(session)
+    closed = page.get_by_role("log", name="Chat with the session").get_by_role(
+        "article", name="Question from supervisor"
+    )
+    expect(closed.locator(".chat-outcome")).to_have_text("Closed: the session stopped")
+    shot(page)
+
+
 def test_three_tabs_switch_a_gate_is_approved_on_its_tab_and_the_card_expands(
     page: Page, server, repo, shot
 ):

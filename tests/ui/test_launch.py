@@ -591,6 +591,18 @@ def test_the_session_list_row_has_only_the_entrys_menu(page: Page, server, repo,
     expect(by_hand).to_have_count(0)
 
 
+def test_stop_names_the_open_questions_it_closes(page: Page, server, repo, shot):
+    session = running_session(repo)
+    runtime.ask_human(session, "supervisor", "Which port?")
+    runtime.ask_human(session, "supervisor", "Ship it?")
+    log_in(page, server, f"/sessions/{session}")
+    head = page.get_by_role("banner").locator(".session-head")
+    head.get_by_role("button", name="Stop session…").click()
+    asked = page.get_by_role("dialog", name=f'Stop session "{session}"?')
+    expect(asked.get_by_role("listitem").nth(1)).to_have_text("2 open questions to you are closed")
+    shot(page)
+
+
 def test_stop_from_the_session_head(page: Page, server, repo, shot):
     session = running_session(repo)
     log_in(page, server, f"/sessions/{session}")
@@ -814,7 +826,7 @@ def test_forget_a_stopped_session(page: Page, server, repo, shot):
     # The name stays on one line beside the status and the icons, its whole text in a tooltip.
     head = page.get_by_role("banner").locator(".session-head")
     name = head.locator("h1")
-    expect(name).to_have_attribute("title", session)
+    expect(name.get_by_role("button")).to_have_attribute("title", session)
     assert name.bounding_box()["height"] < 36
     expect(head.get_by_role("button", name="Session actions")).to_have_count(0)
     head.get_by_role("button", name="Forget…").focus()

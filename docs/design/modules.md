@@ -800,7 +800,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `lado answer` and the UI server's API, never from an MCP tool; the answering surface
     (popup, CLI, UI) stays outside that core. A gate that opens asks the lead for its
     recommendation (`runs._ask_recommendation`, `runs.recommendation_request`; How agents
-    talk), and `runs.resume` asks again for each open gate without a given one.
+    talk), and `runs.resume` asks again for each open gate without a given one, and tells
+    the new supervisor of the questions a stop closed.
   - `mcp_server.py`: MCP tools for agents (`send_message`, `ask_human`, `read_messages`,
     `list_agents`, `flow_advance`, `flow_status`, `write_artifact`, `read_artifact`,
     `list_artifacts`; `send_message`, `ask_human` and `flow_advance` take `artifacts` to

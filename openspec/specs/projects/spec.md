@@ -611,20 +611,20 @@ project SHALL answer it in this form.
 ### Requirement: The session's API and head show its project
 
 `SessionInfo` SHALL carry `project`, the project's id or null. `SessionAbout` SHALL carry
-`project`, `{id, title}` read when asked, or null. The session's head SHALL show, for a
-session in a project, as the first of its facts before the folder, the word `project` and
-the project's title (its id when it has none), with the tooltip `Project <id>`; on a phone
-the session's details SHALL show `Project <title>` above the folder. A session without a
-project SHALL show nothing new.
+`project`, `{id, title}` read when asked, or null. Outside the phone layout the head of a
+session in a project SHALL show the project's title (its id when it has none) as a breadcrumb
+before the session's title, with `Project <id>` in its tooltip; Details and the phone's sheet
+SHALL show `project <title>` in their state line. A session without a project SHALL show
+neither.
 
 #### Scenario: The head of a session in a project
 - **WHEN** the human opens `shop-frontend` of project `shop` titled `Shop`
-- **THEN** the head's facts begin with `project Shop`, whose tooltip is `Project shop`,
-  then the folder
+- **THEN** the head reads `Shop / <the session's title>`, and the tooltip of `Shop` has
+  `Project shop`
 
 #### Scenario: Renamed project
 - **WHEN** the project is renamed `Shop EU` and the human opens the session again
-- **THEN** the head shows `project Shop EU`
+- **THEN** the head shows `Shop EU` before the session's title
 
 ### Requirement: lado project delete refuses while a session in the project's folder runs
 
@@ -1318,7 +1318,7 @@ outside folder.
 
 ### Requirement: The session's project links to the project's page
 
-In the session's head and in a phone's session details, the project's title SHALL be a
+In the session's head and in the session's details, the project's title SHALL be a
 link to the project's page `/projects/<id>`, its tooltip kept.
 
 #### Scenario: From the head to the project
@@ -1764,7 +1764,7 @@ session's page. The window's first source SHALL stay as before.
 #### Scenario: Start in a project's repository
 - **WHEN** the human picks Project, `Shop`, then `frontend`, and clicks `Start in Shop`
 - **THEN** the session `shop-frontend` starts in the project and its page opens, its head
-  showing `project Shop`
+  showing `Shop` before its title
 
 ### Requirement: The Project way's start names the project
 
@@ -1926,7 +1926,7 @@ list SHALL show the new title.
 #### Scenario: Renamed
 - **WHEN** the human clicks `Rename` on `/projects/shop`, types `Shop EU` and presses Enter
 - **THEN** the head and the list's row read `Shop EU`, and the session `shop-frontend`'s
-  head reads `project Shop EU` when it is next opened
+  head reads `Shop EU` before its title when it is next opened
 
 #### Scenario: Tab takes the id
 - **WHEN** the project `shop` has no title, the human clicks `Rename` and presses Tab

@@ -26,6 +26,7 @@ a {
    ring of .waiting-field:focus and of .marked fits in it. */
 :root {
   --ring-room: 4px;
+  --head-h: 48px; /* the top bar's height, on a computer */
 }
 
 :focus-visible {
@@ -244,7 +245,7 @@ button.rail-link {
    Stop popover; the tooltips are in the body) paints at its level. 10 puts it over the
    session's splitter (2) and the expanded terminals (3), and under the narrow window's
    fixed terminals (20), the artifact panel and its scrim (30, 31) and the lightbox (40).
-   Its content sets its height: a session's head wraps to a second line when narrow. */
+   It is --head-h high, on a phone as its own rules say; a session's head never wraps. */
 .topbar {
   position: sticky;
   top: 0;
@@ -252,7 +253,7 @@ button.rail-link {
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 52px;
+  min-height: var(--head-h);
   padding: 0 24px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
@@ -1249,38 +1250,161 @@ h3 {
 }
 
 /* A session's head, one line of the top bar (its items are the bar's): the status dot, the
-   name, the run time, the facts, then the icons at the right end. Facts that do not fit
-   between the name and the icons wrap to more lines there; the other items keep to the top
-   line, each 32 px high as the icons. A narrow window puts the facts on a second line of
-   the bar (below). */
+   project, the title, a broken session's words, the run time, the branch on a wide window,
+   then the actions at the right end. The facts are in Details. */
 .session-head {
   display: contents;
 }
 
+/* One line that never wraps: what lacks room is cut by flex-shrink, the title down to 8ch,
+   then the project, then the run time, then the words; the actions and the link never. Shrinking
+   is shared in proportion, and a share of a pixel already shows the "…": the weights stand a
+   million apart, so each item's share is nothing until the one before it is at its least.
+   The box-sizing keeps the bar's border inside --head-h. */
 .topbar:has(.session-head) {
-  align-items: flex-start;
-  padding-block: 10px;
+  box-sizing: border-box;
+  height: var(--head-h);
+  flex-wrap: nowrap;
+  gap: 10px;
+  padding-right: 12px;
+  white-space: nowrap;
 }
 
-.session-head h1,
-.session-state,
-.session-ran,
-.topbar:has(.session-head) .link {
-  line-height: 32px;
+/* Skip to chat (Shell.tsx, useSkipSlot): out of sight until it has the focus. */
+.skip-slot {
+  display: contents;
 }
 
-.session-head .topbar-sep {
-  margin-block: 5px;
+.skip-link {
+  position: fixed;
+  top: 6px;
+  left: 6px;
+  z-index: 30;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 2px 8px var(--shadow);
+  transform: translateY(-200%);
 }
 
-/* The head's dot keeps its size and place in the bar; its look is the session's mark: the
-   list's working dot and idle ring and a waiting agent's diamond (.dot, .activity-*,
-   .dot-waiting), or the stopped and trouble dots below. */
+.skip-link:focus {
+  transform: none;
+}
+
+/* The project as a breadcrumb, before the title. */
+.session-crumb {
+  flex: 0 1000000000000 auto;
+  min-width: 4ch;
+  max-width: 16ch;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: none;
+  text-overflow: ellipsis;
+}
+
+.session-crumb:hover,
+.session-crumb:focus-visible {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.session-crumb-sep {
+  flex: none;
+  margin-inline: -4px;
+  color: var(--line);
+  font-size: 18px;
+}
+
+/* The title's button, and in its place the title's field; Details under them. The least is
+   8ch of the title's text, and the button's padding and chevron around it. */
+.session-title-box {
+  position: relative;
+  display: flex;
+  flex: 0 1000000000000000000 auto;
+  min-width: calc(8ch + 30px);
+  font-size: 18px; /* its ch is the title's */
+}
+
+.session-head h1 {
+  min-width: calc(8ch + 30px);
+  max-width: 100%;
+  font-size: inherit;
+  line-height: 24px;
+}
+
+.session-head h1 button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.session-head h1 button:hover,
+.session-head h1 button[aria-expanded="true"] {
+  background: var(--raised);
+}
+
+.session-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-chevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--muted);
+}
+
+.session-chevron .icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* The branch, on a wide window only. */
+.session-branch {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  max-width: 24ch;
+  overflow: hidden;
+  color: var(--muted);
+  font: 12px var(--mono);
+}
+
+.session-branch span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-branch .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+@media (min-width: 1600px) {
+  .session-branch {
+    display: inline-flex;
+  }
+}
+
+/* The head's dot keeps its size in the bar; its look is the session's mark: the list's
+   working dot and idle ring and a waiting agent's diamond (.dot, .activity-*, .dot-waiting),
+   or the stopped and trouble dots below. */
 .session-dot {
   flex: none;
   width: 9px;
   height: 9px;
-  margin-block: 11.5px;
   border-radius: 50%;
 }
 
@@ -1295,7 +1419,10 @@ h3 {
 
 .session-state,
 .session-ran {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1308,6 +1435,7 @@ h3 {
 }
 
 .session-ran {
+  flex-shrink: 1000000;
   color: var(--muted);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
@@ -1315,6 +1443,7 @@ h3 {
 
 .session-head-actions {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 6px;
   margin-left: auto;
@@ -1330,61 +1459,111 @@ h3 {
   height: 18px;
 }
 
-/* The facts, small and quiet: the folder, git, the kits, the agents' CLI. They take the room
-   between the name and the icons, the folder at most half of it; what does not fit goes to
-   a line of its own there, and a fact wider than the whole room wraps its own text, so
-   none ever lies over the icons. */
-.session-meta {
-  display: flex;
-  flex: 1 1 0;
-  flex-wrap: wrap;
-  align-content: center;
-  align-items: center;
-  gap: 2px 16px;
-  min-width: 0;
-  min-height: 32px;
-  color: var(--muted);
-  font-size: 12.5px;
-}
-
-.session-folder,
-.session-fact {
+/* Stop with its word, on a window wide enough and not on a phone. */
+.session-head-actions .icon-button:has(.session-action-word) {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
-  gap: 5px;
-  min-width: 0;
-  max-width: 100%;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  padding-inline: 10px;
+  font-size: 14px;
 }
 
-.session-meta .session-folder {
-  max-width: 50%;
+.session-action-word {
+  font-weight: 500;
 }
 
-/* The project's fact: the muted word "project", the title in the ink colour. */
-/* The project's title links to its page (the Projects section). */
-.session-project-title {
-  color: var(--ink);
-  text-decoration: none;
+@media (max-width: 900px) {
+  .session-action-word {
+    display: none;
+  }
+
+  .session-head-actions .icon-button:has(.session-action-word) {
+    width: 32px;
+    padding-inline: 0;
+  }
 }
 
-.session-project-title:hover,
-.session-project-title:focus-visible {
-  text-decoration: underline;
+/* Details (SessionDetails.tsx): the popover on a computer, its content shared with the phone's
+   sheet, whose frame is in the section "Phone layout". */
+.session-popover {
+  z-index: 5;
+  box-sizing: border-box;
+  width: min(470px, calc(100vw - 32px));
+  max-height: calc(100vh - var(--head-h) - 16px);
+  max-height: calc(100dvh - var(--head-h) - 16px);
+  padding: 14px 16px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 8px 28px var(--shadow);
+  font-size: 14px;
+  white-space: normal;
 }
 
-.session-fact {
+.session-popover h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-.session-fact .icon {
-  flex: none;
-  width: 15px;
-  height: 15px;
+.session-details-state {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
-.session-folder .icon-button,
-.session-git .icon-button {
-  flex: none;
+.session-details-state code,
+.session-version {
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.session-popover dl,
+.session-details dl {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  gap: 10px 8px;
+  align-items: start;
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.session-popover dt,
+.session-details dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.session-popover dd,
+.session-details dd {
+  grid-column: 2 / -1;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.session-popover dd.session-details-copied,
+.session-details dd.session-details-copied {
+  grid-column: 2;
+}
+
+.session-popover dd.session-details-copy,
+.session-details dd.session-details-copy {
+  grid-column: 3;
+}
+
+.session-popover dd code,
+.session-git {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.session-details-copy .icon-button {
   width: 24px;
   height: 24px;
   border-color: transparent;
@@ -1392,29 +1571,60 @@ h3 {
   color: var(--muted);
 }
 
-.session-folder .icon-button:hover,
-.session-git .icon-button:hover {
+.session-details-copy .icon-button:hover {
   background: var(--raised);
   color: var(--ink);
 }
 
-.session-folder .icon,
-.session-git .icon {
+.session-details-copy .icon {
   width: 15px;
   height: 15px;
 }
 
-/* One line, cut with "…" at its start (right to left), so its end stays in view; the path
-   itself reads left to right in its bdi. */
-.session-path {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  direction: rtl;
+/* Its note ends at the button and grows to the left: the button is at the frame's right. */
+.session-details-copy .copy-button .row-note {
+  right: 0;
+  left: auto;
+}
+
+/* Over the row at the popover's foot, as under it the note would make the popover scroll. */
+.session-popover .session-details-actions .copy-button .row-note {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+.session-details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.session-details-actions .quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.session-details-actions .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.session-details-actions .session-details-all {
+  margin-left: auto;
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+}
+
+.session-details-actions .session-details-all:hover {
   color: var(--ink);
-  font-family: var(--mono);
-  font-size: 12px;
 }
 
 /* A copy's note under its button, over what follows, so nothing moves. */
@@ -1432,7 +1642,6 @@ h3 {
   white-space: nowrap;
 }
 
-.session-head-actions .copy-button .row-note,
 .copy-icon-button .row-note {
   right: 0;
   left: auto;
@@ -1525,19 +1734,8 @@ h3 {
   }
 }
 
-/* One line; a name longer than its room ends in "…", whole in its title. It does not shrink
-   with the facts (a shrink of a fraction of a pixel would already cut it), it has a room of
-   its own: a third of the bar, and when narrow the first line but what stays beside it. */
-.session-head h1 {
-  flex: none;
-  max-width: 33%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* The session title (docs/design/ui.md, Session title): the name, small and grey, after a
-   title, in the head and in Needs you; the pencil after them, on the title's hover, its own
-   focus, and always on a device without hover. */
+   title in Needs you. */
 .session-name-id {
   flex: 0 1 auto;
   min-width: 0;
@@ -1554,34 +1752,8 @@ h3 {
   line-height: inherit;
 }
 
-.session-rename {
-  flex: none;
-  margin-top: 2px;
-  border-color: transparent;
-  background: none;
-  color: var(--muted);
-  opacity: 0;
-}
-
-.session-rename:hover {
-  color: var(--ink);
-}
-
-.session-head h1:hover ~ .session-rename,
-.session-head .session-name-id:hover ~ .session-rename,
-.session-rename:hover,
-.session-rename:focus-visible {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .session-rename {
-    opacity: 1;
-  }
-}
-
-/* The title's field, in the head in the place of the title (a third of the bar), and in a
-   list row in the place of its link; the hint or the problem under it. */
+/* The title's field, in the head in the place of the title, and in a list row in the place
+   of its link; the hint or the problem under it. */
 .title-edit {
   display: flex;
   flex-direction: column;
@@ -1589,9 +1761,31 @@ h3 {
   min-width: 0;
 }
 
+.session-title-box:has(.title-edit) {
+  flex: 1 1000000000000 320px;
+}
+
 .session-head .title-edit {
-  flex: none;
-  width: 33%;
+  position: relative;
+  width: 100%;
+}
+
+.session-head .title-edit input {
+  font-size: 18px;
+}
+
+/* Under the line, so the field leaves the line's height as it is. */
+.session-head .title-edit-hint,
+.session-head .title-edit .field-problem {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 5;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--panel);
+  box-shadow: 0 2px 8px var(--shadow);
+  white-space: nowrap;
 }
 
 .title-edit input {
@@ -1659,45 +1853,8 @@ h3 {
   font-size: 15px;
 }
 
-/* A window too narrow for the head on one line: the facts go to a second line of the top
-   bar, the dot, the name, the run time, the icons and the link's dot stay on the first. */
+/* A window too narrow for the link's word: its dot, the word in its tooltip (LiveButton). */
 @media (max-width: 1100px) {
-  .topbar:has(.session-head) {
-    flex-wrap: wrap;
-    gap: 4px 10px;
-    padding-block: 8px;
-  }
-
-  .session-meta {
-    flex-basis: 100%;
-    order: 1;
-    min-height: 0;
-  }
-
-  /* The dot, the run time, the icons and the link's dot, with their gaps. */
-  .session-head h1 {
-    max-width: calc(100% - 190px);
-  }
-
-  /* With a title, its name and the pencil stay beside it too. */
-  .session-head:has(.session-name-id) h1,
-  .session-head .title-edit {
-    max-width: calc(100% - 320px);
-  }
-
-  .session-head .title-edit {
-    width: auto;
-    flex: 1 1 auto;
-  }
-
-  .session-head .session-name-id {
-    max-width: 12ch;
-  }
-
-  .session-head > .meta-sep {
-    display: none;
-  }
-
   .topbar:has(.session-head) .link-word {
     position: absolute;
     width: 1px;
@@ -4545,13 +4702,12 @@ h3 {
 }
 
 /* A narrow window scrolls, so the chat has no height of its own: the card is the window's
-   less the top bar's 52 px (taller with a session's head of two lines; accepted, as for
-   .session-main), and expanding scrolls it under that bar. */
+   less the top bar, and expanding scrolls it under that bar. */
 @media (max-width: 900px) {
   .waiting-card.expanded {
-    min-height: calc(100vh - 52px);
-    min-height: calc(100dvh - 52px);
-    scroll-margin-top: 52px;
+    min-height: calc(100vh - var(--head-h));
+    min-height: calc(100dvh - var(--head-h));
+    scroll-margin-top: var(--head-h);
   }
 }
 
@@ -5303,11 +5459,11 @@ h3 {
     flex-direction: column;
   }
 
-  /* The top bar's 52 px: a session's head of two lines makes it taller, so this is a bit
-     more than the room left; accepted, as the window scrolls here anyway. */
+  /* The window less the top bar. A phone's bar is not --head-h, so there this is a few
+     pixels off; accepted, as the window scrolls here anyway. */
   .session-main {
     min-width: 0 !important;
-    min-height: calc(100vh - 52px);
+    min-height: calc(100vh - var(--head-h));
     overflow: visible;
   }
 
@@ -10690,8 +10846,8 @@ button.quiet.danger-text {
 :root[data-phone] .menu-button {
   position: relative;
   flex: none;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   color: var(--ink);
 }
 
@@ -10768,28 +10924,25 @@ button.quiet.danger-text {
   padding-block: 0;
 }
 
-:root[data-phone] .session-head .session-dot {
-  margin-block: 0;
-}
-
 :root[data-phone] .session-head .session-title {
   flex: 1 1 auto;
   min-width: 0;
   max-width: none;
+  font-size: 17px;
   line-height: normal;
 }
 
 :root[data-phone] .session-title button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   max-width: 100%;
   padding: 6px 0;
-  overflow: hidden;
   border: 0;
   background: none;
   color: inherit;
   font: inherit;
   text-align: left;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -10801,6 +10954,17 @@ button.quiet.danger-text {
 :root[data-phone] .session-head-actions {
   order: 2;
   margin-left: 0;
+}
+
+:root[data-phone] .session-head-actions .icon-button,
+:root[data-phone] .session-head-actions .icon-button:has(.session-action-word) {
+  width: 44px;
+  height: 44px;
+  padding-inline: 0;
+}
+
+:root[data-phone] .session-action-word {
+  display: none;
 }
 
 /* The session's details (SessionDetails.tsx): a sheet over the page's bottom. */
@@ -10817,6 +10981,7 @@ button.quiet.danger-text {
   background: var(--panel);
   color: var(--ink);
   font-size: 14px;
+  white-space: normal; /* the top bar it is drawn in keeps its line whole */
 }
 
 :root[data-phone] .session-details::backdrop {
@@ -10846,45 +11011,14 @@ button.quiet.danger-text {
   font-size: 22px;
 }
 
-:root[data-phone] .session-details-state {
-  margin: 0 0 12px;
-  color: var(--muted);
-}
-
-:root[data-phone] .session-details dl {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px 12px;
-  margin: 0 0 16px;
-}
-
-:root[data-phone] .session-details dt {
-  color: var(--muted);
-}
-
-:root[data-phone] .session-details dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-:root[data-phone] .session-details-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+:root[data-phone] .session-details-copy .icon-button {
+  width: 44px;
+  height: 44px;
+  margin-block: -10px;
 }
 
 :root[data-phone] .session-details-actions .quiet {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 36px;
-  font-size: 14px;
-  text-decoration: none;
-}
-
-:root[data-phone] .session-details-actions .icon {
-  width: 16px;
-  height: 16px;
+  height: 44px;
 }
 
 /* A session's page fills the content: the session only, its main column scrolling by

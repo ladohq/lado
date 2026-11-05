@@ -16,6 +16,19 @@ function phoneNow(): Phone {
   return match(SHORT_QUERY) ? "short" : "tall";
 }
 
+// Whether a media query holds now, again when the window changes.
+export function useMedia(query: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia?.(query).matches ?? false);
+  useEffect(() => {
+    const list = window.matchMedia?.(query);
+    const changed = () => setMatches(list?.matches ?? false);
+    list?.addEventListener?.("change", changed);
+    changed(); // a change between the first render and now
+    return () => list?.removeEventListener?.("change", changed);
+  }, [query]);
+  return matches;
+}
+
 // The phone layout now, again when the screen turns or resizes.
 export function usePhone(): Phone {
   const [phone, setPhone] = useState(phoneNow);

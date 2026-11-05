@@ -592,6 +592,18 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## `lado server stop` by hand in the container stops every session
+
+Size: S. Why here: only a human in the container's shell gets there, and a restart of the
+server there costs the sessions' agents and open questions, where outside it costs nothing.
+
+In LADO's container the UI server's end stops every session of its `LADO_HOME`
+(`runtime.stop_for_container`), which is right when the container stops, but `lado server
+stop` typed by hand ends the server the same way, with the container still running.
+Wanted: a stop by hand in a running container either leaves the sessions, as outside a
+container, or says first what it stops.
+Found: 2026-11-04, lado/lad-199/task-lad-199 (LAD-199).
+
 ## On a phone the composer lies over the waiting card's tabs when its keyboard opens
 
 Size: S. Why here: the human writes to the supervisor with a card waiting and sees the
@@ -1898,6 +1910,17 @@ Wanted: the installer run with `UV_TOOL_DIR` (the prefix's parent) and `UV_TOOL_
 (the receipt's install-path), or `PIPX_HOME` (`<home>/venvs/<name>`), as
 `self_update._install_by_hand` names them.
 Found: 2026-10-25, hotfix/lad-144-by-hand-way-back.
+
+## Flaky UI test: an own answer's field ends under the window's edge on a phone
+
+Size: S. Why here: a flaky test seen once, in a run of several files; the cause is unknown.
+
+`tests/ui/test_phone.py::test_an_own_answer_expands_the_card_above_the_keyboard` failed once in
+a parallel UI run of seven files (review of LAD-192, head 6b3b0251): the field's bottom edge
+was 400 px past the window's. It then passed 3 of 3 alone with `-n0`, in the whole of
+`test_phone.py`, on CI and in the whole UI suite. The cause was not looked for.
+Wanted: find what the test races with, and make it wait for that.
+Found: 2026-11-05, feature/lad-192-session-head-one-line (review).
 
 # P3: maybe never
 

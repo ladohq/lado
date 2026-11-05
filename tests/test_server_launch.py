@@ -682,10 +682,12 @@ def test_stop_shows_what_it_does_then_does_it(client, repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     worker = runtime.spawn_worker("s", "task", name="w1")
     runtime.send_message("s", "supervisor", "w1", "hi")
+    runtime.ask_human("s", "supervisor", "Which port?")
     preview = client.get("/api/sessions/s/stop-preview").json()
     assert preview == {
         "agents": ["supervisor", "w1"],
         "dropped": 2,  # and w1's task
+        "questions": 1,
         "open_runs": [],
         "worktrees": [{"path": worker.cwd, "branch": worker.branch}],
     }

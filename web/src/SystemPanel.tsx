@@ -44,6 +44,7 @@ import { statisticsLine } from "./Telemetry";
 import { ClipboardIcon, FolderIcon, GitHubIcon, QrIcon } from "./icons";
 import { useLive } from "./live";
 import { useBelow, useDismiss } from "./Menu";
+import { useMedia } from "./phone";
 import { storeUpdateSeen, updateSeen } from "./prefs";
 import { Tooltip } from "./Tooltip";
 import { BUNDLE_VERSION } from "./version";
@@ -129,6 +130,10 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
 
 export const useUpdate = () => useContext(UpdateContext);
 
+// A window no wider than this shows the link's dot without its word in a session's head
+// (styles.css), so the tooltip says the word.
+const NARROW = "(max-width: 1100px)";
+
 // `live` (or connecting…) as the button that opens the panel, `↑ X.Y.Z` beside it while a
 // newer LADO is out. The dialog for another device is the caller's (`sharing`, `onShare`):
 // it stays while the feed reconnects, as this button does not.
@@ -144,15 +149,15 @@ export function LiveButton({ link, sharing, onShare }: { link: Link; sharing: bo
   const below = useBelow(box, panel, open, true);
   const available = info?.available ?? null;
   const label = available ? `System: LADO ${available} is available` : "System";
+  const narrow = useMedia(NARROW);
+  const tip = available
+    ? `LADO ${available} is available`
+    : narrow && link === "open"
+      ? "live · LADO server"
+      : `The LADO server this page talks to: ${window.location.host}`;
   return (
     <span ref={box} className="system">
-      <Tooltip
-        tip={
-          available
-            ? `LADO ${available} is available`
-            : `The LADO server this page talks to: ${window.location.host}`
-        }
-      >
+      <Tooltip tip={tip}>
         <button
           ref={button}
           type="button"

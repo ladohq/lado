@@ -1276,6 +1276,7 @@ class Worktree(BaseModel):
 class StopPreview(BaseModel):
     agents: list[str]  # the agents a stop closes
     dropped: int  # messages no agent got, dropped by a stop now
+    questions: int  # open questions to the human, closed by a stop now
     open_runs: list[str]  # they stay
     worktrees: list[Worktree]  # they stay on disk
 
@@ -1586,8 +1587,10 @@ class MessageInfo(BaseModel):
     state: Literal["pending", "sent", "delivered", "read", "dropped", "failed"]
     choices: list[str] | None
     free_answer: bool
-    question_state: Literal["open", "answered", "dismissed", "closed"] | None
-    answered_by: int | None  # the answer's or dismissal's id
+    question_state: Literal["open", "answered", "dismissed", "closed", "stopped"] | None
+    # The answer's or dismissal's id; of a stopped question, LADO's message to the supervisor
+    # about it, no reply.
+    answered_by: int | None
     reply_to: int | None  # an answer's or dismissal's: the question's id
     choice: str | None
     reply_state: Literal["replied", "missing"] | None  # missing: replied only in its terminal

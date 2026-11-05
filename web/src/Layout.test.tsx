@@ -814,8 +814,14 @@ test("the top bar has the title and the link; the server's address is in the lin
 
 const bar = () => screen.getByRole("banner");
 const barHeadings = () => [...bar().querySelectorAll("h1")].map((one) => one.textContent);
+const headTitle = () => bar().querySelector("h1 button") as HTMLElement;
+const details = () => screen.getByRole("dialog", { name: "Session details" });
+const rename = () => {
+  fireEvent.click(headTitle());
+  fireEvent.click(within(details()).getByRole("button", { name: "Rename" }));
+};
 
-test("a session's head is the top bar: its name, the idle ring with no word, the facts and the actions", async () => {
+test("a session's head is the top bar: its dot with no stop, its title, Stop and the link, no facts", async () => {
   open();
   const region = await screen.findByRole("region", { name: "Session lado" });
   expect(barHeadings()).toEqual(["lado"]);
@@ -825,11 +831,13 @@ test("a session's head is the top bar: its name, the idle ring with no word, the
   fireEvent.focus(dot);
   expect(screen.getByRole("tooltip").textContent).toBe("running · idle · 1 agent");
   fireEvent.blur(dot);
-  expect(bar().querySelector(".session-meta .session-path")!.textContent).toBe("/src/lado");
-  expect(within(bar()).getByRole("button", { name: "Copy link" })).toBeTruthy();
-  expect(within(bar()).getByRole("button", { name: "Stop session…" })).toBeTruthy();
+  expect(dot.getAttribute("tabindex")).toBeNull();
+  expect(bar().textContent).not.toContain("/src/lado");
+  expect(within(bar()).queryByRole("button", { name: "Copy link" })).toBeNull();
+  expect(within(bar()).queryByRole("button", { name: "Copy path" })).toBeNull();
+  expect(within(bar()).getByRole("button", { name: "Stop session…" }).textContent).toBe("Stop");
   expect(bar().querySelector(".link")!.textContent).toBe("live");
-  expect(region.querySelector(".session-head, .session-meta, h1, h2")).toBeNull();
+  expect(region.querySelector(".session-head, h1, h2")).toBeNull();
   expect(document.title).toBe("lado · LADO");
 });
 
@@ -957,6 +965,7 @@ test("the top bar is the page's: a session claims it, not found and loading keep
   expect(await screen.findByText("Session nowhere not found")).toBeTruthy();
   expect(barHeadings()).toEqual(["Sessions"]);
   expect(bar().querySelector(".session-head")).toBeNull();
+  expect(screen.queryByRole("link", { name: "Skip to chat" })).toBeNull();
   expect(document.title).toBe("Sessions · LADO");
 });
 
@@ -1087,30 +1096,72 @@ test("a titled session's icon in the strip takes its letters and its name from t
   expect(screen.getByRole("tooltip").querySelector(".tooltip-line")!.textContent).toMatch(new RegExp(`^${TITLE.replace(/[()]/g, "\\$&")} · lado-2 · `));
 });
 
-test("a titled session's head: the title, the name small after it, the pencil; the tab's title is the title", async () => {
+test("a titled session's head: the title alone, its name in Details; the tab's title is the title", async () => {
   sessions = [session("lado-2", { title: TITLE })];
   open("/sessions/lado-2");
   await screen.findByRole("region", { name: "Session lado-2" });
   expect(barHeadings()).toEqual([TITLE]);
-  expect(bar().querySelector(".session-name-id")!.textContent).toBe("lado-2");
-  expect(within(bar()).getByRole("button", { name: "Rename session" })).toBeTruthy();
+  expect(bar().textContent).not.toContain("lado-2");
   expect(document.title).toBe(`${TITLE} · LADO`);
+  fireEvent.click(headTitle());
+  expect(details().querySelector(".session-details-state")!.textContent).toContain("id lado-2");
 });
 
-test("an untitled session's head has no name beside its name, and the pencil", async () => {
+test("the head's title is a button in the h1 that opens Details; a double click opens no field", async () => {
   open();
   await screen.findByRole("region", { name: "Session lado" });
   expect(barHeadings()).toEqual(["lado"]);
-  expect(bar().querySelector(".session-name-id")).toBeNull();
-  expect(within(bar()).getByRole("button", { name: "Rename session" })).toBeTruthy();
+  const title = headTitle();
+  expect(title.closest("h1")).toBeTruthy();
+  expect(title.getAttribute("aria-haspopup")).toBe("dialog");
+  expect(title.getAttribute("aria-expanded")).toBe("false");
+  expect(within(bar()).queryByRole("button", { name: "Rename session" })).toBeNull();
+  fireEvent.doubleClick(title);
+  expect(within(bar()).queryByRole("textbox", { name: "Session title" })).toBeNull();
+  fireEvent.click(title);
+  expect(title.getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement).toBe(within(details()).getByRole("button", { name: "Copy path" }));
 });
 
-test("the pencil edits the title in place: Enter saves, the head and the row show it, the focus is back on the pencil", async () => {
+test("Esc and a second click close Details with the focus on the title", async () => {
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(headTitle());
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Session details" })).toBeNull();
+  expect(document.activeElement).toBe(headTitle());
+  fireEvent.click(headTitle());
+  fireEvent.mouseDown(headTitle());
+  fireEvent.click(headTitle());
+  expect(screen.queryByRole("dialog", { name: "Session details" })).toBeNull();
+  expect(document.activeElement).toBe(headTitle());
+});
+
+test("a press on an empty place closes Details and the focus goes to the title; on a field it stays there", async () => {
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(headTitle());
+  fireEvent.mouseDown(document.body);
+  expect(screen.queryByRole("dialog", { name: "Session details" })).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(headTitle()));
+  fireEvent.click(headTitle());
+  const composer = await screen.findByRole("textbox", { name: "Write to the supervisor…" });
+  fireEvent.mouseDown(composer);
+  composer.focus(); // the browser's own, after the press
+  expect(screen.queryByRole("dialog", { name: "Session details" })).toBeNull();
+  await act(async () => {
+    await new Promise((done) => setTimeout(done));
+  });
+  expect(document.activeElement).toBe(composer);
+});
+
+test("Rename in Details edits the title in the head: Enter saves, the head and the row show it, the focus is on the title", async () => {
   const puts = titles();
   sessions = [session("lado")];
   open();
   await screen.findByRole("region", { name: "Session lado" });
-  fireEvent.click(within(bar()).getByRole("button", { name: "Rename session" }));
+  rename();
+  expect(screen.queryByRole("dialog", { name: "Session details" })).toBeNull();
   const field = within(bar()).getByRole("textbox", { name: "Session title" }) as HTMLInputElement;
   expect(field.value).toBe("");
   expect(field.placeholder).toBe("lado");
@@ -1120,22 +1171,22 @@ test("the pencil edits the title in place: Enter saves, the head and the row sho
   fireEvent.keyDown(field, { key: "Enter" });
   await waitFor(() => expect(barHeadings()).toEqual(["Review"]));
   expect(puts).toEqual([{ path: "/api/sessions/lado/title", body: { title: "Review" } }]);
-  expect(document.activeElement).toBe(within(bar()).getByRole("button", { name: "Rename session" }));
+  expect(document.activeElement).toBe(headTitle());
   expect(within(list()).getByRole("link", { name: /^Review/ })).toBeTruthy();
   expect(document.title).toBe("Review · LADO");
 });
 
-test("a double click on the title edits it too; Esc sends nothing", async () => {
+test("Esc in the head's field sends nothing, the focus on the title", async () => {
   const puts = titles();
   sessions = [session("lado", { title: "Old" })];
   open();
   await screen.findByRole("region", { name: "Session lado" });
-  fireEvent.doubleClick(bar().querySelector("h1")!);
+  rename();
   const field = within(bar()).getByRole("textbox", { name: "Session title" });
   fireEvent.change(field, { target: { value: "x" } });
   fireEvent.keyDown(field, { key: "Escape" });
   expect(barHeadings()).toEqual(["Old"]);
-  expect(document.activeElement).toBe(within(bar()).getByRole("button", { name: "Rename session" }));
+  expect(document.activeElement).toBe(headTitle());
   await act(async () => {});
   expect(puts).toEqual([]);
 });
@@ -1209,7 +1260,7 @@ test("the head's field closes when the page goes to another session: its text is
   sessions = [session("lado"), session("other")];
   open();
   await screen.findByRole("region", { name: "Session lado" });
-  fireEvent.click(within(bar()).getByRole("button", { name: "Rename session" }));
+  rename();
   const field = within(bar()).getByRole("textbox", { name: "Session title" });
   fireEvent.change(field, { target: { value: "Mine" } });
   fireEvent.click(within(list()).getByRole("link", { name: /^other/ })); // no blur, as "Back" goes

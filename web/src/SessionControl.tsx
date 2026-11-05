@@ -1,5 +1,6 @@
 // A session's actions (docs/design/ui.md, Launch and session control), icons in its head
-// by its status: Stop a session that runs (or whose tmux session is gone, to mark it
+// (Stop with its word, by the window's width in styles.css) by its status: Stop a session
+// that runs (or whose tmux session is gone, to mark it
 // stopped), Resume one that does not run, Forget one that is stopped. Stop asks in a
 // popover, Forget in a modal window; both say first what they do, from the server's
 // preview. Stop's popover can also stop and forget the session in one go. The session list's
@@ -77,6 +78,7 @@ export function SessionActions({ session }: { session: SessionInfo }) {
             onClick={() => act(action)}
           >
             {ICONS[action]}
+            {action === "stop" && <span className="session-action-word">Stop</span>}
           </button>
         </Tooltip>
       ))}
@@ -115,6 +117,13 @@ function stopItems(preview: StopPreview): string[] {
           preview.dropped === 1
             ? "1 message they have not got is dropped"
             : `${preview.dropped} messages they have not got are dropped`,
+        ]
+      : []),
+    ...(preview.questions > 0
+      ? [
+          preview.questions === 1
+            ? "1 open question to you is closed"
+            : `${preview.questions} open questions to you are closed`,
         ]
       : []),
     runs > 0

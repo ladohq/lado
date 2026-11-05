@@ -1,6 +1,6 @@
 // A session's head on a phone (docs/design/ui.md, Phone layout): one line of the top bar, and
 // the session's details in a sheet its name opens.
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -99,15 +99,55 @@ test("on a phone the head is the status dot, the name as a button and Stop: no f
   }
   expect(bar.textContent).not.toContain(FOLDER);
   expect(bar.textContent).not.toContain("uiflow");
+  expect(within(bar).getByRole("img", { name: "running · idle · 1 agent" }).getAttribute("tabindex")).toBe("0");
 });
 
-test("a computer keeps the head with its facts", async () => {
+test("a phone's head has no breadcrumb and no branch, and its title has the chevron", async () => {
+  about = { ...ABOUT, project: { id: "shop", title: "Shop" } };
+  FakeScreen.phone();
+  open();
+  const bar = screen.getByRole("banner");
+  const name = await within(bar).findByRole("button", { name: "lad-95" });
+  await waitFor(() => expect(calls.some((call) => call.path.endsWith("/about"))).toBe(true));
+  await act(async () => {});
+  expect(bar.querySelector(".session-crumb, .session-branch")).toBeNull();
+  expect(name.querySelector(".session-chevron")).not.toBeNull();
+});
+
+test("Details' state line says a running session's work without `running`", async () => {
+  FakeScreen.computer();
+  open();
+  fireEvent.click(await within(screen.getByRole("banner")).findByRole("button", { name: "lad-95" }));
+  const state = screen.getByRole("dialog", { name: "Session details" }).querySelector(".session-details-state")!;
+  expect(state.textContent).toMatch(/^idle · 1 agent · .+ · id lad-95$/);
+});
+
+test("Details' state line says `stopped` once", async () => {
+  const when = new Date(Date.now() - 2 * 86400_000).toISOString();
+  sessions = [session({ status: "stopped", running_since: null, stopped_at: when, ran_seconds: 4 * 3600 })];
+  FakeScreen.computer();
+  open();
+  fireEvent.click(await within(screen.getByRole("banner")).findByRole("button", { name: "lad-95" }));
+  const state = screen.getByRole("dialog", { name: "Session details" }).querySelector(".session-details-state")!;
+  expect(state.textContent).toMatch(/^stopped 2 d ago · ran 4 h · id lad-95$/);
+});
+
+test("a computer's title opens the same facts as a popover, not a modal sheet", async () => {
   FakeScreen.computer();
   open();
   const bar = screen.getByRole("banner");
-  await within(bar).findByRole("button", { name: "Copy path" });
-  expect(within(bar).getByRole("button", { name: "Rename session" })).toBeTruthy();
-  expect(within(bar).queryByRole("button", { name: "lad-95" })).toBeNull();
+  fireEvent.click(await within(bar).findByRole("button", { name: "lad-95" }));
+  const popover = screen.getByRole("dialog", { name: "Session details" });
+  expect(popover.tagName).toBe("DIV");
+  await waitFor(() => expect(popover.textContent).toContain("uiflow 1.0.0"));
+  expect(within(popover).getByRole("heading", { level: 2 }).textContent).toBe("lad-95");
+  expect(popover.querySelector(".session-details-state")!.textContent).toMatch(/ · id lad-95$/);
+  expect(popover.textContent).toContain(FOLDER);
+  for (const button of ["Copy path", "Copy URL", "Rename", "Copy link"]) {
+    expect(within(popover).getByRole("button", { name: button })).toBeTruthy();
+  }
+  expect(within(popover).getByRole("link", { name: "All sessions" }).getAttribute("href")).toBe("/sessions");
+  expect(within(popover).queryByRole("button", { name: "Close" })).toBeNull();
 });
 
 test("the name opens the details: the state, the whole folder, git, the kits with versions, the CLI", async () => {
@@ -116,11 +156,11 @@ test("the name opens the details: the state, the whole folder, git, the kits wit
   fireEvent.click(await screen.findByRole("button", { name: "lad-95" }));
   await waitFor(() => expect(sheet().textContent).toContain("uiflow 1.0.0"));
   const text = sheet().textContent!;
-  expect(sheet().querySelector(".session-details-state")!.textContent).toMatch(/^running · idle · 1 agent · ran (<1|\d+) min$/);
+  expect(sheet().querySelector(".session-details-state")!.textContent).toMatch(/^idle · 1 agent · ran (<1|\d+) min · id lad-95$/);
   expect(text).toContain(FOLDER);
   expect(text).toContain("github.com/ladohq/lado · lado/lad-95/task-lad-95");
-  expect(text).toContain("default 0.1.0, uiflow 1.0.0");
-  expect(text).toContain("claude 2.1.0 · mode auto");
+  expect(text).toContain("default 0.1.0uiflow 1.0.0");
+  expect(text).toContain("claude 2.1.0permissions: auto");
   for (const button of ["Rename", "Copy path", "Copy link", "Close", "Copy URL"]) {
     expect(within(sheet()).getByRole("button", { name: button })).toBeTruthy();
   }
@@ -128,25 +168,25 @@ test("the name opens the details: the state, the whole folder, git, the kits wit
   expect(screen.getByRole("button", { name: "lad-95" }).getAttribute("aria-expanded")).toBe("true");
 });
 
-test("a session in a project has the project's title above the folder in the details", async () => {
+test("a session in a project has the project's title in the details' state line", async () => {
   about = { ...ABOUT, project: { id: "shop", title: "Shop" } };
   FakeScreen.phone();
   open();
   fireEvent.click(await screen.findByRole("button", { name: "lad-95" }));
-  await waitFor(() => expect(sheet().textContent).toContain("ProjectShop"));
+  await waitFor(() => expect(sheet().textContent).toContain("project Shop"));
   const terms = [...sheet().querySelectorAll("dt")].map((term) => term.textContent);
-  expect(terms.slice(0, 2)).toEqual(["Project", "Folder"]);
+  expect(terms).toEqual(["Folder", "Git", "Kits", "CLI"]);
   const link = within(sheet()).getByRole("link", { name: "Shop" });
   expect(link.getAttribute("href")).toBe("/projects/shop");
-  expect(link.closest("dd")!.getAttribute("title")).toBe("Project shop");
+  expect(link.getAttribute("title")).toBe("Project shop");
 });
 
-test("a session without a project has no Project line in the details", async () => {
+test("a session without a project has no project in the details", async () => {
   FakeScreen.phone();
   open();
   fireEvent.click(await screen.findByRole("button", { name: "lad-95" }));
   await waitFor(() => expect(sheet().textContent).toContain("uiflow 1.0.0"));
-  expect([...sheet().querySelectorAll("dt")].map((term) => term.textContent)).not.toContain("Project");
+  expect(sheet().querySelector(".session-details-state")!.textContent).not.toContain("project");
 });
 
 test("a question waits: the bar's dot and the sheet's state line say so in the mark's words", async () => {
@@ -160,7 +200,7 @@ test("a question waits: the bar's dot and the sheet's state line say so in the m
   expect(sheet().querySelector(".session-details-state")!.textContent).toMatch(/^needs you · 1 question · /);
 });
 
-test("Rename edits the title in the sheet, as the pencil does", async () => {
+test("Rename edits the title in the sheet", async () => {
   FakeScreen.phone();
   open();
   fireEvent.click(await screen.findByRole("button", { name: "lad-95" }));

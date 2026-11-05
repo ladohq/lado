@@ -1,0 +1,109 @@
+## Context
+
+Spec: LAD-189 spec §3 and §9, frames g3-* (`lad-189-mockup.html`, task LAD-194), the human's
+decisions F43 and F45 and the six of 2026-11-05 (proposal, Out of scope; run artifact
+`mockup-waiting-forks.html`). Root cause and options: proposal, Why. Against AGENTS.md: the change
+is above `providers/` and names no CLI, so it works with every provider (neutral core); it adds no
+field, option or API (only what is used); a disagreement is kept in the line (no silent drops);
+the height stays in the one key of `prefs.ts` (one source of truth). ROADMAP.md's coming stages
+touch nothing here; LAD-193, LAD-195 and LAD-196 change what stands around the card and rely on
+D9's fold and on the footer being one element.
+
+## Decisions
+
+**D1. Three parts, shared by two panels.** `web/src/waitingParts.tsx` holds `CardTop` (title with
+meta, then `CardContext`) and `CardFoot`; `AgentPanel` and `GatePanel` (`inTab`) fill them.
+`GatePanel` outside a tab keeps its layout. A new module, because `WaitingCard.tsx` imports
+`GateCard.tsx`. `.waiting-list` becomes `.waiting-context`, `.waiting-send` stays the buttons' row
+inside `.waiting-foot`. The panel's padding moves to the parts, so that the line above the footer
+runs from edge to edge.
+
+**D2. The 40 % limit.** `.waiting-top` (title and context) has `flex: 0 10000 auto; min-height: 0;
+max-height: var(--waiting-top-max, 40dvh)`. `Chat` measures `.chat` with `useHeight` where the
+chat has a height of its own (a wide window, the phone layout) and passes it; the card sets
+`--waiting-top-max` to 40 % of it. Elsewhere (Needs you, a window of 900 px or less) the fallback
+applies: there `.chat` grows with its content, so a percentage or a size container would measure
+itself. Rejected: `container-type: size` on `.chat`, which collapses it on those windows.
+
+**D3. The human's height.** `--waiting-height` stays the whole card's, as the stored value is. In
+`.sized` the height goes on `.waiting-top`, not on the card: `max(0px, given − head − foot)` by a
+`useHeight` on the head and the foot, with `max-height: none`. The footer so never gives way to
+it, with no rule to clip it. `WAITING_MIN` and `FEED_MIN` keep their meaning for the edge's bounds;
+`onReset` clears the height, which now means the content's. A height kept from an earlier version
+applies as it is.
+
+**D4. The order of giving way is flex-shrink.** `.chat-feed` loses its least height while a card
+shows (`.chat:has(> .waiting-card) > .chat-feed { min-height: 0 }`). Inside the panel, shrink
+weights stand for the order: top 10000, choices 100, opened recommendation 10, field frame 1, the
+buttons' row `flex: none`; least heights are one chip row, one line, and the field's height at
+one line. The title has no least height, and the meta, under the title on a phone, is cut first.
+
+**D5. Context's fade and "↓ more".** `CardContext` tracks overflow with a `ResizeObserver` and
+`onScroll` (`scrollTop + clientHeight < scrollHeight − 1`) and renders the fade and the button
+only then; the button lies outside the scrolling box, so it does not scroll away. `tabindex="0"`
+always on a context that overflows or not: one Tab order, as Safari does not focus scrollers.
+Fade by a pseudo-element on the wrapper, `--human-ground` to transparent, so both themes hold.
+`onMore` is the card's `setExpanded(true)`, on Needs you too.
+
+**D6. Title.** `-webkit-line-clamp: 2`. A small `useClamped` compares `scrollHeight` with
+`clientHeight` after layout and on resize; when cut, `CardContext` starts with the whole text.
+Gate meta `<run> · <state> · gate #<id>`, question `#<id>`, mono 12 `--muted`.
+
+**D7. The recommendation line.** New `RecommendationBar` in `Recommendation.tsx`; `Recommendation`
+stays for Flows. Given: a button with `aria-expanded`, the name, the orange part, then the text
+flattened to one line (`oneLine`: Markdown marks out, white space collapsed) with CSS ellipsis; on a
+phone `line-clamp: 2`. Opened: `Body` in a box of 3 lines, `overflow-y: auto`, `tabindex="0"`. In
+the expanded card it is opened with no line limit, at most 40 % of the panel. Tooltip: the text
+and the time. `asked` and `missing` keep their words, italic `--muted`; none asked, nothing, as
+the living spec has it. The option's name goes through the card's `label` (`Continue`, `Cancel
+run`); a choice the card lacks counts as none, as in `primaryOf`.
+
+**D8. Fields.** `AnswerBox` takes `lines?: [least, most]`, default `[CARD_LINES, MOST_LINES]`, so
+Flows stays; the card passes `[1, 4]`, expanded `[1, 8]`. The growth follows the text, not the focus:
+frame g3-390-kbd shows a focused field of one line. `useGrow` is unchanged and still serves a field
+in the context of several questions.
+
+**D9. The composer's fold.** `WaitingCard` takes `onFold(fold | null)` from `Chat`, reporting
+`{ line: string, write?: () => void }` by an effect; `Chat` keeps it and renders `ComposerFold`
+instead of showing the composer, whose `folded` prop hides it (`hidden`) and switches off its drop
+zone: it stays mounted, so its text, files and quote handling live on. `write` closes the first
+open field of the shown tab and focuses the composer. Reported only while `chat`, not `stopped`,
+not `folds`, not `expanded`, or on a phone (D11). Needs you has no composer and passes nothing.
+A quote: `onQuote` calls the same closing, besides folding an expanded card.
+
+**D10. Drafts.** `drafts: Record<number, string>` in the card, kept beside `picks` and dropped with
+them. Closing a field by the link stores `pickText` and sets the pick to `null`, as an unpick;
+Other… and Skip question open with `drafts[id] ?? text`. Files already stay per question.
+
+**D11. A phone's field in focus.** `onFocus` and `onBlur` on the panel set `typing` (phone, chat,
+target matches `FIELD`, the next focus not in a field). `typing` puts `.typing` on the card: the
+context is `display: none`, and `:has` hides the Team row, as for the expanded card. The fold
+reports "Commenting on gate #<id> above" with no `write`. `fromField`, `fieldIntoView` and the
+expanding `onFocus` of LAD-126 go. The session's tabs stay, as frame g3-390-kbd has them.
+
+**D12. Send's reason.** A disabled button gets no pointer or focus events, so `Tooltip` wraps a
+`span` around it while it is off for want of an answer, with `tabIndex={0}`: that makes it a
+hint, which a tap shows too (`Tooltip.tsx`). Stopped: no tooltip, the note of `GatePanel`, moved to
+one constant.
+
+**D13. Chips.** `.waiting-option` gets the frames' radius 16. The ✓ is `aria-hidden`, shown while
+the picked choice is the recommendation's, so the button's name stays the choice. The group is
+named "Choices" for one question, and keeps "Answer to question #<id>" in the context of several.
+
+**D14. Phone sizes** go in styles.css's section "Phone layout": `:root[data-phone]` rules for
+`.waiting-tab`, `.waiting-expand`, `.waiting-option`, `.waiting-send` buttons and `.answer-box`. The
+choices' limit is `--waiting-choices-max`: 160 px, on a phone 148 px.
+
+**D15. The flaky test.** `test_an_own_answer_expands_the_card_above_the_keyboard` measures a field
+scrolled into a list by the expansion, after `moveViewport`. The expansion and the scroll go, so
+the test is replaced by AC-13's. The developer first reproduces the failure on main in a parallel
+run or names why it cannot be, then removes the BACKLOG.md entry and says which it was.
+
+## Risks
+
+- `:has` and `dvh` are in use already; nothing new for the browsers supported.
+- Shrink weights are a ratio, not a strict order: at the extremes the choices' area can give a
+  few pixels while the top is still above 0. The tests in a 420 px chat and at 440 px check that
+  the buttons hold; a strict order would need JS measuring.
+- A real keyboard may leave less than 440 px (a small iPhone leaves about 350). Then the top goes
+  to 0 first, as D4 says; not verified on a device.

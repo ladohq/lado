@@ -49,6 +49,8 @@ the model's choice, not in an entry; the supervisor gives a worker a model by na
 power, and a kit still names no model; a power table exists on the user's level only, a row
 an ordered list, and the agent's CLI wins over a row.
 
+Changed again (D47, 2026-11-05, #3631, #3632, #3634; these win): the epic ends with a worker on a model by name, the debugging of OpenCode and Kilo on local models, and Claude Code and Codex on a server. Effort, the power table, kit marking and `spawn_worker(power=…)` move to a new epic, so the «done» items on effort and power below go with them.
+
 The statement's proposed steps: 1 the agent's model is visible (card, `list_agents`, API);
 2 one model per session (`lado start --model`, Advanced); 3 a model server through
 OpenCode/Kilo (type, models, compatibility, a check before the start); 4 effort with the

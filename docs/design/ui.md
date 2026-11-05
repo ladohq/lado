@@ -1830,20 +1830,23 @@ layout, below).
   word above 1100 px, only its dot and the tooltip `live · LADO server` at 1100 px and less
   (on every page: `LiveButton` does not know the page, so a narrow window's tooltip has no
   server address; the system panel has it). Resume and Forget stay icons.
-- What lacks room is cut with "…" by `flex-shrink`, largest first: the title down to 8ch,
-  the project (at most 16ch), the words and the run time; the actions and the link never.
+- What lacks room is cut with "…" by `flex-shrink`, largest first: the title down to 8ch of
+  its text, the project (at most 16ch), the run time, then the words; the actions and the
+  link never.
 - The title is a button in the page's `h1` (`aria-haspopup="dialog"`, `aria-expanded`), on a
   `--raised` ground on hover and while Details is open. No double click: one click opens
   Details and a second would only close it.
 - **Details** is a non-modal `role="dialog"` named `Session details` (`DetailsPopover`),
-  under the title, 470 px wide and at most the window less 32 px, with no focus trap. A
-  click, Enter or Space opens it with the focus on Copy path. Esc and a second click close
+  under the title, 470 px wide and at most the window less 32 px, scrolling inside in a low
+  window, with no focus trap: a focus that goes past it and the title closes it and stays
+  where it went (over the page it would hide the focus). A click, Enter or Space opens it with the focus on Copy path. Esc and a second click close
   it with the focus on the title, and Esc goes to it first: an expanded card or expanded
   terminals under it stay (`escapeIsTaken`, as under Stop's popover, System and the title's
   field). A press outside closes it too: on a field, a button, a link or what else takes the
   focus by a press (the terminal's input, a summary) the focus stays there, on an empty
   place, the feed too, it goes to the title (the human's answer #3389). It holds the whole title and `SessionFacts`, the content the phone's sheet shares
-  (Phone layout, below): the mark's words, the run time, `id <name>`, in a project
+  (Phone layout, below): the mark's words without `running`, the run time (a stopped session
+  says `stopped` once, in its time), `id <name>`, in a project
   `project <link>`; Folder, whole and wrapped anywhere, with Copy path; Git with Copy URL;
   Kits; CLI; then Rename, Copy link and All sessions. It lies in the top bar's stacking
   context, so over the terminals.
@@ -2201,9 +2204,9 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   with its names, over a dimmed page. An item, the dimmed page or Esc closes it, the focus
   back on Menu. The computer's collapsed rail (`lado.rail`) is neither read nor written.
 - **Top bar**: one line, 52 px upright, 44 px sideways. On a session's page: Menu, the
-  status dot, the title (or name) as a button cut with "…", the change feed's mark (a dot
-  while live, "reconnecting…" otherwise; it opens the system panel), Stop. Menu and the
-  session's actions are 44 by 44 px (LAD-192). No breadcrumb, chevron or branch.
+  status dot, the title (or name) with a chevron as a button cut with "…", the change feed's
+  mark (a dot while live, "reconnecting…" otherwise; it opens the system panel), Stop. Menu
+  and the session's actions are 44 by 44 px (LAD-192). No breadcrumb or branch.
 - **The session's details**: the title opens a sheet over the page's bottom
   (`SessionDetails`, a modal `<dialog>` named by the session) around the content of Details
   on a computer (`SessionFacts`, Session head, above; LAD-192), so the two never say

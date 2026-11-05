@@ -162,7 +162,7 @@ LONG_TITLE = "Экран сессии: шапка в одну строку, фа
 def line_is_whole(page: Page) -> None:
     """The top bar is 48 px, its items on one line inside it, none over another, the page does
     not scroll sideways, and what is cut goes by D7's order: the title down to its least, then
-    the project, then the words and the run time."""
+    the project, then the run time, then the words."""
     found = page.evaluate(
         """() => {
             const bar = document.querySelector('.topbar').getBoundingClientRect();
@@ -176,9 +176,18 @@ def line_is_whole(page: Page) -> None:
             const order = [];
             if (crumb && width(crumb) < px(crumb, 'maxWidth') - 1 && cut(crumb) && !least(title))
                 order.push('project cut before the title');
-            for (const name of ['.session-state', '.session-ran'])
-                if (cut(one(name)) && !(least(title) && least(crumb)))
-                    order.push(`${name} cut too early`);
+            const ran = one('.session-ran');
+            if (cut(ran) && !(least(title) && least(crumb)))
+                order.push('.session-ran cut too early');
+            if (cut(one('.session-state')) && !(least(title) && least(crumb) && least(ran)))
+                order.push('.session-state cut too early');
+            const text = one('.session-title-text');
+            if (cut(text)) {
+                const pen = document.createElement('canvas').getContext('2d');
+                pen.font = getComputedStyle(text).font;
+                if (width(text) < 8 * pen.measureText('0').width - 1)
+                    order.push('less than 8ch of the title');
+            }
             const items = [...document.querySelectorAll('.session-dot, .session-crumb,'
                 + ' .session-title-box:has(.title-edit), .session-chevron, .session-state,'
                 + ' .session-ran, .session-branch, .session-head-actions, .system')].filter(shown);
@@ -246,6 +255,29 @@ def test_the_line_of_a_session_whose_tmux_is_gone_is_48_px(
     line_is_whole(page)
     actions_are_whole(page, ["Resume…", "Stop session…"])
     shot(page)
+
+
+def test_the_longest_words_of_a_broken_session_stay_whole_at_601_px(
+    page: Page, long_session, server, shot
+):
+    page.set_viewport_size({"width": 601, "height": 800})
+    tmux.kill_session(long_session)
+    open_session(page, server, long_session)
+    words = head(page).locator(".session-state")
+    expect(head(page).locator(".session-crumb")).to_be_visible()
+    words.evaluate("e => { e.textContent = 'session loop not running'; }")  # loop_down's words
+    assert words.evaluate("e => e.scrollWidth <= e.clientWidth"), "the words are cut"
+    line_is_whole(page)
+    actions_are_whole(page, ["Resume…", "Stop session…"])
+    shot(page)
+
+
+def test_the_line_keeps_the_frames_small_measures(page: Page, long_session, server):
+    page.set_viewport_size({"width": 1440, "height": 800})
+    open_session(page, server, long_session)
+    expect(head(page).locator(".session-action-word")).to_have_css("font-weight", "500")
+    expect(head(page).locator(".session-crumb-sep")).to_have_css("font-size", "18px")
+    expect(page.locator(".topbar")).to_have_css("padding-right", "12px")
 
 
 @pytest.mark.parametrize("width", WIDTHS)
@@ -386,6 +418,72 @@ def test_details_opens_by_click_enter_and_space_and_gives_the_focus_back(
     expect(composer).to_be_focused()
     page.keyboard.type("hello")
     expect(composer).to_have_value("hello")
+
+
+def test_tab_out_of_details_closes_it_and_the_focus_goes_on(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1100, "height": 700})
+    session = running_session(repo)
+    open_session(page, server, session)
+    title = title_button(page)
+    title.click()
+    details(page).get_by_role("link", name="All sessions").focus()
+    page.keyboard.press("Tab")
+    expect(details(page)).to_have_count(0)
+    expect(head(page).get_by_role("button", name="Stop session…")).to_be_focused()
+
+    title.click()  # back to the title it stays open, then out the other way it closes
+    details(page).get_by_role("button", name="Copy path").focus()
+    page.keyboard.press("Shift+Tab")
+    expect(title).to_be_focused()
+    expect(details(page)).to_be_visible()
+    page.keyboard.press("Shift+Tab")
+    expect(details(page)).to_have_count(0)
+    expect(title).not_to_be_focused()
+
+
+def test_details_scrolls_in_a_low_window_and_its_note_stays_inside(
+    page: Page, long_session, server, shot
+):
+    page.set_viewport_size({"width": 1280, "height": 420})
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    open_session(page, server, long_session)
+    title_button(page).click()
+    placed = details(page).bounding_box()
+    assert placed["y"] + placed["height"] <= 420 - 8, placed
+    copy_link = details(page).get_by_role("button", name="Copy link")
+    copy_link.focus()
+    expect(copy_link).to_be_in_viewport(ratio=1)
+    assert details(page).evaluate("e => e.scrollHeight > e.clientHeight")
+    before = details(page).evaluate("e => e.scrollHeight")
+    copy_link.click()
+    note = details(page).get_by_role("status").filter(has_text="Link copied")
+    expect(note).to_be_in_viewport(ratio=1)
+    assert details(page).evaluate("e => e.scrollHeight") == before  # no room made for it
+    shot(page)
+
+
+@pytest.mark.parametrize("button, words", [("Copy path", "Path copied"), ("Copy URL", "URL copied")])
+def test_details_note_of_a_copy_grows_to_the_left_of_its_button(
+    page: Page, server, repo, shot, button, words
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "add", "origin", "https://example.com/acme/shop.git"],
+        check=True,
+    )
+    session = running_session(repo)
+    open_session(page, server, session)
+    title_button(page).click()
+    copy = details(page).get_by_role("button", name=button)
+    copy.click()
+    note = details(page).get_by_role("status").filter(has_text=words)
+    expect(note).to_be_visible()
+    on, by, frame = note.bounding_box(), copy.bounding_box(), details(page).bounding_box()
+    assert abs(on["x"] + on["width"] - (by["x"] + by["width"])) <= 1, (on, by)
+    assert on["x"] >= frame["x"] and on["width"] > by["width"], (on, frame)
+    assert note.evaluate("e => e.scrollWidth <= e.clientWidth"), "its words leave its frame"
+    shot(page)
 
 
 def test_the_line_and_details_take_the_dark_theme(page: Page, long_session, server, shot):

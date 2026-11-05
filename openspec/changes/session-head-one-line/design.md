@@ -44,8 +44,10 @@ step between the Sessions page and a session would jump. `:root[data-phone]` kee
 variable. Removed: `.session-meta`, `.session-rename`, `.session-name-id` in the head, and
 the wrapping half of the `max-width: 1100px` block.
 
-**D7. Shrinking.** By `flex-shrink` weights, largest first: `h1` (`min-width: 8ch`), the
-project (`max-width: 16ch; min-width: 4ch`), the words and the run time (`min-width: 0`).
+**D7. Shrinking.** By `flex-shrink` weights, largest first: `h1` (at least 8ch of its text,
+`min-width: calc(8ch + 30px)` with the button's padding and chevron), the project (`max-width:
+16ch; min-width: 4ch`), the run time, then the words (`min-width: 0`): a broken session's
+time is in Details too, and its words are why the line is read (the human's answer #3441).
 Actions, line and link are `flex: none`. A stopped session's long run time (`stopped 2 d ago · ran 4 h`) is why the time must be able to
 cut. The title keeps its `title` attribute, as the h1 has it now.
 
@@ -81,6 +83,14 @@ still scrolls, the page of a narrow window too. `escapeIsTaken` in `Menu.tsx` is
 of whose Esc it is: the expanded card, the expanded terminals and the rail's drawer knew only
 the `<dialog>` tag, not a `div role="dialog"`, so one Esc closed two layers. `focusChat` in
 `Chat.tsx` chooses the feed or an expanded card's tab, as the card hides the feed.
+
+**D15. After the design QA** (the human's answer #3441). `HeadLine` closes Details when the
+focus went past it and the title, looked at after the event, as the legacy copy takes the focus
+for a moment. The popover scrolls in a low window; Copy link's note stands over its row there,
+as under it the note would make the popover scroll. The phone's title has the chevron of frame
+g1-390. The state line follows the sheet's frame: no `running`, a stopped session's word once.
+The line's small measures follow g1-1440: Stop's word at 500, the slash at 18 px, 12 px at the
+right. QA-F9 is LAD-193's; `All sessions` stays frameless, as in g1-details.
 
 ## Test layers
 

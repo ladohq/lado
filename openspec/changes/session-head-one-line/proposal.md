@@ -74,8 +74,8 @@ Scale: full. Version: a feature, the minor; `## 0.45.0 (unreleased)` already hol
   by the rule above.
 - AC-9 Rename in Details edits the title in the line; after it the focus is on the title.
 - AC-10 Tab goes `Skip to chat` first, and through the head project, title, Stop, link.
-- AC-11 The phone's head is as before but for its 44 px buttons; its title opens the sheet
-  with the popover's content.
+- AC-11 The phone's head is as before but for its 44 px buttons and the title's chevron (frame
+  g1-390, the human's answer #3441); its title opens the sheet with the popover's content.
 - AC-12 A session whose tmux is gone or whose loop is down shows its words after the title.
 - AC-13 docs/design/ui.md and CHANGELOG.md change in the same pull request.
 

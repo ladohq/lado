@@ -24,8 +24,14 @@ session's actions, a vertical line and the link, and no other fact or Copy butto
 
 ### Requirement: What lacks room in the head's line is cut, never wrapped
 
-What lacks room in the line SHALL be cut with "…": first the title down to 8ch, then the
-project, then the status words and the run time. The actions and the link SHALL never be cut.
+What lacks room in the line SHALL be cut with "…": first the title down to 8ch of its text,
+then the project, then the run time, then the status words. The actions and the link SHALL
+never be cut.
+
+#### Scenario: A broken session on the narrowest line
+- **WHEN** a session in `session loop not running` with a long title in a project with a long
+  title is open in a window 601 px wide
+- **THEN** the words are whole and the run time gave its room first
 
 #### Scenario: Long names on a narrow window
 - **WHEN** a session of 4 kits with a long title in a project with a long title is open in a
@@ -80,8 +86,8 @@ says an update is available.
 ### Requirement: Details shows the session's facts in a popover
 
 Details SHALL be a non-modal `role="dialog"` named `Session details`, under the title's
-button, 470 px wide and at most the window less 32 px, with no focus trap. Opening it SHALL
-put the focus on Copy path. Its content SHALL come from the same component as the phone's
+button, 470 px wide and at most the window less 32 px, as high as the window allows and
+scrolling inside beyond that, with no focus trap. Opening it SHALL put the focus on Copy path. Its content SHALL come from the same component as the phone's
 sheet. Until the about comes, or when it fails, it SHALL show the session's settings alone.
 
 #### Scenario: A narrow window
@@ -90,8 +96,8 @@ sheet. Until the about comes, or when it fails, it SHALL show the session's sett
 
 ### Requirement: Details names every fact of the session
 
-Details SHALL hold: the whole title; the mark's words, the run time, `id <name>` and, in a
-project, `project` with a link to its page; Folder, the whole path wrapped anywhere, with Copy
+Details SHALL hold: the whole title; the mark's words without `running`, the run time (a
+stopped session's words said once, by its time), `id <name>` and, in a project, `project` with a link to its page; Folder, the whole path wrapped anywhere, with Copy
 path; Git, the short remote and branch, with Copy URL when there is a remote; Kits, each with
 its version; CLI with its version and `permissions: <mode>` when the session has a mode; then
 Rename, Copy link and All sessions. Each kit's and the CLI's tooltip and the mark of an
@@ -114,6 +120,12 @@ second click the focus SHALL be on the title. After a click outside, the focus S
 what was clicked when that is a field, a button, a link or another element that takes the
 focus by a click, the terminal's input among them, and otherwise SHALL be on the title. Esc
 SHALL close only Details: an expanded waiting card or expanded terminals under it SHALL stay.
+When the focus leaves Details and the title by the keyboard, Details SHALL close and the focus
+SHALL stay where it went.
+
+#### Scenario: Tab past its last control
+- **WHEN** the focus is on All sessions and the human presses Tab
+- **THEN** Details closes and the focus is on what follows it, not on the title
 
 #### Scenario: A click on an empty place
 - **WHEN** Details is open and the human clicks an empty place of the page

@@ -1257,7 +1257,7 @@ h3 {
 }
 
 /* One line that never wraps: what lacks room is cut by flex-shrink, the title down to 8ch,
-   then the project, then the words and the run time; the actions and the link never. Shrinking
+   then the project, then the run time, then the words; the actions and the link never. Shrinking
    is shared in proportion, and a share of a pixel already shows the "…": the weights stand a
    million apart, so each item's share is nothing until the one before it is at its least.
    The box-sizing keeps the bar's border inside --head-h. */
@@ -1266,6 +1266,7 @@ h3 {
   height: var(--head-h);
   flex-wrap: nowrap;
   gap: 10px;
+  padding-right: 12px;
   white-space: nowrap;
 }
 
@@ -1292,7 +1293,7 @@ h3 {
 
 /* The project as a breadcrumb, before the title. */
 .session-crumb {
-  flex: 0 1000000 auto;
+  flex: 0 1000000000000 auto;
   min-width: 4ch;
   max-width: 16ch;
   overflow: hidden;
@@ -1312,19 +1313,21 @@ h3 {
   flex: none;
   margin-inline: -4px;
   color: var(--line);
+  font-size: 18px;
 }
 
-/* The title's button, and in its place the title's field; Details under them. */
+/* The title's button, and in its place the title's field; Details under them. The least is
+   8ch of the title's text, and the button's padding and chevron around it. */
 .session-title-box {
   position: relative;
   display: flex;
-  flex: 0 1000000000000 auto;
-  min-width: 8ch;
+  flex: 0 1000000000000000000 auto;
+  min-width: calc(8ch + 30px);
   font-size: 18px; /* its ch is the title's */
 }
 
 .session-head h1 {
-  min-width: 8ch;
+  min-width: calc(8ch + 30px);
   max-width: 100%;
   font-size: inherit;
   line-height: 24px;
@@ -1432,6 +1435,7 @@ h3 {
 }
 
 .session-ran {
+  flex-shrink: 1000000;
   color: var(--muted);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
@@ -1467,6 +1471,10 @@ h3 {
   font-size: 14px;
 }
 
+.session-action-word {
+  font-weight: 500;
+}
+
 @media (max-width: 900px) {
   .session-action-word {
     display: none;
@@ -1484,7 +1492,10 @@ h3 {
   z-index: 5;
   box-sizing: border-box;
   width: min(470px, calc(100vw - 32px));
+  max-height: calc(100vh - var(--head-h) - 16px);
+  max-height: calc(100dvh - var(--head-h) - 16px);
   padding: 14px 16px;
+  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
@@ -1570,9 +1581,16 @@ h3 {
   height: 15px;
 }
 
-.session-details-copy .row-note {
+/* Its note ends at the button and grows to the left: the button is at the frame's right. */
+.session-details-copy .copy-button .row-note {
   right: 0;
   left: auto;
+}
+
+/* Over the row at the popover's foot, as under it the note would make the popover scroll. */
+.session-popover .session-details-actions .copy-button .row-note {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 
 .session-details-actions {
@@ -9492,16 +9510,16 @@ button.quiet.danger-text {
 }
 
 :root[data-phone] .session-title button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   max-width: 100%;
   padding: 6px 0;
-  overflow: hidden;
   border: 0;
   background: none;
   color: inherit;
   font: inherit;
   text-align: left;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

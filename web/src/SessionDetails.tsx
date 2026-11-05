@@ -223,7 +223,8 @@ function SessionFacts({
 }
 
 // Details on a computer: a popover with no trap, under the head's title. The focus starts on
-// Copy path; Esc closes it wherever the focus went, unless what is open in it took the key.
+// Copy path; Esc closes it, unless what is open in it took the key, also with the focus on
+// the title or on nothing; a focus gone past them closes it too (HeadLine).
 export function DetailsPopover({
   ref: popover,
   style,

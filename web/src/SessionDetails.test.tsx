@@ -102,15 +102,34 @@ test("on a phone the head is the status dot, the name as a button and Stop: no f
   expect(within(bar).getByRole("img", { name: "running · idle · 1 agent" }).getAttribute("tabindex")).toBe("0");
 });
 
-test("a phone's head has no breadcrumb, no branch and no chevron", async () => {
+test("a phone's head has no breadcrumb and no branch, and its title has the chevron", async () => {
   about = { ...ABOUT, project: { id: "shop", title: "Shop" } };
   FakeScreen.phone();
   open();
   const bar = screen.getByRole("banner");
-  await within(bar).findByRole("button", { name: "lad-95" });
+  const name = await within(bar).findByRole("button", { name: "lad-95" });
   await waitFor(() => expect(calls.some((call) => call.path.endsWith("/about"))).toBe(true));
   await act(async () => {});
-  expect(bar.querySelector(".session-crumb, .session-branch, .session-chevron")).toBeNull();
+  expect(bar.querySelector(".session-crumb, .session-branch")).toBeNull();
+  expect(name.querySelector(".session-chevron")).not.toBeNull();
+});
+
+test("Details' state line says a running session's work without `running`", async () => {
+  FakeScreen.computer();
+  open();
+  fireEvent.click(await within(screen.getByRole("banner")).findByRole("button", { name: "lad-95" }));
+  const state = screen.getByRole("dialog", { name: "Session details" }).querySelector(".session-details-state")!;
+  expect(state.textContent).toMatch(/^idle · 1 agent · .+ · id lad-95$/);
+});
+
+test("Details' state line says `stopped` once", async () => {
+  const when = new Date(Date.now() - 2 * 86400_000).toISOString();
+  sessions = [session({ status: "stopped", running_since: null, stopped_at: when, ran_seconds: 4 * 3600 })];
+  FakeScreen.computer();
+  open();
+  fireEvent.click(await within(screen.getByRole("banner")).findByRole("button", { name: "lad-95" }));
+  const state = screen.getByRole("dialog", { name: "Session details" }).querySelector(".session-details-state")!;
+  expect(state.textContent).toMatch(/^stopped 2 d ago · ran 4 h · id lad-95$/);
 });
 
 test("a computer's title opens the same facts as a popover, not a modal sheet", async () => {
@@ -137,7 +156,7 @@ test("the name opens the details: the state, the whole folder, git, the kits wit
   fireEvent.click(await screen.findByRole("button", { name: "lad-95" }));
   await waitFor(() => expect(sheet().textContent).toContain("uiflow 1.0.0"));
   const text = sheet().textContent!;
-  expect(sheet().querySelector(".session-details-state")!.textContent).toMatch(/^running · idle · 1 agent · ran (<1|\d+) min · id lad-95$/);
+  expect(sheet().querySelector(".session-details-state")!.textContent).toMatch(/^idle · 1 agent · ran (<1|\d+) min · id lad-95$/);
   expect(text).toContain(FOLDER);
   expect(text).toContain("github.com/ladohq/lado · lado/lad-95/task-lad-95");
   expect(text).toContain("default 0.1.0uiflow 1.0.0");

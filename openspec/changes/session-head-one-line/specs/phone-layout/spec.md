@@ -4,8 +4,8 @@
 
 In the phone layout the top bar SHALL be one line no higher than 52 px upright and 44 px
 sideways, and SHALL not wrap. On a session's page it SHALL hold, left to right: Menu, the
-session's status dot, the session's title (or name) as a button that opens the session's
-details, cut with "…" when long, the change feed's mark and Stop session. On another page
+session's status dot, the session's title (or name) with a chevron as a button that opens the
+session's details, cut with "…" when long, the change feed's mark and Stop session. On another page
 it SHALL hold Menu and the page's title. Menu and the session's actions SHALL be 44 by 44 px.
 
 #### Scenario: A session's page upright
@@ -21,7 +21,7 @@ it SHALL hold Menu and the page's title. Menu and the session's actions SHALL be
 
 In the phone layout a tap on the session's name in the top bar SHALL open a sheet over the
 page's bottom, named by the session, with the content of Details on a computer, from the
-same component (capability session-head): the mark's words, the run time, the session's id
+same component (capability session-head): the state line, the session's id
 and its project; the whole folder (wrapped, never cut) with Copy path; git (the remote, the
 branch) with Copy URL; the kits, each with its version; the CLI with its version and
 permission mode; and the buttons Rename, Copy link and All sessions. A tap outside the

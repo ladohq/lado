@@ -339,6 +339,13 @@ export function sessionMark(session: SessionInfo): { mark: Mark; words: string }
   return { mark: session.busy > 0 ? "working" : "idle", words: `${STATUS.running} · ${work(session)}` };
 }
 
+// The state line of Details: the mark's words and the run time, without `running`, which the
+// work says, and a stopped session's `stopped` once, which `ran` says.
+const detailsState = (session: SessionInfo, ran: string): string => {
+  if (session.status === "stopped" && session.stopped_at) return ran;
+  return `${sessionMark(session).words.replace(`${STATUS.running} · `, "")} · ${ran}`;
+};
+
 // A running session's agents at work, in its card's and its head's words.
 const work = (session: SessionInfo) => {
   const agents = count(session.agents, "agent");
@@ -796,6 +803,14 @@ function HeadLine({ session }: { session: SessionInfo }) {
     });
   }, []);
   useDismiss(details, box, pressedAway);
+  // Tab went on past the title: open, Details would lie over the focus, which stays where it
+  // went. Looked at after the event, as the legacy copy takes the focus for a moment.
+  const focusLeft = useCallback(() => {
+    setTimeout(() => {
+      const now = document.activeElement;
+      if (now && now !== document.body && !box.current?.contains(now)) setDetails(false);
+    });
+  }, []);
   // The title edited in place (Session title), from Details; the focus goes back to the
   // title when the field closes.
   const { editing, edit, closed } = useTitleEdit(() => title.current?.focus());
@@ -803,7 +818,7 @@ function HeadLine({ session }: { session: SessionInfo }) {
     <div className="session-head">
       <StatusDot session={session} stop={false} />
       {about?.project && <ProjectCrumb project={about.project} />}
-      <div ref={box} className="session-title-box">
+      <div ref={box} className="session-title-box" onBlur={focusLeft}>
         {editing ? (
           <TitleEdit
             name={session.name}
@@ -837,7 +852,7 @@ function HeadLine({ session }: { session: SessionInfo }) {
             style={below}
             session={session}
             about={about}
-            state={`${sessionMark(session).words} · ${ran}`}
+            state={detailsState(session, ran)}
             onRename={() => {
               setDetails(false);
               edit();
@@ -907,7 +922,10 @@ function PhoneHead({ session }: { session: SessionInfo }) {
           aria-expanded={details}
           onClick={() => setDetails(true)}
         >
-          {label(session)}
+          <span className="session-title-text">{label(session)}</span>
+          <span className="session-chevron">
+            <ChevronIcon />
+          </span>
         </button>
       </h1>
       <div className="session-head-actions">
@@ -917,7 +935,7 @@ function PhoneHead({ session }: { session: SessionInfo }) {
         <SessionDetails
           session={session}
           about={about}
-          state={`${sessionMark(session).words} · ${ran}`}
+          state={detailsState(session, ran)}
           onSaved={(saved) => live.sessionChanged(saved)}
           onClose={() => setDetails(false)}
         />

@@ -192,6 +192,7 @@ def test_the_top_bar_is_one_line_and_the_name_opens_the_details(device, server, 
     expect(page.get_by_role("tooltip")).to_have_text("needs you · 1 gate")
     shot(page, "mark", full_page=False)
 
+    expect(name.locator(".session-chevron svg")).to_be_visible()  # it says the title opens
     name.tap()
     sheet = page.get_by_role("dialog", name=session)
     expect(sheet).to_be_visible()
@@ -207,6 +208,9 @@ def test_the_top_bar_is_one_line_and_the_name_opens_the_details(device, server, 
     # The whole folder wraps inside its cell, under no button.
     folder, copy = box(sheet.locator("dd code")), box(sheet.locator(".session-details-copy").first)
     assert folder["x"] + folder["width"] <= copy["x"] + 1, (folder, copy)
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    sheet.get_by_role("button", name="Copy path").tap()
+    expect(sheet.get_by_role("status").filter(has_text="Path copied")).to_be_in_viewport(ratio=1)
     expect(bar.locator("h1")).to_have_css("font-size", "17px")  # the phone's head as it was
     expect(sheet.get_by_role("link", name="All sessions")).to_be_visible()
     sheet_box = box(sheet)

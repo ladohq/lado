@@ -1,3 +1,24 @@
+## ADDED Requirements
+
+### Requirement: Tab goes through the picker's foot
+
+Tab in an open list SHALL go on into the controls of its foot, and close it without a pick only
+past the last, going on from the field; Shift+Tab SHALL go back through them.
+
+#### Scenario: Tab through the foot
+- **WHEN** the list is open and the human presses Tab
+- **THEN** the focus is on the foot's first control, and past its last the list is closed and the
+  focus goes on from the field
+
+### Requirement: The search stands while a list is first read
+
+Until a list's first read says how long it is, the picker SHALL show its search with the focus in
+it; what was typed SHALL stay, and a short list with nothing typed SHALL hand the focus to the field.
+
+#### Scenario: Typing while the list is first read
+- **WHEN** the human opens a list not read yet and types at once
+- **THEN** what was typed stays in the search when the list comes
+
 ## MODIFIED Requirements
 
 ### Requirement: Without the page everything is as before
@@ -29,24 +50,13 @@ model. To add models of your own, add a model server below and tick the agent CL
 
 The field SHALL be a combobox named `Default model of <CLI>`, in the launch window `Model`: Enter,
 Space, ↓ and ↑ open it on the selected row; ↑ ↓ Home End move; Enter or Space picks; Esc closes
-without a pick; a click outside closes. Tab SHALL go on into the controls of the list's foot, and
-close it without a pick only past the last; Shift+Tab SHALL go back through them. With search the
-focus SHALL be in the search field, from the opening while the list's length is not known, Esc first
-clearing its text. Esc, a pick and a press on nothing SHALL return the focus to the field; Tab past
-the foot and a press on another control SHALL go on from there.
+without a pick; a click outside closes. With search the focus SHALL be in the search field, Esc
+first clearing its text. Esc, a pick and a press on nothing SHALL return the focus to the field; a
+press on another control SHALL go on from there.
 
 #### Scenario: Esc in a search
 - **WHEN** the human types in the picker's search and presses Esc twice
 - **THEN** the first clears the text, the second closes the list, and the focus is on the field
-
-#### Scenario: Tab through the foot
-- **WHEN** the list is open and the human presses Tab
-- **THEN** the focus is on the foot's first control, and past its last the list is closed and the
-  focus goes on from the field
-
-#### Scenario: Typing while the list is first read
-- **WHEN** the human opens a list not read yet and types at once
-- **THEN** what was typed stays in the search when the list comes
 
 ### Requirement: Picking saves at once
 

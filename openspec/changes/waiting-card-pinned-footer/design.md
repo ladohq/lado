@@ -21,8 +21,7 @@ runs from edge to edge.
 **D2. The 40 % limit.** `.waiting-top` (title and context) has `flex: 0 10000 auto; min-height: 0;
 max-height: var(--waiting-top-max, 40dvh)`. `Chat` measures `.chat` with `useHeight` where the
 chat has a height of its own (a wide window, the phone layout) and passes it; the card sets
-`--waiting-top-max` to 40 % of it. Elsewhere (Needs you, a window of 900 px or less) the fallback
-applies: there `.chat` grows with its content, so a percentage or a size container would measure
+`--waiting-top-max` to 40 % of it. On a window of 900 px or less the fallback applies: there `.chat` grows with its content, so a percentage or a size container would measure
 itself. Rejected: `container-type: size` on `.chat`, which collapses it on those windows.
 
 **D3. The human's height.** `--waiting-height` stays the whole card's, as the stored value is. In
@@ -43,7 +42,7 @@ one line. The title has no least height, and the meta, under the title on a phon
 only then; the button lies outside the scrolling box, so it does not scroll away. `tabindex="0"`
 always on a context that overflows or not: one Tab order, as Safari does not focus scrollers.
 Fade by a pseudo-element on the wrapper, `--human-ground` to transparent, so both themes hold.
-`onMore` is the card's `setExpanded(true)`, on Needs you too.
+`onMore` is the card's `setExpanded(true)`. Needs you has neither (D17).
 
 **D6. Title.** `-webkit-line-clamp: 2`. A small `useClamped` compares `scrollHeight` with
 `clientHeight` after layout and on resize; when cut, `CardContext` starts with the whole text.
@@ -122,19 +121,20 @@ the page, under an open sessions' list; there, and in a window under about 400 p
 comes up with the page's scroll. `.content` had
 `overflow: hidden`, which would be the box it sticks in: with such a card it clips instead. Sticky
 stops at `.chat`, which an expanded card fills, so the expanded card has that height and
-`html:has(.waiting-card.expanded)` stops the page, on Needs you too; so a resize of the window
+`html:has(.waiting-card.expanded)` stops the page; so a resize of the window
 scrolls it under the top bar again, or a window narrowed would strand it (F27). A fixed card was the other way;
 its left edge would need the rail's width. The phone layout, whose app does not scroll, sets all
 this back. The rest of LAD-193's layout stays.
 
-**D17. A phone's field on Needs you** (the human's device check of 2026-11-05 at `merge_ok`, video
-and report `pr218-phone-check-report`: the expanded card shrank to its tabs and the human typed
-blind). `typing` now holds on any phone page, but only the chat's card takes `.typing`, whose rules
-fold the chat. Needs you scrolls as a page, so while a field has the focus the visual viewport's
-`resize` scrolls the footer into view. An expanded card has the page's room: `:has` hides the
-notifications' offer and the session's heading while its field has the focus, and `.rec-bar.whole`
-gives way as an opened one does, so the footer stays whole in 350 px. The button press keeps the
-focus here too.
+**D17. Needs you is a whole card** (the human's decision of 2026-11-05, #3637, after the iPhone
+check of `pr218-phone-check-report`: an expanded card there shrank to its tabs under the keyboard,
+and bringing the footer up fought the browser). Needs you scrolls as a page, so the card needs no
+limit of its own: `.waits-session .waiting-top` has no `max-height` and its context no scroll, so
+`useMore` finds nothing cut and neither fade nor "↓ more" shows. Expand goes (`chat &&`) with its
+rules. `typing` stays the chat's. The browser leads the keyboard: buttons under the field may lie
+under it. The context keeps its `tabIndex`, a tab stop that scrolls nothing there: no branch in
+`CardContext` for that. `.rec-bar.whole` gives way as an opened one does: the expanded card in the
+chat needs it above the keyboard.
 
 ## Risks
 

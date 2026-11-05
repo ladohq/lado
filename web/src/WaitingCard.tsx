@@ -9,7 +9,7 @@
 // scrolls, and a footer, always whole (waitingParts.tsx): the card is as high as its content,
 // its title and context at most 40 % of the chat (in a window that scrolls it sticks to the
 // window's lower edge, styles.css); expanded, it stays where it is and fills
-// its page's area (the chat's, Needs you's content; its host hides the rest, styles.css)
+// the chat's area (it hides the rest, styles.css)
 // until Esc, its fold button, or nothing waits. It is no modal: an artifact panel a chip
 // opens shows over it, and Esc closes that panel first (the card's Esc waits while the
 // address has ?view=).
@@ -18,8 +18,8 @@
 // above it (prefs.ts keeps both). There, while a field of Other… or Skip question is open,
 // the composer folds into a line (`onFold`), and on a phone a field with the focus hides the
 // session's tabs and the Team row, and one in the footer the context and the choices too, so
-// it fits above the keyboard (`typing`). On Needs you the page brings the footer there, and
-// what stands over an expanded card gives way.
+// it fits above the keyboard (`typing`). On Needs you, which scrolls as a page, the card is
+// whole: no limit on its context, nothing to expand, and the browser leads the keyboard.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { useSearchParams } from "react-router";
 
@@ -174,7 +174,7 @@ export function WaitingCard({
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<{ key: string; text: string } | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [typing, setTyping] = useState(false); // a phone: a field of the card has the focus
+  const [typing, setTyping] = useState(false); // a phone: a field of the chat's card has the focus
   // On a phone (phone.ts) the card has no edge; held sideways, the chat's card is minimized
   // by the layout, not by the human: not remembered, and a tab or its line shows it
   // expanded. Turned upright, an expanded card folds back.
@@ -267,18 +267,6 @@ export function WaitingCard({
     const field = typing ? document.activeElement : null;
     if (field?.closest(".waiting-context")) (field.closest(".answer-box") ?? field).scrollIntoView?.({ block: "nearest" });
   }, [cardHeight, typing]);
-  // Needs you scrolls as a page, so nothing there stays above the keyboard by itself: the page
-  // brings the footer into the visible part, or a field in the context when it is laid out anew.
-  useEffect(() => {
-    if (!typing || chat) return;
-    const bring = () => {
-      const field = document.activeElement;
-      if (field?.matches(FIELD)) (field.closest(".waiting-foot") ?? field).scrollIntoView?.({ block: "nearest" });
-    };
-    bring();
-    window.visualViewport?.addEventListener("resize", bring);
-    return () => window.visualViewport?.removeEventListener("resize", bring);
-  }, [typing, chat]);
   // A quote of the session goes to the composer: the card folds and its fields close, so the
   // composer shows (the focus goes there).
   useEffect(
@@ -476,7 +464,7 @@ export function WaitingCard({
   return (
     <section
       ref={cardRef}
-      className={`waiting-card${expanded ? " expanded" : ""}${folds ? " minimized" : ""}${given !== null ? " sized" : ""}${chat && typing && !expanded ? " typing" : ""}`}
+      className={`waiting-card${expanded ? " expanded" : ""}${folds ? " minimized" : ""}${given !== null ? " sized" : ""}${typing && !expanded ? " typing" : ""}`}
       aria-label={`What waits for you in ${session}`}
       style={style}
       // Files go to a field under them (its own drop zone); dropped elsewhere on the card,
@@ -561,18 +549,20 @@ export function WaitingCard({
               </button>
             </Tooltip>
           )}
-          <Tooltip tip={expanded ? "Collapse the card (Esc)" : "Expand the card"}>
-            <button
-              ref={expander}
-              type="button"
-              className="waiting-expand"
-              aria-label={expanded ? "Collapse the card" : "Expand the card"}
-              aria-expanded={expanded}
-              onClick={() => (expanded ? fold() : setExpanded(true))}
-            >
-              <ExpandIcon expanded={expanded} />
-            </button>
-          </Tooltip>
+          {chat && (
+            <Tooltip tip={expanded ? "Collapse the card (Esc)" : "Expand the card"}>
+              <button
+                ref={expander}
+                type="button"
+                className="waiting-expand"
+                aria-label={expanded ? "Collapse the card" : "Expand the card"}
+                aria-expanded={expanded}
+                onClick={() => (expanded ? fold() : setExpanded(true))}
+              >
+                <ExpandIcon expanded={expanded} />
+              </button>
+            </Tooltip>
+          )}
         </div>
       </div>
       {folds ? (
@@ -592,7 +582,7 @@ export function WaitingCard({
           aria-labelledby={`waiting-${session}-${shown.key}`}
           style={{ "--who": colour(shown) } as CSSProperties}
           onFocus={(event) => {
-            if (phone && (event.target as Element).matches(FIELD)) setTyping(true);
+            if (chat && phone && (event.target as Element).matches(FIELD)) setTyping(true);
           }}
           onBlur={(event) => {
             if (!(event.relatedTarget as Element | null)?.matches(FIELD)) setTyping(false);

@@ -11,6 +11,7 @@
 - **The card that waits for you always shows what you act on.** The recommendation, the
   comment or choices and the buttons stay in sight, only the context scrolls, and the card
   is as high as its content. While you write your own answer, the composer folds into a line.
+  On Needs you the card is whole and the page scrolls, with nothing to expand.
 
 ### Fixed
 

@@ -656,11 +656,13 @@ Sessions for now. The UI's texts are in English.
   first, by session, each session's name a link to its chat and beside it "In the chat"
   (also to its chat); then the session's open questions and gates as the chat's waiting
   card (The waiting card, LAD-28; before, a card per item with its own link), answered in
-  place; expanded, a card fills the page's content area under its session's name line,
-  the other sessions and the agents' rows hidden until it folds (LAD-48). A chip in a
+  place. The card is whole (LAD-194, the human's decision of 2026-11-05 after a check on an
+  iPhone): no limit on its context, no fade, no "↓ more", no Expand; the page scrolls, the
+  footer right under the context, and the browser leads the keyboard, so the buttons under a
+  field may lie under it until the human scrolls. A chip in a
   card opens the artifact panel over Needs you (`?view=<record>&session=<name>`,
-  `paths.VIEW_SESSION_PARAM`; Artifacts, The panel), so the cards, their picks and an
-  expanded card stay as they were (LAD-48; before, it went to the session's Activity tab
+  `paths.VIEW_SESSION_PARAM`; Artifacts, The panel), so the cards and their picks stay as they
+  were (LAD-48; before, it went to the session's Activity tab
   and the picks not sent were lost); then the agents in `waiting` with their role, since when, and why (`status_reason`, or
   "waits for you in its terminal" when LADO knows no reason), with **Open terminal**
   (`/sessions/<name>/activity?terminal=<agent>`: the panel opens that agent's tab and
@@ -1058,7 +1060,7 @@ Built in the chat task (2026-10-03):
   text `--ink` 600; the others `--raised` and `--muted`. **Height** (LAD-194): as high as its
   content. Title and context together are at most 40 % of the chat, measured (`useHeight` on
   `.chat`, `--waiting-top-max`), and of the window (`40dvh`) where the chat has no height of its
-  own (Needs you, a window of 900 px or less): a percentage or a size container there would
+  own (a window of 900 px or less): a percentage or a size container there would
   measure itself. The footer is not in that limit and is not cut by it. Short of room the feed
   goes first (no least height while a card shows), then the context and the title, then the
   choices' area to one row, an opened recommendation to one line, then the field stops at its
@@ -1110,7 +1112,7 @@ Built in the chat task (2026-10-03):
   a scrim, under which an artifact panel opened from it stayed hidden): in the chat over
   the chat's whole area, the feed and the composer hidden, the session's head, tabs and
   team row seen and usable (but on a phone, which hides the tabs and the team row too:
-  Phone layout, The chat); on Needs you over the page's content area (Needs you, above).
+  Phone layout, The chat); Needs you has no Expand (Needs you, above).
   Its host hides the rest by CSS (`:has(.waiting-card.expanded)`), so the artifact panel
   and its scrim, fixed over the page, are over the card too. On a window of 900 px or
   less, which scrolls, it is the window's height under the top bar, expanding scrolls
@@ -2286,9 +2288,7 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   click. Below 440 px of app (imitated down to 340 px; a real keyboard is the human's to check) the
   top goes first, the meta before the title. An expanded card, by its button or sideways, hides the
   session's tabs and the Team row: it fills the page under the top bar, until its fold button,
-  Esc, or nothing waits. Needs you scrolls as a page: a field's focus folds nothing, and the page
-  brings the footer above the keyboard (LAD-194); an expanded card keeps its context, and the
-  notifications' offer and the session's heading give way to it while its field has the focus.
+  Esc, or nothing waits. Needs you, which scrolls as a page, changes nothing on a field's focus.
 - **Sideways** (`short`): the chat's card is minimized by the layout (its tabs and one
   line), not by the human: `lado.waitingMinimized.<session>` is not written. A tab or the
   line shows it expanded over the chat; Esc or its fold button minimizes it again; turned

@@ -561,26 +561,6 @@ def test_a_block_over_the_chat_moves_the_cards_limit_with_it(page: Page, server,
     in_sight(page, approve)
 
 
-def test_a_window_768_wide_keeps_the_expanded_cards_footer_on_needs_you(
-    page: Page, server, repo, shot
-):
-    session = gated_session(repo, LONG_NOTE)
-    page.set_viewport_size({"width": 768, "height": 700})
-    log_in(page, server)
-    page.goto(f"{server['url']}/needs-you")
-    card = waiting_card(page, session)
-    approve = card.get_by_role("button", name="Approve", exact=True)
-    expect(approve).to_be_attached()
-    card.get_by_role("button", name="Expand the card").click()
-    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
-    in_sight(page, approve)
-    page.get_by_role("banner").hover()
-    page.mouse.wheel(0, -5000)
-    page.wait_for_timeout(200)
-    in_sight(page, approve)
-    shot(page, full_page=False)
-
-
 @pytest.mark.parametrize("width", [1440, 768])
 def test_a_long_note_scrolls_in_the_context_and_the_footer_stays(
     page: Page, server, repo, shot, width

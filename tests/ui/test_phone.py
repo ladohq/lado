@@ -695,81 +695,75 @@ def needs_you_with_a_gate_and_a_question(repo) -> str:
     return session
 
 
-def settles_above_the_keyboard(page: Page, card, visible: float, *parts) -> None:
-    """Each part ends up between the top bar and the keyboard, and not cut by the panel."""
-    for part in parts:
-        page.wait_for_function(
-            "([p, bottom]) => p.getBoundingClientRect().bottom <= bottom + 1",
-            arg=[part.element_handle(), visible],
-            timeout=3000,
-        )
-    bar = box(top_bar(page))
-    for part in parts:
-        within(part, bar["y"] + bar["height"], visible)
-        uncut(card, part)
-
-
 @pytest.mark.parametrize("visible", [ABOVE_KEYBOARD, 380, 350])
-@pytest.mark.parametrize("expanded", [False, True], ids=["card", "expanded"])
 @pytest.mark.parametrize("tab", ["gate", "question"])
-def test_on_needs_you_a_field_and_its_buttons_stay_above_the_keyboard(
-    device, server, repo, shot, visible, expanded, tab
+def test_on_needs_you_a_field_in_focus_is_seen_and_the_page_scrolls_to_its_buttons(
+    device, server, repo, shot, visible, tab
 ):
-    """Needs you scrolls as a page: the footer comes into the visible part; expanded, what
-    stands over the card gives way and the card keeps its context, until the focus leaves."""
+    """Needs you scrolls as a page and the browser leads the keyboard, which the imitation
+    does not: the field brought into sight stands there, nothing folds around it, and the page
+    scrolls on to the buttons under it."""
     session = needs_you_with_a_gate_and_a_question(repo)
     phone = device(KEYBOARD)
     phone.add_init_script(FAKE_VIEWPORT)
     page = opened(phone, server, "/needs-you")
     card = waiting_card(page, session)
-    expect(card.get_by_role("tab", name="ship/x 1")).to_be_visible()
+    expect(card.get_by_role("button", name="Expand the card")).to_have_count(0)
     if tab == "question":
         card.get_by_role("tab", name="supervisor 1").tap()
-    if expanded:
-        card.get_by_role("button", name="Expand the card").tap()
-        expect(card).to_have_class(re.compile(r"\bexpanded\b"))
-    if tab == "gate":
-        field = card.get_by_role("textbox", name="Comment for the next step (optional)")
-        field.tap()
-        buttons = [
-            card.get_by_role("button", name="Approve", exact=True),
-            card.get_by_role("button", name="Reject", exact=True),
-        ]
-    else:
         card.get_by_role("button", name="Other…").evaluate("b => b.click()")
         field = card.get_by_role("textbox", name="Your own answer")
-        buttons = [card.get_by_role("button", name="Send answer to supervisor")]
+        button = card.get_by_role("button", name="Send answer to supervisor")
+    else:
+        field = card.get_by_role("textbox", name="Comment for the next step (optional)")
+        field.tap()
+        button = card.get_by_role("button", name="Approve", exact=True)
     expect(field).to_be_focused()
     page.evaluate(f"window.moveViewport({visible}, 0)")
     expect(page.locator(".app")).to_have_css("height", f"{visible}px")
-    settles_above_the_keyboard(page, card, visible, field, *buttons)
-    context = card.get_by_role("region", name="Context of the card")
-    expect(context).to_be_attached()
-    shot(page, "keyboard", full_page=False)
+    field.evaluate("f => f.scrollIntoView({ block: 'nearest' })")
+    bar = box(top_bar(page))
+    within(field, bar["y"] + bar["height"], visible)
+    expect(field).to_be_focused()
+    expect(card.get_by_role("region", name="Context of the card")).to_be_attached()
+    assert not card.evaluate("c => c.classList.contains('typing')")
+    page.mouse.move(100, visible / 2)
+    page.mouse.wheel(0, 5000)
+    page.wait_for_function(
+        "([b, bottom]) => b.getBoundingClientRect().bottom <= bottom + 1",
+        arg=[button.element_handle(), visible],
+        timeout=3000,
+    )
+    within(button, bar["y"] + bar["height"], visible)
+    shot(page, full_page=False)
 
-    page.evaluate(f"window.moveViewport({KEYBOARD[1]}, 0)")  # the keyboard closes
-    expect(page.locator(".app")).to_have_css("height", f"{KEYBOARD[1]}px")
-    field.blur()
-    expect(page.get_by_role("region", name=f"Session {session}").locator("h2")).to_be_visible()
 
-
-def test_on_needs_you_a_tap_on_approve_with_the_field_in_focus_answers_the_gate(
-    device, server, repo
+@pytest.mark.parametrize("visible", [ABOVE_KEYBOARD, 350])
+def test_the_expanded_cards_long_recommendation_gives_way_above_the_keyboard(
+    device, server, repo, shot, visible
 ):
-    """Expanded, the heading coming back with the focus would move Approve under the finger."""
+    """Expanded in the chat, the whole recommendation yields to the field and the buttons."""
     session = gated_session(repo)
+    recommended(session, "A reason to approve. " * 80, choice="approve")
     phone = device(KEYBOARD)
     phone.add_init_script(FAKE_VIEWPORT)
-    page = opened(phone, server, "/needs-you")
+    page = opened(phone, server, f"/sessions/{session}")
     card = waiting_card(page, session)
     card.get_by_role("button", name="Expand the card").tap()
     comment = card.get_by_role("textbox", name="Comment for the next step (optional)")
     comment.tap()
-    page.evaluate(f"window.moveViewport({ABOVE_KEYBOARD}, 0)")
+    page.evaluate(f"window.moveViewport({visible}, 0)")
+    expect(page.locator(".app")).to_have_css("height", f"{visible}px")
     approve = card.get_by_role("button", name="Approve", exact=True)
-    settles_above_the_keyboard(page, card, ABOVE_KEYBOARD, approve)
-    approve.tap()
-    expect(page.get_by_text("Nothing waits for you")).to_be_visible()
+    page.wait_for_function(
+        "([b, bottom]) => b.getBoundingClientRect().bottom <= bottom + 1",
+        arg=[approve.element_handle(), visible],
+        timeout=3000,
+    )
+    for part in (comment, approve):
+        within(part, 0, visible)
+        uncut(card, part)
+    shot(page, full_page=False)
 
 
 def test_a_field_in_the_context_of_several_questions_stays_in_its_view(device, server, repo, shot):

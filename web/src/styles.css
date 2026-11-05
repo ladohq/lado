@@ -4983,24 +4983,13 @@ button.rec-bar-line {
   margin-inline: 0;
 }
 
-.content:has(> .needs-you .waiting-card.expanded) {
-  display: flex;
-  flex-direction: column;
+/* Needs you scrolls as a page: the card is whole, its context in the page's flow. */
+.waits-session .waiting-top {
+  max-height: none;
 }
 
-.needs-you:has(.waiting-card.expanded) {
-  flex: 1;
-  min-height: 0;
-}
-
-.needs-you:has(.waiting-card.expanded) .waits-session:not(:has(.waiting-card.expanded)),
-.needs-you:has(.waiting-card.expanded) .waits-item {
-  display: none;
-}
-
-.waits-session:has(.waiting-card.expanded) {
-  flex: 1;
-  min-height: 0;
+.waits-session .waiting-context {
+  overflow: visible;
 }
 
 /* A narrow window scrolls, so the chat has no height of its own: the card sticks to the
@@ -10125,13 +10114,6 @@ button.quiet.danger-text {
 :root[data-phone] .activity:has(> .chat > .waiting-card.typing) > .team-row,
 :root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-context-frame,
 :root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-choices-frame {
-  display: none;
-}
-
-/* Needs you: an expanded card has the page's room, so what stands over it gives way to its
-   field. */
-:root[data-phone] .needs-you:has(.waiting-card.expanded .waiting-field:focus) > .notify-offer,
-:root[data-phone] .waits-session:has(.waiting-card.expanded .waiting-field:focus) > h2 {
   display: none;
 }
 

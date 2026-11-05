@@ -75,8 +75,10 @@ same pull request. The minor is not bumped by this change: `0.45.0 (unreleased)`
   card only), C2 (placeholders), C3 (a phone's tabs) and C4 (the opened recommendation's fade)
   are done here; C5–C14 are accepted as they are. The composer cut at 768 stays LAD-193's, is
   not touched here and counts as no finding.
-- A real iOS Safari keyboard: the human checked the PR's build on an iPhone on 2026-11-05 and sent
-  back Needs you (D17); the chat's card worked. Android's back button stays not verified.
+- A real iOS Safari keyboard: the human checked the PR's build on an iPhone on 2026-11-05: the
+  chat's card worked, and Needs you came back (D17). Android's back button stays not verified.
+- Needs you's card with a limit and Expand: the human's decision of 2026-11-05 (#3637) after the
+  iPhone check. The buttons under a field there may lie under the keyboard; the human scrolls.
 
 ## Acceptance criteria
 
@@ -111,11 +113,11 @@ same pull request. The minor is not bumped by this change: `0.45.0 (unreleased)`
   session's tabs, the Team row, the context and a question's choices, folds the composer, and
   keeps field, buttons and line in sight, at 350 and 340 px too, under a recommendation of two
   lines as well.
-- AC-13a: on Needs you on a phone, in a card and an expanded one, a gate's comment or an own answer
-  in focus keeps the field and the buttons whole above the keyboard, at 440, 380 and 350 px.
 - AC-14: on a phone the card's tabs, Minimize, Expand, fields, chips and buttons are 44 px high.
-- AC-15: on Needs you, and on a window of 900 px or less, title and context are at most 40 % of
-  the window, and the footer follows them.
+- AC-15: on a window of 900 px or less title and context are at most 40 % of the window, and the
+  footer follows them. Needs you has no limit, fade, "↓ more" or Expand: the card is whole, the
+  page scrolls, and the browser leads the keyboard there (the human's decision of 2026-11-05,
+  #3637, over decision 6 of #3495 for Needs you).
 - AC-16: light and dark themes match frames g3-*; `docs/design/ui.md` and CHANGELOG.md are updated;
   the flaky test of BACKLOG.md is settled, its cause named.
 

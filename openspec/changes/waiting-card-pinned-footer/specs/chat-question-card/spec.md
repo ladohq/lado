@@ -6,8 +6,9 @@ An open card's tab SHALL be made of a title, a context and a footer, in that ord
 (a gate's note with its chips, the artifacts it reads, a question's details and attachments)
 SHALL be the only part that scrolls, a focusable region named "Context of the card". The footer
 SHALL always be whole: the recommendation, then a gate's comment or a question's choices and
-field, then the buttons, under a line in `--human` at 30 %. This SHALL hold in a session's chat
-and on Needs you.
+field, then the buttons, under a line in `--human` at 30 %. This SHALL hold in a session's chat;
+Needs you's card is whole, and the page scrolls (requirement "Needs you shows each session's
+waiting card").
 
 #### Scenario: A long note
 - **WHEN** a gate with a note of 60 lines waits in a window 1440×900
@@ -94,8 +95,8 @@ which the page's scroll then brings up. The composer past the window's edge is L
 ### Requirement: In a window that scrolls the expanded card holds the page
 
 In a window of 900 px or less outside the phone layout, the expanded card SHALL be the window's
-height under the top bar, on Needs you too, also after the window narrows or turns, and the page
-SHALL not scroll until it folds.
+height under the top bar, also after the window narrows or turns, and the page SHALL not scroll
+until it folds.
 
 #### Scenario: Expanded
 - **WHEN** the human expands a card in a window 768×700 or 768×1024 and turns the wheel
@@ -192,6 +193,25 @@ questions SHALL say "The session is stopped: resume it to answer." beside it, as
 - **WHEN** nothing is picked and the human points at Send
 - **THEN** the tooltip says "Choose an answer first"
 
+### Requirement: The expanded card covers the chat's area, not the window
+
+An icon button at
+the right of the card's tabs in a session's chat (no text; its name and tooltip "Expand the
+card") SHALL show the card over the chat's whole area, never over the whole window: the feed and
+the composer hidden, the session's head, tabs and team row seen and usable (but on a phone:
+capability phone-layout).
+
+#### Scenario: The session around an expanded card
+- **WHEN** the human expands the card in session lad-46's chat
+- **THEN** the feed and the composer are hidden, the card fills the chat's width and
+  height, and the session's tabs (Activity, Agents, Flows, Artifacts) and the team row are
+  seen and can be clicked, with no scrim
+
+#### Scenario: Expanded on a phone
+- **WHEN** the human expands the card in session lad-46's chat on a phone
+- **THEN** the session's tabs and the team row are hidden with the feed and the composer,
+  and folding the card shows them again
+
 ## MODIFIED Requirements
 
 ### Requirement: An agent's tab lists its questions with their choices, Other… and Skip
@@ -213,8 +233,8 @@ The card SHALL be as high as its content. Its title and context together SHALL b
 40 % of the chat's height unless the human set another height (requirement "The human can
 resize the card in the chat"); its footer SHALL not count in that limit and SHALL not be cut
 by it. Its context SHALL scroll inside it while its tabs and its footer stay in view. Where
-the chat has no height of its own (Needs you, a window of 900 px or less outside the phone
-layout) the limit SHALL be 40 % of the window's height. In the phone layout held sideways (capability phone-layout) the team
+the chat has no height of its own (a window of 900 px or less outside the phone layout) the
+limit SHALL be 40 % of the window's height. In the phone layout held sideways (capability phone-layout) the team
 row SHALL not be shown, expanded or not.
 
 #### Scenario: Long questions
@@ -226,10 +246,33 @@ row SHALL not be shown, expanded or not.
 - **WHEN** a gate with a note of two lines waits in a chat 700 px high
 - **THEN** the card is as high as its content, with no empty room in it
 
-#### Scenario: A long note on Needs you
-- **WHEN** a gate with a note of 60 lines waits on Needs you in a window 900 px high
+#### Scenario: A long note in a narrow window
+- **WHEN** a gate with a note of 60 lines waits in a chat 800 px wide in a window 900 px high
 - **THEN** its title and context are at most 360 px high, and its comment field and Approve
   follow right under them
+
+### Requirement: Needs you shows each session's waiting card
+
+Needs you SHALL show, for each session not stopped with open questions or gates, the
+session's name, a link "In the chat" and the same waiting card, answered in place, but for
+minimizing, resizing and expanding, which only a session's chat has. The card SHALL be whole:
+no limit on its context, no fade and no "↓ more"; the page SHALL scroll, the footer right under
+the context. Agents waiting in their terminal SHALL stay rows with their reason and "Open
+terminal".
+
+#### Scenario: Two sessions
+- **WHEN** lad-28 has a question and a gate open and docs-site a question
+- **THEN** Needs you shows two cards, one per session, each with its own tabs
+
+#### Scenario: No minimize or edge on Needs you
+- **WHEN** lad-28's card is minimized in its chat and the human opens Needs you
+- **THEN** Needs you shows lad-28's whole card, with no "Minimize the card" or "Expand the card"
+  icon and no edge above it
+
+#### Scenario: A long note on Needs you
+- **WHEN** a gate with a note of 60 lines waits on Needs you in a window 900 px high
+- **THEN** the note shows with no scrolling of its own, and the comment field and Approve
+  follow right under it, reached by the page's scroll
 
 ### Requirement: The human can resize the card in the chat
 
@@ -337,3 +380,12 @@ padding.
 - **WHEN** a gate's tab is shown
 - **THEN** its question and its comment field start at the same distance from the panel's
   left edge
+
+## REMOVED Requirements
+
+### Requirement: The expanded card covers its page's area, not the window
+
+**Reason**: Needs you has no Expand now (the human's decision of 2026-11-05, #3637): its card is
+whole and the page scrolls, so the scenario "Expanded on Needs you" goes.
+
+**Migration**: "The expanded card covers the chat's area, not the window", for the chat alone.

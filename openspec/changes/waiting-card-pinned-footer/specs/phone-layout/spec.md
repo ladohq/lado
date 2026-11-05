@@ -26,30 +26,18 @@ loses the focus all of it SHALL show again.
 - **THEN** the session's tabs, the context, the choices' area, the Team row and the composer
   show again, and the comment typed stays in the field
 
-### Requirement: Outside the phone layout a field's focus changes nothing
+### Requirement: Only a phone's chat folds around a field
 
-Outside the phone layout a field's focus SHALL change nothing.
+On Needs you, and outside the phone layout, a field's focus SHALL change nothing.
 
 #### Scenario: A computer
 - **WHEN** the human clicks a gate's comment field with a mouse in a window 390 px wide
 - **THEN** the card and the composer stay as they were
 
-### Requirement: On a phone Needs you keeps a field and its buttons above the keyboard
-
-On Needs you in the phone layout, with a field of a card in focus, the page SHALL bring the
-card's footer into the part above the on-screen keyboard. An expanded card SHALL keep its context
-and the notifications' offer and the session's heading SHALL give way to it until the field
-loses the focus. A button pressed SHALL keep the focus in the field.
-
-#### Scenario: A card and an expanded card
-- **WHEN** a gate's comment or an own answer has the focus on Needs you on a phone 402×874, in a
-  card or an expanded one, and the keyboard leaves 440, 380 or 350 px visible
-- **THEN** the field and Approve and Reject, or Send, lie whole between the top bar and the
-  keyboard
-
-#### Scenario: Approve with the field in focus
-- **WHEN** the human taps Approve in the expanded card with the keyboard open
-- **THEN** the gate is answered
+#### Scenario: Needs you on a phone
+- **WHEN** the human taps a card's field on Needs you on a phone and the keyboard opens
+- **THEN** nothing folds, the browser keeps the field in sight, and the page scrolls on to the
+  buttons under it, which the keyboard may cover
 
 ### Requirement: On a phone a field keeps the context it needs
 

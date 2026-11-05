@@ -80,6 +80,8 @@ type Props = {
   onFold?: (fold: Fold | null) => void;
 };
 
+const IN_CHAT = { feed: null, loaded: true };
+
 let posted: { path: string; body: unknown }[] = [];
 let answer: { status: number; body: unknown } = { status: 200, body: { result: "sent" } };
 // The human's files: the server's limits, each upload by its file name, those refused.
@@ -312,6 +314,7 @@ function grows(field: HTMLTextAreaElement, content: number, value: string) {
 
 test("an own answer, a skip's comment and a gate's comment grow with their text from 1 line to 4, then scroll", () => {
   show({
+    chat: IN_CHAT,
     questions: [question(5, "w1"), question(6, "w1")],
     gates: [gate(1, "task/lad-27", "2026-10-03T12:00:06.000Z")],
   });
@@ -439,7 +442,7 @@ test("a gate's tab is its panel: question, note, comment, its buttons in the Sen
 });
 
 test("an expanded card folds on a quote of its session, not of another", async () => {
-  show({ questions: [question(5, "w1")] });
+  show({ questions: [question(5, "w1")], chat: IN_CHAT });
   fireEvent.click(within(card()).getByRole("button", { name: "Expand the card" }));
   await waitFor(() => expect(isExpanded()).toBe(true));
   act(() => sendQuote("other", "> A", () => {}));
@@ -451,7 +454,7 @@ test("an expanded card folds on a quote of its session, not of another", async (
 });
 
 test("a gate's comment and an own answer stay through a switch of tabs and through expanding and folding the card", async () => {
-  show({ questions: [question(5, "w1")], gates: [gate(1, "task/lad-27", "2026-10-03T12:00:06.000Z")] });
+  show({ questions: [question(5, "w1")], gates: [gate(1, "task/lad-27", "2026-10-03T12:00:06.000Z")], chat: IN_CHAT });
   const comment = () => within(card()).getByRole("textbox", { name: "Comment for the next step (optional)" }) as HTMLTextAreaElement;
   const own = () => within(card()).getByRole("textbox", { name: "Your own answer" }) as HTMLTextAreaElement;
   fireEvent.click(within(card()).getByRole("button", { name: "Other…" }));
@@ -500,7 +503,7 @@ test("focus shows the item's tab and marks the item for a moment", async () => {
 });
 
 test("expanded in its place and back: the expand icon, then Esc or the fold icon; the focus returns", async () => {
-  const { container } = show({ questions: [question(5, "w1")] });
+  const { container } = show({ questions: [question(5, "w1")], chat: IN_CHAT });
   const expand = within(card()).getByRole("button", { name: "Expand the card" });
   expect(expand.getAttribute("aria-expanded")).toBe("false");
   // Esc while it is not expanded does nothing to it.
@@ -527,7 +530,7 @@ test("expanded in its place and back: the expand icon, then Esc or the fold icon
 });
 
 test("while an artifact panel is open (?view= in the address), Esc leaves the expanded card to the panel", async () => {
-  show({ questions: [question(5, "w1")], at: "/sessions/s/activity?view=r1" });
+  show({ questions: [question(5, "w1")], at: "/sessions/s/activity?view=r1", chat: IN_CHAT });
   fireEvent.click(within(card()).getByRole("button", { name: "Expand the card" }));
   await waitFor(() => expect(isExpanded()).toBe(true));
   fireEvent.keyDown(document, { key: "Escape" });
@@ -535,17 +538,16 @@ test("while an artifact panel is open (?view= in the address), Esc leaves the ex
 });
 
 test("the expanded card folds itself when nothing waits any more", async () => {
-  const view = show({ questions: [question(5, "w1")] });
+  const view = show({ questions: [question(5, "w1")], chat: IN_CHAT });
   fireEvent.click(within(card()).getByRole("button", { name: "Expand the card" }));
   await waitFor(() => expect(isExpanded()).toBe(true));
-  view.rerender(<Card questions={[]} />);
+  view.rerender(<Card questions={[]} chat={IN_CHAT} />);
   expect(screen.queryByRole("region", { name: "What waits for you in s" })).toBeNull();
-  view.rerender(<Card questions={[question(6, "w1")]} />);
+  view.rerender(<Card questions={[question(6, "w1")]} chat={IN_CHAT} />);
   expect(isExpanded()).toBe(false);
 });
 
 // Minimized and resized: only in a session's chat (`chat`).
-const IN_CHAT = { feed: null, loaded: true };
 const GATE_812 = gate(812, "task/lad-52", "2026-10-03T12:00:01.000Z", {
   question: "Archive the change and merge the pull request?",
 });
@@ -680,12 +682,12 @@ test("a minimized card expands whole; folding it brings it back minimized", asyn
   expect(document.activeElement).toBe(iconButton("Expand the card"));
 });
 
-test("on Needs you (no chat) the card has no minimize icon and no edge, whatever its chat keeps", () => {
+test("on Needs you (no chat) the card has no minimize or expand icon and no edge, whatever its chat keeps", () => {
   localStorage.setItem("lado.waitingMinimized.s", JSON.stringify(["gate:812"]));
   localStorage.setItem("lado.waitingHeight", "230");
   show({ questions: [], gates: [GATE_812] });
   expect(isMinimized()).toBe(false);
-  expect(within(card()).queryByRole("button", { name: /^(Minimize|Restore) the card$/ })).toBeNull();
+  expect(within(card()).queryByRole("button", { name: /^(Minimize|Restore|Expand) the card$/ })).toBeNull();
   expect(edge()).toBeNull();
   expect(card().style.getPropertyValue("--waiting-height")).toBe("");
 });

@@ -189,9 +189,7 @@ start with --model '' for its settings, or change it with lado model default <cl
 Under the default the note SHALL read `<CLI>'s default model, from Settings → Models.`; under
 another pick `For this session only. <CLI>'s default model is <name>.`, no such line without a
 default; under `<CLI>'s settings` with a default `For this session only: the agent CLI chooses, not
-<name>.` A pick lost to another agent CLI SHALL leave `<name> belongs to <CLI>, so the model is back
-to <new CLI>'s default.`, until the next change of agent CLI. While the agent CLIs are read again
-the pick SHALL stay.
+<name>.`
 
 #### Scenario: Another pick
 - **WHEN** OpenCode's default is `Локальная Qwen` and the human picks `Рабочая Qwen`
@@ -201,6 +199,20 @@ the pick SHALL stay.
 - **WHEN** the human picks `OpenCode's settings`
 - **THEN** the note reads `For this session only: the agent CLI chooses, not Локальная Qwen.`, and
   starting sends `''`
+
+### Requirement: A pick follows its agent CLI
+
+A pick lost to another agent CLI SHALL leave `<name> belongs to <CLI>, so the model is back to <new
+CLI>'s default.`, until the next change of agent CLI. While the agent CLIs are read again, for
+another project, the pick SHALL stay.
+
+#### Scenario: The next change of agent CLI
+- **WHEN** the line stands and the human picks a third agent CLI
+- **THEN** the line is gone
+
+#### Scenario: Another project
+- **WHEN** the human has a pick and goes to Project and back to Folder
+- **THEN** the pick is in the field, with no line
 
 ### Requirement: A refused model in the window
 

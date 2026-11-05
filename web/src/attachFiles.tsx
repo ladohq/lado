@@ -299,6 +299,7 @@ export function AnswerBox({
   files,
   setFiles,
   limits,
+  lines = [CARD_LINES, MOST_LINES],
 }: {
   label: string;
   text: string;
@@ -309,11 +310,12 @@ export function AnswerBox({
   files: Attached[];
   setFiles: SetFiles;
   limits: Limits | null;
+  lines?: [number, number]; // the lines it opens with and grows to
 }) {
   const [problem, setProblem] = useState<string | null>(null);
   const frame = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
-  useGrow(field, text, CARD_LINES, MOST_LINES, frame);
+  useGrow(field, text, lines[0], lines[1], frame);
   const attach = (given: File[]) => {
     const { added, problem: refused } = attachFiles(given, files.length, limits);
     setProblem(refused);
@@ -342,7 +344,7 @@ export function AnswerBox({
           <textarea
             ref={field}
             className="waiting-field"
-            rows={CARD_LINES}
+            rows={lines[0]}
             autoFocus={autoFocus}
             aria-label={label}
             placeholder={label}

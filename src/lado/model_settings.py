@@ -26,7 +26,7 @@ import stat
 import urllib.parse
 import uuid
 from collections.abc import Callable, Collection, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from lado import agent_env, model_check, model_servers, project_secrets, providers, state
@@ -593,9 +593,13 @@ def known_cli(cli: str) -> providers.Provider:
     return providers.get(cli)
 
 
+def _installed(provider: providers.Provider, env: Env) -> bool:
+    return shutil.which(provider.command, path=env(provider).get("PATH")) is not None
+
+
 def _installed_cli(cli: str, env: Env) -> providers.Provider:
     provider = known_cli(cli)
-    if shutil.which(provider.command, path=env(provider).get("PATH")) is None:
+    if not _installed(provider, env):
         raise Refused(f"{provider.title} is not installed", field=CLI)
     return provider
 
@@ -614,6 +618,12 @@ def _save_default(ref: state.ModelRef) -> None:
         raise Refused("that model is no longer saved", field=MODEL_FIELD) from None
 
 
+def _one_line(model: str) -> None:
+    char = visible.first_hidden(model)
+    if char is not None:
+        raise Refused(f"a model is one line {visible.refusal(char)}", field=MODEL_FIELD)
+
+
 def _builtin(
     provider: providers.Provider, model: str, listed: base.ModelList
 ) -> tuple[state.ModelRef, model_check.Verdict]:
@@ -621,9 +631,7 @@ def _builtin(
     what is no name, or a name `listed` lacks. Saves nothing."""
     if not model:
         raise Refused("the model is empty", field=MODEL_FIELD)
-    char = visible.first_hidden(model)
-    if char is not None:
-        raise Refused(f"a model is one line {visible.refusal(char)}", field=MODEL_FIELD)
+    _one_line(model)
     verdict = model_check.verdict(provider, model, listed)
     if verdict.kind == model_check.REFUSED:
         raise Refused(
@@ -783,6 +791,72 @@ def session_row(
     if saved is None:  # removed since the first read
         raise Refused("that model is no longer saved", field=MODEL_FIELD)
     return state.PowerRow(provider.name, saved.model, saved.id, saved.name)
+
+
+def _name_cli(
+    name: str,
+    given: providers.Provider | None,
+    session_cli: providers.Provider,
+    env: Env,
+    listing: Listing,
+) -> providers.Provider:
+    """The agent CLI whose reading of `name` a worker takes: `given`, or with none the session's,
+    else the one other installed CLI that has it. Having it is being its saved model, alias or
+    listed model; another CLI's list is read only when the first CLI lacks the name, and one
+    that failed has no name. Refused for a name of another CLI than `given`, of several others,
+    or of none with no `given`: an agent's typo is not started on, though a start would warn."""
+    _one_line(name)
+    saved = state.model(name)
+
+    def has(provider: providers.Provider) -> bool:
+        if saved is not None and saved.cli == provider.name:
+            return True
+        listed = listing(provider)
+        return name in {*listed.aliases, *(listed.models or ())}
+
+    first = given or session_cli
+    if has(first):
+        return first
+    if given is not None and saved is not None:
+        raise _not_its_model(saved, given)
+    others = [providers.get(cli) for cli in providers.names() if cli != first.name]
+    found = [other for other in others if _installed(other, env) and has(other)]
+    titles = " and ".join(other.title for other in found)
+    if given is not None:
+        if found:
+            raise Refused(f"{name} is a model of {titles}, not of {given.title}", field=MODEL_FIELD)
+        return given  # check_default refuses it, or warns for a CLI of no full list
+    if len(found) == 1:
+        return found[0]
+    if found:
+        raise Refused(f"{name} is a model of {titles}; give provider", field=MODEL_FIELD)
+    free = ""
+    if listing(session_cli).models is None:
+        free = (
+            f'; {session_cli.title} gives no full list: provider="{session_cli.name}" starts it '
+            "with a warning"
+        )
+    raise Refused(
+        f"{name} is in no agent CLI's list of models; list_models shows them{free}",
+        field=MODEL_FIELD,
+    )
+
+
+def worker_start(
+    name: str,
+    given: providers.Provider | None,
+    session_cli: providers.Provider,
+    env: Env,
+    listing: Listing,
+) -> tuple[providers.Provider, StartModel]:
+    """The CLI and model of a worker spawned with `model` `name`, the provider `given` if any:
+    "" (or only spaces) is the CLI's own settings, any other name finds its CLI (_name_cli) and
+    is read there as a session's. Refused as those are; nothing is stored."""
+    name = name.strip()
+    cli = _name_cli(name, given, session_cli, env, listing) if name else given or session_cli
+    row = session_row(name, cli, env(cli), listing)
+    start = start_model(state.PowerTable.of(row), cli)
+    return cli, replace(start, source=state.SUPERVISOR_CHOICE) if name else start
 
 
 def _expands(*texts: str) -> bool:

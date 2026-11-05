@@ -423,10 +423,12 @@ export const clearModelDefault = (cli: string) => post<ModelSettings>(modelDefau
 
 // A request that never reached LADO's server: fetch rejects with a TypeError, with no answer.
 export const unreachable = (error: unknown) => error instanceof TypeError;
+export const LADO_DOWN = "LADO's server does not answer: nothing was done.";
 
 // A failed request of Settings → Models as a refusal: the API's EntryRefused, or any other
 // error's message with no field.
 export function refusalOf(error: unknown): EntryRefused {
+  if (unreachable(error)) return { message: LADO_DOWN, hint: "", field: "", warnings: [] };
   const detail = (error instanceof ApiError ? error.detail : null) as Partial<EntryRefused> | null;
   if (detail && typeof detail === "object" && typeof detail.message === "string")
     return {

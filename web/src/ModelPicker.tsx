@@ -393,7 +393,7 @@ export function ModelPicker({
         aria-label={row.label}
         aria-selected={row.selected}
         className={`mp-opt${at === active ? " mp-active" : ""}${row.selected ? " mp-selected" : ""}${
-          row.pick === "other" ? " mp-other" : ""
+          row.pick === "other" ? " mp-other" : row.pick === "read" ? " mp-read" : ""
         }${(row.server?.length ?? 0) > LONG_SERVER ? " mp-long" : ""}`}
         onPointerMove={() => setActive(at)}
         onClick={() => choose(row)}

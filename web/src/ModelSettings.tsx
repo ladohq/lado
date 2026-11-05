@@ -37,7 +37,6 @@ import { type Health, ModelPicker, type Pick, serverWords, useModelChoices } fro
 import { listed, loginWord, ModelServers, type Read, type Saved, serverKey, type Sources } from "./ModelSources";
 import { MODELS_ANCHOR } from "./paths";
 import { POLL_MS } from "./Providers";
-import { messageOf } from "./SessionControl";
 import { keepAtTop, useScrollAnchor } from "./useScrollAnchor";
 
 export const INTRO = "Choose a default model for each agent CLI, and add the models of your own servers.";
@@ -114,7 +113,7 @@ export function ModelSettings() {
       setEntries(found);
       setProblem(null);
     } catch (error) {
-      if (asked === latest.current) setProblem(messageOf(error));
+      if (asked === latest.current) setProblem(refusalOf(error).message);
     }
   }, []);
   useEffect(() => {
@@ -407,8 +406,8 @@ function CliCard({
   useEffect(() => {
     if (!handOn) return;
     setHandOn(false);
-    if (!off) return field.current?.focus();
-    (self.current?.querySelector<HTMLElement>(".mc-models button") ?? self.current)?.focus();
+    const next = off ? (self.current?.querySelector<HTMLElement>(".mc-models button") ?? self.current) : field.current;
+    next?.focus({ preventScroll: true });
   }, [handOn, off]);
 
   // A built-in default is read in the background, so a list that lost it shows on the card.
@@ -642,7 +641,13 @@ function CliCard({
             </div>
             {shown.map(({ model, gone }) =>
               gone ? (
-                <UndoRow key={`removed:${model.name}`} gone={gone} onUndo={onUndo} onExpired={onExpired} />
+                <UndoRow
+                  key={`removed:${model.name}`}
+                  gone={gone}
+                  onUndo={onUndo}
+                  onExpired={onExpired}
+                  onLeft={() => setHandOn(true)}
+                />
               ) : (
                 <ModelRow
                   key={model.id}
@@ -770,18 +775,26 @@ function UndoRow({
   gone,
   onUndo,
   onExpired,
+  onLeft,
 }: {
   gone: Removed;
   onUndo: (gone: Removed) => void;
   onExpired: (gone: Removed) => void;
+  onLeft: () => void; // Undo went with the focus on it
 }) {
   const { model, wasDefault, problem, busy, expired } = gone;
+  const undo = useRef<HTMLButtonElement>(null);
+  const left = useRef(onLeft);
+  left.current = onLeft;
   // Undo goes after UNDO_MS, kept while it runs or was refused (to say why); the row stays.
   const latest = useRef(gone);
   latest.current = gone;
   useEffect(() => {
     if (problem || busy || expired) return;
-    const timer = setTimeout(() => onExpired(latest.current), UNDO_MS);
+    const timer = setTimeout(() => {
+      if (document.activeElement === undo.current) left.current();
+      onExpired(latest.current);
+    }, UNDO_MS);
     return () => clearTimeout(timer);
   }, [problem, busy, expired, onExpired]);
   return (
@@ -793,8 +806,16 @@ function UndoRow({
         {problem && <span className="field-note bad">{problem}</span>}
       </span>
       {!expired && (
-        // × hands the focus to its Undo.
-        <button type="button" className="link-button" autoFocus disabled={busy} onClick={() => onUndo(gone)}>
+        // × hands the focus to its Undo. Off while it runs by aria only: a button truly disabled
+        // would drop the focus, and a refusal leaves it here.
+        <button
+          ref={undo}
+          type="button"
+          className="link-button"
+          autoFocus
+          aria-disabled={busy ? true : undefined}
+          onClick={() => !busy && onUndo(gone)}
+        >
           Undo
         </button>
       )}

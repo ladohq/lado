@@ -20,6 +20,7 @@ import {
   type ConfiguredModelInfo,
   type EntryRefused,
   getModelSettings,
+  LADO_DOWN,
   type ModelCheck,
   type ModelServerInfo,
   type ModelSettings,
@@ -34,7 +35,6 @@ import {
 import { ChevronIcon, ForgetIcon, PencilIcon } from "./icons";
 import { MODEL_DEBOUNCE, useDebounced } from "./Launch";
 import { SecretField } from "./ProjectVariables";
-import { messageOf } from "./SessionControl";
 
 const SEARCH_ABOVE = 10; // a list longer than this has a search field
 const SHORT = 20; // a server's list this long shows whole on a phone
@@ -541,14 +541,25 @@ function SourceBody({
     };
   }, [pop, server, columnNames, models.length]);
   const reading = !read || "reading" in read;
+  // ↻ goes while the list reads: pressed, the focus comes back to it after.
+  const refreshed = useRef(false);
+  const refreshButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (reading || !refreshed.current) return;
+    refreshed.current = false;
+    refreshButton.current?.focus();
+  }, [reading]);
   const refresh = (
     <button
+      ref={refreshButton}
       type="button"
       className="mx-icon mx-refresh"
       aria-label="Read the models again"
       title="Read the models again"
-      disabled={reading}
-      onClick={onRefresh}
+      onClick={() => {
+        refreshed.current = true;
+        onRefresh();
+      }}
     >
       ↻
     </button>
@@ -568,7 +579,7 @@ function SourceBody({
           {`⚠ ${read.refused.message}`}
           {read.refused.hint && <span className="mx-hint">{read.refused.hint}</span>}
         </span>
-        {stay.length > 0 && (
+        {stay.length > 0 && read.refused.message !== LADO_DOWN && (
           <p className="mx-note">
             {stay.length === 1 ? "Its model stays saved: " : "Its models stay saved: "}
             <b>{stay.join(", ")}</b>. Agents on it stop at their first turn until the server answers.
@@ -848,7 +859,7 @@ function ModelId({
     let current = true;
     checkModel({ name: null, cli: chosen, model: typed, server }).then(
       (found) => current && setCheck(found),
-      (error: unknown) => current && setCheck({ kind: "warn", text: messageOf(error), field: "", name: "" }),
+      (error: unknown) => current && setCheck({ kind: "warn", text: refusalOf(error).message, field: "", name: "" }),
     );
     return () => {
       current = false;

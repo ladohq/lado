@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+import { LADO_DOWN } from "./api";
 import { MODEL_DEBOUNCE } from "./Launch";
 import {
   builtinDefault,
@@ -15,7 +16,7 @@ import {
   ModelServer,
   refusal,
 } from "./modelFakes";
-import { LEAD, LEAD_NO_MODELS, ModelSettings } from "./ModelSettings";
+import { LEAD, LEAD_NO_MODELS, ModelSettings, UNDO_MS } from "./ModelSettings";
 
 let server: ModelServer;
 
@@ -564,6 +565,107 @@ test("a tick off on a default this page did not know of says so on the card", as
   fireEvent.click(tick);
   await within(opencode).findByText("Its default model Локальная Qwen was removed.");
   expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+});
+
+// LADO's server gone: every request of the section rejects, as fetch does with no answer.
+const serverStops = () => vi.stubGlobal("fetch", () => Promise.reject(new TypeError("Failed to fetch")));
+
+test("× with LADO's server gone says so in its own words, in its row", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
+  mount();
+  const opencode = await card("OpenCode");
+  serverStops();
+  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Рабочая Qwen" }));
+  expect(await within(opencode).findByText(LADO_DOWN)).toBeTruthy();
+  expect(within(opencode).queryByText(/Failed to fetch/)).toBeNull();
+});
+
+test("a rename with LADO's server gone says so under its field", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
+  mount();
+  const opencode = await card("OpenCode");
+  serverStops();
+  fireEvent.click(within(opencode).getByRole("button", { name: "Rename Локальная Qwen" }));
+  const name = within(opencode).getByRole("textbox", { name: "Name of Локальная Qwen" });
+  fireEvent.change(name, { target: { value: "Другая" } });
+  fireEvent.keyDown(name, { key: "Enter" });
+  expect(await within(opencode).findByText(LADO_DOWN)).toBeTruthy();
+});
+
+test("a server's list with LADO's server gone blames no model server, and ↻ keeps the focus", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  mount();
+  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
+  const again = await screen.findByRole("button", { name: "Read the models again" });
+  serverStops();
+  again.focus();
+  fireEvent.click(again);
+  expect(await screen.findByText(`⚠ ${LADO_DOWN}`)).toBeTruthy();
+  expect(screen.queryByText(/stays saved/)).toBeNull();
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Read the models again" })),
+  );
+});
+
+test("a model server's refusal still says its models stay saved, and ↻ keeps the focus", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  mount();
+  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
+  const again = await screen.findByRole("button", { name: "Read the models again" });
+  server.probes[LMSTUDIO.name] = () => refusal("http://localhost:1234 does not answer (connection refused)");
+  again.focus();
+  fireEvent.click(again);
+  expect(await screen.findByText(/Its model stays saved/)).toBeTruthy();
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Read the models again" })),
+  );
+});
+
+test("a refused Undo keeps its button and the focus on it", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
+  mount();
+  const opencode = await card("OpenCode");
+  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Рабочая Qwen" }));
+  const undo = (await within(opencode).findByRole("button", { name: "Undo" })) as HTMLButtonElement;
+  await waitFor(() => expect(document.activeElement).toBe(undo));
+  serverStops();
+  fireEvent.click(undo);
+  expect(undo.disabled).toBe(false); // a disabled button would drop the focus
+  expect(await within(opencode).findByText(LADO_DOWN)).toBeTruthy();
+  expect(document.activeElement).toBe(undo);
+  expect(undo.getAttribute("aria-disabled")).toBeNull();
+});
+
+test("Undo running out with the focus on it hands the focus to the field", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
+  mount();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const opencode = await card("OpenCode");
+  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Рабочая Qwen" }));
+  const undo = await within(opencode).findByRole("button", { name: "Undo" });
+  await waitFor(() => expect(document.activeElement).toBe(undo));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(UNDO_MS + 10);
+  });
+  expect(within(opencode).queryByRole("button", { name: "Undo" })).toBeNull();
+  expect(document.activeElement).toBe(await field("OpenCode"));
+});
+
+test("Undo running out with the focus elsewhere moves nothing", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
+  mount();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const opencode = await card("OpenCode");
+  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Рабочая Qwen" }));
+  await within(opencode).findByRole("button", { name: "Undo" });
+  const elsewhere = screen.getByRole("button", { name: /Add server/ });
+  elsewhere.focus();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(UNDO_MS + 10);
+  });
+  expect(document.activeElement).toBe(elsewhere);
 });
 
 // What design QA found on the running page.

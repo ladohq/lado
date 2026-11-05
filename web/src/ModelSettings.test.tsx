@@ -224,7 +224,7 @@ test("Undo is off while it runs: a second press sends nothing", async () => {
     name: "Undo",
   })) as HTMLButtonElement;
   fireEvent.click(undo);
-  await waitFor(() => expect(undo.disabled).toBe(true));
+  await waitFor(() => expect(undo.getAttribute("aria-disabled")).toBe("true"));
   fireEvent.click(undo);
   release();
   await screen.findByRole("button", { name: "Rename Claude Sonnet" });

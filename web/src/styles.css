@@ -9309,9 +9309,13 @@ del.kit-mcp-name {
   overscroll-behavior: contain;
 }
 
-/* The active row is scrolled clear of the row pinned at the bottom. */
+/* The active row is scrolled clear of the rows pinned at the bottom and the top. */
 .mp-list:has(.mp-other) {
   scroll-padding-bottom: 60px;
+}
+
+.mp-list:has(.mp-read) {
+  scroll-padding-top: 44px;
 }
 
 .mp-opt {
@@ -9333,6 +9337,14 @@ del.kit-mcp-name {
 
 .mp-opt.mp-selected {
   background: var(--action-ground);
+}
+
+/* Read again stays by the warning above the list, however far the list opened. */
+.mp-opt.mp-read {
+  position: sticky;
+  z-index: 1;
+  top: -4px;
+  background: var(--panel);
 }
 
 .mp-opt.mp-other {
@@ -9361,8 +9373,13 @@ del.kit-mcp-name {
   flex-basis: calc(100% - 22px);
 }
 
-.mp-opt.mp-long .srv {
+.mp-opt.mp-long .srv,
+.mp-opt.mp-long .mx-gone {
   margin-left: 22px;
+}
+
+.mp-opt.mp-long .mx-gone + .srv {
+  margin-left: 0;
 }
 
 .mp-check {

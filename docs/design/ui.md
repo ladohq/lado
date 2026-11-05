@@ -2527,8 +2527,11 @@ default: none does yet.
   or Cancel. A refusal (a name taken ignoring case, no name), on Enter or on leaving, keeps
   the field with the refusal under it (`aria-invalid`); leaving it then restores the name.
   The model takes its sorted place in its card only.
+- **A request that never reached LADO** says `LADO's server does not answer: nothing was done.`
+  wherever the section shows a refusal (`refusalOf`), and no model server is blamed for it.
 - **× and Undo**: × leaves in its row `Removed <name>. Undo`, of the row's height, the
-  focus on Undo; Undo (off while it runs) saves the model again with its name, CLI, model
+  focus on Undo; Undo (off by `aria-disabled` while it runs, so a refusal leaves the focus on
+  it; when it runs out with the focus on it, the focus goes to the field) saves the model again with its name, CLI, model
   and server (`POST /api/models`, the checks of `lado model add`), the focus then on its
   name, a refusal in the row; the row goes once the reload brought the model back. × on a
   CLI's default asks in place first, the focus on Cancel, Esc as Cancel (`Remove <name>? It is

@@ -449,6 +449,12 @@ def session_around_card_hidden(page: Page, hidden: bool) -> None:
         (expect(part).to_be_hidden if hidden else expect(part).to_be_visible)()
 
 
+def uncut(card, part) -> None:
+    """The panel clips what goes past it: a part within the window may still be cut."""
+    panel = box(card.get_by_role("tabpanel"))
+    within(part, panel["y"], panel["y"] + panel["height"])
+
+
 def typing_around_card(page: Page, card, typing: bool) -> None:
     """A field in focus hides the session's tabs, the Team row and the context."""
     session_around_card_hidden(page, typing)
@@ -488,6 +494,8 @@ def test_a_gates_comment_stays_above_the_keyboard_and_folds_what_is_around(
         line,
     ):
         within(part, 0, visible)
+    uncut(card, card.get_by_role("button", name="Approve", exact=True))
+    uncut(card, comment)
     shot(page, "keyboard", full_page=False)
 
     page.evaluate(f"window.moveViewport({KEYBOARD[1]}, 0)")  # the keyboard closes
@@ -582,10 +590,10 @@ def test_a_long_recommendation_opens_to_three_lines_that_scroll(device, server, 
 
 @pytest.mark.parametrize("visible", [350, 340])
 def test_six_choices_keep_the_buttons_above_the_keyboard(device, server, repo, shot, visible):
-    """A question of six choices with Other… open, little left: the field, Send and Skip
-    question whole."""
+    """A question of six choices of two lines each with a long own answer, little left: the
+    field, Send and Skip question whole."""
     session = gated_session(repo)
-    choices = [f"Choice {n}: what it does twice" for n in range(6)]
+    choices = [f"Choice {n}: a rather long choice that takes the most of a row" for n in range(6)]
     runtime.ask_human(session, "supervisor", "Which one?", None, choices)
     phone = device(KEYBOARD)
     phone.add_init_script(FAKE_VIEWPORT)
@@ -594,11 +602,14 @@ def test_six_choices_keep_the_buttons_above_the_keyboard(device, server, repo, s
     card.get_by_role("button", name="Other…").evaluate("b => b.click()")
     own = card.get_by_role("textbox", name="Your own answer")
     expect(own).to_be_focused()
+    own.fill("a first line\na second line\na third line")
     page.evaluate(f"window.moveViewport({visible}, 0)")
     expect(page.locator(".app")).to_have_css("height", f"{visible}px")
     within(send, 0, visible)
     within(card.get_by_role("button", name="Skip question"), 0, visible)
     within(own, 0, visible)
+    for part in (send, card.get_by_role("button", name="Skip question"), own):
+        uncut(card, part)
     shot(page, full_page=False)
 
 

@@ -169,6 +169,55 @@ def test_a_silent_server_turns_start_off_and_names_the_ways_out(
     shot(page, "settings")
 
 
+def test_a_start_refused_at_a_phone_s_width_comes_into_sight(
+    browser: Browser, fake_models, home_server, server, repo, shot
+):
+    """The first message open and long: the field is far below the window's edge when Start is
+    pressed."""
+    set_default()
+    context = browser.new_context(viewport={"width": 390, "height": 844})
+    page = context.new_page()
+    dialog = new_window(page, server, repo)
+    dialog.get_by_text("First message to the supervisor").click()
+    dialog.get_by_role("textbox", name="First message").fill("line\n" * 30)
+    start = dialog.get_by_role("button", name="Start session")
+    expect(start).to_be_enabled()
+    expect(advanced(dialog).locator("summary")).to_contain_text(QWEN, timeout=15_000)
+    home_server.close()
+    start.click()
+    expect(dialog.get_by_text("Not started:")).to_contain_text(f"{HOME} does not answer")
+    model = dialog.get_by_role("combobox", name="Model")
+    expect(model).to_be_focused()
+    expect(model).to_be_in_viewport()
+    expect(advanced(dialog).locator(".field-note.bad")).to_be_in_viewport()
+    shot(page, "refused")
+    context.close()
+
+
+def test_tab_walks_the_list_s_foot_with_the_keyboard(
+    page: Page, fake_models, home_server, server, repo, shot
+):
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    dialog = new_window(page, server, repo)
+    model = open_advanced(dialog)
+    model.focus()
+    page.keyboard.press("Enter")
+    link = dialog.get_by_role("link", name="Settings → Models")
+    expect(link).to_be_visible()
+    page.keyboard.press("Tab")
+    expect(link).to_be_focused()
+    page.keyboard.press("Tab")
+    refresh = dialog.get_by_role("button", name="Read the models again")
+    if refresh.count():
+        expect(refresh).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(link).to_be_focused()
+        page.keyboard.press("Tab")
+        page.keyboard.press("Tab")
+    expect(dialog.locator(".mp-pop")).to_have_count(0)
+    shot(page, "past-the-foot")
+
+
 def test_a_model_the_list_lacks_is_refused_in_the_window(
     page: Page, fake_models, server, repo, shot
 ):
@@ -253,7 +302,19 @@ def test_the_field_and_its_refusal_at_a_phone_s_width(
     model = dialog.get_by_role("combobox", name="Model")
     box = model.bounding_box()
     assert box["x"] >= 0 and box["x"] + box["width"] <= 390
+    # Scrolled into the window by itself: the field and the refusal are on the screen.
+    expect(model).to_be_in_viewport()
+    expect(note).to_be_in_viewport()
     shot(page, "refused")
+    summary = advanced(dialog).locator("summary")
+    summary.click()
+    mark = summary.locator(".launch-first-mark")
+    expect(mark).to_have_text(" ! not answering")
+    line = summary.bounding_box()
+    shown = mark.bounding_box()
+    assert shown["x"] + shown["width"] <= line["x"] + line["width"] + 0.5  # not cut
+    shot(page, "folded")
+    summary.click()
     model.click()
     popup = dialog.locator(".mp-pop")
     expect(popup).to_be_visible()

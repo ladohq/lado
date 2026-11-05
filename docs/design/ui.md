@@ -1426,8 +1426,12 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   another agent CLI `<name> belongs to <CLI>, so the model is back to <new CLI>'s default.` A value
   in the field is checked as the start checks it (`POST /api/session-model/check`, a stale answer
   dropped), Start staying on meanwhile. A refusal (`.bad`, `role="alert"`, `aria-invalid`) opens
-  Advanced, turns Start off and offers `Use <CLI>'s settings`, and `Check again` where a new try can
-  help; a silent server also marks `.srv.down`. A warning (`.warn`) leaves Start on: no list to
+  Advanced, brings the field and the refusal into the window's view, turns Start off and offers
+  `Use <CLI>'s settings`, and `Check again` where a new try can help: until its answer all stays,
+  the button off as `Checking…` with the focus on it, Start off; a good answer gives the focus to
+  the field. A silent server also marks `.srv.down`. Folded, the mark is whole on any width: the
+  name and the server give way; on `<CLI>'s settings` past a default the row reads `Advanced:
+  model <CLI>'s settings`. A warning (`.warn`) leaves Start on: no list to
   check against, or `⚠ The key of <server> goes unencrypted (http) to an address outside your
   machine and network.`, for the chosen model's server only, under `✓ <server> answers, and <model>
   is in its list of models.` A start refused after a good check is a 409 `ModelRefusal`: above the
@@ -2532,8 +2536,8 @@ default: none does yet.
   YOUR MODELS, BUILT-IN (`BUILT-IN · aliases` for aliases only), `Other name…` kept at the
   bottom, only with no full list. Above ten models a search by name, id and server. The footer
   counts, with ↻ unless reading again cannot help (`ModelChoices.read_again`); a list that could
-  not be read says why above the rows and has a row `Read again` after the CLI's settings, a
-  row since Tab closes the list and only rows are in the keyboard's reach. A press inside the
+  not be read says why above the rows and has a row `Read again` after the CLI's settings, as a
+  read that failed has no foot to reach. A press inside the
   list takes no focus; a read that changes the rows puts the active row back on the selected
   one. A pick saves at once, by reference (`PUT /api/model-defaults/{cli}`), the focus back on
   the field; a refusal shows under it and the value stays; a request that never reached LADO
@@ -2544,8 +2548,12 @@ default: none does yet.
   (`typed`) both go through `model_settings.check_default`, so another CLI's model is refused
   and the CLI's own saved model becomes a reference. While open the form takes the place of
   the saved name's warning; a row picked closes it. The keyboard: Enter, Space and the arrows open it on
-  the selected row, ↑ ↓ Home End move, Enter picks (Space too with no search), Esc and Tab close
-  without a pick, Esc first clearing a search.
+  the selected row, ↑ ↓ Home End move, Enter picks (Space too with no search), Esc closes
+  without a pick, first clearing a search. Tab goes on into the foot's link and ↻, and past the last
+  closes the list without a pick; Shift+Tab goes back. The search stands from the opening while the
+  list's length is not known, so what is typed at once stays; a short list hands the focus back
+  to the field. A value the list cannot hold (a model no longer saved, `fieldMark`) has a row of
+  its own above the groups.
 - **A default in trouble** stays: nothing but the human changes it. A built-in one the list
   lost shows `⚠ no longer listed` with `Use <CLI>'s settings`; one the list cannot check shows
   the core's warning, with `Check again` when reading may help; an external one on a silent

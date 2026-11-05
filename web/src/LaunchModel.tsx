@@ -65,10 +65,15 @@ export function useLaunchModel({
   const [lostNote, setLostNote] = useState<string | null>(null);
   const [other, setOther] = useState<string | null>(null); // Other name's field, with its text
   const [tries, setTries] = useState(0); // Check again asks anew
+  const [again, setAgain] = useState<ModelRefusal | SessionModelCheck | null>(null);
+  const box = useRef<HTMLDivElement>(null);
   const name = cli?.name ?? "";
   const list = useModelChoices(name);
+  const listNow = useRef(list);
+  listNow.current = list;
 
-  // Read at the window's focus too: Settings opens in a new tab, and this window stays as it is.
+  // Read at the window's focus too: Settings opens in a new tab, and this window stays as it is;
+  // a list already read, whose rows may be open, goes with it (the CLI's part kept a minute).
   useEffect(() => {
     let current = true;
     const read = () => {
@@ -77,11 +82,15 @@ export function useLaunchModel({
         () => undefined, // no defaults known: the core still decides at the start
       );
     };
+    const again = () => {
+      read();
+      if (listNow.current.choices !== null) listNow.current.read(false, "");
+    };
     read();
-    window.addEventListener("focus", read);
+    window.addEventListener("focus", again);
     return () => {
       current = false;
-      window.removeEventListener("focus", read);
+      window.removeEventListener("focus", again);
     };
   }, []);
 
@@ -119,9 +128,10 @@ export function useLaunchModel({
     const before = shownCli.current;
     shownCli.current = cli;
     if (before === null || before.name === cli.name) return;
-    if (value !== null && choice.kind !== "default") {
-      setLostNote(`${nameOf(value)} belongs to ${before.title}, so the model is back to ${cli.title}'s default.`);
-    }
+    const lost = value !== null && choice.kind !== "default";
+    setLostNote(
+      lost ? `${nameOf(value)} belongs to ${before.title}, so the model is back to ${cli.title}'s default.` : null,
+    );
     setChoice(cli.name === resuming?.provider ? cameWith(resuming) : { kind: "default" });
     setOther(null);
     onClearRefusal();
@@ -138,22 +148,36 @@ export function useLaunchModel({
   );
   const checked = asked !== null && answer !== null && "value" in answer ? answer.value : null;
 
+  // The refusal Check again asks about stands, with Start off, until the new answer comes.
+  const asking = again !== null && asked !== null && answer === null;
   const refusedCheck = checked?.kind === "refused" ? checked : null;
-  const refused = refusal ?? refusedCheck;
+  const refused = refusal ?? refusedCheck ?? (asking ? again : null);
   const wrong = refused !== null || missing;
 
   useEffect(() => {
-    if (wrong) onShow(); // why Start is off
+    if (again === null || answer === null) return;
+    setAgain(null);
+    if (checked?.kind !== "refused") field.current?.focus({ preventScroll: true }); // its button went
+  }, [again, answer, checked?.kind]);
+
+  // Why Start is off comes into sight, on a phone's short window too.
+  useEffect(() => {
+    if (!wrong) return;
+    onShow();
+    box.current?.scrollIntoView?.({ block: "center" });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- when a refusal comes
   }, [wrong]);
   useEffect(() => {
-    if (refusal !== null && !busy) field.current?.focus({ preventScroll: true });
+    if (refusal === null || busy) return;
+    field.current?.focus({ preventScroll: true });
+    box.current?.scrollIntoView?.({ block: "center" });
   }, [refusal, busy]);
 
   const changed = (next: Choice) => {
     setChoice(next);
     setLostNote(null);
     setOther(null);
+    setAgain(null);
     onClearRefusal();
   };
   const picked = (pick: Pick) => {
@@ -168,6 +192,8 @@ export function useLaunchModel({
     field.current?.focus({ preventScroll: true });
   };
   const checkAgain = () => {
+    if (asking) return;
+    setAgain(refused);
     onClearRefusal();
     setTries((now) => now + 1);
   };
@@ -205,12 +231,20 @@ export function useLaunchModel({
   } else if (refused !== null) {
     notes.push(
       <span key="refused" className="field-note bad" role="alert">
-        <span>{refused.text}</span>
-        {kept && <span>{`The session ran on it before. Pick another model, or resume on ${title}'s settings.`}</span>}
+        <span>
+          {kept
+            ? `${refused.text.replace(/\.$/, "")}. The session ran on it before. Pick another model, or resume on ${title}'s settings.`
+            : refused.text}
+        </span>
         <span className="way-out">
           {refused.retry && (
-            <button type="button" className="chip-button" onClick={checkAgain}>
-              Check again
+            <button
+              type="button"
+              className="chip-button"
+              aria-disabled={asking ? true : undefined}
+              onClick={checkAgain}
+            >
+              {asking ? "Checking…" : "Check again"}
             </button>
           )}
           <button type="button" className="chip-button" onClick={useSettings}>
@@ -275,7 +309,7 @@ export function useLaunchModel({
   const notesId = `${id}-notes`;
 
   const fieldNode = (
-    <div className="field launch-wide">
+    <div className="field launch-wide" ref={box}>
       <label htmlFor={id}>Model</label>
       <ModelPicker
         cli={cli ?? { name: "", title }}
@@ -312,14 +346,21 @@ export function useLaunchModel({
     </div>
   );
 
+  // The mark is why Start may be off: only the name and the server give way on a narrow window.
+  const pastDefault = choice.kind === "settings" && defaultValue !== null;
+  const named = value !== null ? nameOf(value) : pastDefault ? `${title}'s settings` : null;
   const peek =
-    value === null ? null : (
-      <>
-        Advanced: model <span className="launch-first-peek">{nameOf(value)}</span>
-        {server !== null && ` on ${server}`}
-        {!wrong && (checked?.warnings.length ?? 0) > 0 && " ⚠ key over http"}
-        {wrong && <b className="launch-first-bad">{` ! ${missing ? "not in Settings" : refused?.peek}`}</b>}
-      </>
+    named === null ? null : (
+      <span className="launch-first-line">
+        <span className="launch-first-name">
+          Advanced: model <span className="launch-first-peek">{named}</span>
+          {server !== null && ` on ${server}`}
+        </span>
+        {!wrong && (checked?.warnings.length ?? 0) > 0 && <span className="launch-first-mark"> ⚠ key over http</span>}
+        {wrong && (
+          <b className="launch-first-mark launch-first-bad">{` ! ${missing ? "not in Settings" : refused?.peek}`}</b>
+        )}
+      </span>
     );
 
   return { field: fieldNode, peek, blocked: wrong, send };

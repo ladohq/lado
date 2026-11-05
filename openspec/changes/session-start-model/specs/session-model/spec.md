@@ -166,7 +166,7 @@ inherit the variables LADO or the provider set for the launch of the agent that 
 
 The Model list's foot SHALL read `The default comes from Settings → Models.`, its link opening
 Settings → Models in a new tab; what was entered in the window SHALL stay, and the window SHALL
-read the list again when it gets the focus back.
+read the list again when it gets the focus back, an open list too.
 
 #### Scenario: Back from Settings
 - **WHEN** the human has typed a first message, opens Settings → Models from the foot, ticks a model
@@ -190,7 +190,8 @@ Under the default the note SHALL read `<CLI>'s default model, from Settings → 
 another pick `For this session only. <CLI>'s default model is <name>.`, no such line without a
 default; under `<CLI>'s settings` with a default `For this session only: the agent CLI chooses, not
 <name>.` A pick lost to another agent CLI SHALL leave `<name> belongs to <CLI>, so the model is back
-to <new CLI>'s default.`
+to <new CLI>'s default.`, until the next change of agent CLI. While the agent CLIs are read again
+the pick SHALL stay.
 
 #### Scenario: Another pick
 - **WHEN** OpenCode's default is `Локальная Qwen` and the human picks `Рабочая Qwen`
@@ -211,12 +212,20 @@ started: <short reason>. See Model above.` above the buttons and do the same to 
 #### Scenario: Refused at Start
 - **WHEN** the server answered the check and stops answering before the human presses Start
 - **THEN** above the buttons reads `Not started: LM Studio дома does not answer. See Model above.`,
-  Advanced is open, the focus is on Model, and Start session is off
+  Advanced is open, the focus is on Model, the field and the refusal are scrolled into the window,
+  and Start session is off
+
+#### Scenario: Check again
+- **WHEN** the human presses `Check again`
+- **THEN** until the answer the refusal and its buttons stay, the button reads `Checking…`, off with
+  the focus on it, and Start session stays off
 
 ### Requirement: Advanced's summary names the model
 
 Folded with a model, Advanced's summary SHALL read `Advanced: model <name> on <server>`, or
-`Advanced: model <model>` for a built-in one, adding `⚠ key over http` or `! <short reason>`.
+`Advanced: model <model>` for a built-in one, adding `⚠ key over http` or `! <short reason>`, which
+a narrow window SHALL NOT cut: the name and the server give way. On `<CLI>'s settings` past a
+default it SHALL read `Advanced: model <CLI>'s settings`.
 
 #### Scenario: A folded refusal
 - **WHEN** the field holds a model of a silent server and the human folds Advanced
@@ -466,7 +475,7 @@ In the launch window's Resume, a refusal of the session's kept model SHALL add `
 session ran on it before. Pick another model, or resume on <CLI>'s settings.` and a button `Use
 <CLI>'s settings`; an external model no longer saved SHALL read `The session ran on the model
 <name>, which is no longer in Settings → Models. Pick a model or use <CLI>'s settings.` with `not in
-Settings` in the field.
+Settings` in the field, and in its list a row of its own above the groups with the same mark.
 
 #### Scenario: The way out of a kept model in Resume
 - **WHEN** the human opens Resume for a Codex session that keeps `gpt-5.4-old`, which

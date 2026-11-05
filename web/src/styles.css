@@ -5623,6 +5623,24 @@ h3 {
   color: var(--danger);
 }
 
+/* The folded row's mark says why Start may be off: the name and the server give way, not it. */
+.launch-first-line {
+  display: inline-flex;
+  max-width: calc(100% - 16px);
+  vertical-align: bottom;
+}
+
+.launch-first-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.launch-first-mark {
+  flex: none;
+  white-space: pre;
+}
+
 .mc-default {
   flex: none;
   padding: 1px 6px;

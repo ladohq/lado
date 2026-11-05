@@ -229,6 +229,18 @@ start's warnings and loop.log hold it too.
 `runtime` imports `model_settings` inside the launches: every hook process imports `runtime`, and
 `model_servers` would add about 15 ms to each. `tests/test_lazy_imports.py` keeps it so.
 
+### D21. From the design QA of the working build
+
+- Tab goes from the rows or the search into the list's foot, and closes the list only past its last
+  control: the link and ↻ were out of the keyboard's reach. The picker is one, so Settings has it too.
+- During Check again the refusal and its buttons stay, the button off as `Checking…` with
+  `aria-disabled`, so the focus stays on it, and Start stays off for a refusal already known. A first
+  check still leaves Start on (D15).
+- A kept model no longer saved has a row of its own above the groups: it is no built-in model.
+- An agent keeps the name it started on (`model_settings.agent_shown`, by the session's or the
+  default's entry), so a twin saved later does not take it; two entries of one CLI, model and server
+  stay allowed, and only a model changed through `/model` is looked up by its id.
+
 ## Risks / Trade-offs
 
 - The probe at every start costs up to a few seconds on a slow server; each request stays within

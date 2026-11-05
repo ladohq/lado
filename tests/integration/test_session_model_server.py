@@ -226,6 +226,30 @@ def test_a_worker_takes_its_own_cli_s_default(repo, serve, monkeypatch):  # noqa
     assert (worker.model, worker.model_source) == ("fake-large", "default")
 
 
+@pytest.mark.parametrize("as_default", [True, False], ids=["default", "session"])
+def test_a_model_renamed_while_its_agent_runs(repo, serve, as_default):  # noqa: F811
+    from lado.server import models
+
+    server = save("LM Studio дома", serve("all"))
+    saved = tick("Локальная Qwen", server)
+    tick("Рабочая Qwen", server)  # the same model and server: a twin
+    if as_default:
+        default(saved)
+    assert start(repo, *([] if as_default else ["--model", saved.name])) == 0
+    idle()
+    runs("supervisor", "agents")
+    assert seen("supervisor")["agents"][0]["model"] == "Локальная Qwen"
+
+    model_settings.rename_model("Локальная Qwen", "Qwen дома")
+
+    runs("supervisor", "agents")  # from the agent's own `lado mcp`
+    assert seen("supervisor")["agents"][0]["model"] == "Qwen дома"
+    info = models.agent_info(state.get_agent(SESSION, "supervisor")).model
+    assert (info.configured, info.name) == ("Qwen дома", "m1")
+    source = "default" if as_default else "session"
+    assert state.get_agent(SESSION, "supervisor").model_source == source
+
+
 def test_a_model_changed_in_the_cli_is_known_by_its_provider_id(repo, serve):  # noqa: F811
     from lado import providers
     from lado.server import models

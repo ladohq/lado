@@ -322,8 +322,8 @@ the user's own config. A session's model is where an agent starts, not a limit: 
 for OpenCode or Kilo CLI goes into each of their agents' config, one provider per server
 (`lado-<server id>`, shown as `LADO · <server>` in `/model`), beside their built-in ones, whatever
 the session chose; each server's key reaches the agent only as a variable of its launch. A server
-whose key file cannot be read, or whose key holds `"` or `\`, which those CLIs put into their config
-as it is, is left out with a warning; an agent that starts on it is refused. Each key sent
+whose key file cannot be read, or whose key holds `"`, `\` or a control character, which those CLIs
+put into their config as it is, is left out with a warning; an agent that starts on it is refused. Each key sent
 over plain http to an address outside the machine and network is warned about, and the session
 starts.
 

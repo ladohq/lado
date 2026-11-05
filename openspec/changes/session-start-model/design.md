@@ -132,7 +132,7 @@ for the server the agent starts on, the check refuses (`server_key`); for anothe
 models are left out, with a warning. The canary covers config, `lado.db`, output, log, errors and
 API answers.
 
-A key holding `"` or `\` goes the same way as one that cannot be read: both CLIs put a variable's
+A key holding `"`, `\` or a control character goes the same way as one that cannot be read: both CLIs put a variable's
 value into the config's text as it is (checked with `debug config`, OpenCode 1.18.35 and Kilo CLI
 7.8.8), so OpenCode stops and prints the text with the key, and Kilo drops the whole config, LADO's
 plugin and MCP with it. `check_launch` refuses it, so the window sees it too.

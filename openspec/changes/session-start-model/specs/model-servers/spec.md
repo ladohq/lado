@@ -18,8 +18,8 @@ agent of a CLI with no model on that server.
 
 ### Requirement: A key that cannot reach an agent stops only its own server
 
-A key file that cannot be read, or a key holding `"` or `\`, which the CLIs put into their config's
-text as it is, SHALL refuse the start of an agent on that server, and leave that server's models out
+A key file that cannot be read, or a key holding `"`, `\` or a control character, which the CLIs
+put into their config's text as it is, SHALL refuse the start of an agent on that server, and leave that server's models out
 of another agent's config with a warning; neither SHALL show the key.
 
 #### Scenario: Another server's key cannot be read

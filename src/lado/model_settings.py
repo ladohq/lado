@@ -837,10 +837,13 @@ def _config_key(server: state.ModelServer) -> str | None:
     """The kept key of `server` for an agent's config; Refused, naming no part of it, for one
     LADO does not read or one that would break the config."""
     key = server_key(server)
-    if key is not None and any(mark in key for mark in BREAKS_CONFIG):
+    if key is not None and (
+        any(mark in key for mark in BREAKS_CONFIG) or not model_servers.carriable(key)
+    ):
         raise Refused(
-            f'the key of model server "{server.name}" holds {" or ".join(BREAKS_CONFIG)}, which '
-            "would break the agent CLI's config; give the server another key",
+            f'the key of model server "{server.name}" holds {" or ".join(BREAKS_CONFIG)} or a '
+            "control character, which would break the agent CLI's config; give the server "
+            "another key",
             field=MODEL_FIELD,
             retry=True,
         )
@@ -914,15 +917,17 @@ def agent_servers(
                 f"{WOULD_EXPAND}"
             )
             continue
-        kept = []
+        kept: dict[str, str] = {}  # by model: two entries of one model are one row of the config
         for model in models:
             if _expands(model.name, model.model):
                 warnings.append(
                     f'model "{model.name}" is left out of the agent\'s config: it holds text '
                     f"{WOULD_EXPAND}"
                 )
+            elif start is not None and start.entry is not None and start.entry.id == model.id:
+                kept[model.model] = model.name  # under the name the agent starts on
             else:
-                kept.append((model.model, model.name))
+                kept.setdefault(model.model, model.name)
         if not kept:
             continue
         try:
@@ -941,7 +946,7 @@ def agent_servers(
                 model_servers.base_url(server.address),
                 f"{KEY_VARIABLE}{server.id.upper()}" if key is not None else "",
                 key,
-                tuple(kept),
+                tuple(kept.items()),
             )
         )
     return tuple(entries), warnings

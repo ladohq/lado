@@ -1615,7 +1615,7 @@ def test_a_key_that_cannot_be_read_refuses_the_server_of_the_start():
         model_settings.agent_servers(OPENCODE, start)
 
 
-@pytest.mark.parametrize("key", ['ab"cd', "ab\\cd"], ids=["quote", "backslash"])
+@pytest.mark.parametrize("key", ['ab"cd', "ab\\cd", "ab\tcd"], ids=["quote", "backslash", "tab"])
 def test_a_key_that_would_break_the_config_leaves_its_server_out(key):
     saved = entry()
     other = entry("Шлюз Qwen", model="gw-qwen", server="Шлюз")
@@ -1626,7 +1626,7 @@ def test_a_key_that_would_break_the_config_leaves_its_server_out(key):
     assert key not in warnings[0]
 
 
-@pytest.mark.parametrize("key", ['ab"cd', "ab\\cd"], ids=["quote", "backslash"])
+@pytest.mark.parametrize("key", ['ab"cd', "ab\\cd", "ab\tcd"], ids=["quote", "backslash", "tab"])
 def test_a_key_that_would_break_the_config_refuses_the_start_on_its_server(key):
     saved = entry()
     default_on(saved)
@@ -1700,6 +1700,38 @@ def test_an_agent_on_a_default_keeps_its_name_beside_a_twin():
     default_on(chosen)
     agent = _agent_on(chosen, state.DEFAULT_MODEL)
     assert model_settings.model_name(agent) == "Абрикос"
+
+
+def test_a_model_renamed_while_the_agent_runs_shows_the_new_name():
+    chosen = entry("Абрикос")
+    entry("Яблоко")  # a twin must not take it either
+    agent = _agent_on(chosen, state.SESSION, external_table(chosen))
+    state.rename_model("Абрикос", "Персик")
+    assert model_settings.model_name(agent) == "Персик"
+
+
+def test_a_default_renamed_while_the_agent_runs_shows_the_new_name():
+    chosen = entry("Абрикос")
+    default_on(chosen)
+    agent = _agent_on(chosen, state.DEFAULT_MODEL)
+    state.rename_model("Абрикос", "Персик")
+    assert model_settings.model_name(agent) == "Персик"
+
+
+def test_the_config_names_a_model_of_two_entries_as_the_agent_started_on_it():
+    chosen = entry("Абрикос")
+    entry("Яблоко")  # the same model and server
+    default_on(chosen)
+    start = model_settings.start_model(None, OPENCODE)
+    found, _ = model_settings.agent_servers(OPENCODE, start)
+    assert found[0].models == (("qwen3-8b", "Абрикос"),)
+
+
+def test_a_model_of_two_entries_stands_once_in_the_config():
+    entry("Абрикос")
+    entry("Яблоко")
+    found, _ = model_settings.agent_servers(OPENCODE)
+    assert found[0].models == (("qwen3-8b", "Абрикос"),)
 
 
 def test_a_model_changed_in_the_cli_is_found_by_its_id():

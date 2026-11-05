@@ -89,7 +89,7 @@ def test_a_gateway_of_both_apis_is_openai_compatible(serve, lado_home):
         url,
         "OpenAI-compatible",
     ]
-    assert "gw answers (OpenAI-compatible)" in lado("doctor").stdout
+    assert "gw lists its models (OpenAI-compatible)" in lado("doctor").stdout
 
 
 def test_canary_key_is_kept_nowhere(serve, lado_home):

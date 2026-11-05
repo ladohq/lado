@@ -1433,8 +1433,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   name and the server give way; on `<CLI>'s settings` past a default the row reads `Advanced:
   model <CLI>'s settings`. A warning (`.warn`) leaves Start on: no list to
   check against, or `⚠ The key of <server> goes unencrypted (http) to an address outside your
-  machine and network.`, for the chosen model's server only, under `✓ <server> answers, and <model>
-  is in its list of models.` A start refused after a good check is a 409 `ModelRefusal`: above the
+  machine and network.`, for the chosen model's server only, under `✓ <server> lists <model> among
+  its models.` A start refused after a good check is a 409 `ModelRefusal`: above the
   buttons `Not started: <short reason>. See Model above.`, the refusal under the field, the focus
   on it. Then the `--without` items, `kind:name` or `kind:name@kit`
   (placeholder `agent:reviewer@kit-b, skill:style`). Start shows "Starting…" with

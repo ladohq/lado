@@ -1231,7 +1231,7 @@ test("a key over plain http warns and leaves Start on", async () => {
   const warning = `The key of ${HOME} goes unencrypted (http) to an address outside your machine and network.`;
   sessionCheck = () => ({
     kind: "ok",
-    text: `${HOME} answers, and qwen3-8b is in its list of models.`,
+    text: `${HOME} lists qwen3-8b among its models.`,
     field: "",
     name: "",
     retry: false,
@@ -1241,7 +1241,7 @@ test("a key over plain http warns and leaves Start on", async () => {
     server: HOME,
   });
   await kiloWindow();
-  await screen.findByText(`✓ ${HOME} answers, and qwen3-8b is in its list of models.`);
+  await screen.findByText(`✓ ${HOME} lists qwen3-8b among its models.`);
   expect(screen.getByText(`⚠ ${warning}`).className).toContain("field-note warn");
   expect(startButton().disabled).toBe(false);
   fireEvent.click(advancedRow().querySelector("summary")!);

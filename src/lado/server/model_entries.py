@@ -213,7 +213,7 @@ def check_session_model(given: models.SessionModelAsked) -> models.SessionModelC
     server = start.server
     text = verdict.text
     if server is not None and verdict.kind == model_check.OK:
-        text = f"{server.name} answers, and {start.model} is in its list of models."
+        text = f"{server.name} lists {start.model} among its models."
     return models.SessionModelCheck(
         kind=verdict.kind,
         text=text,

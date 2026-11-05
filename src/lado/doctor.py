@@ -852,7 +852,8 @@ def check_model_servers(
             and found.models is not None
             and model.model not in found.models
         ]
-        return not gone, [f"{server.name} answers ({found.kind})", *gone]
+        # The probe reads the list: a server that lists its models may still fail a chat.
+        return not gone, [f"{server.name} lists its models ({found.kind})", *gone]
 
     with ThreadPoolExecutor(max_workers=max(1, len(servers))) as pool:
         answers = list(pool.map(probed, servers))

@@ -1429,8 +1429,8 @@ def test_the_servers_that_answer(serve, monkeypatch):
     _saved("LM Studio дома", serve("lmstudio"))
     _saved("work", serve("openai", key="k"), key="k")
     assert doctor.check_model_servers() == doctor.Check(
-        "Model servers", doctor.OK, "LM Studio дома answers (LM Studio); work answers "
-        "(OpenAI-compatible)"
+        "Model servers", doctor.OK, "LM Studio дома lists its models (LM Studio); work lists its "
+        "models (OpenAI-compatible)"
     )  # fmt: skip
 
 
@@ -1444,7 +1444,7 @@ def test_a_server_that_does_not_answer_warns_and_keeps_the_exit(serve, monkeypat
     assert found == doctor.Check(
         "Model servers",
         doctor.WARN,
-        "LM Studio дома answers (LM Studio); work does not answer (connection refused)",
+        "LM Studio дома lists its models (LM Studio); work does not answer (connection refused)",
     )
     monkeypatch.setattr(doctor, "run_checks", lambda: [doctor.Check("x", doctor.OK, ""), found])
     assert doctor.main() == 0
@@ -1459,8 +1459,8 @@ def test_a_model_its_server_no_longer_lists_warns(serve, monkeypatch):
     assert found == doctor.Check(
         "Model servers",
         doctor.WARN,
-        'LM Studio дома answers (LM Studio); model "Gone" (gemma-3-12b) is not in LM Studio '
-        "дома's list of models",
+        'LM Studio дома lists its models (LM Studio); model "Gone" (gemma-3-12b) is not in LM '
+        "Studio дома's list of models",
     )
     monkeypatch.setattr(doctor, "run_checks", lambda: [doctor.Check("x", doctor.OK, ""), found])
     assert doctor.main() == 0
@@ -1494,7 +1494,7 @@ def test_a_key_file_with_a_loose_mode_warns(serve):
     assert found.level == doctor.WARN
     assert (
         found.detail
-        == "work answers (OpenAI-compatible); the key file of work has mode 644, not 600"
+        == "work lists its models (OpenAI-compatible); the key file of work has mode 644, not 600"
     )
 
 

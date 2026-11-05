@@ -30,6 +30,15 @@ of another agent's config with a warning; neither SHALL show the key.
 - **WHEN** the key of the start model's server holds `"`
 - **THEN** the start is refused naming the server, with no part of the key, and no server is asked
 
+### Requirement: lado doctor promises only what the probe saw
+
+For a server its probe found, `lado doctor` SHALL say that it lists its models: the probe sends no
+chat, so it cannot say that the server works.
+
+#### Scenario: A server that fails every chat
+- **WHEN** a server lists its models and answers each chat with an error
+- **THEN** the line `Model servers` says `<server> lists its models (<type>)`
+
 ### Requirement: lado doctor names a default that cannot start
 
 With a default model set, `lado doctor` SHALL print one line `Default models`: `OK`, or `WARN`

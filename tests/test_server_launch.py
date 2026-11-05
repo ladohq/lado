@@ -1223,7 +1223,7 @@ def test_the_check_of_a_model_on_a_server_says_it_answers(client, monkeypatch, f
     _server_answers(monkeypatch, "qwen3-8b")
     found = client.post(CHECK, json={"cli": "opencode", "model": "Локальная Qwen"}).json()
     assert (found["kind"], found["server"]) == ("ok", "LM Studio дома")
-    assert found["text"] == "LM Studio дома answers, and qwen3-8b is in its list of models."
+    assert found["text"] == "LM Studio дома lists qwen3-8b among its models."
     assert found["warnings"] == []
 
 

@@ -111,6 +111,8 @@ same pull request. The minor is not bumped by this change: `0.45.0 (unreleased)`
   session's tabs, the Team row, the context and a question's choices, folds the composer, and
   keeps field, buttons and line in sight, at 350 and 340 px too, under a recommendation of two
   lines as well.
+- AC-13a: on Needs you on a phone, in a card and an expanded one, a gate's comment or an own answer
+  in focus keeps the field and the buttons whole above the keyboard, at 440, 380 and 350 px.
 - AC-14: on a phone the card's tabs, Minimize, Expand, fields, chips and buttons are 44 px high.
 - AC-15: on Needs you, and on a window of 900 px or less, title and context are at most 40 % of
   the window, and the footer follows them.

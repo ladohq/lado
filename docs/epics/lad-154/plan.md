@@ -237,6 +237,10 @@ Check:
 - UI/UX first (D32, moved here from S3b; D43): the step's `design` runs the flow `ui-design`
   on the picker across the CLI's card, the launch window's Model field and a power row, so
   S3b and S5c build the same picker; input: `ui-design/launch-model` with its variant B.
+- Design QA before the human's manual check (the human's message #3415): the flow `ui-review`
+  on the running build's URL, which the lead gives the critic (the critic builds nothing),
+  against `ui-design/model-picker` and the design; the scenarios walked by actions, refusals
+  and 390 px included.
 - UI e2e, vitest, `make web-types`; the human's manual check; `docs/design/ui.md`,
   `docs/cli.md`.
 Notes: the default is stored and shown here and applied to agents in S3b.

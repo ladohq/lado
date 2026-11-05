@@ -121,11 +121,16 @@ export function TerminalPanel({ session, children }: { session: string; children
     return () => document.removeEventListener("visibilitychange", hidden);
   }, [releaseAll]);
 
-  // The selected tab, chosen here or by a chip, scrolls into the tabs' view.
+  // The selected tab, chosen here or by a chip, scrolls into the tabs' view: the row only,
+  // never scrollIntoView, after which Chromium's Tab starts from the tab, past Skip to chat.
   useEffect(() => {
-    tabList.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+    const row = tabList.current;
+    const selected = row?.querySelector('[aria-selected="true"]');
+    if (!row || !selected) return;
+    const room = row.getBoundingClientRect();
+    const place = selected.getBoundingClientRect();
+    if (place.left < room.left) row.scrollLeft -= room.left - place.left;
+    else if (place.right > room.right) row.scrollLeft += place.right - room.right;
   }, [active, collapsed]);
 
   const keep = useCallback((change: Partial<ColumnPrefs>) => {

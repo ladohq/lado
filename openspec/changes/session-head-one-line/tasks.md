@@ -29,9 +29,7 @@
 
 ## 5. Skip to chat
 
-- [ ] 5.1 `Shell.tsx`'s slot, the link, `Chat`'s focus (D5). Check: the Tab and Skip tests.
-  Not checked: with the terminals open, the default on a wide window, the first Tab of a fresh
-  page lands in the terminal panel, not on `Skip to chat`; the human's decision is awaited.
+- [x] 5.1 `Shell.tsx`'s slot, the link, `Chat`'s focus (D5). Check: the Tab and Skip tests.
 
 ## 6. Docs
 

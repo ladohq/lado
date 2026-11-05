@@ -449,11 +449,15 @@ def test_tab_goes_through_skip_the_rail_and_the_heads_four_stops(page: Page, sho
         runtime.stop_session("shop-frontend")
 
 
-def test_with_the_terminals_folded_the_first_tab_is_skip_to_chat(page: Page, server, repo, shot):
+@pytest.mark.parametrize("collapsed", [True, False], ids=["folded", "open"])
+def test_the_first_tab_of_a_page_is_skip_to_chat(page: Page, server, repo, shot, collapsed):
     page.set_viewport_size({"width": 1440, "height": 900})
     session = running_session(repo)
     log_in(page, server)
-    page.evaluate("localStorage.setItem('lado.terminals', JSON.stringify({collapsed: true}))")
+    page.evaluate(
+        "collapsed => localStorage.setItem('lado.terminals', JSON.stringify({collapsed}))",
+        collapsed,
+    )
     page.goto(f"{server['url']}/sessions/{session}/flows")
     expect(title_button(page)).to_be_visible()
     page.keyboard.press("Tab")

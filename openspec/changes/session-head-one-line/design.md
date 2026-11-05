@@ -73,7 +73,9 @@ and is absent when the about fails, like the other facts.
 `Projects.tsx`'s own copy of the same listener. `Tooltip` shows on focus only when the focus
 is the keyboard's (`:focus-visible`), or opening Details by mouse would put Copy path's
 tooltip over the Git row. `.session-details` sets `white-space: normal`: the sheet is drawn in
-the top bar, whose line must not wrap.
+the top bar, whose line must not wrap. The terminals' selected tab scrolls its row by hand:
+`scrollIntoView` moved the start of Chromium's Tab to that tab, so the first Tab of a page with
+the terminals open went past `Skip to chat` (AC-10).
 
 ## Test layers
 

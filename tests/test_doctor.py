@@ -1455,7 +1455,6 @@ def test_a_model_its_server_no_longer_lists_warns(serve, monkeypatch):
     id = state.model_server("LM Studio дома").id
     state.add_model("Локальная Qwen", "opencode", "qwen3-8b", id)
     state.add_model("Gone", "kilo", "gemma-3-12b", id)
-    state.add_model("own", "claude", "gemma-3-12b", None)
     found = doctor.check_model_servers()
     assert found == doctor.Check(
         "Model servers",

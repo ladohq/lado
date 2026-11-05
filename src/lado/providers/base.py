@@ -338,6 +338,9 @@ class Provider(ABC):
     permission_modes: tuple[str, ...]
     # The model server API its CLI speaks (one of SERVER_APIS); "" for none.
     server_api: str = ""
+    # Whether a model on a server takes the CLI's whole process (its one endpoint), rather
+    # than being one provider among the others in its config.
+    external_whole_process: bool = True
 
     def check_permission_mode(self, mode: str | None) -> None:
         """Raise ValueError for a permission mode this provider cannot honour."""

@@ -1,15 +1,17 @@
-"""The human's model servers and configured models, set once under names (openspec
-capabilities `model-servers` and `configured-models`): their rules, the servers' key files
-and the checks on adding. `lado model-server add|list|remove` and `lado model
-add|list|remove` call it; no session reads the entries yet.
+"""The human's model servers, configured models and agent CLIs' default models (openspec
+capabilities `model-servers` and `configured-models`): their rules, the servers' key files,
+the checks on adding and what a CLI can run. `lado model-server add|list|remove` and `lado
+model add|list|remove|default` call it; no session reads the entries yet.
 
-The entries are kept in lado.db (lado.state: `model_servers`, `models`); a name is taken
-and found ignoring case. A server's key is kept in `<LADO_HOME>/model-servers/<id>/key`
-alone, never in lado.db, written and removed by the link-refusing writer of LADO's secrets
-(lado.project_secrets: folders 700, the file 600, written whole by a rename); a server has a
-key exactly when its file is there. A server is saved only when its probe recognises it, a
-model only when its CLI's or its server's list does not refuse it, and a server a model
-uses is not removed. Every refusal is one line (Refused), never holding a key.
+The entries are kept in lado.db (lado.state: `model_servers`, `models`, `cli_defaults`); a
+name is taken and found ignoring case. A configured model always lives on a server: a CLI's
+own models are read from the CLI (`choices`), never kept. A server's key is kept in
+`<LADO_HOME>/model-servers/<id>/key` alone, never in lado.db, written and removed by the
+link-refusing writer of LADO's secrets (lado.project_secrets: folders 700, the file 600,
+written whole by a rename); a server has a key exactly when its file is there. A server is
+saved only when its probe recognises it, a model only when its server's list does not refuse
+it, and a server a model uses is not removed. Every refusal is one line (Refused), never
+holding a key.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from __future__ import annotations
 import contextlib
 import errno
 import os
-import re
+import shutil
 import sqlite3
 import stat
 import urllib.parse
@@ -193,27 +195,31 @@ def remove_server(
     with_models: bool = False,
     confirmed: Collection[str] | None = None,
     removed: Callable[[str], None] = lambda _: None,
+    cleared: Callable[[str], None] = lambda _: None,
 ) -> str:
     """Remove the saved server named `name` and its key file; its name as saved. Refused for
     no such server, or, without `with_models`, one a configured model refers to; with it,
-    the models on the server go first, in the same transaction, `removed` getting each
-    one's name. With `confirmed` (the models the human was asked about), refused, nothing
-    removed, unless the models on the server are those."""
+    the models on the server and the defaults on them go first, in the same transaction,
+    `removed` getting each model's name, then `cleared` each agent CLI's whose default went.
+    With `confirmed` (the models the human was asked about), refused, nothing removed, unless
+    the models on the server are those."""
     saved = state.model_server(name)
     if saved is None:
         raise no_server(name)
     if with_models:
         try:
-            models = state.remove_model_server_with_models(saved.id, confirmed)
+            gone = state.remove_model_server_with_models(saved.id, confirmed)
         except state.ModelsChanged as changed:
             raise Refused(
                 f'model server "{saved.name}" has other models now: '
                 f"{', '.join(changed.names) or 'none'}; nothing was removed"
             ) from None
-        if models is None:  # removed meanwhile
+        if gone is None:  # removed meanwhile
             raise no_server(name)
-        for model in models:
+        for model in gone.names:
             removed(model)
+        for cli in gone.cleared:
+            cleared(cli)
         return _remove_folder(saved)
     try:
         if state.models_on(saved.id):
@@ -255,13 +261,13 @@ def _remove_folder(saved: state.ModelServer) -> str:
 @dataclass(frozen=True)
 class Checked:
     """A model `check_model` lets through: its name (the one given, or its `default_name`),
-    its CLI's provider, the model as saved, its server (None for none) and the check's
-    verdict (OK, or WARN for no list to check against)."""
+    its CLI's provider, the model as saved, its server and the check's verdict (OK, or WARN
+    for no list to check against)."""
 
     name: str
     provider: providers.Provider
     model: str
-    server: state.ModelServer | None
+    server: state.ModelServer
     verdict: model_check.Verdict
 
 
@@ -273,19 +279,15 @@ def check_model(
     cli: str,
     model: str,
     server_name: str | None,
-    env: Callable[[providers.Provider], Mapping[str, str]],
     *,
     probe: Prober | None = None,
-    listing: Callable[[providers.Provider], base.ModelList] | None = None,
 ) -> Checked:
     """The checks of `add_model` on the model `model` of the CLI `cli` under `name` (None:
-    no name to check), on the saved server `server_name` (None for the CLI's own way to its
-    models), saving nothing. Each check refuses before the next (Refused): the name, the CLI,
-    the model, the server saved, its CLI's server API, the server answering with its kept key
-    (asked with `probe`, else probed now), the API among the ones it proves, the model not one
-    the server types as embeddings, the model against the server's list, or for no server
-    against the CLI's own list (given by `listing`, else read now with `env(provider)`, the
-    agents' environment)."""
+    no name to check), on the saved server `server_name`, saving nothing. Each check refuses
+    before the next (Refused): the name, the CLI, the model, a server given (a CLI's own
+    models are no entries), the server saved, its CLI's server API, the server answering with
+    its kept key (asked with `probe`, else probed now), the API among the ones it proves, the
+    model not one the server types as embeddings, the model against the server's list."""
     if name is not None:
         check_name(name, MODEL)
         taken = state.model(name)
@@ -303,17 +305,17 @@ def check_model(
             f"the model is empty: --model takes a model as {provider.title} names it",
             field=MODEL_FIELD,
         )
-    aliases: tuple[str, ...] = ()
     if server_name is None:
-        server = None
-        listed = listing(provider) if listing is not None else provider.model_list(env(provider))
-        aliases = listed.aliases
-        verdict = model_check.verdict(provider, model, listed)
-    else:
-        server = state.model_server(server_name)
-        if server is None:
-            raise no_server(server_name, SERVER_FIELD)
-        verdict = _on_server(provider, model, server, probe)
+        raise Refused(
+            "a CLI's own models need no saving; only a model on a server is added: "
+            "--server <server>",
+            "to make one its default: lado model default <cli> <model>",
+            SERVER_FIELD,
+        )
+    server = state.model_server(server_name)
+    if server is None:
+        raise no_server(server_name, SERVER_FIELD)
+    verdict = _on_server(provider, model, server, probe)
     if verdict.kind == model_check.REFUSED:
         raise Refused(
             verdict.text,
@@ -323,7 +325,7 @@ def check_model(
     if name is None:
         # The name comes from the model: a model no list checked may hold what no name may
         # (a hidden character), refused under the model's field.
-        name = default_name(provider, model, server, aliases)
+        name = default_name(provider, model, server)
         try:
             check_name(name, MODEL)
         except Refused as exc:
@@ -331,29 +333,15 @@ def check_model(
     return Checked(name, provider, model, server, verdict)
 
 
-def default_name(
-    provider: providers.Provider,
-    model: str,
-    server: state.ModelServer | None,
-    aliases: tuple[str, ...],
-) -> str:
-    """The name a model gets when the human gives none: for an alias of the CLI (`aliases`),
-    the first word of the CLI's title and the alias capitalised, a `[1m]` of it as ` 1M`
-    (`Claude Sonnet`, `Claude Opus 1M`); for a model on `server`, `<model> · <server>`, and
-    ` · <CLI title>` when the server suits more than one CLI (each name then says its CLI,
-    whatever was ticked first); else the model. A name taken ignoring case gets ` · <CLI
-    title>`, then ` (2)`, ` (3)`, … until free; each try is cut to MAX_NAME characters
-    before its suffix."""
+def default_name(provider: providers.Provider, model: str, server: state.ModelServer) -> str:
+    """The name a model gets when the human gives none: `<model> · <server>`, and ` · <CLI
+    title>` when the server suits more than one CLI (each name then says its CLI, whatever
+    was ticked first). A name taken ignoring case gets ` · <CLI title>`, then ` (2)`, ` (3)`,
+    … until free; each try is cut to MAX_NAME characters before its suffix."""
     suffixes = ["", f" · {provider.title}"]
-    if server is not None:
-        base_name = f"{model} · {server.name}"
-        if len(model_servers.suiting(server.apis)[0]) > 1:
-            suffixes = [f" · {provider.title}"]
-    elif model in aliases:
-        alias = re.sub(r"\[(\w+)\]$", lambda m: f" {m[1].upper()}", model)
-        base_name = f"{provider.title.split()[0]} {alias[:1].upper()}{alias[1:]}"
-    else:
-        base_name = model
+    base_name = f"{model} · {server.name}"
+    if len(model_servers.suiting(server.apis)[0]) > 1:
+        suffixes = [f" · {provider.title}"]
     number = 2
     while True:
         for suffix in suffixes:
@@ -369,14 +357,12 @@ def add_model(
     cli: str,
     model: str,
     server_name: str | None,
-    env: Callable[[providers.Provider], Mapping[str, str]],
 ) -> tuple[state.ConfiguredModel, model_check.Verdict]:
     """Check the model as `check_model` does, its server probed now, and save it under
     `name`, or None for its `default_name`: the saved entry and the check's verdict."""
-    checked = check_model(name, cli, model, server_name, env)
-    server = checked.server
+    checked = check_model(name, cli, model, server_name)
     try:
-        saved = state.add_model(checked.name, cli, checked.model, server.id if server else None)
+        saved = state.add_model(checked.name, cli, checked.model, checked.server.id)
     except state.NameTaken as exc:  # added meanwhile
         raise _model_taken(exc.name) from None
     except sqlite3.IntegrityError:  # its server removed meanwhile
@@ -451,11 +437,16 @@ def rename_model(name: str, new: str) -> state.ConfiguredModel:
     return saved
 
 
-def remove_models(names: list[str], removed: Callable[[str], None]) -> None:
+def remove_models(
+    names: list[str],
+    removed: Callable[[str], None],
+    cleared: Callable[[str], None] = lambda _: None,
+) -> None:
     """Remove the configured models named `names`, in their order, a name given twice
-    (ignoring case) once; `removed` gets each one's name as saved. Every name is found
-    first: Refused for any no model has, nothing removed. A model another process removed
-    in between is Refused once the others are removed."""
+    (ignoring case) once, each with the default on it; `removed` gets each one's name as
+    saved, then `cleared` the agent CLI whose default it was. Every name is found first:
+    Refused for any no model has, nothing removed. A model another process removed in between
+    is Refused once the others are removed."""
     found: dict[str, None] = {}  # the names as saved, in order, once each
     unknown: dict[str, str] = {}
     for name in names:
@@ -468,12 +459,183 @@ def remove_models(names: list[str], removed: Callable[[str], None]) -> None:
         raise _no_models(list(unknown.values()))
     gone = []
     for name in found:
-        if state.remove_model(name):
-            removed(name)
-        else:
+        done = state.remove_model(name)
+        if done is None:
             gone.append(name)
+            continue
+        removed(name)
+        for cli in done.cleared:
+            cleared(cli)
     if gone:
         raise _no_models(gone)
+
+
+def cli_title(cli: str) -> str:
+    """The title of the agent CLI `cli`, the name itself for one LADO does not know."""
+    return providers.get(cli).title if cli in providers.names() else cli
+
+
+@dataclass(frozen=True)
+class Choices:
+    """What an agent CLI can run: `aliases` and `models` as its list gives them (`models` None
+    for no full list, `why` saying so; `command` prints it), and its configured models.
+    `other_name`: a name outside the list may be given, as no full list can refuse it."""
+
+    aliases: tuple[str, ...]
+    models: tuple[str, ...] | None
+    why: str
+    command: str
+    external: list[state.ConfiguredModel]
+    other_name: bool
+
+
+Listing = Callable[[providers.Provider], base.ModelList]
+
+
+def choices(provider: providers.Provider, listing: Listing) -> Choices:
+    """The one place that computes what `provider`'s CLI can run: its list, given by `listing`
+    within its command's timeout, and its configured models by name ignoring case. Nothing of
+    it is kept here."""
+    listed = listing(provider)
+    return Choices(
+        aliases=listed.aliases,
+        models=listed.models,
+        why=listed.why,
+        command=listed.command,
+        external=[model for model in state.models() if model.cli == provider.name],
+        other_name=listed.models is None,
+    )
+
+
+@dataclass(frozen=True)
+class CliDefault:
+    """An agent CLI's default model as shown: its reference, its name (the configured model's,
+    or the built-in model), the model as the CLI names it and the server's name (None for a
+    built-in one)."""
+
+    ref: state.ModelRef
+    name: str
+    model: str
+    server: str | None
+
+
+def defaults() -> list[CliDefault]:
+    """Every agent CLI's default model, by CLI, running no CLI and asking no server."""
+    models = {model.id: model for model in state.models()}
+    servers = {server.id: server.name for server in state.model_servers()}
+    shown = []
+    for ref in state.cli_defaults():
+        if ref.builtin is not None:
+            shown.append(CliDefault(ref, ref.builtin, ref.builtin, None))
+        elif ref.model_id in models:  # else removed since the first read
+            model = models[ref.model_id]
+            shown.append(CliDefault(ref, model.name, model.model, servers.get(model.server)))
+    return shown
+
+
+Env = Callable[[providers.Provider], Mapping[str, str]]
+
+
+def known_cli(cli: str) -> providers.Provider:
+    """The provider of the agent CLI `cli`; Refused for one LADO does not know."""
+    if cli not in providers.names():
+        raise Refused(
+            f'LADO knows no agent CLI "{cli}"; it knows {", ".join(providers.names())}',
+            field=CLI,
+        )
+    return providers.get(cli)
+
+
+def _installed_cli(cli: str, env: Env) -> providers.Provider:
+    provider = known_cli(cli)
+    if shutil.which(provider.command, path=env(provider).get("PATH")) is None:
+        raise Refused(f"{provider.title} is not installed", field=CLI)
+    return provider
+
+
+def _not_its_model(saved: state.ConfiguredModel, provider: providers.Provider) -> Refused:
+    return Refused(
+        f'"{saved.name}" is a model of {cli_title(saved.cli)}, not of {provider.title}',
+        field=MODEL_FIELD,
+    )
+
+
+def _save_default(ref: state.ModelRef) -> None:
+    try:
+        state.set_cli_default(ref)
+    except sqlite3.IntegrityError:  # its model removed meanwhile
+        raise Refused("that model is no longer saved", field=MODEL_FIELD) from None
+
+
+def _set_builtin(
+    provider: providers.Provider, model: str, listed: base.ModelList
+) -> tuple[state.ModelRef, model_check.Verdict]:
+    """Set `model` as `provider`'s built-in default by the session model's thresholds: Refused
+    for what is no name, or a name `listed` lacks."""
+    if not model:
+        raise Refused("the model is empty", field=MODEL_FIELD)
+    char = visible.first_hidden(model)
+    if char is not None:
+        raise Refused(f"a model is one line {visible.refusal(char)}", field=MODEL_FIELD)
+    verdict = model_check.verdict(provider, model, listed)
+    if verdict.kind == model_check.REFUSED:
+        raise Refused(verdict.text, field=MODEL_FIELD, page=verdict.page or None)
+    ref = state.ModelRef(provider.name, None, model)
+    _save_default(ref)
+    return ref, verdict
+
+
+def set_default(
+    cli: str, name: str, env: Env, listing: Listing | None = None
+) -> tuple[state.ModelRef, model_check.Verdict | None]:
+    """Make `name` the default model of the agent CLI `cli`: a configured model of that CLI by
+    its name ignoring case, else a built-in model; the reference and, for a built-in model,
+    the check's verdict (an external one asks no server). Its list is given by `listing`, else
+    read now with `env(provider)`, the agents' environment. Refused, nothing changed, for a
+    CLI not known or not installed, a name both a configured and a built-in model of the CLI,
+    a name that is only another CLI's configured model, and a built-in name refused."""
+    provider = _installed_cli(cli, env)
+    name = name.strip()
+    listed = listing(provider) if listing is not None else provider.model_list(env(provider))
+    saved = state.model(name)
+    built_in = name in listed.aliases or name in (listed.models or ())
+    if saved is not None and saved.cli == cli:
+        if built_in or saved.name in listed.aliases or saved.name in (listed.models or ()):
+            raise Refused(
+                f'"{saved.name}" is both a saved model of {provider.title} and one of its own; '
+                "rename the saved one: Settings → Models",
+                field=MODEL_FIELD,
+            )
+        ref = state.ModelRef(cli, saved.id, None)
+        _save_default(ref)
+        return ref, None
+    if saved is not None and not built_in:
+        raise _not_its_model(saved, provider)
+    return _set_builtin(provider, name, listed)
+
+
+def set_default_ref(
+    ref: state.ModelRef, env: Env, listing: Listing | None = None
+) -> tuple[state.ModelRef, model_check.Verdict | None]:
+    """`set_default` for a model picked on the page, by reference, so no name can be taken for
+    another; a built-in name is checked as there."""
+    provider = _installed_cli(ref.cli, env)
+    if ref.model_id is not None:
+        saved = state.model_by_id(ref.model_id)
+        if saved is None:
+            raise Refused("that model is no longer saved", field=MODEL_FIELD)
+        if saved.cli != ref.cli:
+            raise _not_its_model(saved, provider)
+        _save_default(ref)
+        return ref, None
+    listed = listing(provider) if listing is not None else provider.model_list(env(provider))
+    return _set_builtin(provider, (ref.builtin or "").strip(), listed)
+
+
+def clear_default(cli: str) -> bool:
+    """Clear the default model of the agent CLI `cli`, installed or not; False when it had
+    none. Refused for a CLI LADO does not know."""
+    return state.clear_cli_default(known_cli(cli).name)
 
 
 def _no_models(names: list[str]) -> Refused:

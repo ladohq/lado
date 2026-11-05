@@ -346,13 +346,12 @@ def test_remove_with_models_removes_them_then_the_server(serve, lado_home):
     id = state.model_server("lms").id
     state.add_model("sp", "kilo", "qwen3-8b", id)
     state.add_model("coder-oc", "opencode", "qwen3-8b", id)
-    state.add_model("own", "claude", "haiku", None)
     folder = key_file("lms").parent
     removed = []
     assert model_settings.remove_server("LMS", with_models=True, removed=removed.append) == "lms"
     assert removed == ["coder-oc", "sp"]
     assert state.model_servers() == []
-    assert [m.name for m in state.models()] == ["own"]
+    assert state.models() == []
     assert not folder.exists()
 
 
@@ -448,7 +447,7 @@ def test_a_key_that_cannot_be_read_refuses_in_one_line(serve, unreadable):
         model_settings.server_key(state.model_server("work"))
     assert str(raised.value) == f"{folder / 'key'} cannot be read (Permission denied)"
     with pytest.raises(model_settings.Refused, match="cannot be read"):
-        add_model("W", "opencode", "gpt-oss-20b", "work", no_env)
+        add_model("W", "opencode", "gpt-oss-20b", "work")
     with pytest.raises(model_settings.Refused, match="cannot be read"):
         add("work", server.url, replace=True)
     with pytest.raises(model_settings.Refused, match="cannot be written"):
@@ -524,10 +523,6 @@ def test_the_clis_a_saved_server_suits():
 # Models.
 
 
-def no_env(provider):
-    raise AssertionError("a model on a server reads no CLI's list")
-
-
 def listing(monkeypatch, name, listed):
     """The CLI `name` gives `listed`, read with the environment the command passes. Its
     class is patched, never the shared instance: undoing an instance's patch would leave
@@ -538,44 +533,21 @@ def listing(monkeypatch, name, listed):
     return seen
 
 
-def add_model(name, cli, model, server=None, env=lambda provider: {"PATH": "/agents"}):
-    return model_settings.add_model(name, cli, model, server, env)
+def add_model(name, cli, model, server=None):
+    return model_settings.add_model(name, cli, model, server)
 
 
-def test_an_alias_of_the_cli_is_saved(monkeypatch):
+def test_a_model_without_a_server_is_refused_and_reads_no_list(monkeypatch):
     seen = listing(monkeypatch, "claude", base.ModelList(("haiku",), None, why="no list"))
-    saved, verdict = add_model("Быстрая", "claude", " haiku ")
-    assert (saved.name, saved.cli, saved.model, saved.server) == (
-        "Быстрая",
-        "claude",
-        "haiku",
-        None,
-    )
-    assert (verdict.kind, verdict.text) == (model_check.OK, "an alias of Claude Code")
-    assert seen == [{"PATH": "/agents"}]
-
-
-def test_a_name_the_cli_does_not_list_is_refused(monkeypatch):
-    listing(
-        monkeypatch,
-        "opencode",
-        base.ModelList((), ("anthropic/claude-sonnet-4",), "opencode models"),
-    )
     with pytest.raises(model_settings.Refused) as refused:
-        add_model("S", "opencode", "anthropic/claude-sonet-4")
+        add_model("Быстрая", "claude", "haiku")
     assert str(refused.value) == (
-        "anthropic/claude-sonet-4 is not in OpenCode's list of models; opencode models prints "
-        "the list"
+        "a CLI's own models need no saving; only a model on a server is added: --server <server>"
     )
+    assert refused.value.hint == "to make one its default: lado model default <cli> <model>"
+    assert refused.value.field == "server"
+    assert seen == []
     assert state.models() == []
-
-
-def test_a_cli_without_a_list_saves_with_a_warning(monkeypatch):
-    listing(monkeypatch, "kilo", base.ModelList(why="kilo is not installed"))
-    saved, verdict = add_model("K", "kilo", "x/y")
-    assert verdict.kind == model_check.WARN
-    assert verdict.text.startswith("kilo is not installed: LADO cannot check x/y")
-    assert state.model("K") == saved
 
 
 def test_a_cli_lado_does_not_know_is_refused():
@@ -591,22 +563,23 @@ def test_an_empty_model_is_refused():
         add_model("E", "claude", "  ")
 
 
-def test_a_taken_name_is_refused_before_any_check(monkeypatch):
-    listing(monkeypatch, "claude", base.ModelList(("haiku", "sonnet")))
-    add_model("Быстрая", "claude", "haiku")
-    seen = listing(monkeypatch, "claude", base.ModelList(("haiku", "sonnet")))
+def test_a_taken_name_is_refused_before_any_check(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    add_model("Быстрая", "opencode", "qwen3-8b", "lms")
+    server.requests.clear()
     with pytest.raises(model_settings.Refused) as refused:
-        add_model("быстрая", "claude", "sonnet")
+        add_model("быстрая", "kilo", "qwen3-8b", "lms")
     assert str(refused.value) == (
         'a model "Быстрая" is saved already; remove it first: lado model remove "Быстрая"'
     )
-    assert seen == []
-    assert state.model("Быстрая").model == "haiku"
+    assert server.requests == []
+    assert state.model("Быстрая").cli == "opencode"
 
 
 def test_a_server_no_one_saved_is_refused_without_a_request():
     with pytest.raises(model_settings.Refused) as refused:
-        add_model("Q", "opencode", "q", "nowhere", no_env)
+        add_model("Q", "opencode", "q", "nowhere")
     assert str(refused.value) == (
         'no model server "nowhere" is saved; lado model-server list names them'
     )
@@ -615,7 +588,7 @@ def test_a_server_no_one_saved_is_refused_without_a_request():
 def test_a_model_on_a_server_in_its_list_is_saved(serve):
     server = serve("lmstudio")
     add("LM Studio дома", server.url)
-    saved, verdict = add_model("Локальная Qwen", "opencode", "qwen3-8b", "lm studio дома", no_env)
+    saved, verdict = add_model("Локальная Qwen", "opencode", "qwen3-8b", "lm studio дома")
     assert saved.server == state.model_server("LM Studio дома").id
     assert (verdict.kind, verdict.text) == (model_check.OK, "in LM Studio дома's list of models")
 
@@ -624,7 +597,7 @@ def test_a_model_the_server_does_not_list_is_refused(serve):
     server = serve("lmstudio")
     add("LM Studio дома", server.url)
     with pytest.raises(model_settings.Refused) as refused:
-        add_model("Q", "opencode", "qwen3-14b", "LM Studio дома", no_env)
+        add_model("Q", "opencode", "qwen3-14b", "LM Studio дома")
     assert str(refused.value) == (
         f"qwen3-14b is not in LM Studio дома's list of models; lado model-server probe "
         f"{server.url} prints the list"
@@ -636,13 +609,13 @@ def test_an_embeddings_model_is_refused(serve):
     server = serve("lmstudio")
     add("lms", server.url)
     with pytest.raises(model_settings.Refused) as refused:
-        add_model("emb", "opencode", fake.EMBEDDINGS, "lms", no_env)
+        add_model("emb", "opencode", fake.EMBEDDINGS, "lms")
     assert str(refused.value) == (
         f"{fake.EMBEDDINGS} is an embeddings model on lms; an agent needs a chat model: "
         f"lado model-server probe {server.url} lists the models"
     )
     assert state.models() == []
-    saved, _ = add_model("chat", "opencode", "qwen3-8b", "lms", no_env)
+    saved, _ = add_model("chat", "opencode", "qwen3-8b", "lms")
     assert saved.model == "qwen3-8b"
 
 
@@ -650,20 +623,20 @@ def test_the_api_is_checked_before_the_embeddings(serve):
     server = serve("lmstudio")
     add("lms", server.url)
     with pytest.raises(model_settings.Refused, match="lms does not suit Claude Code"):
-        add_model("emb", "claude", fake.EMBEDDINGS, "lms", no_env)
+        add_model("emb", "claude", fake.EMBEDDINGS, "lms")
 
 
 def test_a_server_without_types_is_checked_by_its_list(serve):
     server = serve("ollama")
     add("ol", server.url)
-    _, verdict = add_model("O", "opencode", "llama3.1:8b", "ol", no_env)
+    _, verdict = add_model("O", "opencode", "llama3.1:8b", "ol")
     assert verdict.kind == model_check.OK
 
 
 def test_a_server_with_no_list_saves_with_a_warning(serve):
     server = serve("responses-only")
     add("resp", server.url)
-    _, verdict = add_model("C", "codex", "gpt-x", "resp", no_env)
+    _, verdict = add_model("C", "codex", "gpt-x", "resp")
     assert verdict.kind == model_check.WARN
     assert verdict.text.startswith("GET /v1/models: 404: LADO cannot check gpt-x")
 
@@ -673,7 +646,7 @@ def test_a_server_that_does_not_answer_refuses_the_model(serve):
     add("LM Studio дома", server.url)
     server.close()
     with pytest.raises(model_settings.Refused) as refused:
-        add_model("Q", "opencode", "qwen3-8b", "LM Studio дома", no_env)
+        add_model("Q", "opencode", "qwen3-8b", "LM Studio дома")
     assert str(refused.value) == (
         f"{server.url} does not answer (connection refused); LADO cannot check qwen3-8b"
     )
@@ -684,7 +657,7 @@ def test_the_server_is_asked_with_its_kept_key(serve):
     server = serve("openai", key="k-1")
     add("work", server.url, key="k-1")
     server.requests.clear()
-    add_model("W", "opencode", "gpt-oss-20b", "work", no_env)
+    add_model("W", "opencode", "gpt-oss-20b", "work")
     assert {r.headers["Authorization"] for r in server.requests} == {"Bearer k-1"}
 
 
@@ -692,7 +665,7 @@ def test_a_server_that_does_not_suit_the_cli_is_refused(serve):
     server = serve("openai")  # chat completions only
     add("LM Studio дома", server.url)
     with pytest.raises(model_settings.Refused) as refused:
-        add_model("C", "codex", "gpt-oss-20b", "LM Studio дома", no_env)
+        add_model("C", "codex", "gpt-oss-20b", "LM Studio дома")
     assert str(refused.value) == (
         "LM Studio дома does not suit Codex CLI: it has no Responses API; it suits Kilo CLI, "
         "OpenCode"
@@ -703,7 +676,7 @@ def test_a_server_that_suits_no_cli_says_so(serve):
     server = serve("models-only")
     add("bare", server.url)
     with pytest.raises(model_settings.Refused) as refused:
-        add_model("C", "opencode", "m1", "bare", no_env)
+        add_model("C", "opencode", "m1", "bare")
     assert str(refused.value) == (
         "bare does not suit OpenCode: it has no chat completions; it suits no CLI"
     )
@@ -715,7 +688,7 @@ def test_a_cli_that_speaks_no_server_api_is_refused(serve, monkeypatch):
     server.requests.clear()
     monkeypatch.setattr(type(providers.get("kilo")), "server_api", "")
     with pytest.raises(model_settings.Refused) as refused:
-        add_model("K", "kilo", "m1", "all", no_env)
+        add_model("K", "kilo", "m1", "all")
     assert str(refused.value) == "all does not suit Kilo CLI: Kilo CLI speaks no model server's API"
     assert server.requests == []
 
@@ -723,14 +696,14 @@ def test_a_cli_that_speaks_no_server_api_is_refused(serve, monkeypatch):
 def test_claude_on_an_anthropic_compatible_server_is_saved(serve):
     server = serve("anthropic")
     add("gw", server.url)
-    saved, verdict = add_model("Gw Claude", "claude", "claude-x", "gw", no_env)
+    saved, verdict = add_model("Gw Claude", "claude", "claude-x", "gw")
     assert (saved.cli, verdict.kind) == ("claude", model_check.OK)
 
 
 def test_remove_a_model_keeps_its_server(serve):
     server = serve("lmstudio")
     add("LM Studio дома", server.url)
-    add_model("Локальная Qwen", "opencode", "qwen3-8b", "LM Studio дома", no_env)
+    add_model("Локальная Qwen", "opencode", "qwen3-8b", "LM Studio дома")
     assert remove_models("локальная QWEN") == ["Локальная Qwen"]
     assert state.models() == []
     assert model_settings.remove_server("LM Studio дома") == "LM Studio дома"
@@ -743,8 +716,9 @@ def remove_models(*names):
 
 
 def saved_models(*names):
+    server = state.add_model_server("s1", "lms", "http://lms", "LM Studio", (CHAT,))
     for name in names:
-        state.add_model(name, "claude", "haiku", None)
+        state.add_model(name, "opencode", "qwen3-8b", server.id)
 
 
 def test_remove_several_models_in_the_order_given():
@@ -778,7 +752,7 @@ def test_a_model_removed_meanwhile_is_named_after_the_others(monkeypatch):
     def remove(name):
         if name == "b":
             real(name)
-            return False  # another process was first
+            return None  # another process was first
         return real(name)
 
     monkeypatch.setattr(state, "remove_model", remove)
@@ -824,18 +798,17 @@ def test_the_empty_key_is_refused():
     assert (str(refused.value), refused.value.field) == ("the key is empty", "key")
 
 
-def test_model_refusals_name_their_field(serve, monkeypatch):
+def test_model_refusals_name_their_field(serve):
     server = serve("lmstudio")
     add("lms", server.url)
     add("chat", serve("openai").url)
-    listing(monkeypatch, "claude", base.ModelList(("haiku",), ("claude-x",), "claude models"))
-    add_model("Taken", "claude", "haiku")
+    add_model("Taken", "opencode", "qwen3-8b", "lms")
     cases = [
-        (("", "claude", "haiku", None), "name"),
-        (("taken", "claude", "haiku", None), "name"),
-        (("N", "gemini", "x", None), "cli"),
-        (("N", "claude", " ", None), "model"),
-        (("N", "claude", "claude-y", None), "model"),
+        (("", "opencode", "qwen3-8b", "lms"), "name"),
+        (("taken", "opencode", "qwen3-8b", "lms"), "name"),
+        (("N", "gemini", "x", "lms"), "cli"),
+        (("N", "opencode", " ", "lms"), "model"),
+        (("N", "opencode", "qwen3-8b", None), "server"),
         (("N", "opencode", fake.EMBEDDINGS, "lms"), "model"),
         (("N", "opencode", "qwen3-14b", "lms"), "model"),
         (("N", "opencode", "q", "nowhere"), "server"),
@@ -847,7 +820,7 @@ def test_model_refusals_name_their_field(serve, monkeypatch):
         assert refused.value.field == field, refused.value
     server.close()
     with pytest.raises(model_settings.Refused) as refused:
-        add_model("N", "opencode", "qwen3-8b", "lms", no_env)
+        add_model("N", "opencode", "qwen3-8b", "lms")
     assert refused.value.field == "server"
 
 
@@ -855,20 +828,17 @@ def test_model_refusals_name_their_field(serve, monkeypatch):
 
 
 def check_model(name, cli, model, server=None, probe=None):
-    return model_settings.check_model(
-        name, cli, model, server, lambda provider: {"PATH": "/agents"}, probe=probe
-    )
+    return model_settings.check_model(name, cli, model, server, probe=probe)
 
 
-def test_check_model_refuses_as_add_model_does_and_saves_nothing(serve, monkeypatch):
+def test_check_model_refuses_as_add_model_does_and_saves_nothing(serve):
     server = serve("lmstudio")
     add("lms", server.url)
-    listing(monkeypatch, "claude", base.ModelList(("haiku",), ("claude-x",), "claude models"))
-    add_model("Taken", "claude", "haiku")
+    add_model("Taken", "opencode", "qwen3-8b", "lms")
     cases = [
-        ("taken", "claude", "haiku", None),
-        ("N", "gemini", "x", None),
-        ("N", "claude", "claude-y", None),
+        ("taken", "opencode", "qwen3-8b", "lms"),
+        ("N", "gemini", "x", "lms"),
+        ("N", "opencode", "qwen3-8b", None),
         ("N", "opencode", fake.EMBEDDINGS, "lms"),
         ("N", "opencode", "q", "nowhere"),
     ]
@@ -876,7 +846,7 @@ def test_check_model_refuses_as_add_model_does_and_saves_nothing(serve, monkeypa
         with pytest.raises(model_settings.Refused) as checked:
             check_model(*case)
         with pytest.raises(model_settings.Refused) as added:
-            add_model(*case, env=lambda provider: {})
+            add_model(*case)
         assert (str(checked.value), checked.value.field) == (str(added.value), added.value.field)
     checked = check_model("N", "opencode", "qwen3-8b", "lms")
     assert (checked.verdict.kind, checked.model, checked.server.name) == (
@@ -888,27 +858,14 @@ def test_check_model_refuses_as_add_model_does_and_saves_nothing(serve, monkeypa
     assert [m.name for m in state.models()] == ["Taken"]
 
 
-def test_check_model_without_a_name_checks_no_name(monkeypatch):
-    listing(monkeypatch, "claude", base.ModelList(("haiku",), None, why="no list"))
-    add_model("haiku", "claude", "haiku")
-    checked = check_model(None, "claude", "haiku")
-    assert (checked.verdict.kind, checked.name) == (model_check.OK, "Claude Haiku")
-
-
-def test_check_model_uses_the_list_given(monkeypatch):
-    seen = listing(monkeypatch, "kilo", base.ModelList((), ("kilo/a",), "kilo models"))
-    given = []
-    checked = model_settings.check_model(
-        None,
-        "kilo",
-        "kilo/b",
-        None,
-        lambda provider: {},
-        listing=lambda provider: (
-            given.append(provider.name) or base.ModelList((), ("kilo/b",), "kilo models")
-        ),
+def test_check_model_without_a_name_checks_no_name(serve):
+    add("lms", serve("lmstudio").url)
+    add_model("qwen3-8b · lms · OpenCode", "opencode", "qwen3-8b", "lms")
+    checked = check_model(None, "opencode", "qwen3-8b", "lms")
+    assert (checked.verdict.kind, checked.name) == (
+        model_check.OK,
+        "qwen3-8b · lms · OpenCode (2)",
     )
-    assert (checked.verdict.kind, given, seen) == (model_check.OK, ["kilo"], [])
 
 
 def test_check_model_uses_the_probe_given(serve):
@@ -933,19 +890,8 @@ def litellm_server(apis=(RESPONSES,)):
     return state.add_model_server("s1", "LiteLLM", "http://gw", "OpenAI-compatible", apis)
 
 
-def default_name(cli, model, server=None, aliases=()):
-    return model_settings.default_name(providers.get(cli), model, server, aliases)
-
-
-def test_the_default_name_of_an_alias():
-    aliases = ("sonnet", "sonnet[1m]", "opus[1m]")
-    assert default_name("claude", "sonnet", aliases=aliases) == "Claude Sonnet"
-    assert default_name("claude", "sonnet[1m]", aliases=aliases) == "Claude Sonnet 1M"
-    assert default_name("claude", "opus[1m]", aliases=aliases) == "Claude Opus 1M"
-
-
-def test_the_default_name_of_a_model_of_the_clis_list():
-    assert default_name("codex", "gpt-5-codex") == "gpt-5-codex"
+def default_name(cli, model, server):
+    return model_settings.default_name(providers.get(cli), model, server)
 
 
 def test_the_default_name_of_a_model_on_a_server():
@@ -987,28 +933,28 @@ def test_a_long_default_name_is_cut_before_its_suffix():
     model_settings.check_name(third, model_settings.MODEL)
 
 
-def test_add_model_without_a_name_names_it(monkeypatch):
-    listing(monkeypatch, "claude", base.ModelList(("sonnet",), None, why="no list"))
-    saved, _ = add_model(None, "claude", "sonnet")
-    assert saved.name == "Claude Sonnet"
-    saved, _ = add_model(None, "claude", "sonnet")
-    assert saved.name == "Claude Sonnet · Claude Code"
+def test_add_model_without_a_name_names_it(serve):
+    add("resp", serve("responses-only").url)
+    saved, _ = add_model(None, "codex", "gpt-x", "resp")
+    assert saved.name == "gpt-x · resp"
+    saved, _ = add_model(None, "codex", "gpt-x", "resp")
+    assert saved.name == "gpt-x · resp · Codex CLI"
 
 
-def test_a_model_whose_default_name_is_no_name_is_refused_under_the_model(monkeypatch):
+def test_a_model_whose_default_name_is_no_name_is_refused_under_the_model(serve):
     """A model of no list (a warning) with a hidden character would be named by it: the
     name's rule refuses it, under the model's field, in the check and the save alike."""
-    listing(monkeypatch, "claude", base.ModelList(("sonnet",), None, why="no list"))
+    add("resp", serve("responses-only").url)
     hidden = "claude-opus​-5-5"  # U+200B
     says = "a model's name is one line of visible text: U+200B ZERO WIDTH SPACE is not allowed"
     with pytest.raises(model_settings.Refused) as checked:
-        check_model(None, "claude", hidden)
+        check_model(None, "codex", hidden, "resp")
     with pytest.raises(model_settings.Refused) as added:
-        add_model(None, "claude", hidden)
+        add_model(None, "codex", hidden, "resp")
     for refused in (checked.value, added.value):
         assert (str(refused), refused.field) == (says, "model")
     assert state.models() == []
-    assert check_model(None, "claude", "sonnet").name == "Claude Sonnet"
+    assert check_model(None, "codex", "gpt-x", "resp").name == "gpt-x · resp"
 
 
 # Renaming a model.
@@ -1019,9 +965,9 @@ def rename(name, new):
 
 
 def test_rename_a_model():
-    state.add_model("Claude Sonnet", "claude", "sonnet", None)
+    saved_models("Claude Sonnet")
     renamed = rename("claude sonnet", "Сильная")
-    assert (renamed.name, renamed.cli, renamed.model) == ("Сильная", "claude", "sonnet")
+    assert (renamed.name, renamed.cli, renamed.model) == ("Сильная", "opencode", "qwen3-8b")
     assert [m.name for m in state.models()] == ["Сильная"]
     assert rename("сильная", "СИЛЬНАЯ").name == "СИЛЬНАЯ"
 
@@ -1053,3 +999,288 @@ def test_rename_of_a_model_not_saved_is_refused():
         'no model "nope" is saved; lado model list names them',
         "",
     )
+
+
+# An agent CLI's full list.
+
+
+def external(name="Локальная Qwen", cli="opencode", model="qwen3-8b"):
+    if state.model_server("lms") is None:
+        state.add_model_server("s1", "lms", "http://lms", "LM Studio", (CHAT,))
+    return state.add_model(name, cli, model, "s1")
+
+
+def test_the_full_list_of_a_cli_with_a_list_offers_no_other_name():
+    external("Second")
+    external("first")
+    external("Kilo's", "kilo")
+    listed = base.ModelList((), ("a/b", "c/d"), "opencode models")
+    choices = model_settings.choices(providers.get("opencode"), lambda provider: listed)
+    assert (choices.aliases, choices.models, choices.why) == ((), ("a/b", "c/d"), "")
+    assert [m.name for m in choices.external] == ["first", "Second"]
+    assert choices.other_name is False
+
+
+def test_the_full_list_of_claude_code_is_its_aliases_and_an_other_name():
+    listed = base.ModelList(("opus",), None, why="Claude Code gives no list beyond its aliases")
+    choices = model_settings.choices(providers.get("claude"), lambda provider: listed)
+    assert (choices.aliases, choices.models) == (("opus",), None)
+    assert choices.why == "Claude Code gives no list beyond its aliases"
+    assert choices.other_name is True
+
+
+def test_a_list_that_cannot_be_read_keeps_the_external_models():
+    external("K", "kilo")
+    listed = base.ModelList(why="`kilo models` timed out after 15 s")
+    choices = model_settings.choices(providers.get("kilo"), lambda provider: listed)
+    assert [m.name for m in choices.external] == ["K"]
+    assert (choices.why, choices.other_name) == ("`kilo models` timed out after 15 s", True)
+
+
+def test_which_clis_take_a_whole_process_for_an_external_model():
+    whole = {name: providers.get(name).external_whole_process for name in providers.names()}
+    assert whole == {"claude": True, "codex": True, "kilo": False, "opencode": False}
+
+
+# An agent CLI's default model.
+
+
+@pytest.fixture
+def installed(tmp_path):
+    """`installed(cli, …)`: an environment whose PATH holds those CLIs and no other."""
+
+    def env_of(*clis):
+        for cli in clis:
+            command = tmp_path / providers.get(cli).command
+            command.write_text("#!/bin/sh\n")
+            command.chmod(0o755)
+        return lambda provider: {"PATH": str(tmp_path)}
+
+    return env_of
+
+
+OPENCODE_LIST = base.ModelList((), ("anthropic/claude-sonnet-4",), "opencode models")
+CLAUDE_LIST = base.ModelList(("opus",), None, why="Claude Code gives no list beyond its aliases")
+
+
+def test_an_external_default_is_found_ignoring_case_and_asks_no_server(installed, monkeypatch):
+    saved = external()
+    listing(monkeypatch, "opencode", OPENCODE_LIST)
+    ref, verdict = model_settings.set_default("opencode", "локальная qwen", installed("opencode"))
+    assert ref == state.ModelRef("opencode", saved.id, None)
+    assert verdict is None
+    assert state.cli_defaults() == [ref]
+
+
+def test_an_external_default_is_set_when_the_list_cannot_be_read(installed, monkeypatch):
+    saved = external()
+    listing(monkeypatch, "opencode", base.ModelList(why="no list"))
+    ref, _ = model_settings.set_default("opencode", "Локальная Qwen", installed("opencode"))
+    assert ref.model_id == saved.id
+
+
+def test_a_built_in_default_of_an_alias(installed, monkeypatch):
+    seen = listing(monkeypatch, "claude", CLAUDE_LIST)
+    env = installed("claude")
+    ref, verdict = model_settings.set_default("claude", " opus ", env)
+    assert ref == state.ModelRef("claude", None, "opus")
+    assert (verdict.kind, verdict.text) == (model_check.OK, "an alias of Claude Code")
+    assert seen == [env(None)]
+
+
+def test_a_built_in_default_the_list_lacks_is_refused(installed, monkeypatch):
+    listing(monkeypatch, "opencode", OPENCODE_LIST)
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.set_default("opencode", "anthropic/claude-sonet-4", installed("opencode"))
+    assert str(refused.value) == (
+        "anthropic/claude-sonet-4 is not in OpenCode's list of models; opencode models prints "
+        "the list"
+    )
+    assert refused.value.page == "anthropic/claude-sonet-4 is not in OpenCode's list of models"
+    assert state.cli_defaults() == []
+
+
+def test_a_built_in_default_with_no_list_is_set_with_a_warning(installed, monkeypatch):
+    listing(monkeypatch, "claude", CLAUDE_LIST)
+    ref, verdict = model_settings.set_default(
+        "claude", "claude-opus-4-1-20250805", installed("claude")
+    )
+    assert ref.builtin == "claude-opus-4-1-20250805"
+    assert verdict.kind == model_check.WARN
+    assert verdict.text == (
+        "Claude Code gives no list beyond its aliases: LADO cannot check "
+        "claude-opus-4-1-20250805; a wrong name stops its agents at their first turn"
+    )
+
+
+def test_one_name_of_two_models_is_refused(installed, monkeypatch):
+    external("qwen3-8b")
+    listing(monkeypatch, "opencode", base.ModelList((), ("qwen3-8b",), "opencode models"))
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.set_default("opencode", "QWEN3-8B", installed("opencode"))
+    assert str(refused.value) == (
+        '"qwen3-8b" is both a saved model of OpenCode and one of its own; rename the saved one: '
+        "Settings → Models"
+    )
+    assert state.cli_defaults() == []
+
+
+def test_another_cli_s_model_is_refused_on_a_cli_with_no_list(installed, monkeypatch):
+    external()
+    seen = listing(monkeypatch, "claude", CLAUDE_LIST)
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.set_default("claude", "локальная qwen", installed("claude"))
+    assert str(refused.value) == '"Локальная Qwen" is a model of OpenCode, not of Claude Code'
+    assert len(seen) == 1
+    assert state.cli_defaults() == []
+
+
+def test_a_built_in_name_another_cli_s_model_also_has_is_set(installed, monkeypatch):
+    external("opus")
+    listing(monkeypatch, "claude", CLAUDE_LIST)
+    ref, _ = model_settings.set_default("claude", "opus", installed("claude"))
+    assert ref == state.ModelRef("claude", None, "opus")
+
+
+def test_a_cli_not_installed_or_not_known_is_refused(installed, monkeypatch):
+    saved = external("K", "kilo")
+    seen = listing(monkeypatch, "kilo", base.ModelList(why="no list"))
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.set_default("kilo", "K", installed())
+    assert str(refused.value) == "Kilo CLI is not installed"
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.set_default("gemini", "K", installed())
+    assert str(refused.value) == (
+        'LADO knows no agent CLI "gemini"; it knows claude, codex, kilo, opencode'
+    )
+    assert refused.value.field == "cli"
+    assert seen == []
+    assert state.model_by_id(saved.id) is not None
+    assert state.cli_defaults() == []
+
+
+@pytest.mark.parametrize(
+    ("model", "says"),
+    [
+        ("  ", "the model is empty"),
+        ("a​b", "a model is one line of visible text: U+200B ZERO WIDTH SPACE is not allowed"),
+    ],
+)
+def test_a_default_that_is_no_name_is_refused(installed, monkeypatch, model, says):
+    listing(monkeypatch, "claude", CLAUDE_LIST)
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.set_default("claude", model, installed("claude"))
+    assert (str(refused.value), refused.value.field) == (says, "model")
+
+
+def test_a_default_set_by_reference_takes_the_model_of_the_id(installed, monkeypatch):
+    saved = external("qwen3-8b")
+    listing(monkeypatch, "opencode", base.ModelList((), ("qwen3-8b",), "opencode models"))
+    env = installed("opencode")
+    ref = state.ModelRef("opencode", saved.id, None)
+    assert model_settings.set_default_ref(ref, env) == (ref, None)
+    built_in = state.ModelRef("opencode", None, "qwen3-8b")
+    set_ref, verdict = model_settings.set_default_ref(built_in, env)
+    assert (set_ref, verdict.kind) == (built_in, model_check.OK)
+    assert state.cli_defaults() == [built_in]
+
+
+def test_a_default_set_by_reference_refuses_another_cli_s_or_a_gone_model(installed):
+    saved = external()
+    env = installed("claude")
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.set_default_ref(state.ModelRef("claude", saved.id, None), env)
+    assert str(refused.value) == '"Локальная Qwen" is a model of OpenCode, not of Claude Code'
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.set_default_ref(state.ModelRef("claude", "nope", None), env)
+    assert str(refused.value) == "that model is no longer saved"
+    assert state.cli_defaults() == []
+
+
+def test_a_default_set_by_reference_uses_the_list_given(installed, monkeypatch):
+    seen = listing(monkeypatch, "claude", CLAUDE_LIST)
+    given = []
+
+    def kept(provider):
+        given.append(provider.name)
+        return CLAUDE_LIST
+
+    ref = state.ModelRef("claude", None, "opus")
+    model_settings.set_default_ref(ref, installed("claude"), kept)
+    assert (given, seen) == (["claude"], [])
+
+
+def test_a_model_removed_between_the_check_and_the_save_is_refused(installed, monkeypatch):
+    saved = external()
+    listing(monkeypatch, "opencode", OPENCODE_LIST)
+    env = installed("opencode")
+    real = state.set_cli_default
+
+    def late(ref):
+        state.remove_model(saved.name)
+        real(ref)
+
+    monkeypatch.setattr(state, "set_cli_default", late)
+    with pytest.raises(model_settings.Refused) as refused:
+        model_settings.set_default_ref(state.ModelRef("opencode", saved.id, None), env)
+    assert str(refused.value) == "that model is no longer saved"
+
+
+def test_clearing_a_default_of_a_cli_not_installed(installed):
+    state.set_cli_default(state.ModelRef("kilo", None, "x/y"))
+    assert model_settings.clear_default("kilo") is True
+    assert model_settings.clear_default("kilo") is False
+    assert state.cli_defaults() == []
+    with pytest.raises(model_settings.Refused, match='LADO knows no agent CLI "gemini"'):
+        model_settings.clear_default("gemini")
+
+
+def test_the_defaults_name_their_model_and_server():
+    saved = external()
+    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    state.rename_model(saved.name, "Alpha")
+    claude, opencode = model_settings.defaults()
+    assert (claude.ref.cli, claude.name, claude.model, claude.server) == (
+        "claude",
+        "opus",
+        "opus",
+        None,
+    )
+    assert (opencode.ref.model_id, opencode.name, opencode.model, opencode.server) == (
+        saved.id,
+        "Alpha",
+        "qwen3-8b",
+        "lms",
+    )
+
+
+def test_removing_a_default_s_model_says_the_cli_cleared():
+    saved = external()
+    other = external("Other")
+    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
+    events = []
+    model_settings.remove_models(
+        [other.name, saved.name],
+        lambda name: events.append(("removed", name)),
+        lambda cli: events.append(("cleared", cli)),
+    )
+    assert events == [
+        ("removed", "Other"),
+        ("removed", "Локальная Qwen"),
+        ("cleared", "opencode"),
+    ]
+
+
+def test_removing_a_server_says_the_defaults_cleared(serve):
+    add("lms", serve("lmstudio").url)
+    id = state.model_server("lms").id
+    saved = state.add_model("coder-oc", "opencode", "qwen3-8b", id)
+    state.add_model("sp", "kilo", "qwen3-8b", id)
+    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
+    removed, cleared = [], []
+    model_settings.remove_server(
+        "lms", with_models=True, removed=removed.append, cleared=cleared.append
+    )
+    assert (removed, cleared) == (["coder-oc", "sp"], ["opencode"])
+    assert state.cli_defaults() == []

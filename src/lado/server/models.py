@@ -540,6 +540,13 @@ class ModelChoices(BaseModel):
     check: ModelCheck
 
 
+class ModelRemoved(ModelSettings):
+    """The settings after a model was removed, and the agent CLIs whose default it was: a page
+    gone stale knows of no default to ask about, so the answer says one went."""
+
+    cleared: list[str]
+
+
 class ModelDefaultSet(BaseModel):
     """The default model to set: `external` a configured model's id, or `builtin` the CLI's
     name for it, exactly one of them."""

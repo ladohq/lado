@@ -631,6 +631,18 @@ def test_remove_server_route(client, serve):
     assert not model_settings.key_folder(id).exists()
 
 
+def test_removing_a_model_names_the_default_it_cleared(client):
+    """A page gone stale knows of no default: the answer says one went."""
+    saved_server()
+    a = state.add_model("a", "opencode", "qwen3-8b", "s1")
+    state.add_model("b", "opencode", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("opencode", a.id, None))
+    assert ok(client.delete("/api/models/b"))["cleared"] == []
+    answer = ok(client.delete("/api/models/a"))
+    assert answer["cleared"] == ["opencode"]
+    assert (answer["models"], answer["defaults"]) == ([], [])
+
+
 def test_removing_a_default_s_model_or_server_clears_it(client):
     saved_server()
     a = state.add_model("a", "opencode", "qwen3-8b", "s1")

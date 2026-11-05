@@ -98,7 +98,9 @@ external default. `ModelChoices.check` is the core's verdict on the built-in `mo
 warning and a lost default come from it, no line is rebuilt on the page.
 `ConfiguredModelInfo` gains `id`; `ModelAdd.server` is required. Refusals are `EntryRefused`.
 The typed check of `Other name…` is the existing `GET /api/providers/{name}/models?model=`.
-`DELETE /api/models/{name}` and the server's stay; the page compares `defaults` for its lines.
+`DELETE /api/models/{name}` answers `ModelRemoved`, the settings and `cleared` (the CLIs whose
+default went): a stale page has no default to compare. The server's stays: its question reads the
+entries anew, and the page compares `defaults` for its line.
 
 ### D7. Which CLI's external model takes the whole process
 

@@ -33,9 +33,15 @@ SHALL leave the section on a timer.
 - **THEN** the tick stays where it was on the screen, to the pixel
 
 #### Scenario: A server added
-- **WHEN** the human adds a server
+- **WHEN** the human adds a server, and the page has room to scroll under the form
 - **THEN** the new server takes the place of the form, and the form's place on the screen
   does not move
+
+#### Scenario: The very end of the page
+- **WHEN** the page is scrolled to its end and a form closes there, so the page gets shorter
+  below what the human acted on
+- **THEN** the page, with nothing left to scroll, moves by what it lost; a change above that
+  element still moves nothing
 
 #### Scenario: Nothing acted on
 - **WHEN** the human opens `/settings` and presses nothing in Models while the sections above
@@ -557,6 +563,13 @@ A model removed by its tick SHALL leave no Undo; ticked again it SHALL NOT be a 
 #### Scenario: Cancel
 - **WHEN** the human presses Cancel or Esc at the question
 - **THEN** the model and the default stay
+
+#### Scenario: A default set in another window
+- **WHEN** this page shows no default, another window made `Локальная Qwen` OpenCode's, and the
+  human presses × on it
+- **THEN** it goes unasked, but the row says `OpenCode is back on its settings.` and Undo sets the
+  default again; removed by its tick, the card says `Its default model Локальная Qwen was
+  removed.`
 
 ### Requirement: The picker works from the keyboard
 

@@ -1001,8 +1001,8 @@ def create_app(
         dependencies=[Depends(guard.changes), Depends(database)],
         responses=entry_refused,
     )
-    def remove_configured_model(name: str) -> models.ModelSettings:
-        """Remove a model as `lado model remove` does, the default on it cleared."""
+    def remove_configured_model(name: str) -> models.ModelRemoved:
+        """Remove a model as `lado model remove` does, the default on it cleared and named."""
         return entries(model_entries.remove_model, name)
 
     @app.get(

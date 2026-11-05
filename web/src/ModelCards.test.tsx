@@ -532,6 +532,40 @@ test("unticking a default asks under its row, the tick staying on until the answ
   expect(screen.queryByRole("button", { name: "Undo" })).toBeNull(); // a tick leaves no Undo
 });
 
+// A default set in another window: this page shows none, and the removal finds one.
+function setElsewhere(saved: ReturnType<typeof model>) {
+  server.entries = { ...server.entries, defaults: [externalDefault(saved)] };
+}
+
+test("× on a default this page did not know of: its row says so, and Undo sets it again", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
+  mount();
+  const opencode = await card("OpenCode");
+  setElsewhere(QWEN);
+  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Локальная Qwen" }));
+  const undo = await within(opencode).findByRole("button", { name: "Undo" });
+  expect(undo.closest("[role=row]")?.textContent).toContain(
+    "Removed Локальная Qwen. OpenCode is back on its settings.",
+  );
+  fireEvent.click(undo);
+  await within(opencode).findByRole("button", { name: "Rename Локальная Qwen" });
+  await waitFor(() => expect(server.of("PUT", "/api/model-defaults/opencode")).toHaveLength(1));
+});
+
+test("a tick off on a default this page did not know of says so on the card", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  mount();
+  const opencode = await card("OpenCode");
+  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
+  fireEvent.click(await screen.findByRole("button", { name: "qwen3-8b" }));
+  const tick = (await screen.findByRole("checkbox", { name: "qwen3-8b on OpenCode" })) as HTMLInputElement;
+  setElsewhere(QWEN);
+  fireEvent.click(tick);
+  await within(opencode).findByText("Its default model Локальная Qwen was removed.");
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+});
+
 // What design QA found on the running page.
 
 test("a default removed from a folded table keeps its row first, Undo in view, and the count says models", async () => {

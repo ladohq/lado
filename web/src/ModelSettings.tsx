@@ -259,6 +259,8 @@ export function ModelSettings() {
     onTouch,
     names,
     onName,
+    onDefaultGone: (cli, name) =>
+      setLostDefaults((now) => ({ ...now, [cli]: `Its default model ${name} was removed.` })),
   };
   return (
     <section className="setting mx" id={MODELS_ANCHOR} ref={section} aria-labelledby={id}>
@@ -851,7 +853,7 @@ function ModelRow({
     setProblem(null);
     try {
       const left = await removeModel(model.name);
-      onRemoved(model, isDefault);
+      onRemoved(model, left.cleared.includes(model.cli)); // this page may not have known
       await onChanged(left);
     } catch (error) {
       setAsking(false);

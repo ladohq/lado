@@ -395,7 +395,9 @@ export const addModel = (given: ModelAdd) => post<ModelAdded>("/api/models", giv
 
 export const renameModel = (name: string, to: string) => post<ModelSettings>(modelPath(name), { name: to }, "PATCH");
 
-export const removeModel = (name: string) => post<ModelSettings>(modelPath(name), undefined, "DELETE");
+// `cleared` names the agent CLIs whose default the model was, which a stale page may not know.
+export type ModelRemoved = components["schemas"]["ModelRemoved"];
+export const removeModel = (name: string) => post<ModelRemoved>(modelPath(name), undefined, "DELETE");
 
 // What an agent CLI can run, as the core computes it (a list that cannot be read says why), and
 // the check of the built-in `model` against it; `fresh`: read now, else kept a minute.

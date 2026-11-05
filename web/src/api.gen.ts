@@ -892,7 +892,7 @@ export interface paths {
         post?: never;
         /**
          * Remove Configured Model
-         * @description Remove a model as `lado model remove` does, the default on it cleared.
+         * @description Remove a model as `lado model remove` does, the default on it cleared and named.
          */
         delete: operations["remove_configured_model_api_models__name__delete"];
         options?: never;
@@ -2802,6 +2802,21 @@ export interface components {
             detail: string | null;
             /** Words */
             words: string;
+        };
+        /**
+         * ModelRemoved
+         * @description The settings after a model was removed, and the agent CLIs whose default it was: a page
+         *     gone stale knows of no default to ask about, so the answer says one went.
+         */
+        ModelRemoved: {
+            /** Models */
+            models: components["schemas"]["ConfiguredModelInfo"][];
+            /** Servers */
+            servers: components["schemas"]["ModelServerInfo"][];
+            /** Defaults */
+            defaults: components["schemas"]["CliDefault"][];
+            /** Cleared */
+            cleared: string[];
         };
         /** ModelRename */
         ModelRename: {
@@ -5872,7 +5887,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModelSettings"];
+                    "application/json": components["schemas"]["ModelRemoved"];
                 };
             };
             /** @description refused */

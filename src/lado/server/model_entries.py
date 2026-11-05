@@ -352,9 +352,10 @@ def rename_model(name: str, given: models.ModelRename) -> models.ModelSettings:
     return listing()
 
 
-def remove_model(name: str) -> models.ModelSettings:
+def remove_model(name: str) -> models.ModelRemoved:
+    cleared: list[str] = []
     try:
-        model_settings.remove_models([name], lambda _: None)
+        model_settings.remove_models([name], lambda _: None, cleared.append)
     except REFUSED as exc:
         raise _refusal(exc) from None
-    return listing()
+    return models.ModelRemoved(**listing().model_dump(), cleared=cleared)

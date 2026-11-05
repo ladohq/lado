@@ -2536,7 +2536,9 @@ default: none does yet.
   its settings.` and Undo sets the default again by the id the model got back
   (`PUT /api/model-defaults/{cli}`), a refusal of that second call in the model's row. Unticking
   a default asks the same under its CLI's row, the tick on until the answer, and leaves no
-  Undo. A page gone stale may remove a default without asking: another window set it. After
+  Undo. A page gone stale may remove a default without asking, as another window set it: the
+  answer of `DELETE /api/models/{name}` names it (`cleared`), so the row says so and Undo sets it
+  again, and after a tick the card says `Its default model <name> was removed.` After
   `UNDO_MS` (10 s) only Undo goes: `Removed <name>.` stays until the human's next change in
   the section (a tick, ×, Undo, a rename, a model id added, a server added, changed or
   removed) or the page's next opening. A server removed has no Undo: its key goes with it

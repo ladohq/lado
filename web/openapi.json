@@ -2125,7 +2125,7 @@
       },
       "delete": {
         "summary": "Remove Configured Model",
-        "description": "Remove a model as `lado model remove` does, the default on it cleared.",
+        "description": "Remove a model as `lado model remove` does, the default on it cleared and named.",
         "operationId": "remove_configured_model_api_models__name__delete",
         "parameters": [
           {
@@ -2144,7 +2144,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ModelSettings"
+                  "$ref": "#/components/schemas/ModelRemoved"
                 }
               }
             }
@@ -7466,6 +7466,47 @@
         ],
         "title": "ModelInfo",
         "description": "An agent's model or effort, and where it came from."
+      },
+      "ModelRemoved": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ConfiguredModelInfo"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "servers": {
+            "items": {
+              "$ref": "#/components/schemas/ModelServerInfo"
+            },
+            "type": "array",
+            "title": "Servers"
+          },
+          "defaults": {
+            "items": {
+              "$ref": "#/components/schemas/CliDefault"
+            },
+            "type": "array",
+            "title": "Defaults"
+          },
+          "cleared": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cleared"
+          }
+        },
+        "type": "object",
+        "required": [
+          "models",
+          "servers",
+          "defaults",
+          "cleared"
+        ],
+        "title": "ModelRemoved",
+        "description": "The settings after a model was removed, and the agent CLIs whose default it was: a page\ngone stale knows of no default to ask about, so the answer says one went."
       },
       "ModelRename": {
         "properties": {

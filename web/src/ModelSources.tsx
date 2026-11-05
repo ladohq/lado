@@ -72,6 +72,7 @@ export type Sources = {
   onTouch: () => void; // the human changes something here
   names: Record<string, string>; // the names of models unticked here, by tickKey
   onName: (key: string, name: string | null) => void;
+  onDefaultGone: (cli: string, name: string) => void; // a tick removed a default not asked about
 };
 
 export const serverKey = (name: string) => `server:${name.toLowerCase()}`;
@@ -616,7 +617,9 @@ function SourceBody({
       } else {
         const [one] = ticked(models, on, model, server);
         if (one) {
-          await removeModel(one.name);
+          const { cleared } = await removeModel(one.name);
+          const asked = sources.settings.defaults.some((d) => d.external === one.id);
+          if (cleared.includes(on) && !asked) sources.onDefaultGone(on, one.name);
           sources.onName(key, one.name);
         }
       }

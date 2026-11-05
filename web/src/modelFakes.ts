@@ -142,12 +142,13 @@ export class ModelServer {
     const named = where.match(/^\/api\/models\/(.+)$/);
     if (named && method === "DELETE") {
       const gone = this.entries.models.find((m) => m.name === named[1]);
+      const cleared = this.entries.defaults.filter((d) => d.external === gone?.id).map((d) => d.cli);
       this.entries = {
         ...this.entries,
         models: this.entries.models.filter((m) => m.name !== named[1]),
         defaults: this.entries.defaults.filter((d) => d.external !== gone?.id),
       };
-      return json(this.entries);
+      return json({ ...this.entries, cleared });
     }
     if (named && method === "PATCH") {
       const to = (body as { name: string }).name;

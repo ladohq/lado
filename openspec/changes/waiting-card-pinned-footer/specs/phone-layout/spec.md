@@ -104,8 +104,8 @@ In the phone layout the window SHALL not scroll as a page; each page's content S
 scroll by itself under the top bar. The app SHALL be as high as the part of the window
 the human sees, its bottom never cut by the browser's bars. In a session's chat the feed
 SHALL scroll by itself, and the waiting card and the composer SHALL stay whole at the
-chat's bottom; the card's title and context SHALL be at most 40 % of the chat's height, its
-context scrolling inside, and its footer SHALL be whole under them.
+chat's bottom; the card's title and context SHALL be at most 40 % of the chat's height, and its
+footer whole under them.
 
 #### Scenario: Writing with a gate waiting
 - **WHEN** a gate waits and the human opens the session's chat on a phone 390×844

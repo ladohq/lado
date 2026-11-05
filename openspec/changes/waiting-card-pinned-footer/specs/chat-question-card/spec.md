@@ -210,6 +210,15 @@ capability phone-layout).
 - **THEN** the session's tabs and the team row are hidden with the feed and the composer,
   and folding the card shows them again
 
+### Requirement: The height the human gave leaves the footer whole
+
+The height set by the edge SHALL be the whole card's, but its footer SHALL never give way to it:
+a height lower than the card's tabs and footer SHALL show them whole, with no title or context.
+
+#### Scenario: Lower than the footer
+- **WHEN** the human gives the card a height lower than its tabs and footer
+- **THEN** the tabs and the footer show whole, with no title or context
+
 ## MODIFIED Requirements
 
 ### Requirement: An agent's tab lists its questions with their choices, Other… and Skip
@@ -228,12 +237,10 @@ optional comment, and each of the three SHALL exclude the other two.
 ### Requirement: The card keeps the chat in view and expands within its page
 
 The card SHALL be as high as its content. Its title and context together SHALL be at most
-40 % of the chat's height unless the human set another height (requirement "The human can
-resize the card in the chat"); its footer SHALL not count in that limit and SHALL not be cut
-by it. Its context SHALL scroll inside it while its tabs and its footer stay in view. Where
-the chat has no height of its own (a window of 900 px or less outside the phone layout) the
-limit SHALL be 40 % of the window's height. In the phone layout held sideways (capability phone-layout) the team
-row SHALL not be shown, expanded or not.
+40 % of the chat's height unless the human set another height; its footer SHALL not count in
+that limit and SHALL not be cut by it. Its context SHALL scroll inside it while its tabs and its
+footer stay in view. Where the chat has no height of its own (a window of 900 px or less outside
+the phone layout) the limit SHALL be 40 % of the window's height.
 
 #### Scenario: Long questions
 - **WHEN** the supervisor's tab holds three questions whose text is longer than half the
@@ -278,9 +285,7 @@ In a session's chat, in a window wider than 900 px, the edge between the feed an
 waiting card SHALL be a splitter: dragging it, or ↑ / ↓ on it when focused, SHALL set the
 card's height between its least height and the chat's height less the feed's least height
 (160 px), and a double click SHALL give the card back the height of its content. Dragging the edge
-down past the card's least height SHALL minimize the card. The height set SHALL be the whole
-card's, but its footer SHALL never give way to it: a height lower than the card's tabs and
-footer shows them whole, with no title or context.
+down past the card's least height SHALL minimize the card.
 
 #### Scenario: Back to the default
 - **WHEN** the human double-clicks the edge
@@ -345,13 +350,12 @@ tab of several questions) brings the context along by as much as it grows past i
 
 ### Requirement: A ring around an item of the card shows whole
 
-The waiting card SHALL show the ring drawn around one of its items whole, on all four
-sides: the focus ring of a gate's comment for the next step, of an own answer and of a
-Skip's comment, and the ring of a question the human came to from the feed. Neither the
-card's context, its choices' area nor the panel around them SHALL cut a ring at rest, while
-the human types, or after the context scrolled a field into view. The room for a ring SHALL
-move nothing: the title, the context and the footer's items SHALL start at the panel's
-padding.
+The waiting card SHALL show the ring around one of its items whole, on all four sides: the
+focus ring of a gate's comment, of an own answer and of a Skip's comment, and the ring of a
+question reached from the feed. Neither the context, the choices' area nor the panel SHALL cut a
+ring at rest, while the human types, or after the context scrolled a field into view. The room
+for a ring SHALL move nothing: the title, the context and the footer's items SHALL start at the
+panel's padding.
 
 #### Scenario: A gate's comment with the focus
 - **WHEN** the human clicks into the comment field on a gate's tab

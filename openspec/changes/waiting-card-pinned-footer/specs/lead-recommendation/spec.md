@@ -1,18 +1,40 @@
+## ADDED Requirements
+
+### Requirement: The waiting card's recommendation is one line
+
+In the waiting card (the chat's and Needs you's) the recommendation SHALL be one line above the
+answer, the avatar of 20 px then "**Supervisor recommends <option>:** <text>", or
+"**Supervisor's recommendation:** <text>" without an option of the card's, cut with "…" (on a
+phone 2 lines); " · disagrees with <agent>" in orange SHALL stand right after the option, so a cut
+never takes it.
+
+#### Scenario: A cut line that disagrees
+- **WHEN** a long recommendation of Reject that disagrees with reviewer waits in the card
+- **THEN** the line shows "Supervisor recommends Reject · disagrees with reviewer:" whole, and
+  its text is cut with "…"
+
+### Requirement: The waiting card's line opens to its text
+
+The line's tooltip SHALL hold the recommendation's whole text and time, and a click SHALL open it
+to 3 lines of Markdown that scroll inside; in the expanded card it SHALL show whole.
+
+#### Scenario: Opened by a click
+- **WHEN** the human clicks the line of a long recommendation
+- **THEN** its text shows as Markdown in 3 lines that scroll inside
+
+#### Scenario: The expanded card
+- **WHEN** the human expands the card in the chat
+- **THEN** the recommendation shows whole
+
 ## MODIFIED Requirements
 
 ### Requirement: The card shows the recommendation as part of the gate or question
 
-The web UI SHALL show an open gate's or question's recommendation inside its card. On a run's
-page in Flows it SHALL be a block between the question's text and the answer: under the
-supervisor's small avatar and "Supervisor's recommendation", with its time, and "disagrees
-with <agent>" in orange when the lead disagrees, the whole text as Markdown. In the waiting
-card (the chat's and Needs you's) it SHALL be one line above the answer, the avatar of 20 px
-then "**Supervisor recommends <option>:** <text>", or "**Supervisor's recommendation:**
-<text>" without an option of the card's, cut with "…" (on a phone 2 lines); " · disagrees with
-<agent>" in orange SHALL stand right after the option, so a cut never takes it. Its whole text
-and time SHALL be in its tooltip, and a click SHALL open it to 3 lines of Markdown that scroll
-inside; in the expanded card it SHALL show whole. The human SHALL be able to answer in every
-state.
+The web UI SHALL show an open gate's or question's recommendation inside its card, and the
+human SHALL be able to answer in every state. On a run's page in Flows it SHALL be a block
+between the question's text and the answer: under the supervisor's small avatar and "Supervisor's
+recommendation", with its time, and "disagrees with <agent>" in orange when the lead disagrees,
+the whole text as Markdown.
 
 #### Scenario: A recommendation that disagrees
 - **WHEN** gate #7's note says "ready to merge" and the lead recommends `reject` with

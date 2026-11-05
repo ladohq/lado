@@ -36,7 +36,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-session-star
 
 ## 5. UI
 
-- [ ] 5.1 `ModelPicker` in the window, `Launch.tsx`, new tab, "agent CLI" (D15, D17). Check:
+- [x] 5.1 `ModelPicker` in the window, `Launch.tsx`, new tab, "agent CLI" (D15, D17). Check:
   `web/src/ModelPicker.test.tsx`, `web/src/Launch.test.tsx`, `make web`.
 - [ ] 5.2 The agent's page (D13). Check: `web/src/Agents.test.tsx`.
 - [ ] 5.3 Settings' words, `lado doctor` (D18). Check: `web/src/ModelSettings.test.tsx`,

@@ -714,7 +714,7 @@ test("Other name: Enter is Use, and off while refused", async () => {
   fireEvent.click(await screen.findByRole("option", { name: /Other name…/ }));
   const name = within(opencode).getByRole("textbox", { name: "Other name" });
   fireEvent.change(name, { target: { value: "a/typed" } });
-  fireEvent.submit(name.closest("form") as HTMLFormElement);
+  fireEvent.keyDown(name, { key: "Enter" });
   await waitFor(() => expect(server.of("PUT", "/api/model-defaults/opencode")).toHaveLength(1));
   expect(server.of("PUT", "/api/model-defaults/opencode")[0].body).toEqual({ typed: "a/typed" });
 });

@@ -335,18 +335,6 @@ export const getProviders = (project: string | null = null) =>
 
 export type ProviderModels = components["schemas"]["ProviderModels"];
 
-// The provider's CLI's aliases and own list of models, and the check of `model` against
-// them (lado.model_check), read for the agents of `project` (or of none).
-// `fresh`: read now, not the list the server kept (Settings → Models opening a CLI's source).
-export const getProviderModels = (name: string, model: string, project: string | null = null, fresh = false) =>
-  get<ProviderModels>(
-    `/api/providers/${encodeURIComponent(name)}/models?${query({
-      model,
-      ...(project ? { project } : {}),
-      ...(fresh ? { fresh: "true" } : {}),
-    })}`,
-  );
-
 // Settings → Models (docs/design/ui.md): the configured models and model servers, read
 // anew, no feed. A refusal is a 400 whose `detail` is an EntryRefused.
 export type ModelSettings = components["schemas"]["ModelSettings"];
@@ -423,6 +411,13 @@ export const setModelDefault = (cli: string, given: ModelDefaultSet) =>
 // The check `lado model default` would make of a typed name, saving nothing.
 export const checkModelDefault = (cli: string, name: string) =>
   post<ModelCheck>(`${modelDefaultPath(cli)}/check`, { name });
+
+// The check a start would make of a model for a session, saving nothing; a start refused for its
+// model is a 409 whose `detail` is a ModelRefusal.
+export type SessionModelCheck = components["schemas"]["SessionModelCheck"];
+export type ModelRefusal = components["schemas"]["ModelRefusal"];
+export const checkSessionModel = (cli: string, model: string, project: string | null) =>
+  post<SessionModelCheck>("/api/session-model/check", { cli, model, project });
 
 export const clearModelDefault = (cli: string) => post<ModelSettings>(modelDefaultPath(cli), undefined, "DELETE");
 

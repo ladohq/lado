@@ -696,7 +696,7 @@ function CliCard({
 
 // `Other name…`'s field: the check `lado model default` would make once the typing settles,
 // and Use, off while refused; the warning of a name set so then stands on the card.
-function OtherName({
+export function OtherName({
   cli,
   start,
   onUse,
@@ -726,14 +726,12 @@ function OtherName({
   const note = check?.of === name ? check.note : null;
   const shown = note !== null && note.kind !== "default";
   const refused = note?.kind === "refused";
+  const use = () => {
+    if (name && !refused) void onUse(name);
+  };
+  // No <form>: the launch window's own form holds it there.
   return (
-    <form
-      className="mc-other"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (name && !refused) void onUse(name);
-      }}
-    >
+    <div className="mc-other">
       <label className="mc-other-l" htmlFor={id}>
         Other name
       </label>
@@ -752,10 +750,13 @@ function OtherName({
             if (event.key === "Escape") {
               event.preventDefault();
               onCancel();
+            } else if (event.key === "Enter") {
+              event.preventDefault();
+              use();
             }
           }}
         />
-        <button type="submit" className="quiet" disabled={!name || refused}>
+        <button type="button" className="quiet" disabled={!name || refused} onClick={use}>
           Use
         </button>
         <button type="button" className="quiet" onClick={onCancel}>
@@ -771,7 +772,7 @@ function OtherName({
           {note.kind === "warn" ? `⚠ ${note.text}` : note.text}
         </span>
       )}
-    </form>
+    </div>
   );
 }
 

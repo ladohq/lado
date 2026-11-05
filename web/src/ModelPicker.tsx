@@ -99,6 +99,7 @@ type Row = {
   server?: string;
   down?: boolean;
   mark?: string | null;
+  isDefault?: boolean;
 };
 
 type Place = { top?: number; bottom?: number; left: number; width: number; maxHeight: number };
@@ -130,6 +131,10 @@ export function ModelPicker({
   off,
   lost,
   health,
+  fieldId,
+  invalid = false,
+  fieldMark = null,
+  defaultModel = null,
   describedBy,
   fieldRef,
   onOpen,
@@ -138,12 +143,16 @@ export function ModelPicker({
 }: {
   cli: { name: string; title: string };
   value: CliDefault | null;
-  where: "settings";
+  where: "settings" | "launch";
   own: ConfiguredModelInfo[]; // the CLI's configured models as the page has them, by name
   list: ModelRead;
   off: boolean; // shows its value and does not open
   lost: boolean; // the list lacks the built-in value
   health: Record<string, Health>; // by server, its name folded
+  fieldId?: string; // a label of the owner's names the field (`where` launch)
+  invalid?: boolean; // the value is refused
+  fieldMark?: string | null; // why the value stands out, in the field
+  defaultModel?: CliDefault | null; // marked `default` (`where` launch)
   describedBy?: string;
   fieldRef?: RefObject<HTMLButtonElement | null>; // the owner hands the focus back to the field
   onOpen: () => void;
@@ -203,6 +212,7 @@ export function ModelPicker({
         server: m.server,
         down: state !== undefined && "down" in state,
         mark: serverWords(state, m.model),
+        isDefault: defaultModel?.external === m.id,
       };
     });
   const builtin = (model: string, mark: string | null): Row => ({
@@ -213,6 +223,7 @@ export function ModelPicker({
     title: model,
     mono: true,
     mark,
+    isDefault: defaultModel?.builtin === model,
   });
   const builtins: Row[] = [
     ...(extra !== null && holds(extra) ? [builtin(extra, extraMark)] : []),
@@ -407,6 +418,7 @@ export function ModelPicker({
           <span className={row.mono ? "mp-title mono" : "mp-title"}>{row.title}</span>
           {row.id && <span className={row.server ? "mp-sub mono" : "mp-sub"}>{row.id}</span>}
         </span>
+        {row.isDefault && <span className="mc-default">default</span>}
         {row.mark && <span className="mx-gone">{row.mark}</span>}
         {row.server && <Server name={row.server} down={row.down ?? false} />}
       </div>
@@ -443,19 +455,28 @@ export function ModelPicker({
     .join(" · ");
 
   const state = value?.server ? health[fold(value.server)] : undefined;
+  const launching = where === "launch";
+  const valueIsDefault =
+    launching &&
+    value !== null &&
+    defaultModel !== null &&
+    value.external === defaultModel.external &&
+    value.builtin === defaultModel.builtin;
   return (
     <div className="mp-box" ref={root} data-where={where}>
       <button
         ref={field}
+        id={fieldId}
         type="button"
         className="model-pick"
         role="combobox"
-        aria-label={`Default model of ${cli.title}`}
+        aria-label={launching ? undefined : `Default model of ${cli.title}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
         aria-activedescendant={open && !searching ? `${id}-${active}` : undefined}
         aria-describedby={describedBy}
+        aria-invalid={launching ? invalid : undefined}
         disabled={off}
         title={value ? [value.name, value.model, value.server].filter(Boolean).join(" · ") : undefined}
         onClick={() => (open ? close(true) : opening())}
@@ -471,7 +492,9 @@ export function ModelPicker({
             </>
           )}
         </span>
+        {valueIsDefault && <span className="mc-default">default</span>}
         {lost && <span className="mx-gone">⚠ no longer listed</span>}
+        {fieldMark && <span className="mx-gone">{fieldMark}</span>}
         {value?.server && <Server name={value.server} down={state !== undefined && "down" in state} />}
         <span className="mp-arrow" aria-hidden="true">
           <ChevronIcon />
@@ -535,7 +558,17 @@ export function ModelPicker({
           )}
           {!list.reading && (
             <div className="mp-foot">
-              <span role="status">{typed ? `${shownModels} of ${total}` : count}</span>
+              {launching && !typed ? (
+                <span>
+                  The default comes from{" "}
+                  <a href="/settings#models" target="_blank" rel="noopener">
+                    Settings → Models
+                  </a>
+                  .
+                </span>
+              ) : (
+                <span role="status">{typed ? `${shownModels} of ${total}` : count}</span>
+              )}
               {choices?.read_again && (
                 <button
                   type="button"

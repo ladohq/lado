@@ -1995,6 +1995,16 @@ test("while Other… is open the composer folds into a line, its text kept; the 
   expect((within(card).getByRole("textbox", { name: "Your own answer" }) as HTMLTextAreaElement).value).toBe("keep the worker");
 });
 
+test("a file dropped on the chat while the composer is folded goes nowhere, and the browser opens none", async () => {
+  serve([question(5)]);
+  open();
+  fireEvent.click(within(await waitingCard()).getByRole("button", { name: "Other…" }));
+  await waitFor(() => expect(composerForm().hidden).toBe(true));
+  const dragged = { dataTransfer: { types: ["Files"], files: [new File(["x"], "x.txt")] } };
+  expect(fireEvent.drop(await chat(), dragged)).toBe(false); // its default prevented
+  expect(document.querySelector(".composer .file-chip")).toBeNull();
+});
+
 test("a quote brings the composer back with the quote and the focus", async () => {
   serve([question(5)]);
   open();

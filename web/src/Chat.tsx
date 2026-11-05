@@ -32,7 +32,7 @@ import { messageAnchor, Question, replyOf, type Reply } from "./Question";
 import { quoteArea } from "./quote";
 import { useMedia, usePhone } from "./phone";
 import { useHeight } from "./Splitter";
-import { agentTab, gateTab, NARROW, WaitingCard, type Fold, type Focus } from "./WaitingCard";
+import { agentTab, gateTab, NARROW, stopFiles, WaitingCard, type Fold, type Focus } from "./WaitingCard";
 
 // The run events the feed shows as lines, and the word each kind's line says: the one list.
 // A flow event's line shows its move instead (a gate's answer is the human's move, so
@@ -198,7 +198,9 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   // The chat's height, where it has one of its own: a narrow window scrolls as a page, the
   // phone layout does not (the waiting card's limit).
   const [chatMeasured, chatHeight] = useHeight<HTMLElement>();
-  const ownHeight = !useMedia(NARROW) || usePhone() !== null;
+  const narrow = useMedia(NARROW);
+  const phone = usePhone();
+  const ownHeight = !narrow || phone !== null;
   // What the waiting card's open field has folded the composer into; the link back gives the
   // composer the focus once it shows.
   const [fold, setFold] = useState<Fold | null>(null);
@@ -322,7 +324,14 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   }, [ready, hash, waitsLoaded]);
 
   return (
-    <section ref={chatMeasured} className="chat" aria-label="Chat">
+    <section
+      ref={chatMeasured}
+      className="chat"
+      aria-label="Chat"
+      // A folded composer takes no files; dropped on the chat, nowhere: the browser opens none.
+      onDragOver={fold ? stopFiles : undefined}
+      onDrop={fold ? stopFiles : undefined}
+    >
       <div className="chat-feed" role="log" aria-label="Chat with the session" tabIndex={-1} ref={feedRef} onScroll={scrolled}>
         {loaded === null && <p className="muted">Loading…</p>}
         {loaded && "error" in loaded && (

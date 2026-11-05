@@ -6,7 +6,7 @@ import re
 
 import pytest
 from playwright.sync_api import Browser, Locator, Page, expect
-from test_gates import gated_session, waiting_card
+from test_gates import LONG_NOTE, MEASURE_SCROLLERS, gated_session, recommended, waiting_card
 from test_main_screen import log_in, running_session
 
 from lado import runtime
@@ -307,7 +307,8 @@ def test_the_composer_stays_at_the_bottom_with_a_gate_waiting(device, server, re
     assert composer["y"] + composer["height"] <= UPRIGHT[1]
     assert composer["y"] + composer["height"] >= UPRIGHT[1] - 40, composer  # at the bottom
     chat = box(page.get_by_role("region", name="Chat"))
-    assert box(card)["height"] <= chat["height"] / 2 + 1
+    assert box(card.locator(".waiting-top"))["height"] <= chat["height"] * 0.4 + 1
+    within(card.locator(".waiting-foot"), 0, UPRIGHT[1])
     assert page.locator(".chat-feed").evaluate("f => getComputedStyle(f).overflowY") == "auto"
     expect(page.locator(".composer-keys")).to_be_hidden()
     expect(page.locator(".composer-to")).to_have_text("to supervisor")
@@ -385,8 +386,8 @@ def test_the_composer_and_the_send_button_are_in_sight(device, server, repo, sho
 
 def test_the_app_shrinks_to_the_visible_part_and_grows_back(device, server, repo, shot):
     """AC-2: with the visible part 300 px lower than the window (the keyboard), the app ends
-    at its bottom, the top bar stays at its top, the composer and Send within it, the card at
-    most half the chat; when it grows back, the app does too."""
+    at its bottom, the top bar stays at its top, the composer and Send within it, the card's
+    title and context at most 40 % of the chat; when it grows back, the app does too."""
     session = question_session(repo)
     phone = device(UPRIGHT)
     phone.add_init_script(FAKE_VIEWPORT)
@@ -403,7 +404,8 @@ def test_the_app_shrinks_to_the_visible_part_and_grows_back(device, server, repo
     assert abs(box(top_bar(page))["y"]) <= 1
     within(page.locator(".chat > .composer"), 0, shrunk)
     within(send, 0, shrunk)
-    assert box(card)["height"] <= box(page.get_by_role("region", name="Chat"))["height"] / 2 + 1
+    chat = box(page.get_by_role("region", name="Chat"))["height"]
+    assert box(card.locator(".waiting-top"))["height"] <= chat * 0.4 + 1
     assert page.evaluate("document.documentElement.style.getPropertyValue('--phone-height')") == (
         f"{shrunk}px"
     )
@@ -431,10 +433,11 @@ def test_the_app_follows_safaris_pan(device, server, repo, shot):
     shot(page, full_page=False)
 
 
-# A field of the card above the keyboard (LAD-126): the keyboard leaves 400 px of 874 visible.
+# A field of the card above the keyboard: the keyboard leaves 440 px of 874 visible (frame
+# g3-390-kbd); an imitation, a real keyboard stays to be checked on a device.
 
 KEYBOARD = (402, 874)
-ABOVE_KEYBOARD = 400
+ABOVE_KEYBOARD = 440
 
 
 def session_around_card_hidden(page: Page, hidden: bool) -> None:
@@ -446,49 +449,59 @@ def session_around_card_hidden(page: Page, hidden: bool) -> None:
         (expect(part).to_be_hidden if hidden else expect(part).to_be_visible)()
 
 
-def test_a_gates_comment_expands_the_card_above_the_keyboard(device, server, repo, shot):
-    """AC-1, AC-3: a tap on the gate's comment expands the card, the field focused; with the
-    keyboard's 400 px the field and Approve / Reject are in sight, the session's tabs and the
-    Team row hidden; the keyboard closed, the card stays expanded until Collapse."""
+def typing_around_card(page: Page, card, typing: bool) -> None:
+    """A field in focus hides the Team row and the context; the session's tabs stay."""
+    expect(page.get_by_role("navigation", name="Session sections")).to_be_visible()
+    team = page.get_by_role("group", name="Team")
+    (expect(team).to_be_hidden if typing else expect(team).to_be_visible)()
+    context = card.get_by_role("region", name="Context of the card")
+    (expect(context).to_be_hidden if typing else expect(context).to_be_visible)()
+
+
+@pytest.mark.parametrize("visible", [ABOVE_KEYBOARD, 380])
+def test_a_gates_comment_stays_above_the_keyboard_and_folds_what_is_around(
+    device, server, repo, shot, visible
+):
+    """A tap on the gate's comment does not expand the card: the context and the Team row go,
+    the composer folds into a line, and the field and Approve / Reject stay in sight; the
+    keyboard closed, it all comes back, the comment kept."""
     session = gated_session(repo)
     phone = device(KEYBOARD)
     phone.add_init_script(FAKE_VIEWPORT)
     page = opened(phone, server, f"/sessions/{session}")
     card = waiting_card(page, session)
     comment = card.get_by_role("textbox", name="Comment for the next step (optional)")
-    session_around_card_hidden(page, False)
+    typing_around_card(page, card, False)
     comment.tap()
-    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
     expect(comment).to_be_focused()
-    page.evaluate(f"window.moveViewport({ABOVE_KEYBOARD}, 0)")
-    expect(page.locator(".app")).to_have_css("height", f"{ABOVE_KEYBOARD}px")
-    session_around_card_hidden(page, True)
-    expect(comment).to_be_focused()
+    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
+    page.evaluate(f"window.moveViewport({visible}, 0)")
+    expect(page.locator(".app")).to_have_css("height", f"{visible}px")
+    typing_around_card(page, card, True)
+    line = page.locator(".composer-fold")
+    expect(line).to_have_text("Commenting on gate #1 above")
     comment.fill("check the migration")
     for part in (
         comment,
         card.get_by_role("button", name="Approve"),
         card.get_by_role("button", name="Reject"),
+        line,
     ):
-        within(part, 0, ABOVE_KEYBOARD)
+        within(part, 0, visible)
     shot(page, "keyboard", full_page=False)
 
     page.evaluate(f"window.moveViewport({KEYBOARD[1]}, 0)")  # the keyboard closes
     expect(page.locator(".app")).to_have_css("height", f"{KEYBOARD[1]}px")
     comment.blur()
-    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    typing_around_card(page, card, False)
+    expect(page.get_by_role("textbox", name="Write to the supervisor…")).to_be_visible()
     expect(comment).to_have_value("check the migration")
     shot(page, "closed", full_page=False)
-    card.get_by_role("button", name="Collapse the card").tap()
-    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
-    session_around_card_hidden(page, False)
-    expect(page.get_by_role("textbox", name="Write to the supervisor…")).to_be_visible()
-    assert box(card)["y"] + box(card)["height"] <= box(page.locator(".chat > .composer"))["y"] + 1
 
 
-def test_an_own_answer_expands_the_card_above_the_keyboard(device, server, repo, shot):
-    """AC-2: a tap on Other… expands the card with its field focused; the field and Send
-    are in sight with the keyboard's 400 px."""
+def test_an_own_answer_stays_above_the_keyboard(device, server, repo, shot):
+    """A tap on Other… focuses its field; the field, Send and the composer's line are in sight
+    with the keyboard's 440 px, the card not expanded."""
     session = question_session(repo)
     phone = device(KEYBOARD)
     phone.add_init_script(FAKE_VIEWPORT)
@@ -496,14 +509,119 @@ def test_an_own_answer_expands_the_card_above_the_keyboard(device, server, repo,
     card, send = question_tab(page, session)
     card.get_by_role("button", name="Other…").tap()
     own = card.get_by_role("textbox", name="Your own answer")
-    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
     expect(own).to_be_focused()
+    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
     page.evaluate(f"window.moveViewport({ABOVE_KEYBOARD}, 0)")
     expect(page.locator(".app")).to_have_css("height", f"{ABOVE_KEYBOARD}px")
-    session_around_card_hidden(page, True)
+    typing_around_card(page, card, True)
+    line = page.locator(".composer-fold")
+    expect(line).to_contain_text("Answering question #")
     within(own, 0, ABOVE_KEYBOARD)
     within(send, 0, ABOVE_KEYBOARD)
+    within(line, 0, ABOVE_KEYBOARD)
     shot(page, full_page=False)
+
+
+def test_a_tap_on_approve_with_the_field_in_focus_answers_the_gate(device, server, repo):
+    """The field losing the focus to the tap brings the context back: the tap still lands."""
+    session = gated_session(repo)
+    phone = device(KEYBOARD)
+    phone.add_init_script(FAKE_VIEWPORT)
+    page = opened(phone, server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("textbox", name="Comment for the next step (optional)").tap()
+    page.evaluate(f"window.moveViewport({ABOVE_KEYBOARD}, 0)")
+    expect(page.locator(".composer-fold")).to_be_visible()
+    card.get_by_role("button", name="Approve").tap()
+    expect(card).to_have_count(0)
+
+
+def test_a_long_note_scrolls_in_the_context_and_the_footer_stays_on_a_phone(
+    device, server, repo, shot
+):
+    """F14 at 390: the recommendation, the comment field and the buttons are in sight, the
+    composer under them, and only the context scrolls."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, "Approve: the plan holds.", choice="approve")
+    page = opened(device(UPRIGHT), server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    panel = card.get_by_role("tabpanel")
+    expect(panel.get_by_role("region", name="Supervisor's recommendation")).to_contain_text(
+        "Supervisor recommends Approve:"
+    )
+    for part in (
+        panel.get_by_role("region", name="Supervisor's recommendation"),
+        panel.get_by_role("textbox", name="Comment for the next step (optional)"),
+        panel.get_by_role("button", name="Approve", exact=True),
+        panel.get_by_role("button", name="Reject", exact=True),
+    ):
+        within(part, 0, UPRIGHT[1])
+    assert panel.evaluate(MEASURE_SCROLLERS) == {"context": True, "panel": 0, "foot": False}
+    shot(page, full_page=False)
+
+
+def test_a_long_recommendation_opens_to_three_lines_that_scroll(device, server, repo, shot):
+    """Cut on 2 lines; a tap opens it to 3 lines, and the rest scrolls inside them."""
+    session = gated_session(repo)
+    recommended(session, "A reason to approve. " * 40, choice="approve")
+    page = opened(device(UPRIGHT), server, f"/sessions/{session}")
+    block = waiting_card(page, session).get_by_role("region", name="Supervisor's recommendation")
+    line = block.get_by_role("button")
+    expect(line).to_be_visible()
+    assert box(line)["height"] <= 2 * 21 + 1
+    shot(page, "cut", full_page=False)
+    line.tap()
+    body = block.locator(".rec-bar-body")
+    expect(body).to_be_visible()
+    assert body.evaluate("b => b.clientHeight <= 3 * parseFloat(getComputedStyle(b).lineHeight) + 1")
+    assert body.evaluate("b => b.scrollHeight > b.clientHeight")
+    shot(page, "opened", full_page=False)
+
+
+def test_a_field_in_the_context_of_several_questions_keeps_it(device, server, repo, shot):
+    """A tab of several questions has its fields in the context: a field's focus hides the
+    Team row, never the context it stands in."""
+    session = gated_session(repo)
+    for n in range(2):
+        runtime.ask_human(session, "supervisor", f"Question {n}?", None, ["yes", "no"])
+    page = opened(device(KEYBOARD), server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("tab", name="supervisor 2").tap()
+    card.get_by_role("button", name="Other…").first.tap()
+    own = card.get_by_role("textbox", name="Your own answer")
+    expect(own).to_be_focused()
+    expect(card.get_by_role("region", name="Context of the card")).to_be_visible()
+    expect(page.get_by_role("group", name="Team")).to_be_hidden()
+
+
+def test_the_cards_targets_are_44_px_on_a_phone(device, server, repo, shot):
+    """A question's tab, a choice, Send answer, Skip question, Minimize and Expand, a gate's
+    field and buttons; the choices' area stops at 148 px."""
+    session = gated_session(repo)
+    choices = [f"Choice {n}: what it does twice" for n in range(6)]
+    runtime.ask_human(session, "supervisor", "Which one?", None, choices)
+    page = opened(device(UPRIGHT), server, f"/sessions/{session}")
+    card, send = question_tab(page, session)
+    for part in (
+        card.get_by_role("tab", name="supervisor 1"),
+        card.get_by_role("button", name=choices[0]),
+        send,
+        card.get_by_role("button", name="Skip question"),
+        card.get_by_role("button", name="Minimize the card"),
+        card.get_by_role("button", name="Expand the card"),
+    ):
+        assert round(box(part)["height"]) == 44, part
+    area = card.get_by_role("group", name="Choices")
+    assert box(area)["height"] <= 149
+    shot(page, "question", full_page=False)
+    card.get_by_role("tab", name="ship/x 1").tap()
+    field = card.get_by_role("textbox", name="Comment for the next step (optional)")
+    frame = card.locator(".answer-box")
+    expect(field).to_be_visible()
+    assert round(box(frame)["height"]) == 44
+    for name in ("Approve", "Reject"):
+        assert round(box(card.get_by_role("button", name=name))["height"]) == 44
+    shot(page, "gate", full_page=False)
 
 
 def test_expanded_by_its_button_on_a_phone_the_card_hides_the_tabs_and_the_team(
@@ -522,8 +640,8 @@ def test_expanded_by_its_button_on_a_phone_the_card_hides_the_tabs_and_the_team(
     session_around_card_hidden(page, False)
 
 
-def test_with_a_mouse_a_gates_comment_does_not_expand_the_card(device, server, repo):
-    """AC-4: in a window as narrow as a phone with a mouse a field's focus expands nothing."""
+def test_with_a_mouse_a_gates_comment_changes_nothing(device, server, repo):
+    """In a window as narrow as a phone with a mouse a field's focus changes nothing."""
     session = gated_session(repo)
     page = opened(device(KEYBOARD, touch=False), server, f"/sessions/{session}")
     card = waiting_card(page, session)
@@ -531,6 +649,8 @@ def test_with_a_mouse_a_gates_comment_does_not_expand_the_card(device, server, r
     comment.click()
     expect(comment).to_be_focused()
     expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
+    expect(page.get_by_role("textbox", name="Write to the supervisor…")).to_be_visible()
+    expect(card.get_by_role("region", name="Context of the card")).to_be_visible()
 
 
 def test_a_flow_events_text_wraps_whole(device, server, repo, shot):

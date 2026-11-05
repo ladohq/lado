@@ -112,7 +112,7 @@ const questionFiles = (id: number) => `question:${id}`;
 const gateFiles = (id: number) => `gate:${id}`;
 const fieldOf = (pick: Pick | undefined) => pick !== undefined && !("choice" in pick);
 
-const stopFiles = (event: DragEvent) => {
+export const stopFiles = (event: DragEvent) => {
   if (Array.from(event.dataTransfer?.types ?? []).includes("Files")) event.preventDefault();
 };
 
@@ -572,6 +572,11 @@ export function WaitingCard({
           }}
           onBlur={(event) => {
             if (!(event.relatedTarget as Element | null)?.matches(FIELD)) setTyping(false);
+          }}
+          // A button pressed keeps the focus in the field: the context and the composer coming
+          // back under the finger would move the button away before its click.
+          onMouseDown={(event) => {
+            if (typing && (event.target as Element).closest("button")) event.preventDefault();
           }}
         >
           {"gate" in shown ? (

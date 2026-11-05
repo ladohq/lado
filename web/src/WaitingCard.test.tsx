@@ -975,6 +975,15 @@ test("on a phone in the chat a field in focus keeps the card unexpanded and mark
   expect(fold).toHaveBeenLastCalledWith(null);
 });
 
+test("on a phone a button pressed keeps the focus in the field, so nothing moves under the finger", () => {
+  FakeScreen.phone();
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+  act(() => commentField().focus());
+  const approve = within(card()).getByRole("button", { name: "Approve" });
+  expect(fireEvent.mouseDown(approve)).toBe(false); // its default, the focus, prevented
+  expect(fireEvent.mouseDown(commentField())).toBe(true);
+});
+
 test("on a phone Other… keeps the card unexpanded, the own answer focused", () => {
   FakeScreen.phone();
   const fold = vi.fn();

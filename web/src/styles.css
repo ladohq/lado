@@ -4752,6 +4752,13 @@ button.rec-bar-line {
   min-height: 0;
 }
 
+/* A placeholder wider than the field stays on its line: it would count as text in the height. */
+.waiting-foot .waiting-field::placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .waiting-foot .waiting-field {
   max-height: 100%;
   overflow-y: auto !important; /* over fieldHeight.ts's hidden: the room can be less than its text */
@@ -4828,13 +4835,14 @@ button.rec-bar-line {
 }
 
 .waiting-option {
-  height: 32px;
-  padding: 0 14px;
+  min-height: 32px;
+  padding: 4px 14px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--panel);
   color: var(--ink);
   font-size: 14px;
+  text-align: left;
 }
 
 .waiting-option.on {
@@ -5309,6 +5317,11 @@ button.rec-bar-line {
   flex: none;
   width: 16px;
   height: 16px;
+}
+
+.composer-fold .link-button {
+  margin: 0;
+  font-size: 14px;
 }
 
 .composer[hidden] {
@@ -10002,8 +10015,11 @@ button.quiet.danger-text {
   --waiting-field-h: 44px;
 }
 
+:root[data-phone] .waiting-option {
+  min-height: 44px;
+}
+
 :root[data-phone] .waiting-tab,
-:root[data-phone] .waiting-option,
 :root[data-phone] .waiting-send .primary,
 :root[data-phone] .waiting-send .quiet,
 :root[data-phone] .waiting-skip {

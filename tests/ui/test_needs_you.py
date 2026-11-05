@@ -10,7 +10,7 @@ import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
 from test_chat import asked_with_a_plan, on_top
-from test_gates import gated_session
+from test_gates import LONG_NOTE, gated_session
 from test_main_screen import log_in, running_session
 
 from lado import runtime, state
@@ -75,6 +75,29 @@ def test_cards_taller_than_the_window_leave_the_page_at_its_top(page: Page, serv
     page.wait_for_timeout(300)  # the cards' effects ran
     assert content.evaluate("e => e.scrollTop") == 0
     shot(page, "top")
+
+
+@pytest.mark.parametrize("width", [1280, 800])
+def test_a_long_note_on_needs_you_keeps_to_the_limit_and_the_footer_follows(
+    page: Page, server, repo, shot, width
+):
+    """Where the chat has no height of its own the limit is 40 % of the window, in a chat on a
+    window of 900 px or less too; the footer comes right under the top."""
+    session = gated_session(repo, LONG_NOTE)
+    page.set_viewport_size({"width": width, "height": 900})
+    log_in(page, server)
+    for path in ("/needs-you", f"/sessions/{session}"):
+        if path != "/needs-you" and width > 900:
+            continue
+        page.goto(f"{server['url']}{path}")
+        card = page.get_by_role("region", name=f"What waits for you in {session}")
+        top = card.locator(".waiting-top")
+        expect(top).to_be_visible()
+        assert top.bounding_box()["height"] <= 360 + 1
+        foot = card.locator(".waiting-foot").bounding_box()
+        assert abs(foot["y"] - top.bounding_box()["y"] - top.bounding_box()["height"]) <= 1
+        expect(card.get_by_role("button", name="Approve", exact=True)).to_be_visible()
+        shot(page, path.strip("/").split("/")[0])
 
 
 def test_a_gate_answered_with_lado_answer_goes_without_a_reload(page: Page, server, repo, shot):

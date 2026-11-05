@@ -83,7 +83,9 @@ line of the error says already.
 `on_server(spec.model)` holds and `@opencode-ai/plugin` is not in OpenCode's config folder (the human's
 word at the gate), skipping a name `spec.environ` has. Measured with outside traffic refused, seconds to
 the first request: a fresh `HOME` 72.1, with the switches 2.3; the package there 2.1, with the switches
-2.1. So once the package is there the switches add nothing, and npm stays as the user has it. OpenCode only: Kilo's first start is
+2.1. So once the package is there the switches add nothing, and npm stays as the user has it. A package
+of another version waits no more (5.0 to 6.5 on a loaded machine, its number changed in the files, no real
+update of the CLI), so its presence is the check, with no `--version` at each start. OpenCode only: Kilo's first start is
 12 s on a closed port with no switch, and its long wait is another (`api.kilo.ai`). They reach what the
 agent runs in its shell too: said in `docs/design/agents.md`. LADO's own plugin imports nothing from
 `@opencode-ai/plugin`, so a failed install costs nothing.

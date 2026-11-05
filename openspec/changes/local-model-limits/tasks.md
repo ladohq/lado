@@ -26,7 +26,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-local-model-
 
 ## 5. The flake
 
-- [ ] 5.1 LAD-210's cause and fix (D11). Check: `web/src/ModelCards.test.tsx` under load, 50 runs.
+- [x] 5.1 LAD-210's cause and fix (D11). Check: `web/src/ModelCards.test.tsx` under load, 50 runs.
 
 ## 6. End to end
 

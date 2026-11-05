@@ -129,6 +129,29 @@ def test_the_default_is_chosen_in_advance_and_the_session_follows_it(
     assert state.get_agent("my-repo", "supervisor").model_source == state.DEFAULT_MODEL
 
 
+def test_a_context_too_small_warns_in_the_field_and_start_stays_on(
+    page: Page, fake_models, server, repo, shot
+):
+    small = fake.Server("gateway-limits")
+    model_settings.add_server(HOME, small.url, None, warn=print, note=print)
+    state.add_model(QWEN, CLI, "small", state.model_server(HOME).id)
+    set_default()
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    dialog = new_window(page, server, repo)
+    open_advanced(dialog)
+    expect(dialog).to_contain_text(
+        f"{QWEN} on {HOME} has a context of 16,000 tokens; {TITLE} needs about 32,768 for its "
+        "instructions and tools: load the model with a larger context"
+    )
+    start = dialog.get_by_role("button", name="Start session")
+    expect(start).to_be_enabled()
+    shot(page, "warning")
+    start.click()
+    expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
+    idle("my-repo")
+    small.close()
+
+
 def test_a_silent_server_turns_start_off_and_names_the_ways_out(
     page: Page, fake_models, home_server, server, repo, shot
 ):

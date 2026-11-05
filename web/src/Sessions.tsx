@@ -151,16 +151,18 @@ export function Sessions() {
     else list.fold();
   };
   const box = useRef<HTMLDivElement>(null);
-  // A press beside the list closes it. The strip's Sessions closes it by its own click, and what
-  // takes the focus by the press keeps it.
+  // A press beside the list closes it, the focus back on Sessions, after the press's own default.
+  // The strip's Sessions closes it by its own click, and what takes the focus by the press keeps
+  // it.
+  const { open: stripOpen } = focus;
   const pressedAway = useCallback(
     (event: MouseEvent) => {
       const target = event.target as Element;
       if (target.closest(".sessions-open")) return;
-      if (!target.closest(TAKES_FOCUS)) focus.toggled();
       list.fold();
+      if (!target.closest(TAKES_FOCUS)) setTimeout(() => stripOpen.current?.focus());
     },
-    [focus, list],
+    [stripOpen, list],
   );
   useDismiss(over, box, pressedAway);
   useEffect(() => {

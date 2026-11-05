@@ -1,10 +1,10 @@
 # phone-layout Specification
 
 ## Purpose
-How the web UI reads on a phone: a touch screen no wider than 600 px or no higher than
-500 px gets a layout of its own (the rail as a menu, a one-line top bar, the session's
+How the web UI reads on a phone: a window no wider than 600 px, or a touch screen no higher
+than 500 px, gets a layout of its own (the rail as a menu, a one-line top bar, the session's
 details in a sheet, a chat whose composer stays at hand, terminals over the screen,
-tooltips on a tap), while a computer with a mouse keeps its layout at any window size.
+tooltips on a tap), while a wider window with a mouse keeps its layout, however low.
 
 ## Requirements
 

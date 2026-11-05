@@ -98,7 +98,9 @@ def keeps_the_computers_frame(page: Page) -> None:
 # A computer and a tablet keep their layout
 
 
-@pytest.mark.parametrize("size", [(1280, 800), (800, 900), UPRIGHT], ids=lambda s: f"{s[0]}x{s[1]}")
+@pytest.mark.parametrize(
+    "size", [(1280, 800), (800, 900), (1280, 400)], ids=lambda s: f"{s[0]}x{s[1]}"
+)
 def test_a_computer_keeps_its_layout(device, server, repo, shot, size):
     session = running_session(repo)
     page = opened(device(size, touch=False), server, f"/sessions/{session}")
@@ -115,15 +117,114 @@ def test_a_computer_keeps_its_layout(device, server, repo, shot, size):
     shot(page)
 
 
-def test_a_tablet_keeps_its_layout(device, server, repo, shot):
+def test_the_phones_title_and_link_are_easy_to_tap(device, server, repo, shot):
+    """Spec §9 and LAD-193: the title's target is the bar's height, the link's 44×33 by the
+    gaps at its sides."""
     session = running_session(repo)
-    page = opened(device((820, 1180)), server, f"/sessions/{session}")
+    page = opened(device(UPRIGHT), server, f"/sessions/{session}")
+    title = top_bar(page).locator("h1 button")
+    expect(title).to_be_visible()
+    assert box(title)["height"] == 44
+    link = top_bar(page).locator(".system-button")
+    target = box(link)
+    assert (target["width"], target["height"]) == (33, 44)
+    page.touchscreen.tap(target["x"] + target["width"] - 1, target["y"] + target["height"] / 2)
+    expect(page.get_by_role("dialog", name="System")).to_be_visible()
+    page.reload()
+    expect(title).to_be_visible()
+    page.touchscreen.tap(box(title)["x"] + 8, box(title)["y"] + 1)
+    expect(page.get_by_role("dialog", name=session)).to_be_visible()
+
+
+def test_the_phones_targets_have_their_sizes(device, server, repo, shot):
+    """Spec §9's table, row by row."""
+    session = gated_session(repo, LONG_NOTE)
+    runtime.ask_human(session, "supervisor", "Which one?", None, ["yes", "no"])
+    page = opened(device(UPRIGHT), server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    panel = card.get_by_role("tabpanel")
+    high = lambda locator: round(box(locator)["height"])  # noqa: E731
+    expect(panel.get_by_role("button", name="Approve", exact=True)).to_be_visible()
+    gate = {
+        "Approve": panel.get_by_role("button", name="Approve", exact=True),
+        "Reject": panel.get_by_role("button", name="Reject", exact=True),
+        "Stop": top_bar(page).get_by_role("button", name=re.compile("^Stop")),
+        "Menu": menu(page),
+        "Minimize": card.get_by_role("button", name="Minimize the card"),
+        "Expand": card.get_by_role("button", name="Expand the card"),
+        "tab": card.get_by_role("tab").first,
+        "comment": panel.locator(".answer-box").first,
+    }
+    assert {name: high(one) for name, one in gate.items()} == dict.fromkeys(gate, 44)
+    for name in ("Stop", "Menu", "Minimize", "Expand"):
+        assert round(box(gate[name])["width"]) == 44, name
+    toggle = box(page.get_by_role("button", name="Messages between agents"))
+    assert (toggle["width"], toggle["height"]) == (36, 36)
+    # As they are: not the main action, past WCAG's 24 px.
+    assert high(page.get_by_role("group", name="Team").get_by_role("button").first) >= 24
+    tabs = page.get_by_role("navigation", name="Session sections")
+    assert high(tabs.get_by_role("link").first) >= 24
+    assert high(card.locator(".waiting-more")) == 24
+    shot(page, "gate", full_page=False)
+
+    card.get_by_role("tab", name="supervisor 1").click()
+    question = {
+        "Send answer": panel.get_by_role("button", name="Send answer to supervisor"),
+        "Skip question": panel.get_by_role("button", name="Skip question"),
+        "choice": panel.get_by_role("button", name="yes", exact=True),
+    }
+    expect(question["Skip question"]).to_be_visible()
+    assert {name: high(one) for name, one in question.items()} == dict.fromkeys(question, 44)
+
+    card.get_by_role("button", name="Minimize the card").tap()
+    send = page.get_by_role("button", name="Send", exact=True)
+    expect(send).to_be_visible()
+    assert high(send) == 44
+
+
+def test_a_narrow_window_with_a_mouse_is_a_phone(device, server, repo, shot):
+    session = running_session(repo)
+    page = opened(device(UPRIGHT, touch=False), server, f"/sessions/{session}")
+    expect(page.get_by_role("region", name=f"Session {session}")).to_be_visible()
+    assert page.evaluate("document.documentElement.dataset.phone") == "tall"
+    expect(page.get_by_role("button", name=MENU)).to_be_visible()
+    expect(top_bar(page).locator("h1")).to_contain_text(session)
+    shot(page, full_page=False)
+
+
+@pytest.mark.parametrize("size", [(768, 1024), (820, 1180), (1024, 768), (1440, 900)], ids=str)
+def test_a_tablet_and_a_touch_laptop_keep_their_layout(device, server, repo, shot, size):
+    session = running_session(repo)
+    page = opened(device(size), server, f"/sessions/{session}")
     expect(page.get_by_role("region", name=f"Session {session}")).to_be_visible()
     assert page.evaluate("document.documentElement.dataset.phone") is None
     expect(rail(page)).to_be_visible()
     expect(page.get_by_role("button", name=MENU)).to_have_count(0)
-    keeps_the_computers_frame(page)
     shot(page, full_page=False)
+
+
+def test_a_tablets_page_is_as_high_as_the_part_of_the_window_it_sees(device, server, repo):
+    """The page stands still, so its height is what brings the composer above the keyboard."""
+    session = running_session(repo)
+    page = opened(device((768, 1024)), server, f"/sessions/{session}")
+    expect(page.get_by_role("textbox", name="Write to the supervisor…")).to_be_visible()
+    assert page.evaluate(
+        "getComputedStyle(document.documentElement).getPropertyValue('--phone-height')"
+    ) == ("1024px")
+    page.evaluate(
+        "document.documentElement.style.setProperty('--phone-height', '600px')"
+    )  # the keyboard opens
+    assert page.locator(".app").bounding_box()["height"] == 600
+    composer = page.get_by_role("textbox", name="Write to the supervisor…").bounding_box()
+    assert composer["y"] + composer["height"] <= 600
+
+
+def test_a_tablet_elsewhere_keeps_the_computers_frame(device, server, repo):
+    session = running_session(repo)
+    page = opened(device((768, 1024)), server, f"/needs-you")
+    expect(page.get_by_role("heading", name="Needs you")).to_be_visible()
+    assert page.locator(".app").evaluate("a => getComputedStyle(a).position") == "static"
+    assert session
 
 
 # The menu
@@ -860,9 +961,9 @@ def test_expanded_by_its_button_on_a_phone_the_card_hides_the_tabs_and_the_team(
 
 
 def test_with_a_mouse_a_gates_comment_changes_nothing(device, server, repo):
-    """In a window as narrow as a phone with a mouse a field's focus changes nothing."""
+    """In a narrow window that is no phone a field's focus changes nothing."""
     session = gated_session(repo)
-    page = opened(device(KEYBOARD, touch=False), server, f"/sessions/{session}")
+    page = opened(device((700, 844), touch=False), server, f"/sessions/{session}")
     card = waiting_card(page, session)
     comment = card.get_by_role("textbox", name="Comment for the next step (optional)")
     comment.click()

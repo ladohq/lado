@@ -13,6 +13,10 @@
   is as high as its content. While you write your own answer, the composer folds into a line.
   On Needs you the card is whole and the page scrolls, with nothing to expand.
 
+- **A session's page fits any window.** The chat never gets narrower than 420 px: the terminals
+  and the list fold by themselves and come back when there is room. A tablet's page stands
+  still with the composer in sight, and a window of 600 px or less gets the phone layout.
+
 ### Fixed
 
 - **A tooltip no longer pops up when you come back to LADO's tab.** A session's card and

@@ -16,6 +16,7 @@ def test_report_a_bug_from_a_session_s_page(page: Page, server, repo, shot):
         raise KeyError(f"{repo}/{session}")
     except KeyError as exc:
         telemetry.record("hook:turn_end", exc, "fake", session=session, agent="supervisor")
+    page.set_viewport_size({"width": 1600, "height": 900})
     page.goto(f"{server['url']}/sessions/{session}?token={server['token']}")
     page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=server["url"])
     github = []

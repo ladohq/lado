@@ -89,6 +89,7 @@ def test_three_chips_and_the_toggle_stand_on_one_line_beside_the_open_terminal(
 ):
     """The chat column narrow, as the terminal panel opens beside it: the agents' three chips
     and the toggle Messages between agents stay on the team's first line (LAD-77, AC-4)."""
+    page.set_viewport_size({"width": 1160, "height": 900})
     session = running_session(repo)
     for name in ("analyst", "developer"):
         runtime.spawn_worker(session, f"Work as {name}", name=name)
@@ -260,27 +261,29 @@ def test_the_list_and_the_panel_are_resized_on_their_edges_and_keep_their_widths
     list_edge = page.get_by_role("separator", name="Resize the session list")
     panel_edge = page.get_by_role("separator", name="Resize the terminals")
     expect(list_edge).to_have_attribute("aria-valuenow", "260")
-    expect(panel_edge).to_have_attribute("aria-valuenow", "480")
+    expect(panel_edge).to_have_attribute("aria-valuenow", "448")
     list_edge.hover()
     assert list_edge.evaluate("e => getComputedStyle(e).cursor") == "col-resize"
     drag(page, list_edge, 60)
+    expect(panel_edge).to_have_attribute("aria-valuenow", "424")  # 40 % of what is left
     drag(page, panel_edge, -50)
     expect(list_edge).to_have_attribute("aria-valuenow", "320")
-    expect(panel_edge).to_have_attribute("aria-valuenow", "530")
+    expect(panel_edge).to_have_attribute("aria-valuenow", "474")
     page.reload()
     panel = page.get_by_role("complementary", name="Terminals")
     expect(panel.locator(".term")).to_have_attribute("data-link", "open")
     assert round(page.locator(".session-list").bounding_box()["width"]) == 320
-    assert round(panel.bounding_box()["width"]) == 530
+    assert round(panel.bounding_box()["width"]) == 474
     shot(page)
 
-    # A narrower window narrows the columns, keeps the session readable, and forgets nothing.
-    page.set_viewport_size({"width": 1100, "height": 900})
-    expect(panel_edge).not_to_have_attribute("aria-valuenow", "530")
-    assert page.locator(".session-main").bounding_box()["width"] >= 360
+    # A narrower window folds the list, narrows the panel, keeps the chat, and forgets nothing.
+    page.set_viewport_size({"width": 950, "height": 900})
+    expect(panel_edge).to_have_attribute("aria-valuenow", "422")
+    expect(list_edge).to_have_count(0)
+    assert page.locator(".session-main").bounding_box()["width"] >= 420
     shot(page, "narrower")
     page.set_viewport_size({"width": 1440, "height": 900})
-    expect(panel_edge).to_have_attribute("aria-valuenow", "530")
+    expect(panel_edge).to_have_attribute("aria-valuenow", "474")
     expect(list_edge).to_have_attribute("aria-valuenow", "320")
 
 
@@ -427,7 +430,7 @@ def test_many_tabs_stay_on_one_line_and_scroll_with_the_supervisors_tab_kept(
     )
 
     panel.get_by_role("button", name="Collapse terminals").click()
-    dots = panel.get_by_role("list", name="Open terminals").get_by_role("listitem")
-    expect(dots).to_have_count(6)
-    expect(dots.first).to_have_attribute("title", "supervisor: idle")
+    buttons = panel.get_by_role("list", name="Agents").get_by_role("button")
+    expect(buttons).to_have_count(6)
+    expect(buttons.first).to_have_accessible_name("Open supervisor's terminal")
     shot(page, "collapsed")

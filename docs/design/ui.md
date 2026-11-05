@@ -415,22 +415,25 @@ Decided in the agent terminal task (2026-10-03).
 - **Tabs** (the human's additions to the UI polish, 2026-10-03): left of its agent's name
   a tab shows the agent's status as the team chip's dot, smaller (`StatusDot`, one
   component, `dot-small`), from the session's agents list, live; an agent not in the list
-  shows as stopped; the tab's accessible name has the status too. The collapsed strip shows
-  a column of these dots under **Terminals**, one per open tab, each titled with the agent
-  and its status. Many tabs stay on one line: a name is cut with an ellipsis down to about
+  shows as stopped; the tab's accessible name has the status too. The collapsed strip, 32 px
+  wide, holds **Show the terminals**, a button of 24×24 per agent of the session (not per
+  open tab; decided in LAD-189's spec, F26), then the caption Terminals: a button has the
+  agent's avatar colour and letter, as in the feed, its status dot of 8 px in its corner, the
+  name `Open <agent>'s terminal`, and opens the panel on that agent; the buttons scroll, the
+  caption stays. Many tabs stay on one line: a name is cut with an ellipsis down to about
   72 px (a shorter name stays whole), then the row scrolls sideways (the wheel too) under a
   thin bar; the supervisor's tab stays at the left (sticky), the tab selected here or by a
   chip scrolls into view, and Expand and Collapse at the right never move. The whole name
   is in the tab's tooltip (below), not in a `title`. The tabs look as every tab of the UI
   (Look, Tabs).
 - **Focus** (2026-10-05, task feature/sessions-list-collapse): after **Collapse
-  terminals** the focus is on the strip's **Terminals**, after Terminals on Collapse
-  terminals, as for the session list's strip (`Splitter.useStripFocus`). Only those buttons
-  move it: a page that opens collapsed, or a chip that opens the panel, leaves it where it
-  is.
+  terminals** the focus is on the strip's **Show the terminals**, after it or an agent's
+  button on Collapse terminals, as for the session list's strip (`Splitter.useStripFocus`).
+  Only those buttons move it: a page that opens collapsed, or a chip that opens the panel,
+  leaves it where it is.
 - **Expand**: the panel's **Expand terminal** shows it over the whole content (the rail
   and the top bar stay; `position: absolute; inset: 0` in the content, so no widths are
-  written twice; on a narrow window over the whole window), with the same terminals and
+  written twice), with the same terminals and
   sockets, the mode kept; **Restore terminal** puts it back, and so does Esc, except in a
   terminal the human controls: there Esc goes to the agent. Not remembered.
 - **Needs tmux 3.2** (`attach -f ignore-size`); `lado doctor` warns before it, and
@@ -447,7 +450,8 @@ Sessions for now. The UI's texts are in English.
   (one page for the kits and their marketplaces: Kits below); Report a bug (a bug icon:
   Report a bug, below) and Settings apart at the bottom. A button collapses it to icons (each with its
   name as tooltip and accessible name; the button has `aria-expanded`). The browser
-  remembers the choice; a window narrower than 900 px starts collapsed. On a phone the rail
+  remembers the choice and it wins; with none the rail follows the window, collapsed below
+  1600 px (LAD-193). On a phone the rail
   is a drawer that Menu opens (Phone layout, below).
 - **Top bar**: the page's title on the left, or on a session's page the session's head
   (Session head, below); on the right the change feed's link (`live`, or `reconnecting…`
@@ -458,8 +462,7 @@ Sessions for now. The UI's texts are in English.
   top bar it fills with a portal; the Shell draws its own title only while no page claims
   the bar. Sticky at the window's top, z-index 10: over the session's splitter and the
   expanded terminals, so what drops from it (the copy notes, the Stop popover) shows over
-  them, and under the narrow window's fixed terminals, the artifact panel and the
-  lightbox. Its content sets its height (at least 52 px).
+  them, and under a phone's fixed terminals, the artifact panel and the lightbox. Its content sets its height (at least 52 px).
 - **Bare pages** outside the Shell: `/view/<session>/<record>`, one record alone
   (Artifacts, The artifact's tab, below); no rail, top bar, feed or Needs-you title. A
   later bare page follows this one.
@@ -572,37 +575,51 @@ Sessions for now. The UI's texts are in English.
   others close with ×, the supervisor's then shown. A tab's socket opens the first time
   it shows in the open panel, then a hidden tab keeps it and a closed tab closes it. The
   price: each session page opened with the panel open makes one viewer (a tmux session) on
-  the server, closed with the page. **Collapse terminals** leaves a strip with a
-  **Terminals** button that opens it again; collapsed, its terminals keep their sockets
+  the server, closed with the page. **Collapse terminals** leaves a strip (Terminal, above)
+  that opens it again; collapsed, its terminals keep their sockets
   but are hidden, so nothing is resized, and go back to view (folded control is
   forgotten control, Terminal, Modes), and a panel collapsed when the
-  page opens opens no socket until it is opened. A chip opens a collapsed panel. Collapsed
-  is remembered in the browser (`lado.terminals`) and is the default below 900 px.
+  page opens, or about to fold before the page is measured, opens no socket until it shows.
+  A chip opens a collapsed panel. Collapsed is remembered in the browser (`lado.terminals`).
 - **The list collapsed to a strip** (decided 2026-10-05, task
   feature/sessions-list-collapse; mockup `.lado/mockups/sessions-list-collapse/index.html`,
   https://claude.ai/artifact/TTZcaWXnyooRPxyYBqEB3g version 2): **Collapse sessions** in
   the list's head, after "+", with Collapse terminals' icon mirrored, folds the list to a
-  strip of 44 px, `nav "Sessions"`, and the session gets the room (no edge to drag; the
+  strip of 48 px, `nav "Sessions"`, and the session gets the room (no edge to drag; the
   list's width stays remembered for when it opens). On the strip, in order: **Sessions**
-  (the Terminals button's look, read from the bottom up; it opens the list), "+" (New
+  (read from the bottom up; it opens the list), "+" (New
   session), and a column of icons that scrolls while the two buttons stay: one per session
   not stopped (`live.isLive`), Needs you first, then Running, as the open list orders them,
   with a line between the two when both have sessions. An icon is a link to the session at
-  the row's address (`aria-current` as the row's): two letters in the mono font in a
-  neutral square, the first of the name's first two words (split at `-`, `_`, `.`, `/`,
-  space) or else its first two (`crm-api` CA, `lado` LA); two sessions may share them. One
-  that needs the human is marked by colour only (`--human` on `--human-ground`, no count),
+  the row's address (`aria-current` as the row's): a badge in the mono font in a neutral
+  square. A title (or a name without one) that starts with `<word>-<number>` gives that
+  number's last 3 digits, whatever follows (`lad-189 (session UI review)` 189); else two
+  letters, the first of its first two words (split at `-`, `_`, `.`, `/`, space) or else its
+  first two (`crm-api` CA, `lado` LA). A later badge alike in the strip gets a mark (`154·2`,
+  at 10 px so that it fits). One that needs the human is marked by colour only (`--human` on `--human-ground`, no count),
   and its label says `<name>, needs you`. On hover or focus it shows the session's card,
   the row's (above). While the list loads the column is empty and `aria-busy`; when
   `/api/sessions` fails, an alert icon in `--danger` takes its place with the error in its
   label and tooltip, the open list's text; Sessions and "+" work either way. Collapsed is
-  remembered with the width (`lado.sessionsList`, `{ width, collapsed }`) and is the
-  default below 900 px, the same rule as the terminals' (`prefs.storedColumn`: nothing
-  stored and `(max-width: 900px)` collapsed; a value stored before it could collapse is
-  open). Below 900 px, where the columns stack, the strip is a row over the session:
-  Sessions, "+", then the icons in a row that scrolls sideways. After Collapse sessions the
+  remembered with the width (`lado.sessionsList`, `{ width, collapsed }`; a value stored
+  before it could collapse is open). After Collapse sessions the
   focus is on Sessions, after Sessions on Collapse sessions, only after those buttons (not
   when a page opens collapsed).
+- **601 to 900 px** (LAD-193, spec §2, frame g2-768): a session's page stands still, as a wide
+  window does (The window never scrolls, below). Top to bottom: the top bar, the session strip
+  as a row of 48 px (Sessions, "+", then the icons in a row that scrolls sideways), the tabs,
+  the team row, the feed, the waiting card and the composer; the terminals' strip stays on the
+  right. Both columns start folded whatever is stored, and what opens is written nowhere, so
+  a wide window's choice stays. Sessions opens the list as a panel of 300 px over the session,
+  on its left under the row; choosing a session, Esc, a click beside it and Sessions close it,
+  the focus back on Sessions (not after a choice; what takes the focus by the press keeps
+  it). The terminals open over the session on the right, `min(560px, 100% − 48px)` wide; Esc
+  folds them to the strip with the focus on it, in control Esc stays the terminal's. Neither
+  moves the session under it. A window too low for the card and the composer (460 px or less)
+  hides the composer while a card shows. On a touch screen the page is as high as the part of
+  the window the human sees, as on a phone (`usePhoneViewport`), since no page scroll brings
+  the composer above the keyboard; checked with a faked viewport only, an iPad's own keyboard
+  is the human's check.
 - **List and page** (task feature/flows-list, 2026-10-04, boards 14–15 of the canvas; one
   component, `ListPage.tsx`, for every tab with a list: Agents (Artifacts is a table of its
   own, Artifacts below); since task
@@ -635,9 +652,17 @@ Sessions for now. The UI's texts are in English.
   (`Splitter.tsx`: a `separator`, dragged, the arrow keys, a double click for the default
   width; a wide grip with a `col-resize` cursor and a line on hover and focus), within
   bounds (list 200–480 px, panel 280–1200 px), and remembered in the browser
-  (`lado.sessionsList`, `lado.terminals`). The session in the middle keeps at least
-  360 px: in a narrower window the list and the panel are drawn narrower, but their chosen
-  widths stay remembered for a wider window. A drag captures the pointer, so it goes on
+  (`lado.sessionsList`, `lado.terminals`). With no width set on its edge the panel is 40 % of
+  the session's area (the page beside the rail and the list), 360 to 640 px; a double click
+  takes its width away (a stored 480 px is an older LADO's default, no width of the human's).
+  **What shows** is one pure rule, `columns.ts`'s `fitColumns` (LAD-193): above 900 px the
+  chat keeps 420 px (`--chat-min`). Short of room terminals the human did not open fold first;
+  opened by the human (stored open, or a terminal in control) the list folds instead, unless
+  the list was opened last; then a panel the human opened narrows to its least 280 px, its width
+  kept, then folds, and a terminal in control then goes back to view. The rail never folds by
+  itself. A fold for room is derived, never stored: the column comes back when it and 420 px
+  fit, the list before the terminals, to what the human chose. `useSessionColumns` in
+  `Sessions.tsx` is the one writer of both keys. A drag captures the pointer, so it goes on
   over an iframe and ends on the release or a cancel. The artifact panel's edge is the
   same component (Artifacts, The panel), and so is the edge above the waiting card in a
   session's chat (The waiting card, Height): `edge="top"`, horizontal, a `row-resize`
@@ -645,8 +670,8 @@ Sessions for now. The UI's texts are in English.
 - **The window never scrolls** on a wide window: `html` and `body` do not scroll or bounce
   (`overflow: hidden`, `overscroll-behavior: none`) and the frame is the window's height;
   only regions inside scroll (the session list, the feed, the session's column, a page's
-  content, a terminal), each without passing its scroll on. Below 900 px
-  the columns stack and the page scrolls, as before.
+  content, a terminal), each without passing its scroll on. At 601 to 900 px a session's
+  page does the same (the rules key on `.sessions`); every other page scrolls there, as before.
   `/sessions` with no name says "Select a session" (nothing is selected for the human); a
   name `/api/sessions` does not know says "Session <name> not found" with a link to the
   list, and the address stays as it was.
@@ -1059,19 +1084,15 @@ Built in the chat task (2026-10-03):
   radius `0 10px 10px 10px`; the shown tab lies on it, tinted with 10 % of its colour, its
   text `--ink` 600; the others `--raised` and `--muted`. **Height** (LAD-194): as high as its
   content. Title and context together are at most 40 % of the chat, measured (`useHeight` on
-  `.chat`, `--waiting-top-max`), and of the window (`40dvh`) where the chat has no height of its
-  own (a window of 900 px or less): a percentage or a size container there would
-  measure itself. The footer is not in that limit and is not cut by it. Short of room the feed
+  `.chat`, `--waiting-top-max`), and of the window (`40dvh`) until it is measured.
+  The footer is not in that limit and is not cut by it. Short of room the feed
   goes first (no least height while a card shows), then the context and the title, then the
   choices' area to one row, an opened recommendation to one line, then the field stops at its
   height and scrolls inside; the buttons stay. The order is a ratio of `flex-shrink` weights
   (styles.css), no measuring in JS; on a phone a field in the footer takes the choices out at
-  once (Phone layout). On a window of 900 px or less, which scrolls as a page, the chat's card
-  sticks to its lower edge over the feed, at most the room from the chat's top down
-  (`--chat-top`, measured also when a block above the chat comes or goes), so the footer stays
-  in sight wherever the page stands (the human's decision of 2026-11-05; the composer past the edge is LAD-193's). It keeps at least 220 px and
-  half the window: under an open sessions' list, or in a window under about 400 px, the page's
-  scroll brings the footer up. In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
+  once (Phone layout). At 601 to 900 px, where a session's page stands still (LAD-193), the
+  card stands above the composer as in a wide window, so its footer and the composer are in
+  sight at once. In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
   2026-10-14, LAD-54, mockup `task/lad-54/mockup-gate-card.html`, screen D; before, the
   card could not be made smaller, and the human talking a gate over with the supervisor
   read the replies in the other half): dragged, or ↑ / ↓ on it by 40 px, it gives the
@@ -1085,8 +1106,8 @@ Built in the chat task (2026-10-03):
   the edge still holds the pointer, so the release lands on no line or tab of the
   minimized card (`Splitter`'s `onEnd`); ↓ past it minimizes at once. The card keeps its
   height for the restore. No edge
-  while the card is minimized or expanded, on Needs you, or on a narrow window, whose page
-  scrolls. **Minimize** (LAD-54, screens 2 and 2a: the pair of icons): in a session's chat
+  while the card is minimized or expanded, on Needs you, or on a narrow window, where the card
+  stays as the human knew it (LAD-193). **Minimize** (LAD-54, screens 2 and 2a: the pair of icons): in a session's chat
   only, an icon button left of the expand one, in its style, "Minimize the card" (a line,
   `MinimizeIcon`). Minimized, the card is its tabs, none shown, and one button-line on the
   "waits for you" ground with the shown tab's first item's question (a gate's question, an
@@ -1114,9 +1135,9 @@ Built in the chat task (2026-10-03):
   team row seen and usable (but on a phone, which hides the tabs and the team row too:
   Phone layout, The chat); Needs you has no Expand (Needs you, above).
   Its host hides the rest by CSS (`:has(.waiting-card.expanded)`), so the artifact panel
-  and its scrim, fixed over the page, are over the card too. On a window of 900 px or
-  less, which scrolls, it is the window's height under the top bar, expanding scrolls
-  it there, again when the window resizes, and the page stays there until it folds (LAD-194). Its other icon ("Collapse the card") or Esc brings it back, the focus
+  and its scrim, fixed over the page, are over the card too. At 601 to 900 px it is the
+  window's height under the top bar: the session strip, the tabs and the team row go with the
+  feed and the composer, the terminals' strip stays beside it (LAD-193). Its other icon ("Collapse the card") or Esc brings it back, the focus
   returning to the expand button, and it comes back by itself when nothing waits. While
   an artifact panel is open (`?view=`), Esc closes the panel only; the next Esc folds the
   card. **Lines lead to tabs**: an open question's or gate's line in the feed
@@ -1732,7 +1753,7 @@ New session (LAD-137) is in Launch and session control.
   `/projects/<id>`; on a phone the list fills the screen and a project opens in its place
   with `← All projects` above it; the list and the project each scroll by themselves
   under the top bar, the window still (LAD-159). Not cards. A desktop window of at most 900 px stacks
-  the list over the project, as Sessions does, and shows no `Select a project` pane
+  the list over the project and shows no `Select a project` pane
   (`NoProject`, LAD-138, M1).
 - **The list** (`GET /api/projects`): a row is the title (the id without one), the mark
   `folder not found` when its folder is missing, then `<id> · <N> repositories · <N>
@@ -2225,17 +2246,18 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
 
 | Screen | Pointer | Layout |
 |---|---|---|
-| ≤ 600 px wide | coarse | phone, `data-phone="tall"` (`short` when also ≤ 500 px high) |
+| ≤ 600 px wide | any | phone, `data-phone="tall"` (`short` when also ≤ 500 px high) |
 | ≤ 500 px high | coarse | phone, `data-phone="short"` |
-| any | fine (a mouse, a trackpad) | as before |
-| a tablet (820×1180, 1180×820) | coarse | as before |
+| wider than 600 px | fine (a mouse, a trackpad) | as before, however low |
+| a tablet (820×1180, 1180×820), a touch laptop (1440×900) | coarse | as before |
 
 - **One query**, in `web/src/phone.ts` (`PHONE_QUERY`, `SHORT_QUERY`, `usePhone()`), which
   follows the screen as it turns or resizes. The Shell mirrors it to `<html data-phone>`;
   every phone rule of `styles.css` is in its last section, "Phone layout", under
-  `:root[data-phone]`. A mouse never matches, so a computer's window of any size never gets
-  a phone rule; components branch on `usePhone()` only where the structure changes. No
-  setting or switch.
+  `:root[data-phone]`. A window of 600 px or less is a phone with a mouse too (the human's
+  decision of 2026-11-05, LAD-193: the computer's layout had no room there); a wider window
+  with a mouse never is. Components branch on `usePhone()` only where the structure changes.
+  No setting or switch.
 - **The app's window**: as a wide window's, the window does not scroll and each page's
   content does. The app is as high as the part of the window the human sees (LAD-109,
   `openspec/changes/phone-visible-height/`): fixed in place, at `window.visualViewport`'s

@@ -78,7 +78,7 @@ def test_a_workers_page_shows_its_work_and_finish_discards_it(page: Page, server
 def test_in_a_narrow_column_the_agents_take_it_and_a_page_is_not_squeezed(
     page: Page, server, repo, shot
 ):
-    page.set_viewport_size({"width": 1440, "height": 900})
+    page.set_viewport_size({"width": 1120, "height": 900})
     session, worktree = session_with_worker(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/activity")

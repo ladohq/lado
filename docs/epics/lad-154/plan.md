@@ -1,6 +1,7 @@
 # Plan: Model and power choice for agents (LAD-154)
 
 ## State
+Revised by concept v3 (D34–D43, question #3338, 2026-11-05, the artifact `concept-v3`): Settings → Models keeps only external models, a CLI's full list is computed, a model reference is external or built-in, a default model per CLI. Run task/lad-180b cancelled at design_ok #268; S3f added before S3b, S3g after it, S9a and S9b moved before S5c, S5d dropped, S6 to «Later».
 Split cancelled (2026-11-04, D33, the human's message #3294: «возможность предоставить CLI все доступные модели - это важно. Давай отменим решение о разделении эпиков?»): D31's move of S5c, S5d, S6, S7, S7b and S8 to a second epic is undone, every step stays in this epic and it ships whole in 0.45.0.
 Revised at S3b's design (D18, questions #2715, #2721, 2026-11-02): models and model servers are set once in Settings → Models under names; everything else refers to a name (the concept `concept-models`). S3b's run cancelled; S3c «Models in settings» runs before S3b; S5a and S5b dropped into S3c. At the review S3c split into S3c (store, servers and models from the CLI) and S3d (Settings → Models).
 Rejected at `step_ok` (gate #234, 2026-11-03): «сначала S3e: LAD-183…186» (D19, D20; S3e added before S3d)
@@ -8,7 +9,7 @@ Rejected at `step_ok` (gate #204, 2026-11-02): «сначала S2b» (D13; S2b 
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: S3b (LAD-180, run task/lad-180b) · Next: S4, S5c, S5d, S6, S7, S7b, S8, S9a, S9b, then readiness · Open checks: Settings → Models in Safari (and Firefox if at hand) by the human before the final pull request: the page does not scroll by itself, the key in dots, the phone width (S3d checked in Chromium only; N5 of its ledger); the human's manual check of S3e on LM Studio and LiteLLM 1.105.1 (LiteLLM's header behaviour reproduced only by a fake), before S3d's design or with it; at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes); an external provider by key (OpenRouter, Qwen through Alibaba Model Studio) checked by the human at the epic's end, before the final pull request: `probe` and `add` on its address (its path: `/api/v1`, `/compatible-mode/v1`), OpenCode/Kilo agents on it, and a model of a provider the CLI logged in to itself (`openrouter/<model>` from the CLI's list) (the human, 2026-11-03)
+In work: none · Next: S3f, S3b, S3g, S4, S9a, S9b, S5c, S7, S7b, S8, then readiness · Open checks: Settings → Models in Safari (and Firefox if at hand) by the human before the final pull request: the page does not scroll by itself, the key in dots, the phone width (S3d checked in Chromium only; N5 of its ledger); the human's manual check of S3e on LM Studio and LiteLLM 1.105.1 (LiteLLM's header behaviour reproduced only by a fake), before S3d's design or with it; at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes); an external provider by key (OpenRouter, Qwen through Alibaba Model Studio) checked by the human at the epic's end, before the final pull request: `probe` and `add` on its address (its path: `/api/v1`, `/compatible-mode/v1`), OpenCode/Kilo agents on it, and a model of a provider the CLI logged in to itself (`openrouter/<model>` from the CLI's list) (the human, 2026-11-03)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9). 0.45.0 is released from `main` together with the epic: `main` waits for it (step_ok #222, Q4, D17).
@@ -19,12 +20,13 @@ Last review: S2, 2026-11-02, base at 228a1de2 (0.44.0 + the unreleased 0.44.1 ho
 Last review: S2b, 2026-11-02, base at 228a1de2 (unchanged since S2's review); S2b merged as f2cbf119; `openspec validate --specs --strict` (57) green on the epic branch; the CI of the LAD-151 merge passed with PR #202
 Last review: S3a, 2026-11-02, base at 84c8f7c4 (hotfixes LAD-175, LAD-172; `main`'s heading is now `## 0.45.0 (unreleased)`), merged into the epic branch as d6ded361: CHANGELOG resolved into one 0.45.0 section (the epic's lines under `### New`, `main`'s under `### Fixed`); schema on `main` 35, the epic's 37; `make lint`, `make test` (4958 passed, 7 skipped), integration of the merged files (17 passed), `openspec validate --specs --strict` (59) green
 Last review: S3c, 2026-11-03, base at 22940ebc (hotfixes LAD-178 #206, LAD-181 #207), merged into the epic branch as 95db9d78: one conflict in `src/lado/cli.py` resolved by keeping both guards (S3c's `model-server` refusal of extra words, then LAD-181's quiet refusal); CHANGELOG merged without conflict (LAD-181's line under `### Fixed`); schema on `main` 35, the epic's 38; `make lint`, `make test` (5112 passed, 7 skipped), integration `test_session_model.py` (3 passed), `openspec validate --specs --strict` (60) green
+Last review: S3b's cancelled run (task/lad-180b), 2026-11-05, base at 931818bb (unchanged): nothing to merge
 Last review: S3d, 2026-11-04, base at 931818bb (unchanged since S3e's review): nothing to merge; S3d merged as e52a547f; CI 23/23 on its last head
 Last review: S3e, 2026-11-03, base at 931818bb (LAD-179 #209: CI reruns jobs GitHub gave no runner; its first live run passed on PR #210), merged into the epic branch as 132552ce without conflict; `make lint`, `make test` (5183 passed, 7 skipped), `openspec validate --specs --strict` (60) green
 
 ## Steps
 
-Statement steps 1–9 map to S1–S9 (from D18: S3c and S3d «Models in settings» before S3b, S5a into S3c, S5b into S3d); S3 and S9 split in two, S5 in four (each part merges
+Statement steps 1–9 map to S1–S9 (from D18: S3c and S3d «Models in settings» before S3b, S5a into S3c, S5b into S3d; from D43: S3f before S3b, S3g after it, S9a and S9b before S5c, S5d dropped, S6 to «Later»); S3 and S9 split in two, S5 in four (each part merges
 alone), S7 gains S7b for kit sdlc's own repository (D6). Statement step 10 is in "Later"
 (D3). Every step targets the epic branch `epic/lad-154-models`; after each step the lead
 brings `main` into it (D10). A conflict of that merge (migration numbers in `state.py` and
@@ -43,10 +45,11 @@ Rules for every step of LADO (not S7b, which is kit sdlc's own release):
 - A step that changes the schema has in its Check: the migration from
   `tests/agent_helpers.previous_schema`; the way back: an `lado update` rollback restores
   `lado.db` from its backup, an older LADO refuses a newer database (`state.py`).
-- The session's choice is stored in the power table's format from S2 on (all rows the same
-  model), so later steps add levels and rows, not a second format. From D18 a row names a
-  configured model (S3c) by its name; the model entry holds the CLI, the CLI's model, an
-  optional server and (S4) the effort.
+- A model reference (D34) is external (the entry's id) or built-in (a CLI + the CLI's name
+  for the model). S2's rows already keep the built-in form, so they need no migration; the
+  session's choice stays in the power table's format from S2 on. An entry is an external
+  model: a server's model for one CLI. The effort sits next to the reference (D41), not in
+  the entry.
 - Thresholds of the model check (all steps that take a model; from D18 at saving a model in Settings): a model that is neither
   one of the CLI's aliases nor in the CLI's or server's list starts with a loud warning
   when the CLI gives no list; it is refused before the start when the CLI or the server
@@ -209,67 +212,109 @@ server "<name>"` line the commands print, and uses `lado model remove`'s several
 it helps; `Probe.models_why` keeps a stale reason when the list came from the request with
 `anthropic-version` (E1, invisible today): clear it if the page's API shows the reason.
 
-### S3b — A session on a model from settings (L)
-Status: in progress (LAD-180, run task/lad-180b; approved at step_ok #267; its first run task/lad-180 was cancelled at design on D18, question #2721)
+### S3f — Settings → Models: external models and a default per CLI (M)
+Status: planned
 Check:
-- The launch window's Model field (S2/S2b) becomes a choice among the configured models
-  (S3c) and «the CLI's default»; the free input goes (D18, answer 2а); `lado start --model
-  <name>` takes a configured model by its name (one model for every row, as S2's
-  shortcut); the launch window shows nothing of addresses or keys.
-- A session on a model whose entry names a server runs OpenCode and Kilo agents on it:
-  the server goes into each agent's config content as an OpenAI-compatible provider, the
-  key only into the agent's environment through `{env:…}` (checked on the real OpenCode
-  1.18.35 and Kilo 7.8.8 at S3b's first design, question #2706); a canary test (LAD-116):
-  the key in no config file, `lado.db`, output, log or error text.
-- Before the start (and every resume, by S2b's rule) LADO checks the model's server
-  answers and has the model, and refuses loudly otherwise; a server that does not answer
-  at LADO's own resume leaves the session stopped with the reason (3а of #2706); an agent
-  of a CLI the server does not suit (a Claude or Codex worker) is refused at its start,
-  naming the server's CLIs.
+- Settings → Models keeps only external models (D34): the ticks of built-in models and
+  their custom names go, the ticks of a server's model × CLI stay; the block of agent CLIs
+  becomes a card per CLI with `Default model` (D35). The blocks of servers, Add, Change and
+  the key's handling do not change (four manual checks of S3d stand).
+- One picker (D34), a component the launch window and the table rows reuse: «the CLI's own
+  settings», built-in models read live from the CLI, external models; a search for a long
+  list (Kilo gives 321); «Other name…» only for a CLI with no full list, with S2's warning
+  (D37). Unset, nothing changes.
+- A CLI's full list is computed in one place (server's API), never stored; a CLI whose
+  list cannot be read shows why.
+- `lado model add` takes external models only; a `lado model` command sets and clears a
+  CLI's default.
+- The store: `models.id` (from S3b; from S3d's D8: an entry's name is renamable, so
+  references hold the id), a CLI's default as a model reference; rows without a server go
+  (they exist only on the epic branch's stands). The migration 38 → 39 and the way back
+  (rules above).
+- Removing a server or a model a default uses: the confirmation names it and the default
+  is cleared; a built-in default the CLI's list lost is shown on the card, not dropped
+  silently.
+- UI/UX first (D32, moved here from S3b; D43): the step's `design` runs the flow `ui-design`
+  on the picker across the CLI's card, the launch window's Model field and a power row, so
+  S3b and S5c build the same picker; input: `ui-design/launch-model` with its variant B.
+- UI e2e, vitest, `make web-types`; the human's manual check; `docs/design/ui.md`,
+  `docs/cli.md`.
+Notes: the default is stored and shown here and applied to agents in S3b.
+
+### S3b — A session on a model reference (L)
+Status: planned (LAD-180; runs task/lad-180 and task/lad-180b cancelled at design, D18 and D43; rewritten by D34–D43)
+Check:
+- An agent starts on the session's model when one is chosen, else on its CLI's default
+  (D35), else as today; a worker of another CLI takes its own CLI's default. The card says
+  which, with its source.
+- The launch window: the Model field stays optional in Advanced, S3f's picker, the list by
+  the chosen CLI, the default preselected (D36, variant B); no address or key shown.
+  `lado start --model <name>` takes a built-in name of the session's CLI or an external
+  model's name (D37), by S2's check.
+- OpenCode and Kilo: every external model ticked for the CLI goes into each agent's config
+  content (D38), one OpenAI-compatible provider per server, each key only in the agent's
+  environment through `{env:…}`, so `/model` offers them next to the built-in models
+  (additive: checked on OpenCode 1.18.35, 10 + 2, and Kilo 7.8.8, 321 + 2, by `<cli>
+  models` only); a real agent and `/model` on two servers are checked in this step's
+  design. A canary test (LAD-116): no key in a config file, `lado.db`, output, log or
+  error text.
+- Before the start (and every resume, by S2b's rule) LADO checks the server of the model
+  the agent starts on: it answers and has the model, else a loud refusal; a server that does
+  not answer at LADO's own resume leaves the session stopped with the reason (3а of #2706).
+  A silent server of another ticked model does not stop the start. An agent of a CLI the
+  server does not suit (Claude or Codex before S9a/S9b) is refused at its start, naming the
+  server's CLIs.
 - From S3a (E3): a key sent over `http://` to an address that is neither `localhost` nor
-  a private network gives a loud warning (at saving the server in S3c, and before the
-  start).
-- From S3d (question #2995): the UI calls Claude Code, Codex CLI, OpenCode and Kilo CLI
-  «agent CLI» everywhere (the launch window's field `Agent CLI`, Settings «Agent CLIs and
-  environment»); the launch window's model choice uses the same word, and Settings → Models
-  shows models by agent CLI in cards (D26), which the launch window's choice follows.
+  a private network gives a loud warning before the start.
+- From S3d (question #2995): the launch window says «agent CLI».
 - LAD-188 (question #2913): two flaky tests of the epic's own, seen on PR #211's CI and
   green on rerun — `web/src/Launch.test.tsx:1077` (the Model field's listbox looked up
   synchronously after `findByText`, LAD-176) and `test_session_model.py::
   test_a_worker_of_another_cli_runs_its_default_and_says_so` (a worker of another CLI got
   the session's model, LAD-174): both stable, and №2 told apart as a race of the test or of
-  the product (a model reaching a worker), fixed where it is.
-- From S3d (LAD-187, D8 of its design): a configured model has no id yet, its name is its
-  key and it is renamable; S3b, the first to keep a reference to a model, adds `models.id`
-  (migration 38 → 39, with the way back) and refers to the id, so a rename breaks nothing.
+  the product. The first design found the product's side: the inherit mode leaks the model
+  (its D14, `LADO_LAUNCH_VARS`).
 - From S2 (F2): `PowerTable.from_json` reads a row with an unknown or missing key and a
-  broken row without breaking every session (or the schema is bumped with a migration of
-  the rows); a unit test of each case. A row now names a configured model: the migration
-  of S2's rows (a CLI + a model) and the way back (rules above).
+  broken row without breaking every session; a unit test of each case. A row now holds a
+  model reference (D34): an external one is new, S2's rows stay as they are.
 - S1's card: «Локальная Qwen · qwen3-8b · server <address>» with its source; Kilo's card
   shows the session's model even when Kilo reports none.
-- UI/UX design first (D32, question #3263): in the run's `design` step the analyst runs
-  the flow `ui-design` (designer and critic) on the launch window's model choice, its empty
-  state, the refusals before the start (a silent server, a model gone, Claude Code or Codex
-  on a server before S9a/S9b) and the agent's card, then writes the design on the checked
-  mock-up; `design_ok` shows the mock-up, its spec and the critique together.
+- UI: the launch window follows S3f's checked mock-up; a further `ui-design` only for what
+  it left out (the refusals, the agent's card).
 - The human's manual check before the merge on LM Studio at localhost and an external
   LiteLLM (Q2); the lead tells them when it is due. In Docker, LM Studio on their machine
   is `host.docker.internal`.
 - Smoke (CI): OpenCode and Kilo with a fake server; UI e2e of the field; `docs/install.md`
   (local models, Docker), `docs/cli.md`, `docs/design/ui.md`, `docs/design/agents.md`.
-Notes: the core value of the epic. Rests on S3c's store, entries and check and S3d's page.
+Notes: the core value of the epic. Rests on S3c's store and S3f. Reuse from the cancelled
+run (branch `lado/lad-154-epic/task-lad-180b`, artifact `task/lad-180b/design`): D8 (the
+provider, the key's variable; per server now; the first fetch of the npm package over 60 s
+is a risk), D13, D14, the refusals' texts.
+
+### S3g — A worker on a model by name (S)
+Status: planned
+Check:
+- A new MCP tool `list_models` shows the supervisor the models of the session's CLIs: name,
+  CLI, server; `spawn_worker(model=…)` starts a worker on a model reference (D39); a name
+  of no list is refused loudly; `model` against an explicit `provider` of another CLI is
+  refused naming both; the card's source says «supervisor».
+- From S3b (LAD-180, the human's answer 3a, #3279; moved from S8): `spawn_worker` checks the
+  model's server as the start does and refuses with the reason.
+- The supervisor's text and the MCP tools' descriptions say how to choose; a kit still names
+  no model.
+- Integration test with the fake agent through `lado mcp`; `docs/design/agents.md`.
 
 ### S4 — Effort with the model (S)
 Status: planned
 Check:
-- A configured model (S3c) takes an effort; Claude (`--effort`/settings), Codex
+- The effort sits next to S3f's picker (D41): the CLI's card, the launch window, and later a
+  power row; `lado start --effort`; Claude (`--effort`/settings), Codex
   (`model_reasoning_effort` on top of the carried value), OpenCode/Kilo (variant) get it;
   where the CLI or the model cannot take it, a loud warning before the start; S1's card
   shows it.
 - Unit tests per provider, smoke per provider (CI); `docs/cli.md`, `docs/design/ui.md`.
-- From S2 (F2): done in S3b (a row's tolerant reading); with D18 the effort lives in the
-  model entry, not in a row.
+- From S2 (F2): done in S3b (a row's tolerant reading); the row keeps the effort next to the
+  model reference (D41).
 - From S2 (found on the way): `tests/real_clis.with_model` rebuilds `Launch` and drops
   its `model` and `effort`; S4's smoke passes them through.
 - From S1: Claude Code reports no effort in its events, so its card shows the effort
@@ -278,9 +323,39 @@ Check:
 - From S3d (LAD-187, the ledger's N9 and the human's manual check r4): the key field of
   Add server and Change is off while Save or Add checks the server, so a key typed then
   is not lost; Check key is off after a refused key until the key is edited, as Add
-  server is. S4 changes the model form anyway (effort).
+  server is.
 Notes: the CLIs' scales differ (research §1.3); LADO passes the CLI's own value and keeps
 no common scale.
+
+### S9a — A model server for Claude Code (M)
+Status: planned
+Check:
+- A configured model of Claude Code whose server is Anthropic-compatible (S3a names it)
+  runs Claude Code agents through `ANTHROPIC_BASE_URL` in the agent's own environment, the
+  key from the server's entry (D15) only in that environment; a server that
+  is not Anthropic-compatible refuses Claude loudly before the start.
+- An external model takes the whole process (one address, one provider): the picker says so,
+  and such an agent's `/model` offers only what the server gives, unless a gateway serves
+  both (what `/model` shows there is checked here).
+- Smoke (CI) with a fake Anthropic-compatible endpoint; the human's manual check on a real
+  server (D7); `docs/install.md`, `docs/design/agents.md`.
+
+### S9b — A model server for Codex (M)
+Status: planned
+Check:
+- A configured model of Codex whose server has the Responses API runs Codex agents through
+  a `model_providers` entry in the agent's `CODEX_HOME` (on top of the carried user values),
+  the key from the server's entry (D15) only in the agent's environment; a server
+  without the Responses API refuses Codex loudly before the start.
+- From S3d (the human's manual check of PR #211): Settings → Models offers a Codex column on
+  LM Studio, but LM Studio's Responses API drops Codex's MCP tools (type `namespace`,
+  `tests/local_models.py`, `docs/testing.md`), so a Codex agent there cannot talk to LADO:
+  either refused loudly before the start (and the column says so), or proven to work.
+- An external model takes the whole process (one address, one provider): the picker says so,
+  and such an agent's `/model` offers only what the server gives, unless a gateway serves
+  both (what `/model` shows there is checked here).
+- Smoke (CI) with a fake endpoint; the human's manual check (D7); `docs/install.md`,
+  `docs/design/agents.md`.
 
 ### S5a — The user's settings store and model servers in the CLI (M)
 Status: dropped (taken into S3c on D18, question #2721)
@@ -309,43 +384,26 @@ Check:
 ### S5c — The user's power table (M)
 Status: planned
 Check:
-- The user's table light / normal / heavy → a configured model by its name (S3c, D18),
-  set in Settings → Models and by a `lado` command; an empty row is the CLI's default; with no one choosing
-  a row an agent takes "normal"; S1's card names the row and the level ("normal work,
-  user table").
-- What a row's CLI does against the agent's provider: as Q3 decides, in the Check of
-  S5c and S8; the login check before the start goes by the CLI the agent resolves to;
-  with (a), only a provider the human chose counts as the session's (Q3).
+- The user's table light / normal / heavy, each row an ordered list of model references
+  on S3f's picker (D40), built-in and external, set in Settings → Models and by a `lado`
+  command; an agent takes the row's first model that suits its CLI and works; none, or an
+  empty row: the CLI's default, said on the card; with no one choosing a row an agent takes
+  "normal"; S1's card names the row ("normal work, user table").
+- The agent's CLI wins over a row (D40): another CLI only through an explicit
+  `spawn_worker(provider=…)`; the login check goes by the agent's CLI as today.
 - The launch window shows one summary line of the rows the session will take («Модели:
   обычная — …, сильная — … из ваших настроек»), with a link to Settings (concept §3).
 - The table is kept in S3c's store: the schema is unchanged when S3c's store holds it,
   else the migration and the way back (rules above).
 - Unit tests of the resolution; UI e2e, mockup; `docs/design/ui.md`, `docs/cli.md`.
 Notes: light and heavy take effect from S7/S8, when roles, steps and the supervisor choose
-a row. Ready-made models for the installed CLIs come with S3c (D18, answer 4); a
-ready-made table over them («Claude: haiku / sonnet / opus») here (Q1).
+a row. A ready-made table over built-in models («Claude: haiku / sonnet / opus») here (Q1).
 
 ### S5d — The session's table row by row (S)
-Status: planned
-Check:
-- The launch window's Advanced («Модели этой сессии») and `lado start --model
-  <row>=<name>` set the session's table row by row, each row a configured model or «as in
-  the settings» (S3b's one model fills every row); an empty session row takes the
-  project's, then the user's; S1's card names the level.
-- The launch window tells a provider the human picked from the default it shows, so a
-  default never overrides the rows of the user's or the project's table (Q3, critic P17).
-- UI e2e, mockup; `docs/design/ui.md`, `docs/cli.md`.
-Notes: the statement's session level is a table (critic P6); S2's one model stays its
-shortcut.
+Status: dropped (D42: the launch window's Model field and the choice by name cover its cases)
 
 ### S6 — The project's power table (S)
-Status: planned
-Check:
-- The project page and `lado project` set the project's table next to its variables, each
-  row a configured model by its name (D18);
-  user → project → session resolve row by row; the card names the level.
-- The schema migration and the way back (rules above).
-- UI e2e, mockup; `docs/design/projects.md`, `docs/design/ui.md`, `docs/cli.md`.
+Status: dropped to «Later» (D42)
 
 ### S7 — Power on roles and flow steps (M)
 Status: planned
@@ -372,38 +430,11 @@ is built during the epic and waits for that release to merge.
 ### S8 — Power when the supervisor spawns a worker (S)
 Status: planned
 Check:
-- From S3b (LAD-180, the human's answer 3a, #3279): `spawn_worker` checks the model's
-  server as the start does, and refuses with the reason (S3b leaves a worker to fail at
-  its first turn).
-- `spawn_worker` takes a power, not a model; it overrides the role's and the step's; the
-  card names the source ("supervisor"); a model name passed there is refused loudly;
-  a row's CLI against the provider passed to `spawn_worker`: as Q3 decides.
+- `spawn_worker(power=…)` takes a power and overrides the role's and the step's; `list_models`
+  (S3g) shows each model's rows; `power` with `model` together is refused loudly; the
+  card names the source ("supervisor").
 - Integration test with the fake agent through `lado mcp`; `docs/design/agents.md`, the
   MCP tool's description.
-
-### S9a — A model server for Claude Code (M)
-Status: planned
-Check:
-- A configured model of Claude Code whose server is Anthropic-compatible (S3a names it)
-  runs Claude Code agents through `ANTHROPIC_BASE_URL` in the agent's own environment, the
-  key from the server's entry (D15) only in that environment; a server that
-  is not Anthropic-compatible refuses Claude loudly before the start.
-- Smoke (CI) with a fake Anthropic-compatible endpoint; the human's manual check on a real
-  server (D7); `docs/install.md`, `docs/design/agents.md`.
-
-### S9b — A model server for Codex (M)
-Status: planned
-Check:
-- A configured model of Codex whose server has the Responses API runs Codex agents through
-  a `model_providers` entry in the agent's `CODEX_HOME` (on top of the carried user values),
-  the key from the server's entry (D15) only in the agent's environment; a server
-  without the Responses API refuses Codex loudly before the start.
-- From S3d (the human's manual check of PR #211): Settings → Models offers a Codex column on
-  LM Studio, but LM Studio's Responses API drops Codex's MCP tools (type `namespace`,
-  `tests/local_models.py`, `docs/testing.md`), so a Codex agent there cannot talk to LADO:
-  either refused loudly before the start (and the column says so), or proven to work.
-- Smoke (CI) with a fake endpoint; the human's manual check (D7); `docs/install.md`,
-  `docs/design/agents.md`.
 
 ## Open questions
 
@@ -412,7 +443,7 @@ Check:
   need nothing of S7. Recommended: in S5c.
 - Q2 (answered at `step_ok` #222). LM Studio at localhost, and an external LiteLLM the
   human wants to try; the lead tells them when the check is due.
-- Q3 (decided at `plan_ok` #194: (a) with P15 and P17). A table row names a CLI (heavy → Claude opus); the agent's provider may come from
+- Q3 (decided at `plan_ok` #194: (a) with P15 and P17; replaced by D40: the agent's CLI wins, a row is an ordered list). A table row names a CLI (heavy → Claude opus); the agent's provider may come from
   elsewhere (the session's `--provider`, `spawn_worker`'s provider). Options: (a) the
   row's CLI decides the agent's CLI; an explicit `--provider` of the session (only one
   the human chose: `lado start --provider`, or a provider picked in the launch window
@@ -442,6 +473,8 @@ Check:
 
 ## Later
 
+- The project's power table (S6) — dropped from the epic (D42) — LAD-154 — if a project ever needs its own rows.
+- The session's table row by row (S5d) — dropped (D42), no plan to bring it back.
 - The sidebar stays expanded when the window is narrowed (seen in S3d's manual checks,
   outside the epic) — LAD-190 (D31, derived from LAD-187).
 - Flaky `tests/test_tmux.py::test_popup_opens_on_the_clients_attached_to_the_session`

@@ -42,6 +42,13 @@ The statement's decisions:
 - Profiles and named sets (LAD-80) are not made now; the table's format lets them come
   later as a "saved table".
 
+Changed during the epic (D34–D43, 2026-11-05, the human's messages #3294, #3310, #3316 and
+question #3338; these win over the statement above): Settings → Models keeps only external
+models and a CLI's full list is computed; a default model per CLI; the effort sits next to
+the model's choice, not in an entry; the supervisor gives a worker a model by name or a
+power, and a kit still names no model; a power table exists on the user's level only, a row
+an ordered list, and the agent's CLI wins over a row.
+
 The statement's proposed steps: 1 the agent's model is visible (card, `list_agents`, API);
 2 one model per session (`lado start --model`, Advanced); 3 a model server through
 OpenCode/Kilo (type, models, compatibility, a check before the start); 4 effort with the
@@ -81,11 +88,14 @@ it working, and the epic branch is merged into `main` (D3, D10):
 - every agent shows its model, effort and their source in the UI card, `list_agents` and
   the API;
 - a session runs on one chosen model and effort (`lado start`, the launch window);
+- a CLI takes a default model, built-in or external, and every external model ticked for
+  OpenCode or Kilo is offered by their `/model` next to the built-in ones (D35, D38);
 - a session runs on a model server given by its address through OpenCode/Kilo, and through
   Claude Code and Codex where the server speaks their protocol, with a check before the
   start and a loud refusal otherwise;
-- power tables at the user, project and session levels resolve per agent from the role,
-  the flow step or `spawn_worker`, kit sdlc's roles and steps are marked (D6);
+- the user's power table resolves per agent from the role, the flow step or `spawn_worker`
+  (D42: no project or session table), kit sdlc's roles and steps are marked (D6);
+- the supervisor starts a worker on a model by its name (D39);
 - no value is dropped silently on any of the four CLIs.
 
 Statement step 10 goes to "Later" (D3).
@@ -97,9 +107,9 @@ Statement step 10 goes to "Later" (D3).
 | Goal and "done" | Covered: the statement's goal, "done" above (D3). |
 | Users and how they use it | Covered: the human running sessions on their CLIs' logins who wants a local or corporate model server, or heavy roles on a strong model and light ones on a cheap one; kit authors marking power; the supervisor choosing a worker's power. |
 | Scope and what is out | Covered: out are profiles (LAD-80), automatic power by task complexity, fallback models on error, statement step 10 (D3), network scanning, LADO's own model catalogue. |
-| Data and migrations | Covered by S1, S2, S3b, S5a, S6, Check: "the schema migration from `tests/agent_helpers.previous_schema`; the way back: an `lado update` rollback restores `lado.db` from its backup, an older LADO refuses a newer database" (the plan's rule for every step that changes the schema, named in each one's Check). |
+| Data and migrations | Covered by S1, S2, S3b, S3f, S5a, Check: "the schema migration from `tests/agent_helpers.previous_schema`; the way back: an `lado update` rollback restores `lado.db` from its backup, an older LADO refuses a newer database" (the plan's rule for every step that changes the schema, named in each one's Check). |
 | Secrets and credentials | Covered by S3a, S3b, S5a, S9a, S9b, Check: "the key's value reaches the agent only through its environment, never the config file (the canary approach of LAD-116)" (S3b); the key is a reference by name (D4). |
-| Update and rollback | Covered by S1, S2, S5a, S6 (way back by `lado update`'s restore of `lado.db`) and S7, Check: "the kit docs say a kit with the field needs `dependencies.lado`, and `kits.warnings()` asks for it"; the whole epic is one minor of LADO, released at once (D9); S7b is released by kit sdlc's own version after that release. |
+| Update and rollback | Covered by S1, S2, S3f, S5a (way back by `lado update`'s restore of `lado.db`) and S7, Check: "the kit docs say a kit with the field needs `dependencies.lado`, and `kits.warnings()` asks for it"; the whole epic is one minor of LADO, released at once (D9); S7b is released by kit sdlc's own version after that release. |
 | Removal | Covered by S5a, Check: "removing a server a session uses: the session's next agent refuses loudly at start; removing the secret a server names: S3b's refusal before the start"; `lado uninstall` removes the settings with `LADO_HOME` (S5a); an empty table row is the CLI's default (S5c). |
 | Platforms | Covered by S2, S4 (all four CLIs, smoke per provider), S3b (OpenCode/Kilo), S9a/S9b (Claude, Codex), S3a, Check: "in Docker, `localhost` that does not answer gives the loud hint `host.docker.internal:<port>`" (D5); macOS, Linux, WSL as today. |
 | Observability | Covered by S1, Check: "`list_agents`, the API and the UI card show model, effort and source"; S3b's pre-start check, S2/S4's loud warnings, S5a's `lado doctor` check of saved servers; the model check's thresholds (plan, rules for every step). |

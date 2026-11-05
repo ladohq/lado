@@ -1,7 +1,7 @@
 """What Settings → Models' routes do (openspec capability model-settings-page): the human's
-configured models and model servers through lado.model_settings, with its rules and its
-lines; each refusal a Refusal holding the line, its hint and the field of the form it
-concerns, which lado.server.app answers as a 400.
+configured models, model servers and agent CLIs' default models through lado.model_settings,
+with its rules and its lines; each refusal a Refusal holding the line, its hint and the
+field of the form it concerns, which lado.server.app answers as a 400.
 
 Nothing here asks a server but a probe the human asked for: opening a server's source, its
 check, a save. The probe of `probe_server` and of a model's live check is kept KEPT seconds
@@ -17,6 +17,7 @@ import threading
 import time
 
 from lado import model_check, model_servers, model_settings, providers, runtime, state
+from lado.providers import base
 from lado.server import launch, models
 
 KEPT = 60  # seconds a probe is kept for the live check of a model
@@ -75,10 +76,6 @@ def _agents_env(provider: providers.Provider) -> dict[str, str]:
     return runtime.agents_env(runtime.agent_layers(None), provider)
 
 
-def _cli_title(cli: str) -> str:
-    return providers.get(cli).title if cli in providers.names() else cli
-
-
 def server_info(server: state.ModelServer) -> models.ModelServerInfo:
     return models.ModelServerInfo(
         name=server.name,
@@ -105,24 +102,87 @@ def _model_info(
     model: state.ConfiguredModel, servers: dict[str, str]
 ) -> models.ConfiguredModelInfo:
     return models.ConfiguredModelInfo(
+        id=model.id,
         name=model.name,
         cli=model.cli,
-        cli_title=_cli_title(model.cli),
+        cli_title=model_settings.cli_title(model.cli),
         model=model.model,
-        server=servers.get(model.server, model.server) if model.server else None,
+        server=servers.get(model.server, model.server),
+    )
+
+
+def _default_info(default: model_settings.CliDefault) -> models.CliDefault:
+    return models.CliDefault(
+        cli=default.ref.cli,
+        external=default.ref.model_id,
+        builtin=default.ref.builtin,
+        name=default.name,
+        model=default.model,
+        server=default.server,
     )
 
 
 def listing(has_db: bool = True) -> models.ModelSettings:
-    """The configured models and the saved servers, asking none; empty with no lado.db."""
+    """The configured models, the saved servers and the agent CLIs' default models, asking
+    none; empty with no lado.db."""
     if not has_db:
-        return models.ModelSettings(models=[], servers=[])
+        return models.ModelSettings(models=[], servers=[], defaults=[])
     servers = state.model_servers()
     names = {server.id: server.name for server in servers}
     return models.ModelSettings(
         models=[_model_info(model, names) for model in state.models()],
         servers=[server_info(server) for server in servers],
+        defaults=[_default_info(default) for default in model_settings.defaults()],
     )
+
+
+def _listed(provider: providers.Provider, fresh: bool = False) -> base.ModelList:
+    """The launch window's list of `provider`'s CLI, kept a minute (`fresh`: read now); an
+    environment that cannot be read is no list, with why."""
+    try:
+        return launch.model_list(provider, fresh=fresh)
+    except runtime.LadoError as exc:
+        return base.ModelList(why=str(exc))
+
+
+def model_choices(
+    provider: providers.Provider, fresh: bool = False, has_db: bool = True
+) -> models.ModelChoices:
+    """What `provider`'s CLI can run, as the core computes it; no lado.db made."""
+    found = model_settings.choices(
+        provider, lambda listed: _listed(listed, fresh), None if has_db else []
+    )
+    names = {server.id: server.name for server in state.model_servers()} if has_db else {}
+    return models.ModelChoices(
+        aliases=list(found.aliases),
+        models=None if found.models is None else list(found.models),
+        why=found.why,
+        external=[_model_info(model, names) for model in found.external],
+        other_name=found.other_name,
+        whole_process=provider.external_whole_process,
+        read_again=found.read_again,
+    )
+
+
+def set_default(cli: str, given: models.ModelDefaultSet) -> models.ModelDefaultSaved:
+    """Set the default model as `lado model default` does, by reference: a model picked on the
+    page is never taken for another of the same name. A built-in model's list is the one the
+    picker just read, kept a minute."""
+    ref = state.ModelRef(cli, given.external, given.builtin)
+    try:
+        _, verdict = model_settings.set_default_ref(ref, _agents_env, _listed)
+    except REFUSED as exc:
+        raise _refusal(exc) from None
+    check = None if verdict is None else models.ModelCheck(kind=verdict.kind, text=verdict.text)
+    return models.ModelDefaultSaved(settings=listing(), check=check)
+
+
+def clear_default(cli: str) -> models.ModelSettings:
+    try:
+        model_settings.clear_default(cli)
+    except REFUSED as exc:
+        raise _refusal(exc) from None
+    return listing()
 
 
 def add_server(given: models.ModelServerAdd) -> models.ModelServerAdded:
@@ -251,13 +311,7 @@ def check_model(given: models.ModelAdd) -> models.ModelCheck:
     refusal is a ModelCheck of kind refused with its field."""
     try:
         checked = model_settings.check_model(
-            given.name,
-            given.cli,
-            given.model,
-            given.server,
-            _agents_env,
-            probe=_kept_or_probed,
-            listing=launch.model_list,  # the launch window's list, kept a minute
+            given.name, given.cli, given.model, given.server, probe=_kept_or_probed
         )
     except REFUSED as exc:
         return models.ModelCheck(
@@ -274,9 +328,7 @@ def add_model(given: models.ModelAdd) -> models.ModelAdded:
     """Save the model as `lado model add` does, its server probed now; named by default
     when `given.name` is None."""
     try:
-        saved, verdict = model_settings.add_model(
-            given.name, given.cli, given.model, given.server, _agents_env
-        )
+        saved, verdict = model_settings.add_model(given.name, given.cli, given.model, given.server)
     except REFUSED as exc:
         raise _refusal(exc) from None
     names = {server.id: server.name for server in state.model_servers()}

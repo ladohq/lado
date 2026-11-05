@@ -83,7 +83,7 @@ def test_a_model_server_s_key_is_found_nowhere_else(api, serve, lado_home):  # n
     said.append(api.feed(2.0))  # the entries send no event: whatever the feed sends
 
     settings = call("DELETE", "/api/model-servers/work?with_models=true&confirmed=Local")
-    assert settings == {"models": [], "servers": []}
+    assert settings == {"models": [], "servers": [], "defaults": []}
     assert not folder.exists()
     server_run.stop()
     assert [text for text in said if any(c in text for c in canaries)] == []

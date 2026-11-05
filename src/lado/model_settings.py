@@ -479,7 +479,8 @@ def cli_title(cli: str) -> str:
 class Choices:
     """What an agent CLI can run: `aliases` and `models` as its list gives them (`models` None
     for no full list, `why` saying so; `command` prints it), and its configured models.
-    `other_name`: a name outside the list may be given, as no full list can refuse it."""
+    `other_name`: a name outside the list may be given, as no full list can refuse it.
+    `read_again`: reading the list again may change the answer."""
 
     aliases: tuple[str, ...]
     models: tuple[str, ...] | None
@@ -487,23 +488,33 @@ class Choices:
     command: str
     external: list[state.ConfiguredModel]
     other_name: bool
+    read_again: bool
 
 
 Listing = Callable[[providers.Provider], base.ModelList]
 
 
-def choices(provider: providers.Provider, listing: Listing) -> Choices:
+def choices(
+    provider: providers.Provider,
+    listing: Listing,
+    saved: list[state.ConfiguredModel] | None = None,
+) -> Choices:
     """The one place that computes what `provider`'s CLI can run: its list, given by `listing`
-    within its command's timeout, and its configured models by name ignoring case. Nothing of
-    it is kept here."""
+    within its command's timeout, and its configured models by name ignoring case, among
+    `saved` (None: all in lado.db). Nothing of it is kept here."""
     listed = listing(provider)
     return Choices(
         aliases=listed.aliases,
         models=listed.models,
         why=listed.why,
         command=listed.command,
-        external=[model for model in state.models() if model.cli == provider.name],
+        external=[
+            model
+            for model in (state.models() if saved is None else saved)
+            if model.cli == provider.name
+        ],
         other_name=listed.models is None,
+        read_again=not listed.fixed,
     )
 
 

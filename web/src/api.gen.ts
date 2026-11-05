@@ -892,7 +892,7 @@ export interface paths {
         post?: never;
         /**
          * Remove Configured Model
-         * @description Remove a model as `lado model remove` does.
+         * @description Remove a model as `lado model remove` does, the default on it cleared.
          */
         delete: operations["remove_configured_model_api_models__name__delete"];
         options?: never;
@@ -902,6 +902,51 @@ export interface paths {
          * @description Rename a model, its CLI, model and server kept.
          */
         patch: operations["rename_configured_model_api_models__name__patch"];
+        trace?: never;
+    };
+    "/api/providers/{name}/model-choices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Provider Model Choices
+         * @description What the provider's CLI can run: its list, kept a minute (`fresh`: read now), and
+         *     its configured models. A list that cannot be read says why; no lado.db made.
+         */
+        get: operations["provider_model_choices_api_providers__name__model_choices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model-defaults/{cli}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Model Default
+         * @description Set an agent CLI's default model as `lado model default` does, by reference.
+         */
+        put: operations["set_model_default_api_model_defaults__cli__put"];
+        post?: never;
+        /**
+         * Clear Model Default
+         * @description Clear an agent CLI's default model, installed or not.
+         */
+        delete: operations["clear_model_default_api_model_defaults__cli__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/providers/logins": {
@@ -1926,6 +1971,26 @@ export interface components {
             api: string;
         };
         /**
+         * CliDefault
+         * @description An agent CLI's default model: `external` the configured model's id or `builtin` the
+         *     CLI's name for it, its name as shown, the model as the CLI names it and the server's name
+         *     (None for a built-in one).
+         */
+        CliDefault: {
+            /** Cli */
+            cli: string;
+            /** External */
+            external: string | null;
+            /** Builtin */
+            builtin: string | null;
+            /** Name */
+            name: string;
+            /** Model */
+            model: string;
+            /** Server */
+            server: string | null;
+        };
+        /**
          * CloneJob
          * @description A clone the server runs for the New session window (server/clones.py).
          */
@@ -2025,10 +2090,12 @@ export interface components {
         };
         /**
          * ConfiguredModelInfo
-         * @description A configured model: its name, CLI (a provider's name, and its title), the model as
-         *     the CLI names it, and its server's name (None for the CLI's own way to its models).
+         * @description A configured model: its id, which references hold, its name, CLI (a provider's name,
+         *     and its title), the model as the CLI names it, and its server's name.
          */
         ConfiguredModelInfo: {
+            /** Id */
+            id: string;
             /** Name */
             name: string;
             /** Cli */
@@ -2038,7 +2105,7 @@ export interface components {
             /** Model */
             model: string;
             /** Server */
-            server: string | null;
+            server: string;
         };
         /**
          * EntryRefused
@@ -2631,8 +2698,7 @@ export interface components {
         };
         /**
          * ModelAdd
-         * @description A configured model to check or save: `name` None for its default name, `server` None
-         *     for the CLI's own way to its models.
+         * @description A configured model to check or save: `name` None for its default name.
          */
         ModelAdd: {
             /** Name */
@@ -2642,7 +2708,7 @@ export interface components {
             /** Model */
             model: string;
             /** Server */
-            server?: string | null;
+            server: string;
         };
         /** ModelAdded */
         ModelAdded: {
@@ -2673,6 +2739,49 @@ export interface components {
              * @default
              */
             name: string;
+        };
+        /**
+         * ModelChoices
+         * @description What an agent CLI can run (lado.model_settings.choices): its aliases and own list
+         *     (`models` None for no full list, `why` saying so), its configured models, whether a name
+         *     outside the list may be given, whether a model on a server takes its whole process, and
+         *     whether reading the list again may change the answer.
+         */
+        ModelChoices: {
+            /** Aliases */
+            aliases: string[];
+            /** Models */
+            models: string[] | null;
+            /** Why */
+            why: string;
+            /** External */
+            external: components["schemas"]["ConfiguredModelInfo"][];
+            /** Other Name */
+            other_name: boolean;
+            /** Whole Process */
+            whole_process: boolean;
+            /** Read Again */
+            read_again: boolean;
+        };
+        /**
+         * ModelDefaultSaved
+         * @description A default model set: the settings after it and, for a built-in model, the check's
+         *     verdict (None for an external one, which asks no server).
+         */
+        ModelDefaultSaved: {
+            settings: components["schemas"]["ModelSettings"];
+            check: components["schemas"]["ModelCheck"] | null;
+        };
+        /**
+         * ModelDefaultSet
+         * @description The default model to set: `external` a configured model's id, or `builtin` the CLI's
+         *     name for it, exactly one of them.
+         */
+        ModelDefaultSet: {
+            /** External */
+            external?: string | null;
+            /** Builtin */
+            builtin?: string | null;
         };
         /**
          * ModelInfo
@@ -2766,13 +2875,16 @@ export interface components {
         };
         /**
          * ModelSettings
-         * @description The human's configured models and model servers, each by name ignoring case.
+         * @description The human's configured models and model servers, each by name ignoring case, and the
+         *     agent CLIs' default models, by CLI.
          */
         ModelSettings: {
             /** Models */
             models: components["schemas"]["ConfiguredModelInfo"][];
             /** Servers */
             servers: components["schemas"]["ModelServerInfo"][];
+            /** Defaults */
+            defaults: components["schemas"]["CliDefault"][];
         };
         /** NewMarketplace */
         NewMarketplace: {
@@ -5791,6 +5903,130 @@ export interface operations {
                 "application/json": components["schemas"]["ModelRename"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSettings"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provider_model_choices_api_providers__name__model_choices_get: {
+        parameters: {
+            query?: {
+                fresh?: boolean;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelChoices"];
+                };
+            };
+            /** @description no such provider */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_model_default_api_model_defaults__cli__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cli: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelDefaultSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDefaultSaved"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_model_default_api_model_defaults__cli__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cli: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

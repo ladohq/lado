@@ -2125,7 +2125,7 @@
       },
       "delete": {
         "summary": "Remove Configured Model",
-        "description": "Remove a model as `lado model remove` does.",
+        "description": "Remove a model as `lado model remove` does, the default on it cleared.",
         "operationId": "remove_configured_model_api_models__name__delete",
         "parameters": [
           {
@@ -2135,6 +2135,167 @@
             "schema": {
               "type": "string",
               "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers/{name}/model-choices": {
+      "get": {
+        "summary": "Provider Model Choices",
+        "description": "What the provider's CLI can run: its list, kept a minute (`fresh`: read now), and\nits configured models. A list that cannot be read says why; no lado.db made.",
+        "operationId": "provider_model_choices_api_providers__name__model_choices_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "fresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Fresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelChoices"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "no such provider"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/model-defaults/{cli}": {
+      "put": {
+        "summary": "Set Model Default",
+        "description": "Set an agent CLI's default model as `lado model default` does, by reference.",
+        "operationId": "set_model_default_api_model_defaults__cli__put",
+        "parameters": [
+          {
+            "name": "cli",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cli"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelDefaultSet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelDefaultSaved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Clear Model Default",
+        "description": "Clear an agent CLI's default model, installed or not.",
+        "operationId": "clear_model_default_api_model_defaults__cli__delete",
+        "parameters": [
+          {
+            "name": "cli",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cli"
             }
           }
         ],
@@ -4795,6 +4956,66 @@
         "title": "CliApi",
         "description": "An agent CLI (a provider's name and title) and the model server API it speaks."
       },
+      "CliDefault": {
+        "properties": {
+          "cli": {
+            "type": "string",
+            "title": "Cli"
+          },
+          "external": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External"
+          },
+          "builtin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Builtin"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cli",
+          "external",
+          "builtin",
+          "name",
+          "model",
+          "server"
+        ],
+        "title": "CliDefault",
+        "description": "An agent CLI's default model: `external` the configured model's id or `builtin` the\nCLI's name for it, its name as shown, the model as the CLI names it and the server's name\n(None for a built-in one)."
+      },
       "CloneJob": {
         "properties": {
           "id": {
@@ -5131,6 +5352,10 @@
       },
       "ConfiguredModelInfo": {
         "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
           "name": {
             "type": "string",
             "title": "Name"
@@ -5148,19 +5373,13 @@
             "title": "Model"
           },
           "server": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Server"
           }
         },
         "type": "object",
         "required": [
+          "id",
           "name",
           "cli",
           "cli_title",
@@ -5168,7 +5387,7 @@
           "server"
         ],
         "title": "ConfiguredModelInfo",
-        "description": "A configured model: its name, CLI (a provider's name, and its title), the model as\nthe CLI names it, and its server's name (None for the CLI's own way to its models)."
+        "description": "A configured model: its id, which references hold, its name, CLI (a provider's name,\nand its title), the model as the CLI names it, and its server's name."
       },
       "EntryRefused": {
         "properties": {
@@ -7009,24 +7228,18 @@
             "title": "Model"
           },
           "server": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Server"
           }
         },
         "type": "object",
         "required": [
           "cli",
-          "model"
+          "model",
+          "server"
         ],
         "title": "ModelAdd",
-        "description": "A configured model to check or save: `name` None for its default name, `server` None\nfor the CLI's own way to its models."
+        "description": "A configured model to check or save: `name` None for its default name."
       },
       "ModelAdded": {
         "properties": {
@@ -7078,6 +7291,119 @@
         ],
         "title": "ModelCheck",
         "description": "lado.model_check's verdict on a model: its kind and its line for the human; for a\nrefusal of a configured model (lado.model_settings), the field of the form it concerns\n(\"\" for none)."
+      },
+      "ModelChoices": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Aliases"
+          },
+          "models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Models"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why"
+          },
+          "external": {
+            "items": {
+              "$ref": "#/components/schemas/ConfiguredModelInfo"
+            },
+            "type": "array",
+            "title": "External"
+          },
+          "other_name": {
+            "type": "boolean",
+            "title": "Other Name"
+          },
+          "whole_process": {
+            "type": "boolean",
+            "title": "Whole Process"
+          },
+          "read_again": {
+            "type": "boolean",
+            "title": "Read Again"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aliases",
+          "models",
+          "why",
+          "external",
+          "other_name",
+          "whole_process",
+          "read_again"
+        ],
+        "title": "ModelChoices",
+        "description": "What an agent CLI can run (lado.model_settings.choices): its aliases and own list\n(`models` None for no full list, `why` saying so), its configured models, whether a name\noutside the list may be given, whether a model on a server takes its whole process, and\nwhether reading the list again may change the answer."
+      },
+      "ModelDefaultSaved": {
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/ModelSettings"
+          },
+          "check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "settings",
+          "check"
+        ],
+        "title": "ModelDefaultSaved",
+        "description": "A default model set: the settings after it and, for a built-in model, the check's\nverdict (None for an external one, which asks no server)."
+      },
+      "ModelDefaultSet": {
+        "properties": {
+          "external": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External"
+          },
+          "builtin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Builtin"
+          }
+        },
+        "type": "object",
+        "title": "ModelDefaultSet",
+        "description": "The default model to set: `external` a configured model's id, or `builtin` the CLI's\nname for it, exactly one of them."
       },
       "ModelInfo": {
         "properties": {
@@ -7287,15 +7613,23 @@
             },
             "type": "array",
             "title": "Servers"
+          },
+          "defaults": {
+            "items": {
+              "$ref": "#/components/schemas/CliDefault"
+            },
+            "type": "array",
+            "title": "Defaults"
           }
         },
         "type": "object",
         "required": [
           "models",
-          "servers"
+          "servers",
+          "defaults"
         ],
         "title": "ModelSettings",
-        "description": "The human's configured models and model servers, each by name ignoring case."
+        "description": "The human's configured models and model servers, each by name ignoring case, and the\nagent CLIs' default models, by CLI."
       },
       "NewMarketplace": {
         "properties": {

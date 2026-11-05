@@ -253,7 +253,7 @@ class ClaudeProvider(base.Provider):
 
     def model_list(self, env: Mapping[str, str]) -> base.ModelList:
         return base.ModelList(
-            ALIASES, why=f"{self.title} gives no list of models beyond its aliases"
+            ALIASES, why=f"{self.title} gives no list of models beyond its aliases", fixed=True
         )
 
     def same_model(self, chosen: str, reported: str) -> bool:

@@ -254,12 +254,14 @@ class LoginPrompt:
 class ModelList:
     """The models a CLI takes (Provider.model_list): its own aliases, and the names of its
     own list, from `command` (what the human runs to print it); `models` None when there is
-    no list, with `why`."""
+    no list, with `why`; `fixed` when reading again cannot change the answer (no list is what
+    the CLI gives, not a read that failed)."""
 
     aliases: tuple[str, ...] = ()
     models: tuple[str, ...] | None = None
     command: str = ""
     why: str = ""
+    fixed: bool = False
 
 
 # The APIs of a model server an agent CLI can speak (lado.model_servers), in the order they

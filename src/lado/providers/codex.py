@@ -227,7 +227,7 @@ class CodexProvider(base.Provider):
         provider = _model_provider(config)
         if provider != "openai":
             why = f"{self.title} gives no list of models for the model provider `{provider}`"
-            return base.ModelList(command=command, why=why)
+            return base.ModelList(command=command, why=why, fixed=True)
         argv = [self.command, "debug", "models", "--bundled"]
         try:
             models = _slugs(base.run_list(argv, env))

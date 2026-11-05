@@ -1002,8 +1002,38 @@ def create_app(
         responses=entry_refused,
     )
     def remove_configured_model(name: str) -> models.ModelSettings:
-        """Remove a model as `lado model remove` does."""
+        """Remove a model as `lado model remove` does, the default on it cleared."""
         return entries(model_entries.remove_model, name)
+
+    @app.get(
+        "/api/providers/{name}/model-choices",
+        dependencies=[Depends(guard)],
+        responses={404: {"description": "no such provider"}},
+    )
+    def provider_model_choices(
+        name: str, fresh: bool = False, has_db: bool = Depends(database)
+    ) -> models.ModelChoices:
+        """What the provider's CLI can run: its list, kept a minute (`fresh`: read now), and
+        its configured models. A list that cannot be read says why; no lado.db made."""
+        return model_entries.model_choices(provider_named(name), fresh, has_db)
+
+    @app.put(
+        "/api/model-defaults/{cli}",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=entry_refused,
+    )
+    def set_model_default(cli: str, given: models.ModelDefaultSet) -> models.ModelDefaultSaved:
+        """Set an agent CLI's default model as `lado model default` does, by reference."""
+        return entries(model_entries.set_default, cli, given)
+
+    @app.delete(
+        "/api/model-defaults/{cli}",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=entry_refused,
+    )
+    def clear_model_default(cli: str) -> models.ModelSettings:
+        """Clear an agent CLI's default model, installed or not."""
+        return entries(model_entries.clear_default, cli)
 
     @app.get("/api/providers/logins", dependencies=[Depends(guard)])
     def provider_logins() -> ProvidersPage:

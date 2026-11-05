@@ -252,6 +252,11 @@ Check:
 - An agent starts on the session's model when one is chosen, else on its CLI's default
   (D35), else as today; a worker of another CLI takes its own CLI's default. The card says
   which, with its source.
+- The session's model is where an agent starts, not a limit (D44): whatever is chosen, a
+  built-in model, an external one or nothing, an OpenCode or Kilo agent has its built-in
+  models and every external model ticked for its CLI in `/model`; a test of each case.
+  Claude Code and Codex hold one model per process: the choice there is per agent (S3g,
+  S9a, S9b).
 - The launch window: the Model field stays optional in Advanced, S3f's picker, the list by
   the chosen CLI, the default preselected (D36, variant B); no address or key shown.
   `lado start --model <name>` takes a built-in name of the session's CLI or an external

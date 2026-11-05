@@ -58,15 +58,17 @@ external reference's CLI is the entry's: the core refuses another.
 
 ### D3. The full list in the core
 
-`model_settings.choices(provider, listing) -> Choices(aliases, models, why, command, external:
-list[ConfiguredModel], other_name: bool)`: `other_name` is `models is None`. `listing` is a
-callable, as in `check_model`, so the server passes `launch.model_list` (kept a minute, `fresh`)
-and the command reads now. In the core, not in the API, because a later MCP tool needs the same
-list: one source. No new wait: `base.run_list`'s timeout stands.
+`model_settings.choices(provider, listing, saved=None) -> Choices(aliases, models, why, external:
+list[ConfiguredModel], other_name: bool, read_again: bool)`: `other_name` is `models is None`,
+`read_again` is `not ModelList.fixed`: a provider marks a list that cannot change (Claude Code's
+aliases, Codex on another model provider), which a timeout's shape cannot be told from. `listing`
+is a callable, so the server passes `launch.model_list` (kept a minute, `fresh`). In the core, not
+in the API, because a later MCP tool needs the same list: one source. No new wait:
+`base.run_list`'s timeout stands.
 
 ### D4. Setting a default
 
-`model_settings.set_default(cli, name, env, listing=None) -> tuple[ModelRef, Verdict | None]`
+`model_settings.set_default(cli, name, env) -> tuple[ModelRef, Verdict | None]`
 resolves as the delta says: the CLI known, installed (`shutil.which(provider.command,
 path=env["PATH"])`), an entry of this CLI, the list read for the clash, a built-in, another
 CLI's entry, then `model_check.verdict`. `set_default_ref(ref, env, listing)` is the page's
@@ -86,11 +88,14 @@ they carry their defaults. The page asks from the `defaults` of its last listing
 | Route | Body | Answer |
 |---|---|---|
 | `GET /api/model-settings` | | `ModelSettings{models, servers, defaults: [CliDefault]}` |
-| `GET /api/providers/{name}/model-choices?fresh=` | | `ModelChoices{aliases, models, why, external: [ConfiguredModelInfo], other_name, whole_process}` |
+| `GET /api/providers/{name}/model-choices?model=&fresh=` | | `ModelChoices{aliases, models, why, external: [ConfiguredModelInfo], other_name, whole_process, read_again, check}` |
 | `PUT /api/model-defaults/{cli}` | `ModelDefaultSet{external: str \| None, builtin: str \| None}` | `ModelDefaultSaved{settings, check}` |
 | `DELETE /api/model-defaults/{cli}` | | `ModelSettings` |
 
-`CliDefault{cli, external: str | None, builtin: str | None, name, model, server: str | None}`,
+`CliDefault{cli, external: str | None, builtin: str | None, name, model, server: str | None,
+whole_process}`: the card says it with no list read, as opening the page reads none for an
+external default. `ModelChoices.check` is the core's verdict on the built-in `model`: the card's
+warning and a lost default come from it, no line is rebuilt on the page.
 `ConfiguredModelInfo` gains `id`; `ModelAdd.server` is required. Refusals are `EntryRefused`.
 The typed check of `Other name…` is the existing `GET /api/providers/{name}/models?model=`.
 `DELETE /api/models/{name}` and the server's stay; the page compares `defaults` for its lines.

@@ -130,7 +130,6 @@ export function ModelPicker({
   lost,
   health,
   describedBy,
-  invalid,
   fieldRef,
   onOpen,
   onPick,
@@ -145,7 +144,6 @@ export function ModelPicker({
   lost: boolean; // the list lacks the built-in value
   health: Record<string, Health>; // by server, its name folded
   describedBy?: string;
-  invalid?: boolean;
   fieldRef?: RefObject<HTMLButtonElement | null>; // the owner hands the focus back to the field
   onOpen: () => void;
   onPick: (pick: Pick) => void;
@@ -229,7 +227,7 @@ export function ModelPicker({
     : null;
   const rows = [...(typed ? [] : [settingsRow]), ...yours, ...builtins, ...(otherRow ? [otherRow] : [])];
   const shownModels = yours.length + builtins.length;
-  const noList = choices?.models === null && (choices.aliases.length === 0 || list.problem !== null);
+  const noList = choices?.models === null && choices.aliases.length === 0;
 
   const close = useCallback((refocus: boolean) => {
     setOpen(false);
@@ -432,7 +430,6 @@ export function ModelPicker({
         aria-controls={listId}
         aria-activedescendant={open && !searching ? `${id}-${active}` : undefined}
         aria-describedby={describedBy}
-        aria-invalid={invalid ? true : undefined}
         disabled={off}
         title={value ? [value.name, value.model, value.server].filter(Boolean).join(" · ") : undefined}
         onClick={() => (open ? close(true) : opening())}

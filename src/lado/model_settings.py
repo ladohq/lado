@@ -478,14 +478,13 @@ def cli_title(cli: str) -> str:
 @dataclass(frozen=True)
 class Choices:
     """What an agent CLI can run: `aliases` and `models` as its list gives them (`models` None
-    for no full list, `why` saying so; `command` prints it), and its configured models.
-    `other_name`: a name outside the list may be given, as no full list can refuse it.
-    `read_again`: reading the list again may change the answer."""
+    for no full list, `why` saying so), and its configured models. `other_name`: a name outside
+    the list may be given, as no full list can refuse it. `read_again`: reading the list again
+    may change the answer."""
 
     aliases: tuple[str, ...]
     models: tuple[str, ...] | None
     why: str
-    command: str
     external: list[state.ConfiguredModel]
     other_name: bool
     read_again: bool
@@ -507,7 +506,6 @@ def choices(
         aliases=listed.aliases,
         models=listed.models,
         why=listed.why,
-        command=listed.command,
         external=[
             model
             for model in (state.models() if saved is None else saved)
@@ -596,22 +594,20 @@ def _set_builtin(
     return ref, verdict
 
 
-def set_default(
-    cli: str, name: str, env: Env, listing: Listing | None = None
-) -> tuple[state.ModelRef, model_check.Verdict | None]:
+def set_default(cli: str, name: str, env: Env) -> tuple[state.ModelRef, model_check.Verdict | None]:
     """Make `name` the default model of the agent CLI `cli`: a configured model of that CLI by
     its name ignoring case, else a built-in model; the reference and, for a built-in model,
-    the check's verdict (an external one asks no server). Its list is given by `listing`, else
-    read now with `env(provider)`, the agents' environment. Refused, nothing changed, for a
-    CLI not known or not installed, a name both a configured and a built-in model of the CLI,
-    a name that is only another CLI's configured model, and a built-in name refused."""
+    the check's verdict (an external one asks no server). Its list is read now with
+    `env(provider)`, the agents' environment. Refused, nothing changed, for a CLI not known or
+    not installed, a name both a configured and a built-in model of the CLI, a name that is
+    only another CLI's configured model, and a built-in name refused."""
     provider = _installed_cli(cli, env)
     name = name.strip()
-    listed = listing(provider) if listing is not None else provider.model_list(env(provider))
+    listed = provider.model_list(env(provider))
+    own = {*listed.aliases, *(listed.models or ())}
     saved = state.model(name)
-    built_in = name in listed.aliases or name in (listed.models or ())
     if saved is not None and saved.cli == cli:
-        if built_in or saved.name in listed.aliases or saved.name in (listed.models or ()):
+        if name in own or saved.name in own:
             raise Refused(
                 f'"{saved.name}" is both a saved model of {provider.title} and one of its own; '
                 "rename the saved one: Settings → Models",
@@ -620,7 +616,7 @@ def set_default(
         ref = state.ModelRef(cli, saved.id, None)
         _save_default(ref)
         return ref, None
-    if saved is not None and not built_in:
+    if saved is not None and name not in own:
         raise _not_its_model(saved, provider)
     return _set_builtin(provider, name, listed)
 

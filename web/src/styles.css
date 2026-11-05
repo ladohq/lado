@@ -9396,15 +9396,12 @@ del.kit-mcp-name {
 
 @media (max-width: 760px) {
   .mp-opt {
+    flex-wrap: wrap;
     min-height: 44px;
   }
 
   .mp-id {
     display: none;
-  }
-
-  .mp-opt {
-    flex-wrap: wrap;
   }
 
   .mp-opt .srv {

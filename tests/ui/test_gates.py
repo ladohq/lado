@@ -472,6 +472,8 @@ def test_a_chat_low_on_the_page_keeps_the_context_and_the_footer(page: Page, ser
     page.get_by_role("button", name="Sessions", exact=True).click()
     card = waiting_card(page, session)
     expect(page.locator(".session-list")).to_be_visible()
+    page.add_style_tag(content=".session-list { min-height: 500px; }")  # many sessions
+    page.evaluate("window.dispatchEvent(new Event('resize'))")
     page.wait_for_function(
         "c => c.getBoundingClientRect().height >= window.innerHeight / 2",
         arg=card.element_handle(),

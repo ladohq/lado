@@ -67,18 +67,37 @@ bounds SHALL still keep its 160 px.
 ### Requirement: A window that scrolls keeps the footer in sight
 
 In a window of 900 px or less outside the phone layout, which scrolls as a page, the chat's card
-SHALL be at most the window's height under the top bar and SHALL stick to the window's lower
-edge, so its footer stays in sight wherever the page stands. The expanded card SHALL be that
-height, on Needs you too, and the page SHALL not scroll until it folds. The composer past the
-window's edge SHALL stay as it is: it is LAD-193's.
+SHALL stick to the window's lower edge and be at most the room from the chat's top down, its
+parts giving way in their order; never less than a footer's least height or half the window,
+which the page's scroll then brings up. The composer past the window's edge is LAD-193's.
 
 #### Scenario: A low window
 - **WHEN** a gate with a long note waits in a window 768×700
 - **THEN** the recommendation, the field, Approve and Reject lie within the window at the page's
   top and at its end
 
+#### Scenario: A card that grew
+- **WHEN** the human opens the recommendation and types 4 lines in a window 768×700, 768×500 or
+  768×420, or a question of six choices waits there with its own answer open
+- **THEN** the context gives way, and the field and the buttons lie within the window at the
+  page's top
+
+#### Scenario: The chat low on the page
+- **WHEN** the sessions' list stands open over the chat in a window 768×700
+- **THEN** the card keeps half the window, and the page's scroll brings its footer into it
+
+### Requirement: In a window that scrolls the expanded card holds the page
+
+In a window of 900 px or less outside the phone layout, the expanded card SHALL be the window's
+height under the top bar, on Needs you too, also after the window narrows or turns, and the page
+SHALL not scroll until it folds.
+
 #### Scenario: Expanded
-- **WHEN** the human expands that card in a window 768×700 or 768×1024 and turns the wheel
+- **WHEN** the human expands a card in a window 768×700 or 768×1024 and turns the wheel
+- **THEN** the card stands under the top bar and its footer lies within the window
+
+#### Scenario: The window narrows
+- **WHEN** the card is expanded in a window 1440×900 and the window narrows to 768×700
 - **THEN** the card stands under the top bar and its footer lies within the window
 
 ### Requirement: A field's placeholder is muted

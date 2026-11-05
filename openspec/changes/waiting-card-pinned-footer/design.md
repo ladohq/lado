@@ -112,11 +112,17 @@ Reproduced on main under load, 7 of 160: the field at 384–464 in an app of 400
 
 **D16. The footer in a window that scrolls** (ui-review C1, the human's decision of 2026-11-05).
 At 900 px or less `.chat` has no height of its own and the page scrolls, so nothing above could
-hold the footer. The card takes `position: sticky; bottom: 0` and a `max-height` of the window
-under the top bar, on `--ground`, so nothing shows through beside its tabs. `.content` had
+hold the footer. The card takes `position: sticky; bottom: 0`, on `--ground`, so nothing shows through beside its
+tabs. Sticky stops at `.chat`'s top, so a limit counted from the top bar left a grown card past
+the window (F28): `Chat` measures where it stands on the page (`--chat-top`) and the card is at
+most the room from there down, its parts giving way by D4, held in tests down to 420 px. The
+floor, 220 px (a footer's least height) or half the window, keeps the context of a chat low on
+the page, under an open sessions' list; there, and in a window under about 400 px, the footer
+comes up with the page's scroll. `.content` had
 `overflow: hidden`, which would be the box it sticks in: with such a card it clips instead. Sticky
 stops at `.chat`, which an expanded card fills, so the expanded card has that height and
-`html:has(.waiting-card.expanded)` stops the page, on Needs you too. A fixed card was the other way;
+`html:has(.waiting-card.expanded)` stops the page, on Needs you too; so a resize of the window
+scrolls it under the top bar again, or a window narrowed would strand it (F27). A fixed card was the other way;
 its left edge would need the rail's width. The phone layout, whose app does not scroll, sets all
 this back. The rest of LAD-193's layout stays.
 

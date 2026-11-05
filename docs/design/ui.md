@@ -1064,10 +1064,12 @@ Built in the chat task (2026-10-03):
   choices' area to one row, an opened recommendation to one line, then the field stops at its
   height and scrolls inside; the buttons stay. The order is a ratio of `flex-shrink` weights
   (styles.css), no measuring in JS; on a phone a field in the footer takes the choices out at
-  once (Phone layout). On a window of 900 px or less, which scrolls as a page, the chat's card is
-  at most the window's height under the top bar and sticks to its lower edge over the feed, so
-  the footer stays in sight wherever the page stands (the human's decision of 2026-11-05; the
-  composer past the edge is LAD-193's). In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
+  once (Phone layout). On a window of 900 px or less, which scrolls as a page, the chat's card
+  sticks to its lower edge over the feed, at most the room from the chat's top down
+  (`--chat-top`, measured), so the footer stays in sight wherever the page stands (the human's
+  decision of 2026-11-05; the composer past the edge is LAD-193's). It keeps at least 220 px and
+  half the window: under an open sessions' list, or in a window under about 400 px, the page's
+  scroll brings the footer up. In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
   2026-10-14, LAD-54, mockup `task/lad-54/mockup-gate-card.html`, screen D; before, the
   card could not be made smaller, and the human talking a gate over with the supervisor
   read the replies in the other half): dragged, or ↑ / ↓ on it by 40 px, it gives the
@@ -1112,7 +1114,7 @@ Built in the chat task (2026-10-03):
   Its host hides the rest by CSS (`:has(.waiting-card.expanded)`), so the artifact panel
   and its scrim, fixed over the page, are over the card too. On a window of 900 px or
   less, which scrolls, it is the window's height under the top bar, expanding scrolls
-  it there, and the page stays there until it folds (LAD-194). Its other icon ("Collapse the card") or Esc brings it back, the focus
+  it there, again when the window resizes, and the page stays there until it folds (LAD-194). Its other icon ("Collapse the card") or Esc brings it back, the focus
   returning to the expand button, and it comes back by itself when nothing waits. While
   an artifact panel is open (`?view=`), Esc closes the panel only; the next Esc folds the
   card. **Lines lead to tabs**: an open question's or gate's line in the feed

@@ -22,7 +22,8 @@ state.
 
 #### Scenario: A long recommendation on a phone
 - **WHEN** a recommendation of ten lines waits on a phone and the human taps it
-- **THEN** it opens to 3 lines and the rest scrolls inside them
+- **THEN** it opens to 3 lines and the rest scrolls inside them, with a fade at the lower edge
+  until the text is scrolled to its end
 
 ### Requirement: On a question the recommended choice is picked ahead
 

@@ -110,12 +110,25 @@ frame (ResizeObserver, `cardHeight`, an effect), and `within` read it once, betw
 Reproduced on main under load, 7 of 160: the field at 384–464 in an app of 400 px, 226–306 by
 500 ms later. A footer's field needs no such scroll, so AC-13's test has no race (0 of 160).
 
+**D16. The footer in a window that scrolls** (ui-review C1, the human's decision of 2026-11-05).
+At 900 px or less `.chat` has no height of its own and the page scrolls, so nothing above could
+hold the footer. The card takes `position: sticky; bottom: 0` and a `max-height` of the window
+under the top bar, on `--ground`, so nothing shows through beside its tabs. `.content` had
+`overflow: hidden`, which would be the box it sticks in: with such a card it clips instead. Sticky
+stops at `.chat`, which an expanded card fills, so the expanded card has that height and
+`html:has(.waiting-card.expanded)` stops the page, on Needs you too. A fixed card was the other way;
+its left edge would need the rail's width. The phone layout, whose app does not scroll, sets all
+this back. The rest of LAD-193's layout stays.
+
 ## Risks
 
 - `:has` and `dvh` are in use already; nothing new for the browsers supported.
 - Shrink weights are a ratio, not a strict order: at the extremes the choices' area can give a
   few pixels while the top is still above 0. The tests in a 420 px chat and at 440 px check that
   the buttons hold; a strict order would need JS measuring.
+- A window of 900 px or less: the card sticks over the feed, and expanded it holds the page, so
+  the session's tabs and Team are out of reach until it folds. The composer may stay past the
+  window's edge: LAD-193 (D16).
 - A real keyboard may leave less than 440 px (a small iPhone leaves about 350). Then the top goes
   to 0 first, as D4 says; the tests hold at 350 and 340 px, an imitation, not verified on a device.
 - An Android back button closes the keyboard without a blur (F8): `typing` stays until a touch

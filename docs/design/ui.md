@@ -1064,7 +1064,10 @@ Built in the chat task (2026-10-03):
   choices' area to one row, an opened recommendation to one line, then the field stops at its
   height and scrolls inside; the buttons stay. The order is a ratio of `flex-shrink` weights
   (styles.css), no measuring in JS; on a phone a field in the footer takes the choices out at
-  once (Phone layout). In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
+  once (Phone layout). On a window of 900 px or less, which scrolls as a page, the chat's card is
+  at most the window's height under the top bar and sticks to its lower edge over the feed, so
+  the footer stays in sight wherever the page stands (the human's decision of 2026-11-05; the
+  composer past the edge is LAD-193's). In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
   2026-10-14, LAD-54, mockup `task/lad-54/mockup-gate-card.html`, screen D; before, the
   card could not be made smaller, and the human talking a gate over with the supervisor
   read the replies in the other half): dragged, or ↑ / ↓ on it by 40 px, it gives the
@@ -1108,8 +1111,8 @@ Built in the chat task (2026-10-03):
   Phone layout, The chat); on Needs you over the page's content area (Needs you, above).
   Its host hides the rest by CSS (`:has(.waiting-card.expanded)`), so the artifact panel
   and its scrim, fixed over the page, are over the card too. On a window of 900 px or
-  less, which scrolls, it is the window's height under the top bar and expanding scrolls
-  it there. Its other icon ("Collapse the card") or Esc brings it back, the focus
+  less, which scrolls, it is the window's height under the top bar, expanding scrolls
+  it there, and the page stays there until it folds (LAD-194). Its other icon ("Collapse the card") or Esc brings it back, the focus
   returning to the expand button, and it comes back by itself when nothing waits. While
   an artifact panel is open (`?view=`), Esc closes the panel only; the next Esc folds the
   card. **Lines lead to tabs**: an open question's or gate's line in the feed
@@ -1128,7 +1131,7 @@ Built in the chat task (2026-10-03):
   recommendation:** <text>" without an option of the card's, cut with "…" (a phone: 2 lines);
   " · disagrees with <agent>" in orange stands right after the option, so a cut never takes it.
   Its whole text and time are in its tooltip; a click opens it to 3 lines of Markdown that scroll
-  inside; in the expanded card it shows whole, at most 40 % of the window's height. On a run's page
+  inside, with a fade at the lower edge until the end; in the expanded card it shows whole, at most 40 % of the window's height. On a run's page
   in Flows, a block between the question's text (the gate's note and what it reads) and the
   answer: the supervisor's small avatar,
   "Supervisor's recommendation", "disagrees with <agent>" as an orange chip when the
@@ -2265,7 +2268,8 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   of the card's fields that take files (an own answer, a skip's or a gate's comment; LAD-86). A flow event's
   line starts at the feed's left edge, its actor, chips and time on the first line, its
   text wrapped under them, whole. The card's tabs, Minimize and Expand (44×44), fields, chips
-  and buttons are 44 px high; "↓ more" stays 24 px, as Expand does the same. A field of the card
+  and buttons are 44 px high; "↓ more" stays 24 px, as Expand does the same. Its tabs draw in
+  (a name down to 48 px, less padding), so a gate's and a question's stand whole. A field of the card
   in focus does not expand it (LAD-194, the human's decision of 2026-11-05; since LAD-126 it
   did, as the field lay in a list with no room above the keyboard): the footer is always whole,
   so the session's tabs, the Team row, the context and a question's choices step aside (`typing`)

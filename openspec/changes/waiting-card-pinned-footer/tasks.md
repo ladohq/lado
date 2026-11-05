@@ -44,3 +44,6 @@
   comments, CHANGELOG.md. Check: read against the code.
 - [x] 6.2 The regression run of the plan, whole `make test-ui`, screenshots in both themes as run
   artifacts; the real iOS keyboard named "not verified" in the build report.
+- [x] 6.3 ui-review C1–C4 (#3551, D16): the footer in a 768 window, placeholders, a phone's tabs,
+  the opened recommendation's fade. Check: `test_a_window_768_wide…`, `test_a_placeholder…`,
+  `test_a_gates_and_a_questions_tabs…`, `test_an_opened_recommendation…`.

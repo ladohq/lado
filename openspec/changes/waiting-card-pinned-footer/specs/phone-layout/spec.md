@@ -72,6 +72,15 @@ taller than its room gives way in order"; the title's meta SHALL go before the t
 - **THEN** the choices' area does not show, and the recommendation, the field, Send answer and
   Skip question lie whole within the visible 340 px
 
+### Requirement: On a phone a gate's and a question's tabs stand whole
+
+In the phone layout two tabs of the waiting card SHALL stand whole in their row, a name cut with
+an ellipsis before the row scrolls, and each SHALL keep its count.
+
+#### Scenario: Two tabs
+- **WHEN** a gate of ship/x and a question of the supervisor wait on a phone 390×844 or 360×780
+- **THEN** both tabs lie within their row and show their counts, whichever is shown
+
 ### Requirement: On a phone the waiting card's targets are 44 px
 
 In the phone layout the card's tabs, Minimize and Expand (44×44), its fields, its chips and

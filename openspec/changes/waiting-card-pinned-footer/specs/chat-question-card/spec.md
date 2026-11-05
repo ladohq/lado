@@ -64,6 +64,33 @@ bounds SHALL still keep its 160 px.
 - **WHEN** the human types 4 lines in a card with no room left above it
 - **THEN** the field keeps the height it has, scrolls inside, and the buttons are in sight
 
+### Requirement: A window that scrolls keeps the footer in sight
+
+In a window of 900 px or less outside the phone layout, which scrolls as a page, the chat's card
+SHALL be at most the window's height under the top bar and SHALL stick to the window's lower
+edge, so its footer stays in sight wherever the page stands. The expanded card SHALL be that
+height, on Needs you too, and the page SHALL not scroll until it folds. The composer past the
+window's edge SHALL stay as it is: it is LAD-193's.
+
+#### Scenario: A low window
+- **WHEN** a gate with a long note waits in a window 768×700
+- **THEN** the recommendation, the field, Approve and Reject lie within the window at the page's
+  top and at its end
+
+#### Scenario: Expanded
+- **WHEN** the human expands that card in a window 768×700 or 768×1024 and turns the wheel
+- **THEN** the card stands under the top bar and its footer lies within the window
+
+### Requirement: A field's placeholder is muted
+
+Every field's placeholder SHALL wear `--muted` at full opacity in both themes, not the browser's
+own colour.
+
+#### Scenario: Dark
+- **WHEN** a gate waits in the dark theme
+- **THEN** the placeholders of its comment and of the composer are `--muted`, and so is an own
+  answer's
+
 ### Requirement: A single question stands in the footer's choices
 
 A tab of one question SHALL show its choices in the footer as chips of 32 px that wrap,

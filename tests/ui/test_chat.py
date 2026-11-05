@@ -1612,7 +1612,7 @@ def test_a_placeholder_is_muted_in_both_themes(page: Page, server, repo, shot, t
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     card = waiting_card(page, session)
-    colour = "f => [getComputedStyle(f, '::placeholder').color, getComputedStyle(f, '::placeholder').opacity]"
+    colour = "f => (s => [s.color, s.opacity])(getComputedStyle(f, '::placeholder'))"
     comment = card.get_by_role("textbox", name="Comment for the next step (optional)")
     composer = page.get_by_role("textbox", name="Write to the supervisor…")
     assert comment.evaluate(colour) == [muted, "1"]

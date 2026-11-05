@@ -14,6 +14,9 @@
 
 ### Fixed
 
+- **Placeholders read well in the dark theme.** Every field's hint now has the muted text
+  colour instead of the browser's pale grey.
+
 - **A stop no longer loses questions to you without a word.** Stop and `lado stop` say how
   many open questions close, a closed card reads "Closed: the session stopped", and after a
   resume the supervisor gets the unanswered ones to ask again.

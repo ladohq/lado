@@ -71,6 +71,10 @@ same pull request. The minor is not bumped by this change: `0.45.0 (unreleased)`
 - Spec §3's order, with choices before the recommendation, while a phone's field in the footer
   has the focus: the human's decision of 2026-11-05 at the review (F16) hides the choices' area
   then, as Send was cut under about 378 px under a recommendation of two lines.
+- ui-review, the human's decision of 2026-11-05 (#3551): C1 (the footer in a 768 window, the
+  card only), C2 (placeholders), C3 (a phone's tabs) and C4 (the opened recommendation's fade)
+  are done here; C5–C14 are accepted as they are. The composer cut at 768 stays LAD-193's, is
+  not touched here and counts as no finding.
 - A real iOS Safari keyboard: nobody in the run has a device. Frame g3-390-kbd is an imitation;
   the human checks it before the merge, and the build report says "not verified".
 
@@ -78,7 +82,7 @@ same pull request. The minor is not bumped by this change: `0.45.0 (unreleased)`
 
 - AC-1: at 1440, 768 and 390 px wide, with a long context, on a gate and on a question, the
   recommendation, the field or choices and the buttons are in sight without scrolling; only the
-  context scrolls.
+  context scrolls. At 768 that holds for the expanded card too, in windows 700 and 1024 px high.
 - AC-2: the card is as high as its content; title and context together are at most 40 % of the
   chat. 292 px is an example, not a limit: at 1440×900 with terminals open a gate with a short
   note is about that high (was 372); with a longer context it is as high as its content.

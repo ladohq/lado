@@ -7,7 +7,8 @@
 // the gate's panel, whose buttons answer at once. Nothing shows ahead of the server: a tab
 // goes when the live lists bring its items closed. A tab is a title, a context, which alone
 // scrolls, and a footer, always whole (waitingParts.tsx): the card is as high as its content,
-// its title and context at most 40 % of the chat; expanded, it stays where it is and fills
+// its title and context at most 40 % of the chat (in a window that scrolls it sticks to the
+// window's lower edge, styles.css); expanded, it stays where it is and fills
 // its page's area (the chat's, Needs you's content; its host hides the rest, styles.css)
 // until Esc, its fold button, or nothing waits. It is no modal: an artifact panel a chip
 // opens shows over it, and Esc closes that panel first (the card's Esc waits while the

@@ -146,7 +146,14 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `session.error`, then `session.idle` of the same session (read in their bundles); the
   plugin passes the error's name (and an `APIError`'s message) with that idle, drops it at
   `session.compacted` (a context overflow the CLI compacts its way out of ends no turn),
-  and `MessageAbortedError` (the human's Esc) is no error. Claude Code runs no hook when
+  and `MessageAbortedError` (the human's Esc) is no error. A request larger than the context
+  never reaches `session.idle` on OpenCode 1.18.35: it compacts and resends without end, the
+  compaction's own small request succeeding each round. So the plugin counts
+  `ContextOverflowError`s in a row per session, a new prompt or a step of the turn (not of a
+  compaction, whose message has `summary: true`) starting the count again, and at the third
+  keeps that error with LADO's words and calls `client.session.abort`, whose
+  `MessageAbortedError` does not replace it; checked in the TUI of OpenCode 1.18.35 and Kilo
+  7.8.8 on a server of a small context, 6 and 7 requests to the idle. Claude Code runs no hook when
   the human interrupts a turn with Esc, while text streams, while a tool runs or on a
   permission dialog (checked by hand with 2.1.292): the agent stays `busy`, or `waiting`
   after a `PermissionRequest`, until the human's next prompt in its window, whose `Stop`
@@ -183,7 +190,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   pick in `<state>/<cli>/model.json`, read by every run: each of their agents has its own
   `XDG_STATE_HOME`, `LADO_HOME/agent-state/<session>/<agent>` (`OpenCodeFamily.own_state`), so an
   agent's pick of a server, a provider only its config has, stays out of the user's file, which
-  LADO only reads. A new folder starts from a copy of that file without LADO's servers. The
+  LADO only reads. A new folder starts from a copy of that file without LADO's servers, and of
+  the user's TUI settings, `kv.json`, as they are, each file when the folder lacks it. The
   variable moves `state` alone, logins stay; the agent's tools see it, and its prompt history and
   `locks` live there too. It is apart from the config folder: it outlasts a stop and a resume, and
   goes with the worker or the session. A CLI whose models on a server sit beside its
@@ -191,7 +199,17 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `AgentSpec.servers` (`model_settings.agent_servers`), whatever it starts on: one OpenAI-compatible
   provider per server, `lado-<server id>`, so a rename changes nothing, labelled `LADO · <server>`,
   its key named as `{env:LADO_MODEL_KEY_<ID>}` and given only in `Launch.env`; a name or id that
-  holds `{env:` or `{file:` is left out with a warning, as the CLI would expand it. Claude Code and
+  holds `{env:` or `{file:` is left out with a warning, as the CLI would expand it. Each server of
+  the config is asked for its models' context at each start, resume and spawn, all at once within
+  `model_servers.LIMIT_TIMEOUT` (`ServerEntry.limits`): nothing is stored, so a reloaded model is
+  read anew, and a silent server only leaves its models with no limit. A known context goes in
+  as `limit: {context, output}`, both always, as OpenCode refuses one without `output`; `output`
+  is at most a quarter of the context, 8192 when none is reported. Below `Provider.min_context`
+  the start warns, and goes on. An OpenCode agent on a server's model also gets npm's
+  `fetch_retries=0` and `fetch_timeout=5000` (`OpenCodeProvider.server_env`) while
+  `@opencode-ai/plugin` is not in OpenCode's config folder: any `plugin` entry makes it wait for
+  that install, 72 s with outside traffic refused, 2 s with these or with the package there. LADO's
+  plugin imports nothing from it. They reach what the agent runs in its shell too. Claude Code and
   Codex hold one model per process and get none of it; a model on a server is refused for them
   (`model_settings.check_launch`). A start or resume checks the supervisor's model
   (`check_start`, by the probe of saving a model, within its timeout), and `spawn_worker` its
@@ -467,7 +485,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   window. At each turn's end, before the queue is handed over, the human's messages the
   agent got (not answers or dismissals) are checked once: `replied` if it wrote to `human`
   after it got them (by `sent_at`, when each was handed over, not by id), else `missing`,
-  which the chat shows as "replied only in its terminal".
+  which the chat shows as "replied only in its terminal". A turn that ended on an error
+  checks nothing: the next clean turn decides, as the agent has seen the message by then.
 - The lead recommends on each question to the human, a core mechanism of every kit and
   provider: when a flow gate opens (approval, choice, loop limit) or an agent other than
   the lead asks the human (`ask_human`), LADO asks the lead with one message from `lado`,

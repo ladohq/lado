@@ -1479,9 +1479,11 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   the field. A silent server also marks `.srv.down`. Folded, the mark is whole on any width: the
   name and the server give way; on `<CLI>'s settings` past a default the row reads `Advanced:
   model <CLI>'s settings`. A warning (`.warn`) leaves Start on: no list to
-  check against, or `⚠ The key of <server> goes unencrypted (http) to an address outside your
-  machine and network.`, for the chosen model's server only, under `✓ <server> lists <model> among
-  its models.` A start refused after a good check is a 409 `ModelRefusal`: above the
+  check against, `⚠ The key of <server> goes unencrypted (http) to an address outside your
+  machine and network.`, for the chosen model's server only, or `⚠ <model> on <server> has a
+  context of 16,000 tokens; <CLI> needs about 49,152 for its instructions and tools: load the model
+  with a larger context`, when the server reports a context below the CLI's need, under
+  `✓ <server> lists <model> among its models.` A start refused after a good check is a 409 `ModelRefusal`: above the
   buttons `Not started: <short reason>. See Model above.`, the refusal under the field, the focus
   on it. Then the `--without` items, `kind:name` or `kind:name@kit`
   (placeholder `agent:reviewer@kit-b, skill:style`). Start shows "Starting…" with

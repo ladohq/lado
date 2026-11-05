@@ -235,6 +235,7 @@ class FakeServerProvider(FakeProvider):
     server_api = base.CHAT_COMPLETIONS
     external_whole_process = False
     runs_on_server = True
+    min_context = 32768
     server_model = opencode_family.OpenCodeFamily.server_model
     on_server = opencode_family.OpenCodeFamily.on_server
 

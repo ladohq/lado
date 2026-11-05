@@ -1,3 +1,8 @@
+## Purpose
+
+Which turns decide whether the human's message was answered in the chat, so that a turn that failed
+is not called a reply.
+
 ## ADDED Requirements
 
 ### Requirement: A turn that ended on an error decides no reply

@@ -30,17 +30,17 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-local-model-
 
 ## 6. End to end
 
-- [ ] 6.1 A start on a small model warns, and a failed turn has no mark, through the fake agent. Check:
+- [x] 6.1 A start on a small model warns, and a failed turn has no mark, through the fake agent. Check:
   `uv run pytest -m integration -n auto tests/integration/test_local_model_limits.py`.
-- [ ] 6.2 The key canary with the limits' read. Check: `uv run pytest -m integration -n auto
+- [x] 6.2 The key canary with the limits' read. Check: `uv run pytest -m integration -n auto
   tests/integration/test_session_model_canary.py`.
-- [ ] 6.3 Smoke: both real CLIs take a config with `limit`. Check: `tests/smoke/`, in CI.
+- [x] 6.3 Smoke: both real CLIs take a config with `limit`. Check: `tests/smoke/`, in CI.
 
 ## 7. Docs and the change
 
-- [ ] 7.1 `docs/install.md`, `docs/design/agents.md`, `docs/design/ui.md`, `docs/design/modules.md`,
+- [x] 7.1 `docs/install.md`, `docs/design/agents.md`, `docs/design/ui.md`, `docs/design/modules.md`,
   CHANGELOG under `## 0.45.0 (unreleased)`. Check: `grep -n "32K" docs/install.md`.
-- [ ] 7.2 The purpose of the new specs; a trial archive on a copy, its result in the pull request. Check:
+- [x] 7.2 The purpose of the new specs; a trial archive on a copy, its result in the pull request. Check:
   `openspec validate --specs --strict`.
 - [ ] 7.3 The pull request's manual check, with the human's list of the plan. Check: it is in the
   description from the start.

@@ -863,8 +863,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     CLIs whose provider's `server_api` (`providers/base.py`, one of `SERVER_APIS`) the
     server proved; `plain_http_warning` the warning for a key over plain `http://` to a host
     that is not local (`localhost`, `host.docker.internal`, a loopback, private or
-    link-local IP; no name resolved); standard library only, the key only in the requests'
-    headers.
+    link-local IP; no name resolved); `context_limits` what a server reports of its models'
+    context (three GETs at once within `LIMIT_TIMEOUT`, read by shape: LM Studio's loaded context,
+    Ollama's running model, a list's `max_input_tokens`; never raises); standard library only,
+    the key only in the requests' headers.
   - `model_settings.py`: the human's model servers, configured models under names and agent
     CLIs' default models (`lado model-server add|list|remove`, `lado model
     add|list|remove|default`, and Settings → Models through `server/model_entries.py`):

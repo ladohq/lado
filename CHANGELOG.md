@@ -35,6 +35,11 @@
 
 ### Improved
 
+- **OpenCode and Kilo CLI know your local model's context.** LADO reads it from the server at
+  each start, so agents compact in time; a model too small for an agent is warned about in `lado
+  start` and the launch window. `docs/install.md` says what to expect of small models.
+- **OpenCode no longer stalls without internet.** Its first start on a model of a server takes
+  seconds where it took over a minute. An agent keeps your TUI settings from the first run.
 - **A session's head is one line at any width.** The folder, git, kits, CLI, Rename and Copy
   link moved to Details, which a click on the title opens; the chat gets the height back,
   and `Skip to chat` takes the keyboard straight to it.
@@ -46,6 +51,10 @@
 
 ### Fixed
 
+- **An OpenCode agent on too small a model stops.** It sent requests without end, `busy` with a
+  silent chat; now the turn ends after three overflows, and the chat says why.
+- **A failed turn is not called a reply.** A message whose turn ended on an error no longer shows
+  "replied only in its terminal"; the next clean turn decides.
 - **Placeholders read well in the dark theme.** Every field's hint now has the muted text
   colour instead of the browser's pale grey.
 

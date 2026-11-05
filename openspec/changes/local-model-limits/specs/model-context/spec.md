@@ -1,3 +1,8 @@
+## Purpose
+
+What LADO learns of a model's context from its server, how an agent's CLI is told it, and what
+happens when the context is too small for an agent to take a turn.
+
 ## ADDED Requirements
 
 ### Requirement: LADO reads a model's context from its server

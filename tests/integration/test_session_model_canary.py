@@ -91,16 +91,18 @@ def test_the_key_is_in_the_agent_s_environment_and_nowhere_else(
 ):
     key = f"canary-{uuid.uuid4().hex}"
     model_settings.add_server(
-        "Шлюз", serve("all", key=key), key, warn=lambda _: None, note=lambda _: None
+        "Шлюз", serve("gateway-limits", key=key), key, warn=lambda _: None, note=lambda _: None
     )
     server = state.model_server("Шлюз")
-    saved = state.add_model("Шлюз Qwen", "fake-server", "m1", server.id)
+    saved = state.add_model("Шлюз Qwen", "fake-server", "small", server.id)
     state.set_cli_default(state.ModelRef("fake-server", saved.id, None))
 
     args = ["start", str(repo), "--name", SESSION, "--provider", "fake-server", "--no-attach"]
     assert main(args) == 0
     said = capsys.readouterr()
     idle("supervisor")
+    # The server's limits went with its key: this answer needs it.
+    assert "has a context of 16,000 tokens" in said.out + said.err
 
     variable = f"{model_settings.KEY_VARIABLE}{server.id.upper()}"
     env = env_of("supervisor", tmp_path / "supervisor-env")

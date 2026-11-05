@@ -6301,6 +6301,7 @@ def test_an_empty_model_drops_it(repo, fake_tmux, monkeypatch):
 
 
 CHAT = providers.base.CHAT_COMPLETIONS
+NOT_GIVEN_WAY_OUT = '; list_models shows the others, model="" is the CLI\'s own settings'
 
 
 def _on_server(name="Локальная Qwen", cli="opencode", model="qwen3-8b", server="LM Studio дома"):
@@ -6556,6 +6557,7 @@ def test_a_worker_of_another_cli_takes_its_own_default(repo, fake_tmux, monkeypa
     _models(monkeypatch, "opencode", "opencode/big-pickle")
     saved = _on_server("Qwen в Kilo", cli="kilo")
     _default(saved)
+    _answers(monkeypatch, "qwen3-8b")
     runtime.start_session(str(repo), "s", None, provider="opencode", model="opencode/big-pickle")
     warnings = []
     runtime.spawn_worker("s", "a task", name="w1", provider="kilo", warnings=warnings)
@@ -6572,7 +6574,7 @@ def test_a_worker_on_a_server_its_cli_cannot_run_is_refused(repo, fake_tmux, mon
         runtime.spawn_worker("s", "a task", name="w1", provider="claude")
     assert str(error.value) == (
         "Шлюз Opus is on the model server Шлюз; Claude Code does not run on a model server yet, "
-        "Kilo CLI and OpenCode do"
+        f"Kilo CLI and OpenCode do{NOT_GIVEN_WAY_OUT}"
     )
     assert state.get_agent("s", "w1") is None
 
@@ -6623,3 +6625,160 @@ def test_another_provider_drops_the_model(repo, fake_tmux, monkeypatch):
     assert state.get_session("s").power is None
     _, argv = agent_helpers.launched(fake_tmux[-1])
     assert "--model" not in argv
+
+
+# A worker on a model by name.
+
+
+def _nothing_of(repo, fake_tmux, worker):
+    assert state.get_agent("s", worker) is None
+    assert not [m for m in state.list_messages("s") if m.recipient == worker]
+    assert not (repo / ".lado" / "worktrees" / "s" / worker).exists()
+    assert runtime.git(str(repo), "branch", "--list", f"lado/s/{worker}") == ""
+    assert not [c for c in fake_tmux if c[0] == "new_window"]
+
+
+def test_a_worker_starts_on_a_model_named_for_it(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    table = state.get_session("s").power
+    runtime.spawn_worker("s", "a task", name="w1", model="kilo/b")
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source) == ("kilo/b", "supervisor")
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert argv[argv.index("--model") + 1] == "kilo/b"
+    assert state.get_session("s").power == table
+    runtime.spawn_worker("s", "a task", name="w2")  # it holds for that one spawn
+    agent = state.get_agent("s", "w2")
+    assert (agent.model, agent.model_source) == ("kilo/a", "session")
+
+
+def test_a_name_moves_the_worker_to_the_cli_that_has_it(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    saved = _on_server()
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.spawn_worker("s", "a task", name="w1", model="Локальная Qwen")
+    agent = state.get_agent("s", "w1")
+    assert (agent.provider, agent.model, agent.model_source) == (
+        "opencode",
+        f"lado-{saved.server}/qwen3-8b",
+        "supervisor",
+    )
+
+
+def test_a_free_name_with_its_provider_warns(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    warnings = []
+    runtime.spawn_worker(
+        "s", "a task", name="w1", provider="claude", model="claude-opus-5-5", warnings=warnings
+    )
+    assert "LADO cannot check claude-opus-5-5" in warnings[0]
+    assert state.get_agent("s", "w1").model == "claude-opus-5-5"
+
+
+def test_an_empty_model_is_the_cli_s_settings_past_the_session_s(repo, fake_tmux, monkeypatch):
+    _default(_on_server())
+    asked = _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    del asked[:]
+    runtime.spawn_worker("s", "a task", name="w1", model="")
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source) == (None, "cli")
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert "--model" not in argv
+    assert asked == []
+
+
+def test_a_refused_name_leaves_nothing(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _models(monkeypatch, "kilo", "kilo/a")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    with pytest.raises(runtime.ModelRefused) as error:
+        runtime.spawn_worker("s", "a task", name="w1", model="gpt-9")
+    assert str(error.value) == "gpt-9 is in no agent CLI's list of models; list_models shows them"
+    _nothing_of(repo, fake_tmux, "w1")
+
+
+def test_a_silent_server_refuses_a_model_given(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    _on_server()
+    _silent(monkeypatch)
+    with pytest.raises(runtime.ModelRefused) as error:
+        runtime.spawn_worker("s", "a task", name="w1", model="Локальная Qwen")
+    assert str(error.value).startswith(
+        "http://localhost:1234 does not answer (connection refused); LADO cannot check qwen3-8b"
+    )
+    assert NOT_GIVEN_WAY_OUT not in str(error.value)
+    _nothing_of(repo, fake_tmux, "w1")
+
+
+def test_a_silent_server_refuses_the_session_s_model_with_a_way_out(repo, fake_tmux, monkeypatch):
+    _on_server()
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode", model="Локальная Qwen")
+    _silent(monkeypatch)
+    with pytest.raises(runtime.ModelRefused) as error:
+        runtime.spawn_worker("s", "a task", name="w1")
+    assert NOT_GIVEN_WAY_OUT in str(error.value)
+    assert "--model" not in str(error.value)
+    _nothing_of(repo, fake_tmux, "w1")
+
+
+def test_a_model_gone_from_its_server_is_refused(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    _on_server()
+    _answers(monkeypatch, "another")
+    with pytest.raises(runtime.ModelRefused, match="qwen3-8b is not in LM Studio дома's list"):
+        runtime.spawn_worker("s", "a task", name="w1", model="Локальная Qwen")
+    _nothing_of(repo, fake_tmux, "w1")
+
+
+def test_claude_code_on_an_external_model_is_refused_asking_no_server(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    _on_server("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз")
+    asked = _answers(monkeypatch, "gw-opus")
+    with pytest.raises(runtime.ModelRefused, match="Claude Code does not run on a model server"):
+        runtime.spawn_worker("s", "a task", name="w1", model="Шлюз Opus")
+    assert asked == []
+    _nothing_of(repo, fake_tmux, "w1")
+
+
+def test_a_worker_with_nothing_chosen_reads_no_list_and_asks_no_server(
+    repo, fake_tmux, monkeypatch
+):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    _on_server()  # saved, but no agent starts on it
+    asked = _answers(monkeypatch, "qwen3-8b")
+
+    def no_list(self, env):
+        raise AssertionError("a list was read")
+
+    monkeypatch.setattr(type(providers.get("opencode")), "model_list", no_list)
+    runtime.spawn_worker("s", "a task", name="w1")
+    assert asked == []
+
+
+def test_list_models_gives_the_session_s_clis(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    clis = runtime.list_models("s")["clis"]
+    assert clis[0]["cli"] == "opencode" and clis[0]["builtin"] == ["opencode/big-pickle"]
+
+
+def test_list_models_refuses_a_cli_not_installed(repo, fake_tmux, monkeypatch, tmp_path):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    _path_without_clis(monkeypatch, tmp_path)
+    with pytest.raises(runtime.ModelRefused, match="Codex CLI is not installed"):
+        runtime.list_models("s", "codex")
+
+
+def test_a_table_that_cannot_be_read_refuses_a_worker_with_its_way_out(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    _break_power("s")
+    with pytest.raises(runtime.ModelRefused) as error:
+        runtime.spawn_worker("s", "a task", name="w1")
+    assert NOT_GIVEN_WAY_OUT in str(error.value)
+    _nothing_of(repo, fake_tmux, "w1")
+    runtime.spawn_worker("s", "a task", name="w1", model="")  # the way out works
+    assert state.get_agent("s", "w1").model is None

@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -107,6 +108,11 @@ Use the `lado` MCP tools:
 from your current HEAD. Give it the goal, the relevant files and how to check the result. \
 `role` picks the kind of worker{default_role} Roles:
 {roles}
+`model` is a name from list_models, "" the CLI's own settings. Leave it out unless the human \
+or the task names one: the worker then starts on the session's model. It holds for that one \
+spawn, so give it again for a next worker of a run or after a resume. When a model is refused, \
+tell the human the reason and ask: never pick another by yourself.
+- list_models: the models of each installed agent CLI, for spawn_worker's `model`.
 - send_message: talk to another agent, e.g. to answer a worker's question, or to the human.
 - ask_human: ask the human a question, with choices and, by default, a free answer. It \
 does not wait: the answer or the dismissal comes as a message from human.
@@ -920,6 +926,18 @@ def _kept_power(
     return None
 
 
+def _listing(env: "model_settings.Env") -> "model_settings.Listing":
+    """Each agent CLI's list of models, read at most once, with `env`'s environment for it."""
+    lists: dict[str, providers.base.ModelList] = {}
+
+    def listing(provider: providers.Provider) -> providers.base.ModelList:
+        if provider.name not in lists:
+            lists[provider.name] = provider.model_list(env(provider))
+        return lists[provider.name]
+
+    return listing
+
+
 def _start_model(
     sess: state.Session,
     agent_cli: providers.Provider,
@@ -931,13 +949,7 @@ def _start_model(
     otherwise; nothing is stored. The CLI's list is read at most once."""
     from lado import model_settings
 
-    lists: dict[str, providers.base.ModelList] = {}
-
-    def listing(provider: providers.Provider) -> providers.base.ModelList:
-        if provider.name not in lists:
-            lists[provider.name] = provider.model_list(base_env)
-        return lists[provider.name]
-
+    listing = _listing(lambda _: base_env)
     start = None
     try:
         if model is not None:
@@ -953,6 +965,58 @@ def _start_model(
     if verdict.kind == model_check.WARN:
         warnings.insert(0, verdict.text)
     return start, servers, warnings
+
+
+def _worker_start(
+    sess: state.Session, provider: str | None, model: str | None, layers: agent_env.Layers
+) -> tuple[
+    providers.Provider,
+    dict[str, str],
+    "model_settings.StartModel",
+    tuple[providers.base.ServerEntry, ...],
+    list[str],
+]:
+    """What a worker of `sess` starts on, checked as a start is, `model` going before the
+    session's and `provider`'s: its CLI, its base environment, the model, the servers of its
+    config and the warnings of both. ModelRefused otherwise, a model not given saying the way
+    out an agent has; nothing is stored. Each CLI's list is read at most once."""
+    from lado import model_settings
+
+    env = partial(agents_env, layers)
+    listing = _listing(env)
+    agent_cli = _provider(provider or sess.provider)
+    start = None
+    try:
+        if model is None:
+            start = model_settings.start_model(sess.power, agent_cli)
+        else:
+            agent_cli, start = model_settings.worker_start(
+                model, agent_cli if provider else None, _provider(sess.provider), env, listing
+            )
+        base_env = env(agent_cli)
+        verdict = model_settings.check_start(start, agent_cli, base_env, listing=listing)
+        servers, warnings = model_settings.agent_servers(agent_cli, start)
+    except model_settings.Refused as refused:
+        # With no start the session's table could not be read: that is a model not given too.
+        not_given = model is None and (start is None or start.model)
+        raise ModelRefused(refused, model_settings.WORKER_WAY_OUT if not_given else "") from None
+    if verdict.kind == model_check.WARN:
+        warnings.insert(0, verdict.text)
+    return agent_cli, base_env, start, servers, warnings
+
+
+def list_models(session: str, provider: str | None = None) -> dict:
+    """The models the supervisor of `session` can name (model_settings.cli_models), of
+    `provider`'s CLI alone when given. ModelRefused for a CLI not installed."""
+    from lado import model_settings
+
+    sess = running_session(session)
+    env = partial(agents_env, agent_layers(sess.project))
+    only = _provider(provider) if provider else None
+    try:
+        return {"clis": model_settings.cli_models(sess, only, env, _listing(env))}
+    except model_settings.Refused as refused:
+        raise ModelRefused(refused) from None
 
 
 def _model_words(power: state.PowerTable | None) -> str:
@@ -1016,10 +1080,12 @@ def spawn_worker(
     run: state.Run | None = None,
     has_step: bool = False,
     warnings: list[str] | None = None,
+    model: str | None = None,
 ) -> state.Agent:
     """Start a worker with `role` from the session's kits (required unless the session has
     one worker role), minus the `without` items ("skill:y", "mcp:z", each optionally @kit)
-    for this worker.
+    for this worker. `model`: its model by name, which may pick its CLI, "" for the CLI's own
+    settings; None for the session's. Whatever it starts on is checked first (_worker_start).
     `has_step`: the task holds a step of `run`, which the worker reports with flow_advance;
     any other task it reports with send_message. The task waits in its queue as a message
     from LADO, handed over at its first hook as any message; none of it is on the command
@@ -1029,8 +1095,6 @@ def spawn_worker(
     A worker gets its own worktree and branch; a worker for a flow `run` works in the
     run's worktree, shared with the run's other workers (see lado.runs.spawn_worker)."""
     sess = running_session(session)
-    agent_cli = _provider(provider or sess.provider)
-    _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.kits, sess.without)
     role_def = env.role(role)
     taken = {a.name for a in state.list_agents(session)}
@@ -1042,6 +1106,11 @@ def spawn_worker(
         raise LadoError(f'the name "{worker}" is reserved for LADO\'s messages; choose another')
     if worker in taken:
         raise LadoError(f'an agent named "{worker}" already exists')
+    layers = agent_layers(sess.project)
+    agent_cli, base_env, start, servers, server_warnings = _worker_start(
+        sess, provider, model, layers
+    )
+    _check_permission_mode(agent_cli, sess.permission_mode)
     if run:
         branch, worktree = run.branch, Path(run.worktree)
         instructions = RUN_WORKER_INSTRUCTIONS.format(
@@ -1062,18 +1131,8 @@ def spawn_worker(
         agent_cli.name,
         run=run.name if run else None,
     )
-    layers = agent_layers(sess.project)
-    base_env = agents_env(layers, agent_cli)
     _check_commands(env, base_env)
     check_login(agent_cli, base_env, logins.WORKER)
-    from lado import model_settings
-
-    try:
-        start = model_settings.start_model(sess.power, agent_cli)
-        model_settings.check_launch(start, agent_cli)  # no server's check yet
-        servers, server_warnings = model_settings.agent_servers(agent_cli, start)
-    except model_settings.Refused as refused:
-        raise ModelRefused(refused) from None
     spec = _spec(
         agent_cli,
         env,

@@ -31,6 +31,7 @@ def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
         "flow_status",
         "list_agents",
         "list_artifacts",
+        "list_models",
         "read_artifact",
         "read_messages",
         "recommend",
@@ -71,6 +72,7 @@ def test_a_read_only_supervisor_has_no_command_tools_and_is_refused_them(repo, f
     assert not set(mcp_server.COMMAND_TOOLS) & set(tools)
     assert "flow_advance" in tools and "send_message" in tools
     assert "recommend" in tools  # it changes nothing but the card
+    assert "list_models" in tools  # it reads and starts nothing
     for tool in mcp_server.COMMAND_TOOLS:
         with pytest.raises(ToolError) as refused:
             _call("s", "supervisor", tool, {})
@@ -485,7 +487,8 @@ ACCEPTED = {
     "write_artifact": "name, content, file, media_type, summary, title",
     "read_artifact": "name, from_line, to_line",
     "list_artifacts": "run",
-    "spawn_worker": "task, name, provider, role, without, run",
+    "spawn_worker": "task, name, provider, role, without, run, model",
+    "list_models": "provider",
     "flow_start": "flow, task, name, human_language",
     "flow_cancel": "run, reason",
     "finish_worker": "name, discard",
@@ -506,6 +509,47 @@ def test_tools_refuse_unknown_arguments(repo, fake_tmux, tool):
         f'{tool} has no argument "bar", "foo"; it accepts: {ACCEPTED[tool]}'
     )
     assert state.list_agents("s")[-1].name == "supervisor"  # nothing ran
+
+
+def test_spawn_worker_takes_a_model_and_says_its_warnings(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    args = {"task": "t", "provider": "claude", "model": "claude-opus-5-5"}
+    spawned = _call("s", "supervisor", "spawn_worker", args)
+    assert "LADO cannot check claude-opus-5-5" in spawned["warnings"][0]
+    worker = state.get_agent("s", spawned["name"])
+    assert (worker.model, worker.model_source) == ("claude-opus-5-5", "supervisor")
+
+
+def test_a_refused_model_is_the_tool_s_error(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    with pytest.raises(ToolError) as error:
+        _call("s", "supervisor", "spawn_worker", {"task": "t", "model": "sonet"})
+    assert "sonet is in no agent CLI's list of models; list_models shows them" in str(error.value)
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+
+
+def test_list_models_narrows_to_a_provider_and_a_worker_lacks_it(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.spawn_worker("s", "task", name="w1")
+    assert [c["cli"] for c in _call("s", "supervisor", "list_models")["clis"]][0] == "claude"
+    [only] = _call("s", "supervisor", "list_models", {"provider": "kilo"})["clis"]
+    assert only["cli"] == "kilo"
+    with pytest.raises(ToolError, match="Unknown tool"):
+        _call("s", "w1", "list_models")
+
+
+def test_the_supervisor_is_told_how_to_choose_a_model(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    tools = {t.name: t for t in asyncio.run(mcp_server.build("s", "supervisor").list_tools())}
+    spawn = " ".join(tools["spawn_worker"].description.split())
+    models = " ".join(tools["list_models"].description.split())
+    text = " ".join(runtime.SUPERVISOR_INSTRUCTIONS.split())
+    assert '"claude", "codex", "kilo" or "opencode"' in spawn
+    assert "- list_models:" in text
+    for told in (spawn, models, text):
+        assert "unless the human or the task names one" in told
+        assert "tell the human the reason and ask: never pick another by yourself" in told
+        assert "holds for that one spawn" in told
 
 
 def test_spawn_worker_takes_a_provider(repo, fake_tmux):
@@ -533,6 +577,20 @@ def _call(session, agent, tool, args=None):
     if result.structured_content is None:  # a dict comes as JSON text
         return json.loads(result.content[0].text)
     return result.structured_content["result"]
+
+
+def test_a_run_s_worker_takes_a_model(repo, fake_tmux):
+    kit = repo.parent / "kits" / "k"
+    (kit / "flows").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: k\nversion: 1.0.0\n")
+    (kit / "flows" / "ship.yaml").write_text(SHIP)
+    agent_helpers.install_kit(kit)
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"], provider="claude")
+    _call("s", "supervisor", "flow_start", {"flow": "ship", "task": "Add x", "name": "x"})
+    args = {"run": "ship/x", "model": "sonnet"}
+    spawned = _call("s", "supervisor", "spawn_worker", args)
+    worker = state.get_agent("s", spawned["name"])
+    assert (worker.run, worker.model, worker.model_source) == ("ship/x", "sonnet", "supervisor")
 
 
 def test_flow_tools_start_a_run_spawn_its_worker_and_advance_it(repo, fake_tmux):

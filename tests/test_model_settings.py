@@ -1772,3 +1772,280 @@ def test_a_removed_server_and_a_built_in_model_are_shown_as_they_are():
     assert model_settings.shown(OPENCODE, "lado-gone/qwen3-8b") is None
     assert model_settings.shown(OPENCODE, "opencode/big-pickle") is None
     assert model_settings.shown(CLAUDE, "lado-gone/qwen3-8b") is None
+
+
+# A name given for a worker.
+
+
+CLAUDE = providers.get("claude")
+KILO = providers.get("kilo")
+SHARED = "vendor/shared"
+OPENCODE_MODELS = base.ModelList((), ("opencode/big-pickle", SHARED), "opencode models")
+KILO_MODELS = base.ModelList((), ("kilo/auto", SHARED), "kilo models")
+
+
+class Lists:
+    """Each CLI's list by name, recording which were read; a CLI with none has no full list."""
+
+    def __init__(self, **lists):
+        self.lists = lists
+        self.reads = []
+
+    def __call__(self, provider):
+        self.reads.append(provider.name)
+        return self.lists.get(provider.name, base.ModelList(why="no list"))
+
+
+def worker_start(name, given, session_cli, env, lists):
+    return model_settings.worker_start(name, given, session_cli, env, lists)
+
+
+def test_a_name_of_the_session_s_cli_reads_no_other_list(installed):
+    lists = Lists(opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
+    env = installed("opencode", "kilo")
+    cli, start = worker_start(SHARED, None, OPENCODE, env, lists)
+    assert cli is OPENCODE
+    assert (start.name, start.model, start.source) == (SHARED, SHARED, "supervisor")
+    assert set(lists.reads) == {"opencode"}
+
+
+def test_a_name_only_another_cli_has_picks_that_cli(installed):
+    env = installed("claude", "kilo", "opencode")
+    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
+    cli, start = worker_start("kilo/auto", None, CLAUDE, env, lists)
+    assert cli is KILO
+    assert (start.name, start.source) == ("kilo/auto", "supervisor")
+
+
+def test_a_saved_model_of_another_cli_picks_that_cli_ignoring_case(installed):
+    saved = entry()
+    env = installed("claude", "opencode")
+    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS)
+    cli, start = worker_start("локальная qwen", None, CLAUDE, env, lists)
+    assert cli is OPENCODE
+    assert (start.name, start.model, start.entry, start.source) == (
+        "Локальная Qwen",
+        "qwen3-8b",
+        saved,
+        "supervisor",
+    )
+
+
+def test_a_name_of_two_other_clis_is_refused_naming_them(installed):
+    env = installed("claude", "kilo", "opencode")
+    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
+    with pytest.raises(model_settings.Refused) as refused:
+        worker_start(SHARED, None, CLAUDE, env, lists)
+    assert str(refused.value) == f"{SHARED} is a model of Kilo CLI and OpenCode; give provider"
+
+
+def test_a_name_of_no_cli_is_refused_pointing_to_list_models(installed):
+    env = installed("kilo", "opencode")
+    lists = Lists(opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
+    with pytest.raises(model_settings.Refused) as refused:
+        worker_start("gpt-9", None, OPENCODE, env, lists)
+    assert str(refused.value) == "gpt-9 is in no agent CLI's list of models; list_models shows them"
+
+
+def test_a_free_name_with_no_provider_says_how_to_give_it(installed):
+    env = installed("claude", "opencode")
+    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS)
+    with pytest.raises(model_settings.Refused) as refused:
+        worker_start("sonet", None, CLAUDE, env, lists)
+    assert str(refused.value) == (
+        "sonet is in no agent CLI's list of models; list_models shows them; Claude Code gives no "
+        'full list: provider="claude" starts it with a warning'
+    )
+
+
+def test_a_provider_that_has_the_name_takes_it(installed):
+    env = installed("claude", "kilo", "opencode")
+    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
+    cli, start = worker_start(SHARED, KILO, CLAUDE, env, lists)
+    assert (cli, start.name) == (KILO, SHARED)
+    assert "opencode" not in lists.reads
+
+
+def test_a_free_name_with_its_provider_starts(installed):
+    env = installed("claude", "opencode")
+    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS)
+    cli, start = worker_start("claude-opus-5-5", CLAUDE, OPENCODE, env, lists)
+    assert (cli, start.name, start.source) == (CLAUDE, "claude-opus-5-5", "supervisor")
+
+
+def test_a_saved_model_of_another_cli_is_refused_for_a_provider(installed):
+    entry()
+    env = installed("kilo", "opencode")
+    lists = Lists(opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
+    with pytest.raises(model_settings.Refused) as refused:
+        worker_start("Локальная Qwen", KILO, OPENCODE, env, lists)
+    assert str(refused.value) == '"Локальная Qwen" is a model of OpenCode, not of Kilo CLI'
+
+
+def test_a_built_in_model_of_another_cli_is_refused_for_a_provider(installed):
+    env = installed("claude", "opencode")
+    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS)
+    with pytest.raises(model_settings.Refused) as refused:
+        worker_start("opus", OPENCODE, CLAUDE, env, lists)
+    assert str(refused.value) == "opus is a model of Claude Code, not of OpenCode"
+
+
+def test_a_free_name_another_cli_has_is_refused_for_a_provider_of_no_full_list(installed):
+    env = installed("claude", "opencode")
+    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS)
+    with pytest.raises(model_settings.Refused) as refused:
+        worker_start("opencode/big-pickle", CLAUDE, OPENCODE, env, lists)
+    assert str(refused.value) == "opencode/big-pickle is a model of OpenCode, not of Claude Code"
+
+
+def test_a_name_no_list_has_is_refused_by_the_list_of_its_provider(installed):
+    env = installed("kilo", "opencode")
+    lists = Lists(opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
+    with pytest.raises(model_settings.Refused) as refused:
+        worker_start("gpt-9", OPENCODE, KILO, env, lists)
+    assert str(refused.value) == (
+        "gpt-9 is not in OpenCode's list of models; opencode models prints the list"
+    )
+
+
+def test_a_list_that_failed_or_a_cli_not_installed_has_no_name(installed):
+    env = installed("kilo", "opencode")  # Claude Code would have the name, but is not installed
+    lists = Lists(claude=base.ModelList(("opus",)), opencode=OPENCODE_MODELS)  # Kilo's failed
+    with pytest.raises(model_settings.Refused) as refused:
+        worker_start("opus", None, OPENCODE, env, lists)
+    assert str(refused.value) == "opus is in no agent CLI's list of models; list_models shows them"
+    assert "claude" not in lists.reads
+
+
+def test_a_saved_model_of_a_cli_not_installed_says_so(installed):
+    entry()
+    env = installed("claude")
+    with pytest.raises(model_settings.Refused, match="^OpenCode is not installed$"):
+        worker_start("Локальная Qwen", None, CLAUDE, env, Lists(claude=CLAUDE_LIST))
+
+
+def test_a_saved_name_of_one_cli_and_built_in_of_the_session_s_stays_with_the_session(installed):
+    entry(SHARED)
+    env = installed("kilo", "opencode")
+    lists = Lists(kilo=KILO_MODELS)
+    cli, start = worker_start(SHARED, None, KILO, env, lists)
+    assert (cli, start.entry) == (KILO, None)  # the built-in one, not OpenCode's saved one
+
+
+def test_a_saved_name_that_is_also_built_in_of_its_cli_keeps_the_start_s_refusal(installed):
+    entry(SHARED)
+    env = installed("opencode")
+    with pytest.raises(model_settings.Refused, match="both a saved model of OpenCode"):
+        worker_start(SHARED, None, OPENCODE, env, Lists(opencode=OPENCODE_MODELS))
+
+
+def test_a_name_with_a_hidden_character_is_no_name(installed):
+    env = installed("opencode")
+    with pytest.raises(model_settings.Refused, match="a model is one line"):
+        worker_start("gpt\x1b[2J", None, OPENCODE, env, Lists(opencode=OPENCODE_MODELS))
+
+
+def test_an_empty_name_is_the_cli_s_own_settings_past_a_default(installed):
+    default_on(entry())
+    lists = Lists()
+    cli, start = worker_start(" ", None, OPENCODE, installed("opencode"), lists)
+    assert (cli, start) == (OPENCODE, model_settings.StartModel())
+    assert lists.reads == []
+
+
+def test_an_empty_name_with_a_provider_is_that_cli(installed):
+    cli, start = worker_start("", KILO, OPENCODE, installed("opencode"), Lists())
+    assert (cli, start) == (KILO, model_settings.StartModel())
+
+
+# What list_models gives.
+
+
+def session_of(provider, power=None):
+    return state.Session("s", "/repo", None, provider, power=power)
+
+
+def test_each_installed_cli_is_listed_with_the_session_s_first(installed):
+    saved = entry()
+    env = installed("claude", "opencode")
+    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS)
+    clis = model_settings.cli_models(session_of("opencode"), None, env, lists)
+    assert clis == [
+        {
+            "cli": "opencode",
+            "title": "OpenCode",
+            "session": True,
+            "starts_on": None,
+            "note": None,
+            "builtin": ["opencode/big-pickle", SHARED],
+            "external": [{"name": saved.name, "server": "LM Studio дома", "blocked": None}],
+        },
+        {
+            "cli": "claude",
+            "title": "Claude Code",
+            "session": False,
+            "starts_on": None,
+            "note": "Claude Code gives no list beyond its aliases",
+            "builtin": ["opus"],
+            "external": [],
+        },
+    ]
+
+
+def test_a_provider_narrows_the_list_to_its_cli(installed):
+    env = installed("claude", "kilo", "opencode")
+    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
+    clis = model_settings.cli_models(session_of("claude"), KILO, env, lists)
+    assert [cli["cli"] for cli in clis] == ["kilo"]
+    assert lists.reads == ["kilo"]
+
+
+def test_a_provider_not_installed_is_refused(installed):
+    env = installed("claude")
+    with pytest.raises(model_settings.Refused, match="^Kilo CLI is not installed$"):
+        model_settings.cli_models(session_of("claude"), KILO, env, Lists())
+
+
+def test_an_external_model_of_a_cli_on_no_server_says_why_it_cannot_start(installed):
+    entry("Шлюз Opus", cli="claude", server="Шлюз")
+    env = installed("claude")
+    [claude] = model_settings.cli_models(session_of("claude"), None, env, Lists(claude=CLAUDE_LIST))
+    [external] = claude["external"]
+    assert external["blocked"] == (
+        "Шлюз Opus is on the model server Шлюз; Claude Code does not run on a model server yet, "
+        "Kilo CLI and OpenCode do"
+    )
+
+
+def test_starts_on_is_what_a_worker_of_each_cli_starts_on_with_no_model(installed):
+    saved = entry()
+    env = installed("kilo", "opencode")
+    lists = Lists(opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
+    session = session_of("opencode", external_table(saved))
+    clis = model_settings.cli_models(session, None, env, lists)
+    assert {cli["cli"]: cli["starts_on"] for cli in clis} == {
+        "opencode": "Локальная Qwen",
+        "kilo": None,
+    }
+
+
+def test_a_table_that_cannot_be_read_starts_on_nothing_named(installed):
+    session = session_of("opencode", state.PowerTable.unreadable())
+    env = installed("opencode")
+    [cli] = model_settings.cli_models(session, None, env, Lists(opencode=OPENCODE_MODELS))
+    assert cli["starts_on"] is None
+
+
+def test_the_list_asks_no_server_and_holds_no_address_or_key(serve, installed):
+    key = "secret-key-of-the-canary"
+    listening = serve("all", key=key)
+    model_settings.add_server("Шлюз", listening.url, key, warn=print, note=print)
+    server = state.model_server("Шлюз")
+    state.add_model("Шлюз Qwen", "opencode", "m1", server.id)
+    listening.requests.clear()
+    clis = model_settings.cli_models(
+        session_of("opencode"), None, installed("opencode"), Lists(opencode=OPENCODE_MODELS)
+    )
+    assert listening.requests == []
+    assert clis[0]["external"][0]["server"] == "Шлюз"
+    assert key not in str(clis) and listening.url not in str(clis)

@@ -39,6 +39,14 @@ def env_of(agent: str, out) -> str:
     return out.read_text()
 
 
+def tell(command: str) -> None:
+    """Have the supervisor run `command`, and wait until its turn is over."""
+    before = len(inputs("supervisor"))
+    runtime.send_message(SESSION, "human", "supervisor", command)
+    agent_helpers.wait_for(lambda: len(inputs("supervisor")) > before, command, SESSION)
+    idle("supervisor")
+
+
 def test_a_key_file_edited_by_hand_stays_out_of_the_agent_and_is_named_nowhere(
     repo,
     serve,  # noqa: F811
@@ -115,5 +123,48 @@ def test_the_key_is_in_the_agent_s_environment_and_nowhere_else(
     assert key not in json.dumps(models.session_info(state.get_session(SESSION)).model_dump())
     key_file = model_settings.key_folder(server.id) / model_settings.KEY
     # The fake agent's own log records its environment, where the key belongs: no file of LADO's.
+    its_log = lado_home / "fake-agents"
+    assert files_holding(lado_home, key.encode(), [key_file, its_log]) == []
+
+
+def test_a_worker_s_key_stays_in_its_own_environment(
+    repo,
+    serve,  # noqa: F811
+    lado_home,
+    tmp_path,
+):
+    key = f"canary-{uuid.uuid4().hex}"
+    url = serve("all", key=key)
+    model_settings.add_server("Шлюз", url, key, warn=lambda _: None, note=lambda _: None)
+    server = state.model_server("Шлюз")
+    state.add_model("Шлюз-Qwen", "fake-server", "m1", server.id)
+    runtime.start_session(str(repo), SESSION, None, "fake")
+    idle("supervisor")
+
+    tell("listmodels")
+    tell("spawnmodel w1@fake-server Шлюз-Qwen sleep")
+    agent_helpers.wait_for(
+        lambda: (w := state.get_agent(SESSION, "w1")) is not None and w.seen_at > 0,
+        "the worker's first hook",
+        SESSION,
+    )
+    idle("w1")
+
+    variable = f"{model_settings.KEY_VARIABLE}{server.id.upper()}"
+    assert f"{variable}={key}" in env_of("w1", tmp_path / "worker-env")
+    assert key not in env_of("supervisor", tmp_path / "supervisor-env")
+
+    # A refusal with the server gone says nothing of the key either.
+    with state.connect() as db:
+        db.execute(
+            "UPDATE model_servers SET address = 'http://127.0.0.1:9' WHERE id = ?", (server.id,)
+        )
+    tell("spawnmodel w2@fake-server Шлюз-Qwen sleep")
+    results = agent_helpers.fake_logs(SESSION, "supervisor") / "seen.json"
+    assert "LADO cannot check m1" in results.read_text()
+    assert key not in results.read_text()
+
+    key_file = model_settings.key_folder(server.id) / model_settings.KEY
+    # The worker's own log records its environment, where the key belongs: no file of LADO's.
     its_log = lado_home / "fake-agents"
     assert files_holding(lado_home, key.encode(), [key_file, its_log]) == []

@@ -334,7 +334,9 @@ that lacks the model, is refused with exit 1 before anything is stored (`lado:
 http://localhost:1234 does not answer (connection refused); LADO cannot check qwen3-8b`). A silent
 server of another saved model stops nothing. A model on a server for a CLI that runs on none yet
 is refused with no request (`Шлюз Opus is on the model server Шлюз; Claude Code does not run on a
-model server yet, OpenCode does`), a spawned worker too, whose server is otherwise not asked. A
+model server yet, Kilo CLI and OpenCode do`). A spawned worker's model is checked in the same way,
+given or not, and a refusal leaves no worker; one not given adds `list_models shows the others,
+model="" is the CLI's own settings`. A
 refused default adds `it is OpenCode's default model: start with --model '' for its settings, or
 change it with lado model default opencode`.
 
@@ -361,9 +363,13 @@ on the model Рабочая Qwen, which is no longer saved; resume it with …`,
 cannot be read `the session's model cannot be read; resume it with …`, while `lado ls` and the UI
 list that session as any. LADO's own resumes (the container's
 start, `lado update`) leave it stopped and log the refusal. A
-worker spawned with another provider starts on its own CLI's default model, else as that CLI
-chooses, and then `spawn_worker` warns
-`w1 runs on Claude Code's default model: the session's model gpt-5.6-sol is for Codex CLI`.
+worker spawned with another provider and no `model` starts on its own CLI's default model, else as
+that CLI chooses, and then `spawn_worker` warns
+`w1 runs on Claude Code's default model: the session's model gpt-5.6-sol is for Codex CLI`. A
+supervisor sees what can run with `list_models` and names it in `spawn_worker(model=…)`: the name
+picks the worker's CLI, the session's first, then the only other that has it; a name of several is
+refused, naming them. A name outside the lists of a CLI with no full list needs an explicit
+`provider`, and then starts with a warning.
 `lado ls` and `list_agents` show each agent's model, a model of a server by its saved name.
 
 There is no `lado login`: in a terminal the CLIs' own commands log in. Every Codex agent

@@ -1,8 +1,9 @@
 """The human's model servers, configured models and agent CLIs' default models (openspec
 capabilities `model-servers` and `configured-models`): their rules, the servers' key files,
 the checks on adding and what a CLI can run. `lado model-server add|list|remove` and `lado
-model add|list|remove|default` call it; a launch asks it what an agent starts on (start_model),
-whether that can start (check_start) and which servers go into the agent (agent_servers).
+model add|list|remove|default` call it; a launch asks it what an agent starts on (start_model,
+for a worker with a model of its own worker_start), whether that can start (check_start) and
+which servers go into the agent (agent_servers); list_models asks it what can run (cli_models).
 
 The entries are kept in lado.db (lado.state: `model_servers`, `models`, `cli_defaults`); a
 name is taken and found ignoring case. A configured model always lives on a server: a CLI's
@@ -26,7 +27,7 @@ import stat
 import urllib.parse
 import uuid
 from collections.abc import Callable, Collection, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from lado import agent_env, model_check, model_servers, project_secrets, providers, state
@@ -593,9 +594,13 @@ def known_cli(cli: str) -> providers.Provider:
     return providers.get(cli)
 
 
+def _installed(provider: providers.Provider, env: Env) -> bool:
+    return shutil.which(provider.command, path=env(provider).get("PATH")) is not None
+
+
 def _installed_cli(cli: str, env: Env) -> providers.Provider:
     provider = known_cli(cli)
-    if shutil.which(provider.command, path=env(provider).get("PATH")) is None:
+    if not _installed(provider, env):
         raise Refused(f"{provider.title} is not installed", field=CLI)
     return provider
 
@@ -614,6 +619,12 @@ def _save_default(ref: state.ModelRef) -> None:
         raise Refused("that model is no longer saved", field=MODEL_FIELD) from None
 
 
+def _one_line(model: str) -> None:
+    char = visible.first_hidden(model)
+    if char is not None:
+        raise Refused(f"a model is one line {visible.refusal(char)}", field=MODEL_FIELD)
+
+
 def _builtin(
     provider: providers.Provider, model: str, listed: base.ModelList
 ) -> tuple[state.ModelRef, model_check.Verdict]:
@@ -621,9 +632,7 @@ def _builtin(
     what is no name, or a name `listed` lacks. Saves nothing."""
     if not model:
         raise Refused("the model is empty", field=MODEL_FIELD)
-    char = visible.first_hidden(model)
-    if char is not None:
-        raise Refused(f"a model is one line {visible.refusal(char)}", field=MODEL_FIELD)
+    _one_line(model)
     verdict = model_check.verdict(provider, model, listed)
     if verdict.kind == model_check.REFUSED:
         raise Refused(
@@ -785,6 +794,121 @@ def session_row(
     return state.PowerRow(provider.name, saved.model, saved.id, saved.name)
 
 
+def _name_cli(
+    name: str,
+    given: providers.Provider | None,
+    session_cli: providers.Provider,
+    env: Env,
+    listing: Listing,
+) -> providers.Provider:
+    """The agent CLI whose reading of `name` a worker takes: `given`, or with none the session's,
+    else the one other installed CLI that has it. Having it is being its saved model, alias or
+    listed model; another CLI's list is read only when the first CLI lacks the name, and one
+    that failed has no name. Refused for a name of another CLI than `given`, of several others,
+    of a CLI not installed, or of none with no `given`: an agent's typo is not started on, though
+    a start would warn."""
+    _one_line(name)
+    saved = state.model(name)
+
+    def has(provider: providers.Provider) -> bool:
+        if saved is not None and saved.cli == provider.name:
+            return True
+        listed = listing(provider)
+        return name in {*listed.aliases, *(listed.models or ())}
+
+    first = given or session_cli
+    if has(first):
+        return first
+    if given is not None and saved is not None:
+        raise _not_its_model(saved, given)
+    others = [providers.get(cli) for cli in providers.names() if cli != first.name]
+    found = [other for other in others if _installed(other, env) and has(other)]
+    titles = " and ".join(other.title for other in found)
+    if given is not None:
+        if found:
+            raise Refused(f"{name} is a model of {titles}, not of {given.title}", field=MODEL_FIELD)
+        return given  # check_default refuses it, or warns for a CLI of no full list
+    if len(found) == 1:
+        return found[0]
+    if found:
+        raise Refused(f"{name} is a model of {titles}; give provider", field=MODEL_FIELD)
+    if saved is not None:  # the one CLI that has it is not installed
+        raise Refused(f"{cli_title(saved.cli)} is not installed", field=CLI)
+    free = ""
+    if listing(session_cli).models is None:
+        free = (
+            f'; {session_cli.title} gives no full list: provider="{session_cli.name}" starts it '
+            "with a warning"
+        )
+    raise Refused(
+        f"{name} is in no agent CLI's list of models; list_models shows them{free}",
+        field=MODEL_FIELD,
+    )
+
+
+def worker_start(
+    name: str,
+    given: providers.Provider | None,
+    session_cli: providers.Provider,
+    env: Env,
+    listing: Listing,
+) -> tuple[providers.Provider, StartModel]:
+    """The CLI and model of a worker spawned with `model` `name`, the provider `given` if any:
+    "" (or only spaces) is the CLI's own settings, any other name finds its CLI (_name_cli) and
+    is read there as a session's. Refused as those are; nothing is stored."""
+    name = name.strip()
+    cli = _name_cli(name, given, session_cli, env, listing) if name else given or session_cli
+    row = session_row(name, cli, env(cli), listing)
+    start = start_model(state.PowerTable.of(row), cli)
+    return cli, replace(start, source=state.SUPERVISOR_CHOICE) if name else start
+
+
+def _starts_on(session: state.Session, provider: providers.Provider) -> str | None:
+    try:
+        return start_model(session.power, provider).name
+    except Refused:  # a table that cannot be read names nothing
+        return None
+
+
+def _shown_external(saved: state.ConfiguredModel, provider: providers.Provider) -> dict:
+    start = _external(saved, state.SUPERVISOR_CHOICE)
+    blocked = None
+    try:
+        check_launch(start, provider)
+    except Refused as refused:
+        blocked = str(refused)
+    server = start.server.name if start.server is not None else None
+    return {"name": saved.name, "server": server, "blocked": blocked}
+
+
+def cli_models(
+    session: state.Session, only: providers.Provider | None, env: Env, listing: Listing
+) -> list[dict]:
+    """What the supervisor of `session` can name, for each installed agent CLI, the session's
+    first, or for `only`: `choices` by CLI, a name each, as a CLI may list hundreds. Asks no
+    server and holds a server's saved name alone. Refused for `only` not installed."""
+    if only is not None:
+        chosen = [_installed_cli(only.name, env)]
+    else:
+        names = sorted(providers.names(), key=lambda cli: cli != session.provider)
+        chosen = [p for p in map(providers.get, names) if _installed(p, env)]
+    shown = []
+    for provider in chosen:
+        found = choices(provider, listing)
+        shown.append(
+            {
+                "cli": provider.name,
+                "title": provider.title,
+                "session": provider.name == session.provider,
+                "starts_on": _starts_on(session, provider),
+                "note": found.why or None,
+                "builtin": list(dict.fromkeys((*found.aliases, *(found.models or ())))),
+                "external": [_shown_external(saved, provider) for saved in found.external],
+            }
+        )
+    return shown
+
+
 def _expands(*texts: str) -> bool:
     return any(mark in text for text in texts for mark in EXPANDED)
 
@@ -802,8 +926,7 @@ def _runs_on(server: state.ModelServer) -> str:
 
 def check_launch(start: StartModel, provider: providers.Provider) -> None:
     """What refuses `start` for an agent of `provider`'s CLI with no request and no list: an
-    entry no longer saved, a server its CLI does not run on, text its CLI would expand. A
-    spawned worker takes these only; its server's check is not made yet."""
+    entry no longer saved, a server its CLI does not run on, text its CLI would expand."""
     if start.gone:
         raise Refused(
             f"the session ran on the model {start.name}, which is no longer saved; "
@@ -880,6 +1003,10 @@ def check_start(
             retry=retry,
         )
     return verdict
+
+
+# What a spawn's refusal of a model not given adds: an agent has no --model (way_out).
+WORKER_WAY_OUT = '; list_models shows the others, model="" is the CLI\'s own settings'
 
 
 def way_out(start: StartModel, provider: providers.Provider, *, given: bool) -> str:

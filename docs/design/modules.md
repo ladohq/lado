@@ -809,7 +809,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     its facts, when `artifacts.read` gives it as `Shown`; the supervisor also gets
     `spawn_worker`, `finish_worker`, `flow_start`, `flow_cancel` and `start_session`,
     `COMMAND_TOOLS`, unless it is read-only: then they are not listed, and a call of one
-    is refused as `role <r> is read-only: <tool> is not available`; and `recommend`, the
+    is refused as `role <r> is read-only: <tool> is not available`; `list_models`, read-only
+    or not, `model_settings.cli_models` through `runtime.list_models`; and `recommend`, the
     lead's own, read-only or not: `runtime.recommend`). No tool answers a gate or a
     question. Every tool's result, or its error, carries the caller's queue, delivered by
     the channel `tool_result` (`_Server.call_tool`, `runtime.take_mid_turn`; How agents
@@ -896,7 +897,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     configured model of that CLI unless the name is also a built-in one, another CLI's refused,
     else a built-in name by `model_check.verdict`), `set_default` (`check_default`, then the
     row: the command and the page's Other name), `set_default_ref` (a row picked, by
-    `state.ModelRef`), `clear_default`. Each refusal is a one-line
+    `state.ModelRef`), `clear_default`, `worker_start` (a worker's `spawn_worker(model=…)`:
+    `_name_cli` picks the CLI, the given one or the session's, else the one other installed CLI
+    that has the name, other lists read only on a miss; then `session_row` and `start_model` as
+    for a session, the source `supervisor`), `cli_models` (`list_models`: `choices` by CLI, a name
+    each, `starts_on`, `blocked` by `check_launch`; asks no server). Each refusal is a one-line
     `Refused` (with the probe's hint) and its `field` (`name`, `address`, `key`, `cli`,
     `server`, `model` or ""), set where it is raised, which the page shows it under and the
     CLI ignores; `model_servers.ProbeError` has one too. A server's key is the file

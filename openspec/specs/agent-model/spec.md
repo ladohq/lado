@@ -12,8 +12,8 @@ agent's page, the Team tooltip and `lado ls`.
 
 LADO SHALL keep for every agent in `lado.db` its model and its effort, each a name or none, each
 with a source and an optional detail. A source SHALL be one of a set of tokens that later ways
-extend: `cli`, `cli-config`, `session`, `default` (in words `default in Settings`) and `cli-changed`
-(in words `changed in the agent CLI`). An agent whose CLI has said nothing and for which LADO chose
+extend: `cli`, `cli-config`, `session`, `default` (in words `default in Settings`), `supervisor` (in
+words `chosen by the supervisor`) and `cli-changed` (in words `changed in the agent CLI`). An agent whose CLI has said nothing and for which LADO chose
 nothing SHALL have no name and the source `cli`.
 
 #### Scenario: A new Claude agent before its first hook
@@ -33,6 +33,11 @@ nothing SHALL have no name and the source `cli`.
 #### Scenario: An agent on the CLI's default
 - **WHEN** a Codex agent starts in a session with no table and Codex's default is `gpt-5.6-sol`
 - **THEN** its page reads Model `gpt-5.6-sol · default in Settings`
+
+#### Scenario: A worker on a model the supervisor chose
+- **WHEN** the supervisor spawns a Claude worker with `model="sonnet"`
+- **THEN** its model is `sonnet` with the source `supervisor`, and its page reads Model `sonnet · chosen
+  by the supervisor`
 
 ### Requirement: A Codex agent shows the model and effort carried from the user's config
 

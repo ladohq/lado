@@ -412,12 +412,24 @@ def work(text: str) -> bool:
             args = {"task": command[2], "name": name, "provider": provider}
             call_tool("spawn_worker", args)
             report(spawn_text=[c.get("text") for c in lado_mcp.last_content])
+        elif command[0] == "spawnmodel":  # spawnmodel <name>@<provider or -> <model or ""> <task>
+            name, _, provider = command[1].partition("@")
+            model, _, task = command[2].partition(" ")
+            args = {"task": task, "name": name, "model": "" if model == '""' else model}
+            if provider != "-":
+                args["provider"] = provider
+            call_tool("spawn_worker", args)
+            report(spawn_text=[c.get("text") for c in lado_mcp.last_content])
+        elif command[0] == "listmodels":
+            report(models=call_tool("list_models", {}))
         elif command[0] == "finish":
             call_tool("finish_worker", {"name": command[1], "discard": command[2:] == ["discard"]})
         elif command[0] == "flow_start":
             report(flow_start=call_tool("flow_start", {"flow": command[1], "task": command[2]}))
-        elif command[0] == "spawnrun":
-            call_tool("spawn_worker", {"run": command[1]})
+        elif command[0] == "spawnrun":  # spawnrun <run> [model]
+            args = {"run": command[1], **({"model": command[2]} if command[2:] else {})}
+            call_tool("spawn_worker", args)
+            report(spawn_text=[c.get("text") for c in lado_mcp.last_content])
         elif command[0] == "give_recommendation":
             # give_recommendation <gate|question> <id> [choice]: not "recommend", the first
             # word of LADO's request line, which this loop reads as a command too.

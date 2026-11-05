@@ -576,11 +576,11 @@ def _save_default(ref: state.ModelRef) -> None:
         raise Refused("that model is no longer saved", field=MODEL_FIELD) from None
 
 
-def _set_builtin(
+def _builtin(
     provider: providers.Provider, model: str, listed: base.ModelList
 ) -> tuple[state.ModelRef, model_check.Verdict]:
-    """Set `model` as `provider`'s built-in default by the session model's thresholds: Refused
-    for what is no name, or a name `listed` lacks."""
+    """`model` as `provider`'s built-in default, by the session model's thresholds: Refused for
+    what is no name, or a name `listed` lacks. Saves nothing."""
     if not model:
         raise Refused("the model is empty", field=MODEL_FIELD)
     char = visible.first_hidden(model)
@@ -589,21 +589,23 @@ def _set_builtin(
     verdict = model_check.verdict(provider, model, listed)
     if verdict.kind == model_check.REFUSED:
         raise Refused(verdict.text, field=MODEL_FIELD, page=verdict.page or None)
-    ref = state.ModelRef(provider.name, None, model)
-    _save_default(ref)
-    return ref, verdict
+    return state.ModelRef(provider.name, None, model), verdict
 
 
-def set_default(cli: str, name: str, env: Env) -> tuple[state.ModelRef, model_check.Verdict | None]:
-    """Make `name` the default model of the agent CLI `cli`: a configured model of that CLI by
-    its name ignoring case, else a built-in model; the reference and, for a built-in model,
-    the check's verdict (an external one asks no server). Its list is read now with
-    `env(provider)`, the agents' environment. Refused, nothing changed, for a CLI not known or
-    not installed, a name both a configured and a built-in model of the CLI, a name that is
-    only another CLI's configured model, and a built-in name refused."""
+def check_default(
+    cli: str, name: str, env: Env, listing: Listing | None = None
+) -> tuple[state.ModelRef, model_check.Verdict | None]:
+    """What a name given for the default model of the agent CLI `cli` is, saving nothing: a
+    configured model of that CLI by its name ignoring case, else a built-in model; the
+    reference and, for a built-in model, the check's verdict (an external one asks no server).
+    The list is given by `listing`, else read now with `env(provider)`, the agents'
+    environment. Refused for a CLI not known or not installed, a name both a configured and a
+    built-in model of the CLI, a name that is only another CLI's configured model, and a
+    built-in name refused. The one reading of a typed name: the command and the page's Other
+    name take it, and its note."""
     provider = _installed_cli(cli, env)
     name = name.strip()
-    listed = provider.model_list(env(provider))
+    listed = listing(provider) if listing is not None else provider.model_list(env(provider))
     own = {*listed.aliases, *(listed.models or ())}
     saved = state.model(name)
     if saved is not None and saved.cli == cli:
@@ -613,19 +615,27 @@ def set_default(cli: str, name: str, env: Env) -> tuple[state.ModelRef, model_ch
                 "rename the saved one: Settings → Models",
                 field=MODEL_FIELD,
             )
-        ref = state.ModelRef(cli, saved.id, None)
-        _save_default(ref)
-        return ref, None
+        return state.ModelRef(cli, saved.id, None), None
     if saved is not None and name not in own:
         raise _not_its_model(saved, provider)
-    return _set_builtin(provider, name, listed)
+    return _builtin(provider, name, listed)
+
+
+def set_default(
+    cli: str, name: str, env: Env, listing: Listing | None = None
+) -> tuple[state.ModelRef, model_check.Verdict | None]:
+    """Make the typed `name` the default model of the agent CLI `cli`, as `check_default` reads
+    it; the reference and the check's verdict. Refused as there, nothing changed."""
+    ref, verdict = check_default(cli, name, env, listing)
+    _save_default(ref)
+    return ref, verdict
 
 
 def set_default_ref(
     ref: state.ModelRef, env: Env, listing: Listing | None = None
 ) -> tuple[state.ModelRef, model_check.Verdict | None]:
-    """`set_default` for a model picked on the page, by reference, so no name can be taken for
-    another; a built-in name is checked as there."""
+    """`set_default` for a row picked in a list, by reference, so no name can be taken for
+    another; a built-in name is checked by the thresholds alone."""
     provider = _installed_cli(ref.cli, env)
     if ref.model_id is not None:
         saved = state.model_by_id(ref.model_id)
@@ -636,7 +646,9 @@ def set_default_ref(
         _save_default(ref)
         return ref, None
     listed = listing(provider) if listing is not None else provider.model_list(env(provider))
-    return _set_builtin(provider, (ref.builtin or "").strip(), listed)
+    built_in, verdict = _builtin(provider, (ref.builtin or "").strip(), listed)
+    _save_default(built_in)
+    return built_in, verdict
 
 
 def clear_default(cli: str) -> bool:

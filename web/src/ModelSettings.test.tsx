@@ -74,7 +74,12 @@ test("no tabs: the intro, then the two blocks; opening reads no source", async (
   expect(screen.getByText(INTRO)).toBeTruthy();
   const blocks = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
   expect(blocks).toEqual(["Your agent CLIs", "Model servers 2"]);
-  expect(server.calls.filter((c) => c.path.includes("/models?") || c.path.endsWith("/probe"))).toEqual([]);
+  const reads = (c: { path: string }) =>
+    c.path.includes("/models?") || c.path.includes("/model-choices?") || c.path.endsWith("/probe");
+  expect(server.calls.filter(reads)).toEqual([]);
+  const count = async (title: string) => within(await card(title)).getByText(/^\d+$/, { selector: ".mx-count" }).textContent;
+  expect(await count("OpenCode")).toBe("2");
+  expect(await count("Claude Code")).toBe("1");
   expect(server.of("POST", "/api/providers/check")).toEqual([]); // no check of its own
 });
 

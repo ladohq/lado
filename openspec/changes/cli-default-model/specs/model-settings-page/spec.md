@@ -576,9 +576,18 @@ A model removed by its tick SHALL leave no Undo; ticked again it SHALL NOT be a 
 The field SHALL be a combobox named `Default model of <CLI>`: Enter, Space, ↓ and ↑ open it on the
 selected row; ↑ ↓ Home End move; Enter or Space picks; Esc and Tab close without a pick; a click
 outside closes. With search the focus SHALL be in the search field, Esc first clearing its text.
-Closing SHALL return the focus to the field. Notes under the field SHALL be tied to it by
-`aria-describedby`; a warning after a background read SHALL be a status, a refusal an alert.
+Esc, a pick and a press on nothing SHALL return the focus to the field; Tab and a press on
+another control SHALL go on from there.
 
 #### Scenario: Esc in a search
 - **WHEN** the human types in the picker's search and presses Esc twice
 - **THEN** the first clears the text, the second closes the list, and the focus is on the field
+
+### Requirement: The notes under the field
+
+Notes under the field SHALL be tied to it by `aria-describedby`; a warning after a background
+read SHALL be a status, a refusal an alert.
+
+#### Scenario: A refused pick
+- **WHEN** a pick is refused
+- **THEN** the refusal under the field is an alert the field is described by

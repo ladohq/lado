@@ -926,6 +926,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/model-defaults/{cli}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Model Default
+         * @description The check `lado model default` would make of a typed name, saving nothing; a
+         *     refusal is a 200 of kind refused with its field.
+         */
+        post: operations["check_model_default_api_model_defaults__cli__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/model-defaults/{cli}": {
         parameters: {
             query?: never;
@@ -2770,6 +2791,14 @@ export interface components {
             check: components["schemas"]["ModelCheck"];
         };
         /**
+         * ModelDefaultCheck
+         * @description A name typed for a default model, to check before it is set.
+         */
+        ModelDefaultCheck: {
+            /** Name */
+            name: string;
+        };
+        /**
          * ModelDefaultSaved
          * @description A default model set: the settings after it and, for a built-in model, the check's
          *     verdict (None for an external one, which asks no server).
@@ -2780,14 +2809,17 @@ export interface components {
         };
         /**
          * ModelDefaultSet
-         * @description The default model to set: `external` a configured model's id, or `builtin` the CLI's
-         *     name for it, exactly one of them.
+         * @description The default model to set, exactly one of: a row picked, by reference (`external` a
+         *     configured model's id, `builtin` the CLI's name for it), or `typed`, a name read as `lado
+         *     model default` reads it.
          */
         ModelDefaultSet: {
             /** External */
             external?: string | null;
             /** Builtin */
             builtin?: string | null;
+            /** Typed */
+            typed?: string | null;
         };
         /**
          * ModelInfo
@@ -5983,6 +6015,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_model_default_api_model_defaults__cli__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cli: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelDefaultCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCheck"];
+                };
             };
             /** @description Validation Error */
             422: {

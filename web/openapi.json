@@ -2235,6 +2235,56 @@
         }
       }
     },
+    "/api/model-defaults/{cli}/check": {
+      "post": {
+        "summary": "Check Model Default",
+        "description": "The check `lado model default` would make of a typed name, saving nothing; a\nrefusal is a 200 of kind refused with its field.",
+        "operationId": "check_model_default_api_model_defaults__cli__check_post",
+        "parameters": [
+          {
+            "name": "cli",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cli"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelDefaultCheck"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCheck"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/model-defaults/{cli}": {
       "put": {
         "summary": "Set Model Default",
@@ -7371,6 +7421,20 @@
         "title": "ModelChoices",
         "description": "What an agent CLI can run (lado.model_settings.choices): its aliases and own list\n(`models` None for no full list, `why` saying so), its configured models, whether a name\noutside the list may be given, whether a model on a server takes its whole process,\nwhether reading the list again may change the answer, and the check of the built-in model\nasked about against this list."
       },
+      "ModelDefaultCheck": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ModelDefaultCheck",
+        "description": "A name typed for a default model, to check before it is set."
+      },
       "ModelDefaultSaved": {
         "properties": {
           "settings": {
@@ -7418,11 +7482,22 @@
               }
             ],
             "title": "Builtin"
+          },
+          "typed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Typed"
           }
         },
         "type": "object",
         "title": "ModelDefaultSet",
-        "description": "The default model to set: `external` a configured model's id, or `builtin` the CLI's\nname for it, exactly one of them."
+        "description": "The default model to set, exactly one of: a row picked, by reference (`external` a\nconfigured model's id, `builtin` the CLI's name for it), or `typed`, a name read as `lado\nmodel default` reads it."
       },
       "ModelInfo": {
         "properties": {

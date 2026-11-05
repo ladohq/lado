@@ -348,14 +348,9 @@ test("Other name: a field with the search's text, the check once the typing sett
     other_name: true,
     read_again: false,
   };
-  server.answers["GET /api/providers/claude/models"] = () =>
+  server.answers["POST /api/model-defaults/claude/check"] = () =>
     new Response(
-      JSON.stringify({
-        aliases: ["opus"],
-        models: null,
-        why: "",
-        check: { kind: "warn", text: "Claude Code gives no list: LADO cannot check claude-x", field: "" },
-      }),
+      JSON.stringify({ kind: "warn", text: "Claude Code gives no list: LADO cannot check claude-x", field: "", name: "" }),
     );
   mount();
   const claude = await card("Claude Code");
@@ -368,22 +363,15 @@ test("Other name: a field with the search's text, the check once the typing sett
   await within(claude).findByText(/LADO cannot check claude-x/, undefined, { timeout: MODEL_DEBOUNCE + 1000 });
   fireEvent.click(within(claude).getByRole("button", { name: "Use" }));
   await waitFor(() => expect(within(claude).queryByRole("textbox", { name: "Other name" })).toBeNull());
-  expect(server.of("PUT", "/api/model-defaults/claude")[0].body).toEqual({ builtin: "claude-x" });
+  expect(server.of("PUT", "/api/model-defaults/claude")[0].body).toEqual({ typed: "claude-x" });
   expect(await within(claude).findByText(/LADO cannot check claude-x/)).toBeTruthy(); // stays
   expect((await field("Claude Code")).textContent).toContain("claude-x");
 });
 
 test("Other name: Cancel closes it with the focus on the field, a refused name turns Use off", async () => {
   server.lists.opencode = { models: null, why: "no list", other_name: true };
-  server.answers["GET /api/providers/opencode/models"] = () =>
-    new Response(
-      JSON.stringify({
-        aliases: [],
-        models: null,
-        why: "",
-        check: { kind: "refused", text: "bad name", field: "" },
-      }),
-    );
+  server.answers["POST /api/model-defaults/opencode/check"] = () =>
+    new Response(JSON.stringify({ kind: "refused", text: "bad name", field: "model", name: "" }));
   mount();
   const opencode = await card("OpenCode");
   fireEvent.click(await field("OpenCode"));
@@ -728,21 +716,62 @@ test("Other name: Enter is Use, and off while refused", async () => {
   fireEvent.change(name, { target: { value: "a/typed" } });
   fireEvent.submit(name.closest("form") as HTMLFormElement);
   await waitFor(() => expect(server.of("PUT", "/api/model-defaults/opencode")).toHaveLength(1));
-  expect(server.of("PUT", "/api/model-defaults/opencode")[0].body).toEqual({ builtin: "a/typed" });
+  expect(server.of("PUT", "/api/model-defaults/opencode")[0].body).toEqual({ typed: "a/typed" });
+});
+
+test("Other name: the check is the core's for the name typed, and a row picked meanwhile closes the form", async () => {
+  server.lists.opencode = { models: null, why: "no list", other_name: true };
+  mount();
+  const opencode = await card("OpenCode");
+  const opening = await field("OpenCode");
+  fireEvent.click(opening);
+  fireEvent.click(await screen.findByRole("option", { name: /Other name…/ }));
+  const name = within(opencode).getByRole("textbox", { name: "Other name" });
+  fireEvent.change(name, { target: { value: "a/typed" } });
+  await waitFor(() => expect(server.of("POST", "/api/model-defaults/opencode/check")).toHaveLength(1), {
+    timeout: MODEL_DEBOUNCE + 1000,
+  });
+  expect(server.of("POST", "/api/model-defaults/opencode/check")[0].body).toEqual({ name: "a/typed" });
+  fireEvent.click(opening);
+  fireEvent.click(await screen.findByRole("option", { name: /OpenCode's settings/ }));
+  await waitFor(() => expect(within(opencode).queryByRole("textbox", { name: "Other name" })).toBeNull());
+});
+
+test("the picker shows what the core lists now, not what the page read at its opening", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
+  mount();
+  await card("OpenCode");
+  server.entries = { ...server.entries, models: [CODER] }; // another window, or `lado model add`
+  fireEvent.click(await field("OpenCode"));
+  expect(await screen.findByRole("option", { name: /Рабочая Qwen/ })).toBeTruthy();
+  expect(screen.queryByRole("option", { name: /Локальная Qwen/ })).toBeNull();
+});
+
+test("five models and a removed row: no Show all, as nothing is folded", async () => {
+  const models = nine().slice(0, 6);
+  server.entries = { models, servers: [LMSTUDIO] };
+  mount();
+  const opencode = await card("OpenCode");
+  expect(within(opencode).getByRole("button", { name: "Show all 6 models" })).toBeTruthy();
+  fireEvent.click(within(opencode).getByRole("button", { name: "Remove m-a" }));
+  await within(opencode).findByRole("button", { name: "Undo" });
+  expect(within(opencode).queryByRole("button", { name: /^Show/ })).toBeNull();
+  expect(names(opencode)).toHaveLength(5);
+});
+
+test("the page says nothing of sessions using a default", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN, true)] };
+  mount();
+  await card("OpenCode");
+  const text = (document.querySelector(".setting.mx") as HTMLElement).textContent ?? "";
+  expect(text).not.toMatch(/session/i);
 });
 
 test("Other name: the check of the typed name is a status tied to its field; the saved one's warning waits", async () => {
   server.lists.opencode = { models: null, why: "no list", other_name: true };
   server.entries = { ...server.entries, defaults: [builtinDefault("opencode", "saved/name")] };
-  server.answers["GET /api/providers/opencode/models"] = () =>
-    new Response(
-      JSON.stringify({
-        aliases: [],
-        models: null,
-        why: "",
-        check: { kind: "warn", text: "no list: LADO cannot check a/typed", field: "" },
-      }),
-    );
+  server.answers["POST /api/model-defaults/opencode/check"] = () =>
+    new Response(JSON.stringify({ kind: "warn", text: "no list: LADO cannot check a/typed", field: "", name: "" }));
   mount();
   const opencode = await card("OpenCode");
   await within(opencode).findByText(/LADO cannot check saved\/name/);

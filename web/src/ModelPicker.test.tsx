@@ -74,13 +74,16 @@ function mount(given: Given = {}) {
   const onOther = vi.fn<(text: string) => void>();
   const onOpen = vi.fn();
   const cli = given.cli ?? OPENCODE;
+  const own = given.own ?? [];
+  const read = given.read ?? list();
+  if (read.choices) read.choices = { ...read.choices, external: own }; // the core's list agrees
   render(
     <ModelPicker
       cli={cli}
       value={given.value ?? null}
       where="settings"
-      own={given.own ?? []}
-      list={given.read ?? list()}
+      own={own}
+      list={read}
       off={given.off ?? false}
       lost={given.lost ?? false}
       health={given.health ?? {}}
@@ -135,6 +138,29 @@ test("aliases head their group, and an other name is offered only without a full
   cleanup();
   fireEvent.click(mount().field);
   expect(texts().join(" ")).not.toContain("Other name");
+});
+
+test("YOUR MODELS come from the core's list once read, the page's only while it reads", () => {
+  const props = {
+    cli: OPENCODE,
+    value: null,
+    where: "settings" as const,
+    own: [QWEN], // what the page last read
+    off: false,
+    lost: false,
+    health: {},
+    onOpen: vi.fn(),
+    onPick: vi.fn(),
+    onOther: vi.fn(),
+  };
+  const read = list({ choices: choices({ external: [CODER] }) });
+  const view = render(<ModelPicker {...props} list={read} />);
+  fireEvent.click(screen.getByRole("combobox"));
+  expect(texts().join(" ")).toContain("Рабочая Qwen");
+  expect(texts().join(" ")).not.toContain("Локальная Qwen");
+  view.rerender(<ModelPicker {...props} list={{ ...read, reading: true }} />);
+  expect(texts().join(" ")).toContain("Локальная Qwen");
+  expect(texts().join(" ")).not.toContain("Рабочая Qwen");
 });
 
 test("a list being read shows your models and says so", () => {

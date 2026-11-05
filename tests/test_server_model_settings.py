@@ -822,9 +822,64 @@ def test_a_refused_default_is_an_entry_refused_and_names_no_command(client, on_p
     assert state.cli_defaults() == [state.ModelRef("kilo", None, "a/b")]
 
 
-def test_a_default_set_takes_exactly_one_of_external_and_built_in(client, on_path):
+def test_a_typed_name_is_taken_as_lado_model_default_takes_it(client, on_path):
+    """Other name: another CLI's model is refused, the CLI's own saved model is a reference."""
     on_path("claude")
-    for body in ({}, {"external": "x", "builtin": "y"}):
+    saved_server()
+    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
+    own = state.add_model("Шлюз", "claude", "opus", "s1")
+    detail = refused(client.put("/api/model-defaults/claude", json={"typed": "локальная qwen"}))
+    assert (detail["message"], detail["field"]) == (
+        '"Локальная Qwen" is a model of OpenCode, not of Claude Code',
+        "model",
+    )
+    assert state.cli_defaults() == []
+    answer = ok(client.put("/api/model-defaults/claude", json={"typed": "шлюз"}))
+    assert answer["check"] is None
+    assert state.cli_defaults() == [state.ModelRef("claude", own.id, None)]
+    answer = ok(client.put("/api/model-defaults/claude", json={"typed": "claude-x"}))
+    assert answer["check"]["kind"] == "warn"
+    assert state.cli_defaults() == [state.ModelRef("claude", None, "claude-x")]
+
+
+def test_a_picked_built_in_name_stays_built_in_whatever_a_saved_model_is_called(client, on_path):
+    """A row of the list is a reference: a saved model of that name cannot take its place."""
+    on_path("claude")
+    saved_server()
+    state.add_model("opus", "claude", "claude-opus-x", "s1")
+    ok(client.put("/api/model-defaults/claude", json={"builtin": "opus"}))
+    assert state.cli_defaults() == [state.ModelRef("claude", None, "opus")]
+
+
+def test_the_check_of_a_typed_name_is_the_one_a_save_makes_and_saves_nothing(client, on_path):
+    on_path("claude")
+    saved_server()
+    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
+    state.add_model("Шлюз", "claude", "opus-x", "s1")
+
+    def check_of(name):
+        return ok(client.post("/api/model-defaults/claude/check", json={"name": name}))
+
+    assert check_of("Локальная Qwen") == {
+        "kind": "refused",
+        "text": '"Локальная Qwen" is a model of OpenCode, not of Claude Code',
+        "field": "model",
+        "name": "",
+    }
+    own = check_of("шлюз")
+    assert (own["kind"], own["text"]) == ("ok", "your model Шлюз: opus-x on lms")
+    assert check_of("opus")["text"] == "an alias of Claude Code"
+    assert check_of("claude-x")["kind"] == "warn"
+    assert check_of("")["kind"] == "refused"
+    assert state.cli_defaults() == []
+    assert (
+        client.post("/api/model-defaults/gemini/check", json={"name": "x"}).json()["field"] == "cli"
+    )
+
+
+def test_a_default_set_takes_exactly_one_way_to_name_the_model(client, on_path):
+    on_path("claude")
+    for body in ({}, {"external": "x", "builtin": "y"}, {"builtin": "y", "typed": "z"}):
         assert client.put("/api/model-defaults/claude", json=body).status_code == 422
     assert state.schema_version() is None or state.cli_defaults() == []
 

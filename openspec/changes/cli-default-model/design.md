@@ -68,8 +68,8 @@ in the API, because a later MCP tool needs the same list: one source. No new wai
 
 ### D4. Setting a default
 
-`model_settings.set_default(cli, name, env) -> tuple[ModelRef, Verdict | None]`
-resolves as the delta says: the CLI known, installed (`shutil.which(provider.command,
+`model_settings.check_default(cli, name, env, listing=None) -> tuple[ModelRef, Verdict | None]`
+resolves, saving nothing, and `set_default` saves what it gave, as the delta says: the CLI known, installed (`shutil.which(provider.command,
 path=env["PATH"])`), an entry of this CLI, the list read for the clash, a built-in, another
 CLI's entry, then `model_check.verdict`. `set_default_ref(ref, env, listing)` is the page's
 form, by id or built-in name. `clear_default(cli) -> bool`. The list is read for an external
@@ -89,7 +89,8 @@ they carry their defaults. The page asks from the `defaults` of its last listing
 |---|---|---|
 | `GET /api/model-settings` | | `ModelSettings{models, servers, defaults: [CliDefault]}` |
 | `GET /api/providers/{name}/model-choices?model=&fresh=` | | `ModelChoices{aliases, models, why, external: [ConfiguredModelInfo], other_name, whole_process, read_again, check}` |
-| `PUT /api/model-defaults/{cli}` | `ModelDefaultSet{external: str \| None, builtin: str \| None}` | `ModelDefaultSaved{settings, check}` |
+| `PUT /api/model-defaults/{cli}` | `ModelDefaultSet{external: str \| None, builtin: str \| None, typed: str \| None}` | `ModelDefaultSaved{settings, check}` |
+| `POST /api/model-defaults/{cli}/check` | `ModelDefaultCheck{name}` | `ModelCheck` |
 | `DELETE /api/model-defaults/{cli}` | | `ModelSettings` |
 
 `CliDefault{cli, external: str | None, builtin: str | None, name, model, server: str | None,
@@ -97,7 +98,9 @@ whole_process}`: the card says it with no list read, as opening the page reads n
 external default. `ModelChoices.check` is the core's verdict on the built-in `model`: the card's
 warning and a lost default come from it, no line is rebuilt on the page.
 `ConfiguredModelInfo` gains `id`; `ModelAdd.server` is required. Refusals are `EntryRefused`.
-The typed check of `Other name…` is the existing `GET /api/providers/{name}/models?model=`.
+A row picked goes by reference (`external`, `builtin`), so it is never taken for another of its
+name; a name typed in `Other name…` is `typed`, read by `model_settings.check_default` as the
+command reads it, and its note is that same reading (`.../check`).
 `DELETE /api/models/{name}` answers `ModelRemoved`, the settings and `cleared` (the CLIs whose
 default went): a stale page has no default to compare. The server's stays: its question reads the
 entries anew, and the page compares `defaults` for its line.

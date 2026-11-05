@@ -195,13 +195,18 @@ exactly when the CLI gives no full list, whether it has aliases or not.
 `lado model default` SHALL print one line per agent CLI LADO knows, in LADO's order, under
 the header `CLI DEFAULT MODEL SERVER`: its title, its default (the configured model's name
 or the built-in model, `—` for none) and the server of an external default (`—` otherwise).
-It SHALL run no CLI and send no request.
+It SHALL run no CLI and send no request. `lado model default <cli>` SHALL print that CLI's line
+alone under the header.
 
 #### Scenario: Two defaults
 - **WHEN** Claude Code's default is `opus` and Kilo CLI's is `Локальная Qwen` on `LM Studio
   дома`
 - **THEN** it prints `Claude Code  opus  —`, `Codex CLI  —  —`, `Kilo CLI  Локальная Qwen
   LM Studio дома` and `OpenCode  —  —`
+
+#### Scenario: One CLI
+- **WHEN** Claude Code's default is `opus` and the human runs `lado model default claude`
+- **THEN** it prints the header and `Claude Code  opus  —`
 
 ### Requirement: lado model default sets a CLI's default model
 

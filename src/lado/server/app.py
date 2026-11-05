@@ -1018,6 +1018,15 @@ def create_app(
         that cannot be read says why; no lado.db made."""
         return model_entries.model_choices(provider_named(name), model, fresh, has_db)
 
+    @app.post(
+        "/api/model-defaults/{cli}/check",
+        dependencies=[Depends(guard.changes), Depends(database)],
+    )
+    def check_model_default(cli: str, given: models.ModelDefaultCheck) -> models.ModelCheck:
+        """The check `lado model default` would make of a typed name, saving nothing; a
+        refusal is a 200 of kind refused with its field."""
+        return model_entries.check_default(cli, given)
+
     @app.put(
         "/api/model-defaults/{cli}",
         dependencies=[Depends(guard.changes), Depends(database)],

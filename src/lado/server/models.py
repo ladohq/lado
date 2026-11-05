@@ -548,17 +548,25 @@ class ModelRemoved(ModelSettings):
 
 
 class ModelDefaultSet(BaseModel):
-    """The default model to set: `external` a configured model's id, or `builtin` the CLI's
-    name for it, exactly one of them."""
+    """The default model to set, exactly one of: a row picked, by reference (`external` a
+    configured model's id, `builtin` the CLI's name for it), or `typed`, a name read as `lado
+    model default` reads it."""
 
     external: str | None = None
     builtin: str | None = None
+    typed: str | None = None
 
     @model_validator(mode="after")
     def exactly_one(self) -> "ModelDefaultSet":
-        if (self.external is None) == (self.builtin is None):
-            raise ValueError("give external or builtin, exactly one")
+        if sum(given is not None for given in (self.external, self.builtin, self.typed)) != 1:
+            raise ValueError("give external, builtin or typed, exactly one")
         return self
+
+
+class ModelDefaultCheck(BaseModel):
+    """A name typed for a default model, to check before it is set."""
+
+    name: str
 
 
 class CliApi(BaseModel):

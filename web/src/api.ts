@@ -415,9 +415,14 @@ export const getModelChoices = (name: string, model = "", fresh = false) =>
 
 const modelDefaultPath = (cli: string) => `/api/model-defaults/${encodeURIComponent(cli)}`;
 
-// Set an agent CLI's default model by reference: a saved model's id, or the CLI's own name.
+// Set an agent CLI's default model: a row picked by reference (a saved model's id, or the CLI's
+// own name), or `typed`, read as `lado model default` reads a name.
 export const setModelDefault = (cli: string, given: ModelDefaultSet) =>
   post<ModelDefaultSaved>(modelDefaultPath(cli), given, "PUT");
+
+// The check `lado model default` would make of a typed name, saving nothing.
+export const checkModelDefault = (cli: string, name: string) =>
+  post<ModelCheck>(`${modelDefaultPath(cli)}/check`, { name });
 
 export const clearModelDefault = (cli: string) => post<ModelSettings>(modelDefaultPath(cli), undefined, "DELETE");
 

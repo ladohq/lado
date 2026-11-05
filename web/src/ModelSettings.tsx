@@ -15,12 +15,12 @@ import { useLocation } from "react-router";
 
 import {
   addModel,
+  checkModelDefault,
   clearModelDefault,
   type ConfiguredModelInfo,
   type EntryRefused,
   getModelSettings,
   getProviderLogins,
-  getProviderModels,
   type ModelCheck,
   type ModelSettings as Entries,
   probeModelServer,
@@ -432,7 +432,7 @@ function CliCard({
     return found;
   };
 
-  const save = async (pick: Pick): Promise<boolean> => {
+  const save = async (pick: Pick | { typed: string }): Promise<boolean> => {
     onTouch();
     setProblem(null);
     try {
@@ -554,9 +554,10 @@ function CliCard({
     return first(a) - first(b) || byName(a.model, b.model);
   });
   const open = unfolded.has(cli);
+  const folds = live.length > FOLD_ABOVE; // models, not rows: a removed row folds nothing away
   // What the human just acted on stays in view: a removed row, a model renamed past the fold.
   const shown =
-    open || rows.length <= FOLD_ABOVE
+    open || !folds
       ? rows
       : rows.filter((row, at) => at < FOLD_ABOVE || row.gone || fold(row.model.name) === renamed);
   const servers = new Map(entries.servers.map((s) => [fold(s.name), s.address]));
@@ -599,7 +600,10 @@ function CliCard({
             onOpen={() => {
               for (const name of new Set(live.map((m) => m.server))) void probe(name);
             }}
-            onPick={(pick) => void save(pick)}
+            onPick={(pick) => {
+              setOther(null);
+              void save(pick);
+            }}
             onOther={setOther}
           />
           {other !== null && (
@@ -607,7 +611,7 @@ function CliCard({
               cli={cli}
               start={other}
               onUse={async (name) => {
-                if (await save({ builtin: name })) {
+                if (await save({ typed: name })) {
                   setOther(null);
                   field.current?.focus();
                 }
@@ -669,7 +673,7 @@ function CliCard({
               ),
             )}
           </div>
-          {rows.length > FOLD_ABOVE && (
+          {folds && (
             <div className="mc-more">
               <button
                 type="button"
@@ -711,8 +715,8 @@ function OtherName({
   useEffect(() => {
     if (!settled) return;
     let current = true;
-    getProviderModels(cli, settled).then(
-      (found) => current && setCheck({ of: settled, note: found.check }),
+    checkModelDefault(cli, settled).then(
+      (note) => current && setCheck({ of: settled, note }),
       () => undefined, // Use says what is wrong
     );
     return () => {

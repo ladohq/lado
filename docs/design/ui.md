@@ -2501,9 +2501,13 @@ default: none does yet.
   list takes no focus; a read that changes the rows puts the active row back on the selected
   one. A pick saves at once, by reference (`PUT /api/model-defaults/{cli}`), the focus back on
   the field; a refusal shows under it and the value stays; a request that never reached LADO
-  says so in its own words and blames no model server. `Other name…` opens a form under the
-  picker with Use (Enter too) and Cancel, checked once the typing settles; while open it takes
-  the place of the saved name's warning. The keyboard: Enter, Space and the arrows open it on
+  says so in its own words and blames no model server. YOUR MODELS are the core's once the list
+  is read, the page's entries until then. `Other name…` opens a form under the picker with Use
+  (Enter too) and Cancel; a typed name is read as `lado model default` reads it, not as a row:
+  its check once the typing settles (`POST /api/model-defaults/{cli}/check`) and Use
+  (`typed`) both go through `model_settings.check_default`, so another CLI's model is refused
+  and the CLI's own saved model becomes a reference. While open the form takes the place of
+  the saved name's warning; a row picked closes it. The keyboard: Enter, Space and the arrows open it on
   the selected row, ↑ ↓ Home End move, Enter picks (Space too with no search), Esc and Tab close
   without a pick, Esc first clearing a search.
 - **A default in trouble** stays: nothing but the human changes it. A built-in one the list
@@ -2563,8 +2567,7 @@ default: none does yet.
   tick changes it (a model configured since by Model id comes last). The list shows at most
   `--list-rows` (9) rows of `--row` (36 px) and scrolls within itself; under it `<n> models`;
   above more than ten a search, `Search <n> models`, and then `<shown> of <n> models`.
-- **The ticks**: a CLI's model has one tick, `as <name>` beside it when its model's name
-  differs. A server's model is a row that opens, on a click or Enter, under it `Agent CLIs
+- **The ticks**: a server's model is a row that opens, on a click or Enter, under it `Agent CLIs
   that can run <model> on <server>:` and the installed CLIs whose API the server proves,
   one under the other whatever their number, each with its tick and under its title `as
   <name>` when on, `would be <name>` when off: the name a tick would save, which the core
@@ -2578,10 +2581,8 @@ default: none does yet.
   stays open it remembers the name of each model it unticked: its row says `would be
   <name>`, and a tick again saves the model under that name, or under its default when the
   name was taken meanwhile; a ticked model is titled `Unticking removes <name>.`. Several
-  models of one tick: on and disabled, titled `<names>: remove them in Your models`.
-  Default names (the core's `model_settings.default_name`): an alias `Claude Sonnet` (the
-  first word of the CLI's title and the alias capitalised, `[1m]` as ` 1M`: `Claude Opus
-  1M`), a model of a CLI's list the model, a model on a server `<model> · <server>`, with
+  models of one tick: on and disabled, titled `<names>: remove them on the card of <CLI>`.
+  Default names (the core's `model_settings.default_name`): `<model> · <server>`, with
   ` · <CLI>` when the server suits more than one CLI; a taken name gets ` · <CLI>`, then
   ` (2)`, ` (3)`, each cut to 64 characters before its suffix.
 - **Embeddings and gone models**: a model the server types as embeddings is not listed;
@@ -2593,9 +2594,8 @@ default: none does yet.
   for its key or refuses it shows the probe's line as a warning with its hint under it (the
   container's `host.docker.internal` one included), then `Its model(s) stay(s) saved:
   <names>. Agents on it stop at their first turn until the server answers.`
-- **Model id** ends an open source only where its list is not whole: Claude Code (its
-  aliases), a CLI whose list cannot be read, a server that gives none (with an **Agent
-  CLI** choice, a `.field` select of the launch window's look). The check `lado model add`
+- **Model id** ends an open server only when it gives no list, with an **Agent CLI** choice,
+  a `.field` select of the launch window's look. The check `lado model add`
   would make shows under it once the typing settles (`MODEL_DEBOUNCE`); Add saves the model
   with its default name, off while refused.
 - **+ Add server** opens, in its place at the end of Model servers, a form: Name (focused),
@@ -2651,16 +2651,22 @@ default: none does yet.
   (`--done`) only for the found panel, `Saved model server …` and a server model's `in
   <CLI>, …`. No colour of its own.
 - **Narrower than 600 px**: the forms' fields one under the other; a model's row in two
-  lines (its name, then model · from, each whole and wrapped) with × at the right, the
-  table's head hidden; a source's model the whole width, its marks (`no longer listed`, `in
+  lines (its name, then model and from, each whole and wrapped) with × at the right, the
+  table's head only `Your models <n>`; a question's buttons 44 px high; the card's label over
+  its field, the field without the id; a source's model the whole width, its marks (`no longer listed`, `in
   <CLI>`, `as`/`would be`) on lines of their own under it; a
   source's icons on a line of their own under its name and a server's address wrapped
   whole (no tooltip); ✎, 🗑, ↻, × and Undo at least 44 by 44 px and a list's row 44 px; a
   server's list of up to 20 models not bounded (no scroll within a scroll on touch); the
   CLIs under a server's model without indent. The page never scrolls sideways.
 - **API** (`lado.server.model_entries` over `lado.model_settings`, under the token, no
-  change-feed event): `GET /api/model-settings` (`ModelSettings`: the models and the saved
-  servers, asking none; no `lado.db` made), `POST /api/model-servers` (`ModelServerAdd
+  change-feed event): `GET /api/model-settings` (`ModelSettings`: the models, the saved
+  servers and the `defaults`, asking none; no `lado.db` made), `GET
+  /api/providers/{name}/model-choices?model=&fresh=` (`ModelChoices`: what the CLI can run, and
+  the check of a built-in `model`; no `lado.db` made), `PUT /api/model-defaults/{cli}`
+  (`ModelDefaultSet {external, builtin, typed}`, exactly one → `ModelDefaultSaved {settings,
+  check}`), `POST /api/model-defaults/{cli}/check` (`{name}` → `ModelCheck`, saving nothing),
+  `DELETE /api/model-defaults/{cli}` (→ `ModelSettings`), `POST /api/model-servers` (`ModelServerAdd
   {name, address, key, replace}` → `ModelServerAdded {server, probe, notes, warnings}`),
   `POST /api/model-servers/check` (`ModelServerCheck {name, address, key, key_typed,
   replace}` → `ServerCheck {probe, refusals, warnings, notes}`: the form's check, saving
@@ -2675,7 +2681,8 @@ default: none does yet.
   its `field`; `name` the name a save would take, the given one or the default, empty for a
   refusal; a server's probe kept a minute for this check only), `POST /api/models` (→
   `ModelAdded`; `name` null for the default name), `PATCH /api/models/{name}` (`{name}`)
-  and `DELETE /api/models/{name}` (→ `ModelSettings`). A name in a path is encoded whole (a
+  and `DELETE /api/models/{name}` (→ `ModelRemoved`: the settings and `cleared`, the CLIs whose
+  default went). A name in a path is encoded whole (a
   `/` in it included). A refusal is a 400 whose `detail` is `EntryRefused {message, hint,
   field, warnings}`, its field set by the core where it refuses. The key enters only in the
   body of `POST /api/model-servers` and `POST /api/model-servers/check` (routes of

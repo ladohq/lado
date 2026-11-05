@@ -139,7 +139,7 @@ export function ModelPicker({
   cli: { name: string; title: string };
   value: CliDefault | null;
   where: "settings";
-  own: ConfiguredModelInfo[]; // the CLI's configured models, by name
+  own: ConfiguredModelInfo[]; // the CLI's configured models as the page has them, by name
   list: ModelRead;
   off: boolean; // shows its value and does not open
   lost: boolean; // the list lacks the built-in value
@@ -164,8 +164,10 @@ export function ModelPicker({
   const typedAhead = useRef({ text: "", at: 0 });
 
   const { choices } = list;
+  // The core's list once read; the page's entries only until then.
+  const mine = choices && !list.reading ? choices.external : own;
   const built = [...new Set([...(choices?.aliases ?? []), ...(choices?.models ?? [])])];
-  const total = own.length + built.length;
+  const total = mine.length + built.length;
   const searching = total > SEARCH_ABOVE;
   const typed = fold(search.trim());
   const holds = (...texts: (string | null | undefined)[]) =>
@@ -187,7 +189,7 @@ export function ModelPicker({
     title: `${cli.title}'s settings`,
     id: "no model set: the agent CLI chooses",
   };
-  const yours: Row[] = own
+  const yours: Row[] = mine
     .filter((m) => holds(m.name, m.model, m.server))
     .map((m) => {
       const state = health[fold(m.server)];
@@ -435,7 +437,7 @@ export function ModelPicker({
   const count = [
     choices?.models != null && `${choices.models.length} built-in`,
     choices?.models === null && built.length > 0 && `${built.length} aliases`,
-    `${own.length} of yours`,
+    `${mine.length} of yours`,
   ]
     .filter(Boolean)
     .join(" · ");

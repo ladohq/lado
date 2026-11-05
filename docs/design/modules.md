@@ -890,11 +890,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     with the default on it, reported to `cleared`), `choices` (the one place that computes what
     a CLI can run: its aliases and list by the `listing` given, its configured models, whether
     `other_name` is offered and `read_again` may help (`ModelList.fixed`); kept nowhere),
-    `defaults` (each default as shown), `set_default` (by name: the CLI known and installed
-    (`shutil.which` on the agents' PATH), the list read, a configured model of that CLI unless
-    the name is also a built-in one, another CLI's refused, else a built-in name by
-    `model_check.verdict`), `set_default_ref` (the page's form, by `state.ModelRef`),
-    `clear_default`. Each refusal is a one-line
+    `defaults` (each default as shown), `check_default` (the one reading of a typed name, saving
+    nothing: the CLI known and installed (`shutil.which` on the agents' PATH), the list read, a
+    configured model of that CLI unless the name is also a built-in one, another CLI's refused,
+    else a built-in name by `model_check.verdict`), `set_default` (`check_default`, then the
+    row: the command and the page's Other name), `set_default_ref` (a row picked, by
+    `state.ModelRef`), `clear_default`. Each refusal is a one-line
     `Refused` (with the probe's hint) and its `field` (`name`, `address`, `key`, `cli`,
     `server`, `model` or ""), set where it is raised, which the page shows it under and the
     CLI ignores; `model_servers.ProbeError` has one too. A server's key is the file
@@ -1229,7 +1230,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     confirmed ones), `check_model` (with the name a save would take, `ModelCheck.name`), `add_model`, `rename_model`, `remove_model`,
     `model_choices` (`model_settings.choices` over `launch.model_list`, kept a minute, `fresh`
     read now; an environment that cannot be read is a list with why; no lado.db made),
-    `set_default` (by reference, `ModelDefaultSet`), `clear_default`; each
+    `set_default` (`ModelDefaultSet`: a row by reference, or `typed`), `check_default`,
+    `clear_default`; each
     refusal a `Refusal` holding `EntryRefused` (the core's line, hint and field), a 400 in
     `app.py`; a server's probe kept `KEPT` seconds by its id and address for `check_model`
     only (a failed one not kept); the key comes in only in `ModelServerAdd` and `ModelServerCheck`,

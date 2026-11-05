@@ -171,16 +171,38 @@ def model_choices(
 
 
 def set_default(cli: str, given: models.ModelDefaultSet) -> models.ModelDefaultSaved:
-    """Set the default model as `lado model default` does, by reference: a model picked on the
-    page is never taken for another of the same name. A built-in model's list is the one the
-    picker just read, kept a minute."""
-    ref = state.ModelRef(cli, given.external, given.builtin)
+    """Set the default model as `lado model default` does: a row picked by reference, so it is
+    never taken for another of the same name, a typed name read as the command reads it. The
+    list is the one the picker just read, kept a minute."""
     try:
-        _, verdict = model_settings.set_default_ref(ref, _agents_env, _listed)
+        if given.typed is not None:
+            _, verdict = model_settings.set_default(cli, given.typed, _agents_env, _listed)
+        else:
+            ref = state.ModelRef(cli, given.external, given.builtin)
+            _, verdict = model_settings.set_default_ref(ref, _agents_env, _listed)
     except REFUSED as exc:
         raise _refusal(exc) from None
     check = None if verdict is None else models.ModelCheck(kind=verdict.kind, text=verdict.text)
     return models.ModelDefaultSaved(settings=listing(), check=check)
+
+
+def check_default(cli: str, given: models.ModelDefaultCheck) -> models.ModelCheck:
+    """The check `lado model default` would make of a typed name, saving nothing; a refusal is
+    a ModelCheck of kind refused with its field."""
+    try:
+        ref, verdict = model_settings.check_default(cli, given.name, _agents_env, _listed)
+    except REFUSED as exc:
+        return models.ModelCheck(
+            kind=model_check.REFUSED,
+            text=getattr(exc, "page", str(exc)),
+            field=getattr(exc, "field", ""),
+        )
+    if verdict is not None:
+        return models.ModelCheck(kind=verdict.kind, text=verdict.text)
+    saved = state.model_by_id(ref.model_id or "")
+    servers = {server.id: server.name for server in state.model_servers()}
+    text = f"your model {saved.name}: {saved.model} on {servers.get(saved.server)}" if saved else ""
+    return models.ModelCheck(kind=model_check.OK, text=text)
 
 
 def clear_default(cli: str) -> models.ModelSettings:

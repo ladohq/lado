@@ -111,11 +111,19 @@ export class ModelServer {
       return json({ aliases: [], models: ["gpt-5-codex"], why: "", check: { kind: "default", text: "", field: "" } });
     const listOf = where.match(/^\/api\/providers\/(.+)\/model-choices$/);
     if (listOf) return json(this.choices(listOf[1], new URLSearchParams(path.split("?")[1] ?? "").get("model") ?? ""));
+    const checked = where.match(/^\/api\/model-defaults\/(.+)\/check$/);
+    if (checked && method === "POST") {
+      const { name } = body as { name: string };
+      return json({ ...this.choices(checked[1], name).check, name: "" });
+    }
     const defaultOf = where.match(/^\/api\/model-defaults\/(.+)$/);
     if (defaultOf && method === "PUT") {
-      const given = body as { external?: string; builtin?: string };
-      const saved = this.entries.models.find((m) => m.id === given.external);
-      const set = saved ? externalDefault(saved) : builtinDefault(defaultOf[1], given.builtin ?? "");
+      const given = body as { external?: string; builtin?: string; typed?: string };
+      const typed = given.typed?.toLowerCase();
+      const saved = this.entries.models.find(
+        (m) => m.id === given.external || (m.cli === defaultOf[1] && m.name.toLowerCase() === typed),
+      );
+      const set = saved ? externalDefault(saved) : builtinDefault(defaultOf[1], given.builtin ?? given.typed ?? "");
       this.entries = {
         ...this.entries,
         defaults: [...this.entries.defaults.filter((d) => d.cli !== defaultOf[1]), set],

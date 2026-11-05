@@ -127,15 +127,14 @@ export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElem
     },
     onFocus: (event) => {
       own.onFocus?.(event);
-      // A focus given by code after a press elsewhere (Details' Copy path) is no keyboard's.
       const target = event.currentTarget;
       // From nowhere after the window's blur: the window is back. A focus from an element
       // is the keyboard's, even when the window took this trigger's focus before.
       const returned = left.current && !event.relatedTarget;
+      // A focus given by code after a press elsewhere (Details' Copy path) is no keyboard's.
       const keyboard = !pressed.current && (!target.matches(":focus") || target.matches(":focus-visible"));
       if (keyboard && !returned) show(target);
       pressed.current = false;
-      left.current = false;
     },
     onBlur: (event) => {
       own.onBlur?.(event);

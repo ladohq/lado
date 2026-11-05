@@ -16,7 +16,7 @@
 
 ## 2. The fix
 
-- [x] 2.1 `web/src/Tooltip.tsx`: the ref `left`, set in `onBlur`, read and cleared in `onFocus`
+- [x] 2.1 `web/src/Tooltip.tsx`: the ref `left`, set in `onBlur`, read in `onFocus`
   (design D1); the header comment says a focus that comes back with the window shows nothing.
   1.1 to 1.3 pass.
 - [ ] 2.2 `make lint`, `make test`, `make web` and `uv run pytest -m ui
@@ -24,8 +24,8 @@
 
 ## 3. Docs
 
-- [ ] 3.1 `docs/design/ui.md`, **Tooltips**: a focus that returns with the tab or window shows
+- [x] 3.1 `docs/design/ui.md`, **Tooltips**: a focus that returns with the tab or window shows
   no tooltip; Tab or the pointer does (LAD-207).
-- [ ] 3.2 `CHANGELOG.md`, `## 0.45.0 (unreleased)`, Fixed: a bold title and at most three lines
+- [x] 3.2 `CHANGELOG.md`, `## 0.45.0 (unreleased)`, Fixed: a bold title and at most three lines
   in the user's words (a tooltip no longer pops up when you come back to LADO's tab).
 - [ ] 3.3 `openspec validate tooltip-tab-return --strict` passes.

@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **A tooltip no longer pops up when you come back to LADO's tab.** A session's card and
+  other tooltips stay hidden on your return; Tab or the pointer shows them as usual.
+
 - **A stop no longer loses questions to you without a word.** Stop and `lado stop` say how
   many open questions close, a closed card reads "Closed: the session stopped", and after a
   resume the supervisor gets the unanswered ones to ask again.

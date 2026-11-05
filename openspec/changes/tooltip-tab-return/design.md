@@ -8,9 +8,9 @@ standard behaviour of `activeElement`). `onBlur` keeps that in a ref, `left`:
 `left.current = document.activeElement === event.currentTarget`.
 
 `onFocus` shows nothing when `left.current` is set and `event.relatedTarget` is null, the
-focus of a window that comes back, and clears `left` on every focus. The `relatedTarget` test
-keeps a stale `left` from eating a later Tab: when the focus moved elsewhere while the page
-was away, the row's next focus comes from an element. The existing tests of `pressed` and
+focus of a window that comes back; every blur sets `left` anew, so it needs no clearing. The
+`relatedTarget` test keeps a stale `left` from eating a later Tab: when the focus moved
+elsewhere while the page was away, the row's next focus comes from an element. The existing tests of `pressed` and
 `:focus-visible` stay as they are.
 
 Rejected: `window` focus and blur listeners per tooltip (a listener per trigger, and the

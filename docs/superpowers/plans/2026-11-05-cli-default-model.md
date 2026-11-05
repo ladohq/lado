@@ -71,7 +71,7 @@ critique: flow run `ui-design/model-picker`, the layout of variant B.
   installed, warning, refused, clear, clear with none, model with `--clear`; removals print the
   cleared line; `choices` for a full list, aliases, a timeout.
 - [ ] Run them; they fail.
-- [ ] Implement D3, D4, D5, D7, D11's core part; `lado model default` in `cli.py` with `model`
+- [ ] Implement D3, D4, D5, D7, D12's core part; `lado model default` in `cli.py` with `model`
   and `--clear` exclusive (exit 2).
 - [ ] Run them and `make test`; update `docs/cli.md`; commit.
 
@@ -98,7 +98,8 @@ critique: flow run `ui-design/model-picker`, the layout of variant B.
 
 - [ ] Write the vitest tests, one per scenario of the picker's requirements: order, empty groups,
   search above ten, `Other name…` by `other_name`, reading, unread list, no ↻ on aliases, the
-  whole-process line by `whole_process`, the keyboard (Esc twice in a search).
+  whole-process line by `whole_process`, opening upward near the window's end, the keyboard
+  (Esc twice in a search, Tab closes without a pick).
 - [ ] Run `npx vitest run src/ModelPicker.test.tsx` in `web/`; it fails. Implement to the
   mock-up. Run it; commit.
 
@@ -109,17 +110,18 @@ critique: flow run `ui-design/model-picker`, the layout of variant B.
 
 **Consumes:** task 4.
 
-- [ ] Write the tests: cards in order, not installed, models on the card, `default` mark, lead
+- [ ] Write the tests: cards in order, not installed, models on the card, the default first,
+  folded above five and kept through a reload of the entries, lead
   with and without models, the background read of a built-in default only, a stale read dropped,
-  a lost built-in default, an unread list with `Check again`, a silent server on picker opening.
-- [ ] Run them; they fail. Implement D8, D11's page part. Run `make web`; commit.
+  a lost built-in default, an unread list with `Check again`, a silent server and a model gone from it on picker opening.
+- [ ] Run them; they fail. Implement D8, D10, D12's page part. Run `make web`; commit.
 
 ### Task 6: Removing a default
 
 **Files:** Modify `web/src/ModelSettings.tsx`, `web/src/ModelSources.tsx`, their tests.
 
 - [ ] Write the tests: × and untick ask only for a default; Cancel and Esc; Undo restores model
-  and default (D10), a refused second call in the row; the server's question names defaults; the
+  and default (D11), a refused second call in the row; the server's question names defaults; the
   card's line after a server removed, gone at the next change.
 - [ ] Run them; they fail. Implement. Run them; commit.
 

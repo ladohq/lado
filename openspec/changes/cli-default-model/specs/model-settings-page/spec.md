@@ -345,8 +345,8 @@ picker.
 
 ### Requirement: The lead of Your agent CLIs
 
-The block's lead SHALL say `A default model for each agent CLI, one it offers or one of yours,
-and the models of your servers it runs.`, and with no configured model at all `A default model
+The block's lead SHALL say `A default model for each agent CLI. Left on its settings, the agent
+CLI chooses. Your models come from the model servers below.`, and with no configured model at all `A default model
 for each agent CLI. To add models of your own, add a model server below and tick the agent CLIs
 that run them.`
 
@@ -356,14 +356,24 @@ that run them.`
 
 ### Requirement: An agent CLI's models on its card
 
-A card with configured models SHALL list them under its Default model, by name ignoring case,
-under the head `Your models <n>`, Model, From: the name (wrapped, never cut), the model, its
-server (the address on hover) and ×. The model that is the card's default SHALL have the mark
-`default` under its name.
+A card with configured models SHALL list them under its Default model, the card's default first,
+the others by name ignoring case, under the head `Your models <n>`, Model, From: the name (wrapped,
+never cut), the model, its server (the address on hover) and ×.
 
 #### Scenario: Removing a model
 - **WHEN** the human presses × on `Рабочая Qwen`, no agent CLI's default
 - **THEN** its row says `Removed Рабочая Qwen. Undo`, and OpenCode's tick under its model is off
+
+### Requirement: A long table of models folds
+
+A card with more than five models SHALL show five, with `Show all <n> models` under them, and
+`Show fewer` when unfolded; the state SHALL last while the page stays open, and no new model,
+removal or Undo SHALL fold it. The focus SHALL stay on the button.
+
+#### Scenario: Nine models of OpenCode
+- **WHEN** OpenCode has nine models, `Локальная Qwen` its default
+- **THEN** the card shows `Локальная Qwen` and the first four others by name, and `Show all 9
+  models`
 
 ### Requirement: Renaming a model on its card
 
@@ -418,6 +428,16 @@ the value.
 - **WHEN** the human picks `Kilo CLI's settings`
 - **THEN** Kilo CLI has no default, and its field shows `Kilo CLI's settings`
 
+### Requirement: The picker lies over the page
+
+The list SHALL lie over the page and not push it: placed by the field, opening upward when fewer
+than 240 px are below and more above, at most 420 px high, scrolling within itself, kept above a
+phone's keyboard. Only a scroll the human starts outside the list SHALL close it.
+
+#### Scenario: The last card
+- **WHEN** the human opens the picker of the last card at the bottom of the window
+- **THEN** the list opens upward, whole, and the page does not grow
+
 ### Requirement: Search in the picker
 
 A picker with more than ten models, built-in and yours counted, SHALL have a search field,
@@ -432,9 +452,11 @@ Claude Code's aliases SHALL have no ↻.
 
 ### Requirement: Other name for a CLI without a full list
 
-`Other name…` SHALL show a field with Use and Cancel under the picker; once the typing settles,
+`Other name…` SHALL show a field with Use and Cancel under the picker, holding the search's text
+if any, and stay in the list while searching; once the typing settles,
 the note SHALL be the check `lado model default` would make; Use SHALL set the default, the
-warning staying under the field. A name saved so SHALL show first in BUILT-IN.
+warning staying under the field. A name saved so SHALL show first in BUILT-IN, marked `other
+name`.
 
 #### Scenario: A full id of Claude Code
 - **WHEN** the human types `claude-opus-4-1-20250805` and presses Use on Claude Code's card
@@ -459,8 +481,9 @@ SHALL show the same warning under the field with `Check again`.
 
 ### Requirement: A CLI not installed on its card
 
-A card of an agent CLI not installed SHALL say in its head `⚠ not installed`, or `⚠ not
-installed: its default model cannot run` when it has a default; its field SHALL be off and show
+A card of an agent CLI not installed SHALL say in its head `⚠ not installed`, `⚠ not installed:
+its default model cannot run` when it has a default, or `⚠ not installed: its models cannot run`
+when it has models and no default; its field SHALL be off and show
 the value, and SHALL NOT open. Its default SHALL be cleared by `Use <CLI>'s settings` under the
 field. Its models SHALL still be renamed and removed.
 
@@ -482,10 +505,12 @@ turn.` with `Use <CLI>'s settings`. Nothing but the human SHALL change the defau
 
 ### Requirement: An external default's server
 
-Opening the picker of a CLI with an external default SHALL probe that server alone. When it
-does not answer, or no longer lists the model, its mark SHALL show as down and under the field
-a warning SHALL give the probe's line with `Check again` and `Use <CLI>'s settings`. Nothing but
-the human SHALL change the default.
+Opening a picker SHALL probe, in the background, each server of that CLI's models, once; their
+rows SHALL say `not answering`, or `not on the server` for a model the server lists no more. For
+an external default so affected, the field's mark SHALL show as down when the server is silent,
+and a warning under the field SHALL give the reason with `Check again` and `Use <CLI>'s settings`,
+until the page closes or Check again finds it well. Nothing but the human SHALL change the
+default.
 
 #### Scenario: LM Studio switched off
 - **WHEN** OpenCode's default is on `LM Studio дома`, which is off, and the human opens the picker
@@ -495,12 +520,13 @@ the human SHALL change the default.
 
 The picker of Claude Code or Codex CLI with external models SHALL say above them `On <CLI> a
 server's model takes the whole process: the agent runs only on that server.`, and with an
-external default the card SHALL say `Takes the whole <CLI> process: the agent runs only on
+external default the card SHALL say `On <CLI> this model takes the whole process: an agent on it runs only on
 <server>.` under the field. Which CLIs say so SHALL come from the provider, not from the page.
 
 #### Scenario: Claude Code on a gateway
 - **WHEN** Claude Code's default is `Шлюз Opus` on `work`
-- **THEN** the card says `Takes the whole Claude Code process: the agent runs only on work.`
+- **THEN** the card says `On Claude Code this model takes the whole process: an agent on it runs
+  only on work.`
 
 ### Requirement: Removing a default model asks first
 
@@ -522,7 +548,7 @@ A model removed by its tick SHALL leave no Undo; ticked again it SHALL NOT be a 
 ### Requirement: The picker works from the keyboard
 
 The field SHALL be a combobox named `Default model of <CLI>`: Enter, Space, ↓ and ↑ open it on the
-selected row; ↑ ↓ Home End move; Enter or Space picks; Esc closes without a pick; a click
+selected row; ↑ ↓ Home End move; Enter or Space picks; Esc and Tab close without a pick; a click
 outside closes. With search the focus SHALL be in the search field, Esc first clearing its text.
 Closing SHALL return the focus to the field. Notes under the field SHALL be tied to it by
 `aria-describedby`; a warning after a background read SHALL be a status, a refusal an alert.

@@ -9,7 +9,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-cli-default-
 
 - [ ] 2.1 `choices`, `set_default`, `set_default_ref`, `clear_default`, removals with cleared
   defaults, `external_whole_process`, `lado model default`, `lado model add` with `--server`;
-  `docs/cli.md`, `docs/design/modules.md` (D3, D4, D5, D7, D11). Check:
+  `docs/cli.md`, `docs/design/modules.md` (D3, D4, D5, D7, D12). Check:
   `tests/test_model_settings.py`, `tests/test_cli_model_settings.py`.
 
 ## 3. API
@@ -21,9 +21,9 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-cli-default-
 ## 4. Page
 
 - [ ] 4.1 `ModelPicker.tsx` to the mock-up (D9). Check: `web/src/ModelPicker.test.tsx`.
-- [ ] 4.2 The cards, the CLI's sources gone, what is read when (D8, D11). Check:
+- [ ] 4.2 The cards, the CLI's sources gone, what is read when, order and folding (D8, D10, D12). Check:
   `web/src/ModelSettings.test.tsx`, `web/src/ModelSources.test.tsx`, `make web`.
-- [ ] 4.3 Removing a default: the question, Undo, the server's question (D5, D10). Check: the same
+- [ ] 4.3 Removing a default: the question, Undo, the server's question (D5, D11). Check: the same
   vitest files.
 
 ## 5. End to end and docs

@@ -104,26 +104,34 @@ provider, read by the API (`whole_process`): the page names no CLI (neutral core
 
 Opening the section reads the lists of CLIs with a built-in default, one `model-choices` each in
 the background, stale answers dropped by `latest`; no server is asked (#3358). Opening a picker
-reads the CLI's list `fresh` and, for an external default, probes that server alone
-(`POST /api/model-servers/{name}/probe`). A warning from a background read grows the card;
+reads the CLI's list `fresh` and probes each server of that CLI's models once, in the
+background (`POST /api/model-servers/{name}/probe`, the route the sources use). A warning from a background read grows the card;
 `useScrollAnchor` holds what the human acts on.
 
 ### D9. The picker
 
 `web/src/ModelPicker.tsx`, props `cli`, `value`, `where: "settings"`; the launch window's and the
-power row's forms are added with their change (only what is used). The list lies over the page:
-a card is `.mx-src`, whose ancestors have no `overflow: hidden`. Rows, order and sizes: the
-mock-up's spec §2, §7-§9, in the order YOUR MODELS before BUILT-IN: with Kilo CLI's 321 models the
+power row's forms are added with their change (only what is used). The list is `position: fixed`
+by the field's box, measured on `visualViewport`, so no card or dialog cuts it. Plain rows, no
+virtual list: 321 rows draw at once and the search filters in place; a list past 1000 is
+another question. Rows, order and sizes: the mock-up's spec §2, §7-§9, in the order YOUR MODELS before BUILT-IN: with Kilo CLI's 321 models the
 external ones would sit behind them. This differs from the concept's order, and the human saw it
 (#3395).
 
-### D10. Undo
+### D10. Order and folding of a card's models
+
+The default first, the others by name ignoring case, folded to five above five (the mock-up's
+spec §1a): the critic's open finding F23 saw section 15's sample rows out of that order; the
+spec's text stands and the sample is only a sample. The fold is a page state, kept in
+`ModelSettings` by CLI, so a reload of the entries keeps it.
+
+### D11. Undo
 
 Undo of a default's × is `POST /api/models` then `PUT /api/model-defaults/{cli}` with the new id.
 A second call refused leaves the model back and shows the refusal in the row. Two calls reuse two
 routes; an `as_default` on `ModelAdd` would be a field for one caller.
 
-### D11. What leaves the code
+### D12. What leaves the code
 
 `CliModels`, `CliSource`, `YourModels`, `EMPTY`, `EMPTY_HOW`, `CLIS_LEAD`, the CLI branch of
 `SourceBody` and `goneOf`; the alias branch of `default_name`; the no-server branch of

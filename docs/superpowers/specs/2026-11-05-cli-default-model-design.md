@@ -1,7 +1,7 @@
 # Settings → Models: external models and a default per agent CLI — design
 
 Task LAD-200. The change: `openspec/changes/cli-default-model/` (proposal, deltas
-`configured-models`, `model-settings-page`, `model-servers`, design.md D1-D11). The approved
+`configured-models`, `model-settings-page`, `model-servers`, design.md D1-D12). The approved
 shape: one block of cards (#3395), the answers of #3358. The mock-up: the flow run
 `ui-design/model-picker` (`mockup.html`, `spec`, `critique`).
 
@@ -9,7 +9,7 @@ shape: one block of cards (#3395), the answers of #3358. The mock-up: the flow r
 
 The section has two blocks. **Your agent CLIs**: a card per agent CLI, its head the title and
 login, its row `Default model` a picker, under it `Your models <n>` with the CLI's external
-models, renamed in place and removed by ×. **Model servers** as it was. Nothing on the page
+models, the default first, folded above five, renamed in place and removed by ×. **Model servers** as it was. Nothing on the page
 says sessions use the default: they do not yet.
 
 The picker lists `<CLI>'s settings`, YOUR MODELS, BUILT-IN, and `Other name…` for a CLI with no

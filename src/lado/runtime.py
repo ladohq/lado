@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -981,9 +982,7 @@ def _worker_start(
     out an agent has; nothing is stored. Each CLI's list is read at most once."""
     from lado import model_settings
 
-    def env(cli: providers.Provider) -> dict[str, str]:
-        return agents_env(layers, cli)
-
+    env = partial(agents_env, layers)
     listing = _listing(env)
     agent_cli = _provider(provider or sess.provider)
     start = None
@@ -1011,11 +1010,7 @@ def list_models(session: str, provider: str | None = None) -> dict:
     from lado import model_settings
 
     sess = running_session(session)
-    layers = agent_layers(sess.project)
-
-    def env(cli: providers.Provider) -> dict[str, str]:
-        return agents_env(layers, cli)
-
+    env = partial(agents_env, agent_layers(sess.project))
     only = _provider(provider) if provider else None
     try:
         return {"clis": model_settings.cli_models(sess, only, env, _listing(env))}

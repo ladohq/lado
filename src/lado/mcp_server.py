@@ -387,8 +387,8 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
             "developer-2", …. `without` switches off skills or MCP servers for this worker,
             e.g. ["skill:x", "mcp:y"], or only those of one kit: ["skill:x@kit"].
             `provider` is the agent CLI to run it with: "claude", "codex", "kilo" or "opencode"
-            (default: the session's). The worker reports back with send_message when it is done or blocked,
-            or with flow_advance when it finished a step of a run.
+            (default: the session's). The worker reports back with send_message when it is done
+            or blocked, or with flow_advance when it finished a step of a run.
 
             With `run`, the worker works for that flow run, in the run's worktree and branch.
             If the run's current step waits for a worker, the step is its task: leave out

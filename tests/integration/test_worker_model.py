@@ -113,7 +113,11 @@ def test_list_models_shows_the_clis_with_the_session_s_first(session, serve):  #
     state.add_model("Qwen-дома", SERVER_CLI, "m1", save("Дом", serve("all")).id)
     runs("listmodels")
     clis = seen()["models"]["clis"]
-    assert (clis[0]["cli"], clis[0]["session"], clis[0]["starts_on"]) == ("fake", True, "fake-small")
+    assert (clis[0]["cli"], clis[0]["session"], clis[0]["starts_on"]) == (
+        "fake",
+        True,
+        "fake-small",
+    )
     assert clis[0]["builtin"] == ["fake-small", "fake-large"]
     [other] = [cli for cli in clis if cli["cli"] == SERVER_CLI]
     assert other["external"] == [{"name": "Qwen-дома", "server": "Дом", "blocked": None}]

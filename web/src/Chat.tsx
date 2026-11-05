@@ -6,7 +6,7 @@
 // grouped by sender, with a divider between days; an open question or gate is a quiet line
 // leading to its tab. What the human sends shows only once the feed brings it: nothing
 // ahead of the server.
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Link, useLocation } from "react-router";
 
 import { HUMAN, type GateInfo, type MessageInfo, type RunEventInfo, type RunInfo } from "./api";
@@ -179,6 +179,21 @@ export function focusChat() {
   (card ?? document.querySelector<HTMLElement>(".chat-feed"))?.focus();
 }
 
+// Where `box` stands on the page, while `on`: measured when the window resizes or `again` changes.
+function usePageTop(box: RefObject<HTMLElement | null>, on: boolean, again: unknown) {
+  const [top, setTop] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!on) return;
+    const measure = () => {
+      if (box.current) setTop(Math.round(box.current.getBoundingClientRect().top + window.scrollY));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [box, on, again]);
+  return top;
+}
+
 export function Chat({ session, stopped, agentMessages }: { session: string; stopped: boolean; agentMessages: boolean }) {
   const live = useLiveStore();
   const state = useLive();
@@ -201,6 +216,17 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   const narrow = useMedia(NARROW);
   const phone = usePhone();
   const ownHeight = !narrow || phone !== null;
+  // Where the chat stands on the page, in a window that scrolls: the card sticks no higher, so
+  // it is no taller than from there down (styles.css).
+  const chat = useRef<HTMLElement | null>(null);
+  const chatRef = useCallback(
+    (element: HTMLElement | null) => {
+      chat.current = element;
+      chatMeasured(element);
+    },
+    [chatMeasured],
+  );
+  const chatTop = usePageTop(chat, !ownHeight, chatHeight);
   // What the waiting card's open field has folded the composer into; the link back gives the
   // composer the focus once it shows.
   const [fold, setFold] = useState<Fold | null>(null);
@@ -325,8 +351,9 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
 
   return (
     <section
-      ref={chatMeasured}
+      ref={chatRef}
       className="chat"
+      style={!ownHeight && chatTop !== null ? ({ "--chat-top": `${chatTop}px` } as CSSProperties) : undefined}
       aria-label="Chat"
       // A folded composer takes no files; dropped on the chat, nowhere: the browser opens none.
       onDragOver={fold ? stopFiles : undefined}

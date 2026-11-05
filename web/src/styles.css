@@ -5002,11 +5002,14 @@ button.rec-bar-line {
   min-height: 0;
 }
 
-/* A narrow window scrolls, so the chat has no height of its own: the card is at most the
-   window's less the top bar, and sticks to the window's lower edge, so its footer stays in
-   sight wherever the page stands; `.content` clips instead of hiding, which would make it the
-   box the card sticks in. Expanded it is that height, expanding scrolls it under that bar,
-   and the page stays there until it folds. */
+/* A narrow window scrolls, so the chat has no height of its own: the card sticks to the
+   window's lower edge, so its footer stays in sight wherever the page stands. It sticks no
+   higher than the chat's top, so it is at most the room from there down (--chat-top, Chat.tsx),
+   its parts giving way as in any low chat, but never less than a footer's least height nor
+   half the window, for a chat low on the page (the sessions' list open over it), which the
+   page's scroll then brings up. `.content` clips instead of hiding, which would make it the
+   box the card sticks in. Expanded it is the window's height under the top bar, expanding
+   scrolls it there, and the page stays there until it folds. */
 @media (max-width: 900px) {
   .content:has(> .sessions .chat > .waiting-card) {
     overflow: clip;
@@ -5020,8 +5023,8 @@ button.rec-bar-line {
     position: sticky;
     bottom: 0;
     z-index: 2;
-    max-height: calc(100vh - var(--head-h));
-    max-height: calc(100dvh - var(--head-h));
+    max-height: max(220px, 50vh, 100vh - var(--chat-top, var(--head-h)));
+    max-height: max(220px, 50dvh, 100dvh - var(--chat-top, var(--head-h)));
     background: var(--ground);
   }
 

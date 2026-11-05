@@ -309,8 +309,14 @@ export function WaitingCard({
     card.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
     // A narrow window scrolls (styles.css): the card goes under the top bar. A wide one
     // scrolls nothing, nor a frame that hides its overflow, nor a phone's window.
-    if (window.matchMedia?.(NARROW).matches && !phone) card.current?.scrollIntoView?.({ block: "start" });
-  }, [expanded]);
+    const underTheBar = () => {
+      if (window.matchMedia?.(NARROW).matches && !phone) card.current?.scrollIntoView?.({ block: "start" });
+    };
+    underTheBar();
+    // The page stays while it is expanded: narrowed or turned, only this brings it back.
+    window.addEventListener("resize", underTheBar);
+    return () => window.removeEventListener("resize", underTheBar);
+  }, [expanded, phone]);
   useEffect(() => {
     if (!expanded || viewing) return;
     const escape = (event: KeyboardEvent) => {

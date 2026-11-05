@@ -370,6 +370,122 @@ def test_a_window_768_wide_keeps_the_footer_in_sight(
     shot(page, full_page=False)
 
 
+def whole_in_sight(page: Page, card, *parts) -> None:
+    """Each part in the window at the page's top, and not cut by the panel."""
+    page.evaluate("window.scrollTo(0, 0)")
+    in_sight(page, *parts)
+    panel = card.get_by_role("tabpanel").bounding_box()
+    for part in parts:
+        box = part.bounding_box()
+        assert box["y"] + box["height"] <= panel["y"] + panel["height"] + 1, (part, box, panel)
+
+
+@pytest.mark.parametrize("height", [700, 500, 420])
+def test_a_low_window_keeps_a_grown_footer_at_the_pages_top(page: Page, server, repo, shot, height):
+    """A card taller than the room from the chat's top to the window's edge: the context gives
+    way, and a field of 4 lines under an opened recommendation leaves the buttons in sight."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, "A reason to approve. " * 40, choice="approve")
+    page.set_viewport_size({"width": 768, "height": height})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    panel = card.get_by_role("tabpanel")
+    panel.get_by_role("region", name="Supervisor's recommendation").get_by_role("button").click()
+    field = panel.get_by_role("textbox", name="Comment for the next step (optional)")
+    field.fill("one\ntwo\nthree\nfour")
+    whole_in_sight(
+        page,
+        card,
+        field,
+        panel.get_by_role("button", name="Approve", exact=True),
+        panel.get_by_role("button", name="Reject", exact=True),
+    )
+    shot(page, full_page=False)
+
+
+@pytest.mark.parametrize("own", [False, True], ids=["choices", "own-answer"])
+@pytest.mark.parametrize("height", [700, 500, 420])
+def test_a_low_window_keeps_six_choices_buttons_at_the_pages_top(
+    page: Page, server, repo, shot, height, own
+):
+    session = gated_session(repo)
+    choices = [f"Choice {n}: a rather long choice that takes most of a row of it" for n in range(6)]
+    runtime.ask_human(session, "supervisor", "Which one?", LONG_NOTE, choices)
+    page.set_viewport_size({"width": 768, "height": height})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("tab", name="supervisor 1").click()
+    panel = card.get_by_role("tabpanel")
+    parts = [
+        panel.get_by_role("button", name="Send answer to supervisor"),
+        panel.get_by_role("button", name="Skip question"),
+    ]
+    if own:
+        panel.get_by_role("button", name="Other…").click()
+        parts.append(panel.get_by_role("textbox", name="Your own answer"))
+        parts[-1].fill("a first line\na second line")
+    expect(parts[0]).to_be_attached()
+    whole_in_sight(page, card, *parts)
+    shot(page, full_page=False)
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [((1440, 900), (768, 700)), ((1440, 900), (768, 1024)), ((1024, 768), (768, 1024))],
+    ids=lambda size: f"{size[0]}x{size[1]}",
+)
+def test_a_window_narrowed_keeps_the_expanded_cards_footer(
+    page: Page, server, repo, shot, before, after
+):
+    """Expanded in a wide window, which scrolls nothing, then narrowed or turned: the page,
+    which the expanded card holds, goes to the card."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, VIEW, choice="approve")
+    page.set_viewport_size({"width": before[0], "height": before[1]})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Expand the card").click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    page.set_viewport_size({"width": after[0], "height": after[1]})
+    approve = card.get_by_role("button", name="Approve", exact=True)
+    page.wait_for_function(
+        "b => b.getBoundingClientRect().bottom <= window.innerHeight",
+        arg=approve.element_handle(),
+        timeout=3000,
+    )
+    in_sight(page, approve, card.get_by_role("button", name="Reject", exact=True))
+    bar = page.get_by_role("banner").bounding_box()
+    assert card.bounding_box()["y"] >= bar["y"] + bar["height"] - 1
+    shot(page, full_page=False)
+
+
+def test_a_chat_low_on_the_page_keeps_the_context_and_the_footer(page: Page, server, repo, shot):
+    """The sessions' list open over the session pushes the chat down: the card stays half the
+    window, its context seen, and the page's scroll brings the footer up."""
+    session = gated_session(repo, LONG_NOTE)
+    page.set_viewport_size({"width": 768, "height": 700})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    page.get_by_role("button", name="Sessions", exact=True).click()
+    card = waiting_card(page, session)
+    expect(page.locator(".session-list")).to_be_visible()
+    page.wait_for_function(
+        "c => c.getBoundingClientRect().height >= window.innerHeight / 2",
+        arg=card.element_handle(),
+        timeout=3000,
+    )
+    context = card.get_by_role("region", name="Context of the card")
+    assert context.bounding_box()["height"] > 40
+    page.get_by_role("banner").hover()
+    page.mouse.wheel(0, 5000)
+    page.wait_for_timeout(200)
+    in_sight(page, card.get_by_role("button", name="Approve", exact=True))
+    shot(page, full_page=False)
+
+
 def test_a_window_768_wide_keeps_the_expanded_cards_footer_on_needs_you(
     page: Page, server, repo, shot
 ):

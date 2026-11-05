@@ -512,7 +512,7 @@ def test_resume_is_off_while_the_sessions_provider_cannot_run(page: Page, server
     page.get_by_role("button", name="Resume…").click()
     dialog = page.get_by_role("dialog", name="Resume session")
     refusal = dialog.locator(".field-note.bad")
-    expect(refusal).to_have_text("unknown provider gone", timeout=30_000)  # CLIs checked
+    expect(refusal).to_have_text("unknown agent CLI gone", timeout=30_000)  # CLIs checked
     resume = dialog.get_by_role("button", name="Resume session")
     expect(resume).to_be_disabled()
     expect(dialog.get_by_label("Agent CLI")).to_have_value("gone")

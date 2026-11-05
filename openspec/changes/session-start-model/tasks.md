@@ -53,6 +53,6 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-session-star
 
 ## 7. Before review
 
-- [ ] 7.1 The plan's regression run; `openspec validate session-start-model --strict`, `openspec
+- [x] 7.1 The plan's regression run; `openspec validate session-start-model --strict`, `openspec
   validate --specs --strict`; a trial archive on a copy of `openspec/`, its result in the pull
   request, with the manual check's steps (LM Studio on localhost, an external LiteLLM, Docker).

@@ -22,7 +22,7 @@ from lado.flows import IDENTIFIER
 
 # `lado update` of a later LADO reads this line from this release's wheel to learn the schema
 # it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
-SCHEMA_VERSION = 38
+SCHEMA_VERSION = 39
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -994,7 +994,7 @@ CREATE TABLE IF NOT EXISTS model_servers (
     apis TEXT NOT NULL,           -- JSON list of the APIs it proved
     created_at TEXT NOT NULL DEFAULT (datetime('now'))  -- UTC
 )"""
-MODELS_TABLE = """
+MODELS_TABLE_38 = """
 CREATE TABLE IF NOT EXISTS models (
     folded TEXT PRIMARY KEY,  -- name.casefold()
     name TEXT NOT NULL,
@@ -1003,8 +1003,42 @@ CREATE TABLE IF NOT EXISTS models (
     server TEXT REFERENCES model_servers(id),  -- NULL: the CLI's own way to its models
     created_at TEXT NOT NULL DEFAULT (datetime('now'))  -- UTC
 )"""
-SCHEMA += MODEL_SERVERS_TABLE + ";\n" + MODELS_TABLE + ";\n"
-MIGRATIONS[37] = [MODEL_SERVERS_TABLE, MODELS_TABLE]
+SCHEMA += MODEL_SERVERS_TABLE + ";\n"
+MIGRATIONS[37] = [MODEL_SERVERS_TABLE, MODELS_TABLE_38]
+
+# From version 39: a configured model always lives on a server and has an id that never
+# changes, so a reference survives a rename; a CLI's own models are no entries, they are read
+# from the CLI. An agent CLI's default model is a reference: external (a model's id) or
+# built-in (the CLI's name for it). No ON DELETE CASCADE: the core clears a default in the
+# transaction that removes its model, and the foreign key refuses a stray delete.
+MODELS_TABLE = """
+CREATE TABLE IF NOT EXISTS models (
+    id TEXT PRIMARY KEY,          -- never changes: references hold it
+    folded TEXT NOT NULL UNIQUE,  -- name.casefold()
+    name TEXT NOT NULL,
+    cli TEXT NOT NULL,            -- a provider's name
+    model TEXT NOT NULL,          -- as the CLI names it
+    server TEXT NOT NULL REFERENCES model_servers(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))  -- UTC
+)"""
+CLI_DEFAULTS_TABLE = """
+CREATE TABLE IF NOT EXISTS cli_defaults (
+    cli TEXT PRIMARY KEY,                 -- a provider's name
+    model_id TEXT REFERENCES models(id),  -- external
+    builtin TEXT,                         -- built-in: the CLI's name for it
+    CHECK ((model_id IS NULL) != (builtin IS NULL))
+)"""
+SCHEMA += MODELS_TABLE + ";\n" + CLI_DEFAULTS_TABLE + ";\n"
+MODELS_BY_ID = [
+    "ALTER TABLE models RENAME TO models_38",
+    MODELS_TABLE,
+    "INSERT INTO models (id, folded, name, cli, model, server, created_at)"
+    " SELECT lower(hex(randomblob(6))), folded, name, cli, model, server, created_at"
+    " FROM models_38 WHERE server IS NOT NULL",
+    "DROP TABLE models_38",
+    CLI_DEFAULTS_TABLE,
+]
+MIGRATIONS[38] = MODELS_BY_ID
 
 # Where an agent's model or effort came from. Each later way of choosing one adds a token;
 # a token this LADO does not know (a newer LADO's row) is shown as itself (source_words).
@@ -3783,11 +3817,31 @@ class ModelServer:
 
 @dataclass(frozen=True)
 class ConfiguredModel:
+    id: str
     name: str
     cli: str
     model: str
-    server: str | None  # the id of its ModelServer
+    server: str  # the id of its ModelServer
     created_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+
+
+@dataclass(frozen=True)
+class ModelRef:
+    """A reference to a model of the agent CLI `cli`: external (`model_id`, a configured
+    model's id) or built-in (`builtin`, the model as the CLI names it), exactly one of them."""
+
+    cli: str
+    model_id: str | None
+    builtin: str | None
+
+
+@dataclass(frozen=True)
+class ModelsRemoved:
+    """The configured models removed, by name ignoring case, and the agent CLIs whose default
+    was one of them, cleared in the same transaction, by name."""
+
+    names: list[str]
+    cleared: list[str]
 
 
 def _model_server(row: sqlite3.Row) -> ModelServer:
@@ -3802,7 +3856,9 @@ def _model_server(row: sqlite3.Row) -> ModelServer:
 
 
 def _configured_model(row: sqlite3.Row) -> ConfiguredModel:
-    return ConfiguredModel(row["name"], row["cli"], row["model"], row["server"], row["created_at"])
+    return ConfiguredModel(
+        row["id"], row["name"], row["cli"], row["model"], row["server"], row["created_at"]
+    )
 
 
 def _taken(db: sqlite3.Connection, table: str, name: str) -> NameTaken | None:
@@ -3876,13 +3932,28 @@ class ModelsChanged(Exception):
         self.names = names
 
 
+def _clear_defaults_on(db: sqlite3.Connection, where: str, value: str) -> list[str]:
+    """Delete the defaults on the models matching `where` (a condition on `value`), inside the
+    caller's transaction: the agent CLIs cleared, by name."""
+    rows = db.execute(
+        "SELECT cli FROM cli_defaults WHERE model_id IN"
+        f" (SELECT id FROM models WHERE {where} = ?) ORDER BY cli",
+        (value,),
+    ).fetchall()
+    db.execute(
+        f"DELETE FROM cli_defaults WHERE model_id IN (SELECT id FROM models WHERE {where} = ?)",
+        (value,),
+    )
+    return [row["cli"] for row in rows]
+
+
 def remove_model_server_with_models(
     id: str, confirmed: Collection[str] | None = None
-) -> list[str] | None:
-    """Remove the server of id `id` and every configured model on it, in one transaction:
-    the names of the models removed, by name ignoring case; None when there was no such
-    server. With `confirmed`, ModelsChanged and nothing removed unless the models on it are
-    those names, ignoring case."""
+) -> ModelsRemoved | None:
+    """Remove the server of id `id`, every configured model on it and the defaults on them, in
+    one transaction: what was removed; None when there was no such server. With `confirmed`,
+    ModelsChanged and nothing removed unless the models on it are those names, ignoring
+    case."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         rows = db.execute(
@@ -3894,16 +3965,17 @@ def remove_model_server_with_models(
         }:
             db.execute("ROLLBACK")
             raise ModelsChanged(names)
+        cleared = _clear_defaults_on(db, "server", id)
         db.execute("DELETE FROM models WHERE server = ?", (id,))
         if db.execute("DELETE FROM model_servers WHERE id = ?", (id,)).rowcount != 1:
             db.execute("ROLLBACK")
             return None
         db.execute("COMMIT")
-    return names
+    return ModelsRemoved(names, cleared)
 
 
-def add_model(name: str, cli: str, model: str, server: str | None) -> ConfiguredModel:
-    """Save a configured model on the server of id `server` (None for none); NameTaken when
+def add_model(name: str, cli: str, model: str, server: str) -> ConfiguredModel:
+    """Save a configured model on the server of id `server`, under a new id; NameTaken when
     another has its name ignoring case, sqlite3.IntegrityError for a server not saved."""
     with connect() as db:
         taken = _taken(db, "models", name)
@@ -3911,8 +3983,9 @@ def add_model(name: str, cli: str, model: str, server: str | None) -> Configured
             raise taken
         try:
             db.execute(
-                "INSERT INTO models (folded, name, cli, model, server) VALUES (?, ?, ?, ?, ?)",
-                (name.casefold(), name, cli, model, server),
+                "INSERT INTO models (id, folded, name, cli, model, server)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (uuid.uuid4().hex[:12], name.casefold(), name, cli, model, server),
             )
         except sqlite3.IntegrityError:
             taken = _taken(db, "models", name)
@@ -3934,6 +4007,13 @@ def model(name: str) -> ConfiguredModel | None:
     """The configured model named `name` ignoring case."""
     with connect() as db:
         row = db.execute("SELECT * FROM models WHERE folded = ?", (name.casefold(),)).fetchone()
+    return _configured_model(row) if row else None
+
+
+def model_by_id(id: str) -> ConfiguredModel | None:
+    """The configured model of id `id`."""
+    with connect() as db:
+        row = db.execute("SELECT * FROM models WHERE id = ?", (id,)).fetchone()
     return _configured_model(row) if row else None
 
 
@@ -3965,7 +4045,43 @@ def rename_model(name: str, new: str) -> bool:
             raise taken from None
 
 
-def remove_model(name: str) -> bool:
-    """Remove the configured model named `name` ignoring case; False when there is none."""
+def remove_model(name: str) -> ModelsRemoved | None:
+    """Remove the configured model named `name` ignoring case and the default on it, in one
+    transaction: what was removed; None when there is no such model."""
+    folded = name.casefold()
     with connect() as db:
-        return db.execute("DELETE FROM models WHERE folded = ?", (name.casefold(),)).rowcount == 1
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute("SELECT name FROM models WHERE folded = ?", (folded,)).fetchone()
+        if row is None:
+            db.execute("ROLLBACK")
+            return None
+        cleared = _clear_defaults_on(db, "folded", folded)
+        db.execute("DELETE FROM models WHERE folded = ?", (folded,))
+        db.execute("COMMIT")
+    return ModelsRemoved([row["name"]], cleared)
+
+
+def cli_defaults() -> list[ModelRef]:
+    """Every agent CLI's default model, by CLI."""
+    with connect() as db:
+        rows = db.execute("SELECT * FROM cli_defaults ORDER BY cli").fetchall()
+    return [ModelRef(row["cli"], row["model_id"], row["builtin"]) for row in rows]
+
+
+def set_cli_default(ref: ModelRef) -> None:
+    """Make `ref` its agent CLI's default model, replacing the one it had;
+    sqlite3.IntegrityError for a model not saved, or a reference that is not exactly one of
+    external and built-in."""
+    with connect() as db:
+        db.execute(
+            "INSERT INTO cli_defaults (cli, model_id, builtin) VALUES (?, ?, ?)"
+            " ON CONFLICT (cli) DO UPDATE SET model_id = excluded.model_id,"
+            " builtin = excluded.builtin",
+            (ref.cli, ref.model_id, ref.builtin),
+        )
+
+
+def clear_cli_default(cli: str) -> bool:
+    """Clear the default model of the agent CLI `cli`; False when it had none."""
+    with connect() as db:
+        return db.execute("DELETE FROM cli_defaults WHERE cli = ?", (cli,)).rowcount == 1

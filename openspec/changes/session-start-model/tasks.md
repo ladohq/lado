@@ -2,9 +2,9 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-session-star
 
 ## 1. Core
 
-- [ ] 1.1 `PowerRow` forms, tolerant `from_json`, `DEFAULT_MODEL`, `CLI_CHANGED`, `report_model`
+- [x] 1.1 `PowerRow` forms, tolerant `from_json`, `DEFAULT_MODEL`, `CLI_CHANGED`, `report_model`
   (D1, D2, D12). Check: `tests/test_state.py`.
-- [ ] 1.2 `start_model`, `session_row`, `check_start`, `agent_servers`, `shown`, names left out
+- [x] 1.2 `start_model`, `session_row`, `check_start`, `agent_servers`, `shown`, names left out
   (D3, D4, D5, D7, D10, D13). Check: `tests/test_model_settings.py`.
 - [ ] 1.3 `runtime.start_session`, `spawn_worker`, `_changes`, `cli.py` help and warnings, refusals'
   tails, `list_agents`, `lado ls` (D3-D5, D11, D13). Check: `tests/test_runtime.py`,
@@ -15,7 +15,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-session-star
 
 ## 2. Providers
 
-- [ ] 2.1 `runs_on_server`, `AgentSpec.servers`, `model_source`, `server_model`, `on_server`, the
+- [x] 2.1 `runs_on_server`, `AgentSpec.servers`, `model_source`, `server_model`, `on_server`, the
   family's config, keys, `--model` (D6-D9). Check: `tests/test_providers.py`.
 - [ ] 2.2 Smoke of OpenCode and Kilo CLI on two fake servers, with `--agent plan`, and the first run
   in the container. Check: `tests/smoke/test_smoke.py` in CI.

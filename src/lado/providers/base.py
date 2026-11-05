@@ -121,6 +121,20 @@ class McpServer:
 
 
 @dataclass(frozen=True)
+class ServerEntry:
+    """A model server for an agent's config: its id, name and base URL, the variable that
+    carries its key to the agent ("" for a server with no key), the key, and its models as
+    (model, saved name)."""
+
+    id: str
+    name: str
+    base_url: str
+    key_variable: str
+    key: str | None = field(repr=False)
+    models: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
 class AgentSpec:
     """Everything an agent is given, independent of the CLI that runs it (see lado.kits)."""
 
@@ -137,10 +151,14 @@ class AgentSpec:
     # Its role changes nothing in the repository (lado.kits): the CLI's edit tools are taken
     # away. Only for a CLI with Capabilities.deny_edit_tools.
     read_only: bool = False
-    # The model the agent runs on, an alias or a name of its CLI's (lado.runtime
-    # session_model); None for the CLI's default. A provider that applies it returns it in
-    # Launch.model with the source state.SESSION.
+    # The model the agent starts on, as its CLI is told it (lado.model_settings.start_model);
+    # None for the CLI's own choice. A provider that applies it returns it in Launch.model
+    # with the source `model_source`.
     model: str | None = None
+    model_source: str = state.SESSION
+    # The model servers of its config, for a CLI whose models on a server sit beside its own
+    # (Provider.runs_on_server); each key reaches the agent in its environment only.
+    servers: tuple[ServerEntry, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -343,6 +361,8 @@ class Provider(ABC):
     # Whether a model on a server takes the CLI's whole process (its one endpoint), rather
     # than being one provider among the others in its config.
     external_whole_process: bool = True
+    # Whether LADO can put a model of a server into its agent yet.
+    runs_on_server: bool = False
 
     def check_permission_mode(self, mode: str | None) -> None:
         """Raise ValueError for a permission mode this provider cannot honour."""
@@ -443,7 +463,16 @@ class Provider(ABC):
     @staticmethod
     def session_choice(spec: AgentSpec) -> state.Choice | None:
         """Launch.model for a launch that applied `spec.model`."""
-        return state.Choice(spec.model, state.SESSION) if spec.model else None
+        return state.Choice(spec.model, spec.model_source) if spec.model else None
+
+    def server_model(self, server: str, model: str) -> str:
+        """The model `model` of the server of id `server`, as the CLI is told it."""
+        raise NotImplementedError(f"{self.title} runs on no model server")
+
+    def on_server(self, reported: str) -> tuple[str, str] | None:
+        """The id of the server and the model of `reported`, a model as the CLI names it, when
+        it is one of a server LADO put into the agent; None for any other."""
+        return None
 
     def same_model(self, chosen: str, reported: str) -> bool:
         """Whether the model the CLI names in an event, `reported`, is the one LADO chose,

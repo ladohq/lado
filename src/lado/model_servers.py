@@ -45,7 +45,8 @@ LMSTUDIO = "LM Studio"
 OPENAI = "OpenAI-compatible"
 ANTHROPIC = "Anthropic-compatible"
 
-MODELS = "/v1/models"
+API_BASE = "/v1"
+MODELS = f"{API_BASE}/models"
 OLLAMA_VERSION = "/api/version"
 LMSTUDIO_MODELS = "/api/v0/models"
 API_PATHS = {
@@ -78,7 +79,8 @@ ADDRESS, KEY = "address", "key"  # the field a ProbeError concerns
 class ProbeError(Exception):
     """Why a probe found no server, one line; `hint` what the human can try ("" for none);
     `field` the field of a form it concerns (ADDRESS or KEY), for the UI; `page` and
-    `page_hint` the line and the hint for the UI, which name no command (None: the same)."""
+    `page_hint` the line and the hint for the UI, which name no command (None: the same);
+    `silent` why the server does not answer ("" for one that does)."""
 
     def __init__(
         self,
@@ -87,8 +89,10 @@ class ProbeError(Exception):
         field: str = ADDRESS,
         page: str | None = None,
         page_hint: str | None = None,
+        silent: str = "",
     ):
         super().__init__(text)
+        self.silent = silent
         self.hint = hint
         self.field = field
         self.page = text if page is None else page
@@ -206,6 +210,11 @@ def carriable(key: str) -> bool:
     return all(" " <= c <= "~" or "\xa0" <= c <= "\xff" for c in key)
 
 
+def base_url(root: str) -> str:
+    """The OpenAI-compatible base URL of the server at `root` (an `address`'s root)."""
+    return root + API_BASE
+
+
 def plain_http_warning(root: str, key: str | None) -> str | None:
     """The warning for a key sent over plain http:// to the server at `root` (an
     `address`'s root) that is not on the human's machine or network; None for none."""
@@ -252,6 +261,7 @@ def probe(
             f"{root} does not answer ({listed.why})",
             _container_hint(root, command),
             page_hint=_container_hint(root, None),
+            silent=listed.why,
         )
     asked = [
         (root + OLLAMA_VERSION, "GET", {}),

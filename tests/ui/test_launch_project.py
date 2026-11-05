@@ -75,9 +75,11 @@ def test_a_session_starts_in_a_projects_repository(page: Page, shop, server, sho
     expect(page).to_have_url(f"{server['url']}/sessions/shop-frontend/activity")
     expect(dialog).to_have_count(0)
     idle("shop-frontend")
-    facts = page.get_by_role("banner").locator(".session-meta > *")
-    expect(facts.first).to_have_text("projectShop")
-    expect(facts.nth(1)).to_have_text(str(shop / "frontend"))
+    bar = page.get_by_role("banner")
+    expect(bar.locator(".session-crumb")).to_have_text("Shop")
+    bar.locator("h1 button").click()
+    details = page.get_by_role("dialog", name="Session details")
+    expect(details).to_contain_text(str(shop / "frontend"))
     shot(page, "started")
 
 
@@ -103,8 +105,7 @@ def test_another_project_than_the_last_used_gets_the_session(page: Page, shop, s
     start.click()
     expect(page).to_have_url(f"{server['url']}/sessions/acme-crm/activity")
     idle("acme-crm")
-    facts = page.get_by_role("banner").locator(".session-meta > *")
-    expect(facts.first).to_have_text("projectACME CRM")
+    expect(page.get_by_role("banner").locator(".session-crumb")).to_have_text("ACME CRM")
     assert state.get_session("acme-crm").project == "acme"
     listed = subprocess.run(
         fake_provider.lado_command("ls"), capture_output=True, text=True, timeout=60

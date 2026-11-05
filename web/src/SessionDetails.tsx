@@ -51,7 +51,7 @@ function GitFact({ repo }: { repo: RepoInfo }) {
   );
 }
 
-export function KitTip({ kit }: { kit: SessionKitInfo }) {
+function KitTip({ kit }: { kit: SessionKitInfo }) {
   if (!kit.valid) {
     return (
       <div className="tooltip-line">
@@ -71,7 +71,7 @@ export function KitTip({ kit }: { kit: SessionKitInfo }) {
 }
 
 // The CLI's version (or that it is not installed), then the session's permission mode.
-export function CliTip({ cli, mode }: { cli: ProviderInfo; mode: string | null }) {
+function CliTip({ cli, mode }: { cli: ProviderInfo; mode: string | null }) {
   return (
     <>
       {cli.installed ? (

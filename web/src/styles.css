@@ -1456,9 +1456,14 @@ h3 {
 
 /* Stop with its word, on a window wide enough and not on a phone. */
 .session-head-actions .icon-button:has(.session-action-word) {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
   gap: 6px;
   width: auto;
   padding-inline: 10px;
+  font-size: 14px;
 }
 
 @media (max-width: 900px) {
@@ -1591,8 +1596,15 @@ h3 {
   height: 16px;
 }
 
-.session-details-all {
+.session-details-actions .session-details-all {
   margin-left: auto;
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+}
+
+.session-details-actions .session-details-all:hover {
+  color: var(--ink);
 }
 
 /* A copy's note under its button, over what follows, so nothing moves. */
@@ -9477,6 +9489,7 @@ button.quiet.danger-text {
   flex: 1 1 auto;
   min-width: 0;
   max-width: none;
+  font-size: 17px;
   line-height: normal;
 }
 
@@ -9529,6 +9542,7 @@ button.quiet.danger-text {
   background: var(--panel);
   color: var(--ink);
   font-size: 14px;
+  white-space: normal; /* the top bar it is drawn in keeps its line whole */
 }
 
 :root[data-phone] .session-details::backdrop {

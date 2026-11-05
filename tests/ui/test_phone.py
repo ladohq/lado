@@ -106,7 +106,7 @@ def test_a_computer_keeps_its_layout(device, server, repo, shot, size):
     assert page.evaluate("document.documentElement.dataset.phone") is None
     expect(rail(page)).to_be_visible()
     expect(page.get_by_role("button", name=MENU)).to_have_count(0)
-    expect(top_bar(page).get_by_role("button", name="Copy path")).to_be_visible()  # the facts
+    expect(top_bar(page).locator("h1 .session-chevron")).to_be_visible()  # the computer's line
     expect(
         page.get_by_role("navigation", name="Sessions", exact=True)
     ).to_be_visible()  # list or strip
@@ -178,6 +178,9 @@ def test_the_top_bar_is_one_line_and_the_name_opens_the_details(device, server, 
     expect(bar.get_by_role("button", name="System")).to_be_visible()
     expect(bar.get_by_role("button", name="Copy path")).to_have_count(0)
     assert box(bar)["height"] <= 52
+    for button in (menu(page), bar.get_by_role("button", name="Stop session…")):
+        assert (box(button)["width"], box(button)["height"]) == (44, 44)
+    expect(bar.locator(".session-action-word")).to_be_hidden()
     tops = [
         box(one)["y"] for one in (menu(page), name, bar.get_by_role("button", name="Stop session…"))
     ]
@@ -200,6 +203,11 @@ def test_the_top_bar_is_one_line_and_the_name_opens_the_details(device, server, 
     expect(sheet).to_contain_text("fake")
     for button in ("Rename", "Copy path", "Copy link"):
         expect(sheet.get_by_role("button", name=button)).to_be_visible()
+    assert box(sheet.get_by_role("button", name="Copy path"))["height"] == 44
+    # The whole folder wraps inside its cell, under no button.
+    folder, copy = box(sheet.locator("dd code")), box(sheet.locator(".session-details-copy").first)
+    assert folder["x"] + folder["width"] <= copy["x"] + 1, (folder, copy)
+    expect(bar.locator("h1")).to_have_css("font-size", "17px")  # the phone's head as it was
     expect(sheet.get_by_role("link", name="All sessions")).to_be_visible()
     sheet_box = box(sheet)
     assert sheet_box["y"] + sheet_box["height"] >= UPRIGHT[1] - 1  # at the bottom

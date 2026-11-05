@@ -5289,6 +5289,35 @@ def test_a_turn_that_wrote_to_the_human_is_not_flagged(repo, fake_tmux, reply):
     assert _reply_state(mine) == state.REPLIED
 
 
+def _turn_fails():
+    event = providers.Event(providers.TURN_END, error="APIError: the server broke")
+    hooks.handle(providers.get("claude"), event, "s", "supervisor")
+
+
+def test_a_turn_that_ended_on_an_error_decides_no_reply(repo, fake_tmux):
+    _session_with_worker(repo)
+    mine = _human_writes()
+    _turn_fails()
+    assert _reply_state(mine) is None
+
+
+def test_the_next_turn_after_an_error_replies(repo, fake_tmux):
+    _session_with_worker(repo)
+    mine = _human_writes()
+    _turn_fails()
+    runtime.send_message("s", "supervisor", "human", "merged")
+    _hook("Stop", "supervisor")
+    assert _reply_state(mine) == state.REPLIED
+
+
+def test_the_next_turn_after_an_error_does_not_reply(repo, fake_tmux):
+    _session_with_worker(repo)
+    mine = _human_writes()
+    _turn_fails()
+    _hook("Stop", "supervisor")
+    assert _reply_state(mine) == state.MISSING
+
+
 def test_a_body_read_in_a_turn_without_a_reply_is_flagged(repo, fake_tmux):
     _session_with_worker(repo)
     mine = _human_writes("merge w1?\nthen tag it")

@@ -80,7 +80,10 @@ line of the error says already.
 ### D9. npm's switches
 
 `OpenCodeFamily.server_env(spec) -> {}`, overridden in `OpenCodeProvider`: the two variables when
-`on_server(spec.model)` holds, skipping a name `spec.environ` has. OpenCode only: Kilo's first start is
+`on_server(spec.model)` holds and `@opencode-ai/plugin` is not in OpenCode's config folder (the human's
+word at the gate), skipping a name `spec.environ` has. Measured with outside traffic refused, seconds to
+the first request: a fresh `HOME` 72.1, with the switches 2.3; the package there 2.1, with the switches
+2.1. So once the package is there the switches add nothing, and npm stays as the user has it. OpenCode only: Kilo's first start is
 12 s on a closed port with no switch, and its long wait is another (`api.kilo.ai`). They reach what the
 agent runs in its shell too: said in `docs/design/agents.md`. LADO's own plugin imports nothing from
 `@opencode-ai/plugin`, so a failed install costs nothing.

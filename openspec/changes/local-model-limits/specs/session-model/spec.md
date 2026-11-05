@@ -2,14 +2,21 @@
 
 ### Requirement: OpenCode on a model server does not wait for npm
 
-An OpenCode agent that starts on a model of a server SHALL have `npm_config_fetch_retries=0` and
-`npm_config_fetch_timeout=5000` in its environment, unless the user's environment sets them. An agent
-on any other model, and a Kilo agent, SHALL not have them from LADO.
+An OpenCode agent that starts on a model of a server, while `@opencode-ai/plugin` is not in OpenCode's
+config folder, SHALL have `npm_config_fetch_retries=0` and `npm_config_fetch_timeout=5000` in its
+environment, unless the user's environment sets them. An agent on any other model, an agent whose
+config folder has the package, and a Kilo agent SHALL not have them from LADO.
 
 #### Scenario: A first start with no way out
 
 - **WHEN** an OpenCode agent starts on a server's model on a fresh `HOME` and outside traffic is refused
 - **THEN** its first request reaches the server within 15 s
+
+#### Scenario: The package is already there
+
+- **WHEN** an OpenCode agent starts on a server's model and the config folder holds `@opencode-ai/plugin`
+- **THEN** LADO sets neither variable, and with outside traffic refused its first request reaches the
+  server within 15 s
 
 #### Scenario: A built-in model
 

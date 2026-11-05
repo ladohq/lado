@@ -1361,6 +1361,109 @@ def test_a_memory_that_cannot_be_read_is_said_and_stops_nothing(
     assert not _agent_state(lado_home, provider).exists()
 
 
+def _user_kv(tmp_path, provider, data=b'{"theme":"lado"}'):
+    file = tmp_path / "user" / ".local" / "state" / provider / "kv.json"
+    file.parent.mkdir(parents=True)
+    file.write_bytes(data)
+    return file, {"HOME": str(tmp_path / "user")}
+
+
+def _agent_kv(lado_home, provider):
+    return _agent_state(lado_home, provider).with_name("kv.json")
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_new_state_folder_takes_a_copy_of_the_user_s_tui_settings(
+    repo, provider, lado_home, tmp_path
+):
+    file, environ = _user_kv(tmp_path, provider)
+    before = file.stat().st_mtime_ns
+    launch = _family_launch(repo, provider, environ=environ)
+    assert _agent_kv(lado_home, provider).read_bytes() == file.read_bytes()
+    assert file.stat().st_mtime_ns == before
+    assert launch.warnings == []
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_agent_s_tui_settings_stay_at_a_resume(repo, provider, lado_home, tmp_path):
+    _, environ = _user_kv(tmp_path, provider)
+    own = _agent_kv(lado_home, provider)
+    own.parent.mkdir(parents=True)
+    own.write_text("its own")
+    _family_launch(repo, provider, environ=environ)
+    assert own.read_text() == "its own"
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_no_tui_settings_of_the_user_is_no_warning(repo, provider, lado_home, tmp_path):
+    launch = _family_launch(repo, provider, environ={"HOME": str(tmp_path / "nobody")})
+    assert launch.warnings == []
+    assert not _agent_kv(lado_home, provider).exists()
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_tui_settings_that_cannot_be_read_warn_and_the_agent_starts(
+    repo, provider, lado_home, tmp_path
+):
+    file, environ = _user_kv(tmp_path, provider)
+    file.unlink()
+    file.mkdir()
+    launch = _family_launch(repo, provider, environ=environ)
+    assert len(launch.warnings) == 1 and str(file) in launch.warnings[0]
+    assert not _agent_kv(lado_home, provider).exists()
+
+
+NPM_SWITCHES = {"npm_config_fetch_retries": "0", "npm_config_fetch_timeout": "5000"}
+ON_SERVER = "lado-aaaa1111/qwen3-8b"
+
+
+def _switches(launch):
+    return {name: launch.env[name] for name in NPM_SWITCHES if name in launch.env}
+
+
+def _plugin_package(config):
+    (config / "opencode" / "node_modules" / "@opencode-ai" / "plugin").mkdir(parents=True)
+
+
+def test_opencode_on_a_server_does_not_wait_for_npm(repo, tmp_path):
+    environ = {"HOME": str(tmp_path)}
+    launch = _family_launch(repo, "opencode", model=ON_SERVER, environ=environ)
+    assert _switches(launch) == NPM_SWITCHES
+
+
+def test_opencode_with_the_package_in_its_config_folder_needs_no_switches(repo, tmp_path):
+    _plugin_package(tmp_path / ".config")
+    environ = {"HOME": str(tmp_path)}
+    assert _switches(_family_launch(repo, "opencode", model=ON_SERVER, environ=environ)) == {}
+
+
+def test_the_package_is_looked_for_in_the_config_folder_the_user_chose(repo, tmp_path):
+    _plugin_package(tmp_path / "elsewhere")
+    _plugin_package(tmp_path / "home" / ".config")
+    environ = {"HOME": str(tmp_path / "home"), "XDG_CONFIG_HOME": str(tmp_path / "elsewhere")}
+    assert _switches(_family_launch(repo, "opencode", model=ON_SERVER, environ=environ)) == {}
+    environ["XDG_CONFIG_HOME"] = str(tmp_path / "empty")
+    launch = _family_launch(repo, "opencode", model=ON_SERVER, environ=environ)
+    assert _switches(launch) == NPM_SWITCHES
+
+
+def test_opencode_on_a_built_in_model_gets_no_switches(repo, tmp_path):
+    environ = {"HOME": str(tmp_path)}
+    assert _switches(_family_launch(repo, "opencode", model="a/b", environ=environ)) == {}
+    assert _switches(_family_launch(repo, "opencode", environ=environ)) == {}
+
+
+def test_kilo_on_a_server_gets_no_switches(repo, tmp_path):
+    environ = {"HOME": str(tmp_path)}
+    assert _switches(_family_launch(repo, "kilo", model=ON_SERVER, environ=environ)) == {}
+
+
+def test_the_user_s_own_npm_value_stays(repo, tmp_path):
+    environ = {"HOME": str(tmp_path), "npm_config_fetch_retries": "5"}
+    launch = _family_launch(repo, "opencode", model=ON_SERVER, environ=environ)
+    assert _switches(launch) == {"npm_config_fetch_timeout": "5000"}
+
+
 HOME_SERVER = base.ServerEntry(
     "aaaa1111",
     "LM Studio дома",

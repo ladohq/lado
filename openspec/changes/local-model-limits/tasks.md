@@ -17,12 +17,12 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-local-model-
 ## 3. Honest ends
 
 - [x] 3.1 The plugin's stop (D6, D7). Check: `make test-js`.
-- [ ] 3.2 No reply check on a failed turn (D8). Check: `tests/test_runtime.py`.
+- [x] 3.2 No reply check on a failed turn (D8). Check: `tests/test_runtime.py`.
 
 ## 4. Start
 
-- [ ] 4.1 npm's switches (D9). Check: `tests/test_providers.py`.
-- [ ] 4.2 `kv.json` (D10). Check: `tests/test_providers.py`.
+- [x] 4.1 npm's switches (D9). Check: `tests/test_providers.py`.
+- [x] 4.2 `kv.json` (D10). Check: `tests/test_providers.py`.
 
 ## 5. The flake
 

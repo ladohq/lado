@@ -77,6 +77,7 @@ export function SessionActions({ session }: { session: SessionInfo }) {
             onClick={() => act(action)}
           >
             {ICONS[action]}
+            {action === "stop" && <span className="session-action-word">Stop</span>}
           </button>
         </Tooltip>
       ))}

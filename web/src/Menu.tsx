@@ -42,12 +42,12 @@ export function useBelow(
   return style;
 }
 
-// Closes on a press outside `box`.
-export function useDismiss(open: boolean, box: RefObject<HTMLElement | null>, close: () => void) {
+// Closes on a press outside `box`; `close` gets the press, to see what was pressed.
+export function useDismiss(open: boolean, box: RefObject<HTMLElement | null>, close: (event: MouseEvent) => void) {
   useEffect(() => {
     if (!open) return;
     const away = (event: MouseEvent) => {
-      if (!box.current?.contains(event.target as Node)) close();
+      if (!box.current?.contains(event.target as Node)) close(event);
     };
     document.addEventListener("mousedown", away);
     return () => document.removeEventListener("mousedown", away);

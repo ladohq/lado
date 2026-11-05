@@ -73,6 +73,17 @@ test("a computer's page never says it is a phone", () => {
 
 // The menu
 
+test("a session's page starts with Skip to chat; another page has none", async () => {
+  FakeScreen.computer();
+  open("/sessions/lado");
+  const skip = await screen.findByRole("link", { name: "Skip to chat" });
+  const first = document.querySelector("a[href], button, input, [tabindex='0']");
+  expect(first).toBe(skip);
+  cleanup();
+  open("/kits");
+  expect(screen.queryByRole("link", { name: "Skip to chat" })).toBeNull();
+});
+
 const rail = () => screen.getByRole("navigation", { name: "Sections" });
 const menu = () => screen.getByRole("button", { name: /^Menu/ });
 

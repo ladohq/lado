@@ -60,9 +60,9 @@ export function useTitle(title: string): void {
   useLayoutEffect(() => setTitle(title), [setTitle, title]);
 }
 
-type TopBar = { slot: HTMLElement | null; claim: () => () => void };
+type TopBar = { slot: HTMLElement | null; skip: HTMLElement | null; claim: () => () => void };
 
-const TopBarContext = createContext<TopBar>({ slot: null, claim: () => () => {} });
+const TopBarContext = createContext<TopBar>({ slot: null, skip: null, claim: () => () => {} });
 
 // A page with a head of its own draws it in the top bar, in place of the Shell's title
 // (docs/design/ui.md, Session head): it renders into the element this returns with
@@ -78,15 +78,22 @@ export function useTopBar(): HTMLElement | null {
   return slot;
 }
 
+// The slot before everything else of the frame, for a page's skip link (docs/design/ui.md,
+// Session head): the first stop of Tab. The Shell knows nothing of what a page skips to.
+export function useSkipSlot(): HTMLElement | null {
+  return useContext(TopBarContext).skip;
+}
+
 export function Shell() {
   const [title, setTitle] = useState("");
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [skip, setSkip] = useState<HTMLElement | null>(null);
   const [claims, setClaims] = useState(0);
   const claim = useCallback(() => {
     setClaims((now) => now + 1);
     return () => setClaims((now) => now - 1);
   }, []);
-  const topBar = useMemo(() => ({ slot, claim }), [slot, claim]);
+  const topBar = useMemo(() => ({ slot, skip, claim }), [slot, skip, claim]);
   const [collapsed, setCollapsed] = useState(storedRailCollapsed);
   const [denied, setDenied] = useState<string | null>(null);
   const [live] = useState(() => new Live());
@@ -148,6 +155,7 @@ export function Shell() {
 
   const frame = (
     <div className={`app${folded ? " collapsed" : ""}`}>
+      <div ref={setSkip} className="skip-slot" />
       <TabTitle title={title} />
       <Notifier />
       <SelectionBar />

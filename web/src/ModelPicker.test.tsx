@@ -476,6 +476,24 @@ test("the search stands while the list is first read, and keeps what was typed",
   expect(document.activeElement).toBe(screen.getByPlaceholderText(/^Search/));
 });
 
+test("while the list is read the search counts nothing", () => {
+  const { field, rerender } = mount({ read: list({ choices: null, reading: true }) });
+  fireEvent.click(field);
+  expect(screen.getByRole("combobox", { name: "Search models" })).toBeTruthy();
+  rerender({ read: list({ choices: choices({ models: many(11) }) }) });
+  expect(screen.getByRole("combobox", { name: "Search 11 models" })).toBeTruthy();
+});
+
+test("Shift+Tab in the search closes the list with the focus on the field", () => {
+  const { field } = mount({ read: list({ choices: choices({ models: many(11) }) }) });
+  fireEvent.click(field);
+  // Prevented: the browser's own Shift+Tab would go on from the field, past it.
+  const browsers = fireEvent.keyDown(screen.getByPlaceholderText(/^Search/), { key: "Tab", shiftKey: true });
+  expect(browsers).toBe(false);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(document.activeElement).toBe(field);
+});
+
 test("a short list read after the search hands the focus back to the field", () => {
   const { field, rerender } = mount({ read: list({ choices: null, reading: true }) });
   fireEvent.click(field);

@@ -145,6 +145,18 @@ def test_a_silent_server_turns_start_off_and_names_the_ways_out(
     model = dialog.get_by_role("combobox", name="Model")
     expect(model).to_have_attribute("aria-invalid", "true")
     expect(model.locator(".srv.down")).to_be_visible()
+    # The frame of danger, as the note's bar has it.
+    border = model.evaluate("(field) => getComputedStyle(field).borderTopColor")
+    danger = page.evaluate(
+        """() => {
+          const probe = document.body.appendChild(document.createElement("i"));
+          probe.style.color = "var(--danger)";
+          const color = getComputedStyle(probe).color;
+          probe.remove();
+          return color;
+        }"""
+    )
+    assert border == danger
     # The note under the focused field, as far below it as Permission mode's note: the focus
     # ring (2 px at a 2 px offset) does not reach it.
     model.focus()

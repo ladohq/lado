@@ -3,7 +3,8 @@
 ### Requirement: Tab goes through the picker's foot
 
 Tab in an open list SHALL go on into the controls of its foot, and close it without a pick only
-past the last, going on from the field; Shift+Tab SHALL go back through them.
+past the last, going on from the field; Shift+Tab SHALL go back through them, and from the search
+close the list with the focus on the field.
 
 #### Scenario: Tab through the foot
 - **WHEN** the list is open and the human presses Tab
@@ -12,8 +13,9 @@ past the last, going on from the field; Shift+Tab SHALL go back through them.
 
 ### Requirement: The search stands while a list is first read
 
-Until a list's first read says how long it is, the picker SHALL show its search with the focus in
-it; what was typed SHALL stay, and a short list with nothing typed SHALL hand the focus to the field.
+Until a list's first read says how long it is, the picker SHALL show its search, reading `Search
+models`, with the focus in it; what was typed SHALL stay, and a short list with nothing typed SHALL
+hand the focus to the field. Another agent CLI's rows SHALL NOT stand in a list being read.
 
 #### Scenario: Typing while the list is first read
 - **WHEN** the human opens a list not read yet and types at once

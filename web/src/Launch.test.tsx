@@ -1264,6 +1264,22 @@ test("folded, Advanced names the model and its server, or a built-in model alone
   await waitFor(() => expect(summary()).toBe(`Advanced: model ${QWEN} on ${HOME}`));
 });
 
+test("the list of another agent CLI shows none of the last one's models while it is read", async () => {
+  await kiloWindow();
+  fireEvent.click(modelField());
+  await screen.findByRole("option", { name: "kilo/large" });
+  fireEvent.keyDown(modelField(), { key: "Escape" });
+  let answer: (found: Response) => void = () => {};
+  answers["GET /api/providers/claude/model-choices"] = () => new Promise<Response>((done) => (answer = done));
+  fireEvent.change(providerSelect(), { target: { value: "claude" } });
+  await waitFor(() => expect(modelField().textContent).toContain("Claude Code's settings"));
+  fireEvent.click(modelField());
+  await screen.findByText("reading the models…");
+  expect(screen.queryByRole("option", { name: "kilo/large" })).toBeNull();
+  answer(json({ ...modelsOf("claude", ""), external: [], other_name: true, whole_process: false, read_again: false }));
+  expect(await screen.findByRole("option", { name: "sonnet" })).toBeTruthy();
+});
+
 test("the line of a lost pick goes at the next change of agent CLI", async () => {
   providers = async () => [provider("claude"), provider("kilo"), provider("codex")];
   await kiloWindow();

@@ -49,8 +49,8 @@ export const sameModel = (a: CliDefault, b: CliDefault | null) =>
 // The reads of a CLI's list: the latest asked wins, so an older answer that comes late, or one
 // after the page was left, changes nothing.
 export function useModelChoices(cli: string): ModelRead {
-  const [choices, setChoices] = useState<ModelChoices | null>(null);
-  const [checked, setChecked] = useState("");
+  // Of the CLI it was read for: another CLI has no list until its own is read.
+  const [held, setHeld] = useState<{ cli: string; choices: ModelChoices; checked: string } | null>(null);
   const [reading, setReading] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const latest = useRef(0);
@@ -68,8 +68,7 @@ export function useModelChoices(cli: string): ModelRead {
       getModelChoices(cli, model, fresh).then(
         (found) => {
           if (asked !== latest.current) return;
-          setChoices(found);
-          setChecked(model);
+          setHeld({ cli, choices: found, checked: model });
           setReading(false);
         },
         (error: unknown) => {
@@ -81,7 +80,8 @@ export function useModelChoices(cli: string): ModelRead {
     },
     [cli],
   );
-  return { choices, checked, reading, problem, read };
+  const own = held?.cli === cli ? held : null;
+  return { choices: own?.choices ?? null, checked: own?.checked ?? "", reading, problem, read };
 }
 
 // What a server's state says of `model` on it: a row's words, or nothing when all is well.
@@ -184,6 +184,7 @@ export function ModelPicker({
   const total = mine.length + built.length;
   // Until the first read says how long the list is, and while it holds what was typed then.
   const searching = total > SEARCH_ABOVE || (choices === null && list.reading) || search !== "";
+  const searchWords = list.reading ? "Search models" : `Search ${total} models`;
   const typed = fold(search.trim());
   const holds = (...texts: (string | null | undefined)[]) =>
     !typed || texts.some((text) => text != null && fold(text).includes(typed));
@@ -441,6 +442,11 @@ export function ModelPicker({
 
   const onSearchKey = (event: KeyboardEvent) => {
     if (moved(event)) return;
+    if (event.key === "Tab" && event.shiftKey) {
+      event.preventDefault(); // to the field, not on past it
+      close(true);
+      return;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
       choose(rows[active]);
@@ -580,11 +586,11 @@ export function ModelPicker({
               className="mx-search mp-search"
               type="search"
               role="combobox"
-              aria-label={`Search ${total} models`}
+              aria-label={searchWords}
               aria-expanded="true"
               aria-controls={listId}
               aria-activedescendant={`${id}-${active}`}
-              placeholder={`Search ${total} models`}
+              placeholder={searchWords}
               autoComplete="off"
               spellCheck={false}
               value={search}

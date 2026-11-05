@@ -9360,6 +9360,10 @@ del.kit-mcp-name {
   border-color: var(--muted);
 }
 
+.model-pick[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
 .model-pick:focus-visible,
 .model-pick[aria-expanded="true"] {
   border-color: var(--action);

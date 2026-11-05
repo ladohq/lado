@@ -21,11 +21,8 @@ it SHALL hold Menu and the page's title. Menu and the session's actions SHALL be
 
 In the phone layout a tap on the session's name in the top bar SHALL open a sheet over the
 page's bottom, named by the session, with the content of Details on a computer, from the
-same component (capability session-head): the state line, the session's id
-and its project; the whole folder (wrapped, never cut) with Copy path; git (the remote, the
-branch) with Copy URL; the kits, each with its version; the CLI with its version and
-permission mode; and the buttons Rename, Copy link and All sessions. A tap outside the
-sheet, Esc or its close button SHALL close it.
+same component (capability session-head, "Details names every fact of the session"). A tap
+outside the sheet, Esc or its close button SHALL close it.
 
 #### Scenario: The whole folder
 - **WHEN** the session's folder is `/Users/kao/Projects/lado/.lado/worktrees/lad-95/task-lad-95`

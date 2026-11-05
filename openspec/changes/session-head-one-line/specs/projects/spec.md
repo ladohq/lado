@@ -3,11 +3,11 @@
 ### Requirement: The session's API and head show its project
 
 `SessionInfo` SHALL carry `project`, the project's id or null. `SessionAbout` SHALL carry
-`project`, `{id, title}` read when asked, or null. The session's head SHALL show, for a
-session in a project and outside the phone layout, the project's title (its id when it has
-none) as a breadcrumb before the session's title, with `Project <id>` in its tooltip
-(capability session-head); the session's details, on a computer and on a phone, SHALL show
-`project <title>` in their state line. A session without a project SHALL show neither.
+`project`, `{id, title}` read when asked, or null. Outside the phone layout the head of a
+session in a project SHALL show the project's title (its id when it has none) as a breadcrumb
+before the session's title, with `Project <id>` in its tooltip; Details and the phone's sheet
+SHALL show `project <title>` in their state line. A session without a project SHALL show
+neither.
 
 #### Scenario: The head of a session in a project
 - **WHEN** the human opens `shop-frontend` of project `shop` titled `Shop`

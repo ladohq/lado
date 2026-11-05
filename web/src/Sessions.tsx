@@ -20,7 +20,7 @@ import { Agents } from "./Agents";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { Artifacts } from "./ArtifactsTable";
 import { getSessionAbout, setSessionTitle, type SessionAbout, type SessionInfo, type SessionStatus } from "./api";
-import { Chat, FOCUS_CHAT } from "./Chat";
+import { Chat, FOCUS_CHAT, focusChat } from "./Chat";
 import { duration } from "./ChatText";
 import { Flows, isOpen } from "./Flows";
 import { ForgetManyDialog } from "./ForgetMany";
@@ -754,7 +754,7 @@ function SkipToChat({ name, tab }: { name: string; tab: Tab }) {
       onClick={(event) => {
         if (tab !== "activity") return;
         event.preventDefault();
-        document.querySelector<HTMLElement>(".chat-feed")?.focus();
+        focusChat();
       }}
     >
       Skip to chat
@@ -785,11 +785,15 @@ function HeadLine({ session }: { session: SessionInfo }) {
     setDetails(false);
     title.current?.focus();
   }, []);
-  // After the press: its own default would take the focus from the title again.
+  // After the press: its own default would take the focus from the title again. What took
+  // the focus by the press keeps it (the terminal's input, a summary); the body and what only
+  // a script focuses (the feed) have a tabIndex below 0, and count as an empty place.
   const pressedAway = useCallback((event: MouseEvent) => {
     setDetails(false);
     if ((event.target as Element).closest(TAKES_FOCUS)) return;
-    setTimeout(() => title.current?.focus());
+    setTimeout(() => {
+      if (((document.activeElement as HTMLElement | null)?.tabIndex ?? -1) < 0) title.current?.focus();
+    });
   }, []);
   useDismiss(details, box, pressedAway);
   // The title edited in place (Session title), from Details; the focus goes back to the

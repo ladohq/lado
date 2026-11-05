@@ -111,12 +111,21 @@ untested version SHALL stay.
 
 Esc, a click outside Details and a second click on the title SHALL close it. After Esc or a
 second click the focus SHALL be on the title. After a click outside, the focus SHALL stay on
-what was clicked when that is a field, a button or a link, and otherwise SHALL be on the
-title.
+what was clicked when that is a field, a button, a link or another element that takes the
+focus by a click, the terminal's input among them, and otherwise SHALL be on the title. Esc
+SHALL close only Details: an expanded waiting card or expanded terminals under it SHALL stay.
 
 #### Scenario: A click on an empty place
 - **WHEN** Details is open and the human clicks an empty place of the page
 - **THEN** it closes and the focus is on the title
+
+#### Scenario: A click in the terminal
+- **WHEN** Details is open and the human clicks in a terminal
+- **THEN** it closes and the focus is in the terminal's input
+
+#### Scenario: Esc over the expanded terminals
+- **WHEN** Details is open over the expanded terminals and the human presses Esc
+- **THEN** Details closes and the terminals stay expanded
 
 #### Scenario: A click in the composer
 - **WHEN** Details is open and the human clicks in the composer
@@ -136,13 +145,18 @@ focus SHALL be on the title.
 ### Requirement: The keyboard reaches the chat in a few stops
 
 A session's page SHALL start with a link `Skip to chat`, hidden until it has the focus, that
-SHALL put the focus on the Activity tab's feed, opening that tab when another is open. On a
+SHALL put the focus on the Activity tab's feed, opening that tab when another is open, or on
+the selected tab of the waiting card when the card is expanded and hides the feed. On a
 computer the head of a running session SHALL have four Tab stops, in order: the project, the
 title, Stop, the link; the status dot SHALL be no stop.
 
 #### Scenario: From another tab
 - **WHEN** the Flows tab is open and the human presses Tab once and then Enter
 - **THEN** the Activity tab opens with the focus on the chat's feed
+
+#### Scenario: With the waiting card expanded
+- **WHEN** the waiting card is expanded and the human presses Enter on `Skip to chat`
+- **THEN** the focus is on the card's selected tab
 
 #### Scenario: Through the head
 - **WHEN** the focus is before the head of a running session in a project

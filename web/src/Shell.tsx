@@ -34,6 +34,7 @@ import {
 } from "./icons";
 import { LaunchProvider, useLaunch } from "./Launch";
 import { isLive, Live, LiveContext, useLive } from "./live";
+import { escapeIsTaken } from "./Menu";
 import { Notifier } from "./Notifications";
 import { NEEDS_YOU_PATH } from "./paths";
 import { usePhone, usePhoneViewport } from "./phone";
@@ -146,7 +147,7 @@ export function Shell() {
     if (!drawer) return;
     rail.current?.querySelector<HTMLElement>(".rail-link")?.focus();
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || (event.target as Element | null)?.closest?.("dialog")) return;
+      if (event.key !== "Escape" || escapeIsTaken(event.target)) return;
       closeDrawer();
     };
     document.addEventListener("keydown", escape);

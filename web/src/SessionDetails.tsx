@@ -241,7 +241,9 @@ export function DetailsPopover({
   }, [popover]);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) onClose();
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      onClose();
     };
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);

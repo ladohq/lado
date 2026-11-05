@@ -39,6 +39,7 @@ import { useLive, useLiveStore } from "./live";
 import { TERMINAL_PARAM } from "./paths";
 import { usePhone } from "./phone";
 import { PANEL_WIDTH, storeAskControl, storedAskControl, storedPanel, storePanel, type ColumnPrefs } from "./prefs";
+import { escapeIsTaken } from "./Menu";
 import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
 import { AgentTip, StatusDot, SUPERVISOR } from "./Team";
 import { Tooltip } from "./Tooltip";
@@ -67,11 +68,11 @@ export function useShownTerminal(): string | null {
   return useTerminals().active;
 }
 
-// Esc on an expanded panel puts it back, except where Esc is someone else's: a dialog and
-// the terminal of an agent the human controls (Esc goes to the agent).
+// Esc on an expanded panel puts it back, except where Esc is someone else's: a layer over
+// the page and the terminal of an agent the human controls (Esc goes to the agent).
 function escapeIsOurs(target: EventTarget | null): boolean {
+  if (escapeIsTaken(target)) return false;
   if (!(target instanceof Element)) return true;
-  if (target.closest("dialog")) return false;
   return !(target.closest(".term-xterm") && target.closest('[data-mode="control"]'));
 }
 
@@ -121,16 +122,17 @@ export function TerminalPanel({ session, children }: { session: string; children
     return () => document.removeEventListener("visibilitychange", hidden);
   }, [releaseAll]);
 
-  // The selected tab, chosen here or by a chip, scrolls into the tabs' view: the row only,
-  // never scrollIntoView, after which Chromium's Tab starts from the tab, past Skip to chat.
+  // The selected tab, chosen here or by a chip, scrolls into the tabs' view, and a narrow
+  // window's page to the panel. Not as the page opens: Chromium's Tab would start from the
+  // tab, past Skip to chat.
+  const opened = useRef(false);
   useEffect(() => {
-    const row = tabList.current;
-    const selected = row?.querySelector('[aria-selected="true"]');
-    if (!row || !selected) return;
-    const room = row.getBoundingClientRect();
-    const place = selected.getBoundingClientRect();
-    if (place.left < room.left) row.scrollLeft -= room.left - place.left;
-    else if (place.right > room.right) row.scrollLeft += place.right - room.right;
+    if (opened.current) {
+      tabList.current
+        ?.querySelector('[aria-selected="true"]')
+        ?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+    }
+    opened.current = true;
   }, [active, collapsed]);
 
   const keep = useCallback((change: Partial<ColumnPrefs>) => {

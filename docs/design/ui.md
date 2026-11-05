@@ -1838,17 +1838,21 @@ layout, below).
 - **Details** is a non-modal `role="dialog"` named `Session details` (`DetailsPopover`),
   under the title, 470 px wide and at most the window less 32 px, with no focus trap. A
   click, Enter or Space opens it with the focus on Copy path. Esc and a second click close
-  it with the focus on the title. A press outside closes it too: on a field, a button or a
-  link the focus stays there, on an empty place it goes to the title (the human's answer
-  #3389). It holds the whole title and `SessionFacts`, the content the phone's sheet shares
+  it with the focus on the title, and Esc goes to it first: an expanded card or expanded
+  terminals under it stay (`escapeIsTaken`, as under Stop's popover, System and the title's
+  field). A press outside closes it too: on a field, a button, a link or what else takes the
+  focus by a press (the terminal's input, a summary) the focus stays there, on an empty
+  place, the feed too, it goes to the title (the human's answer #3389). It holds the whole title and `SessionFacts`, the content the phone's sheet shares
   (Phone layout, below): the mark's words, the run time, `id <name>`, in a project
   `project <link>`; Folder, whole and wrapped anywhere, with Copy path; Git with Copy URL;
   Kits; CLI; then Rename, Copy link and All sessions. It lies in the top bar's stacking
   context, so over the terminals.
 - **Skip to chat** is the first stop of a session's page, hidden until it has the focus: the
   page draws it into the Shell's second slot (`useSkipSlot`). It puts the focus on the
-  Activity feed, by way of the address's state from another tab (`FOCUS_CHAT`). The head has
-  four stops: project, title, Stop, link.
+  Activity feed, by way of the address's state from another tab (`FOCUS_CHAT`), or on the
+  selected tab of an expanded card, which hides the feed. The terminals' selected tab scrolls
+  into view when it changes, not as the page opens: Chromium's Tab would start from it, past
+  this link. The head has four stops: project, title, Stop, link.
 - A session in a project (LAD-125, LAD-192) has the project as a breadcrumb before the
   title: its title (its id without one) in `--muted` at 14 px, at most 16ch, then a `/` in
   `--line` hidden from assistive technology; `--ink` and underlined on hover and focus. It

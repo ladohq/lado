@@ -11,6 +11,7 @@ import agent_helpers
 import fake_provider
 import pytest
 from playwright.sync_api import Page, expect
+from test_gates import gated_session, waiting_card
 from test_main_screen import log_in, running_session
 
 from lado import kits, projects, runtime, state, tmux
@@ -477,6 +478,125 @@ def test_skip_to_chat_puts_the_focus_on_the_feed(page: Page, server, repo, shot,
     page.keyboard.press("Enter")
     expect(page).to_have_url(re.compile(rf"/sessions/{session}(/activity)?$"))
     expect(page.get_by_role("log", name="Chat with the session")).to_be_focused()
+
+
+def test_skip_to_chat_goes_to_the_expanded_cards_tab_as_it_hides_the_feed(
+    page: Page, server, repo, shot
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Expand the card").click()
+    page.get_by_role("link", name="Skip to chat").focus()
+    page.keyboard.press("Enter")
+    expect(card.get_by_role("tab", selected=True)).to_be_focused()
+
+
+def open_layer(page: Page, layer: str):
+    """What drops from the top bar, or the title's field, open with the focus in it."""
+    if layer == "details":
+        title_button(page).click()
+        return details(page)
+    if layer == "details, focus on nothing":
+        title_button(page).click()
+        details(page).get_by_role("heading").click()
+        assert page.evaluate("document.activeElement === document.body")
+        return details(page)
+    if layer == "rename":
+        title_button(page).click()
+        details(page).get_by_role("button", name="Rename").click()
+        return head(page).get_by_role("textbox", name="Session title")
+    if layer == "stop":
+        head(page).get_by_role("button", name="Stop session…").click()
+        return page.get_by_role("dialog", name=re.compile("^Stop session"))
+    page.get_by_role("button", name="System").click()
+    return page.get_by_role("dialog", name="System")
+
+
+LAYERS = ["details", "details, focus on nothing", "rename", "stop", "system"]
+
+
+@pytest.mark.parametrize("layer", LAYERS)
+def test_esc_closes_the_layer_over_the_expanded_terminals_and_them_not(
+    page: Page, server, repo, layer
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    panel = page.get_by_role("complementary", name="Terminals")
+    panel.get_by_role("button", name="Expand terminal").click()
+    expect(panel).to_have_class("terminals expanded")
+    shown = open_layer(page, layer)
+    expect(shown).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(shown).to_have_count(0)
+    expect(panel).to_have_class("terminals expanded")
+    page.keyboard.press("Escape")  # the next Esc is the terminals'
+    expect(panel).to_have_class("terminals")
+
+
+@pytest.mark.parametrize("layer", LAYERS)
+def test_esc_closes_the_layer_over_the_expanded_card_and_it_not(page: Page, server, repo, layer):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Expand the card").click()
+    fold = card.get_by_role("button", name="Collapse the card")
+    expect(fold).to_be_visible()
+    shown = open_layer(page, layer)
+    expect(shown).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(shown).to_have_count(0)
+    expect(fold).to_be_visible()
+    page.keyboard.press("Escape")  # the next Esc is the card's
+    expect(card.get_by_role("button", name="Expand the card")).to_be_visible()
+
+
+def test_a_press_in_the_terminal_leaves_details_for_its_input(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session = running_session(repo)
+    open_session(page, server, session)
+    screen = page.get_by_role("complementary", name="Terminals").locator(".xterm-screen")
+    expect(screen).to_be_visible()
+    title_button(page).click()
+    expect(details(page)).to_be_visible()
+    screen.click()
+    expect(details(page)).to_have_count(0)
+    expect(page.locator(".xterm-helper-textarea").first).to_be_focused()
+    page.keyboard.press("Space")
+    expect(details(page)).to_have_count(0)
+
+
+def test_a_press_in_the_feed_is_on_an_empty_place_and_gives_the_title_the_focus(
+    page: Page, server, repo, shot
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session = running_session(repo)
+    open_session(page, server, session)
+    title_button(page).click()
+    expect(details(page)).to_be_visible()
+    feed = page.get_by_role("log", name="Chat with the session")
+    room = feed.bounding_box()
+    feed.click(position={"x": room["width"] - 10, "y": room["height"] - 10})
+    expect(details(page)).to_have_count(0)
+    expect(title_button(page)).to_be_focused()
+
+
+def test_a_chip_in_a_narrow_window_scrolls_the_page_to_the_terminal(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 800, "height": 700})
+    session = running_session(repo)
+    log_in(page, server)
+    page.evaluate("localStorage.setItem('lado.terminals', JSON.stringify({collapsed: true}))")
+    page.goto(f"{server['url']}/sessions/{session}")
+    page.locator(".team-chip").first.click()
+    tab = page.get_by_role("complementary", name="Terminals").get_by_role("tab").first
+    expect(tab).to_be_in_viewport(ratio=1)
+    shot(page)
 
 
 def test_what_drops_from_the_top_bar_shows_over_the_expanded_terminals(

@@ -172,6 +172,12 @@ const atBottom = (element: HTMLElement) => element.scrollHeight - element.scroll
 // The address's state that opens the chat with the focus on its feed (Skip to chat).
 export const FOCUS_CHAT = { focusChat: true };
 
+// The focus on the chat: its feed, or the selected tab of an expanded card, which hides it.
+export function focusChat() {
+  const card = document.querySelector<HTMLElement>('.chat > .waiting-card.expanded [role="tab"][aria-selected="true"]');
+  (card ?? document.querySelector<HTMLElement>(".chat-feed"))?.focus();
+}
+
 export function Chat({ session, stopped, agentMessages }: { session: string; stopped: boolean; agentMessages: boolean }) {
   const live = useLiveStore();
   const state = useLive();
@@ -262,7 +268,7 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   // another card scrolls to it; one before the window first loads up to it, in one load.
   const { hash, state: arrival } = useLocation();
   useEffect(() => {
-    if ((arrival as typeof FOCUS_CHAT | null)?.focusChat) feed.current?.focus();
+    if ((arrival as typeof FOCUS_CHAT | null)?.focusChat) focusChat();
   }, [arrival]);
   const [goal, setGoal] = useState<string | null>(null);
   const go = (anchor: string) => {

@@ -22,9 +22,10 @@ the top bar's stacking context (z-index 10), so it lies over the terminals. Not 
 `popover` or `showModal`: the spec wants no trap, and the UI has one way already.
 
 **D3. `useDismiss` hands the event to `close`.** The head's `close` focuses the title unless
-the press was on `a, button, input, textarea, select, [contenteditable]`. A second click
-focuses the title itself, as Safari does not focus a clicked button. Other users of
-`useDismiss` ignore the argument.
+the press was on `a, button, input, textarea, select, [contenteditable]`, or the press took
+the focus to something in the Tab order (the terminal's input, a summary); the feed, focused
+only by a script, counts as an empty place. A second click focuses the title itself, as
+Safari does not focus a clicked button. Other users of `useDismiss` ignore the argument.
 
 **D4. Rename goes through `useTitleEdit`,** its focus target now the title's button. In the
 head `.title-edit`'s hint lies absolutely under the line; otherwise the field would make the
@@ -73,9 +74,13 @@ and is absent when the about fails, like the other facts.
 `Projects.tsx`'s own copy of the same listener. `Tooltip` shows on focus only when the focus
 is the keyboard's (`:focus-visible`), or opening Details by mouse would put Copy path's
 tooltip over the Git row. `.session-details` sets `white-space: normal`: the sheet is drawn in
-the top bar, whose line must not wrap. The terminals' selected tab scrolls its row by hand:
-`scrollIntoView` moved the start of Chromium's Tab to that tab, so the first Tab of a page with
-the terminals open went past `Skip to chat` (AC-10).
+the top bar, whose line must not wrap. The terminals' selected tab is not scrolled into view
+as the page opens: `scrollIntoView` moved the start of Chromium's Tab to that tab, so the first
+Tab of a page with the terminals open went past `Skip to chat` (AC-10); on a later change it
+still scrolls, the page of a narrow window too. `escapeIsTaken` in `Menu.tsx` is the one rule
+of whose Esc it is: the expanded card, the expanded terminals and the rail's drawer knew only
+the `<dialog>` tag, not a `div role="dialog"`, so one Esc closed two layers. `focusChat` in
+`Chat.tsx` chooses the feed or an expanded card's tab, as the card hides the feed.
 
 ## Test layers
 

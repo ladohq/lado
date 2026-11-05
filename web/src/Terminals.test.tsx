@@ -573,23 +573,15 @@ test("the collapsed strip shows a small dot per open terminal, named by its agen
 test("a tab's name is cut to fit (its whole name in its tooltip), and the selected tab is scrolled into view", async () => {
   const scrolled = vi.fn();
   Element.prototype.scrollIntoView = scrolled;
-  const places: Record<string, [number, number]> = { w1: [150, 250], supervisor: [0, 100] };
-  const placed = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
-    const name = this.querySelector(".term-tab-name")?.textContent;
-    const [left, right] = (this.getAttribute("role") === "tab" && places[name ?? ""]) || [0, 200];
-    return { left, right } as DOMRect;
-  });
   await open();
+  expect(scrolled).not.toHaveBeenCalled(); // as the page opens it would move where Tab starts
   await openTerminal("w1");
   expect(tab("w1").querySelector(".term-tab-name")!.textContent).toBe("w1");
   expect(tab("w1").hasAttribute("title")).toBe(false);
-  const tabs = tab("w1").closest(".term-tabs")!;
-  expect(tabs.scrollLeft).toBe(50);
-  places.supervisor = [-50, 50]; // the row's scroll took it past the left edge
+  expect(scrolled.mock.instances.at(-1)).toBe(tab("w1"));
+  expect(scrolled).toHaveBeenLastCalledWith({ inline: "nearest", block: "nearest" });
   fireEvent.click(tab("supervisor"));
-  expect(tabs.scrollLeft).toBe(0);
-  expect(scrolled).not.toHaveBeenCalled(); // it would move where the keyboard's Tab starts
-  placed.mockRestore();
+  expect(scrolled.mock.instances.at(-1)).toBe(tab("supervisor"));
   fireEvent.focus(tab("w1"));
   expect(screen.getByRole("tooltip").textContent).toBe("w1 · developer · kilo");
 });

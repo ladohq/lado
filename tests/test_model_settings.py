@@ -1917,6 +1917,13 @@ def test_a_list_that_failed_or_a_cli_not_installed_has_no_name(installed):
     assert "claude" not in lists.reads
 
 
+def test_a_saved_model_of_a_cli_not_installed_says_so(installed):
+    entry()
+    env = installed("claude")
+    with pytest.raises(model_settings.Refused, match="^OpenCode is not installed$"):
+        worker_start("Локальная Qwen", None, CLAUDE, env, Lists(claude=CLAUDE_LIST))
+
+
 def test_a_saved_name_of_one_cli_and_built_in_of_the_session_s_stays_with_the_session(installed):
     entry(SHARED)
     env = installed("kilo", "opencode")

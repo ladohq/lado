@@ -91,6 +91,11 @@ other CLIs' lists SHALL be read only when the session's CLI lacks the name.
 - **THEN** `spawn_worker` fails with `<name> is a model of Kilo CLI and OpenCode; give provider`, and no
   worker exists
 
+#### Scenario: A saved model of a CLI not installed
+- **WHEN** the supervisor of a Claude Code session calls `spawn_worker(model="Локальная Qwen")`, which
+  is OpenCode's, and OpenCode is not installed
+- **THEN** it fails with `OpenCode is not installed`, and no worker exists
+
 #### Scenario: No list has it
 - **WHEN** the supervisor of an OpenCode session calls `spawn_worker(model="gpt-9")` and no list has it
 - **THEN** it fails with `gpt-9 is in no agent CLI's list of models; list_models shows them`, and no
@@ -130,20 +135,27 @@ with the warning a start gives.
 
 Before anything of the worker exists, `spawn_worker` SHALL check the model its worker starts on,
 given, the session's or the default, as a start does: an external model's server by the probe of
-saving a model, within its timeout, a built-in model against its CLI's list. A refusal of a model
-not given SHALL name `list_models` and `model=""`. A worker with no model SHALL ask nothing.
+saving a model, within its timeout, a built-in model against its CLI's list. The probe SHALL come
+after any list a name needs to find its CLI. A refusal of a model not given SHALL name `list_models`
+and `model=""`. A worker with no model SHALL ask nothing.
 
 #### Scenario: The server does not answer
 - **WHEN** the supervisor calls `spawn_worker(model="Локальная Qwen")` and `LM Studio дома` does not
   answer
 - **THEN** it fails with `http://localhost:1234 does not answer (<why>); LADO cannot check qwen3-8b`,
-  within the probe's timeout, and no worker, branch, worktree or window exists
+  the probe within its timeout, after the lists of the other CLIs when the session's CLI lacks the
+  name, and no worker, branch, worktree or window exists
 
 #### Scenario: The session's server went silent
 - **WHEN** a session runs on `Локальная Qwen`, its server stops, and the supervisor spawns a worker with
   no `model`
 - **THEN** it fails with the same reason, adding `list_models shows the others, model="" is the CLI's
   own settings`
+
+#### Scenario: The session's table cannot be read
+- **WHEN** the session's table cannot be read and the supervisor spawns a worker with no `model`
+- **THEN** it fails with `the session's model cannot be read`, adding `list_models shows the others,
+  model="" is the CLI's own settings`, and `spawn_worker(model="")` starts the worker
 
 #### Scenario: A worker of a run refused
 - **WHEN** that happens for a run's waiting step

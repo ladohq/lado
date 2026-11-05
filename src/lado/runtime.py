@@ -997,8 +997,9 @@ def _worker_start(
         verdict = model_settings.check_start(start, agent_cli, base_env, listing=listing)
         servers, warnings = model_settings.agent_servers(agent_cli, start)
     except model_settings.Refused as refused:
-        chosen = model is None and start is not None and start.model
-        raise ModelRefused(refused, model_settings.WORKER_WAY_OUT if chosen else "") from None
+        # With no start the session's table could not be read: that is a model not given too.
+        not_given = model is None and (start is None or start.model)
+        raise ModelRefused(refused, model_settings.WORKER_WAY_OUT if not_given else "") from None
     if verdict.kind == model_check.WARN:
         warnings.insert(0, verdict.text)
     return agent_cli, base_env, start, servers, warnings

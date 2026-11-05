@@ -39,6 +39,7 @@ alias or listed model.
 | none | `owns(session_cli)` | the session's CLI |
 | none | exactly one other | that CLI |
 | none | several others | Refused: `<name> is a model of <A> and <B>; give provider`, in the order of `providers.names()` |
+| none | only a saved model's CLI, not installed | Refused: `<title> is not installed` |
 | none | nobody | Refused: `<name> is in no agent CLI's list of models; list_models shows them`, with `; <title> gives no full list: provider="<cli>" starts it with a warning` for a session's CLI with none |
 
 A saved model of another CLI uses the existing `_not_its_model` line. Other CLIs are the installed
@@ -71,8 +72,8 @@ behaves as before.
 ### D6. The refusal's way out
 
 `way_out` speaks of `--model`, which an agent cannot use. A spawn's refusal of a model not given adds
-`; list_models shows the others, model="" is the CLI's own settings`, and of a model given nothing:
-the refusal names it already. Like the start, through `ModelRefused(refused, tail)`.
+`; list_models shows the others, model="" is the CLI's own settings`, a session's table that cannot
+be read among them, and of a model given nothing: the refusal names it already. Like the start, through `ModelRefused(refused, tail)`.
 
 ### D7. `list_models`' result
 
@@ -125,7 +126,9 @@ of a run. `spawn_worker`'s description says the same in short, and its `provider
 ## Risks / Trade-offs
 
 - A spawn may wait up to the probe's or a list's timeout (5 s, 15 s), one list per other CLI on a
-  miss. The MCP call blocks for it. Accepted: it is rare and the refusal saves a worker.
+  miss, the probe after them. The MCP call blocks for it. Measured: `kilo models` takes 11 s, so
+  with Kilo CLI installed a name of another CLI and `list_models` wait about that long, and a silent
+  server refuses after about 16 s. Accepted: the refusal saves a worker.
 - A built-in session model's list is read at every spawn. Accepted for one rule; a list that fails
   only warns.
 - `model` can move a worker to a CLI with no login: `check_login` refuses it, as with `provider`.

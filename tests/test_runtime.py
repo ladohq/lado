@@ -6771,3 +6771,14 @@ def test_list_models_refuses_a_cli_not_installed(repo, fake_tmux, monkeypatch, t
     _path_without_clis(monkeypatch, tmp_path)
     with pytest.raises(runtime.ModelRefused, match="Codex CLI is not installed"):
         runtime.list_models("s", "codex")
+
+
+def test_a_table_that_cannot_be_read_refuses_a_worker_with_its_way_out(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    _break_power("s")
+    with pytest.raises(runtime.ModelRefused) as error:
+        runtime.spawn_worker("s", "a task", name="w1")
+    assert NOT_GIVEN_WAY_OUT in str(error.value)
+    _nothing_of(repo, fake_tmux, "w1")
+    runtime.spawn_worker("s", "a task", name="w1", model="")  # the way out works
+    assert state.get_agent("s", "w1").model is None

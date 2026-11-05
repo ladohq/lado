@@ -805,7 +805,8 @@ def _name_cli(
     else the one other installed CLI that has it. Having it is being its saved model, alias or
     listed model; another CLI's list is read only when the first CLI lacks the name, and one
     that failed has no name. Refused for a name of another CLI than `given`, of several others,
-    or of none with no `given`: an agent's typo is not started on, though a start would warn."""
+    of a CLI not installed, or of none with no `given`: an agent's typo is not started on, though
+    a start would warn."""
     _one_line(name)
     saved = state.model(name)
 
@@ -831,6 +832,8 @@ def _name_cli(
         return found[0]
     if found:
         raise Refused(f"{name} is a model of {titles}; give provider", field=MODEL_FIELD)
+    if saved is not None:  # the one CLI that has it is not installed
+        raise Refused(f"{cli_title(saved.cli)} is not installed", field=CLI)
     free = ""
     if listing(session_cli).models is None:
         free = (

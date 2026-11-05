@@ -197,6 +197,18 @@ def test_other_name_on_claude_code_warns_and_stays(page: Page, clis, server, sho
     picker(page, "Claude Code").click()
     expect(section(page).get_by_text("BUILT-IN · aliases")).to_be_visible()
     shot(page, "claude-picker")
+    # The active row stays clear of the row pinned at the bottom, whichever way it moves.
+    field = picker(page, "Claude Code")
+    page.keyboard.press("End")
+    pinned = section(page).locator(".mp-other").bounding_box()
+    for _ in range(3):
+        page.keyboard.press("ArrowUp")
+        active = section(page).locator(".mp-active").bounding_box()
+        assert pinned and active and active["y"] + active["height"] <= pinned["y"] + 1, (
+            active,
+            pinned,
+        )
+    expect(field).to_be_focused()
     section(page).get_by_role("option", name=re.compile("Other name…")).click()
     name = claude.get_by_role("textbox", name="Other name")
     expect(name).to_be_focused()
@@ -856,6 +868,17 @@ def test_the_picker_at_a_phones_width(browser: Browser, clis, server, lms, shot)
         assert label and label["y"] + label["height"] <= box["y"] + 1  # over its field
         expect(field.locator(".mp-id")).to_be_hidden()  # the id goes; the name and server stay
         expect(field.locator(".srv")).to_be_visible()
+        opencode = card(page, "OpenCode")
+        expect(opencode.get_by_text("Your models")).to_be_visible()  # the head's label alone
+        expect(opencode.locator(".mx-mhead").get_by_text("From")).to_be_hidden()
+        x = opencode.get_by_role("button", name=re.compile("^Remove "))
+        x.click()
+        ask = opencode.get_by_role("alertdialog")
+        for button in ("Remove model", "Cancel"):
+            shown = ask.get_by_role("button", name=button).bounding_box()
+            assert shown and shown["height"] >= 44, shown
+        ask.get_by_role("button", name="Cancel").click()
+        expect(x).to_be_focused()
         assert page.evaluate("document.documentElement.scrollWidth") <= 390
         shot(page, "phone-card", full_page=False)
         field.click()
@@ -873,5 +896,33 @@ def test_the_picker_at_a_phones_width(browser: Browser, clis, server, lms, shot)
         assert mark and mark["y"] >= names["y"] + names["height"] - 1, (mark, names)  # under it
         assert page.evaluate("document.documentElement.scrollWidth") <= 390
         shot(page, "phone-picker", full_page=False)
+        page.keyboard.press("Escape")
+        chip = opencode.get_by_role("button", name="Use OpenCode's settings")
+        expect(chip).to_be_visible()  # the model is gone from the fake's list
+        size = chip.bounding_box()
+        assert size and size["height"] >= 32, size
     finally:
         context.close()
+
+
+def test_a_tick_at_the_page_s_end_stays_under_the_pointer(page: Page, clis, server, lms):
+    """At the very end of the page the browser stops the scroll earlier by what went above:
+    the anchor must not scroll by that again."""
+    saved_server(lms)
+    state.add_model("Первая", "opencode", "qwen3-8b", "s1")
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_settings(page, server)
+    lm = source(page, "LM Studio дома")
+    toggle(page, "LM Studio дома").click()
+    lm.get_by_role("button", name="qwen3-8b", exact=True).click()
+    tick = lm.get_by_role("checkbox", name="qwen3-8b on OpenCode", exact=True)
+    expect(lm.get_by_text("as Первая")).to_be_visible()
+    page.evaluate(
+        "() => { const c = document.querySelector('.content'); c.scrollTop = c.scrollHeight; }"
+    )
+    page.wait_for_timeout(300)
+    before = top(tick)
+    tick.click()
+    expect(tick).not_to_be_checked()
+    page.wait_for_timeout(300)
+    stays(tick, before)

@@ -419,6 +419,9 @@ export const setModelDefault = (cli: string, given: ModelDefaultSet) =>
 
 export const clearModelDefault = (cli: string) => post<ModelSettings>(modelDefaultPath(cli), undefined, "DELETE");
 
+// A request that never reached LADO's server: fetch rejects with a TypeError, with no answer.
+export const unreachable = (error: unknown) => error instanceof TypeError;
+
 // A failed request of Settings → Models as a refusal: the API's EntryRefused, or any other
 // error's message with no field.
 export function refusalOf(error: unknown): EntryRefused {

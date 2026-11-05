@@ -9159,6 +9159,12 @@ del.kit-mcp-name {
   flex: 1;
   min-width: 0;
   height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 13px var(--mono);
 }
 
 /* A card's models, flush with its edges. */
@@ -9171,6 +9177,10 @@ del.kit-mcp-name {
 .mc-more {
   padding: 8px 12px;
   border-top: 1px solid var(--line);
+}
+
+.mc-more .link-button {
+  min-height: 26px;
 }
 
 .mx-mrow.mc-ask {
@@ -9246,6 +9256,8 @@ del.kit-mcp-name {
 .srv {
   display: inline-flex;
   flex: none;
+  gap: 4px;
+  align-items: center;
   max-width: 45%;
   padding: 1px 6px;
   border-radius: 4px;
@@ -9253,6 +9265,12 @@ del.kit-mcp-name {
   color: var(--muted);
   font-size: 11px;
   font-weight: 500;
+}
+
+.srv svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
 }
 
 .srv.down {
@@ -9289,6 +9307,11 @@ del.kit-mcp-name {
   padding: 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* The active row is scrolled clear of the row pinned at the bottom. */
+.mp-list:has(.mp-other) {
+  scroll-padding-bottom: 60px;
 }
 
 .mp-opt {
@@ -9426,6 +9449,11 @@ del.kit-mcp-name {
     display: none;
   }
 
+  .mc-notes .chip-button {
+    height: 32px;
+    border-radius: 16px;
+  }
+
   .mp-opt .mp-names {
     flex-basis: calc(100% - 22px);
   }
@@ -9454,6 +9482,14 @@ del.kit-mcp-name {
     height: 44px;
   }
 
+  .model-pick .srv {
+    max-width: 35%;
+  }
+
+  .mx-confirm .mx-form-acts button {
+    min-height: 44px;
+  }
+
   .mp-pop .mp-search {
     height: 44px;
     font-size: 16px;
@@ -9466,6 +9502,7 @@ del.kit-mcp-name {
   .mc-other-row input {
     flex-basis: 100%;
     height: 44px;
+    font-size: 16px;
   }
 
   .mc-other-row button {
@@ -10189,6 +10226,12 @@ del.kit-mcp-name {
   }
 
   .mx-mrow.mx-mhead {
+    display: block;
+    min-height: 0;
+    padding: 6px 12px;
+  }
+
+  .mx-mhead > :not(:first-child) {
     display: none;
   }
 
@@ -10207,10 +10250,6 @@ del.kit-mcp-name {
     gap: 6px;
     min-width: 0;
     padding-left: 7px;
-  }
-
-  .mx-meta .mx-from::before {
-    content: "· ";
   }
 
   .mx-mrow.mx-undo {

@@ -141,7 +141,7 @@ test("a list being read shows your models and says so", () => {
   const read = list({ choices: null, reading: true });
   fireEvent.click(mount({ read, own: [QWEN] }).field);
   expect(texts().join(" ")).toContain("Локальная Qwen");
-  expect(screen.getByText("reading the models…")).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toContain("reading the models…");
 });
 
 test("a list that cannot be read says why, with Read again and an other name", () => {
@@ -151,8 +151,60 @@ test("a list that cannot be read says why, with Read again and an other name", (
   expect(screen.getByText(`⚠ ${why}`)).toBeTruthy();
   expect(texts().join(" ")).toContain("Локальная Qwen");
   expect(texts().at(-1)).toContain("Other name…");
-  fireEvent.click(screen.getByRole("button", { name: "Read again" }));
+  fireEvent.click(screen.getByRole("option", { name: "Read again" }));
   expect(read.read).toHaveBeenLastCalledWith(true, "");
+  expect(screen.getByRole("listbox")).toBeTruthy(); // reading again closes nothing
+});
+
+test("Read again is a row the keyboard reaches, and it picks nothing", () => {
+  const read = list({ choices: choices({ models: null, why: "timed out", other_name: true }) });
+  const { field, onPick, onOther } = mount({ read });
+  fireEvent.keyDown(field, { key: "Enter" });
+  fireEvent.keyDown(field, { key: "ArrowDown" });
+  const active = document.getElementById(field.getAttribute("aria-activedescendant") ?? "");
+  expect(active?.textContent).toContain("Read again");
+  fireEvent.keyDown(field, { key: "Enter" });
+  expect(read.read).toHaveBeenLastCalledWith(true, "");
+  expect(screen.getByRole("listbox")).toBeTruthy();
+  expect(onPick).not.toHaveBeenCalled();
+  expect(onOther).not.toHaveBeenCalled();
+});
+
+test("a press inside the list takes no focus from the field or the search", () => {
+  const { field } = mount();
+  fireEvent.click(field);
+  field.focus();
+  expect(fireEvent.mouseDown(screen.getByRole("option", { name: "a/one" }))).toBe(false);
+  expect(fireEvent.mouseDown(screen.getByRole("button", { name: "Read the models again" }))).toBe(false);
+});
+
+test("a press in the search keeps its caret", () => {
+  fireEvent.click(mount({ read: list({ choices: choices({ models: many(11) }) }) }).field);
+  expect(fireEvent.mouseDown(screen.getByPlaceholderText(/^Search/))).toBe(true);
+});
+
+test("a list read anew puts the active row back on the selected one: Enter never hits another", () => {
+  const props = {
+    cli: OPENCODE,
+    value: null,
+    where: "settings" as const,
+    own: [],
+    off: false,
+    lost: false,
+    health: {},
+    onOpen: vi.fn(),
+    onPick: vi.fn(),
+    onOther: vi.fn(),
+  };
+  const view = render(<ModelPicker {...props} list={list({ choices: choices({ models: ["a", "b", "c"] }) })} />);
+  const field = screen.getByRole("combobox");
+  fireEvent.click(field);
+  fireEvent.keyDown(field, { key: "End" }); // `c`, the fourth row
+  const none = choices({ models: null, why: "timed out", other_name: true });
+  view.rerender(<ModelPicker {...props} list={list({ choices: none })} />); // now the fourth is none
+  fireEvent.keyDown(field, { key: "Enter" });
+  expect(props.onOther).not.toHaveBeenCalled();
+  expect(props.onPick).toHaveBeenCalledWith(null); // the selected row: the CLI's settings
 });
 
 test("a list no reading can bring has no Read again", () => {
@@ -160,7 +212,15 @@ test("a list no reading can bring has no Read again", () => {
   const read = list({ choices: choices({ models: null, why, other_name: true, read_again: false }) });
   fireEvent.click(mount({ read }).field);
   expect(screen.getByText(`⚠ ${why}`)).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Read again" })).toBeNull();
+  expect(screen.queryByRole("option", { name: "Read again" })).toBeNull();
+});
+
+test("a request that did not reach LADO says so in its own words, with Read again", () => {
+  const read = list({ choices: null, problem: "LADO's server does not answer: the list was not read." });
+  fireEvent.click(mount({ read, own: [QWEN] }).field);
+  expect(screen.getByText("⚠ LADO's server does not answer: the list was not read.")).toBeTruthy();
+  expect(screen.getByRole("option", { name: "Read again" })).toBeTruthy();
+  expect(texts().join(" ")).not.toContain("not answering");
 });
 
 test("the whole-process line stands above your models by the provider's word", () => {
@@ -335,12 +395,33 @@ test("Enter in a search picks the row moved to", () => {
   expect(onPick).toHaveBeenCalledWith({ builtin: "vendor/model-10" });
 });
 
-test("a click outside closes it without a pick", () => {
-  const { field, onPick } = mount();
+test("a click outside closes it without a pick, the focus back on the field", async () => {
+  const { field, onPick } = mount({ read: list({ choices: choices({ models: many(11) }) }) });
   fireEvent.click(field);
   fireEvent.pointerDown(document.body);
+  (document.activeElement as HTMLElement).blur(); // as the press on nothing does
   expect(screen.queryByRole("listbox")).toBeNull();
   expect(onPick).not.toHaveBeenCalled();
+  await waitFor(() => expect(document.activeElement).toBe(field));
+});
+
+test("a click outside on something that takes the focus leaves it there", async () => {
+  const { field } = mount();
+  const other = document.body.appendChild(document.createElement("button"));
+  fireEvent.click(field);
+  fireEvent.pointerDown(other);
+  other.focus();
+  await new Promise((done) => setTimeout(done, 5));
+  expect(document.activeElement).toBe(other);
+  other.remove();
+});
+
+test("Tab in a search closes it through the field, so the focus goes on from there", () => {
+  const { field } = mount({ read: list({ choices: choices({ models: many(11) }) }) });
+  fireEvent.click(field);
+  fireEvent.keyDown(screen.getByPlaceholderText(/^Search/), { key: "Tab" });
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(document.activeElement).toBe(field);
 });
 
 const placed = (top: number, bottom: number) =>
@@ -376,11 +457,13 @@ test("near the window's end it opens upward", () => {
 });
 
 test("a wheel outside the list closes it, one inside does not", () => {
-  fireEvent.click(mount().field);
+  const { field } = mount({ read: list({ choices: choices({ models: many(11) }) }) });
+  fireEvent.click(field);
   fireEvent.wheel(screen.getByRole("listbox"));
   expect(screen.getByRole("listbox")).toBeTruthy();
   fireEvent.wheel(document.body);
   expect(screen.queryByRole("listbox")).toBeNull();
+  expect(document.activeElement).toBe(field);
 });
 
 test("useModelChoices drops an answer older than the last read", async () => {

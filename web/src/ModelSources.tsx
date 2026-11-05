@@ -186,6 +186,13 @@ export function ModelServers(props: Sources) {
   const [gone, setGone] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
   const [fresh, setFresh] = useState<string | null>(null); // the server just added: the focus
+  const addButton = useRef<HTMLButtonElement>(null);
+  const [removedOne, setRemovedOne] = useState(false); // a server went: the focus goes to Add
+  useEffect(() => {
+    if (!removedOne) return;
+    setRemovedOne(false);
+    addButton.current?.focus();
+  }, [removedOne]);
   const installed = (cli: string) => {
     const row = props.logins.find((r) => r.cli.name === cli);
     return !row?.ready || row.cli.installed;
@@ -220,6 +227,7 @@ export function ModelServers(props: Sources) {
                     reads.close(key);
                     for (const one of Object.keys(props.saved)) props.onSaved(one, null); // old now
                     setGone((now) => ({ ...now, [fold(server.name)]: done }));
+                    setRemovedOne(true);
                   }}
                 />
               ) : (
@@ -243,7 +251,7 @@ export function ModelServers(props: Sources) {
               }}
             />
           ) : (
-            <button type="button" className="quiet mx-add" onClick={() => setAdding(true)}>
+            <button ref={addButton} type="button" className="quiet mx-add" onClick={() => setAdding(true)}>
               <span aria-hidden="true">+</span> Add server
             </button>
           )}
@@ -350,6 +358,7 @@ function ServerSource({
   onGone: (line: string) => void;
 }) {
   const [mode, setMode] = useState<"change" | "remove" | null>(null);
+  const bin = useRef<HTMLButtonElement>(null);
   const open = sources.open.has(serverKey(server.name));
   const own = fromSource(sources.settings.models, server.name);
   const probe = read && "probe" in read ? read.probe : null;
@@ -393,6 +402,7 @@ function ServerSource({
               <PencilIcon />
             </button>
             <button
+              ref={bin}
               type="button"
               className="mx-icon mx-icon-danger"
               aria-pressed={mode === "remove"}
@@ -428,7 +438,10 @@ function ServerSource({
           own={own}
           defaults={sources.settings.defaults}
           onTouch={sources.onTouch}
-          onCancel={() => setMode(null)}
+          onCancel={() => {
+            setMode(null);
+            bin.current?.focus();
+          }}
           onChanged={sources.onChanged}
           onGone={(line) => {
             setMode(null);
@@ -498,6 +511,11 @@ function SourceBody({
   const [pop, setPop] = useState<string | null>(null);
   // A tick off on its CLI's default: asked first, the tick staying on until the answer.
   const [asking, setAsking] = useState<ConfiguredModelInfo | null>(null);
+  const boxes = useRef<Record<string, HTMLInputElement | null>>({}); // by tickKey
+  const answered = () => {
+    if (asking) boxes.current[tickKey(asking.cli, asking.model, server)]?.focus();
+    setAsking(null);
+  };
   // The name a tick would save under each CLI of the open server model, by the core.
   const [would, setWould] = useState<{
     model: string;
@@ -618,7 +636,12 @@ function SourceBody({
         type="checkbox"
         aria-label={`${model} on ${on.title}`}
         checked={state.on}
-        disabled={busy || state.several.length > 0 || gone}
+        ref={(el) => {
+          boxes.current[tickKey(on.name, model, server)] = el;
+        }}
+        // Off while a save runs, by aria only: a box truly disabled would drop the focus.
+        aria-disabled={busy ? true : undefined}
+        disabled={state.several.length > 0 || gone}
         title={
           state.several.length
             ? `${state.several.join(", ")}: remove them on the card of ${on.title}`
@@ -628,7 +651,7 @@ function SourceBody({
                 ? `Unticking removes ${one.name}.`
                 : undefined
         }
-        onChange={(event) => void tick(on.name, model, event.target.checked)}
+        onChange={(event) => !busy && void tick(on.name, model, event.target.checked)}
       />
     );
   };
@@ -715,7 +738,7 @@ function SourceBody({
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
                     event.stopPropagation();
-                    setAsking(null);
+                    answered();
                   }
                 }}
               >
@@ -728,13 +751,13 @@ function SourceBody({
                     type="button"
                     className="danger"
                     onClick={() => {
-                      setAsking(null);
+                      answered();
                       void change(asking.cli, model, false);
                     }}
                   >
                     Remove model
                   </button>
-                  <button type="button" className="quiet" autoFocus onClick={() => setAsking(null)}>
+                  <button type="button" className="quiet" autoFocus onClick={answered}>
                     Cancel
                   </button>
                 </div>
@@ -1398,7 +1421,17 @@ function RemoveServer({
     }
   };
   return (
-    <div className="mx-confirm" role="alertdialog" aria-labelledby={id}>
+    <div
+      className="mx-confirm"
+      role="alertdialog"
+      aria-labelledby={id}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
       <p id={id}>
         <b>{ask}</b> {lost}
         {server.has_key && "Its key is deleted too. "}This cannot be undone.

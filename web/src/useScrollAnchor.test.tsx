@@ -116,6 +116,48 @@ test("a scroll stopped at the top is no place wanted: the next correction counts
   expect(tops.b).toBe(250);
 });
 
+test("at the page's end the browser's own stop makes up for what went above: no second correction", () => {
+  wide(true);
+  tops = { section: -2000, a: -1900, b: 400 };
+  const view = render(page(["a", "b"], "b"));
+  const content = view.container.querySelector(".content") as HTMLElement;
+  const by = vi.fn();
+  content.scrollTo = by;
+  let at = 2000;
+  Object.defineProperty(content, "scrollTop", { get: () => at, configurable: true });
+  Object.defineProperty(content, "clientHeight", { get: () => 900, configurable: true });
+  let height = 2900; // the end of the page: 2000 + 900
+  Object.defineProperty(content, "scrollHeight", { get: () => height, configurable: true });
+  view.rerender(page(["a", "b"], "b")); // noted at the end of the page
+  // 58 px gone above b: the page is shorter, and the browser stopped the scroll 58 px earlier,
+  // so b stays where it was on the screen while the section came down.
+  height -= 58;
+  at -= 58;
+  tops = { section: -1942, b: 400 };
+  view.rerender(page(["b"], "b"));
+  expect(by).not.toHaveBeenCalled();
+});
+
+test("near the page's end the browser stops part of the way: only the rest is scrolled", () => {
+  wide(true);
+  tops = { section: -2000, a: -1900, b: 400 };
+  const view = render(page(["a", "b"], "b"));
+  const content = view.container.querySelector(".content") as HTMLElement;
+  const by = vi.fn();
+  content.scrollTo = by;
+  let at = 2884;
+  Object.defineProperty(content, "scrollTop", { get: () => at, configurable: true });
+  Object.defineProperty(content, "clientHeight", { get: () => 848, configurable: true });
+  let height = 3762; // 30 px above the end of the page
+  Object.defineProperty(content, "scrollHeight", { get: () => height, configurable: true });
+  view.rerender(page(["a", "b"], "b"));
+  height -= 72; // 72 px gone above b: the new end stops the scroll 42 px earlier
+  at = 2842;
+  tops = { section: -1958, b: 370 };
+  view.rerender(page(["b"], "b"));
+  expect(by).toHaveBeenLastCalledWith(0, 2812); // where the 72 px alone would put it
+});
+
 test("a correction made, the next render with nothing changed scrolls nothing", () => {
   wide(true);
   tops = { section: 0, a: 10, b: 300 };

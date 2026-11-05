@@ -16,8 +16,8 @@ import {
   useState,
 } from "react";
 
-import { type CliDefault, type ConfiguredModelInfo, getModelChoices, type ModelChoices } from "./api";
-import { ChevronIcon } from "./icons";
+import { type CliDefault, type ConfiguredModelInfo, getModelChoices, type ModelChoices, unreachable } from "./api";
+import { ChevronIcon, ServerIcon } from "./icons";
 import { messageOf } from "./SessionControl";
 
 const SEARCH_ABOVE = 10; // a list longer than this has a search field
@@ -71,7 +71,7 @@ export function useModelChoices(cli: string): ModelRead {
         },
         (error: unknown) => {
           if (asked !== latest.current) return;
-          setProblem(messageOf(error));
+          setProblem(unreachable(error) ? "LADO's server does not answer: the list was not read." : messageOf(error));
           setReading(false);
         },
       );
@@ -90,7 +90,7 @@ export function serverWords(health: Health | undefined, model: string): string |
 
 type Row = {
   key: string;
-  pick: Pick | "other";
+  pick: Pick | "other" | "read"; // "read": a row that reads the list again and picks nothing
   label: string; // what a screen reader says
   selected: boolean;
   title: string;
@@ -226,16 +226,30 @@ export function ModelPicker({
         id: "a name LADO cannot check",
       }
     : null;
-  const rows = [...(typed ? [] : [settingsRow]), ...yours, ...builtins, ...(otherRow ? [otherRow] : [])];
-  const shownModels = yours.length + builtins.length;
   const noList = choices?.models === null && choices.aliases.length === 0;
+  // A row, not a button: Tab closes the list, so only a row is in the keyboard's reach.
+  const readRow: Row | null =
+    !list.reading && (list.problem !== null || (noList && choices?.read_again))
+      ? { key: "read", pick: "read", label: "Read again", selected: false, title: "Read again" }
+      : null;
+  const rows = [
+    ...(typed ? [] : [settingsRow]),
+    ...(typed || !readRow ? [] : [readRow]),
+    ...yours,
+    ...builtins,
+    ...(otherRow ? [otherRow] : []),
+  ];
+  const shownModels = yours.length + builtins.length;
 
-  const close = useCallback((refocus: boolean) => {
-    setOpen(false);
-    setPlace(null);
-    setSearch("");
-    if (refocus) field.current?.focus();
-  }, [field]);
+  const close = useCallback(
+    (refocus: boolean) => {
+      setOpen(false);
+      setPlace(null);
+      setSearch("");
+      if (refocus) field.current?.focus({ preventScroll: true });
+    },
+    [field],
+  );
 
   const opening = () => {
     if (off) return;
@@ -244,12 +258,13 @@ export function ModelPicker({
     setOpen(true);
   };
 
-  // On the selected row, once the list is open; a search starts at its first row.
+  // On the selected row once the list is open, and again when a read changes the rows: an
+  // index kept from the old rows would land on another row; a search starts at its first row.
   useLayoutEffect(() => {
     if (!open) return;
     setActive(Math.max(0, rows.findIndex((row) => row.selected)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when it opens
-  }, [open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- when it opens and at each read
+  }, [open, choices]);
 
   useLayoutEffect(() => {
     if (!open || !field.current) return;
@@ -274,8 +289,15 @@ export function ModelPicker({
   useEffect(() => {
     if (!open) return;
     const outside = (event: Event) => !root.current?.contains(event.target as Node);
-    const press = (event: Event) => outside(event) && close(false);
-    const scroll = (event: Event) => !pop.current?.contains(event.target as Node) && close(false);
+    // What the press lands on keeps the focus; a press on nothing leaves it on the field.
+    const press = (event: Event) => {
+      if (!outside(event)) return;
+      close(false);
+      setTimeout(() => {
+        if (document.activeElement === document.body) field.current?.focus({ preventScroll: true });
+      });
+    };
+    const scroll = (event: Event) => !pop.current?.contains(event.target as Node) && close(true);
     document.addEventListener("pointerdown", press);
     document.addEventListener("wheel", scroll, { passive: true });
     document.addEventListener("touchmove", scroll, { passive: true });
@@ -284,7 +306,7 @@ export function ModelPicker({
       document.removeEventListener("wheel", scroll);
       document.removeEventListener("touchmove", scroll);
     };
-  }, [open, close]);
+  }, [open, close, field]);
 
   useEffect(() => {
     if (open && searching) searchBox.current?.focus();
@@ -296,6 +318,7 @@ export function ModelPicker({
 
   const choose = (row: Row | undefined) => {
     if (!row) return;
+    if (row.pick === "read") return list.read(true, value?.builtin ?? "");
     const text = search.trim();
     close(row.pick !== "other");
     if (row.pick === "other") onOther(text);
@@ -356,7 +379,7 @@ export function ModelPicker({
         setActive(0);
       } else close(true);
     } else if (event.key === "Tab") {
-      close(false);
+      close(true); // the search goes with the list: Tab goes on from the field
     }
   };
 
@@ -456,6 +479,10 @@ export function ModelPicker({
         <div
           ref={pop}
           className="mp-pop"
+          // A press in the list takes no focus: it stays where the keyboard works the list.
+          onMouseDown={(event) => {
+            if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+          }}
           style={{
             position: "fixed",
             top: place?.top,
@@ -489,22 +516,18 @@ export function ModelPicker({
           {(noList || list.problem) && !list.reading && (
             <div className="mp-why">
               <span>{`⚠ ${list.problem ?? choices?.why}`}</span>
-              {(list.problem !== null || choices?.read_again) && (
-                <button type="button" className="chip-button" onClick={() => list.read(true, value?.builtin ?? "")}>
-                  Read again
-                </button>
-              )}
             </div>
           )}
           <div className="mp-list" id={listId} role="listbox" aria-label={`Models of ${cli.title}`}>
             {!typed && option(settingsRow)}
+            {!typed && readRow && option(readRow)}
             {yoursGroup}
             {builtGroup}
             {typed && shownModels === 0 && <p className="mp-none">{`No model matches “${search}”.`}</p>}
             {otherRow && option(otherRow)}
           </div>
           {list.reading && (
-            <p className="mp-reading">
+            <p className="mp-reading" role="status">
               <span className="mx-spin" aria-hidden="true" /> reading the models…
             </p>
           )}
@@ -534,7 +557,8 @@ export function ModelPicker({
 function Server({ name, down }: { name: string; down: boolean }) {
   return (
     <span className={`srv${down ? " down" : ""}`} title={name}>
-      {down && <span aria-hidden="true">⚠ </span>}
+      <ServerIcon />
+      {down && <span aria-hidden="true">⚠</span>}
       <span className="srv-t">{name}</span>
     </span>
   );

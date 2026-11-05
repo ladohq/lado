@@ -2470,9 +2470,10 @@ default: none does yet.
   it (a card, a source's row) keeps its place instead; a scroll inside the section (a list's
   own) notes it anew. The browser's own scroll anchoring is off in the section and the ones
   after it (`overflow-anchor: none`), else it would move the page a second time; Safari has
-  none. No row leaves the section on a timer. A window scrolled to the very end of the page
-  has nothing left to scroll: a change that makes the page shorter (a form closing) moves
-  what shows there.
+  none. No row leaves the section on a timer. At the very end of the page the browser stops
+  the scroll earlier by itself when the page gets shorter: what went above the anchor is made
+  up for by that, and the hook scrolls only what is left. What went below it cannot be made up
+  for: with nothing left to scroll, a form closing there moves what shows.
 - **Your agent CLIs**: a card per agent CLI, the installed ones in LADO's order, then the ones
   not installed, then one for a model of a CLI LADO does not know, its field off. The head
   gives the title and the login state from Agent CLIs and environment's last check; one not
@@ -2494,21 +2495,30 @@ default: none does yet.
   outside the list closes it. Rows in one order, an empty group not shown: `<CLI>'s settings`,
   YOUR MODELS, BUILT-IN (`BUILT-IN · aliases` for aliases only), `Other name…` kept at the
   bottom, only with no full list. Above ten models a search by name, id and server. The footer
-  counts, with ↻ unless reading again cannot help (`ModelChoices.read_again`). A pick saves at
-  once, by reference (`PUT /api/model-defaults/{cli}`), the focus back on the field; a refusal
-  shows under it and the value stays. `Other name…` opens a field under the picker with Use
-  and Cancel, checked once the typing settles. The keyboard: Enter, Space and the arrows open
-  it on the selected row, ↑ ↓ Home End move, Enter picks (Space too with no search), Esc and
-  Tab close without a pick, Esc first clearing a search.
+  counts, with ↻ unless reading again cannot help (`ModelChoices.read_again`); a list that could
+  not be read says why above the rows and has a row `Read again` after the CLI's settings, a
+  row since Tab closes the list and only rows are in the keyboard's reach. A press inside the
+  list takes no focus; a read that changes the rows puts the active row back on the selected
+  one. A pick saves at once, by reference (`PUT /api/model-defaults/{cli}`), the focus back on
+  the field; a refusal shows under it and the value stays; a request that never reached LADO
+  says so in its own words and blames no model server. `Other name…` opens a form under the
+  picker with Use (Enter too) and Cancel, checked once the typing settles; while open it takes
+  the place of the saved name's warning. The keyboard: Enter, Space and the arrows open it on
+  the selected row, ↑ ↓ Home End move, Enter picks (Space too with no search), Esc and Tab close
+  without a pick, Esc first clearing a search.
 - **A default in trouble** stays: nothing but the human changes it. A built-in one the list
   lost shows `⚠ no longer listed` with `Use <CLI>'s settings`; one the list cannot check shows
   the core's warning, with `Check again` when reading may help; an external one on a silent
-  server or gone from it shows why with `Check again` and `Use <CLI>'s settings`. On a CLI whose
-  provider says a server's model takes the whole process, the picker and the card say so.
+  server or gone from it shows why with `Check again` and `Use <CLI>'s settings`. On a CLI not
+  installed only `Use <CLI>'s settings` stands: the head says the rest. A chip that goes hands
+  the focus to the field, or on within the card when the field is off. On a CLI whose provider
+  says a server's model takes the whole process, the picker and the card say so.
 - **An agent CLI's models** on its card under the head `Your models <n>`: the default first, the
   others by name ignoring case, Name (wrapped, never cut), Model, From (its server, the address
-  in the title) and **×**. Above five they fold to five with `Show all <n> models`, `Show fewer`
-  once open, a state kept while the page stays open. A model's mark under its name:
+  and name in the title) and **×**. Above five they fold to five with `Show all <n> models`,
+  `Show fewer` once open, a state kept while the page stays open; what the human just acted on
+  stays in view past the fold: a removed row, a default removed first, a model renamed. A model's
+  mark under its name:
   `⚠ not in list` (its title: `<server> no longer lists <model>: agents on it stop at their
   first turn.`) once its server's list was read here and lacks it.
 - **Rename** on the name itself: a button with a frame on hover, titled `Click to rename`;

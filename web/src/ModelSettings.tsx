@@ -29,6 +29,7 @@ import {
   removeModel,
   renameModel,
   setModelDefault,
+  unreachable,
 } from "./api";
 import { CloseIcon } from "./icons";
 import { MODEL_DEBOUNCE, useDebounced } from "./Launch";
@@ -284,6 +285,7 @@ export function ModelSettings() {
               rowNotes={rowNotes}
               unfolded={unfolded}
               focusName={focusName}
+              onFocusName={setFocusName}
               onFocused={() => setFocusName(null)}
               onChanged={reload}
               onTouch={onTouch}
@@ -329,6 +331,7 @@ type CardsProps = {
   rowNotes: Record<string, string>;
   unfolded: Set<string>;
   focusName: string | null;
+  onFocusName: (name: string) => void;
   onFocused: () => void;
   onChanged: (given?: Entries) => Promise<void>;
   onTouch: () => void;
@@ -372,6 +375,7 @@ function CliCard({
   rowNotes,
   unfolded,
   focusName,
+  onFocusName,
   onFocused,
   onChanged,
   onTouch,
@@ -387,11 +391,23 @@ function CliCard({
   const list = useModelChoices(cli);
   const { read } = list;
   const field = useRef<HTMLButtonElement>(null);
+  const self = useRef<HTMLDivElement>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [other, setOther] = useState<string | null>(null); // Other name's field, with its text
   const [health, setHealth] = useState<Record<string, Health>>({});
   const [checking, setChecking] = useState(false);
+  // What the human pressed goes away (a chip): the focus moves on once the page has changed.
+  const [handOn, setHandOn] = useState(false);
+  const [renamed, setRenamed] = useState<string | null>(null); // kept in view past the fold
+  const checkedList = useRef(false); // Check again of the list is running
   const probes = useRef<Record<string, number>>({}); // each server's latest question
+
+  useEffect(() => {
+    if (!handOn) return;
+    setHandOn(false);
+    if (!off) return field.current?.focus();
+    (self.current?.querySelector<HTMLElement>(".mc-models button") ?? self.current)?.focus();
+  }, [handOn, off]);
 
   // A built-in default is read in the background, so a list that lost it shows on the card.
   const builtin = value?.builtin ?? null;
@@ -399,16 +415,20 @@ function CliCard({
     if (builtin !== null && !off) read(false, builtin);
   }, [builtin, off, read]);
 
-  const probe = async (server: string) => {
+  // The server's state as a probe found it; null when the probe never reached LADO, which says
+  // nothing of the model server.
+  const probe = async (server: string): Promise<Health | null> => {
     const key = fold(server);
     const asked = (probes.current[key] = (probes.current[key] ?? 0) + 1);
     let found: Health;
     try {
       found = { models: (await probeModelServer(server)).models };
     } catch (error) {
+      if (unreachable(error)) return null;
       found = { down: refusalOf(error).message };
     }
     if (probes.current[key] === asked) setHealth((now) => ({ ...now, [key]: found }));
+    return found;
   };
 
   const save = async (pick: Pick): Promise<boolean> => {
@@ -419,13 +439,14 @@ function CliCard({
       else await onChanged((await setModelDefault(cli, pick)).settings);
       return true;
     } catch (error) {
-      setProblem(refusalOf(error).message);
+      setProblem(
+        unreachable(error) ? "LADO's server does not answer: the value was not saved." : refusalOf(error).message,
+      );
       return false;
     }
   };
   const useSettings = async () => {
-    await save(null);
-    field.current?.focus();
+    if (await save(null)) setHandOn(true);
   };
   const useSettingsChip = (
     <button type="button" className="chip-button" onClick={() => void useSettings()}>
@@ -433,8 +454,14 @@ function CliCard({
     </button>
   );
 
-  const check = builtin !== null && list.checked === builtin ? list.choices?.check : undefined;
+  // On a CLI not installed the head says all: no list can be checked, and no check helps.
+  const check = !off && builtin !== null && list.checked === builtin ? list.choices?.check : undefined;
   const lost = check?.kind === "refused";
+  useEffect(() => {
+    if (!checkedList.current || list.reading) return;
+    checkedList.current = false;
+    if (check?.kind !== "warn") setHandOn(true); // its chip went
+  }, [list.reading, check?.kind]);
   const server = value?.server ?? null;
   const state = server !== null ? health[fold(server)] : undefined;
   const words = value !== null ? serverWords(state, value.model) : null;
@@ -449,10 +476,16 @@ function CliCard({
       Check again
     </button>
   );
-  const askServer = () => {
-    if (server === null) return;
+  const askServer = async () => {
+    if (server === null || value === null) return;
     setChecking(true);
-    void probe(server).finally(() => setChecking(false));
+    const found = await probe(server);
+    setChecking(false);
+    if (found !== null && serverWords(found, value.model) === null) setHandOn(true); // its chip went
+  };
+  const askList = () => {
+    checkedList.current = true;
+    read(true, builtin ?? "");
   };
 
   const notes = [
@@ -472,12 +505,10 @@ function CliCard({
         <span className="way-out">{useSettingsChip}</span>
       </span>
     ),
-    check?.kind === "warn" && (
+    check?.kind === "warn" && other === null && (
       <span key="warn" className="field-note warn" role="status">
         <span>{`⚠ ${check.text}`}</span>
-        {list.choices?.read_again && (
-          <span className="way-out">{checkAgain(() => read(true, builtin ?? ""), list.reading)}</span>
-        )}
+        {list.choices?.read_again && <span className="way-out">{checkAgain(askList, list.reading)}</span>}
       </span>
     ),
     words !== null && value !== null && server !== null && state !== undefined && (
@@ -485,10 +516,10 @@ function CliCard({
         <span>
           {"down" in state
             ? `⚠ ${state.down.replace(address, server)}; ${value.name} is on it. Start the server or pick another model.`
-            : `⚠ ${server} no longer lists ${value.model}: agents on it stop at their first turn.`}
+            : `⚠ ${value.model} is no longer in ${server}'s list of models. Load it there or pick another model.`}
         </span>
         <span className="way-out">
-          {checkAgain(askServer, checking)}
+          {checkAgain(() => void askServer(), checking)}
           {useSettingsChip}
         </span>
       </span>
@@ -517,11 +548,16 @@ function CliCard({
     ...live.map((model) => ({ model, gone: null as Removed | null })),
     ...gone.map((g) => ({ model: g.model, gone: g as Removed | null })),
   ].sort((a, b) => {
-    const first = (m: ConfiguredModelInfo) => (m.id === value?.external ? 0 : 1);
-    return first(a.model) - first(b.model) || byName(a.model, b.model);
+    // A default removed keeps the first row while it offers Undo: under the field it left.
+    const first = (row: (typeof rows)[number]) => (row.model.id === value?.external || row.gone?.wasDefault ? 0 : 1);
+    return first(a) - first(b) || byName(a.model, b.model);
   });
   const open = unfolded.has(cli);
-  const shown = open || rows.length <= FOLD_ABOVE ? rows : rows.slice(0, FOLD_ABOVE);
+  // What the human just acted on stays in view: a removed row, a model renamed past the fold.
+  const shown =
+    open || rows.length <= FOLD_ABOVE
+      ? rows
+      : rows.filter((row, at) => at < FOLD_ABOVE || row.gone || fold(row.model.name) === renamed);
   const servers = new Map(entries.servers.map((s) => [fold(s.name), s.address]));
   const warning =
     card.off && card.known
@@ -533,7 +569,14 @@ function CliCard({
       : null;
 
   return (
-    <div className={`mc-cli${off ? " mc-off" : ""}`} role="group" aria-label={title} data-anchor="">
+    <div
+      ref={self}
+      className={`mc-cli${off ? " mc-off" : ""}`}
+      role="group"
+      aria-label={title}
+      tabIndex={-1}
+      data-anchor=""
+    >
       <div className="mc-head">
         <span className="mc-name">{title}</span>
         {warning ? <span className="mx-card-warn">{warning}</span> : <span className="mc-state">{card.word}</span>}
@@ -600,7 +643,7 @@ function CliCard({
                 <UndoRow key={`removed:${model.name}`} gone={gone} onUndo={onUndo} onExpired={onExpired} />
               ) : (
                 <ModelRow
-                  key={model.name}
+                  key={model.id}
                   model={model}
                   isDefault={model.id === value?.external}
                   address={servers.get(fold(model.server))}
@@ -608,6 +651,10 @@ function CliCard({
                   note={rowNotes[fold(model.name)] ?? null}
                   focus={focusName !== null && fold(focusName) === fold(model.name)}
                   onFocused={onFocused}
+                  onRenamed={(name, back) => {
+                    setRenamed(fold(name));
+                    if (back) onFocusName(name);
+                  }}
                   onChanged={onChanged}
                   onTouch={onTouch}
                   onRemoved={onRemoved}
@@ -617,8 +664,16 @@ function CliCard({
           </div>
           {rows.length > FOLD_ABOVE && (
             <div className="mc-more">
-              <button type="button" className="link-button" aria-expanded={open} onClick={() => onFold(cli)}>
-                {open ? "Show fewer" : `Show all ${rows.length} models`}
+              <button
+                type="button"
+                className="link-button"
+                aria-expanded={open}
+                onClick={() => {
+                  setRenamed(null);
+                  onFold(cli);
+                }}
+              >
+                {open ? "Show fewer" : `Show all ${live.length} models`}
               </button>
             </div>
           )}
@@ -658,8 +713,16 @@ function OtherName({
     };
   }, [cli, settled]);
   const note = check?.of === name ? check.note : null;
+  const shown = note !== null && note.kind !== "default";
+  const refused = note?.kind === "refused";
   return (
-    <div className="mc-other">
+    <form
+      className="mc-other"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (name && !refused) void onUse(name);
+      }}
+    >
       <label className="mc-other-l" htmlFor={id}>
         Other name
       </label>
@@ -667,6 +730,7 @@ function OtherName({
         <input
           id={id}
           className="mono"
+          aria-describedby={shown ? `${id}-note` : undefined}
           value={text}
           autoFocus
           autoComplete="off"
@@ -680,24 +744,23 @@ function OtherName({
             }
           }}
         />
-        <button
-          type="button"
-          className="quiet"
-          disabled={!name || note?.kind === "refused"}
-          onClick={() => void onUse(name)}
-        >
+        <button type="submit" className="quiet" disabled={!name || refused}>
           Use
         </button>
         <button type="button" className="quiet" onClick={onCancel}>
           Cancel
         </button>
       </div>
-      {note && note.kind !== "default" && (
-        <span className={`field-note${note.kind === "refused" ? " bad" : note.kind === "warn" ? " warn" : ""}`}>
-          {note.text}
+      {shown && (
+        <span
+          id={`${id}-note`}
+          className={`field-note${refused ? " bad" : note.kind === "warn" ? " warn" : ""}`}
+          role={refused ? "alert" : "status"}
+        >
+          {note.kind === "warn" ? `⚠ ${note.text}` : note.text}
         </span>
       )}
-    </div>
+    </form>
   );
 }
 
@@ -745,6 +808,7 @@ function ModelRow({
   note,
   focus,
   onFocused,
+  onRenamed,
   onChanged,
   onTouch,
   onRemoved,
@@ -756,6 +820,7 @@ function ModelRow({
   note: string | null;
   focus: boolean;
   onFocused: () => void;
+  onRenamed: (name: string, focusBack: boolean) => void;
   onChanged: (given?: Entries) => Promise<void>;
   onTouch: () => void;
   onRemoved: (model: ConfiguredModelInfo, wasDefault: boolean) => void;
@@ -831,9 +896,10 @@ function ModelRow({
         {renaming ? (
           <Rename
             name={model.name}
-            onDone={(given) => {
+            onDone={(given, name, back) => {
               onTouch();
               setRenaming(false);
+              onRenamed(name, back);
               void onChanged(given);
             }}
             onCancel={(back) => {
@@ -864,7 +930,7 @@ function ModelRow({
         <span className="mx-model mono" role="cell" title={model.model}>
           {model.model}
         </span>
-        <span className="mx-from" role="cell" title={address}>
+        <span className="mx-from" role="cell" title={[model.server, address].filter(Boolean).join(" · ")}>
           {model.server}
         </span>
       </span>
@@ -893,7 +959,7 @@ function Rename({
   onCancel,
 }: {
   name: string;
-  onDone: (given: Entries) => void;
+  onDone: (given: Entries, name: string, focusBack: boolean) => void;
   onCancel: (focusBack: boolean) => void;
 }) {
   const id = useId();
@@ -912,7 +978,7 @@ function Rename({
     try {
       const given = await renameModel(name, text);
       done.current = true;
-      onDone(given);
+      onDone(given, text, !leaving);
     } catch (error) {
       setRefused(refusalOf(error));
     } finally {

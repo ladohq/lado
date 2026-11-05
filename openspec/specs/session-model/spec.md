@@ -76,8 +76,8 @@ the provider changes to another CLI: it is then dropped, and the resume's change
 
 ### Requirement: Each agent of the session's CLI starts on the session's model
 
-Every agent of the CLI of the session's `normal` row SHALL start on its model through its CLI's
-own way, never through the user's global config: Claude Code by `--model`, Codex by `model` in its
+Every agent of the `normal` row's CLI, but a worker with a `model`, SHALL start on its model
+through its CLI's own way, never through the user's global config: Claude Code by `--model`, Codex by `model` in its
 own `CODEX_HOME`'s config.toml (top level and carried profile), OpenCode and Kilo by `model` in
 their config content and by `--model`. The agent's record SHALL have that model with the source
 `session` from its launch on; a CLI's default SHALL go the same way with the source `default`.
@@ -160,7 +160,7 @@ limit SHALL count as no list, with why.
 ### Requirement: An agent of another CLI runs its own default, loudly
 
 An agent whose provider is not the CLI of the session's `normal` row (a worker spawned
-with another provider) SHALL start on its CLI's default model from Settings → Models, else as
+with another provider and no `model`) SHALL start on its CLI's default model from Settings → Models, else as
 its CLI chooses; with no such default `spawn_worker` SHALL warn that the session's model is for the
 other CLI, and the agent's model SHALL have the source `cli` with the detail `the session's model
 <model> is for <CLI title>`, kept when its CLI first names a model.
@@ -306,10 +306,11 @@ was read; a list it could not read SHALL be read again at the next check.
 
 ### Requirement: An agent starts on the session's model, else its CLI's default
 
-An agent SHALL start on the session's model when the table has a row of its CLI; else on its
-CLI's default model from Settings → Models; else as before any model existed. This SHALL be read
-at each launch: a default changed later SHALL reach the next resume and the next worker, not a
-running agent. The agent's model SHALL have the source `session`, `default` or `cli`.
+A worker spawned with a `model` SHALL start on it. Any other agent SHALL start on the session's
+model when the table has a row of its CLI; else on its CLI's default model from Settings → Models;
+else as before any model existed. This SHALL be read at each launch: a default changed later SHALL
+reach the next resume and the next worker, not a running agent. The agent's model SHALL have the
+source `supervisor`, `session`, `default` or `cli`.
 
 #### Scenario: The CLI's default with no choice
 - **WHEN** OpenCode's default is `Локальная Qwen` and the human runs `lado start ~/shop --provider
@@ -331,6 +332,11 @@ running agent. The agent's model SHALL have the source `session`, `default` or `
 - **WHEN** a session's table names `opencode` and Kilo CLI's default is `Qwen в Kilo`, and the
   supervisor spawns a worker with the provider `kilo`
 - **THEN** the worker starts on `Qwen в Kilo` with the source `default`
+
+#### Scenario: A worker's model over the session's
+- **WHEN** a session's table names `opencode/big-pickle` and the supervisor spawns a worker with
+  `model="Локальная Qwen"`
+- **THEN** the worker starts on `Локальная Qwen` with the source `supervisor`
 
 ### Requirement: The session's model is where an agent starts, not a limit
 
@@ -421,11 +427,12 @@ same way.
 - **WHEN** Claude Code's default is `Шлюз Opus` on `Шлюз`, which also suits OpenCode, and the human
   starts a Claude session
 - **THEN** it refuses with `Шлюз Opus is on the model server Шлюз; Claude Code does not run on a
-  model server yet, OpenCode does`, adding the default's way out, and `Шлюз` is not asked
+  model server yet, Kilo CLI and OpenCode do`, adding the default's way out, and `Шлюз` is not asked
 
 #### Scenario: A worker of that CLI
 - **WHEN** the supervisor of an OpenCode session spawns a worker with the provider `claude`
-- **THEN** `spawn_worker` fails with the same line and no worker exists
+- **THEN** `spawn_worker` fails with the same line, adding `list_models shows the others, model=""
+  is the CLI's own settings` in place of the default's way out, and no worker exists
 
 ### Requirement: A key over plain http is warned about before the start
 

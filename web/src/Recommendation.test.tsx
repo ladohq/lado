@@ -157,3 +157,25 @@ test.each([
 ])("a text on one line keeps what is no mark: %s", (text, line) => {
   expect(oneLine(text)).toBe(line);
 });
+
+test.each([
+  ["**a** **b**", "a b"],
+  ["__a__ and __b__, ~~c~~ ~~d~~", "a and b, c d"],
+  ["***both***", "both"],
+  ["**Approve: `x.py` is green**", "Approve: x.py is green"],
+  ["_see `a_b`_ now", "see a_b now"],
+  ["[`x.py`](http://e) is it", "x.py is it"],
+])("a text on one line takes each pair of marks, around code too: %s", (text, line) => {
+  expect(oneLine(text)).toBe(line);
+});
+
+test.each([
+  ["call `arr[0](x)` first", "call arr[0](x) first"],
+  ["`**not bold**` stays", "**not bold** stays"],
+  ["``a`b`` stays", "a`b stays"],
+  ["run:\n```py\nfoo()\nbar()\n```\ndone", "run: foo() bar() done"],
+  ["~~~\n- a_b_\n~~~", "- a_b_"],
+  ["run:\n```\nfoo()", "run: foo()"],
+])("a text on one line keeps its code as it is: %s", (text, line) => {
+  expect(oneLine(text)).toBe(line);
+});

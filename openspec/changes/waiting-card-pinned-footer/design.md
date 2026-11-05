@@ -80,10 +80,13 @@ target matches `FIELD`, the next focus not in a field). `typing` puts `.typing` 
 for the expanded card, which keeps its context to be read and has hidden the rest already. `:has`
 hides the session's tabs (the human's decision of 2026-11-05, F2: under about 375 px the buttons
 were cut; frame g3-390-kbd keeps them) and the Team row, and a field in the footer hides the
-context. A field in the context of several questions keeps it, and comes back into its view
-when the card is laid out anew (the keyboard opening). The fold reports "Commenting on gate #<id>
-above" with no `write`. A button pressed keeps the focus in the field, so nothing moves under
-the finger. `fromField` and the expanding `onFocus` of LAD-126 go.
+context and the choices' area (the human's decision of 2026-11-05, F16: under a recommendation
+of two lines Send was cut under about 378 px, with the choices at their one row; this goes over
+spec §3's order, in which the choices come before the recommendation; the field losing the
+focus brings them back). A field in the context of several questions keeps it, and comes back
+into its view when the card is laid out anew (the keyboard opening). The fold reports
+"Commenting on gate #<id> above" with no `write`. A button pressed keeps the focus in the field,
+so nothing moves under the finger. `fromField` and the expanding `onFocus` of LAD-126 go.
 
 **D12. Send's reason.** A disabled button gets no pointer or focus events, so `Tooltip` wraps a
 `span` around it while it is off for want of an answer, with `tabIndex={0}`: that makes it a

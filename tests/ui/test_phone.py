@@ -9,7 +9,7 @@ from playwright.sync_api import Browser, Locator, Page, expect
 from test_gates import LONG_NOTE, MEASURE_SCROLLERS, gated_session, recommended, waiting_card
 from test_main_screen import log_in, running_session
 
-from lado import runtime
+from lado import runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -613,6 +613,48 @@ def test_six_choices_keep_the_buttons_above_the_keyboard(device, server, repo, s
     shot(page, full_page=False)
 
 
+@pytest.mark.parametrize("visible", [350, 340])
+@pytest.mark.parametrize(
+    ("button", "field"),
+    [("Other…", "Your own answer"), ("Skip question", "Why you skip it (optional)")],
+    ids=["other", "skip"],
+)
+def test_a_field_hides_the_choices_under_a_recommendation_above_the_keyboard(
+    device, server, repo, shot, visible, button, field
+):
+    """A question of six choices under a recommendation of two lines, little left: the field
+    in the footer hides the choices, so the field, Send and Skip question are whole; the
+    field losing the focus brings them back (the human's decision of 2026-11-05, F16)."""
+    session = gated_session(repo)
+    choices = [f"Choice {n}: a rather long choice that takes the most of a row" for n in range(6)]
+    runtime.ask_human(session, "supervisor", "Which one?", None, choices)
+    [asked] = [m.id for m in state.list_messages(session) if m.kind == state.QUESTION]
+    state.recommend(state.QUESTION, asked, "A reason to pick it. " * 40, choices[0], False)
+    phone = device(KEYBOARD)
+    phone.add_init_script(FAKE_VIEWPORT)
+    page = opened(phone, server, f"/sessions/{session}")
+    card, send = question_tab(page, session)
+    area = card.get_by_role("group", name="Choices")
+    expect(area).to_be_visible()
+    card.get_by_role("button", name=button).evaluate("b => b.click()")
+    own = card.get_by_role("textbox", name=field)
+    expect(own).to_be_focused()
+    page.evaluate(f"window.moveViewport({visible}, 0)")
+    expect(page.locator(".app")).to_have_css("height", f"{visible}px")
+    expect(area).to_be_hidden()
+    skip = card.get_by_role("button", name="Skip question")
+    for part in (card.get_by_role("region", name="Supervisor's recommendation"), own, send, skip):
+        within(part, 0, visible)
+        uncut(card, part)
+    shot(page, "keyboard", full_page=False)
+
+    page.evaluate(f"window.moveViewport({KEYBOARD[1]}, 0)")  # the keyboard closes
+    expect(page.locator(".app")).to_have_css("height", f"{KEYBOARD[1]}px")
+    own.blur()
+    expect(area).to_be_visible()
+    shot(page, "closed", full_page=False)
+
+
 def test_a_field_in_the_context_of_several_questions_stays_in_its_view(device, server, repo, shot):
     """A tab of several questions has its fields in the context: a field's focus hides the
     Team row, never the context it stands in, and the keyboard opening brings the field back
@@ -854,6 +896,21 @@ def test_the_cards_fields_with_files_fit_the_phone(device, server, repo, shot):
     assert own.evaluate("f => getComputedStyle(f).fontSize") == "16px"
     no_sideways_scroll(page)
     shot(page, "question", full_page=False)
+
+
+def test_only_the_cards_placeholder_keeps_14_px_on_a_phone(device, server, repo):
+    """The card's field holds the frames' 14 px placeholder; the gate on the Flows tab keeps
+    the field's own 16 px."""
+    session = gated_session(repo)
+    size = "f => getComputedStyle(f, '::placeholder').fontSize"
+    name = "Comment for the next step (optional)"
+    page = opened(device(UPRIGHT), server, f"/sessions/{session}")
+    comment = waiting_card(page, session).get_by_role("textbox", name=name)
+    expect(comment).to_be_visible()
+    assert comment.evaluate(size) == "14px"
+    page.goto(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
+    gate = page.get_by_role("region", name="Now").get_by_role("article", name="Gate #1", exact=True)
+    assert gate.get_by_role("textbox", name=name).evaluate(size) == "16px"
 
 
 # Nothing scrolls sideways

@@ -10067,11 +10067,12 @@ button.quiet.danger-text {
 }
 
 /* A field of the card with the focus: the session's tabs and the Team row go, and with a field
-   in the footer the context, so the footer fits above the keyboard (a field in the context
-   stays in it). */
+   in the footer the context and the choices, so the footer fits above the keyboard (a field in
+   the context stays in it). */
 :root[data-phone] .session:has(.waiting-card.typing) .session-tabs,
 :root[data-phone] .activity:has(> .chat > .waiting-card.typing) > .team-row,
-:root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-context-frame {
+:root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-context-frame,
+:root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-choices-frame {
   display: none;
 }
 
@@ -10082,7 +10083,7 @@ button.quiet.danger-text {
 }
 
 /* A card's placeholder keeps the frames' 14 px, so it fits a phone's field. */
-:root[data-phone] .answer-box textarea::placeholder {
+:root[data-phone] .waiting-card .answer-box textarea::placeholder {
   font-size: 14px;
 }
 

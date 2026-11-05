@@ -1063,7 +1063,8 @@ Built in the chat task (2026-10-03):
   goes first (no least height while a card shows), then the context and the title, then the
   choices' area to one row, an opened recommendation to one line, then the field stops at its
   height and scrolls inside; the buttons stay. The order is a ratio of `flex-shrink` weights
-  (styles.css), no measuring in JS. In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
+  (styles.css), no measuring in JS; on a phone a field in the footer takes the choices out at
+  once (Phone layout). In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
   2026-10-14, LAD-54, mockup `task/lad-54/mockup-gate-card.html`, screen D; before, the
   card could not be made smaller, and the human talking a gate over with the supervisor
   read the replies in the other half): dragged, or ↑ / ↓ on it by 40 px, it gives the
@@ -2267,10 +2268,13 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   and buttons are 44 px high; "↓ more" stays 24 px, as Expand does the same. A field of the card
   in focus does not expand it (LAD-194, the human's decision of 2026-11-05; since LAD-126 it
   did, as the field lay in a list with no room above the keyboard): the footer is always whole,
-  so the session's tabs, the Team row and the context step aside (`typing`) and the composer folds,
-  a gate's comment into "Commenting on gate #<id> above", until the focus leaves. The session's
-  tabs go too, unlike frame g3-390-kbd: the human's decision of 2026-11-05, as the buttons were
-  cut under about 375 px. A field in the context of several questions keeps the context it stands
+  so the session's tabs, the Team row, the context and a question's choices step aside (`typing`)
+  and the composer folds, a gate's comment into "Commenting on gate #<id> above", until the focus
+  leaves. The session's tabs go too, unlike frame g3-390-kbd: the human's decision of 2026-11-05,
+  as the buttons were cut under about 375 px. So do the choices, whole and at once, ahead of the
+  recommendation and against spec §3's order: the human's decision of 2026-11-05 (F16), as Send
+  was cut under about 378 px under a recommendation of two lines; the field closed, they are
+  back. A field in the context of several questions keeps the context it stands
   in, and comes back into its view when the keyboard opens; an expanded card keeps its context.
   A button pressed keeps the focus in the field, so nothing moves under the finger before its
   click. Below 440 px of app (imitated down to 340 px; a real keyboard is the human's to check) the

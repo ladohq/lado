@@ -15,8 +15,9 @@
 // In a session's chat (`chat`; not on Needs you) the human can minimize it to its tabs and
 // one line, until they restore it or a new tab comes, and give it a height by the edge
 // above it (prefs.ts keeps both). There, while a field of Other… or Skip question is open,
-// the composer folds into a line (`onFold`), and on a phone a field in the footer with the
-// focus hides the context and the Team row, so it fits above the keyboard (`typing`).
+// the composer folds into a line (`onFold`), and on a phone a field with the focus hides the
+// session's tabs and the Team row, and one in the footer the context and the choices too, so
+// it fits above the keyboard (`typing`).
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { useSearchParams } from "react-router";
 

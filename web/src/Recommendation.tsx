@@ -57,27 +57,34 @@ export function Recommendation({ rec }: { rec?: RecommendationInfo | null }) {
   );
 }
 
-// Markdown's paired marks out of a text with no code in it. A mark counts only at a word's
-// edge, so max_retries and 2*3 stay.
+// Markdown's paired marks out of a text whose code stands aside. A mark counts only at a
+// word's edge, so max_retries and 2*3 stay.
 const unmarked = (text: string) =>
   text
-    .replace(/(^|[^\w*])\*\*(\S(?:.*?\S)?)\*\*(?![\w*])/g, "$1$2")
-    .replace(/(^|[^\w_])__(\S(?:.*?\S)?)__(?![\w_])/g, "$1$2")
+    .replace(/(^|[^\w*])\*\*(\S(?:.*?\S)??)\*\*(?![\w*])/g, "$1$2")
+    .replace(/(^|[^\w_])__(\S(?:.*?\S)??)__(?![\w_])/g, "$1$2")
     .replace(/(^|[^\w*])\*(\S(?:[^*]*\S)?)\*(?![\w*])/g, "$1$2")
     .replace(/(^|[^\w_])_(\S(?:[^_]*\S)?)_(?![\w_])/g, "$1$2")
-    .replace(/~~(\S(?:.*?\S)?)~~/g, "$1");
+    .replace(/~~(\S(?:.*?\S)??)~~/g, "$1");
 
-// Markdown on one line: its links, line marks and paired marks out, code as it is, its white
-// space collapsed.
-export const oneLine = (text: string) =>
-  text
+const FENCE = /^ {0,3}(`{3,}|~{3,}).*\n([\s\S]*?)(?:^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm; // to its end, closed or not
+const CODE = /(`+)([\s\S]+?)\1(?!`)/g;
+
+// Markdown on one line: its links, line marks and paired marks out, its white space collapsed.
+// Code stands aside meanwhile, so it stays as it is and a mark around it still finds its pair.
+export const oneLine = (text: string) => {
+  const code: string[] = [];
+  const aside = (_: string, _mark: string, inner: string) => `${code.push(inner) - 1}`;
+  const marked = text
+    .replace(FENCE, aside)
+    .replace(CODE, aside)
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
-    .split(/`([^`]+)`/)
-    .map((part, n) => (n % 2 === 1 ? part : unmarked(part)))
-    .join("")
+    .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "");
+  return unmarked(marked)
+    .replace(/(\d+)/g, (_, n: string) => code[Number(n)])
     .replace(/\s+/g, " ")
     .trim();
+};
 
 // The waiting card's line over the answer: the supervisor's avatar, "Supervisor recommends
 // <option>:" as the card's buttons name it, the disagreement right after it so a cut never

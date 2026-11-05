@@ -2,11 +2,12 @@
 
 ### Requirement: On a phone a field in focus keeps the card and folds what is around it
 
-In the phone layout, in a session's chat, while a field of the waiting card has the focus, the
-card SHALL not expand: the session's tabs, the Team row and the card's context SHALL not be shown,
-and the composer SHALL be a line: on a gate's tab "Commenting on gate #<id> above", on a question's
-the line of capability chat-question-card. When the field loses the focus all of it SHALL show
-again. On Needs you, and outside the phone layout, a field's focus SHALL change nothing.
+In the phone layout, in a session's chat, while a field of the waiting card's footer has the
+focus, the card SHALL not expand: the session's tabs, the Team row, the card's context and the
+choices' area SHALL not be shown, and the composer SHALL be a line: on a gate's tab "Commenting
+on gate #<id> above", on a question's the line of capability chat-question-card. When the field
+loses the focus all of it SHALL show again. On Needs you, and outside the phone layout, a
+field's focus SHALL change nothing.
 
 #### Scenario: A gate's comment above the keyboard
 - **WHEN** a gate waits in the session's chat on a phone 402×874, the human taps the
@@ -18,13 +19,13 @@ again. On Needs you, and outside the phone layout, a field's focus SHALL change 
 #### Scenario: An own answer
 - **WHEN** a question with a free answer waits on the same phone and the human taps
   Other…
-- **THEN** the field has the focus, and it, "Send answer to supervisor" and "Answering
-  question #5 above" lie within the visible 440 px
+- **THEN** the field has the focus, the choices' area does not show, and the field, "Send
+  answer to supervisor" and "Answering question #5 above" lie within the visible 440 px
 
 #### Scenario: The keyboard closes
 - **WHEN** the human closes the keyboard and the field loses the focus
-- **THEN** the session's tabs, the context, the Team row and the composer show again, and the
-  comment typed stays in the field
+- **THEN** the session's tabs, the context, the choices' area, the Team row and the composer
+  show again, and the comment typed stays in the field
 
 #### Scenario: A computer
 - **WHEN** the human clicks a gate's comment field with a mouse in a window 390 px wide
@@ -33,7 +34,8 @@ again. On Needs you, and outside the phone layout, a field's focus SHALL change 
 ### Requirement: On a phone a field keeps the context it needs
 
 A field in the context of several questions SHALL keep that context, and SHALL stay in its view
-when the keyboard opens. An expanded card SHALL keep its context with a field in focus.
+when the keyboard opens; the session's tabs and the Team row SHALL not be shown while it has the
+focus. An expanded card SHALL keep its context with a field in focus.
 
 #### Scenario: Several questions
 - **WHEN** a tab of three questions waits and the human taps Other… on the last, and the keyboard
@@ -60,6 +62,12 @@ taller than its room gives way in order"; the title's meta SHALL go before the t
 - **WHEN** the keyboard leaves 350 px of the window visible and Other… of a question of six
   choices has the focus
 - **THEN** the field, Send answer and Skip question lie within the visible 350 px
+
+#### Scenario: Six choices under a recommendation
+- **WHEN** the keyboard leaves 340 px of the window visible and the field of Other… or Skip
+  question has the focus, on a question of six choices under a recommendation of two lines
+- **THEN** the choices' area does not show, and the recommendation, the field, Send answer and
+  Skip question lie whole within the visible 340 px
 
 ### Requirement: On a phone the waiting card's targets are 44 px
 

@@ -68,6 +68,9 @@ same pull request. The minor is not bumped by this change: `0.45.0 (unreleased)`
 - The session's tabs in frame g3-390-kbd: the human's decision of 2026-11-05 at the review (F2)
   hides them while a field has the focus, as the buttons were cut under about 375 px. The height
   by content wins over frame g3-1440's 292 px (F9).
+- Spec §3's order, with choices before the recommendation, while a phone's field in the footer
+  has the focus: the human's decision of 2026-11-05 at the review (F16) hides the choices' area
+  then, as Send was cut under about 378 px under a recommendation of two lines.
 - A real iOS Safari keyboard: nobody in the run has a device. Frame g3-390-kbd is an imitation;
   the human checks it before the merge, and the build report says "not verified".
 
@@ -101,8 +104,9 @@ same pull request. The minor is not bumped by this change: `0.45.0 (unreleased)`
 - AC-12: the height the edge gives is kept for all cards, the footer never gives way to it, and a
   double click gives back the content's height.
 - AC-13: on a phone with the app 440 px high a field's focus keeps the card unexpanded, hides the
-  session's tabs, the Team row and the context, folds the composer, and keeps field, buttons and
-  line in sight, at 350 px too.
+  session's tabs, the Team row, the context and a question's choices, folds the composer, and
+  keeps field, buttons and line in sight, at 350 and 340 px too, under a recommendation of two
+  lines as well.
 - AC-14: on a phone the card's tabs, Minimize, Expand, fields, chips and buttons are 44 px high.
 - AC-15: on Needs you, and on a window of 900 px or less, title and context are at most 40 % of
   the window, and the footer follows them.

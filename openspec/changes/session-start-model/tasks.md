@@ -41,7 +41,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-session-star
 - [x] 5.2 The agent's page (D13). Check: `web/src/Agents.test.tsx`.
 - [x] 5.3 Settings' words, `lado doctor` (D18). Check: `web/src/ModelSettings.test.tsx`,
   `tests/test_doctor.py`.
-- [ ] 5.4 UI e2e of the field, refusals, Resume, the page at 390 px; a screenshot of each changed
+- [x] 5.4 UI e2e of the field, refusals, Resume, the page at 390 px; a screenshot of each changed
   screen as a run artifact; the stand's script for design QA. Check: `uv run pytest -m ui
   tests/ui/test_launch_model.py`.
 

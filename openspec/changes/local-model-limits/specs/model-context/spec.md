@@ -74,13 +74,16 @@ start on, SHALL give no such warning.
 
 ### Requirement: Overflows in a row stop the turn
 
-The plugin SHALL stop a turn at the third context overflow with no successful model step between them,
-and the turn SHALL end on that error, whatever the abort itself reports. The error's text SHALL say the
-context is too small for the agent's request. A successful model step or a new prompt SHALL reset the count.
+The plugin SHALL stop a turn at the third context overflow with no successful model step of the turn
+between them, and the turn SHALL end on that error, whatever the abort itself reports. The error's text
+SHALL say the context is too small for the agent's request. A successful step of the turn or a new prompt
+SHALL reset the count; the step of a compaction SHALL not, as its own small request succeeds in the loop
+this stops.
 
 #### Scenario: A fixed request larger than the context
 
-- **WHEN** every request of a turn is refused as a context overflow and compaction does not help
+- **WHEN** every request of a turn is refused as a context overflow, and only the compaction's own
+  requests succeed
 - **THEN** the third overflow stops the turn, the agent becomes idle, and the chat shows the turn's error
 
 #### Scenario: A compaction that helps

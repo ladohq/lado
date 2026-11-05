@@ -2,7 +2,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-local-model-
 
 ## 1. First, the risk
 
-- [ ] 1.1 Prove `client.session.abort` ends OpenCode's overflow loop in the TUI, by hand, on a fake of a
+- [x] 1.1 Prove `client.session.abort` ends OpenCode's overflow loop in the TUI, by hand, on a fake of a
   small context (D6). Check: the requests stop, `session.idle` comes. Failing: report `redesign`.
 
 ## 2. Limits
@@ -16,7 +16,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-local-model-
 
 ## 3. Honest ends
 
-- [ ] 3.1 The plugin's stop (D6, D7). Check: `make test-js`.
+- [x] 3.1 The plugin's stop (D6, D7). Check: `make test-js`.
 - [ ] 3.2 No reply check on a failed turn (D8). Check: `tests/test_runtime.py`.
 
 ## 4. Start

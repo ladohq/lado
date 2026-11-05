@@ -53,10 +53,16 @@ and tools: load the model with a larger context`. It joins the warnings as the k
 
 The plugin has the events and `client`; LADO's core gets nothing until `session.idle`, which the loop
 never reaches. Per session a counter of `session.error` named `ContextOverflowError`. It resets on
-`chat.message` and on a `message.part.updated` of type `step-finish`. At 3 it records the error with
-the words of D7, marks the session stopped, so the abort's `MessageAbortedError` does not replace it,
-and calls `client.session.abort`. `session.compacted` no longer clears a stopped session's error.
-Kilo ends its own turn after three attempts; the same code does no harm there.
+`chat.message` and on a `message.part.updated` of type `step-finish`, but for the step of a compaction:
+in the loop the compaction's own small request succeeds on every round (seen on OpenCode 1.18.35), so
+that step would reset the count for ever. A compaction's message is told by `summary: true` of its
+`message.updated`. At 3 it records the error with the words of D7, marks the session stopped, so the
+abort's `MessageAbortedError` does not replace it, and calls `client.session.abort`.
+`session.compacted` no longer clears a stopped session's error.
+
+Checked in the real TUI on a fake of context 2000: OpenCode 1.18.35 sent 6 requests and came to
+`session.idle` with the error, where it sent 1001 in 30 s without the stop; Kilo 7.8.8 sent 7 and did
+the same.
 
 ### D7. The stop's words
 
@@ -93,8 +99,6 @@ in reasonable time goes to the human, as the brief says, and LAD-210 stays open.
 
 ## Risks
 
-- `client.session.abort` may not end OpenCode's loop in the TUI: untested. The developer checks it
-  first, with the fake of a small context; failing that, `redesign`.
 - Ollama's `/api/ps` is from memory: the server was out of reach. A wrong shape only means no limit.
   It is in the human's check.
 - A model reloaded with another context mid-session keeps the old limit until a resume.

@@ -43,6 +43,20 @@ function errorOf(error) {
   return { name: String(error?.name ?? "UnknownError"), ...(message ? { message: String(message) } : {}) }
 }
 
+// A request larger than the model's context: OpenCode 1.18.35 compacts and resends it without
+// end, and no "session.idle" comes (1107 requests in 45 s on a fake server). The compaction's
+// own request is small, so it succeeds: its step says nothing of the turn.
+const OVERFLOW = "ContextOverflowError"
+const MAX_OVERFLOWS = 3
+
+function stoppedBy(error) {
+  const words =
+    `LADO stopped the turn after ${MAX_OVERFLOWS} attempts: the model's context is too small ` +
+    "for the agent's request"
+  const said = error.message?.replace(/\.\s*$/, "")
+  return { name: error.name, message: said ? `${said}; ${words}` : words }
+}
+
 export const LadoPlugin = async ({ client, directory }, options = {}) => {
   const hooks = options?.hooks ?? {}
   // Sessions of subagents (task tool): their turns are not the agent's turns.
@@ -51,11 +65,17 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
   // "session.idle" of the same session. The error goes with that idle. A context overflow
   // the CLI compacts its way out of ("session.compacted") ends no turn.
   const errors = new Map()
+  // Overflows in a row by session, the sessions stopped for them, and the compactions'
+  // messages, whose steps do not count as the turn's.
+  const overflows = new Map()
+  const stopped = new Set()
+  const summaries = new Set()
   await run(hooks["plugin.init"], { directory })
   return {
     "chat.message": async (input, output) => {
       try {
         if (subagents.has(input.sessionID)) return
+        overflows.delete(input.sessionID)
         const prompt = (output.parts ?? [])
           .filter((part) => part.type === "text" && !part.synthetic)
           .map((part) => part.text)
@@ -86,12 +106,30 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
           return
         }
         if (subagents.has(props.sessionID)) return
-        if (event.type === "session.error" && props.sessionID) {
-          errors.set(props.sessionID, errorOf(props.error))
+        if (event.type === "message.updated" && props.info?.summary) summaries.add(props.info.id)
+        if (event.type === "message.part.updated" && props.part?.type === "step-finish") {
+          if (!summaries.has(props.part.messageID)) overflows.delete(props.sessionID)
         }
-        if (event.type === "session.compacted") errors.delete(props.sessionID)
+        if (event.type === "session.error" && props.sessionID && !stopped.has(props.sessionID)) {
+          const error = errorOf(props.error)
+          errors.set(props.sessionID, error)
+          if (error.name === OVERFLOW) {
+            const count = (overflows.get(props.sessionID) ?? 0) + 1
+            overflows.set(props.sessionID, count)
+            if (count >= MAX_OVERFLOWS) {
+              errors.set(props.sessionID, stoppedBy(error))
+              stopped.add(props.sessionID)
+              await client.session.abort({ path: { id: props.sessionID } })
+            }
+          }
+        }
+        if (event.type === "session.compacted" && !stopped.has(props.sessionID)) {
+          errors.delete(props.sessionID)
+        }
         if (event.type === "session.idle") {
           const payload = { sessionID: props.sessionID }
+          overflows.delete(props.sessionID)
+          stopped.delete(props.sessionID)
           if (errors.has(props.sessionID)) {
             payload.error = errors.get(props.sessionID)
             errors.delete(props.sessionID)

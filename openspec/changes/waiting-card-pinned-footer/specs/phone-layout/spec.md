@@ -2,12 +2,11 @@
 
 ### Requirement: On a phone a field in focus keeps the card and folds what is around it
 
-In the phone layout, in a session's chat, while a field of the waiting card (a gate's comment,
-a question's own answer, a skip's comment) has the focus, the card SHALL not expand: the Team
-row and the card's context SHALL not be shown, and the composer SHALL be a line: on a gate's tab
-"Commenting on gate #<id> above", on a question's the line of capability chat-question-card.
-When the field loses the focus all of it SHALL show again. On Needs you, and outside the phone
-layout, a field's focus SHALL change nothing.
+In the phone layout, in a session's chat, while a field of the waiting card has the focus, the
+card SHALL not expand: the Team row and the card's context SHALL not be shown, and the composer
+SHALL be a line: on a gate's tab "Commenting on gate #<id> above", on a question's the line of
+capability chat-question-card. When the field loses the focus all of it SHALL show again. On
+Needs you, and outside the phone layout, a field's focus SHALL change nothing.
 
 #### Scenario: A gate's comment above the keyboard
 - **WHEN** a gate waits in the session's chat on a phone 402×874, the human taps the

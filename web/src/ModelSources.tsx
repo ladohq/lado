@@ -9,7 +9,16 @@
 // again brings it back under its name while the page stays open), after a question when it is
 // its CLI's default. A server shows its list, its Change form or its Remove question, one at a
 // time. A server added takes the form's place, one removed leaves a line in its own.
-import { type MutableRefObject, type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
+import {
+  type MutableRefObject,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import {
   addModel,
@@ -541,10 +550,11 @@ function SourceBody({
     };
   }, [pop, server, columnNames, models.length]);
   const reading = !read || "reading" in read;
-  // ↻ goes while the list reads: pressed, the focus comes back to it after.
+  // ↻ goes while the list reads: pressed, the focus comes back to it after. A layout effect: a
+  // passive one of the read before could still be owed when ↻ is pressed, and take the press.
   const refreshed = useRef(false);
   const refreshButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (reading || !refreshed.current) return;
     refreshed.current = false;
     refreshButton.current?.focus();

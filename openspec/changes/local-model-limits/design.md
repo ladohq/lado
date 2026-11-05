@@ -95,10 +95,13 @@ Each file by its own `exists` check, so a folder from before this change takes i
 
 ### D11. LAD-210
 
-Cause not found yet. Known: the test took 1044 ms, past `waitFor`'s 1000, and the focus ended on
-`body`, so ↻ was unmounted and either the effect came late or `refreshed` was lost. The developer
-reproduces it under load and fixes the cause; no retry and no longer timeout alone. A cause not found
-in reasonable time goes to the human, as the brief says, and LAD-210 stays open.
+Cause found. `SourceBody` handed the focus back from a passive effect on `reading`, and a press of ↻
+sets `refreshed` for it. The scheduler yields after 5 ms, so on a loaded runner the commit of the first
+read can come before its passive effect, and the press in between. That owed effect then ran with
+`reading` false, took the press and cleared `refreshed`, so the read the press started gave the focus to
+nobody: the button had gone while it read, and the focus stayed on `body`. A layout effect runs in the
+commit, so none is owed when a press comes. `ModelCards.test.tsx` reproduces it every time by making
+the scheduler yield always: red 5 of 5 before the fix, with LAD-210's error, green 5 of 5 after.
 
 ## Risks
 

@@ -116,6 +116,14 @@ export const stopFiles = (event: DragEvent) => {
   if (Array.from(event.dataTransfer?.types ?? []).includes("Files")) event.preventDefault();
 };
 
+// What the card keeps by item, for the items in `ids`; the same object when nothing goes.
+const keptOf =
+  (ids: Set<number>) =>
+  <T,>(now: Record<number, T>): Record<number, T> => {
+    const kept = Object.entries(now).filter(([id]) => ids.has(Number(id)));
+    return kept.length === Object.keys(now).length ? now : Object.fromEntries(kept);
+  };
+
 const pickText = (pick: Pick | undefined) => (pick === undefined || "choice" in pick ? "" : "own" in pick ? pick.own : pick.skip);
 
 export function WaitingCard({
@@ -147,7 +155,7 @@ export function WaitingCard({
   if (minimizedOf.session !== session) setMinimizedOf({ session, keys: chat ? storedMinimized(session) : null });
   const keys = minimizedOf.session === session ? minimizedOf.keys : null;
   const minimized = keys !== null && tabs.length > 0 && tabs.every((tab) => keys.includes(tab.key));
-  const [height, setHeight] = useState(() => (chat ? storedWaitingHeight() : null)); // null: the stylesheet's
+  const [height, setHeight] = useState(() => (chat ? storedWaitingHeight() : null)); // null: the content's
   const [measured, cardHeight] = useHeight<HTMLElement>();
   const [headMeasured, headHeight] = useHeight<HTMLDivElement>();
   const [footMeasured, footHeight] = useHeight<HTMLElement>();
@@ -202,23 +210,13 @@ export function WaitingCard({
   // Picks of questions no longer open go.
   const openKey = [...open].sort((a, b) => a - b).join(",");
   useEffect(() => {
-    setPicks((now) => {
-      const kept = Object.entries(now).filter(([id]) => open.has(Number(id)));
-      return kept.length === Object.keys(now).length ? now : Object.fromEntries(kept);
-    });
-    setDrafts((now) => {
-      const kept = Object.entries(now).filter(([id]) => open.has(Number(id)));
-      return kept.length === Object.keys(now).length ? now : Object.fromEntries(kept);
-    });
+    setPicks(keptOf(open));
+    setDrafts(keptOf(open));
   }, [openKey]);
   // Comments of gates no longer open go.
   const gatesKey = gates.map((one) => one.id).sort((a, b) => a - b).join(",");
   useEffect(() => {
-    const ids = new Set(gates.map((one) => one.id));
-    setComments((now) => {
-      const kept = Object.entries(now).filter(([id]) => ids.has(Number(id)));
-      return kept.length === Object.keys(now).length ? now : Object.fromEntries(kept);
-    });
+    setComments(keptOf(new Set(gates.map((one) => one.id))));
   }, [gatesKey]);
   // Files of questions and gates no longer open go, and so do all of them with the card.
   useEffect(() => {
@@ -619,7 +617,6 @@ export function WaitingCard({
 }
 
 type QuestionProps = {
-  session: string;
   card: CardShape;
   question: MessageInfo;
   now: Pick | undefined;
@@ -764,7 +761,6 @@ function AgentPanel({
   const done = tab.questions.filter((one) => answered(pickOf(picks, one), filesOf(one.id))).length;
   const all = done === tab.questions.length;
   const propsOf = (question: MessageInfo): QuestionProps => ({
-    session,
     card,
     question,
     now: pickOf(picks, question),

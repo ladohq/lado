@@ -51,11 +51,9 @@ the expanded card.
 The card's parts SHALL give up height in this order: the feed and the context down to 0, the
 title down to 0, then the choices' area down to one row, the opened recommendation down to
 one line, then the field stops at its height and scrolls inside. The buttons SHALL always be
-in sight. On a phone, while a field of the footer has the focus, the choices' area SHALL not
-wait its turn: it goes at once, whole, and the recommendation stays (capability phone-layout;
-the human's decision of 2026-11-05, F16, over spec §3's order, in which the choices come before
-it). The chat's feed SHALL have no least height while a card shows, but the edge's bounds SHALL
-still keep its 160 px.
+in sight. A phone's field in focus SHALL take the choices' area out at once (capability
+phone-layout). The chat's feed SHALL have no least height while a card shows, but the edge's
+bounds SHALL still keep its 160 px.
 
 #### Scenario: Six long choices in a low window
 - **WHEN** a question with six long choices waits in a chat 420 px high

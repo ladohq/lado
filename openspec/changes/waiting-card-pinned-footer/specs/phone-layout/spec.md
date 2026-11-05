@@ -6,8 +6,7 @@ In the phone layout, in a session's chat, while a field of the waiting card's fo
 focus, the card SHALL not expand: the session's tabs, the Team row, the card's context and the
 choices' area SHALL not be shown, and the composer SHALL be a line: on a gate's tab "Commenting
 on gate #<id> above", on a question's the line of capability chat-question-card. When the field
-loses the focus all of it SHALL show again. On Needs you, and outside the phone layout, a
-field's focus SHALL change nothing.
+loses the focus all of it SHALL show again.
 
 #### Scenario: A gate's comment above the keyboard
 - **WHEN** a gate waits in the session's chat on a phone 402×874, the human taps the
@@ -26,6 +25,10 @@ field's focus SHALL change nothing.
 - **WHEN** the human closes the keyboard and the field loses the focus
 - **THEN** the session's tabs, the context, the choices' area, the Team row and the composer
   show again, and the comment typed stays in the field
+
+### Requirement: Only a phone's chat folds around a field
+
+On Needs you, and outside the phone layout, a field's focus SHALL change nothing.
 
 #### Scenario: A computer
 - **WHEN** the human clicks a gate's comment field with a mouse in a window 390 px wide

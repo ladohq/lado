@@ -58,7 +58,9 @@ in the loop the compaction's own small request succeeds on every round (seen on 
 that step would reset the count for ever. A compaction's message is told by `summary: true` of its
 `message.updated`. At 3 it records the error with the words of D7, marks the session stopped, so the
 abort's `MessageAbortedError` does not replace it, and calls `client.session.abort`.
-`session.compacted` no longer clears a stopped session's error.
+`session.compacted` no longer clears a stopped session's error. The abort gives two `session.idle` on
+OpenCode 1.18.35: the first ends the turn on the error, and the plugin drops any more until the next
+`chat.message`, or the second would pass as a clean end and mark the message.
 
 Checked in the real TUI on a fake of context 2000: OpenCode 1.18.35 sent 6 requests and came to
 `session.idle` with the error, where it sent 1001 in 30 s without the stop; Kilo 7.8.8 sent 7 and did

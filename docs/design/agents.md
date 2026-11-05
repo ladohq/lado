@@ -152,7 +152,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `ContextOverflowError`s in a row per session, a new prompt or a step of the turn (not of a
   compaction, whose message has `summary: true`) starting the count again, and at the third
   keeps that error with LADO's words and calls `client.session.abort`, whose
-  `MessageAbortedError` does not replace it; checked in the TUI of OpenCode 1.18.35 and Kilo
+  `MessageAbortedError` does not replace it. The abort gives two `session.idle`: the first ends
+  the turn on that error, and any more before the next prompt end no turn, or the second would
+  pass as a clean end and decide the reply check; checked in the TUI of OpenCode 1.18.35 and Kilo
   7.8.8 on a server of a small context, 6 and 7 requests to the idle. Claude Code runs no hook when
   the human interrupts a turn with Esc, while text streams, while a tool runs or on a
   permission dialog (checked by hand with 2.1.292): the agent stays `busy`, or `waiting`

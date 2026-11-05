@@ -244,10 +244,19 @@ test("a new prompt starts the count again", async () => {
   assert.deepEqual(client.aborts, [])
 })
 
+test("the second idle an abort gives is no turn's end", async () => {
+  const { plugin } = await load({ "session.idle": hook("session.idle") })
+  for (const n of [1, 2, 3]) await compactionRound(plugin, "s1", n)
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.deepEqual(calls(), [{ event: "session.idle", payload: { sessionID: "s1", error: STOPPED } }])
+})
+
 test("the turn after a stop counts from nothing and ends clean", async () => {
   const { plugin, client } = await load({ "session.idle": hook("session.idle") })
   for (const n of [1, 2, 3]) await compactionRound(plugin, "s1", n)
   await plugin.event(sessionEvent("session.idle", "s1"))
+  await plugin["chat.message"]({ sessionID: "s1" }, { parts: [] })
   await compactionRound(plugin, "s1", 4)
   await plugin.event(sessionEvent("session.idle", "s1"))
   assert.equal(client.aborts.length, 1)

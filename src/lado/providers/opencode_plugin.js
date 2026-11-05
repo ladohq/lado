@@ -65,10 +65,12 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
   // "session.idle" of the same session. The error goes with that idle. A context overflow
   // the CLI compacts its way out of ("session.compacted") ends no turn.
   const errors = new Map()
-  // Overflows in a row by session, the sessions stopped for them, and the compactions'
-  // messages, whose steps do not count as the turn's.
+  // Overflows in a row by session, the sessions stopped for them, those whose stop has ended
+  // the turn, and the compactions' messages, whose steps do not count as the turn's. An abort
+  // gives two "session.idle" (OpenCode 1.18.35): the second, with no error, ends no turn.
   const overflows = new Map()
   const stopped = new Set()
+  const ended = new Set()
   const summaries = new Set()
   await run(hooks["plugin.init"], { directory })
   return {
@@ -76,6 +78,7 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
       try {
         if (subagents.has(input.sessionID)) return
         overflows.delete(input.sessionID)
+        ended.delete(input.sessionID)
         const prompt = (output.parts ?? [])
           .filter((part) => part.type === "text" && !part.synthetic)
           .map((part) => part.text)
@@ -127,9 +130,10 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
           errors.delete(props.sessionID)
         }
         if (event.type === "session.idle") {
+          if (ended.has(props.sessionID)) return
           const payload = { sessionID: props.sessionID }
           overflows.delete(props.sessionID)
-          stopped.delete(props.sessionID)
+          if (stopped.delete(props.sessionID)) ended.add(props.sessionID)
           if (errors.has(props.sessionID)) {
             payload.error = errors.get(props.sessionID)
             errors.delete(props.sessionID)

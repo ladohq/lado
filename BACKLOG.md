@@ -948,18 +948,6 @@ Wanted: the test checks that the supervisor took the message by its delivery (st
 by the screen.
 Found: 2026-10-06, `make test-live` on main before the 0.22.0 release.
 
-## UI unit tests depend on the process's locale and nothing guards it
-
-Size: S. Why here: it has already turned CI red.
-
-`day()` and the clock in `web/src/ChatText.tsx` format with `toLocale*([], …)`; CI runs in
-en-US, local machines in other locales (en_NZ, ru). A test with a date written in one format
-passes locally and fails in CI, as the chat's "Start of session" tests did on 6a5c694 ("2 Oct"
-here, "Oct 2" in CI).
-Wanted: vitest run in `make web` (or CI) also under a second locale, e.g.
-`LC_ALL=ru_RU.UTF-8`, so such a test fails locally.
-Found: 2026-10-05, review of fix/chat-start-day-tz.
-
 ## A running session loop keeps the old code after an upgrade
 
 Size: S. Why here: the cheap part is that `lado stop` waits for `loop.wait_stopped` (only update does now, cli.py:518).

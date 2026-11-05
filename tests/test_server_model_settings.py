@@ -894,7 +894,7 @@ def test_clear_a_default(client):
 # The launch window's list, read now.
 
 
-def test_provider_models_fresh_skips_the_kept_list(client, monkeypatch):
+def test_model_choices_fresh_skips_the_kept_list(client, monkeypatch):
     asked = listing(monkeypatch, "kilo", base.ModelList((), ("kilo/a",), "kilo models"))
     server_launch.forget_model_lists()
     choices = "/api/providers/kilo/model-choices"

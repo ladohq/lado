@@ -353,6 +353,14 @@ export function ModelPicker({
     if (open) document.getElementById(`${id}-${active}`)?.scrollIntoView?.({ block: "nearest" });
   }, [open, active, id]);
 
+  // A read may take away what had the focus (↻, when reading again cannot help): with the focus
+  // on nothing the keys would miss the list, and Esc close the window around it.
+  useEffect(() => {
+    if (open && document.activeElement === document.body) {
+      (searchBox.current ?? field.current)?.focus({ preventScroll: true });
+    }
+  }, [open, choices, field]);
+
   const choose = (row: Row | undefined) => {
     if (!row) return;
     if (row.pick === "read") return list.read(true, value?.builtin ?? "");
@@ -606,7 +614,7 @@ export function ModelPicker({
               <span className="mx-spin" aria-hidden="true" /> reading the models…
             </p>
           )}
-          {!list.reading && (
+          {(!list.reading || choices !== null) && (
             <div className="mp-foot" ref={foot} onKeyDown={onFootKey}>
               {launching && !typed ? (
                 <span>

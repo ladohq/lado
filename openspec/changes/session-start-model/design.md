@@ -75,7 +75,7 @@ changes the session's CLI (variant B of the window).
 
 - no model: DEFAULT, no request;
 - `gone`: refused;
-- no server: `model_check.check` (the list, as for a kept model today);
+- no server: `model_check.verdict` on the CLI's list (as for a kept model today);
 - a server and `not provider.runs_on_server`: refused with no request (D6);
 - a server: `_on_server`, the same full probe as saving a model, each request within
   `model_servers.TIMEOUT`, no new wait. Why not one `GET /v1/models`: one rule with Settings and
@@ -236,6 +236,8 @@ start's warnings and loop.log hold it too.
 - During Check again the refusal and its buttons stay, the button off as `Checking…` with
   `aria-disabled`, so the focus stays on it, and Start stays off for a refusal already known. A first
   check still leaves Start on (D15).
+- The foot stays while a list already read is read again, at the window's focus or by ↻: taking it
+  away took the focus to nothing, where Esc reached the dialog and closed the window.
 - A kept model no longer saved has a row of its own above the groups: it is no built-in model.
 - An agent keeps the name it started on (`model_settings.agent_shown`, by the session's or the
   default's entry), so a twin saved later does not take it; two entries of one CLI, model and server

@@ -446,6 +446,25 @@ test("in the launch window Tab reaches the link, then the button of the foot", (
   expect(screen.getByRole("listbox")).toBeTruthy();
 });
 
+test("the foot stays while a list already read is read again, with the focus in it", () => {
+  const { field, rerender } = mount();
+  fireEvent.keyDown(field, { key: "Enter" });
+  fireEvent.keyDown(field, { key: "Tab" });
+  const refresh = screen.getByRole("button", { name: "Read the models again" });
+  rerender({ read: list({ reading: true }) });
+  expect(document.activeElement).toBe(refresh);
+});
+
+test("a read that takes ↻ away hands the focus back to the list", () => {
+  const { field, rerender } = mount();
+  fireEvent.keyDown(field, { key: "Enter" });
+  fireEvent.keyDown(field, { key: "Tab" });
+  rerender({ read: list({ choices: choices({ read_again: false }) }) });
+  expect(document.activeElement).toBe(field);
+  fireEvent.keyDown(field, { key: "Escape" });
+  expect(screen.queryByRole("listbox")).toBeNull();
+});
+
 test("the search stands while the list is first read, and keeps what was typed", () => {
   const { field, rerender } = mount({ read: list({ choices: null, reading: true }) });
   fireEvent.click(field);

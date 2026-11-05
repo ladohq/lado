@@ -218,6 +218,42 @@ def test_tab_walks_the_list_s_foot_with_the_keyboard(
     shot(page, "past-the-foot")
 
 
+def test_the_focus_in_the_foot_outlives_a_new_read_of_the_list(
+    page: Page, fake_models, home_server, server, repo, shot
+):
+    """The window reads an open list again at its focus, and ↻ reads it too: what has the focus
+    in the foot stays, or Esc would reach the dialog and close the window."""
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    dialog = new_window(page, server, repo)
+    model = open_advanced(dialog)
+    model.focus()
+    page.keyboard.press("Enter")
+    link = dialog.get_by_role("link", name="Settings → Models")
+    expect(link).to_be_visible()
+    page.keyboard.press("Tab")
+    expect(link).to_be_focused()
+    with page.context.expect_page() as settings:
+        page.keyboard.press("Enter")
+    settings.value.close()
+    page.bring_to_front()
+    page.evaluate("window.dispatchEvent(new Event('focus'))")
+    expect(dialog.get_by_role("option", name=re.compile(f"^{QWEN}"))).to_be_visible()
+    expect(link).to_be_focused()
+
+    page.keyboard.press("Tab")
+    refresh = dialog.get_by_role("button", name="Read the models again")
+    expect(refresh).to_be_focused()
+    page.keyboard.press("Enter")
+    expect(dialog.get_by_role("option", name=re.compile(f"^{QWEN}"))).to_be_visible()
+    expect(refresh).to_be_focused()
+
+    page.keyboard.press("Escape")
+    expect(dialog.locator(".mp-pop")).to_have_count(0)
+    expect(dialog).to_be_visible()  # the list closed, not the window
+    expect(model).to_be_focused()
+    shot(page, "closed")
+
+
 def test_a_model_the_list_lacks_is_refused_in_the_window(
     page: Page, fake_models, server, repo, shot
 ):

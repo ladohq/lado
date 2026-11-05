@@ -93,7 +93,8 @@ export function serverWords(health: Health | undefined, model: string): string |
 
 type Row = {
   key: string;
-  pick: Pick | "other" | "read"; // "read": a row that reads the list again and picks nothing
+  // "read": a row that reads the list again and picks nothing; "stay": one that keeps the value
+  pick: Pick | "other" | "read" | "stay";
   label: string; // what a screen reader says
   selected: boolean;
   title: string;
@@ -168,6 +169,7 @@ export function ModelPicker({
   const ownField = useRef<HTMLButtonElement>(null);
   const field = fieldRef ?? ownField;
   const pop = useRef<HTMLDivElement>(null);
+  const foot = useRef<HTMLDivElement>(null);
   const searchBox = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<Place | null>(null);
@@ -180,13 +182,15 @@ export function ModelPicker({
   const mine = choices && !list.reading ? choices.external : own;
   const built = [...new Set([...(choices?.aliases ?? []), ...(choices?.models ?? [])])];
   const total = mine.length + built.length;
-  const searching = total > SEARCH_ABOVE;
+  // Until the first read says how long the list is, and while it holds what was typed then.
+  const searching = total > SEARCH_ABOVE || (choices === null && list.reading) || search !== "";
   const typed = fold(search.trim());
   const holds = (...texts: (string | null | undefined)[]) =>
     !typed || texts.some((text) => text != null && fold(text).includes(typed));
 
   // The built-in value the list lacks heads its group, saying why it is there.
-  const extra = value?.builtin != null && !built.includes(value.builtin) ? value.builtin : null;
+  const extra =
+    value?.builtin != null && !built.includes(value.builtin) && !fieldMark ? value.builtin : null;
   const extraMark = lost
     ? "no longer listed"
     : choices?.models === null && !choices.read_again
@@ -201,6 +205,18 @@ export function ModelPicker({
     title: `${cli.title}'s settings`,
     id: "no model set: the agent CLI chooses",
   };
+  // A value that stands out (a model no longer saved) is of no group: above them, kept by a pick.
+  const standing: Row | null =
+    fieldMark && value !== null && holds(value.name)
+      ? {
+          key: "standing",
+          pick: "stay",
+          label: value.name,
+          selected: true,
+          title: value.name,
+          mark: fieldMark,
+        }
+      : null;
   const yours: Row[] = mine
     .filter((m) => holds(m.name, m.model, m.server))
     .map((m) => {
@@ -251,6 +267,7 @@ export function ModelPicker({
   const rows = [
     ...(typed ? [] : [settingsRow]),
     ...(typed || !readRow ? [] : [readRow]),
+    ...(standing ? [standing] : []),
     ...yours,
     ...builtins,
     ...(otherRow ? [otherRow] : []),
@@ -324,9 +341,13 @@ export function ModelPicker({
     };
   }, [open, close, field]);
 
+  // A list read short takes the search away: the focus goes back to the field.
+  const hadSearch = useRef(false);
   useEffect(() => {
     if (open && searching) searchBox.current?.focus();
-  }, [open, searching]);
+    else if (open && hadSearch.current) field.current?.focus({ preventScroll: true });
+    hadSearch.current = open && searching;
+  }, [open, searching, field]);
 
   useEffect(() => {
     if (open) document.getElementById(`${id}-${active}`)?.scrollIntoView?.({ block: "nearest" });
@@ -338,7 +359,35 @@ export function ModelPicker({
     const text = search.trim();
     close(row.pick !== "other");
     if (row.pick === "other") onOther(text);
-    else onPick(row.pick);
+    else if (row.pick !== "stay") onPick(row.pick);
+  };
+
+  const footControls = () => [...(foot.current?.querySelectorAll<HTMLElement>("a, button") ?? [])];
+
+  // Tab from the rows goes on into the foot; true when it did.
+  const intoFoot = (event: KeyboardEvent): boolean => {
+    const [first] = footControls();
+    if (event.shiftKey || !first) return false;
+    event.preventDefault();
+    first.focus();
+    return true;
+  };
+
+  const onFootKey = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
+    } else if (event.key === "Tab") {
+      const controls = footControls();
+      const at = controls.indexOf(event.target as HTMLElement);
+      if (event.shiftKey && at === 0) {
+        event.preventDefault();
+        (searchBox.current ?? field.current)?.focus();
+      } else if (!event.shiftKey && at === controls.length - 1) {
+        close(true); // the list goes: Tab goes on from the field
+      }
+    }
   };
 
   const moved = (event: KeyboardEvent): boolean => {
@@ -372,7 +421,7 @@ export function ModelPicker({
       event.stopPropagation();
       close(true);
     } else if (event.key === "Tab") {
-      close(false);
+      if (!intoFoot(event)) close(false);
     } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
       const now = Date.now();
       const text = (now - typedAhead.current.at < 700 ? typedAhead.current.text : "") + fold(event.key);
@@ -395,7 +444,7 @@ export function ModelPicker({
         setActive(0);
       } else close(true);
     } else if (event.key === "Tab") {
-      close(true); // the search goes with the list: Tab goes on from the field
+      if (!intoFoot(event)) close(true); // the search goes with the list: Tab goes on from the field
     }
   };
 
@@ -482,7 +531,9 @@ export function ModelPicker({
       >
         <span className="mp-value">
           {value === null && <span className="muted">{`${cli.title}'s settings`}</span>}
-          {value?.builtin != null && <span className="mp-title mono">{value.builtin}</span>}
+          {value?.builtin != null && (
+            <span className={fieldMark ? "mp-title" : "mp-title mono"}>{value.builtin}</span>
+          )}
           {value?.external != null && (
             <>
               <span className="mp-title">{value.name}</span>
@@ -544,6 +595,7 @@ export function ModelPicker({
           <div className="mp-list" id={listId} role="listbox" aria-label={`Models of ${cli.title}`}>
             {!typed && option(settingsRow)}
             {!typed && readRow && option(readRow)}
+            {standing && option(standing)}
             {yoursGroup}
             {builtGroup}
             {typed && shownModels === 0 && <p className="mp-none">{`No model matches “${search}”.`}</p>}
@@ -555,7 +607,7 @@ export function ModelPicker({
             </p>
           )}
           {!list.reading && (
-            <div className="mp-foot">
+            <div className="mp-foot" ref={foot} onKeyDown={onFootKey}>
               {launching && !typed ? (
                 <span>
                   The default comes from{" "}

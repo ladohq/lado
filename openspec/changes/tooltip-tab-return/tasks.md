@@ -19,7 +19,7 @@
 - [x] 2.1 `web/src/Tooltip.tsx`: the ref `left`, set in `onBlur`, read in `onFocus`
   (design D1); the header comment says a focus that comes back with the window shows nothing.
   1.1 to 1.3 pass.
-- [ ] 2.2 `make lint`, `make test`, `make web` and `uv run pytest -m ui
+- [x] 2.2 `make lint`, `make test`, `make web` and `uv run pytest -m ui
   tests/ui/test_session_list.py tests/ui/test_sessions_strip.py` green.
 
 ## 3. Docs
@@ -28,4 +28,4 @@
   no tooltip; Tab or the pointer does (LAD-207).
 - [x] 3.2 `CHANGELOG.md`, `## 0.45.0 (unreleased)`, Fixed: a bold title and at most three lines
   in the user's words (a tooltip no longer pops up when you come back to LADO's tab).
-- [ ] 3.3 `openspec validate tooltip-tab-return --strict` passes.
+- [x] 3.3 `openspec validate tooltip-tab-return --strict` passes.

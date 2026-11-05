@@ -1675,6 +1675,46 @@ def test_a_key_over_plain_http_to_a_public_address_is_warned_about():
 # LADO's models by the name the CLI gives them.
 
 
+def _agent_on(saved, source, session_power=None):
+    state.add_session(state.Session("s", "/r", None, provider=saved.cli, power=session_power))
+    agent = state.Agent("s", "w1", "worker", "/r", None, None, "starting", saved.cli)
+    state.add_agent(agent)
+    named = f"lado-{saved.server}/{saved.model}"
+    state.set_model("s", "w1", state.Choice(named, source), None)
+    return state.get_agent("s", "w1")
+
+
+def test_an_agent_keeps_the_name_it_started_on_beside_a_twin():
+    """Two entries of one CLI, model and server are allowed: a twin saved first by name must not
+    take the agent's name."""
+    chosen = entry("Абрикос")
+    entry("Яблоко")  # the same model and server, read after it
+    agent = _agent_on(chosen, state.SESSION, external_table(chosen))
+    assert model_settings.model_name(agent) == "Абрикос"
+    assert model_settings.agent_shown(agent).name == "Абрикос"
+
+
+def test_an_agent_on_a_default_keeps_its_name_beside_a_twin():
+    chosen = entry("Абрикос")
+    entry("Яблоко")
+    default_on(chosen)
+    agent = _agent_on(chosen, state.DEFAULT_MODEL)
+    assert model_settings.model_name(agent) == "Абрикос"
+
+
+def test_a_model_changed_in_the_cli_is_found_by_its_id():
+    chosen = entry("Яблоко")
+    other = entry("Абрикос", model="m2")
+    agent = _agent_on(other, state.CLI_CHANGED, external_table(chosen))
+    assert model_settings.model_name(agent) == "Абрикос"
+
+
+def test_a_table_that_cannot_be_read_leaves_the_lookup_by_id():
+    saved = entry("Яблоко")
+    agent = _agent_on(saved, state.SESSION, state.PowerTable.unreadable())
+    assert model_settings.model_name(agent) == "Яблоко"
+
+
 def test_a_model_of_a_server_is_shown_by_its_entry():
     saved = entry("Рабочая Qwen", model="qwen/qwen3-coder")
     found = model_settings.shown(OPENCODE, f"lado-{saved.server}/qwen/qwen3-coder")

@@ -1833,9 +1833,7 @@ def agent_info(agent: state.Agent) -> AgentInfo:
 
 def _agent_model(agent: state.Agent) -> ModelInfo:
     info = _model_info(agent, agent.model, agent.model_source, agent.model_detail)
-    if not agent.model or agent.provider not in providers.names():
-        return info
-    found = model_settings.shown(providers.get(agent.provider), agent.model)
+    found = model_settings.agent_shown(agent)
     if found is None:
         return info
     return info.model_copy(

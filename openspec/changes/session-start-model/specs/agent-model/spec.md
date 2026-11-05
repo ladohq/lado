@@ -5,13 +5,19 @@
 A model an OpenCode or Kilo agent reports as `lado-<server id>/<model>`, from the launch or from a
 switch through `/model`, SHALL count as that server's model: `list_agents`, `lado ls`, the API and
 the agent's page SHALL name its saved name, or its id when no entry of that CLI has it. A server
-removed since SHALL leave the name as the CLI gives it.
+removed since SHALL leave the name as the CLI gives it. Two entries may hold one model of a server:
+an agent SHALL keep the name it started on until its CLI changes the model.
 
 #### Scenario: A switch through /model
 - **WHEN** an OpenCode agent on `Локальная Qwen` reports `lado-<id>/qwen3-coder-30b`, saved as
   `Рабочая Qwen` on `LM Studio дома`
 - **THEN** its page reads Model `Рабочая Qwen · qwen3-coder-30b · server LM Studio дома,
   http://localhost:1234 · changed in the agent CLI`
+
+#### Scenario: Two entries of one model
+- **WHEN** an agent runs on `Локальная Qwen` and the human saves `Новая Qwen`, the same model on the
+  same server
+- **THEN** its page still names `Локальная Qwen`
 
 #### Scenario: A renamed model
 - **WHEN** the human renames that model while the agent runs

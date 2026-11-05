@@ -958,9 +958,14 @@ class Shown:
     address: str
 
 
-def shown(provider: providers.Provider, reported: str) -> Shown | None:
+def shown(
+    provider: providers.Provider,
+    reported: str,
+    chosen: state.ConfiguredModel | None = None,
+) -> Shown | None:
     """`reported`, a model as `provider`'s CLI names it, when it is one of LADO's servers, read
-    now; None for any other, and for a server removed since."""
+    now; None for any other, and for a server removed since. Two entries may hold one model of a
+    server: `chosen`, when it is that model, gives the name, else the entries are looked up."""
     found = provider.on_server(reported)
     if found is None:
         return None
@@ -968,18 +973,33 @@ def shown(provider: providers.Provider, reported: str) -> Shown | None:
     server = state.model_server_by_id(server_id)
     if server is None:
         return None
+    if chosen is not None and (chosen.server, chosen.model) == (server_id, model):
+        return Shown(chosen.name, model, server.name, server.address)
     saved = {m.model: m.name for m in state.models_on(server_id) if m.cli == provider.name}
     return Shown(saved.get(model, model), model, server.name, server.address)
+
+
+def agent_shown(agent: state.Agent) -> Shown | None:
+    """The agent's model as `shown` reads it, under the name it started on, as long as its CLI
+    has not changed the model; a table that cannot be read names none."""
+    if not agent.model or agent.provider not in providers.names():
+        return None
+    provider = providers.get(agent.provider)
+    if provider.on_server(agent.model) is None:
+        return None
+    chosen = None
+    if agent.model_source in (state.SESSION, state.DEFAULT_MODEL):
+        session = state.get_session(agent.session)
+        with contextlib.suppress(Refused):
+            chosen = start_model(session.power if session else None, provider).entry
+    return shown(provider, agent.model, chosen)
 
 
 def model_name(agent: state.Agent) -> str | None:
     """The agent's model for a list: the saved name of a model of LADO's servers, else as its
     record has it."""
-    if agent.model and agent.provider in providers.names():
-        found = shown(providers.get(agent.provider), agent.model)
-        if found is not None:
-            return found.name
-    return agent.model
+    found = agent_shown(agent)
+    return found.name if found is not None else agent.model
 
 
 def _no_models(names: list[str]) -> Refused:

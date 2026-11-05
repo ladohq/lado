@@ -39,6 +39,41 @@ def env_of(agent: str, out) -> str:
     return out.read_text()
 
 
+def test_a_key_file_edited_by_hand_stays_out_of_the_agent_and_is_named_nowhere(
+    repo,
+    serve,  # noqa: F811
+    lado_home,
+    tmp_path,
+    capsys,
+):
+    """A control character no save lets through: the server's models go, with a warning, as for
+    any key that cannot be read, and the agent starts on another server's model."""
+    key = f"canary-{uuid.uuid4().hex}"
+    model_settings.add_server("Шлюз", serve("all", key=key), key, warn=print, note=print)
+    model_settings.add_server("Дом", serve("all"), None, warn=print, note=print)
+    gate, home = state.model_server("Шлюз"), state.model_server("Дом")
+    state.add_model("Шлюз Qwen", "fake-server", "m1", gate.id)
+    saved = state.add_model("Домашняя Qwen", "fake-server", "m1", home.id)
+    state.set_cli_default(state.ModelRef("fake-server", saved.id, None))
+    edited = f"{key}\tby-hand"
+    key_file = model_settings.key_folder(gate.id) / model_settings.KEY
+    key_file.write_text(edited)
+    capsys.readouterr()
+
+    args = ["start", str(repo), "--name", SESSION, "--provider", "fake-server", "--no-attach"]
+    assert main(args) == 0
+    said = capsys.readouterr()
+    idle("supervisor")
+
+    assert 'the models of model server "Шлюз" are left out' in said.err
+    assert key not in said.out + said.err
+    env = env_of("supervisor", tmp_path / "supervisor-env")
+    assert key not in env
+    assert gate.id not in env  # no provider of that server either
+    its_log = lado_home / "fake-agents"
+    assert files_holding(lado_home, key.encode(), [key_file, its_log]) == []
+
+
 def test_the_key_is_in_the_agent_s_environment_and_nowhere_else(
     repo,
     serve,  # noqa: F811

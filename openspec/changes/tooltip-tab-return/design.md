@@ -20,10 +20,11 @@ window's focus comes before the element's, so it needs the same ref); one docume
 ### D2. The tests
 
 Unit, `Tooltip.test.tsx`: `fireEvent.blur` leaves `activeElement` alone, so a really focused
-button with `fireEvent.blur` and `fireEvent.focus` is the window's leaving and return.
+button with `fireEvent.blur` and `fireEvent.focus` is the window's leaving and return. A stub
+answers `:focus-visible`: jsdom's depends on the events of the tests before.
 
 UI: the default `page` fixture runs the headless shell, which sends no blur or focus on a tab
 switch: a test there passes with the defect in place (measured). The test launches its own
 browser with `browser_type.launch(channel="chromium")`, part of what `playwright install
 chromium` installs, here and in CI, and switches off focus emulation over CDP
-(`Emulation.setFocusEmulationEnabled`), then uses `bring_to_front` on a second page and back.
+(`Emulation.setFocusEmulationEnabled`) after the navigation, which turns it back on, then uses `bring_to_front` on a second page and back.

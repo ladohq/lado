@@ -2,7 +2,7 @@
 
 - [x] 1.1 `web/src/Tooltip.test.tsx`, requirement "A focus that returns with the window shows
   no tooltip": a button really focused (`button.focus()` after a press, and without one, with
-  `:focus-visible` as jsdom gives it), then `fireEvent.blur` and `fireEvent.focus` with
+  `:focus-visible` given by a stub, as jsdom's depends on the tests before), then `fireEvent.blur` and `fireEvent.focus` with
   `activeElement` unchanged and no `relatedTarget`: no tooltip; one shown before the blur goes.
   Fails before 2.1. Run: `cd web && npx vitest run src/Tooltip.test.tsx`.
 - [x] 1.2 Same file, requirement "A focus that moves within the page still shows a tooltip":

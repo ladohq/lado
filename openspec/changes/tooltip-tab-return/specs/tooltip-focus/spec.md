@@ -1,3 +1,8 @@
+## Purpose
+
+When a tooltip of the UI shows on a focus: a focus the keyboard moves to its trigger shows it,
+and a focus the browser gives back with the tab or window does not.
+
 ## ADDED Requirements
 
 ### Requirement: A focus that returns with the window shows no tooltip

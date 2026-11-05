@@ -1900,6 +1900,17 @@ Wanted: the installer run with `UV_TOOL_DIR` (the prefix's parent) and `UV_TOOL_
 `self_update._install_by_hand` names them.
 Found: 2026-10-25, hotfix/lad-144-by-hand-way-back.
 
+## Flaky UI test: an own answer's field ends under the window's edge on a phone
+
+Size: S. Why here: a flaky test seen once, in a run of several files; the cause is unknown.
+
+`tests/ui/test_phone.py::test_an_own_answer_expands_the_card_above_the_keyboard` failed once in
+a parallel UI run of seven files (review of LAD-192, head 6b3b0251): the field's bottom edge
+was 400 px past the window's. It then passed 3 of 3 alone with `-n0`, in the whole of
+`test_phone.py`, on CI and in the whole UI suite. The cause was not looked for.
+Wanted: find what the test races with, and make it wait for that.
+Found: 2026-11-05, feature/lad-192-session-head-one-line (review).
+
 # P3: maybe never
 
 ## A relative LADO_HOME breaks the reads of lado.db

@@ -93,7 +93,6 @@ function pickOf(picks: Picks, question: MessageInfo): Pick | undefined {
 const MARKED_FOR = 1500; // ms an item asked for stays marked
 const FEED_MIN = 160; // the chat feed's least height (styles.css, .chat-feed)
 const FIELD = "textarea.waiting-field"; // an answer field (attachFiles.AnswerBox)
-export const NARROW = "(max-width: 900px)"; // the window that scrolls (styles.css)
 const TOP_SHARE = 0.4; // of the chat's height: the most its title and context take
 const PANEL_EDGES = 2; // the panel's borders, in pixels
 
@@ -308,16 +307,7 @@ export function WaitingCard({
   useEffect(() => {
     if (!expanded) return;
     card.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
-    // A narrow window scrolls (styles.css): the card goes under the top bar. A wide one
-    // scrolls nothing, nor a frame that hides its overflow, nor a phone's window.
-    const underTheBar = () => {
-      if (window.matchMedia?.(NARROW).matches && !phone) card.current?.scrollIntoView?.({ block: "start" });
-    };
-    underTheBar();
-    // The page stays while it is expanded: narrowed or turned, only this brings it back.
-    window.addEventListener("resize", underTheBar);
-    return () => window.removeEventListener("resize", underTheBar);
-  }, [expanded, phone]);
+  }, [expanded]);
   useEffect(() => {
     if (!expanded || viewing) return;
     const escape = (event: KeyboardEvent) => {

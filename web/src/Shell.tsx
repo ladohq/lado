@@ -37,7 +37,7 @@ import { isLive, Live, LiveContext, useLive } from "./live";
 import { escapeIsTaken } from "./Menu";
 import { Notifier } from "./Notifications";
 import { NEEDS_YOU_PATH } from "./paths";
-import { usePhone, usePhoneViewport } from "./phone";
+import { useMedia, usePhone, usePhoneViewport } from "./phone";
 import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
 import { SelectionBar } from "./SelectionBar";
 import { ShareDialog } from "./Share";
@@ -95,7 +95,10 @@ export function Shell() {
     return () => setClaims((now) => now - 1);
   }, []);
   const topBar = useMemo(() => ({ slot, skip, claim }), [slot, skip, claim]);
-  const [collapsed, setCollapsed] = useState(storedRailCollapsed);
+  // The rail: the human's choice, else by the window.
+  const [railChoice, setRailChoice] = useState(storedRailCollapsed);
+  const smallWindow = useMedia("(max-width: 1599px)");
+  const collapsed = railChoice ?? smallWindow;
   const [denied, setDenied] = useState<string | null>(null);
   const [live] = useState(() => new Live());
   const phone = usePhone();
@@ -122,7 +125,7 @@ export function Shell() {
   }, [live]);
 
   const toggle = () => {
-    setCollapsed(!collapsed);
+    setRailChoice(!collapsed);
     storeRailCollapsed(!collapsed);
   };
 

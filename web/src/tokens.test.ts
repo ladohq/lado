@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 
 import pkg from "../package.json";
+import { CHAT_MIN, STRIP } from "./columns";
 import tokens from "./tokens.css?raw";
 
 const stylesheets = import.meta.glob<string>("./**/*.css", {
@@ -18,6 +19,11 @@ test("colours are written only in tokens.css; every other stylesheet uses the to
     const line = css.split("\n").find((l) => COLOUR.test(l));
     expect(line, `${path} has a colour of its own`).toBeUndefined();
   }
+});
+
+test("the columns' sizes in tokens.css are columns.ts's", () => {
+  expect(tokens).toContain(`--chat-min: ${CHAT_MIN}px;`);
+  expect(tokens).toContain(`--strip-w: ${STRIP}px;`);
 });
 
 // Each colour token is light-dark(<light>, <dark>): one line per token for both themes.

@@ -5,6 +5,9 @@
 :root {
   color-scheme: light dark;
 
+  --chat-min: 420px; /* the chat's least width above 900 px: CHAT_MIN in columns.ts */
+  --strip-w: 32px; /* the terminals folded to a strip: STRIP in columns.ts */
+
   --ground: light-dark(#f6f7f9, #111317);
   --panel: light-dark(#ffffff, #181b21);
   --raised: light-dark(#eef0f4, #20242c); /* hover, the current item */

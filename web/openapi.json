@@ -2175,7 +2175,7 @@
     "/api/providers/{name}/model-choices": {
       "get": {
         "summary": "Provider Model Choices",
-        "description": "What the provider's CLI can run: its list, kept a minute (`fresh`: read now), and\nits configured models. A list that cannot be read says why; no lado.db made.",
+        "description": "What the provider's CLI can run: its list, kept a minute (`fresh`: read now), its\nconfigured models, and the check of the built-in `model` against that list. A list\nthat cannot be read says why; no lado.db made.",
         "operationId": "provider_model_choices_api_providers__name__model_choices_get",
         "parameters": [
           {
@@ -2185,6 +2185,16 @@
             "schema": {
               "type": "string",
               "title": "Name"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Model"
             }
           },
           {
@@ -5002,6 +5012,10 @@
               }
             ],
             "title": "Server"
+          },
+          "whole_process": {
+            "type": "boolean",
+            "title": "Whole Process"
           }
         },
         "type": "object",
@@ -5011,10 +5025,11 @@
           "builtin",
           "name",
           "model",
-          "server"
+          "server",
+          "whole_process"
         ],
         "title": "CliDefault",
-        "description": "An agent CLI's default model: `external` the configured model's id or `builtin` the\nCLI's name for it, its name as shown, the model as the CLI names it and the server's name\n(None for a built-in one)."
+        "description": "An agent CLI's default model: `external` the configured model's id or `builtin` the\nCLI's name for it, its name as shown, the model as the CLI names it, the server's name\n(None for a built-in one), and whether a model on a server takes the CLI's whole process:\nthe page says so with no list read."
       },
       "CloneJob": {
         "properties": {
@@ -7337,6 +7352,9 @@
           "read_again": {
             "type": "boolean",
             "title": "Read Again"
+          },
+          "check": {
+            "$ref": "#/components/schemas/ModelCheck"
           }
         },
         "type": "object",
@@ -7347,10 +7365,11 @@
           "external",
           "other_name",
           "whole_process",
-          "read_again"
+          "read_again",
+          "check"
         ],
         "title": "ModelChoices",
-        "description": "What an agent CLI can run (lado.model_settings.choices): its aliases and own list\n(`models` None for no full list, `why` saying so), its configured models, whether a name\noutside the list may be given, whether a model on a server takes its whole process, and\nwhether reading the list again may change the answer."
+        "description": "What an agent CLI can run (lado.model_settings.choices): its aliases and own list\n(`models` None for no full list, `why` saying so), its configured models, whether a name\noutside the list may be given, whether a model on a server takes its whole process,\nwhether reading the list again may change the answer, and the check of the built-in model\nasked about against this list."
       },
       "ModelDefaultSaved": {
         "properties": {

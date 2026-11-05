@@ -913,8 +913,9 @@ export interface paths {
         };
         /**
          * Provider Model Choices
-         * @description What the provider's CLI can run: its list, kept a minute (`fresh`: read now), and
-         *     its configured models. A list that cannot be read says why; no lado.db made.
+         * @description What the provider's CLI can run: its list, kept a minute (`fresh`: read now), its
+         *     configured models, and the check of the built-in `model` against that list. A list
+         *     that cannot be read says why; no lado.db made.
          */
         get: operations["provider_model_choices_api_providers__name__model_choices_get"];
         put?: never;
@@ -1973,8 +1974,9 @@ export interface components {
         /**
          * CliDefault
          * @description An agent CLI's default model: `external` the configured model's id or `builtin` the
-         *     CLI's name for it, its name as shown, the model as the CLI names it and the server's name
-         *     (None for a built-in one).
+         *     CLI's name for it, its name as shown, the model as the CLI names it, the server's name
+         *     (None for a built-in one), and whether a model on a server takes the CLI's whole process:
+         *     the page says so with no list read.
          */
         CliDefault: {
             /** Cli */
@@ -1989,6 +1991,8 @@ export interface components {
             model: string;
             /** Server */
             server: string | null;
+            /** Whole Process */
+            whole_process: boolean;
         };
         /**
          * CloneJob
@@ -2744,8 +2748,9 @@ export interface components {
          * ModelChoices
          * @description What an agent CLI can run (lado.model_settings.choices): its aliases and own list
          *     (`models` None for no full list, `why` saying so), its configured models, whether a name
-         *     outside the list may be given, whether a model on a server takes its whole process, and
-         *     whether reading the list again may change the answer.
+         *     outside the list may be given, whether a model on a server takes its whole process,
+         *     whether reading the list again may change the answer, and the check of the built-in model
+         *     asked about against this list.
          */
         ModelChoices: {
             /** Aliases */
@@ -2762,6 +2767,7 @@ export interface components {
             whole_process: boolean;
             /** Read Again */
             read_again: boolean;
+            check: components["schemas"]["ModelCheck"];
         };
         /**
          * ModelDefaultSaved
@@ -5936,6 +5942,7 @@ export interface operations {
     provider_model_choices_api_providers__name__model_choices_get: {
         parameters: {
             query?: {
+                model?: string;
                 fresh?: boolean;
             };
             header?: never;

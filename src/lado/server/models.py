@@ -501,8 +501,9 @@ class ModelServerInfo(BaseModel):
 
 class CliDefault(BaseModel):
     """An agent CLI's default model: `external` the configured model's id or `builtin` the
-    CLI's name for it, its name as shown, the model as the CLI names it and the server's name
-    (None for a built-in one)."""
+    CLI's name for it, its name as shown, the model as the CLI names it, the server's name
+    (None for a built-in one), and whether a model on a server takes the CLI's whole process:
+    the page says so with no list read."""
 
     cli: str
     external: str | None
@@ -510,6 +511,7 @@ class CliDefault(BaseModel):
     name: str
     model: str
     server: str | None
+    whole_process: bool
 
 
 class ModelSettings(BaseModel):
@@ -524,8 +526,9 @@ class ModelSettings(BaseModel):
 class ModelChoices(BaseModel):
     """What an agent CLI can run (lado.model_settings.choices): its aliases and own list
     (`models` None for no full list, `why` saying so), its configured models, whether a name
-    outside the list may be given, whether a model on a server takes its whole process, and
-    whether reading the list again may change the answer."""
+    outside the list may be given, whether a model on a server takes its whole process,
+    whether reading the list again may change the answer, and the check of the built-in model
+    asked about against this list."""
 
     aliases: list[str]
     models: list[str] | None
@@ -534,6 +537,7 @@ class ModelChoices(BaseModel):
     other_name: bool
     whole_process: bool
     read_again: bool
+    check: ModelCheck
 
 
 class ModelDefaultSet(BaseModel):

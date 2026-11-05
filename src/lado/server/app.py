@@ -1011,11 +1011,12 @@ def create_app(
         responses={404: {"description": "no such provider"}},
     )
     def provider_model_choices(
-        name: str, fresh: bool = False, has_db: bool = Depends(database)
+        name: str, model: str = "", fresh: bool = False, has_db: bool = Depends(database)
     ) -> models.ModelChoices:
-        """What the provider's CLI can run: its list, kept a minute (`fresh`: read now), and
-        its configured models. A list that cannot be read says why; no lado.db made."""
-        return model_entries.model_choices(provider_named(name), fresh, has_db)
+        """What the provider's CLI can run: its list, kept a minute (`fresh`: read now), its
+        configured models, and the check of the built-in `model` against that list. A list
+        that cannot be read says why; no lado.db made."""
+        return model_entries.model_choices(provider_named(name), model, fresh, has_db)
 
     @app.put(
         "/api/model-defaults/{cli}",

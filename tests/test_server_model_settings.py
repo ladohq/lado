@@ -119,6 +119,7 @@ def test_listing_asks_no_server(client, serve):
                 "name": "opus",
                 "model": "opus",
                 "server": None,
+                "whole_process": True,
             },
             {
                 "cli": "opencode",
@@ -127,6 +128,7 @@ def test_listing_asks_no_server(client, serve):
                 "name": "Q",
                 "model": "qwen3-8b",
                 "server": "LM Studio дома",
+                "whole_process": False,
             },
         ],
     }
@@ -678,6 +680,12 @@ def test_choices_of_a_cli_with_a_list(client, monkeypatch):
         "other_name": False,
         "whole_process": False,
         "read_again": True,
+        "check": {
+            "kind": "default",
+            "text": "empty: OpenCode's default model; type or pick one of its models",
+            "field": "",
+            "name": "",
+        },
     }
 
 
@@ -696,6 +704,37 @@ def test_choices_of_a_list_that_cannot_be_read_say_why(client, monkeypatch):
     assert choices["why"] == "`kilo models` timed out after 15 s"
     assert [m["name"] for m in choices["external"]] == ["K"]
     assert (choices["other_name"], choices["read_again"]) == (True, True)
+
+
+def test_choices_check_the_model_given_by_the_core_s_rule(client, monkeypatch):
+    listing(monkeypatch, "kilo", base.ModelList((), ("a/b",), "kilo models"))
+    server_launch.forget_model_lists()
+
+    def check_of(model):
+        return ok(client.get("/api/providers/kilo/model-choices", params={"model": model}))["check"]
+
+    assert check_of("a/b")["kind"] == "ok"
+    assert check_of("old/model")["kind"] == "refused"
+    assert check_of("")["kind"] == "default"
+    listing(monkeypatch, "kilo", base.ModelList(why="`kilo models` timed out after 15 s"))
+    server_launch.forget_model_lists()
+    assert check_of("a/b") == {
+        "kind": "warn",
+        "text": "`kilo models` timed out after 15 s: LADO cannot check a/b; a wrong name stops "
+        "its agents at their first turn",
+        "field": "",
+        "name": "",
+    }
+
+
+def test_a_default_says_whether_it_takes_the_whole_process(client):
+    saved_server()
+    on_claude = state.add_model("Шлюз Opus", "claude", "opus", "s1")
+    on_kilo = state.add_model("Q", "kilo", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("claude", on_claude.id, None))
+    state.set_cli_default(state.ModelRef("kilo", on_kilo.id, None))
+    defaults = ok(client.get("/api/model-settings"))["defaults"]
+    assert {d["cli"]: d["whole_process"] for d in defaults} == {"claude": True, "kilo": False}
 
 
 def test_choices_when_the_environment_cannot_be_read_say_why(client, monkeypatch):

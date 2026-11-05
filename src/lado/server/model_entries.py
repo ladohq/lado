@@ -119,6 +119,10 @@ def _default_info(default: model_settings.CliDefault) -> models.CliDefault:
         name=default.name,
         model=default.model,
         server=default.server,
+        whole_process=(
+            default.ref.cli in providers.names()
+            and providers.get(default.ref.cli).external_whole_process
+        ),
     )
 
 
@@ -146,14 +150,16 @@ def _listed(provider: providers.Provider, fresh: bool = False) -> base.ModelList
 
 
 def model_choices(
-    provider: providers.Provider, fresh: bool = False, has_db: bool = True
+    provider: providers.Provider, model: str = "", fresh: bool = False, has_db: bool = True
 ) -> models.ModelChoices:
-    """What `provider`'s CLI can run, as the core computes it; no lado.db made."""
-    found = model_settings.choices(
-        provider, lambda listed: _listed(listed, fresh), None if has_db else []
-    )
+    """What `provider`'s CLI can run, as the core computes it, and the check of the built-in
+    model `model` against that list; no lado.db made."""
+    listed = _listed(provider, fresh)
+    found = model_settings.choices(provider, lambda _: listed, None if has_db else [])
     names = {server.id: server.name for server in state.model_servers()} if has_db else {}
+    verdict = model_check.verdict(provider, model, listed)
     return models.ModelChoices(
+        check=models.ModelCheck(kind=verdict.kind, text=verdict.page or verdict.text),
         aliases=list(found.aliases),
         models=None if found.models is None else list(found.models),
         why=found.why,

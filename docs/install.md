@@ -266,6 +266,18 @@ printf %s "$(gh auth token)" > secrets/GH_TOKEN
 LADO's own git uses it as well, read at each call: a kit, skill pack or marketplace of a
 private repository, and a clone by URL from the UI (New session → Clone).
 
+**Local models.** A model server you run yourself (LM Studio, Ollama, LiteLLM) is added in
+Settings → Models or with `lado model-server add`. OpenCode and Kilo CLI agents then have its
+models beside their own, in `/model` under `LADO · <server>`, and a session can start on one: pick
+it in the launch window, or `lado start --model "<name>"`. Its key stays out of every config: it
+reaches the agents only in their environment. Claude Code and Codex do not run on a model server
+yet, and LADO says so before it starts them. Before a session starts, LADO asks the server of the
+model it starts on: one that does not answer stops the start, and a server of another model does
+not. In LADO's container `localhost` is the container itself: a server on your machine is
+`http://host.docker.internal:<port>`, for LM Studio `http://host.docker.internal:1234`. The server
+must listen beyond its own loopback (LM Studio: Serve on Local Network). A key sent over plain
+`http://` to an address outside your machine and network is warned about before the start.
+
 Others: `CLAUDE_CODE_OAUTH_TOKEN` (below), a kit's key as its MCP server names it (e.g.
 `YOUGILE_API_KEY`), a model provider's key for OpenCode and Kilo. Every agent of this LADO
 can read every file of its `secrets/`.

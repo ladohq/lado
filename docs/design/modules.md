@@ -906,11 +906,19 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     servers` line (`doctor.check_model_servers`) probes the saved servers at once in threads,
     names each configured model on a server that answered with a list lacking its model,
     checks each key file's mode (600) and names the folders of `model-servers/` of no saved
-    server as left over; it only warns, and reads lado.db as it is.
+    server as left over; it only warns, and reads lado.db as it is; its `Default models` line
+    (`check_default_models`) reads those probes. For a launch: `start_model` (what an agent
+    starts on, reading lado.db only), `session_row` (a name given, as `check_default` reads it),
+    `check_launch` (the refusals that need no request), `check_start` (those and the list or the
+    server), `way_out` (a refusal's tail by where the model came from), `agent_servers` (the
+    servers of an agent's config) and `shown` (a model as its CLI names it, by its entry, read
+    now). `lado.runtime` imports the module in the launches only: it brings the HTTP client, and
+    every hook process imports `runtime`.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory);
     a session's model as a `PowerTable` (rows of `LEVELS`, each a `PowerRow` of a CLI and a
-    model; one JSON document in `sessions.power`, the format the user's and the project's
-    tables will reuse); the human's model servers and configured models (schema 38:
+    model, built-in, external by `model_id` or `""` for the CLI's settings; one JSON document in
+    `sessions.power`, the format the user's and the project's tables will reuse; `from_json`
+    never raises, anything else is `unreadable`); the human's model servers and configured models (schema 38:
     `model_servers` and `models`, each name unique by its `casefold` in `folded`, a model's
     server by its id with a foreign key; `NameTaken`; no key, which is a file of
     `model_settings.py`),

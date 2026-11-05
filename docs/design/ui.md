@@ -1408,24 +1408,31 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   Agent CLIs and environment; Start stays off, as the start would be refused (lado.logins).
   The human's own pick is kept
   when the folder changes. **Advanced** (folded; its row `Advanced: model, switch off
-  agents, skills, MCP servers or flows`, folded with a model `Advanced: model <model>`, the
-  model in `.launch-first-peek`): **Model** first, the session's model (`lado start
-  --model`), in the left column of a `.launch-grid` of its own (the whole row on a narrow
-  window), its label bold as Agent CLI's: free text in the window's own combobox
-  (`SuggestField.tsx`, not a native `<datalist>`): the height, frame and font of
-  Agent CLI, a drawn chevron at its right end that opens or closes the whole list; typing
-  or ↓ opens it filtered by what is typed (case-insensitive), ↑↓ move, Enter picks the
-  highlighted one (else it is the form's), Esc or leaving the field closes it, a click
-  picks; the suggestions are the chosen CLI's aliases (tagged `alias`, muted) then its own
-  list, in `.where-list`'s look. The placeholder `<CLI>'s default`, and one note under it,
-  inside its `.field` (6 px below, out of the focus ring's reach), from `GET
-  /api/providers/{name}/models?model=` (the server keeps a CLI's list a minute once read;
-  one it could not read is read again at the next check; asked 300 ms after the last
-  keystroke): empty `empty: <CLI>'s default model; type or pick one
-  of its models` (muted), `✓ in <CLI>'s list of models` or `✓ an alias of <CLI>` (`.ok`),
-  the ⚠ warning of a CLI that gives no list (`.warn`), or the refusal (`.bad`); Start is
-  off while it refuses and while the typed text is checked. Another provider empties the
-  field. Then the `--without` items, `kind:name` or `kind:name@kit`
+  agents, skills, MCP servers or flows`, folded with a model `Advanced: model <name> on
+  <server>` or `Advanced: model <model>`, the name in `.launch-first-peek`, then `⚠ key over
+  http` or `! <few words>`): **Model** first, the session's model (`lado start --model`), in a
+  `.launch-grid` of its own, taking its whole row, as a name, an id and a server do not fit a
+  column: the one picker (`ModelPicker.tsx`, `where: "launch"`, driven by `LaunchModel.tsx`) of
+  the chosen agent CLI, of Agent CLI's height, with no address or key. It holds that CLI's
+  default when the window opens, marked `default` there and in the list. What the start sends: a
+  field left on the default, or on the settings with no default, sends nothing, so the session
+  follows the default as it is at each launch; `<CLI>'s settings` with a default sends `''`; a pick
+  sends its name. The list's foot reads `The default comes from Settings → Models.`, its link in a
+  new tab, so nothing typed is lost; the window reads the models again when it gets the focus
+  back. Notes stand under the field, inside its `.field` (6 px below, out of the focus ring's
+  reach): `<CLI>'s default model, from Settings → Models.`; under another pick `For this session
+  only. <CLI>'s default model is <name>.`, no such line without a default; under the settings
+  with a default `For this session only: the agent CLI chooses, not <name>.`; a pick lost to
+  another agent CLI `<name> belongs to <CLI>, so the model is back to <new CLI>'s default.` A value
+  in the field is checked as the start checks it (`POST /api/session-model/check`, a stale answer
+  dropped), Start staying on meanwhile. A refusal (`.bad`, `role="alert"`, `aria-invalid`) opens
+  Advanced, turns Start off and offers `Use <CLI>'s settings`, and `Check again` where a new try can
+  help; a silent server also marks `.srv.down`. A warning (`.warn`) leaves Start on: no list to
+  check against, or `⚠ The key of <server> goes unencrypted (http) to an address outside your
+  machine and network.`, for the chosen model's server only, under `✓ <server> answers, and <model>
+  is in its list of models.` A start refused after a good check is a 409 `ModelRefusal`: above the
+  buttons `Not started: <short reason>. See Model above.`, the refusal under the field, the focus
+  on it. Then the `--without` items, `kind:name` or `kind:name@kit`
   (placeholder `agent:reviewer@kit-b, skill:style`). Start shows "Starting…" with
   the fields off; a refusal is shown whole (`role="alert"`) and the window stays; a name
   taken (409, `Taken`: its status and folder) offers Resume it for a session of this
@@ -1609,12 +1616,14 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   that project (and repository: the project's page's New session… and Start session).
 - **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
   mode and Advanced filled from the session (`SessionInfo` carries its settings, its model
-  too) and changeable; it sends only what changed (`POST /api/sessions/{name}/resume`; an
-  emptied Model sends `model: ""`, the CLI's default). The kept model is checked as
-  `lado start <session>` checks it: when its CLI's list no longer has it, the refusal adds
-  `The session ran on it before. Empty the field to resume on <CLI>'s default, or pick
-  another model.` (`.way-out`) and the chip button **Use `<CLI>`'s default**, which empties
-  the field; Advanced opens to show it, and Resume is off until then. A provider
+  too) and changeable; it sends only what changed (`POST /api/sessions/{name}/resume`; the
+  CLI's settings send `model: ""`). Another agent CLI takes Model to that CLI's default, and
+  back to the session's model with its CLI. The kept model is checked as
+  `lado start <session>` checks it: a refusal adds `The session ran on it before. Pick another
+  model, or resume on <CLI>'s settings.` and the chip button **Use `<CLI>`'s settings**; a saved
+  model since removed (`SessionInfo.model_missing`) reads `The session ran on the model <name>,
+  which is no longer in Settings → Models. Pick a model or use <CLI>'s settings.`, with `not in
+  Settings` in the field; Advanced opens to show it, and Resume is off until then. A provider
   without its login is off here as in New session (LAD-163): its option "`<name>` · not
   logged in" disabled, the red note with **Log in first**, and Resume off, as the resume
   would be refused (lado.logins); another CLI with its login can be chosen. LADO's own

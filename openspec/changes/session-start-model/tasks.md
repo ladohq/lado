@@ -47,7 +47,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-session-star
 
 ## 6. Docs
 
-- [ ] 6.1 `docs/install.md` (local models, `host.docker.internal`), `docs/cli.md`,
+- [x] 6.1 `docs/install.md` (local models, `host.docker.internal`), `docs/cli.md`,
   `docs/design/ui.md`, `docs/design/agents.md`, `docs/design/modules.md`; CHANGELOG under
   `## 0.45.0 (unreleased)`, `### New`. Check: read against the code; `tests/test_agents_md.py`.
 

@@ -43,6 +43,9 @@ export type ModelRead = {
 
 const fold = (text: string) => text.toLowerCase();
 
+export const sameModel = (a: CliDefault, b: CliDefault | null) =>
+  b !== null && a.external === b.external && a.builtin === b.builtin;
+
 // The reads of a CLI's list: the latest asked wins, so an older answer that comes late, or one
 // after the page was left, changes nothing.
 export function useModelChoices(cli: string): ModelRead {
@@ -456,12 +459,7 @@ export function ModelPicker({
 
   const state = value?.server ? health[fold(value.server)] : undefined;
   const launching = where === "launch";
-  const valueIsDefault =
-    launching &&
-    value !== null &&
-    defaultModel !== null &&
-    value.external === defaultModel.external &&
-    value.builtin === defaultModel.builtin;
+  const valueIsDefault = launching && value !== null && sameModel(value, defaultModel);
   return (
     <div className="mp-box" ref={root} data-where={where}>
       <button

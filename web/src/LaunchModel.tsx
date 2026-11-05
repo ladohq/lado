@@ -14,7 +14,7 @@ import {
   type SessionModelCheck,
 } from "./api";
 import { useAsked } from "./Launch";
-import { type Health, ModelPicker, type Pick, useModelChoices } from "./ModelPicker";
+import { type Health, ModelPicker, type Pick, sameModel, useModelChoices } from "./ModelPicker";
 import { OtherName } from "./ModelSettings";
 
 type Choice =
@@ -34,9 +34,6 @@ const builtin = (cli: string, model: string): CliDefault => ({
 });
 
 const nameOf = (value: CliDefault) => (value.external !== null ? value.name : value.model);
-
-const sameModel = (a: CliDefault, b: CliDefault | null) =>
-  b !== null && a.external === b.external && a.builtin === b.builtin;
 
 // How a window opens: on the model a resumed session has, else its CLI's default.
 function cameWith(resuming: SessionInfo | null): Choice {

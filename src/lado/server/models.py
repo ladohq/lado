@@ -1263,7 +1263,8 @@ class Launch(BaseModel):
     without: list[str] | None = None
     prompt: str | None = None  # the human's first message to the supervisor (check_prompt)
     title: str | None = None  # the session's title (runtime.check_title)
-    model: str | None = None  # the session's model, checked (lado.model_check); None, "": none
+    # The session's model, checked before the start: None for none, "" the CLI's own settings.
+    model: str | None = None
 
 
 class Resume(BaseModel):

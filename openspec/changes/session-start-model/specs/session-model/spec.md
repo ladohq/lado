@@ -20,7 +20,8 @@ running agent. The agent's model SHALL have the source `session`, `default` or `
 #### Scenario: A default changed before a resume
 - **WHEN** a stopped session has no table, ran on `Локальная Qwen` as the default, and the human
   sets OpenCode's default to `Рабочая Qwen` and resumes it
-- **THEN** the supervisor starts on `Рабочая Qwen` with the source `default`
+- **THEN** the supervisor starts on `Рабочая Qwen` with the source `default`, and `lado start` and
+  the session's start warnings say `changed model: Локальная Qwen -> Рабочая Qwen`
 
 #### Scenario: A worker of another CLI with its default
 - **WHEN** a session's table names `opencode` and Kilo CLI's default is `Qwen в Kilo`, and the

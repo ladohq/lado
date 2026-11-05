@@ -709,8 +709,8 @@ model the server types as embeddings (LM Studio's `(embeddings)` mark) is refuse
 is an embeddings model on <server>; an agent needs a chat model: lado model-server probe
 <address> lists the models`); then the model is checked against the server's list as against a CLI's (`<model> is not in
 <server>'s list of models; lado model-server probe <address> prints the list`). Claude Code
-and Codex models on a server are saved by that rule; no session uses a configured model
-yet. Saved: `Saved model "<name>": <CLI>, <model> on <server> (<the check's text>)`, exit
+and Codex models on a server are saved by that rule, and no session of theirs starts on one yet.
+Saved: `Saved model "<name>": <CLI>, <model> on <server> (<the check's text>)`, exit
 0; refused: exit 1, nothing saved.
 
 `lado model list` prints `NAME CLI MODEL SERVER` sorted by name ignoring case, running no CLI

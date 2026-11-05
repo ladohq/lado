@@ -63,7 +63,7 @@ moment of each launch applies.
 
 ### D4. A name is read once
 
-`model_settings.session_row(name, provider, env, listing=None) -> (PowerRow, verdict)`: `""` is the
+`model_settings.session_row(name, provider, env, listing=None) -> PowerRow`: `""` is the
 settings form; else `check_default` reads it (a built-in name or an external model's name, one
 reading, its refusals as they are) and the reference becomes a row. `start_session`'s `_power` takes
 the row. A name that is only another CLI's model is refused by `_not_its_model`; the model never
@@ -164,10 +164,12 @@ its id and server.
 ### D14. The API
 
 - `POST /api/session-model/check` `{cli, model, project}` → `SessionModelCheck(ModelCheck +
-  retry: bool, short: str, warnings: list[str], server: str | None)`: D4 and D5 for the window, in
-  the project's agents' environment; a refusal is a 200 of kind refused; `text` the page's line.
+  retry: bool, short: str, peek: str, warnings: list[str], server: str | None)`: D4 and D5 for the
+  window, in the project's agents' environment; a refusal is a 200 of kind refused; `text` the
+  window's line, `peek` a few words for the folded Advanced (`not answering`).
 - `NewSession.model`, `Resume.model`: the same name; `""` the CLI's settings; absent as now. A
-  refusal of the model is a 409 with `field: "model"`, so the window puts it under Model.
+  refusal of the model is a 409 `ModelRefusal` with `field: "model"`, so the window puts it under
+  Model; `runtime.ModelRefused` carries the core's refusal to it.
 - `SessionInfo.model`: None for no choice, `""` for the CLI's settings, else the name; adds
   `model_missing: bool`.
 - `ModelInfo` adds `configured`, `server`, `address`. `make web-types`, both files committed.
@@ -206,6 +208,21 @@ list with `findByRole`.
 server that does not answer (from the probes `check_model_servers` made, not again), a model it
 lacks, a built-in name its CLI no longer lists. Its exit status is as without it. `LEAD`,
 `LEAD_NO_MODELS` in `ModelSettings.tsx` get the delta's words.
+
+### D19. What a session last started on
+
+The human's condition at the gate: a resume on a moved default says `changed model: … -> …`. A
+stop forgets the agents' rows, so a resume cannot read the last model there; a second record in
+`sessions` would mean a schema change. An event `start_model`, written when the supervisor's model
+differs from the last one, holds it as the CLI was told it (`state.last_start_model`, "" with no
+record: a session of an older LADO with no table ran on the CLI's choice). It shows in `lado log`;
+the UI's feed shows only the kinds it lists. `lado start` prints the line once, from `changes`; the
+start's warnings and loop.log hold it too.
+
+### D20. A hook process does not load the HTTP client
+
+`runtime` imports `model_settings` inside the launches: every hook process imports `runtime`, and
+`model_servers` would add about 15 ms to each. `tests/test_lazy_imports.py` keeps it so.
 
 ## Risks / Trade-offs
 

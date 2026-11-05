@@ -43,6 +43,7 @@ NOT_LISTED_PEEK = "not in its list"
 # What OpenCode and Kilo CLI substitute in their config's text ({env:…} checked on both, {file:…}
 # taken to work the same): text LADO did not write there must hold neither.
 EXPANDED = ("{env:", "{file:")
+WOULD_EXPAND = f"the agent CLI would expand ({' or '.join(EXPANDED)})"
 
 
 # The field of a form a refusal concerns, for the UI ("" for none); the CLI ignores it.
@@ -821,8 +822,8 @@ def check_launch(start: StartModel, provider: providers.Provider) -> None:
         )
     if _expands(start.entry.name, start.entry.model, start.server.name, start.server.address):
         raise Refused(
-            f"{start.name} cannot start: its name, id or server holds text the agent CLI would "
-            f"expand ({' or '.join(EXPANDED)}); rename it, or pick another model",
+            f"{start.name} cannot start: its name, id or server holds text {WOULD_EXPAND}; rename "
+            "it, or pick another model",
             field=MODEL_FIELD,
         )
 
@@ -890,15 +891,15 @@ def agent_servers(
         if _expands(server.name, server.address):
             warnings.append(
                 f'model server "{server.name}" is left out of the agent\'s config: it holds text '
-                f"the agent CLI would expand ({' or '.join(EXPANDED)})"
+                f"{WOULD_EXPAND}"
             )
             continue
         kept = []
         for model in models:
             if _expands(model.name, model.model):
                 warnings.append(
-                    f'model "{model.name}" is left out of the agent\'s config: it holds text the '
-                    f"agent CLI would expand ({' or '.join(EXPANDED)})"
+                    f'model "{model.name}" is left out of the agent\'s config: it holds text '
+                    f"{WOULD_EXPAND}"
                 )
             else:
                 kept.append((model.model, model.name))

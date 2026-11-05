@@ -11,6 +11,7 @@ import type { RecommendationInfo } from "./api";
 import { Body, clock } from "./ChatText";
 import { avatar, MiniAvatar } from "./FeedRow";
 import { Tooltip } from "./Tooltip";
+import { useMore } from "./waitingParts";
 
 const LEAD = "supervisor";
 const TITLE = "Supervisor's recommendation";
@@ -67,24 +68,36 @@ const unmarked = (text: string) =>
     .replace(/(^|[^\w_])_(\S(?:[^_]*\S)?)_(?![\w_])/g, "$1$2")
     .replace(/~~(\S(?:.*?\S)??)~~/g, "$1");
 
-const FENCE = /^ {0,3}(`{3,}|~{3,}).*\n([\s\S]*?)(?:^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm; // to its end, closed or not
+const FENCE = /^ {0,3}(`{3,}|~{3,})[^`\n]*\n([\s\S]*?)(?:^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm; // to its end, closed or not
 const CODE = /(`+)([\s\S]+?)\1(?!`)/g;
 
 // Markdown on one line: its links, line marks and paired marks out, its white space collapsed.
 // Code stands aside meanwhile, so it stays as it is and a mark around it still finds its pair.
 export const oneLine = (text: string) => {
   const code: string[] = [];
-  const aside = (_: string, _mark: string, inner: string) => `${code.push(inner) - 1}`;
+  const aside = (_: string, _mark: string, inner: string) => `\uE000${code.push(inner) - 1}\uE001`;
   const marked = text
     .replace(FENCE, aside)
     .replace(CODE, aside)
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "");
   return unmarked(marked)
-    .replace(/(\d+)/g, (_, n: string) => code[Number(n)])
+    .replace(/\uE000(\d+)\uE001/g, (_, n: string) => code[Number(n)])
     .replace(/\s+/g, " ")
     .trim();
 };
+
+// The text under the line, in a box that scrolls: a fade at its lower edge says there is more.
+function RecBody({ text }: { text: string }) {
+  const { box, more, scrolled } = useMore<HTMLDivElement>();
+  return (
+    <div className={`rec-bar-frame${more ? " cut" : ""}`}>
+      <div ref={box} className="rec-bar-body" tabIndex={0} onScroll={scrolled}>
+        <Body text={text} />
+      </div>
+    </div>
+  );
+}
 
 // The waiting card's line over the answer: the supervisor's avatar, "Supervisor recommends
 // <option>:" as the card's buttons name it, the disagreement right after it so a cut never
@@ -123,11 +136,7 @@ export function RecommendationBar({
       {rec.disagrees && <span className="rec-differs"> · {disagreed(rec, "disagrees")}</span>}:
     </b>
   );
-  const body = (
-    <div className="rec-bar-body" tabIndex={0}>
-      <Body text={rec.text} />
-    </div>
-  );
+  const body = <RecBody text={rec.text} />;
   const classes = `rec-bar${rec.disagrees ? " differs" : ""}${whole ? " whole" : ""}${opened && !whole ? " opened" : ""}`;
   if (whole) {
     return (

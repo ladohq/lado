@@ -588,6 +588,38 @@ def test_a_long_recommendation_opens_to_three_lines_that_scroll(device, server, 
     shot(page, "opened", full_page=False)
 
 
+def test_an_opened_recommendation_fades_until_its_end(device, server, repo, shot):
+    """Opened, a text longer than its 3 lines fades at the lower edge until it is scrolled to
+    its end, and again when it scrolls back; one that fits does not fade."""
+    session = gated_session(repo)
+    recommended(session, "A reason to approve. " * 40, choice="approve")
+    page = opened(device(UPRIGHT), server, f"/sessions/{session}")
+    block = waiting_card(page, session).get_by_role("region", name="Supervisor's recommendation")
+    block.get_by_role("button").tap()
+    frame = block.locator(".rec-bar-frame")
+    cut = re.compile(r"\bcut\b")
+    expect(frame).to_have_class(cut)
+    assert frame.evaluate("f => getComputedStyle(f, '::after').content") != "none"
+    shot(page, "fades", full_page=False)
+    body = frame.locator(".rec-bar-body")
+    body.evaluate("b => { b.scrollTop = b.scrollHeight; }")
+    expect(frame).not_to_have_class(cut)
+    assert frame.evaluate("f => getComputedStyle(f, '::after').content") == "none"
+    shot(page, "at-its-end", full_page=False)
+    body.evaluate("b => { b.scrollTop = 0; }")
+    expect(frame).to_have_class(cut)
+
+
+def test_a_short_opened_recommendation_does_not_fade(device, server, repo):
+    session = gated_session(repo)
+    recommended(session, "A short reason.", choice="approve")
+    page = opened(device(UPRIGHT), server, f"/sessions/{session}")
+    block = waiting_card(page, session).get_by_role("region", name="Supervisor's recommendation")
+    block.get_by_role("button").tap()
+    expect(block.locator(".rec-bar-body")).to_be_visible()
+    expect(block.locator(".rec-bar-frame")).not_to_have_class(re.compile(r"\bcut\b"))
+
+
 @pytest.mark.parametrize("visible", [350, 340])
 def test_six_choices_keep_the_buttons_above_the_keyboard(device, server, repo, shot, visible):
     """A question of six choices of two lines each with a long own answer, little left: the
@@ -911,6 +943,27 @@ def test_only_the_cards_placeholder_keeps_14_px_on_a_phone(device, server, repo)
     page.goto(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
     gate = page.get_by_role("region", name="Now").get_by_role("article", name="Gate #1", exact=True)
     assert gate.get_by_role("textbox", name=name).evaluate(size) == "16px"
+
+
+@pytest.mark.parametrize("size", [UPRIGHT, NARROWEST], ids=lambda s: f"{s[0]}x{s[1]}")
+def test_a_gates_and_a_questions_tabs_fit_the_phone(device, server, repo, shot, size):
+    """Two tabs of the card stand whole in their row, whichever is shown: nothing is cut at the
+    row's edge, and each keeps its count."""
+    session = waiting_session(repo)
+    page = opened(device(size), server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    row = card.get_by_role("tablist")
+    for name in ("ship/x 1", "supervisor 1"):
+        card.get_by_role("tab", name=name).tap()
+        expect(card.get_by_role("tab", name=name)).to_have_attribute("aria-selected", "true")
+        assert row.evaluate("r => r.scrollWidth <= r.clientWidth"), name
+        strip = box(row)
+        for tab in card.get_by_role("tab").all():
+            found = box(tab)
+            assert found["x"] >= strip["x"] - 1, found
+            assert found["x"] + found["width"] <= strip["x"] + strip["width"] + 1, found
+            expect(tab.locator(".waiting-tab-count")).to_be_visible()
+    shot(page, full_page=False)
 
 
 # Nothing scrolls sideways

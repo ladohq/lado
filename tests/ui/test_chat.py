@@ -1598,3 +1598,27 @@ def test_a_heads_time_stays_on_the_edge_when_the_head_wraps(page: Page, server, 
     )
     expect(message).to_contain_text("merged w1")
     assert message.evaluate(TIME_OFF_EDGE) == []
+
+
+@pytest.mark.parametrize(
+    ("theme", "muted"), [("light", "rgb(91, 98, 112)"), ("dark", "rgb(154, 161, 173)")]
+)
+def test_a_placeholder_is_muted_in_both_themes(page: Page, server, repo, shot, theme, muted):
+    """LAD-194: the browser's own grey is 3.74:1 on a dark field; each field's placeholder
+    wears --muted: the card's, its own answer, the composer's."""
+    session = gated_session(repo)
+    runtime.ask_human(session, "supervisor", "Which one?", None, ["one", "two"])
+    page.emulate_media(color_scheme=theme)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    colour = "f => [getComputedStyle(f, '::placeholder').color, getComputedStyle(f, '::placeholder').opacity]"
+    comment = card.get_by_role("textbox", name="Comment for the next step (optional)")
+    composer = page.get_by_role("textbox", name="Write to the supervisor…")
+    assert comment.evaluate(colour) == [muted, "1"]
+    assert composer.evaluate(colour) == [muted, "1"]
+    card.get_by_role("tab", name="supervisor 1").click()
+    card.get_by_role("button", name="Other…").click()
+    own = card.get_by_role("textbox", name="Your own answer")
+    assert own.evaluate(colour) == [muted, "1"]
+    shot(page, full_page=False)

@@ -321,6 +321,75 @@ def in_sight(page: Page, *parts) -> None:
         )
 
 
+@pytest.mark.parametrize("height", [700, 1024])
+@pytest.mark.parametrize("expanded", [False, True], ids=["card", "expanded"])
+@pytest.mark.parametrize("tab", ["gate", "question"])
+def test_a_window_768_wide_keeps_the_footer_in_sight(
+    page: Page, server, repo, shot, height, expanded, tab
+):
+    """A window of 900 px or less scrolls as a page, its chat with no height of its own: the
+    footer stays in the window wherever the page stands, the card under the top bar. The
+    composer past the window's edge is LAD-193's."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, VIEW, choice="approve")
+    if tab == "question":
+        runtime.ask_human(session, "supervisor", "Which one?", LONG_NOTE, ["one", "two"])
+    page.set_viewport_size({"width": 768, "height": height})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    if tab == "question":
+        card.get_by_role("tab", name="supervisor 1").click()
+    panel = card.get_by_role("tabpanel")
+    parts = (
+        [
+            panel.get_by_role("region", name="Supervisor's recommendation"),
+            panel.get_by_role("textbox", name="Comment for the next step (optional)"),
+            panel.get_by_role("button", name="Approve", exact=True),
+            panel.get_by_role("button", name="Reject", exact=True),
+        ]
+        if tab == "gate"
+        else [
+            panel.get_by_role("button", name="Send answer to supervisor"),
+            panel.get_by_role("button", name="Skip question"),
+        ]
+    )
+    expect(parts[0]).to_be_visible()
+    if expanded:
+        card.get_by_role("button", name="Expand the card").click()
+        expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    in_sight(page, *parts)
+    top = page.get_by_role("banner")
+    top.hover()
+    for wheel in (-5000, 5000):
+        page.mouse.wheel(0, wheel)
+        page.wait_for_timeout(200)
+        in_sight(page, *parts)
+        bar = top.bounding_box()
+        assert card.bounding_box()["y"] >= bar["y"] + bar["height"] - 1, wheel
+    shot(page, full_page=False)
+
+
+def test_a_window_768_wide_keeps_the_expanded_cards_footer_on_needs_you(
+    page: Page, server, repo, shot
+):
+    session = gated_session(repo, LONG_NOTE)
+    page.set_viewport_size({"width": 768, "height": 700})
+    log_in(page, server)
+    page.goto(f"{server['url']}/needs-you")
+    card = waiting_card(page, session)
+    approve = card.get_by_role("button", name="Approve", exact=True)
+    expect(approve).to_be_attached()
+    card.get_by_role("button", name="Expand the card").click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    in_sight(page, approve)
+    page.get_by_role("banner").hover()
+    page.mouse.wheel(0, -5000)
+    page.wait_for_timeout(200)
+    in_sight(page, approve)
+    shot(page, full_page=False)
+
+
 @pytest.mark.parametrize("width", [1440, 768])
 def test_a_long_note_scrolls_in_the_context_and_the_footer_stays(
     page: Page, server, repo, shot, width

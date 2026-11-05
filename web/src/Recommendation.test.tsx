@@ -176,6 +176,7 @@ test.each([
   ["run:\n```py\nfoo()\nbar()\n```\ndone", "run: foo() bar() done"],
   ["~~~\n- a_b_\n~~~", "- a_b_"],
   ["run:\n```\nfoo()", "run: foo()"],
+  ["```foo``` is wrong\nThe rest.", "foo is wrong The rest."],
 ])("a text on one line keeps its code as it is: %s", (text, line) => {
   expect(oneLine(text)).toBe(line);
 });

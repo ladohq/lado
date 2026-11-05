@@ -11,6 +11,12 @@ body {
   font: 15px/1.5 var(--sans);
 }
 
+/* The browser's own grey is too pale on a dark field. */
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
 code {
   font-family: var(--mono);
   font-size: 13px;
@@ -4076,6 +4082,14 @@ button.rec-bar-line {
   font-style: italic;
 }
 
+.rec-bar-frame {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .rec-bar-body {
   flex: 0 1 auto;
   min-height: 0;
@@ -4694,7 +4708,8 @@ button.rec-bar-line {
 }
 
 .waiting-context-frame.cut::after,
-.waiting-choices-frame.cut::after {
+.waiting-choices-frame.cut::after,
+.rec-bar-frame.cut::after {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -4987,12 +5002,34 @@ button.rec-bar-line {
   min-height: 0;
 }
 
-/* A narrow window scrolls, so the chat has no height of its own: the card is the window's
-   less the top bar, and expanding scrolls it under that bar. */
+/* A narrow window scrolls, so the chat has no height of its own: the card is at most the
+   window's less the top bar, and sticks to the window's lower edge, so its footer stays in
+   sight wherever the page stands; `.content` clips instead of hiding, which would make it the
+   box the card sticks in. Expanded it is that height, expanding scrolls it under that bar,
+   and the page stays there until it folds. */
 @media (max-width: 900px) {
+  .content:has(> .sessions .chat > .waiting-card) {
+    overflow: clip;
+  }
+
+  html:has(.waiting-card.expanded) {
+    overflow: hidden;
+  }
+
+  .chat > .waiting-card {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    max-height: calc(100vh - var(--head-h));
+    max-height: calc(100dvh - var(--head-h));
+    background: var(--ground);
+  }
+
   .waiting-card.expanded {
     min-height: calc(100vh - var(--head-h));
     min-height: calc(100dvh - var(--head-h));
+    max-height: calc(100vh - var(--head-h));
+    max-height: calc(100dvh - var(--head-h));
     scroll-margin-top: var(--head-h);
   }
 }
@@ -10010,8 +10047,11 @@ button.quiet.danger-text {
   display: none;
 }
 
-:root[data-phone] .waiting-card.expanded {
+:root[data-phone] .waiting-card.expanded,
+:root[data-phone] .chat > .waiting-card {
+  position: static;
   min-height: 0;
+  max-height: none;
 }
 
 :root[data-phone] .waiting-card {
@@ -10021,6 +10061,14 @@ button.quiet.danger-text {
 
 :root[data-phone] .waiting-option {
   min-height: 44px;
+}
+
+/* A tab's frame goes in closer, so a gate's and a question's stand whole in the row. */
+:root[data-phone] .waiting-tab {
+  --name: min(48px, calc(var(--chars) * 1ch));
+  gap: 5px;
+  min-width: calc(var(--name) + 62px);
+  padding: 0 8px;
 }
 
 :root[data-phone] .waiting-tab,

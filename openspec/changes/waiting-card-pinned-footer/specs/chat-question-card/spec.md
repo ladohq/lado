@@ -6,9 +6,7 @@ An open card's tab SHALL be made of a title, a context and a footer, in that ord
 (a gate's note with its chips, the artifacts it reads, a question's details and attachments)
 SHALL be the only part that scrolls, a focusable region named "Context of the card". The footer
 SHALL always be whole: the recommendation, then a gate's comment or a question's choices and
-field, then the buttons, under a line in `--human` at 30 %. This SHALL hold in a session's chat;
-Needs you's card is whole, and the page scrolls (requirement "Needs you shows each session's
-waiting card").
+field, then the buttons, under a line in `--human` at 30 %. Needs you has its own requirement.
 
 #### Scenario: A long note
 - **WHEN** a gate with a note of 60 lines waits in a window 1440×900

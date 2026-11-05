@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from lado import cli, providers, state
-from lado.providers import base, claude
+from lado.providers import base, claude, opencode_family
 
 LADO = Path(__file__).resolve()
 AGENT = LADO.with_name("fake_agent.py")
@@ -228,6 +228,27 @@ class FakeWindowProvider(FakeProvider):
         return (base.LoginAction("login", "Add a login…", (sys.executable, str(LOGIN_SCRIPT))),)
 
 
+# "fake-server" takes the model servers of its launch as OpenCode and Kilo do: beside its own
+# models, each key in its environment. FAKE_AGENT_SERVERS says what it got, for the tests.
+class FakeServerProvider(FakeProvider):
+    title = "Fake server agent"
+    server_api = base.CHAT_COMPLETIONS
+    external_whole_process = False
+    runs_on_server = True
+    server_model = opencode_family.OpenCodeFamily.server_model
+    on_server = opencode_family.OpenCodeFamily.on_server
+
+    def launch_command(self, agent, session, spec) -> base.Launch:
+        launch = super().launch_command(agent, session, spec)
+        got = [
+            {"id": s.id, "name": s.name, "models": s.models, "key_variable": s.key_variable}
+            for s in spec.servers
+        ]
+        keys = {s.key_variable: s.key for s in spec.servers if s.key is not None}
+        env = {**launch.env, "FAKE_AGENT_SERVERS": json.dumps(got), **keys}
+        return dataclasses.replace(launch, env=env)
+
+
 # "fake" gets queued messages from its turn-end hook and confirms them by its prompt-submit
 # hook, like OpenCode and Kilo; "fake-stop" by the next turn's end, like Claude Code;
 # "fake-paste" has them typed into its window; "fake-printed" as "fake-stop", and its CLI
@@ -241,6 +262,7 @@ FAKES = (
     FakeProvider("fake-paste", False),
     FakeLoginProvider("fake-login"),
     FakeWindowProvider("fake-window", True),
+    FakeServerProvider("fake-server", True),
 )
 
 

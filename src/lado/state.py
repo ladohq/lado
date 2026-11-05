@@ -586,6 +586,10 @@ GATE_UNANSWERED = (GATE_CANCELLED, GATE_OVERRIDDEN)
 # Session events, by LADO.
 SESSION_STOP = "session_stop"  # detail: what was dropped
 SESSION_RESUME = "session_resume"  # detail: what changed
+# The supervisor's window opened on another model than the last time; detail: the model as its
+# CLI was told it, "" for none. The agents' rows go at a stop: a resume reads here what the
+# session last started on.
+START_MODEL = "start_model"
 # Its runtime was found gone at a stop or resume: created_at is the last sign of life
 # (last_alive), not when it was found; the session_stop follows.
 SESSION_GONE = "session_gone"
@@ -1047,10 +1051,14 @@ MIGRATIONS[38] = MODELS_BY_ID
 CLI_DEFAULT = "cli"  # the CLI's own choice: its default or its own settings
 CLI_CONFIG = "cli-config"  # the user's config of the CLI, carried by LADO into the agent
 SESSION = "session"  # the session's model (PowerTable), chosen with lado start --model
+DEFAULT_MODEL = "default"  # its CLI's default model of Settings → Models (cli_defaults)
+CLI_CHANGED = "cli-changed"  # another model than the launch chose, named by the CLI
 MODEL_SOURCES = {
     CLI_DEFAULT: "CLI default",
     CLI_CONFIG: "your {cli} config",
     SESSION: "chosen for the session",
+    DEFAULT_MODEL: "default in Settings",
+    CLI_CHANGED: "changed in the agent CLI",
 }
 
 
@@ -1112,31 +1120,85 @@ DEFAULT_LEVEL = "normal"
 
 @dataclass(frozen=True)
 class PowerRow:
+    """A model of a session, in one of three forms: built-in (`model` as the CLI names it),
+    external (`model_id`, a configured model's id, with `model` and `name` as copies for the
+    words after its removal; a launch reads the entry by id), or the CLI's own settings
+    (`model` "", past any default)."""
+
     cli: str  # a provider's name
     model: str
+    model_id: str | None = None
+    name: str | None = None
+
+    @property
+    def shown(self) -> str:
+        """The row's model for the human."""
+        return self.name or self.model
 
 
 @dataclass(frozen=True)
 class PowerTable:
     """What a session's agents run on, by level: a CLI and a model for each of LEVELS.
-    Kept as one JSON document ({"normal": {"cli": ..., "model": ...}, ...})."""
+    Kept as one JSON document ({"normal": {"cli": ..., "model": ...}, ...}). `readable` is
+    False for a stored text that is no such table (unreadable): it has no rows, so nothing
+    calls `row` on it unchecked; its session lists as any, and refuses a resume that keeps it
+    (lado.model_settings.start_model)."""
 
     rows: dict[str, PowerRow]
+    readable: bool = True
+
+    @classmethod
+    def of(cls, row: PowerRow) -> "PowerTable":
+        """The table of one model: every level the same."""
+        return cls({level: row for level in LEVELS})
 
     @classmethod
     def single(cls, cli: str, model: str) -> "PowerTable":
-        """The table of one model: every level the same."""
-        return cls({level: PowerRow(cli, model) for level in LEVELS})
+        """The table of one built-in model."""
+        return cls.of(PowerRow(cli, model))
+
+    @classmethod
+    def unreadable(cls) -> "PowerTable":
+        return cls({}, readable=False)
 
     def row(self, level: str = DEFAULT_LEVEL) -> PowerRow:
         return self.rows[level]
 
     def to_json(self) -> str:
-        return json.dumps({level: asdict(row) for level, row in self.rows.items()})
+        return json.dumps(
+            {
+                level: {key: value for key, value in asdict(row).items() if value is not None}
+                for level, row in self.rows.items()
+            }
+        )
 
     @classmethod
     def from_json(cls, text: str) -> "PowerTable":
-        return cls({level: PowerRow(**row) for level, row in json.loads(text).items()})
+        """The table `text` holds, keys it does not know ignored; never raises: anything else
+        is `unreadable`."""
+        try:
+            found = json.loads(text)
+        except ValueError:
+            return cls.unreadable()
+        if not isinstance(found, dict) or DEFAULT_LEVEL not in found:
+            return cls.unreadable()
+        rows = {level: _power_row(row) for level, row in found.items()}
+        if None in rows.values():
+            return cls.unreadable()
+        return cls(rows)
+
+
+def _power_row(row: object) -> PowerRow | None:
+    """The row a stored `row` holds, None for what is no row."""
+    if not isinstance(row, dict):
+        return None
+    cli, model = row.get("cli"), row.get("model")
+    model_id, name = row.get("model_id"), row.get("name")
+    if not (isinstance(cli, str) and isinstance(model, str)):
+        return None
+    if not all(value is None or isinstance(value, str) for value in (model_id, name)):
+        return None
+    return PowerRow(cli, model, model_id, name)
 
 
 @dataclass
@@ -1872,12 +1934,12 @@ def report_model(
 ) -> None:
     """Record the model and effort the agent's CLI named in an event (base.Event): a model
     "" or an effort None it did not name, which stays as it was; an effort "" is the
-    model's default one, no name. A name that differs from the agent's is the CLI's own:
-    its source becomes CLI_DEFAULT, with no detail; but a first model name (the agent had
-    none), or one that `same(chosen, reported)` says is the chosen model's (the agent's
-    provider's Provider.same_model: Claude Code's full name of an alias), replaces the name
-    and keeps the source and the detail. Writes nothing when nothing changes, so a CLI that
-    names its model in every hook adds no change to the journal."""
+    model's default one, no name. A name that differs from the agent's is the CLI's own: a
+    model's source becomes CLI_CHANGED, an effort's CLI_DEFAULT, with no detail; but a first
+    model name (the agent had none), or one that `same(chosen, reported)` says is the chosen
+    model's (the agent's provider's Provider.same_model: Claude Code's full name of an alias),
+    replaces the name and keeps the source and the detail. Writes nothing when nothing
+    changes, so a CLI that names its model in every hook adds no change to the journal."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
@@ -1896,7 +1958,7 @@ def report_model(
                 values.append(reported)
             else:
                 sets.append(f"{column} = ?, {column}_source = ?, {column}_detail = NULL")
-                values += [reported, CLI_DEFAULT]
+                values += [reported, CLI_CHANGED if column == "model" else CLI_DEFAULT]
         if sets:
             db.execute(
                 f"UPDATE agents SET {', '.join(sets)} WHERE session = ? AND name = ?",
@@ -2321,6 +2383,16 @@ def list_events(session: str, after: int = 0) -> list[Event]:
             (session, after),
         ).fetchall()
     return [Event(*r) for r in rows]
+
+
+def last_start_model(session: str) -> str:
+    """What the session's supervisor last started on (START_MODEL), "" for no model."""
+    with connect() as db:
+        row = db.execute(
+            "SELECT detail FROM events WHERE session = ? AND kind = ? ORDER BY id DESC LIMIT 1",
+            (session, START_MODEL),
+        ).fetchone()
+    return row["detail"] if row else ""
 
 
 def run_events(session: str) -> list[Event]:
@@ -4049,6 +4121,13 @@ def add_model(name: str, cli: str, model: str, server: str) -> ConfiguredModel:
             raise taken from None
         row = db.execute("SELECT * FROM models WHERE folded = ?", (name.casefold(),)).fetchone()
     return _configured_model(row)
+
+
+def model_server_by_id(id: str) -> ModelServer | None:
+    """The saved model server of id `id`."""
+    with connect() as db:
+        row = db.execute("SELECT * FROM model_servers WHERE id = ?", (id,)).fetchone()
+    return _model_server(row) if row else None
 
 
 def models() -> list[ConfiguredModel]:

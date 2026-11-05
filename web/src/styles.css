@@ -5613,6 +5613,43 @@ h3 {
   grid-column: 1 / -1;
 }
 
+.field-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.launch-first-bad {
+  color: var(--danger);
+}
+
+/* The folded row's mark says why Start may be off: the name and the server give way, not it. */
+.launch-first-line {
+  display: inline-flex;
+  max-width: calc(100% - 16px);
+  vertical-align: bottom;
+}
+
+.launch-first-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.launch-first-mark {
+  flex: none;
+  white-space: pre;
+}
+
+.mc-default {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .field-note {
   color: var(--muted);
   font-size: 12px;
@@ -5802,54 +5839,6 @@ h3 {
 .where-list li:hover,
 .where-list li[aria-selected="true"] {
   background: var(--raised);
-}
-
-/* A field with suggestions (SuggestField.tsx): the window's input with a drawn chevron at
-   its right end, inside the frame, which opens the list. */
-.suggest-box {
-  position: relative;
-}
-
-.suggest-box input {
-  width: 100%;
-  padding-right: 34px;
-}
-
-.suggest-arrow {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  bottom: 1px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  padding: 0;
-  border: 0;
-  border-radius: 0 5px 5px 0;
-  background: transparent;
-  color: var(--ink);
-}
-
-.suggest-arrow:disabled {
-  color: var(--muted);
-  cursor: default;
-}
-
-.suggest-arrow svg {
-  width: 12px;
-  height: 12px;
-}
-
-.suggest-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.suggest-list .tag {
-  color: var(--muted);
-  font: 12px var(--sans);
 }
 
 .recent {
@@ -9369,6 +9358,10 @@ del.kit-mcp-name {
 
 .model-pick:hover:not(:disabled) {
   border-color: var(--muted);
+}
+
+.model-pick[aria-invalid="true"] {
+  border-color: var(--danger);
 }
 
 .model-pick:focus-visible,

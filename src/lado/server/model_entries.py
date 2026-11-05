@@ -170,6 +170,58 @@ def model_choices(
     )
 
 
+def _window_warnings(start: model_settings.StartModel) -> list[str]:
+    """The launch window's warning for the key of the chosen model's server, the only one it
+    shows; a start warns of every server of the agent's config."""
+    server = start.server
+    if server is None or not model_servers.plain_http_warning(
+        server.address, model_settings.server_key(server)
+    ):
+        return []
+    return [
+        f"The key of {server.name} goes unencrypted (http) to an address outside your machine "
+        "and network."
+    ]
+
+
+def check_session_model(given: models.SessionModelAsked) -> models.SessionModelCheck:
+    """The check a start would make of a model given for a session, saving nothing, in the
+    environment of the agents of the project asked for; a refusal is a SessionModelCheck of
+    kind refused."""
+    start = None
+    try:
+        provider = model_settings.known_cli(given.cli)
+        env = runtime.agents_env(runtime.agent_layers(given.project), provider)
+
+        def listing(asked: providers.Provider) -> base.ModelList:
+            return launch.model_list(asked, given.project)
+
+        row = model_settings.session_row(given.model, provider, env, listing)
+        start = model_settings.start_model(state.PowerTable.of(row), provider)
+        verdict = model_settings.check_start(start, provider, env, listing=listing)
+        warnings = _window_warnings(start)
+    except REFUSED as exc:
+        return models.SessionModelCheck(
+            kind=model_check.REFUSED,
+            text=getattr(exc, "window", str(exc)),
+            field=getattr(exc, "field", ""),
+            retry=getattr(exc, "retry", False),
+            short=getattr(exc, "short", str(exc)),
+            peek=getattr(exc, "peek", model_settings.REFUSED_PEEK),
+            server=start.server.name if start and start.server else None,
+        )
+    server = start.server
+    text = verdict.text
+    if server is not None and verdict.kind == model_check.OK:
+        text = f"{server.name} lists {start.model} among its models."
+    return models.SessionModelCheck(
+        kind=verdict.kind,
+        text=text,
+        warnings=warnings,
+        server=server.name if server else None,
+    )
+
+
 def set_default(cli: str, given: models.ModelDefaultSet) -> models.ModelDefaultSaved:
     """Set the default model as `lado model default` does: a row picked by reference, so it is
     never taken for another of the same name, a typed name read as the command reads it. The

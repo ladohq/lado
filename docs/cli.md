@@ -248,13 +248,21 @@ lado.db)`.
 When model servers are saved (`lado model-server add`), `lado doctor` prints one `Model
 servers` line: all of them probed at once with their kept keys, so it takes one probe's
 time (about 10 s at most for a server that hangs). `ok` names each with its type
-(`LM Studio at home answers (LM Studio)`); `warn` names each that does not answer, asks for
+(`LM Studio at home lists its models (LM Studio)`: the probe reads the list and sends no chat, so a
+server that fails a chat still reads `ok`); `warn` names each that does not answer, asks for
 a key, refuses its key or is no server LADO knows, with the probe's reason, each configured
 model on a server that answered with a list lacking its model (`model "<name>" (<model>) is
 not in <server>'s list of models`; never removed for it), each key file
 that is not a regular file, cannot be read or has a mode other than 600, and each folder of
 `<LADO_HOME>/model-servers/` of no saved server, as left over (also when none is saved). It
 never fails: doctor's exit status is as without it.
+
+With a default model set (`lado model default`), `lado doctor` prints one `Default models` line
+after it, from the same probes, asking no server again: `ok` names each default; `warn` names each
+that cannot start (`OpenCode's default Локальная Qwen: LM Studio дома does not answer (…)`, with
+the reason of the server's probe, `…: qwen3-8b is not in LM Studio дома's list of models`, `Codex
+CLI's default gpt-5.4-old: its list no longer has it`), or that it cannot check as the agents'
+environment cannot be read. It never fails either.
 
 `lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
 own status command in the environment its agents get without a project, the login taken
@@ -299,11 +307,38 @@ logged in: log in in Settings → Agent CLIs and environment, or set CLAUDE_CODE
 the agent starts by itself once you do`; it starts by itself once there is one. A login
 that cannot be read refuses nothing and holds no agent: `lado start` warns `cannot tell
 whether Claude Code is logged in: <why>; the agent starts all the same`.
-`lado start --model <model>` starts the session's agents of its provider's CLI on a model
-(taken without the spaces around it; only spaces is `''`):
+`lado start --model <name>` starts the session's agents of its provider's CLI on a model, the
+name read as `lado model default` reads it: a saved model of that CLI (`lado model list`, ignoring
+case) or a built-in one; taken without the spaces around it. A saved model of another CLI is
+refused (`"Локальная Qwen" is a model of OpenCode, not of Claude Code`): the model never changes
+the session's CLI. `--model ''` (or only spaces) is the CLI's own settings, past any default, and a
+resume keeps it. A session with no `--model` keeps no choice: it starts on its CLI's default model
+as it is at each launch, else as the CLI chooses; a resume on another default prints `changed
+model: Локальная Qwen -> Рабочая Qwen`, also among the start's warnings in loop.log.
+The model goes to the CLI its own way:
 Claude Code with `--model`, Codex with `model` in its agent's config.toml (the carried
-profile's too, as that wins), OpenCode and Kilo with `model` in their config content; never
-the user's own config. The model is checked first (`lado.model_check`) against the CLI's
+profile's too, as that wins), OpenCode and Kilo with `model` in their config content and with
+`--model`, which alone beats Kilo's remembered `/model` pick; never
+the user's own config. A session's model is where an agent starts, not a limit: every model saved
+for OpenCode or Kilo CLI goes into each of their agents' config, one provider per server
+(`lado-<server id>`, shown as `LADO · <server>` in `/model`), beside their built-in ones, whatever
+the session chose; each server's key reaches the agent only as a variable of its launch. A server
+whose key file cannot be read, or whose key holds `"`, `\` or a control character, which those CLIs
+put into their config as it is, is left out with a warning; an agent that starts on it is refused. Each key sent
+over plain http to an address outside the machine and network is warned about, and the session
+starts.
+
+A model on a server is checked by the probe of `lado model add`, within its timeout, before a
+start and each resume, whether given, kept or a default: a server that does not answer, or a list
+that lacks the model, is refused with exit 1 before anything is stored (`lado:
+http://localhost:1234 does not answer (connection refused); LADO cannot check qwen3-8b`). A silent
+server of another saved model stops nothing. A model on a server for a CLI that runs on none yet
+is refused with no request (`Шлюз Opus is on the model server Шлюз; Claude Code does not run on a
+model server yet, OpenCode does`), a spawned worker too, whose server is otherwise not asked. A
+refused default adds `it is OpenCode's default model: start with --model '' for its settings, or
+change it with lado model default opencode`.
+
+A built-in model is checked first (`lado.model_check`) against the CLI's
 own, local list: an alias of the CLI (Claude Code's `opus`, `sonnet`, …) or a name of the
 list starts; a name the list lacks is refused with exit 1 before anything is stored (`lado:
 gpt-9 is not in Codex CLI's list of models; codex debug models prints the list`); a CLI
@@ -313,18 +348,23 @@ also in loop.log (`lado: Claude Code gives no list of models beyond its aliases:
 check claude-opus-5-5; a wrong name stops its agents at their first turn`). The lists:
 `codex debug models --bundled` and the account's catalogue Codex cached in its home,
 `opencode models`, `kilo models`; LADO asks no model API. The session keeps it (`lado.db`,
-`sessions.power`): a resume without `--model` keeps it, `--model ''` goes back to the CLI's
-default, a resume with another `--provider` and no `--model` drops it; each prints `changed
-model: codex gpt-5.6-sol -> CLI default` (or `CLI default -> …`, or one model to another). A
+`sessions.power`, a saved model by its id, so a rename applies): a resume without `--model` keeps
+it, `--model ''` goes to the CLI's settings, a resume with another `--provider` and no `--model`
+drops it; each prints `changed model: codex gpt-5.6-sol -> Codex CLI's settings` (`-> CLI default`
+for a dropped one, the name of the default it goes to, or one model to another). A
 resume checks the model it keeps as a given one: one its CLI's list no longer has is
 refused before anything starts, the session stays stopped with its model, and the refusal
 names the way out (`lado: gpt-5.4-old is not in Codex CLI's list of models; codex debug
 models prints the list; the session ran on it before: resume it with --model '' for Codex
-CLI's default or --model <model> for another`); LADO's own resumes (the container's
+CLI's settings or --model <model> for another`); a saved model since removed reads `the session ran
+on the model Рабочая Qwen, which is no longer saved; resume it with …`, and a stored table that
+cannot be read `the session's model cannot be read; resume it with …`, while `lado ls` and the UI
+list that session as any. LADO's own resumes (the container's
 start, `lado update`) leave it stopped and log the refusal. A
-worker spawned with another provider runs its CLI's default model: `spawn_worker` warns
+worker spawned with another provider starts on its own CLI's default model, else as that CLI
+chooses, and then `spawn_worker` warns
 `w1 runs on Claude Code's default model: the session's model gpt-5.6-sol is for Codex CLI`.
-`lado ls` shows each agent's model as before.
+`lado ls` and `list_agents` show each agent's model, a model of a server by its saved name.
 
 There is no `lado login`: in a terminal the CLIs' own commands log in. Every Codex agent
 shares the login of the user's own Codex (`codex login`, `codex login --device-auth`).
@@ -672,8 +712,8 @@ model the server types as embeddings (LM Studio's `(embeddings)` mark) is refuse
 is an embeddings model on <server>; an agent needs a chat model: lado model-server probe
 <address> lists the models`); then the model is checked against the server's list as against a CLI's (`<model> is not in
 <server>'s list of models; lado model-server probe <address> prints the list`). Claude Code
-and Codex models on a server are saved by that rule; no session uses a configured model
-yet. Saved: `Saved model "<name>": <CLI>, <model> on <server> (<the check's text>)`, exit
+and Codex models on a server are saved by that rule, and no session of theirs starts on one yet.
+Saved: `Saved model "<name>": <CLI>, <model> on <server> (<the check's text>)`, exit
 0; refused: exit 1, nothing saved.
 
 `lado model list` prints `NAME CLI MODEL SERVER` sorted by name ignoring case, running no CLI

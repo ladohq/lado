@@ -23,6 +23,8 @@ from lado import (
     kits,
     loop,
     mcp_exec,
+    model_servers,
+    model_settings,
     providers,
     runs,
     runtime,
@@ -6153,7 +6155,6 @@ def test_no_table_passes_no_model(repo, fake_tmux):
     assert "--model" not in argv
     agent = state.get_agent("s", "w1")
     assert (agent.model, agent.model_source, agent.model_detail) == (None, "cli", None)
-    assert runtime.session_model(state.get_session("s"), providers.get("claude")) == (None, None)
 
 
 def _models(monkeypatch, name, *models):
@@ -6225,13 +6226,13 @@ def test_the_model_is_taken_without_its_spaces(repo, fake_tmux, monkeypatch):
     assert state.get_session("s").power == state.PowerTable.single("kilo", "kilo/a")
     runtime.stop_session("s")
     started = runtime.start_session(str(repo), "s", None, model="  ")
-    assert started.changes == ["model: kilo kilo/a -> CLI default"]
-    assert state.get_session("s").power is None
+    assert started.changes == ["model: kilo kilo/a -> Kilo CLI's settings"]
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "")
 
 
 _KEPT_REFUSED = (
     "kilo/a is not in Kilo CLI's list of models; kilo models prints the list; the session "
-    "ran on it before: resume it with --model '' for Kilo CLI's default or --model <model> "
+    "ran on it before: resume it with --model '' for Kilo CLI's settings or --model <model> "
     "for another"
 )
 
@@ -6259,7 +6260,7 @@ def test_a_resume_refuses_a_kept_model_the_list_lacks(repo, fake_tmux, monkeypat
 def test_a_resume_to_the_default_of_a_kept_model_the_list_lacks(repo, fake_tmux, monkeypatch):
     _kept_model_gone(repo, fake_tmux, monkeypatch)
     started = runtime.start_session(str(repo), "s", None, model="")
-    assert started.changes == ["model: kilo kilo/a -> CLI default"]
+    assert started.changes == ["model: kilo kilo/a -> Kilo CLI's settings"]
     runtime.stop_session("s")
     with pytest.raises(runtime.LadoError) as error:  # a model given: no way out to name
         runtime.start_session(str(repo), "s", None, model="kilo/a")
@@ -6290,13 +6291,327 @@ def test_an_empty_model_drops_it(repo, fake_tmux, monkeypatch):
     assert started.changes == ["model: kilo kilo/a -> kilo kilo/b"]
     runtime.stop_session("s")
     started = runtime.start_session(str(repo), "s", None, model="")
-    assert started.changes == ["model: kilo kilo/b -> CLI default"]
-    assert state.get_session("s").power is None
+    assert started.changes == ["model: kilo kilo/b -> Kilo CLI's settings"]
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "")
     env, _ = agent_helpers.launched(fake_tmux[-1])
     assert "model" not in json.loads(env["KILO_CONFIG_CONTENT"])
     runtime.stop_session("s")
     started = runtime.start_session(str(repo), "s", None, model="kilo/a")
-    assert started.changes == ["model: CLI default -> kilo kilo/a"]
+    assert started.changes == ["model: Kilo CLI's settings -> kilo kilo/a"]
+
+
+CHAT = providers.base.CHAT_COMPLETIONS
+
+
+def _on_server(name="Локальная Qwen", cli="opencode", model="qwen3-8b", server="LM Studio дома"):
+    """A saved model on a server of that name, saved first when new."""
+    saved = state.model_server(server) or state.add_model_server(
+        server.encode().hex()[:12], server, "http://localhost:1234", "LM Studio", [CHAT]
+    )
+    return state.add_model(name, cli, model, saved.id)
+
+
+def _default(saved):
+    state.set_cli_default(state.ModelRef(saved.cli, saved.id, None))
+
+
+def _answers(monkeypatch, *models):
+    """Every saved server answers with `models`; the servers asked, by name."""
+    asked = []
+
+    def probe(server):
+        asked.append(server.name)
+        return model_servers.Probe(server.address, False, "LM Studio", frozenset([CHAT]), models)
+
+    monkeypatch.setattr(model_settings, "probe_saved", probe)
+    return asked
+
+
+def _silent(monkeypatch):
+    """No saved server answers."""
+
+    def probe(server):
+        raise model_servers.ProbeError(
+            f"{server.address} does not answer (connection refused)", silent="connection refused"
+        )
+
+    monkeypatch.setattr(model_settings, "probe_saved", probe)
+
+
+def _config(call):
+    env, _ = agent_helpers.launched(call)
+    return json.loads(env["OPENCODE_CONFIG_CONTENT"])
+
+
+def test_a_session_with_no_choice_starts_on_the_cli_s_default(repo, fake_tmux, monkeypatch):
+    saved = _on_server()
+    _default(saved)
+    asked = _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    assert state.get_session("s").power is None
+    named = f"lado-{saved.server}/qwen3-8b"
+    assert _config(fake_tmux[0])["model"] == named
+    _, argv = agent_helpers.launched(fake_tmux[0])
+    assert argv[argv.index("--model") + 1] == named
+    agent = state.get_agent("s", "supervisor")
+    assert (agent.model, agent.model_source) == (named, "default")
+    assert asked == ["LM Studio дома"]
+
+
+def test_a_session_on_an_external_model_keeps_its_id(repo, fake_tmux, monkeypatch):
+    saved = _on_server()
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode", model="Локальная Qwen")
+    assert state.get_session("s").power == state.PowerTable.of(
+        state.PowerRow("opencode", "qwen3-8b", saved.id, "Локальная Qwen")
+    )
+    agent = state.get_agent("s", "supervisor")
+    assert (agent.model, agent.model_source) == (f"lado-{saved.server}/qwen3-8b", "session")
+
+
+def test_a_refused_external_model_stores_nothing(repo, fake_tmux, monkeypatch):
+    _on_server()
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _silent(monkeypatch)
+    with pytest.raises(runtime.ModelRefused) as error:
+        runtime.start_session(str(repo), "s", None, provider="opencode", model="Локальная Qwen")
+    assert str(error.value).startswith(
+        "http://localhost:1234 does not answer (connection refused); LADO cannot check qwen3-8b"
+    )
+    assert error.value.refused.short == "LM Studio дома does not answer"
+    assert state.get_session("s") is None and fake_tmux == []
+
+
+def test_a_refused_default_says_its_way_out(repo, fake_tmux, monkeypatch):
+    _default(_on_server())
+    _silent(monkeypatch)
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.start_session(str(repo), "s", None, provider="opencode")
+    assert str(error.value).endswith(
+        "; it is OpenCode's default model: start with --model '' for its settings, or change it "
+        "with lado model default opencode"
+    )
+
+
+def test_past_a_default_no_model_is_passed_and_no_server_asked(repo, fake_tmux, monkeypatch):
+    _default(_on_server())
+    asked = _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode", model="")
+    assert "model" not in _config(fake_tmux[0]) and asked == []
+    agent = state.get_agent("s", "supervisor")
+    assert (agent.model, agent.model_source) == (None, "cli")
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    assert "model" not in _config(fake_tmux[-1]) and asked == []
+
+
+def test_a_default_changed_before_a_resume_is_said(repo, fake_tmux, monkeypatch):
+    first = _on_server()
+    _default(first)
+    _answers(monkeypatch, "qwen3-8b", "qwen3-coder-30b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.stop_session("s")
+    second = _on_server("Рабочая Qwen", model="qwen3-coder-30b")
+    _default(second)
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.changes == ["model: Локальная Qwen -> Рабочая Qwen"]
+    assert "changed model: Локальная Qwen -> Рабочая Qwen" in started.warnings
+    log = (state.home() / "loop.log").read_text()
+    assert "s: supervisor: changed model: Локальная Qwen -> Рабочая Qwen" in log
+    assert _config(fake_tmux[-1])["model"] == f"lado-{second.server}/qwen3-coder-30b"
+
+
+def test_a_default_set_or_cleared_before_a_resume_is_said(repo, fake_tmux, monkeypatch):
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.stop_session("s")
+    _default(_on_server())
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.changes == ["model: CLI default -> Локальная Qwen"]
+    runtime.stop_session("s")
+    state.clear_cli_default("opencode")
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.changes == ["model: Локальная Qwen -> CLI default"]
+
+
+def test_the_same_default_at_a_resume_is_no_change(repo, fake_tmux, monkeypatch):
+    saved = _on_server()
+    _default(saved)
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.stop_session("s")
+    state.rename_model(saved.name, "Qwen дома")
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.changes == []
+    assert not [w for w in started.warnings if "changed model" in w]
+
+
+def test_an_alias_default_the_cli_named_in_full_is_no_change(repo, fake_tmux):
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    state.report_model(
+        "s", "supervisor", "claude-opus-5-5", None, providers.get("claude").same_model
+    )
+    runtime.stop_session("s")
+    assert runtime.start_session(str(repo), "s", None).changes == []
+
+
+def test_all_ticked_models_are_in_the_config_whatever_the_session_chose(
+    repo, fake_tmux, monkeypatch
+):
+    one = _on_server()
+    other = _on_server("Шлюз Qwen", model="gw-qwen", server="Шлюз")
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _answers(monkeypatch, "qwen3-8b")
+    both = {f"lado-{one.server}", f"lado-{other.server}"}
+    for number, model in enumerate(("opencode/big-pickle", "Локальная Qwen", None)):
+        runtime.start_session(str(repo), f"s{number}", None, provider="opencode", model=model)
+        assert set(_config(fake_tmux[-1])["provider"]) == both
+
+
+def test_a_silent_server_of_another_model_stops_nothing(repo, fake_tmux, monkeypatch):
+    _default(_on_server())
+    _on_server("Шлюз Qwen", model="gw-qwen", server="Шлюз")
+    asked = _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    assert asked == ["LM Studio дома"]
+
+
+def test_a_key_over_plain_http_warns_at_a_start_and_a_spawn(repo, fake_tmux, monkeypatch):
+    server = state.add_model_server("gw", "Шлюз", "http://llm.example.com", "OpenAI", [CHAT])
+    state.add_model("Qwen", "opencode", "q", server.id)
+    model_settings._write_key(server.id, "KEY-CANARY")
+    started = runtime.start_session(str(repo), "s", None, provider="opencode")
+    line = model_servers.PLAIN_HTTP.format(host="llm.example.com")
+    assert line in started.warnings
+    assert f"s: supervisor: {line}" in (state.home() / "loop.log").read_text()
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", warnings=warnings)
+    assert line in warnings
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert env["LADO_MODEL_KEY_GW"] == "KEY-CANARY"
+    assert "KEY-CANARY" not in env["OPENCODE_CONFIG_CONTENT"]
+
+
+def test_another_provider_names_the_default_the_session_goes_to(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    _default(_on_server())
+    _answers(monkeypatch, "qwen3-8b")
+    started = runtime.start_session(str(repo), "s", None, provider="opencode")
+    assert "model: kilo kilo/a -> Локальная Qwen" in started.changes
+
+
+def test_an_agent_s_state_outlives_a_resume_and_goes_with_its_session(repo, fake_tmux, lado_home):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    folder = lado_home / "agent-state" / "s" / "supervisor"
+    env, _ = agent_helpers.launched(fake_tmux[0])
+    assert env["XDG_STATE_HOME"] == str(folder)
+    memory = folder / "opencode" / "model.json"
+    memory.parent.mkdir(parents=True)
+    memory.write_text('{"recent": []}')
+    runtime.stop_session("s")
+    assert memory.exists()  # the agent's /model pick is the agent's
+    runtime.start_session(str(repo), "s", None)
+    assert memory.exists()
+    runtime.stop_session("s")
+    runtime.forget_session("s")
+    assert not (lado_home / "agent-state" / "s").exists()
+
+
+def test_a_finished_worker_s_state_goes_with_it(repo, fake_tmux, lado_home):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.spawn_worker("s", "a task", name="w1")
+    folder = lado_home / "agent-state" / "s" / "w1"
+    folder.mkdir(parents=True, exist_ok=True)
+    runtime.finish_worker("s", "w1", discard=True)
+    assert not folder.exists()
+
+
+def test_a_failed_start_leaves_no_state(repo, fake_tmux, lado_home, monkeypatch):
+    def fails(*_args, **_kwargs):
+        (lado_home / "agent-state" / "s" / "supervisor").mkdir(parents=True, exist_ok=True)
+        raise tmux.TmuxError("no tmux")
+
+    monkeypatch.setattr(tmux, "new_session", fails)
+    with pytest.raises(tmux.TmuxError):
+        runtime.start_session(str(repo), "s", None, provider="opencode")
+    assert not (lado_home / "agent-state" / "s").exists()
+
+
+def test_a_worker_takes_the_default_as_it_is_at_its_spawn(repo, fake_tmux, monkeypatch):
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    saved = _on_server()
+    _default(saved)
+    runtime.spawn_worker("s", "a task", name="w1")
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source) == (f"lado-{saved.server}/qwen3-8b", "default")
+
+
+def test_a_worker_of_another_cli_takes_its_own_default(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    saved = _on_server("Qwen в Kilo", cli="kilo")
+    _default(saved)
+    runtime.start_session(str(repo), "s", None, provider="opencode", model="opencode/big-pickle")
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", provider="kilo", warnings=warnings)
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source) == (f"lado-{saved.server}/qwen3-8b", "default")
+    assert not [w for w in warnings if "default model" in w]
+
+
+def test_a_worker_on_a_server_its_cli_cannot_run_is_refused(repo, fake_tmux, monkeypatch):
+    _answers(monkeypatch)
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    _default(_on_server("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз"))
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.spawn_worker("s", "a task", name="w1", provider="claude")
+    assert str(error.value) == (
+        "Шлюз Opus is on the model server Шлюз; Claude Code does not run on a model server yet, "
+        "Kilo CLI and OpenCode do"
+    )
+    assert state.get_agent("s", "w1") is None
+
+
+def test_a_kept_model_no_longer_saved_is_refused(repo, fake_tmux, monkeypatch):
+    saved = _on_server("Рабочая Qwen")
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode", model="Рабочая Qwen")
+    runtime.stop_session("s")
+    state.remove_model(saved.name)
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.start_session(str(repo), "s", None)
+    assert str(error.value) == (
+        "the session ran on the model Рабочая Qwen, which is no longer saved; resume it with "
+        "--model '' for OpenCode's settings or --model <model> for another"
+    )
+    assert state.get_session("s").stopped_at
+
+
+def _break_power(session):
+    with state.connect() as db:
+        db.execute("UPDATE sessions SET power = 'not json' WHERE name = ?", (session,))
+
+
+def test_a_table_that_cannot_be_read_refuses_its_resume_only(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    _break_power("s")
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.start_session(str(repo), "s", None)
+    assert str(error.value) == (
+        "the session's model cannot be read; resume it with --model '' for Kilo CLI's settings or "
+        "--model <model> for another"
+    )
+    started = runtime.start_session(str(repo), "s", None, model="kilo/a")
+    assert started.changes == ["model: an unreadable model -> kilo kilo/a"]
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "kilo/a")
 
 
 def test_another_provider_drops_the_model(repo, fake_tmux, monkeypatch):

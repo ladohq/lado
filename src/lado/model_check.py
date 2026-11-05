@@ -3,7 +3,6 @@ launch window): an alias of the CLI or a name of its own list starts; a name the
 is refused; a CLI that gives no list starts with a warning. The one rule; the CLI, the API
 and the UI show its text."""
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 
 from lado import providers
@@ -17,14 +16,6 @@ class Verdict:
     kind: str  # DEFAULT (no model), OK, WARN or REFUSED
     text: str  # for the human, one line
     page: str = ""  # a refusal's line naming no command, for Settings → Models ("": text)
-
-
-def check(provider: providers.Provider, model: str, env: Mapping[str, str]) -> Verdict:
-    """The verdict on `model` for `provider`'s CLI, whose list is read with the agents'
-    environment `env`; "" is the CLI's default and reads no list."""
-    if not model:
-        return verdict(provider, model, base.ModelList())
-    return verdict(provider, model, provider.model_list(env))
 
 
 def verdict(

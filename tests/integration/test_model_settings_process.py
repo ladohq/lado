@@ -119,7 +119,7 @@ def test_the_key_canary(serve, lado_home):  # noqa: F811
     runs.append(lado("model-server", "list"))
     runs.append(lado("model", "list"))
     runs.append(lado("doctor"))
-    assert "work answers (OpenAI-compatible)" in runs[-1].stdout
+    assert "work lists its models (OpenAI-compatible)" in runs[-1].stdout
     refused = lado(
         "model-server", "add", "work", url, "--key", "--replace", stdin="wrong-" + canary
     )
@@ -140,7 +140,7 @@ def test_the_key_canary(serve, lado_home):  # noqa: F811
     assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
     assert stat.S_IMODE(key_file.parent.stat().st_mode) == 0o700
     checked = lado("doctor")
-    assert "work answers (OpenAI-compatible)" in checked.stdout
+    assert "work lists its models (OpenAI-compatible)" in checked.stdout
     for done in (replaced, checked):
         assert second not in done.stdout + done.stderr
         assert canary not in done.stdout + done.stderr

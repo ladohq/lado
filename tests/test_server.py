@@ -200,6 +200,7 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
             "title": None,
             "project": None,
             "model": None,
+            "model_missing": False,
         },
         {
             "name": "t",
@@ -218,6 +219,7 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
             "title": None,
             "project": None,
             "model": None,
+            "model_missing": False,
         },
     ]
 

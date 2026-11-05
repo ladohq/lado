@@ -100,15 +100,6 @@ export class ModelServer {
     const [where] = path.split("?");
     if (where === "/api/model-settings") return json(this.entries);
     if (where === "/api/providers/logins") return json({ providers: this.logins, checking: false, environment: "" });
-    if (where === "/api/providers/claude/models")
-      return json({
-        aliases: ["sonnet", "opus"],
-        models: null,
-        why: "Claude Code gives no list of models beyond its aliases",
-        check: { kind: "default", text: "", field: "" },
-      });
-    if (where.startsWith("/api/providers/") && where.endsWith("/models"))
-      return json({ aliases: [], models: ["gpt-5-codex"], why: "", check: { kind: "default", text: "", field: "" } });
     const listOf = where.match(/^\/api\/providers\/(.+)\/model-choices$/);
     if (listOf) return json(this.choices(listOf[1], new URLSearchParams(path.split("?")[1] ?? "").get("model") ?? ""));
     const checked = where.match(/^\/api\/model-defaults\/(.+)\/check$/);

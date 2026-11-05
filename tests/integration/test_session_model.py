@@ -81,6 +81,8 @@ def test_a_worker_of_another_cli_runs_its_default_and_says_so(repo, fake_models)
         "w1 runs on Fake agent's default model: the session's model fake-large is for Fake agent"
     )
     assert any(warning in text for text in seen("supervisor")["spawn_text"])
+    # After its first hook: a worker that took its spawner's launch would have named that model.
+    wait_for(lambda: state.get_agent(SESSION, "w1").seen_at > 0, "the worker's first hook")
     worker = state.get_agent(SESSION, "w1")
     assert (worker.model, worker.model_source, worker.model_detail) == (
         None,

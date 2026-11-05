@@ -22,6 +22,11 @@ def test_importing_lado_and_its_hooks_does_not_read_the_package_metadata():
     assert "importlib.metadata" not in _modules_after("import lado.hooks")
 
 
+def test_a_hook_process_does_not_load_the_http_client_of_the_model_servers():
+    """It costs every hook about 15 ms, and only a launch or a probe needs it."""
+    assert "lado.model_servers" not in _modules_after("import lado.hooks")
+
+
 def test_the_cli_imports_what_only_some_commands_need_in_those_commands():
     loaded = _modules_after("import lado.cli")
     lazy = {

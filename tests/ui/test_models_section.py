@@ -22,8 +22,8 @@ from lado import model_settings, state
 pytestmark = pytest.mark.ui
 
 LEAD_NO_MODELS = (
-    "A default model for each agent CLI. To add models of your own, add a model server below "
-    "and tick the agent CLIs that run them."
+    "New sessions and workers of each agent CLI start on its default model. To add models of "
+    "your own, add a model server below and tick the agent CLIs that run them."
 )
 KILO_MODELS = 323
 CHAT = "chat completions"

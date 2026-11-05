@@ -52,6 +52,7 @@ from typing import NamedTuple
 from lado import interpreter, state, tmux
 
 SOURCE_VAR = "LADO_AGENT_ENV"
+LAUNCH_VARS = "LADO_LAUNCH_VARS"  # the names a launch set on top of the layers, comma-separated
 SHELL, INHERIT = "shell", "inherit"
 TIMEOUT = 10  # seconds the shell may take
 SLOW = 2  # seconds above which `lado doctor` warns
@@ -123,10 +124,18 @@ def layers(project: Mapping[str, str] | None = None) -> Layers:
     """The layers of an agent's environment, read now: the login shell's (or the starting
     process's), the outside folder's, LADO's secrets (`lado_secrets`), and `project`, the
     variables of its session's project (lado.projects)."""
-    env = from_shell() if source() == SHELL else dict(os.environ)
+    env = from_shell() if source() == SHELL else without_launch(os.environ)
     dropped = (*EXCLUDED, *SHELL_OWN)
     base = {k: v for k, v in tmux.without_agent_vars(env).items() if k not in dropped}
     return Layers(base, outside().values, lado_secrets().values, dict(project or {}))
+
+
+def without_launch(env: Mapping[str, str]) -> dict[str, str]:
+    """`env` without what LADO and the provider set for the launch of the agent it is the
+    environment of (LAUNCH_VARS): a process an agent started hands on neither that agent's
+    config nor its keys to the agent it starts."""
+    names = {*env.get(LAUNCH_VARS, "").split(","), LAUNCH_VARS}
+    return {k: v for k, v in env.items() if k not in names}
 
 
 def merge(

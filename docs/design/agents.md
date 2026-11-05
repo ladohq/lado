@@ -158,23 +158,54 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
 - An agent's model and effort (`agents.model`, `effort`, schema 36) each have a source and
   a detail: `cli`, the CLI's own choice (its default or its own settings), `cli-config`,
   the user's config of the CLI that LADO carries into the agent, with the detail
-  `profile <name>` when a profile gave it, or `session`, the session's model ("chosen for
-  the session"). Later ways of choosing a model add tokens, not
+  `profile <name>` when a profile gave it, `session`, the session's model ("chosen for
+  the session"), `default`, its CLI's default of Settings → Models ("default in Settings"), or
+  `cli-changed`, another model its CLI named after the launch ("changed in the agent CLI").
+  Later ways of choosing a model add tokens, not
   columns; `state.source_words` holds the words the API and the UI show for each, and an
   unknown token is shown as itself. A launch says what it set up (`Launch.model`, `effort`),
   which `runtime` records before the window opens (`state.set_model`): Codex's carried
   `model` and `model_reasoning_effort`, the chosen profile's before the top level's, as
   Codex reads them, and the session's model. A session keeps its model as a power table
-  (`sessions.power`, schema 37: rows `light`, `normal` and `heavy`, each a CLI and a model,
-  all the same for now); `runtime.session_model` gives an agent whose CLI is the `normal`
-  row's that model in `AgentSpec.model`, which its provider applies its own way (Claude
+  (`sessions.power`, schema 37: rows `light`, `normal` and `heavy`, all the same for now, each a
+  CLI and a model: built-in, external by a saved model's id with copies for the words after its
+  removal, or `""` for the CLI's own settings; a stored text that is no table reads as
+  `PowerTable.unreadable()`, which lists as any session and refuses a resume that keeps it).
+  `model_settings.start_model`, read at each launch, says what an agent starts on: its CLI's row,
+  else its CLI's default of Settings → Models (`cli_defaults`), else nothing; a session that chose
+  nothing keeps nothing, so a default changed later reaches the next resume and worker. Its name
+  goes in `AgentSpec.model`, with `model_source`, which the provider applies its own way (Claude
   Code `--model`, Codex `model` at the top level and in the carried profile of its
-  config.toml, the OpenCode family `model` in its config content, the fake agent
-  `FAKE_AGENT_MODEL`) and returns as `Launch.model` with the source `session`, so a Kilo
-  agent shows it also while its plugin names none. An agent of another CLI (a worker
-  spawned with another provider) gets no model: its record has no name, the source `cli`
+  config.toml, the OpenCode family `model` in its config content and `--model`, the only one that
+  beats Kilo's remembered `/model` pick, the fake agent
+  `FAKE_AGENT_MODEL`) and returns as `Launch.model` with that source, so a Kilo
+  agent shows it also while its plugin names none. Both family CLIs remember the last `/model`
+  pick in `<state>/<cli>/model.json`, read by every run: each of their agents has its own
+  `XDG_STATE_HOME`, `LADO_HOME/agent-state/<session>/<agent>` (`OpenCodeFamily.own_state`), so an
+  agent's pick of a server, a provider only its config has, stays out of the user's file, which
+  LADO only reads. A new folder starts from a copy of that file without LADO's servers. The
+  variable moves `state` alone, logins stay; the agent's tools see it, and its prompt history and
+  `locks` live there too. It is apart from the config folder: it outlasts a stop and a resume, and
+  goes with the worker or the session. A CLI whose models on a server sit beside its
+  own (`Provider.runs_on_server`, the OpenCode family) gets every model ticked for it in
+  `AgentSpec.servers` (`model_settings.agent_servers`), whatever it starts on: one OpenAI-compatible
+  provider per server, `lado-<server id>`, so a rename changes nothing, labelled `LADO · <server>`,
+  its key named as `{env:LADO_MODEL_KEY_<ID>}` and given only in `Launch.env`; a name or id that
+  holds `{env:` or `{file:` is left out with a warning, as the CLI would expand it. Claude Code and
+  Codex hold one model per process and get none of it; a model on a server is refused for them
+  (`model_settings.check_launch`). A start or resume checks the supervisor's model
+  (`check_start`, by the probe of saving a model, within its timeout); `spawn_worker` makes the
+  local checks only. An agent of another CLI (a worker
+  spawned with another provider) takes its own CLI's default; with none it gets no model: its
+  record has no name, the source `cli`
   and the detail `the session's model <model> is for <CLI>`, and its launch warns, as
-  `spawn_worker` returns and loop.log keeps its launch warnings. Then the events name it
+  `spawn_worker` returns and loop.log keeps its launch warnings. The agents' rows go at a stop, so
+  an event `start_model`, written when the model changed, holds what the supervisor last started
+  on: a resume compares it to say a default moved the model. In inherit mode
+  (`LADO_AGENT_ENV=inherit`) a worker starts from its spawner's `lado mcp`, whose environment holds
+  the spawner's launch: every launch names what it set in `LADO_LAUNCH_VARS`, and
+  `agent_env.without_launch` drops those, so neither a config nor a key reaches a worker of another
+  CLI. Then the events name it
   (`Event.model`, `effort`), recorded by `hooks.handle` first (`state.report_model`): every
   Codex hook's input has `model` and none the effort (0.162.0, its hook input schemas);
   Claude Code's SessionStart has `model` in the interactive mode LADO runs, at a start,

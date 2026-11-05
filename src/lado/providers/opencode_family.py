@@ -51,6 +51,35 @@ EVENTS = {
 # and "session.idle" says nothing of work still running; Kilo is taken to be as its base,
 # not checked. So their agents are idle at a turn's end, never `background` (BACKLOG.md).
 ABORTED = "MessageAbortedError"
+# A model server is a provider of the agent's config, under an id of its own that a rename never
+# changes and no provider of the user's has (checked with OpenCode 1.18.35 and Kilo 7.8.8 on two
+# servers: `name` of the provider is the group and label in the real /model, `name` of a model
+# its row, a model id may hold a slash, a server with no key takes no apiKey).
+SERVER_PROVIDER = "lado-"
+SERVER_PACKAGE = "@ai-sdk/openai-compatible"  # ships with both; nothing to fetch at a first run
+MODEL_MEMORY = "model.json"  # the CLI's last /model picks, in its state folder
+
+
+def without_servers(found: object) -> object:
+    """`found`, a CLI's model memory, without what names a provider of LADO's servers: an entry
+    `{"providerID": "lado-…"}` or a key `lado-…/<model>`, at any depth: its shape is the CLI's."""
+
+    def ours(entry: object) -> bool:
+        return isinstance(entry, dict) and str(entry.get("providerID", "")).startswith(
+            SERVER_PROVIDER
+        )
+
+    if isinstance(found, dict):
+        return {
+            key: without_servers(value)
+            for key, value in found.items()
+            if not key.startswith(SERVER_PROVIDER) and not ours(value)
+        }
+    if isinstance(found, list):
+        return [without_servers(item) for item in found if not ours(item)]
+    return found
+
+
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")  # the colours of `auth list`
 
 
@@ -58,6 +87,7 @@ class OpenCodeFamily(base.Provider):
     plugin = PLUGIN
     server_api = base.CHAT_COMPLETIONS  # an OpenAI-compatible provider in its config
     external_whole_process = False
+    runs_on_server = True
     config_file_name: str  # the agent's config in its config folder, e.g. "opencode.json"
     # Text typed into OpenCode's TUI 0.2-0.7 s after the plugin's init is lost whole, and
     # no event or API says when the TUI takes input (checked by hand with OpenCode 1.18.35):
@@ -150,10 +180,65 @@ class OpenCodeFamily(base.Provider):
         text = json.dumps(config, indent=2)
         config_file = config_dir / self.config_file_name
         config_file.write_text(text)
-        argv = self.argv(session.permission_mode)
+        argv = self.argv(session.permission_mode, spec.model)
         if notice:
             argv[1:1] = ["--prompt", notice]
-        return base.Launch(argv, self.env(config_file, text), model=self.session_choice(spec))
+        keys = {s.key_variable: s.key for s in spec.servers if s.key is not None}
+        state_env, warnings = self.own_state(agent, spec)
+        env = {**self.env(config_file, text), **keys, **state_env}
+        return base.Launch(argv, env, warnings, model=self.session_choice(spec))
+
+    def own_state(
+        self, agent: state.Agent, spec: base.AgentSpec
+    ) -> tuple[dict[str, str], list[str]]:
+        """The agent's own XDG_STATE_HOME, and what its launch has to say. Both CLIs keep the last
+        /model pick in `<state>/<cli>/model.json` of the user, shared by every run, and an agent
+        would write a provider there that only its own config has: LADO's own session on the
+        CLI's settings, and the user's own CLI, then start from it. `debug paths` (OpenCode
+        1.18.35, Kilo 7.8.8): this variable moves `state` alone; logins and sessions stay.
+        A new folder starts from the user's memory, without LADO's servers, so a session with no
+        model behaves as the user's CLI; the user's file is only read."""
+        folder = base.state_path(agent)
+        own = folder / self.name / MODEL_MEMORY
+        warnings = []
+        home = spec.environ.get("HOME")
+        users = spec.environ.get("XDG_STATE_HOME") or (home and str(Path(home, ".local/state")))
+        if users and not own.exists():
+            source = Path(users, self.name, MODEL_MEMORY)
+            try:
+                text = source.read_text()
+                remembered = json.loads(text)
+            except FileNotFoundError:
+                pass
+            except (OSError, ValueError) as error:
+                warnings.append(f"{source} cannot be read, so the agent starts without it: {error}")
+            else:
+                own.parent.mkdir(parents=True, exist_ok=True)
+                own.write_text(json.dumps(without_servers(remembered)))
+        folder.mkdir(parents=True, exist_ok=True)
+        return {"XDG_STATE_HOME": str(folder)}, warnings
+
+    def server_model(self, server: str, model: str) -> str:
+        return f"{SERVER_PROVIDER}{server}/{model}"
+
+    def on_server(self, reported: str) -> tuple[str, str] | None:
+        provider, slash, model = reported.partition("/")
+        if not (slash and model and provider.startswith(SERVER_PROVIDER)):
+            return None
+        return provider.removeprefix(SERVER_PROVIDER), model
+
+    @staticmethod
+    def server_provider(server: base.ServerEntry) -> dict:
+        """The server as a provider of the config; its key by name, never by value."""
+        options = {"baseURL": server.base_url}
+        if server.key_variable:
+            options["apiKey"] = f"{{env:{server.key_variable}}}"
+        return {
+            "npm": SERVER_PACKAGE,
+            "name": f"LADO · {server.name}",
+            "options": options,
+            "models": {model: {"name": name} for model, name in server.models},
+        }
 
     def config(
         self, agent: state.Agent, mode: str | None, spec: base.AgentSpec, role: Path
@@ -204,6 +289,10 @@ class OpenCodeFamily(base.Provider):
             # `provider/model`; the config text wins over the user's and the repository's
             # config (as for the rest of it).
             config["model"] = spec.model
+        if spec.servers:
+            config["provider"] = {
+                f"{SERVER_PROVIDER}{s.id}": self.server_provider(s) for s in spec.servers
+            }
         if mode == "plan":
             # The plan agent denies every tool it does not list, LADO's MCP tools too (Kilo
             # 7.8.1); its own rules come after the global ones (`opencode debug agent plan`,
@@ -240,12 +329,17 @@ class OpenCodeFamily(base.Provider):
         readable = [state.home(), *spec.read]
         return {"external_directory": {f"{p}/**": "allow" for p in readable}}
 
-    def argv(self, mode: str | None) -> list[str]:
+    def argv(self, mode: str | None, model: str | None = None) -> list[str]:
         argv = [self.command]
         if mode == "bypassPermissions":
             argv += self.bypass_argv()
         elif mode == "plan":
             argv += ["--agent", "plan"]
+        if model:
+            # Kilo 7.8.8 keeps the last /model pick in its user state and prefers it to `model`
+            # of the config; this beats it (OpenCode 1.18.35 prefers the config, this is the
+            # same there).
+            argv += ["--model", model]
         return argv
 
     @abstractmethod

@@ -17,6 +17,7 @@ from lado import (
     kits,
     logins,
     marketplaces,
+    model_settings,
     providers,
     runs,
     runtime,
@@ -65,8 +66,10 @@ class SessionInfo(BaseModel):
     # the feed carries it, and the project's title comes with SessionAbout.
     project: str | None
     # The model chosen for its agents of its provider's CLI (state.PowerTable's default
-    # row), None for the CLI's default: the Resume window starts with it.
+    # row), by the saved name of an external one: None for no choice, "" for the CLI's own
+    # settings. The Resume window starts with it.
     model: str | None = None
+    model_missing: bool = False  # that external model is no longer saved
 
 
 class TitleChange(BaseModel):
@@ -474,6 +477,40 @@ class ModelCheck(BaseModel):
     name: str = ""
 
 
+class SessionModelAsked(BaseModel):
+    """A model for a session of the agent CLI `cli`, as `lado start --model` reads it, in the
+    environment of the agents of `project` (or of none)."""
+
+    cli: str
+    model: str
+    project: str | None = None
+
+
+class SessionModelCheck(ModelCheck):
+    """The check a start would make of a model, for the launch window: `text` the line under
+    its field. For a refusal, `short` the same to point at the field, `peek` a few words for
+    the folded Advanced, `retry` whether a new check can help. `warnings` of the chosen
+    model's server only; `server` its name."""
+
+    retry: bool = False
+    short: str = ""
+    peek: str = ""
+    warnings: list[str] = []
+    server: str | None = None
+
+
+class ModelRefusal(BaseModel):
+    """The detail of a 409 to a start or resume refused for its model: the core's line, and
+    what the launch window shows (SessionModelCheck)."""
+
+    message: str
+    field: Literal["model"] = "model"
+    text: str
+    short: str
+    peek: str
+    retry: bool
+
+
 # Settings → Models (lado.server.model_entries over lado.model_settings).
 
 
@@ -671,16 +708,6 @@ class ServerCheck(BaseModel):
     refusals: list[EntryRefused]
     warnings: list[str]
     notes: list[str]
-
-
-class ProviderModels(BaseModel):
-    """What a provider's CLI takes as a model (Provider.model_list), and the check of the
-    one asked about: its aliases, its own list (None: it gives none, `why`)."""
-
-    aliases: list[str]
-    models: list[str] | None
-    why: str
-    check: ModelCheck
 
 
 class LoginInfo(BaseModel):
@@ -1226,7 +1253,8 @@ class Launch(BaseModel):
     without: list[str] | None = None
     prompt: str | None = None  # the human's first message to the supervisor (check_prompt)
     title: str | None = None  # the session's title (runtime.check_title)
-    model: str | None = None  # the session's model, checked (lado.model_check); None, "": none
+    # The session's model, checked before the start: None for none, "" the CLI's own settings.
+    model: str | None = None
 
 
 class Resume(BaseModel):
@@ -1237,7 +1265,8 @@ class Resume(BaseModel):
     permission_mode: str | None = None
     without: list[str] | None = None
     prompt: str | None = None  # the human's first message to the supervisor (check_prompt)
-    # The session's model: None keeps its own (none after a change of provider), "" drops it.
+    # The session's model: None keeps its own (none after a change of provider), "" is the
+    # CLI's own settings.
     model: str | None = None
 
 
@@ -1305,6 +1334,11 @@ class ModelInfo(BaseModel):
     source: str  # one of state.MODEL_SOURCES, or a newer LADO's token
     detail: str | None  # which part of the source, e.g. "profile work"
     words: str  # what the UI shows for the source (state.source_words)
+    # A model of a saved server (lado.model_settings.shown): `name` is then the model as the
+    # server names it, this its saved name, read now.
+    configured: str | None = None
+    server: str | None = None  # that server's name
+    address: str | None = None  # and address
 
 
 class AgentInfo(BaseModel):
@@ -1792,8 +1826,23 @@ def agent_info(agent: state.Agent) -> AgentInfo:
         worktree=agent.cwd if worker else None,
         spawned_at=_iso(spawned) if spawned else added,
         since=_iso(since) if since else added,
-        model=_model_info(agent, agent.model, agent.model_source, agent.model_detail),
+        model=_agent_model(agent),
         effort=_model_info(agent, agent.effort, agent.effort_source, agent.effort_detail),
+    )
+
+
+def _agent_model(agent: state.Agent) -> ModelInfo:
+    info = _model_info(agent, agent.model, agent.model_source, agent.model_detail)
+    found = model_settings.agent_shown(agent)
+    if found is None:
+        return info
+    return info.model_copy(
+        update={
+            "name": found.model,
+            "configured": found.name,
+            "server": found.server,
+            "address": found.address,
+        }
     )
 
 
@@ -2004,7 +2053,29 @@ def session_info(sess: state.Session) -> SessionInfo:
         stopped_at=_utc(sess.stopped_at) if sess.stopped_at else None,
         title=sess.title,
         project=sess.project,
-        model=sess.power.row().model if sess.power else None,
+        **_session_model(sess),
+    )
+
+
+def _session_model(sess: state.Session) -> dict:
+    """SessionInfo's `model` and `model_missing`; a table that cannot be read says nothing: a
+    resume that keeps it is refused with its reason."""
+    if sess.power is None or not sess.power.readable:
+        return {"model": None, "model_missing": False}
+    row = sess.power.row()
+    if row.model_id is None:
+        return {"model": row.model, "model_missing": False}
+    saved = state.model_by_id(row.model_id)
+    return {"model": saved.name if saved else row.shown, "model_missing": saved is None}
+
+
+def model_refusal(refused: runtime.ModelRefused) -> ModelRefusal:
+    return ModelRefusal(
+        message=str(refused),
+        text=refused.refused.window,
+        short=refused.refused.short,
+        peek=refused.refused.peek,
+        retry=refused.refused.retry,
     )
 
 

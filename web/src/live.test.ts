@@ -24,6 +24,7 @@ const session = (name: string, status: SessionInfo["status"] = "running"): Sessi
   stopped_at: null,
   title: null,
   project: null,
+  model_missing: false,
 });
 
 const item = (key: string): WaitingItem => ({

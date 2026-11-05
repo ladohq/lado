@@ -20,7 +20,7 @@ vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeX
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
 
 const NO_WAITS = { gates: 0, questions: 0, agents: 0 };
-const SETTINGS = { kits: ["team"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, title: null, project: null };
+const SETTINGS = { kits: ["team"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, title: null, project: null, model_missing: false };
 const SESSIONS: SessionInfo[] = [
   { name: "lado", repo: "/src/lado", status: "running", agents: 3, waiting: NO_WAITS, ...SETTINGS },
   { name: "old", repo: "/src/old", status: "stopped", agents: 0, waiting: NO_WAITS, ...SETTINGS },
@@ -380,6 +380,34 @@ test("an agent's page names its model in the head and its model and effort first
   expect(model.querySelector("code")!.textContent).toBe("gpt-5.6-sol");
   expect(model.querySelector(".muted")!.textContent).toBe(" · your Codex config, profile work");
   expect(effort.textContent).toBe("high · your Codex config, profile work");
+});
+
+test.each([
+  ["chosen for the session", "session"],
+  ["default in Settings", "default"],
+  ["changed in the agent CLI", "cli-changed"],
+])("an agent on a server's model names it, its id, server and address: %s", async (words, source) => {
+  const model = {
+    name: "qwen3-8b",
+    source,
+    detail: null,
+    words,
+    configured: "Локальная Qwen",
+    server: "LM Studio дома",
+    address: "http://localhost:1234",
+  };
+  serve({ agents: [SUPERVISOR, agent("developer", { provider: "opencode", model })] });
+  open("/sessions/lado/agents/developer");
+  const region = await page("developer");
+  expect(within(region).getByRole("banner").textContent).toContain("developer · opencode · Локальная Qwen");
+  const fact = region.querySelector("dl dd")!;
+  expect(fact.textContent).toBe(
+    `Локальная Qwen · qwen3-8b · server LM Studio дома, http://localhost:1234 · ${words}`,
+  );
+  expect([...fact.querySelectorAll("code")].map((code) => code.textContent)).toEqual([
+    "qwen3-8b",
+    "http://localhost:1234",
+  ]);
 });
 
 test("an agent whose CLI has named no model says CLI default, with no name", async () => {

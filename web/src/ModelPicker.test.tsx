@@ -67,33 +67,46 @@ type Given = {
   off?: boolean;
   lost?: boolean;
   health?: Record<string, Health>;
+  where?: "settings" | "launch";
+  fieldMark?: string | null;
 };
 
-function mount(given: Given = {}) {
+function mount(first: Given = {}) {
   const onPick = vi.fn<(pick: Pick) => void>();
   const onOther = vi.fn<(text: string) => void>();
   const onOpen = vi.fn();
-  const cli = given.cli ?? OPENCODE;
-  const own = given.own ?? [];
-  const read = given.read ?? list();
-  if (read.choices) read.choices = { ...read.choices, external: own }; // the core's list agrees
-  render(
-    <ModelPicker
-      cli={cli}
-      value={given.value ?? null}
-      where="settings"
-      own={own}
-      list={read}
-      off={given.off ?? false}
-      lost={given.lost ?? false}
-      health={given.health ?? {}}
-      onOpen={onOpen}
-      onPick={onPick}
-      onOther={onOther}
-    />,
-  );
-  const field = screen.getByRole("combobox", { name: `Default model of ${cli.title}` });
-  return { field, onPick, onOther, onOpen };
+  const cli = first.cli ?? OPENCODE;
+  const where = first.where ?? "settings";
+  const element = (more: Given) => {
+    const given = { ...first, ...more };
+    const own = given.own ?? [];
+    const read = given.read ?? list();
+    if (read.choices) read.choices = { ...read.choices, external: own }; // the core's list agrees
+    return (
+      <>
+        {where === "launch" && <label htmlFor="model-field">Model</label>}
+        <ModelPicker
+          cli={cli}
+          value={given.value ?? null}
+          where={where}
+          own={own}
+          list={read}
+          off={given.off ?? false}
+          lost={given.lost ?? false}
+          health={given.health ?? {}}
+          fieldId="model-field"
+          fieldMark={given.fieldMark ?? null}
+          onOpen={onOpen}
+          onPick={onPick}
+          onOther={onOther}
+        />
+      </>
+    );
+  };
+  const { rerender } = render(element({}));
+  const name = where === "launch" ? "Model" : `Default model of ${cli.title}`;
+  const field = screen.getByRole("combobox", { name });
+  return { field, onPick, onOther, onOpen, rerender: (more: Given) => rerender(element(more)) };
 }
 
 const texts = () =>
@@ -385,14 +398,123 @@ test("the keyboard without a search: opens on the selected row, moves, picks", (
 });
 
 test("Esc and Tab close without a pick", () => {
-  const { field, onPick } = mount();
+  const { field, onPick } = mount({ read: list({ choices: choices({ read_again: false }) }) });
   fireEvent.keyDown(field, { key: "Enter" });
   fireEvent.keyDown(field, { key: "ArrowDown" });
   fireEvent.keyDown(field, { key: "Escape" });
   expect(screen.queryByRole("listbox")).toBeNull();
   expect(document.activeElement).toBe(field);
   fireEvent.keyDown(field, { key: "Enter" });
+  fireEvent.keyDown(field, { key: "Tab" }); // nothing in the foot to go to
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(onPick).not.toHaveBeenCalled();
+});
+
+test("Tab goes into the list's foot, on past its last control the list closes", () => {
+  const { field } = mount();
+  fireEvent.keyDown(field, { key: "Enter" });
   fireEvent.keyDown(field, { key: "Tab" });
+  const refresh = screen.getByRole("button", { name: "Read the models again" });
+  expect(document.activeElement).toBe(refresh);
+  fireEvent.keyDown(refresh, { key: "Tab" });
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(document.activeElement).toBe(field); // the browser's Tab goes on from there
+});
+
+test("Shift+Tab goes back out of the foot, Esc there closes the list", () => {
+  const { field } = mount({ read: list({ choices: choices({ models: many(11) }) }) });
+  fireEvent.click(field);
+  const search = screen.getByPlaceholderText(/^Search/);
+  fireEvent.keyDown(search, { key: "Tab" });
+  const refresh = screen.getByRole("button", { name: "Read the models again" });
+  expect(document.activeElement).toBe(refresh);
+  fireEvent.keyDown(refresh, { key: "Tab", shiftKey: true });
+  expect(document.activeElement).toBe(search);
+  fireEvent.keyDown(search, { key: "Tab" });
+  fireEvent.keyDown(refresh, { key: "Escape" });
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(document.activeElement).toBe(field);
+});
+
+test("in the launch window Tab reaches the link, then the button of the foot", () => {
+  const { field } = mount({ where: "launch" });
+  fireEvent.keyDown(field, { key: "Enter" });
+  fireEvent.keyDown(field, { key: "Tab" });
+  const link = screen.getByRole("link", { name: "Settings → Models" });
+  expect(document.activeElement).toBe(link);
+  fireEvent.keyDown(link, { key: "Tab" }); // not the last: the browser goes on
+  expect(screen.getByRole("listbox")).toBeTruthy();
+});
+
+test("the foot stays while a list already read is read again, with the focus in it", () => {
+  const { field, rerender } = mount();
+  fireEvent.keyDown(field, { key: "Enter" });
+  fireEvent.keyDown(field, { key: "Tab" });
+  const refresh = screen.getByRole("button", { name: "Read the models again" });
+  rerender({ read: list({ reading: true }) });
+  expect(document.activeElement).toBe(refresh);
+});
+
+test("a read that takes ↻ away hands the focus back to the list", () => {
+  const { field, rerender } = mount();
+  fireEvent.keyDown(field, { key: "Enter" });
+  fireEvent.keyDown(field, { key: "Tab" });
+  rerender({ read: list({ choices: choices({ read_again: false }) }) });
+  expect(document.activeElement).toBe(field);
+  fireEvent.keyDown(field, { key: "Escape" });
+  expect(screen.queryByRole("listbox")).toBeNull();
+});
+
+test("the search stands while the list is first read, and keeps what was typed", () => {
+  const { field, rerender } = mount({ read: list({ choices: null, reading: true }) });
+  fireEvent.click(field);
+  const search = screen.getByPlaceholderText(/^Search/) as HTMLInputElement;
+  expect(document.activeElement).toBe(search);
+  fireEvent.change(search, { target: { value: "model-1" } });
+  rerender({ read: list({ choices: choices({ models: many(11) }) }) });
+  expect((screen.getByPlaceholderText(/^Search/) as HTMLInputElement).value).toBe("model-1");
+  expect(document.activeElement).toBe(screen.getByPlaceholderText(/^Search/));
+});
+
+test("while the list is read the search counts nothing", () => {
+  const { field, rerender } = mount({ read: list({ choices: null, reading: true }) });
+  fireEvent.click(field);
+  expect(screen.getByRole("combobox", { name: "Search models" })).toBeTruthy();
+  rerender({ read: list({ choices: choices({ models: many(11) }) }) });
+  expect(screen.getByRole("combobox", { name: "Search 11 models" })).toBeTruthy();
+});
+
+test("Shift+Tab in the search closes the list with the focus on the field", () => {
+  const { field } = mount({ read: list({ choices: choices({ models: many(11) }) }) });
+  fireEvent.click(field);
+  // Prevented: the browser's own Shift+Tab would go on from the field, past it.
+  const browsers = fireEvent.keyDown(screen.getByPlaceholderText(/^Search/), { key: "Tab", shiftKey: true });
+  expect(browsers).toBe(false);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(document.activeElement).toBe(field);
+});
+
+test("a short list read after the search hands the focus back to the field", () => {
+  const { field, rerender } = mount({ read: list({ choices: null, reading: true }) });
+  fireEvent.click(field);
+  rerender({ read: list() });
+  expect(screen.queryByPlaceholderText(/^Search/)).toBeNull();
+  expect(document.activeElement).toBe(field);
+});
+
+test("a kept model no longer saved stands above the groups, marked, in no group", () => {
+  const { field, onPick } = mount({
+    where: "launch",
+    value: builtin("Удалённая Qwen"),
+    fieldMark: "not in Settings",
+  });
+  fireEvent.click(field);
+  const row = screen.getByRole("option", { name: "Удалённая Qwen" });
+  expect(row.textContent).toContain("not in Settings");
+  expect(row.closest("[role=group]")).toBeNull();
+  expect(row.getAttribute("aria-selected")).toBe("true");
+  expect(field.querySelector(".mp-title")!.classList.contains("mono")).toBe(false);
+  fireEvent.click(row);
   expect(screen.queryByRole("listbox")).toBeNull();
   expect(onPick).not.toHaveBeenCalled();
 });
@@ -442,8 +564,9 @@ test("a click outside on something that takes the focus leaves it there", async 
   other.remove();
 });
 
-test("Tab in a search closes it through the field, so the focus goes on from there", () => {
-  const { field } = mount({ read: list({ choices: choices({ models: many(11) }) }) });
+test("Tab in a search with nothing in the foot closes it through the field", () => {
+  const read = list({ choices: choices({ models: many(11), read_again: false }) });
+  const { field } = mount({ read });
   fireEvent.click(field);
   fireEvent.keyDown(screen.getByPlaceholderText(/^Search/), { key: "Tab" });
   expect(screen.queryByRole("listbox")).toBeNull();

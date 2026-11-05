@@ -1,7 +1,8 @@
 """The human's model servers, configured models and agent CLIs' default models (openspec
 capabilities `model-servers` and `configured-models`): their rules, the servers' key files,
 the checks on adding and what a CLI can run. `lado model-server add|list|remove` and `lado
-model add|list|remove|default` call it; no session reads the entries yet.
+model add|list|remove|default` call it; a launch asks it what an agent starts on (start_model),
+whether that can start (check_start) and which servers go into the agent (agent_servers).
 
 The entries are kept in lado.db (lado.state: `model_servers`, `models`, `cli_defaults`); a
 name is taken and found ignoring case. A configured model always lives on a server: a CLI's
@@ -34,8 +35,19 @@ from lado.providers import base
 
 KEYS = "model-servers"  # under LADO_HOME: a folder per server, by its id
 KEY = "key"  # the key's file in a server's folder
+KEY_VARIABLE = "LADO_MODEL_KEY_"  # + the server's id in capitals: an agent's variable of its key
 MAX_NAME = 64
 SERVER, MODEL = "model server", "model"  # what a name is of, in its refusals
+REFUSED_PEEK = "refused"
+NOT_LISTED_PEEK = "not in its list"
+# What OpenCode and Kilo CLI substitute in their config's text ({env:…} checked on both, {file:…}
+# taken to work the same): text LADO did not write there must hold neither.
+EXPANDED = ("{env:", "{file:")
+WOULD_EXPAND = f"the agent CLI would expand ({' or '.join(EXPANDED)})"
+# Both put a variable's value into their config's text as it is, inside its JSON string (OpenCode
+# 1.18.35 then stops and prints the text with the key, Kilo 7.8.8 drops all of the config, checked
+# with `debug config`): a key that holds one of these cannot reach them.
+BREAKS_CONFIG = ('"', "\\")
 
 
 # The field of a form a refusal concerns, for the UI ("" for none); the CLI ignores it.
@@ -50,7 +62,10 @@ MODEL_FIELD = "model"
 class Refused(Exception):
     """Why a command on the entries changed nothing, one line; `hint` what the human can try
     ("" for none); `field` the field it concerns; `page` and `page_hint` the line and the
-    hint for Settings → Models, which names no command (None: the same as the command's)."""
+    hint for Settings → Models, which names no command (None: the same as the command's).
+    For the launch window: `window` the line under its Model field, `short` the same for a
+    line that points there, `peek` a few words for the folded Advanced (None: `page`,
+    `window`, REFUSED_PEEK), `retry` whether a new check can help."""
 
     def __init__(
         self,
@@ -59,12 +74,21 @@ class Refused(Exception):
         field: str = "",
         page: str | None = None,
         page_hint: str | None = None,
+        *,
+        window: str | None = None,
+        short: str | None = None,
+        peek: str = "",
+        retry: bool = False,
     ):
         super().__init__(text)
         self.hint = hint
         self.field = field
         self.page = text if page is None else page
         self.page_hint = hint if page_hint is None else page_hint
+        self.window = self.page if window is None else window
+        self.short = self.window if short is None else short
+        self.peek = peek or REFUSED_PEEK
+        self.retry = retry
 
 
 def check_name(name: str, of: str) -> None:
@@ -388,13 +412,26 @@ def _on_server(
     try:
         found = probe(server) if probe is not None else probe_saved(server)
     except model_servers.ProbeError as exc:
-        raise Refused(f"{exc}; LADO cannot check {model}", exc.hint, SERVER_FIELD) from None
+        text = f"{exc}; LADO cannot check {model}"
+        if exc.silent:
+            raise Refused(
+                text,
+                exc.hint,
+                SERVER_FIELD,
+                window=f"{server.name} does not answer ({exc.silent}); {model} is on it. Start "
+                "the server or pick another model.",
+                short=f"{server.name} does not answer",
+                peek="not answering",
+                retry=True,
+            ) from None
+        raise Refused(text, exc.hint, SERVER_FIELD, retry=True) from None
     if api not in found.apis:
         suits = [title for title, _ in found.clis()[0]]
         raise Refused(
             f"{server.name} does not suit {provider.title}: it has no {api}; it suits "
             f"{', '.join(suits) or 'no CLI'}",
             field=SERVER_FIELD,
+            retry=True,
         )
     if model in found.embeddings:
         raise Refused(
@@ -402,6 +439,7 @@ def _on_server(
             f"{model_servers.PROBE_COMMAND} {server.address} lists the models",
             field=MODEL_FIELD,
             page=f"{model} is an embeddings model on {server.name}; an agent needs a chat model",
+            retry=True,
         )
     listed = base.ModelList(
         models=found.models,
@@ -588,7 +626,13 @@ def _builtin(
         raise Refused(f"a model is one line {visible.refusal(char)}", field=MODEL_FIELD)
     verdict = model_check.verdict(provider, model, listed)
     if verdict.kind == model_check.REFUSED:
-        raise Refused(verdict.text, field=MODEL_FIELD, page=verdict.page or None)
+        raise Refused(
+            verdict.text,
+            field=MODEL_FIELD,
+            page=verdict.page or None,
+            peek=NOT_LISTED_PEEK,
+            retry=not listed.fixed,
+        )
     return state.ModelRef(provider.name, None, model), verdict
 
 
@@ -655,6 +699,312 @@ def clear_default(cli: str) -> bool:
     """Clear the default model of the agent CLI `cli`, installed or not; False when it had
     none. Refused for a CLI LADO does not know."""
     return state.clear_cli_default(known_cli(cli).name)
+
+
+@dataclass(frozen=True)
+class StartModel:
+    """What an agent starts on (start_model): `name` for the human and `model` as its CLI or
+    server names it, None for the CLI's own choice; `server` and `entry` for an external
+    model; `source` for its record (state.MODEL_SOURCES); `note` the detail of an agent left
+    on its CLI's choice by a table of another CLI; `gone` for an entry no longer saved."""
+
+    source: str = state.CLI_DEFAULT
+    name: str | None = None
+    model: str | None = None
+    server: state.ModelServer | None = None
+    entry: state.ConfiguredModel | None = None
+    note: str | None = None
+    gone: bool = False
+
+    def launch_name(self, provider: providers.Provider) -> str | None:
+        """The model as `provider`'s CLI is told it."""
+        if self.server is not None and self.model is not None:
+            return provider.server_model(self.server.id, self.model)
+        return self.model
+
+
+def _way_to_resume(provider: providers.Provider) -> str:
+    return (
+        f"resume it with --model '' for {provider.title}'s settings or --model <model> for another"
+    )
+
+
+def _external(saved: state.ConfiguredModel, source: str) -> StartModel:
+    server = state.model_server_by_id(saved.server)
+    return StartModel(source, saved.name, saved.model, server, saved)
+
+
+def start_model(power: state.PowerTable | None, provider: providers.Provider) -> StartModel:
+    """What an agent of `provider`'s CLI in a session with the table `power` starts on, read
+    now: its table's row when it is of that CLI, else the CLI's default of Settings → Models,
+    else the CLI's choice. Reads lado.db only. Refused for a table that cannot be read."""
+    note = None
+    if power is not None:
+        if not power.readable:
+            raise Refused(
+                f"the session's model cannot be read; {_way_to_resume(provider)}",
+                field=MODEL_FIELD,
+            )
+        row = power.row()
+        if row.cli == provider.name:
+            if not row.model:
+                return StartModel()
+            if row.model_id is None:
+                return StartModel(state.SESSION, row.model, row.model)
+            saved = state.model_by_id(row.model_id)
+            if saved is None:
+                return StartModel(state.SESSION, row.shown, row.model, gone=True)
+            return _external(saved, state.SESSION)
+        if row.model:
+            note = f"the session's model {row.shown} is for {cli_title(row.cli)}"
+    for ref in state.cli_defaults():
+        if ref.cli != provider.name:
+            continue
+        if ref.builtin is not None:
+            return StartModel(state.DEFAULT_MODEL, ref.builtin, ref.builtin)
+        saved = state.model_by_id(ref.model_id or "")
+        if saved is not None:  # else removed since the first read
+            return _external(saved, state.DEFAULT_MODEL)
+    return StartModel(note=note)
+
+
+def session_row(
+    name: str, provider: providers.Provider, env: Mapping[str, str], listing: Listing | None = None
+) -> state.PowerRow:
+    """The table's row of a model given for a session of `provider`'s CLI: "" (or only spaces)
+    is the CLI's own settings, any other name is read as `check_default` reads it."""
+    name = name.strip()
+    if not name:
+        return state.PowerRow(provider.name, "")
+    ref, _ = check_default(provider.name, name, lambda _: env, listing)
+    if ref.model_id is None:
+        return state.PowerRow(provider.name, ref.builtin or "")
+    saved = state.model_by_id(ref.model_id)
+    if saved is None:  # removed since the first read
+        raise Refused("that model is no longer saved", field=MODEL_FIELD)
+    return state.PowerRow(provider.name, saved.model, saved.id, saved.name)
+
+
+def _expands(*texts: str) -> bool:
+    return any(mark in text for text in texts for mark in EXPANDED)
+
+
+def _runs_on(server: state.ModelServer) -> str:
+    """Which agent CLIs run on `server`, for a refusal."""
+    able = [providers.get(name) for name in providers.names()]
+    titles = [p.title for p in able if p.runs_on_server and p.server_api in server.apis]
+    if not titles:
+        return "no agent CLI runs on it yet"
+    if len(titles) == 1:
+        return f"{titles[0]} does"
+    return f"{', '.join(titles[:-1])} and {titles[-1]} do"
+
+
+def check_launch(start: StartModel, provider: providers.Provider) -> None:
+    """What refuses `start` for an agent of `provider`'s CLI with no request and no list: an
+    entry no longer saved, a server its CLI does not run on, text its CLI would expand. A
+    spawned worker takes these only; its server's check is not made yet."""
+    if start.gone:
+        raise Refused(
+            f"the session ran on the model {start.name}, which is no longer saved; "
+            f"{_way_to_resume(provider)}",
+            field=MODEL_FIELD,
+            window=f"The session ran on the model {start.name}, which is no longer in Settings → "
+            f"Models. Pick a model or use {provider.title}'s settings.",
+            short=f"{start.name} is no longer saved",
+            peek="not in Settings",
+        )
+    if start.server is None or start.entry is None:
+        return
+    if not provider.runs_on_server:
+        raise Refused(
+            f"{start.name} is on the model server {start.server.name}; {provider.title} does not "
+            f"run on a model server yet, {_runs_on(start.server)}",
+            field=MODEL_FIELD,
+            short=f"{provider.title} does not run on a model server yet",
+            peek="no model server yet",
+        )
+    if _expands(start.entry.name, start.entry.model, start.server.name, start.server.address):
+        raise Refused(
+            f"{start.name} cannot start: its name, id or server holds text {WOULD_EXPAND}; rename "
+            "it, or pick another model",
+            field=MODEL_FIELD,
+        )
+    _config_key(start.server)
+
+
+def _config_key(server: state.ModelServer) -> str | None:
+    """The kept key of `server` for an agent's config; Refused, naming no part of it, for one
+    LADO does not read or one that would break the config."""
+    key = server_key(server)
+    if key is not None and (
+        any(mark in key for mark in BREAKS_CONFIG) or not model_servers.carriable(key)
+    ):
+        raise Refused(
+            f'the key of model server "{server.name}" holds {" or ".join(BREAKS_CONFIG)} or a '
+            "control character, which would break the agent CLI's config; give the server "
+            "another key",
+            field=MODEL_FIELD,
+            retry=True,
+        )
+    return key
+
+
+def check_start(
+    start: StartModel,
+    provider: providers.Provider,
+    env: Mapping[str, str],
+    probe: Prober | None = None,
+    listing: Listing | None = None,
+) -> model_check.Verdict:
+    """The check of `start` before a session starts or resumes on it: `check_launch`, then a
+    built-in model against its CLI's list (given by `listing`, else read now with `env`), an
+    external one against its server, by the probe of saving a model; no model asks nothing.
+    The verdict (DEFAULT, OK, or WARN for no list to check against); Refused otherwise."""
+    check_launch(start, provider)
+    if not start.model:
+        return model_check.verdict(provider, "", base.ModelList())
+    if start.server is not None:
+        verdict = _on_server(provider, start.model, start.server, probe)
+        retry = True
+    else:
+        listed = listing(provider) if listing is not None else provider.model_list(env)
+        verdict = model_check.verdict(provider, start.model, listed)
+        retry = not listed.fixed
+    if verdict.kind == model_check.REFUSED:
+        raise Refused(
+            verdict.text,
+            field=MODEL_FIELD,
+            page=verdict.page or None,
+            peek=NOT_LISTED_PEEK,
+            retry=retry,
+        )
+    return verdict
+
+
+def way_out(start: StartModel, provider: providers.Provider, *, given: bool) -> str:
+    """What a refusal of `start` adds at a start or resume: how to leave a model the human did
+    not give now (`given` False): the one a session kept, or its CLI's default."""
+    if given or start.gone or not start.model:
+        return ""
+    if start.source == state.DEFAULT_MODEL:
+        return (
+            f"; it is {provider.title}'s default model: start with --model '' for its settings, "
+            f"or change it with lado model default {provider.name}"
+        )
+    return f"; the session ran on it before: {_way_to_resume(provider)}"
+
+
+def agent_servers(
+    provider: providers.Provider, start: StartModel | None = None
+) -> tuple[tuple[base.ServerEntry, ...], list[str]]:
+    """The model servers for the config of an agent of `provider`'s CLI, with the models ticked
+    for that CLI, whatever it starts on, and the warnings of a launch: a key sent over plain
+    http, what is left out. None for a CLI that holds one model per process. A key LADO does not
+    read, or that would break the config, leaves its server out, but is Refused for the server of
+    `start`."""
+    if not provider.runs_on_server or provider.external_whole_process:
+        return (), []
+    ticked = [model for model in state.models() if model.cli == provider.name]
+    entries, warnings = [], []
+    for server in state.model_servers():
+        models = [model for model in ticked if model.server == server.id]
+        if not models:
+            continue
+        if _expands(server.name, server.address):
+            warnings.append(
+                f'model server "{server.name}" is left out of the agent\'s config: it holds text '
+                f"{WOULD_EXPAND}"
+            )
+            continue
+        kept: dict[str, str] = {}  # by model: two entries of one model are one row of the config
+        for model in models:
+            if _expands(model.name, model.model):
+                warnings.append(
+                    f'model "{model.name}" is left out of the agent\'s config: it holds text '
+                    f"{WOULD_EXPAND}"
+                )
+            elif start is not None and start.entry is not None and start.entry.id == model.id:
+                kept[model.model] = model.name  # under the name the agent starts on
+            else:
+                kept.setdefault(model.model, model.name)
+        if not kept:
+            continue
+        try:
+            key = _config_key(server)
+        except Refused as exc:
+            if start is not None and start.server is not None and start.server.id == server.id:
+                raise
+            warnings.append(f'the models of model server "{server.name}" are left out: {exc}')
+            continue
+        if warning := model_servers.plain_http_warning(server.address, key):
+            warnings.append(warning)
+        entries.append(
+            base.ServerEntry(
+                server.id,
+                server.name,
+                model_servers.base_url(server.address),
+                f"{KEY_VARIABLE}{server.id.upper()}" if key is not None else "",
+                key,
+                tuple(kept.items()),
+            )
+        )
+    return tuple(entries), warnings
+
+
+@dataclass(frozen=True)
+class Shown:
+    """A model of a server as the human reads it: its saved name (its id with no entry), the
+    model, and its server's name and address."""
+
+    name: str
+    model: str
+    server: str
+    address: str
+
+
+def shown(
+    provider: providers.Provider,
+    reported: str,
+    chosen: state.ConfiguredModel | None = None,
+) -> Shown | None:
+    """`reported`, a model as `provider`'s CLI names it, when it is one of LADO's servers, read
+    now; None for any other, and for a server removed since. Two entries may hold one model of a
+    server: `chosen`, when it is that model, gives the name, else the entries are looked up."""
+    found = provider.on_server(reported)
+    if found is None:
+        return None
+    server_id, model = found
+    server = state.model_server_by_id(server_id)
+    if server is None:
+        return None
+    if chosen is not None and (chosen.server, chosen.model) == (server_id, model):
+        return Shown(chosen.name, model, server.name, server.address)
+    saved = {m.model: m.name for m in state.models_on(server_id) if m.cli == provider.name}
+    return Shown(saved.get(model, model), model, server.name, server.address)
+
+
+def agent_shown(agent: state.Agent) -> Shown | None:
+    """The agent's model as `shown` reads it, under the name it started on, as long as its CLI
+    has not changed the model; a table that cannot be read names none."""
+    if not agent.model or agent.provider not in providers.names():
+        return None
+    provider = providers.get(agent.provider)
+    if provider.on_server(agent.model) is None:
+        return None
+    chosen = None
+    if agent.model_source in (state.SESSION, state.DEFAULT_MODEL):
+        session = state.get_session(agent.session)
+        with contextlib.suppress(Refused):
+            chosen = start_model(session.power if session else None, provider).entry
+    return shown(provider, agent.model, chosen)
+
+
+def model_name(agent: state.Agent) -> str | None:
+    """The agent's model for a list: the saved name of a model of LADO's servers, else as its
+    record has it."""
+    found = agent_shown(agent)
+    return found.name if found is not None else agent.model
 
 
 def _no_models(names: list[str]) -> Refused:

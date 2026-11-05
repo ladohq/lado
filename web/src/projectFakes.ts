@@ -34,6 +34,7 @@ export function session(name: string, more: Partial<SessionInfo> = {}): SessionI
     busy: 0,
     title: null,
     project: null,
+    model_missing: false,
     ...more,
   };
 }

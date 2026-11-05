@@ -54,7 +54,7 @@ export function StatusDot({ status, small = false }: { status: AgentInfo["status
 // works for. `info` null: an agent not listed.
 export function AgentTip({ name, info }: { name: string; info: AgentInfo | null }) {
   const about = info
-    ? [name, info.role !== name && info.role, info.provider, info.model.name].filter(Boolean)
+    ? [name, info.role !== name && info.role, info.provider, info.model.configured ?? info.model.name].filter(Boolean)
     : [name];
   return (
     <>

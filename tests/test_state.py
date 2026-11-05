@@ -553,6 +553,8 @@ def test_set_model_writes_the_launchs_choice(lado_home):
         ("cli-config", None, "your Codex config"),
         ("cli-config", "profile work", "your Codex config, profile work"),
         ("session", None, "chosen for the session"),
+        ("default", None, "default in Settings"),
+        ("cli-changed", None, "changed in the agent CLI"),
         ("server", None, "server"),  # a newer LADO's token: shown as it is
         ("server", "x", "server, x"),
     ],
@@ -569,6 +571,63 @@ def test_power_table_round_trips():
     assert table.row() == table.rows["normal"]
     assert json.loads(table.to_json())["normal"] == {"cli": "codex", "model": "gpt-5.6-sol"}
     assert state.PowerTable.from_json(table.to_json()) == table
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        state.PowerRow("codex", "gpt-5.6-sol"),
+        state.PowerRow("opencode", "qwen3-8b", "m1", "Локальная Qwen"),
+        state.PowerRow("opencode", ""),
+    ],
+    ids=["built-in", "external", "settings"],
+)
+def test_each_form_of_a_row_round_trips(row):
+    table = state.PowerTable.of(row)
+    assert set(table.rows) == set(state.LEVELS)
+    assert state.PowerTable.from_json(table.to_json()) == table
+    assert table.readable
+
+
+def test_a_built_in_row_is_stored_as_before():
+    stored = json.loads(state.PowerTable.of(state.PowerRow("codex", "gpt-5.6-sol")).to_json())
+    assert stored["normal"] == {"cli": "codex", "model": "gpt-5.6-sol"}
+
+
+def test_an_unknown_key_of_a_row_is_ignored():
+    text = json.dumps({"normal": {"cli": "codex", "model": "gpt-5.6-sol", "effort": "high"}})
+    table = state.PowerTable.from_json(text)
+    assert table.readable and table.row() == state.PowerRow("codex", "gpt-5.6-sol")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "not json",
+        "[]",
+        "null",
+        "{}",
+        '{"light": {"cli": "codex", "model": "a"}}',  # no row an agent takes
+        '{"normal": "codex"}',
+        '{"normal": {"cli": "codex"}}',
+        '{"normal": {"model": "a"}}',
+        '{"normal": {"cli": 1, "model": "a"}}',
+        '{"normal": {"cli": "codex", "model": null}}',
+        '{"normal": {"cli": "codex", "model": "a", "model_id": 7}}',
+        '{"normal": {"cli": "codex", "model": "a"}, "heavy": 1}',
+    ],
+)
+def test_a_table_that_cannot_be_read_is_unreadable(text):
+    assert state.PowerTable.from_json(text) == state.PowerTable.unreadable()
+    assert not state.PowerTable.from_json(text).readable
+
+
+def test_a_broken_table_breaks_no_session_list(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="codex"))
+    with state.connect() as db:
+        db.execute("UPDATE sessions SET power = 'not json' WHERE name = 's'")
+    assert not state.get_session("s").power.readable
+    assert [sess.name for sess in state.list_sessions()] == ["s"]
 
 
 def test_a_session_keeps_its_power(lado_home):
@@ -648,7 +707,7 @@ def test_a_different_model_is_the_clis(lado_home):
     state.report_model("s", "w1", "gpt-5.5", None)
     assert _model(state.get_agent("s", "w1")) == (
         "gpt-5.5",
-        "cli",
+        "cli-changed",
         None,
         "high",
         "cli-config",
@@ -676,9 +735,9 @@ def test_an_alias_s_full_name_keeps_the_source(lado_home):
 def test_another_model_than_the_alias_is_the_clis(lado_home):
     _agent_with_model("opus", state.SESSION)
     state.report_model("s", "w1", "claude-sonnet-5-5", None, _alias)
-    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-sonnet-5-5", "cli", None)
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-sonnet-5-5", "cli-changed", None)
     state.report_model("s", "w1", "claude-opus-5-5", None)  # the default rule: equality
-    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-opus-5-5", "cli", None)
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-opus-5-5", "cli-changed", None)
 
 
 def test_a_first_name_keeps_the_note(lado_home):
@@ -687,7 +746,7 @@ def test_a_first_name_keeps_the_note(lado_home):
     state.report_model("s", "w1", "claude-opus-5-5", None)
     assert _model(state.get_agent("s", "w1"))[:3] == ("claude-opus-5-5", "cli", note)
     state.report_model("s", "w1", "claude-sonnet-5-5", None)  # a later change: the CLI's
-    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-sonnet-5-5", "cli", None)
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-sonnet-5-5", "cli-changed", None)
 
 
 def test_an_event_without_a_model_changes_nothing(lado_home):

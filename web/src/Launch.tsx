@@ -12,7 +12,6 @@ import {
   getKits,
   getLimits,
   getProjectLaunch,
-  getProviderModels,
   getProviders,
   getRecentFolders,
   getWorkspace,
@@ -29,8 +28,8 @@ import {
   type Limits,
   type ProjectLaunch,
   type ProjectPlace,
+  type ModelRefusal,
   type ProviderInfo,
-  type ProviderModels,
   type ProviderSuggestion,
   type RecentFolder,
   type RemoteInfo,
@@ -43,10 +42,10 @@ import {
 } from "./api";
 import { useCloneJob } from "./cloneJob";
 import { useCopy } from "./Copy";
+import { useLaunchModel } from "./LaunchModel";
 import { ProjectField } from "./LaunchProject";
 import { useLive } from "./live";
 import { projectPath, PROVIDERS_PATH, sessionPath } from "./paths";
-import { SuggestField, type Suggestion } from "./SuggestField";
 
 // How long the window waits after a keystroke before it asks the server about the folder.
 export const DEBOUNCE = 200;
@@ -119,7 +118,7 @@ export function useDebounced<T>(value: T, ms = DEBOUNCE): T {
 type Asked<T> = { value: T } | { error: string; detail?: unknown } | null;
 
 // The server's answer to `ask(key)`, asked again when `key` changes; nothing for a null key.
-function useAsked<T>(key: string | null, ask: (key: string) => Promise<T>): Asked<T> {
+export function useAsked<T>(key: string | null, ask: (key: string) => Promise<T>): Asked<T> {
   const [asked, setAsked] = useState<{ key: string; answer: Asked<T> } | null>(null);
   useEffect(() => {
     if (key === null) return;
@@ -211,8 +210,6 @@ function LaunchDialog({
   const [suggested, setSuggested] = useState<ProviderSuggestion["reason"] | null>(null);
   const [permissionMode, setPermissionMode] = useState(resuming?.permission_mode ?? DEFAULT_MODE);
   const [without, setWithout] = useState(resuming?.without.join(", ") ?? "");
-  // The session's model for its provider's CLI; "" for the CLI's default.
-  const [model, setModel] = useState(resuming?.model ?? "");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [prompt, setPrompt] = useState(""); // the human's first message to the supervisor
   const [touched, setTouched] = useState<Set<string>>(new Set());
@@ -361,49 +358,19 @@ function LaunchDialog({
   const noLogin = inList?.login_missing ? inList : null;
   const canStart = providerInfo?.installed === true && !providerInfo.login_missing;
 
-  // A model is its CLI's: another provider empties the field (not the first one chosen).
-  const modelFor = useRef(chosenProvider);
-  useEffect(() => {
-    if (modelFor.current === chosenProvider) return;
-    if (modelFor.current !== null) setModel("");
-    modelFor.current = chosenProvider;
-  }, [chosenProvider]);
-  const typedModel = model.trim();
-  const settledModel = useDebounced(typedModel, MODEL_DEBOUNCE);
-  const modelsAsked = useAsked(
-    chosenProvider !== null && loginsOf !== null ? JSON.stringify([chosenProvider, settledModel, loginsOf]) : null,
-    (key) => {
-      const [name, asked, project] = JSON.parse(key) as [string, string, string];
-      return getProviderModels(name, asked, project || null);
+  const modelRefusal = refused?.status === 409 && isModelRefusal(refused.detail) ? refused.detail : null;
+  const model = useLaunchModel({
+    cli: providerInfo ?? null,
+    project: loginsOf,
+    resuming,
+    busy,
+    refusal: modelRefusal,
+    onClearRefusal: () => setRefused((now) => (now?.status === 409 && isModelRefusal(now.detail) ? null : now)),
+    onShow: () => {
+      if (advanced.current) advanced.current.open = true;
     },
-  );
-  const modelAnswer = settledModel === typedModel ? modelsAsked : null;
-  // Start waits for the check of a model typed, and is off for one the CLI's list lacks.
-  const modelReady =
-    typedModel === "" ||
-    (modelAnswer !== null && !("value" in modelAnswer && modelAnswer.value.check.kind === "refused"));
-  // The suggestions stay while the next text is checked.
-  const [modelList, setModelList] = useState<ProviderModels | null>(null);
-  useEffect(() => {
-    if (modelAnswer !== null && "value" in modelAnswer) setModelList(modelAnswer.value);
-  }, [modelAnswer]);
-  const suggestions: Suggestion[] = modelList
-    ? [
-        ...modelList.aliases.map((one) => ({ value: one, tag: "alias" })),
-        ...(modelList.models ?? []).filter((one) => !modelList.aliases.includes(one)).map((one) => ({ value: one })),
-      ]
-    : [];
-  // Resume of the model the session keeps, which its CLI refuses: the note says the way out.
-  const keptRefused =
-    resuming !== null &&
-    typedModel === resuming.model &&
-    chosenProvider === resuming.provider &&
-    modelAnswer !== null &&
-    "value" in modelAnswer &&
-    modelAnswer.value.check.kind === "refused";
-  useEffect(() => {
-    if (keptRefused && advanced.current) advanced.current.open = true; // why Resume is off
-  }, [keptRefused]);
+  });
+  const modelReady = !model.blocked;
   const modes = providerInfo?.permission_modes ?? [];
 
   // M5: kits, provider and mode of a new session come from the folder's last session; in
@@ -507,7 +474,7 @@ function LaunchDialog({
       ...(chosenProvider !== null ? { provider: chosenProvider } : {}),
       ...(permissionMode !== DEFAULT_MODE ? { permission_mode: permissionMode } : {}),
       ...(off.length ? { without: off } : {}),
-      ...(typedModel ? { model: typedModel } : {}),
+      ...(model.send !== undefined ? { model: model.send } : {}),
       ...withPrompt,
     });
   };
@@ -635,7 +602,7 @@ function LaunchDialog({
         if (chosenProvider !== null && chosenProvider !== resuming.provider) changed.provider = chosenProvider;
         if (permissionMode !== (resuming.permission_mode ?? DEFAULT_MODE)) changed.permission_mode = permissionMode;
         if (!sameList(off, resuming.without)) changed.without = off;
-        if (typedModel !== (resuming.model ?? "")) changed.model = typedModel; // "": none
+        if (model.send !== undefined) changed.model = model.send;
         started = await resumeSession(resuming.name, { ...changed, ...withPrompt });
       } else {
         started = await startIn(
@@ -652,7 +619,7 @@ function LaunchDialog({
   };
 
   const title = resuming ? "Resume session" : "New session";
-  const taken = refused?.status === 409 ? (refused.detail as Taken) : null;
+  const taken = refused?.status === 409 && modelRefusal === null ? (refused.detail as Taken) : null;
   // The session that has the name is this folder's (in Project: of this project too, as
   // the core resumes none of another project or none): Resume it or Open it.
   const takenHere =
@@ -937,40 +904,14 @@ function LaunchDialog({
         <FirstMessage text={prompt} onText={setPrompt} limit={maxMessage} disabled={busy} />
 
         <details
-          className={`launch-advanced${typedModel && !advancedOpen ? " launch-first" : ""}`}
+          className={`launch-advanced${model.peek && !advancedOpen ? " launch-first" : ""}`}
           ref={advanced}
           onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
         >
           <summary>
-            {typedModel && !advancedOpen ? (
-              <>
-                Advanced: model <span className="launch-first-peek">{typedModel}</span>
-              </>
-            ) : (
-              "Advanced: model, switch off agents, skills, MCP servers or flows"
-            )}
+            {model.peek && !advancedOpen ? model.peek : "Advanced: model, switch off agents, skills, MCP servers or flows"}
           </summary>
-          <div className="launch-grid">
-            <div className="field">
-              <label htmlFor={`${ids}-model`}>Model</label>
-              <SuggestField
-                id={`${ids}-model`}
-                value={model}
-                onValue={setModel}
-                suggestions={suggestions}
-                arrowLabel="Show the models"
-                listLabel="Models"
-                disabled={busy || chosenProvider === null}
-                placeholder={providerInfo ? `${providerInfo.title}'s default` : "the CLI's default"}
-              />
-              <ModelNote
-                typed={typedModel}
-                answer={modelAnswer}
-                wayOut={keptRefused ? (providerInfo?.title ?? chosenProvider) : null}
-                onDefault={() => setModel("")}
-              />
-            </div>
-          </div>
+          <div className="launch-grid">{model.field}</div>
           <label className="field">
             Switch off
             <input
@@ -1014,7 +955,7 @@ function LaunchDialog({
         {refused && (
           <div className="launch-refused">
             <p className="problem" role="alert">
-              {refused.message}
+              {modelRefusal ? `Not started: ${modelRefusal.short}. See Model above.` : refused.message}
             </p>
             {switchOff.map((item) => (
               <button
@@ -1095,40 +1036,9 @@ function LaunchDialog({
   );
 }
 
-// The check of the typed model under the Model field (lado.model_check's words). `wayOut`,
-// the CLI's title, when the refused model is the one a resumed session kept: the note says
-// how to go on, as `lado start <session>` does, with a button that empties the field.
-function ModelNote({
-  typed,
-  answer,
-  wayOut,
-  onDefault,
-}: {
-  typed: string;
-  answer: Asked<ProviderModels>;
-  wayOut: string | null;
-  onDefault: () => void;
-}) {
-  if (answer === null) return typed ? <span className="field-note">checking the model…</span> : null;
-  if (!("value" in answer)) return <span className="field-note warn">⚠ {answer.error}</span>;
-  const { kind, text } = answer.value.check;
-  if (kind === "ok") return <span className="field-note ok">✓ {text}</span>;
-  if (kind === "warn") return <span className="field-note warn">⚠ {text}</span>;
-  if (kind === "refused" && wayOut !== null)
-    return (
-      <div className="field-note bad">
-        <div>{text}</div>
-        <div className="way-out">
-          <span>{`The session ran on it before. Empty the field to resume on ${wayOut}'s default, or pick another model.`}</span>
-          <button type="button" className="chip-button" onClick={onDefault}>
-            {`Use ${wayOut}'s default`}
-          </button>
-        </div>
-      </div>
-    );
-  if (kind === "refused") return <span className="field-note bad">{text}</span>;
-  return <span className="field-note">{text}</span>;
-}
+// A 409 refused for the model: the field's, not a session that has the name.
+const isModelRefusal = (detail: unknown): detail is ModelRefusal =>
+  typeof detail === "object" && detail !== null && "field" in detail && detail.field === "model";
 
 // The human's first message to the supervisor: a row folded each time the window opens,
 // which shows the text's first line while folded with text in it.
@@ -1855,7 +1765,7 @@ function ProviderNote({
       </span>
     );
   }
-  if (info === null) return chosen ? <span className="field-note bad">unknown provider {chosen}</span> : null;
+  if (info === null) return chosen ? <span className="field-note bad">unknown agent CLI {chosen}</span> : null;
   if (!info.installed) return <span className="field-note bad">{`${info.detail}; ${info.install_hint}`}</span>;
   if (info.warning) return <span className="field-note warn">⚠ {info.warning}</span>;
   return null;

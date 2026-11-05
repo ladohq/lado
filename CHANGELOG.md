@@ -10,6 +10,9 @@
 - **Choose the session's model.** `lado start --model` and the Model field in the launch
   window's Advanced start the session's agents on a model, checked first against the CLI's
   own list; a resume keeps it and checks it again.
+- **Run a session on your own model.** A session starts on a saved model or its CLI's default
+  from Settings → Models, checked on its server first. OpenCode and Kilo CLI keep every saved
+  model in `/model` beside their own; `--model ''` is the CLI's own settings.
 - **Find out what a model server is.** `lado model-server probe <address>` names the type
   of a server in your network (Ollama, LM Studio, OpenAI- or Anthropic-compatible), its
   models, embeddings ones marked, and the CLIs that can use it, generating nothing; `--key`.

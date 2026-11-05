@@ -912,6 +912,7 @@ def test_opencode_launch_writes_config_and_env(repo, lado_home):
     assert launch.env == {
         "OPENCODE_CONFIG_CONTENT": launch.env["OPENCODE_CONFIG_CONTENT"],
         "OPENCODE_DISABLE_AUTOUPDATE": "1",
+        "XDG_STATE_HOME": str(lado_home / "agent-state" / "s" / "w1"),
     }
     file = lado_home / "agents" / "s" / "w1" / "opencode.json"
     assert file.read_text() == launch.env["OPENCODE_CONFIG_CONTENT"]
@@ -1249,6 +1250,231 @@ def test_the_opencode_family_gets_the_session_model_in_its_config(repo, provider
     launch = cli.launch_command(agent, sess, providers.AgentSpec("the role"))
     assert "model" not in json.loads(launch.env[FAMILY[provider]])
     assert launch.model is None
+
+
+def _family_launch(repo, provider, mode=None, notice=None, **spec):
+    sess = state.Session("s", str(repo), mode, provider)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
+    return providers.get(provider).launch_command(
+        agent, sess, providers.AgentSpec("the role", **spec), notice=notice
+    )
+
+
+def _user_state(tmp_path, provider, text):
+    """The user's `/model` memory of `provider`'s CLI, as a home the agent's environment names."""
+    file = tmp_path / "user" / ".local" / "state" / provider / "model.json"
+    file.parent.mkdir(parents=True)
+    file.write_text(text)
+    return file, {"HOME": str(tmp_path / "user")}
+
+
+def _agent_state(lado_home, provider):
+    return lado_home / "agent-state" / "s" / "w1" / provider / "model.json"
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_family_keeps_its_state_in_a_folder_of_the_agent(repo, provider, lado_home):
+    launch = _family_launch(repo, provider)
+    assert launch.env["XDG_STATE_HOME"] == str(lado_home / "agent-state" / "s" / "w1")
+    assert launch.warnings == []
+
+
+@pytest.mark.parametrize("provider", ["claude", "codex"])
+def test_a_cli_of_one_model_per_process_keeps_the_user_s_state_folder(repo, provider):
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
+    spec = providers.AgentSpec("the role")
+    assert "XDG_STATE_HOME" not in providers.get(provider).launch_command(agent, sess, spec).env
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_agent_starts_from_the_user_s_memory_never_writing_it(
+    repo, provider, lado_home, tmp_path
+):
+    remembered = {"provider": "x", "modelID": "m"}
+    text = json.dumps({"recent": [{"providerID": "x", "modelID": "m"}], "other": remembered})
+    file, environ = _user_state(tmp_path, provider, text)
+    before = file.stat().st_mtime_ns
+    _family_launch(repo, provider, environ=environ)
+    assert json.loads(_agent_state(lado_home, provider).read_text()) == json.loads(text)
+    assert file.read_text() == text and file.stat().st_mtime_ns == before
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_lado_s_servers_do_not_come_from_the_user_s_memory(repo, provider, lado_home, tmp_path):
+    ours = {"providerID": "lado-aaaa1111", "modelID": "m1"}
+    theirs = {"providerID": "anthropic", "modelID": "m2"}
+    _, environ = _user_state(
+        tmp_path,
+        provider,
+        json.dumps(
+            {
+                "recent": [ours, theirs],
+                "model": {"code": ours, "plan": theirs},
+                "variant": {"lado-aaaa1111/m1": "high", "anthropic/m2": "low"},
+            }
+        ),
+    )
+    _family_launch(repo, provider, environ=environ)
+    assert json.loads(_agent_state(lado_home, provider).read_text()) == {
+        "recent": [theirs],
+        "model": {"plan": theirs},
+        "variant": {"anthropic/m2": "low"},
+    }
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_agent_s_own_memory_stands_at_a_new_launch(repo, provider, lado_home, tmp_path):
+    _, environ = _user_state(tmp_path, provider, '{"recent": []}')
+    _family_launch(repo, provider, environ=environ)
+    own = _agent_state(lado_home, provider)
+    own.write_text('{"recent": [{"providerID": "lado-a", "modelID": "m"}]}')
+    _family_launch(repo, provider, environ=environ)
+    assert "lado-a" in own.read_text()
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_state_of_xdg_state_home_is_the_user_s_when_set(repo, provider, lado_home, tmp_path):
+    file = tmp_path / "elsewhere" / provider / "model.json"
+    file.parent.mkdir(parents=True)
+    file.write_text('{"recent": []}')
+    environ = {"HOME": str(tmp_path / "user"), "XDG_STATE_HOME": str(tmp_path / "elsewhere")}
+    _family_launch(repo, provider, environ=environ)
+    assert _agent_state(lado_home, provider).exists()
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_no_memory_of_the_user_copies_nothing_and_says_nothing(repo, provider, lado_home, tmp_path):
+    launch = _family_launch(repo, provider, environ={"HOME": str(tmp_path / "nobody")})
+    assert launch.warnings == []
+    assert not _agent_state(lado_home, provider).exists()
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_memory_that_cannot_be_read_is_said_and_stops_nothing(
+    repo, provider, lado_home, tmp_path
+):
+    file, environ = _user_state(tmp_path, provider, "not json")
+    launch = _family_launch(repo, provider, environ=environ)
+    assert len(launch.warnings) == 1 and str(file) in launch.warnings[0]
+    assert not _agent_state(lado_home, provider).exists()
+
+
+HOME_SERVER = base.ServerEntry(
+    "aaaa1111",
+    "LM Studio дома",
+    "http://localhost:1234/v1",
+    "",
+    None,
+    (("qwen3-8b", "Локальная Qwen"), ("qwen/qwen3-coder", "Рабочая Qwen")),
+)
+GATEWAY = base.ServerEntry(
+    "bbbb2222",
+    "Шлюз",
+    "https://llm.example.com/v1",
+    "LADO_MODEL_KEY_BBBB2222",
+    "KEY-CANARY",
+    (("gw-opus", "Шлюз Opus"),),
+)
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_opencode_family_takes_the_model_on_its_command_line_too(repo, provider):
+    """Kilo CLI's remembered /model pick beats `model` of its config, not `--model`."""
+    launch = _family_launch(repo, provider, model="a/b")
+    assert launch.argv == [provider, "--model", "a/b"]
+    assert json.loads(launch.env[FAMILY[provider]])["model"] == "a/b"
+    assert "--model" not in _family_launch(repo, provider).argv
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_model_on_the_command_line_keeps_the_notice_and_the_mode(repo, provider):
+    launch = _family_launch(repo, provider, "plan", NOTICE, model="a/b")
+    assert launch.argv == [provider, "--prompt", NOTICE, "--agent", "plan", "--model", "a/b"]
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_each_server_is_a_provider_of_the_config(repo, provider):
+    launch = _family_launch(repo, provider, servers=(HOME_SERVER, GATEWAY))
+    config = json.loads(launch.env[FAMILY[provider]])
+    assert config["provider"] == {
+        "lado-aaaa1111": {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "LADO · LM Studio дома",
+            "options": {"baseURL": "http://localhost:1234/v1"},
+            "models": {
+                "qwen3-8b": {"name": "Локальная Qwen"},
+                "qwen/qwen3-coder": {"name": "Рабочая Qwen"},
+            },
+        },
+        "lado-bbbb2222": {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "LADO · Шлюз",
+            "options": {
+                "baseURL": "https://llm.example.com/v1",
+                "apiKey": "{env:LADO_MODEL_KEY_BBBB2222}",
+            },
+            "models": {"gw-opus": {"name": "Шлюз Opus"}},
+        },
+    }
+    assert "model" not in config and "--model" not in launch.argv
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_no_server_is_no_provider_of_the_config(repo, provider):
+    assert "provider" not in json.loads(_family_launch(repo, provider).env[FAMILY[provider]])
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_key_is_in_the_environment_and_nowhere_else(repo, provider, lado_home):
+    launch = _family_launch(repo, provider, servers=(HOME_SERVER, GATEWAY))
+    assert launch.env["LADO_MODEL_KEY_BBBB2222"] == "KEY-CANARY"
+    assert "KEY-CANARY" not in launch.env[FAMILY[provider]]
+    assert "KEY-CANARY" not in " ".join(launch.argv)
+    for file in (lado_home / "agents").rglob("*"):
+        assert not file.is_file() or "KEY-CANARY" not in file.read_text()
+
+
+def test_the_repr_of_a_spec_holds_no_key():
+    assert "KEY-CANARY" not in repr(providers.AgentSpec("the role", servers=(GATEWAY,)))
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_launch_records_the_model_s_source(repo, provider):
+    launch = _family_launch(repo, provider, model="a/b", model_source=state.DEFAULT_MODEL)
+    assert launch.model == state.Choice("a/b", state.DEFAULT_MODEL)
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+@pytest.mark.parametrize(
+    ("reported", "found"),
+    [
+        ("lado-aaaa1111/qwen3-8b", ("aaaa1111", "qwen3-8b")),
+        ("lado-aaaa1111/qwen/qwen3-coder", ("aaaa1111", "qwen/qwen3-coder")),
+        ("opencode/big-pickle", None),
+        ("lado-aaaa1111", None),
+        ("lado-aaaa1111/", None),
+    ],
+)
+def test_the_family_knows_a_model_of_a_server(provider, reported, found):
+    assert providers.get(provider).on_server(reported) == found
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_server_s_model_is_named_as_on_server_reads_it(provider):
+    cli = providers.get(provider)
+    named = cli.server_model("aaaa1111", "qwen/qwen3-coder")
+    assert named == "lado-aaaa1111/qwen/qwen3-coder"
+    assert cli.on_server(named) == ("aaaa1111", "qwen/qwen3-coder")
+
+
+@pytest.mark.parametrize("provider", ["claude", "codex"])
+def test_a_cli_of_one_model_per_process_runs_on_no_server(provider):
+    cli = providers.get(provider)
+    assert not cli.runs_on_server
+    assert cli.on_server("lado-aaaa1111/qwen3-8b") is None
+    with pytest.raises(NotImplementedError):
+        cli.server_model("aaaa1111", "qwen3-8b")
 
 
 NOTICE = "[from lado] your task (#7, 40 lines: call read_messages)"

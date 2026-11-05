@@ -712,29 +712,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/providers/{name}/models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Provider Models
-         * @description The provider's CLI's aliases and own list of models, kept a minute (`fresh`:
-         *     read now, as Settings → Models opens a CLI's source), and the check of `model`
-         *     against them, as `lado start --model` checks it; read for the agents of `project`
-         *     (404 for an unknown one) or of no project.
-         */
-        get: operations["provider_models_api_providers__name__models_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/model-settings": {
         parameters: {
             query?: never;
@@ -902,6 +879,27 @@ export interface paths {
          * @description Rename a model, its CLI, model and server kept.
          */
         patch: operations["rename_configured_model_api_models__name__patch"];
+        trace?: never;
+    };
+    "/api/session-model/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Session Model
+         * @description The check a start would make of the model given for a session, saving nothing; a
+         *     refusal is a 200 of kind refused.
+         */
+        post: operations["check_session_model_api_session_model_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/providers/{name}/model-choices": {
@@ -2834,6 +2832,35 @@ export interface components {
             detail: string | null;
             /** Words */
             words: string;
+            /** Configured */
+            configured?: string | null;
+            /** Server */
+            server?: string | null;
+            /** Address */
+            address?: string | null;
+        };
+        /**
+         * ModelRefusal
+         * @description The detail of a 409 to a start or resume refused for its model: the core's line, and
+         *     what the launch window shows (SessionModelCheck).
+         */
+        ModelRefusal: {
+            /** Message */
+            message: string;
+            /**
+             * Field
+             * @default model
+             * @constant
+             */
+            field: "model";
+            /** Text */
+            text: string;
+            /** Short */
+            short: string;
+            /** Peek */
+            peek: string;
+            /** Retry */
+            retry: boolean;
         };
         /**
          * ModelRemoved
@@ -3359,20 +3386,6 @@ export interface components {
             /** Ready */
             ready: boolean;
         };
-        /**
-         * ProviderModels
-         * @description What a provider's CLI takes as a model (Provider.model_list), and the check of the
-         *     one asked about: its aliases, its own list (None: it gives none, `why`).
-         */
-        ProviderModels: {
-            /** Aliases */
-            aliases: string[];
-            /** Models */
-            models: string[] | null;
-            /** Why */
-            why: string;
-            check: components["schemas"]["ModelCheck"];
-        };
         /** ProviderSuggestion */
         ProviderSuggestion: {
             /** Name */
@@ -3774,6 +3787,11 @@ export interface components {
             project: string | null;
             /** Model */
             model?: string | null;
+            /**
+             * Model Missing
+             * @default false
+             */
+            model_missing: boolean;
         };
         /**
          * SessionKitInfo
@@ -3790,6 +3808,67 @@ export interface components {
             valid: boolean;
             /** Problem */
             problem: string | null;
+        };
+        /**
+         * SessionModelAsked
+         * @description A model for a session of the agent CLI `cli`, as `lado start --model` reads it, in the
+         *     environment of the agents of `project` (or of none).
+         */
+        SessionModelAsked: {
+            /** Cli */
+            cli: string;
+            /** Model */
+            model: string;
+            /** Project */
+            project?: string | null;
+        };
+        /**
+         * SessionModelCheck
+         * @description The check a start would make of a model, for the launch window: `text` the line under
+         *     its field. For a refusal, `short` the same to point at the field, `peek` a few words for
+         *     the folded Advanced, `retry` whether a new check can help. `warnings` of the chosen
+         *     model's server only; `server` its name.
+         */
+        SessionModelCheck: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "default" | "ok" | "warn" | "refused";
+            /** Text */
+            text: string;
+            /**
+             * Field
+             * @default
+             */
+            field: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Retry
+             * @default false
+             */
+            retry: boolean;
+            /**
+             * Short
+             * @default
+             */
+            short: string;
+            /**
+             * Peek
+             * @default
+             */
+            peek: string;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+            /** Server */
+            server?: string | null;
         };
         /**
          * SessionStatus
@@ -4563,7 +4642,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Taken"];
+                    "application/json": components["schemas"]["Taken"] | components["schemas"]["ModelRefusal"];
                 };
             };
             /** @description Validation Error */
@@ -5602,55 +5681,6 @@ export interface operations {
             };
         };
     };
-    provider_models_api_providers__name__models_get: {
-        parameters: {
-            query?: {
-                model?: string;
-                project?: string | null;
-                fresh?: boolean;
-            };
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProviderModels"];
-                };
-            };
-            /** @description refused, with the reason */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description no such provider or project */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     model_settings_listing_api_model_settings_get: {
         parameters: {
             query?: never;
@@ -5975,6 +6005,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_session_model_api_session_model_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionModelAsked"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionModelCheck"];
                 };
             };
             /** @description Validation Error */
@@ -7485,6 +7548,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Refused"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelRefusal"];
                 };
             };
             /** @description Validation Error */

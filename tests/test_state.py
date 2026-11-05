@@ -554,6 +554,7 @@ def test_set_model_writes_the_launchs_choice(lado_home):
         ("cli-config", "profile work", "your Codex config, profile work"),
         ("session", None, "chosen for the session"),
         ("default", None, "default in Settings"),
+        ("supervisor", None, "chosen by the supervisor"),
         ("cli-changed", None, "changed in the agent CLI"),
         ("server", None, "server"),  # a newer LADO's token: shown as it is
         ("server", "x", "server, x"),

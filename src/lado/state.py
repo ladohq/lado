@@ -1052,12 +1052,14 @@ CLI_DEFAULT = "cli"  # the CLI's own choice: its default or its own settings
 CLI_CONFIG = "cli-config"  # the user's config of the CLI, carried by LADO into the agent
 SESSION = "session"  # the session's model (PowerTable), chosen with lado start --model
 DEFAULT_MODEL = "default"  # its CLI's default model of Settings → Models (cli_defaults)
+SUPERVISOR_CHOICE = "supervisor"  # named in spawn_worker(model=...)
 CLI_CHANGED = "cli-changed"  # another model than the launch chose, named by the CLI
 MODEL_SOURCES = {
     CLI_DEFAULT: "CLI default",
     CLI_CONFIG: "your {cli} config",
     SESSION: "chosen for the session",
     DEFAULT_MODEL: "default in Settings",
+    SUPERVISOR_CHOICE: "chosen by the supervisor",
     CLI_CHANGED: "changed in the agent CLI",
 }
 

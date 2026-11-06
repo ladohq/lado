@@ -13,7 +13,8 @@ strip and the tabs when short of room, and a touch screen's visible height.
 In a window wider than 900 px that is not the phone layout, the session's column SHALL be at
 least 420 px wide. Short of room, terminals the human did not open SHALL fold to their strip;
 terminals the human opened SHALL stay and the session list SHALL fold to its strip instead. The
-rail SHALL never fold by itself.
+rail SHALL never fold by itself. A stopped session's terminals count as opened only when the human
+opened them there.
 
 #### Scenario: Terminals nobody opened
 - **WHEN** nothing is stored and the window is 1024 px wide
@@ -28,6 +29,10 @@ rail SHALL never fold by itself.
 - **WHEN** the window is 901, 1024, 1101, 1280 or 1440 px wide, with the terminals opened by the
   human or not
 - **THEN** the chat is at least 420 px wide
+
+#### Scenario: A stopped session
+- **WHEN** the terminals are stored open and a stopped session shows at 1024 px
+- **THEN** they are in their strip and the list is open
 
 ### Requirement: When folding one column is not enough the other gives way
 

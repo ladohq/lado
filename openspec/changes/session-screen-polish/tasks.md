@@ -32,12 +32,12 @@
 
 ## 5. F27, F26: Stop and Take control
 
-- [ ] 5.1 Stop and forget only when offered, the new line (D16). Check: `Launch.test.tsx`; AC-14.
-- [ ] 5.2 The backdrop on `--scrim` (D17). Check: `tests/ui/test_terminal_panel.py`; AC-13.
+- [x] 5.1 Stop and forget only when offered, the new line (D16). Check: `Launch.test.tsx`; AC-14.
+- [x] 5.2 The backdrop on `--scrim` (D17). Check: `tests/ui/test_terminal_panel.py`; AC-13.
 
 ## 6. F13: notices
 
-- [ ] 6.1 The notices' rule and icon, the stripes out, `.pv-*` and `.kit-warning` to warnings (D14).
+- [x] 6.1 The notices' rule and icon, the stripes out, `.pv-*` and `.kit-warning` to warnings (D14).
   Check: `tokens.test.ts`, a UI test on computed styles, `tests/ui/test_launch.py` for `launch-notes`;
   AC-15.
 

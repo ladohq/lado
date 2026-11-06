@@ -10,7 +10,7 @@ import uuid
 import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
-from test_main_screen import log_in
+from test_main_screen import log_in, running_session
 
 from lado import artifacts, loop, runs, runtime, state
 
@@ -180,6 +180,55 @@ def test_a_session_of_115_artifacts_reads_at_every_width(
     expect(group(tab, "ship/y")).to_have_attribute("aria-expanded", "false")
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     shot(page, f"groups-{width}-{theme}")
+
+
+@pytest.mark.parametrize("width", [390, 768, 1024, 1440])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_the_session_screens_changed_hold_at_every_width(
+    page: Page, server, repo, tmp_path, shot, width, theme
+):
+    """The panel, the run's rows and event, the Stop popover and the empty tabs: nothing
+    scrolls the page sideways, at four widths in both themes (LAD-198)."""
+    session = designed_session(repo, tmp_path)
+    empty = running_session(repo)
+    page.set_viewport_size({"width": width, "height": 844})
+    log_in(page, server)
+    page.evaluate("theme => localStorage.setItem('lado.theme', theme)", theme)
+
+    def fits(name: str) -> None:
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), name
+        shot(page, f"{name}-{width}-{theme}", full_page=False)
+
+    page.goto(f"{server['url']}/sessions/{session}/flows")
+    expect(page.get_by_role("link", name="ship/x")).to_be_visible()
+    expect(page.locator(".run-task-line").first).to_have_text("Add a login page")
+    fits("runs")
+    page.get_by_role("link", name="ship/x").click()
+    page.get_by_role("button", name="Open all").click()
+    expect(page.locator(".feed-took").first).to_contain_text("Step took")
+    fits("event")
+
+    page.goto(f"{server['url']}/sessions/{session}/artifacts")
+    page.locator(".artifact-link").filter(has_text="design").click()
+    panel = page.get_by_role("dialog", name="Artifact ship/x/design")
+    expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
+    expect(panel.locator(".pill")).to_have_text("step design")
+    fits("panel")
+    page.keyboard.press("Escape")
+
+    page.get_by_role("button", name="Stop session…").click()
+    asked = page.get_by_role("dialog", name=f'Stop session "{session}"?')
+    expect(asked.locator(".stop-forget-why")).to_be_visible()
+    expect(asked.get_by_role("button", name="Stop and forget")).to_have_count(0)
+    fits("stop")
+    page.keyboard.press("Escape")
+
+    page.goto(f"{server['url']}/sessions/{empty}/flows")
+    expect(page.get_by_text("No flow runs yet")).to_be_visible()
+    fits("no-runs")
+    page.goto(f"{server['url']}/sessions/{empty}/artifacts")
+    expect(page.get_by_text("No artifacts yet")).to_be_visible()
+    fits("no-artifacts")
 
 
 def test_a_narrow_column_lists_rows_of_48_px_that_open_by_keyboard(

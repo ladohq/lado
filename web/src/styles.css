@@ -467,13 +467,10 @@ h3 {
   font-weight: 600;
 }
 
+/* Its look is the notices' (section "Notices"). */
 .problem {
   margin: 0;
-  padding: 12px 16px;
   white-space: pre-wrap; /* a problem of several lines keeps them */
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--ink);
 }
 
 .version-banner {
@@ -745,7 +742,6 @@ h3 {
 /* Open LADO on another device (Share.tsx): the warning, then the QR code beside the link. */
 .share-warning {
   margin: 0 0 14px;
-  border-left-color: var(--human);
   font-size: 13px;
 }
 
@@ -864,10 +860,6 @@ h3 {
 
 .update-good {
   background: var(--done-ground);
-}
-
-.update-bad {
-  border-left: 3px solid var(--danger);
 }
 
 .update-clock {
@@ -1893,6 +1885,13 @@ h3 {
   white-space: nowrap;
 }
 
+/* A notice all the same, out of the line. */
+.session-head .title-edit .field-problem {
+  padding: 4px 8px 4px 28px;
+  border-radius: 6px;
+  background: var(--danger-ground);
+}
+
 .title-edit input {
   height: 32px;
   padding: 0 8px;
@@ -2347,9 +2346,6 @@ h3 {
 
 .setting .pv-warn {
   margin-top: 4px;
-  padding: 8px 10px;
-  border-left: 3px solid var(--human);
-  background: var(--human-ground);
   font-size: 13px;
 }
 
@@ -2432,9 +2428,6 @@ h3 {
 
 .setting .pv-none {
   margin-top: 12px;
-  padding: 8px 10px;
-  border-left: 3px solid var(--human);
-  background: var(--human-ground);
   font-size: 13px;
 }
 
@@ -3327,11 +3320,6 @@ h3 {
   color: var(--ink);
 }
 
-.term-notice {
-  padding-left: 8px;
-  border-left: 2px solid var(--ink);
-}
-
 .term-tools .quiet {
   display: inline-flex;
   align-items: center;
@@ -3352,7 +3340,7 @@ h3 {
 }
 
 .term-ask::backdrop {
-  background: var(--shadow);
+  background: var(--scrim);
 }
 
 .term-ask p {
@@ -4037,9 +4025,6 @@ h3 {
   text-align: center;
 }
 
-.chat-loading.problem {
-  color: var(--danger);
-}
 
 .chat-start {
   border-bottom: 1px solid var(--line);
@@ -6421,10 +6406,7 @@ button.locked:disabled,
 .field-problem {
   grid-column: 1 / -1;
   margin: 0;
-  color: var(--ink);
   font-size: 13px;
-  border-left: 3px solid var(--ink);
-  padding-left: 8px;
 }
 
 @media (max-width: 760px) {
@@ -6639,8 +6621,8 @@ button.locked:disabled,
 }
 
 /* A warning and a refusal are panels (docs/design/ui.md, New session): text 13px in --ink on
-   a ground of their own with a stripe on the left. A warning's icon is the ⚠ of its text; a
-   refusal's round "!" is drawn here, at its first line, and is not part of its text. */
+   a ground of their own. A warning's icon is the ⚠ of its text; a refusal's round "!" is
+   drawn here, at its first line, and is not part of its text. */
 .field-note.warn,
 .field-note.bad {
   color: var(--ink);
@@ -6648,19 +6630,16 @@ button.locked:disabled,
   line-height: 1.4;
   padding: 4px 8px;
   border-radius: 6px;
-  border-left: 3px solid;
 }
 
 .field-note.warn {
   background: var(--warn-ground);
-  border-left-color: var(--warn);
 }
 
 .field-note.bad {
   position: relative;
   padding-left: 28px;
   background: var(--danger-ground);
-  border-left-color: var(--danger);
 }
 
 .field-note.bad::before {
@@ -7108,10 +7087,10 @@ button.locked:disabled,
   white-space: nowrap;
 }
 
-/* Why Stop and forget is off: the session has open runs. */
+/* Why Stop and forget is not offered: the session has open runs. */
 .stop-forget-why {
-  margin: -6px 0 12px;
-  font-size: 12px;
+  margin: 8px 0 0;
+  font-size: 13px;
 }
 
 .link-popover {
@@ -7273,11 +7252,6 @@ button.locked:disabled,
 .started-notice ul {
   margin: 2px 0 0;
   padding-left: 18px;
-}
-
-.started-problems {
-  padding-left: 8px;
-  border-left: 3px solid var(--ink);
 }
 
 .started-notice .quiet {
@@ -8366,8 +8340,6 @@ button.locked:disabled,
 }
 
 .kit-problem {
-  padding-left: 8px;
-  border-left: 3px solid var(--danger);
   overflow-wrap: anywhere;
 }
 
@@ -8415,8 +8387,6 @@ button.locked:disabled,
 
 .kit-warning {
   margin: 0;
-  padding: 6px 10px;
-  border-left: 3px solid var(--danger);
   font-size: 13px;
   overflow-wrap: anywhere;
 }
@@ -8484,11 +8454,6 @@ button.locked:disabled,
 
 .market-problem {
   color: var(--ink);
-}
-
-.market-error {
-  padding-left: 6px;
-  border-left: 3px solid var(--danger);
 }
 
 /* A window of the Kits page: its head and its footer with the buttons stay in place, only
@@ -9582,7 +9547,6 @@ section.artifact-group + section.artifact-group {
 
 .artifact-tab > p.problem {
   margin: 32px auto;
-  padding: 12px 16px;
 }
 
 /* Not clipped: a clipping box would hold the sticky code bar, which sticks to the tab. */
@@ -9697,16 +9661,10 @@ section.artifact-group + section.artifact-group {
 
 .artifact-missing {
   max-width: 680px;
-  padding: 14px 16px;
-  border: 1px solid var(--danger);
-  border-left-width: 4px;
-  border-radius: 8px;
-  background: var(--panel);
 }
 
 .artifact-missing h4 {
   margin: 0 0 4px;
-  color: var(--danger);
   font-size: 14px;
 }
 
@@ -10403,6 +10361,76 @@ button.quiet.danger-text {
 .projects-empty h2 {
   color: var(--ink);
   font-size: 18px;
+}
+
+/* Notices (docs/design/ui.md, Look): an error or a warning is a ground and an alert icon, never a
+   stripe on the left; the icon is a mask on the text's colour, at the first line. After the
+   pages' rules, whose boxes (.update-banner) these take over; a warning comes last, as
+   Share's is a .problem too. Orange stays what waits for the human: no notice wears it. */
+.problem,
+.update-bad,
+.field-problem,
+.started-problems,
+.kit-problem,
+.market-error,
+.term-notice,
+.artifact-missing,
+.share-warning,
+.setting .pv-warn,
+.setting .pv-none,
+.kit-warning {
+  position: relative;
+  padding: 8px 12px 8px 34px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--danger-ground);
+  color: var(--danger);
+}
+
+.problem::before,
+.update-bad::before,
+.field-problem::before,
+.started-problems::before,
+.kit-problem::before,
+.market-error::before,
+.term-notice::before,
+.artifact-missing::before,
+.share-warning::before,
+.setting .pv-warn::before,
+.setting .pv-none::before,
+.kit-warning::before {
+  --alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l10 18H2z'/%3E%3Cpath d='M12 10v5'/%3E%3Cpath d='M12 18h.01'/%3E%3C/svg%3E");
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  content: "";
+  -webkit-mask: var(--alert) center / contain no-repeat;
+  mask: var(--alert) center / contain no-repeat;
+}
+
+.share-warning,
+.setting .pv-warn,
+.setting .pv-none,
+.kit-warning {
+  background: var(--warn-ground);
+  color: var(--warn);
+}
+
+/* In tight rows: a field's line, a kit's marketplace, the terminal's bar. */
+.field-problem,
+.market-error,
+.term-notice {
+  padding: 4px 8px 4px 28px;
+}
+
+.field-problem::before,
+.market-error::before,
+.term-notice::before {
+  top: 6px;
+  left: 8px;
 }
 
 /* Phone layout (docs/design/ui.md, Phone layout; decided 2026-10-18, LAD-95, LAD-193): a window

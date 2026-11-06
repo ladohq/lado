@@ -13,6 +13,73 @@ from lado import runtime, state
 pytestmark = pytest.mark.ui
 
 
+ERRORS = [
+    "problem",
+    "update-bad",
+    "field-problem",
+    "started-problems",
+    "kit-problem",
+    "market-error",
+    "term-notice",
+    "artifact-missing",
+]
+WARNINGS = ["problem share-warning", "kit-warning"]
+SETTING_WARNINGS = ["pv-warn", "pv-none"]
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_a_notice_is_a_ground_and_an_icon_and_the_selected_session_keeps_its_stripe(
+    page: Page, server, repo, shot, theme
+):
+    session = running_session(repo)
+    log_in(page, server)
+    page.emulate_media(color_scheme=theme)
+    page.goto(f"{server['url']}/sessions/{session}")
+    selected = page.get_by_role("navigation", name="Sessions").locator(
+        ".session-link[aria-current='page']"
+    )
+    expect(selected).to_be_visible()
+    assert selected.evaluate("row => getComputedStyle(row).boxShadow") != "none"
+    # Each notice as the stylesheet draws it, beside the token it must wear.
+    looks = page.evaluate(
+        """([errors, warnings, inSetting]) => {
+          const box = document.body.appendChild(document.createElement("div"));
+          const setting = box.appendChild(document.createElement("div"));
+          setting.className = "setting";
+          const colour = (token) => {
+            const probe = box.appendChild(document.createElement("i"));
+            probe.style.background = `var(${token})`;
+            return getComputedStyle(probe).backgroundColor;
+          };
+          const look = (classes, parent, ground, ink) => {
+            const notice = parent.appendChild(document.createElement("p"));
+            notice.className = classes;
+            notice.textContent = "A notice";
+            const style = getComputedStyle(notice);
+            const icon = getComputedStyle(notice, "::before");
+            return {
+              classes,
+              ground: style.backgroundColor === colour(ground),
+              ink: style.color === colour(ink),
+              stripe: style.borderLeftWidth,
+              icon: icon.content !== "none" && icon.maskImage !== "none",
+            };
+          };
+          return [
+            ...errors.map((one) => look(one, box, "--danger-ground", "--danger")),
+            ...warnings.map((one) => look(one, box, "--warn-ground", "--warn")),
+            ...inSetting.map((one) => look(one, setting, "--warn-ground", "--warn")),
+          ];
+        }""",
+        [ERRORS, WARNINGS, SETTING_WARNINGS],
+    )
+    assert len(looks) == len(ERRORS) + len(WARNINGS) + len(SETTING_WARNINGS)
+    for look in looks:
+        wanted = {"ground": True, "ink": True, "stripe": "0px", "icon": True}
+        assert {key: look[key] for key in wanted} == wanted, look
+    shot(page, f"notices-{theme}")
+
+
 def test_each_group_folds_by_its_heading_remembered_and_the_open_session_stays_in_sight(
     page: Page, server, repo, shot
 ):

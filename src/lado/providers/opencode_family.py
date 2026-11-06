@@ -63,9 +63,9 @@ EVENTS = {
 # A turn that ends on an error: the plugin passes the "session.error" before "session.idle"
 # on with it (Kilo 7.8.3 and OpenCode 1.18.34 publish one, then the other, read in their
 # bundles). The human's Esc is an error too, this one, which their TUIs do not show either.
-# No error is Event.transient: the plugin gets only the error's class name and message (an
-# overloaded API and a refused key are both an APIError), and which ones reach
-# "session.error" is not checked (BACKLOG.md), so LADO resumes none of their agents.
+# No error is Event.transient: which ones reach "session.error" is not checked (BACKLOG.md),
+# so LADO resumes none of their agents. Its `isRetryable` is not read: both CLIs have spent
+# their repeats by then. An error's status gives a provider's refusal LADO's words.
 # No turn's end is Event.background: OpenCode 1.18.35's task tool waits for its subagent
 # (background subagents need its experimental OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS),
 # and "session.idle" says nothing of work still running; Kilo is taken to be as its base,
@@ -123,10 +123,13 @@ def model_entry(name: str, limit: base.Limit | None) -> dict:
 def turn_error(error: Mapping) -> tuple[str, str]:
     """The line of the error a turn ended on and the message's body (Event.error and .details):
     LADO's words go first, as the core cuts a line short (base.error_line)."""
-    name, message = error.get("name") or "UnknownError", error.get("message", "")
+    name = error.get("name") or "UnknownError"
+    message = base.without_keys(error.get("message", ""))
     if error.get("stopped"):
         words = f"LADO stopped the turn after {error['stopped']} attempts: {TOO_SMALL}"
         return base.error_line(name, f"{words}; {message}" if message else words), message
+    if error.get("status") in base.REFUSALS:
+        return base.refusal_line(error["status"], message), message
     if REFUSED_FOR_CONTEXT in message:
         sizes = SERVER_SIZES.search(message)
         words = f"{TOO_SMALL}; {sizes[0]}" if sizes else TOO_SMALL

@@ -53,6 +53,11 @@ TESTED_VERSION = "2.1.295"
 # (Event.transient): an overloaded or failing API, and unknown, which the machine's sleep
 # is too. The others need someone to act and go to the lead at once.
 TRANSIENT = frozenset({"overloaded", "server_error", "unknown"})
+# 2.1.295 sends no `error_details` (`claude -p` on a fake server): an agent on a server has its
+# status and the server's text in `last_assistant_message`, a 402 being of kind unknown:
+# `API Error: 402 <text>`, `Failed to authenticate. API Error: 401 <text>`, `API Error: Request
+# rejected (429) · <text>`.
+REFUSED = re.compile(r"API Error: (?:Request rejected \()?(\d{3})\)?\s*·?\s*(.*)", re.DOTALL)
 EVENTS = {
     "SessionStart": base.SESSION_START,
     "UserPromptSubmit": base.PROMPT_SUBMIT,
@@ -152,6 +157,9 @@ SERVER_SWITCHES = {
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+    # By itself 10 repeats, 11 requests in 3 minutes on a 401 or 429. Its delays double from 0.5 s
+    # to about 36 s, so this is about 72 s, what OpenCode and Kilo take on a 429 (2.1.295).
+    "CLAUDE_CODE_MAX_RETRIES": "7",
 }
 # LADO's tools, which auto mode's classifier would judge. It asks the agent's own model, also in a
 # defaultMode inherited from the user's settings: a model that gives it no usable answer has them
@@ -160,6 +168,19 @@ LADO_TOOLS = "mcp__lado__*"
 # With no credential at all Claude Code sends the human's login, so a server with no key gets
 # this word: the helper's output is sent as it is.
 NO_KEY = "no-key"
+
+
+def _refusal(failure: Mapping) -> tuple[int, str] | None:
+    """The status and the server's text of a StopFailure that is a provider's refusal, of an
+    agent on a server alone: a built-in model's errors keep their kind. The hook runs in the
+    agent's environment."""
+    if not os.environ.get(base.MODEL_SERVER):
+        return None
+    said = failure.get("last_assistant_message")
+    found = REFUSED.search(base.without_keys(said)) if isinstance(said, str) else None
+    if found is None or int(found[1]) not in base.REFUSALS:
+        return None
+    return int(found[1]), found[2].strip()
 
 
 def _server_settings(server: base.ServerEntry) -> dict:
@@ -377,11 +398,13 @@ class ClaudeProvider(base.Provider):
             return base.Event(base.SESSION_START, model=model)
         if native == "StopFailure":
             kind = data.get("error") or "unknown"
-            error = base.error_line(kind, data.get("error_details", ""))
+            details = base.without_keys(data.get("error_details", ""))
+            refusal = _refusal(data)
             return base.Event(
                 base.TURN_END,
-                error=error,
-                transient=kind in TRANSIENT,
+                error=base.refusal_line(*refusal) if refusal else base.error_line(kind, details),
+                details=refusal[1] if refusal else "",
+                transient=kind in TRANSIENT and not refusal,
                 output_ignored=True,
                 background=_background(data),
             )

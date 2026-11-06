@@ -34,10 +34,10 @@ from pathlib import Path
 from lado import agent_env, model_check, model_servers, project_secrets, providers, state
 from lado import text as visible
 from lado.providers import base
+from lado.providers.base import KEY_VARIABLE
 
 KEYS = "model-servers"  # under LADO_HOME: a folder per server, by its id
 KEY = "key"  # the key's file in a server's folder
-KEY_VARIABLE = "LADO_MODEL_KEY_"  # + the server's id in capitals: an agent's variable of its key
 MAX_NAME = 64
 SERVER, MODEL = "model server", "model"  # what a name is of, in its refusals
 REFUSED_PEEK = "refused"

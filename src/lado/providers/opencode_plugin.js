@@ -37,11 +37,16 @@ const REQUESTS = new Set([
   "question.rejected",
 ])
 
-// What a "session.error" says, for the turn's end: the error's name, and the message an API
-// error carries (an APIError's data.message).
+// What a "session.error" says, for the turn's end: the error's name, and the message and the
+// server's status an API error carries (an APIError's data.message and data.statusCode).
 function errorOf(error) {
   const message = error?.data?.message
-  return { name: String(error?.name ?? "UnknownError"), ...(message ? { message: String(message) } : {}) }
+  const status = error?.data?.statusCode
+  return {
+    name: String(error?.name ?? "UnknownError"),
+    ...(message ? { message: String(message) } : {}),
+    ...(Number.isInteger(status) ? { status } : {}),
+  }
 }
 
 // A request larger than the model's context: OpenCode 1.18.35 compacts and resends it without

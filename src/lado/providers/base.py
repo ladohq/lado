@@ -17,6 +17,7 @@ from lado import interpreter, state, tmux
 # The launch variable of an agent on a server for a CLI of one model per process: the server's
 # id. The CLI's own login is then not what the agent runs on (Provider.needs_login).
 MODEL_SERVER = "LADO_MODEL_SERVER"
+KEY_VARIABLE = "LADO_MODEL_KEY_"  # + the server's id in capitals: an agent's variable of its key
 
 # Neutral hook events. A provider maps its own hook events onto these; see lado.hooks.
 SESSION_START = "session_start"
@@ -119,6 +120,31 @@ def error_line(kind: str, details: str = "") -> str:
     first = (details.strip().splitlines() or [""])[0].strip()
     text = f"{kind}: {first}" if first else kind
     return text if len(text) <= ERROR_LIMIT else text[: ERROR_LIMIT - 1] + "…"
+
+
+# What a model provider's refusal means, by its status: someone must act, so such a turn is never
+# temporary. 403 has words of its own: a provider also uses it for a quota. The words stand before
+# the first colon, which `lado stats` takes for the error's kind: no server's text in there.
+REFUSALS = {
+    401: "the model provider refused the key",
+    402: "the model provider asks for payment",
+    403: "the model provider refused access",
+    429: "the model provider limits requests, or the quota is spent",
+}
+
+
+def refusal_line(status: int, text: str) -> str:
+    """The Event.error of a turn a provider refused with `status`, one of REFUSALS."""
+    return error_line(f"{REFUSALS[status]} ({status})", text)
+
+
+def without_keys(text: str) -> str:
+    """`text` with the value of each server's key in the agent's environment taken out: a server
+    may repeat the key in its refusal. Before any cut, as half a key would pass this."""
+    keys = [v for name, v in os.environ.items() if name.startswith(KEY_VARIABLE) and v]
+    for key in sorted(keys, key=len, reverse=True):
+        text = text.replace(key, "***")
+    return text
 
 
 @dataclass(frozen=True)

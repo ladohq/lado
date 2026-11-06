@@ -11,12 +11,12 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-06-external-mod
 
 ## 2. Refusals
 
-- [ ] 2.1 `base.REFUSALS`, `refusal_line`, `without_keys`, `KEY_VARIABLE` moved (D5, D8). Check:
+- [x] 2.1 `base.REFUSALS`, `refusal_line`, `without_keys`, `KEY_VARIABLE` moved (D5, D8). Check:
   `tests/test_providers.py`.
-- [ ] 2.2 The plugin's `status`; `turn_error` (D4). Check: `make test-js`, `tests/test_providers.py`.
-- [ ] 2.3 Claude's `parse_event`, never temporary (D4, D6). Check: `tests/test_providers.py`.
-- [ ] 2.4 `CLAUDE_CODE_MAX_RETRIES` (D7). Check: `tests/test_providers.py`.
-- [ ] 2.5 A refusal through the hooks, the chat's line, no resume, the key in no text. Check: a new
+- [x] 2.2 The plugin's `status`; `turn_error` (D4). Check: `make test-js`, `tests/test_providers.py`.
+- [x] 2.3 Claude's `parse_event`, never temporary (D4, D6). Check: `tests/test_providers.py`.
+- [x] 2.4 `CLAUDE_CODE_MAX_RETRIES` (D7). Check: `tests/test_providers.py`.
+- [x] 2.5 A refusal through the hooks, the chat's line, no resume, the key in no text. Check: a new
   `tests/integration/test_provider_refusals.py` with `-m integration`.
 
 ## 3. The probe

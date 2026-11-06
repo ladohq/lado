@@ -1912,14 +1912,6 @@ It failed once in a full run of `make web` and passed 3 times alone and in the n
 change under review did not touch the file. Wanted: its cause found and the test made stable.
 Found: 2026-11-06, review of branch lado/lad-197/task-lad-197-team-head (LAD-197).
 
-## Flaky UI test: `test_the_strips_badges_tell_task_sessions_apart`
-
-Size: S. Why here: seen once in a parallel run under load; alone it passes.
-
-Its check that the badge's text fits read a wider text than the box, likely before the font had
-loaded. Wanted: the test waits for the fonts.
-Found: 2026-11-06, branch lado/lad-197/task-lad-197-team-head (LAD-197).
-
 # P3: maybe never
 
 ## A relative LADO_HOME breaks the reads of lado.db

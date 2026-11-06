@@ -1367,8 +1367,8 @@ function HeadLine({ session, onActivity }: { session: SessionInfo; onActivity: b
   );
 }
 
-// The project's title, read with the about: a rename shows on the next look; a link to its
-// page, then a `/` that only the eye needs.
+// The project's title, read with the about, again on a rename (useAbout); a link to its page,
+// then a `/` that only the eye needs.
 function ProjectCrumb({ project }: { project: NonNullable<SessionAbout["project"]> }) {
   const shown = project.title ?? project.id;
   return (
@@ -1433,13 +1433,13 @@ function PhoneHead({ session, onActivity }: { session: SessionInfo; onActivity: 
 }
 
 // The session's about, asked when its head opens and again when what it is read from may
-// have changed: the session's folder, kits or provider, or an installed kit (the feed's
-// `kits`). No change in the feed says the CLI's version changed: it is read at the head's
-// opening only.
+// have changed: the session's folder, kits, provider or project's title, or an installed kit
+// (the feed's `kits`). No change in the feed says the CLI's version changed: it is read at the
+// head's opening only.
 function useAbout(session: SessionInfo): SessionAbout | null {
   const kitChanges = useLive().kitChanges;
   const [about, setAbout] = useState<SessionAbout | null>(null);
-  const { name, repo, provider } = session;
+  const { name, repo, provider, project_title: projectTitle } = session;
   const kits = session.kits.join("\n");
   useEffect(() => {
     let current = true;
@@ -1450,7 +1450,7 @@ function useAbout(session: SessionInfo): SessionAbout | null {
     return () => {
       current = false;
     };
-  }, [name, repo, kits, provider, kitChanges]);
+  }, [name, repo, kits, provider, projectTitle, kitChanges]);
   return about;
 }
 

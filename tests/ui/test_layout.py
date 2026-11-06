@@ -532,6 +532,22 @@ def test_a_card_keeps_its_width_and_cuts_a_long_list_of_kits(page: Page, server,
     shot(page)
 
 
+def test_in_a_window_lower_than_the_card_it_is_cut_at_the_windows_height(
+    page: Page, server, repo, shot
+):
+    page.set_viewport_size({"width": 1440, "height": 200})
+    rows = rows_of(page, server, repo, 1)
+    expect(rows).to_have_count(1)
+    rows.first.hover()
+    card = page.get_by_role("tooltip")
+    expect(card).to_be_visible()
+    box = card.bounding_box()
+    assert box["height"] <= 200 - 16
+    assert_in_window(page, box)
+    assert card.evaluate("c => getComputedStyle(c, '::before').left") == "-5px"  # its arrow stays
+    shot(page, full_page=False)
+
+
 def session_item(name: str, **more) -> dict:
     """A session as /api/sessions gives it, for a state the fake agent cannot get into."""
     return {

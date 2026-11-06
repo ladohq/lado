@@ -36,8 +36,10 @@ place is reckoned once on show, as today: a card that grows while open may overl
 case, accepted.
 
 **D6. Width and height in CSS.** `.tooltip:has(.session-tip)`: `width: min(360px, 100vw - 16px)`,
-`max-width` the same, `max-height: calc(100vh - 16px)`, `overflow: hidden`. The arrow's rule for
-`data-side="right"` stands beside the other two.
+`max-width` the same. `.session-tip`: `max-height: calc(100vh - 16px - 12px)`, the 12 px being the
+tooltip's padding and border, and `overflow: hidden`: on `.tooltip` itself it would cut off the
+arrow, which stands outside the card. The arrow's rule for `data-side="right"` stands beside the
+other two.
 
 **D7. Kits are cut in `SessionTip`,** at a constant `KITS_SHOWN = 6`: nine names with a long path made
 a card of 422 px. The whole list is in Details.
@@ -55,7 +57,7 @@ The mark in the row keeps `role="img"` and its name: it is now the only sign of 
 | Project by title | unit (pytest) + unit (vitest) | `tests/test_server_*.py` on `session_info`; the card with and without a title |
 | A new title reaches the list | unit (pytest) | `tests/test_feed.py`: `set_project_title` journals each session, its item has the title. One SQLite file, no process boundary beyond the journal's own tests |
 | Beside the list, in the window | UI e2e + unit (vitest) | `tests/ui/test_layout.py`: geometry at 1440×900, the last row, 590 px (rows) and 640 px (the strip: the list is folded there); `web/src/Tooltip` placement with mocked rects |
-| One width, bounded height | UI e2e | `tests/ui/test_layout.py`: two cards of equal width |
+| One width, bounded height | UI e2e | `tests/ui/test_layout.py`: two cards of equal width, a window lower than the card |
 | The card stays a tooltip | unit (vitest) | the pointer leaves, the card goes (the existing test extended) |
 
 Regression run: the settings' Checks for `web/` and the server's API: `make lint`, `make test`,

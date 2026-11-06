@@ -2105,8 +2105,8 @@ layout, below).
   title: its title (its id without one) in `--muted` at 14 px, at most 16ch, then a `/` in
   `--line` hidden from assistive technology; `--ink` and underlined on hover and focus. It
   is a link to the project's page `/projects/<id>` (LAD-134), its tooltip the whole title
-  and `Project <id>`. The title comes with `SessionAbout.project`, read when the head opens,
-  so a rename shows on the next look; the feed's `SessionInfo.project` carries the id only.
+  and `Project <id>`. The title comes with `SessionAbout.project`, read when the head opens
+  and again when the feed's `SessionInfo.project_title` changes, so a rename shows at once.
   A session without a project has neither, nor has a phone.
 - Git in Details: the origin remote short, `github.com/ladohq/lado`, without scheme, user
   and `.git`, and `· <branch>`, its tooltip the whole URL, the branch and the path. Copy URL

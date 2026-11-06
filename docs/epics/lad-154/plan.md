@@ -553,6 +553,9 @@ Check:
 
 ## Later
 
+- From PR #235's manual check: Kilo ends a turn with no word when a compaction fails twice (an empty summary), the human's message unanswered (3.3); cloud.ru's `/models` takes any key, so `model-server add` saves a wrong one (3.4) — LAD-220 — no task yet.
+- OpenCode and Kilo stay silent through a long `Retry-After` (600 s about 50 min by calculation) — S11's review — no task yet — if the human meets it.
+- Flaky `test_a_late_control_is_asked_again_and_still_proves_nothing` (one failure in `make test`, F11 of S11's review) — no task yet — at the second occurrence.
 - A session's tokens or money in LADO; a limit given by hand on a saved model (a 1M model compacts late) — out of S11 by #4163 — no task yet — on the human's word.
 - The launch window offers Claude Code only with its login, though a model on a server needs none (option B of S9a's design; option A, the default on a server clears `login_missing`, is built) — no task yet — on the human's yes.
 - Declined at S9a's review: no automatic test of a subagent asking for another model (F6), `LADO_MODEL_SERVER` in the login shell (E4), `allow` assigned rather than added to (E6) — LAD-217.

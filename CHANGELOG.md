@@ -55,6 +55,9 @@
   silent chat; now the turn ends after three overflows, and the chat says why.
 - **A failed turn is not called a reply.** A message whose turn ended on an error no longer shows
   "replied only in its terminal"; the next clean turn decides.
+- **A tooltip no longer pops up when you come back to LADO's tab.** A session's card and
+  other tooltips stay hidden on your return; Tab or the pointer shows them as usual.
+
 - **Placeholders read well in the dark theme.** Every field's hint now has the muted text
   colour instead of the browser's pale grey.
 

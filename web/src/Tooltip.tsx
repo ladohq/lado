@@ -1,7 +1,8 @@
 // A compact tooltip of the UI's own, instead of the browser's `title` (docs/design/ui.md,
 // Structure): it shows TOOLTIP_DELAY_MS after the pointer enters its trigger, and at once
-// when the trigger gets the focus from the keyboard; it goes when the pointer leaves, the
-// focus goes, or on Esc. While shown, the trigger is described by it (aria-describedby).
+// when the trigger gets the focus from the keyboard; a focus that comes back with the tab
+// or window shows nothing. It goes when the pointer leaves, the focus goes, or on Esc.
+// While shown, the trigger is described by it (aria-describedby).
 // It takes no pointer events and stays inside the window. An arrow on the edge facing the
 // trigger points at the trigger's centre. On a touch screen (docs/design/ui.md, Phone
 // layout) a tap on a hint (a trigger that is no button or link) shows it at once, and the
@@ -49,6 +50,7 @@ export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElem
   const trigger = useRef<HTMLElement | null>(null);
   const pressed = useRef(false); // the focus that follows comes from the pointer, not the keyboard
   const touched = useRef(false); // the last press was a touch: the mouse that enters is emulated
+  const left = useRef(false); // the last blur was the window's: the focus stayed on the trigger
   const box = useRef<HTMLDivElement>(null);
 
   const show = (element: HTMLElement) => {
@@ -125,13 +127,18 @@ export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElem
     },
     onFocus: (event) => {
       own.onFocus?.(event);
-      // A focus given by code after a press elsewhere (Details' Copy path) is no keyboard's.
       const target = event.currentTarget;
-      if (!pressed.current && (!target.matches(":focus") || target.matches(":focus-visible"))) show(target);
+      // From nowhere after the window's blur: the window is back. A focus from an element
+      // is the keyboard's, even when the window took this trigger's focus before.
+      const returned = left.current && !event.relatedTarget;
+      // A focus given by code after a press elsewhere (Details' Copy path) is no keyboard's.
+      const keyboard = !pressed.current && (!target.matches(":focus") || target.matches(":focus-visible"));
+      if (keyboard && !returned) show(target);
       pressed.current = false;
     },
     onBlur: (event) => {
       own.onBlur?.(event);
+      left.current = document.activeElement === event.currentTarget;
       hide();
     },
   });

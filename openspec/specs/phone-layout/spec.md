@@ -1,21 +1,20 @@
 # phone-layout Specification
 
 ## Purpose
-How the web UI reads on a phone: a touch screen no wider than 600 px or no higher than
-500 px gets a layout of its own (the rail as a menu, a one-line top bar, the session's
+How the web UI reads on a phone: a window no wider than 600 px, or a touch screen no higher
+than 500 px, gets a layout of its own (the rail as a menu, a one-line top bar, the session's
 details in a sheet, a chat whose composer stays at hand, terminals over the screen,
-tooltips on a tap), while a computer with a mouse keeps its layout at any window size.
+tooltips on a tap), while a wider window with a mouse keeps its layout, however low.
 
 ## Requirements
 
 ### Requirement: The UI picks the phone layout by the screen and the pointer
 
-The web UI SHALL use its phone layout exactly while the primary pointer is coarse (a touch
-screen) and the window is no wider than 600 px or no higher than 500 px; the layout SHALL
-follow the window when it turns or resizes, without a reload. With a fine pointer (a
-mouse or a trackpad) the UI SHALL never use the phone layout, whatever the window's size,
-and SHALL look and behave as before this change. There SHALL be no setting or switch for
-it.
+The web UI SHALL use its phone layout exactly while the window is no wider than 600 px, with any
+pointer, or the primary pointer is coarse (a touch screen) and the window is no higher than
+500 px; the layout SHALL follow the window when it turns or resizes, without a reload. A wider
+window with a fine pointer (a mouse or a trackpad) SHALL never use the phone layout, however low.
+There SHALL be no setting or switch for it.
 
 #### Scenario: A phone held upright
 - **WHEN** the UI is opened on a touch screen 390 px wide and 844 px high
@@ -27,8 +26,15 @@ it.
 
 #### Scenario: A computer's narrow window
 - **WHEN** the UI is opened with a mouse in a window 390 px wide and 844 px high
-- **THEN** it shows the rail, the session's head with its facts, the session strip and
-  the terminal strip as before this change, and no Menu button
+- **THEN** it shows the phone layout, with Menu and the session's title in place
+
+#### Scenario: A computer's low window
+- **WHEN** the UI is opened with a mouse in a window 1280 px wide and 400 px high
+- **THEN** it does not show the phone layout
+
+#### Scenario: A touch laptop
+- **WHEN** the UI is opened on a touch screen 1440 px wide and 900 px high
+- **THEN** it does not show the phone layout
 
 #### Scenario: A tablet
 - **WHEN** the UI is opened on a touch screen 820 px wide and 1180 px high
@@ -298,7 +304,7 @@ loses the focus all of it SHALL show again.
 On Needs you, and outside the phone layout, a field's focus SHALL change nothing.
 
 #### Scenario: A computer
-- **WHEN** the human clicks a gate's comment field with a mouse in a window 390 px wide
+- **WHEN** the human clicks a gate's comment field with a mouse in a window 700 px wide
 - **THEN** the card and the composer stay as they were
 
 #### Scenario: Needs you on a phone
@@ -362,3 +368,17 @@ Expand does the same.
 #### Scenario: Measured
 - **WHEN** a question waits on a phone 390×844
 - **THEN** its tab, a choice, Send answer and Skip question are each 44 px high
+
+### Requirement: On a phone the top bar's title and link are easy to tap
+
+In the phone layout the session's title SHALL have a target 44 px high, the height of the top bar.
+The change feed's link SHALL have a target 44 px high and 33 px wide, taken from the gaps at its
+sides, so that the title loses no width. What is drawn SHALL not change.
+
+#### Scenario: The title
+- **WHEN** the human taps the top bar's height above the title's text
+- **THEN** the session's details open
+
+#### Scenario: The link
+- **WHEN** the human taps 8 px beside the link's dot
+- **THEN** the System panel opens

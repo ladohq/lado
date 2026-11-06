@@ -1027,7 +1027,7 @@ test("on a phone a field in the context comes back into view when the card is la
 });
 
 test("a field's focus changes nothing on a computer, nor on Needs you on a phone", () => {
-  new FakeScreen("fine", 390, 844);
+  new FakeScreen("fine", 700, 844);
   const fold = vi.fn();
   show({ questions: [], gates: [GATE_812], chat: IN_CHAT, onFold: fold });
   act(() => commentField().focus());

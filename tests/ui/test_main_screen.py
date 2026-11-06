@@ -126,6 +126,7 @@ def test_a_page_loads_without_a_console_error_and_with_its_icon(page: Page, serv
 
 
 def test_the_rail_collapses_and_stays_so(page: Page, server, shot):
+    page.set_viewport_size({"width": 1600, "height": 900})
     log_in(page, server)
     rail = page.get_by_role("navigation", name="Sections")
     page.get_by_role("button", name="Collapse menu").click()

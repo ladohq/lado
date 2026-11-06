@@ -559,7 +559,11 @@ def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, sh
     page.emulate_media(color_scheme="light")
     page.set_viewport_size({"width": 480, "height": 900})
     expect(rows.nth(1).locator(".feed-side time")).to_have_css("opacity", "1")
-    assert chat.evaluate("feed => feed.scrollWidth <= feed.clientWidth")
+    # A phone's layout now, which the window's change brings a moment later.
+    expect(page.get_by_role("button", name="Menu")).to_be_visible()
+    page.wait_for_function(
+        "feed => feed.scrollWidth <= feed.clientWidth", arg=chat.element_handle()
+    )
     shot(page, "narrow")
 
 

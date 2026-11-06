@@ -116,19 +116,15 @@ def test_the_session_terminal_and_kits_tabs_look_the_same(page: Page, server, re
         shot(page, f"session-{theme}")
     assert seen["light"]["ground"] != seen["dark"]["ground"]
 
-    # A narrow window stacks the session list over the session: the session's band starts
-    # right under it, at its column's top, open or collapsed to its strip.
+    # A narrow window has the session strip as a row over the session: the session's band
+    # starts right under it, at its column's top.
     page.emulate_media(color_scheme="light")
     page.set_viewport_size({"width": 800, "height": 700})
     expect(sections.get_by_role("link", name="Agents · 2")).to_be_visible()
-    tops = page.evaluate(TOPS)
-    assert tops["session"] == tops["column"] == tops["list"], tops
-    shot(page, "session-narrow")
-    page.get_by_role("button", name="Collapse sessions").click()
     expect(page.locator(".sessions-strip")).to_be_visible()
     tops = page.evaluate(TOPS)
     assert tops["session"] == tops["column"] == tops["list"], tops
-    shot(page, "session-narrow-collapsed")
+    shot(page, "session-narrow")
     page.set_viewport_size({"width": 1280, "height": 720})
 
     page.goto(f"{server['url']}/kits/installed")

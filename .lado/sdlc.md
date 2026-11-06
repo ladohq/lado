@@ -75,6 +75,7 @@ Into an epic branch:
 | `make web` | root | when `web/` or the server's API models changed (stale-types check) |
 | `openspec validate --specs --strict` | root | blind to contradictions between capabilities: grep `openspec/specs/` |
 | `openspec validate <change> --strict` | root | the change itself, while it is open (not after its archive) |
+| `d=$(mktemp -d) && cp -R openspec "$d" && cd "$d" && openspec archive <change> --yes && openspec validate --specs --strict` | root | a trial archive in a copy, while the change is open: `openspec validate <change> --strict` does not see what only the archive shows (a new capability without a Purpose, a requirement over 500 characters); `--skip-specs` for a change without a delta |
 
 - Excluded from a normal round:
   - `make check` and `make test-integration` as a whole: CI runs them on every push, and a

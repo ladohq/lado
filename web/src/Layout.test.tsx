@@ -521,7 +521,7 @@ test("a Running row's card and its icon in the strip say whether it works, then 
   expect(icon("calm").getAttribute("aria-label")).toBe("calm, idle");
   expect(icon("calm").querySelector(".dot")!.className).toContain("activity-idle");
   expect(icon("gated").getAttribute("aria-label")).toBe("gated, needs you");
-  expect(icon("gated").querySelector(".dot")).toBeNull();
+  expect(icon("gated").querySelector(".dot")!.className).toContain("dot-waiting");
   fireEvent.focus(icon("busy"));
   expect(nameFirst(screen.getByRole("tooltip"))).toBe("busy");
   fireEvent.blur(icon("busy"));
@@ -585,19 +585,47 @@ test("the list's width changes with its edge and is remembered", async () => {
   expect(columns()).toBe("260px");
 });
 
-test("in a narrow window the list is narrowed to leave the session and its terminals room, and its width stays remembered", async () => {
+test("short of room the list folds to its strip and comes back, and nothing is stored", async () => {
   columnWidth(null);
   localStorage.setItem("lado.sessionsList", JSON.stringify({ width: 400 }));
   open("/sessions");
-  const edge = screen.getByRole("separator", { name: "Resize the session list" });
-  // The session's least width (360) and the terminals' (280) come first.
-  FakeResizeObserver.resize(() => 1000);
-  expect(Number(edge.getAttribute("aria-valuenow"))).toBe(1000 - 360 - 280);
-  FakeResizeObserver.resize(() => 700);
-  expect(Number(edge.getAttribute("aria-valuenow"))).toBe(200);
+  FakeResizeObserver.resize(() => 800); // 400 + the terminals' strip leave the chat 368 px
+  expect(document.querySelector("nav.sessions-strip")).toBeTruthy();
+  expect(document.querySelector<HTMLElement>(".sessions")!.style.getPropertyValue("--list-width")).toBe("48px");
   expect(JSON.parse(localStorage.getItem("lado.sessionsList")!)).toEqual({ width: 400 });
   FakeResizeObserver.resize(() => 1600);
+  expect(document.querySelector("nav.sessions-strip")).toBeNull();
+  const edge = screen.getByRole("separator", { name: "Resize the session list" });
   expect(Number(edge.getAttribute("aria-valuenow"))).toBe(400);
+});
+
+test("the strip's badges tell sessions apart: a task's number, a title's letters, a mark on a clash", async () => {
+  sessions = [
+    session("lad-154-epic"),
+    session("x1", { title: "lad-189 (session UI review)" }),
+    session("lad-77-checkout", { title: "Checkout redesign" }),
+    session("web-2154"),
+    session("kilo-ui"),
+  ];
+  localStorage.setItem("lado.sessionsList", JSON.stringify({ collapsed: true }));
+  open("/sessions");
+  await waitFor(() => expect(document.querySelectorAll(".strip-session")).toHaveLength(5));
+  const badges = [...document.querySelectorAll(".strip-session")].map((one) => one.textContent);
+  expect(badges).toEqual(["154", "189", "CR", "154·2", "KU"]);
+  expect(document.querySelectorAll(".strip-session.long")).toHaveLength(1);
+});
+
+test("with nothing stored the rail follows the window; the human's choice wins", () => {
+  const screen_ = new FakeScreen("fine", 1599, 900);
+  open("/sessions");
+  const app = document.querySelector(".app")!;
+  expect(app.classList.contains("collapsed")).toBe(true);
+  screen_.set({ width: 1600 });
+  expect(app.classList.contains("collapsed")).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "Collapse menu" }));
+  expect(localStorage.getItem("lado.rail")).toBe("collapsed");
+  screen_.set({ width: 2000 });
+  expect(app.classList.contains("collapsed")).toBe(true);
 });
 
 // The session list collapsed to a strip (docs/design/ui.md, Structure: Sessions)

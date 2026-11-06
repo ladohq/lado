@@ -131,7 +131,7 @@ export function Splitter({
       className={`splitter splitter-${edge}`}
       data-dragging={dragging || undefined}
       onPointerDown={drag}
-      onDoubleClick={() => (onReset ? onReset() : onChange(bounds.initial, false))}
+      onDoubleClick={() => (onReset ? onReset() : onChange(clamp(bounds.initial, bounds), false))}
       onKeyDown={(event) => {
         if (event.key === less) onChange(clamp(width - STEP, bounds), false);
         if (event.key === more) onChange(clamp(width + STEP, bounds), false);

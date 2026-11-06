@@ -12,13 +12,17 @@ import {
   storeColumn,
   storedColumn,
   storedFlowsGroups,
+  storedLastColumn,
+  storedRailCollapsed,
   storedSessionGroups,
   storeFlowsGroups,
+  storeLastColumn,
   storedMinimized,
   storedSessionsList,
   storedWaitingHeight,
   storeMinimized,
   storePanel,
+  storeRailCollapsed,
   storeSessionGroups,
   storeSessionsList,
   storeWaitingHeight,
@@ -39,66 +43,79 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("the terminal panel is open at its initial width at first, collapsed at first on a narrow window", () => {
-  expect(storedPanel()).toEqual({ width: PANEL_WIDTH.initial, collapsed: false });
+test("the rail is the human's choice, or null with none stored, on any window", () => {
   narrow(true);
-  expect(storedPanel()).toEqual({ width: PANEL_WIDTH.initial, collapsed: true });
+  expect(storedRailCollapsed()).toBeNull();
+  storeRailCollapsed(false);
+  expect(storedRailCollapsed()).toBe(false);
+  storeRailCollapsed(true);
+  expect(storedRailCollapsed()).toBe(true);
 });
 
-test("the panel's width and whether it is collapsed are remembered", () => {
+test("the column the human opened last is remembered; anything else stored is none", () => {
+  expect(storedLastColumn()).toBeNull();
+  storeLastColumn("list");
+  expect(storedLastColumn()).toBe("list");
+  storeLastColumn("panel");
+  expect(storedLastColumn()).toBe("panel");
+  localStorage.setItem("lado.lastColumn", "rail");
+  expect(storedLastColumn()).toBeNull();
+});
+
+test("the terminal panel is open with no width and no choice at first, on any window", () => {
+  expect(storedPanel()).toEqual({ width: null, collapsed: false, chosen: false });
+  narrow(true);
+  expect(storedPanel()).toEqual({ width: null, collapsed: false, chosen: false });
+});
+
+test("the panel's width and whether it is collapsed are remembered as the human's choice", () => {
   storePanel({ width: 600, collapsed: true });
-  expect(storedPanel()).toEqual({ width: 600, collapsed: true });
+  expect(storedPanel()).toEqual({ width: 600, collapsed: true, chosen: true });
+});
+
+test("a panel with no width on its edge stores none", () => {
+  storePanel({ width: null, collapsed: false });
+  expect(JSON.parse(localStorage.getItem("lado.terminals")!)).toEqual({ collapsed: false });
+  expect(storedPanel()).toEqual({ width: null, collapsed: false, chosen: true });
+});
+
+test("the 480 px an older LADO stored beside the panel's state is no width of the human's", () => {
+  localStorage.setItem("lado.terminals", JSON.stringify({ width: PANEL_WIDTH.initial, collapsed: false }));
+  expect(storedPanel()).toEqual({ width: null, collapsed: false, chosen: true });
 });
 
 test("a panel remembered before it could collapse is open, also on a narrow window", () => {
   localStorage.setItem("lado.terminals", JSON.stringify({ width: 520 }));
   narrow(true);
-  expect(storedPanel()).toEqual({ width: 520, collapsed: false });
-});
-
-test("a column is open at its initial width at first, collapsed at first on a narrow window (max-width: 900px)", () => {
-  const bounds = { initial: 300, min: 100, max: 500 };
-  const queries: string[] = [];
-  vi.stubGlobal("matchMedia", (query: string) => {
-    queries.push(query);
-    return { matches: true, media: query };
-  });
-  expect(storedColumn("lado.some", bounds)).toEqual({ width: 300, collapsed: true });
-  expect(queries).toEqual(["(max-width: 900px)"]);
-  narrow(false);
-  expect(storedColumn("lado.some", bounds)).toEqual({ width: 300, collapsed: false });
+  expect(storedPanel()).toEqual({ width: 520, collapsed: false, chosen: true });
 });
 
 test("a column's width and whether it is collapsed are remembered under its key", () => {
   const bounds = { initial: 300, min: 100, max: 500 };
   storeColumn("lado.some", { width: 420, collapsed: true });
   expect(JSON.parse(localStorage.getItem("lado.some")!)).toEqual({ width: 420, collapsed: true });
-  expect(storedColumn("lado.some", bounds)).toEqual({ width: 420, collapsed: true });
-  expect(storedColumn("lado.other", bounds)).toEqual({ width: 300, collapsed: false });
+  expect(storedColumn("lado.some", bounds)).toEqual({ width: 420, collapsed: true, chosen: true });
+  expect(storedColumn("lado.other", bounds)).toEqual({ width: null, collapsed: false, chosen: false });
 });
 
-test("a column remembered before it could collapse is open; a width out of bounds or no JSON is the initial one", () => {
+test("a column remembered before it could collapse is open; a width out of bounds is none; no JSON is nothing stored", () => {
   const bounds = { initial: 300, min: 100, max: 500 };
-  narrow(true);
   localStorage.setItem("lado.some", JSON.stringify({ width: 200 }));
-  expect(storedColumn("lado.some", bounds)).toEqual({ width: 200, collapsed: false });
+  expect(storedColumn("lado.some", bounds)).toEqual({ width: 200, collapsed: false, chosen: true });
   localStorage.setItem("lado.some", JSON.stringify({ width: 9000, collapsed: true }));
-  expect(storedColumn("lado.some", bounds)).toEqual({ width: 300, collapsed: true });
+  expect(storedColumn("lado.some", bounds)).toEqual({ width: null, collapsed: true, chosen: true });
   localStorage.setItem("lado.some", "not json");
-  expect(storedColumn("lado.some", bounds)).toEqual({ width: 300, collapsed: true }); // as nothing stored
+  expect(storedColumn("lado.some", bounds)).toEqual({ width: null, collapsed: false, chosen: false });
 });
 
 test("the session list keeps its width and whether it is collapsed in lado.sessionsList", () => {
-  expect(storedSessionsList()).toEqual({ width: SESSIONS_WIDTH.initial, collapsed: false });
+  expect(storedSessionsList()).toEqual({ width: null, collapsed: false, chosen: false });
   expect(SESSIONS_WIDTH).toEqual({ initial: 260, min: 200, max: 480 });
   storeSessionsList({ width: 320, collapsed: true });
   expect(JSON.parse(localStorage.getItem("lado.sessionsList")!)).toEqual({ width: 320, collapsed: true });
-  expect(storedSessionsList()).toEqual({ width: 320, collapsed: true });
-  localStorage.clear();
-  narrow(true);
-  expect(storedSessionsList()).toEqual({ width: SESSIONS_WIDTH.initial, collapsed: true });
+  expect(storedSessionsList()).toEqual({ width: 320, collapsed: true, chosen: true });
   localStorage.setItem("lado.sessionsList", JSON.stringify({ width: 300 })); // stored before it could collapse
-  expect(storedSessionsList()).toEqual({ width: 300, collapsed: false });
+  expect(storedSessionsList()).toEqual({ width: 300, collapsed: false, chosen: true });
 });
 
 test("each session group is remembered open or folded by its id; Stopped is folded by default", () => {
@@ -202,8 +219,8 @@ test("without browser storage every default holds and nothing breaks", () => {
   storeAskControl(false);
   storeArtifactPanel({ width: 900, expanded: true });
   storeSessionGroups({ "needs-you": "folded", running: "folded", stopped: "open" });
-  expect(storedPanel()).toEqual({ width: PANEL_WIDTH.initial, collapsed: false });
-  expect(storedSessionsList()).toEqual({ width: SESSIONS_WIDTH.initial, collapsed: false });
+  expect(storedPanel()).toEqual({ width: null, collapsed: false, chosen: false });
+  expect(storedSessionsList()).toEqual({ width: null, collapsed: false, chosen: false });
   expect(storedAskControl()).toBe(true);
   expect(storedArtifactPanel()).toEqual({ width: 620, expanded: false });
   expect(storedSessionGroups()).toEqual({ "needs-you": "open", running: "open", stopped: "folded" });

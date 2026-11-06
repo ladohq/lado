@@ -575,6 +575,19 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## With the rail opened by hand a narrow window's column buttons do nothing
+
+Size: S. Why here: the human accepted it for LAD-193; a press with no answer on the screen is
+still a small puzzle, and only with the rail opened by hand on a window of about 960 px or less.
+
+With the rail opened by hand there is no room for the terminals beside 420 px of chat in a window
+of up to about 963 px, nor for the list up to about 927 px: the rule folds them again at once
+(`columns.ts`, answer #3750). So Show the terminals, an agent's button, a team chip, `?terminal=`
+and Sessions store the choice and change nothing on the screen. Wanted: a press that shows the
+column, by folding the rail for the moment or by opening the column over the session, or a word
+that says why not.
+Found: 2026-11-06, branch lado/lad-193/task-lad-193 (LAD-193, review F5).
+
 ## `lado server stop` by hand in the container stops every session
 
 Size: S. Why here: only a human in the container's shell gets there, and a restart of the

@@ -170,8 +170,7 @@ say "The session is stopped: resume it to answer."
 The card SHALL be as high as its content. Its title and context together SHALL be at most
 40 % of the chat's height unless the human set another height; its footer SHALL not count in
 that limit and SHALL not be cut by it. Its context SHALL scroll inside it while its tabs and its
-footer stay in view. Where the chat has no height of its own (a window of 900 px or less outside
-the phone layout) the limit SHALL be 40 % of the window's height.
+footer stay in view.
 
 #### Scenario: Long questions
 - **WHEN** the supervisor's tab holds three questions whose text is longer than half the
@@ -183,8 +182,8 @@ the phone layout) the limit SHALL be 40 % of the window's height.
 - **THEN** the card is as high as its content, with no empty room in it
 
 #### Scenario: A long note in a narrow window
-- **WHEN** a gate with a note of 60 lines waits in a chat 800 px wide in a window 900 px high
-- **THEN** its title and context are at most 360 px high, and its comment field and Approve
+- **WHEN** a gate with a note of 60 lines waits in a chat 800 px high in a window 800 px wide
+- **THEN** its title and context are at most 320 px high, and its comment field and Approve
   follow right under them
 
 ### Requirement: The expanded card comes back as it was
@@ -557,47 +556,6 @@ bounds SHALL still keep its 160 px.
 - **WHEN** the human types 4 lines in a card with no room left above it
 - **THEN** the field keeps the height it has, scrolls inside, and the buttons are in sight
 
-### Requirement: A window that scrolls keeps the footer in sight
-
-In a window of 900 px or less outside the phone layout, which scrolls as a page, the chat's card
-SHALL stick to the window's lower edge and be at most the room from the chat's top down, its
-parts giving way in their order; never less than a footer's least height or half the window,
-which the page's scroll then brings up. The composer past the window's edge is LAD-193's.
-
-#### Scenario: A low window
-- **WHEN** a gate with a long note waits in a window 768×700
-- **THEN** the recommendation, the field, Approve and Reject lie within the window at the page's
-  top and at its end
-
-#### Scenario: A card that grew
-- **WHEN** the human opens the recommendation and types 4 lines in a window 768×700, 768×500 or
-  768×420, or a question of six choices waits there with its own answer open
-- **THEN** the context gives way, and the field and the buttons lie within the window at the
-  page's top
-
-#### Scenario: The chat low on the page
-- **WHEN** the sessions' list stands open over the chat in a window 768×700
-- **THEN** the card keeps half the window, and the page's scroll brings its footer into it
-
-#### Scenario: The sessions' list opens or closes
-- **WHEN** the human opens the sessions' list over the chat in a window 768×700, or closes it
-- **THEN** the card takes the room as it is at once: its footer stays in sight, and closed, the
-  card has its height back
-
-### Requirement: In a window that scrolls the expanded card holds the page
-
-In a window of 900 px or less outside the phone layout, the expanded card SHALL be the window's
-height under the top bar, also after the window narrows or turns, and the page SHALL not scroll
-until it folds.
-
-#### Scenario: Expanded
-- **WHEN** the human expands a card in a window 768×700 or 768×1024 and turns the wheel
-- **THEN** the card stands under the top bar and its footer lies within the window
-
-#### Scenario: The window narrows
-- **WHEN** the card is expanded in a window 1440×900 and the window narrows to 768×700
-- **THEN** the card stands under the top bar and its footer lies within the window
-
 ### Requirement: A field's placeholder is muted
 
 Every field's placeholder SHALL wear `--muted` at full opacity in both themes, not the browser's
@@ -691,7 +649,8 @@ An icon button at
 the right of the card's tabs in a session's chat (no text; its name and tooltip "Expand the
 card") SHALL show the card over the chat's whole area, never over the whole window: the feed and
 the composer hidden, the session's head, tabs and team row seen and usable (but on a phone:
-capability phone-layout).
+capability phone-layout; in a window of 601 to 900 px: the requirement "At 601 to 900 px the
+expanded card fills the window under the top bar").
 
 #### Scenario: The session around an expanded card
 - **WHEN** the human expands the card in session lad-46's chat
@@ -712,3 +671,37 @@ a height lower than the card's tabs and footer SHALL show them whole, with no ti
 #### Scenario: Lower than the footer
 - **WHEN** the human gives the card a height lower than its tabs and footer
 - **THEN** the tabs and the footer show whole, with no title or context
+
+### Requirement: At 601 to 900 px the footer and the composer stay in sight
+
+In a window 601 to 900 px wide outside the phone layout, the chat's card SHALL stand above the
+composer at the chat's lower edge, its parts giving way in their order, and its footer and the
+composer SHALL lie within the window however long the note and however far the feed is scrolled.
+A window too low for both SHALL keep the card's buttons before the composer.
+
+#### Scenario: A low window
+- **WHEN** a gate with a long note waits in a window 768×700
+- **THEN** the recommendation, the field, Approve, Reject and the composer lie within the window
+
+#### Scenario: A card that grew
+- **WHEN** the human opens the recommendation and types 4 lines in a window 768×700 or 768×500,
+  or a question of six choices waits there with its own answer open
+- **THEN** the context gives way, and the field and the buttons lie within the window
+
+#### Scenario: The sessions' list opens or closes
+- **WHEN** the human opens the sessions' list over the chat in a window 768×700, or closes it
+- **THEN** the card and its footer stay where they are
+
+### Requirement: At 601 to 900 px the expanded card fills the window under the top bar
+
+In a window 601 to 900 px wide outside the phone layout, the expanded card SHALL be the window's
+height under the top bar, the session strip, the tabs and the team row hidden with the feed and the
+composer, also after the window narrows or turns, until it folds.
+
+#### Scenario: Expanded
+- **WHEN** the human expands a card in a window 768×700 or 768×1024 and turns the wheel
+- **THEN** the card stands under the top bar, its footer lies within the window and nothing moves
+
+#### Scenario: The window narrows
+- **WHEN** the card is expanded in a window 1440×900 and the window narrows to 768×700
+- **THEN** the card stands under the top bar and its footer lies within the window

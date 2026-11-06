@@ -112,6 +112,15 @@ test("a double click puts the width back to its default", () => {
   expect(width()).toBe(300);
 });
 
+test("a double click stays within the bounds of now, which may lie under the default", () => {
+  const changed = vi.fn();
+  render(
+    <Splitter label="Resize the column" edge="right" width={220} bounds={{ ...BOUNDS, max: 240 }} onChange={changed} />,
+  );
+  fireEvent.doubleClick(splitter());
+  expect(changed).toHaveBeenCalledWith(240, false);
+});
+
 test("a splitter that resets itself calls onReset on a double click instead", () => {
   const changed = vi.fn();
   const reset = vi.fn();

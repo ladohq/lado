@@ -65,8 +65,12 @@ test("the page says on <html> whether it is a phone, upright or sideways, and fo
   expect(document.documentElement.dataset.phone).toBeUndefined();
 });
 
-test("a computer's page never says it is a phone", () => {
+test("a computer's page does not say it is a phone, a narrow one does", () => {
   new FakeScreen("fine", 390, 844);
+  open();
+  expect(document.documentElement.dataset.phone).toBe("tall");
+  cleanup();
+  new FakeScreen("fine", 601, 844);
   open();
   expect(document.documentElement.dataset.phone).toBeUndefined();
 });
@@ -88,7 +92,7 @@ const rail = () => screen.getByRole("navigation", { name: "Sections" });
 const menu = () => screen.getByRole("button", { name: /^Menu/ });
 
 test("a computer has no Menu: the rail is there", () => {
-  new FakeScreen("fine", 390, 844);
+  new FakeScreen("fine", 700, 844);
   open();
   expect(screen.queryByRole("button", { name: /^Menu/ })).toBeNull();
   expect(rail().hasAttribute("data-open")).toBe(false);
@@ -179,11 +183,11 @@ test("a route change from outside the rail (Back) closes the menu", async () => 
   expect(rail().hasAttribute("data-open")).toBe(false);
 });
 
-test("turned into a computer (a mouse plugged in), an open menu goes", () => {
+test("widened into a computer's window, an open menu goes", () => {
   const phone = FakeScreen.phone();
   open();
   fireEvent.click(menu());
-  phone.set({ pointer: "fine" });
+  phone.set({ pointer: "fine", width: 700 });
   expect(rail().hasAttribute("data-open")).toBe(false);
   expect(screen.queryByRole("button", { name: /^Menu/ })).toBeNull();
 });

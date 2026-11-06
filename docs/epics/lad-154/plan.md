@@ -10,7 +10,7 @@ Rejected at `step_ok` (gate #204, 2026-11-02): «сначала S2b» (D13; S2b 
 Rejected at `plan_ok` (gate #191, 2026-11-01): «я передумал. Давай сделаем epic-ветку и будем вести разработку в ней. Я могу попросить тебя после некоторых задач помочь мне сделать ручную проверку, чтобы оценить как задача реализована визуально»
 Rejected at `plan_ok` (gate #190, 2026-11-01): «я не планирую делать релизы между задачами. Я думаю следующий релиз будет включать весь эпик целиком или мы примем решение о релизе в ходе работы над эпиком.»
 Phase: steps · Epic run: epic/epic-models · Branch: epic/lad-154-models
-In work: S9a (LAD-217, run task/lad-217) · Next: S9b, then readiness · Open checks: a long session on a 32–64K model up to a compaction on both CLIs, by the human (item 6 of PR #223's check); the stop at the third overflow on a real server (LM Studio answers 400 and never reaches it; only a fake server covers it); Settings → Models in Safari (and Firefox if at hand) by the human before the final pull request: the page does not scroll by itself, the key in dots, the phone width, S3f's picker above a real phone's keyboard (S3d and S3f checked in Chromium only; N5 of S3d's ledger, F21 of S3f's); the human's manual check of S3e on LM Studio and LiteLLM 1.105.1 (LiteLLM's header behaviour reproduced only by a fake), before S3d's design or with it; at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes); an external provider by key (OpenRouter, Qwen through Alibaba Model Studio) checked by the human at the epic's end, before the final pull request: `probe` and `add` on its address (its path: `/api/v1`, `/compatible-mode/v1`), OpenCode/Kilo agents on it, and a model of a provider the CLI logged in to itself (`openrouter/<model>` from the CLI's list) (the human, 2026-11-03)
+In work: none · Next: S11, then S9b, then readiness · Open checks: a long session on a 32–64K model up to a compaction on both CLIs, by the human (item 6 of PR #223's check); the stop at the third overflow on a real server (LM Studio answers 400 and never reaches it; only a fake server covers it); Settings → Models in Safari (and Firefox if at hand) by the human before the final pull request: the page does not scroll by itself, the key in dots, the phone width, S3f's picker above a real phone's keyboard (S3d and S3f checked in Chromium only; N5 of S3d's ledger, F21 of S3f's); the human's manual check of S3e on LM Studio and LiteLLM 1.105.1 (LiteLLM's header behaviour reproduced only by a fake), before S3d's design or with it; at `close`, the epic's step tasks move from Review to done with the label `waiting for release` and the release field (the lead's proposal; `.lado/sdlc.md`: «Into an epic branch… the task stays in review»); Kilo reporting the model in `chat.message` (S1), unconfirmed: one `make test-live PROVIDER=kilo` on the epic branch before the final pull request; a resume at the container's start with a CLI not logged in yet must not refuse a kept model falsely (S2b), checked with the live runs; one `make test-live` per provider on the epic branch before the final pull request (Claude Code only with the human's yes); an external provider by key (OpenRouter, Qwen through Alibaba Model Studio) checked by the human at the epic's end, before the final pull request: `probe` and `add` on its address (its path: `/api/v1`, `/compatible-mode/v1`), OpenCode/Kilo agents on it, and a model of a provider the CLI logged in to itself (`openrouter/<model>` from the CLI's list) (the human, 2026-11-03)
 Standing rules of the human:
 - Every step merges into the epic branch `epic/lad-154-models` and leaves it working; unset means today's behaviour; the epic reaches `main` by one final pull request (D10, replacing D2).
 - The epic ships in 0.45.0; 0.44.0 is released from `main` soon without it, and the epic branch takes `main`'s updates (S1 design_ok gate #195, D11; refines D9). 0.45.0 is released from `main` together with the epic: `main` waits for it (step_ok #222, Q4, D17).
@@ -22,6 +22,7 @@ Last review: S2b, 2026-11-02, base at 228a1de2 (unchanged since S2's review); S2
 Last review: S3a, 2026-11-02, base at 84c8f7c4 (hotfixes LAD-175, LAD-172; `main`'s heading is now `## 0.45.0 (unreleased)`), merged into the epic branch as d6ded361: CHANGELOG resolved into one 0.45.0 section (the epic's lines under `### New`, `main`'s under `### Fixed`); schema on `main` 35, the epic's 37; `make lint`, `make test` (4958 passed, 7 skipped), integration of the merged files (17 passed), `openspec validate --specs --strict` (59) green
 Last review: S3c, 2026-11-03, base at 22940ebc (hotfixes LAD-178 #206, LAD-181 #207), merged into the epic branch as 95db9d78: one conflict in `src/lado/cli.py` resolved by keeping both guards (S3c's `model-server` refusal of extra words, then LAD-181's quiet refusal); CHANGELOG merged without conflict (LAD-181's line under `### Fixed`); schema on `main` 35, the epic's 38; `make lint`, `make test` (5112 passed, 7 skipped), integration `test_session_model.py` (3 passed), `openspec validate --specs --strict` (60) green
 Last review: S3b's cancelled run (task/lad-180b), 2026-11-05, base at 931818bb (unchanged): nothing to merge
+Last review: S9a, 2026-11-06, base at 5c967b1b (54 commits: LAD-192, 195, 197, 218 and others), merged into the epic branch as ed56ed32 on the human's yes (#4147): conflicts in CHANGELOG, `docs/design/ui.md`, `web/src/Launch.tsx`, `Team.test.tsx`, `icons.tsx`, both sides kept; beyond them `unreachable` follows `Unreached`, the UI tests' fake agent has a model, the phone's test opens Menu; `make lint`, `make test` (5725 passed, 7 skipped), `make web`, `make test-integration` (269, one flake in `test_leftover_processes` on the first run), UI (509), `openspec validate --specs --strict` (70) green
 Last review: S10b, 2026-11-06, base at 7316b368 (unchanged since S10's review): nothing to merge; S10b merged as 995ab826, CI 23/23 on f5a53dea
 Last review: S10, 2026-11-06, base at 7316b368 (LAD-203 #222, LAD-207 #221), merged into the epic branch as 4e6ad3bf: one conflict in CHANGELOG, both sides kept; `make lint`, `make test` (5609 passed, 7 skipped), `make web` (1456), `openspec validate --specs --strict` (67) green
 Last review: S3g, 2026-11-05, base at 94251b98 (LAD-194 #218), merged into the epic branch as 9ae96407 without conflict; `make lint`, `make test` (5548 passed, 7 skipped), `make web` (1447), `openspec validate --specs --strict` (64) green
@@ -390,7 +391,7 @@ Notes: the CLIs' scales differ (research §1.3); LADO passes the CLI's own value
 no common scale.
 
 ### S9a — A model server for Claude Code (M)
-Status: in progress (LAD-217, run task/lad-217, gate #308)
+Status: done (LAD-217, PR #226, merged into the epic branch as 141de01f; CI 23/23 on 241d2bd5; no schema change, no change of `web/`). Checked by hand by the human on real Claude Code 2.1.319, LM Studio (`flint` at 65536) and cloud.ru's own Anthropic API, report `manual-check-226-r2`: the output cap and `mcp__lado__*` work, the key stays in `model-servers/<id>/key`. Not checked: Claude Code logged out, workers on a server's model, LiteLLM on the last commit (all into S11); `make test-live`.
 Check:
 - From S10b: the false `Open its terminal` for 3–5 s before `tui.silent` (`check_starts`' 30 s counts from the start, `tuiWait`'s from the plugin's init); the phrase «A real turn has nothing unconfirmed» in `docs/design/agents.md` is not true of a paste of two lines (F5 of its ledger).
 - A configured model of Claude Code whose server is Anthropic-compatible (S3a names it)
@@ -404,6 +405,20 @@ Check:
 - Smoke (CI) with a fake Anthropic-compatible endpoint; the human's manual check on a real
   server (D7); `docs/install.md`, `docs/design/agents.md`.
 
+### S11 — An external provider by key (M)
+Status: planned
+A closed list (D48): the human's report #4029: local models are too slow for development, so the agents go to a cloud provider by its address and key. Claude Code on cloud.ru already ran in S9a's check; OpenCode and Kilo on it did not.
+Check:
+- A provider by address with a path (`https://foundation-models.api.cloud.ru/v1`) and a key, on OpenCode, Kilo and Claude Code, and one more provider of the human's choice: a real session, tools, LADO's MCP.
+- A provider that lists no context (cloud.ru): the limits are not known, so nothing caps the output, and S9a's endless repeat is possible on a server that bills: a way to give the limit, or a named limitation.
+- 401 and 429 (and the provider's quota): the agent's turn ends and the chat says why in LADO's words; no repeat without end; the key is not in the text.
+- Cost: what the human can see of what a session spent, or that LADO shows nothing and where to look.
+- A long session up to a compaction on a provider (item 6 of PR #223's check).
+- From S9a's manual check: F2, the probe calls a late answer a missing API (`lado model add` refused, `CLIs` without Claude Code): it says «did not answer in time» or asks again; F1, at 65536 the human's own Claude plugins fill the context within the first turn: a line in `docs/install.md`, and the context recommended.
+- From S9a, not checked: Claude Code with no login on a server; a worker on a server's model.
+- From S9a's base merge: `LADO_DOWN` says «nothing was done», while `main`'s `Unreached` means the request may have arrived.
+- Smoke (CI) with a fake endpoint answering 401 and 429; the human's manual check with their own key (D7); nobody else sees the key.
+
 ### S9b — A model server for Codex (M)
 Status: planned
 Check:
@@ -411,6 +426,7 @@ Check:
   a `model_providers` entry in the agent's `CODEX_HOME` (on top of the carried user values),
   the key from the server's entry (D15) only in the agent's environment; a server
   without the Responses API refuses Codex loudly before the start.
+- Which real server has a Responses API that keeps tools: LM Studio drops them, cloud.ru has no Responses API (S9a's manual check); the human names one at this step's brief.
 - From S3d (the human's manual check of PR #211): Settings → Models offers a Codex column on
   LM Studio, but LM Studio's Responses API drops Codex's MCP tools (type `namespace`,
   `tests/local_models.py`, `docs/testing.md`), so a Codex agent there cannot talk to LADO:
@@ -537,6 +553,9 @@ Check:
 
 ## Later
 
+- The launch window offers Claude Code only with its login, though a model on a server needs none (option B of S9a's design; option A, the default on a server clears `login_missing`, is built) — no task yet — on the human's yes.
+- Declined at S9a's review: no automatic test of a subagent asking for another model (F6), `LADO_MODEL_SERVER` in the login shell (E4), `allow` assigned rather than added to (E6) — LAD-217.
+- Flaky `tests/integration/test_leftover_processes.py::test_a_dead_runs_processes_are_reaped_and_a_living_runs_are_not` (one failure at S9a's base merge beside another session's run; three clean runs alone) — no task yet.
 - A message sent right after Kilo's start reaches it only at the second try and is sometimes lost (F4 of S10's design QA) — LAD-212 (derived from LAD-211), before the final pull request (#3766).
 - Settings at 390 px is wider than the screen, the CLIs' ↻ is 13×24 px (F8 of S10's design QA) — LAD-213 (derived from LAD-211).
 - A new epic (D47): S4 effort next to the picker, S5c the power table, S7 and S7b power on roles and steps, S8 `spawn_worker(power=…)`; their text stays in this plan; a tracker task on the human's yes at `close`.

@@ -7458,8 +7458,10 @@ button.locked:disabled,
   overscroll-behavior: contain;
 }
 
+/* One column as wide as the list: by default a long line that does not wrap would widen it. */
 .runs-overview ul {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   margin: 6px 0 0;
   padding: 0;
@@ -10383,6 +10385,7 @@ button.quiet.danger-text {
 .term-notice,
 .artifact-missing,
 .share-warning,
+.update-warning,
 .setting .pv-warn,
 .setting .pv-none,
 .kit-warning {
@@ -10403,6 +10406,7 @@ button.quiet.danger-text {
 .term-notice::before,
 .artifact-missing::before,
 .share-warning::before,
+.update-warning::before,
 .setting .pv-warn::before,
 .setting .pv-none::before,
 .kit-warning::before {
@@ -10419,11 +10423,16 @@ button.quiet.danger-text {
 }
 
 .share-warning,
+.update-warning,
 .setting .pv-warn,
 .setting .pv-none,
 .kit-warning {
   background: var(--warn-ground);
   color: var(--warn);
+}
+
+.update-warning {
+  margin: 0;
 }
 
 /* In tight rows: a field's line, a kit's marketplace, the terminal's bar. */

@@ -23,7 +23,7 @@ ERRORS = [
     "term-notice",
     "artifact-missing",
 ]
-WARNINGS = ["problem share-warning", "kit-warning"]
+WARNINGS = ["problem share-warning", "update-warning", "kit-warning"]
 SETTING_WARNINGS = ["pv-warn", "pv-none"]
 
 

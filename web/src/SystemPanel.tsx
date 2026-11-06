@@ -573,7 +573,7 @@ function UpdateDialog({ onClose }: { onClose: (started: boolean) => void }) {
       {found && (
         <>
           {found.downgrade && (
-            <p className="problem">An older LADO may refuse lado.db (it says so when it starts).</p>
+            <p className="update-warning">An older LADO may refuse lado.db (it says so when it starts).</p>
           )}
           {(found.sessions.length > 0 || found.server) && (
             <>

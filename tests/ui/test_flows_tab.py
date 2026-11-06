@@ -329,6 +329,40 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     expect(history.get_by_role("list", name="States")).to_have_count(0)
 
 
+@pytest.mark.parametrize("width", [390, 1000])
+def test_a_long_task_is_cut_and_leaves_the_overview_as_wide_as_its_column(
+    page: Page, server, repo, shot, width
+):
+    long_task = "Add a page that does many things " * 25 + "\nthe second line"
+    page.set_viewport_size({"width": width, "height": 900})
+    session = flow_session(repo, "ship", SHIP)
+    runs.start(session, "ship", long_task, name="open")
+    runs.start(session, "ship", "Add a logout button", name="short")
+    runs.start(session, "ship", long_task, name="old")
+    runs.cancel(session, "ship/old", "no longer needed")
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/flows")
+    overview = page.get_by_role("navigation", name="Flow runs")
+    overview.get_by_role("button", name=re.compile("^History")).click()
+    lines = overview.locator(".run-task-line")
+    expect(lines).to_have_count(3)
+    room = overview.evaluate("list => list.clientWidth")
+    assert overview.evaluate("list => list.scrollWidth") <= room  # nothing runs off sideways
+    for one in overview.locator(".list-card, .list-row").all():
+        box = one.bounding_box()
+        assert box is not None and box["width"] <= room, box
+    long_lines = lines.filter(has_text="many things")  # the card's and History's row
+    expect(long_lines).to_have_count(2)
+    for line in long_lines.all():
+        assert line.evaluate("one => one.scrollWidth > one.clientWidth")  # cut, so "…" shows
+        assert line.evaluate("one => getComputedStyle(one).textOverflow") == "ellipsis"
+    meta = overview.locator(".run-card-meta").first.bounding_box()
+    list_box = overview.bounding_box()
+    assert meta is not None and list_box is not None
+    assert meta["x"] + meta["width"] <= list_box["x"] + list_box["width"], (meta, list_box)
+    shot(page, full_page=False)
+
+
 def test_in_a_narrow_column_the_overview_is_searched_from_the_tab_bar_and_a_run_has_the_way_back(
     page: Page, server, repo, shot
 ):

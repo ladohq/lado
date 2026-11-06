@@ -1,3 +1,17 @@
+## MODIFIED Requirements
+
+### Requirement: Stop can forget the session in one go
+
+The Stop popover of a running session SHALL have, before `Stop <name>`, when it offers it (see
+"Stop and forget is not offered for a session with open runs"), a second dangerous button
+`Stop and forget` (its tooltip "Stops it, then deletes its history for good"). It SHALL stop the
+session, then forget it without `force`, then go to `/sessions`. When the stop succeeds and the
+forget is refused, the session SHALL stay stopped and the popover SHALL show the core's reason.
+
+#### Scenario: A session with no open runs
+- **WHEN** the human opens Stop on running lad-92 and presses `Stop and forget`
+- **THEN** lad-92 is stopped and forgotten, and the page is `/sessions`
+
 ## REMOVED Requirements
 
 ### Requirement: Stop and forget is off for a session with open runs

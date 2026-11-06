@@ -2,11 +2,11 @@
 
 ### Requirement: The artifact panel shows its buttons in one row
 
-The artifact panel SHALL show all its buttons in one row, its top bar: Open in Artifacts
-tab (Full page over the Artifacts tab, which goes to the same page), Open in new tab (only for a record the browser can show), Download and Copy link, then
-Expand (only when the panel has an edge) and Close at the bar's right end. The viewer's
-name line in the panel SHALL hold no button. The artifact's page in the Artifacts tab SHALL
-keep its buttons in its name line.
+Except on a phone (see "A phone's artifact panel moves the rest to a menu"), the artifact panel
+SHALL show all its buttons in one row, its top bar: Open in Artifacts tab (Full page over that
+tab), Open in new tab (only for a record the browser can show), Download and Copy link, then
+Expand (only with an edge) and Close at the right end. The viewer's name line in the panel SHALL
+hold no button. The artifact's page SHALL keep its buttons in its name line.
 
 #### Scenario: A panel of 620 px
 - **WHEN** the human opens the Markdown artifact `task/lad-41/ledger` in a panel 620 px

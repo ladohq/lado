@@ -89,7 +89,7 @@ name and `run-about`, in `entry` and in `card`. Only a non-blank first line show
 | Level | Selectors |
 |---|---|
 | Error: `--danger-ground`, `--danger`, icon | `.problem`, `.update-bad`, `.field-problem`, `.started-problems`, `.kit-problem`, `.market-error`, `.term-notice`, `.artifact-missing` |
-| Warning: `--warn-ground`, `--warn`, icon | `.share-warning`, `.pv-warn`, `.pv-none`, `.kit-warning` |
+| Warning: `--warn-ground`, `--warn`, icon | `.share-warning`, `.update-warning` (Update's "An older LADO may refuse lado.db"), `.pv-warn`, `.pv-none`, `.kit-warning` |
 | Stripe off only, text stays `--ink` | `.field-note.warn` (its ⚠ is its text), `.field-note.bad` (its `!` is drawn) |
 | Stay | `.login-fail blockquote`, `.chat-body blockquote`, `.chat-gate.open`, `.rec`, `.gate-note`, `.waiting-tab.on`, `.chat-fold > .chat-body`, `.kit-who`, every 1 px divider |
 

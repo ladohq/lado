@@ -339,8 +339,11 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   holds no secret and is rewritten at each launch. The launch's `LADO_MODEL_SERVER` tells the
   provider it needs no login, as `claude auth status` reads no `--settings`: `needs_login`,
   `keychain_login` and `first_hook_blocker` go by it; `runtime.check_login`, which runs before the
-  launch, goes by a `start.server` on a CLI of one model per process. The first run is recorded as
-  for any agent. A `system` message ends `messages`, and `thinking` and `output_config` stay in the
+  launch, goes by a `start.server` on a CLI of one model per process, and so does the launch
+  window's `login_missing` (`server/launch.py`), on the CLI's default model. The model's id says
+  no server, and may be a built-in model's too, so `Provider.launched_on` reads the agent's server
+  from its settings for its card, `lado ls` and `list_agents`: while it runs, as they go with it.
+  The first run is recorded as for any agent. A `system` message ends `messages`, and `thinking` and `output_config` stay in the
   body: only a real server tells whether it takes them.
 - A Codex agent's own Codex home (its config folder, `CODEX_HOME`) is settled so that no
   screen holds it: its config.toml trusts the repository's main root (`trust_level =

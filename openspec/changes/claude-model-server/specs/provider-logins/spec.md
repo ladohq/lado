@@ -132,3 +132,38 @@ once logged in. An unknown state SHALL NOT hold it.
 #### Scenario: The status cannot be read
 - **WHEN** the status command times out at a launch
 - **THEN** the agent starts as before and whoever starts it is warned with why
+
+### Requirement: The New session window offers only CLIs that can start
+
+The New session window and the Resume window SHALL show a provider with `login_missing`, which a
+CLI's default model on a server that takes its whole process clears, as a disabled option "`<name>` · not logged in", never choose it by itself, and, with it
+suggested or chosen, show the note "`<CLI>` is not logged in: its agents cannot start. Log
+in first" leading to Settings → Agent CLIs and environment and keep Start (Resume)
+disabled; the Project way and the Resume window SHALL read the list for the session's
+project.
+
+#### Scenario: The folder's last session was Claude
+- **WHEN** Claude Code is not logged in and the New session window opens on a folder whose
+  last session ran `claude`
+- **THEN** Agent CLI shows "choose…", the option "claude · not logged in" is disabled, the
+  red note with "Log in first" is shown, and Start is disabled
+
+#### Scenario: Log in first
+- **WHEN** the human follows "Log in first"
+- **THEN** the window closes and Settings → Agent CLIs and environment opens
+
+#### Scenario: The project's own login
+- **WHEN** the Project way has project `shop`, whose secrets log Claude Code in
+- **THEN** "claude · Claude Code <version>" can be chosen and Start is enabled
+
+#### Scenario: Resume without a login
+- **WHEN** the Resume window opens for a stopped Claude session and Claude Code is not
+  logged in
+- **THEN** the option "claude · not logged in" is disabled, the red note "Claude Code is
+  not logged in: its agents cannot start. Log in first" is shown, its link leading to
+  Settings → Agent CLIs and environment, and Resume is disabled until another CLI with a
+  login is chosen
+
+#### Scenario: A default on a model server
+- **WHEN** Claude Code is not logged in and its default model is on a model server
+- **THEN** "claude · Claude Code <version>" can be chosen and Start is enabled

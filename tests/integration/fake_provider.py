@@ -238,6 +238,7 @@ class FakeClaudeProvider(FakeLoginProvider):
     runs_on_server = True
     min_context = 32768
     server_model = claude.ClaudeProvider.server_model
+    launched_on = claude.ClaudeProvider.launched_on
 
     def needs_login(self, env) -> bool:
         return not env.get(base.MODEL_SERVER) and super().needs_login(env)

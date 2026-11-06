@@ -860,9 +860,10 @@ def create_app(
         whether it lacks the login its agents need, read for the agents of `project` (404
         for an unknown one) or of no project."""
         try:
-            if project is not None and not database():  # asking makes no lado.db
+            has_db = database()  # asking makes no lado.db
+            if project is not None and not has_db:
                 raise projects.NoSuchProject(f'unknown project "{project}"')
-            return launch.provider_infos(project)
+            return launch.provider_infos(project, has_db)
         except projects.NoSuchProject as unknown:
             raise HTTPException(404, str(unknown)) from unknown
 

@@ -2,6 +2,7 @@
 file, the checks on adding, removal; against the fake servers of tests/fake_model_server.py
 in process."""
 
+import json
 import os
 import socket
 import sqlite3
@@ -2237,3 +2238,35 @@ def test_the_list_asks_no_server_and_holds_no_address_or_key(serve, installed):
     assert listening.requests == []
     assert clis[0]["external"][0]["server"] == "Шлюз"
     assert key not in str(clis) and listening.url not in str(clis)
+
+
+# An agent of a CLI whose model names no server: its launch says which.
+
+
+def _claude_agent_on(saved, source, table=None):
+    state.add_session(state.Session("s", "/r", None, provider="claude", power=table))
+    agent = state.Agent("s", "w1", "worker", "/r", None, None, state.STARTING, "claude")
+    state.add_agent(agent)
+    state.set_model("s", "w1", state.Choice(saved.model, source), None)
+    config = base.config_dir(agent) / "settings.json"
+    config.write_text(json.dumps({"env": {base.MODEL_SERVER: saved.server}}))
+    return state.get_agent("s", "w1")
+
+
+@pytest.mark.parametrize("source", [state.SESSION, state.DEFAULT_MODEL, state.SUPERVISOR_CHOICE])
+def test_an_agent_on_a_server_is_shown_by_its_name_and_server(source):
+    saved = entry("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз")
+    agent = _claude_agent_on(saved, source)
+    assert model_settings.model_name(agent) == "Шлюз Opus"
+    assert model_settings.agent_shown(agent) == model_settings.Shown(
+        "Шлюз Opus", "gw-opus", "Шлюз", "http://localhost:1234"
+    )
+
+
+def test_a_built_in_model_of_the_id_of_a_saved_one_is_shown_as_it_is():
+    entry("Шлюз Opus", cli="claude", model="claude-opus-5-5", server="Шлюз")
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    agent = state.Agent("s", "w1", "worker", "/r", None, None, state.STARTING, "claude")
+    state.add_agent(agent)
+    state.set_model("s", "w1", state.Choice("claude-opus-5-5", state.SUPERVISOR_CHOICE), None)
+    assert model_settings.agent_shown(state.get_agent("s", "w1")) is None

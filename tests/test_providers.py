@@ -2048,6 +2048,7 @@ def _claude_launch(repo, servers=(), model=None):
 def _server_env(server_root, model, **more):
     return {
         "ANTHROPIC_BASE_URL": server_root,
+        base.MODEL_SERVER: "bbbb2222",
         "ANTHROPIC_DEFAULT_MODEL": model,
         "ANTHROPIC_SMALL_FAST_MODEL": model,
         "ANTHROPIC_API_KEY": "",
@@ -2153,3 +2154,17 @@ def test_the_first_run_is_recorded_for_an_agent_on_a_server(repo, claude_home, m
     )
     saved = json.loads(config.path.read_text())
     assert saved["hasCompletedOnboarding"] is True and "customApiKeyResponses" not in saved
+
+
+def test_a_claude_agent_s_launch_says_its_server(repo):
+    sess_agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "claude")
+    claude = providers.get("claude")
+    _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
+    assert claude.launched_on(sess_agent) == "bbbb2222"
+    _claude_launch(repo, (), "opus")
+    assert claude.launched_on(sess_agent) is None
+
+
+def test_a_claude_agent_with_no_config_is_on_no_server(repo):
+    agent = state.Agent("s", "w9", "worker", str(repo), None, None, state.STOPPED, "claude")
+    assert providers.get("claude").launched_on(agent) is None

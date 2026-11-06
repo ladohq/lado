@@ -98,6 +98,20 @@ first run for such an agent, so no first-run screen holds it.
 - **WHEN** Claude Code is not logged in and a session starts on `opus`
 - **THEN** it is refused as before
 
+### Requirement: A running Claude agent on a server is shown by its saved name
+
+The card of a running Claude agent on a server's model, `lado ls` and `list_agents` SHALL name the
+saved model, its server and its source, whoever chose it, by what its launch wrote and never by
+the model's id alone. A stopped agent SHALL show the id.
+
+#### Scenario: A worker the supervisor put on a server
+- **WHEN** the supervisor spawns a worker with `model="Шлюз Opus"`
+- **THEN** its card has `Шлюз Opus`, `Шлюз` and the supervisor as its source
+
+#### Scenario: A built-in model with the id of a saved one
+- **WHEN** a worker starts on the built-in `claude-opus-5-5`, and a saved model of a server has that id
+- **THEN** its card names no server
+
 ### Requirement: A name Claude Code would read as its own is refused
 
 A model of a server whose id Claude Code reads as its own, one of its aliases or a name ending in

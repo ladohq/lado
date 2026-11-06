@@ -295,7 +295,9 @@ it in the launch window, or `lado start --provider claude --model "<name>"`. Wha
   your `~/.claude/settings.json`. The server gets its own key, or the word `no-key` if it has none.
   A built-in worker of the same session needs the login as usual. Without a login the launch
   window offers Claude Code only when its default model in Settings → Models is on a server; any
-  other start goes through `lado start --provider claude --model "<name>"`.
+  other start or resume goes through `lado start --provider claude --model "<name>"`.
+- The agent's page, `lado ls` and `list_agents` name the saved model, its server and who chose it,
+  while the agent runs. A stopped agent shows the model's id.
 - A model whose id Claude Code reads as its own (`sonnet`, `opus`, `best`, a name ending in `[1m]`)
   is refused when saved and at a start: it would never reach the server. Give it another id there.
 - The agent keeps your `~/.claude`: your `CLAUDE.md`, skills and plugins work as usual.

@@ -156,6 +156,7 @@ def _server_settings(server: base.ServerEntry) -> dict:
     model, _ = server.models[0]
     env = {
         "ANTHROPIC_BASE_URL": server.root,
+        base.MODEL_SERVER: server.id,  # read back by launched_on
         "ANTHROPIC_DEFAULT_MODEL": model,
         "ANTHROPIC_SMALL_FAST_MODEL": model,
         **dict.fromkeys(SERVER_BLANKS, ""),
@@ -309,6 +310,15 @@ class ClaudeProvider(base.Provider):
 
     def server_model(self, server: str, model: str) -> str:
         return model
+
+    def launched_on(self, agent: state.Agent) -> str | None:
+        # A model's id says no server, and the same id may be a built-in model: only the
+        # launch knows.
+        try:
+            settings = json.loads((base.config_path(agent) / "settings.json").read_text())
+        except (OSError, ValueError):
+            return None
+        return settings.get("env", {}).get(base.MODEL_SERVER)
 
     def reserved_model(self, model: str) -> bool:
         # `--model sonnet` goes out as Claude Code's own full name, not as `sonnet`.

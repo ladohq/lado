@@ -99,6 +99,8 @@ def test_a_worker_on_another_server_has_that_server_alone(on_server):
     assert env[f"LADO_MODEL_KEY_{second.id.upper()}"] == "key-second"
     assert env[base.MODEL_SERVER] == second.id
     assert f"LADO_MODEL_KEY_{first.id.upper()}" not in env
+    shown = model_settings.agent_shown(worker)
+    assert (shown.name, shown.server, worker.model_source) == ("second-m", "second", "supervisor")
 
 
 def test_a_worker_on_a_built_in_model_needs_the_login(on_server):

@@ -1307,6 +1307,16 @@ def test_the_check_of_a_model_of_enough_or_unknown_context_does_not_warn(
     assert client.post(CHECK, json=asked).json()["warnings"] == []
 
 
+def test_claude_code_with_a_default_on_a_server_is_not_missing_its_login(
+    client, cli_logins, fake_clis
+):
+    cli_logins.logged_out()
+    assert _by_name(client.get("/api/providers"))["claude"]["login_missing"] is True
+    saved = _saved("Шлюз Opus", "claude", "gw-opus")
+    state.set_cli_default(state.ModelRef("claude", saved.id, None))
+    assert _by_name(client.get("/api/providers"))["claude"]["login_missing"] is False
+
+
 def test_the_check_of_a_cli_on_no_server_has_no_way_to_try_again(client, monkeypatch, fake_clis):
     _models(monkeypatch, "codex", "gpt-5")
     server_launch.forget_model_lists()

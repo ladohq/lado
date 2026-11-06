@@ -35,6 +35,7 @@ family uses; `start.server` None gives `()`, so a built-in agent has nothing of 
 {
   "env": {
     "ANTHROPIC_BASE_URL": "<the server's root>",
+    "LADO_MODEL_SERVER": "<id>",
     "ANTHROPIC_DEFAULT_MODEL": "<model>",
     "ANTHROPIC_SMALL_FAST_MODEL": "<model>",
     "ANTHROPIC_API_KEY": "", "ANTHROPIC_AUTH_TOKEN": "", "ANTHROPIC_CUSTOM_HEADERS": "",
@@ -108,6 +109,14 @@ or Kilo shows 15 s later; none is known.
 Nothing new: `spawn_worker` goes through `_worker_start`, and each agent has its own config folder
 and launch environment. `spawn_worker(model=…)` of an agent on a server starts from the session's
 layers, so the first server's key is not passed on. An integration test holds that.
+
+### D10. Added in the build: what the human asked after the design
+
+Without a login the launch window greyed Claude Code out before any model was known. A CLI's default
+on a server now clears `login_missing`; a window that lets a model be picked first is a separate
+task. `check_start_login` reads a `--model` too, as it runs before the clone. A Claude agent's id
+says no server, so `Provider.launched_on` reads it from the agent's settings: no schema change, and a
+stopped agent, whose folder is gone, shows the id.
 
 ## Risks / Trade-offs
 

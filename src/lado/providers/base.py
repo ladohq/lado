@@ -508,6 +508,12 @@ class Provider(ABC):
         it is one of a server LADO put into the agent; None for any other."""
         return None
 
+    def launched_on(self, agent: state.Agent) -> str | None:
+        """The id of the server `agent`'s launch runs on, for a CLI whose names of a model say
+        no server (on_server), read from what the launch wrote; None for any other, and for an
+        agent that does not run any more."""
+        return None
+
     def same_model(self, chosen: str, reported: str) -> bool:
         """Whether the model the CLI names in an event, `reported`, is the one LADO chose,
         `chosen`, by another name (an alias's full name): its source stays

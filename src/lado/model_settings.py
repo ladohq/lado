@@ -1155,9 +1155,15 @@ def shown(
     now; None for any other, and for a server removed since. Two entries may hold one model of a
     server: `chosen`, when it is that model, gives the name, else the entries are looked up."""
     found = provider.on_server(reported)
-    if found is None:
-        return None
-    server_id, model = found
+    return None if found is None else _shown_on(provider, *found, chosen)
+
+
+def _shown_on(
+    provider: providers.Provider,
+    server_id: str,
+    model: str,
+    chosen: state.ConfiguredModel | None,
+) -> Shown | None:
     server = state.model_server_by_id(server_id)
     if server is None:
         return None
@@ -1168,19 +1174,23 @@ def shown(
 
 
 def agent_shown(agent: state.Agent) -> Shown | None:
-    """The agent's model as `shown` reads it, under the name it started on, as long as its CLI
-    has not changed the model; a table that cannot be read names none."""
+    """The agent's model as `shown` reads it, or on the server its launch says for a CLI whose
+    names of a model say none, under the name it started on, as long as its CLI has not changed
+    the model; a table that cannot be read names none."""
     if not agent.model or agent.provider not in providers.names():
         return None
     provider = providers.get(agent.provider)
-    if provider.on_server(agent.model) is None:
+    found = provider.on_server(agent.model)
+    if found is None and (server := provider.launched_on(agent)) is not None:
+        found = server, agent.model
+    if found is None:
         return None
     chosen = None
     if agent.model_source in (state.SESSION, state.DEFAULT_MODEL):
         session = state.get_session(agent.session)
         with contextlib.suppress(Refused):
             chosen = start_model(session.power if session else None, provider).entry
-    return shown(provider, agent.model, chosen)
+    return _shown_on(provider, *found, chosen)
 
 
 def model_name(agent: state.Agent) -> str | None:

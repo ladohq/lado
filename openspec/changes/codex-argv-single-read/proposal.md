@@ -26,9 +26,11 @@ can fall inside an `execve`.
 The other readings do not hold. No stage lacks `-a`, so "the wrong process" is out. Codex does
 not die early: run by a real `lado start` with a fake key, the pane stayed on one pid for the
 40 s watched, though a process that had exited would also read empty. The failed run's own
-argv cannot be seen: the test printed nothing, and the evidence of a failed container test
-(`/tmp/lado-live-evidence`) is not among the job's artifacts. So this cause is shown by
-reproduction, not read from that run.
+argv cannot be seen: the test printed nothing, and the evidence of the job's artifact
+`container-amd64` does not hold it. That evidence does fit the cause: `lado ls`, taken right
+after the failure, shows the agent `starting` for `0s`, so the reads came in the window's first
+second, while it was still going through its stages. So this cause is shown by reproduction,
+not read from that run.
 
 The product is not at fault: nothing in `src/` reads a cmdline. Only the test is.
 
@@ -60,8 +62,6 @@ has no delta.
 - Any change in `src/`: the product does not read a cmdline.
 - A unit test of the poll: it would test a test's helper with a fake container, and the
   container cell runs the real one on every pull request.
-- Uploading `/tmp/lado-live-evidence` from the container job: a separate gap of CI, which goes
-  to `BACKLOG.md`, not into this fix.
 - A retry inside pytest: the project's rule forbids it, and it would hide the cause.
 
 ## Impact

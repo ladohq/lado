@@ -26,7 +26,7 @@ rail SHALL never fold by itself.
 If the chat is still short of 420 px after the first fold, the other of the two columns SHALL
 fold as well, but terminals opened by the human SHALL first narrow, no further than their least
 width of 280 px, their stored width kept. A terminal in control SHALL count as opened by the
-human; if it folds all the same, control SHALL end.
+human; if it folds all the same, control SHALL end with no message of its own.
 
 #### Scenario: The rail opened by hand
 - **WHEN** the human opened the rail and the terminals and the window is 901 px wide

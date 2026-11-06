@@ -85,7 +85,8 @@ Scale: full. Version: a feature, the minor; `## 0.45.0 (unreleased)` already hol
 - AC-6 A column the human opens while short of room stays open and the other one folds.
 - AC-7 With the rail opened by hand and the terminals opened by the human at 901 px the chat is
   still 420 px: the panel narrows to 280 px, then folds. A terminal in control counts as opened
-  by the human; if it folds all the same, control ends.
+  by the human; if it folds all the same, control ends with no message of its own (the human's
+  decision #3788).
 - AC-8 The Artifacts tab is seen, or an arrow says there is more, at every width: first the
   icons go, then the counts, then a fade of 56 px and › of 26 px, and ‹ after a scroll.
 - AC-9 The terminal strip is 32 px wide: Show the terminals, a button of 24×24 per agent of the

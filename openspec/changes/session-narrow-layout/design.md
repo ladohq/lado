@@ -5,9 +5,10 @@ decision on `PHONE_QUERY` (task comment of 2026-11-05), the answer #3750 (propos
 artifact `mockup-narrow-layout.html`, and what LAD-192 and LAD-194 left here. Root cause and
 options: proposal, Why. Against AGENTS.md: the change is above `providers/` and names no CLI, so
 it works with every provider (neutral core); the human's choice stays in the two keys of
-`prefs.ts` and the fold is derived, never stored (one source of truth); a terminal in control is
-never folded silently: control ends by the rule that already says so (no silent drops); no field,
-option or API is added (only what is used). ROADMAP.md's coming stages touch nothing here;
+`prefs.ts` and the fold is derived, never stored (one source of truth); a terminal in control
+holds its panel against a fold, and when the panel folds all the same control ends with no message
+of its own, as every other end of control does, by the human's decision (#3788, review finding
+F10); no field, option or API is added (only what is used). ROADMAP.md's coming stages touch nothing here;
 LAD-195 and LAD-197 change what stands in the top bar and the tab bar and rely on D5's bar.
 
 ## Decisions

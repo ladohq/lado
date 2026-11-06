@@ -659,7 +659,8 @@ Sessions for now. The UI's texts are in English.
   chat keeps 420 px (`--chat-min`). Short of room terminals the human did not open fold first;
   opened by the human (stored open, or a terminal in control) the list folds instead, unless
   the list was opened last; then a panel the human opened narrows to its least 280 px, its width
-  kept, then folds, and a terminal in control then goes back to view. The rail never folds by
+  kept, then folds, and a terminal in control then goes back to view with no message of its own
+  (the human's decision, LAD-193). The rail never folds by
   itself. A fold for room is derived, never stored: the column comes back when it and 420 px
   fit, the list before the terminals, to what the human chose. The list's edge stops where the
   chat keeps 420 px beside terminals that stay (`listMax`), so a drag never folds the list under

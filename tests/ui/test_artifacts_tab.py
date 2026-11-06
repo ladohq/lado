@@ -92,6 +92,7 @@ def test_the_tab_filters_finds_and_opens_an_artifacts_page(
     session = designed_session(repo, tmp_path)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/artifacts")
+    page.get_by_role("button", name="Collapse terminals").click()
     table = page.get_by_role("table", name="Artifacts")
     names = table.locator("tbody .full-name")
     expect(names).to_have_text(["ship/x/design", "ship/y/mockup.html", "ship/x/shot.png", "plan"])
@@ -108,7 +109,7 @@ def test_the_tab_filters_finds_and_opens_an_artifacts_page(
     page.get_by_role("searchbox", name="Find an artifact").fill("")
     table.get_by_role("row").filter(has_text="ship/x/shot.png").click()
     page.get_by_role("dialog", name="Artifact ship/x/shot.png").get_by_role(
-        "link", name="Open in Artifacts tab"
+        "link", name="Full page"
     ).click()
     expect(page.get_by_role("img", name="The login form")).to_be_visible()
     shot(page, "image")
@@ -360,10 +361,18 @@ def test_a_700_px_window_shows_the_panels_edge(page: Page, server, repo, tmp_pat
 
 
 @pytest.mark.parametrize(
-    "width, controls", [(1280, ["Expand", "Close"]), (390, ["Close"])], ids=["wide", "phone"]
+    "width, wanted",
+    [
+        (
+            1280,
+            ["Open in Artifacts tab", "Open in new tab", "Download", "Copy link", "Expand", "Close"],
+        ),
+        (390, ["Download", "Copy link", "More actions", "Close"]),
+    ],
+    ids=["wide", "phone"],
 )
 def test_the_panels_buttons_share_one_row_in_its_top_bar(
-    page: Page, server, repo, tmp_path, shot, width, controls
+    page: Page, server, repo, tmp_path, shot, width, wanted
 ):
     session = designed_session(repo, tmp_path)
     page.set_viewport_size({"width": width, "height": 844})
@@ -372,12 +381,11 @@ def test_the_panels_buttons_share_one_row_in_its_top_bar(
     page.get_by_role("button", name="Open artifact ship/x/design").click()
     panel = page.get_by_role("dialog", name="Artifact ship/x/design")
     expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
-    actions = ["Open in Artifacts tab", "Open in new tab", "Download", "Copy link"]
     bar = panel.locator(".panel-top")
     buttons = bar.locator("a, button")
-    expect(buttons).to_have_count(len(actions) + len(controls))
+    expect(buttons).to_have_count(len(wanted))
     names = [one.get_attribute("aria-label") or one.inner_text().strip() for one in buttons.all()]
-    assert names == actions + controls
+    assert names == wanted
     centres = []
     for one in buttons.all():
         box = one.bounding_box()
@@ -403,7 +411,21 @@ def test_on_a_phone_the_panel_takes_the_screen(page: Page, server, repo, tmp_pat
     expect(panel.get_by_role("separator")).to_have_count(0)
     expect(panel.get_by_role("button", name="Expand")).to_have_count(0)
     shot(page, "phone")
-    panel.get_by_role("link", name="Open in Artifacts tab").click()
+    more = panel.get_by_role("button", name="More actions")
+    more.focus()
+    page.keyboard.press("Enter")
+    menu = page.get_by_role("menu", name="More actions")
+    items = menu.get_by_role("menuitem")
+    expect(items).to_have_text(["Open in new tab", "Open in Artifacts tab"])
+    box = menu.bounding_box()
+    assert box is not None and box["x"] >= 0 and box["x"] + box["width"] <= 390, box
+    shot(page, "phone-menu")
+    page.keyboard.press("Escape")
+    expect(menu).to_have_count(0)
+    expect(more).to_be_focused()
+    expect(panel).to_be_visible()
+    more.click()
+    menu.get_by_role("menuitem", name="Open in Artifacts tab").click()
     expect(page).to_have_url(
         f"{server['url']}/sessions/{session}/artifacts/"
         f"{artifacts.find(session, 'ship/x/design')[0].id}"

@@ -2,7 +2,7 @@
 // how each media type is shown.
 import { expect, test } from "vitest";
 
-import { changed, GROUPS_FROM, groupByScope, KINDS, kindOf } from "./artifacts";
+import { changed, GROUPS_FROM, groupByScope, KINDS, kindOf, sameHeading } from "./artifacts";
 import { artifact, attachment } from "./fakes";
 
 test("an attachment changed since when its artifact's latest record has another hash", () => {
@@ -27,6 +27,17 @@ test("each media type is shown as one kind", () => {
   expect(kindOf("text/html")).toBe("html");
   expect(kindOf("application/pdf")).toBe("other");
   expect(kindOf("image/tiff")).toBe("other");
+});
+
+test("a Markdown text starts with its title when its first line is that H1, in any case", () => {
+  expect(sameHeading("# The plan\n\nFirst.", "The plan")).toBe(true);
+  expect(sameHeading("\n\n  \n# The plan", "The plan")).toBe(true);
+  expect(sameHeading("#   the PLAN  ##\n", "  The Plan ")).toBe(true);
+  expect(sameHeading("# Plan of the week\n", "The plan")).toBe(false);
+  expect(sameHeading("## The plan\n", "The plan")).toBe(false);
+  expect(sameHeading("#The plan\n", "The plan")).toBe(false);
+  expect(sameHeading("Intro\n\n# The plan\n", "The plan")).toBe(false);
+  expect(sameHeading("", "The plan")).toBe(false);
 });
 
 test("each kind has its filter's label and its row's word", () => {

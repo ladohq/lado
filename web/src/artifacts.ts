@@ -52,6 +52,14 @@ export function size(bytes: number): string {
 // The run part of a full name, "<run>/", or "" in the session's scope.
 export const scopePart = (scope: string) => (scope ? `${scope}/` : "");
 
+// Whether a Markdown text says `title` as its H1, on its first line that is not blank: the
+// viewer then leaves out its title line. Closing #s and the case do not count.
+export function sameHeading(text: string, title: string): boolean {
+  const first = text.split("\n").find((line) => line.trim() !== "") ?? "";
+  const heading = /^#\s+(.*?)(\s+#+)?\s*$/.exec(first)?.[1];
+  return heading?.trim().toLowerCase() === title.trim().toLowerCase();
+}
+
 // From this many artifacts in the session, filtered or not, the tab shows them in groups.
 export const GROUPS_FROM = 100;
 

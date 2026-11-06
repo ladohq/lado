@@ -1,6 +1,7 @@
 // An artifact's record as the human sees it (docs/design/ui.md, Artifacts): one component
 // for the artifact's page in the Artifacts tab and for the panel a chip opens. Its head
-// names the artifact, who wrote the record when and what changed; its actions,
+// names the artifact (its title only when a Markdown record's H1 does not say it), who wrote
+// the record when and what changed; its actions,
 // ArtifactActions, are Download, Copy link and Open in new tab for what the browser can show
 // (the bare page of ArtifactTab, or HTML's content address), in the name line on the page,
 // in its top bar in the panel (ArtifactPanel, `actions={false}` here); its body,
@@ -12,7 +13,7 @@
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 
 import { answered, ApiError, contentPath, getContent, type ArtifactInfo, type RecordInfo } from "./api";
-import { kindOf, scopePart, size, type Kind } from "./artifacts";
+import { kindOf, sameHeading, scopePart, size, type Kind } from "./artifacts";
 import { Body, since } from "./ChatText";
 import { CopyButton } from "./Copy";
 import { MiniAvatar } from "./FeedRow";
@@ -73,28 +74,36 @@ export function Action({ label, icon, compact, children: link }: { label: string
   return <Tooltip tip={label}>{link({ className: "icon-button", "aria-label": label, children: icon })}</Tooltip>;
 }
 
-// Open in new tab (not for `other`), Download and Copy link of the record shown; Copy link
-// is an icon button with its tooltip either way.
+// The record shown alone: HTML at its content address, under the server's sandbox; the other
+// kinds the browser shows in the bare page; `other` only downloads, as Download does: null.
+export function newTabPath(session: string, record: RecordInfo): string | null {
+  const kind = kindOf(record.media_type);
+  if (kind === "other") return null;
+  return kind === "html" ? contentPath(session, record.id) : viewPath(session, record.id);
+}
+
+// Open in new tab (not for `other`, nor with `noTab`: a phone's panel has it in its menu),
+// Download and Copy link of the record shown; Copy link is an icon button with its tooltip
+// either way.
 export function ArtifactActions({
   session,
   artifact,
   record,
   compact = false,
+  noTab = false,
 }: {
   session: string;
   artifact: ArtifactInfo;
   record: RecordInfo;
   compact?: boolean;
+  noTab?: boolean;
 }) {
-  const kind = kindOf(record.media_type);
   const download = contentPath(session, record.id, true);
   const link = `${window.location.origin}${artifactPath(session, artifact.id, record.id === artifact.latest.id ? undefined : record.id)}`;
-  // The record shown alone: HTML at its content address, under the server's sandbox; the
-  // other kinds the browser shows in the bare page; `other` only downloads, as Download does.
-  const tab = kind === "html" ? contentPath(session, record.id) : viewPath(session, record.id);
+  const tab = noTab ? null : newTabPath(session, record);
   return (
     <span className="artifact-actions">
-      {kind !== "other" && (
+      {tab !== null && (
         <Action label="Open in new tab" icon={<OpenTabIcon />} compact={compact}>
           {(look) => <a {...look} href={tab} target="_blank" rel="noopener noreferrer" />}
         </Action>
@@ -126,7 +135,12 @@ export function ArtifactView({
   latest?: () => void; // the artifact changed since this record: opens its latest
   actions?: boolean; // ArtifactActions in the name line; the panel shows them in its bar
 }) {
-  const where = record.run ? `${record.state ?? ""}` : "session";
+  const where = record.run ? `step ${record.state}` : "session";
+  // A Markdown record is read here, for its body too: the title goes when the text's H1 says
+  // it, and waits for the text so that it never shows and goes.
+  const markdown = kindOf(record.media_type) === "markdown";
+  const read = useText(session, markdown ? record.id : null);
+  const titled = !markdown || (read !== null && ("error" in read || !sameHeading(read.text, artifact.title ?? "")));
   return (
     <div className="artifact-view">
       <header className="artifact-head">
@@ -137,7 +151,7 @@ export function ArtifactView({
           </span>
           {actions && <ArtifactActions session={session} artifact={artifact} record={record} />}
         </div>
-        {artifact.title && <h2 className="artifact-title">{artifact.title}</h2>}
+        {artifact.title && titled && <h2 className="artifact-title">{artifact.title}</h2>}
         <p className="artifact-meta">
           <MiniAvatar who={record.author} />
           <span>{record.author}</span>
@@ -170,14 +184,25 @@ export function ArtifactView({
         </p>
       )}
       <div className="artifact-body">
-        <ArtifactBody session={session} artifact={artifact} record={record} />
+        <ArtifactBody session={session} artifact={artifact} record={record} read={markdown ? read : undefined} />
       </div>
     </div>
   );
 }
 
 // A record's content by its kind, the one renderer of the viewer and of the artifact's tab.
-export function ArtifactBody({ session, artifact, record }: { session: string; artifact: ArtifactInfo; record: RecordInfo }) {
+// `read`: its text as already read; none: a text kind reads it here.
+export function ArtifactBody({
+  session,
+  artifact,
+  record,
+  read,
+}: {
+  session: string;
+  artifact: ArtifactInfo;
+  record: RecordInfo;
+  read?: Read;
+}) {
   const kind = kindOf(record.media_type);
   const src = contentPath(session, record.id);
   if (kind === "image") return <Picture src={src} alt={artifact.title ?? artifact.full_name} name={artifact.full_name} />;
@@ -218,18 +243,19 @@ export function ArtifactBody({ session, artifact, record }: { session: string; a
       </section>
     );
   }
-  return <Text session={session} artifact={artifact} record={record} markdown={kind === "markdown"} />;
+  return <Text session={session} artifact={artifact} record={record} markdown={kind === "markdown"} given={read} />;
 }
 
 type Read = { text: string; cut: boolean } | { error: string; missing: boolean } | null;
 
 // A text record's content, read up to TEXT_LIMIT bytes, then the read is cancelled: a
-// record may hold 25 MB the browser need not take.
-function useText(session: string, record: string): Read {
+// record may hold 25 MB the browser need not take. No record: nothing is read.
+function useText(session: string, record: string | null): Read {
   const [read, setRead] = useState<Read>(null);
   useEffect(() => {
-    const abort = new AbortController();
     setRead(null);
+    if (record === null) return;
+    const abort = new AbortController();
     getContent(session, record, abort.signal)
       .then((answer) => answered(() => readUpTo(answer)))
       .then(
@@ -265,8 +291,21 @@ async function readUpTo(answer: Response): Promise<{ text: string; cut: boolean 
   }
 }
 
-function Text({ session, artifact, record, markdown }: { session: string; artifact: ArtifactInfo; record: RecordInfo; markdown: boolean }) {
-  const read = useText(session, record.id);
+function Text({
+  session,
+  artifact,
+  record,
+  markdown,
+  given,
+}: {
+  session: string;
+  artifact: ArtifactInfo;
+  record: RecordInfo;
+  markdown: boolean;
+  given?: Read;
+}) {
+  const own = useText(session, given === undefined ? record.id : null);
+  const read = given === undefined ? own : given;
   const [wrap, setWrap] = useState(false);
   if (read === null) return <p className="muted">Loading…</p>;
   if ("error" in read) return <Failed error={read.error} missing={read.missing} />;

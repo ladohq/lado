@@ -10,11 +10,11 @@
 
 ## 2. F21: the panel
 
-- [ ] 2.1 `sameHeading`, the read lifted to `ArtifactView`, the title hidden (D7).
+- [x] 2.1 `sameHeading`, the read lifted to `ArtifactView`, the title hidden (D7).
   Check: `artifacts.test.ts`, `ArtifactView.test.tsx`; AC-6.
-- [ ] 2.2 The pill (D10). Check: `ArtifactView.test.tsx`; AC-7.
-- [ ] 2.3 Full page over the Artifacts tab (D8). Check: `ArtifactPanel.test.tsx`; AC-8.
-- [ ] 2.4 The phone's bar and menu (D9). Check: `ArtifactPanel.test.tsx`,
+- [x] 2.2 The pill (D10). Check: `ArtifactView.test.tsx`; AC-7.
+- [x] 2.3 Full page over the Artifacts tab (D8). Check: `ArtifactPanel.test.tsx`; AC-8.
+- [x] 2.4 The phone's bar and menu (D9). Check: `ArtifactPanel.test.tsx`,
   `tests/ui/test_artifacts_tab.py` at 390; AC-9.
 
 ## 3. F22: the empty tabs

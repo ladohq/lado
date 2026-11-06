@@ -146,8 +146,7 @@ def test_a_context_too_small_warns_in_the_field_and_start_stays_on(
     link = dialog.get_by_role("link", name="docs/install.md ↗")
     expect(link).to_have_attribute(
         "href",
-        "https://github.com/ladohq/lado/blob/main/docs/install.md"
-        "#what-to-expect-of-a-small-model",
+        "https://github.com/ladohq/lado/blob/main/docs/install.md#what-to-expect-of-a-small-model",
     )
     expect(link).to_have_attribute("target", "_blank")
     start = dialog.get_by_role("button", name="Start session")

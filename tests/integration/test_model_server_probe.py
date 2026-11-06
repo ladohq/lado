@@ -69,7 +69,7 @@ def test_probe_a_fake_server_process(serve):
         "models: llama3.1:8b, qwen2.5-coder:7b",
         # The fake agent that runs on a server is a provider here too (fake_provider.py).
         "CLIs: Codex CLI (Responses API); Kilo CLI, OpenCode, Fake server agent (chat completions)",
-        "not: Claude Code (no Anthropic Messages API)",
+        "not: Claude Code (no Anthropic Messages API), Fake Claude (no Anthropic Messages API)",
     ]
 
 

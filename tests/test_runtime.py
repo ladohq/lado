@@ -7059,7 +7059,9 @@ def test_no_keychain_warning_for_an_agent_on_a_server(repo, fake_tmux, monkeypat
     assert started.warnings == []
 
 
-def test_a_clone_for_a_session_on_a_server_is_not_refused_for_the_login(cli_logins, monkeypatch):
+def test_a_clone_for_a_session_on_a_server_is_not_refused_for_the_login(
+    cli_logins, fake_clis, monkeypatch
+):
     _claude_on_server(monkeypatch)
     cli_logins.logged_out()
     runtime.check_start_login("claude", None, "Шлюз Qwen")
@@ -7070,7 +7072,7 @@ def test_a_clone_for_a_session_on_a_server_is_not_refused_for_the_login(cli_logi
 
 
 def test_a_clone_on_the_default_model_of_a_server_is_not_refused_for_the_login(
-    cli_logins, monkeypatch
+    cli_logins, fake_clis, monkeypatch
 ):
     _default(_claude_on_server(monkeypatch))
     cli_logins.logged_out()

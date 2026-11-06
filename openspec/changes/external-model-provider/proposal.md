@@ -75,7 +75,8 @@ does not show of cost is said. One source of truth: `Limit` stays the one rule o
 
 - `model_servers.py`, `model_settings.py`, `providers/base.py`, `providers/claude.py`,
   `providers/opencode_family.py`, `providers/opencode_plugin.js`, `server/model_entries.py`,
-  `web/src/api.ts`: 8 code files. Tests; `tests/fake_endpoint.py`, `tests/fake_model_server.py`; docs.
+  `web/src/api.ts`, `web/src/LaunchModel.tsx` (a warning's link goes to the section it names):
+  9 code files. Tests; `tests/fake_endpoint.py`, `tests/fake_model_server.py`; docs.
   No schema change, no new dependency, no MCP tool or CLI option, no API field, no new screen. The
   line goes under 0.45.0: a feature, so a minor by the rule, which the epic's heading already is.
 

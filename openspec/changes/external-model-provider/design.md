@@ -50,10 +50,9 @@ there. A server that did not answer in `LIMIT_TIMEOUT` counts as unknown too: th
 The plugin's `errorOf` adds `status` from `error.data.statusCode`. `turn_error` passes a status of
 `base.REFUSALS` to `base.refusal_line(status, text)`; every other error keeps its path, the context's
 words first. Claude's `parse_event` reads `last_assistant_message` by `REFUSED = API Error:
-(?:Request rejected \()?(\d{3})\)?\s*·?\s*(.*)`, only when `base.MODEL_SERVER` is in `os.environ`, as
-the settings' `env` reaches the hook (the developer confirms it in the integration test; if it does
-not, `launched_on`'s reading of the settings file is the way). No `Failed to authenticate.` prefix
-matters: the search is not anchored.
+(?:Request rejected \()?(\d{3})\)?\s*·?\s*(.*)`, only when `base.MODEL_SERVER` is in `os.environ`:
+real Claude Code's hook sees it, as the smoke's refusal in LADO's words shows. No `Failed to
+authenticate.` prefix matters: the search is not anchored.
 
 ### D5. LADO's words, one table
 
@@ -73,7 +72,10 @@ choice. `isRetryable` of the plugin's error is not used: both CLIs have spent th
 
 `SERVER_SWITCHES` gets `CLAUDE_CODE_MAX_RETRIES: "7"`. Measured delays double from 0.5 s to about 36 s,
 so 7 repeats take about 72 s, what OpenCode and Kilo take on a 429. With the value 2, 3 requests went
-out on 401, 429 and 500. A built-in agent gets nothing.
+out on 401, 429 and 500. A built-in agent gets nothing. In the TUI, measured by the smoke on 2.1.295
+with `Retry-After: 1`: 8 requests of the turn on a 429, 10 on a 401, cause not looked into; beside
+them the session's title, a request with no tools that `claude -p` does not send, repeats as much, so
+a provider counts 16 and 20. The turn ends and the count stops on both.
 
 ### D8. The key's removal
 

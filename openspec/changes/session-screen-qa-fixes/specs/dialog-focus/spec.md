@@ -29,6 +29,11 @@ Tab SHALL go on from there.
 - **WHEN** the human opens Forget, Finish, Share or Add kit from its button and presses Esc
 - **THEN** the focus is on that button
 
+#### Scenario: A window from a card's menu
+- **WHEN** the human opens Update… or Remove… from a kit card's ⋯ and closes the window by Esc or
+  by Cancel with the mouse
+- **THEN** the menu is closed and the focus is on ⋯
+
 #### Scenario: The next Tab
 - **WHEN** a window closed and the focus went back to its button
 - **THEN** Tab moves to the element after that button, not to the page's start

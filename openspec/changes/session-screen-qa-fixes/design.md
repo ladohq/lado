@@ -24,6 +24,13 @@ the cleanup closes the window.
 A unit test fails on any `showModal(` in `web/src` outside `modal.ts` and the test fakes, so the rule
 stays in one place.
 
+Added during the build, at the supervisor's question: the browser remembers the focused element, and
+for a window from a kit card's ⋯ that was the menu item. `RowMenu` left its menu open, so Esc came
+back to an open menu, and a press on Cancel closed the menu first, taking the remembered item away.
+`RowMenu` now closes the menu and focuses ⋯ before the item's action. The fix is there, not in
+`useModal`: the hook cannot know what stands for an element that is gone, and a menu left open under
+a window was the defect itself. Only the Kits page's cards open windows from a menu.
+
 ## D2. A focus given back shows no tooltip
 
 A focus that reached the opener's `Tooltip` would count as the keyboard's, also after Cancel pressed

@@ -3181,7 +3181,9 @@ and approved in its own task; this file keeps what was decided from them.
 Windows (LAD-224): every modal window opens and closes through `useModal` (`modal.ts`), the one
 place with `showModal` and `close` (a unit test holds that). Closed by Esc, Cancel or its close
 button, a window gives the focus back to what had it at opening, while that is still in the page,
-and the next Tab goes on from there. The focus given back shows no tooltip. After an action that
+and the next Tab goes on from there. The focus given back shows no tooltip. A row's ⋯ menu closes
+as its item is chosen and puts the focus on ⋯ first, so a window from an item gives it back
+there (`RowMenu.tsx`); the item itself is gone by then. After an action that
 removes the opener (Take control pressed, a Forget that leaves the page) nothing is restored.
 
 Notices (decided 2026-11-06, LAD-198): an error is `--danger` text and an alert icon on

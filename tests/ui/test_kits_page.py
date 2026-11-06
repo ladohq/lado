@@ -203,6 +203,34 @@ def test_an_updates_new_mcp_server_is_a_warning(page: Page, server, tmp_path, sh
     shot(page)
 
 
+@pytest.mark.parametrize("item", ["Update…", "Remove…"])
+def test_a_window_from_a_cards_menu_gives_the_focus_back_to_its_dots(
+    page: Page, server, tmp_path, item
+):
+    small_kit(tmp_path, "wiki", "1.0.0", newer="1.1.0")
+    page.goto(f"{server['url']}/kits?token={server['token']}")
+    card = page.get_by_role("list", name="Kits").get_by_role("listitem", name="wiki")
+    more = card.get_by_role("button", name="Actions for wiki")
+    menu = page.get_by_role("menu", name="wiki")
+    window = page.get_by_role("dialog")
+
+    def came_back():
+        expect(window).to_have_count(0)
+        expect(menu).to_have_count(0)
+        expect(more).to_be_focused()
+
+    more.focus()  # by the keyboard, closed by Esc
+    page.keyboard.press("Enter")
+    menu.get_by_role("menuitem", name=item).focus()
+    page.keyboard.press("Enter")
+    expect(window.get_by_role("button", name="Cancel")).to_be_enabled()  # Esc waits for the plan
+    page.keyboard.press("Escape")
+    came_back()
+    open_menu_item(page, "wiki", item)  # by the mouse, closed by Cancel
+    window.get_by_role("button", name="Cancel").click()
+    came_back()
+
+
 def boxes(locator):
     return [one.bounding_box() for one in locator.all()]
 

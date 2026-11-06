@@ -2,11 +2,11 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-06-external-mod
 
 ## 1. Limits
 
-- [ ] 1.1 `_listed_limits` reads the providers' fields (D1). Check: `tests/test_model_servers.py`.
-- [ ] 1.2 `Limit.output_room` for a large context (D2). Check: `tests/test_providers.py`.
-- [ ] 1.3 `is_local`, the warning on an unknown context, its peek (D3). Check:
+- [x] 1.1 `_listed_limits` reads the providers' fields (D1). Check: `tests/test_model_servers.py`.
+- [x] 1.2 `Limit.output_room` for a large context (D2). Check: `tests/test_providers.py`.
+- [x] 1.3 `is_local`, the warning on an unknown context, its peek (D3). Check:
   `tests/test_model_settings.py`, `tests/test_server_launch.py`.
-- [ ] 1.4 A start on a cloud-shaped list has `limit` in the config. Check:
+- [x] 1.4 A start on a cloud-shaped list has `limit` in the config. Check:
   `tests/integration/test_local_model_limits.py` with `-m integration`.
 
 ## 2. Refusals

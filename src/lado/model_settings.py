@@ -58,6 +58,7 @@ CONTEXT_HOW = {
     model_servers.OLLAMA: "raise OLLAMA_CONTEXT_LENGTH, or the context in the Ollama app",
 }
 CONTEXT_PEEK = "context too small"  # the folded Advanced's words for that warning
+CONTEXT_UNKNOWN_PEEK = "context unknown"  # and for a public server's unknown context
 
 
 # The field of a form a refusal concerns, for the UI ("" for none); the CLI ignores it.
@@ -1129,8 +1130,18 @@ def context_warning(
     start: StartModel, provider: providers.Provider, limit: base.Limit | None
 ) -> str | None:
     """The warning for `start`, a model reported at `limit`, when its context is below what
-    `provider`'s CLI needs to take a turn; None otherwise, an unknown context too."""
-    if limit is None or limit.context >= provider.min_context:
+    `provider`'s CLI needs to take a turn, or is not known on a server outside the human's
+    machine and network, where a late compaction costs money; None otherwise: an Ollama model
+    not yet running has no known context either."""
+    if limit is None:
+        if start.server is None or model_servers.is_local(start.server.address):
+            return None
+        return (
+            f"{start.name} on {start.server.name}: the server reports no context for it, so the "
+            'agent compacts late and its answers have no limit; see "A cloud provider" in '
+            "docs/install.md"
+        )
+    if limit.context >= provider.min_context:
         return None
     where = f" on {start.server.name}" if start.server is not None else ""
     how = CONTEXT_HOW.get(start.server.kind if start.server else "", CONTEXT_HOW[""])

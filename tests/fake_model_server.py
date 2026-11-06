@@ -144,6 +144,35 @@ PROFILES: dict[str, dict[tuple[str, ...] | str, Answer]] = {
         ),
         ("POST", CHAT): OPENAI_400,
     },
+    # A cloud provider's list, in the fields of cloud.ru, OpenRouter and vLLM.
+    "provider-limits": {
+        ("GET", MODELS): Answer(
+            200,
+            {
+                "data": [
+                    {"id": "cloud", "context_length": 131072, "max_model_len": 131072},
+                    {
+                        "id": "router",
+                        "context_length": 131072,
+                        "top_provider": {"max_completion_tokens": 117964},
+                    },
+                    {"id": "vllm", "max_model_len": 32768},
+                    {"id": "both", "max_input_tokens": 16000, "context_length": 32768},
+                    {"id": "speech", "context_length": None, "max_model_len": None},
+                    {"id": "null-first", "context_length": None, "max_model_len": 8192},
+                    {"id": "odd-top", "context_length": 4096, "top_provider": "none"},
+                    {
+                        "id": "both-outputs",
+                        "context_length": 4096,
+                        "max_output_tokens": 100,
+                        "top_provider": {"max_completion_tokens": 200},
+                    },
+                ]
+            },
+        ),
+        ("POST", CHAT): OPENAI_400,
+        ("POST", MESSAGES): ANTHROPIC_400,
+    },
     # An Anthropic-compatible server: Anthropic's list and the Messages API.
     "anthropic": {("GET", MODELS): anthropic_list("claude-x"), ("POST", MESSAGES): ANTHROPIC_400},
     # A server with the Responses API alone, and no list.

@@ -57,6 +57,9 @@ API_PATHS = {
     base.ANTHROPIC_MESSAGES: "/v1/messages",
 }
 CONTROL = "/v1/lado-no-such-api"  # no server has it: an API's answer here proves nothing
+# A context in a model list, first what a gateway says of the prompt alone (LiteLLM), then
+# cloud.ru's and OpenRouter's field, then vLLM's.
+LISTED_CONTEXT = ("max_input_tokens", "context_length", "max_model_len")
 # Anthropic's API wants it; a gateway of both APIs (LiteLLM) lists its models in Anthropic's
 # shape when it is sent, so the plain list request goes without it.
 ANTHROPIC_VERSION = {"anthropic-version": "2023-06-01"}
@@ -217,22 +220,25 @@ def base_url(root: str) -> str:
     return root + API_BASE
 
 
+def is_local(root: str) -> bool:
+    """Whether the server at `root` (an `address`'s root) is on the human's machine or network."""
+    host = urllib.parse.urlsplit(root).hostname or ""
+    if host in LOCAL_HOSTS:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_private or ip.is_link_local
+
+
 def plain_http_warning(root: str, key: str | None) -> str | None:
     """The warning for a key sent over plain http:// to the server at `root` (an
     `address`'s root) that is not on the human's machine or network; None for none."""
     parts = urllib.parse.urlsplit(root)
-    if key is None or parts.scheme != "http":
+    if key is None or parts.scheme != "http" or is_local(root):
         return None
-    host = parts.hostname or ""
-    if host in LOCAL_HOSTS:
-        return None
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        return PLAIN_HTTP.format(host=host)
-    if ip.is_loopback or ip.is_private or ip.is_link_local:
-        return None
-    return PLAIN_HTTP.format(host=host)
+    return PLAIN_HTTP.format(host=parts.hostname or "")
 
 
 def probe(
@@ -319,19 +325,27 @@ def _tokens(value: object) -> int | None:
     return None
 
 
-def _limits(items: list, name: str, context: str, output: str = "") -> dict[str, base.Limit]:
-    """The limits of a list's `items`: a model's id under `name`, as `_models` makes it."""
+def _output(item: dict) -> int | None:
+    """The output a list's `item` reports: a gateway's field, else OpenRouter's."""
+    top = item.get("top_provider")
+    nested = top.get("max_completion_tokens") if isinstance(top, dict) else None
+    return _tokens(item.get("max_output_tokens")) or _tokens(nested)
+
+
+def _limits(items: list, name: str, *contexts: str) -> dict[str, base.Limit]:
+    """The limits of a list's `items`: a model's id under `name`, as `_models` makes it, its
+    context the first of `contexts` that is a number of tokens."""
     found = {}
     for item in items:
         if isinstance(item, dict) and isinstance(item.get(name), str):
-            tokens = _tokens(item.get(context))
+            tokens = next(filter(None, (_tokens(item.get(c)) for c in contexts)), None)
             if tokens is not None:
-                found[visible.one_line(item[name])] = base.Limit(tokens, _tokens(item.get(output)))
+                found[visible.one_line(item[name])] = base.Limit(tokens, _output(item))
     return found
 
 
 def _listed_limits(listed: Answer) -> dict[str, base.Limit]:
-    return _limits(_listing(listed) or [], "id", "max_input_tokens", "max_output_tokens")
+    return _limits(_listing(listed) or [], "id", *LISTED_CONTEXT)
 
 
 def _running_limits(running: Answer) -> dict[str, base.Limit]:

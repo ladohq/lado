@@ -136,6 +136,10 @@ class McpServer:
 # sends output as max_tokens (1.18.35, Kilo 7.8.8 alike): their default of 32000 leaves a small
 # model nothing, as Claude Code's does, so it is a quarter of the context at most.
 DEFAULT_OUTPUT = 8192
+# The same on a large context: the CLIs' own default, as a cloud model's long answer or reasoning
+# has room there.
+LARGE_CONTEXT = 131072
+LARGE_OUTPUT = 32000
 
 
 @dataclass(frozen=True)
@@ -146,9 +150,11 @@ class Limit:
     output: int | None = None
 
     def output_room(self) -> int:
-        """The tokens a CLI may ask for as its output: what the server reports or DEFAULT_OUTPUT,
-        at most a quarter of the context, which the prompt needs too."""
-        return max(1, min(self.output or DEFAULT_OUTPUT, self.context // 4))
+        """The tokens a CLI may ask for as its output: what the server reports, else
+        DEFAULT_OUTPUT or on a large context LARGE_OUTPUT, at most a quarter of the context,
+        which the prompt needs too."""
+        default = LARGE_OUTPUT if self.context >= LARGE_CONTEXT else DEFAULT_OUTPUT
+        return max(1, min(self.output or default, self.context // 4))
 
 
 @dataclass(frozen=True)

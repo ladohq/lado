@@ -190,7 +190,7 @@ def _window_warnings(
     limit = model_servers.context_limits(server.address, key).get(start.model or "")
     if warning := model_settings.context_warning(start, provider, limit):
         warnings.append(warning)
-        peeks.append(model_settings.CONTEXT_PEEK)
+        peeks.append(model_settings.CONTEXT_PEEK if limit else model_settings.CONTEXT_UNKNOWN_PEEK)
     return warnings, ", ".join(peeks)
 
 

@@ -275,7 +275,16 @@ class FakeServerProvider(FakeProvider):
     def launch_command(self, agent, session, spec) -> base.Launch:
         launch = super().launch_command(agent, session, spec)
         got = [
-            {"id": s.id, "name": s.name, "models": s.models, "key_variable": s.key_variable}
+            {
+                "id": s.id,
+                "name": s.name,
+                "models": s.models,
+                "key_variable": s.key_variable,
+                "entries": {
+                    model: opencode_family.model_entry(name, s.limits.get(model))
+                    for model, name in s.models
+                },
+            }
             for s in spec.servers
         ]
         keys = {s.key_variable: s.key for s in spec.servers if s.key is not None}

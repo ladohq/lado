@@ -1672,6 +1672,11 @@ def _limit_of(repo, provider, limit):
         (base.Limit(65536, 2048), {"context": 65536, "output": 2048}),
         (base.Limit(65536, 100000), {"context": 65536, "output": 16384}),
         (base.Limit(3), {"context": 3, "output": 1}),
+        (base.Limit(131071), {"context": 131071, "output": 8192}),
+        (base.Limit(131072), {"context": 131072, "output": 32000}),
+        (base.Limit(262144), {"context": 262144, "output": 32000}),
+        (base.Limit(131072, 117964), {"context": 131072, "output": 32768}),
+        (base.Limit(262144, 2048), {"context": 262144, "output": 2048}),
     ],
 )
 def test_a_known_context_goes_to_the_config_with_its_output(repo, provider, limit, written):
@@ -2128,7 +2133,9 @@ def test_a_known_context_goes_to_a_claude_agent(repo):
 @pytest.mark.parametrize(
     ("limit", "output"),
     [
-        (base.Limit(131072), "8192"),
+        (base.Limit(131072), "32000"),
+        (base.Limit(262144), "32000"),
+        (base.Limit(131071), "8192"),
         (base.Limit(16000), "4000"),
         (base.Limit(65536, 2048), "2048"),
         (base.Limit(65536, 32000), "16384"),

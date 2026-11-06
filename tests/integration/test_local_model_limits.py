@@ -11,8 +11,9 @@ import pytest
 from test_model_server_probe import serve  # noqa: F401 - a fixture
 from test_project_secrets_canary import files_holding
 
-from lado import model_settings, runtime, state
+from lado import model_servers, model_settings, runtime, state
 from lado.cli import main
+from lado.providers import base
 
 pytestmark = pytest.mark.integration
 
@@ -63,6 +64,46 @@ def test_a_start_on_a_model_of_unknown_context_says_nothing_of_it(repo, serve, c
     said = capsys.readouterr()
     assert "context" not in said.out + said.err
     idle()
+
+
+def test_a_start_on_a_public_server_of_unknown_context_warns_and_the_agent_runs(
+    repo,
+    serve,  # noqa: F811
+    capsys,
+    monkeypatch,
+):
+    monkeypatch.setattr(model_servers, "is_local", lambda root: False)
+    assert start_on(repo, serve("all"), "m1") == 0
+    said = capsys.readouterr()
+    assert "Малая on Шлюз: the server reports no context for it" in said.out + said.err
+    idle()
+
+
+def test_a_provider_s_list_gives_the_agent_its_limits(repo, serve, tmp_path, capsys):  # noqa: F811
+    assert start_on(repo, serve("provider-limits"), "cloud") == 0
+    said = capsys.readouterr()
+    assert "context" not in said.out + said.err
+    idle()
+    out = tmp_path / "env"
+    human_says(f"sh env > {out}")
+    line = next(v for v in out.read_text().splitlines() if v.startswith("FAKE_AGENT_SERVERS="))
+    [server] = json.loads(line.partition("=")[2])
+    assert server["entries"]["cloud"]["limit"] == {"context": 131072, "output": 32000}
+
+
+def test_a_provider_s_list_gives_a_claude_agent_its_limits(repo, serve):  # noqa: F811
+    model_settings.add_server(
+        "Шлюз", serve("provider-limits"), None, warn=lambda _: None, note=lambda _: None
+    )
+    saved = state.add_model("Малая", "fake-claude", "router", state.model_server("Шлюз").id)
+    state.set_cli_default(state.ModelRef("fake-claude", saved.id, None))
+    args = ["start", str(repo), "--name", SESSION, "--no-attach", "--provider", "fake-claude"]
+    assert main(args) == 0
+    idle()
+    agent = state.get_agent(SESSION, "supervisor")
+    env = json.loads((base.config_dir(agent) / "settings.json").read_text())["env"]
+    assert env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "131072"
+    assert env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "32768"
 
 
 def test_a_failed_turn_marks_no_message_and_the_next_clean_turn_decides(repo, serve):  # noqa: F811

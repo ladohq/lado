@@ -716,9 +716,41 @@ def test_a_gateway_reports_in_its_list(serve):
     }
 
 
+def test_a_provider_reports_in_the_fields_of_its_list(serve):
+    assert ms.context_limits(serve("provider-limits").url, None) == {
+        "cloud": base.Limit(131072),
+        "router": base.Limit(131072, 117964),
+        "vllm": base.Limit(32768),
+        "both": base.Limit(16000),
+        "null-first": base.Limit(8192),
+        "odd-top": base.Limit(4096),
+        "both-outputs": base.Limit(4096, 100),
+    }
+
+
 @pytest.mark.parametrize("profile", ["openai", "unknown", "forbidden", "gateway-400"])
 def test_a_server_that_reports_nothing_has_no_limits(serve, profile):
     assert ms.context_limits(serve(profile).url, None) == {}
+
+
+@pytest.mark.parametrize(
+    ("root", "local"),
+    [
+        ("http://localhost:1234", True),
+        ("http://host.docker.internal:1234", True),
+        ("http://127.0.0.1:1234", True),
+        ("http://192.168.1.10:1234", True),
+        ("http://10.0.0.2", True),
+        ("http://169.254.1.1", True),
+        ("http://[::1]:1234", True),
+        ("https://192.168.1.10", True),
+        ("http://8.8.8.8", False),
+        ("https://llm.example.com", False),
+        ("https://foundation-models.api.cloud.ru", False),
+    ],
+)
+def test_what_is_on_the_human_s_machine_or_network(root, local):
+    assert ms.is_local(root) is local
 
 
 def test_limits_of_a_closed_port_are_none():

@@ -7,7 +7,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { ArtifactInfo, AttachmentInfo, GateInfo, MessageInfo, NoteInfo, RunInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { artifact, attachment, FakeEventSource, FakeSocket, stream, wideColumn } from "./fakes";
+import { artifact, attachment, columnWidth, FakeEventSource, FakeSocket, stream, wideColumn } from "./fakes";
+import { TOOLTIP_DELAY_MS } from "./Tooltip";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -224,6 +225,178 @@ test("a session without artifacts says so", async () => {
   serve({ artifacts: [] });
   open("/sessions/lado/artifacts");
   expect(await screen.findByText("No artifacts yet")).toBeTruthy();
+});
+
+// The list of a narrow column
+
+const list = () => screen.findByRole("list", { name: "Artifacts" });
+const lines = (item: HTMLElement) => [...item.querySelectorAll(".artifact-item-line")].map((one) => one.textContent);
+
+test("a column under 720 px lists each artifact in two lines, one of 720 px has the table", async () => {
+  columnWidth(719);
+  serve();
+  open("/sessions/lado/artifacts");
+  const shown = await list();
+  expect(screen.queryByRole("table")).toBeNull();
+  const design = within(shown).getAllByRole("listitem")[1];
+  expect(lines(design)[0]).toBe("feature/x/design · The design");
+  expect(lines(design)[1]).toMatch(/^Document · architect · .+ ago · 120 B$/);
+  expect(design.textContent).not.toContain("first cut");
+  expect(lines(within(shown).getAllByRole("listitem")[0])[0]).toBe("fix/y/shot.png");
+  cleanup();
+  columnWidth(720);
+  serve();
+  open("/sessions/lado/artifacts");
+  expect(await table()).toBeTruthy();
+  expect(screen.queryByRole("list", { name: "Artifacts" })).toBeNull();
+});
+
+test("before the column is measured the list shows, not the table", async () => {
+  columnWidth(null);
+  serve();
+  open("/sessions/lado/artifacts");
+  expect(await list()).toBeTruthy();
+  expect(screen.queryByRole("table")).toBeNull();
+});
+
+test("a row of the list shows its change in a tooltip, a row without one none", async () => {
+  columnWidth(436);
+  serve();
+  open("/sessions/lado/artifacts");
+  const shown = await list();
+  vi.useFakeTimers();
+  try {
+    fireEvent.mouseEnter(within(shown).getByRole("link", { name: /^plan/ }));
+    act(() => void vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.mouseEnter(within(shown).getByRole("link", { name: /design/ }));
+    act(() => void vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
+    expect(screen.getByRole("tooltip").textContent).toBe("first cut");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a row's link opens the panel and takes the focus back; a click with a modifier is the browser's", async () => {
+  columnWidth(436);
+  serve();
+  open("/sessions/lado/artifacts");
+  const link = within(await list()).getByRole("link", { name: /^plan/ });
+  expect(link.getAttribute("href")).toBe("/sessions/lado/artifacts/a2");
+  expect(fireEvent.click(link, { ctrlKey: true })).toBe(true);
+  expect(address()).toBe("/sessions/lado/artifacts");
+  fireEvent.click(link);
+  expect(address()).toBe("/sessions/lado/artifacts?view=p1");
+  const panel = await screen.findByRole("dialog", { name: "Artifact plan" });
+  fireEvent.keyDown(panel, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(link));
+});
+
+// Groups
+
+// `many` artifacts of a run, each a minute older than the one before, from `newest` on.
+function some(scope: string, many: number, newest: number): ArtifactInfo[] {
+  return Array.from({ length: many }, (_, at) => {
+    const minute = String(59 - newest - at).padStart(2, "0");
+    return artifact(
+      { id: `${scope}-${at}`, scope, name: `n${at}`, full_name: `${scope ? `${scope}/` : ""}n${at}`, title: null },
+      {
+        id: `${scope}-r${at}`,
+        hash: `${scope}-h${at}`,
+        run: scope || null,
+        state: scope ? "build" : null,
+        summary: at === 0 ? `change of ${scope || "the session"}` : null,
+        created_at: `2026-10-07T12:${minute}:00.000Z`,
+      },
+    );
+  });
+}
+
+const ACTIVE = { ...RUN, name: "open/run", status: "active" } as RunInfo;
+const ENDED = { ...RUN, name: "done/run", status: "ended", ended_at: "2026-10-07T12:00:00.000Z" } as RunInfo;
+
+// 100 artifacts: 40 of the open run (the newest), 30 of the session, 30 of the ended run.
+const HUNDRED = [...some("open/run", 40, 0), ...some("", 30, 40)].concat(some("done/run", 30, 0).map((one) => ({ ...one, latest: { ...one.latest, created_at: "2026-10-07T11:00:00.000Z" } })));
+const tab = () => within(screen.getByRole("region", { name: "Artifacts" }));
+const heads = () => tab().queryAllByRole("heading", { level: 3 }).filter((one) => one.classList.contains("group-head"));
+const headTexts = () => heads().map((one) => one.textContent);
+const head = (name: RegExp) => tab().getByRole("button", { name });
+
+test.each([[436], [1000]])("100 artifacts in a column of %i px go in groups by scope, open by what is running", async (width) => {
+  columnWidth(width);
+  serve({ artifacts: HUNDRED, runs: [ACTIVE, ENDED] });
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("false"));
+  expect(headTexts()).toEqual(["open/run 40", "Session 30", "done/run 30"]);
+  expect(head(/open\/run/).getAttribute("aria-expanded")).toBe("true");
+  expect(head(/Session/).getAttribute("aria-expanded")).toBe("true");
+  const body = document.getElementById(head(/done\/run/).getAttribute("aria-controls")!)!;
+  expect(body).toBeTruthy();
+  expect(within(body).queryByRole("link")).toBeNull();
+  const opened = document.getElementById(head(/open\/run/).getAttribute("aria-controls")!)!;
+  expect(within(opened).getAllByRole("link")).toHaveLength(40);
+  expect(within(opened).getAllByRole("link")[0].textContent).toBe("n0");
+});
+
+test("99 artifacts show no groups", async () => {
+  serve({ artifacts: HUNDRED.slice(1), runs: [ACTIVE, ENDED] });
+  open("/sessions/lado/artifacts");
+  const shown = await table();
+  expect(within(shown).getAllByRole("row")).toHaveLength(100);
+  expect(tab().queryByRole("button", { name: /Session/ })).toBeNull();
+});
+
+test("until the runs are read, or when they fail, no group is folded", async () => {
+  const served = serve({ artifacts: HUNDRED });
+  vi.stubGlobal("fetch", async (path: string) => (path.endsWith("/runs") ? new Response("{}", { status: 500 }) : served(path)));
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(heads()).toHaveLength(3));
+  expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("true");
+});
+
+test("a filter neither adds nor removes the groups, and one scope is a flat list", async () => {
+  const shot = artifact(
+    { id: "pic", scope: "done/run", name: "shot.png", full_name: "done/run/shot.png", title: null },
+    { id: "pic-r", hash: "pic-h", media_type: "image/png", created_at: "2026-10-07T13:00:00.000Z" },
+  );
+  serve({ artifacts: [shot, ...HUNDRED], runs: [ACTIVE, ENDED] });
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(heads()).toHaveLength(3));
+  fireEvent.click(screen.getByRole("button", { name: "Images" }));
+  expect(headTexts()).toEqual(["done/run 1"]);
+  fireEvent.click(screen.getByRole("button", { name: "All types" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Scope" }), { target: { value: "open/run" } });
+  expect(tab().queryAllByRole("button", { name: /open\/run/ })).toHaveLength(0);
+  expect(within(await table()).getAllByRole("link")[0].textContent).toBe("open/run/n0");
+});
+
+test("a fold is the human's, kept for the session through a reload, and works from a press", async () => {
+  serve({ artifacts: HUNDRED, runs: [ACTIVE, ENDED] });
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("false"));
+  fireEvent.click(head(/done\/run/));
+  expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("true");
+  fireEvent.click(head(/Session/));
+  expect(head(/Session/).getAttribute("aria-expanded")).toBe("false");
+  cleanup();
+  serve({ artifacts: HUNDRED, runs: [ACTIVE, ENDED] });
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(heads()).toHaveLength(3));
+  expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("true");
+  expect(head(/Session/).getAttribute("aria-expanded")).toBe("false");
+});
+
+test("while the search has text each group with a match shows open and does not fold", async () => {
+  serve({ artifacts: HUNDRED, runs: [ACTIVE, ENDED] });
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("false"));
+  fireEvent.change(screen.getByRole("searchbox", { name: "Find an artifact" }), { target: { value: "change of done" } });
+  expect(headTexts()).toEqual(["done/run 1"]);
+  const found = head(/done\/run/) as HTMLButtonElement;
+  expect(found.getAttribute("aria-expanded")).toBe("true");
+  expect(found.disabled).toBe(true);
+  expect(tab().getByRole("link", { name: "n0" })).toBeTruthy();
 });
 
 const tabs = () => screen.findByRole("navigation", { name: "Session sections" });

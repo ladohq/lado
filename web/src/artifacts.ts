@@ -18,6 +18,15 @@ export function changed(attached: Pick<AttachmentInfo, "artifact" | "hash">, art
 
 export type Kind = "markdown" | "text" | "image" | "html" | "other";
 
+// Each kind in words: the type filter's label and what a row of the narrow list says.
+export const KINDS: Record<Kind, { filter: string; word: string }> = {
+  markdown: { filter: "Documents", word: "Document" },
+  text: { filter: "Code and text", word: "Code or text" },
+  image: { filter: "Images", word: "Image" },
+  html: { filter: "HTML", word: "HTML" },
+  other: { filter: "Other", word: "File" },
+};
+
 // The types read as text besides text/*, as the core's artifacts.is_text says (SVG is an
 // image here: the viewer draws it).
 const TEXT = new Set(["application/json"]);
@@ -42,3 +51,16 @@ export function size(bytes: number): string {
 
 // The run part of a full name, "<run>/", or "" in the session's scope.
 export const scopePart = (scope: string) => (scope ? `${scope}/` : "");
+
+// From this many artifacts in the session, filtered or not, the tab shows them in groups.
+export const GROUPS_FROM = 100;
+
+export type ScopeGroup = { scope: string; artifacts: ArtifactInfo[] };
+
+// The artifacts by scope, in the order they came: on a list that is newest first, the group
+// with the newest record comes first and each group keeps the newest first.
+export function groupByScope(artifacts: ArtifactInfo[]): ScopeGroup[] {
+  const groups = new Map<string, ArtifactInfo[]>();
+  for (const one of artifacts) groups.set(one.scope, [...(groups.get(one.scope) ?? []), one]);
+  return [...groups].map(([scope, items]) => ({ scope, artifacts: items }));
+}

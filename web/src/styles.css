@@ -9121,18 +9121,15 @@ del.kit-mcp-name {
   }
 }
 
-/* The tab: its tools, then the table over the whole column, scrolling by itself. The tab is
-   a size container: a narrow column (the terminals open, a phone) shows cards. */
+/* The tab: its tools, then the table or the list over the whole column, scrolling by itself.
+   min-width keeps a long row from widening the column. */
 .artifacts-tab,
 .artifacts-list {
   display: flex;
   flex: 1;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
-}
-
-.artifacts-tab {
-  container-type: inline-size;
 }
 
 .artifacts-tools {
@@ -9262,39 +9259,86 @@ del.kit-mcp-name {
   font-style: italic;
 }
 
-/* A narrow column: each row a card. */
-@container (max-width: 720px) {
-  .artifacts-table thead {
-    display: none;
-  }
+/* A narrow column's list: two lines a row. The link stretches over the row, so the line's
+   overflow must not be the box of its ::after: only .artifact-item is positioned. */
+.artifact-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 
-  .artifacts-table,
-  .artifacts-table tbody,
-  .artifacts-table tr,
-  .artifacts-table td {
-    display: block;
-    width: 100%;
-  }
+.artifact-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 48px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--line);
+}
 
-  .artifacts-table tr {
-    padding: 8px 0;
-    border-bottom: 1px solid var(--line);
-  }
+.artifact-item:hover {
+  background: var(--raised);
+}
 
-  .artifacts-table td {
-    padding: 1px 4px;
-    border: 0;
-  }
+.artifact-item-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
 
-  .artifacts-table td.numeric {
-    display: inline-block;
-    width: auto;
-  }
+.artifact-item-line {
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  .artifacts-table td.artifact-cell {
-    display: flex;
-    min-width: 0;
-  }
+.artifact-item-meta {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.artifact-item .artifact-link::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+}
+
+.artifact-item .artifact-link:focus-visible {
+  outline: none;
+}
+
+.artifact-item .artifact-link:focus-visible::after {
+  outline: 2px solid var(--action);
+  outline-offset: -2px;
+}
+
+/* The groups of many artifacts: the lists' band (GroupHead), in the list and on a row of the
+   table. A run's name is exact, so it keeps its case, in mono. */
+section.artifact-group + section.artifact-group {
+  margin-top: 8px;
+}
+
+.artifact-group.of-run .group-name {
+  font-family: var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.artifacts-table .artifact-group th {
+  position: static;
+  padding: 6px 0 2px;
+  border: 0;
+  background: none;
+}
+
+.artifacts-table .group-head {
+  margin: 0;
 }
 
 /* An artifact's page, and the viewer in it and in the panel. */

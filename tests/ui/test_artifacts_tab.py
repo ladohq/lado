@@ -146,6 +146,86 @@ def test_the_tab_counts_the_artifacts_and_a_row_opens_one_in_the_panel(
     expect(tabs.get_by_role("link", name="Artifacts · 5")).to_be_visible()
 
 
+def many_artifacts(session: str) -> None:
+    """115 artifacts: the session's, those of ship/x (open) and of ship/y (ended)."""
+    write = lambda name: artifacts.write(session, "supervisor", name, content="x", title="T")  # noqa: E731
+    for at in range(35):
+        write(f"ship/y/old-{at}")
+    for at in range(35):
+        write(f"note-{at}")
+    for at in range(41):
+        write(f"ship/x/part-{at}")
+    runs.cancel(session, "ship/y", "no longer needed")
+
+
+def group(page: Page, name: str):
+    return page.get_by_role("button", name=name, exact=False).and_(page.locator(".group-fold"))
+
+
+@pytest.mark.parametrize("width", [390, 768, 1024, 1440])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_a_session_of_115_artifacts_reads_at_every_width(
+    page: Page, server, repo, tmp_path, shot, width, theme
+):
+    session = designed_session(repo, tmp_path)
+    many_artifacts(session)
+    page.set_viewport_size({"width": width, "height": 844})
+    log_in(page, server)
+    page.evaluate("theme => localStorage.setItem('lado.theme', theme)", theme)
+    page.goto(f"{server['url']}/sessions/{session}/artifacts")
+    tab = page.get_by_role("region", name="Artifacts")
+    expect(tab.locator(".group-fold")).to_have_count(3)
+    expect(tab.locator(".group-name")).to_have_text(["ship/x", "Session", "ship/y"])
+    expect(group(tab, "ship/y")).to_have_attribute("aria-expanded", "false")
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    shot(page, f"groups-{width}-{theme}")
+
+
+def test_a_narrow_column_lists_rows_of_48_px_that_open_by_keyboard(
+    page: Page, server, repo, tmp_path, shot
+):
+    session = designed_session(repo, tmp_path)
+    many_artifacts(session)
+    page.set_viewport_size({"width": 1000, "height": 844})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/artifacts")
+    tab = page.get_by_role("region", name="Artifacts")
+    width = tab.evaluate("element => element.clientWidth")
+    assert width < 720, width
+    row = tab.locator(".artifact-item").first
+    expect(row).to_be_visible()
+    box = row.bounding_box()
+    assert box is not None and 44 <= box["height"] <= 52, box
+
+    # Folds stay through a reload, and the keyboard folds.
+    fold = group(tab, "ship/y")
+    fold.focus()
+    page.keyboard.press("Enter")
+    expect(fold).to_have_attribute("aria-expanded", "true")
+    page.reload()
+    expect(fold).to_have_attribute("aria-expanded", "true")
+
+    # A search opens what holds the match; the fold is off meanwhile.
+    fold.focus()
+    page.keyboard.press("Space")
+    expect(fold).to_have_attribute("aria-expanded", "false")
+    page.get_by_role("searchbox", name="Find an artifact").fill("old-7")
+    expect(fold).to_have_attribute("aria-expanded", "true")
+    expect(fold).to_be_disabled()
+    page.get_by_role("searchbox", name="Find an artifact").fill("")
+
+    # A row opens by Enter and gives the focus back when the panel closes.
+    link = tab.locator(".artifact-item .artifact-link").first
+    link.focus()
+    page.keyboard.press("Enter")
+    panel = page.get_by_role("dialog", name="Artifact ship/x/part-40")
+    expect(panel).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(panel).to_have_count(0)
+    expect(link).to_be_focused()
+    shot(page, "narrow-list")
+
+
 def test_a_gates_chip_opens_the_attached_record_and_says_when_it_changed(
     page: Page, server, repo, tmp_path, shot
 ):

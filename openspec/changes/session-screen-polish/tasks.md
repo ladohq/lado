@@ -1,11 +1,11 @@
 ## 1. F20: the list and the groups
 
-- [ ] 1.1 `KINDS` with row words, `groupByScope`, `GROUPS_FROM` in `artifacts.ts` (D2, D6).
+- [x] 1.1 `KINDS` with row words, `groupByScope`, `GROUPS_FROM` in `artifacts.ts` (D2, D6).
   Check: `artifacts.test.ts`.
-- [ ] 1.2 `storedArtifactGroups`, `storeArtifactGroups` in `prefs.ts` (D3). Check: `prefs.test.ts`.
-- [ ] 1.3 `ArtifactItem`, the width picks list or table, the stacked-cells CSS out (D1, D5).
+- [x] 1.2 `storedArtifactGroups`, `storeArtifactGroups` in `prefs.ts` (D3). Check: `prefs.test.ts`.
+- [x] 1.3 `ArtifactItem`, the width picks list or table, the stacked-cells CSS out (D1, D5).
   Check: `ArtifactsTable.test.tsx`, `tests/ui/test_artifacts_tab.py`; AC-1, AC-2.
-- [ ] 1.4 Groups in the list and the table, folds, the `runs` watch (D3, D4).
+- [x] 1.4 Groups in the list and the table, folds, the `runs` watch (D3, D4).
   Check: `ArtifactsTable.test.tsx`, `tests/ui/test_artifacts_tab.py` with 115 artifacts; AC-3..AC-5.
 
 ## 2. F21: the panel

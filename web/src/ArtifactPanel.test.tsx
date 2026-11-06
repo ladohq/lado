@@ -109,12 +109,16 @@ test("Expand fills the room and turns into Restore width, which brings the chose
   render(<Open />);
   fireEvent.keyDown(edge(), { key: "ArrowLeft" });
   const expand = screen.getByRole("button", { name: "Expand" });
-  expect(expand.title).toBe("Expand");
+  fireEvent.focus(expand);
+  expect(screen.getByRole("tooltip").textContent).toBe("Widen the panel");
+  fireEvent.blur(expand);
   fireEvent.click(expand);
   expect(shown()).toBe("1200px");
   expect(stored()).toEqual({ width: 660, expanded: true });
   const restore = screen.getByRole("button", { name: "Restore width" });
-  expect(restore.title).toBe("Restore width"); // Esc closes the panel here: no "(Esc)"
+  fireEvent.focus(restore);
+  expect(screen.getByRole("tooltip").textContent).toBe("Restore width"); // Esc closes the panel here: no "(Esc)"
+  fireEvent.blur(restore);
   fireEvent.click(restore);
   expect(shown()).toBe("660px");
   expect(stored()).toEqual({ width: 660, expanded: false });
@@ -197,15 +201,71 @@ test("a panel of 560 px or wider holds every button in its top bar, the actions 
   expect(within(screen.getByRole("banner")).queryAllByRole("button")).toHaveLength(0);
 });
 
-test.each([
-  ["a stored width of 400 px", 1264, ["Expand", "Close"]],
-  ["a 390 px window, full screen", 390, ["Close"]],
-])("%s shows the four actions as icon buttons with tooltips, in one bar", async (_, window, controls) => {
-  localStorage.setItem("lado.artifactPanel", JSON.stringify({ width: 400, expanded: false }));
-  windowWidth(window);
+test("over the Artifacts tab, or an artifact's page, the link to the page says Full page; Expand stays", async () => {
+  render(<Open at="/sessions/lado/artifacts?view=r1" />);
+  const link = await within(bar()).findByRole("link", { name: "Full page" });
+  expect(link.getAttribute("href")).toBe("/sessions/lado/artifacts/a1?record=r1");
+  expect(names()).toEqual(["Full page", ...ACTIONS.slice(1), "Expand", "Close"]);
+  fireEvent.focus(link);
+  expect(screen.getByRole("tooltip").textContent).toBe("Open as a page in this tab");
+  cleanup();
+  render(<Open at="/sessions/lado/artifacts/a1?view=r1" />);
+  expect(await within(bar()).findByRole("link", { name: "Full page" })).toBeTruthy();
+});
+
+// The phone layout's query holds (phone.ts).
+const phone = () =>
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query.includes("max-width: 600px"),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+
+test("on a phone the bar holds Download, Copy link, the menu and Close, as icons", async () => {
+  phone();
+  windowWidth(560);
   render(<Open />);
   await within(bar()).findByRole("link", { name: "Download" });
-  expect(names()).toEqual([...ACTIONS, ...controls]);
+  expect(names()).toEqual(["Download", "Copy link", "More actions", "Close"]);
+  expect(within(bar()).getByRole("link", { name: "Download" }).textContent).toBe("");
+});
+
+test("the phone's menu opens the record in a new tab and leads to its page; Esc leaves the panel open", async () => {
+  phone();
+  windowWidth(390);
+  render(<Open />);
+  const more = await within(bar()).findByRole("button", { name: "More actions" });
+  expect(more.getAttribute("aria-haspopup")).toBe("menu");
+  fireEvent.click(more);
+  const menu = screen.getByRole("menu");
+  const items = within(menu).getAllByRole("menuitem");
+  expect(items.map((one) => one.textContent)).toEqual(["Open in new tab", "Open in Artifacts tab"]);
+  expect(items[0].getAttribute("href")).toBe("/view/lado/r1");
+  expect(document.activeElement).toBe(items[0]);
+  fireEvent.keyDown(items[0], { key: "Escape" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(document.activeElement).toBe(more);
+  expect(panel()).toBeTruthy();
+  fireEvent.click(more);
+  fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Open in Artifacts tab" }));
+  expect(screen.getByRole("status", { name: "Address" }).textContent).toBe("/sessions/lado/artifacts/a1?record=r1");
+});
+
+test("the phone's menu has no Open in new tab for a type the browser cannot show, and says Full page on the tab", async () => {
+  phone();
+  windowWidth(390);
+  served = artifact({}, { media_type: "application/octet-stream" });
+  render(<Open at="/sessions/lado/artifacts?view=r1" />);
+  fireEvent.click(await within(bar()).findByRole("button", { name: "More actions" }));
+  expect(within(screen.getByRole("menu")).getAllByRole("menuitem").map((one) => one.textContent)).toEqual(["Full page"]);
+});
+
+test("a stored width of 400 px shows the four actions as icon buttons with tooltips, in one bar", async () => {
+  localStorage.setItem("lado.artifactPanel", JSON.stringify({ width: 400, expanded: false }));
+  render(<Open />);
+  await within(bar()).findByRole("link", { name: "Download" });
+  expect(names()).toEqual([...ACTIONS, "Expand", "Close"]);
   for (const name of ["Open in Artifacts tab", "Open in new tab", "Download"]) {
     const link = within(bar()).getByRole("link", { name });
     expect(link.textContent).toBe("");

@@ -1,6 +1,7 @@
 // The session's Flows tab (docs/design/ui.md, Flows): the overview of its runs across the
 // whole column, Active (the waiting ones first, as cards with their flow's states) and
-// History, both foldable and found by the tab bar's search (?find=); or, in its place at any
+// History, both foldable and found by the tab bar's search (?find=), or with no run at all
+// what can run; or, in its place at any
 // width, a run's page with the way back: its head (status, task, its flow's states), what
 // goes on now (who acts, its gate answered in place, or how it ended) and its history, one
 // feed of events that open to their details. A step is a note (NoteInfo: who reported it,
@@ -9,7 +10,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router";
 
-import type { GateInfo, NoteInfo, RunEventInfo, RunInfo } from "./api";
+import { getSessionAbout, type GateInfo, type NoteInfo, type RunEventInfo, type RunInfo, type SessionAbout } from "./api";
 import { AgentName } from "./Agents";
 import { Attachments } from "./Attachments";
 import { Body, clock, since } from "./ChatText";
@@ -145,6 +146,7 @@ function RunsOverview({
     query,
   );
   const ids: FlowsGroup[] = ["active", "history"];
+  const none = !searching && groups.active.length + groups.ended.length === 0;
   return (
     <div className="flows-tab">
       <nav
@@ -153,19 +155,52 @@ function RunsOverview({
         aria-label="Flow runs"
         onScroll={(event) => (scroll.current = event.currentTarget.scrollTop)}
       >
-        {shown.map(({ group, entries }, at) => (
-          <ListGroup
-            key={group.name}
-            group={group}
-            entries={entries}
-            searching={searching}
-            fold={{ open: folds[ids[at]] === "open", onToggle: () => toggle(ids[at]), disabled: searching }}
-          />
-        ))}
+        {none && <NoRuns session={session} />}
+        {!none &&
+          shown.map(({ group, entries }, at) => (
+            <ListGroup
+              key={group.name}
+              group={group}
+              entries={entries}
+              searching={searching}
+              fold={{ open: folds[ids[at]] === "open", onToggle: () => toggle(ids[at]), disabled: searching }}
+            />
+          ))}
         {searching && shown.every(({ entries }) => entries.length === 0) && (
           <p className="muted list-none">No run matches “{query.trim()}”</p>
         )}
       </nav>
+    </div>
+  );
+}
+
+// What an empty tab says of its session's kits (null: not read, or they cannot be): each kit
+// with flows and its flows; that none has any only when every kit loads, as a kit that does
+// not may have some.
+export function flowsLine(kits: SessionAbout["kits"] | null): string {
+  const start = "Runs appear when the supervisor starts a flow of the session's kits";
+  const some = (kits ?? []).filter((kit) => kit.flows.length > 0);
+  if (some.length > 0) return `${start}: ${some.map((kit) => `${kit.name}: ${kit.flows.join(", ")}`).join("; ")}.`;
+  return kits?.every((kit) => kit.valid) ? "This session's kits have no flows, so no runs will appear here." : `${start}.`;
+}
+
+// A session with no run: where runs come from. Its kits are read once, when it shows.
+function NoRuns({ session }: { session: string }) {
+  const [kits, setKits] = useState<SessionAbout["kits"] | null>(null);
+  useEffect(() => {
+    let current = true;
+    getSessionAbout(session).then(
+      (about) => current && setKits(about.kits),
+      () => {}, // the line goes without the list
+    );
+    return () => {
+      current = false;
+    };
+  }, [session]);
+  return (
+    <div className="empty">
+      <p className="empty-title">No flow runs yet</p>
+      <p className="empty-line">{flowsLine(kits)}</p>
     </div>
   );
 }
@@ -181,8 +216,17 @@ function grouped(runs: RunInfo[]) {
   };
 }
 
+const firstLine = (text: string) => text.split("\n")[0];
+
+// What a run is about, under its name: its task's first line, when that is not blank.
+function taskLine(run: RunInfo): ReactNode {
+  const task = firstLine(run.task).trim();
+  return task && <span className="run-task-line">{task}</span>;
+}
+
 // An open run's card: its name, "Waits for you" when it does, its flow and kit and when it
-// started; the line of what goes on now; its flow's states, as on its page. Found as a row.
+// started; its task; the line of what goes on now; its flow's states, as on its page. Found
+// as a row.
 function card(session: string, run: RunInfo): ListEntry {
   const kit = [run.kit.name, run.kit.version].filter(Boolean).join(" ");
   return {
@@ -196,6 +240,7 @@ function card(session: string, run: RunInfo): ListEntry {
             {[run.flow, kit, `started ${clock(run.created_at)}`].filter(Boolean).join(" · ")}
           </span>
         </span>
+        {taskLine(run)}
         <span className="run-about">{about(run)}</span>
         <States run={run} />
       </>
@@ -203,7 +248,8 @@ function card(session: string, run: RunInfo): ListEntry {
   };
 }
 
-// A run's row: its name and one line under it; found by its name, task, flow and state.
+// A run's row: its name, its task and one line under them; found by its name, task, flow and
+// state.
 function entry(session: string, run: RunInfo): ListEntry {
   return {
     key: run.name,
@@ -211,6 +257,7 @@ function entry(session: string, run: RunInfo): ListEntry {
     row: (
       <>
         <span className="run-name">{run.name}</span>
+        {taskLine(run)}
         <span className="run-about">{about(run)}</span>
       </>
     ),
@@ -296,7 +343,7 @@ function Task({ text }: { text: string }) {
   return (
     <div className="run-task">
       <span className="run-task-label">Task</span>
-      {!all && <span className="run-task-first">{text.split("\n")[0]}</span>}
+      {!all && <span className="run-task-first">{firstLine(text)}</span>}
       <button type="button" className="link-button" aria-expanded={all} onClick={() => setAll(!all)}>
         {all ? "less" : "more"}
       </button>
@@ -444,8 +491,8 @@ function entries(run: RunInfo, lists: Lists): Entry[] {
 const latestWithBody = (all: Entry[]) => all.filter((one) => one.note?.body).at(-1)?.key;
 
 // The run's history: every event in one feed, the newest first or the oldest (remembered);
-// a step opens to its facts and its note's body. A note that comes later with a body opens
-// too.
+// a step opens to how long it took and its note's body. A note that comes later with a body
+// opens too.
 function History({ session, run, lists }: { session: string; run: RunInfo; lists: Lists }) {
   const all = entries(run, lists);
   const [order, setOrder] = useState<FlowsOrder>(storedFlowsOrder);
@@ -510,8 +557,9 @@ function History({ session, run, lists }: { session: string; run: RunInfo; lists
 // One line of the history. A step: when, a dot (green; orange for a way back or the human's
 // answer), who, `from [outcome] → to` (the outcome green forward, orange with the return
 // icon back, and its tooltip: flowSteps.tsx, as in the chat) and its summary, which opens
-// its facts and its note's body. A note kept before LADO 0.18 has only its state; the
-// human's flow-set has no outcome; a loop limit's answer is the human's override with one.
+// what its line lacks: how long it took and its note's body. A note kept before LADO 0.18
+// has only its state; the human's flow-set has no outcome; a loop limit's answer is the
+// human's override with one.
 // The start, end and cancel are one line each (a blue dot), never opened.
 function Row({
   session,
@@ -569,13 +617,6 @@ function Row({
   const back = states !== null && direction(states, note.state, note.target) === "back";
   const label = note.kind === "override" ? (note.outcome ? "loop limit" : "flow-set") : "";
   const who = note.actor && (human ? "you" : <AgentName session={session} name={note.actor} />);
-  const facts: [string, ReactNode][] = [
-    ["Who", who],
-    ["From", note.state],
-    ["Outcome", note.outcome],
-    ["To", note.target],
-    ["Step took", took],
-  ];
   // A click anywhere on the line opens it, but on a link (who) or the summary's own button.
   const click = (event: MouseEvent) => {
     if (!(event.target as Element).closest("a, button")) onToggle();
@@ -624,19 +665,10 @@ function Row({
           ▸
         </span>
       </div>
-      {open && (
+      {open && took && <p className="feed-took">Step took {took}</p>}
+      {open && (note.body || human) && (
         <div className="feed-detail" {...quoteArea(session)}>
-          <dl className="feed-facts">
-            {facts
-              .filter(([, value]) => value)
-              .map(([name, value]) => (
-                <div key={name}>
-                  <dt>{name}</dt>
-                  <dd>{value}</dd>
-                </div>
-              ))}
-          </dl>
-          {note.body ? <Body text={note.body} /> : human && <p className="feed-none">No comment.</p>}
+          {note.body ? <Body text={note.body} /> : <p className="feed-none">No comment.</p>}
         </div>
       )}
     </li>

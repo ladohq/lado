@@ -18,6 +18,7 @@ export function GroupHead({
   nameId,
   name,
   count,
+  unit,
   tone = "neutral",
   fold,
   action,
@@ -25,6 +26,7 @@ export function GroupHead({
   nameId: string; // the name's id, for the group's aria-labelledby
   name: string;
   count: number;
+  unit?: string; // what the count counts, for a screen reader only
   tone?: Tone;
   fold?: Fold;
   action?: ReactNode;
@@ -35,7 +37,10 @@ export function GroupHead({
       <span id={nameId} className="group-name">
         {name}
       </span>{" "}
-      <span className="group-count">{count}</span>
+      <span className="group-count">
+        {count}
+        {unit && <span className="visually-hidden"> {unit}</span>}
+      </span>
     </>
   );
   return (

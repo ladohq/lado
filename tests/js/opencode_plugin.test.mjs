@@ -172,8 +172,8 @@ const OVERFLOW = { name: "ContextOverflowError", data: { message: "too long." } 
 const STOPPED = {
   name: "ContextOverflowError",
   message:
-    "too long; LADO stopped the turn after 3 attempts: the model's context is too small for " +
-    "the agent's request",
+    "LADO stopped the turn after 3 attempts: the model's context is too small for the agent's " +
+    "request; too long.",
 }
 
 function step(sessionID, messageID) {

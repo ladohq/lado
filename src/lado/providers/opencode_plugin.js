@@ -49,12 +49,12 @@ function errorOf(error) {
 const OVERFLOW = "ContextOverflowError"
 const MAX_OVERFLOWS = 3
 
+// LADO's words go first: the core cuts an error to one short line (base.error_line).
 function stoppedBy(error) {
   const words =
     `LADO stopped the turn after ${MAX_OVERFLOWS} attempts: the model's context is too small ` +
     "for the agent's request"
-  const said = error.message?.replace(/\.\s*$/, "")
-  return { name: error.name, message: said ? `${said}; ${words}` : words }
+  return { name: error.name, message: error.message ? `${words}; ${error.message}` : words }
 }
 
 export const LadoPlugin = async ({ client, directory }, options = {}) => {

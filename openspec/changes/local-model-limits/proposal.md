@@ -49,7 +49,8 @@ same limits; each provider decides what to do with them, so the core stays neutr
   the launch window, and starts.
 - The plugin stops a turn after three context overflows in a row; the chat shows the turn's error.
 - A turn that ended on an error marks no message "replied only in its terminal".
-- OpenCode agents on a model server get npm's `fetch_retries=0` and `fetch_timeout=5000`.
+- OpenCode agents on a model server get npm's `fetch_retries=0` and `fetch_timeout=5000` while
+  `@opencode-ai/plugin` is not in OpenCode's config folder.
 - An agent's new state folder takes a copy of the user's `kv.json`.
 - LAD-210's flaky test is fixed at its cause.
 - `docs/install.md` says what to expect of small models; `docs/design/agents.md`,

@@ -68,9 +68,10 @@ the same.
 
 ### D7. The stop's words
 
-`{name: "ContextOverflowError", message: "<the server's message>; LADO stopped the turn after 3
-attempts: the model's context is too small for the agent's request"}`. `parse_event` and `turn_failed`
-stay as they are.
+`{name: "ContextOverflowError", message: "LADO stopped the turn after 3 attempts: the model's context
+is too small for the agent's request; <the server's message>"}`. LADO's words go first, as
+`base.error_line` cuts an error to 160 characters and a server's message takes them all. `parse_event`
+and `turn_failed` stay as they are.
 
 ### D8. The reply check skips a failed turn
 

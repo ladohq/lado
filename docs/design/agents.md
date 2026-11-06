@@ -151,7 +151,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   compaction's own small request succeeding each round. So the plugin counts
   `ContextOverflowError`s in a row per session, a new prompt or a step of the turn (not of a
   compaction, whose message has `summary: true`) starting the count again, and at the third
-  keeps that error with LADO's words and calls `client.session.abort`, whose
+  keeps that error with LADO's words before the server's, as an error is cut to one short line,
+  and calls `client.session.abort`, whose
   `MessageAbortedError` does not replace it. The abort gives two `session.idle`: the first ends
   the turn on that error, and any more before the next prompt end no turn, or the second would
   pass as a clean end and decide the reply check; checked in the TUI of OpenCode 1.18.35 and Kilo

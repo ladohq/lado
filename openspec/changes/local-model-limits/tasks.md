@@ -42,5 +42,5 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-05-local-model-
   CHANGELOG under `## 0.45.0 (unreleased)`. Check: `grep -n "32K" docs/install.md`.
 - [x] 7.2 The purpose of the new specs; a trial archive on a copy, its result in the pull request. Check:
   `openspec validate --specs --strict`.
-- [ ] 7.3 The pull request's manual check, with the human's list of the plan. Check: it is in the
+- [x] 7.3 The pull request's manual check, with the human's list of the plan. Check: it is in the
   description from the start.

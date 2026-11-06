@@ -2,7 +2,9 @@ import dataclasses
 import importlib
 import inspect
 import json
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import agent_helpers
@@ -1028,6 +1030,34 @@ def test_opencode_family_turn_end_carries_the_error_the_plugin_saw(provider, err
     assert providers.get(provider).parse_event("session.idle", payload) == Event(
         providers.TURN_END, error=expected, transient=False
     )
+
+
+STOP_THE_PLUGIN = """
+import { LadoPlugin } from %(plugin)s
+const client = { session: { abort: async () => {} } }
+const plugin = await LadoPlugin({ client, directory: "/repo" }, { hooks: { "session.idle": %(hook)s } })
+const error = { name: "ContextOverflowError", data: { message: %(said)s } }
+for (let n = 0; n < 3; n++) {
+  await plugin.event({ event: { type: "session.error", properties: { sessionID: "s", error } } })
+}
+await plugin.event({ event: { type: "session.idle", properties: { sessionID: "s" } } })
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node")
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_stopped_turn_says_why_past_the_cut_of_a_long_server_message(provider, tmp_path):
+    """The plugin's own error through the core's cut of an Event.error (base.error_line)."""
+    out = tmp_path / "payload.json"
+    write = f"import pathlib, sys; pathlib.Path({str(out)!r}).write_text(sys.stdin.read())"
+    script = STOP_THE_PLUGIN % {
+        "plugin": json.dumps(opencode_family.PLUGIN.as_uri()),
+        "hook": json.dumps([sys.executable, "-c", write]),
+        "said": json.dumps("This model's maximum context length is 4000 tokens. " * 8),
+    }
+    subprocess.run(["node", "--input-type=module", "-e", script], check=True, timeout=30)
+    event = providers.get(provider).parse_event("session.idle", out.read_text())
+    assert "the model's context is too small for the agent's request" in event.error
 
 
 def test_opencode_family_shares_one_plugin_inside_the_package():

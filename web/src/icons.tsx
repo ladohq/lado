@@ -22,6 +22,28 @@ function Icon({ children }: { children: ReactNode }) {
   );
 }
 
+// The feed's mark while the connection is lost (docs/design/ui.md, A lost connection).
+export const NoNetworkIcon = () => (
+  <Icon>
+    <path d="M2 2l20 20" />
+    <path d="M8.5 16.5a5 5 0 0 1 7 0" />
+    <path d="M5 12.9a10 10 0 0 1 5.2-2.8" />
+    <path d="M19 12.9a10 10 0 0 0-3-2" />
+    <path d="M2 8.8a15 15 0 0 1 4.2-2.7" />
+    <path d="M22 8.8A15 15 0 0 0 10.7 5" />
+    <path d="M12 20h.01" />
+  </Icon>
+);
+
+// An action without an answer (waitingParts.tsx, ActionProblem).
+export const AlertIcon = () => (
+  <Icon>
+    <path d="M12 3l10 18H2z" />
+    <path d="M12 10v5" />
+    <path d="M12 18h.01" />
+  </Icon>
+);
+
 export const HomeIcon = () => (
   <Icon>
     <path d="M4 10.5 12 4l8 6.5" />

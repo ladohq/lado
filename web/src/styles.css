@@ -346,8 +346,8 @@ button.rail-link {
   background: var(--line);
 }
 
-/* The change feed's link at the top bar's right end: live, or reconnecting with the reason
-   cut to one line; the server's address in its tooltip. */
+/* The change feed's link at the top bar's right end: live, or reconnecting on the warning
+   ground; the server's address, or why it refuses, in its tooltip. */
 .link {
   min-width: 0;
   overflow: hidden;
@@ -368,9 +368,31 @@ button.rail-link {
   vertical-align: 1px;
 }
 
-/* Live and connecting are short and stay whole; only reconnecting's reason is cut. */
+/* All three are short and stay whole. */
 .link-open,
-.link-connecting {
+.link-connecting,
+.link.reconnecting {
+  flex: none;
+}
+
+.link.reconnecting {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--warn-ground);
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.link.reconnecting::before {
+  content: none;
+}
+
+.link.reconnecting .icon {
+  width: 16px;
+  height: 16px;
   flex: none;
 }
 
@@ -1923,7 +1945,7 @@ h3 {
 
 /* A window too narrow for the link's word: its dot, the word in its tooltip (LiveButton). */
 @media (max-width: 1100px) {
-  .topbar:has(.session-head) .link-word {
+  .topbar:has(.session-head) .system-button .link-word {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -5890,6 +5912,61 @@ button.rec-bar-line {
 .quiet:disabled {
   cursor: default;
   opacity: 0.55;
+}
+
+/* What waits for the connection (docs/design/ui.md, A lost connection): `.lost-wait` is the
+   span with the button's tooltip, which takes the pointer, as a disabled button does not.
+   (`.waits` is another thing: what waits for the human.) */
+.lost-wait {
+  display: inline-flex;
+  cursor: not-allowed;
+}
+
+.lost-wait > button {
+  pointer-events: none;
+}
+
+.lost-note {
+  align-self: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.lost-wait button:disabled,
+button.locked:disabled,
+.action-problem button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* An action without an answer: under its buttons, Retry at the row's end or, with no room
+   left, under the words. */
+.action-problem {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--danger-ground);
+  color: var(--danger);
+}
+
+.action-problem .icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.action-problem b {
+  flex: 1;
+  min-width: 0;
+}
+
+.action-problem button {
+  flex: none;
 }
 
 .field-problem {
@@ -9960,7 +10037,7 @@ button.quiet.danger-text {
   height: 44px;
 }
 
-/* The change feed's mark: a dot while live; "reconnecting…" keeps its word. */
+/* The change feed's mark: a dot while live, the icon while lost, the word for the ear. */
 :root[data-phone] .topbar .link-word {
   position: absolute;
   width: 1px;
@@ -9985,8 +10062,12 @@ button.quiet.danger-text {
   background: none;
 }
 
-:root[data-phone] .topbar .reconnecting-why {
-  display: none;
+/* The lost mark: the same room as the dot's, icon alone. */
+:root[data-phone] .topbar .link.reconnecting {
+  justify-content: center;
+  min-width: 33px;
+  min-height: 33px;
+  padding: 0;
 }
 
 /* A session's head (Sessions.tsx, PhoneHead): Menu, the status dot, the title as a button

@@ -19,6 +19,7 @@ import {
   getSessions,
   getWaiting,
   probeStream,
+  Unreached,
   type AgentInfo,
   type ArtifactInfo,
   type GateInfo,
@@ -34,6 +35,7 @@ import {
   type SessionInfo,
   type WaitingItem,
 } from "./api";
+import { Attempts, type Attempt } from "./attempts";
 
 export type Change = { kind: string; session: string; key: string; op: string; item: unknown };
 
@@ -114,7 +116,9 @@ export type LiveState = {
   kits: KitsLoaded | null; // while the Kits page watches them
   kitChanges: number; // how many changes of the installed kits came: the session head asks its about again
   link: Link;
-  problem: string | null;
+  lost: boolean; // the feed is down for LOST_AFTER_MS or more: the mark says so, the buttons wait
+  problem: string | null; // why the server refuses the feed, when it answered
+  attempts: Record<string, Attempt>; // the actions without an answer, by their key (attempts.ts)
 };
 
 // The Kits page's lists: the installed kits (then the built-in ones), the marketplaces and
@@ -182,6 +186,7 @@ const LISTS: {
 };
 
 export const RETRY_MS = 3000; // the pause before a new stream when the server closed one
+export const LOST_AFTER_MS = 2000; // a shorter drop changes nothing on the screen
 
 export class Live {
   private state: LiveState = {
@@ -197,8 +202,14 @@ export class Live {
     kits: null,
     kitChanges: 0,
     link: "connecting",
+    lost: false,
     problem: null,
+    attempts: {},
   };
+  readonly attempts = new Attempts(
+    (attempts) => this.set({ attempts }),
+    () => this.state.link === "open",
+  );
   // The Kits page's lists: how many pages watch them, and per list whether a load runs and
   // whether another one follows it for the changes that came meanwhile.
   private kitsWatchers = 0;
@@ -215,6 +226,10 @@ export class Live {
   private listeners = new Set<() => void>();
   private source: EventSource | null = null;
   private retry: ReturnType<typeof setTimeout> | undefined;
+  private losing: ReturnType<typeof setTimeout> | undefined; // until the drop counts as lost
+  // The loads that failed, by what they load: what a page shows may lack a gap of the feed,
+  // and a resumed stream sends no reset, so they run again when the feed opens (recover).
+  private failed = new Map<string, () => void>();
   private lastId = ""; // the latest journal id the stream sent; derived changes have none
   private loading: Change[] | null = null; // changes that came while a load runs
   // Per list, session -> pages that watch it, and the changes that came while it loads.
@@ -256,15 +271,46 @@ export class Live {
 
   stop() {
     clearTimeout(this.retry);
+    this.stopLosing();
+    this.attempts.stop();
     this.source?.close();
     this.source = null;
+  }
+
+  private stopLosing() {
+    clearTimeout(this.losing);
+    this.losing = undefined;
+  }
+
+  private opened() {
+    const back = this.state.link === "down";
+    this.stopLosing();
+    this.set({ link: "open", lost: false, problem: null });
+    if (back) this.recover();
+    this.attempts.look();
+  }
+
+  // The feed went: one timer for the whole loss, however many errors it brings.
+  private dropped() {
+    this.set({ link: "down" });
+    if (this.state.lost || this.losing !== undefined) return;
+    this.losing = setTimeout(() => {
+      this.losing = undefined;
+      this.set({ lost: true });
+    }, LOST_AFTER_MS);
+  }
+
+  private recover() {
+    const again = [...this.failed.values()];
+    this.failed.clear();
+    again.forEach((load) => load());
   }
 
   private connect() {
     const url = this.lastId ? `/api/events?after=${encodeURIComponent(this.lastId)}` : "/api/events";
     const source = new EventSource(url);
     this.source = source;
-    source.onopen = () => this.set({ link: "open", problem: null });
+    source.onopen = () => this.opened();
     source.addEventListener("reset", (event) => {
       // After a gap the kits may have changed unseen; the first reset is no change.
       if (this.lastId) this.set({ kitChanges: this.state.kitChanges + 1 });
@@ -279,7 +325,7 @@ export class Live {
     });
     source.onerror = () => {
       if (this.source !== source) return;
-      this.set({ link: "down" });
+      this.dropped();
       // The browser tries again by itself after a network error, not after an answer
       // other than the stream (401, 503): then ask the API why, and try again later.
       if (source.readyState === EventSource.CLOSED) void this.diagnose(source);
@@ -294,10 +340,11 @@ export class Live {
     );
     if (this.source !== source) return; // stopped meanwhile
     if (problem instanceof ApiError && problem.status === 401) {
-      this.set({ link: "refused", problem: problem.message }); // api.ts told the shell
+      this.stopLosing();
+      this.set({ link: "refused", lost: false, problem: problem.message }); // api.ts told the shell
       return;
     }
-    this.set({ problem: problem === null ? null : message(problem) });
+    this.set({ problem: problem === null || problem instanceof Unreached ? null : message(problem) });
     this.retry = setTimeout(() => this.connect(), RETRY_MS);
   }
 
@@ -389,6 +436,24 @@ export class Live {
     });
   }
 
+  // The highest id of the session's messages any page holds: 0 with none.
+  lastMessage(session: string): number {
+    const windows = Object.values(this.state.messages[session] ?? {});
+    return Math.max(0, ...windows.flatMap((one) => (one && "items" in one ? one.items.map((item) => item.id) : [])));
+  }
+
+  // What a Send's look reads after (attempts.ts). A window with nothing in it says nothing of
+  // the history: an agent's starts when it was spawned, and one may still load. So the server
+  // says; null when it cannot.
+  async messageCursor(session: string): Promise<number | null> {
+    const known = this.lastMessage(session);
+    if (known > 0) return known;
+    return getMessages(session, { with: "human", limit: 1 }).then(
+      (page) => page.items[page.items.length - 1]?.id ?? 0,
+      () => null,
+    );
+  }
+
   private windowOf(watched: Watched): WindowLoaded {
     return this.state.messages[watched.session]?.[watched.key] ?? null;
   }
@@ -400,9 +465,27 @@ export class Live {
 
   // The latest page, when the window opens or after a reset that finds it empty.
   private loadLatest(watched: Watched) {
-    void this.loadInto(watched, { ...filterOf(watched.spec), limit: watched.spec.limit }, (_, got) =>
-      "error" in got ? got : { ...got, from: fromOf(got, null), loadingEarlier: false, problem: null },
+    void this.loadInto(watched, { ...filterOf(watched.spec), limit: watched.spec.limit }, (now, got) =>
+      this.settleWindow(watched, now, got, (page) => ({ ...page, from: fromOf(page, null), loadingEarlier: false, problem: null })),
     );
+  }
+
+  // A load of the whole window: one that fails keeps what it has and loads again later.
+  private settleWindow(
+    watched: Watched,
+    now: WindowLoaded,
+    got: MessagePage | { error: string },
+    loaded: (page: MessagePage) => WindowLoaded,
+  ): WindowLoaded {
+    const id = `window\n${watched.session}\n${watched.key}`;
+    if (!("error" in got)) {
+      this.failed.delete(id);
+      return loaded(got);
+    }
+    this.failed.set(id, () => {
+      if (this.windows.get(`${watched.session}\n${watched.key}`) === watched) this.reloadWindow(watched);
+    });
+    return now && "items" in now ? now : got;
   }
 
   // One load into the window: the changes that come while any load runs wait and are
@@ -476,7 +559,9 @@ export class Live {
       )
       .then((loaded) => {
         this.waitingLoading = false;
-        if (this.waitingWatchers > 0) this.set({ waiting: loaded });
+        if (this.waitingWatchers > 0) {
+          this.set({ waiting: this.kept("waiting", this.state.waiting, loaded, () => this.loadWaiting()) });
+        }
         if (this.waitingAgain) {
           this.waitingAgain = false;
           this.loadWaiting();
@@ -512,7 +597,11 @@ export class Live {
       )
       .then((loaded) => {
         load.loading = false;
-        if (this.state.kits !== null) this.set({ kits: { ...this.state.kits, [list]: loaded } });
+        const kits = this.state.kits;
+        if (kits !== null) {
+          const shown = this.kept(`kits\n${list}`, kits[list] as ListLoaded<unknown>, loaded, () => this.loadKits(list));
+          this.set({ kits: { ...kits, [list]: shown } });
+        }
         if (load.again) {
           load.again = false;
           this.loadKits(list);
@@ -547,6 +636,18 @@ export class Live {
     this.loadKits("available");
   }
 
+  // What a load leaves shown: what it got, or, when it failed, what was there (a page keeps
+  // its items, a card its fields) and its error only with nothing to show; `again` then runs
+  // when the feed opens after a loss.
+  private kept<T extends object>(id: string, now: T | { error: string } | null | undefined, got: T | { error: string }, again: () => void) {
+    if (!("error" in got)) {
+      this.failed.delete(id);
+      return got;
+    }
+    this.failed.set(id, again);
+    return now && !("error" in now) ? now : got;
+  }
+
   private loadList(list: ListName, session: string) {
     const kind = LISTS[list] as ListKind<unknown>;
     const changes: Change[] = [];
@@ -565,7 +666,10 @@ export class Live {
       .then((loaded) => {
         if (this.listLoads[list].get(session) !== changes) return; // a later load, or let go
         this.listLoads[list].delete(session);
-        this.set({ [list]: { ...this.state[list], [session]: loaded } });
+        const shown = this.kept(`${list}\n${session}`, this.state[list][session] as ListLoaded<unknown>, loaded, () => {
+          if (this.watched[list].has(session)) this.loadList(list, session);
+        });
+        this.set({ [list]: { ...this.state[list], [session]: shown } });
         changes.forEach((change) => this.applyList(list, change));
       });
   }
@@ -595,6 +699,10 @@ export class Live {
     this.windows.forEach((watched) => this.reloadWindow(watched));
     this.loadWaiting();
     (Object.keys(KIT_LOADS) as KitList[]).forEach((list) => this.loadKits(list));
+    this.loadSessions();
+  }
+
+  private loadSessions() {
     const changes: Change[] = [];
     this.loading = changes;
     getSessions()
@@ -605,7 +713,7 @@ export class Live {
       .then((sessions) => {
         if (this.loading !== changes) return; // a later reset loads again
         this.loading = null;
-        this.set({ sessions });
+        this.set({ sessions: this.kept("sessions", this.state.sessions, sessions, () => this.loadSessions()) });
         changes.forEach((change) => this.apply(change)); // newer than the load, or the same
       });
   }
@@ -620,8 +728,13 @@ export class Live {
       return;
     }
     const since = now && "items" in now ? now.from : null;
-    void this.loadInto(watched, { ...filterOf(watched.spec), after: first.id - 1 }, (_, got) =>
-      "error" in got ? got : { ...got, from: fromOf(got, since), loadingEarlier: watched.loadingEarlier, problem: null },
+    void this.loadInto(watched, { ...filterOf(watched.spec), after: first.id - 1 }, (loaded, got) =>
+      this.settleWindow(watched, loaded, got, (page) => ({
+        ...page,
+        from: fromOf(page, since),
+        loadingEarlier: watched.loadingEarlier,
+        problem: null,
+      })),
     );
   }
 
@@ -693,6 +806,15 @@ export const LiveContext = createContext<Live | null>(null);
 export function useLive(): LiveState {
   const live = useLiveStore();
   return useSyncExternalStore(live.subscribe, live.get);
+}
+
+// An action's attempt, when it got no answer (attempts.ts).
+export const useAttempt = (key: string): Attempt | undefined => useLive().attempts[key];
+
+// Whether an action's buttons wait: the connection is lost, or its outcome is not known yet.
+export function useLocked(key: string): boolean {
+  const { lost, attempts } = useLive();
+  return lost || attempts[key]?.state === "unknown";
 }
 
 // The store itself, for a page that asks it to watch something (watch).

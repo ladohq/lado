@@ -118,7 +118,8 @@ def test_a_new_link_logs_another_browser_out_and_keeps_this_page(
     expect(dialog.get_by_text(f"?token={new[:4]}…{new[-4:]}")).to_be_visible()
     shot(page, "share-new-link")
     dialog.get_by_role("button", name="Close").click()
-    expect(page.get_by_role("button", name="System")).to_have_text("live")
+    # A drop this short changes nothing: the system panel stays open beside its button.
+    expect(page.get_by_role("button", name="System", exact=True)).to_have_text("live")
     assert page.request.get(f"{server['url']}/api/sessions").status == 200  # the new cookie
     expect(other.get_by_role("alert")).to_have_text(
         "no valid token: open the link `lado ui` prints"

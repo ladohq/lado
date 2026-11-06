@@ -15,6 +15,27 @@ export class ApiError extends Error {
   }
 }
 
+// A request the server gave no answer to: it may or may not have reached it. The words are
+// the human's; the exception itself goes to the browser's console (`answered`).
+export class Unreached extends ApiError {
+  constructor() {
+    super(0, "No connection");
+  }
+}
+
+// One request with its answer read: a refusal stays as it is and an abort of the UI's own
+// too; anything else, a body cut off included, means no answer. Who reads a body after the
+// request ended (getContent's) reads it under this too.
+export async function answered<T>(request: () => Promise<T>): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    if (error instanceof ApiError || (error as Error | null)?.name === "AbortError") throw error;
+    console.error(error);
+    throw new Unreached();
+  }
+}
+
 // Who hears about a 401: the shell, the one place that tells the human how to get in.
 let denied: ((detail: string) => void) | null = null;
 
@@ -34,11 +55,12 @@ async function refused(answer: Response): Promise<ApiError> {
   return error;
 }
 
-async function get<T>(path: string): Promise<T> {
-  const answer = await fetch(path, { credentials: "same-origin" });
-  if (!answer.ok) throw await refused(answer);
-  return (await answer.json()) as T;
-}
+const get = <T>(path: string): Promise<T> =>
+  answered(async () => {
+    const answer = await fetch(path, { credentials: "same-origin" });
+    if (!answer.ok) throw await refused(answer);
+    return (await answer.json()) as T;
+  });
 
 export type AgentInfo = components["schemas"]["AgentInfo"];
 
@@ -135,17 +157,18 @@ export const HUMAN = "human"; // the human as a participant of LADO's messages
 export const LADO = "lado"; // LADO itself, as the sender of its notices and the actor of run events
 
 // A request that changes something: the browser sends its Origin, which the server checks.
-async function post<T>(path: string, body?: unknown, method = "POST"): Promise<T> {
-  const answer = await fetch(path, {
-    method,
-    credentials: "same-origin",
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+const post = <T>(path: string, body?: unknown, method = "POST"): Promise<T> =>
+  answered(async () => {
+    const answer = await fetch(path, {
+      method,
+      credentials: "same-origin",
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!answer.ok) throw await refused(answer);
+    if (answer.status === 204) return undefined as T;
+    return (await answer.json()) as T;
   });
-  if (!answer.ok) throw await refused(answer);
-  if (answer.status === 204) return undefined as T;
-  return (await answer.json()) as T;
-}
 
 const sessionPath = (session: string) => `/api/sessions/${encodeURIComponent(session)}`;
 
@@ -210,11 +233,12 @@ export const getRecord = (session: string, record: string) =>
 export const contentPath = (session: string, record: string, download = false) =>
   `${sessionPath(session)}/records/${encodeURIComponent(record)}/content${download ? "?download=1" : ""}`;
 // A record's content as an answer, for the viewer to read; a refusal is an ApiError.
-export async function getContent(session: string, record: string, signal?: AbortSignal): Promise<Response> {
-  const answer = await fetch(contentPath(session, record), { credentials: "same-origin", signal });
-  if (!answer.ok) throw await refused(answer);
-  return answer;
-}
+export const getContent = (session: string, record: string, signal?: AbortSignal): Promise<Response> =>
+  answered(async () => {
+    const answer = await fetch(contentPath(session, record), { credentials: "same-origin", signal });
+    if (!answer.ok) throw await refused(answer);
+    return answer;
+  });
 // The human's answer to an open gate: one of its options and a comment for the next step,
 // with the full names of the files uploaded for it.
 export const answerGate = (session: string, id: number, option: string, comment: string, artifacts: string[] = []) =>
@@ -240,16 +264,17 @@ export const getLimits = () => get<Limits>("/api/limits");
 
 // The human's file as an artifact of the session's scope, its bytes as the body; the same
 // file again gives the record it has.
-export async function uploadFile(session: string, file: File, name: string): Promise<ArtifactInfo> {
-  const answer = await fetch(`${sessionPath(session)}/artifacts?file_name=${encodeURIComponent(name)}`, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: file,
+export const uploadFile = (session: string, file: File, name: string): Promise<ArtifactInfo> =>
+  answered(async () => {
+    const answer = await fetch(`${sessionPath(session)}/artifacts?file_name=${encodeURIComponent(name)}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: file,
+    });
+    if (!answer.ok) throw await refused(answer);
+    return (await answer.json()) as ArtifactInfo;
   });
-  if (!answer.ok) throw await refused(answer);
-  return (await answer.json()) as ArtifactInfo;
-}
 
 // A reply sends the full names of the files uploaded for it only when it has some, as a
 // message does.
@@ -499,9 +524,10 @@ export const updateMarketplaces = (name?: string) =>
 
 // Why the server refuses the event stream at `path`: an ApiError, or nothing when it would
 // open now. Reads only the answer's head; an open stream is closed at once.
-export async function probeStream(path: string): Promise<void> {
-  const abort = new AbortController();
-  const answer = await fetch(path, { credentials: "same-origin", signal: abort.signal });
-  if (!answer.ok) throw await refused(answer);
-  abort.abort();
-}
+export const probeStream = (path: string): Promise<void> =>
+  answered(async () => {
+    const abort = new AbortController();
+    const answer = await fetch(path, { credentials: "same-origin", signal: abort.signal });
+    if (!answer.ok) throw await refused(answer);
+    abort.abort();
+  });

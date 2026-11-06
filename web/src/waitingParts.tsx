@@ -2,11 +2,58 @@
 // agent's tab (WaitingCard.tsx) and a gate's (GateCard.tsx): a title of at most two lines,
 // the context, which alone scrolls, and the footer, always whole. A box that scrolls says
 // there is more by a fade (useMore); the context adds "↓ more", the card's Expand.
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 
 import { MOST_LINES } from "./fieldHeight";
+import { AlertIcon } from "./icons";
+import { useAttempt, useLive, useLiveStore } from "./live";
+import { Tooltip } from "./Tooltip";
 
 export const STOPPED_NOTE = "The session is stopped: resume it to answer.";
+export const WAITING_NOTE = "Waiting for connection";
+
+// A button that waits while the connection is lost says why in a tooltip. On the span around
+// it, as a disabled button gets no mouse events. `tip`: its own tooltip the rest of the time.
+export function Waits({ tip, children }: { tip?: string; children: ReactElement<object> }) {
+  const { lost } = useLive();
+  if (lost) {
+    return (
+      <Tooltip tip={WAITING_NOTE}>
+        <span className="lost-wait" tabIndex={0}>
+          {children}
+        </span>
+      </Tooltip>
+    );
+  }
+  return tip === undefined ? children : <Tooltip tip={tip}>{children}</Tooltip>;
+}
+
+// An action without an answer, under its buttons (attempts.ts): what LADO knows of it in two
+// words and Retry, on once LADO knows it did not arrive and the action can be sent; a Retry
+// the server refused, as any refusal. `off`: the action's buttons are off for another reason.
+export function ActionProblem({ attempt: key, off = false }: { attempt: string; off?: boolean }) {
+  const live = useLiveStore();
+  const { lost } = useLive();
+  const attempt = useAttempt(key);
+  if (attempt === undefined) return null;
+  if (typeof attempt.state === "object") {
+    return (
+      <p className="field-problem" role="alert">
+        {attempt.state.refused}
+      </p>
+    );
+  }
+  const missed = attempt.state === "missed";
+  return (
+    <div className="action-problem" role="alert">
+      <AlertIcon />
+      <b>{`${attempt.what} not ${missed ? "delivered" : "confirmed"}`}</b>
+      <button type="button" className="quiet" disabled={!missed || lost || off} onClick={() => void live.attempts.retry(key)}>
+        Retry
+      </button>
+    </div>
+  );
+}
 
 const FIELD_LINES = 4; // the lines a card's field grows to, in the card not expanded
 

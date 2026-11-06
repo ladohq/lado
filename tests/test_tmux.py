@@ -151,7 +151,7 @@ def test_popup_opens_on_the_clients_attached_to_the_session(tmp_path):
         assert "asks y" in screen and "other" not in screen
         tmux.run("send-keys", "-t", f"{viewer}:v", "approve", "Enter")
         deadline = time.time() + 5
-        while time.time() < deadline and not out.exists():
+        while time.time() < deadline and not (out.exists() and out.read_text()):
             time.sleep(0.05)
         assert out.read_text() == "approve\n"
         # The agent's window got nothing.

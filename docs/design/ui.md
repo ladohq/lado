@@ -2912,8 +2912,12 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   From 100 artifacts of the session (`GROUPS_FROM`, counted before any filter) both go in
   groups by scope while the filter is All scopes: `GroupHead`'s band, "Session" or the run's
   exact name in mono, with the rows shown; the group of the newest record first, a row's
-  name without its run. Session's and open runs' groups start open, ended runs' folded, and
-  until the runs are read nothing is folded; the human's fold is kept per session and scope
+  name without its run, as with one scope picked. In the flat list of all scopes a long run
+  part is cut at its start, at about a third of the row, so the name stays. Session's and
+  open runs' groups start open, ended runs' folded, and
+  until the runs are read nothing is folded. A scope takes this default once, on entering the
+  tab or when its group first appears: a run that ends folds nothing under the human, and a
+  group with the focus does not fold. The human's fold is kept per session and scope
   (`prefs.ts`, `lado.artifactGroups`). While the search has text each group with a match
   shows open and does not fold. In the table a group is a `tbody` under a `th` of six
   columns.

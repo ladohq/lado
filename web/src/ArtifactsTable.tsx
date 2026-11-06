@@ -21,7 +21,7 @@ import { isOpen } from "./Flows";
 import { GroupHead, type Fold } from "./GroupHead";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { artifactPath, RECORD_PARAM, sessionPath } from "./paths";
-import { storeArtifactGroups, storedArtifactGroups } from "./prefs";
+import { storeArtifactGroups, storedArtifactGroups, type ArtifactGroups } from "./prefs";
 import { useWidth } from "./Splitter";
 import { Tooltip } from "./Tooltip";
 
@@ -43,8 +43,8 @@ export function Artifacts({ session, artifact }: { session: string; artifact?: s
   const state = useLive();
   const loaded = state.artifacts[session] ?? null;
   const runs = state.runs[session];
-  // Until the runs are read, or when they fail, no run counts as ended: nothing is hidden.
-  const ended = runs && "items" in runs ? runs.items.filter((one) => !isOpen(one)).map((one) => one.name) : [];
+  // null until the runs are read; when they fail no run counts as ended: nothing is hidden.
+  const ended = !runs ? null : "items" in runs ? runs.items.filter((one) => !isOpen(one)).map((one) => one.name) : [];
   let shown;
   if (loaded === null) shown = <p className="muted">Loading…</p>;
   else if ("error" in loaded) {
@@ -65,12 +65,23 @@ export function Artifacts({ session, artifact }: { session: string; artifact?: s
 // A group as it shows now: its heading's name and fold, and the id `fold.controls` names.
 type ShownGroup = ScopeGroup & { name: string; id: string; fold: Fold };
 
-function ArtifactsTable({ session, artifacts, ended }: { session: string; artifacts: ArtifactInfo[]; ended: string[] }) {
+// Whether the focus is in a scope's group, by the group's `data-scope`.
+const focusIn = (scope: string) => document.activeElement?.closest("[data-scope]")?.getAttribute("data-scope") === scope;
+
+function ArtifactsTable({ session, artifacts, ended }: { session: string; artifacts: ArtifactInfo[]; ended: string[] | null }) {
   const [root, width] = useWidth<HTMLDivElement>();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState(ALL);
   const [kind, setKind] = useState<string>(ALL);
   const [folds, setFolds] = useState(() => storedArtifactGroups(session));
+  // Each scope's default, taken once: on entering the tab, or when its group first appears. A
+  // run that ends meanwhile folds nothing under the human, and a group with the focus stays.
+  const [defaults, setDefaults] = useState<ArtifactGroups>({});
+  const fresh = ended === null ? [] : [...new Set(artifacts.map((one) => one.scope))].filter((one) => !defaults[one]);
+  if (fresh.length > 0) {
+    const taken = fresh.map((one) => [one, ended?.includes(one) && !focusIn(one) ? "folded" : "open"]);
+    setDefaults({ ...defaults, ...Object.fromEntries(taken) });
+  }
   const ids = useId();
   if (artifacts.length === 0) {
     return (
@@ -101,7 +112,7 @@ function ArtifactsTable({ session, artifacts, ended }: { session: string; artifa
     scope === ALL && artifacts.length >= GROUPS_FROM
       ? groupByScope(shown).map((group, at) => {
           const id = `${ids}-${at}`;
-          const open = (folds[group.scope] ?? (ended.includes(group.scope) ? "folded" : "open")) === "open";
+          const open = (folds[group.scope] ?? defaults[group.scope] ?? "open") === "open";
           return {
             ...group,
             id,
@@ -145,14 +156,15 @@ function ArtifactsTable({ session, artifacts, ended }: { session: string; artifa
         </span>
       </div>
       <div className="artifacts-scroll">
-        <View session={session} artifacts={shown} groups={groups} />
+        <View session={session} artifacts={shown} groups={groups} bare={scope !== ALL} />
         {shown.length === 0 && <p className="muted list-none">No match</p>}
       </div>
     </div>
   );
 }
 
-type ViewProps = { session: string; artifacts: ArtifactInfo[]; groups: ShownGroup[] | null };
+// `bare`: a flat list's names go without their run, which the scope filter says.
+type ViewProps = { session: string; artifacts: ArtifactInfo[]; groups: ShownGroup[] | null; bare: boolean };
 
 // A group's run goes by its exact name, so its heading drops the capitals; Session is a word.
 const groupClass = (group: ScopeGroup) => `artifact-group${group.scope ? " of-run" : ""}`;
@@ -161,7 +173,7 @@ const groupHead = (group: ShownGroup) => (
   <GroupHead nameId={`${group.id}-name`} name={group.name} count={group.artifacts.length} fold={group.fold} />
 );
 
-function Table({ session, artifacts, groups }: ViewProps) {
+function Table({ session, artifacts, groups, bare }: ViewProps) {
   return (
     <table className="artifacts-table" aria-label="Artifacts">
       <thead>
@@ -177,19 +189,19 @@ function Table({ session, artifacts, groups }: ViewProps) {
       {groups === null ? (
         <tbody>
           {artifacts.map((one) => (
-            <Row key={one.id} session={session} artifact={one} />
+            <Row key={one.id} session={session} artifact={one} bare={bare} />
           ))}
         </tbody>
       ) : (
         groups.map((group) => (
-          <tbody key={group.scope} id={group.id} className={groupClass(group)}>
+          <tbody key={group.scope} id={group.id} className={groupClass(group)} data-scope={group.scope}>
             <tr>
               <th colSpan={6} scope="rowgroup">
                 {groupHead(group)}
               </th>
             </tr>
             {group.fold.open &&
-              group.artifacts.map((one) => <Row key={one.id} session={session} artifact={one} grouped />)}
+              group.artifacts.map((one) => <Row key={one.id} session={session} artifact={one} bare />)}
           </tbody>
         ))
       )}
@@ -197,24 +209,24 @@ function Table({ session, artifacts, groups }: ViewProps) {
   );
 }
 
-function List({ session, artifacts, groups }: ViewProps) {
+function List({ session, artifacts, groups, bare }: ViewProps) {
   if (groups === null) {
     return (
       <ul className="artifact-items" aria-label="Artifacts">
         {artifacts.map((one) => (
-          <ArtifactItem key={one.id} session={session} artifact={one} />
+          <ArtifactItem key={one.id} session={session} artifact={one} bare={bare} />
         ))}
       </ul>
     );
   }
   return groups.map((group) => (
-    <section key={group.scope} className={groupClass(group)} aria-labelledby={`${group.id}-name`}>
+    <section key={group.scope} className={groupClass(group)} aria-labelledby={`${group.id}-name`} data-scope={group.scope}>
       {groupHead(group)}
       <div id={group.id} hidden={!group.fold.open}>
         {group.fold.open && (
           <ul className="artifact-items">
             {group.artifacts.map((one) => (
-              <ArtifactItem key={one.id} session={session} artifact={one} grouped />
+              <ArtifactItem key={one.id} session={session} artifact={one} bare />
             ))}
           </ul>
         )}
@@ -246,9 +258,9 @@ function useRowOpen(session: string, artifact: ArtifactInfo) {
 }
 
 // A row of the list: its link stretches over the row (styles.css), so a press anywhere on it
-// is the link's and the tooltip, the latest change, is the row's. In a group the name goes
-// without its run, which the heading says.
-function ArtifactItem({ session, artifact, grouped = false }: { session: string; artifact: ArtifactInfo; grouped?: boolean }) {
+// is the link's and the tooltip, the latest change, is the row's. In a group, or with one
+// scope picked, the name goes without its run, which the heading or the filter says.
+function ArtifactItem({ session, artifact, bare = false }: { session: string; artifact: ArtifactInfo; bare?: boolean }) {
   const { link, open } = useRowOpen(session, artifact);
   const { latest } = artifact;
   return (
@@ -258,7 +270,7 @@ function ArtifactItem({ session, artifact, grouped = false }: { session: string;
         <span className="artifact-item-line">
           <Tooltip tip={latest.summary || null}>
             <Link ref={link} to={artifactPath(session, artifact.id)} className="artifact-link" onClick={open}>
-              <FullName scope={grouped ? "" : artifact.scope} name={artifact.name} />
+              <FullName scope={bare ? "" : artifact.scope} name={artifact.name} />
             </Link>
           </Tooltip>
           {artifact.title && ` · ${artifact.title}`}
@@ -273,7 +285,7 @@ function ArtifactItem({ session, artifact, grouped = false }: { session: string;
 }
 
 // A row of the table: a click anywhere on it opens it, as its link does.
-function Row({ session, artifact, grouped = false }: { session: string; artifact: ArtifactInfo; grouped?: boolean }) {
+function Row({ session, artifact, bare = false }: { session: string; artifact: ArtifactInfo; bare?: boolean }) {
   const { link, open } = useRowOpen(session, artifact);
   const { latest } = artifact;
   return (
@@ -282,7 +294,7 @@ function Row({ session, artifact, grouped = false }: { session: string; artifact
         <KindIcon mediaType={latest.media_type} />
         <span>
           <Link ref={link} to={artifactPath(session, artifact.id)} className="artifact-link" onClick={open}>
-            <FullName scope={grouped ? "" : artifact.scope} name={artifact.name} />
+            <FullName scope={bare ? "" : artifact.scope} name={artifact.name} />
           </Link>
           {artifact.title && <span className="artifact-row-title">{artifact.title}</span>}
         </span>

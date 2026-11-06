@@ -9117,13 +9117,18 @@ del.kit-mcp-name {
 }
 
 .artifacts-tools .search {
-  flex: 0 1 280px;
+  flex: 1 1 190px;
   width: auto;
+  min-width: 0;
+  max-width: 280px;
   height: 30px;
   margin: 0;
 }
 
+/* As wide as its choice, up to a limit: a run's long name must not take the column. */
 .artifacts-tools select {
+  min-width: 0;
+  max-width: 160px;
   height: 30px;
   padding: 0 8px;
   border: 1px solid var(--line);
@@ -9263,6 +9268,23 @@ del.kit-mcp-name {
   flex: 1;
   flex-direction: column;
   min-width: 0;
+  container-type: inline-size;
+}
+
+/* A long run gives way, not the artifact's name: its part is cut at its start, "…-198/", by
+   the right-to-left box; the marks keep the text's own order, its "/" last. */
+.artifact-item .scope-part {
+  display: inline-block;
+  overflow: hidden;
+  max-width: 35cqi;
+  direction: rtl;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.artifact-item .scope-part::before,
+.artifact-item .scope-part::after {
+  content: "\200e";
 }
 
 .artifact-item-line {

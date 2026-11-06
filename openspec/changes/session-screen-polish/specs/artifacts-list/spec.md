@@ -59,14 +59,30 @@ and each group SHALL keep the newest first. In a group a row SHALL show the name
 
 #### Scenario: One scope
 - **WHEN** the human picks one run in the scope filter
-- **THEN** the list is flat
+- **THEN** the list is flat, each row with its name without its run part
+
+### Requirement: A long run's name leaves the row and the tools their shape
+
+In the narrow list a run part of a name SHALL take at most about a third of the row, cut at its
+start, so the artifact's name stays in sight. The scope filter SHALL stay inside the column however
+long a run's name is.
+
+#### Scenario: A long run
+- **WHEN** the column is 366 px wide and a run's name has 80 characters
+- **THEN** the filter's right edge is inside the column, on the search's line, and a row reads
+  `…-all-screens/report-12 · The report`
 
 ### Requirement: The groups fold as the human left them
 
-The Session group and an open run's group SHALL start open, and an ended run's group folded. A
-group's heading SHALL be a button with `aria-expanded` and `aria-controls`. The human's fold SHALL be
-kept in the browser per session and scope. While the search has text, each group with a match SHALL
-show open and its heading SHALL not fold.
+The Session group and an open run's group SHALL start open, and an ended run's group folded, on
+entering the tab or when the group first appears, never later, and never for a group with the focus.
+A group's heading SHALL be a button with `aria-expanded` and `aria-controls`. The human's fold SHALL
+be kept in the browser per session and scope. While the search has text, each group with a match
+SHALL show open and its heading SHALL not fold.
+
+#### Scenario: A run ends under the human
+- **WHEN** the focus is on a row of an open run's group and that run ends
+- **THEN** the group stays open with the focus on the row, and folds the next time the tab is entered
 
 #### Scenario: First visit
 - **WHEN** the human first opens Artifacts of a session with an open run and two ended ones

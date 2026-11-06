@@ -29,7 +29,9 @@ filtered list while the scope filter is All scopes.
 **D3. Folds.** `prefs.ts` keeps `lado.artifactGroups`: `{ <session>: { <scope>: "open" | "folded" } }`,
 by `storedGroups`' rule that any other value is the default. A scope with no stored value takes its
 default: folded for a run `isOpen` calls ended, otherwise open. `Artifacts` watches the `runs` list;
-until it is loaded, or if it fails, nothing is folded by default, so a failed list hides nothing. A
+until it is loaded, or if it fails, nothing is folded by default, so a failed list hides nothing. The
+default is taken once per scope, on entering the tab or when its group first appears, never for a
+group with the focus: a run that ends must not fold rows under the human (Design QA, F2). A
 forgotten session's entry stays in the browser: a few bytes, not worth a hook into Forget. Rejected:
 "the newest group open", which folds and opens groups under the human's eyes as runs write.
 

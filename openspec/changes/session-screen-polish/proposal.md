@@ -76,6 +76,8 @@ adds one field to an API answer. No schema, MCP or CLI change.
 - AC-3. A session with 100 artifacts or more shows groups by scope at any width; with 99 it does not.
   A filter neither adds nor removes the grouping, and picking one scope shows a flat list.
 - AC-4. Session's and open runs' groups start open, ended runs' folded; the newest group comes first.
+  That default holds on entering the tab or when a group first appears: a run that ends folds
+  nothing meanwhile, and a group with the focus never folds by itself.
   The human's fold is kept per session across a reload. While the search has text, every group
   with a match is open and its fold is off.
 - AC-5. A group's heading is a button with `aria-expanded` and `aria-controls`, in the Tab order,

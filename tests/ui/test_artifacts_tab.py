@@ -98,9 +98,9 @@ def test_the_tab_filters_finds_and_opens_an_artifacts_page(
     expect(names).to_have_text(["ship/x/design", "ship/y/mockup.html", "ship/x/shot.png", "plan"])
     shot(page, "all")
     page.get_by_role("combobox", name="Scope").select_option("ship/x")
-    expect(names).to_have_text(["ship/x/design", "ship/x/shot.png"])
+    expect(names).to_have_text(["design", "shot.png"])
     page.get_by_role("button", name="Images").click()
-    expect(names).to_have_text(["ship/x/shot.png"])
+    expect(names).to_have_text(["shot.png"])
     page.get_by_role("combobox", name="Scope").select_option("*")
     page.get_by_role("button", name="All types").click()
     page.get_by_role("searchbox", name="Find an artifact").fill("week")
@@ -236,6 +236,46 @@ def test_the_session_screens_changed_hold_at_every_width(
     page.goto(f"{server['url']}/sessions/{empty}/artifacts")
     expect(page.get_by_text("No artifacts yet")).to_be_visible()
     fits("no-artifacts")
+
+
+@pytest.mark.parametrize("width", [390, 1000])
+def test_a_long_runs_name_leaves_the_tools_in_the_column_and_the_artifacts_name_in_sight(
+    page: Page, server, repo, tmp_path, shot, width
+):
+    session = designed_session(repo, tmp_path)
+    long_run = "design-system-migration-long-flow-lad-204-tokens-and-notices-across-all-screens"
+    runs.start(session, "ship", "Migrate the tokens", name=long_run)
+    artifacts.write(session, "supervisor", f"ship/{long_run}/report-12", "x", title="The report")
+    page.set_viewport_size({"width": width, "height": 844})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/artifacts")
+    tab = page.get_by_role("region", name="Artifacts")
+    scope = page.get_by_role("combobox", name="Scope")
+    expect(scope).to_be_visible()
+    column = tab.bounding_box()
+    box = scope.bounding_box()
+    assert column is not None and box is not None
+    assert box["x"] + box["width"] <= column["x"] + column["width"], (box, column)
+    find = page.get_by_role("searchbox", name="Find an artifact").bounding_box()
+    assert find is not None and find["y"] == box["y"], (find, box)  # one line, as the mockup
+
+    # The run's part gives way, not the artifact's name: the name stays inside the row.
+    row = tab.locator(".artifact-item").filter(has_text="report-12")
+    expect(row).to_be_visible()
+    fits = row.evaluate(
+        """item => {
+          const line = item.querySelector(".artifact-item-line");
+          const text = document.createRange();
+          text.selectNode(item.querySelector(".full-name").lastChild);
+          return text.getBoundingClientRect().right <= line.getBoundingClientRect().right;
+        }"""
+    )
+    assert fits
+    shot(page, "flat", full_page=False)
+
+    # One scope picked: the filter says the run, the row its bare name.
+    scope.select_option(f"ship/{long_run}")
+    expect(tab.locator(".artifact-item .full-name")).to_have_text(["report-12"])
 
 
 def test_a_narrow_column_lists_rows_of_48_px_that_open_by_keyboard(

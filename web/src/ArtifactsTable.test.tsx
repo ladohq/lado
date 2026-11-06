@@ -205,7 +205,7 @@ test("the tab filters by scope and type and finds by name, title, change and aut
   fireEvent.change(screen.getByRole("combobox", { name: "Scope" }), { target: { value: "" } });
   expect(names(shown)).toEqual(["plan"]);
   fireEvent.change(screen.getByRole("combobox", { name: "Scope" }), { target: { value: "feature/x" } });
-  expect(names(shown)).toEqual(["feature/x/design"]);
+  expect(names(shown)).toEqual(["design"]); // the filter says the run
   fireEvent.change(screen.getByRole("combobox", { name: "Scope" }), { target: { value: "*" } });
   fireEvent.click(screen.getByRole("button", { name: "Images" }));
   expect(names(shown)).toEqual(["fix/y/shot.png"]);
@@ -370,7 +370,67 @@ test("a filter neither adds nor removes the groups, and one scope is a flat list
   fireEvent.click(screen.getByRole("button", { name: "All types" }));
   fireEvent.change(screen.getByRole("combobox", { name: "Scope" }), { target: { value: "open/run" } });
   expect(tab().queryAllByRole("button", { name: /open\/run/ })).toHaveLength(0);
-  expect(within(await table()).getAllByRole("link")[0].textContent).toBe("open/run/n0");
+  expect(within(await table()).getAllByRole("link")[0].textContent).toBe("n0");
+});
+
+test("with one scope picked a row of the list shows the bare name, as in a group", async () => {
+  columnWidth(436);
+  serve();
+  open("/sessions/lado/artifacts");
+  const shown = await list();
+  fireEvent.change(screen.getByRole("combobox", { name: "Scope" }), { target: { value: "feature/x" } });
+  expect(lines(within(shown).getByRole("listitem"))[0]).toBe("design · The design");
+});
+
+const ended = (run: RunInfo) => ({ ...run, status: "ended", ended_at: "2026-10-07T13:00:00.000Z" }) as RunInfo;
+const change = (kind: string, key: string, op: string, item: unknown) =>
+  act(() => stream().send("change", { kind, session: "lado", key, op, item }));
+
+test("a run that ends leaves its open group open, and the focus in it, until the tab is entered again", async () => {
+  serve({ artifacts: HUNDRED, runs: [ACTIVE, ENDED] });
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("false"));
+  const body = document.getElementById(head(/open\/run/).getAttribute("aria-controls")!)!;
+  const link = within(body).getAllByRole("link")[0];
+  link.focus();
+  change("runs", "open/run", "update", ended(ACTIVE));
+  expect(head(/open\/run/).getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement).toBe(link);
+  serve({ artifacts: HUNDRED, runs: [ended(ACTIVE), ENDED] });
+  const bar = await tabs();
+  fireEvent.click(within(bar).getByRole("link", { name: /^Activity/ }));
+  fireEvent.click(within(bar).getByRole("link", { name: /^Artifacts/ }));
+  await waitFor(() => expect(head(/open\/run/).getAttribute("aria-expanded")).toBe("false"));
+});
+
+test("a group that appears takes its default then: an ended run's folds", async () => {
+  const late = { ...ENDED, name: "late/run" } as RunInfo;
+  serve({ artifacts: HUNDRED, runs: [ACTIVE, ENDED, late] });
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("false"));
+  const [written] = some("late/run", 1, 0);
+  change("artifacts", written.id, "insert", written);
+  expect(head(/late\/run/).getAttribute("aria-expanded")).toBe("false");
+});
+
+test("a group with the focus does not fold by default when the runs arrive", async () => {
+  const gone = { ...ENDED, name: "gone/run" } as RunInfo;
+  const served = serve({ artifacts: [...HUNDRED, ...some("gone/run", 1, 50)], runs: [ACTIVE, ENDED, gone] });
+  let give: () => void = () => {};
+  const held = new Promise<void>((resolve) => (give = resolve));
+  vi.stubGlobal("fetch", async (path: string) => {
+    if (path.endsWith("/runs")) await held;
+    return served(path);
+  });
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(heads()).toHaveLength(4));
+  const body = document.getElementById(head(/done\/run/).getAttribute("aria-controls")!)!;
+  const link = within(body).getAllByRole("link")[0];
+  link.focus();
+  await act(async () => give());
+  await waitFor(() => expect(head(/gone\/run/).getAttribute("aria-expanded")).toBe("false"));
+  expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement).toBe(link);
 });
 
 test("a fold is the human's, kept for the session through a reload, and works from a press", async () => {

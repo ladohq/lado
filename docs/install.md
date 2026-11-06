@@ -298,8 +298,9 @@ it in the launch window, or `lado start --provider claude --model "<name>"`. Wha
   other start or resume goes through `lado start --provider claude --model "<name>"`.
 - The agent's page, `lado ls` and `list_agents` name the saved model, its server and who chose it,
   while the agent runs. A stopped agent shows the model's id.
-- A model whose id Claude Code reads as its own (`sonnet`, `opus`, `best`, a name ending in `[1m]`)
-  is refused when saved and at a start: it would never reach the server. Give it another id there.
+- A model whose id Claude Code reads as its own (`sonnet`, `Opus`, `best`, `default`, in any case,
+  or a name ending in `[1m]`) is refused when saved and at a start: it would never reach the server.
+  Give it another id there.
 - The agent keeps your `~/.claude`: your `CLAUDE.md`, skills and plugins work as usual.
 - The context LADO reads from the server goes to the agent. With none known, Claude Code assumes
   200K tokens and says so at its start, so on a smaller model it compacts too late.

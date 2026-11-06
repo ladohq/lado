@@ -349,6 +349,7 @@ def check_model(
     server = state.model_server(server_name)
     if server is None:
         raise no_server(server_name, SERVER_FIELD)
+    _check_own_name(provider, model, server)
     verdict = _on_server(provider, model, server, probe)
     if verdict.kind == model_check.REFUSED:
         raise Refused(
@@ -404,6 +405,16 @@ def add_model(
     return saved, checked.verdict
 
 
+def _check_own_name(provider: providers.Provider, model: str, server: state.ModelServer) -> None:
+    """Refuse a model of `server` whose name `provider`'s CLI reads as its own: no request."""
+    if provider.reserved_model(model):
+        raise Refused(
+            f"{provider.title} reads {model} as its own model, so it would not ask {server.name} "
+            "for it; give the model another name on the server",
+            field=MODEL_FIELD,
+        )
+
+
 def _on_server(
     provider: providers.Provider,
     model: str,
@@ -411,20 +422,13 @@ def _on_server(
     probe: Prober | None = None,
 ) -> model_check.Verdict:
     """The verdict on `model` of `provider` on `server`, asked with `probe`, else probed now
-    with its kept key: the server may have changed since it was saved. A name the CLI reads as
-    its own is refused with no request."""
+    with its kept key: the server may have changed since it was saved."""
     api = provider.server_api
     if not api:
         raise Refused(
             f"{server.name} does not suit {provider.title}: {provider.title} speaks no model "
             "server's API",
             field=SERVER_FIELD,
-        )
-    if provider.reserved_model(model):
-        raise Refused(
-            f"{provider.title} reads {model} as its own model, so it would not ask {server.name} "
-            "for it; give the model another name on the server",
-            field=MODEL_FIELD,
         )
     try:
         found = probe(server) if probe is not None else probe_saved(server)
@@ -942,7 +946,8 @@ def _runs_on(server: state.ModelServer) -> str:
 
 def check_launch(start: StartModel, provider: providers.Provider) -> None:
     """What refuses `start` for an agent of `provider`'s CLI with no request and no list: an
-    entry no longer saved, a server its CLI does not run on, text its CLI would expand."""
+    entry no longer saved, a server its CLI does not run on, a name its CLI reads as its own,
+    text its CLI would expand."""
     if start.gone:
         raise Refused(
             f"the session ran on the model {start.name}, which is no longer saved; "
@@ -963,6 +968,7 @@ def check_launch(start: StartModel, provider: providers.Provider) -> None:
             short=f"{provider.title} does not run on a model server yet",
             peek="no model server yet",
         )
+    _check_own_name(provider, start.entry.model, start.server)
     if _expands(start.entry.name, start.entry.model, start.server.name, start.server.address):
         raise Refused(
             f"{start.name} cannot start: its name, id or server holds text {WOULD_EXPAND}; rename "

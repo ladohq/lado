@@ -41,6 +41,8 @@ family uses; `start.server` None gives `()`, so a built-in agent has nothing of 
     "ANTHROPIC_API_KEY": "", "ANTHROPIC_AUTH_TOKEN": "", "ANTHROPIC_CUSTOM_HEADERS": "",
     "CLAUDE_CODE_OAUTH_TOKEN": "",
     "CLAUDE_CODE_USE_BEDROCK": "", "CLAUDE_CODE_USE_VERTEX": "", "CLAUDE_CODE_USE_FOUNDRY": "",
+    "CLAUDE_CODE_USE_ANTHROPIC_AWS": "", "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD": "",
+    "CLAUDE_CODE_USE_MANTLE": "",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
@@ -90,8 +92,8 @@ work; the same need as OpenCode's.
 
 ### D7. Names Claude Code would read as its own
 
-`_on_server`, the one check of saving and of a start, refuses a model in `provider.model_list`'s
-aliases or ending in `[1m]`: `--model sonnet` would go out as `claude-sonnet-5-5`. New in
+Saving and `check_launch` refuse a model in `provider.model_list`'s aliases, ignoring case, `default`,
+or ending in `[1m]`: `--model sonnet` would go out as `claude-sonnet-5-5`. New in
 `base.Provider`: `reserved_model(model) -> bool`, false by default.
 
 ### D8. The false `Open its terminal`
@@ -117,6 +119,14 @@ on a server now clears `login_missing`; a window that lets a model be picked fir
 task. `check_start_login` reads a `--model` too, as it runs before the clone. A Claude agent's id
 says no server, so `Provider.launched_on` reads it from the agent's settings: no schema change, and a
 stopped agent, whose folder is gone, shows the id.
+
+### D11. Added by the review
+
+Claude Code hands the `env` of its settings to the processes it starts, so `lado mcp` of an agent on
+a server holds the address: `Launch.cli_env` names those for `LADO_LAUNCH_VARS`, or a built-in
+worker in inherit mode would inherit `ANTHROPIC_BASE_URL` and send the human's login there.
+`ANTHROPIC_UNIX_SOCKET` ignores an empty value in the settings, so the launch sets it empty. The check
+of a CLI's own name is in `check_launch`, so `list_models` says it too, and in `check_model`.
 
 ## Risks / Trade-offs
 

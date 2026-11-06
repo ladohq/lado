@@ -702,7 +702,9 @@ def test_claude_on_an_anthropic_compatible_server_is_saved(serve):
     assert (saved.cli, verdict.kind) == ("claude", model_check.OK)
 
 
-@pytest.mark.parametrize("model", ["sonnet", "opus", "best", "opusplan", "qwen3[1m]"])
+@pytest.mark.parametrize(
+    "model", ["sonnet", "Sonnet", "opus", "best", "opusplan", "default", "qwen3[1m]", "qwen[1M]"]
+)
 def test_a_name_claude_code_reads_as_its_own_is_not_saved_for_it(serve, model):
     server = serve("all")
     add("all", server.url)
@@ -2197,6 +2199,14 @@ def test_an_external_model_of_a_cli_on_no_server_says_why_it_cannot_start(instal
         "Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a model server yet, "
         "Kilo CLI and OpenCode do"
     )
+
+
+def test_a_saved_name_of_claude_code_s_own_says_why_it_cannot_start(installed):
+    entry("Своя", cli="claude", model="sonnet", server="Шлюз")
+    env = installed("claude")
+    [claude] = model_settings.cli_models(session_of("claude"), None, env, Lists(claude=CLAUDE_LIST))
+    [external] = claude["external"]
+    assert external["blocked"].startswith("Claude Code reads sonnet as its own model")
 
 
 def test_an_external_model_of_claude_code_is_not_blocked(installed):

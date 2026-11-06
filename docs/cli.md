@@ -335,7 +335,7 @@ http://localhost:1234 does not answer (connection refused); LADO cannot check qw
 server of another saved model stops nothing. A model on a server for a CLI that runs on none yet
 is refused with no request (`Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a
 model server yet, Claude Code, Kilo CLI and OpenCode do`). A model whose id its CLI reads as its own
-(Claude Code's `sonnet`, a name ending in `[1m]`) is refused with no request, when saved too
+(Claude Code's `sonnet` or `default` in any case, a name ending in `[1m]`) is refused with no request, when saved too
 (`Claude Code reads sonnet as its own model, so it would not ask Шлюз for it; give the model another
 name on the server`). A Claude Code model on a server needs no Claude login, at a start, a resume, a
 worker and before a clone (`lado start <git-url> --model`). A spawned worker's model is checked in the same way,

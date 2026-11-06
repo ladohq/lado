@@ -199,6 +199,9 @@ class Launch:
     # nothing set up: the CLI chooses (lado.runtime records them: state.set_model).
     model: state.Choice | None = None
     effort: state.Choice | None = None
+    # The names the CLI itself gives the processes it starts, from the config the launch wrote:
+    # a worker spawned through its `lado mcp` must not take them over (lado.runtime._launch_env).
+    cli_env: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -539,6 +542,7 @@ def lado_command(*args: str) -> list[str]:
 # tests/test_project_variables_core.py fails until it does.
 CLI_VARIABLES = frozenset(
     {
+        "ANTHROPIC_UNIX_SOCKET",
         "CLAUDE_CONFIG_DIR",
         "CODEX_HOME",
         "OPENCODE_CONFIG",

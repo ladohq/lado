@@ -28,11 +28,10 @@ Claude Code's own choice, SHALL start as before, with nothing of a server.
 
 ### Requirement: Nothing of the human's Claude credentials reaches a server
 
-The settings of a Claude agent on a server SHALL give an empty value to every variable by which
-Claude Code would send another credential or use another provider, and SHALL name its own
-`apiKeyHelper`, for a server with no key too. Neither the human's Claude login, nor a key, token or
-header of the environment or of the user's settings, nor an `apiKeyHelper` of the user's settings SHALL
-reach the server.
+A Claude agent on a server SHALL have an empty value for every variable by which Claude Code would
+send another credential or use another provider, and its own `apiKeyHelper`, for a server with no
+key too. Neither the human's Claude login, nor a key, token, header or `apiKeyHelper` of the
+environment or the user's settings SHALL reach the server.
 
 #### Scenario: A logged-in human and a server with no key
 - **WHEN** Claude Code is logged in and an agent starts on a server with no key
@@ -48,7 +47,7 @@ reach the server.
 - **THEN** the server gets neither
 
 #### Scenario: Another provider in the environment
-- **WHEN** `CLAUDE_CODE_USE_BEDROCK` is set
+- **WHEN** `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_MANTLE` or `ANTHROPIC_UNIX_SOCKET` is set
 - **THEN** the agent still goes to its model's server
 
 ### Requirement: A Claude agent on a server stays on its model
@@ -69,7 +68,8 @@ one. Telemetry and experimental betas SHALL be off for it.
 
 Each Claude agent SHALL have its own model and server: `spawn_worker(model=…)` SHALL start a worker on
 another model of the server, another server or a built-in model, whatever its supervisor runs on, and
-the supervisor's server key SHALL NOT reach a worker on another server or a built-in model.
+neither the supervisor's server key nor its address, nor anything else its settings give the
+processes it starts, SHALL reach a worker.
 
 #### Scenario: A worker on another server
 - **WHEN** a supervisor on `Шлюз Opus` spawns a worker on `Локальная Qwen` of another server
@@ -77,7 +77,8 @@ the supervisor's server key SHALL NOT reach a worker on another server or a buil
 
 #### Scenario: A worker on a built-in model
 - **WHEN** that supervisor spawns a worker with `model="sonnet"`
-- **THEN** the worker's settings hold nothing of a server, and it needs Claude Code's login
+- **THEN** the worker's settings and environment hold nothing of a server, also in inherit mode, and
+  it needs Claude Code's login
 
 ### Requirement: A Claude agent on a server needs no Claude login
 
@@ -114,13 +115,18 @@ the model's id alone. A stopped agent SHALL show the id.
 
 ### Requirement: A name Claude Code would read as its own is refused
 
-A model of a server whose id Claude Code reads as its own, one of its aliases or a name ending in
-`[1m]`, SHALL be refused for Claude Code when it is saved and at a start, naming the model and the
-server. The same model SHALL stay usable for another CLI.
+A model of a server whose id Claude Code reads as its own, ignoring case one of its aliases,
+`default` or a name ending in `[1m]`, SHALL be refused for Claude Code when it is saved and at a
+start, naming the model and the server, and `list_models` SHALL give that as its `blocked`. The same
+model SHALL stay usable for another CLI, and any other name SHALL stay as it is.
 
 #### Scenario: A server's model named sonnet
 - **WHEN** `lado model add --cli claude --server Шлюз sonnet` runs
 - **THEN** it exits non-zero with a line saying Claude Code reads `sonnet` as its own model
+
+#### Scenario: Another case
+- **WHEN** `lado model add --cli claude --server Шлюз Opus` runs
+- **THEN** it is refused the same way, and `Qwen/Qwen3-8B` is saved
 
 #### Scenario: A server without Anthropic's API
 - **WHEN** a Claude model is saved or started on a server that proves no Anthropic Messages API

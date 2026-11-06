@@ -268,6 +268,27 @@ def test_nothing_of_the_human_s_claude_reaches_a_server(
 
 
 @pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [
+        ("CLAUDE_CODE_USE_BEDROCK", "1"),
+        ("CLAUDE_CODE_USE_MANTLE", "1"),
+        ("ANTHROPIC_UNIX_SOCKET", "/nonexistent/smoke.sock"),
+    ],
+)
+def test_another_way_out_in_the_environment_does_not_take_a_claude_agent_off_its_server(
+    smoke_repo, smoke_provider, claude_server, monkeypatch, variable, value
+):
+    monkeypatch.setenv(variable, value)
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    turn_with_tools(claude_server)
+    only_the_server_s_key_and_model(claude_server)
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
 def test_model_of_a_claude_agent_on_a_server_shows_its_model_alone(
     smoke_repo, smoke_provider, claude_server
 ):

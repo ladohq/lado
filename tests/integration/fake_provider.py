@@ -247,12 +247,18 @@ class FakeClaudeProvider(FakeLoginProvider):
         launch = super().launch_command(agent, session, spec)
         settings = claude._server_settings(spec.servers[0]) if spec.servers else {}
         (base.config_dir(agent) / "settings.json").write_text(json.dumps(settings, indent=2))
+        # As Claude Code hands the `env` of its settings to the processes it starts.
+        handed = settings.get("env", {})
+        config_file = base.config_dir(agent) / "fake.json"
+        config = json.loads(config_file.read_text())
+        config["mcp"]["lado"]["env"] = {**config["mcp"]["lado"]["env"], **handed}
+        config_file.write_text(json.dumps(config, indent=2))
         env = dict(launch.env)
         for server in spec.servers:
             env[base.MODEL_SERVER] = server.id
             if server.key is not None:
                 env[server.key_variable] = server.key
-        return dataclasses.replace(launch, env=env)
+        return dataclasses.replace(launch, env=env, cli_env=tuple(handed))
 
 
 # "fake-server" takes the model servers of its launch as OpenCode and Kilo do: beside its own

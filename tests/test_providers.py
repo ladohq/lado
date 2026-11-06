@@ -1786,7 +1786,19 @@ def test_claude_code_is_told_a_server_s_model_as_it_is():
 
 @pytest.mark.parametrize(
     ("model", "reserved"),
-    [("sonnet", True), ("opus[1m]", True), ("x[1m]", True), ("qwen3-8b", False), ("", False)],
+    [
+        ("sonnet", True),
+        ("Sonnet", True),
+        ("OPUS", True),
+        ("Haiku", True),
+        ("default", True),
+        ("opus[1m]", True),
+        ("x[1m]", True),
+        ("qwen[1M]", True),
+        ("qwen3-8b", False),
+        ("Qwen/Qwen3-8B", False),
+        ("", False),
+    ],
 )
 def test_claude_code_reserves_its_own_names(model, reserved):
     assert providers.get("claude").reserved_model(model) is reserved
@@ -2058,6 +2070,9 @@ def _server_env(server_root, model, **more):
         "CLAUDE_CODE_USE_BEDROCK": "",
         "CLAUDE_CODE_USE_VERTEX": "",
         "CLAUDE_CODE_USE_FOUNDRY": "",
+        "CLAUDE_CODE_USE_ANTHROPIC_AWS": "",
+        "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD": "",
+        "CLAUDE_CODE_USE_MANTLE": "",
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
         "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
@@ -2079,15 +2094,24 @@ def test_a_claude_agent_gets_its_server_s_key_in_its_environment_alone(repo, lad
     assert launch.env == {
         "LADO_MODEL_KEY_BBBB2222": "KEY-CANARY",
         "LADO_MODEL_SERVER": "bbbb2222",
+        "ANTHROPIC_UNIX_SOCKET": "",
     }
     written = [p for p in lado_home.rglob("*") if p.is_file() and p.suffix != ".db"]
     assert written and not [p for p in written if "KEY-CANARY" in p.read_text(errors="replace")]
 
 
+def test_what_claude_code_hands_its_children_is_named_as_the_launch_s(repo):
+    """It gives the `env` of its settings to the processes it starts, `lado mcp` among them."""
+    launch, settings = _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
+    assert set(launch.cli_env) == set(settings["env"])
+    launch, _ = _claude_launch(repo, (), "opus")
+    assert launch.cli_env == ()
+
+
 def test_a_claude_agent_on_a_server_with_no_key_sends_a_placeholder(repo):
     launch, settings = _claude_launch(repo, (CLAUDE_KEYLESS,), CLAUDE_MODEL)
     assert settings["apiKeyHelper"] == "echo no-key"
-    assert launch.env == {"LADO_MODEL_SERVER": "bbbb2222"}
+    assert launch.env == {"LADO_MODEL_SERVER": "bbbb2222", "ANTHROPIC_UNIX_SOCKET": ""}
 
 
 def test_a_known_context_goes_to_a_claude_agent(repo):

@@ -236,9 +236,12 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   an event `start_model`, written when the model changed, holds what the supervisor last started
   on: a resume compares it to say a default moved the model. In inherit mode
   (`LADO_AGENT_ENV=inherit`) a worker starts from its spawner's `lado mcp`, whose environment holds
-  the spawner's launch: every launch names what it set in `LADO_LAUNCH_VARS`, and
-  `agent_env.without_launch` drops those, so neither a config nor a key reaches a worker of another
-  CLI. Then the events name it
+  the spawner's launch: every launch names in `LADO_LAUNCH_VARS` what it set and what its CLI gives
+  the processes it starts (`Launch.cli_env`: Claude Code hands the `env` of its settings to `lado
+  mcp` too, 2.1.295), and `agent_env.without_launch` drops those, so neither a config, a key nor a
+  server's address reaches a worker. A blanked variable goes with them: in this mode a worker of a
+  supervisor on a server has no `ANTHROPIC_API_KEY` of the human's, and a built-in one that needs it
+  is refused for its login. Then the events name it
   (`Event.model`, `effort`), recorded by `hooks.handle` first (`state.report_model`): every
   Codex hook's input has `model` and none the effort (0.162.0, its hook input schemas);
   Claude Code's SessionStart has `model` in the interactive mode LADO runs, at a start,
@@ -333,7 +336,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   (`ServerEntry.root`: Claude Code adds `/v1/messages`, the `/v1` of `base_url` would double),
   `availableModels` and `ANTHROPIC_DEFAULT_MODEL` and `ANTHROPIC_SMALL_FAST_MODEL` with the model,
   so that `/model` shows Default and the model and a subagent's `model: haiku` falls back to it;
-  `SERVER_BLANKS` as empty values; `SERVER_SWITCHES`; `CLAUDE_CODE_MAX_CONTEXT_TOKENS` for a known
+  `SERVER_BLANKS` as empty values (`ANTHROPIC_UNIX_SOCKET`, on which an empty value in the settings
+  does nothing, goes empty in the launch's environment); `SERVER_SWITCHES`; `CLAUDE_CODE_MAX_CONTEXT_TOKENS` for a known
   context; `apiKeyHelper: printenv LADO_MODEL_KEY_<ID>`, whose output goes out in both `x-api-key`
   and `Authorization`, or `echo no-key`, as with no credential at all the login goes out. The file
   holds no secret and is rewritten at each launch. The launch's `LADO_MODEL_SERVER` tells the

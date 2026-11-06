@@ -7051,6 +7051,15 @@ def test_a_built_in_claude_worker_of_a_session_on_a_server_needs_the_login(
     assert str(refused.value) == WORKER_REFUSED
 
 
+def test_a_launch_names_what_its_cli_hands_on():
+    agent = state.Agent("s", "w1", "worker", "/r", None, None, state.STARTING, "claude")
+    launch = providers.Launch(["c"], {"KEY": "k"}, cli_env=("ANTHROPIC_BASE_URL",))
+    env = runtime._launch_env(agent, {"PATH": "/bin"}, launch)
+    named = env[agent_env.LAUNCH_VARS].split(",")
+    assert {"KEY", "ANTHROPIC_BASE_URL"} <= set(named)
+    assert "ANTHROPIC_BASE_URL" not in env  # the CLI sets it itself
+
+
 def test_no_keychain_warning_for_an_agent_on_a_server(repo, fake_tmux, monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(runtime.gui_session, "place", lambda: runtime.gui_session.Place.NO_GUI)

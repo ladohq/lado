@@ -99,6 +99,7 @@ def test_a_worker_on_another_server_has_that_server_alone(on_server):
     assert env[f"LADO_MODEL_KEY_{second.id.upper()}"] == "key-second"
     assert env[base.MODEL_SERVER] == second.id
     assert f"LADO_MODEL_KEY_{first.id.upper()}" not in env
+    assert "ANTHROPIC_BASE_URL" not in env  # its own settings hold its server
     shown = model_settings.agent_shown(worker)
     assert (shown.name, shown.server, worker.model_source) == ("second-m", "second", "supervisor")
 
@@ -118,6 +119,14 @@ def test_a_worker_on_a_built_in_model_has_nothing_of_a_server(on_server, tmp_pat
     env = seen("w1")["environ"]
     assert base.MODEL_SERVER not in env
     assert not [name for name in env if name.startswith(model_settings.KEY_VARIABLE)]
+    assert not [name for name in env if name.startswith(("ANTHROPIC_", "CLAUDE_CODE_"))]
+
+
+def test_a_worker_of_another_cli_has_nothing_of_the_supervisor_s_server(on_server):
+    runs("spawnwith w1@fake sleep 0")
+    started("w1")
+    env = seen("w1")["environ"]
+    assert not [name for name in env if name.startswith(("ANTHROPIC_", "CLAUDE_CODE_"))]
 
 
 def test_list_models_blocks_no_model_of_the_cli(on_server):

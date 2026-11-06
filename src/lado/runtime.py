@@ -3247,10 +3247,11 @@ def _launch_env(
     agent: state.Agent, base_env: dict[str, str], launch: providers.Launch
 ) -> dict[str, str]:
     """The agent CLI's environment: `base_env`, LADO's variables and its provider's, in that
-    order, and the names of the last two, which a worker it spawns must not take over
+    order, and the names of the last two and of what the CLI itself gives the processes it
+    starts (Launch.cli_env), which a worker it spawns must not take over
     (agent_env.without_launch)."""
     ours = {**providers.agent_env(agent), **launch.env}
-    return {**base_env, **ours, agent_env.LAUNCH_VARS: ",".join(sorted(ours))}
+    return {**base_env, **ours, agent_env.LAUNCH_VARS: ",".join(sorted({*ours, *launch.cli_env}))}
 
 
 def _layer_warnings(

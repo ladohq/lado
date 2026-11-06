@@ -113,6 +113,7 @@ ALIASES = (
     "opusplan",
 )
 ANY_FAMILY = ("best", "opusplan")
+DEFAULT_ALIAS = "default"  # read as an alias, though `--model`'s help names it nowhere
 LONG_CONTEXT = "[1m]"  # an alias's or a model's suffix for its long context window
 
 
@@ -132,8 +133,17 @@ LOGINS = (
 # user's and the repository's settings, also when they hold apiKeyHelper or `env` (2.1.295 on a
 # fake server, its way out stopped by a proxy: the human's login, ANTHROPIC_API_KEY and a base
 # URL of ~/.claude/settings.json each got out with the address alone). The empty value was seen
-# to end the effect of every one but CLAUDE_CODE_USE_VERTEX and CLAUDE_CODE_USE_FOUNDRY.
-SERVER_BLANKS = (*LOGINS, "ANTHROPIC_CUSTOM_HEADERS", "CLAUDE_CODE_USE_FOUNDRY")
+# to end the effect of each.
+SERVER_BLANKS = (
+    *LOGINS,
+    "ANTHROPIC_CUSTOM_HEADERS",
+    "CLAUDE_CODE_USE_FOUNDRY",
+    "CLAUDE_CODE_USE_ANTHROPIC_AWS",
+    "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD",
+    "CLAUDE_CODE_USE_MANTLE",
+)
+# Read before the settings, so an empty value there does nothing: it goes empty in the launch.
+UNIX_SOCKET = "ANTHROPIC_UNIX_SOCKET"
 # Off on a server: telemetry, which would leave for Anthropic; the betas that add
 # context_management and safeguards to a body a gateway may refuse; the attribution header,
 # LM Studio's own advice for its cache. With these 2.1.295's TUI still tried
@@ -264,6 +274,7 @@ class ClaudeProvider(base.Provider):
             server = spec.servers[0]
             config.update(_server_settings(server))
             env[base.MODEL_SERVER] = server.id
+            env[UNIX_SOCKET] = ""
             if server.key is not None:
                 env[server.key_variable] = server.key
         settings.write_text(json.dumps(config, indent=2))
@@ -301,7 +312,9 @@ class ClaudeProvider(base.Provider):
         # for the current session"); a model's name is no secret on the command line.
         if spec.model:
             cmd += ["--model", spec.model]
-        return base.Launch(cmd, env, model=self.session_choice(spec))
+        # 2.1.295 hands the `env` of its settings to what it starts, MCP servers too.
+        handed = tuple(config.get("env", ()))
+        return base.Launch(cmd, env, model=self.session_choice(spec), cli_env=handed)
 
     def model_list(self, env: Mapping[str, str]) -> base.ModelList:
         return base.ModelList(
@@ -321,8 +334,11 @@ class ClaudeProvider(base.Provider):
         return settings.get("env", {}).get(base.MODEL_SERVER)
 
     def reserved_model(self, model: str) -> bool:
-        # `--model sonnet` goes out as Claude Code's own full name, not as `sonnet`.
-        return model in ALIASES or model.endswith(LONG_CONTEXT)
+        # `--model sonnet` goes out as Claude Code's own full name, not as `sonnet`, whatever the
+        # case, `default` as the default's, and `qwen[1m]` without its suffix; any other name
+        # goes as it is (2.1.295 on a fake server).
+        name = model.lower()
+        return name in ALIASES or name == DEFAULT_ALIAS or name.endswith(LONG_CONTEXT)
 
     def same_model(self, chosen: str, reported: str) -> bool:
         """An alias is the same as a full name of its family (`opus`: `claude-opus-5-5`, with

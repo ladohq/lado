@@ -3393,9 +3393,9 @@ h3 {
   transform: rotate(45deg);
 }
 
-/* Activity: the team and the switch, then the feed, oldest first, which takes the rest of
-   the page's height and scrolls by itself, and the composer under it. Orange marks only
-   what waits for the human. */
+/* Activity: on a phone the team and the switch, then the feed, oldest first, which takes the
+   rest of the page's height and scrolls by itself, and the composer under it. Orange marks
+   only what waits for the human. */
 .activity {
   display: flex;
   flex: 1;
@@ -5463,8 +5463,7 @@ button.rec-bar-line {
   }
 
   .sessions:has(.waiting-card.expanded) > .sessions-strip,
-  .session:has(.waiting-card.expanded) .session-tabs,
-  .activity:has(> .chat > .waiting-card.expanded) > .team-row {
+  .session:has(.waiting-card.expanded) .session-tabs {
     display: none;
   }
 

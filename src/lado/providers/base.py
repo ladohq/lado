@@ -2,6 +2,7 @@
 
 import contextlib
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -131,11 +132,38 @@ REFUSALS = {
     403: "the model provider refused access",
     429: "the model provider limits requests, or the quota is spent",
 }
+REFUSED_REQUEST = "the model provider refused the request"  # any other status of is_refusal
+# cloud.ru answers a wrong key with 400 and `invalid api key secret` (the human's check of LAD-220).
+ABOUT_THE_KEY = re.compile(r"api[ _-]?key", re.IGNORECASE)
+# LADO's words of a context too small live here alone, before any other words of a refusal.
+OVERFLOW = "ContextOverflowError"
+TOO_SMALL = "the model's context is too small for the agent's request"
+REFUSED_FOR_CONTEXT = "exceed_context_size_error"
+SERVER_SIZES = re.compile(
+    r"request \(\d+ tokens\) exceeds the available context size \(\d+ tokens\)"
+)
+
+
+def is_refusal(status: object) -> bool:
+    """Whether `status` says a provider will not do it until someone acts: any 4xx but a 408, a
+    request that took too long."""
+    return isinstance(status, int) and 400 <= status < 500 and status != 408
 
 
 def refusal_line(status: int, text: str) -> str:
-    """The Event.error of a turn a provider refused with `status`, one of REFUSALS."""
-    return error_line(f"{REFUSALS[status]} ({status})", text)
+    """The Event.error of a turn a provider refused with `status`, by is_refusal."""
+    words = REFUSALS.get(status, REFUSED_REQUEST)
+    if words == REFUSED_REQUEST and status == 400 and ABOUT_THE_KEY.search(text):
+        words = REFUSALS[401]
+    return error_line(f"{words} ({status})", text)
+
+
+def context_line(text: str) -> str | None:
+    """The Event.error of a server's refusal for the context, in `text`; None for any other."""
+    if REFUSED_FOR_CONTEXT not in text:
+        return None
+    sizes = SERVER_SIZES.search(text)
+    return error_line(OVERFLOW, f"{TOO_SMALL}; {sizes[0]}" if sizes else TOO_SMALL)
 
 
 def without_keys(text: str) -> str:

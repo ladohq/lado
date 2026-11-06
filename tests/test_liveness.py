@@ -121,9 +121,31 @@ def _w1_busy(repo):
 
 
 def _fail_again():
-    """w1 works again (its resume, or the human), and its turn ends on an overload."""
+    """w1 is told to go on, and its turn ends on an overload."""
+    state.take_resume("s", "w1", time.time() + 1000, lambda n, error: "go on")
     _hook("UserPromptSubmit", "w1", {"prompt": "go on"})
     _hook("StopFailure", "w1", {"error": "overloaded"})
+
+
+def test_a_resume_the_queue_took_the_place_of_is_not_counted(repo, fake_tmux, resume_delays):
+    """A message from the queue starts a turn before the planned resume is due: nobody was told
+    to go on, so the next failed turn plans the same resume, and the lead hears after two."""
+    _w1_busy(repo)
+    for _ in range(3):
+        _hook("StopFailure", "w1", {"error": "overloaded"})
+        assert state.get_agent("s", "w1").resumes == 1
+        _hook("UserPromptSubmit", "w1", {"prompt": "a message of the queue"})
+        assert state.get_agent("s", "w1").resumes == 0
+    assert _from_lado("supervisor") == []
+
+
+def test_a_second_error_before_the_resume_is_told_counts_once(repo, fake_tmux, resume_delays):
+    _w1_busy(repo)
+    _hook("StopFailure", "w1", {"error": "overloaded"})
+    planned = state.get_agent("s", "w1").resume_at
+    _hook("StopFailure", "w1", {"error": "overloaded"})
+    w1 = state.get_agent("s", "w1")
+    assert (w1.resumes, w1.resume_at) == (1, planned)
 
 
 def test_a_transient_error_plans_a_resume_and_tells_no_one(repo, fake_tmux, resume_delays):

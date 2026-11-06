@@ -2049,10 +2049,14 @@ def set_status(session: str, name: str, status: str) -> None:
 def _set_status(db: sqlite3.Connection, session: str, name: str, status: str) -> None:
     # An agent that waits for nothing in particular has no key; one that stops waiting none.
     # A planned resume holds only while the agent takes input: busy, it goes on anyway;
-    # waiting or starting, the human acts on it already (schedule_resume).
+    # waiting or starting, the human acts on it already (schedule_resume). One dropped so was
+    # told to no one: it does not count.
+    accepts = int(accepts_input(status))
     cur = db.execute(
         "UPDATE agents SET status = ?, waiting_for = NULL,"
-        f" resume_at = CASE WHEN {int(accepts_input(status))} THEN resume_at END"
+        f" resumes = CASE WHEN {accepts} = 0 AND resume_at IS NOT NULL THEN resumes - 1"
+        " ELSE resumes END,"
+        f" resume_at = CASE WHEN {accepts} THEN resume_at END"
         " WHERE session = ? AND name = ? AND status != ?",
         (status, session, name, status),
     )
@@ -2154,12 +2158,16 @@ def _waited_from(db: sqlite3.Connection, session: str, name: str) -> str | None:
 def schedule_resume(session: str, name: str, now: float, delays: tuple[float, ...]) -> int | None:
     """The agent's turn ended on an error that passes by itself: plan to tell it to go on
     after the delay of its next resume, delays[resumes]. Returns that resume's number (1
-    for the first); None, with its resumes back to 0, when it had all of them already."""
+    for the first), the plan it has when one waits still; None, with its resumes back to 0,
+    when it had all of them already."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
-            "SELECT resumes FROM agents WHERE session = ? AND name = ?", (session, name)
+            "SELECT resumes, resume_at FROM agents WHERE session = ? AND name = ?", (session, name)
         ).fetchone()
+        if row is not None and row["resume_at"] is not None:
+            db.execute("COMMIT")
+            return row["resumes"]
         done = row["resumes"] if row else 0
         if row is None or done >= len(delays):
             _reset_resumes(db, session, name)

@@ -220,6 +220,49 @@ def test_a_claude_agent_on_a_server_reads_a_refusal_in_lado_s_words(
     assert event.output_ignored
 
 
+@pytest.mark.parametrize(
+    ("error", "message", "line", "details"),
+    [
+        (
+            "unknown",
+            "API Error: 400 invalid api key secret",
+            "the model provider refused the key (400): invalid api key secret",
+            "invalid api key secret",
+        ),
+        (
+            "unknown",
+            "API Error: 400 Invalid request",
+            "the model provider refused the request (400): Invalid request",
+            "Invalid request",
+        ),
+        (
+            "server_error",
+            "API Error: 404 No such model",
+            "the model provider refused the request (404): No such model",
+            "No such model",
+        ),
+        (
+            "unknown",
+            'API Error: 400 {"type": "exceed_context_size_error"}',
+            "ContextOverflowError: the model's context is too small for the agent's request",
+            '{"type": "exceed_context_size_error"}',
+        ),
+    ],
+)
+def test_any_other_4xx_on_a_server_is_no_temporary_error_of_claude(
+    monkeypatch, error, message, line, details
+):
+    monkeypatch.setenv(base.MODEL_SERVER, "aaaa1111")
+    event = _stop_failure(error, message)
+    assert (event.error, event.details, event.transient) == (line, details, False)
+
+
+def test_a_408_on_a_server_stays_temporary(monkeypatch):
+    monkeypatch.setenv(base.MODEL_SERVER, "aaaa1111")
+    event = _stop_failure("unknown", "API Error: 408 Request Timeout")
+    assert (event.error, event.transient) == ("unknown", True)
+
+
 def test_a_claude_agent_on_a_built_in_model_keeps_its_words(monkeypatch):
     monkeypatch.delenv(base.MODEL_SERVER, raising=False)
     event = _stop_failure("rate_limit", QUOTA)
@@ -1243,6 +1286,46 @@ def test_a_provider_s_refusal_reads_in_lado_s_words(provider, status, text, line
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))
+@pytest.mark.parametrize(
+    ("status", "text", "line"),
+    [
+        (
+            400,
+            "Bad Request: invalid api key secret",
+            "the model provider refused the key (400): Bad Request: invalid api key secret",
+        ),
+        (400, "Bad API-Key", "the model provider refused the key (400): Bad API-Key"),
+        (
+            400,
+            "reasoning_effort='xhigh' is not supported",
+            "the model provider refused the request (400): reasoning_effort='xhigh' is not "
+            "supported",
+        ),
+        (404, "No such model", "the model provider refused the request (404): No such model"),
+        (422, "Bad field", "the model provider refused the request (422): Bad field"),
+    ],
+)
+def test_any_other_4xx_of_a_provider_is_a_refusal_with_its_status(provider, status, text, line):
+    error = {"name": "APIError", "message": text, "status": status}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert (event.error, event.details, event.transient) == (line, text, False)
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_408_is_no_refusal(provider):
+    error = {"name": "APIError", "message": "Timeout", "status": 408}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert event.error == "APIError: Timeout"
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_lado_s_words_of_a_context_too_small_come_before_a_status(provider):
+    error = {"name": "APIError", "message": LM_STUDIO_REFUSAL, "status": 400}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert event.error.startswith("ContextOverflowError: the model's context is too small")
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
 def test_another_status_stays_as_the_cli_gave_it(provider):
     error = {"name": "APIError", "message": "broke", "status": 500}
     event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
@@ -2225,6 +2308,7 @@ def _server_env(server_root, model, **more):
         "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
         "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
         "CLAUDE_CODE_MAX_RETRIES": "7",
+        "CLAUDE_CODE_EFFORT_LEVEL": "auto",
         **more,
     }
 
@@ -2277,8 +2361,9 @@ def test_a_known_context_goes_to_a_claude_agent(repo):
 @pytest.mark.parametrize(
     ("limit", "output"),
     [
-        (base.Limit(131072), "32000"),
-        (base.Limit(262144), "32000"),
+        (base.Limit(131072), "16384"),
+        (base.Limit(262144), "16384"),
+        (base.Limit(1048576, 943717), "16384"),
         (base.Limit(131071), "8192"),
         (base.Limit(16000), "4000"),
         (base.Limit(65536, 2048), "2048"),

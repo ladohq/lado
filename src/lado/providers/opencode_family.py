@@ -71,16 +71,9 @@ EVENTS = {
 # and "session.idle" says nothing of work still running; Kilo is taken to be as its base,
 # not checked. So their agents are idle at a turn's end, never `background` (BACKLOG.md).
 ABORTED = "MessageAbortedError"
-# LADO's words of a context too small live here alone. A stopped turn is the plugin's (its
-# "stopped" counts the attempts); a server's refusal is not an overflow to the CLI: LM Studio
-# answers HTTP 400, and both report it as UnknownError with the raw JSON (the human's check of
-# LAD-211), so it ends the turn at once and needs no count.
-OVERFLOW = "ContextOverflowError"
-TOO_SMALL = "the model's context is too small for the agent's request"
-REFUSED_FOR_CONTEXT = "exceed_context_size_error"
-SERVER_SIZES = re.compile(
-    r"request \(\d+ tokens\) exceeds the available context size \(\d+ tokens\)"
-)
+# A stopped turn is the plugin's (its "stopped" counts the attempts); a server's refusal is not an
+# overflow to the CLI: LM Studio answers HTTP 400, and both report it as UnknownError with the raw
+# JSON (the human's check of LAD-211), so it ends the turn at once and needs no count.
 # A model server is a provider of the agent's config, under an id of its own that a rename never
 # changes and no provider of the user's has (checked with OpenCode 1.18.35 and Kilo 7.8.8 on two
 # servers: `name` of the provider is the group and label in the real /model, `name` of a model
@@ -126,14 +119,12 @@ def turn_error(error: Mapping) -> tuple[str, str]:
     name = error.get("name") or "UnknownError"
     message = base.without_keys(error.get("message", ""))
     if error.get("stopped"):
-        words = f"LADO stopped the turn after {error['stopped']} attempts: {TOO_SMALL}"
+        words = f"LADO stopped the turn after {error['stopped']} attempts: {base.TOO_SMALL}"
         return base.error_line(name, f"{words}; {message}" if message else words), message
-    if error.get("status") in base.REFUSALS:
+    if line := base.context_line(message):
+        return line, f"{name}: {message}"
+    if base.is_refusal(error.get("status")):
         return base.refusal_line(error["status"], message), message
-    if REFUSED_FOR_CONTEXT in message:
-        sizes = SERVER_SIZES.search(message)
-        words = f"{TOO_SMALL}; {sizes[0]}" if sizes else TOO_SMALL
-        return base.error_line(OVERFLOW, words), f"{name}: {message}"
     whole = f"{name}: {message}"
     return base.error_line(name, message), whole if len(whole) > base.ERROR_LIMIT else ""
 

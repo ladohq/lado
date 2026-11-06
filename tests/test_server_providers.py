@@ -202,6 +202,7 @@ def test_a_saved_key_replaces_lados_token_and_beats_the_outside_folders(
     outside.mkdir()
     (outside / TOKEN).write_text("canary-out")
     monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(outside))
+    monkeypatch.setattr(provider_check, "start", lambda: True)
     client.put(f"/api/providers/claude/variables/{TOKEN}", json={"value": "canary-tok"})
     cli_logins.logged_in("api_key")
     answer = client.put(f"/api/providers/claude/variables/{KEY}", json={"value": "canary-key"})
@@ -213,9 +214,9 @@ def test_a_saved_key_replaces_lados_token_and_beats_the_outside_folders(
         "LADO's secret",
     )
     assert row["from_lado"] is True
-    # The status command, as every agent, got the key and not the outside folder's token
-    # (the check the save started reads the other CLIs too).
-    _, env = [c for c in cli_logins.calls if c[0][0] == "claude"][-1]
+    # The status command, as every agent, got the key and not the outside folder's token.
+    assert {argv[0] for argv, _ in cli_logins.calls} == {"claude"}
+    _, env = cli_logins.calls[-1]
     assert env[KEY] == "canary-key" and TOKEN not in env
     assert "canary" not in answer.text
 

@@ -200,7 +200,7 @@ def near_the_frame(words) -> bool:
             return [...paint.getImageData(0, 0, 1, 1).data].slice(0, 3);
         }"""
     )
-    return all(abs(got - want) <= 16 for got, want in zip(found, (154, 161, 173)))
+    return all(abs(got - want) <= 16 for got, want in zip(found, (154, 161, 173), strict=True))
 
 
 def test_the_supervisors_terminal_comes_back_live_when_its_stopped_session_resumes(

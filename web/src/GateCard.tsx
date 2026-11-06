@@ -181,7 +181,7 @@ export function GatePanel({
       </span>
     ),
     lost && (
-      <span key="waits" className="waiting-count">
+      <span key="waits" className="lost-note">
         {WAITING_NOTE}
       </span>
     ),

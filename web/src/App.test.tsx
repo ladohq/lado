@@ -586,6 +586,20 @@ test("the status region stands while the stream is refused", async () => {
   expect(within(bar).queryByRole("button", { name: "System" })).toBeNull();
 });
 
+test("a stream refused after a loss is not read out as live: the page's alert says why", async () => {
+  open("/");
+  await waitFor(() => expect(stream().readyState).toBe(FakeEventSource.OPEN));
+  const bar = screen.getByRole("banner");
+  await within(bar).findByRole("button", { name: "System" });
+  await lose(bar);
+  const region = within(bar).getByRole("status");
+  expect(region.textContent).toBe("reconnecting…");
+  serve(200, SESSIONS, { status: 401, body: { detail: "wrong token" } });
+  stream().fail(true);
+  expect((await screen.findByRole("alert")).textContent).toBe("wrong token");
+  expect(region.textContent).toBe("");
+});
+
 test("a stream the server refused: the reason shows, then it reconnects from the last id", async () => {
   open("/sessions");
   await screen.findByRole("link", { name: /lado/ });

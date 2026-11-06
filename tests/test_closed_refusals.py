@@ -70,25 +70,25 @@ def test_a_gate_closed_already(lado_home):
     _pinned("gate", refused.value)
 
 
-def _reply(question: int) -> state.Reply:
-    return state.Reply(question, f"Answer to #{question}: yes", "", "yes", state.ANSWERED)
-
-
 @pytest.mark.parametrize("closed", ["answered", "dismissed", "closed", "stopped"])
-def test_a_question_not_open(lado_home, closed):
-    _session()
-    question = state.add_question(SESSION, "w1", "Merge?", "", ["yes"], True)
+def test_a_question_not_open(repo, fake_tmux, closed):
+    """By the server's own path: runtime refuses these before state sees them."""
+    runtime.start_session(str(repo), SESSION, None, provider="claude")
+    question = state.add_question(SESSION, "supervisor", "Merge?", "", ["yes"], True)
     with state.connect() as db:
         db.execute("UPDATE messages SET question_state = ? WHERE id = ?", (closed, question))
-    with pytest.raises(state.QuestionClosed) as refused:
-        state.reply_to_questions(SESSION, [_reply(question)])
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.answer_questions(SESSION, [runtime.HumanReply(question, "yes")])
     _pinned("questions", refused.value)
 
 
 def test_a_question_gone(lado_home):
+    """At state's level only: it comes of a race inside state's transaction. On the server's
+    path a question that is not there reads `no question #N in session S`, another refusal."""
     _session()
+    reply = state.Reply(999, "Answer to #999: yes", "", "yes", state.ANSWERED)
     with pytest.raises(state.QuestionClosed) as refused:
-        state.reply_to_questions(SESSION, [_reply(999)])
+        state.reply_to_questions(SESSION, [reply])
     _pinned("questions", refused.value)
 
 

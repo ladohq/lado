@@ -101,7 +101,8 @@ buttons off by `stopped`: the error says the truth and waits for a resume.
 
 **D13. One region for the ear.** `LinkState` renders a `.visually-hidden` `role="status"` span
 before everything else and before its `refused` return, so it stands from the first paint. Its
-text is the mark's word (`live`, `connecting…`, `reconnecting…`), no new text. `role="status"` leaves
+text is the mark's word (`live`, `connecting…`, `reconnecting…`), no new text; refused, it is
+empty, as the page's alert says why and "live" would be false. `role="status"` leaves
 `.link-word` and `.link.reconnecting`: those elements swap at the loss, and a live region that
 enters the DOM with its text is announced unreliably. `get_by_role("status")` of the tests finds
 the region, with the same text.

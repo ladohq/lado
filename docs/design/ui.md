@@ -1425,8 +1425,8 @@ the mark does the job, and Live coming back with the buttons awake says the rest
   503) stands in its tooltip; a server out of reach has none. Live is back the moment the feed
   opens.
 - **For the ear**: one `role="status"` region (`LinkState`, Shell.tsx), hidden, stands in the
-  top bar from the first paint, also while the stream is refused, with the mark's word. A
-  region that comes with its text is read out unreliably, so the mark has no status role.
+  top bar from the first paint, with the mark's word; empty while the stream is refused, when
+  there is no mark and the page's alert says why. A region that comes with its text is read out unreliably, so the mark has no status role.
 - **What waits**: while lost, a gate's buttons wherever it shows (the chat, Needs you, its
   run's page), Send answer, Send (Enter too), Stop, Stop and forget and Resume are disabled.
   `Waiting for connection` stands beside a gate's buttons; the others say it in a tooltip, on
@@ -1451,7 +1451,7 @@ the mark does the job, and Live coming back with the buttons awake says the rest
   | Send answer | what waits | none of the questions sent is there |
   | Send | the messages after the last one known at the click | one from the human to that agent, with the same text and files |
   | Stop | the sessions | stopped or gone |
-  | Resume | the sessions | running (gone: the attempt is dropped) |
+  | Resume | the sessions | running or `loop_down` (gone: the attempt is dropped) |
 
   Send compares ids, not times: a phone's clock is not the server's. Found, the error goes, the
   files sent leave, and the field is cleared only if its text did not change. Reached, Stop's

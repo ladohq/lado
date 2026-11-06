@@ -29,10 +29,9 @@ import { ActivityIcon } from "./icons";
 import { useLiveStore, useLocked } from "./live";
 import { withQuote } from "./quote";
 import { registerComposer, takePending } from "./quotes";
+import { SUPERVISOR } from "./Team";
 import { ActionProblem, Waits } from "./waitingParts";
 import type { Fold } from "./WaitingCard";
-
-const SUPERVISOR = "supervisor"; // whom the server gives a message without `to`
 
 export function Composer({
   session,

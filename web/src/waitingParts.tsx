@@ -19,7 +19,7 @@ export function Waits({ tip, children }: { tip?: string; children: ReactElement<
   if (lost) {
     return (
       <Tooltip tip={WAITING_NOTE}>
-        <span className="waits" tabIndex={0}>
+        <span className="lost-wait" tabIndex={0}>
           {children}
         </span>
       </Tooltip>

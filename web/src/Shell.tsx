@@ -305,7 +305,8 @@ function LinkState() {
   const [sharing, setSharing] = useState(false);
   const before = useRef<"open" | "connecting">("connecting"); // what a drop leaves shown
   if (link === "open" || link === "connecting") before.current = link;
-  const word = lost ? "reconnecting…" : before.current === "open" ? "live" : "connecting…";
+  // Refused, there is no mark to follow and no connection to name: the page's alert says why.
+  const word = link === "refused" ? "" : lost ? "reconnecting…" : before.current === "open" ? "live" : "connecting…";
   const mark = (
     <span className="link reconnecting" tabIndex={problem ? 0 : undefined}>
       <NoNetworkIcon />

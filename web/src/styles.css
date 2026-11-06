@@ -5914,18 +5914,25 @@ button.rec-bar-line {
   opacity: 0.55;
 }
 
-/* What waits for the connection (docs/design/ui.md, A lost connection): `.waits` is the span
-   with the button's tooltip, which takes the pointer, as a disabled button does not. */
-.waits {
+/* What waits for the connection (docs/design/ui.md, A lost connection): `.lost-wait` is the
+   span with the button's tooltip, which takes the pointer, as a disabled button does not.
+   (`.waits` is another thing: what waits for the human.) */
+.lost-wait {
   display: inline-flex;
   cursor: not-allowed;
 }
 
-.waits > button {
+.lost-wait > button {
   pointer-events: none;
 }
 
-.waits button:disabled,
+.lost-note {
+  align-self: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.lost-wait button:disabled,
 button.locked:disabled,
 .action-problem button:disabled {
   cursor: not-allowed;

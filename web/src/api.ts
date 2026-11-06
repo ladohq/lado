@@ -24,8 +24,9 @@ export class Unreached extends ApiError {
 }
 
 // One request with its answer read: a refusal stays as it is and an abort of the UI's own
-// too; anything else, a body cut off included, means no answer.
-async function answered<T>(request: () => Promise<T>): Promise<T> {
+// too; anything else, a body cut off included, means no answer. Who reads a body after the
+// request ended (getContent's) reads it under this too.
+export async function answered<T>(request: () => Promise<T>): Promise<T> {
   try {
     return await request();
   } catch (error) {

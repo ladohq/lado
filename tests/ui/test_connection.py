@@ -125,7 +125,11 @@ def test_while_lost_the_buttons_wait_everywhere_and_the_fields_stay(
     expect(button(page, "Stop session…")).to_be_disabled()
     send.hover(force=True)
     expect(page.get_by_role("tooltip")).to_have_text("Waiting for connection")
+    expect(send.locator("..")).to_have_css("cursor", "not-allowed")
     shot(page, "chat")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "chat-dark")
+    page.emulate_media(color_scheme="light")
     draft.press("Enter")
     expect(draft).to_have_value("Check the login form too")
     comment.fill("Ship the login page first, then the rest.")
@@ -138,6 +142,8 @@ def test_while_lost_the_buttons_wait_everywhere_and_the_fields_stay(
     expect(button(needs, "Approve")).to_be_disabled()
     expect(needs.get_by_text("Waiting for connection")).to_be_visible()
     shot(page, "needs-you")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "needs-you-dark")
     again()
     expect(button(needs, "Approve")).to_be_enabled(timeout=15000)
     expect(needs.get_by_text("Waiting for connection")).to_have_count(0)
@@ -151,8 +157,23 @@ def test_a_gate_on_its_runs_page_waits_too(page: Page, server, again, repo, shot
     expect(button(run, "Approve")).to_be_enabled()
     server_run.stop()
     expect(button(run, "Approve")).to_be_disabled()
-    expect(run.get_by_text("Waiting for connection")).to_be_visible()
+    note = run.get_by_text("Waiting for connection")
+    expect(note).to_be_visible()
+    expect(note).to_have_css("font-size", "13px")
+    expect(note).to_have_css("align-self", "center")
     shot(page, "run-page")
+
+
+def test_what_waits_for_the_human_looks_as_ever_with_the_connection_fine(page: Page, server, repo):
+    """The wrapper of a button that waits has a class of its own: `waits` marks what waits for
+    the human, and is no forbidden cursor."""
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
+    pill = page.locator(".pill.waits").first
+    expect(pill).to_have_css("cursor", "auto")
+    expect(pill).to_have_css("display", "inline")
+    expect(page.locator(".run-now.waits")).to_have_css("cursor", "auto")
 
 
 def test_approve_as_the_server_goes_then_not_delivered_and_retry(
@@ -292,6 +313,8 @@ def test_send_that_never_arrived_says_so_and_retry_sends_it(page: Page, server, 
     expect(alert).to_contain_text("Message not delivered")
     expect(field).to_have_value("say it")
     shot(page, "message")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "message-dark")
     page.unroute("**/messages")
     button(alert, "Retry").click()
     expect(field).to_have_value("")
@@ -326,6 +349,8 @@ def test_stop_without_an_answer(page: Page, server, repo, shot):
     alert = popover.get_by_role("alert")
     expect(alert).to_contain_text("Stop not delivered")
     shot(page, "stop")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "stop-dark")
     page.unroute("**/stop")
     button(alert, "Retry").click()
     expect(popover).to_have_count(0)
@@ -346,6 +371,8 @@ def test_resume_without_an_answer(page: Page, server, repo, shot):
     alert = window.get_by_role("alert")
     expect(alert).to_contain_text("Resume not delivered")
     shot(page, "resume")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "resume-dark")
     page.unroute("**/resume")
     button(alert, "Retry").click()
     expect(window).to_have_count(0)

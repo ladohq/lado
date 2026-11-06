@@ -11,7 +11,7 @@
 // sandbox headers (server/app.py, _content_headers).
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 
-import { ApiError, contentPath, getContent, type ArtifactInfo, type RecordInfo } from "./api";
+import { answered, ApiError, contentPath, getContent, type ArtifactInfo, type RecordInfo } from "./api";
 import { kindOf, scopePart, size, type Kind } from "./artifacts";
 import { Body, since } from "./ChatText";
 import { CopyButton } from "./Copy";
@@ -231,7 +231,7 @@ function useText(session: string, record: string): Read {
     const abort = new AbortController();
     setRead(null);
     getContent(session, record, abort.signal)
-      .then(readUpTo)
+      .then((answer) => answered(() => readUpTo(answer)))
       .then(
         (got) => !abort.signal.aborted && setRead(got),
         (error: unknown) => {

@@ -33,7 +33,8 @@ be plain live again, with no state of its own for the return. No strip SHALL sho
 
 The top bar SHALL hold one `role="status"` region for as long as the shell stands, also while the
 stream is refused, read out and not shown. Its text SHALL follow the mark: "reconnecting…" while
-lost, "live" when back. The mark itself SHALL carry no status role, so nothing is read twice.
+lost, "live" when back, and nothing while the stream is refused, as there is no mark then. The mark
+itself SHALL carry no status role, so nothing is read twice.
 
 #### Scenario: The loss
 - **WHEN** the connection has been lost for 2 s
@@ -46,6 +47,10 @@ lost, "live" when back. The mark itself SHALL carry no status role, so nothing i
 #### Scenario: A short drop
 - **WHEN** the feed is lost and back within 1 s
 - **THEN** the region's text does not change
+
+#### Scenario: Refused after a loss
+- **WHEN** the stream is refused with a 401 after a loss
+- **THEN** the region is empty, never "live", and the page's alert says why
 
 ### Requirement: While the connection is lost the buttons that write wait
 

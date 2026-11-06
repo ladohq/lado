@@ -135,8 +135,8 @@ once logged in. An unknown state SHALL NOT hold it.
 
 ### Requirement: The New session window offers only CLIs that can start
 
-The New session window and the Resume window SHALL show a provider with `login_missing`, which a
-CLI's default model on a server that takes its whole process clears, as a disabled option "`<name>` · not logged in", never choose it by itself, and, with it
+The New session window and the Resume window SHALL show a provider with `login_missing` as
+a disabled option "`<name>` · not logged in", never choose it by itself, and, with it
 suggested or chosen, show the note "`<CLI>` is not logged in: its agents cannot start. Log
 in first" leading to Settings → Agent CLIs and environment and keep Start (Resume)
 disabled; the Project way and the Resume window SHALL read the list for the session's
@@ -166,4 +166,5 @@ project.
 
 #### Scenario: A default on a model server
 - **WHEN** Claude Code is not logged in and its default model is on a model server
-- **THEN** "claude · Claude Code <version>" can be chosen and Start is enabled
+- **THEN** it has no `login_missing`, "claude · Claude Code <version>" can be chosen and Start is
+  enabled

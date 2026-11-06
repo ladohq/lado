@@ -26,12 +26,13 @@ stays in one place.
 
 ## D2. A focus given back shows no tooltip
 
-A closing window's focus event reaches the opener's `Tooltip` as a keyboard focus, also after Cancel
-pressed with the mouse: `pressed` is set only by a press on the trigger. The tooltip would then stay
-over the button. `close()` fires the focus synchronously, so `modal.ts` keeps a flag true during
-`close()` and exports `givingBack()`; `Tooltip`'s `onFocus` shows nothing while it is true. The
-alternative, comparing `:focus-visible`, fails for Esc, where the focus is visible and the tooltip
-still unwanted.
+A focus that reached the opener's `Tooltip` would count as the keyboard's, also after Cancel pressed
+with the mouse: `pressed` is set only by a press on the trigger. It does not reach it: `close()` runs
+in a layout effect's cleanup, within React's commit, when React's root listener drops events
+(`_enabled` in react-dom), so `onFocus` does not fire and no code is needed. The `givingBack()` flag
+planned here was not built: no test could fail without it. `tests/ui/test_layout.py` holds the
+behaviour, and a probe with `close()` called from Cancel's click, outside the commit, turned it red
+(`to_have_count(0)`, actual 1), so a React that stopped dropping those events would be caught.
 
 ## D3. The toggle sideways
 
@@ -60,11 +61,12 @@ comes first, with "…" when cut, and then the line "The rest is on the run's pa
 about 12 lines of the 320 px tooltip, so the box fits a window of 390 px height with its margins.
 Its lines keep their breaks (`white-space: pre-line`).
 
-`ListEntry` gets `tip?: ReactNode`, and `ListGroup` wraps the row's `Link` in `Tooltip`, so hover and
-keyboard focus both work. Whether something is hidden depends on the row's width, so it is measured
-when the row is entered or focused: a task of several lines always, a one-line task when
-`.run-task-line` has `scrollWidth > clientWidth`. Otherwise the tip is `null`, which `Tooltip` already
-treats as silent. `card()` takes it from `entry()`.
+`ListEntry` gets `tip?: ReactNode` and `tipWhen?`, and `ListGroup` wraps the row's `Link` in `Tooltip`,
+so hover and keyboard focus both work. Whether something is hidden depends on the row's width, so it
+is measured when the row is entered or focused: a task of several lines always, a one-line task when
+`.run-task-line` has `scrollWidth > clientWidth`. That answer goes through `Tooltip`'s new prop `when`,
+asked in the same event: a tip set to `null` by state would come a render too late for that entry.
+`card()` takes both from `entry()`.
 
 ## D6. The task's line stays muted
 
@@ -96,8 +98,8 @@ real user. The coming stages do not touch these windows' shape.
 
 | Rule | Layer |
 |---|---|
-| `useModal`, the `showModal` guard, `givingBack`, `Tooltip` silent | unit (vitest, `modal.test.ts`, `Tooltip.test.tsx`) |
-| Focus back after Esc and Cancel | UI e2e: jsdom has no real focus return (`test_terminal_panel.py`, `test_stopped_session.py`, and one walk over Forget, Finish, Share, New session, Add kit in `test_layout.py`) |
+| `useModal`, the `showModal` guard | unit (vitest, `modal.test.ts`) |
+| Focus back after Esc and Cancel, no tooltip | UI e2e: jsdom has no real focus return (`test_terminal_panel.py`, `test_stopped_session.py`, and one walk over Forget, Finish, Share, New session, Add kit in `test_layout.py`) |
 | Toggle sideways, empty feed, works | UI e2e, `test_phone.py`, 844×390 with touch, 568×320 |
 | Notices | unit for the class; UI e2e for computed style and a screenshot, live windows (`test_kits_page.py`, `test_providers_section.py`) |
 | `taskTip`, when a tip is silent | unit (`Flows.test.tsx`); UI e2e for hover and focus (`test_flows_tab.py`) |

@@ -379,8 +379,9 @@ Decided in the agent terminal task (2026-10-03).
   closed for good.
 - **Modes**: every terminal opens in view, the supervisor's too (the Layout task: the human
   writes to agents in the chat, and a window is never resized without the human's own
-  step); **Take control** asks first in a modal dialog (`<dialog>`, Esc is Cancel, its
-  `--scrim` backdrop over the whole page, the terminal too) with
+  step); **Take control** asks first in a modal dialog (`<dialog>`, Esc is Cancel and gives
+  the focus back to the button: Look, Windows; its `--scrim` backdrop over the whole page, the
+  terminal too) with
   **Don't ask again**, remembered in the browser (`lado.askControl`) for every agent; there
   is no setting for it, and the button's tooltip always has the explanation. Without
   browser storage it asks every time. **Release** goes back. Control is the state to see
@@ -1416,7 +1417,8 @@ Built in the layout task (2026-10-03, schema 14):
   are in the page and CSS shows one, and the focus passes from one to the other with no
   tooltip. The state lives in `useAgentMessages`, as the bar
   and the feed both read it and an agent's page writes it. On a phone the toggle is an icon
-  button at the end of the team's row (two speech bubbles, `BetweenIcon`; 26 px, quiet and
+  button at the end of the team's row, held sideways of the tab row, as there is no team's row
+  there (LAD-224; two speech bubbles, `BetweenIcon`; 26 px, quiet and
   muted unpressed, the pressed team chip's border with the icon in the action colour when
   `aria-pressed`), its name the same in both states (a stopped session has no team there, and
   the toggle shows the words Messages between agents, 44 px high, pressed on `--action-ground`:
@@ -2483,7 +2485,9 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
 - **Sideways** (`short`): the chat's card is minimized by the layout (its tabs and one
   line), not by the human: `lado.waitingMinimized.<session>` is not written. A tab or the
   line shows it expanded over the chat; Esc or its fold button minimizes it again; turned
-  upright, it shows whole. The Team row and the composer's "to" line are not shown.
+  upright, it shows whole. The Team row and the composer's "to" line are not shown; on Activity
+  the icon toggle Messages between agents ends the tab row, 36 px, a stopped session's too,
+  without its words, and an expanded card hides it with the tabs.
 - **Terminals**: no panel or strip. A team chip or Open terminal shows the terminal over
   the whole screen, its tabs and bar as when expanded, with **Close terminal** in place of
   Restore terminal; Close terminal or Esc (but in a terminal the human controls) puts it
@@ -2657,8 +2661,9 @@ your agents use. Changes apply to agents started afterwards."
   phone's width, where the window fills the screen), and the help line ("This window
   closes by itself once you are signed in."). When the command ends with 0 the sheet
   closes as for any window; with another status (the `ended` frame), before the code too,
-  the window stays with "<CLI> did not sign you in", "What <CLI> said:" and its last line
-  as it wrote it, "Get a new code" (the action again) and "Back" (the sheet's choices).
+  the window stays with "<CLI> did not sign you in" (an error notice), "What <CLI> said:" and
+  its last line as it wrote it (a quote, no stripe), "Get a new code" (the action again) and
+  "Back" (the sheet's choices).
   Without a prompt within 10 s the window shows the CLI's terminal after all, under "LADO
   could not find the link and the code in <CLI>'s output; here is <CLI>'s own window.",
   with the field and the keys.
@@ -2793,14 +2798,18 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
     human first, then the active ones ("No active runs" when there is none), each a card,
     a link to its page: the name (mono), "Waits for you" only when it waits (the card
     orange), on the right flow · kit · `started <time>`; the first line of its task
-    (LAD-198: 13 px `--muted`, on an orange card its colour, cut with "…", none when
-    blank); the line of what goes on now
+    (LAD-198: 13 px `--muted`, on an orange card too, LAD-224; cut with "…", none when
+    blank; when the card hides part of the task, a cut line or later lines, hovering it or
+    the keyboard's focus shows the task in a tooltip with its line breaks, at most 12 lines
+    and 600 characters, then "…" and "The rest is on the run's page"; measured then, as it
+    depends on the card's width); the line of what goes on now
     (state · `→ <who acts>` or `gate #N` or its reason · how long); then its flow's states,
     the run head's chips (the same component, `States`), or "Flow cannot be read: …" for a
     run with a `problem`.
   - **History** (neutral), ended and cancelled runs by when they ended, the latest first,
     under their day, the first 10 and then Show N more ("No ended runs yet"): a compact
-    row, the name, the task's first line as on a card, its status and time; no states.
+    row, the name, the task's first line and tooltip as on a card, its status and time; no
+    states.
   A session with no run, while the search is empty, shows in their place "No flow runs yet"
   and a line from the session's about (`SessionKitInfo.flows`, read once; `flowsLine`):
   "Runs appear when the supervisor starts a flow of the session's kits: sdlc: task, epic;
@@ -2912,9 +2921,9 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   From 100 artifacts of the session (`GROUPS_FROM`, counted before any filter) both go in
   groups by scope while the filter is All scopes: `GroupHead`'s band, "Session" or the run's
   exact name in mono, with the rows shown (and "artifacts" for a screen reader). On entering
-  the tab or reloading, Session and open runs stand above ended runs, each part freshest first;
-  while the tab is open the groups keep their places, a new record goes in its group and a new
-  group to the end of its part. A row's
+  the tab or reloading, Session stands first (LAD-224), then open runs, then ended runs, the runs
+  of each part freshest first; while the tab is open the groups keep their places, a new record
+  goes in its group and a new group, Session's too, to the end of its part. A row's
   name goes without its run, as with one scope picked. In the flat list of all scopes a long run
   part is cut at its start, at about a third of the row, so the name stays. Session's and
   open runs' groups start open, ended runs' folded, and
@@ -3117,7 +3126,7 @@ page (LADO has one source of kits, git).
   head; the description, warnings, three tiles (roles, skills, flows), roles and flows by
   name, the skills behind "Show all N", the MCP servers with their commands, the address
   and commit. When the core says `needs_confirmation` (not the official marketplace, as
-  the CLI asks), a warning about its MCP servers and **Install** only after "I checked the
+  the CLI asks), a warning notice about its MCP servers and **Install** only after "I checked the
   address and the MCP servers". Install sends the plan's tag and commit (a folder: its MCP
   servers); the server plans again and refuses another one with 409, and the window offers
   the plan again. An Available card's + and its Install… start at the plan. A refusal of the core
@@ -3168,6 +3177,12 @@ colours were: a light, calm ground (#F6F7F9, panels #FFFFFF, lines #E3E6EB, ink 
 muted #5B6270), blue for actions and links (#1F5FD6), and orange only for what waits for the
 human (#B4530F on #FDF1E6); IBM Plex Sans and IBM Plex Mono. Each section's mockups are made
 and approved in its own task; this file keeps what was decided from them.
+
+Windows (LAD-224): every modal window opens and closes through `useModal` (`modal.ts`), the one
+place with `showModal` and `close` (a unit test holds that). Closed by Esc, Cancel or its close
+button, a window gives the focus back to what had it at opening, while that is still in the page,
+and the next Tab goes on from there. The focus given back shows no tooltip. After an action that
+removes the opener (Take control pressed, a Forget that leaves the page) nothing is restored.
 
 Notices (decided 2026-11-06, LAD-198): an error is `--danger` text and an alert icon on
 `--danger-ground`, a warning the same in `--warn` on `--warn-ground`; radius 6, padding 8 12

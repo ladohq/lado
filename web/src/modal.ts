@@ -1,4 +1,4 @@
-// The one way a modal window of the UI opens and closes (docs/design/ui.md, Structure). The
+// The one way a modal window of the UI opens and closes (docs/design/ui.md, Look, Windows). The
 // browser gives the focus back to what had it at showModal() only on close() of a dialog that
 // is still in the page, and a window here goes when React removes it: so close() comes from a
 // layout effect's cleanup, which runs before the removal; a passive effect's runs after it.

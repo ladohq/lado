@@ -49,14 +49,6 @@ function errorOf(error) {
 const OVERFLOW = "ContextOverflowError"
 const MAX_OVERFLOWS = 3
 
-// LADO's words go first: the core cuts an error to one short line (base.error_line).
-function stoppedBy(error) {
-  const words =
-    `LADO stopped the turn after ${MAX_OVERFLOWS} attempts: the model's context is too small ` +
-    "for the agent's request"
-  return { name: error.name, message: error.message ? `${words}; ${error.message}` : words }
-}
-
 export const LadoPlugin = async ({ client }, options = {}) => {
   const hooks = options?.hooks ?? {}
   // Sessions of subagents (task tool): their turns are not the agent's turns.
@@ -120,7 +112,7 @@ export const LadoPlugin = async ({ client }, options = {}) => {
             const count = (overflows.get(props.sessionID) ?? 0) + 1
             overflows.set(props.sessionID, count)
             if (count >= MAX_OVERFLOWS) {
-              errors.set(props.sessionID, stoppedBy(error))
+              errors.set(props.sessionID, { ...error, stopped: MAX_OVERFLOWS })
               stopped.add(props.sessionID)
               await client.session.abort({ path: { id: props.sessionID } })
             }

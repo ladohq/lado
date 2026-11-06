@@ -191,12 +191,7 @@ test("an error the CLI compacts its way out of ends no turn", async () => {
 // A model too small for the agent's request (OpenCode 1.18.35): each round is an overflow, a
 // compaction whose own model step succeeds, and "session.compacted", with no idle ever.
 const OVERFLOW = { name: "ContextOverflowError", data: { message: "too long." } }
-const STOPPED = {
-  name: "ContextOverflowError",
-  message:
-    "LADO stopped the turn after 3 attempts: the model's context is too small for the agent's " +
-    "request; too long.",
-}
+const STOPPED = { name: "ContextOverflowError", message: "too long.", stopped: 3 }
 
 function step(sessionID, messageID) {
   const part = { type: "step-finish", sessionID, messageID }

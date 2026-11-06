@@ -1063,7 +1063,72 @@ def test_a_stopped_turn_says_why_past_the_cut_of_a_long_server_message(provider,
     assert "the model's context is too small for the agent's request" in event.error
     assert event.error.endswith("…") and len(event.error) == base.ERROR_LIMIT
     assert event.details.count("maximum context length") == 8
-    assert event.details.startswith("ContextOverflowError: LADO stopped the turn")
+    assert event.details.startswith("This model's maximum context length")
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_stopped_turn_keeps_only_the_servers_text_in_its_body(provider):
+    error = {"name": "ContextOverflowError", "message": "too long.", "stopped": 3}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert event.error == (
+        "ContextOverflowError: LADO stopped the turn after 3 attempts: the model's context is "
+        "too small for the agent's request; too long."
+    )
+    assert event.details == "too long."
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_stopped_turn_with_no_message_of_the_server_says_why(provider):
+    error = {"name": "ContextOverflowError", "stopped": 3}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert event.error == (
+        "ContextOverflowError: LADO stopped the turn after 3 attempts: the model's context is "
+        "too small for the agent's request"
+    )
+    assert event.details == ""
+
+
+LM_STUDIO_REFUSAL = json.dumps(
+    {
+        "error": {
+            "code": 400,
+            "message": "request (21556 tokens) exceeds the available context size (16384 tokens), "
+            "try increasing it",
+            "type": "exceed_context_size_error",
+            "n_prompt_tokens": 21556,
+            "n_ctx": 16384,
+        }
+    }
+)
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_servers_refusal_for_context_reads_in_lados_words(provider):
+    error = {"name": "UnknownError", "message": LM_STUDIO_REFUSAL}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert event.error == (
+        "ContextOverflowError: the model's context is too small for the agent's request; "
+        "request (21556 tokens) exceeds the available context size (16384 tokens)"
+    )
+    assert event.details == f"UnknownError: {LM_STUDIO_REFUSAL}"
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_refusal_for_context_with_no_sizes_still_says_why(provider):
+    error = {"name": "UnknownError", "message": '{"type": "exceed_context_size_error"}'}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert event.error == (
+        "ContextOverflowError: the model's context is too small for the agent's request"
+    )
+    assert event.details == 'UnknownError: {"type": "exceed_context_size_error"}'
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_another_unknown_error_stays_as_the_cli_gave_it(provider):
+    error = {"name": "UnknownError", "message": '{"error": "bad gateway"}'}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert event.error == 'UnknownError: {"error": "bad gateway"}'
+    assert event.details == ""
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))

@@ -56,6 +56,16 @@ EVENTS = {
 # and "session.idle" says nothing of work still running; Kilo is taken to be as its base,
 # not checked. So their agents are idle at a turn's end, never `background` (BACKLOG.md).
 ABORTED = "MessageAbortedError"
+# LADO's words of a context too small live here alone. A stopped turn is the plugin's (its
+# "stopped" counts the attempts); a server's refusal is not an overflow to the CLI: LM Studio
+# answers HTTP 400, and both report it as UnknownError with the raw JSON (the human's check of
+# LAD-211), so it ends the turn at once and needs no count.
+OVERFLOW = "ContextOverflowError"
+TOO_SMALL = "the model's context is too small for the agent's request"
+REFUSED_FOR_CONTEXT = "exceed_context_size_error"
+SERVER_SIZES = re.compile(
+    r"request \(\d+ tokens\) exceeds the available context size \(\d+ tokens\)"
+)
 # A model server is a provider of the agent's config, under an id of its own that a rename never
 # changes and no provider of the user's has (checked with OpenCode 1.18.35 and Kilo 7.8.8 on two
 # servers: `name` of the provider is the group and label in the real /model, `name` of a model
@@ -97,6 +107,21 @@ def model_entry(name: str, limit: base.Limit | None) -> dict:
         return {"name": name}
     output = max(1, min(limit.output or DEFAULT_OUTPUT, limit.context // 4))
     return {"name": name, "limit": {"context": limit.context, "output": output}}
+
+
+def turn_error(error: Mapping) -> tuple[str, str]:
+    """The line of the error a turn ended on and the message's body (Event.error and .details):
+    LADO's words go first, as the core cuts a line short (base.error_line)."""
+    name, message = error.get("name") or "UnknownError", error.get("message", "")
+    if error.get("stopped"):
+        words = f"LADO stopped the turn after {error['stopped']} attempts: {TOO_SMALL}"
+        return base.error_line(name, f"{words}; {message}" if message else words), message
+    if REFUSED_FOR_CONTEXT in message:
+        sizes = SERVER_SIZES.search(message)
+        words = f"{TOO_SMALL}; {sizes[0]}" if sizes else TOO_SMALL
+        return base.error_line(OVERFLOW, words), f"{name}: {message}"
+    whole = f"{name}: {message}"
+    return base.error_line(name, message), whole if len(whole) > base.ERROR_LIMIT else ""
 
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")  # the colours of `auth list`
@@ -407,10 +432,8 @@ class OpenCodeFamily(base.Provider):
         data = json.loads(payload) if payload.strip() else {}
         error = data.get("error") or {}
         if error and error.get("name") != ABORTED:
-            name, message = error.get("name") or "UnknownError", error.get("message", "")
-            whole = f"{name}: {message}"
-            details = whole if len(whole) > base.ERROR_LIMIT else ""
-            return base.Event(EVENTS[native], error=base.error_line(name, message), details=details)
+            line, details = turn_error(error)
+            return base.Event(EVENTS[native], error=line, details=details)
         # The plugin's chat.message names the model of the prompt and its variant, the
         # reasoning effort (opencode_plugin.js). A model with no variant runs its default
         # one: OpenCode drops the variant when the human picks the default (1.18.35, read

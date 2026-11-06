@@ -201,6 +201,8 @@ def test_the_tabs_give_way_in_levels(page: Page, server, repo, shot):
     bar = page.get_by_role("navigation", name="Session sections")
     row = page.locator(".session-tabs-scroll")
     expect(bar.get_by_role("link", name=re.compile("^Agents · 2"))).to_be_visible()
+    bar.get_by_role("link", name=re.compile("^Agents")).click()  # with no tool at the bar's end
+    expect(bar.get_by_role("radiogroup")).to_have_count(0)
     seen = []
     for width in range(460, 180, -20):
         page.add_style_tag(content=f".session-tabs {{ width: {width}px; }}")
@@ -388,7 +390,7 @@ def test_a_team_chip_at_768_px_opens_the_panel_on_its_agent_and_stores_nothing(
     size(page, 768, 760)
     session = running_session(repo)
     open_session(page, server, session)
-    page.get_by_role("group", name="Team").get_by_role("button").first.click()
+    page.get_by_role("toolbar", name="Team").get_by_role("button").first.click()
     expect(panel(page)).to_have_class(re.compile(r"\bover\b"))
     assert stored(page, PANEL_KEY) is None
 
@@ -520,14 +522,19 @@ def test_the_list_opened_last_at_1024_px_survives_a_reload(page: Page, server, r
 
 
 def test_at_a_chat_of_420_px_the_tabs_keep_their_counts(page: Page, server, repo, shot):
-    """Frame g2-1024-tabs: level 1, no icons, the counts in place."""
+    """Frame g2-1024-tabs: level 1, no icons, the counts in place; on Activity Yours | All
+    takes that room, and the tabs scroll."""
     size(page, 1024, 760)
     session = gated_session(repo)
     open_session(page, server, session, {PANEL_KEY: json.dumps({"width": 640, "collapsed": False})})
     bar = page.get_by_role("navigation", name="Session sections")
+    assert chat_width(page) == 420
+    page.wait_for_function(FITS)
+    expect(bar).to_have_attribute("data-fit", "3")  # the tabs scroll beside it
+    expect(bar.get_by_role("radio", name="Yours")).to_be_visible()
+    bar.get_by_role("link", name=re.compile("^Artifacts")).click()
     expect(bar.get_by_role("link", name=re.compile("^Artifacts · "))).to_be_visible()
     expect(bar.get_by_role("link", name=re.compile("^Flows · 1"))).to_be_visible()
-    assert chat_width(page) == 420
     page.wait_for_function(FITS)
     expect(bar).to_have_attribute("data-fit", "1")
     expect(bar.locator(".tab-count").first).to_be_visible()

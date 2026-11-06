@@ -429,7 +429,7 @@ def test_tab_out_of_details_closes_it_and_the_focus_goes_on(page: Page, server, 
     details(page).get_by_role("link", name="All sessions").focus()
     page.keyboard.press("Tab")
     expect(details(page)).to_have_count(0)
-    expect(head(page).get_by_role("button", name="Stop session…")).to_be_focused()
+    expect(head(page).get_by_role("toolbar", name="Team").get_by_role("button").first).to_be_focused()
 
     title.click()  # back to the title it stays open, then out the other way it closes
     details(page).get_by_role("button", name="Copy path").focus()
@@ -518,7 +518,7 @@ def test_details_stays_inside_a_narrow_window(page: Page, server, repo, shot):
     shot(page)
 
 
-def test_tab_goes_through_skip_the_rail_and_the_heads_four_stops(page: Page, shop, server, shot):
+def test_tab_goes_through_skip_the_rail_and_the_heads_five_stops(page: Page, shop, server, shot):
     page.set_viewport_size({"width": 1440, "height": 900})
     runtime.start_session(None, None, None, "fake", project="shop", repo_name="frontend")
     agent_helpers.wait_for(
@@ -541,7 +541,7 @@ def test_tab_goes_through_skip_the_rail_and_the_heads_four_stops(page: Page, sho
         )
         crumb.focus()
         stops = []
-        for _ in range(4):
+        for _ in range(5):
             stops.append(
                 page.evaluate(
                     """() => {
@@ -551,7 +551,7 @@ def test_tab_goes_through_skip_the_rail_and_the_heads_four_stops(page: Page, sho
                 )
             )
             page.keyboard.press("Tab")
-        assert stops == ["Shop", "shop-frontend", "Stop session…", "System"]
+        assert stops == ["Shop", "shop-frontend", "supervisor, idle", "Stop session…", "System"]
     finally:
         runtime.stop_session("shop-frontend")
 

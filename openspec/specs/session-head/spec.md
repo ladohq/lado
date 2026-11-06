@@ -2,8 +2,8 @@
 
 ## Purpose
 How a session's head reads on a computer: one line of the top bar that never wraps, with the
-project, the title, the run time, Stop and the link, and the session's facts in a popover
-Details opened from the title, with the same content as the phone's sheet.
+project, the title, the run time, the team in its levels, Stop and the link, and the session's
+facts in a popover Details opened from the title, with the same content as the phone's sheet.
 
 ## Requirements
 

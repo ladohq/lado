@@ -4,6 +4,10 @@
 
 ### Improved
 
+- **Your agents stay in sight in the session's head, and the chat gets taller.** On every tab
+  the head shows the team with its statuses, as names or avatars by the room, and a list of all
+  agents; `Yours | All` moved to the tabs, and the keys hint shows only in an empty field.
+
 - **A session's head is one line at any width.** The folder, git, kits, CLI, Rename and Copy
   link moved to Details, which a click on the title opens; the chat gets the height back,
   and `Skip to chat` takes the keyboard straight to it.

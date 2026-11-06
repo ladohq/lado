@@ -202,7 +202,7 @@ def test_a_session_starts_from_the_new_session_window(page: Page, server, repo, 
     expect(dialog).to_have_count(0)
     idle("my-repo")
     view = page.get_by_role("region", name="Session my-repo")
-    expect(view.get_by_role("group", name="Team")).to_contain_text("supervisor")
+    expect(page.get_by_role("toolbar", name="Team")).to_contain_text("supervisor")
     assert state.get_session("my-repo").provider == "fake"
     shot(page)
 
@@ -616,7 +616,7 @@ def test_a_start_that_records_the_trust_shows_no_warnings(page: Page, trusting, 
     expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
     idle("my-repo")
     view = page.get_by_role("region", name="Session my-repo")
-    expect(view.get_by_role("group", name="Team")).to_contain_text("supervisor")
+    expect(page.get_by_role("toolbar", name="Team")).to_contain_text("supervisor")
     expect(page.get_by_text("Warnings:")).to_have_count(0)
     log = (state.home() / "loop.log").read_text()
     note = f"LADO recorded Fake agent's trust in {repo.resolve()} in {trusting.path}"

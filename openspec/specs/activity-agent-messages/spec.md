@@ -1,10 +1,10 @@
 # activity-agent-messages Specification
 
 ## Purpose
-The toggle of a session's Activity tab that adds the messages agents send each other to
-the human's chat: a small icon button at the end of the team's row, its tooltip that
-says what it shows, its default and its memory in the browser (docs/design/ui.md,
-Activity).
+The choice of a session's Activity tab that adds the messages agents send each other to
+the human's chat: `Yours | All` at the tab bar's end, on a phone a small icon button at the
+end of the team's row, its tooltip that says what it shows, its default and its memory in
+the browser (docs/design/ui.md, Activity).
 
 ## Requirements
 

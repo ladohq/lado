@@ -471,7 +471,8 @@ def test_the_composer_stays_at_the_bottom_with_a_gate_waiting(device, server, re
     within(card.locator(".waiting-foot"), 0, UPRIGHT[1])
     assert page.locator(".chat-feed").evaluate("f => getComputedStyle(f).overflowY") == "auto"
     expect(page.locator(".composer-keys")).to_be_hidden()
-    expect(page.locator(".composer-to")).to_have_text("to supervisor")
+    expect(page.locator(".composer-to")).to_have_count(0)
+    expect(page.locator(".composer-meta")).to_be_hidden()  # no empty line
     assert field.evaluate("f => getComputedStyle(f).fontSize") == "16px"
     shot(page, full_page=False)
 

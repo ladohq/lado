@@ -237,7 +237,7 @@ name no provider names as its login.
 
 ### Requirement: An agent whose CLI needs a login waits for it and starts by itself
 
-When an agent's CLI needs a login (Claude Code; Codex with a model that needs one) and is not logged in at launch (a session
+When an agent's CLI needs a login (Claude Code on no model server; Codex with a model that needs one) and is not logged in at launch (a session
 LADO resumes by itself, or a login lost after a start's check), the agent SHALL wait from
 its start with a reason that says where to log in; its window SHALL check every few
 seconds, file layers read anew and the login taken whole from one layer, and start the CLI
@@ -331,8 +331,8 @@ setup-token`, `CLAUDE_CODE_OAUTH_TOKEN`) and "Pay per use — API billing" (an A
 
 ### Requirement: A new session or worker whose CLI needs a login and has none is refused
 
-LADO SHALL refuse a new session whose provider needs a login (Claude Code; Codex with a
-model that needs one), a resume by
+LADO SHALL refuse a new session whose provider needs a login (Claude Code on no model server;
+Codex with a model that needs one), a resume by
 hand by the provider of the supervisor it starts, and a new worker by its own provider,
 when that provider's status, read in the environment the agent would start from, is not
 logged in; before anything of it is stored or made, naming the CLI and where to log in. A
@@ -466,6 +466,11 @@ project.
   not logged in: its agents cannot start. Log in first" is shown, its link leading to
   Settings → Agent CLIs and environment, and Resume is disabled until another CLI with a
   login is chosen
+
+#### Scenario: A default on a model server
+- **WHEN** Claude Code is not logged in and its default model is on a model server
+- **THEN** it has no `login_missing`, "claude · Claude Code <version>" can be chosen and Start is
+  enabled
 
 ### Requirement: Settings answers at once from the last check of the CLIs
 

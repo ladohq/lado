@@ -59,10 +59,8 @@ no known context SHALL have no `limit`.
 
 When the known context of the model an agent starts on is below what its CLI needs (OpenCode 32768,
 Kilo 49152), `lado start`, the start's warnings and the launch window SHALL warn, naming the model,
-its context and the need, and the agent SHALL start. The warning SHALL say where to change the context:
-the setting of a server of a known type, and the section of `docs/install.md`. An unknown context, or a
-model the agent does not start on, SHALL give no such warning. The folded Advanced SHALL name each
-warning of the chosen model in a few words of its own.
+its context and the need, and the agent SHALL start. An unknown context, or a model the agent does not
+start on, SHALL give no such warning.
 
 #### Scenario: Too small a model
 
@@ -74,6 +72,17 @@ warning of the chosen model in a few words of its own.
 - **WHEN** the window checks a model whose context is below the need
 - **THEN** the Model field shows the warning, and Start stays on
 
+#### Scenario: Enough context
+
+- **WHEN** the context is at the need or above it
+- **THEN** no warning about the context is given
+
+### Requirement: The warning says where to act
+
+The warning about a context SHALL say where to change it: the setting of a server of a known type, and
+the section of `docs/install.md`. The folded Advanced SHALL name each warning of the chosen model in a
+few words of its own.
+
 #### Scenario: A server of a known type
 
 - **WHEN** the model too small is on LM Studio
@@ -84,11 +93,6 @@ warning of the chosen model in a few words of its own.
 - **WHEN** the chosen model is too small and its key goes over plain http
 - **THEN** the folded Advanced reads `⚠ key over http, context too small`; with the context alone,
   `⚠ context too small`
-
-#### Scenario: Enough context
-
-- **WHEN** the context is at the need or above it
-- **THEN** no warning about the context is given
 
 ### Requirement: Overflows in a row stop the turn
 

@@ -2,10 +2,11 @@
 // LADO (see lado/providers/opencode_family.py). Checked with Kilo 7.8.3 and OpenCode 1.18.34.
 //
 // Options, from the `plugin` entry of the agent's config (kilo.json, opencode.json):
-// { hooks: { <native event>: [argv...] } }. For each native event that has an argv, the
-// command runs with a JSON payload on stdin. When "session.idle" prints text, that text
+// { hooks: { <native event>: [argv...] }, tuiWait: <ms> }. For each native event that has an
+// argv, the command runs with a JSON payload on stdin. When "session.idle" prints text, that text
 // becomes the session's next user message; when the CLI refuses it, "plugin.error" says so
-// with the error. A missing argv means "do not report this event".
+// with the error. A missing argv means "do not report this event". "tui.silent" runs tuiWait
+// after the plugin's start.
 // The plugin must never break the CLI, so every other failure is swallowed.
 import { spawn } from "node:child_process"
 

@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 import uuid
+from pathlib import Path
 
 import agent_helpers
 import pytest
@@ -181,6 +182,53 @@ def test_a_silent_tui_s_agent_is_ready_its_lead_is_told_and_its_task_is_typed_in
     wait_for(typed, "the task typed in", session)
     told = [m.summary for m in state.list_messages(session) if m.recipient == "supervisor"]
     assert f"w1: {SILENT}" in told
+
+
+def _silent_worker(monkeypatch, tmp_path, session: str) -> tuple[state.Message, Path]:
+    ready = tmp_path / "ready"
+    monkeypatch.setenv("FAKE_AGENT_START_HOLD", str(ready))
+    monkeypatch.setenv("FAKE_AGENT_START_NOTE", SILENT)
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    [task] = [m for m in state.list_messages(session) if m.recipient == "w1"]
+    return task, ready
+
+
+def _inputs(session: str) -> list[str]:
+    log = agent_helpers.fake_logs(session, "w1") / "inputs.jsonl"
+    return log.read_text().splitlines() if log.exists() else []
+
+
+@pytest.mark.parametrize("attempts", [1, 4], ids=["first paste", "last paste"])
+def test_a_tui_that_opens_while_a_paste_is_unconfirmed_gets_it(
+    repo, session, monkeypatch, tmp_path, attempts
+):
+    """Busy, with the paste lost: the report ran no turn, so nothing but LADO ends that."""
+    monkeypatch.setenv("LADO_RETRY_DELAYS", "1,1,4")
+    monkeypatch.setattr(runtime, "RETRY_DELAYS", (1.0, 1.0, 4.0))
+    start(repo, session)
+    task, ready = _silent_worker(monkeypatch, tmp_path, session)
+    typed = lambda: state.get_message(session, task.id).attempts >= attempts  # noqa: E731
+    wait_for(typed, f"attempt {attempts}", session)
+
+    ready.touch()
+    delivered = lambda: state.get_message(session, task.id).state in (state.DELIVERED, state.READ)  # noqa: E731
+    wait_for(delivered, "the task delivered", session)
+
+
+def test_a_paste_the_cli_held_is_not_typed_again_when_it_opens(
+    repo, session, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("FAKE_AGENT_START_KEEPS", "1")
+    start(repo, session)
+    task, ready = _silent_worker(monkeypatch, tmp_path, session)
+    typed = lambda: state.get_message(session, task.id).attempts >= 1  # noqa: E731
+    wait_for(typed, "the task typed in", session)
+
+    ready.touch()
+    delivered = lambda: state.get_message(session, task.id).state in (state.DELIVERED, state.READ)  # noqa: E731
+    wait_for(delivered, "the task delivered", session)
+    time.sleep(runtime.RETRY_DELAYS[0] + 2 * loop.INTERVAL)
+    assert len([line for line in _inputs(session) if "your task" in line]) == 1
 
 
 def test_what_a_silent_tui_lost_goes_in_when_it_opens_after_all(

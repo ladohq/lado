@@ -31,6 +31,14 @@ brings them back at the next hook, but a session start ends no such wait, as a c
 too. So `tui.ready` carries `Event.ready`, and `hooks.handle` ends a wait with no key (`waiting_for`) on it:
 the queue goes in. A dialog's wait has its key and stays.
 
+A paste still unconfirmed at `tui.ready` needs its own care (F1 of the review). `_plan` reads a hook after a
+paste as a turn under way, so an agent `busy` for the paste alone would stay so, its message `sent`, for good.
+`state.restart_typed` makes that paste a first attempt from this hook and the agent idle. It goes back to the
+queue after `RETRY_DELAYS[0]` rather than at once: a CLI that held the paste confirms it meanwhile, so it is not
+typed twice, at the price of 15 s for a TUI that lost it. A real turn has nothing unconfirmed and stays `busy`.
+`tui.silent` also comes after `tui.ready`, as the timer cannot know of it: once the agent is ready that hook
+stops before `state.seen`, so it cannot pass for a sign after a paste.
+
 **D2. A plugin file of its own.** `src/lado/providers/opencode_tui_plugin.js`, default export
 `{ id: "lado-ready", tui }`. Both CLIs require the `id` of a file plugin and pass the entry's options as
 the second argument (checked on both). The server plugin keeps its shape: a TUI plugin runs in the TUI's

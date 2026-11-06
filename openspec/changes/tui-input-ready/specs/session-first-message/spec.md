@@ -21,7 +21,7 @@ before it, but for a silent TUI (see "An agent whose TUI stays silent is ready")
 
 #### Scenario: A CLI that shows no sign
 
-- **WHEN** neither the TUI nor the server plugin reports for 30 s after the launch
+- **WHEN** the TUI has not reported 30 s after the launch and no other hook of the CLI has run
 - **THEN** the message stays `pending` and never `failed`, and the agent is `waiting` with the reason
   `Waiting for an answer in its terminal: no sign from it 30 s after its start. Open its terminal.`;
   when the prompt has focus the agent is idle and the message goes in
@@ -54,6 +54,17 @@ any idle agent. A later report of the TUI SHALL end a wait that failed messages 
 - **WHEN** messages typed into a silent TUI failed and the agent is `waiting`, and then the prompt has
   focus
 - **THEN** the messages go back to the queue, the agent is idle, and they are `delivered`
+
+#### Scenario: A TUI that opens while a paste is unconfirmed
+
+- **WHEN** a message typed into a silent TUI is not confirmed, also after its last attempt, and the
+  prompt has focus
+- **THEN** the agent is idle, the message waits one retry delay as a first attempt, and goes in again
+
+#### Scenario: A paste the CLI held
+
+- **WHEN** the CLI confirms that message within that delay
+- **THEN** it is not typed in again
 
 #### Scenario: A dialog stays
 

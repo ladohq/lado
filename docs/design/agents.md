@@ -544,17 +544,24 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   alone in `tui.json` of its config folder (`OPENCODE_TUI_CONFIG`, `KILO_TUI_CONFIG`), runs
   `lado hook tui.ready` on the first frame with a focused renderable, and the server plugin's
   init reports nothing. A message sent before that waits `pending` with no attempt counted,
-  while the TUI takes its time; with no sign of the CLI at all, past `START_SILENCE` the agent
-  shows the reason of a silent start, and the report ends it. A renderer without that API
+  while the TUI takes its time; past `START_SILENCE` the agent shows the reason of a silent
+  start, and a report ends it: `tui.ready`, or with a live server plugin `tui.silent` 1 to 3 s
+  later, its timer counting from the plugin's init and not from the launch. A renderer without that API
   reports at once: a paste may be lost then and the sweep types it again. A TUI plugin that
   does not report (a CLI's change, or a TUI merely slow, which nothing tells apart) must not
   leave the agent `starting`: the server plugin, alive, runs `lado hook tui.silent` 30 s after
   its init (`tuiWait`, dropped at `dispose`), a `SESSION_START` with `Event.note`. When that
   start makes the agent ready, the note goes to its lead (`runtime.start_note`) and its queue
-  is typed in as for any idle agent, so a TUI still blank loses it; after `tui.ready` it does
-  nothing. `tui.ready` carries `Event.ready`: on it `hooks.handle` also ends a wait with no
-  key, the one failed messages left, which `state.seen` has just put back in the queue, and a
-  dialog's wait, with its key, stays. Claude Code and Codex set neither field. Their queue's lines at launch
+  is typed in as for any idle agent, so a TUI still blank loses it; once the agent is ready that
+  hook is dropped before `state.seen`, as it would pass for a sign after a paste (`_plan`).
+  `tui.ready` carries `Event.ready`, for what was typed in before it. A paste not confirmed
+  starts over from that hook as a first attempt (`state.restart_typed`), and an agent busy
+  for it alone is idle: no turn ran, so no hook would end that. The paste goes back to the
+  queue after `RETRY_DELAYS[0]`, not at once, so a CLI that held it confirms it by
+  `chat.message` and it is not typed twice. A real turn has nothing unconfirmed and stays
+  `busy`. `hooks.handle` also ends a wait with no key, the one failed messages left, which
+  `state.seen` has just put back in the queue; a dialog's wait, with its key, stays. Claude
+  Code and Codex set neither field. Their queue's lines at launch
   (`Capabilities.notice_on_argv`), never a body, go on `--prompt` (`runtime._launch_command`),
   handed over then as `typed` with its first attempt and confirmed by `chat.message` as
   typed text, before or after `tui.ready`; the agent stays `starting` until its session

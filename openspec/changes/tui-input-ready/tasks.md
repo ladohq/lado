@@ -15,6 +15,8 @@
   `make test-js`, `tests/test_runtime.py`, integration, smoke with a TUI plugin that does not load.
 - [x] 1.9 A late TUI gets what failed: `Event.ready` ends a wait with no key, a dialog's stays (D1b). Check:
   `tests/test_runtime.py`, integration.
+- [x] 1.10 A paste unconfirmed at `tui.ready` starts over and the agent is idle; a late `tui.silent` is no sign
+  of the agent (D1b, F1 of the review). Check: `tests/test_runtime.py`, integration, both orders.
 
 ## 2. Words of an error
 

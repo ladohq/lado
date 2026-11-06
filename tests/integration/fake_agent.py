@@ -72,7 +72,8 @@ $CLAUDE_CONFIG_DIR/.claude.json does not trust its repository's main root, read 
 Claude Code reads it, not through LADO (trusted). With FAKE_AGENT_START_HOLD in its
 environment it runs its session-start hook only once that file exists, as a TUI slow to take
 input, and loses what is typed into its window before; with FAKE_AGENT_START_NOTE too it runs
-that hook once first, with this note, as the server plugin of a silent TUI. With
+that hook once first, with this note, as the server plugin of a silent TUI; with
+FAKE_AGENT_START_KEEPS it keeps what was typed meanwhile instead. With
 FAKE_AGENT_HANGUP_HOOK=1 in its
 environment, when its tmux window is killed (SIGHUP) it runs its session-end hook before it
 exits, as Claude Code does, and writes {"hung_up": <what the hook printed>} to "seen" once
@@ -537,7 +538,7 @@ def main() -> None:
         hook("session_start", note=note)
     while hold and not os.path.exists(hold):
         time.sleep(0.05)
-    if hold:
+    if hold and not os.environ.get("FAKE_AGENT_START_KEEPS"):
         termios.tcflush(sys.stdin, termios.TCIFLUSH)  # what was typed meanwhile is lost whole
     hook("session_start", ready=bool(hold))
     text = None

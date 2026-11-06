@@ -41,3 +41,13 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-06-external-mod
 - [x] 6.2 `docs/design/agents.md`, `docs/design/modules.md`, `docs/design/ui.md`, `docs/testing.md`,
   `docs/cli.md`; CHANGELOG.md under 0.45.0.
 - [x] 6.3 `make lint`, `make test`, `openspec validate --specs --strict`, the trial archive.
+
+## 7. The human's check on a real provider
+
+- [x] 7.1 Any 4xx but 408 is a refusal on all three CLIs, a 400 about the key a refused key, the
+  context's words first (D12). Check: `tests/test_providers.py`, `-m smoke` with cloud.ru's 400.
+- [x] 7.2 A Claude agent on a server asks for at most 16384 of output (D13). Check:
+  `tests/test_providers.py`, `-m smoke` on a context of 131072, seen red at 32000.
+- [x] 7.3 A Claude agent on a server names no effort (D14). Check: `tests/test_providers.py`,
+  `-m smoke` with the user's `effortLevel`.
+- [x] 7.4 Only a resume told counts (D15). Check: `tests/test_liveness.py`.

@@ -23,6 +23,26 @@ A turn of OpenCode, Kilo or a Claude agent on a server that ends on a provider's
 - **WHEN** such a turn is counted by `lado stats`
 - **THEN** its kind is LADO's words alone, with none of the server's text
 
+### Requirement: Any other 4xx of a provider is a refusal too
+
+Such a turn ending on any other 4xx but 408 SHALL read `the model provider refused the request (<status>)`, then the server's text, and a 400 whose text names an API key `the model provider refused the key (400)`. A server's refusal for the context SHALL keep LADO's words of a context too small, whatever its status.
+
+#### Scenario: cloud.ru's wrong key
+- **WHEN** a server answers 400 with `{"message":"invalid api key secret","code":"InvalidArgument"}`
+- **THEN** on each CLI the line holds `the model provider refused the key (400)` and that text, and no resume is planned
+
+#### Scenario: A request the model does not take
+- **WHEN** a server answers 400 with `reasoning_effort='xhigh' is not supported`
+- **THEN** the line holds `the model provider refused the request (400)` and that text
+
+#### Scenario: A context too small
+- **WHEN** a server answers 400 with `exceed_context_size_error`
+- **THEN** the line holds LADO's words of a context too small
+
+#### Scenario: A request that took too long
+- **WHEN** a turn ends on a 408
+- **THEN** the error is as the CLI gave it, and a Claude agent's turn stays temporary
+
 ### Requirement: A Claude agent's refusal is read from its last message
 
 For a Claude agent on a server, LADO SHALL read the status and the text of a failed turn from `last_assistant_message` of `StopFailure`, in Claude Code's forms `API Error: 402 <text>` and `API Error: Request rejected (429) · <text>`. A message in no such form SHALL leave the error as the hook's kind. A Claude agent on a built-in model SHALL keep its words as before.
@@ -41,7 +61,7 @@ For a Claude agent on a server, LADO SHALL read the status and the text of a fai
 
 ### Requirement: A refusal is never a temporary error
 
-A turn that ended on a status of those four SHALL NOT be temporary, whatever kind the CLI gives it: LADO SHALL plan no resume, and SHALL tell the lead, or the human for the supervisor's turn, at once.
+A turn that ended on any such refusal SHALL NOT be temporary, whatever kind the CLI gives it: LADO SHALL plan no resume, and SHALL tell the lead, or the human for the supervisor's turn, at once.
 
 #### Scenario: 402 on Claude Code
 - **WHEN** Claude Code reports `unknown` with the message `API Error: 402 Insufficient credits`
@@ -50,6 +70,18 @@ A turn that ended on a status of those four SHALL NOT be temporary, whatever kin
 #### Scenario: A rate limit on the supervisor
 - **WHEN** the supervisor's turn ends on a 429
 - **THEN** the human sees the line, the supervisor is idle, and no request follows from LADO
+
+### Requirement: Only a resume told counts
+
+The count of an agent's resumes SHALL hold the resumes it was told and the one planned: a plan dropped as a message of the queue started a turn SHALL NOT count, and an error while a plan waits SHALL leave it as it is. `after <N> resumes` SHALL follow N told resumes.
+
+#### Scenario: The queue takes a resume's place
+- **WHEN** a temporary error plans a resume and a message of the queue starts a turn first
+- **THEN** the count goes back, and the next temporary error plans the same resume
+
+#### Scenario: A second error before the resume
+- **WHEN** a temporary error comes while a resume is planned
+- **THEN** the plan and the count stay
 
 ### Requirement: No repeat without end on a refusal
 

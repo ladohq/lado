@@ -122,9 +122,15 @@ def _w1_busy(repo):
 
 def _fail_again():
     """w1 is told to go on, and its turn ends on an overload."""
-    state.take_resume("s", "w1", time.time() + 1000, lambda n, error: "go on")
-    _hook("UserPromptSubmit", "w1", {"prompt": "go on"})
+    _told_to_go_on("w1")
     _hook("StopFailure", "w1", {"error": "overloaded"})
+
+
+def _told_to_go_on(agent):
+    """The agent's planned resume comes due, and its line reaches it."""
+    runtime.sweep("s", now=state.get_agent("s", agent).resume_at)
+    told = [m for m in state.list_messages("s") if m.recipient == agent and m.sender == "lado"]
+    _hook("UserPromptSubmit", agent, {"prompt": f"[from lado] {told[-1].summary}"})
 
 
 def test_a_resume_the_queue_took_the_place_of_is_not_counted(repo, fake_tmux, resume_delays):
@@ -185,9 +191,10 @@ def test_a_transient_error_of_the_supervisor_goes_to_the_human_once_resumes_are_
     monkeypatch.setattr(runtime, "RESUME_DELAYS", (30.0,))
     runtime.start_session(str(repo), "s", None, provider="claude")
     _hook("SessionStart", "supervisor")
-    for _ in range(2):
-        _hook("UserPromptSubmit", "supervisor", {"prompt": "go"})
-        _hook("StopFailure", "supervisor", {"error": "server_error"})
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "go"})
+    _hook("StopFailure", "supervisor", {"error": "server_error"})
+    _told_to_go_on("supervisor")
+    _hook("StopFailure", "supervisor", {"error": "server_error"})
     assert _from_lado("human") == [
         "turn of supervisor ended on an error after 1 resume: server_error; it is idle"
     ]
@@ -208,7 +215,8 @@ def test_a_turn_end_that_plans_no_resume_starts_the_resumes_again(
     w1 = state.get_agent("s", "w1")
     assert (w1.resume_at, w1.resumes) == (None, 0)
     before = time.time()
-    _fail_again()
+    _hook("UserPromptSubmit", "w1", {"prompt": "go on"})
+    _hook("StopFailure", "w1", {"error": "overloaded"})
     w1 = state.get_agent("s", "w1")
     assert w1.resumes == 1 and before + 30 <= w1.resume_at < before + 120
 

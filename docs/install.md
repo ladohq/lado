@@ -356,16 +356,20 @@ Add it as any server, with the address's path: `lado model-server add <name> <ad
 OpenCode and Kilo; Claude Code on cloud.ru's Anthropic API.
 
 - LADO reads a model's context from the provider's list, and limits answers to what it reports, or
-  to 32K tokens on a context of 128K or more. A provider that lists no context is warned about at
-  the start: the agent then compacts late and its answers have no limit.
+  to 32K tokens on a context of 128K or more; on Claude Code to 16K at most, so that a request at
+  its compaction still fits the context. A provider that lists no context is warned about at the
+  start: the agent then compacts late and its answers have no limit.
+- A Claude agent on a server names no effort: your `effortLevel` stays out of its requests, as a
+  model may refuse it.
 - **A large context costs money.** The agent compacts only near the model's context: on a 1M model
   late requests carry up to a million tokens. Prefer a model of 128K to 256K. LADO has no limit of
   your own to set yet.
 - **What it costs.** LADO does not show what a session spent. Look in the provider's console
   (cloud.ru) or Activity (OpenRouter); Kilo's TUI shows OpenRouter's cost; Claude Code has `/cost`,
   its own count, not compared with a bill.
-- **Refusals.** 401, 402, 403 and 429 end the agent's turn and the chat says why, once the CLI's own
-  repeats are spent. Nothing repeats by itself after that: a run waits for you or the lead, also at
+- **Refusals.** Any 4xx but 408 ends the agent's turn and the chat says why with the status and the
+  server's text, once the CLI's own repeats are spent. cloud.ru answers a wrong key with 400, and
+  does not check the key when you add the server: the first turn says so. Nothing repeats by itself after that: a run waits for you or the lead, also at
   night. On a 429 with no `Retry-After` the repeats take about 70 s on all three CLIs; on a 401
   OpenCode and Kilo stop at once, Claude Code after about 150 s. A provider's `Retry-After` makes
   them longer: OpenCode and Kilo wait what it names before each of about five repeats (100 s at

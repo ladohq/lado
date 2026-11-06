@@ -103,7 +103,7 @@ def test_a_provider_s_list_gives_a_claude_agent_its_limits(repo, serve):  # noqa
     agent = state.get_agent(SESSION, "supervisor")
     env = json.loads((base.config_dir(agent) / "settings.json").read_text())["env"]
     assert env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "131072"
-    assert env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "32768"
+    assert env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "16384"
 
 
 def test_a_failed_turn_marks_no_message_and_the_next_clean_turn_decides(repo, serve):  # noqa: F811

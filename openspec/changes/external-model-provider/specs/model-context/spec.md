@@ -117,7 +117,7 @@ no known context SHALL have no `limit`.
 A Claude agent on a server's model with a known context SHALL have that context as
 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` in the `env` of its own settings, and as
 `CLAUDE_CODE_MAX_OUTPUT_TOKENS` the output of the rule for OpenCode and Kilo: the server's, else 8192, or 32000 for a context of
-131072 or more, at most a quarter of the context. With no known context the variables SHALL be absent.
+131072 or more, at most a quarter of the context and at most 16384. With no known context the variables SHALL be absent.
 
 #### Scenario: A known context
 - **WHEN** a Claude agent starts on a model whose context is 65536
@@ -134,4 +134,4 @@ A Claude agent on a server's model with a known context SHALL have that context 
 
 #### Scenario: A large context
 - **WHEN** a Claude agent starts on a model whose context is 262144 and no output is reported
-- **THEN** its settings' `env` has `CLAUDE_CODE_MAX_OUTPUT_TOKENS` `32000`
+- **THEN** its settings' `env` has `CLAUDE_CODE_MAX_OUTPUT_TOKENS` `16384`

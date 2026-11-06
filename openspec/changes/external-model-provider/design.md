@@ -113,6 +113,47 @@ Only the constant's text changes; `ModelSources.tsx` compares with the constant.
 The fake endpoint gets a mode that answers a status with a body, and a `Retry-After: 1` so that a real
 CLI's 429 takes seconds, not 70. Requirement by requirement: the plan's table.
 
+### D12. Any 4xx (the human's check on cloud.ru)
+
+cloud.ru answers a wrong key with 400 `invalid api key secret`, and does not check the key on its
+list, so the key reaches the agent. On Claude Code that went as `unknown` through three resumes, ten
+minutes of silence. `base.is_refusal` is any 4xx but a 408; `refusal_line` keeps the table, reads a 400
+that names an API key as a refused key, and says `refused the request` for the rest. The words of a
+context too small move to `base` and come first on all three CLIs.
+
+### D13. The output of a Claude agent on a large context
+
+Measured on a fake server that counts bytes by 4, reads of 50 KB, a context of 131072. Claude Code
+compacts at the same input whatever the output, and that request goes with its `max_tokens`.
+
+| Output | `claude -p` 2.1.295 | `claude -p` 2.1.319 | TUI 2.1.295 |
+|---|---|---|---|
+| 32000 | 131275, over by 203 | 135611, over by 4539 | refused: `400 Invalid request` |
+| 20000 | 119275 | 123611 | 129813 |
+| 16384 | 115659 | not measured | 126197 |
+
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` change nothing on 2.1.295,
+though they do on 2.1.319, so the output is the way on both: `claude.SERVER_OUTPUT = 16384`, for
+Claude Code alone. OpenCode and Kilo compact earlier. A tool result of about 27000 tokens at the
+threshold still passes (143178 at 20000 on reads of 80 KB, `claude -p`): that turn ends with
+`refused the request (400)`, at once and in words.
+
+### D14. No effort on a server
+
+With no setting Claude Code names `high`, with the user's `effortLevel` that one, as
+`output_config.effort`; gpt-oss on cloud.ru refuses `xhigh`. `effortLevel: auto` in `--settings` loses
+to the user's setting; `CLAUDE_CODE_EFFORT_LEVEL=auto` in the settings' `env` sends none on 2.1.295
+and 2.1.319, also over the same variable in the environment. It goes in `SERVER_SWITCHES`.
+
+### D15. The count of resumes
+
+The report's two errors 2-3 s apart and `after 3 resumes` with one resume told: `schedule_resume`
+counted a resume when planned, and a turn started by the queue dropped the plan and kept the count. A
+dropped plan now leaves the count, and an error while a plan waits leaves it. Not reproduced on a
+real CLI: one failed turn gave one `StopFailure` on 2.1.295 and 2.1.319, with a 400, a 401 and a 500,
+in a first turn and a later one, so the title's request is not the cause. What made the second turn
+in the human's session is not known; the count is true for any cause.
+
 ## Questions for the human
 
 None left: #4153 and #4163 are answered. The scale and this design wait for `design_ok`.

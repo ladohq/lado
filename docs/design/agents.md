@@ -133,7 +133,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   the queue as any other. Any other status drops a planned resume (`state._set_status`):
   busy, the agent goes on anyway (a message, the human's input, its queue at the turn's
   end); waiting or starting (a dialog, failed messages, `/clear`), the human acts on it
-  already, so dropping it is no silent drop. A transient error after the last resume goes
+  already, so dropping it is no silent drop, and it was told to no one, so it leaves the count of
+  `agents.resumes`; an error while a resume is planned leaves the plan (`schedule_resume`): `after
+  <N> resumes` follows N told ones. A transient error after the last resume goes
   to the lead as above, with `after <N> resumes`. Every turn's end that plans no resume (as
   usual, a permanent error, the resumes spent) sets the count back to 0. Claude Code's
   transient types are `overloaded`, `server_error` and `unknown` (also the machine's
@@ -164,9 +166,11 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   error past `base.ERROR_LIMIT` keeps its
   whole text in `Event.details`, which `turn_failed` puts in the message's body; checked in the TUI of OpenCode 1.18.35 and Kilo
   7.8.8 on a server of a small context, 6 and 7 requests to the idle. A model provider's refusal,
-  a status of `base.REFUSALS` (401, 402, 403, 429), reads in LADO's words with the status and the
-  server's first line (`base.refusal_line`), its whole text in `Event.details`, and is never
-  transient: a turn of OpenCode or Kilo by the plugin's `status`, a Claude agent on a server by
+  any 4xx but a 408 (`base.is_refusal`), reads in LADO's words with the status and the
+  server's first line (`base.refusal_line`: `base.REFUSALS` for 401, 402, 403, 429, a 400 that
+  names an API key as a refused key, as cloud.ru answers a wrong key, else `refused the request`),
+  its whole text in `Event.details`, and is never transient; LADO's words of a context too small
+  come first (`base.context_line`, on all three CLIs): a turn of OpenCode or Kilo by the plugin's `status`, a Claude agent on a server by
   `last_assistant_message` of `StopFailure` (`claude.REFUSED`, as 2.1.295 sends no `error_details`
   and calls a 402 `unknown`; the hook sees `LADO_MODEL_SERVER`, checked by smoke). A Claude agent
   on a built-in model keeps its words. `rate_limit` stays permanent: a short limit and a spent
@@ -361,8 +365,11 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   so that `/model` shows Default and the model and a subagent's `model: haiku` falls back to it;
   `SERVER_BLANKS` as empty values (`ANTHROPIC_UNIX_SOCKET`, on which an empty value in the settings
   does nothing, goes empty in the launch's environment); `SERVER_SWITCHES`; for a known context `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and
-  `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (`Limit.output_room`: it asks for 32000 by itself, over a 64K context
-  with a prompt of 45K, and retries for hours what the server ends); `permissions.allow` with
+  `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (`Limit.output_room`, at most `claude.SERVER_OUTPUT`, 16384: it asks
+  for 32000 by itself, over a 64K context with a prompt of 45K, and retries for hours what the server
+  ends, and on a context of 131072 its request at a compaction passed the context with 32000; of the
+  settings of its threshold 2.1.295 reads neither); `CLAUDE_CODE_EFFORT_LEVEL` `auto` of
+  `SERVER_SWITCHES` names no effort, where `effortLevel` in `--settings` loses to the user's; `permissions.allow` with
   `mcp__lado__*`, as auto mode's classifier, in a `defaultMode` of the user's settings too, asks the
   same model, and one of no usable answer has LADO's tools blocked at every try; `apiKeyHelper: printenv LADO_MODEL_KEY_<ID>`, whose output goes out in both `x-api-key`
   and `Authorization`, or `echo no-key`, as with no credential at all the login goes out. The file

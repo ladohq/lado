@@ -67,6 +67,10 @@ does not show of cost is said. One source of truth: `Limit` stays the one rule o
 - A Claude agent on a server has `CLAUDE_CODE_MAX_RETRIES` 7: on a 429 it repeats 7 times, about 70 s
   with no `Retry-After`; on a 401 9 times, about 150 s. A provider's `Retry-After` lengthens the
   repeats of OpenCode and Kilo, and `docs/install.md` says so.
+- Any other 4xx but 408 is a refusal too, with its status and text; a 400 about the key reads as a
+  refused key, as cloud.ru answers. A context too small keeps its own words first.
+- A Claude agent on a server asks for at most 16384 tokens of output and names no effort.
+- A resume is counted when told, not when planned.
 - The value of a server's key is taken out of an error's line and body.
 - A probe asks a late POST once more with a longer ceiling, and says `did not answer in time` instead
   of a missing API; `lado model add` and a start refuse in those words.

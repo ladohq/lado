@@ -16,7 +16,7 @@
 - [x] 2.1 `make lint` green.
 - [x] 2.2 `uv run pytest -m container --collect-only tests/container/test_codex_sandbox.py`
   collects the test (no Docker in the agents' container; do not claim it ran).
-- [ ] 2.3 CI's container cells, amd64 and arm64, pass this test on the pull request; name the
+- [x] 2.3 CI's container cells, amd64 and arm64, pass this test on the pull request; name the
   run in `build-report`.
 
 ## 3. Backlog

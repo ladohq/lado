@@ -622,7 +622,8 @@ test("a stopped session of the folder is offered to resume, and Resume it turns 
   expect(screen.getByText("a stopped session lado exists for this folder")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Resume it" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
-  expect(where().disabled).toBe(true);
+  expect(within(dialog).getByRole("group", { name: "Where" }).textContent).toBe("/src/lado");
+  expect(within(dialog).queryByRole("combobox", { name: /Where/ })).toBeNull();
   expect((within(dialog).getByRole("textbox", { name: "Name" }) as HTMLInputElement).disabled).toBe(true);
   expect(within(dialog).getByRole("button", { name: "Resume session" })).toBeTruthy();
 });

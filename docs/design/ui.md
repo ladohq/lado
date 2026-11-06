@@ -1482,9 +1482,11 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   check against, `⚠ The key of <server> goes unencrypted (http) to an address outside your
   machine and network.`, for the chosen model's server only, or `⚠ <model> on <server> has a
   context of 16,000 tokens; <CLI> needs about 49,152 for its instructions and tools: load the model
-  with a larger context; see "What to expect of a small model" in docs/install.md`, with the
+  with a larger context; see "What to expect of a small model" in docs/install.md ↗`, with the
   setting of LM Studio or Ollama in its words, when the server reports a context below the CLI's
-  need, under `✓ <server> lists <model> among its models.` Folded, the row names them after a `⚠`
+  need, under `✓ <server> lists <model> among its models.` The file's name is a link to that
+  section on GitHub in a new tab, as a wheel holds no such file; the core's text, which `lado
+  start` prints, has neither link nor arrow, and a warning that names no file stays plain. Folded, the row names them after a `⚠`
   in the check's `peek`: `key over http`, `context too small`, or both. A start refused after a good check is a 409 `ModelRefusal`: above the
   buttons `Not started: <short reason>. See Model above.`, the refusal under the field, the focus
   on it. Then the `--without` items, `kind:name` or `kind:name@kit`

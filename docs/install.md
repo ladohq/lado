@@ -278,13 +278,20 @@ not. In LADO's container `localhost` is the container itself: a server on your m
 must listen beyond its own loopback (LM Studio: Serve on Local Network). A key sent over plain
 `http://` to an address outside your machine and network is warned about before the start.
 
-**What to expect of a small model.** An agent's instructions and tools take about 21K tokens on
+Others: `CLAUDE_CODE_OAUTH_TOKEN` (below), a kit's key as its MCP server names it (e.g.
+`YOUGILE_API_KEY`), a model provider's key for OpenCode and Kilo. Every agent of this LADO
+can read every file of its `secrets/`.
+
+#### What to expect of a small model
+
+An agent's instructions and tools take about 21K tokens on
 OpenCode and 31K on Kilo before its first word, so a model needs a context of 32K on OpenCode and
 48K on Kilo. At each start LADO asks the server what context the model has (LM Studio's loaded
 model, Ollama's running one, a gateway's `max_input_tokens`) and tells the agent, which then
 compacts in time; a model below that need is warned about in `lado start` and the launch window,
 and starts all the same. A model reloaded with another context keeps the old limit until a resume.
-On a model too small, the turn ends on an error in the chat after three attempts; a lighter agent
+On a model too small, the turn ends on an error in the chat, after three attempts or at once when
+the server refuses the request (LM Studio); a lighter agent
 for such models does not exist yet. Where to set the context: in LM Studio when you load the
 model, `lms load <model> --context-length 65536`; in Ollama with `OLLAMA_CONTEXT_LENGTH=65536 ollama
 serve` or the slider in the app's settings, and `ollama ps` shows what a running model has; in
@@ -294,14 +301,18 @@ else to expect:
 - A server that reports nothing, or a model not loaded yet, leaves the CLI with no limit: it
   compacts only when the server refuses a request. Ollama cuts a long prompt silently instead, so
   it may answer without having read all of it.
+- A gateway's limit comes from its description of the model (LiteLLM: `model_info.max_input_tokens`);
+  a gateway that does not describe it leaves the limit unknown.
+- An Ollama model not running at the start goes with no limit, as Ollama reports only running ones.
 - A server's 500 is retried by both CLIs for about 74 s before the turn ends on the error.
+- A model that writes its tool calls as text calls no tool: its turn ends with no answer.
+- A weak model may answer only in its terminal, not in the chat: open the agent's terminal to read
+  it.
 - With no way out to the internet, OpenCode's first start takes seconds on a model of a server.
   Kilo takes 12 s where outside traffic is refused, and over 140 s where packets are dropped
   silently, waiting for its own model list; no setting shortens that.
 
-Others: `CLAUDE_CODE_OAUTH_TOKEN` (below), a kit's key as its MCP server names it (e.g.
-`YOUGILE_API_KEY`), a model provider's key for OpenCode and Kilo. Every agent of this LADO
-can read every file of its `secrets/`.
+#### A variable of one project
 
 A variable only one project's agents should get, or with another value there (a board's
 address, a local model's), is set per project instead, no file needed: `docker compose exec

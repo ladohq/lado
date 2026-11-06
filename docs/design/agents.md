@@ -151,12 +151,17 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   compaction's own small request succeeding each round. So the plugin counts
   `ContextOverflowError`s in a row per session, a new prompt or a step of the turn (not of a
   compaction, whose message has `summary: true`) starting the count again, and at the third
-  keeps that error with LADO's words before the server's, as an error is cut to one short line,
+  marks that error `stopped` with the count, the server's text as it came,
   and calls `client.session.abort`, whose
   `MessageAbortedError` does not replace it. Any turn that ends on an error gives two
   `session.idle` 20 ms apart (a server's 500 and an abort alike, on both CLIs): the first ends
   the turn on that error, and any more before the next prompt end no turn, or the second would
-  pass as a clean end and decide the reply check. An error past `base.ERROR_LIMIT` keeps its
+  pass as a clean end and decide the reply check. LADO's words of such a turn live in
+  `opencode_family.turn_error` alone, before the server's, as an error is cut to one short line:
+  a stopped turn's, with the server's text alone in `Event.details`, and a server's own refusal
+  (`exceed_context_size_error`, LM Studio's HTTP 400, which both CLIs report as `UnknownError`
+  and no overflow count sees: that turn ends at once), with the CLI's whole text there. Any other
+  error past `base.ERROR_LIMIT` keeps its
   whole text in `Event.details`, which `turn_failed` puts in the message's body; checked in the TUI of OpenCode 1.18.35 and Kilo
   7.8.8 on a server of a small context, 6 and 7 requests to the idle. Claude Code runs no hook when
   the human interrupts a turn with Esc, while text streams, while a tool runs or on a
@@ -533,12 +538,19 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `human` queued after LADO's own (a resume's `session resumed`, a brief), whose summary is
   the fixed `runtime.FIRST_MESSAGE` and whose body is the whole text, also for one line, so
   the text never goes on a command line below; a failed start drops it with the queue.
-  Kilo and OpenCode
-  (`Capabilities.notice_on_argv`) lose text typed into their TUI right after the plugin's
-  init, and no event or API says when it takes input (OpenCode 1.18.35, checked by hand):
-  their queue's lines at launch, never a body, go on `--prompt` (`runtime._launch_command`),
+  Kilo and OpenCode lose text typed into their TUI before its prompt has focus, which comes
+  1.5 to 3 s after the server plugin's init, later under load (Kilo 7.8.8, OpenCode 1.18.35).
+  So their session start is the TUI's: `opencode_tui_plugin.js`, which LADO gives the agent
+  alone in `tui.json` of its config folder (`OPENCODE_TUI_CONFIG`, `KILO_TUI_CONFIG`), runs
+  `lado hook tui.ready` on the first frame with a focused renderable, and the server plugin's
+  init reports nothing. A message sent before that waits `pending` with no attempt counted,
+  however long the TUI takes; past `START_SILENCE` the agent shows the reason of a silent
+  start, and the report ends it. A renderer without that API reports at once: a paste may be
+  lost then and the sweep types it again. Their queue's lines at launch
+  (`Capabilities.notice_on_argv`), never a body, go on `--prompt` (`runtime._launch_command`),
   handed over then as `typed` with its first attempt and confirmed by `chat.message` as
-  typed text; the agent stays `starting` until its session start. Codex CLI takes them as
+  typed text, before or after `tui.ready`; the agent stays `starting` until its session
+  start or that `chat.message`, whichever comes first. Codex CLI takes them as
   its own `[PROMPT]` argument, and starts its session (SessionStart) only when its first
   input is submitted (`Capabilities.session_start_on_first_input`): an agent of it with an
   empty queue (a new supervisor) first gets `runtime.FIRST_INPUT` from `lado`, a message

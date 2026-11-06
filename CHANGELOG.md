@@ -51,8 +51,11 @@
 
 ### Fixed
 
+- **A message right after an OpenCode or Kilo start arrives at once.** It reaches the agent as
+  soon as the agent's input field is ready, and the agent shows `starting` until then.
 - **An OpenCode agent on too small a model stops.** It sent requests without end, `busy` with a
-  silent chat; now the turn ends after three overflows, and the chat says why.
+  silent chat; now the turn ends after three overflows, and the chat says why. LM Studio's
+  refusal for context reads the same way, with the server's text under it.
 - **A failed turn is not called a reply.** A message whose turn ended on an error no longer shows
   "replied only in its terminal"; the next clean turn decides.
 - **A tooltip no longer pops up when you come back to LADO's tab.** A session's card and

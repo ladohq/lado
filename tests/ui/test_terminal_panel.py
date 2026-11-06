@@ -188,6 +188,21 @@ def test_expand_shows_the_terminal_over_the_page_with_the_same_socket(
     assert [url.rsplit("=", 1)[1] for url in sockets] == ["view", "control", "view"]
 
 
+def near_the_frame(words) -> bool:
+    """The text's colour is within 16 of each channel of frame g5-term's, whose blue tint the
+    terminal's tokens lack (--term-ink is 78 off). Read off a canvas, as a computed color-mix()
+    is not an rgb()."""
+    found = words.evaluate(
+        """e => {
+            const paint = document.createElement('canvas').getContext('2d');
+            paint.fillStyle = getComputedStyle(e).color;
+            paint.fillRect(0, 0, 1, 1);
+            return [...paint.getImageData(0, 0, 1, 1).data].slice(0, 3);
+        }"""
+    )
+    return all(abs(got - want) <= 16 for got, want in zip(found, (154, 161, 173), strict=True))
+
+
 def test_the_supervisors_terminal_comes_back_live_when_its_stopped_session_resumes(
     page: Page, server, repo, shot
 ):
@@ -196,19 +211,32 @@ def test_the_supervisors_terminal_comes_back_live_when_its_stopped_session_resum
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     panel = page.get_by_role("complementary", name="Terminals")
+    sockets: list[str] = []
+    page.on("websocket", lambda socket: sockets.append(socket.url))
+    panel.get_by_role("button", name="Show the terminals").click()
     view = panel.get_by_role("tabpanel", name="supervisor")
-    status = view.get_by_role("status")
-    expect(status).to_have_text(f'closed: session "{session}" is stopped')
-    expect(view.get_by_role("alert")).to_have_count(0)  # the reason once
-    expect(panel.get_by_role("button", name="Reconnect")).to_be_visible()
+    words = view.get_by_text("Agent not running — resume the session to start it")
+    expect(words).to_be_visible()
+    expect(view).to_contain_text("Viewing")
+    assert words.evaluate("e => getComputedStyle(e).fontSize") == "13px"
+    screen = view.locator(".term-stopped")
+    # Muted as in frame g5-term (154, 161, 173), in both themes, on each theme's ground.
+    expect(screen).to_have_css("background-color", "rgb(27, 30, 36)")
+    assert near_the_frame(words)
+    page.emulate_media(color_scheme="dark")
+    expect(screen).to_have_css("background-color", "rgb(13, 15, 19)")
+    assert near_the_frame(words)
+    page.emulate_media(color_scheme="light")
+    expect(panel.get_by_role("button", name="Reconnect")).to_have_count(0)
     expect(panel.get_by_role("button", name="Take control")).to_have_count(0)
+    assert [url for url in sockets if "/terminal" in url] == []
     shot(page, "stopped")
 
     runtime.start_session(str(repo), session, None, "fake")
     expect(view.locator(".term")).to_have_attribute(
         "data-link", "open", timeout=20_000
     )  # no reload
-    expect(status).to_have_text("")
+    expect(view.get_by_role("status")).to_have_text("")
     shot(page, "resumed")
 
 

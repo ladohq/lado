@@ -1,7 +1,9 @@
 // A session's actions (docs/design/ui.md, Launch and session control), icons in its head
 // (Stop with its word, by the window's width in styles.css) by its status: Stop a session
 // that runs (or whose tmux session is gone, to mark it
-// stopped), Resume one that does not run, Forget one that is stopped. Stop asks in a
+// stopped), Resume one that does not run, Forget one that is stopped. A stopped session's
+// Resume has its word at any width, and on Activity stands in the bar in the composer's place
+// (StoppedBar), not in the head. Stop asks in a
 // popover, Forget in a modal window; both say first what they do, from the server's
 // preview. Stop's popover can also stop and forget the session in one go. The session list's
 // rows have none of them (Sessions.tsx, SessionRowMenu); its Stopped band forgets many
@@ -34,13 +36,13 @@ const LABELS: Record<Action, string> = { stop: "Stop session…", resume: "Resum
 const ICONS: Record<Action, ReactNode> = { stop: <StopIcon />, resume: <ResumeIcon />, forget: <ForgetIcon /> };
 
 // What can be done to a session of each status, in the order of its head's icons.
-function actionsOf(session: SessionInfo): Action[] {
+function actionsOf(session: SessionInfo, onActivity: boolean): Action[] {
   switch (session.status) {
     case "running":
     case "loop_down":
       return ["stop"];
     case "stopped":
-      return ["resume", "forget"];
+      return onActivity ? ["forget"] : ["resume", "forget"];
     case "tmux_gone":
       return ["resume", "stop"];
   }
@@ -50,8 +52,16 @@ export const messageOf = (error: unknown) => (error instanceof ApiError ? error.
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-export function SessionActions({ session }: { session: SessionInfo }) {
+// Resume, the one action of every Resume button: it opens the Resume window, whose request and
+// check of the outcome are the window's (Launch.tsx). `lost`: the button waits for the connection.
+function useResume(session: SessionInfo) {
   const launch = useLaunch();
+  const { lost } = useLive();
+  return { resume: () => launch({ kind: "resume", session }), lost };
+}
+
+export function SessionActions({ session, onActivity }: { session: SessionInfo; onActivity: boolean }) {
+  const { resume, lost } = useResume(session);
   const [shown, setShown] = useState<"stop" | "forget" | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const popover = useRef<HTMLDivElement>(null);
@@ -60,12 +70,11 @@ export function SessionActions({ session }: { session: SessionInfo }) {
   const closeStop = () => setShown((now) => (now === "stop" ? null : now));
   useDismiss(shown === "stop", box, close);
   const below = useBelow(box, popover, shown === "stop", true);
-  const { lost } = useLive();
 
   const act = (action: Action) => {
     if (action === "resume") {
       setShown(null);
-      launch({ kind: "resume", session });
+      resume();
     } else {
       setShown(action);
     }
@@ -73,7 +82,7 @@ export function SessionActions({ session }: { session: SessionInfo }) {
 
   return (
     <div ref={box} className="session-actions">
-      {actionsOf(session).map((action) => {
+      {actionsOf(session, onActivity).map((action) => {
         const button = (
           <button
             type="button"
@@ -86,6 +95,7 @@ export function SessionActions({ session }: { session: SessionInfo }) {
           >
             {ICONS[action]}
             {action === "stop" && <span className="session-action-word">Stop</span>}
+            {action === "resume" && session.status === "stopped" && <span className="session-resume-word">Resume</span>}
           </button>
         );
         return action === "forget" ? (
@@ -102,6 +112,26 @@ export function SessionActions({ session }: { session: SessionInfo }) {
         <StopPopover session={session.name} ref={popover} style={below} onClose={close} onStopped={closeStop} />
       )}
       {shown === "forget" && <ForgetDialog session={session.name} onClose={close} />}
+    </div>
+  );
+}
+
+// In a stopped session's Activity, in the composer's place: what the session is and the way on.
+// The button stays out of the live region: a change of its state is no news.
+export function StoppedBar({ session }: { session: SessionInfo }) {
+  const { resume, lost } = useResume(session);
+  return (
+    <div className="stopped-bar">
+      <div role="status" className="stopped-bar-text">
+        <strong>This session is stopped</strong>
+        <span>Its branches, runs and history are kept</span>
+      </div>
+      <Waits>
+        <button type="button" className="primary" disabled={lost} onClick={resume}>
+          <ResumeIcon />
+          Resume session
+        </button>
+      </Waits>
     </div>
   );
 }

@@ -477,7 +477,7 @@ def test_stop_from_the_session_head(page: Page, server, repo, shot):
     shot(page, "asked")
 
     asked.get_by_role("button", name=f"Stop {session}").click()
-    expect(head.get_by_role("button", name="Resume…")).to_be_visible()
+    expect(page.get_by_role("button", name="Resume session")).to_be_visible()
     expect(head.get_by_role("button", name="Forget…")).to_be_visible()
     expect(head.get_by_role("button", name="Stop session…")).to_have_count(0)
     assert state.get_session(session).stopped_at
@@ -487,7 +487,7 @@ def test_stop_from_the_session_head(page: Page, server, repo, shot):
 def test_resume_a_stopped_session(page: Page, server, repo, shot):
     session = stopped_session(repo)
     log_in(page, server, f"/sessions/{session}")
-    page.get_by_role("button", name="Resume…").click()
+    page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
     expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_have_value(str(repo))
     expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_be_disabled()
@@ -499,6 +499,8 @@ def test_resume_a_stopped_session(page: Page, server, repo, shot):
     idle(session)
     head = page.get_by_role("banner").locator(".session-head")
     expect(head.get_by_role("button", name="Resume…")).to_have_count(0)
+    expect(page.locator(".stopped-bar")).to_have_count(0)
+    expect(page.get_by_role("textbox", name="Write to the supervisor…")).to_be_visible()
     assert state.get_session(session).stopped_at is None
     shot(page)
 
@@ -508,7 +510,7 @@ def test_resume_is_off_while_the_sessions_provider_cannot_run(page: Page, server
     with state.connect() as db:
         db.execute("UPDATE sessions SET provider = ? WHERE name = ?", ("gone", session))
     log_in(page, server, f"/sessions/{session}")
-    page.get_by_role("button", name="Resume…").click()
+    page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
     refusal = dialog.locator(".field-note.bad")
     expect(refusal).to_have_text("unknown provider gone", timeout=30_000)  # CLIs checked
@@ -584,7 +586,7 @@ def test_resume_without_the_login_is_disabled_and_leads_to_settings(
 ):
     session = stopped_login_session(repo, logins)
     log_in(page, server, f"/sessions/{session}")
-    page.get_by_role("button", name="Resume…").click()
+    page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
     note = dialog.locator(".field-note.bad", has_text="is not logged in")
     expect(note).to_have_text(
@@ -635,7 +637,7 @@ def trusting(claude_config, monkeypatch):
 def test_the_resume_notice_stands_above_the_tabs(page: Page, server, repo, shot):
     session = stopped_session(repo)
     log_in(page, server, f"/sessions/{session}")
-    page.get_by_role("button", name="Resume…").click()
+    page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
     expect(dialog.get_by_label("Provider")).to_have_value("fake", timeout=30_000)  # CLIs checked
     dialog.get_by_label("Provider").select_option("fake-paste")

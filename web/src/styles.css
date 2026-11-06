@@ -1549,8 +1549,9 @@ h3 {
   height: 18px;
 }
 
-/* Stop with its word, on a window wide enough and not on a phone. */
-.session-head-actions .icon-button:has(.session-action-word) {
+/* Stop with its word, on a window wide enough and not on a phone; a stopped session's Resume
+   with its word at any width. */
+.session-head-actions .icon-button:has(.session-action-word, .session-resume-word) {
   display: inline-flex;
   flex-direction: row;
   align-items: center;
@@ -1561,7 +1562,8 @@ h3 {
   font-size: 14px;
 }
 
-.session-action-word {
+.session-action-word,
+.session-resume-word {
   font-weight: 500;
 }
 
@@ -3371,6 +3373,22 @@ h3 {
   color: var(--term-ink);
 }
 
+.term-stopped {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font: 13px var(--mono);
+  text-align: center;
+}
+
+/* Muted on the terminal's ground, dark in both themes: --muted is the page's and follows the
+   theme, whatever `color-scheme` an element has (the build resolves light-dark() on the root). */
+.term-stopped p {
+  margin: 0;
+  color: color-mix(in srgb, var(--term-ink) 65%, var(--term-ground));
+}
+
 /* No scrollback in xterm.js (the history is tmux's): its scrollbar would only be an empty
    strip. */
 .term-xterm .xterm .scrollbar {
@@ -3985,7 +4003,8 @@ h3 {
    (Agents) stays at its page's left edge. Above the `margin: 0` of the feed's items
    (.chat-start, .run-group). */
 .chat > .chat-feed > *,
-.chat > .composer {
+.chat > .composer,
+.chat > .stopped-bar {
   --chat-side: max(0px, (100% - 860px) / 2);
   margin-inline: var(--chat-side);
 }
@@ -5820,6 +5839,55 @@ button.rec-bar-line {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* A stopped session's bar in the composer's place (StoppedBar): as wide as its frame. */
+.stopped-bar {
+  display: flex;
+  flex: none;
+  gap: 12px;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 860px;
+  min-height: 52px;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.stopped-bar-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.stopped-bar-text strong,
+.stopped-bar-text span {
+  display: block;
+}
+
+.stopped-bar-text strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stopped-bar-text span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stopped-bar .primary {
+  display: inline-flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* The empty feed of a stopped session stands in the feed's middle. */
+.chat-feed > .stopped-empty {
+  margin-block: auto;
 }
 
 /* The composer folded (ComposerFold): a line of 40 px in a dashed frame. */
@@ -10454,6 +10522,25 @@ button.quiet.danger-text {
   margin-top: 0;
 }
 
+/* A stopped session's toggle, with its words; pressed, it keeps its look. */
+:root[data-phone] .icon-button.between-toggle.with-words {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  width: auto;
+  height: 44px;
+  padding-inline: 10px;
+  font-size: 13px;
+}
+
+:root[data-phone] .icon-button.between-toggle.with-words:not([aria-pressed="true"]) {
+  border-color: var(--line);
+}
+
+:root[data-phone] .icon-button.between-toggle.with-words[aria-pressed="true"] {
+  background: var(--action-ground);
+}
+
 :root[data-phone] .session-head .session-title {
   flex: 1 1 auto;
   min-width: 0;
@@ -10496,6 +10583,11 @@ button.quiet.danger-text {
 
 :root[data-phone] .session-action-word {
   display: none;
+}
+
+:root[data-phone] .session-head-actions .icon-button:has(.session-resume-word) {
+  width: auto;
+  padding-inline: 10px;
 }
 
 /* The session's details (SessionDetails.tsx): a sheet over the page's bottom. */
@@ -10735,6 +10827,31 @@ button.quiet.danger-text {
 /* Spec §9's target. */
 :root[data-phone] .composer .send {
   min-height: 44px;
+}
+
+:root[data-phone] .stopped-bar .primary {
+  height: 44px;
+}
+
+/* Upright the button stands under the text at full width; sideways the row stays. The span
+   of a button that waits for the connection (Waits) stretches with it. */
+:root[data-phone="tall"] .stopped-bar {
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+:root[data-phone="tall"] .stopped-bar-text {
+  flex-basis: 100%;
+}
+
+:root[data-phone="tall"] .stopped-bar .lost-wait {
+  flex: 1;
+}
+
+:root[data-phone="tall"] .stopped-bar .primary {
+  flex: 1;
+  justify-content: center;
 }
 
 /* Sideways: the chat's room is for the feed; the card is minimized (WaitingCard.tsx). */

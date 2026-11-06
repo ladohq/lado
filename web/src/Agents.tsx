@@ -266,7 +266,7 @@ function AgentPage({ session, agent, lists }: { session: string; agent: AgentInf
       </dl>
       <AgentMessages session={session} name={agent.name} from={agent.spawned_at} />
       <div className="agent-composer">
-        <Composer session={session} stopped={false} to={agent.name} inputRef={composer} />
+        <Composer session={session} to={agent.name} inputRef={composer} />
         {worker && <p className="muted hint">The supervisor gets a one-line copy.</p>}
       </div>
       {finishing && <FinishDialog session={session} agent={agent.name} onClose={() => setFinishing(false)} />}

@@ -575,6 +575,17 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## Esc in the Launch window leaves the focus on the page's body
+
+Size: S. Why here: a keyboard user loses their place after every Esc in that window; an old
+behaviour, and nothing else depends on it.
+
+Closed with Esc, the Launch window leaves the focus on `body`, not on the button that opened it:
+Resume session in a stopped session's bar, Resume in the head, New session (WCAG 2.4.3, seen by
+the ui-review of LAD-196). Cancel was not checked. Wanted: the focus goes back to the button that
+opened the window, with a browser test.
+Found: 2026-11-06, branch lado/lad-196/task-lad-196 (LAD-196).
+
 ## With the rail opened by hand a narrow window's column buttons do nothing
 
 Size: S. Why here: the human accepted it for LAD-193; a press with no answer on the screen is

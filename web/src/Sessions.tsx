@@ -34,7 +34,7 @@ import { Artifacts } from "./ArtifactsTable";
 import { getSessionAbout, setSessionTitle, type SessionAbout, type SessionInfo, type SessionStatus } from "./api";
 import { Chat, FOCUS_CHAT, focusChat } from "./Chat";
 import { duration } from "./ChatText";
-import { fitColumns, LIST_STRIP, listMax } from "./columns";
+import { fitColumns, LIST_STRIP, listMax, stoppedPanel } from "./columns";
 import { Flows, isOpen } from "./Flows";
 import { ForgetManyDialog } from "./ForgetMany";
 import { GroupHead, type Tone } from "./GroupHead";
@@ -54,7 +54,7 @@ import {
 import { useLaunch, type StartedState } from "./Launch";
 import { isLive, useLive, useLiveStore, type Loaded } from "./live";
 import { escapeIsTaken, useBelow, useDismiss } from "./Menu";
-import { SessionActions } from "./SessionControl";
+import { SessionActions, StoppedBar } from "./SessionControl";
 import { label } from "./sessionLabel";
 import { SessionRowMenu } from "./SessionRowMenu";
 import { TerminalPanel, usePutBackTerminals, type PanelColumn } from "./Terminals";
@@ -140,7 +140,8 @@ export function Sessions() {
     />
   );
   const [page, room] = useWidth<HTMLDivElement>();
-  const columns = useSessionColumns(room);
+  const shownSession = loaded && "sessions" in loaded ? loaded.sessions.find((one) => one.name === current) : undefined;
+  const columns = useSessionColumns(room, shownSession?.status === "stopped" ? shownSession.name : null);
   const { list } = columns;
   // On a phone (phone.ts) Sessions is the list and a session's page the session alone: no
   // strip, no edge, nothing of the computer's list read or written.
@@ -307,8 +308,9 @@ function useColumnPrefs(stored: () => ColumnPrefs, store: (prefs: ColumnPrefs) =
 // The columns beside the chat, what `fitColumns` makes of the human's choices. Each stored key
 // has its one writer here, and only what the human does reaches it: at 601 to 900 px both
 // columns start folded whatever is stored, and what opens there lies over the session and
-// is not remembered.
-function useSessionColumns(room: number | null): { list: ListColumn; panel: PanelColumn } {
+// is not remembered. `stopped`, the stopped session shown: its terminals start folded, and what
+// the human does to them lasts while it shows, in memory, but for a width set on their edge.
+function useSessionColumns(room: number | null, stopped: string | null): { list: ListColumn; panel: PanelColumn } {
   const [list, keepList] = useColumnPrefs(storedSessionsList, storeSessionsList);
   const [panel, keepPanel] = useColumnPrefs(storedPanel, storePanel);
   const [last, setLast] = useState<Column | null>(storedLastColumn);
@@ -328,9 +330,16 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
   useEffect(() => {
     if (!narrow) setOver(null);
   }, [narrow]);
+  const [openedIn, setOpenedIn] = useState<string | null>(null); // the stopped session opened by hand
+  useEffect(() => {
+    setOpenedIn(null);
+    setLast(storedLastColumn()); // what a stopped session set in memory goes
+    if (stopped !== null) setOver((now) => (now === "terminals" ? null : now));
+  }, [stopped]);
   const width = list.width ?? SESSIONS_WIDTH.initial;
   // Before the first measure nothing folds: the stored choice shows, and no terminal is made.
-  const input = { room: room ?? Infinity, list: { ...list, width }, panel, last, control };
+  const shownPanel = stopped === null ? panel : stoppedPanel(panel, openedIn === stopped);
+  const input = { room: room ?? Infinity, list: { ...list, width }, panel: shownPanel, last, control };
   const fit = fitColumns(input);
   const max = Math.max(SESSIONS_WIDTH.min, Math.min(SESSIONS_WIDTH.max, listMax(input)));
   const listColumn = useMemo(
@@ -360,17 +369,22 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
       ready: room !== null || typeof ResizeObserver === "undefined",
       open: () => {
         if (narrow) return setOver("terminals");
+        if (stopped !== null) {
+          setLast("panel");
+          return setOpenedIn(stopped);
+        }
         openedLast("panel");
         keepPanel({ collapsed: false });
       },
       fold: () => {
         if (narrow) setOver(null);
+        else if (stopped !== null) setOpenedIn(null);
         else keepPanel({ collapsed: true });
       },
       setWidth: (next: number | null) => keepPanel({ width: next }),
       setControl: holdControl,
     }),
-    [narrow, over, fit.panelFolded, fit.panelWidth, room, keepPanel, openedLast, holdControl],
+    [narrow, over, fit.panelFolded, fit.panelWidth, room, keepPanel, openedLast, holdControl, stopped],
   );
   return { list: listColumn, panel: panelColumn };
 }
@@ -496,8 +510,8 @@ function StripIcon({ session, mark }: { session: SessionInfo; mark: string }) {
 
 // Who a session is, the card of its row and of its icon: its title and name (or its name),
 // status and agents, how long it ran (the icons have no row line), what waits for the
-// human, its folder, its kits, provider and permission mode; a stopped one, how to bring it back (Resume is in the
-// session's head). Its status word explains the colours of the row and the icon: in its
+// human, its folder, its kits, provider and permission mode; a stopped one, how to bring it back (Resume is on the
+// session's page). Its status word explains the colours of the row and the icon: in its
 // group's tone, a session in trouble (tmux gone, loop down) in the danger colour.
 function SessionTip({ session }: { session: SessionInfo }) {
   const trouble = session.status === "tmux_gone" || session.status === "loop_down";
@@ -809,7 +823,7 @@ function SessionTab({
   }
   return (
     // The panel keeps its terminals while the tabs change: keyed by the session only.
-    <TerminalPanel key={name} session={name} column={panel}>
+    <TerminalPanel key={name} session={name} column={panel} stopped={session.status === "stopped"}>
       <SessionView name={name} tab={tab} item={item} session={session} />
     </TerminalPanel>
   );
@@ -842,7 +856,7 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
       {tab === "agents" ? (
         <Agents session={name} agent={item} stopped={stopped} />
       ) : tab === "activity" ? (
-        <Activity session={name} stopped={stopped} />
+        <Activity info={session} />
       ) : tab === "flows" ? (
         <Flows session={name} run={item} stopped={stopped} />
       ) : (
@@ -1007,8 +1021,8 @@ function SessionTabs({
 // The icon toggle Messages between agents (pressed, the feed also shows what agents write to
 // each other; it changes only what the feed shows, and is remembered; decided 2026-10-15,
 // LAD-77, mockup-placement.html variant Б): the end of a phone's team row, the short form of
-// MessagesChoice.
-function MessagesToggle() {
+// MessagesChoice. `words`: its name beside the icon, in a stopped session's row without a team.
+function MessagesToggle({ words = false }: { words?: boolean }) {
   const agentMessages = useAgentMessages();
   const tip = (
     <>
@@ -1022,12 +1036,13 @@ function MessagesToggle() {
     <Tooltip tip={tip}>
       <button
         type="button"
-        className="icon-button between-toggle"
+        className={words ? "icon-button between-toggle with-words" : "icon-button between-toggle"}
         aria-label="Messages between agents"
         aria-pressed={agentMessages}
         onClick={() => storeAgentMessages(!agentMessages)}
       >
         <BetweenIcon />
+        {words && <span>Messages between agents</span>}
       </button>
     </Tooltip>
   );
@@ -1155,10 +1170,14 @@ function SessionHead({ session, tab }: { session: SessionInfo; tab: Tab }) {
   const slot = useTopBar();
   const phone = usePhone();
   if (slot === null) return null;
+  const onActivity = tab === "activity";
   return (
     <>
       <SkipToChat name={session.name} tab={tab} />
-      {createPortal(phone ? <PhoneHead session={session} /> : <HeadLine session={session} />, slot)}
+      {createPortal(
+        phone ? <PhoneHead session={session} onActivity={onActivity} /> : <HeadLine session={session} onActivity={onActivity} />,
+        slot,
+      )}
     </>
   );
 }
@@ -1195,7 +1214,7 @@ const TAKES_FOCUS = "a, button, input, textarea, select, [contenteditable]";
 // Details, a broken session's status in words, the run time, the branch on a wide window
 // (styles.css), the team (Team.tsx: HeadTeam), the actions. The rest of the facts are in
 // Details (DetailsPopover).
-function HeadLine({ session }: { session: SessionInfo }) {
+function HeadLine({ session, onActivity }: { session: SessionInfo; onActivity: boolean }) {
   const { status } = session;
   const about = useAbout(session);
   const repository = about?.repos[0];
@@ -1301,7 +1320,7 @@ function HeadLine({ session }: { session: SessionInfo }) {
         editing={editing}
       />
       <div className="session-head-actions">
-        <SessionActions session={session} />
+        <SessionActions session={session} onActivity={onActivity} />
       </div>
       <span className="topbar-sep" aria-hidden="true" />
     </div>
@@ -1336,7 +1355,7 @@ function ProjectCrumb({ project }: { project: NonNullable<SessionAbout["project"
 // The head on a phone (docs/design/ui.md, Phone layout): the status dot, the title (or name)
 // as a button that opens the session's details, and the session's actions; the change
 // feed's mark is the Shell's, between them by styles.css. The facts are in the details.
-function PhoneHead({ session }: { session: SessionInfo }) {
+function PhoneHead({ session, onActivity }: { session: SessionInfo; onActivity: boolean }) {
   const about = useAbout(session);
   const live = useLiveStore();
   const [details, setDetails] = useState(false);
@@ -1358,7 +1377,7 @@ function PhoneHead({ session }: { session: SessionInfo }) {
         </button>
       </h1>
       <div className="session-head-actions">
-        <SessionActions session={session} />
+        <SessionActions session={session} onActivity={onActivity} />
       </div>
       {details && (
         <SessionDetails
@@ -1480,20 +1499,28 @@ function StartedNotice({ name }: { name: string }) {
 }
 
 // The Activity tab: the feed with the composer; on a phone, above them, the team, ended by the
-// icon toggle Messages between agents. Above a phone the team is in the head and the choice in
-// the tab bar (MessagesChoice).
-function Activity({ session, stopped }: { session: string; stopped: boolean }) {
+// icon toggle Messages between agents. A stopped session has no team, and the toggle its words in
+// the room left. Above a phone the team is in the head and the choice in the tab bar
+// (MessagesChoice).
+function Activity({ info }: { info: SessionInfo }) {
+  const session = info.name;
+  const stopped = info.status === "stopped";
   const phone = usePhone();
   const agentMessages = useAgentMessages();
   return (
     <div className="activity">
       {phone && (
         <div className="team-row">
-          <Team session={session} />
-          <MessagesToggle />
+          {!stopped && <Team session={session} />}
+          <MessagesToggle words={stopped} />
         </div>
       )}
-      <Chat session={session} stopped={stopped} agentMessages={agentMessages} />
+      <Chat
+        session={session}
+        stopped={stopped}
+        stoppedBar={stopped ? <StoppedBar session={info} /> : null}
+        agentMessages={agentMessages}
+      />
     </div>
   );
 }

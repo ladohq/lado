@@ -357,11 +357,18 @@ Decided in the agent terminal task (2026-10-03).
   **Reconnect** beside its reason, which opens a new socket in the same tab (the
   supervisor's tab cannot be closed, so it would stay dead otherwise). It also opens again
   by itself when its agent comes back or changes in the session's agents (the panel
-  follows them on every tab): a stopped session's supervisor is live again after
-  `lado start`, with no reload. The agent as it was at the close is kept, so an agent that
+  follows them on every tab): a resumed session's supervisor, not ready at first, is live
+  with no reload. The agent as it was at the close is kept, so an agent that
   still has no terminal is not asked again until it changes. Reconnect always opens in
   view. The reason shows once: the error frame the server sends before such a close is
   not shown again as a notice beside it (a notice with another text still shows).
+- **A stopped session's terminal** (LAD-196, LAD-189 spec §5, frame g5-term): each tab shows
+  `Viewing` and, on `--term-ground` in mono 13, muted in both themes (`--term-ink` 65 % into the
+  ground; `--muted` follows the page's theme, not the terminal's dark ground), "Agent not
+  running — resume the session to start it" (`StoppedTerminal`, `data-link="stopped"`). No socket opens, as it could only fail,
+  so there is no Reconnect and no Take control. A stop ends control and Expand, closes a phone's
+  terminal and drops the terminals made; when the session runs, the tab shown in the open panel
+  makes its terminal again, by itself. A session whose tmux session is gone keeps the bar above.
 - **Connection** (task feature/terminal-control-bar, 2026-10-11): the bar names the
   socket's state only while it is not open: `connecting…` and `reconnecting: <reason>`
   with a small turning ring (still under `prefers-reduced-motion: reduce`), `closed:
@@ -674,7 +681,11 @@ Sessions for now. The UI's texts are in English.
   kept, then folds, and a terminal in control then goes back to view with no message of its own
   (the human's decision, LAD-193). The rail never folds by
   itself. A fold for room is derived, never stored: the column comes back when it and 420 px
-  fit, the list before the terminals, to what the human chose. The list's edge stops where the
+  fit, the list before the terminals, to what the human chose. A stopped session's terminals
+  are folded whatever is stored (`stoppedPanel`, LAD-196), a view of the choice, stored nowhere:
+  what the human opens or folds there lasts in memory while the session shows and writes neither
+  `lado.terminals` nor `lado.lastColumn` (a width set on the edge does), and with Resume, a
+  reload or another session the stored choice shows. The list's edge stops where the
   chat keeps 420 px beside terminals that stay (`listMax`), so a drag never folds the list under
   the pointer. `useSessionColumns` in
   `Sessions.tsx` is the one writer of both keys. A drag captures the pointer, so it goes on
@@ -1052,8 +1063,8 @@ Built in the chat task (2026-10-03):
   the composer stays mounted and hidden, its text, files and quotes kept; it takes no files
   meanwhile, and a file dropped on the chat goes nowhere. The link closes the tab's fields and
   gives the composer the focus; a quote does the same; the fields' words stay as drafts for
-  the next Other… or Skip question, their files per question. A stopped session's composer
-  does not fold. **Fields** (LAD-70, mockup `task/lad-70/mockup-answer-field.html`; LAD-194):
+  the next Other… or Skip question, their files per question. In a stopped session no field
+  folds the composer: the bar stands in its place (Composer, below). **Fields** (LAD-70, mockup `task/lad-70/mockup-answer-field.html`; LAD-194):
   those two and a gate's comment for the next step, as wide as their question, open on 1 line
   (36 px, a phone 44 px), grow with their text, not by the focus (frame g3-390-kbd), to 4 lines,
   in the expanded card to 8 (`cardLines`, the composer's rule, `fieldHeight.ts`), then scroll
@@ -1275,8 +1286,21 @@ Built in the chat task (2026-10-03):
   than the supervisor, whom the placeholder names; the files' count and size; and, only while
   the field is empty and has the focus (`textarea:focus:placeholder-shown`, no state), "Enter
   to send · Shift+Enter for a new line" (with no files, "· paste or drop files"), cut with "…",
-  gone in a column under 560 px. On a phone an empty line takes no height. Enter sends, Shift+Enter is a new line; a refusal shows at the field and the text stays;
-  a stopped session's composer is off and says so, its paperclip too.
+  gone in a column under 560 px. On a phone an empty line takes no height. Enter sends, Shift+Enter is a new line; a refusal shows at the field and the text stays.
+- **A stopped session's bar** (`StoppedBar` in `SessionControl.tsx`; LAD-196, LAD-189 spec §5,
+  frame g5-1440): on Activity it stands in the composer's place, as wide as its frame, at least
+  52 px high, on `--panel` with a `--line` frame and a radius of 8: "This session is stopped"
+  (14 px, 600), "Its branches, runs and history are kept" (13 px, `--muted`), both
+  `role="status"`, and the primary button **Resume session**, out of the live region. It repeats
+  no stop time, which the head has. The button is the head's Resume (`useResume`): it opens the
+  Resume window, whose request and check of the outcome are the window's, and waits while the
+  connection is lost. The composer stays mounted behind it, hidden (`folded`), so a draft, its
+  files and a quote show after Resume; a quote gives no sign until then. A file dropped on the
+  chat goes nowhere. An open gate's card stands above the bar with its buttons off, as ever.
+- **A stopped session's empty feed** (LAD-196): centred in `--muted`, it says what it shows:
+  "Nothing was said in this session." under All, "No messages with you. Messages between
+  agents are hidden." under Yours (ui-review, F1: under Yours the agents may have talked). A
+  running session's stays "No messages yet. Write to the supervisor below."
 - **Files in the composer** (`Composer.tsx`; run feature/chat-attachments, mockup
   `mockup-composer.html` of the run): the human attaches files to a message to any agent.
   Send waits for the connection (A lost connection, below); a file not uploaded for lack of
@@ -1393,7 +1417,9 @@ Built in the layout task (2026-10-03, schema 14):
   and the feed both read it and an agent's page writes it. On a phone the toggle is an icon
   button at the end of the team's row (two speech bubbles, `BetweenIcon`; 26 px, quiet and
   muted unpressed, the pressed team chip's border with the icon in the action colour when
-  `aria-pressed`), its name the same in both states; the UI's tooltip says the state and
+  `aria-pressed`), its name the same in both states (a stopped session has no team there, and
+  the toggle shows the words Messages between agents, 44 px high, pressed on `--action-ground`:
+  LAD-196); the UI's tooltip says the state and
   what a click does: "Messages between agents: hidden" / "Click to also show what agents
   write to each other.", pressed "Messages between agents: shown" / "Click to show only
   your conversation with the agents." (decided 2026-10-15, LAD-77: the checkbox "Show
@@ -1754,10 +1780,11 @@ connection, above).
   a Stop in the list row was too easy to hit), only in the session's head, as icons with a
   tooltip and the same accessible name (Stop a square filled with the text's colour, dark
   in the light theme and light in the dark one; decided 2026-10-07,
-  feature/activity-team): running and `loop_down`: Stop session…; stopped:
-  Resume… and Forget… (in the colour of a dangerous action); `tmux_gone`: Resume… and Stop
-  session… (which marks it stopped). Stop has its word too above 900 px (Session head,
-  below). The head has no ⋯. In the session's details **Copy link** (a link icon) copies the
+  feature/activity-team): running and `loop_down`: Stop session…; stopped: Forget… (in the
+  colour of a dangerous action) on Activity, where the bar has Resume, and on every other tab
+  Resume… before it (LAD-196); `tmux_gone`: Resume… and Stop
+  session… (which marks it stopped). Stop has its word too above 900 px, a stopped session's
+  Resume at any width (Session head, below). The head has no ⋯. In the session's details **Copy link** (a link icon) copies the
   session page's address as the list row's Copy link does, and **Copy path** its folder;
   both say what was copied
   ("Link copied", "Path copied") under the button for 2 s, or show the text selected when
@@ -1984,10 +2011,14 @@ layout, below).
   window of 1600 px or more the branch (at most 24ch; the remote and the path in its
   tooltip; no Tab stop), then at the right end the team (below), the actions, a line and the
   link. Stop is 32
-  px high, with its word above 900 px, only its icon at 900 px and less; the link has its
+  px high, with its word above 900 px, only its icon at 900 px and less; a stopped session's
+  Resume keeps its word at 14 px at any width, on a phone too, where the title gives way
+  (`.session-resume-word`; LAD-196), and a stopped session has no team (a stop deletes its
+  agents); the link has its
   word above 1100 px, only its dot and the tooltip `live · LADO server` at 1100 px and less
   (on every page: `LiveButton` does not know the page, so a narrow window's tooltip has no
-  server address; the system panel has it). Resume and Forget stay icons.
+  server address; the system panel has it). Forget, and Resume of a session whose tmux session
+  is gone, stay icons.
 - What lacks room is cut with "…" by `flex-shrink`, largest first: the title down to 8ch of
   its text, the project (at most 16ch), the run time, the team's box, by its levels, then the
   words; the actions and the link never.
@@ -2424,7 +2455,9 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
 - **The chat**: the feed scrolls by itself, the waiting card (its title and context at most
   40 % of the chat, no edge, no height of its own) and the composer stay at the bottom; the composer's text is
   16 px (Safari zooms into a smaller field) and its keys hint is not shown; so is the text
-  of the card's fields that take files (an own answer, a skip's or a gate's comment; LAD-86). A flow event's
+  of the card's fields that take files (an own answer, a skip's or a gate's comment; LAD-86). A
+  stopped session's bar has its button under the text at full width, 44 px high, held upright,
+  and stays one row held sideways (`data-phone="short"`), the button 44 px high too. A flow event's
   line starts at the feed's left edge, its actor, chips and time on the first line, its
   text wrapped under them, whole. The card's tabs, Minimize and Expand (44×44), fields, chips
   and buttons are 44 px high; "↓ more" stays 24 px, as Expand does the same. Its tabs draw in

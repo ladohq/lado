@@ -3183,6 +3183,8 @@ export interface components {
             valid: boolean;
             /** Problem */
             problem: string | null;
+            /** Flows */
+            flows: string[];
         };
         /**
          * SessionStatus

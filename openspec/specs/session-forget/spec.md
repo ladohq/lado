@@ -120,22 +120,27 @@ to `/sessions`.
 
 ### Requirement: Stop can forget the session in one go
 
-The Stop popover of a running session SHALL have, before `Stop <name>`, a second
-dangerous button `Stop and forget` (its tooltip "Stops it, then deletes its history for
-good"). It SHALL stop the session, then forget it without `force`, then go to
-`/sessions`. When the stop succeeds and the forget is refused, the session SHALL stay
-stopped and the popover SHALL show the core's reason.
+The Stop popover of a running session SHALL have, before `Stop <name>`, when it offers it (see
+"Stop and forget is not offered for a session with open runs"), a second dangerous button
+`Stop and forget` (its tooltip "Stops it, then deletes its history for good"). It SHALL stop the
+session, then forget it without `force`, then go to `/sessions`. When the stop succeeds and the
+forget is refused, the session SHALL stay stopped and the popover SHALL show the core's reason.
 
 #### Scenario: A session with no open runs
 - **WHEN** the human opens Stop on running lad-92 and presses `Stop and forget`
 - **THEN** lad-92 is stopped and forgotten, and the page is `/sessions`
 
-### Requirement: Stop and forget is off for a session with open runs
+### Requirement: Stop and forget is not offered for a session with open runs
 
-When the stop preview names open runs the button `Stop and forget` SHALL be off and the
-popover SHALL say "It has open runs: stop it, then forget it from the Stopped list."
+The Stop popover SHALL show `Stop and forget` only once the stop preview is read and names no open
+run. When it names open runs the popover SHALL say, below its buttons in 13 px `--muted`, "It has
+open runs, so it can be forgotten only from the Stopped list after stopping."
 
 #### Scenario: A session with open runs
 - **WHEN** the human opens Stop on lad-80, which has two open runs
-- **THEN** `Stop and forget` is off with the line about open runs, and `Stop lad-80`
-  works as before
+- **THEN** there is no `Stop and forget`, the line about open runs shows below the buttons, and
+  `Stop lad-80` works as before
+
+#### Scenario: While the preview loads
+- **WHEN** the human opens Stop and the preview is not read yet
+- **THEN** no `Stop and forget` shows

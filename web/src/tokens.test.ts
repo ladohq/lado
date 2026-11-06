@@ -70,8 +70,8 @@ const PAIRS = [
   ["danger", "ground"],
   ["on-danger", "danger"],
   ["term-ink", "term-ground"],
-  // A warning's and a refusal's panel under a field of the New session window: its text,
-  // a refusal's muted hint, the warning's stripe and the refusal's stripe and icon.
+  // A warning's and a refusal's panel under a field of the New session window (its text, a
+  // refusal's muted hint and icon) and the notices: their text and icon on their ground.
   ["ink", "warn-ground"],
   ["ink", "danger-ground"],
   ["muted", "warn-ground"],

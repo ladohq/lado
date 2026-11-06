@@ -821,6 +821,7 @@ class SessionKitInfo(BaseModel):
     source: str  # where it is, as `lado kits` says it; "" when it is not found
     valid: bool
     problem: str | None  # why it is not found or does not load
+    flows: list[str]  # its flows' names; none unless valid
 
 
 class SessionAbout(BaseModel):

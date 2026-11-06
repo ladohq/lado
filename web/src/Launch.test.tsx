@@ -1499,15 +1499,28 @@ test("Stop and forget stops the session, then forgets it without force, then lea
   ]);
 });
 
-test("Stop and forget is off for a session with open runs, and says why; Stop works as before", async () => {
+test("while the preview loads Stop and forget is not offered", async () => {
+  let give: (answer: Response) => void = () => {};
+  answers["GET /api/sessions/lado/stop-preview"] = () => new Promise((resolve) => (give = resolve));
+  open("/sessions/lado");
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(head()).getByRole("button", { name: "Stop session…" }));
+  const asked = await screen.findByRole("dialog", { name: 'Stop session "lado"?' });
+  expect(within(asked).queryByRole("button", { name: "Stop and forget" })).toBeNull();
+  await act(async () => give(json(NO_RUNS)));
+  expect(await within(asked).findByRole("button", { name: "Stop and forget" })).toBeTruthy();
+});
+
+test("a session with open runs is not offered Stop and forget, says why under the buttons; Stop works as before", async () => {
   answers["GET /api/sessions/lado/stop-preview"] = () => json({ ...NO_RUNS, open_runs: ["feature/x"] });
   answers["POST /api/sessions/lado/stop"] = () => json({ dropped: 0 });
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
   fireEvent.click(within(head()).getByRole("button", { name: "Stop session…" }));
   const asked = await screen.findByRole("dialog", { name: 'Stop session "lado"?' });
-  expect(await within(asked).findByText("It has open runs: stop it, then forget it from the Stopped list.")).toBeTruthy();
-  expect((within(asked).getByRole("button", { name: "Stop and forget" }) as HTMLButtonElement).disabled).toBe(true);
+  const line = await within(asked).findByText("It has open runs, so it can be forgotten only from the Stopped list after stopping.");
+  expect(asked.querySelector(".question-buttons + .stop-forget-why")).toBe(line);
+  expect(within(asked).getAllByRole("button").map((button) => button.textContent)).toEqual(["Cancel", "Stop lado"]);
   fireEvent.click(within(asked).getByRole("button", { name: "Stop lado" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: 'Stop session "lado"?' })).toBeNull());
   expect(calls.filter((c) => c.method !== "GET").map((c) => c.path)).toEqual(["/api/sessions/lado/stop"]);
@@ -1597,8 +1610,8 @@ function about(more: Partial<SessionAbout> = {}): SessionAbout {
   return {
     repos: [{ path: "/src/lado", remote: "git@github.com:ladohq/lado.git", branch: "main" }],
     kits: [
-      { name: "team", version: "1.2.0", source: "user git@github.com:me/team@v1.2.0: /k/team", valid: true, problem: null },
-      { name: "default", version: "0.25.0", source: "built-in: /lado/default", valid: true, problem: null },
+      { name: "team", version: "1.2.0", source: "user git@github.com:me/team@v1.2.0: /k/team", valid: true, problem: null, flows: [] },
+      { name: "default", version: "0.25.0", source: "built-in: /lado/default", valid: true, problem: null, flows: [] },
     ],
     provider: provider("claude", { version: "2.1.300", tested_version: "2.1.300" }),
     ...more,
@@ -1709,7 +1722,7 @@ test("the git fact's tooltip has the whole URL, the branch and the path", async 
 });
 
 test("each kit's tooltip has its version, where it is and that the next agent starts with it", async () => {
-  const broken = { name: "default", version: "", source: "", valid: false, problem: 'kit "default" not found' };
+  const broken = { name: "default", version: "", source: "", valid: false, problem: 'kit "default" not found', flows: [] };
   await openHead(about({ kits: [about().kits[0], broken] }));
   const [team, gone] = meta().querySelectorAll<HTMLElement>(".session-kit");
   fireEvent.focus(team);

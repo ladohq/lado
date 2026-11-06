@@ -5,7 +5,8 @@
 // Resume has its word at any width, and on Activity stands in the bar in the composer's place
 // (StoppedBar), not in the head. Stop asks in a
 // popover, Forget in a modal window; both say first what they do, from the server's
-// preview. Stop's popover can also stop and forget the session in one go. The session list's
+// preview. Stop's popover can also stop and forget a session with no open run in one go, once
+// the preview says so. The session list's
 // rows have none of them (Sessions.tsx, SessionRowMenu); its Stopped band forgets many
 // (ForgetMany.tsx).
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
@@ -276,7 +277,6 @@ function StopPopover({
           ))}
         </ul>
       )}
-      {hasRuns && <p className="muted stop-forget-why">It has open runs: stop it, then forget it from the Stopped list.</p>}
       {refused && (
         <p className="problem" role="alert">
           {refused}
@@ -286,22 +286,22 @@ function StopPopover({
         <button type="button" className="quiet" onClick={onClose} disabled={busy !== null && busy !== "stopped"}>
           Cancel
         </button>
-        <Waits tip="Stops it, then deletes its history for good">
-          <button
-            type="button"
-            className="danger"
-            disabled={busy !== null || loaded === null || hasRuns || locked}
-            onClick={() => void stopAndForget()}
-          >
-            {busy === "stop-to-forget" ? "Stopping…" : busy === "forget" ? "Forgetting…" : "Stop and forget"}
-          </button>
-        </Waits>
+        {loaded !== null && !hasRuns && (
+          <Waits tip="Stops it, then deletes its history for good">
+            <button type="button" className="danger" disabled={busy !== null || locked} onClick={() => void stopAndForget()}>
+              {busy === "stop-to-forget" ? "Stopping…" : busy === "forget" ? "Forgetting…" : "Stop and forget"}
+            </button>
+          </Waits>
+        )}
         <Waits>
           <button type="button" className="danger" disabled={busy !== null || loaded === null || locked} onClick={() => void stop()}>
             {busy === "stop" ? "Stopping…" : `Stop ${session}`}
           </button>
         </Waits>
       </div>
+      {hasRuns && (
+        <p className="muted stop-forget-why">It has open runs, so it can be forgotten only from the Stopped list after stopping.</p>
+      )}
       <ActionProblem attempt={attempt} />
     </div>
   );

@@ -18,6 +18,15 @@ export function changed(attached: Pick<AttachmentInfo, "artifact" | "hash">, art
 
 export type Kind = "markdown" | "text" | "image" | "html" | "other";
 
+// Each kind in words: the type filter's label and what a row of the narrow list says.
+export const KINDS: Record<Kind, { filter: string; word: string }> = {
+  markdown: { filter: "Documents", word: "Document" },
+  text: { filter: "Code and text", word: "Code or text" },
+  image: { filter: "Images", word: "Image" },
+  html: { filter: "HTML", word: "HTML" },
+  other: { filter: "Other", word: "File" },
+};
+
 // The types read as text besides text/*, as the core's artifacts.is_text says (SVG is an
 // image here: the viewer draws it).
 const TEXT = new Set(["application/json"]);
@@ -42,3 +51,28 @@ export function size(bytes: number): string {
 
 // The run part of a full name, "<run>/", or "" in the session's scope.
 export const scopePart = (scope: string) => (scope ? `${scope}/` : "");
+
+// Whether a Markdown text says `title` as its H1, on its first line that is not blank: the
+// viewer then leaves out its title line. Closing #s and the case do not count.
+export function sameHeading(text: string, title: string): boolean {
+  const first = text.split("\n").find((line) => line.trim() !== "") ?? "";
+  const heading = /^#\s+(.*?)(\s+#+)?\s*$/.exec(first)?.[1];
+  return heading?.trim().toLowerCase() === title.trim().toLowerCase();
+}
+
+// From this many artifacts in the session, filtered or not, the tab shows them in groups.
+export const GROUPS_FROM = 100;
+
+export type ScopeGroup = { scope: string; artifacts: ArtifactInfo[] };
+
+// The artifacts by scope, each group in the order they came, so newest first on such a list.
+// The groups go by `order`; a scope it lacks, or with none, goes first as it came.
+export function groupByScope(artifacts: ArtifactInfo[], order: string[] = []): ScopeGroup[] {
+  const groups = new Map<string, ScopeGroup>();
+  for (const one of artifacts) {
+    const group = groups.get(one.scope) ?? { scope: one.scope, artifacts: [] };
+    group.artifacts.push(one);
+    groups.set(one.scope, group);
+  }
+  return [...groups.values()].sort((a, b) => order.indexOf(a.scope) - order.indexOf(b.scope));
+}

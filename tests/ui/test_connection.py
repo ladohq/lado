@@ -426,5 +426,5 @@ def test_a_page_opened_while_away_says_no_connection_and_loads_when_back(
     no_raw_text(page)
     shot(page, "no-connection")
     again()
-    expect(page.get_by_text("No active runs")).to_be_visible(timeout=15000)
+    expect(page.get_by_text("No flow runs yet")).to_be_visible(timeout=15000)
     expect(page.get_by_text("No connection")).to_have_count(0)

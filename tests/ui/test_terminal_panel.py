@@ -27,6 +27,24 @@ def test_the_supervisors_terminal_opens_to_view_and_takes_what_the_human_types_i
     panel.get_by_role("button", name="Take control").click()
     ask = page.get_by_role("dialog", name="Take control of supervisor")
     expect(ask).to_be_visible()
+    # The backdrop is --scrim, and it covers the terminal: a press there is the dialog's.
+    colours = ask.evaluate(
+        """dialog => {
+          const probe = document.body.appendChild(document.createElement("div"));
+          probe.style.background = "var(--scrim)";
+          const wanted = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return [getComputedStyle(dialog, "::backdrop").backgroundColor, wanted];
+        }"""
+    )
+    assert colours[0] == colours[1], colours
+    box = panel.locator(".xterm").bounding_box()
+    assert box is not None
+    hit = page.evaluate(
+        "([x, y]) => document.elementFromPoint(x, y).closest('dialog')?.className ?? null",
+        [box["x"] + box["width"] / 2, box["y"] + box["height"] / 2],
+    )
+    assert hit is not None and "term-ask" in hit, hit
     shot(page, "ask")
     ask.get_by_role("button", name="Take control").click()
     expect(panel).to_contain_text("You're typing into supervisor")

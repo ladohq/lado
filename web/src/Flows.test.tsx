@@ -8,6 +8,7 @@ import type { GateInfo, NoteInfo, RunEventInfo, RunInfo, SessionInfo } from "./a
 import { App } from "./App";
 import { clock, dayName, since } from "./ChatText";
 import { FakeEventSource, FakeSocket, narrowColumn, stream, wideColumn } from "./fakes";
+import { flowsLine } from "./Flows";
 import styles from "./styles.css?raw";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -258,6 +259,8 @@ const rowNames = (region: HTMLElement) =>
 
 // The overview
 
+const kit = (name: string, flows: string[]) => ({ name, version: "1.0.0", source: "built-in", valid: true, problem: null, flows });
+
 const FLOWS = "/sessions/lado/flows";
 const group = (list: HTMLElement, name: string) => within(list).getByRole("region", { name });
 const fold = (name: RegExp) => screen.getByRole("button", { name }) as HTMLButtonElement;
@@ -282,7 +285,6 @@ test("the tab opens on the overview, also in a wide column: Active in green, the
   expect(waiting.querySelector(".run-about")?.textContent).toBe(`merge_ok · gate #41 · ${since(WAITING.since)}`);
   expect(acting.querySelector(".run-about")?.textContent).toBe(`review · → reviewer · ${since(ACTIVE.since)}`);
   expect(acting.querySelector(".run-card-meta")?.textContent).toBe(`fix · lado-dev 0.7.0 · started ${clock(ACTIVE.created_at)}`);
-  expect(acting.textContent).not.toContain(ACTIVE.task.split("\n")[0]);
 });
 
 test("a card's states are the run head's: the same chips, the current one marked, orange while it waits", async () => {
@@ -335,13 +337,65 @@ test("History is folded by default; each group folds by its heading and is remem
   expect(fold(/^History/).getAttribute("aria-expanded")).toBe("true");
 });
 
-test("with no runs both groups say they are empty", async () => {
+test("with no runs the tab says so in place of the groups", async () => {
   HISTORY_OPEN();
   serve({ runs: [] });
   open(FLOWS);
   const list = await runs();
+  expect(within(list).getByText("No flow runs yet")).toBeTruthy();
+  expect(within(list).getByText("Runs appear when the supervisor starts a flow of the session's kits.")).toBeTruthy();
+  expect(within(list).queryByRole("region")).toBeNull();
+});
+
+test("with no runs the line names the flows of the session's kits, as the session's about has them", async () => {
+  const kits = [kit("sdlc", ["task", "epic"]), kit("tracker", []), kit("builder", ["kit"])];
+  serve({ runs: [] });
+  const fetching = globalThis.fetch;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) =>
+    path.endsWith("/about") ? new Response(JSON.stringify({ repos: [], kits })) : fetching(path, init),
+  );
+  open(FLOWS);
+  expect(
+    await screen.findByText("Runs appear when the supervisor starts a flow of the session's kits: sdlc: task, epic; builder: kit."),
+  ).toBeTruthy();
+});
+
+test("the line of an empty tab: the flows, none at all, or no list when a kit does not load", () => {
+  const start = "Runs appear when the supervisor starts a flow of the session's kits";
+  const none = "This session's kits have no flows, so no runs will appear here.";
+  expect(flowsLine(null)).toBe(`${start}.`);
+  expect(flowsLine([kit("a", [])])).toBe(none);
+  expect(flowsLine([kit("a", []), { ...kit("b", []), valid: false }])).toBe(`${start}.`);
+  expect(flowsLine([kit("a", ["x"]), { ...kit("b", []), valid: false }])).toBe(`${start}: a: x.`);
+});
+
+test("ended runs alone keep the groups; a search on an empty tab says no run matches", async () => {
+  HISTORY_OPEN();
+  serve({ runs: [ENDED] });
+  open(FLOWS);
+  const list = await runs();
   expect(within(group(list, "Active")).getByText("No active runs")).toBeTruthy();
-  expect(within(group(list, "History")).getByText("No ended runs yet")).toBeTruthy();
+  expect(rowNames(group(list, "History"))).toEqual(["fix/old"]);
+  expect(within(list).queryByText("No flow runs yet")).toBeNull();
+  cleanup();
+  serve({ runs: [] });
+  open(`${FLOWS}?find=x`);
+  expect(within(await runs()).getByText("No run matches “x”")).toBeTruthy();
+  expect(screen.queryByText("No flow runs yet")).toBeNull();
+});
+
+test("a card and a row show the first line of the run's task, a blank task none", async () => {
+  HISTORY_OPEN();
+  serve({ runs: [ACTIVE, ENDED, { ...CANCELLED, task: "  \nsecond" }] });
+  open(FLOWS);
+  const list = await runs();
+  const task = "The human's gate answer as their bubble";
+  const card = within(group(list, "Active")).getByRole("link");
+  expect(card.querySelector(".run-task-line")?.textContent).toBe(task);
+  expect(card.textContent).not.toContain("more lines");
+  const [cancelled, ended] = within(group(list, "History")).getAllByRole("link");
+  expect(ended.querySelector(".run-task-line")?.textContent).toBe(task);
+  expect(cancelled.querySelector(".run-task-line")).toBeNull();
 });
 
 test("without open runs the tab is just Flows", async () => {
@@ -367,14 +421,14 @@ test("History shows its first 10 by days, then Show N more", async () => {
   expect(rowNames(history)).toHaveLength(12);
 });
 
-test("an ended run's row has its name, status and time, no states, no task; its day heads its rows", async () => {
+test("an ended run's row has its name, task, status and time, no states; its day heads its rows", async () => {
   HISTORY_OPEN();
   serve({ runs: [ACTIVE, ENDED] });
   open(FLOWS);
   const history = group(await runs(), "History");
   const row = within(history).getByRole("link");
   expect(row.className).toBe("list-row dim");
-  expect(row.textContent).toBe(`fix/old${`ended · ${clock(ENDED.ended_at!)}`}`);
+  expect(row.textContent).toBe(`fix/oldThe human's gate answer as their bubble${`ended · ${clock(ENDED.ended_at!)}`}`);
   expect(within(history).getByRole("heading", { level: 4 }).textContent).toBe(dayName(ENDED.ended_at!));
 });
 
@@ -773,16 +827,14 @@ test("a step back has the return icon and says so in its name; hovering a step s
   expect(await lines()).toEqual(["Forward in the flow, to review"]);
 });
 
-test("the latest event with a body is open at first: its facts and its body as Markdown; Open all opens all", async () => {
+test("the latest event with a body is open at first: how long it took and its body as Markdown; Open all opens all", async () => {
   serve(STEPS);
   open(runPath("lado", ACTIVE.name));
   const list = await feed("fix/gate-bubble");
   expect(opened(list)).toEqual(["2 findings"]);
   const findings = steps(list)[1];
-  const facts = Object.fromEntries(
-    Array.from(findings.querySelectorAll(".feed-facts dt")).map((one) => [one.textContent, one.nextElementSibling?.textContent]),
-  );
-  expect(facts).toEqual({ Who: "reviewer", From: "review", Outcome: "changes", To: "implement", "Step took": "2 min" });
+  expect(findings.querySelector(".feed-took")?.textContent).toBe("Step took 2 min");
+  expect(findings.querySelector("dl")).toBeNull(); // who, from, outcome and to are in its line
   expect(findings.querySelector(".chat-body")?.textContent).toBe("fix them");
   // Another opens on a click, as Markdown.
   const bubble = steps(list)[2];
@@ -858,7 +910,9 @@ test("a flow-set, a loop limit's answer and a note from before steps were kept s
   fireEvent.click(within(await page("fix/gate-bubble")).getByRole("button", { name: "Open all" }));
   const [loop, set, old] = steps(list);
   expect(loop.querySelector(".feed-detail")?.textContent).toContain("No comment.");
-  expect(Array.from(set.querySelectorAll(".feed-facts dt")).map((one) => one.textContent)).toEqual(["Who", "From", "To", "Step took"]);
-  expect(Array.from(old.querySelectorAll(".feed-facts dt")).map((one) => one.textContent)).toEqual(["From"]);
+  expect(set.querySelector(".feed-took")?.textContent).toMatch(/^Step took /);
+  // The first step has nothing to count from, and without a body or the human's answer no frame.
+  expect(old.querySelector(".feed-took")).toBeNull();
+  expect(old.querySelector(".feed-detail")).toBeNull();
 });
 

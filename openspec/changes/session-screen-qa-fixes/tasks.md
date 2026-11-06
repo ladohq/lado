@@ -32,7 +32,7 @@
 
 ## 6. Console errors
 
-- [ ] 6.1 Collect and sort them in `build-report` (D8); fix those of this change. Check: the list in
+- [x] 6.1 Collect and sort them in `build-report` (D8); fix those of this change. Check: the list in
   `build-report`; AC-10.
 
 ## 7. Documents
@@ -43,6 +43,6 @@
 - [x] 7.2 CHANGELOG.md, `## 0.45.0 (unreleased)`, under Fixed: the focus, the toggle sideways;
   under Improved: the notices, the task's tooltip, Session first, as edits of the items of the same
   features (`docs/release.md`, "One change, one item"). Check: `docs/release.md`'s rules.
-- [ ] 7.3 `make lint`, `make test`, `make web`, the changed UI files with `-m ui`; `make check` as a
+- [x] 7.3 `make lint`, `make test`, `make web`, the changed UI files with `-m ui`; `make check` as a
   whole is proved by CI (`.lado/sdlc.md`, Checks). Screenshots of each changed screen in the pull
   request and the run's artifacts.

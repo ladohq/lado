@@ -477,7 +477,9 @@ def test_forget_gives_the_focus_back_with_no_tooltip(page: Page, server, repo):
     session = with_worker(repo)
     runtime.stop_session(session)
     page.goto(f"{server['url']}/sessions/{session}?token={server['token']}")
-    forget = page.get_by_role("banner").locator(".session-head").get_by_role("button", name="Forget…")
+    forget = (
+        page.get_by_role("banner").locator(".session-head").get_by_role("button", name="Forget…")
+    )
     window = page.get_by_role("dialog", name=f'Forget session "{session}"?')
     gives_the_focus_back(page, forget, window)
     gives_the_focus_back(page, forget, window, "Cancel")

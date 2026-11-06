@@ -230,6 +230,30 @@ class FakeWindowProvider(FakeProvider):
         return (base.LoginAction("login", "Add a login…", (sys.executable, str(LOGIN_SCRIPT))),)
 
 
+# "fake-claude" holds one model per process, as Claude Code does: a model of a server is its whole
+# process, written into its settings by Claude Code's own code, and then it needs no login.
+class FakeClaudeProvider(FakeLoginProvider):
+    title = "Fake Claude"
+    server_api = base.ANTHROPIC_MESSAGES
+    runs_on_server = True
+    min_context = 32768
+    server_model = claude.ClaudeProvider.server_model
+
+    def needs_login(self, env) -> bool:
+        return not env.get(base.MODEL_SERVER) and super().needs_login(env)
+
+    def launch_command(self, agent, session, spec) -> base.Launch:
+        launch = super().launch_command(agent, session, spec)
+        settings = claude._server_settings(spec.servers[0]) if spec.servers else {}
+        (base.config_dir(agent) / "settings.json").write_text(json.dumps(settings, indent=2))
+        env = dict(launch.env)
+        for server in spec.servers:
+            env[base.MODEL_SERVER] = server.id
+            if server.key is not None:
+                env[server.key_variable] = server.key
+        return dataclasses.replace(launch, env=env)
+
+
 # "fake-server" takes the model servers of its launch as OpenCode and Kilo do: beside its own
 # models, each key in its environment. FAKE_AGENT_SERVERS says what it got, for the tests.
 class FakeServerProvider(FakeProvider):
@@ -266,6 +290,7 @@ FAKES = (
     FakeLoginProvider("fake-login"),
     FakeWindowProvider("fake-window", True),
     FakeServerProvider("fake-server", True),
+    FakeClaudeProvider("fake-claude"),
 )
 
 

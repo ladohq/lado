@@ -22,9 +22,9 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-06-claude-model
 
 ## 4. End to end
 
-- [ ] 4.1 A worker on another server and on a built-in model (D9). Check:
+- [x] 4.1 A worker on another server and on a built-in model (D9). Check:
   `tests/integration/test_claude_model_server.py` with `-m integration`.
-- [ ] 4.2 The canary with a Claude agent. Check: `tests/integration/test_session_model_canary.py` with
+- [x] 4.2 The canary with a Claude agent. Check: `tests/integration/test_session_model_canary.py` with
   `-m integration`.
 - [ ] 4.3 `tests/fake_endpoint.py`'s Anthropic mode and the smoke tests on real Claude Code. Check:
   `make test-smoke PROVIDER=claude` in CI.

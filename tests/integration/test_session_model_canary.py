@@ -11,7 +11,7 @@ import pytest
 from test_model_server_probe import serve  # noqa: F401 - a fixture
 from test_project_secrets_canary import files_holding
 
-from lado import model_settings, runtime, state
+from lado import model_settings, providers, runtime, state
 from lado.cli import main
 from lado.server import models
 
@@ -125,6 +125,38 @@ def test_the_key_is_in_the_agent_s_environment_and_nowhere_else(
     assert key not in json.dumps(models.session_info(state.get_session(SESSION)).model_dump())
     key_file = model_settings.key_folder(server.id) / model_settings.KEY
     # The fake agent's own log records its environment, where the key belongs: no file of LADO's.
+    its_log = lado_home / "fake-agents"
+    assert files_holding(lado_home, key.encode(), [key_file, its_log]) == []
+
+
+def test_the_key_of_a_cli_of_one_model_per_process_is_in_its_environment_alone(
+    repo,
+    serve,  # noqa: F811
+    lado_home,
+    tmp_path,
+    capsys,
+):
+    """Its settings name the key's variable, as Claude Code's do, and hold no key."""
+    key = f"canary-{uuid.uuid4().hex}"
+    url = serve("all", key=key)
+    model_settings.add_server("Шлюз", url, key, warn=lambda _: None, note=lambda _: None)
+    server = state.model_server("Шлюз")
+    saved = state.add_model("Шлюз Qwen", "fake-claude", "m1", server.id)
+    state.set_cli_default(state.ModelRef("fake-claude", saved.id, None))
+
+    args = ["start", str(repo), "--name", SESSION, "--provider", "fake-claude", "--no-attach"]
+    assert main(args) == 0
+    said = capsys.readouterr()
+    idle("supervisor")
+
+    variable = f"{model_settings.KEY_VARIABLE}{server.id.upper()}"
+    assert f"{variable}={key}" in env_of("supervisor", tmp_path / "supervisor-env")
+    assert key not in said.out + said.err
+    agent = state.get_agent(SESSION, "supervisor")
+    assert variable in (providers.base.config_path(agent) / "settings.json").read_text()
+    answers = json.dumps(models.agent_info(agent).model_dump())
+    assert key not in answers
+    key_file = model_settings.key_folder(server.id) / model_settings.KEY
     its_log = lado_home / "fake-agents"
     assert files_holding(lado_home, key.encode(), [key_file, its_log]) == []
 

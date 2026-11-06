@@ -61,6 +61,7 @@ function serve(status = 200, body: unknown = SESSIONS, events?: { status: number
     if (["/events", "/runs", "/notes", "/gates", "/artifacts"].some((end) => path.endsWith(end))) {
       return new Response("[]");
     }
+    if (path.endsWith("/about")) return new Response(JSON.stringify({ repos: [], kits: [] }));
     // The Report a bug page (ReportBug.test.tsx).
     if (path.startsWith("/api/bug-report?")) {
       return new Response(JSON.stringify({ title: "", text: "### What happened\n", url: "https://github.com/", left_out: 0 }));
@@ -395,7 +396,7 @@ test("/sessions/<name>/flows opens the Flows tab, and a tab changes the address"
   wideColumn();
   open("/sessions/lado/flows");
   const view = await screen.findByRole("region", { name: "Session lado" });
-  expect(await within(view).findByText("No active runs")).toBeTruthy();
+  expect(await within(view).findByText("No flow runs yet")).toBeTruthy();
   fireEvent.click(within(view).getByRole("link", { name: "Activity" }));
   expect(within(view).getByRole("region", { name: "Chat" })).toBeTruthy();
   expect(within(view).getByRole("link", { name: "Agents · 1" }).getAttribute("href")).toBe(

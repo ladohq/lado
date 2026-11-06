@@ -885,6 +885,19 @@ h3 {
   margin: 0 0 8px;
 }
 
+/* An empty tab: what is missing, then where it comes from. */
+.empty .empty-title {
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.empty .empty-line {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 /* A section to come: a dashed outline, the plan beneath. */
 
 .placeholder {
@@ -7414,7 +7427,17 @@ button.locked:disabled,
   overflow-wrap: anywhere;
 }
 
+/* What a run is about, on one line of a card or a row. */
+.run-task-line {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .list-row.waits .run-about,
+.list-row.waits .run-task-line,
 .list-row.waits .agent-row-about {
   color: var(--human);
 }
@@ -7494,7 +7517,8 @@ button.locked:disabled,
   background: var(--human-ground);
 }
 
-.list-card.waits .run-about {
+.list-card.waits .run-about,
+.list-card.waits .run-task-line {
   color: var(--human);
 }
 
@@ -8881,33 +8905,10 @@ del.kit-mcp-name {
   overflow: hidden;
 }
 
-.feed-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  margin: 0;
-  border-bottom: 1px solid var(--line);
-  background: var(--ground);
-}
-
-.feed-facts div {
-  padding: 8px 12px;
-  border-right: 1px solid var(--line);
-  overflow-wrap: anywhere;
-}
-
-.feed-facts div:last-child {
-  border-right: 0;
-}
-
-.feed-facts dt {
+/* How long an opened step took, under its line and above its note's frame. */
+.feed-took {
+  margin: 2px 6px 6px 100px;
   color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.feed-facts dd {
-  margin: 0;
   font-size: 13px;
 }
 
@@ -8930,7 +8931,8 @@ del.kit-mcp-name {
     display: none;
   }
 
-  .feed-detail {
+  .feed-detail,
+  .feed-took {
     margin-left: 6px;
   }
 }

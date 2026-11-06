@@ -288,14 +288,14 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     expect(built.get_by_role("button", name="built the form")).to_have_attribute(
         "aria-expanded", "true"
     )
-    expect(built.locator(".feed-facts")).to_contain_text("From")
+    expect(built.locator(".feed-took")).to_contain_text("Step took")
     expect(built.locator(".chat-body strong").filter(has_text="two steps")).to_be_visible()
     shot(page, "waiting")
 
     # Another step opens on a click.
     plan = rows.nth(1)
     plan.get_by_role("button", name="the plan: a form in two steps").click()
-    expect(plan.locator(".feed-facts")).to_contain_text("ready")
+    expect(plan.locator(".feed-took")).to_contain_text("Step took")
 
     card.get_by_role("textbox", name="Comment for the next step (optional)").fill("ship it")
     card.get_by_role("button", name="Approve", exact=True).click()

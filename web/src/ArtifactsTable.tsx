@@ -72,7 +72,14 @@ function ArtifactsTable({ session, artifacts, ended }: { session: string; artifa
   const [kind, setKind] = useState<string>(ALL);
   const [folds, setFolds] = useState(() => storedArtifactGroups(session));
   const ids = useId();
-  if (artifacts.length === 0) return <p className="empty">No artifacts yet</p>;
+  if (artifacts.length === 0) {
+    return (
+      <div className="empty">
+        <p className="empty-title">No artifacts yet</p>
+        <p className="empty-line">Agents save plans, reviews, images and mockups here (write_artifact).</p>
+      </div>
+    );
+  }
   const runs = [...new Set(artifacts.map((one) => one.scope).filter(Boolean))].sort();
   const wanted = query.trim().toLowerCase();
   const shown = artifacts.filter(

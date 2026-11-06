@@ -19,15 +19,16 @@
 
 ## 3. F22: the empty tabs
 
-- [ ] 3.1 `.empty` parts and the Artifacts text (D11). Check: `ArtifactsTable.test.tsx`; AC-10.
-- [ ] 3.2 `SessionKitInfo.flows`, `make web-types` (D12). Check: `tests/test_server_session.py`,
+- [x] 3.1 `.empty` parts and the Artifacts text (D11). Check: `ArtifactsTable.test.tsx`; AC-10.
+- [x] 3.2 `SessionKitInfo.flows`, `make web-types` (D12). Check: `tests/test_server_session.py`,
   `make web`.
-- [ ] 3.3 `flowsLine` and the Flows state (D11). Check: `Flows.test.tsx`; AC-10.
+- [x] 3.3 `flowsLine` and the Flows state (D11). Check: `Flows.test.tsx`; AC-10.
 
 ## 4. F23, F24: runs
 
-- [ ] 4.1 `run-task` on the card and the row (D13). Check: `Flows.test.tsx`; AC-11.
-- [ ] 4.2 The facts out, "Step took" one line (D15). Check: `Flows.test.tsx`; AC-12.
+- [x] 4.1 `run-task` on the card and the row (D13). Check: `Flows.test.tsx`; AC-11.
+  The class is `run-task-line`: `.run-task` is the run page's Task block.
+- [x] 4.2 The facts out, "Step took" one line (D15). Check: `Flows.test.tsx`; AC-12.
 
 ## 5. F27, F26: Stop and Take control
 

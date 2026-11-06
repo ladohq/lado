@@ -22,8 +22,8 @@ function session(more: Partial<SessionInfo> = {}): SessionInfo {
 const ABOUT: SessionAbout = {
   repos: [{ path: FOLDER, remote: "git@github.com:ladohq/lado.git", branch: "lado/lad-95/task-lad-95" }],
   kits: [
-    { name: "default", version: "0.1.0", source: "built-in", valid: true, problem: null },
-    { name: "uiflow", version: "1.0.0", source: "/kits/uiflow", valid: true, problem: null },
+    { name: "default", version: "0.1.0", source: "built-in", valid: true, problem: null, flows: [] },
+    { name: "uiflow", version: "1.0.0", source: "/kits/uiflow", valid: true, problem: null, flows: [] },
   ],
   provider: {
     name: "claude",

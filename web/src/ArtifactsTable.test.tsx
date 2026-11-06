@@ -225,6 +225,8 @@ test("a session without artifacts says so", async () => {
   serve({ artifacts: [] });
   open("/sessions/lado/artifacts");
   expect(await screen.findByText("No artifacts yet")).toBeTruthy();
+  expect(screen.getByText("Agents save plans, reviews, images and mockups here (write_artifact).")).toBeTruthy();
+  expect(screen.queryByRole("searchbox", { name: "Find an artifact" })).toBeNull();
 });
 
 // The list of a narrow column

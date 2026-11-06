@@ -8723,6 +8723,13 @@
               }
             ],
             "title": "Problem"
+          },
+          "flows": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Flows"
           }
         },
         "type": "object",
@@ -8731,7 +8738,8 @@
           "version",
           "source",
           "valid",
-          "problem"
+          "problem",
+          "flows"
         ],
         "title": "SessionKitInfo",
         "description": "A kit of a session as the next agent would take it now (kits.find in its repo)."

@@ -1597,8 +1597,8 @@ function about(more: Partial<SessionAbout> = {}): SessionAbout {
   return {
     repos: [{ path: "/src/lado", remote: "git@github.com:ladohq/lado.git", branch: "main" }],
     kits: [
-      { name: "team", version: "1.2.0", source: "user git@github.com:me/team@v1.2.0: /k/team", valid: true, problem: null },
-      { name: "default", version: "0.25.0", source: "built-in: /lado/default", valid: true, problem: null },
+      { name: "team", version: "1.2.0", source: "user git@github.com:me/team@v1.2.0: /k/team", valid: true, problem: null, flows: [] },
+      { name: "default", version: "0.25.0", source: "built-in: /lado/default", valid: true, problem: null, flows: [] },
     ],
     provider: provider("claude", { version: "2.1.300", tested_version: "2.1.300" }),
     ...more,
@@ -1709,7 +1709,7 @@ test("the git fact's tooltip has the whole URL, the branch and the path", async 
 });
 
 test("each kit's tooltip has its version, where it is and that the next agent starts with it", async () => {
-  const broken = { name: "default", version: "", source: "", valid: false, problem: 'kit "default" not found' };
+  const broken = { name: "default", version: "", source: "", valid: false, problem: 'kit "default" not found', flows: [] };
   await openHead(about({ kits: [about().kits[0], broken] }));
   const [team, gone] = meta().querySelectorAll<HTMLElement>(".session-kit");
   fireEvent.focus(team);

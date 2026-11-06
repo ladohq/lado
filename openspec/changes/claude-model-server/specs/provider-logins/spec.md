@@ -89,3 +89,46 @@ resume LADO makes by itself and a login LADO cannot read SHALL NOT be refused.
 #### Scenario: A login that cannot be read
 - **WHEN** Claude Code's status command times out at a new session's start
 - **THEN** the session starts and whoever starts it is warned with why
+
+### Requirement: An agent whose CLI needs a login waits for it and starts by itself
+
+When an agent's CLI needs a login (Claude Code on no model server; Codex with a model that needs one) and is not logged in at launch (a session
+LADO resumes by itself, or a login lost after a start's check), the agent SHALL wait from
+its start with a reason that says where to log in; its window SHALL check every few
+seconds, file layers read anew and the login taken whole from one layer, and start the CLI
+once logged in. An unknown state SHALL NOT hold it.
+
+#### Scenario: A session started without a login
+- **WHEN** Claude Code is not logged in and a stopped session with the provider `claude` is
+  resumed at the container's start or by `lado update`
+- **THEN** the supervisor is `waiting` with the reason `Claude Code is not logged in: log in
+  in Settings → Agent CLIs and environment, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts
+  by itself once you do`, `lado ls` prints it, and Needs you shows it with "Log in…"
+  leading to Settings → Agent CLIs and environment
+
+#### Scenario: The login arrives
+- **WHEN** the supervisor waits for the login and the human logs Claude Code in outside
+  LADO's page (its own login file)
+- **THEN** within a few seconds the window starts Claude Code, and the supervisor reaches
+  its first hook with no restart
+
+#### Scenario: A token arrives
+- **WHEN** an agent waits for the login and the human saves `CLAUDE_CODE_OAUTH_TOKEN` on the
+  page
+- **THEN** the waiting window takes it and starts the CLI, which has the token
+
+#### Scenario: Other CLIs are not held
+- **WHEN** OpenCode or Kilo has no login, or Codex has none and its model needs none, and
+  an agent of it starts
+- **THEN** it starts as before, with no wait for a login
+
+#### Scenario: A Codex session resumed without a login
+- **WHEN** Codex is not logged in, its model is OpenAI's, and a stopped Codex session is
+  resumed at the container's start
+- **THEN** the supervisor is `waiting` with the reason `Codex CLI is not logged in: log in
+  in Settings → Agent CLIs and environment, or set OPENAI_API_KEY; the agent starts by
+  itself once you do`, and it starts once the human logs in with a sign-in code
+
+#### Scenario: The status cannot be read
+- **WHEN** the status command times out at a launch
+- **THEN** the agent starts as before and whoever starts it is warned with why

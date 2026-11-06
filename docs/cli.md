@@ -333,8 +333,12 @@ start and each resume, whether given, kept or a default: a server that does not 
 that lacks the model, is refused with exit 1 before anything is stored (`lado:
 http://localhost:1234 does not answer (connection refused); LADO cannot check qwen3-8b`). A silent
 server of another saved model stops nothing. A model on a server for a CLI that runs on none yet
-is refused with no request (`Шлюз Opus is on the model server Шлюз; Claude Code does not run on a
-model server yet, Kilo CLI and OpenCode do`). A spawned worker's model is checked in the same way,
+is refused with no request (`Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a
+model server yet, Claude Code, Kilo CLI and OpenCode do`). A model whose id its CLI reads as its own
+(Claude Code's `sonnet`, a name ending in `[1m]`) is refused with no request, when saved too
+(`Claude Code reads sonnet as its own model, so it would not ask Шлюз for it; give the model another
+name on the server`). A Claude Code model on a server needs no Claude login, at a start, a resume, a
+worker and before a clone (`lado start <git-url> --model`). A spawned worker's model is checked in the same way,
 given or not, and a refusal leaves no worker; one not given adds `list_models shows the others,
 model="" is the CLI's own settings`. A
 refused default adds `it is OpenCode's default model: start with --model '' for its settings, or

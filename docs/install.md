@@ -270,13 +270,39 @@ private repository, and a clone by URL from the UI (New session → Clone).
 Settings → Models or with `lado model-server add`. OpenCode and Kilo CLI agents then have its
 models beside their own, in `/model` under `LADO · <server>`, and a session can start on one: pick
 it in the launch window, or `lado start --model "<name>"`. Its key stays out of every config: it
-reaches the agents only in their environment. Claude Code and Codex do not run on a model server
-yet, and LADO says so before it starts them. Before a session starts, LADO asks the server of the
+reaches the agents only in their environment. Claude Code runs on a server that speaks Anthropic's
+API, as the next paragraph says; Codex does not run on a model server yet, and LADO says so before
+it starts it. Before a session starts, LADO asks the server of the
 model it starts on: one that does not answer stops the start, and a server of another model does
 not. In LADO's container `localhost` is the container itself: a server on your machine is
 `http://host.docker.internal:<port>`, for LM Studio `http://host.docker.internal:1234`. The server
 must listen beyond its own loopback (LM Studio: Serve on Local Network). A key sent over plain
 `http://` to an address outside your machine and network is warned about before the start.
+
+**Claude Code on a model server.** A Claude Code model saved on a server that proves Anthropic's
+Messages API (`lado model-server probe` names it; Ollama, LM Studio and LiteLLM document this API,
+but LADO was tested only on a fake server of it, so check yours once) starts its agent there: pick
+it in the launch window, or `lado start --provider claude --model "<name>"`. What to expect:
+
+- The model takes the agent's whole process: `/model` shows Default and that model, nothing of
+  Anthropic's. A subagent that asks for `haiku` runs on it too. For another model, of this server
+  or another, or a built-in one, the supervisor starts a worker with `spawn_worker(model=…)`; each
+  agent has its own server and key.
+- Enter on a row of `/model` writes `model` into your own `~/.claude/settings.json`, which every
+  Claude Code on the machine then reads; `s` there changes this session alone. Prefer `s`.
+- It needs no Claude login, and nothing of yours goes to the server: not your login, not
+  `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, not a key, token, `apiKeyHelper` or address in
+  your `~/.claude/settings.json`. The server gets its own key, or the word `no-key` if it has none.
+  A built-in worker of the same session needs the login as usual. Without a login the launch
+  window offers Claude Code only when its default model in Settings → Models is on a server; any
+  other start goes through `lado start --provider claude --model "<name>"`.
+- A model whose id Claude Code reads as its own (`sonnet`, `opus`, `best`, a name ending in `[1m]`)
+  is refused when saved and at a start: it would never reach the server. Give it another id there.
+- The agent keeps your `~/.claude`: your `CLAUDE.md`, skills and plugins work as usual.
+- The context LADO reads from the server goes to the agent. With none known, Claude Code assumes
+  200K tokens and says so at its start, so on a smaller model it compacts too late.
+- Telemetry and the experimental betas are off for such an agent. Claude Code still tried to reach
+  `downloads.claude.ai` and `github.com`, so do not take it for an agent that makes no other request.
 
 Others: `CLAUDE_CODE_OAUTH_TOKEN` (below), a kit's key as its MCP server names it (e.g.
 `YOUGILE_API_KEY`), a model provider's key for OpenCode and Kilo. Every agent of this LADO
@@ -284,9 +310,9 @@ can read every file of its `secrets/`.
 
 #### What to expect of a small model
 
-An agent's instructions and tools take about 21K tokens on
-OpenCode and 31K on Kilo before its first word, so a model needs a context of 32K on OpenCode and
-48K on Kilo. At each start LADO asks the server what context the model has (LM Studio's loaded
+An agent's instructions and tools take about 16K tokens on Claude Code, 21K on
+OpenCode and 31K on Kilo before its first word, so a model needs a context of 32K on Claude Code
+and OpenCode and 48K on Kilo. At each start LADO asks the server what context the model has (LM Studio's loaded
 model, Ollama's running one, a gateway's `max_input_tokens`) and tells the agent, which then
 compacts in time; a model below that need is warned about in `lado start` and the launch window,
 and starts all the same. A model reloaded with another context keeps the old limit until a resume.

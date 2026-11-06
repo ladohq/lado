@@ -506,7 +506,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     the names LADO sets for the agent CLIs, reserved from project variables and kept in
     step with every provider's `Launch.env` by a test; each provider's
     `EVENTS` maps its native events; `claude.py`: Claude Code, its role in `prompt.md` of
-    its config folder (`--append-system-prompt-file`); `opencode_family.py`: the
+    its config folder (`--append-system-prompt-file`), a model server of its start in its own
+    `--settings` (`_server_settings`, docs/design/agents.md), its aliases as `reserved_model`;
+    `opencode_family.py`: the
     base of OpenCode and its fork Kilo, holding only what is checked on both (each claim
     names the CLI and version), with `opencode_plugin.js`, the plugin that runs LADO's
     hooks, `opencode_tui_plugin.js`, the TUI's own, whose report that the prompt has focus is
@@ -884,7 +886,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `cleared`; with `confirmed`, refused, nothing removed, when the server's models
     are not those names), `check_model` (the checks of `add_model` in order, saving nothing:
     name (unless None), CLI, model, a server given, server saved, the provider's `server_api`,
-    a probe with the kept key (`probe_saved`, or the `probe` given: the page's kept one), the
+    a name its CLI reads as its own (`Provider.reserved_model`), a probe with the kept key (`probe_saved`, or the `probe` given: the page's kept one), the
     API among those proved, not an embeddings model, the model against the server's list by
     `model_check.verdict(whose=…)`; without a name, its `default_name` checked by `check_name`,
     a refusal under the model's field; a `Checked`), `add_model` (`check_model`, its server

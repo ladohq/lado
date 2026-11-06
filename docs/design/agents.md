@@ -314,15 +314,34 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   are taken, as for a human who trusts the folder) and `skipDangerousModePermissionPrompt:
   true` in `bypassPermissions` only (its warning screen). Auto mode's notice holds nothing.
 - An agent of any provider still `starting` with no hook since its launch (`seen_at` 0)
-  `runtime.START_SILENCE` (30 s) after it (its window mark, `window_at`; a waiting window
-  marks it anew when it starts the CLI) is held by a screen LADO does not know: the session
+  `Provider.start_silence` after it (30 s; 45 s for OpenCode and Kilo, past the 30 s their
+  server plugin counts from its own init, 3 to 5 s after the launch; its window mark,
+  `window_at`; a waiting window marks it anew when it starts the CLI) is held by a screen LADO
+  does not know: the session
   loop's pass (`runtime.check_starts`) makes it `waiting` with a `blocked` event, `Waiting
-  for an answer in its terminal: no sign from it 30 s after its start. Open its terminal.`,
+  for an answer in its terminal: no sign from it <limit> s after its start. Open its terminal.`,
   in the same transaction as the look (`state.block_unheard`: a hook that came meanwhile
   wins), logged once. Its first hook ends the wait: its session start as for any start
   blocker, any other first hook (`state.seen` says it is the first) by
-  `runtime.heard_at_start`, which puts it back to `starting`. A slow CLI past 30 s is
+  `runtime.heard_at_start`, which puts it back to `starting`. A slow CLI past its limit is
   `waiting` for a moment and clears by itself.
+- A Claude agent on a model server (`claude.py`, checked by hand on 2.1.295 against a fake server
+  with every other way out refused) has that server in its own `--settings`, not in its
+  environment: flag settings beat the environment and the user's and the repository's settings, and
+  `ANTHROPIC_BASE_URL` alone sent the human's login, sent `ANTHROPIC_API_KEY` beside the server's
+  token, and lost to a base URL in `~/.claude/settings.json`. So the settings hold the server's root
+  (`ServerEntry.root`: Claude Code adds `/v1/messages`, the `/v1` of `base_url` would double),
+  `availableModels` and `ANTHROPIC_DEFAULT_MODEL` and `ANTHROPIC_SMALL_FAST_MODEL` with the model,
+  so that `/model` shows Default and the model and a subagent's `model: haiku` falls back to it;
+  `SERVER_BLANKS` as empty values; `SERVER_SWITCHES`; `CLAUDE_CODE_MAX_CONTEXT_TOKENS` for a known
+  context; `apiKeyHelper: printenv LADO_MODEL_KEY_<ID>`, whose output goes out in both `x-api-key`
+  and `Authorization`, or `echo no-key`, as with no credential at all the login goes out. The file
+  holds no secret and is rewritten at each launch. The launch's `LADO_MODEL_SERVER` tells the
+  provider it needs no login, as `claude auth status` reads no `--settings`: `needs_login`,
+  `keychain_login` and `first_hook_blocker` go by it; `runtime.check_login`, which runs before the
+  launch, goes by a `start.server` on a CLI of one model per process. The first run is recorded as
+  for any agent. A `system` message ends `messages`, and `thinking` and `output_config` stay in the
+  body: only a real server tells whether it takes them.
 - A Codex agent's own Codex home (its config folder, `CODEX_HOME`) is settled so that no
   screen holds it: its config.toml trusts the repository's main root (`trust_level =
   "trusted"` for its real path, which covers a worker's worktree) unless the user's Codex
@@ -388,7 +407,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `shell_login`, the lowest such layer), and asks again. Once logged
   in it runs `first_hook_blocker` there (the first run above: its note in loop.log only, a
   reason or warning also printed in the agent's terminal), marks the CLI's launch
-  (`state.window_opened`, from which the 30 s above count), puts the agent
+  (`state.window_opened`, from which the limit above counts), puts the agent
   back to `starting` (or waits with that blocker's reason) and execs the CLI: the agent
   reaches its first hook with no restart. A login shell's change needs a new agent. A
   login LADO cannot read (`unknown`: a failure, a timeout, odd output) never holds an
@@ -544,9 +563,10 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   alone in `tui.json` of its config folder (`OPENCODE_TUI_CONFIG`, `KILO_TUI_CONFIG`), runs
   `lado hook tui.ready` on the first frame with a focused renderable, and the server plugin's
   init reports nothing. A message sent before that waits `pending` with no attempt counted,
-  while the TUI takes its time; past `START_SILENCE` the agent shows the reason of a silent
-  start, and a report ends it: `tui.ready`, or with a live server plugin `tui.silent` 1 to 3 s
-  later, its timer counting from the plugin's init and not from the launch. A renderer without that API
+  while the TUI takes its time; a report ends that: `tui.ready`, or with a live server plugin
+  `tui.silent`, its timer counting from the plugin's init and not from the launch, so before
+  the start's limit of 45 s (`Provider.start_silence`), past which the agent shows the reason
+  of a silent start. A renderer without that API
   reports at once: a paste may be lost then and the sweep types it again. A TUI plugin that
   does not report (a CLI's change, or a TUI merely slow, which nothing tells apart) must not
   leave the agent `starting`: the server plugin, alive, runs `lado hook tui.silent` 30 s after
@@ -558,8 +578,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   starts over from that hook as a first attempt (`state.restart_typed`), and an agent busy
   for it alone is idle: no turn ran, so no hook would end that. The paste goes back to the
   queue after `RETRY_DELAYS[0]`, not at once, so a CLI that held it confirms it by
-  `chat.message` and it is not typed twice. A real turn has nothing unconfirmed and stays
-  `busy`. `hooks.handle` also ends a wait with no key, the one failed messages left, which
+  `chat.message` and it is not typed twice. A real turn stays `busy` by itself; it can leave the
+  second line of a paste of two unconfirmed, and the agent is then `idle` until that goes in.
+  `hooks.handle` also ends a wait with no key, the one failed messages left, which
   `state.seen` has just put back in the queue; a dialog's wait, with its key, stays. Claude
   Code and Codex set neither field. Their queue's lines at launch
   (`Capabilities.notice_on_argv`), never a body, go on `--prompt` (`runtime._launch_command`),
@@ -704,7 +725,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `runtime.SPAWN_DEADLINE` (60 s) from its row: past it the spawning process died, and the
   agent ends at once with "its start ended before its window opened" (`SPAWN_DIED`).
   After it the pass looks for agents a screen holds before any hook
-  (`runtime.check_starts`, the 30 s safety net above).
+  (`runtime.check_starts`, the safety net above).
   A failing list changes nothing: only then
   a `tmux has-session` tells a gone tmux session (the loop ends) from another failure (an
   error of the pass; a tmux that cannot run is one too; `loop.tmux_gone`). The supervisor's

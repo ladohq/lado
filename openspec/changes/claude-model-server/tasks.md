@@ -31,7 +31,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-06-claude-model
 
 ## 5. Docs and regression
 
-- [ ] 5.1 `docs/install.md`, `docs/design/agents.md` with its wrong line, `docs/design/modules.md`,
+- [x] 5.1 `docs/install.md`, `docs/design/agents.md` with its wrong line, `docs/design/modules.md`,
   `docs/cli.md`, `CHANGELOG.md`. Check: read against the code.
 - [ ] 5.2 `make lint`, `make test`, the changed tests with their markers, both `openspec validate`, the
   archive tried on a copy, green CI. Check: their exit statuses.

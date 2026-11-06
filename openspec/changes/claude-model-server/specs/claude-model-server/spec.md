@@ -89,6 +89,11 @@ first run for such an agent, so no first-run screen holds it.
 - **WHEN** Claude Code is not logged in and a session starts on a server's model
 - **THEN** it starts, and the agent reaches its first hook with no answer in its terminal
 
+#### Scenario: A clone for such a session
+- **WHEN** Claude Code is not logged in and `lado start <git-url> --provider claude --model "Шлюз Opus"`
+  runs, or Claude Code's default is `Шлюз Opus` on a server and no model is given
+- **THEN** the repository is cloned and the session starts on the server
+
 #### Scenario: A built-in model in the same state
 - **WHEN** Claude Code is not logged in and a session starts on `opus`
 - **THEN** it is refused as before

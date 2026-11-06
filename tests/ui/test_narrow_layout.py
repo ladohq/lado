@@ -9,7 +9,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from test_gates import LONG_NOTE, gated_session, in_sight, waiting_card
 from test_main_screen import log_in, running_session
-from test_team_head import OWN, RUNS, TWENTY, open_team, team
+from test_team_head import OWN, RUNS, TWENTY, open_team, settled, team
 
 from lado import artifacts, runtime, state
 
@@ -625,6 +625,24 @@ def test_the_tab_shown_stands_clear_of_the_bars_ends(page: Page, server, repo):
     bar.get_by_role("link", name=re.compile("^Flows")).click()
     expect(bar.get_by_role("link", name=re.compile("^Flows"))).to_have_attribute("aria-current", "page")
     page.wait_for_function(f"({CLEAR})(document.querySelector('.session-tabs [aria-current=page]'))")
+
+
+def test_a_press_on_a_tab_leaves_the_row_until_the_click(page: Page, server, repo):
+    size(page, 1440)
+    session = running_session(repo)
+    open_session(page, server, session)
+    bar = page.get_by_role("navigation", name="Session sections")
+    page.add_style_tag(content=".session-tabs { width: 300px; }")
+    expect(bar).to_have_attribute("data-fit", "4")
+    flows = bar.get_by_role("link", name=re.compile("^Flows"))
+    box = flows.bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    expect(flows).to_be_focused()
+    settled(page)
+    assert page.locator(".session-tabs-scroll").evaluate("e => e.scrollLeft") == 0
+    page.mouse.up()
+    expect(flows).to_have_attribute("aria-current", "page")
 
 
 def test_a_waiting_sessions_badge_has_the_diamond_and_the_marks_sit_on_the_corner(

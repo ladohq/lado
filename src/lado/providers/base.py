@@ -389,6 +389,9 @@ class Provider(ABC):
     runs_on_server: bool = False
     # The context in tokens an agent of this CLI needs to take a turn, 0 for no number known.
     min_context: int = 0
+    # Seconds from an agent's launch to its first hook before LADO shows it as held by a
+    # question it does not know (lado.runtime.check_starts).
+    start_silence: float = 30.0
 
     def check_permission_mode(self, mode: str | None) -> None:
         """Raise ValueError for a permission mode this provider cannot honour."""

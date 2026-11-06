@@ -1177,15 +1177,21 @@ def test_the_server_plugin_is_not_given_the_tuis_report(repo, lado_home, provide
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))
-def test_the_server_plugin_waits_for_the_tui_as_long_as_a_silent_start(repo, lado_home, provider):
+def test_a_start_s_limit_is_past_the_server_plugin_s_wait(repo, lado_home, provider):
     sess = state.Session("s", str(repo), None, provider)
     agent = state.Agent(
         "s", "w1", "worker", str(repo), None, None, state.STARTING, provider, instance="i1"
     )
     launch = providers.get(provider).launch_command(agent, sess, providers.AgentSpec("the role"))
     [[_, options]] = json.loads(launch.env[FAMILY[provider]])["plugin"]
-    assert options["tuiWait"] == runtime.START_SILENCE * 1000
+    assert options["tuiWait"] == opencode_family.TUI_WAIT * 1000
+    assert providers.get(provider).start_silence == opencode_family.TUI_WAIT + 15
     assert options["hooks"]["tui.silent"] == base.hook_argv(agent, "tui.silent")
+
+
+@pytest.mark.parametrize("provider", ["claude", "codex"])
+def test_another_cli_has_the_limit_of_any_start(provider):
+    assert providers.get(provider).start_silence == 30.0
 
 
 def test_the_tui_plugin_ships_inside_the_package():

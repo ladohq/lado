@@ -17,7 +17,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-06-claude-model
 
 ## 3. Start limit
 
-- [ ] 3.1 `Provider.start_silence`, the reason by its limit, `heard_at_start` (D8). Check:
+- [x] 3.1 `Provider.start_silence`, the reason by its limit, `heard_at_start` (D8). Check:
   `tests/test_liveness.py`, `tests/integration/test_session_loop.py` with `-m integration`.
 
 ## 4. End to end

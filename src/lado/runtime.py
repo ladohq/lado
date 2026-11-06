@@ -2610,28 +2610,38 @@ def check_windows(session: str, missing: set[str], now: datetime | None = None) 
     return gone
 
 
-START_SILENCE = 30.0  # seconds from an agent's launch to its first hook before it is shown
 START_SILENCE_REASON = (
-    "Waiting for an answer in its terminal: no sign from it 30 s after its start. "
+    "Waiting for an answer in its terminal: no sign from it {limit:g} s after its start. "
     "Open its terminal."
 )
+START_SILENCE_MARK = START_SILENCE_REASON.partition("{")[0]  # how heard_at_start tells it
+
+
+def _start_silence(agent: state.Agent) -> float:
+    """The seconds from `agent`'s launch to its first hook before it is shown."""
+    try:
+        return providers.get(agent.provider).start_silence
+    except ValueError:
+        return providers.base.Provider.start_silence
 
 
 def check_starts(session: str, now: datetime | None = None) -> None:
     """One look of the session loop for agents whose CLI holds them before any hook with a
     question LADO does not know (_before_window knows the others), of any provider:
-    `starting`, no hook since the launch (seen_at 0), and START_SILENCE or more since the
-    launch, its window mark (state.window_opened; a waiting window marks it anew when it
+    `starting`, no hook since the launch (seen_at 0), and its provider's limit or more since
+    the launch, its window mark (state.window_opened; a waiting window marks it anew when it
     starts the CLI, lado.login_wait). Such an agent waits with START_SILENCE_REASON; its
     first hook makes it ready (lado.hooks: its session start, or heard_at_start)."""
     now = now or datetime.now(timezone.utc)
     for agent in state.list_agents(session):
         if agent.status != state.STARTING or agent.seen_at or agent.window_at is None:
             continue
-        if (now - _utc(agent.window_at)).total_seconds() < START_SILENCE:
+        limit = _start_silence(agent)
+        if (now - _utc(agent.window_at)).total_seconds() < limit:
             continue
-        if state.block_unheard(session, agent.name, START_SILENCE_REASON):
-            loop.log(session, f"{agent.name}: {START_SILENCE_REASON}")
+        reason = START_SILENCE_REASON.format(limit=limit)
+        if state.block_unheard(session, agent.name, reason):
+            loop.log(session, f"{agent.name}: {reason}")
 
 
 def start_note(session: str, name: str, note: str) -> None:
@@ -2647,7 +2657,7 @@ def heard_at_start(session: str, name: str) -> None:
     agent = state.get_agent(session, name)
     if agent is None or agent.status != state.WAITING:
         return
-    if state.block_reasons(session).get(name) == START_SILENCE_REASON:
+    if state.block_reasons(session).get(name, "").startswith(START_SILENCE_MARK):
         state.set_status(session, name, state.STARTING)
 
 

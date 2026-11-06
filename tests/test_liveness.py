@@ -514,13 +514,11 @@ def test_an_agent_with_no_hook_30_s_after_its_window_waits_for_its_terminal(repo
     _session_with_worker(repo)
     runtime.check_starts("s", _after_window("w1", 31))
     assert state.get_agent("s", "w1").status == state.WAITING
-    assert runtime.status_reasons("s")["w1"] == runtime.START_SILENCE_REASON
-    assert runtime.START_SILENCE_REASON == (
-        "Waiting for an answer in its terminal: no sign from it 30 s after its start. "
-        "Open its terminal."
-    )
+    reason = "Waiting for an answer in its terminal: no sign from it 30 s after its start. "
+    reason += "Open its terminal."
+    assert runtime.status_reasons("s")["w1"] == reason
     log = (state.home() / "loop.log").read_text()
-    assert log.count(f"s: w1: {runtime.START_SILENCE_REASON}") == 1
+    assert log.count(f"s: w1: {reason}") == 1
 
 
 def test_an_agent_under_30_s_is_left_alone(repo, fake_tmux):
@@ -528,6 +526,33 @@ def test_an_agent_under_30_s_is_left_alone(repo, fake_tmux):
     runtime.check_starts("s", _after_window("w1", 29))
     assert state.get_agent("s", "w1").status == state.STARTING
     assert "w1" not in runtime.status_reasons("s")
+
+
+@pytest.mark.parametrize("provider", ["kilo", "opencode"])
+def test_a_silent_tui_of_the_opencode_family_is_not_shown_as_a_question(repo, fake_tmux, provider):
+    """Its server plugin counts 30 s from its own start, some seconds after the launch."""
+    runtime.start_session(str(repo), "s", None, provider=provider)
+    runtime.check_starts("s", _after_window("supervisor", 44))
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+    runtime.check_starts("s", _after_window("supervisor", 45))
+    assert runtime.status_reasons("s")["supervisor"] == (
+        "Waiting for an answer in its terminal: no sign from it 45 s after its start. "
+        "Open its terminal."
+    )
+
+
+def test_a_first_hook_ends_the_wait_of_a_limit_of_its_provider(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    runtime.check_starts("s", _after_window("supervisor", 46))
+    runtime.heard_at_start("s", "supervisor")
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+
+
+def test_a_first_hook_leaves_a_wait_of_another_reason(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.block("s", "w1", "Claude Code asks whether to trust the folder")
+    runtime.heard_at_start("s", "w1")
+    assert state.get_agent("s", "w1").status == state.WAITING
 
 
 def test_an_agent_that_hooked_is_left_alone(repo, fake_tmux):

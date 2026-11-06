@@ -49,6 +49,13 @@ def start(repo, session: str) -> None:
     wait_for(lambda: state.get_agent(session, "supervisor").status == state.IDLE, "idle", session)
 
 
+SILENCE = 30  # the limit of a start of the fake agent (Provider.start_silence)
+SILENCE_REASON = (
+    "Waiting for an answer in its terminal: no sign from it 30 s after its start. "
+    "Open its terminal."
+)
+
+
 def logged(session: str) -> str:
     path = state.home() / "loop.log"
     return path.read_text() if path.exists() else ""
@@ -127,10 +134,10 @@ def test_the_loop_shows_an_agent_its_cli_holds_with_a_question_lado_does_not_kno
     runtime.spawn_worker(session, "sleep 0", name="w1")
     wait_for(lambda: "Go on?" in tmux.capture(session, "w1"), "the question", session)
     assert state.get_agent(session, "w1").status == state.STARTING
-    _launched_ago(session, "w1", runtime.START_SILENCE + 1)
-    held = lambda: runtime.status_reason(session, "w1") == runtime.START_SILENCE_REASON  # noqa: E731
+    _launched_ago(session, "w1", SILENCE + 1)
+    held = lambda: runtime.status_reason(session, "w1") == SILENCE_REASON  # noqa: E731
     wait_for(held, "the loop's reason", session)
-    assert runtime.START_SILENCE_REASON in lado_cli("ls").stdout
+    assert SILENCE_REASON in lado_cli("ls").stdout
     tmux.send_text(session, "w1", "yes")  # the human answers in its terminal
     wait_for(lambda: state.get_agent(session, "w1").status == state.IDLE, "w1 idle", session)
     assert runtime.status_reason(session, "w1") is None
@@ -153,8 +160,8 @@ def test_a_queue_waits_for_a_late_session_start_and_goes_in_once(
         assert state.get_agent(session, "w1").status == state.STARTING
         time.sleep(0.05)
 
-    _launched_ago(session, "w1", runtime.START_SILENCE + 1)
-    held = lambda: runtime.status_reason(session, "w1") == runtime.START_SILENCE_REASON  # noqa: E731
+    _launched_ago(session, "w1", SILENCE + 1)
+    held = lambda: runtime.status_reason(session, "w1") == SILENCE_REASON  # noqa: E731
     wait_for(held, "the loop's reason", session)
     assert state.get_message(session, task.id).state == state.PENDING
 
@@ -166,6 +173,25 @@ def test_a_queue_waits_for_a_late_session_start_and_goes_in_once(
 
 
 SILENT = "no report from its TUI"
+
+
+def test_the_loop_counts_a_start_by_its_provider_s_limit(repo, session, monkeypatch, tmp_path):
+    """Past the 30 s of any CLI, a TUI whose report may still come is left alone. The loop is
+    plain LADO, which knows no fake provider, so the agent's record names Kilo CLI."""
+    start(repo, session)
+    monkeypatch.setenv("FAKE_AGENT_START_HOLD", str(tmp_path / "ready"))
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    with state.connect() as db:
+        db.execute(
+            "UPDATE agents SET provider = 'kilo' WHERE session = ? AND name = 'w1'", (session,)
+        )
+    _launched_ago(session, "w1", SILENCE + 1)
+    time.sleep(4 * loop.INTERVAL)
+    assert state.get_agent(session, "w1").status == state.STARTING
+
+    _launched_ago(session, "w1", 46)
+    reason = SILENCE_REASON.replace("30 s", "45 s")
+    wait_for(lambda: runtime.status_reason(session, "w1") == reason, "the reason", session)
 
 
 def test_a_silent_tui_s_agent_is_ready_its_lead_is_told_and_its_task_is_typed_in(

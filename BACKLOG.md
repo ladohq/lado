@@ -1872,6 +1872,17 @@ It failed once in a full run of `make web` and passed 3 times alone and in the n
 change under review did not touch the file. Wanted: its cause found and the test made stable.
 Found: 2026-11-06, review of branch lado/lad-197/task-lad-197-team-head (LAD-197).
 
+## The rail's bottom items go past the edge with the keyboard open on a sideways iPad
+
+Size: S. Why here: only while the on-screen keyboard is open, and closing it brings them back.
+
+Wider than 900 px the rail is as high as the app (LAD-226), so with the on-screen keyboard open
+on an iPad held sideways it gets lower than its content, and Report a bug and Settings can lie
+past its bottom edge; the rail does not scroll. Left out of LAD-226: a scroll would also change
+low windows on a computer. Wanted: the rail's items reachable at any height, a computer's low
+window looking as it does, with a UI test.
+Found: 2026-11-06, design of branch lado/lad-226/task-lad-226 (LAD-226).
+
 # P3: maybe never
 
 ## A relative LADO_HOME breaks the reads of lado.db

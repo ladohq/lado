@@ -92,8 +92,8 @@ scrolling inside beyond that, with no focus trap. Opening it SHALL put the focus
 sheet. Until the about comes, or when it fails, it SHALL show the session's settings alone.
 
 #### Scenario: A narrow window
-- **WHEN** the window is 480 px wide and the human opens Details
-- **THEN** it is 448 px wide and lies inside the window
+- **WHEN** the window is 601 px wide and the human opens Details
+- **THEN** it is 470 px wide and lies inside the window
 
 ### Requirement: Details names every fact of the session
 

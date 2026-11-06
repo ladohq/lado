@@ -515,34 +515,19 @@ const KITS_SHOWN = 6; // a card's kits; Details has them all
 // mark is hidden from a screen reader, which reads the words.
 function TipState({ session, stopped }: { session: SessionInfo; stopped: string | null }) {
   const { mark } = sessionMark(session);
-  const dot = (kind: string) => <span className={`dot ${kind}`} aria-hidden="true" />;
-  if (mark === "stopped") {
-    return (
-      <div className="tip-state">
-        <span className="tip-muted">{stopped ?? STATUS.stopped}</span>
-      </div>
-    );
-  }
-  if (mark === "needs-you") {
-    return (
-      <div className="tip-state">
-        {dot("dot-waiting")}
-        <span className="tip-waits">Needs you: {about(session)}</span>
-      </div>
-    );
-  }
-  if (mark === "working" || mark === "idle") {
-    return (
-      <div className="tip-state">
-        {dot(`activity-${mark}`)}
-        <span className={mark === "idle" ? "tip-muted" : "tip-status"}>{work(session)}</span>
-      </div>
-    );
-  }
+  const working = workWord(session);
+  const [dot, tone, words] =
+    mark === "stopped"
+      ? [null, "tip-muted", stopped ?? STATUS.stopped]
+      : mark === "needs-you"
+        ? ["dot-waiting", "tip-waits", `Needs you: ${about(session)}`]
+        : working
+          ? [`activity-${working}`, session.busy > 0 ? "tip-status" : "tip-muted", work(session)]
+          : [`session-dot-${session.status}`, "danger-text", STATUS[session.status]];
   return (
     <div className="tip-state">
-      {dot(`session-dot-${mark}`)}
-      <span className="danger-text">{STATUS[mark]}</span>
+      {dot && <span className={`dot ${dot}`} aria-hidden="true" />}
+      <span className={tone}>{words}</span>
     </div>
   );
 }

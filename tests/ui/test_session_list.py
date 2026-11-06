@@ -143,19 +143,19 @@ def test_a_row_shows_its_sessions_card_under_the_pointer(page: Page, server, rep
     sessions = page.get_by_role("navigation", name="Sessions")
     sessions.get_by_role("link", name=calm).hover()
     card = page.get_by_role("tooltip")
-    expect(card).to_contain_text(f"{calm} · running · idle · 1 agent")
-    expect(card).to_contain_text("ran <1 min")
-    expect(card).to_contain_text(str(repo))
-    expect(card).to_contain_text("default · fake")
+    expect(card.locator(".tip-top")).to_have_text(calm)
+    expect(card.locator(".tip-state")).to_have_text("idle")
+    expect(card.locator("dt")).to_have_text(["Ran", "Folder", "Kits", "CLI"])
+    expect(card.locator("dd")).to_have_text(["<1 min", str(repo), "default", "fake"])
     shot(page, "running")
 
     sessions.get_by_role("button", name="Stopped 1").click()
     stopped = sessions.get_by_role("link", name=old)
     expect(stopped.locator(".session-about")).to_have_text("stopped <1 min ago · ran <1 min")
     stopped.hover()
-    expect(card).to_contain_text(f"{old} · stopped")
-    expect(card).to_contain_text("stopped <1 min ago · ran <1 min")
-    expect(card).to_contain_text("Stopped: open it and press Resume")
+    expect(card.locator(".tip-top")).to_have_text(old)
+    expect(card.locator(".tip-state")).to_have_text("stopped <1 min ago")
+    expect(card.locator(".tip-hint")).to_have_text("Open it and press Resume")
     shot(page, "stopped")
 
 
@@ -268,7 +268,7 @@ def test_a_running_row_says_whether_its_agents_work_and_follows_their_hooks(
     )
     about = row.locator(".session-about")
     expect(row.get_by_role("img", name="idle")).to_be_visible()
-    expect(about).to_have_text("1 agent · <1 min")
+    expect(about).to_have_text("ran <1 min")
 
     runtime.write_as_human(session, "pause")  # the fake supervisor's turn goes on till released
     agent_helpers.wait_for(
@@ -276,7 +276,7 @@ def test_a_running_row_says_whether_its_agents_work_and_follows_their_hooks(
     )
     working = row.get_by_role("img", name="working")
     expect(working).to_be_visible()
-    expect(about).to_have_text("1 agent · <1 min")
+    expect(about).to_have_text("ran <1 min")
     pulse = "e => getComputedStyle(e).animationName"
     assert working.evaluate(pulse) == "activity-pulse"
     page.emulate_media(reduced_motion="reduce")
@@ -285,7 +285,7 @@ def test_a_running_row_says_whether_its_agents_work_and_follows_their_hooks(
 
     agent_helpers.release(session, "supervisor", 1)
     expect(row.get_by_role("img", name="idle")).to_be_visible()
-    expect(about).to_have_text("1 agent · <1 min")
+    expect(about).to_have_text("ran <1 min")
     shot(page, "idle")
 
     page.get_by_role("button", name="Collapse sessions").click()

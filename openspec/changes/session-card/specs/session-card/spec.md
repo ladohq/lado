@@ -98,9 +98,13 @@ SHALL open under or over the trigger, on the side with more room when neither fi
 - **WHEN** the human hovers the lowest row in the window
 - **THEN** the whole card is inside the window, moved up past the row's level
 
-#### Scenario: A narrow window
-- **WHEN** the human focuses a row in a window 640 px wide
+#### Scenario: A row as wide as the window
+- **WHEN** the human focuses a row in a window 590 px wide, where the list is the page
 - **THEN** the card opens under or over the row and inside the window
+
+#### Scenario: A window of 640 px
+- **WHEN** the human focuses a strip's icon in a window 640 px wide, where the list is folded
+- **THEN** the card opens right of the icon and inside the window
 
 ### Requirement: The card keeps one width and a bounded height
 

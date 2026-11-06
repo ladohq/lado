@@ -511,19 +511,31 @@ Sessions for now. The UI's texts are in English.
   row alone shows under the heading; going to a session never opens a group nor changes
   what is remembered. The rows look alike in every group (no dimmed stopped ones, no
   orange in Needs you): the open row and the one under the pointer or focus get a stripe
-  of their group's colour on the left. Each shows a line under its name: what waits, its
-  agents and run time (Running, below), its stopped text (Stopped), or its agents, the status of a session whose tmux session is gone or whose loop does not
+  of their group's colour on the left. Each shows a line under its name: what waits, else
+  its run time (Running, below) or its stopped text (Stopped); the status of a session whose tmux session is gone or whose loop does not
   run, and on hover or keyboard focus of the row ⋯ with the entry's menu, Copy link and
   Open in new tab; the session's own actions are in its head (Launch and session control,
   below). On hover or keyboard focus a row shows the session's card (`SessionTip` in a
-  `Tooltip`, the one of the strip's icons, below): name · status · agents, with no dot
-  before the name (the row has its own) and the status word in its group's colour
-  (`--done` Running, `--human` Needs you, `--muted` Stopped; tmux gone or loop down in
-  `--danger`), which explains the colours of the row and the icon (decided 2026-10-09,
-  mockup artifact `fix/session-tip-no-dot/mockup-tip.html`), the run time (below),
-  `Needs you: <the row's line>` in the human's colour, the folder, kits · provider · `mode <permission mode>`
-  when it has one, and for a stopped session `Stopped: open it and press Resume`; all
-  from `SessionInfo`, no CLI commands. A Running row (a session whose status is `running`
+  `Tooltip`, the one of the strip's icons, below; LAD-223, mockup artifact
+  `task/lad-223/mockup-session-card.html`, labelled rows): the title in bold with the name after
+  it (or the name), with no dot before it (the row has its own); the state line with the
+  row's mark, hidden from a screen reader as the word stands next to it:
+  `<n> of <m> agents working` in the group's colour, `idle` in `--muted`,
+  `Needs you: <what waits>` in `--human`, a trouble's status in `--danger`, `stopped <time> ago`
+  or `stopped` in `--muted`, and under a trouble what waits on a line of its own. Under a line
+  come the labels Project (`SessionInfo.project_title`, the id without one), Ran (the run
+  time with no word), Folder, Kits (at most 6 names, then `+<n> more`: Details has them all),
+  CLI and Mode; a label with no value is not drawn. A stopped or broken session's card ends with
+  what to do: `Open it and press Resume`, or `Open it and press Stop session, then Resume`
+  when its loop does not run. All from `SessionInfo`, no CLI commands, and a project's
+  rename touches its sessions (`state.set_project_title`), so the feed brings the new title.
+  The card is 360 px wide, or the window less 16 px, and at most the window less 16 px high,
+  its end cut where the window is lower: it takes no pointer, so it does not scroll. It opens right of
+  its row or icon (`Tooltip`'s `side="right"`), level with it and moved only as far as the
+  window asks, the list staying in sight; a row as wide as the window has it under or over.
+  Deliberately it stays a tooltip (WCAG 1.4.13 aside, the human's answer, LAD-223): it goes
+  when the pointer leaves the row, even towards it; it shows on focus, Esc closes it, and
+  Details copies the path. A Running row (a session whose status is `running`
   and in which nothing waits) also says whether its agents work now (decided 2026-10-08
   in feature/session-activity; mockup artifact
   `feature/session-activity/mockup-list.html`, variant A without the word "working"): a
@@ -531,16 +543,14 @@ Sessions for now. The UI's texts are in English.
   `prefers-reduced-motion: reduce`) while some agent works, else a ring in `--muted` (the
   team chips' busy and idle shapes), its accessible name `working` or `idle`. Its line
   says what the human can use (decided 2026-10-11 in feature/session-row-line; mockup
-  artifact `feature/session-row-line/mockup-list.html`, the right column): its agents and
-  how long the session ran, `<agents> agent(s) · <run time>` (`2 agents · 1 d 8 h`), the
+  artifact `feature/session-row-line/mockup-list.html`, the right column; the agents' count
+  left the line with LAD-223, a number the human never used): how long the session ran,
+  `ran <run time>` (`ran 1 d 8 h`), the
   run time the head's, made by the one function `ranText` (Sessions.tsx; `ChatText.duration`,
-  exact) and counted on by the minute on the head's clock (`useNow`, `TICK_MS`); no `of`
-  count, which the dot says. A Stopped row's line is its stopped text, as its head says it
-  (`stopped 5 h ago · ran 3 h 2 min`). Its card's first line says `name · running · 2 of 3
-  agents working` or `name · running · idle · 1 agent`, with no time; under it, for every
-  session (the strip's icons have no row line), the run time: `ran ` and `ranText` while
-  the session runs (`ran 1 d 8 h`), else `ranText` as it is (`stopped … · ran …` or
-  `ran …`). Its icon in the strip has the same dot,
+  exact) and counted on by the minute on the head's clock (`useNow`, `TICK_MS`). A row in
+  trouble with nothing waiting says the same; one in which something waits says what. A
+  Stopped row's line is its stopped text, as its head says it
+  (`stopped 5 h ago · ran 3 h 2 min`). Its icon in the strip has the same dot,
   small, in its corner, with `working` or `idle` in its accessible name. Which mark a
   session has, and its words, is one rule, `sessionMark` (Sessions.tsx; decided
   2026-10-19, LAD-108, mockup artifact `task/lad-108/mockup-head-status.html`): stopped,
@@ -571,7 +581,7 @@ Sessions for now. The UI's texts are in English.
   LAD-108, 2026-10-19), with no word, its name and tooltip the mark's words: needs you
   the orange diamond of a waiting agent (`needs you · 1 question`); working the row's
   full `--done` dot with its pulse (`running · 2 of 3 agents working`); idle the row's
-  `--muted` ring (`running · idle · 3 agents`); stopped `--muted`, the run time saying
+  `--muted` ring (`running · idle`); stopped `--muted`, the run time saying
   "stopped"; tmux gone and loop down `--danger`, their status in words in `--danger`
   after the name. The run time is
   the server's (`SessionInfo.ran_seconds`, `running_since`: `runtime.session_time`, stops
@@ -1398,8 +1408,8 @@ Built in the layout task (2026-10-03, schema 14):
   status is in the accessible name). It shows 300 ms after the pointer enters, at once on
   the keyboard's focus (not a click's), goes when the pointer leaves, the focus goes or on
   Esc; `role="tooltip"`, the trigger's `aria-describedby` while it shows, no pointer
-  events, kept inside the window; under its trigger, or over it when there is no room
-  below, with an arrow on the edge facing the trigger that points at the trigger's centre
+  events, kept inside the window; under its trigger, or over it when it does not fit below
+  and there is more room over it (a session's card: beside it, above), with an arrow on the edge facing the trigger that points at the trigger's centre
   (Look: Tooltips). A chip opens the agent's terminal in the panel, or selects its tab. The feed
   holds, in time order: the messages with the human and the questions; the flow runs'
   gates as cards or lines (Flow gates above); their events as quiet lines grouped by run
@@ -2147,9 +2157,9 @@ Where it shows:
 
 | Place | With a title | Without |
 |---|---|---|
-| list row | the title in bold; the grey line starts with the name, `lado-2 · 3 agents · 1h 12m` (every kind of grey line) | as before |
+| list row | the title in bold; the grey line starts with the name, `lado-2 · ran 1 h 12 min` (every kind of grey line) | as before |
 | collapsed list's icon | its letters from the title, its accessible name the title | as before |
-| row's and icon's card | first line `<b>title</b> · lado-2 · <status> · …` | as before |
+| row's and icon's card | first line `<b>title</b> lado-2`, the name in `--muted` | as before |
 | session head | `<h1>` the title; the name in Details, `id <name>` | `<h1>` the name; Details too says `id <name>` |
 | browser tab | `<title> · LADO` (`(n)` before it when something waits) | the name |
 | Needs you | the session's line: the title, then the name in grey | the name |
@@ -3242,9 +3252,11 @@ on `--raised`. No orange.
 **Tooltips** (fix/tooltip-arrow, the human's decision 2026-10-08): every tooltip of the
 UI (`Tooltip.tsx`) is the light card, `--panel` with a `--line` frame and a soft
 `--shadow`, and an arrow to its trigger: an 8 px square turned 45° in the card's fill and
-frame, on the top edge under the trigger and on the bottom edge over it (`data-side`),
+frame, on the top edge under the trigger, on the bottom edge over it and on the left edge
+beside it (`data-side`),
 painted over the card's border so the frame runs on with no seam. It points at the
-trigger's horizontal centre (`--arrow-x`), also when the window's edge pushes the card,
+trigger's horizontal centre (`--arrow-x`), beside it at its middle (`--arrow-y`), also when
+the window's edge pushes the card,
 and stays 16 px from the card's ends, off its rounded corners; for a narrow trigger the
 card starts left of it so the arrow still reaches its centre. The card is 11 px from its
 trigger, so the arrow never touches it. A focus that comes back to its trigger with the tab

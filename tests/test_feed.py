@@ -596,6 +596,7 @@ def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo,
         "stopped_at": None,
         "title": None,
         "project": None,
+        "project_title": None,
     }
     assert stream.quiet(0.3) == []  # a stopped session has nothing derived
 

@@ -54,7 +54,7 @@ The mark in the row keeps `role="img"` and its name: it is now the only sign of 
 | The mark's words | unit (vitest) | `web/src/Layout.test.tsx`, the tables at the words of `idle` |
 | Project by title | unit (pytest) + unit (vitest) | `tests/test_server_*.py` on `session_info`; the card with and without a title |
 | A new title reaches the list | unit (pytest) | `tests/test_feed.py`: `set_project_title` journals each session, its item has the title. One SQLite file, no process boundary beyond the journal's own tests |
-| Beside the list, in the window | UI e2e + unit (vitest) | `tests/ui/test_layout.py`: geometry at 1440×900, the last row, 640 px; `web/src/Tooltip` placement with mocked rects |
+| Beside the list, in the window | UI e2e + unit (vitest) | `tests/ui/test_layout.py`: geometry at 1440×900, the last row, 590 px (rows) and 640 px (the strip: the list is folded there); `web/src/Tooltip` placement with mocked rects |
 | One width, bounded height | UI e2e | `tests/ui/test_layout.py`: two cards of equal width |
 | The card stays a tooltip | unit (vitest) | the pointer leaves, the card goes (the existing test extended) |
 

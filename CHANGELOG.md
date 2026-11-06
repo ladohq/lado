@@ -4,6 +4,10 @@
 
 ### Improved
 
+- **A session's card reads at a glance.** Its facts have labels, it names the project, says what
+  to do with a stopped or broken session and opens beside the list, so the list stays in sight.
+  The rows no longer count agents and show how long the session ran.
+
 - **A session with many artifacts reads on one screen.** In a narrow column each artifact takes
   two lines instead of a card, and from 100 artifacts they go in groups by run that fold: open
   work stays open, finished runs fold, and your choice is remembered.

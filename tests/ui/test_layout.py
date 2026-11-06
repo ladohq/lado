@@ -4,6 +4,7 @@ session under Needs you, from lado.db's journal to the page."""
 
 import json
 import re
+import time
 import uuid
 
 import agent_helpers
@@ -427,3 +428,174 @@ def test_many_tabs_stay_on_one_line_and_scroll_with_the_supervisors_tab_kept(
     expect(buttons).to_have_count(6)
     expect(buttons.first).to_have_accessible_name("Open supervisor's terminal")
     shot(page, "collapsed")
+
+
+def rows_of(page: Page, server, repo, count: int, **more):
+    """The list with `count` rows: sessions with no tmux, cheap to have many of."""
+    for n in range(count):
+        state.add_session(state.Session(f"row-{n}", str(repo), None, "fake", **more))
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions")
+    return page.get_by_role("navigation", name="Sessions").locator(".session-link")
+
+
+def assert_in_window(page: Page, box: dict) -> None:
+    size = page.viewport_size
+    assert box["x"] >= 8 and box["y"] >= 8
+    assert box["x"] + box["width"] <= size["width"] - 8
+    assert box["y"] + box["height"] <= size["height"] - 8
+
+
+def test_a_sessions_card_opens_right_of_the_list_at_its_row(page: Page, server, repo, shot):
+    rows = rows_of(page, server, repo, 12)
+    expect(rows).to_have_count(12)
+    row = rows.nth(4)
+    row.hover()
+    card = page.get_by_role("tooltip")
+    expect(card).to_be_visible()
+    box, at = card.bounding_box(), row.bounding_box()
+    assert box["x"] >= at["x"] + at["width"]  # no row under it
+    assert box["width"] == 360
+    assert_in_window(page, box)
+    middle = at["y"] + at["height"] / 2
+    assert abs(box["y"] + box["height"] / 2 - middle) <= 1
+    arrow = card.evaluate("c => parseFloat(getComputedStyle(c, '::before').top)")
+    assert abs(box["y"] + 1 + arrow - middle) <= 1  # from inside the card's border
+    assert card.evaluate("c => getComputedStyle(c, '::before').left") == "-5px"
+    shot(page)
+
+    # Towards the card the pointer leaves the row, and the card goes.
+    page.mouse.move(box["x"] + 20, box["y"] + 20)
+    expect(card).to_have_count(0)
+
+
+def test_the_lowest_rows_card_moves_up_into_the_window(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1440, "height": 500})
+    rows = rows_of(page, server, repo, 16)
+    expect(rows).to_have_count(16)
+    rows.last.hover()
+    card = page.get_by_role("tooltip")
+    expect(card).to_be_visible()
+    box, at = card.bounding_box(), rows.last.bounding_box()
+    assert_in_window(page, box)
+    assert box["y"] + box["height"] / 2 < at["y"] + at["height"] / 2  # moved up past its level
+    assert box["y"] <= at["y"] + at["height"] / 2 <= box["y"] + box["height"]  # the arrow reaches
+    shot(page, full_page=False)
+
+
+def test_a_full_width_row_opens_its_card_under_or_over_it(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 590, "height": 900})  # the list is the page, no room beside
+    rows = rows_of(page, server, repo, 4)
+    expect(rows).to_have_count(4)
+    rows.first.focus()
+    card = page.get_by_role("tooltip")
+    expect(card).to_be_visible()
+    assert card.get_attribute("data-side") in ("below", "above")
+    assert_in_window(page, card.bounding_box())
+    shot(page, full_page=False)
+    page.keyboard.press("Escape")
+    expect(card).to_have_count(0)
+
+
+def test_in_a_window_of_640_px_the_strips_card_stays_in_the_window(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 640, "height": 900})
+    rows_of(page, server, repo, 4)
+    icon = page.locator("nav.sessions-strip .strip-session").first
+    icon.focus()
+    card = page.get_by_role("tooltip")
+    expect(card).to_be_visible()
+    box, at = card.bounding_box(), icon.bounding_box()
+    assert card.get_attribute("data-side") == "right"
+    assert box["x"] >= at["x"] + at["width"]
+    assert_in_window(page, box)
+    shot(page)
+
+
+def test_a_card_keeps_its_width_and_cuts_a_long_list_of_kits(page: Page, server, repo, shot):
+    kits = [f"kit-with-a-rather-long-name-{n}" for n in range(9)]
+    state.add_session(
+        state.Session("many", f"{repo}/{'long-folder/' * 12}", None, "fake", kits=kits)
+    )
+    rows = rows_of(page, server, repo, 1)
+    expect(rows).to_have_count(2)
+    card = page.get_by_role("tooltip")
+    rows.filter(has_text="row-0").hover()
+    expect(card).to_be_visible()
+    assert card.bounding_box()["width"] == 360
+    rows.filter(has_text="many").hover()
+    expect(card.locator("dd").filter(has_text="+3 more")).to_be_visible()
+    box = card.bounding_box()
+    assert box["width"] == 360
+    assert_in_window(page, box)
+    cli = card.get_by_text("CLI").bounding_box()
+    assert cli["y"] + cli["height"] <= box["y"] + box["height"]
+    shot(page)
+
+
+def session_item(name: str, **more) -> dict:
+    """A session as /api/sessions gives it, for a state the fake agent cannot get into."""
+    return {
+        "name": name,
+        "repo": "/Users/kao/Projects/projects/lado/lado",
+        "status": "running",
+        "agents": 5,
+        "waiting": {"gates": 0, "questions": 0, "agents": 0},
+        "busy": 0,
+        "kits": ["tracker-yougile", "sdlc", "design-studio"],
+        "provider": "claude",
+        "permission_mode": None,
+        "without": [],
+        "ran_seconds": 3 * 3600 + 2 * 60,
+        "running_since": None,
+        "stopped_at": None,
+        "title": None,
+        "project": None,
+        "project_title": None,
+        **more,
+    }
+
+
+def test_each_state_of_a_session_reads_on_its_card(page: Page, server, shot):
+    gate = {"gates": 1, "questions": 0, "agents": 0}
+    five_hours_ago = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5 * 3600))
+    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    live = {"running_since": since}
+    project = {"project": "lado", "project_title": "LADO", "permission_mode": "bypassPermissions"}
+    states = {
+        "working": (session_item("working", busy=2, **live, **project), ["2 of 5 agents working"]),
+        "idle": (
+            session_item("titled", title="Session UI review", project="shop-api", **live),
+            ["idle"],
+        ),
+        "needs-you": (session_item("gated", waiting=gate, **live), ["Needs you: 1 gate"]),
+        "gone": (session_item("gone", status="tmux_gone"), ["tmux session is gone"]),
+        "down": (
+            session_item("down", status="loop_down", **live),
+            ["session loop not running"],
+        ),
+        "gone-gated": (
+            session_item("held", status="tmux_gone", waiting=gate),
+            ["tmux session is gone"],
+        ),
+        "stopped": (
+            session_item("old", status="stopped", stopped_at=five_hours_ago),
+            ["stopped 5 h ago"],
+        ),
+        "undated": (session_item("undated", status="stopped"), ["stopped"]),
+    }
+    page.route(
+        f"{server['url']}/api/sessions",
+        lambda route: route.fulfill(json=[item for item, _ in states.values()]),
+    )
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions")
+    sessions = page.get_by_role("navigation", name="Sessions")
+    sessions.get_by_role("button", name="Stopped 2").click()
+    shot(page, "list")
+    card = page.get_by_role("tooltip")
+    for shown, (item, words) in states.items():
+        sessions.locator(f".session-link[href='/sessions/{item['name']}']").hover()
+        expect(card.locator(".tip-state")).to_have_text(words)
+        shot(page, shown)
+        page.mouse.move(900, 800)
+        expect(card).to_have_count(0)

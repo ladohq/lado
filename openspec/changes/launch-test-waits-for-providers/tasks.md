@@ -17,12 +17,18 @@
 - [x] 2.4 `docs/testing.md`, the Unit layer: one sentence on the two settings and on why a test
   sets no timeout of its own.
 
+- [x] 2.5 The nine `vi.waitFor` that wait for something are Testing Library's `waitFor`;
+  `grep -rn 'await vi\.waitFor' web/src` finds only the two empty ones. `docs/testing.md` and
+  `web/src/testSetup.ts` name the rule.
+
 ## 3. The backlog
 
 - [x] 3.1 `BACKLOG.md`: the entries "Vitest tests time out at vitest's default 5 s under load, one
   entry per test" and "Flaky vitest: Launch's taken name of a running session" are gone, and the
   entries around them are untouched. `grep -c "Vitest tests time out\|Launch's taken name"
   BACKLOG.md` says 0.
+- [x] 3.2 `BACKLOG.md`: a P2 entry records the nine `{ timeout: 3000 }` only
+  `epic/lad-154-models` has.
 
 ## 4. The checks
 

@@ -64,17 +64,24 @@ Options weighed for the waits:
 - vitest gives a test 30 s, and `waitFor` and `findBy` wait 10 s, in the whole suite.
 - The twelve `{ timeout: 3000 }` of `Launch.test.tsx` and `ProjectRepos.test.tsx` go: 3 s was a
   longer wait than the default and would now be a shorter one.
+- The nine `vi.waitFor` that wait for something become Testing Library's `waitFor`: vitest's has
+  its own 1 s, which no setting changes. The two empty `vi.waitFor(() => {})` of `live.test.ts`
+  and `live.messages.test.ts` stay: they only give way to what is queued and wait for nothing.
 - `docs/testing.md` says so.
 - The entries "Vitest tests time out at vitest's default 5 s under load, one entry per test"
   and "Flaky vitest: Launch's taken name of a running session" leave BACKLOG.md, since their
   cause is fixed.
+- A new P2 entry of BACKLOG.md records the nine `{ timeout: 3000 }` that exist only in
+  `epic/lad-154-models`, to delete at its merge: this change cannot reach them.
 
 ## Scope
 
 - That one test in `web/src/Launch.test.tsx`, and the twelve explicit timeouts.
+- The nine waiting `vi.waitFor` of `Flows.test.tsx`, `ArtifactTab.test.tsx`, `Layout.test.tsx`,
+  `live.artifacts.test.ts` and `live.test.ts`.
 - `web/vite.config.ts`, `web/src/testSetup.ts`.
 - `docs/testing.md`: the sentence on vitest in the Unit layer.
-- Those two entries of BACKLOG.md.
+- Those two entries of BACKLOG.md, and the new entry on the epic's timeouts.
 
 ## Out of scope
 

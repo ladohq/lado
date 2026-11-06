@@ -277,6 +277,7 @@ class Server:
         if profile not in PROFILES and profile not in SPECIAL:
             raise ValueError(f"unknown profile {profile}")
         self.requests: list[Request] = []
+        self.refusal: Answer | None = None  # once set, what every chat request gets
         self._held: dict[tuple[str, str], int] = {}  # how many of a request were held
         self.closing = threading.Event()
         fake = self
@@ -323,6 +324,8 @@ class Server:
     def answer_for(self, method: str, path: str, headers) -> Answer:
         if self._key is not None and headers.get("Authorization") != f"Bearer {self._key}":
             return Answer(401, {"error": {"message": "invalid api key"}})
+        if self.refusal is not None and (method, path) == ("POST", self._prefix + CHAT):
+            return self.refusal
         if self._profile == "redirect":
             return Answer(301, "moved", (("Location", self._location + path),))
         if not path.startswith(self._prefix):

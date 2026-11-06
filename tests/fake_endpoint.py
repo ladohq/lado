@@ -121,6 +121,8 @@ TOKEN_BYTES = 4  # a request's bytes per token, as near as a fake needs
 SHELL_TOOL = "Bash"
 MCP_TOOL = "mcp__lado__list_agents"
 SHELL_CALL, MCP_CALL = "toolu_smoke_shell", "toolu_smoke_mcp"
+# On a refusal: a real CLI's repeats of a 429 take seconds, not a minute.
+RETRY_SOON = (("Retry-After", "1"),)
 
 
 def _tool_use(call: str, name: str, tool_input: dict) -> dict:
@@ -182,18 +184,22 @@ class Anthropic:
     """A server of Anthropic's Messages API on 127.0.0.1 with the model `model` and, with `key`,
     a 401 for a request that carries it in neither `x-api-key` nor `Authorization`. `requests`
     keeps each request as (path, its headers by lower-case name, its body); `marker` is the file
-    the scripted shell tool makes."""
+    the scripted shell tool makes; `refusal`, once set, the status and body every model request
+    gets, with RETRY_SOON."""
 
     def __init__(self, model: str, marker: Path, key: str | None = None):
         self.requests: list[tuple[str, dict[str, str], bytes]] = []
+        self.refusal: tuple[int, object] | None = None
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
-            def json(self, status: int, answer: object) -> None:
+            def json(self, status: int, answer: object, headers: tuple = ()) -> None:
                 data = json.dumps(answer).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
+                for name, value in headers:
+                    self.send_header(name, value)
                 self.end_headers()
                 self.wfile.write(data)
 
@@ -229,6 +235,9 @@ class Anthropic:
                 if not request.get("model"):
                     error = {"type": "invalid_request_error", "message": "model: Field required"}
                     self.json(400, {"type": "error", "error": error})
+                    return
+                if fake.refusal is not None:
+                    self.json(*fake.refusal, RETRY_SOON)
                     return
                 tokens = len(body) // TOKEN_BYTES
                 if tokens + request.get("max_tokens", 0) > CONTEXT:  # as LM Studio ends it

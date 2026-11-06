@@ -442,6 +442,98 @@ def test_a_session_on_a_server_s_model_asks_it_with_its_key(
     runtime.stop_session(SESSION)
 
 
+REFUSALS = {
+    401: ("the model provider refused the key (401)", "authentication_error"),
+    429: ("the model provider limits requests, or the quota is spent (429)", "rate_limit_error"),
+}
+
+
+def check_refusal(status_code: int, key: str, requests) -> None:
+    """The turn ended on the server's `status_code` in LADO's words with no key in them, the
+    agent is idle and the server's count of `requests()` stopped growing."""
+
+    def told():
+        said = [m for m in state.list_messages(SESSION) if m.recipient == state.HUMAN]
+        return [m for m in said if "ended on an error" in m.summary]
+
+    wait_for(told, "the turn's end on a refusal", 150)
+    [line] = told()
+    print(f"refusal: {line.summary!r} body {line.body!r}, {requests()} requests")
+    assert REFUSALS[status_code][0] in line.summary
+    assert line.summary.endswith("; it is idle")
+    assert key not in line.summary + line.body
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the agent to be idle", 30)
+    assert state.get_agent(SESSION, "supervisor").resume_at is None
+
+    def quiet() -> bool:
+        count = requests()
+        time.sleep(5)
+        return requests() == count
+
+    wait_for(quiet, "the server's count of requests to stop growing", 90)
+    for file in state.home().glob("lado.db*"):
+        assert key.encode() not in file.read_bytes()
+    hooks_log = state.home() / "hooks.log"
+    assert not hooks_log.exists() or key not in hooks_log.read_text()
+
+
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+@pytest.mark.parametrize("status_code", list(REFUSALS))
+def test_a_provider_s_refusal_ends_the_turn_of_the_opencode_family(
+    smoke_repo, smoke_provider, monkeypatch, status_code
+):
+    """The key the server repeats stays out of LADO's words, and the CLI's repeats end."""
+    provider = smoke_provider
+    monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
+    key = "smoke-refused-key-0123456789"
+    server = fake_model_server.Server("all", key=key)
+    try:
+        model_settings.add_server("Облако", server.url, key, warn=print, note=print)
+        state.add_model("Облачная", provider, "m1", state.model_server("Облако").id)
+        runtime.start_session(str(smoke_repo), SESSION, None, provider, model="Облачная")
+        idle = answering(provider, "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+        wait_for(idle, "the supervisor to be idle after its session start", 120)
+        error = {"error": {"message": f"Refused for {key}", "type": "refused"}}
+        server.refusal = fake_model_server.Answer(status_code, error, endpoints.RETRY_SOON)
+        runtime.write_as_human(SESSION, HUMAN_SAYS)
+        check_refusal(status_code, key, lambda: len(chats(server)))
+    finally:
+        runtime.stop_session(SESSION)
+        server.close()
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+@pytest.mark.parametrize("status_code", list(REFUSALS))
+def test_a_provider_s_refusal_ends_a_claude_agent_s_turn_within_its_repeats(
+    smoke_repo, smoke_provider, claude_server, status_code
+):
+    """In its TUI, past the CLAUDE_CODE_MAX_RETRIES of 0 the smoke's own environment sets: the
+    agent's settings win. At most 7 repeats, so 8 requests of the turn on a 429 and, as measured,
+    10 on a 401; beside them the TUI asks for the session's title, a request with no tools, and
+    repeats it as much (2.1.295)."""
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+
+    def asked() -> list[dict]:
+        bodies = [r[2] for r in list(claude_server.requests) if r[0] == "/v1/messages"]
+        return [json.loads(body) for body in bodies if b'"messages"' in body]
+
+    before = len(asked())
+    error = {"type": REFUSALS[status_code][1], "message": f"Refused for {SERVER_KEY}"}
+    claude_server.refusal = (status_code, {"type": "error", "error": error})
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    check_refusal(status_code, SERVER_KEY, lambda: len(asked()))
+    turn = [request for request in asked()[before:] if request.get("tools")]
+    print(f"claude: {len(turn)} requests of the turn, {len(asked()) - before} in all")
+    most = {401: 10, 429: 8}[status_code]
+    assert 1 < len(turn) <= most
+    assert len(asked()) - before <= 2 * most
+    runtime.stop_session(SESSION)
+
+
 @pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
 def test_a_cli_takes_a_config_with_a_model_s_limit(smoke_repo, smoke_provider, monkeypatch):
     """The real CLI starts on a model whose config holds `limit`, and asks the server with the

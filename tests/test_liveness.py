@@ -53,6 +53,33 @@ def test_a_turn_that_ends_on_an_error_types_in_the_queue_and_tells_the_superviso
     ]
 
 
+def test_a_long_error_keeps_the_line_s_end_and_goes_whole_in_the_body(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    whole = "ContextOverflowError: LADO stopped the turn; " + "the server's words " * 20
+    event = providers.Event(providers.TURN_END, error=whole[:159] + "…", details=whole)
+    hooks.handle(providers.get("claude"), event, "s", "supervisor")
+    (told,) = [m for m in state.list_messages("s") if m.sender == "lado" and m.recipient == "human"]
+    assert told.summary.endswith("…; it is idle")
+    assert len(told.summary) <= state.SUMMARY_LIMIT
+    assert told.summary.startswith("turn of supervisor ended on an error: ContextOverflowError")
+    assert told.body == whole
+
+
+def test_a_cut_of_the_line_alone_puts_the_error_in_the_body(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.turn_failed("s", "supervisor", "x" * 160, background=True)
+    (told,) = [m for m in state.list_messages("s") if m.sender == "lado" and m.recipient == "human"]
+    assert "it is background" in told.summary and len(told.summary) <= state.SUMMARY_LIMIT
+    assert told.body == "x" * 160
+
+
+def test_a_short_error_has_no_body(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.turn_failed("s", "supervisor", "rate_limit")
+    (told,) = [m for m in state.list_messages("s") if m.sender == "lado" and m.recipient == "human"]
+    assert not told.body
+
+
 def test_a_failed_turn_of_the_supervisor_is_told_to_the_human(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     _hook("SessionStart", "supervisor")

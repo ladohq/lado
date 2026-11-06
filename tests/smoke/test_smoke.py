@@ -253,6 +253,32 @@ def test_a_session_on_a_server_s_model_asks_it_with_its_key(
     runtime.stop_session(SESSION)
 
 
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+def test_a_cli_takes_a_config_with_a_model_s_limit(smoke_repo, smoke_provider, monkeypatch):
+    """The real CLI starts on a model whose config holds `limit`, and asks the server with the
+    output it was told; OpenCode refuses a config it does not understand."""
+    provider = smoke_provider
+    monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
+    server = fake_model_server.Server("gateway-limits")
+    try:
+        model_settings.add_server("малый", server.url, None, warn=print, note=print)
+        saved = state.add_model("Малая", provider, "small", state.model_server("малый").id)
+        started = runtime.start_session(str(smoke_repo), SESSION, None, provider, model=saved.name)
+        assert any("has a context of 16,000 tokens" in line for line in started.warnings)
+        agent = state.get_agent(SESSION, "supervisor")
+        config = json.loads((providers.base.config_path(agent) / f"{provider}.json").read_text())
+        entry = config["provider"][f"lado-{saved.server}"]["models"]["small"]
+        assert entry["limit"] == {"context": 16000, "output": 2048}
+        idle = answering(provider, "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+        wait_for(idle, "the supervisor to be idle after its session start", 120)
+        runtime.write_as_human(SESSION, HUMAN_SAYS)
+        told = lambda: [json.loads(r.body).get("max_tokens") for r in chats(server)]  # noqa: E731
+        wait_for(lambda: 2048 in told(), "a request with the output it was told", 120)
+    finally:
+        runtime.stop_session(SESSION)
+        server.close()
+
+
 PROBE = Path(__file__).with_name("probe_mcp.py")
 PROBE_VALUE = "smoke-project-value=1 ü"
 PROBE_SECRET = "smoke-project-secret=2 ü"

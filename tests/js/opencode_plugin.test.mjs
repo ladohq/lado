@@ -34,7 +34,15 @@ function calls() {
 // A fake client of the CLI that records the prompts the plugin sends.
 function fakeClient() {
   const prompts = []
-  return { prompts, session: { promptAsync: async (request) => prompts.push(request) } }
+  const aborts = []
+  return {
+    prompts,
+    aborts,
+    session: {
+      promptAsync: async (request) => prompts.push(request),
+      abort: async (request) => aborts.push(request),
+    },
+  }
 }
 
 async function load(hooks, client = fakeClient()) {
@@ -118,6 +126,7 @@ test("an error, then idle, give one turn end with the error", async () => {
   const { plugin } = await load({ "session.idle": hook("session.idle") })
   await plugin.event(sessionEvent("session.error", "s1", { error: API_ERROR }))
   await plugin.event(sessionEvent("session.idle", "s1"))
+  await plugin["chat.message"]({ sessionID: "s1" }, { parts: [] })
   await plugin.event(sessionEvent("session.idle", "s1"))
   assert.deepEqual(calls(), [
     {
@@ -126,6 +135,27 @@ test("an error, then idle, give one turn end with the error", async () => {
     },
     { event: "session.idle", payload: { sessionID: "s1" } },
   ])
+})
+
+// A server's 500 (OpenCode 1.18.35, Kilo 7.8.8): "session.error", then two "session.idle".
+test("the second idle of a turn that ended on an error is no turn's end", async () => {
+  const { plugin } = await load({ "session.idle": hook("session.idle") })
+  await plugin.event(sessionEvent("session.error", "s1", { error: API_ERROR }))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.deepEqual(calls(), [
+    {
+      event: "session.idle",
+      payload: { sessionID: "s1", error: { name: "APIError", message: "Overloaded" } },
+    },
+  ])
+})
+
+test("a clean turn's idles all reach the hook", async () => {
+  const { plugin } = await load({ "session.idle": hook("session.idle") })
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.equal(calls().length, 2)
 })
 
 test("an error without a message is passed by its name", async () => {
@@ -156,6 +186,114 @@ test("an error the CLI compacts its way out of ends no turn", async () => {
   await plugin.event(sessionEvent("session.compacted", "s1"))
   await plugin.event(sessionEvent("session.idle", "s1"))
   assert.deepEqual(calls(), [{ event: "session.idle", payload: { sessionID: "s1" } }])
+})
+
+// A model too small for the agent's request (OpenCode 1.18.35): each round is an overflow, a
+// compaction whose own model step succeeds, and "session.compacted", with no idle ever.
+const OVERFLOW = { name: "ContextOverflowError", data: { message: "too long." } }
+const STOPPED = {
+  name: "ContextOverflowError",
+  message:
+    "LADO stopped the turn after 3 attempts: the model's context is too small for the agent's " +
+    "request; too long.",
+}
+
+function step(sessionID, messageID) {
+  const part = { type: "step-finish", sessionID, messageID }
+  return sessionEvent("message.part.updated", sessionID, { part })
+}
+
+async function compactionRound(plugin, sessionID, n) {
+  await plugin.event(sessionEvent("session.error", sessionID, { error: OVERFLOW }))
+  const info = { id: `summary${n}`, role: "assistant", summary: true }
+  await plugin.event(sessionEvent("message.updated", sessionID, { info }))
+  await plugin.event(step(sessionID, `summary${n}`))
+  await plugin.event(sessionEvent("session.compacted", sessionID))
+}
+
+test("the third overflow in a row stops the turn, and the turn ends on that error", async () => {
+  const { plugin, client } = await load({ "session.idle": hook("session.idle") })
+  await compactionRound(plugin, "s1", 1)
+  await compactionRound(plugin, "s1", 2)
+  assert.deepEqual(client.aborts, [])
+  await compactionRound(plugin, "s1", 3)
+  assert.deepEqual(client.aborts, [{ path: { id: "s1" } }])
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.deepEqual(calls(), [{ event: "session.idle", payload: { sessionID: "s1", error: STOPPED } }])
+})
+
+test("the abort's own error does not replace the stop's", async () => {
+  const { plugin } = await load({ "session.idle": hook("session.idle") })
+  for (const n of [1, 2, 3]) await compactionRound(plugin, "s1", n)
+  const aborted = { name: "MessageAbortedError", data: {} }
+  await plugin.event(sessionEvent("session.error", "s1", { error: aborted }))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.deepEqual(calls(), [{ event: "session.idle", payload: { sessionID: "s1", error: STOPPED } }])
+})
+
+test("an abort that fails leaves the stop's error for the turn's end", async () => {
+  const client = fakeClient()
+  client.session.abort = async () => Promise.reject(new Error("closed"))
+  const { plugin } = await load({ "session.idle": hook("session.idle") }, client)
+  for (const n of [1, 2, 3]) await compactionRound(plugin, "s1", n)
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.deepEqual(calls(), [{ event: "session.idle", payload: { sessionID: "s1", error: STOPPED } }])
+})
+
+test("a step of the turn itself starts the count again", async () => {
+  const { plugin, client } = await load({})
+  await compactionRound(plugin, "s1", 1)
+  await compactionRound(plugin, "s1", 2)
+  await plugin.event(step("s1", "answer"))
+  await compactionRound(plugin, "s1", 3)
+  await compactionRound(plugin, "s1", 4)
+  assert.deepEqual(client.aborts, [])
+})
+
+test("a compaction alone does not start the count again", async () => {
+  const { plugin, client } = await load({})
+  for (const n of [1, 2, 3]) await compactionRound(plugin, "s1", n)
+  assert.equal(client.aborts.length, 1)
+})
+
+test("a new prompt starts the count again", async () => {
+  const { plugin, client } = await load({})
+  await compactionRound(plugin, "s1", 1)
+  await compactionRound(plugin, "s1", 2)
+  await plugin["chat.message"]({ sessionID: "s1" }, { parts: [] })
+  await compactionRound(plugin, "s1", 3)
+  await compactionRound(plugin, "s1", 4)
+  assert.deepEqual(client.aborts, [])
+})
+
+test("the second idle an abort gives is no turn's end", async () => {
+  const { plugin } = await load({ "session.idle": hook("session.idle") })
+  for (const n of [1, 2, 3]) await compactionRound(plugin, "s1", n)
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.deepEqual(calls(), [{ event: "session.idle", payload: { sessionID: "s1", error: STOPPED } }])
+})
+
+test("the turn after a stop counts from nothing and ends clean", async () => {
+  const { plugin, client } = await load({ "session.idle": hook("session.idle") })
+  for (const n of [1, 2, 3]) await compactionRound(plugin, "s1", n)
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  await plugin["chat.message"]({ sessionID: "s1" }, { parts: [] })
+  await compactionRound(plugin, "s1", 4)
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.equal(client.aborts.length, 1)
+  assert.deepEqual(calls()[1], { event: "session.idle", payload: { sessionID: "s1" } })
+})
+
+test("overflows of two sessions are counted apart, a subagent's not at all", async () => {
+  const { plugin, client } = await load({})
+  const info = { id: "sub", parentID: "s1" }
+  await plugin.event({ event: { type: "session.created", properties: { info } } })
+  for (const n of [1, 2, 3]) await compactionRound(plugin, "sub", n)
+  await compactionRound(plugin, "s1", 4)
+  await compactionRound(plugin, "s1", 5)
+  await compactionRound(plugin, "s2", 6)
+  assert.deepEqual(client.aborts, [])
 })
 
 // Requests for the human and their answers (Kilo 7.8.3, OpenCode 1.18.34): a request has its

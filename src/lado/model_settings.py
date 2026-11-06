@@ -27,6 +27,7 @@ import stat
 import urllib.parse
 import uuid
 from collections.abc import Callable, Collection, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -49,6 +50,14 @@ WOULD_EXPAND = f"the agent CLI would expand ({' or '.join(EXPANDED)})"
 # 1.18.35 then stops and prints the text with the key, Kilo 7.8.8 drops all of the config, checked
 # with `debug config`): a key that holds one of these cannot reach them.
 BREAKS_CONFIG = ('"', "\\")
+# Where a server of a known type sets a model's context, from its own documents (LM Studio's `lms
+# load`, Ollama's Context length); "" for any other.
+CONTEXT_HOW = {
+    "": "load the model with a larger context",
+    model_servers.LMSTUDIO: "load the model with a larger context (lms load --context-length)",
+    model_servers.OLLAMA: "raise OLLAMA_CONTEXT_LENGTH, or the context in the Ollama app",
+}
+CONTEXT_PEEK = "context too small"  # the folded Advanced's words for that warning
 
 
 # The field of a form a refusal concerns, for the UI ("" for none); the CLI ignores it.
@@ -1027,13 +1036,13 @@ def agent_servers(
 ) -> tuple[tuple[base.ServerEntry, ...], list[str]]:
     """The model servers for the config of an agent of `provider`'s CLI, with the models ticked
     for that CLI, whatever it starts on, and the warnings of a launch: a key sent over plain
-    http, what is left out. None for a CLI that holds one model per process. A key LADO does not
-    read, or that would break the config, leaves its server out, but is Refused for the server of
-    `start`."""
+    http, what is left out, a context too small for `start`. None for a CLI that holds one model
+    per process. A key LADO does not read, or that would break the config, leaves its server out,
+    but is Refused for the server of `start`. Asks each server of the config for its limits."""
     if not provider.runs_on_server or provider.external_whole_process:
         return (), []
     ticked = [model for model in state.models() if model.cli == provider.name]
-    entries, warnings = [], []
+    entries, roots, warnings = [], [], []
     for server in state.model_servers():
         models = [model for model in ticked if model.server == server.id]
         if not models:
@@ -1076,7 +1085,43 @@ def agent_servers(
                 tuple(kept.items()),
             )
         )
+        roots.append(server.address)
+    entries = _with_limits(entries, roots)
+    if start is not None and start.server is not None:
+        for entry in entries:
+            if entry.id == start.server.id:
+                limit = entry.limits.get(start.model or "")
+                if warning := context_warning(start, provider, limit):
+                    warnings.append(warning)
     return tuple(entries), warnings
+
+
+def _with_limits(entries: list[base.ServerEntry], roots: list[str]) -> list[base.ServerEntry]:
+    """`entries` with what their servers, at `roots`, report: all read at once, so a start
+    waits for one ceiling however many servers are silent."""
+    if not entries:
+        return entries
+    with ThreadPoolExecutor(len(entries)) as pool:
+        limits = pool.map(
+            lambda entry, root: model_servers.context_limits(root, entry.key), entries, roots
+        )
+        return [replace(e, limits=found) for e, found in zip(entries, limits, strict=True)]
+
+
+def context_warning(
+    start: StartModel, provider: providers.Provider, limit: base.Limit | None
+) -> str | None:
+    """The warning for `start`, a model reported at `limit`, when its context is below what
+    `provider`'s CLI needs to take a turn; None otherwise, an unknown context too."""
+    if limit is None or limit.context >= provider.min_context:
+        return None
+    where = f" on {start.server.name}" if start.server is not None else ""
+    how = CONTEXT_HOW.get(start.server.kind if start.server else "", CONTEXT_HOW[""])
+    return (
+        f"{start.name}{where} has a context of {limit.context:,} tokens; {provider.title} needs "
+        f'about {provider.min_context:,} for its instructions and tools: {how}; see "What to '
+        'expect of a small model" in docs/install.md'
+    )
 
 
 @dataclass(frozen=True)

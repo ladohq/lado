@@ -14,6 +14,12 @@ from lado.providers import opencode_family
 # bash permission (mode `default`) make the agent `waiting`, answering there makes it
 # `busy` again (question.asked/replied, permission.asked/replied).
 TESTED_VERSION = "1.18"
+# Any `plugin` entry makes OpenCode 1.18.35 wait for the install of @opencode-ai/plugin in its
+# config folders, which npm retries: 72 s to the first request on a fresh HOME with outside
+# traffic refused, 2.3 s with these, 2.1 s with no switches once the package is there. LADO's
+# plugin imports nothing from it, and the user's config folder is not LADO's to fill.
+NPM_SWITCHES = {"npm_config_fetch_retries": "0", "npm_config_fetch_timeout": "5000"}
+PLUGIN_PACKAGE = Path("opencode", "node_modules", "@opencode-ai", "plugin")
 
 
 class OpenCodeProvider(opencode_family.OpenCodeFamily):
@@ -23,6 +29,9 @@ class OpenCodeProvider(opencode_family.OpenCodeFamily):
     install_hint = "install it: `npm install -g opencode-ai`"
     tested_version = TESTED_VERSION
     config_file_name = "opencode.json"
+    # The fixed part of an agent's request is about 21K tokens on a real model (role, skills,
+    # tools; 1.18.35, measured in the human's check), plus room to work.
+    min_context = 32768
     # `opencode agent list`, 1.18.35, but compaction, summary and title.
     BUILT_IN_AGENTS = ("build", "plan", "general", "explore")
     # How launch_command maps them, against OpenCode's own defaults (`opencode debug agent
@@ -47,6 +56,17 @@ class OpenCodeProvider(opencode_family.OpenCodeFamily):
         if mode in ("default", "acceptEdits"):
             permission["bash"] = "ask"
         return permission
+
+    def server_env(self, spec):
+        """npm's switches, on a model of a server (a closed network is its case) while the
+        package is not in the config folder; a value of the user's stays."""
+        if not spec.model or self.on_server(spec.model) is None:
+            return {}
+        home = spec.environ.get("HOME")
+        config = spec.environ.get("XDG_CONFIG_HOME") or (home and str(Path(home, ".config")))
+        if config and Path(config, PLUGIN_PACKAGE).exists():
+            return {}
+        return {name: v for name, v in NPM_SWITCHES.items() if name not in spec.environ}
 
     def bypass_argv(self) -> list[str]:
         return ["--auto"]

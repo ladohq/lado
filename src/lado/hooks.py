@@ -195,12 +195,16 @@ def handle(
         else:
             state.output_not_taken(session, agent)
         # The human's messages this turn got: did it write to the human? Before the inbox is
-        # handed over, so what the next turn gets is checked when that one ends.
-        state.check_replies(session, agent)
+        # handed over, so what the next turn gets is checked when that one ends. A turn that
+        # ended on an error decides nothing: the next clean turn does.
+        if not event.error:
+            state.check_replies(session, agent)
         # Before the agent is idle: a resume planned for it holds while it stays idle, and
         # is dropped when the queue makes it busy now (state.schedule_resume).
         if event.error:
-            runtime.turn_failed(session, agent, event.error, event.transient, event.background)
+            runtime.turn_failed(
+                session, agent, event.error, event.transient, event.background, event.details
+            )
         else:
             state.reset_resumes(session, agent)
         me = state.get_agent(session, agent)

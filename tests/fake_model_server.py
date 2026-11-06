@@ -23,6 +23,7 @@ from typing import NamedTuple
 MODELS = "/v1/models"
 OLLAMA_VERSION = "/api/version"
 LMSTUDIO_MODELS = "/api/v0/models"
+OLLAMA_RUNNING = "/api/ps"
 CHAT = "/v1/chat/completions"
 RESPONSES = "/v1/responses"
 MESSAGES = "/v1/messages"
@@ -94,6 +95,54 @@ PROFILES: dict[str, dict[tuple[str, ...] | str, Answer]] = {
         ),
         ("POST", CHAT): OPENAI_400,
         ("POST", RESPONSES): OPENAI_400,
+    },
+    # LM Studio with one model loaded at less than it can take, and one not loaded.
+    "lmstudio-loaded": {
+        ("GET", MODELS): openai_list("qwen", "big"),
+        ("GET", LMSTUDIO_MODELS): Answer(
+            200,
+            {
+                "data": [
+                    {
+                        "id": "qwen",
+                        "state": "loaded",
+                        "loaded_context_length": 65536,
+                        "max_context_length": 262144,
+                    },
+                    {"id": "big", "state": "not-loaded", "max_context_length": 262144},
+                ]
+            },
+        ),
+        ("POST", CHAT): OPENAI_400,
+    },
+    # Ollama with one model running.
+    "ollama-running": {
+        ("GET", MODELS): openai_list(*OLLAMA_MODELS),
+        ("GET", OLLAMA_VERSION): Answer(200, {"version": "0.12.3"}),
+        ("GET", OLLAMA_RUNNING): Answer(
+            200, {"models": [{"name": OLLAMA_MODELS[0], "context_length": 8192}]}
+        ),
+        ("POST", CHAT): OPENAI_400,
+    },
+    # A gateway whose list holds each model's limits, in LiteLLM's fields; what is no number
+    # of tokens counts as nothing.
+    "gateway-limits": {
+        ("GET", MODELS): Answer(
+            200,
+            {
+                "data": [
+                    {"id": "small", "max_input_tokens": 16000, "max_output_tokens": 2048},
+                    {"id": "float", "max_input_tokens": 16000.0},
+                    {"id": "half", "max_input_tokens": 16000.5},
+                    {"id": "text", "max_input_tokens": "16000"},
+                    {"id": "zero", "max_input_tokens": 0},
+                    {"id": "flag", "max_input_tokens": True},
+                    {"id": "output-only", "max_output_tokens": 2048},
+                    {"id": "bad-output", "max_input_tokens": 16000, "max_output_tokens": -1},
+                ]
+            },
+        ),
+        ("POST", CHAT): OPENAI_400,
     },
     # An Anthropic-compatible server: Anthropic's list and the Messages API.
     "anthropic": {("GET", MODELS): anthropic_list("claude-x"), ("POST", MESSAGES): ANTHROPIC_400},

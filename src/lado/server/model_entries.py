@@ -170,18 +170,28 @@ def model_choices(
     )
 
 
-def _window_warnings(start: model_settings.StartModel) -> list[str]:
-    """The launch window's warning for the key of the chosen model's server, the only one it
-    shows; a start warns of every server of the agent's config."""
+def _window_warnings(
+    start: model_settings.StartModel, provider: providers.Provider
+) -> tuple[list[str], str]:
+    """The launch window's warnings of the chosen model and its server's key, the only ones it
+    shows, a start warning of every server of the agent's config; and their few words for the
+    folded Advanced."""
     server = start.server
-    if server is None or not model_servers.plain_http_warning(
-        server.address, model_settings.server_key(server)
-    ):
-        return []
-    return [
-        f"The key of {server.name} goes unencrypted (http) to an address outside your machine "
-        "and network."
-    ]
+    if server is None:
+        return [], ""
+    key = model_settings.server_key(server)
+    warnings, peeks = [], []
+    if model_servers.plain_http_warning(server.address, key):
+        warnings.append(
+            f"The key of {server.name} goes unencrypted (http) to an address outside your machine "
+            "and network."
+        )
+        peeks.append("key over http")
+    limit = model_servers.context_limits(server.address, key).get(start.model or "")
+    if warning := model_settings.context_warning(start, provider, limit):
+        warnings.append(warning)
+        peeks.append(model_settings.CONTEXT_PEEK)
+    return warnings, ", ".join(peeks)
 
 
 def check_session_model(given: models.SessionModelAsked) -> models.SessionModelCheck:
@@ -199,7 +209,7 @@ def check_session_model(given: models.SessionModelAsked) -> models.SessionModelC
         row = model_settings.session_row(given.model, provider, env, listing)
         start = model_settings.start_model(state.PowerTable.of(row), provider)
         verdict = model_settings.check_start(start, provider, env, listing=listing)
-        warnings = _window_warnings(start)
+        warnings, peek = _window_warnings(start, provider)
     except REFUSED as exc:
         return models.SessionModelCheck(
             kind=model_check.REFUSED,
@@ -217,6 +227,7 @@ def check_session_model(given: models.SessionModelAsked) -> models.SessionModelC
     return models.SessionModelCheck(
         kind=verdict.kind,
         text=text,
+        peek=peek,
         warnings=warnings,
         server=server.name if server else None,
     )

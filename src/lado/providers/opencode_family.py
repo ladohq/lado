@@ -58,6 +58,11 @@ ABORTED = "MessageAbortedError"
 SERVER_PROVIDER = "lado-"
 SERVER_PACKAGE = "@ai-sdk/openai-compatible"  # ships with both; nothing to fetch at a first run
 MODEL_MEMORY = "model.json"  # the CLI's last /model picks, in its state folder
+TUI_SETTINGS = "kv.json"  # the CLI's TUI settings, beside it
+# `max_tokens` of a model with no output reported. OpenCode compacts near context - output and
+# sends output as max_tokens (1.18.35, Kilo 7.8.8 alike): their default of 32000 leaves a small
+# model nothing, so it is a quarter of the context at most.
+DEFAULT_OUTPUT = 8192
 
 
 def without_servers(found: object) -> object:
@@ -78,6 +83,15 @@ def without_servers(found: object) -> object:
     if isinstance(found, list):
         return [without_servers(item) for item in found if not ours(item)]
     return found
+
+
+def model_entry(name: str, limit: base.Limit | None) -> dict:
+    """A model of a server in the config. `limit` holds both numbers or is left out: OpenCode
+    1.18.35 refuses a config whose `limit` has no `output`."""
+    if limit is None:
+        return {"name": name}
+    output = max(1, min(limit.output or DEFAULT_OUTPUT, limit.context // 4))
+    return {"name": name, "limit": {"context": limit.context, "output": output}}
 
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")  # the colours of `auth list`
@@ -185,7 +199,7 @@ class OpenCodeFamily(base.Provider):
             argv[1:1] = ["--prompt", notice]
         keys = {s.key_variable: s.key for s in spec.servers if s.key is not None}
         state_env, warnings = self.own_state(agent, spec)
-        env = {**self.env(config_file, text), **keys, **state_env}
+        env = {**self.env(config_file, text), **keys, **state_env, **self.server_env(spec)}
         return base.Launch(argv, env, warnings, model=self.session_choice(spec))
 
     def own_state(
@@ -197,7 +211,8 @@ class OpenCodeFamily(base.Provider):
         CLI's settings, and the user's own CLI, then start from it. `debug paths` (OpenCode
         1.18.35, Kilo 7.8.8): this variable moves `state` alone; logins and sessions stay.
         A new folder starts from the user's memory, without LADO's servers, so a session with no
-        model behaves as the user's CLI; the user's file is only read."""
+        model behaves as the user's CLI, and takes a copy of the TUI settings, which name no
+        provider; the user's files are only read."""
         folder = base.state_path(agent)
         own = folder / self.name / MODEL_MEMORY
         warnings = []
@@ -215,8 +230,24 @@ class OpenCodeFamily(base.Provider):
             else:
                 own.parent.mkdir(parents=True, exist_ok=True)
                 own.write_text(json.dumps(without_servers(remembered)))
+        settings = folder / self.name / TUI_SETTINGS
+        if users and not settings.exists():
+            source = Path(users, self.name, TUI_SETTINGS)
+            try:
+                data = source.read_bytes()
+            except FileNotFoundError:
+                pass
+            except OSError as error:
+                warnings.append(f"{source} cannot be read, so the agent starts without it: {error}")
+            else:
+                settings.parent.mkdir(parents=True, exist_ok=True)
+                settings.write_bytes(data)
         folder.mkdir(parents=True, exist_ok=True)
         return {"XDG_STATE_HOME": str(folder)}, warnings
+
+    def server_env(self, spec: base.AgentSpec) -> dict[str, str]:
+        """What an agent's environment needs for a start on a model server."""
+        return {}
 
     def server_model(self, server: str, model: str) -> str:
         return f"{SERVER_PROVIDER}{server}/{model}"
@@ -237,7 +268,9 @@ class OpenCodeFamily(base.Provider):
             "npm": SERVER_PACKAGE,
             "name": f"LADO · {server.name}",
             "options": options,
-            "models": {model: {"name": name} for model, name in server.models},
+            "models": {
+                model: model_entry(name, server.limits.get(model)) for model, name in server.models
+            },
         }
 
     def config(
@@ -356,8 +389,10 @@ class OpenCodeFamily(base.Provider):
         data = json.loads(payload) if payload.strip() else {}
         error = data.get("error") or {}
         if error and error.get("name") != ABORTED:
-            text = base.error_line(error.get("name") or "UnknownError", error.get("message", ""))
-            return base.Event(EVENTS[native], error=text)
+            name, message = error.get("name") or "UnknownError", error.get("message", "")
+            whole = f"{name}: {message}"
+            details = whole if len(whole) > base.ERROR_LIMIT else ""
+            return base.Event(EVENTS[native], error=base.error_line(name, message), details=details)
         # The plugin's chat.message names the model of the prompt and its variant, the
         # reasoning effort (opencode_plugin.js). A model with no variant runs its default
         # one: OpenCode drops the variant when the human picks the default (1.18.35, read

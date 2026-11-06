@@ -613,6 +613,36 @@ test("a model server's refusal still says its models stay saved, and ↻ keeps t
   );
 });
 
+test("↻ pressed while React still owes the first read's effects keeps the focus", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  mount();
+  // A slow machine: the scheduler's time slice is always over, so it yields between the commit
+  // of the read and its effects, and the press below comes in between, as on a loaded runner.
+  let now = 0;
+  const clock = vi.spyOn(performance, "now").mockImplementation(() => (now += 100));
+  const shown = new Promise<HTMLElement>((resolve) => {
+    const seen = new MutationObserver(() => {
+      const button = screen.queryByRole("button", { name: "Read the models again" });
+      if (button) {
+        seen.disconnect();
+        resolve(button);
+      }
+    });
+    seen.observe(document.body, { childList: true, subtree: true });
+  });
+  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
+  const again = await shown;
+  server.probes[LMSTUDIO.name] = () => refusal("http://localhost:1234 does not answer (connection refused)");
+  again.focus();
+  fireEvent.click(again);
+  clock.mockRestore();
+  expect(await screen.findByText(/Its model stays saved/)).toBeTruthy();
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Read the models again" })),
+  );
+});
+
 test("a refused Undo keeps its button and the focus on it", async () => {
   server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
   mount();

@@ -2519,14 +2519,20 @@ def repo_check_failed(session: str, agent: str, reason: str) -> None:
 
 
 def turn_failed(
-    session: str, agent: str, error: str, transient: bool = False, background: bool = False
+    session: str,
+    agent: str,
+    error: str,
+    transient: bool = False,
+    background: bool = False,
+    details: str = "",
 ) -> None:
     """The agent's turn ended on an error (a provider's TURN_END with one): record it. An
     error that passes by itself (`transient`) plans a resume, RESUME_DELAYS[n] after the
     n-th such turn in a row, which sweep carries out, and tells no one; any other error,
     or one after the last resume, goes to the supervisor, or to the human when it is the
     supervisor's. The agent is idle then, or `background` when work it started still runs
-    (lado.hooks), and the line says which."""
+    (lado.hooks), and the line says which: the error gives way to that end of the line, and
+    goes whole in the message's body (`details`, the error's whole text) when it was cut."""
     state.add_event(session, agent, state.TURN_ERROR, error)
     if transient and state.schedule_resume(session, agent, time.time(), RESUME_DELAYS):
         return
@@ -2540,7 +2546,10 @@ def turn_failed(
         if background
         else state.IDLE
     )
-    _tell_lead(session, agent, f"turn of {agent} ended on an error{after}: {error}; it is {now}")
+    head, tail = f"turn of {agent} ended on an error{after}: ", f"; it is {now}"
+    room = state.SUMMARY_LIMIT - len(head) - len(tail)
+    shown = error if len(error) <= room else error[: room - 1].removesuffix("…") + "…"
+    _tell_lead(session, agent, head + shown + tail, details or (error if shown != error else ""))
 
 
 def agent_ended(session: str, name: str, reason: str) -> bool:

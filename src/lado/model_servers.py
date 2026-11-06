@@ -37,6 +37,7 @@ from lado import text as visible
 from lado.providers import base
 
 TIMEOUT = 5  # seconds per request, its name lookup included
+LIMIT_TIMEOUT = 2  # seconds for a model's context at a start, which waits for it
 MAX_ANSWER = 4 * 1024 * 1024  # bytes of an answer read; a longer list is no list
 TOO_LARGE = "the answer is larger than 4 MiB"
 
@@ -49,6 +50,7 @@ API_BASE = "/v1"
 MODELS = f"{API_BASE}/models"
 OLLAMA_VERSION = "/api/version"
 LMSTUDIO_MODELS = "/api/v0/models"
+OLLAMA_RUNNING = "/api/ps"
 API_PATHS = {
     base.CHAT_COMPLETIONS: "/v1/chat/completions",
     base.RESPONSES: "/v1/responses",
@@ -246,9 +248,7 @@ def probe(
     root, added = address(text)
     if key is not None and not carriable(key):
         raise ProbeError(NOT_CARRIABLE, field=KEY)
-    headers = {"Accept": "application/json", "User-Agent": f"lado/{lado.__version__}"}
-    if key is not None:
-        headers |= {"Authorization": f"Bearer {key}", "x-api-key": key}
+    headers = _headers(key)
     opener = urllib.request.build_opener(_NoRedirect())
     (listed,) = _all(opener, [(root + MODELS, "GET", {})], headers)
     if listed.status is None:
@@ -296,6 +296,56 @@ def probe(
             f"Anthropic-compatible, Ollama or LM Studio server ({why})"
         )
     return Probe(root, added, kind, apis, models, models_why, apis_why, _embeddings(lmstudio))
+
+
+def context_limits(root: str, key: str | None) -> dict[str, base.Limit]:
+    """What the server at `root` reports of its models' context, by model, in three GETs at once
+    within LIMIT_TIMEOUT; none for a model it says nothing of, or a server that does not answer.
+    Each answer is read by its shape, as a gateway hides what it fronts: LM Studio's loaded
+    context and Ollama's running model, what a model has now and not what it could take, and
+    a gateway's list. A start waits for this: it never raises."""
+    asked = [(root + path, "GET", {}) for path in (MODELS, OLLAMA_RUNNING, LMSTUDIO_MODELS)]
+    opener = urllib.request.build_opener(_NoRedirect())
+    listed, running, lmstudio = _all(opener, asked, _headers(key), LIMIT_TIMEOUT)
+    return {**_listed_limits(listed), **_running_limits(running), **_loaded_limits(lmstudio)}
+
+
+def _tokens(value: object) -> int | None:
+    """A number of tokens, None for anything else; LiteLLM may give a whole float."""
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
+
+
+def _limits(items: list, name: str, context: str, output: str = "") -> dict[str, base.Limit]:
+    """The limits of a list's `items`: a model's id under `name`, as `_models` makes it."""
+    found = {}
+    for item in items:
+        if isinstance(item, dict) and isinstance(item.get(name), str):
+            tokens = _tokens(item.get(context))
+            if tokens is not None:
+                found[visible.one_line(item[name])] = base.Limit(tokens, _tokens(item.get(output)))
+    return found
+
+
+def _listed_limits(listed: Answer) -> dict[str, base.Limit]:
+    return _limits(_listing(listed) or [], "id", "max_input_tokens", "max_output_tokens")
+
+
+def _running_limits(running: Answer) -> dict[str, base.Limit]:
+    models = running.body.get("models") if isinstance(running.body, dict) else None
+    if running.status != 200 or not isinstance(models, list):
+        return {}
+    return _limits(models, "name", "context_length")
+
+
+def _loaded_limits(lmstudio: Answer) -> dict[str, base.Limit]:
+    loaded = [
+        i for i in _listing(lmstudio) or [] if isinstance(i, dict) and i.get("state") == "loaded"
+    ]
+    return _limits(loaded, "id", "loaded_context_length")
 
 
 def lines(found: Probe) -> list[str]:
@@ -409,6 +459,13 @@ def _container_hint(root: str, command: str | None) -> str:
     return CONTAINER_HINT.format(command=command, address=address)
 
 
+def _headers(key: str | None) -> dict[str, str]:
+    headers = {"Accept": "application/json", "User-Agent": f"lado/{lado.__version__}"}
+    if key is not None:
+        headers |= {"Authorization": f"Bearer {key}", "x-api-key": key}
+    return headers
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     """Follows nothing: a redirect is an answer (urllib's own handler would send the key's
     headers on to the host it names). It does not read the location either, which urllib's
@@ -421,36 +478,40 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _all(
-    opener, asked: list[tuple[str, str, dict[str, str]]], headers: dict[str, str]
+    opener,
+    asked: list[tuple[str, str, dict[str, str]]],
+    headers: dict[str, str],
+    timeout: float | None = None,
 ) -> list[Answer]:
     """The answers to `asked` (url, method, headers of its own beside `headers`), all at
-    once, each within TIMEOUT: a request still waiting then, on its name lookup too, is left
-    to its daemon thread."""
+    once, each within `timeout` (None: TIMEOUT): a request still waiting then, on its name
+    lookup too, is left to its daemon thread."""
+    timeout = TIMEOUT if timeout is None else timeout
     answers: list[Answer | None] = [None] * len(asked)
 
     def ask(i: int, url: str, method: str, own: dict[str, str]) -> None:
-        answers[i] = _ask(opener, url, method, headers | own)
+        answers[i] = _ask(opener, url, method, headers | own, timeout)
 
     threads = [
         threading.Thread(target=ask, args=(i, url, method, own), daemon=True)
         for i, (url, method, own) in enumerate(asked)
     ]
-    deadline = time.monotonic() + TIMEOUT
+    deadline = time.monotonic() + timeout
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join(max(0, deadline - time.monotonic()))
-    late = Answer(why=f"no answer in {TIMEOUT:g} s")
+    late = Answer(why=f"no answer in {timeout:g} s")
     return [answer or late for answer in answers]
 
 
-def _ask(opener, url: str, method: str, headers: dict[str, str]) -> Answer:
+def _ask(opener, url: str, method: str, headers: dict[str, str], timeout: float) -> Answer:
     """One request's answer; never raises. A POST's body is `{}`."""
     data = b"{}" if method == "POST" else None
     sent = dict(headers, **({"Content-Type": "application/json"} if data else {}))
     request = urllib.request.Request(url, data=data, method=method, headers=sent)
     try:
-        with opener.open(request, timeout=TIMEOUT) as answer:
+        with opener.open(request, timeout=timeout) as answer:
             return _read(answer.status, answer, "")
     except urllib.error.HTTPError as e:
         location = ""

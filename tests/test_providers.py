@@ -1,7 +1,10 @@
+import dataclasses
 import importlib
 import inspect
 import json
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import agent_helpers
@@ -1029,6 +1032,44 @@ def test_opencode_family_turn_end_carries_the_error_the_plugin_saw(provider, err
     )
 
 
+STOP_THE_PLUGIN = """
+import { LadoPlugin } from %(plugin)s
+const client = { session: { abort: async () => {} } }
+const hooks = { "session.idle": %(hook)s }
+const plugin = await LadoPlugin({ client, directory: "/repo" }, { hooks })
+const error = { name: "ContextOverflowError", data: { message: %(said)s } }
+for (let n = 0; n < 3; n++) {
+  await plugin.event({ event: { type: "session.error", properties: { sessionID: "s", error } } })
+}
+await plugin.event({ event: { type: "session.idle", properties: { sessionID: "s" } } })
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node")
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_stopped_turn_says_why_past_the_cut_of_a_long_server_message(provider, tmp_path):
+    """The plugin's own error through the core's cut of an Event.error (base.error_line)."""
+    out = tmp_path / "payload.json"
+    write = f"import pathlib, sys; pathlib.Path({str(out)!r}).write_text(sys.stdin.read())"
+    script = STOP_THE_PLUGIN % {
+        "plugin": json.dumps(opencode_family.PLUGIN.as_uri()),
+        "hook": json.dumps([sys.executable, "-c", write]),
+        "said": json.dumps("This model's maximum context length is 4000 tokens. " * 8),
+    }
+    subprocess.run(["node", "--input-type=module", "-e", script], check=True, timeout=30)
+    event = providers.get(provider).parse_event("session.idle", out.read_text())
+    assert "the model's context is too small for the agent's request" in event.error
+    assert event.error.endswith("…") and len(event.error) == base.ERROR_LIMIT
+    assert event.details.count("maximum context length") == 8
+    assert event.details.startswith("ContextOverflowError: LADO stopped the turn")
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_an_error_that_fits_has_no_details(provider):
+    payload = json.dumps({"error": {"name": "APIError", "message": "Overloaded"}})
+    assert providers.get(provider).parse_event("session.idle", payload).details == ""
+
+
 def test_opencode_family_shares_one_plugin_inside_the_package():
     import lado
 
@@ -1360,6 +1401,109 @@ def test_a_memory_that_cannot_be_read_is_said_and_stops_nothing(
     assert not _agent_state(lado_home, provider).exists()
 
 
+def _user_kv(tmp_path, provider, data=b'{"theme":"lado"}'):
+    file = tmp_path / "user" / ".local" / "state" / provider / "kv.json"
+    file.parent.mkdir(parents=True)
+    file.write_bytes(data)
+    return file, {"HOME": str(tmp_path / "user")}
+
+
+def _agent_kv(lado_home, provider):
+    return _agent_state(lado_home, provider).with_name("kv.json")
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_new_state_folder_takes_a_copy_of_the_user_s_tui_settings(
+    repo, provider, lado_home, tmp_path
+):
+    file, environ = _user_kv(tmp_path, provider)
+    before = file.stat().st_mtime_ns
+    launch = _family_launch(repo, provider, environ=environ)
+    assert _agent_kv(lado_home, provider).read_bytes() == file.read_bytes()
+    assert file.stat().st_mtime_ns == before
+    assert launch.warnings == []
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_agent_s_tui_settings_stay_at_a_resume(repo, provider, lado_home, tmp_path):
+    _, environ = _user_kv(tmp_path, provider)
+    own = _agent_kv(lado_home, provider)
+    own.parent.mkdir(parents=True)
+    own.write_text("its own")
+    _family_launch(repo, provider, environ=environ)
+    assert own.read_text() == "its own"
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_no_tui_settings_of_the_user_is_no_warning(repo, provider, lado_home, tmp_path):
+    launch = _family_launch(repo, provider, environ={"HOME": str(tmp_path / "nobody")})
+    assert launch.warnings == []
+    assert not _agent_kv(lado_home, provider).exists()
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_tui_settings_that_cannot_be_read_warn_and_the_agent_starts(
+    repo, provider, lado_home, tmp_path
+):
+    file, environ = _user_kv(tmp_path, provider)
+    file.unlink()
+    file.mkdir()
+    launch = _family_launch(repo, provider, environ=environ)
+    assert len(launch.warnings) == 1 and str(file) in launch.warnings[0]
+    assert not _agent_kv(lado_home, provider).exists()
+
+
+NPM_SWITCHES = {"npm_config_fetch_retries": "0", "npm_config_fetch_timeout": "5000"}
+ON_SERVER = "lado-aaaa1111/qwen3-8b"
+
+
+def _switches(launch):
+    return {name: launch.env[name] for name in NPM_SWITCHES if name in launch.env}
+
+
+def _plugin_package(config):
+    (config / "opencode" / "node_modules" / "@opencode-ai" / "plugin").mkdir(parents=True)
+
+
+def test_opencode_on_a_server_does_not_wait_for_npm(repo, tmp_path):
+    environ = {"HOME": str(tmp_path)}
+    launch = _family_launch(repo, "opencode", model=ON_SERVER, environ=environ)
+    assert _switches(launch) == NPM_SWITCHES
+
+
+def test_opencode_with_the_package_in_its_config_folder_needs_no_switches(repo, tmp_path):
+    _plugin_package(tmp_path / ".config")
+    environ = {"HOME": str(tmp_path)}
+    assert _switches(_family_launch(repo, "opencode", model=ON_SERVER, environ=environ)) == {}
+
+
+def test_the_package_is_looked_for_in_the_config_folder_the_user_chose(repo, tmp_path):
+    _plugin_package(tmp_path / "elsewhere")
+    _plugin_package(tmp_path / "home" / ".config")
+    environ = {"HOME": str(tmp_path / "home"), "XDG_CONFIG_HOME": str(tmp_path / "elsewhere")}
+    assert _switches(_family_launch(repo, "opencode", model=ON_SERVER, environ=environ)) == {}
+    environ["XDG_CONFIG_HOME"] = str(tmp_path / "empty")
+    launch = _family_launch(repo, "opencode", model=ON_SERVER, environ=environ)
+    assert _switches(launch) == NPM_SWITCHES
+
+
+def test_opencode_on_a_built_in_model_gets_no_switches(repo, tmp_path):
+    environ = {"HOME": str(tmp_path)}
+    assert _switches(_family_launch(repo, "opencode", model="a/b", environ=environ)) == {}
+    assert _switches(_family_launch(repo, "opencode", environ=environ)) == {}
+
+
+def test_kilo_on_a_server_gets_no_switches(repo, tmp_path):
+    environ = {"HOME": str(tmp_path)}
+    assert _switches(_family_launch(repo, "kilo", model=ON_SERVER, environ=environ)) == {}
+
+
+def test_the_user_s_own_npm_value_stays(repo, tmp_path):
+    environ = {"HOME": str(tmp_path), "npm_config_fetch_retries": "5"}
+    launch = _family_launch(repo, "opencode", model=ON_SERVER, environ=environ)
+    assert _switches(launch) == {"npm_config_fetch_timeout": "5000"}
+
+
 HOME_SERVER = base.ServerEntry(
     "aaaa1111",
     "LM Studio дома",
@@ -1376,6 +1520,29 @@ GATEWAY = base.ServerEntry(
     "KEY-CANARY",
     (("gw-opus", "Шлюз Opus"),),
 )
+
+
+def _limit_of(repo, provider, limit):
+    server = dataclasses.replace(HOME_SERVER, limits={"qwen3-8b": limit})
+    launch = _family_launch(repo, provider, servers=(server,))
+    models = json.loads(launch.env[FAMILY[provider]])["provider"]["lado-aaaa1111"]["models"]
+    assert models["qwen/qwen3-coder"] == {"name": "Рабочая Qwen"}
+    return models["qwen3-8b"]
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+@pytest.mark.parametrize(
+    ("limit", "written"),
+    [
+        (base.Limit(65536), {"context": 65536, "output": 8192}),
+        (base.Limit(24000), {"context": 24000, "output": 6000}),
+        (base.Limit(65536, 2048), {"context": 65536, "output": 2048}),
+        (base.Limit(65536, 100000), {"context": 65536, "output": 16384}),
+        (base.Limit(3), {"context": 3, "output": 1}),
+    ],
+)
+def test_a_known_context_goes_to_the_config_with_its_output(repo, provider, limit, written):
+    assert _limit_of(repo, provider, limit) == {"name": "Локальная Qwen", "limit": written}
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))

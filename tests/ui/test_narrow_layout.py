@@ -19,8 +19,10 @@ PANEL_KEY = "lado.terminals"
 # The Artifacts tab is whole in the bar, or an arrow says there is more.
 TAB_OR_ARROW = """() => {
   const row = document.querySelector('.session-tabs-scroll').getBoundingClientRect();
-  const last = [...document.querySelectorAll('.session-tabs .tab-item')].at(-1).getBoundingClientRect();
-  return last.right <= row.right + 1 || document.querySelector('.session-tabs-more.end') !== null;
+  const tabs = document.querySelectorAll('.session-tabs .tab-item');
+  const last = tabs[tabs.length - 1].getBoundingClientRect();
+  const arrow = document.querySelector('.session-tabs-more.end');
+  return last.right <= row.right + 1 || arrow !== null;
 }"""
 
 
@@ -173,7 +175,10 @@ def test_the_rail_opened_by_hand_and_the_terminals_at_901_px(page: Page, server,
     size(page, 901)
     session = running_session(repo)
     open_session(
-        page, server, session, {PANEL_KEY: json.dumps({"collapsed": False}), "lado.rail": "expanded"}
+        page,
+        server,
+        session,
+        {PANEL_KEY: json.dumps({"collapsed": False}), "lado.rail": "expanded"},
     )
     folded(panel(page))
     expect(strip(page)).to_be_visible()
@@ -421,6 +426,33 @@ def test_at_768_px_the_expanded_card_takes_the_window_under_the_top_bar(
     )
     expect(panel(page)).to_be_visible()
     shot(page, full_page=False)
+
+
+def test_expanded_at_768_px_the_terminals_cover_the_page(page: Page, server, repo):
+    size(page, 768, 760)
+    session = running_session(repo)
+    open_session(page, server, session)
+    panel(page).get_by_role("button", name="Show the terminals").click()
+    panel(page).get_by_role("button", name="Expand terminal").click()
+    content = page.locator(".content").bounding_box()
+    expect(panel(page)).to_have_class(re.compile(r"\bexpanded\b"))
+    assert panel(page).bounding_box() == content
+    page.keyboard.press("Escape")
+    expect(panel(page)).to_have_class(re.compile(r"\bover\b"))
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_the_screens_by_width(page: Page, server, repo, shot, scheme):
+    """A gate's session at each width of the design, for the design's review."""
+    page.emulate_media(color_scheme=scheme)
+    size(page, 1440, 900)
+    session = gated_session(repo)
+    open_session(page, server, session)
+    for width in (1440, 1280, 1024, 901, 768, 390):
+        size(page, width, 844 if width == 390 else 900)
+        expect(waiting_card(page, session)).to_be_visible()
+        page.wait_for_timeout(200)
+        shot(page, f"{width}-{scheme}", full_page=False)
 
 
 def test_other_pages_at_768_px_scroll_as_before(page: Page, server, repo, shot):

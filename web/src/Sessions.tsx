@@ -141,7 +141,7 @@ export function Sessions() {
   // strip, no edge, nothing of the computer's list read or written.
   const phone = usePhone();
   // At 601 to 900 px the strip is always there and the open list lies over the session.
-  const over = phone === null && list.over === true;
+  const over = phone === null && list.over;
   const strip = phone === null && (list.folded || over);
   const showsList = phone === null ? !list.folded : current === undefined;
   const focus = useStripFocus(list.folded);
@@ -265,24 +265,39 @@ type SessionsOutlet = { loaded: Loaded; panel: PanelColumn };
 // The window where a session's page stands still and its columns lie over it (styles.css).
 const NARROW = "(max-width: 900px)";
 
-// The session list's part of the columns: `over` says it lies over the session at 601 to 900 px
-// (`false` while it is folded there, null in a wider window).
+// The session list's part of the columns: `over`, it lies open over the session (601 to 900 px).
 type ListColumn = {
   folded: boolean;
   width: number;
-  over: boolean | null;
+  over: boolean;
   open: () => void;
   fold: () => void;
   setWidth: (width: number) => void;
 };
+
+// A column's stored prefs and their one writer: what comes through it is the human's choice.
+function useColumnPrefs(stored: () => ColumnPrefs, store: (prefs: ColumnPrefs) => void) {
+  const [prefs, setPrefs] = useState(stored);
+  const keep = useCallback(
+    (change: Partial<ColumnPrefs>) => {
+      setPrefs((now) => {
+        const next = { ...now, ...change, chosen: true };
+        store(next);
+        return next;
+      });
+    },
+    [store],
+  );
+  return [prefs, keep] as const;
+}
 
 // The columns beside the chat, what `fitColumns` makes of the human's choices. Each stored key
 // has its one writer here, and only what the human does reaches it: at 601 to 900 px both
 // columns start folded whatever is stored, and what opens there lies over the session and
 // is not remembered.
 function useSessionColumns(room: number | null): { list: ListColumn; panel: PanelColumn } {
-  const [list, setList] = useState(storedSessionsList);
-  const [panel, setPanel] = useState(storedPanel);
+  const [list, keepList] = useColumnPrefs(storedSessionsList, storeSessionsList);
+  const [panel, keepPanel] = useColumnPrefs(storedPanel, storePanel);
   const [last, setLast] = useState<Column | null>(null);
   const [control, setControl] = useState(false);
   const [over, setOver] = useState<"list" | "terminals" | null>(null);
@@ -290,20 +305,6 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
   useEffect(() => {
     if (!narrow) setOver(null);
   }, [narrow]);
-  const keepList = useCallback((change: Partial<ColumnPrefs>) => {
-    setList((now) => {
-      const next = { ...now, ...change, chosen: true };
-      storeSessionsList(next);
-      return next;
-    });
-  }, []);
-  const keepPanel = useCallback((change: Partial<ColumnPrefs>) => {
-    setPanel((now) => {
-      const next = { ...now, ...change, chosen: true };
-      storePanel(next);
-      return next;
-    });
-  }, []);
   const width = list.width ?? SESSIONS_WIDTH.initial;
   // Before the first measure nothing folds: the stored choice shows, and no terminal is made.
   const fit = fitColumns({ room: room ?? Infinity, list: { ...list, width }, panel, last, control });
@@ -311,7 +312,7 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
     () => ({
       folded: narrow ? over !== "list" : fit.listFolded,
       width,
-      over: narrow ? over === "list" : null,
+      over: narrow && over === "list",
       open: () => {
         if (narrow) return setOver("list");
         setLast("list");
@@ -814,7 +815,7 @@ const LAST_FIT = 3;
 
 // The tab bar: the tabs, which give way by the levels above, and at its right end what stays
 // outside them (`children`, a tab's search). The level is chosen by trying each before the
-// paint, again when the bar's width or a count changes.
+// paint, again when the bar or a tab changes its width (a count, the font coming).
 function SessionTabs({
   name,
   tab,
@@ -837,7 +838,6 @@ function SessionTabs({
     const end = tabs.scrollLeft + tabs.clientWidth >= tabs.scrollWidth - 1;
     setEnds((now) => (now.start === start && now.end === end ? now : { start, end }));
   }, []);
-  const shownCounts = TABS.map((one) => counts[one] ?? 0).join();
   useLayoutEffect(() => {
     const box = bar.current;
     const tabs = row.current;
@@ -856,8 +856,9 @@ function SessionTabs({
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(choose);
     observer.observe(box);
+    for (const one of tabs.children) observer.observe(one);
     return () => observer.disconnect();
-  }, [shownCounts, lookAtEnds]);
+  }, [lookAtEnds]);
   // The tab shown stays in view. By the row's own scroll: Chromium's Tab would start from a
   // tab scrolled to with scrollIntoView (Terminals.tsx).
   useLayoutEffect(() => {

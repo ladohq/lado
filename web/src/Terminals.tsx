@@ -260,7 +260,7 @@ export function TerminalPanel({
     return () => window.removeEventListener("keydown", restore, true);
   }, [over, lying]);
 
-  const classes = ["terminals", collapsed && "collapsed", over && "expanded", lying && "over"].filter(Boolean).join(" ");
+  const classes = ["terminals", collapsed && "collapsed", over ? "expanded" : lying && "over"].filter(Boolean).join(" ");
 
   return (
     <TerminalsContext.Provider value={{ open, active: collapsed ? null : active, putBack }}>

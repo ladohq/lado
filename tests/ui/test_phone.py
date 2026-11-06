@@ -143,7 +143,10 @@ def test_the_phones_targets_have_their_sizes(device, server, repo, shot):
     page = opened(device(UPRIGHT), server, f"/sessions/{session}")
     card = waiting_card(page, session)
     panel = card.get_by_role("tabpanel")
-    high = lambda locator: round(box(locator)["height"])  # noqa: E731
+
+    def high(locator) -> int:
+        return round(box(locator)["height"])
+
     expect(panel.get_by_role("button", name="Approve", exact=True)).to_be_visible()
     gate = {
         "Approve": panel.get_by_role("button", name="Approve", exact=True),
@@ -219,12 +222,10 @@ def test_a_tablets_page_is_as_high_as_the_part_of_the_window_it_sees(device, ser
     assert composer["y"] + composer["height"] <= 600
 
 
-def test_a_tablet_elsewhere_keeps_the_computers_frame(device, server, repo):
-    session = running_session(repo)
-    page = opened(device((768, 1024)), server, f"/needs-you")
-    expect(page.get_by_role("heading", name="Needs you")).to_be_visible()
+def test_a_tablet_elsewhere_keeps_the_computers_frame(device, server):
+    page = opened(device((768, 1024)), server, "/needs-you")
+    expect(page.get_by_role("banner").locator("h1")).to_have_text("Needs you")
     assert page.locator(".app").evaluate("a => getComputedStyle(a).position") == "static"
-    assert session
 
 
 # The menu

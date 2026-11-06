@@ -3371,6 +3371,20 @@ h3 {
   color: var(--term-ink);
 }
 
+.term-stopped {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: var(--term-ink);
+  font: 13px var(--mono);
+  text-align: center;
+}
+
+.term-stopped p {
+  margin: 0;
+}
+
 /* No scrollback in xterm.js (the history is tmux's): its scrollbar would only be an empty
    strip. */
 .term-xterm .xterm .scrollbar {

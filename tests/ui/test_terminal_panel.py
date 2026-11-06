@@ -196,19 +196,24 @@ def test_the_supervisors_terminal_comes_back_live_when_its_stopped_session_resum
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     panel = page.get_by_role("complementary", name="Terminals")
+    sockets: list[str] = []
+    page.on("websocket", lambda socket: sockets.append(socket.url))
+    panel.get_by_role("button", name="Show the terminals").click()
     view = panel.get_by_role("tabpanel", name="supervisor")
-    status = view.get_by_role("status")
-    expect(status).to_have_text(f'closed: session "{session}" is stopped')
-    expect(view.get_by_role("alert")).to_have_count(0)  # the reason once
-    expect(panel.get_by_role("button", name="Reconnect")).to_be_visible()
+    words = view.get_by_text("Agent not running — resume the session to start it")
+    expect(words).to_be_visible()
+    expect(view).to_contain_text("Viewing")
+    assert words.evaluate("e => getComputedStyle(e).fontSize") == "13px"
+    expect(panel.get_by_role("button", name="Reconnect")).to_have_count(0)
     expect(panel.get_by_role("button", name="Take control")).to_have_count(0)
+    assert [url for url in sockets if "/terminal" in url] == []
     shot(page, "stopped")
 
     runtime.start_session(str(repo), session, None, "fake")
     expect(view.locator(".term")).to_have_attribute(
         "data-link", "open", timeout=20_000
     )  # no reload
-    expect(status).to_have_text("")
+    expect(view.get_by_role("status")).to_have_text("")
     shot(page, "resumed")
 
 

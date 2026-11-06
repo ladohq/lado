@@ -822,7 +822,7 @@ function SessionTab({
   }
   return (
     // The panel keeps its terminals while the tabs change: keyed by the session only.
-    <TerminalPanel key={name} session={name} column={panel}>
+    <TerminalPanel key={name} session={name} column={panel} stopped={session.status === "stopped"}>
       <SessionView name={name} tab={tab} item={item} session={session} />
     </TerminalPanel>
   );

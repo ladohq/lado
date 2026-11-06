@@ -65,7 +65,8 @@ quote loses `border-left`.
 
 `taskTip(task)` in `Flows.tsx`, a pure function: the text cut at 12 lines or 600 characters, whichever
 comes first, with "…" when cut, and then the line "The rest is on the run's page". 600 characters are
-about 12 lines of the 320 px tooltip, so the box fits a window of 390 px height with its margins.
+about 12 lines of the 320 px tooltip; that is a limit, not a height: long lines that wrap can make
+the box higher than a window of 390 px, which only a very low window with a mouse would see.
 Its lines keep their breaks (`white-space: pre-line`).
 
 `ListEntry` gets `tip?: ReactNode` and `tipWhen?`, and `ListGroup` wraps the row's `Link` in `Tooltip`,

@@ -10621,7 +10621,7 @@ button.quiet.danger-text {
   padding-block: 0;
 }
 
-/* The toggle of the Team row: spec §9's size, second to the card's 44 px. */
+/* The toggle of the Team row, sideways of the tab row: spec §9's size, second to the card's 44 px. */
 :root[data-phone] .icon-button.between-toggle {
   width: 36px;
   height: 36px;

@@ -1418,7 +1418,7 @@ Built in the layout task (2026-10-03, schema 14):
   tooltip. The state lives in `useAgentMessages`, as the bar
   and the feed both read it and an agent's page writes it. On a phone the toggle is an icon
   button at the end of the team's row, held sideways of the tab row, as there is no team's row
-  there (LAD-224; two speech bubbles, `BetweenIcon`; 26 px, quiet and
+  there (LAD-224; two speech bubbles, `BetweenIcon`; 36 px, quiet and
   muted unpressed, the pressed team chip's border with the icon in the action colour when
   `aria-pressed`), its name the same in both states (a stopped session has no team there, and
   the toggle shows the words Messages between agents, 44 px high, pressed on `--action-ground`:

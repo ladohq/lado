@@ -224,8 +224,8 @@ function taskLine(run: RunInfo): ReactNode {
   return task && <span className="run-task-line">{task}</span>;
 }
 
-// What a run's tooltip shows of its task: about 12 lines of the tooltip's width, which fit a
-// window of 390 px with their margins; the run's page has the rest. null: a blank task.
+// What a run's tooltip shows of its task: at most 12 lines and 600 characters, a limit and no
+// promise of its height, as long lines wrap; the run's page has the rest. null: a blank task.
 const TIP_LINES = 12;
 const TIP_CHARS = 600;
 

@@ -1931,8 +1931,9 @@ layout, below).
     (`fitLabel`: `deve…-2`, `fron…-lead`, `anal…·2`), no word, branch or run time, and a chevron
     `All N agents`; 2 avatars and the chevron; 3 the first avatars that fit and `+M`, or with
     none the Agents icon and the number. The level is chosen by trial before the paint
-    (`teamFit.ts`, `useTeamFit`), again when the top bar's width, the agents, the title or the
-    fonts change; a status never changes it, as level 3 counts the button with its diamond.
+    (`teamFit.ts`, `useTeamFit`), again when the top bar's width, the agents, what else stands
+    in the line (the title, the project and the branch, which come late) or the fonts change;
+    an agent's status never changes it, as level 3 counts the button with its diamond.
   - A level with names stands only while the title shows its first 24 characters, or all of a
     shorter one (the human's rule: a wide window must not leave less of the title than a
     narrow one). They are measured by a `Range` over the text, as `24ch` is the digit's width,

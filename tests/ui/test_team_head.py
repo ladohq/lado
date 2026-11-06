@@ -129,6 +129,28 @@ def test_twelve_agents_give_way_by_the_window_and_the_title_keeps_its_limit(
         shot(page, str(width), full_page=False)
 
 
+def test_a_project_that_comes_late_chooses_the_level_again(page: Page, server, repo):
+    """The about comes after the agents: the project takes room from the title, in a line whose
+    width did not change."""
+    session = running_session(repo)
+    runtime.set_title(session, LONG_TITLE)
+    page.set_viewport_size({"width": 1920, "height": 1080})
+    log_in(page, server)
+    held = []
+    page.route(f"**/api/sessions/{session}/agents", lambda route: route.fulfill(json=team(OWN, RUNS)))
+    page.route(f"**/api/sessions/{session}/about", lambda route: held.append(route))
+    page.goto(f"{server['url']}/sessions/{session}")
+    expect(page.get_by_role("toolbar", name="Team")).to_be_visible()
+    page.wait_for_function("document.fonts.status === 'loaded' && document.fonts.size > 0")
+    settled(page)
+    assert "devel…-2" in fit(page)["chips"]  # with no project, 5 letters leave the title its limit
+    got = held[0].fetch().json()
+    held[0].fulfill(json={**got, "project": {"id": "lado", "title": "LADO"}})
+    expect(page.locator(".session-crumb")).to_have_text("LADO")
+    settled(page)
+    assert "deve…-2" in fit(page)["chips"]
+
+
 def test_a_short_title_leaves_longer_names(page: Page, server, repo):
     open_team(page, server, repo, team(OWN, RUNS), SHORT_TITLE, (1920, 1080))
     got = at(page, 1920)

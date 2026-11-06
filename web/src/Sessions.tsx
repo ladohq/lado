@@ -1220,7 +1220,12 @@ function HeadLine({ session }: { session: SessionInfo }) {
           </span>
         </Tooltip>
       )}
-      <HeadTeam session={session.name} title={label(session)} titleText={titleText} editing={editing} />
+      <HeadTeam
+        session={session.name}
+        line={[label(session), about?.project?.title, about?.project?.id, repository?.branch, status].join("\n")}
+        titleText={titleText}
+        editing={editing}
+      />
       <div className="session-head-actions">
         <SessionActions session={session} />
       </div>

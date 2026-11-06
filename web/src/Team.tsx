@@ -392,12 +392,13 @@ function rowFits(team: HTMLElement): boolean {
 // list's button then holds its diamond's room, so a status change needs no new trial). A
 // microtask, as flushSync cannot render inside an effect; it still runs before the paint.
 // Again on a change of the top bar's width (not the team's, whose box the trial changes), the
-// agents, the title and the fonts, but not when the title's field opens: its room is the
-// title's, and the team stays as it stands until the window changes.
+// agents, what else stands in the line (`line`: the title, and the project, which comes late)
+// and the fonts, but not when the title's field opens: its room is the title's, and the team
+// stays as it stands until the window changes.
 function useTeamFit(
   box: RefObject<HTMLDivElement | null>,
   names: string[],
-  title: string,
+  line: string,
   titleText: RefObject<HTMLElement | null>,
   editing: boolean,
 ): { step: TeamStep; trial: boolean } {
@@ -426,7 +427,7 @@ function useTeamFit(
       queueMicrotask(choose);
     };
     if (!editing) queue();
-    // Not `fonts.ready`: at the first trial no font has started to load, and it holds at once.
+    // Not `fonts.ready`, which hears only the load under way: a font may start after this trial.
     document.fonts?.addEventListener("loadingdone", queue);
     const observer = typeof ResizeObserver === "undefined" || !bar ? null : new ResizeObserver(queue);
     if (bar) observer?.observe(bar);
@@ -435,7 +436,7 @@ function useTeamFit(
       document.fonts?.removeEventListener("loadingdone", queue);
       observer?.disconnect();
     };
-  }, [box, key, title, titleText, editing]);
+  }, [box, key, line, titleText, editing]);
   return fit;
 }
 
@@ -478,7 +479,7 @@ function HeadRow({
   colours,
   shown,
   open,
-  title,
+  line,
   titleText,
   editing,
 }: {
@@ -487,7 +488,7 @@ function HeadRow({
   colours: Map<string, number>;
   shown: string | null;
   open: (name: string) => void;
-  title: string;
+  line: string;
   titleText: RefObject<HTMLElement | null>;
   editing: boolean;
 }) {
@@ -496,7 +497,7 @@ function HeadRow({
   const all = inOrder(groups);
   const names = all.map((one) => one.name);
   const marks = agentMarks(names);
-  const { step, trial } = useTeamFit(box, names, title, titleText, editing);
+  const { step, trial } = useTeamFit(box, names, line, titleText, editing);
   const toolbar = useToolbar(box);
   const visible = step.level === 3 ? step.visible : all.length;
   const seen = new Set(names.slice(0, visible));
@@ -564,16 +565,16 @@ function HeadRow({
 }
 
 // The team in the head. Before the agents load, and with none, the head is as without a team;
-// a team that fails to load says so, and why in its tooltip. `title` and `titleText` are the
-// title's text and the element that shows it; `editing`, that its field is open.
+// a team that fails to load says so, and why in its tooltip. `line` says what else stands in
+// the head, `titleText` is the element that shows the title; `editing`, that its field is open.
 export function HeadTeam({
   session,
-  title,
+  line,
   titleText,
   editing,
 }: {
   session: string;
-  title: string;
+  line: string;
   titleText: RefObject<HTMLElement | null>;
   editing: boolean;
 }) {
@@ -598,7 +599,7 @@ export function HeadTeam({
       colours={colours}
       shown={shown}
       open={open}
-      title={title}
+      line={line}
       titleText={titleText}
       editing={editing}
     />

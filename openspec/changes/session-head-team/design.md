@@ -26,8 +26,10 @@ they depend on the team.
 and rendering each before the paint, like `SessionTabs`. A candidate fits when the right edge of the
 team's last element lies within the team's box and, at levels 0 and 1, the title keeps its limit. It
 runs again on a ResizeObserver on the top bar, not on the team (whose box the trial changes), on a
-change of the agents' names or the title, and on the fonts' `loadingdone` (`fonts.ready` holds at
-once at the first trial, before any font starts to load). The trial renders with `flushSync` in a
+change of the agents' names, of what else stands in the line (the title, the status, and the project
+and the branch, which come late with the about, in a line whose width did not change), and on the
+fonts' `loadingdone` (`fonts.ready` hears only the load under way; a font may start after the first
+trial). The trial renders with `flushSync` in a
 microtask, as it cannot inside an effect; that is still before the paint. Opening the title's field
 runs no trial. Status changes do not run it: level 3's trial counts the button with its diamond.
 

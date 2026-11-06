@@ -16,6 +16,7 @@ import { Link, Navigate } from "react-router";
 import { dayName } from "./ChatText";
 import { GroupHead, type Fold, type Tone } from "./GroupHead";
 import { useWidth } from "./Splitter";
+import { Tooltip } from "./Tooltip";
 
 // Narrower than this, a tab's list and page take the column in turn.
 export const NARROW = 900;
@@ -24,6 +25,8 @@ export type Entry = {
   key: string; // what the tab's address picks it by: unique in the list
   to: string; // its page's address
   row: ReactNode; // what its row shows
+  tip?: ReactNode; // its row's tooltip; none or null: silent
+  tipWhen?: (row: HTMLElement) => boolean; // whether the tooltip has something to say now
   search: string[]; // the texts the search finds it by
   tone?: "waits" | "dim";
   at?: string; // when, for a group by days
@@ -186,13 +189,15 @@ export function ListGroup({
             <ul>
               {some.map((entry) => (
                 <li key={entry.key}>
-                  <Link
-                    to={entry.to}
-                    className={`${look}${entry.tone ? ` ${entry.tone}` : ""}`}
-                    aria-current={entry.key === selected ? "page" : undefined}
-                  >
-                    {entry.row}
-                  </Link>
+                  <Tooltip tip={entry.tip ?? null} when={entry.tipWhen}>
+                    <Link
+                      to={entry.to}
+                      className={`${look}${entry.tone ? ` ${entry.tone}` : ""}`}
+                      aria-current={entry.key === selected ? "page" : undefined}
+                    >
+                      {entry.row}
+                    </Link>
+                  </Tooltip>
                 </li>
               ))}
             </ul>

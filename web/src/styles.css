@@ -7415,8 +7415,12 @@ button.locked:disabled,
   white-space: nowrap;
 }
 
+/* The task's lines in a run's tooltip. */
+.run-task-tip {
+  white-space: pre-line;
+}
+
 .list-row.waits .run-about,
-.list-row.waits .run-task-line,
 .list-row.waits .agent-row-about {
   color: var(--human);
 }
@@ -7498,8 +7502,7 @@ button.locked:disabled,
   background: var(--human-ground);
 }
 
-.list-card.waits .run-about,
-.list-card.waits .run-task-line {
+.list-card.waits .run-about {
   color: var(--human);
 }
 

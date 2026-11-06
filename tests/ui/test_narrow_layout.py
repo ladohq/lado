@@ -604,14 +604,18 @@ def test_tab_brings_each_tab_clear_of_the_bars_ends(page: Page, server, repo, sh
     for number in (1, 2, 3):
         page.keyboard.press("Tab")
         expect(tabs.nth(number)).to_be_focused()
-        page.wait_for_function(f"({CLEAR})(document.querySelectorAll('.session-tabs .tab-item')[{number}])")
+        page.wait_for_function(
+            f"({CLEAR})(document.querySelectorAll('.session-tabs .tab-item')[{number}])"
+        )
     expect(more).to_have_count(0)  # Artifacts ends the row
     expect(earlier).to_be_visible()
     shot(page, full_page=False)
     for number in (2, 1, 0):
         page.keyboard.press("Shift+Tab")
         expect(tabs.nth(number)).to_be_focused()
-        page.wait_for_function(f"({CLEAR})(document.querySelectorAll('.session-tabs .tab-item')[{number}])")
+        page.wait_for_function(
+            f"({CLEAR})(document.querySelectorAll('.session-tabs .tab-item')[{number}])"
+        )
     expect(earlier).to_have_count(0)
 
 
@@ -623,8 +627,12 @@ def test_the_tab_shown_stands_clear_of_the_bars_ends(page: Page, server, repo):
     page.add_style_tag(content=".session-tabs { width: 300px; }")
     expect(bar).to_have_attribute("data-fit", "4")
     bar.get_by_role("link", name=re.compile("^Flows")).click()
-    expect(bar.get_by_role("link", name=re.compile("^Flows"))).to_have_attribute("aria-current", "page")
-    page.wait_for_function(f"({CLEAR})(document.querySelector('.session-tabs [aria-current=page]'))")
+    expect(bar.get_by_role("link", name=re.compile("^Flows"))).to_have_attribute(
+        "aria-current", "page"
+    )
+    page.wait_for_function(
+        f"({CLEAR})(document.querySelector('.session-tabs [aria-current=page]'))"
+    )
 
 
 def test_a_press_on_a_tab_leaves_the_row_until_the_click(page: Page, server, repo):

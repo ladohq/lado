@@ -513,7 +513,9 @@ def test_find_on_flows_stays_when_the_tabs_scroll(page: Page, server, repo):
     expect(bar.get_by_role("button", name="Messages between agents")).to_have_count(0)
 
 
-def test_the_list_buttons_tooltip_is_its_name_and_goes_with_the_list(page: Page, server, repo, shot):
+def test_the_list_buttons_tooltip_is_its_name_and_goes_with_the_list(
+    page: Page, server, repo, shot
+):
     open_team(page, server, repo, team(OWN, RUNS), LONG_TITLE, (1024, 900))
     button = page.get_by_role("button", name=re.compile(r"^(All 12 agents|\d+ more agents)"))
     name = button.get_attribute("aria-label")

@@ -508,7 +508,7 @@ test("the Agents tab follows the agents' changes; a reset loads them again", asy
   stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "insert", item: agent("w1", "starting") }, "11");
   expect(row().textContent).toContain("starting");
   stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "update", item: agent("w1", "busy") }, "12");
-  expect(row().textContent).toContain("busy");
+  expect(row().textContent).toContain("working");
   stream().send("change", { kind: "agents", session: "other", key: "w1", op: "insert", item: agent("w1", "idle") }, "13");
   stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "delete", item: null }, "14");
   expect(within(list).queryByRole("link", { name: /^w1/ })).toBeNull();

@@ -10,6 +10,7 @@ from playwright.sync_api import Page, expect
 from test_main_screen import log_in, running_session
 
 from lado import runtime
+from lado.server import run as server_run
 
 pytestmark = pytest.mark.ui
 
@@ -187,6 +188,84 @@ def test_the_title_field_beside_a_large_team_keeps_the_line(page: Page, server, 
     assert head["height"] == 48
     assert field.bounding_box()["y"] < head["y"] + 48
     expect(page.locator(".head-team")).to_have_attribute("data-fit", "2")
+    shot(page, full_page=False)
+
+
+def rename(page: Page) -> None:
+    page.locator(".session-title button").click()
+    page.get_by_role("button", name="Rename").click()
+    expect(page.get_by_role("textbox", name="Session title")).to_be_visible()
+
+
+@pytest.mark.parametrize(("width", "level"), [(1024, "1"), (768, "2")])
+def test_opening_the_title_field_leaves_the_team_as_it_stands(
+    page: Page, server, repo, width, level
+):
+    open_team(page, server, repo, team(["supervisor"], FOUR), TWENTY, (width, 900))
+    expect(page.locator(".head-team")).to_have_attribute("data-fit", level)
+    rename(page)
+    settled(page)
+    expect(page.locator(".head-team")).to_have_attribute("data-fit", level)
+    page.keyboard.press("Escape")
+    expect(page.locator(".session-title-text")).to_be_visible()
+    settled(page)
+    expect(page.locator(".head-team")).to_have_attribute("data-fit", level)
+
+
+def test_the_focus_lives_through_a_trial(page: Page, server, repo):
+    open_team(page, server, repo, team(OWN, RUNS), LONG_TITLE, (1024, 900))
+    toolbar = page.get_by_role("toolbar", name="Team")
+    avatar = toolbar.get_by_role("button", name=re.compile("^developer-1,"))
+    avatar.focus()
+    page.keyboard.press("ArrowRight")
+    focused = toolbar.get_by_role("button", name=re.compile("^developer-2,"))
+    expect(focused).to_be_focused()
+    at(page, 1010)
+    expect(focused).to_be_focused()
+    page.keyboard.press("Tab")
+    expect(page.get_by_role("button", name="Stop session…")).to_be_focused()
+    page.keyboard.press("Shift+Tab")
+    expect(focused).to_be_focused()  # the toolbar's stop stayed where it was
+
+
+def test_a_focused_agent_that_goes_behind_the_button_leaves_the_focus_on_it(
+    page: Page, server, repo
+):
+    open_team(page, server, repo, team(OWN, RUNS), LONG_TITLE, (1024, 900))
+    toolbar = page.get_by_role("toolbar", name="Team")
+    toolbar.get_by_role("button", name=re.compile("^analyst-2,")).focus()
+    at(page, 768)
+    expect(toolbar.get_by_role("button", name="4 more agents")).to_be_focused()
+
+
+def test_an_open_list_lives_through_a_trial(page: Page, server, repo):
+    open_team(page, server, repo, team(OWN, RUNS), LONG_TITLE, (1024, 900))
+    page.get_by_role("button", name="All 12 agents").click()
+    dialog = page.get_by_role("dialog", name="Team")
+    row = dialog.get_by_role("button", name=re.compile("^reviewer-2"))
+    row.focus()
+    at(page, 1010)
+    expect(dialog).to_be_visible()
+    expect(row).to_be_focused()
+    at(page, 768)  # another button
+    expect(dialog).to_be_visible()
+    expect(row).to_be_focused()
+    at(page, 1920)  # a level with names, and whole names need no button but this one
+    expect(dialog).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(dialog).to_have_count(0)
+
+
+def test_the_lost_mark_takes_its_room_from_the_team_not_from_stop(page: Page, server, repo, shot):
+    open_team(page, server, repo, team(OWN, RUNS), TWENTY, (1024, 900))
+    server_run.stop()
+    expect(page.locator(".link-lost, .topbar [role=status]").first).to_have_text("reconnecting…")
+    settled(page)
+    team_box = page.locator(".head-team").bounding_box()
+    last = page.locator(".head-team > *").last.bounding_box()
+    stop = page.locator(".session-head-actions").bounding_box()
+    assert last["x"] + last["width"] <= team_box["x"] + team_box["width"] + 0.5, (last, team_box)
+    assert team_box["x"] + team_box["width"] <= stop["x"], (team_box, stop)
     shot(page, full_page=False)
 
 

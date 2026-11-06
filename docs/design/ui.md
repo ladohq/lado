@@ -1999,7 +1999,9 @@ layout, below).
     `All N agents`; 2 avatars and the chevron; 3 the first avatars that fit and `+M`, or with
     none the Agents icon and the number. The level is chosen by trial before the paint
     (`teamFit.ts`, `useTeamFit`), again when the top bar's width, the agents, what else stands
-    in the line (the title, the project and the branch, which come late) or the fonts change;
+    in the line (the title, the project and the branch, which come late, the link's mark) or
+    the fonts change, and with the run time at level 0, where it shows; a trial keeps the
+    keyboard's focus (an item gone behind the button leaves it on the button) and an open list;
     an agent's status never changes it, as level 3 counts the button with its diamond.
   - A level with names stands only while the title shows its first 24 characters, or all of a
     shorter one (the human's rule: a wide window must not leave less of the title than a
@@ -2016,8 +2018,8 @@ layout, below).
     px, under the button at its right edge, `Team · N agents`, every agent by its whole name
     with its status in words, each run under a dashed line with a link to its page. It closes
     as Details does (Esc and a second click back on the button, a press away or the focus going
-    past it leave the focus there), and also when a trial runs while it is open, as level 0
-    has no button. On a touch screen, with no tooltips, it is the way to whole names.
+    past it leave the focus there). Left open as the team reaches level 0, it keeps its button
+    until it closes, then the focus goes to the team's first item. On a touch screen, with no tooltips, it is the way to whole names.
   - An agent's popup, here and on the terminals' strip (`AgentPopup`): the whole name; the
     status in words and how long, in `--human` when it waits; `role · provider`, the role left
     out when it is the name; `flow <run>`; `Click to open the terminal`. A terminal's tab and a

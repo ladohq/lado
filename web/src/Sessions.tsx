@@ -973,6 +973,7 @@ function MessagesChoice() {
   const all = useAgentMessages();
   const keyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return; // Alt+← goes back
     event.preventDefault();
     event.currentTarget.querySelector<HTMLElement>('[aria-checked="false"]')?.focus();
     storeAgentMessages(!all);
@@ -1129,6 +1130,7 @@ function HeadLine({ session }: { session: SessionInfo }) {
   const repository = about?.repos[0];
   const trouble = status === "tmux_gone" || status === "loop_down";
   const ran = useRan(session);
+  const { lost } = useLive(); // the link's mark is wider then
   const [details, setDetails] = useState(false);
   const title = useRef<HTMLButtonElement>(null);
   const box = useRef<HTMLDivElement>(null); // the title and Details: a second click is no press outside
@@ -1222,7 +1224,8 @@ function HeadLine({ session }: { session: SessionInfo }) {
       )}
       <HeadTeam
         session={session.name}
-        line={[label(session), about?.project?.title, about?.project?.id, repository?.branch, status].join("\n")}
+        line={[label(session), about?.project?.title, about?.project?.id, repository?.branch, status, lost].join("\n")}
+        ran={ran}
         titleText={titleText}
         editing={editing}
       />

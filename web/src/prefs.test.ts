@@ -214,9 +214,12 @@ test("the choice of messages holds while the page is open, though the browser re
   vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
     throw new Error("denied");
   });
-  const { result } = renderHook(() => useAgentMessages());
+  const { result, unmount } = renderHook(() => useAgentMessages());
   act(() => storeAgentMessages(true));
   expect(result.current).toBe(true);
+  unmount(); // another tab, and back
+  expect(renderHook(() => useAgentMessages()).result.current).toBe(true);
+  storeAgentMessages(false);
 });
 
 test("without browser storage every default holds and nothing breaks", () => {

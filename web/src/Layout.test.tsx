@@ -342,6 +342,62 @@ test("the team is one Tab stop, and the arrows, Home and End move among its item
   expect(document.activeElement).toBe(items[3]);
 });
 
+test("a new agent leaves the open list and the focus in it where they were", async () => {
+  const team = await headTeam(["w1", "w2"], (level) => level === 2);
+  await waitFor(() => expect(team.dataset.fit).toBe("2"));
+  fireEvent.click(within(team).getByRole("button", { name: "All 3 agents" }));
+  const dialog = screen.getByRole("dialog", { name: "Team" });
+  const row = within(dialog).getAllByRole("button")[2]!;
+  row.focus();
+  const w3 = agent("w3", "developer", "idle");
+  stream().send("change", { kind: "agents", session: "lado", key: "w3", op: "update", item: w3 }, "11");
+  await within(team).findByRole("button", { name: "All 4 agents" });
+  await waitFor(() => expect(within(screen.getByRole("dialog", { name: "Team" })).getAllByRole("button")).toHaveLength(4));
+  expect(document.activeElement?.textContent).toContain("w2");
+});
+
+test("the run time growing chooses the level again, while the team shows whole names", async () => {
+  const fits = vi.fn(() => true);
+  const team = await headTeam(["w1"], fits);
+  await waitFor(() => expect(fits).toHaveBeenCalled());
+  await act(async () => {
+    await new Promise((done) => setTimeout(done));
+  });
+  const before = fits.mock.calls.length;
+  const grown = session("lado", { ran_seconds: 7200 });
+  stream().send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: grown }, "11");
+  await waitFor(() => expect(fits.mock.calls.length).toBeGreaterThan(before));
+  expect(team.dataset.fit).toBe("0");
+});
+
+test("a list left open at level 0 keeps its button until it closes, the focus then on the team", async () => {
+  let least = 2;
+  const team = await headTeam(["w1"], (level) => level >= least);
+  await waitFor(() => expect(team.dataset.fit).toBe("2"));
+  fireEvent.click(within(team).getByRole("button", { name: "All 2 agents" }));
+  least = 0;
+  const w2 = agent("w2", "developer", "idle");
+  stream().send("change", { kind: "agents", session: "lado", key: "w2", op: "update", item: w2 }, "11");
+  await waitFor(() => expect(team.dataset.fit).toBe("0"));
+  expect(screen.getByRole("dialog", { name: "Team" })).toBeTruthy();
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Team" })).toBeNull();
+  expect(team.querySelector(".team-more")).toBeNull();
+  expect(document.activeElement).toBe(team.querySelector(".team-chip"));
+});
+
+test("the toolbar leaves a key with a modifier to the browser", async () => {
+  agents = [agent("supervisor", "supervisor", "idle"), agent("w1", "developer", "idle")];
+  open();
+  const team = await screen.findByRole("toolbar", { name: "Team" });
+  const [first] = await within(team).findAllByRole("button");
+  first!.focus();
+  for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
+    expect(fireEvent.keyDown(first!, { key: "ArrowRight", [modifier]: true })).toBe(true); // not prevented
+    expect(document.activeElement).toBe(first);
+  }
+});
+
 // The session list
 
 const list = () => screen.getByRole("navigation", { name: "Sessions" });

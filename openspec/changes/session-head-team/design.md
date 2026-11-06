@@ -26,12 +26,14 @@ they depend on the team.
 and rendering each before the paint, like `SessionTabs`. A candidate fits when the right edge of the
 team's last element lies within the team's box and, at levels 0 and 1, the title keeps its limit. It
 runs again on a ResizeObserver on the top bar, not on the team (whose box the trial changes), on a
-change of the agents' names, of what else stands in the line (the title, the status, and the project
-and the branch, which come late with the about, in a line whose width did not change), and on the
-fonts' `loadingdone` (`fonts.ready` hears only the load under way; a font may start after the first
+change of the agents' names, of what else stands in the line (the title, the status, the project and
+the branch, which come late with the about, and the link's mark, wider when lost, in a line whose
+width did not change), of the run time at level 0, and on the fonts' `loadingdone` (`fonts.ready` hears only the load under way; a font may start after the first
 trial). The trial renders with `flushSync` in a
-microtask, as it cannot inside an effect; that is still before the paint. Opening the title's field
-runs no trial. Status changes do not run it: level 3's trial counts the button with its diamond.
+microtask, as it cannot inside an effect; that is still before the paint. A trial replaces the row's
+elements, so it puts the focus back by `data-team` (on the button when the item went behind it), and
+`showing` lives in the row, whose button stays while the list is open, also at level 0. Opening the
+title's field runs no trial, closing it does. Status changes do not run it: level 3's trial counts the button with its diamond.
 
 **D3. The title's limit is measured by the text.** A `Range` over the first 24 characters of
 `.session-title-text` gives the width they need; the limit holds when the span is at least that wide.
@@ -54,8 +56,8 @@ they had no limit. Tests take numbers from here.
 **D6. The choice of messages is one small store.** `Yours | All` lives in the tab bar, so the state
 leaves `Activity`. `SessionView` stays mounted across tabs, so a `useState` there would miss the store
 that `Agents`' **All in Activity** writes. `prefs.ts` gets `useAgentMessages()`, a state each reader
-holds, so the choice lasts while the page is open when the browser refuses to store it;
-`storeAgentMessages` notifies them. `SessionTabs` gets the radios as `children`,
+holds; `storeAgentMessages` notifies them, and a value the browser refused to store is kept in the
+module, so the choice lasts while the page is open. `SessionTabs` gets the radios as `children`,
 next to `Find`; `Activity` keeps the icon for a phone only.
 
 **D7. The word `Messages`.** `SessionTabs` adds one step before its levels: when level 0 does not

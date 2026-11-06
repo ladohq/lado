@@ -42,4 +42,5 @@
 
 - [x] 7.1 The settings' Checks, the UI suite's changed files with `-m ui`, the trial archive. Check:
   all green in `build-report`.
-- [x] 7.2 Screenshots of each changed screen as run artifacts, both themes.
+- [x] 7.2 Screenshots of each changed screen as run artifacts. The dark theme: the feed at 1440, the
+  keys hint and `Yours | All` only; the other screens' dark theme is left to design QA.

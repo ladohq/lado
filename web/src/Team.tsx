@@ -181,7 +181,7 @@ export function RunFrame({
   return (
     <div role="group" aria-label={`run ${run}`} className="team-run" data-colour={colour ?? undefined}>
       <Tooltip tip={`flow ${run}`}>
-        <Link className="team-run-link" to={runPath(session, run)} aria-label={`run ${run} in Flows`}>
+        <Link className="team-run-link" to={runPath(session, run)} aria-label={`run ${run} in Flows`} data-team={`run:${run}`}>
           <FlowsIcon />
         </Link>
       </Tooltip>
@@ -212,6 +212,7 @@ export function AgentChip({
       <button
         type="button"
         className="team-chip"
+        data-team={`agent:${agent.name}`}
         aria-label={named}
         aria-pressed={agent.name === shown}
         onClick={() => open(agent.name)}
@@ -244,6 +245,7 @@ function AgentAvatar({
       <button
         type="button"
         className={`strip-agent avatar-${avatar(agent.name).colour}`}
+        data-team={`agent:${agent.name}`}
         aria-label={headName(agent)}
         aria-pressed={agent.name === shown}
         onClick={() => open(agent.name)}
@@ -266,7 +268,9 @@ export function moreName(hidden: AgentInfo[], visible: number): string {
 // The team's list, under its button (`children`, named `name`; `chevron` when it hides nothing;
 // `pressed` when the terminal shown is among what it hides), closing as Details does: Esc and
 // a second click put the focus back on the button; a press outside, or the focus going past
-// it, leave the focus where it went.
+// it, leave the focus where it went. `showing` is its row's, as a trial may pass through level
+// 0, which has no button; `stays` says the button stays once the list closes, or the focus
+// goes to the team's first item.
 function TeamList({
   session,
   groups,
@@ -276,6 +280,9 @@ function TeamList({
   name,
   chevron,
   pressed,
+  showing,
+  setShowing,
+  stays,
   children,
 }: {
   session: string;
@@ -286,22 +293,24 @@ function TeamList({
   name: string;
   chevron: boolean;
   pressed: boolean;
+  showing: boolean;
+  setShowing: (showing: boolean) => void;
+  stays: boolean;
   children: ReactNode;
 }) {
-  const [showing, setShowing] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const popover = useRef<HTMLDivElement>(null);
   const below = useBelow(button, popover, showing, true);
   const close = useCallback(() => {
     setShowing(false);
-    button.current?.focus();
-  }, []);
-  const pressedAway = useCallback(() => setShowing(false), []);
+    const first = box.current?.closest("[role=toolbar]")?.querySelector<HTMLElement>("[data-team]");
+    (stays ? button.current : first)?.focus();
+  }, [setShowing, stays]);
+  const pressedAway = useCallback(() => setShowing(false), [setShowing]);
   useDismiss(showing, box, pressedAway);
   useEffect(() => {
     if (!showing) return;
-    popover.current?.querySelector("button")?.focus();
     const escape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
@@ -344,7 +353,12 @@ function TeamList({
         aria-haspopup="dialog"
         aria-expanded={showing}
         data-shown={pressed || undefined}
-        onClick={() => (showing ? close() : setShowing(true))}
+        data-team="list"
+        onClick={() => {
+          if (showing) return close();
+          flushSync(() => setShowing(true));
+          popover.current?.querySelector("button")?.focus();
+        }}
       >
         {children}
       </button>
@@ -388,22 +402,37 @@ function rowFits(team: HTMLElement): boolean {
   return !last || last.getBoundingClientRect().right <= team.getBoundingClientRect().right + 0.5;
 }
 
+// What puts the keyboard's focus back after a trial, which renders other elements for the same
+// items: on its item, or, gone behind the list's button, on that.
+function holdFocus(team: HTMLElement): () => void {
+  const held = document.activeElement as HTMLElement | null;
+  const key = held && team.contains(held) ? held.dataset.team : undefined;
+  return () => {
+    if (key === undefined || team.contains(held)) return;
+    const items = [...team.querySelectorAll<HTMLElement>("[data-team]")];
+    (items.find((one) => one.dataset.team === key) ?? items.find((one) => one.dataset.team === "list") ?? items[0])?.focus();
+  };
+}
+
 // The step the team shows, chosen by rendering each candidate and measuring it (`trial`: the
 // list's button then holds its diamond's room, so a status change needs no new trial). A
 // microtask, as flushSync cannot render inside an effect; it still runs before the paint.
 // Again on a change of the top bar's width (not the team's, whose box the trial changes), the
-// agents, what else stands in the line (`line`: the title, and the project, which comes late)
-// and the fonts, but not when the title's field opens: its room is the title's, and the team
-// stays as it stands until the window changes.
+// agents, what else stands in the line (`line`: the title, the project, which comes late, the
+// link's mark), the fonts, the run time while it shows (`ran`: level 0), and when the title's
+// field closes. Not when it opens: its room is the title's, and the team stays as it stands
+// until something else changes.
 function useTeamFit(
   box: RefObject<HTMLDivElement | null>,
   names: string[],
   line: string,
+  ran: string,
   titleText: RefObject<HTMLElement | null>,
   editing: boolean,
 ): { step: TeamStep; trial: boolean } {
   const [fit, setFit] = useState<{ step: TeamStep; trial: boolean }>({ step: { level: 0 }, trial: false });
   const key = names.join("\n");
+  const again = useRef(() => {});
   useLayoutEffect(() => {
     const team = box.current;
     const bar = team?.closest(".topbar");
@@ -415,53 +444,69 @@ function useTeamFit(
     const choose = () => {
       queued = false;
       if (gone) return;
+      const putBack = holdFocus(team);
       const chosen = chooseLevel(steps, (step) => {
         show(step, true);
         return stepFits(step, rowFits(team), titleKept(titleText.current));
       });
       show(chosen, false);
+      putBack();
     };
     const queue = () => {
       if (queued) return;
       queued = true;
       queueMicrotask(choose);
     };
-    if (!editing) queue();
+    again.current = queue;
+    queue();
     // Not `fonts.ready`, which hears only the load under way: a font may start after this trial.
     document.fonts?.addEventListener("loadingdone", queue);
-    const observer = typeof ResizeObserver === "undefined" || !bar ? null : new ResizeObserver(queue);
+    let width = bar?.clientWidth;
+    const widthChanged = () => {
+      if (bar?.clientWidth === width) return; // an observer speaks once on its own
+      width = bar?.clientWidth;
+      queue();
+    };
+    const observer = typeof ResizeObserver === "undefined" || !bar ? null : new ResizeObserver(widthChanged);
     if (bar) observer?.observe(bar);
     return () => {
       gone = true;
       document.fonts?.removeEventListener("loadingdone", queue);
       observer?.disconnect();
     };
-  }, [box, key, line, titleText, editing]);
+  }, [box, key, line, titleText]);
+  useLayoutEffect(() => {
+    if (!editing) again.current();
+  }, [editing]);
+  const ranShows = useRef(true);
+  ranShows.current = fit.step.level === 0; // a ref: as a dependency, each trial would start another
+  useLayoutEffect(() => {
+    if (ranShows.current) again.current();
+  }, [ran]);
   return fit;
 }
 
 // The toolbar's one Tab stop: the item last focused, else the first, and the keys that move
-// among its items (the team's list has its own).
+// among its items (`data-team`, which a trial's new elements keep; the team's list has its own
+// keys). A key with a modifier is the browser's: Alt+← goes back.
 function useToolbar(box: RefObject<HTMLDivElement | null>) {
-  const stop = useRef<HTMLElement | null>(null);
-  const items = useCallback(
-    () =>
-      [...(box.current?.querySelectorAll<HTMLElement>("button, a") ?? [])].filter((one) => !one.closest(".team-popover")),
-    [box],
-  );
+  const stop = useRef<string | undefined>(undefined);
+  const items = useCallback(() => [...(box.current?.querySelectorAll<HTMLElement>("[data-team]") ?? [])], [box]);
   const mark = useCallback(() => {
     const all = items();
-    const kept = all.find((one) => one === stop.current) ?? all[0];
+    const kept = all.find((one) => one.dataset.team === stop.current) ?? all[0];
     for (const one of all) one.tabIndex = one === kept ? 0 : -1;
   }, [items]);
   useLayoutEffect(mark);
   return {
     onFocus: (event: FocusEvent<HTMLDivElement>) => {
-      if (!items().includes(event.target)) return;
-      stop.current = event.target;
+      const key = event.target.dataset.team;
+      if (key === undefined) return;
+      stop.current = key;
       mark();
     },
     onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
       const all = items();
       const at = all.indexOf(event.target as HTMLElement);
       if (at < 0) return;
@@ -480,6 +525,7 @@ function HeadRow({
   shown,
   open,
   line,
+  ran,
   titleText,
   editing,
 }: {
@@ -489,6 +535,7 @@ function HeadRow({
   shown: string | null;
   open: (name: string) => void;
   line: string;
+  ran: string;
   titleText: RefObject<HTMLElement | null>;
   editing: boolean;
 }) {
@@ -497,8 +544,9 @@ function HeadRow({
   const all = inOrder(groups);
   const names = all.map((one) => one.name);
   const marks = agentMarks(names);
-  const { step, trial } = useTeamFit(box, names, line, titleText, editing);
+  const { step, trial } = useTeamFit(box, names, line, ran, titleText, editing);
   const toolbar = useToolbar(box);
+  const [showing, setShowing] = useState(false);
   const visible = step.level === 3 ? step.visible : all.length;
   const seen = new Set(names.slice(0, visible));
   const hidden = all.slice(visible);
@@ -532,7 +580,7 @@ function HeadRow({
             {members.filter(inSight).map(item)}
           </RunFrame>
         ))}
-      {step.level > 0 && (
+      {(step.level > 0 || showing) && (
         <TeamList
           session={session}
           groups={groups}
@@ -542,6 +590,9 @@ function HeadRow({
           name={step.level === 3 ? moreName(hidden, visible) : `All ${plural(all.length, "agent")}`}
           chevron={step.level !== 3}
           pressed={hidden.some((one) => one.name === shown)}
+          showing={showing}
+          setShowing={setShowing}
+          stays={step.level > 0}
         >
           {step.level !== 3 ? (
             <ChevronIcon />
@@ -566,15 +617,18 @@ function HeadRow({
 
 // The team in the head. Before the agents load, and with none, the head is as without a team;
 // a team that fails to load says so, and why in its tooltip. `line` says what else stands in
-// the head, `titleText` is the element that shows the title; `editing`, that its field is open.
+// the head and `ran` is the run time; `titleText` is the element that shows the title;
+// `editing`, that its field is open.
 export function HeadTeam({
   session,
   line,
+  ran,
   titleText,
   editing,
 }: {
   session: string;
   line: string;
+  ran: string;
   titleText: RefObject<HTMLElement | null>;
   editing: boolean;
 }) {
@@ -600,6 +654,7 @@ export function HeadTeam({
       shown={shown}
       open={open}
       line={line}
+      ran={ran}
       titleText={titleText}
       editing={editing}
     />

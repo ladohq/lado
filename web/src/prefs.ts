@@ -218,18 +218,22 @@ export function storeAskControl(ask: boolean): void {
 // Whether the Activity feed shows the agents' messages to each other (off by default).
 const AGENT_MESSAGES = "lado.agentMessages";
 
-export const storedAgentMessages = (): boolean => read(AGENT_MESSAGES) === "shown";
+// What the browser refused to store: the choice holds until the page is closed.
+let agentMessagesHeld: boolean | null = null;
+
+export const storedAgentMessages = (): boolean => agentMessagesHeld ?? read(AGENT_MESSAGES) === "shown";
 
 const agentMessagesHeard = new Set<(shown: boolean) => void>();
 
 export function storeAgentMessages(shown: boolean): void {
-  write(AGENT_MESSAGES, shown ? "shown" : "hidden");
+  const word = shown ? "shown" : "hidden";
+  write(AGENT_MESSAGES, word);
+  agentMessagesHeld = read(AGENT_MESSAGES) === word ? null : shown;
   for (const hear of agentMessagesHeard) hear(shown);
 }
 
 // The choice as it stands, for the switch in the tab bar and the feed under it, which an
-// agent's page changes too. Held here as well as stored: refused by the browser, the choice
-// still holds until the page is closed.
+// agent's page changes too.
 export function useAgentMessages(): boolean {
   const [shown, setShown] = useState(storedAgentMessages);
   useEffect(() => {

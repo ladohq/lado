@@ -6241,7 +6241,7 @@ button.rec-bar-line {
   text-overflow: ellipsis;
 }
 
-:root:not([data-phone]) .chat > .composer > .field-problem {
+:root:not([data-phone]) .chat > .composer > :is(.field-problem, .action-problem) {
   margin-top: 10px; /* clear of the line under the frame */
 }
 

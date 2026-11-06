@@ -749,6 +749,8 @@ test("Yours | All ends the tab bar: one Tab stop, the arrows choose, each says w
   const all = within(group).getByRole("radio", { name: "All" });
   expect([yours.tabIndex, all.tabIndex]).toEqual([0, -1]);
   yours.focus();
+  expect(fireEvent.keyDown(yours, { key: "ArrowLeft", altKey: true })).toBe(true); // the browser's Back
+  expect(yours.getAttribute("aria-checked")).toBe("true");
   fireEvent.keyDown(yours, { key: "ArrowRight" });
   expect(all.getAttribute("aria-checked")).toBe("true");
   expect(document.activeElement).toBe(all);

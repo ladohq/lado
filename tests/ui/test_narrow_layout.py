@@ -442,6 +442,22 @@ def test_at_768_px_a_short_cards_expanded_card_fills_the_window_too(page: Page, 
     shot(page, full_page=False)
 
 
+def test_a_double_click_on_the_lists_edge_does_not_fold_the_list(page: Page, server, repo):
+    """The default of 260 px is more than the room left beside a wide panel."""
+    size(page, 1440, 900)
+    session = running_session(repo)
+    keys = {
+        PANEL_KEY: json.dumps({"width": 760, "collapsed": False}),
+        LIST_KEY: json.dumps({"width": 200, "collapsed": False}),
+    }
+    open_session(page, server, session, keys)
+    edge = page.get_by_role("separator", name="Resize the session list")
+    edge.dblclick()
+    page.wait_for_timeout(200)
+    expect(edge).to_have_attribute("aria-valuenow", "200")
+    expect(session_list(page)).to_be_visible()
+
+
 def test_the_lists_edge_stops_where_the_chat_keeps_its_room(page: Page, server, repo):
     """A drag that would fold the list under the pointer stops: the edge stays in hand."""
     size(page, 1440, 900)

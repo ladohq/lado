@@ -349,6 +349,7 @@ def check_model(
     server = state.model_server(server_name)
     if server is None:
         raise no_server(server_name, SERVER_FIELD)
+    _check_own_name(provider, model, server)
     verdict = _on_server(provider, model, server, probe)
     if verdict.kind == model_check.REFUSED:
         raise Refused(
@@ -402,6 +403,16 @@ def add_model(
     except sqlite3.IntegrityError:  # its server removed meanwhile
         raise no_server(server_name or "", SERVER_FIELD) from None
     return saved, checked.verdict
+
+
+def _check_own_name(provider: providers.Provider, model: str, server: state.ModelServer) -> None:
+    """Refuse a model of `server` whose name `provider`'s CLI reads as its own: no request."""
+    if provider.reserved_model(model):
+        raise Refused(
+            f"{provider.title} reads {model} as its own model, so it would not ask {server.name} "
+            "for it; give the model another name on the server",
+            field=MODEL_FIELD,
+        )
 
 
 def _on_server(
@@ -935,7 +946,8 @@ def _runs_on(server: state.ModelServer) -> str:
 
 def check_launch(start: StartModel, provider: providers.Provider) -> None:
     """What refuses `start` for an agent of `provider`'s CLI with no request and no list: an
-    entry no longer saved, a server its CLI does not run on, text its CLI would expand."""
+    entry no longer saved, a server its CLI does not run on, a name its CLI reads as its own,
+    text its CLI would expand."""
     if start.gone:
         raise Refused(
             f"the session ran on the model {start.name}, which is no longer saved; "
@@ -956,6 +968,7 @@ def check_launch(start: StartModel, provider: providers.Provider) -> None:
             short=f"{provider.title} does not run on a model server yet",
             peek="no model server yet",
         )
+    _check_own_name(provider, start.entry.model, start.server)
     if _expands(start.entry.name, start.entry.model, start.server.name, start.server.address):
         raise Refused(
             f"{start.name} cannot start: its name, id or server holds text {WOULD_EXPAND}; rename "
@@ -1036,13 +1049,19 @@ def agent_servers(
 ) -> tuple[tuple[base.ServerEntry, ...], list[str]]:
     """The model servers for the config of an agent of `provider`'s CLI, with the models ticked
     for that CLI, whatever it starts on, and the warnings of a launch: a key sent over plain
-    http, what is left out, a context too small for `start`. None for a CLI that holds one model
-    per process. A key LADO does not read, or that would break the config, leaves its server out,
-    but is Refused for the server of `start`. Asks each server of the config for its limits."""
-    if not provider.runs_on_server or provider.external_whole_process:
+    http, what is left out, a context too small for `start`. For a CLI that holds one model per
+    process, the server of `start` with that model alone, none on any other start. A key LADO
+    does not read, or that would break the config, leaves its server out, but is Refused for
+    the server of `start`. Asks each server of the config for its limits."""
+    if not provider.runs_on_server:
         return (), []
-    ticked = [model for model in state.models() if model.cli == provider.name]
-    entries, roots, warnings = [], [], []
+    if not provider.external_whole_process:
+        ticked = [model for model in state.models() if model.cli == provider.name]
+    elif start is not None and start.entry is not None:
+        ticked = [start.entry]
+    else:
+        return (), []
+    entries, warnings = [], []
     for server in state.model_servers():
         models = [model for model in ticked if model.server == server.id]
         if not models:
@@ -1080,13 +1099,13 @@ def agent_servers(
                 server.id,
                 server.name,
                 model_servers.base_url(server.address),
+                server.address,
                 f"{KEY_VARIABLE}{server.id.upper()}" if key is not None else "",
                 key,
                 tuple(kept.items()),
             )
         )
-        roots.append(server.address)
-    entries = _with_limits(entries, roots)
+    entries = _with_limits(entries)
     if start is not None and start.server is not None:
         for entry in entries:
             if entry.id == start.server.id:
@@ -1096,15 +1115,13 @@ def agent_servers(
     return tuple(entries), warnings
 
 
-def _with_limits(entries: list[base.ServerEntry], roots: list[str]) -> list[base.ServerEntry]:
-    """`entries` with what their servers, at `roots`, report: all read at once, so a start
-    waits for one ceiling however many servers are silent."""
+def _with_limits(entries: list[base.ServerEntry]) -> list[base.ServerEntry]:
+    """`entries` with what their servers report: all read at once, so a start waits for one
+    ceiling however many servers are silent."""
     if not entries:
         return entries
     with ThreadPoolExecutor(len(entries)) as pool:
-        limits = pool.map(
-            lambda entry, root: model_servers.context_limits(root, entry.key), entries, roots
-        )
+        limits = pool.map(lambda e: model_servers.context_limits(e.root, e.key), entries)
         return [replace(e, limits=found) for e, found in zip(entries, limits, strict=True)]
 
 
@@ -1144,9 +1161,15 @@ def shown(
     now; None for any other, and for a server removed since. Two entries may hold one model of a
     server: `chosen`, when it is that model, gives the name, else the entries are looked up."""
     found = provider.on_server(reported)
-    if found is None:
-        return None
-    server_id, model = found
+    return None if found is None else _shown_on(provider, *found, chosen)
+
+
+def _shown_on(
+    provider: providers.Provider,
+    server_id: str,
+    model: str,
+    chosen: state.ConfiguredModel | None,
+) -> Shown | None:
     server = state.model_server_by_id(server_id)
     if server is None:
         return None
@@ -1157,19 +1180,23 @@ def shown(
 
 
 def agent_shown(agent: state.Agent) -> Shown | None:
-    """The agent's model as `shown` reads it, under the name it started on, as long as its CLI
-    has not changed the model; a table that cannot be read names none."""
+    """The agent's model as `shown` reads it, or on the server its launch says for a CLI whose
+    names of a model say none, under the name it started on, as long as its CLI has not changed
+    the model; a table that cannot be read names none."""
     if not agent.model or agent.provider not in providers.names():
         return None
     provider = providers.get(agent.provider)
-    if provider.on_server(agent.model) is None:
+    found = provider.on_server(agent.model)
+    if found is None and (server := provider.launched_on(agent)) is not None:
+        found = server, agent.model
+    if found is None:
         return None
     chosen = None
     if agent.model_source in (state.SESSION, state.DEFAULT_MODEL):
         session = state.get_session(agent.session)
         with contextlib.suppress(Refused):
             chosen = start_model(session.power if session else None, provider).entry
-    return shown(provider, agent.model, chosen)
+    return _shown_on(provider, *found, chosen)
 
 
 def model_name(agent: state.Agent) -> str | None:

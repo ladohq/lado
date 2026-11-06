@@ -26,8 +26,8 @@ list). It SHALL ask no server and hold no key or address. A worker SHALL NOT hav
 - **THEN** it answers at once with `Локальная Qwen`, and no request reaches a server
 
 #### Scenario: An external model of a CLI that runs on no server
-- **WHEN** an external model is ticked for Claude Code
-- **THEN** its `blocked` says Claude Code does not run on a model server yet
+- **WHEN** an external model is ticked for Codex
+- **THEN** its `blocked` says Codex CLI does not run on a model server yet
 
 #### Scenario: One CLI
 - **WHEN** the supervisor calls `list_models(provider="kilo")`
@@ -173,8 +173,12 @@ and `model=""`. A worker with no model SHALL ask nothing.
 
 #### Scenario: Claude Code on an external model
 - **WHEN** the supervisor calls `spawn_worker(model="Шлюз Opus")`, which is Claude Code's, on `Шлюз`
-- **THEN** it fails with `Шлюз Opus is on the model server Шлюз; Claude Code does not run on a model
-  server yet, Kilo CLI and OpenCode do`, and `Шлюз` is not asked
+- **THEN** `Шлюз` is asked, and the worker starts on it
+
+#### Scenario: Codex on an external model
+- **WHEN** the supervisor calls `spawn_worker(model="Шлюз GPT")`, which is Codex's, on `Шлюз`
+- **THEN** it fails with `Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a model
+  server yet, Claude Code, Kilo CLI and OpenCode do`, and `Шлюз` is not asked
 
 ### Requirement: A worker's key stays in its own environment
 

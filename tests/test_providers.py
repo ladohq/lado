@@ -12,6 +12,7 @@ import pytest
 
 from lado import hooks, providers, runtime, state, tmux
 from lado.providers import Event, base, opencode_family
+from lado.providers import claude as claude_provider
 
 # The OpenCode family (lado.providers.opencode_family) and the variable its config goes in.
 FAMILY = {"kilo": "KILO_CONFIG_CONTENT", "opencode": "OPENCODE_CONFIG_CONTENT"}
@@ -1176,15 +1177,21 @@ def test_the_server_plugin_is_not_given_the_tuis_report(repo, lado_home, provide
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))
-def test_the_server_plugin_waits_for_the_tui_as_long_as_a_silent_start(repo, lado_home, provider):
+def test_a_start_s_limit_is_past_the_server_plugin_s_wait(repo, lado_home, provider):
     sess = state.Session("s", str(repo), None, provider)
     agent = state.Agent(
         "s", "w1", "worker", str(repo), None, None, state.STARTING, provider, instance="i1"
     )
     launch = providers.get(provider).launch_command(agent, sess, providers.AgentSpec("the role"))
     [[_, options]] = json.loads(launch.env[FAMILY[provider]])["plugin"]
-    assert options["tuiWait"] == runtime.START_SILENCE * 1000
+    assert options["tuiWait"] == opencode_family.TUI_WAIT * 1000
+    assert providers.get(provider).start_silence == opencode_family.TUI_WAIT + 15
     assert options["hooks"]["tui.silent"] == base.hook_argv(agent, "tui.silent")
+
+
+@pytest.mark.parametrize("provider", ["claude", "codex"])
+def test_another_cli_has_the_limit_of_any_start(provider):
+    assert providers.get(provider).start_silence == 30.0
 
 
 def test_the_tui_plugin_ships_inside_the_package():
@@ -1632,6 +1639,7 @@ HOME_SERVER = base.ServerEntry(
     "aaaa1111",
     "LM Studio дома",
     "http://localhost:1234/v1",
+    "http://localhost:1234",
     "",
     None,
     (("qwen3-8b", "Локальная Qwen"), ("qwen/qwen3-coder", "Рабочая Qwen")),
@@ -1640,6 +1648,7 @@ GATEWAY = base.ServerEntry(
     "bbbb2222",
     "Шлюз",
     "https://llm.example.com/v1",
+    "https://llm.example.com",
     "LADO_MODEL_KEY_BBBB2222",
     "KEY-CANARY",
     (("gw-opus", "Шлюз Opus"),),
@@ -1759,13 +1768,45 @@ def test_a_server_s_model_is_named_as_on_server_reads_it(provider):
     assert cli.on_server(named) == ("aaaa1111", "qwen/qwen3-coder")
 
 
-@pytest.mark.parametrize("provider", ["claude", "codex"])
-def test_a_cli_of_one_model_per_process_runs_on_no_server(provider):
-    cli = providers.get(provider)
+def test_codex_runs_on_no_server():
+    cli = providers.get("codex")
     assert not cli.runs_on_server
     assert cli.on_server("lado-aaaa1111/qwen3-8b") is None
     with pytest.raises(NotImplementedError):
         cli.server_model("aaaa1111", "qwen3-8b")
+
+
+def test_claude_code_is_told_a_server_s_model_as_it_is():
+    cli = providers.get("claude")
+    assert cli.runs_on_server and cli.external_whole_process
+    assert cli.server_model("aaaa1111", "qwen/qwen3-coder") == "qwen/qwen3-coder"
+    assert cli.on_server("qwen/qwen3-coder") is None
+    assert cli.min_context == 65536
+
+
+@pytest.mark.parametrize(
+    ("model", "reserved"),
+    [
+        ("sonnet", True),
+        ("Sonnet", True),
+        ("OPUS", True),
+        ("Haiku", True),
+        ("default", True),
+        ("opus[1m]", True),
+        ("x[1m]", True),
+        ("qwen[1M]", True),
+        ("qwen3-8b", False),
+        ("Qwen/Qwen3-8B", False),
+        ("", False),
+    ],
+)
+def test_claude_code_reserves_its_own_names(model, reserved):
+    assert providers.get("claude").reserved_model(model) is reserved
+
+
+@pytest.mark.parametrize("provider", ["codex", "kilo", "opencode"])
+def test_another_cli_reserves_no_name(provider):
+    assert providers.get(provider).reserved_model("sonnet") is False
 
 
 NOTICE = "[from lado] your task (#7, 40 lines: call read_messages)"
@@ -1995,3 +2036,188 @@ def test_gitpaths_reads_no_git_as_outside_git(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path))
     assert gitpaths.git_root(tmp_path) == Path(tmp_path.resolve().anchor)
     assert gitpaths.main_root(tmp_path) == tmp_path.resolve()
+
+
+# A Claude agent on a model server.
+
+CLAUDE_MODEL = "qwen3-8b"
+CLAUDE_SERVER = dataclasses.replace(
+    GATEWAY,
+    models=((CLAUDE_MODEL, "Шлюз Qwen"),),
+)
+CLAUDE_KEYLESS = dataclasses.replace(CLAUDE_SERVER, key_variable="", key=None)
+
+
+def _claude_launch(repo, servers=(), model=None):
+    sess = state.Session("s", str(repo), None, provider="claude")
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "claude")
+    spec = providers.AgentSpec("the role", model=model, servers=servers)
+    launch = providers.get("claude").launch_command(agent, sess, spec)
+    settings = json.loads(Path(launch.argv[launch.argv.index("--settings") + 1]).read_text())
+    return launch, settings
+
+
+def _server_env(server_root, model, **more):
+    return {
+        "ANTHROPIC_BASE_URL": server_root,
+        base.MODEL_SERVER: "bbbb2222",
+        "ANTHROPIC_DEFAULT_MODEL": model,
+        "ANTHROPIC_SMALL_FAST_MODEL": model,
+        "ANTHROPIC_API_KEY": "",
+        "ANTHROPIC_AUTH_TOKEN": "",
+        "ANTHROPIC_CUSTOM_HEADERS": "",
+        "CLAUDE_CODE_OAUTH_TOKEN": "",
+        "CLAUDE_CODE_USE_BEDROCK": "",
+        "CLAUDE_CODE_USE_VERTEX": "",
+        "CLAUDE_CODE_USE_FOUNDRY": "",
+        "CLAUDE_CODE_USE_ANTHROPIC_AWS": "",
+        "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD": "",
+        "CLAUDE_CODE_USE_MANTLE": "",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
+        "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+        **more,
+    }
+
+
+def test_a_claude_agent_on_a_server_has_it_in_its_own_settings(repo):
+    launch, settings = _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
+    assert settings["env"] == _server_env("https://llm.example.com", CLAUDE_MODEL)
+    assert settings["apiKeyHelper"] == "printenv LADO_MODEL_KEY_BBBB2222"
+    assert settings["availableModels"] == [CLAUDE_MODEL]
+    assert launch.argv[launch.argv.index("--model") + 1] == CLAUDE_MODEL
+    assert launch.model == state.Choice(CLAUDE_MODEL, state.SESSION)
+
+
+def test_a_claude_agent_gets_its_server_s_key_in_its_environment_alone(repo, lado_home):
+    launch, _ = _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
+    assert launch.env == {
+        "LADO_MODEL_KEY_BBBB2222": "KEY-CANARY",
+        "LADO_MODEL_SERVER": "bbbb2222",
+        "ANTHROPIC_UNIX_SOCKET": "",
+    }
+    written = [p for p in lado_home.rglob("*") if p.is_file() and p.suffix != ".db"]
+    assert written and not [p for p in written if "KEY-CANARY" in p.read_text(errors="replace")]
+
+
+def test_what_claude_code_hands_its_children_is_named_as_the_launch_s(repo):
+    """It gives the `env` of its settings to the processes it starts, `lado mcp` among them."""
+    launch, settings = _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
+    assert set(launch.cli_env) == set(settings["env"])
+    launch, _ = _claude_launch(repo, (), "opus")
+    assert launch.cli_env == ()
+
+
+def test_a_claude_agent_on_a_server_with_no_key_sends_a_placeholder(repo):
+    launch, settings = _claude_launch(repo, (CLAUDE_KEYLESS,), CLAUDE_MODEL)
+    assert settings["apiKeyHelper"] == "echo no-key"
+    assert launch.env == {"LADO_MODEL_SERVER": "bbbb2222", "ANTHROPIC_UNIX_SOCKET": ""}
+
+
+def test_a_known_context_goes_to_a_claude_agent(repo):
+    server = dataclasses.replace(CLAUDE_SERVER, limits={CLAUDE_MODEL: base.Limit(65536)})
+    _, settings = _claude_launch(repo, (server,), CLAUDE_MODEL)
+    assert settings["env"] == _server_env(
+        "https://llm.example.com",
+        CLAUDE_MODEL,
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS="65536",
+        CLAUDE_CODE_MAX_OUTPUT_TOKENS="8192",
+    )
+
+
+@pytest.mark.parametrize(
+    ("limit", "output"),
+    [
+        (base.Limit(131072), "8192"),
+        (base.Limit(16000), "4000"),
+        (base.Limit(65536, 2048), "2048"),
+        (base.Limit(65536, 32000), "16384"),
+    ],
+)
+def test_a_claude_agent_s_output_leaves_room_in_a_known_context(repo, limit, output):
+    server = dataclasses.replace(CLAUDE_SERVER, limits={CLAUDE_MODEL: limit})
+    _, settings = _claude_launch(repo, (server,), CLAUDE_MODEL)
+    assert settings["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == output
+
+
+def test_a_claude_agent_on_a_server_may_use_lado_s_tools(repo):
+    _, settings = _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
+    assert settings["permissions"]["allow"] == ["mcp__lado__*"]
+    assert settings["permissions"]["deny"] == claude_provider.BUILT_IN_MESSAGING
+
+
+def test_a_claude_agent_on_a_built_in_model_allows_nothing_itself(repo):
+    _, settings = _claude_launch(repo, (), "opus")
+    assert "allow" not in settings["permissions"]
+
+
+def test_every_login_variable_of_claude_code_is_blanked():
+    assert set(claude_provider.LOGINS) <= set(claude_provider.SERVER_BLANKS)
+
+
+def test_a_claude_agent_on_a_built_in_model_has_nothing_of_a_server(repo, lado_home):
+    launch, settings = _claude_launch(repo, (), "opus")
+    assert launch.env == {}
+    assert set(settings) == {"hooks", "permissions", "enableAllProjectMcpServers"}
+    config = lado_home / "agents" / "s" / "w1"
+    assert launch.argv == [
+        "claude",
+        "--mcp-config",
+        str(config / "mcp.json"),
+        "--settings",
+        str(config / "settings.json"),
+        "--append-system-prompt-file",
+        str(config / "prompt.md"),
+        "--model",
+        "opus",
+    ]
+
+
+def test_a_launch_on_a_built_in_model_drops_the_server_of_the_last_one(repo):
+    _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
+    _, settings = _claude_launch(repo, (), "opus")
+    assert "env" not in settings and "apiKeyHelper" not in settings
+
+
+def test_claude_code_needs_no_login_on_a_server():
+    claude = providers.get("claude")
+    assert claude.needs_login({})
+    assert not claude.needs_login({base.MODEL_SERVER: "bbbb2222"})
+
+
+def test_claude_code_reads_no_keychain_on_a_server(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    claude = providers.get("claude")
+    assert claude.keychain_login({}) is not None
+    assert claude.keychain_login({base.MODEL_SERVER: "bbbb2222"}) is None
+
+
+def test_the_first_run_is_recorded_for_an_agent_on_a_server(repo, claude_home, monkeypatch):
+    env, config = claude_home
+    config.trust(repo)
+
+    def read(self, env):
+        raise AssertionError("the login was read")
+
+    monkeypatch.setattr(type(providers.get("claude")), "login_status", read)
+    env = {**env, base.MODEL_SERVER: "bbbb2222", "ANTHROPIC_API_KEY": "sk-the-human-s-own-key"}
+    blocker = _blocker(repo, env)
+    assert blocker == base.Blocker(
+        notes=(f"LADO recorded Claude Code's first run in {config.path}",)
+    )
+    saved = json.loads(config.path.read_text())
+    assert saved["hasCompletedOnboarding"] is True and "customApiKeyResponses" not in saved
+
+
+def test_a_claude_agent_s_launch_says_its_server(repo):
+    sess_agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "claude")
+    claude = providers.get("claude")
+    _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
+    assert claude.launched_on(sess_agent) == "bbbb2222"
+    _claude_launch(repo, (), "opus")
+    assert claude.launched_on(sess_agent) is None
+
+
+def test_a_claude_agent_with_no_config_is_on_no_server(repo):
+    agent = state.Agent("s", "w9", "worker", str(repo), None, None, state.STOPPED, "claude")
+    assert providers.get("claude").launched_on(agent) is None

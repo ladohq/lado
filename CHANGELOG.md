@@ -13,6 +13,9 @@
 - **Run a session on your own model.** A session starts on a saved model or its CLI's default
   from Settings → Models, checked on its server first. OpenCode and Kilo CLI keep every saved
   model in `/model` beside their own; `--model ''` is the CLI's own settings.
+- **Run Claude Code on your own server.** An agent on a saved model of a server with Anthropic's
+  API runs there, with no Claude login: your login and keys stay off the server, and `/model`
+  shows that model alone. Workers can run on other servers or built-in models.
 - **Start a worker on another model.** The supervisor sees every agent CLI's models with
   `list_models` and names one in `spawn_worker(model=…)`; a silent server or a missing model
   refuses the worker at once, instead of failing at its first turn.
@@ -51,6 +54,8 @@
 
 ### Fixed
 
+- **A silent OpenCode or Kilo start asks you nothing.** "Open its terminal" no longer shows for
+  a few seconds before such an agent is ready.
 - **A message right after an OpenCode or Kilo start arrives at once.** It reaches the agent as
   soon as the agent's input field is ready, and the agent shows `starting` until then.
 - **An OpenCode agent on too small a model stops.** It sent requests without end, `busy` with a

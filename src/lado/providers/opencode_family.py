@@ -25,11 +25,14 @@ PLUGIN = Path(__file__).with_name("opencode_plugin.js")
 TUI_PLUGIN = Path(__file__).with_name("opencode_tui_plugin.js")
 TUI_READY = "tui.ready"  # the TUI plugin's one report: the prompt has focus
 TUI_CONFIG = "tui.json"  # the agent's TUI config, beside its config
-# The server plugin is alive and the TUI said nothing for so long (runtime.START_SILENCE): its
-# plugin did not load (a CLI's change), or the TUI is slow, which no sign tells apart. The agent
-# is ready then, so a CLI that stopped loading the TUI plugin never leaves it `starting`.
+# The server plugin is alive and the TUI said nothing for so long: its plugin did not load (a
+# CLI's change), or the TUI is slow, which no sign tells apart. The agent is ready then, so a CLI
+# that stopped loading the TUI plugin never leaves it `starting`.
 TUI_SILENT = "tui.silent"
 TUI_WAIT = 30
+# The plugin counts from its own start, 3 to 5 s after the launch, and on a slow machine later:
+# a start's limit counted from the launch ends well after it (Provider.start_silence).
+START_SILENCE = TUI_WAIT + 15
 TUI_SILENT_NOTE = (
     f"no report from its TUI {TUI_WAIT} s after its start; messages are typed in as they come, "
     "and one may be lost"
@@ -86,10 +89,6 @@ SERVER_PROVIDER = "lado-"
 SERVER_PACKAGE = "@ai-sdk/openai-compatible"  # ships with both; nothing to fetch at a first run
 MODEL_MEMORY = "model.json"  # the CLI's last /model picks, in its state folder
 TUI_SETTINGS = "kv.json"  # the CLI's TUI settings, beside it
-# `max_tokens` of a model with no output reported. OpenCode compacts near context - output and
-# sends output as max_tokens (1.18.35, Kilo 7.8.8 alike): their default of 32000 leaves a small
-# model nothing, so it is a quarter of the context at most.
-DEFAULT_OUTPUT = 8192
 
 
 def without_servers(found: object) -> object:
@@ -117,7 +116,7 @@ def model_entry(name: str, limit: base.Limit | None) -> dict:
     1.18.35 refuses a config whose `limit` has no `output`."""
     if limit is None:
         return {"name": name}
-    output = max(1, min(limit.output or DEFAULT_OUTPUT, limit.context // 4))
+    output = limit.output_room()
     return {"name": name, "limit": {"context": limit.context, "output": output}}
 
 
@@ -144,6 +143,7 @@ class OpenCodeFamily(base.Provider):
     server_api = base.CHAT_COMPLETIONS  # an OpenAI-compatible provider in its config
     external_whole_process = False
     runs_on_server = True
+    start_silence = START_SILENCE
     config_file_name: str  # the agent's config in its config folder, e.g. "opencode.json"
     tui_config_variable: str  # the CLI's variable for a TUI config, e.g. "OPENCODE_TUI_CONFIG"
     # Text typed into the TUI before its prompt has focus is lost whole (Kilo 7.8.8, OpenCode

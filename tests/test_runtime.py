@@ -6729,11 +6729,11 @@ def test_a_worker_of_another_cli_takes_its_own_default(repo, fake_tmux, monkeypa
 def test_a_worker_on_a_server_its_cli_cannot_run_is_refused(repo, fake_tmux, monkeypatch):
     _answers(monkeypatch)
     runtime.start_session(str(repo), "s", None, provider="opencode")
-    _default(_on_server("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз"))
+    _default(_on_server("Шлюз GPT", cli="codex", model="gw-gpt", server="Шлюз"))
     with pytest.raises(runtime.LadoError) as error:
-        runtime.spawn_worker("s", "a task", name="w1", provider="claude")
+        runtime.spawn_worker("s", "a task", name="w1", provider="codex")
     assert str(error.value) == (
-        "Шлюз Opus is on the model server Шлюз; Claude Code does not run on a model server yet, "
+        "Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a model server yet, "
         f"Kilo CLI and OpenCode do{NOT_GIVEN_WAY_OUT}"
     )
     assert state.get_agent("s", "w1") is None
@@ -6894,12 +6894,12 @@ def test_a_model_gone_from_its_server_is_refused(repo, fake_tmux, monkeypatch):
     _nothing_of(repo, fake_tmux, "w1")
 
 
-def test_claude_code_on_an_external_model_is_refused_asking_no_server(repo, fake_tmux, monkeypatch):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    _on_server("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз")
-    asked = _answers(monkeypatch, "gw-opus")
-    with pytest.raises(runtime.ModelRefused, match="Claude Code does not run on a model server"):
-        runtime.spawn_worker("s", "a task", name="w1", model="Шлюз Opus")
+def test_codex_on_an_external_model_is_refused_asking_no_server(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="codex")
+    _on_server("Шлюз GPT", cli="codex", model="gw-gpt", server="Шлюз")
+    asked = _answers(monkeypatch, "gw-gpt")
+    with pytest.raises(runtime.ModelRefused, match="Codex CLI does not run on a model server"):
+        runtime.spawn_worker("s", "a task", name="w1", model="Шлюз GPT")
     assert asked == []
     _nothing_of(repo, fake_tmux, "w1")
 
@@ -6942,3 +6942,147 @@ def test_a_table_that_cannot_be_read_refuses_a_worker_with_its_way_out(repo, fak
     _nothing_of(repo, fake_tmux, "w1")
     runtime.spawn_worker("s", "a task", name="w1", model="")  # the way out works
     assert state.get_agent("s", "w1").model is None
+
+
+# A Claude agent on a model server needs no Claude login (Provider.needs_login).
+
+
+def _claude_on_server(monkeypatch, name="Шлюз Qwen", model="qwen3-8b", server="Шлюз"):
+    """A model of Claude Code on a saved server that proves its API, made its default."""
+    found = state.model_server(server) or state.add_model_server(
+        server.encode().hex()[:12],
+        server,
+        "http://localhost:4000",
+        "OpenAI-compatible",
+        [providers.base.ANTHROPIC_MESSAGES],
+    )
+    saved = state.add_model(name, "claude", model, found.id)
+    monkeypatch.setattr(
+        model_settings,
+        "probe_saved",
+        lambda server: model_servers.Probe(
+            server.address,
+            False,
+            "OpenAI-compatible",
+            frozenset([providers.base.ANTHROPIC_MESSAGES]),
+            (model,),
+        ),
+    )
+    return saved
+
+
+def _no_status(monkeypatch):
+    """Claude Code's status is an error to read: a start on a server asks nothing of it."""
+
+    def read(self, env):
+        raise AssertionError("the login was read")
+
+    monkeypatch.setattr(type(providers.get("claude")), "login_status", read)
+
+
+def test_a_claude_session_on_a_server_starts_without_a_login(
+    repo, fake_tmux, claude_config, cli_logins, monkeypatch
+):
+    claude_config.trust()
+    _default(_claude_on_server(monkeypatch))
+    cli_logins.logged_out()
+    _no_status(monkeypatch)
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings == []
+    assert runtime.status_reasons("s") == {}
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    assert not _waits_for_login(call[-1])
+    assert json.loads(claude_config.path.read_text())["hasCompletedOnboarding"] is True
+
+
+def test_a_claude_session_on_a_built_in_model_stays_refused_with_a_server_saved(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    _claude_on_server(monkeypatch)
+    cli_logins.logged_out()
+    with pytest.raises(runtime.NotLoggedIn) as refused:
+        runtime.start_session(str(repo), "s", None, provider="claude", model="opus")
+    assert str(refused.value) == SESSION_REFUSED
+
+
+def test_a_claude_session_on_a_server_resumes_by_hand_without_a_login(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    _default(_claude_on_server(monkeypatch))
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.stop_session("s")
+    cli_logins.logged_out()
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.resumed and runtime.status_reasons("s") == {}
+
+
+def test_a_claude_session_on_a_server_is_not_held_at_lados_own_resume(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    _default(_claude_on_server(monkeypatch))
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.stop_session("s")
+    fake_tmux.clear()
+    cli_logins.logged_out()
+    runtime.start_session(str(repo), "s", None, reason=runtime.AT_START, resume=True)
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    assert not _waits_for_login(call[-1])
+
+
+def test_a_claude_worker_on_a_server_starts_without_a_login(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    _claude_on_server(monkeypatch)
+    cli_logins.logged_out()
+    runtime.spawn_worker("s", "a task", name="w1", provider="claude", model="Шлюз Qwen")
+    assert state.get_agent("s", "w1").model == "qwen3-8b"
+    assert runtime.status_reasons("s") == {}
+
+
+def test_a_built_in_claude_worker_of_a_session_on_a_server_needs_the_login(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    _default(_claude_on_server(monkeypatch))
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    cli_logins.logged_out()
+    with pytest.raises(runtime.NotLoggedIn) as refused:
+        runtime.spawn_worker("s", "a task", name="w1", model="sonnet")
+    assert str(refused.value) == WORKER_REFUSED
+
+
+def test_a_launch_names_what_its_cli_hands_on():
+    agent = state.Agent("s", "w1", "worker", "/r", None, None, state.STARTING, "claude")
+    launch = providers.Launch(["c"], {"KEY": "k"}, cli_env=("ANTHROPIC_BASE_URL",))
+    env = runtime._launch_env(agent, {"PATH": "/bin"}, launch)
+    named = env[agent_env.LAUNCH_VARS].split(",")
+    assert {"KEY", "ANTHROPIC_BASE_URL"} <= set(named)
+    assert "ANTHROPIC_BASE_URL" not in env  # the CLI sets it itself
+
+
+def test_no_keychain_warning_for_an_agent_on_a_server(repo, fake_tmux, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(runtime.gui_session, "place", lambda: runtime.gui_session.Place.NO_GUI)
+    _default(_claude_on_server(monkeypatch))
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings == []
+
+
+def test_a_clone_for_a_session_on_a_server_is_not_refused_for_the_login(
+    cli_logins, fake_clis, monkeypatch
+):
+    _claude_on_server(monkeypatch)
+    cli_logins.logged_out()
+    runtime.check_start_login("claude", None, "Шлюз Qwen")
+    with pytest.raises(runtime.NotLoggedIn):
+        runtime.check_start_login("claude", None, "opus")
+    with pytest.raises(runtime.NotLoggedIn):
+        runtime.check_start_login("claude", None)
+
+
+def test_a_clone_on_the_default_model_of_a_server_is_not_refused_for_the_login(
+    cli_logins, fake_clis, monkeypatch
+):
+    _default(_claude_on_server(monkeypatch))
+    cli_logins.logged_out()
+    runtime.check_start_login("claude", None)

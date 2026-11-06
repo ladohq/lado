@@ -796,11 +796,11 @@ def start_session(
     _check_commands(env, base_env)
     start, servers, checked = _start_model(sess, agent_cli, base_env, model)
     if not old:
-        check_login(agent_cli, base_env, logins.SESSION)
+        check_login(agent_cli, base_env, logins.SESSION, start)
     elif not (wait_for_login or reason == AT_START):
         # A resume by hand; LADO's own (the container's start, lado update) waits for the
         # login instead (_held_for_login).
-        check_login(agent_cli, base_env, logins.RESUME)
+        check_login(agent_cli, base_env, logins.RESUME, start)
     agent = state.Agent(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
@@ -886,7 +886,7 @@ def start_session(
         state.window_opened(session, SUPERVISOR)
         if last != (spec.model or ""):
             state.add_event(session, SUPERVISOR, state.START_MODEL, spec.model or "")
-        placed += _keychain_warnings(agent_cli, base_env)
+        placed += _keychain_warnings(agent_cli, _launch_env(agent, base_env, launch))
     except Exception as error:
         steps: list[tuple[str, Callable[[], object]]] = [
             ("remove the supervisor's config", lambda: providers.base.remove_config_dir(agent))
@@ -1132,7 +1132,7 @@ def spawn_worker(
         run=run.name if run else None,
     )
     _check_commands(env, base_env)
-    check_login(agent_cli, base_env, logins.WORKER)
+    check_login(agent_cli, base_env, logins.WORKER, start)
     spec = _spec(
         agent_cli,
         env,
@@ -1184,7 +1184,7 @@ def spawn_worker(
             ]
         _undo(session, f"the spawn of {worker}", error, steps)
         raise
-    held += _keychain_warnings(agent_cli, base_env)
+    held += _keychain_warnings(agent_cli, _launch_env(agent, base_env, launch))
     # The spawner may be an agent: the log keeps them for the human too.
     for line in held:
         loop.log(session, f"{worker}: {line}")
@@ -2610,28 +2610,38 @@ def check_windows(session: str, missing: set[str], now: datetime | None = None) 
     return gone
 
 
-START_SILENCE = 30.0  # seconds from an agent's launch to its first hook before it is shown
 START_SILENCE_REASON = (
-    "Waiting for an answer in its terminal: no sign from it 30 s after its start. "
+    "Waiting for an answer in its terminal: no sign from it {limit:g} s after its start. "
     "Open its terminal."
 )
+START_SILENCE_MARK = START_SILENCE_REASON.partition("{")[0]  # how heard_at_start tells it
+
+
+def _start_silence(agent: state.Agent) -> float:
+    """The seconds from `agent`'s launch to its first hook before it is shown."""
+    try:
+        return providers.get(agent.provider).start_silence
+    except ValueError:
+        return providers.base.Provider.start_silence
 
 
 def check_starts(session: str, now: datetime | None = None) -> None:
     """One look of the session loop for agents whose CLI holds them before any hook with a
     question LADO does not know (_before_window knows the others), of any provider:
-    `starting`, no hook since the launch (seen_at 0), and START_SILENCE or more since the
-    launch, its window mark (state.window_opened; a waiting window marks it anew when it
+    `starting`, no hook since the launch (seen_at 0), and its provider's limit or more since
+    the launch, its window mark (state.window_opened; a waiting window marks it anew when it
     starts the CLI, lado.login_wait). Such an agent waits with START_SILENCE_REASON; its
     first hook makes it ready (lado.hooks: its session start, or heard_at_start)."""
     now = now or datetime.now(timezone.utc)
     for agent in state.list_agents(session):
         if agent.status != state.STARTING or agent.seen_at or agent.window_at is None:
             continue
-        if (now - _utc(agent.window_at)).total_seconds() < START_SILENCE:
+        limit = _start_silence(agent)
+        if (now - _utc(agent.window_at)).total_seconds() < limit:
             continue
-        if state.block_unheard(session, agent.name, START_SILENCE_REASON):
-            loop.log(session, f"{agent.name}: {START_SILENCE_REASON}")
+        reason = START_SILENCE_REASON.format(limit=limit)
+        if state.block_unheard(session, agent.name, reason):
+            loop.log(session, f"{agent.name}: {reason}")
 
 
 def start_note(session: str, name: str, note: str) -> None:
@@ -2647,7 +2657,7 @@ def heard_at_start(session: str, name: str) -> None:
     agent = state.get_agent(session, name)
     if agent is None or agent.status != state.WAITING:
         return
-    if state.block_reasons(session).get(name) == START_SILENCE_REASON:
+    if state.block_reasons(session).get(name, "").startswith(START_SILENCE_MARK):
         state.set_status(session, name, state.STARTING)
 
 
@@ -3237,10 +3247,11 @@ def _launch_env(
     agent: state.Agent, base_env: dict[str, str], launch: providers.Launch
 ) -> dict[str, str]:
     """The agent CLI's environment: `base_env`, LADO's variables and its provider's, in that
-    order, and the names of the last two, which a worker it spawns must not take over
+    order, and the names of the last two and of what the CLI itself gives the processes it
+    starts (Launch.cli_env), which a worker it spawns must not take over
     (agent_env.without_launch)."""
     ours = {**providers.agent_env(agent), **launch.env}
-    return {**base_env, **ours, agent_env.LAUNCH_VARS: ",".join(sorted(ours))}
+    return {**base_env, **ours, agent_env.LAUNCH_VARS: ",".join(sorted({*ours, *launch.cli_env}))}
 
 
 def _layer_warnings(
@@ -3289,20 +3300,43 @@ def _log_notes(agent: state.Agent, notes: Iterable[str]) -> None:
         loop.log(agent.session, f"{agent.name}: {note}")
 
 
-def check_login(agent_cli: providers.Provider, base_env: dict[str, str], what: str) -> None:
+def check_login(
+    agent_cli: providers.Provider,
+    base_env: dict[str, str],
+    what: str,
+    start: "model_settings.StartModel | None",
+) -> None:
     """Refuse a new session or worker, or a resume by hand (`what`, logins.SESSION, WORKER
     or RESUME) of `agent_cli` whose CLI needs a login and has none in `base_env`, the
     environment it would start from; called before anything of it is stored or made. An
-    agent LADO resumes by itself waits instead (_held_for_login)."""
+    agent LADO resumes by itself waits instead (_held_for_login). A `start` on a server that
+    takes the CLI's whole process does not run on the CLI's login: its launch says so to the
+    provider, but the launch comes after this."""
+    if start is not None and start.server is not None and agent_cli.external_whole_process:
+        return
     if reason := logins.refusal(agent_cli, base_env, what):
         raise NotLoggedIn(reason)
 
 
-def check_start_login(provider: str | None, project: str | None) -> None:
+def _new_start(
+    agent_cli: providers.Provider, base_env: Mapping[str, str], model: str | None
+) -> "model_settings.StartModel | None":
+    """What a new session of `agent_cli` would start on, `model` given or not, reading its
+    table as _start_model does; None for a model that is refused, which start_session says."""
+    from lado import model_settings
+
+    try:
+        row = None if model is None else model_settings.session_row(model, agent_cli, base_env)
+        return model_settings.start_model(state.PowerTable.of(row) if row else None, agent_cli)
+    except model_settings.Refused:
+        return None
+
+
+def check_start_login(provider: str | None, project: str | None, model: str | None = None) -> None:
     """Before a clone or a new folder for a new session (`lado start <git-url>`, `--new`,
-    the UI's From scratch): refuse as start_session would, when the provider is known now:
-    given, or the only one installed on the agents' PATH. Otherwise start_session decides
-    once the folder is there."""
+    the UI's From scratch): refuse as start_session would, on `model` if given, when the
+    provider is known now: given, or the only one installed on the agents' PATH. Otherwise
+    start_session decides once the folder is there."""
     layers = agent_layers(project)
     if provider is None:
         found = suggested_provider(None, _on_agents_path(agent_env.merge(layers)))
@@ -3312,7 +3346,8 @@ def check_start_login(provider: str | None, project: str | None) -> None:
     elif provider not in providers.names():
         return  # start_session refuses it as it refuses any
     agent_cli = providers.get(provider)
-    check_login(agent_cli, agents_env(layers, agent_cli), logins.SESSION)
+    base_env = agents_env(layers, agent_cli)
+    check_login(agent_cli, base_env, logins.SESSION, _new_start(agent_cli, base_env, model))
 
 
 def _held_for_login(

@@ -14,6 +14,10 @@ from pathlib import Path
 from lado import agent_env as outside_env
 from lado import interpreter, state, tmux
 
+# The launch variable of an agent on a server for a CLI of one model per process: the server's
+# id. The CLI's own login is then not what the agent runs on (Provider.needs_login).
+MODEL_SERVER = "LADO_MODEL_SERVER"
+
 # Neutral hook events. A provider maps its own hook events onto these; see lado.hooks.
 SESSION_START = "session_start"
 PROMPT_SUBMIT = "prompt_submit"  # the agent received input, e.g. a typed message
@@ -128,6 +132,12 @@ class McpServer:
     env_vars: list[str] = field(default_factory=list)
 
 
+# `max_tokens` of a model with no output reported. OpenCode compacts near context - output and
+# sends output as max_tokens (1.18.35, Kilo 7.8.8 alike): their default of 32000 leaves a small
+# model nothing, as Claude Code's does, so it is a quarter of the context at most.
+DEFAULT_OUTPUT = 8192
+
+
 @dataclass(frozen=True)
 class Limit:
     """What a server reports of a model: its context in tokens, its output when it says."""
@@ -135,16 +145,23 @@ class Limit:
     context: int
     output: int | None = None
 
+    def output_room(self) -> int:
+        """The tokens a CLI may ask for as its output: what the server reports or DEFAULT_OUTPUT,
+        at most a quarter of the context, which the prompt needs too."""
+        return max(1, min(self.output or DEFAULT_OUTPUT, self.context // 4))
+
 
 @dataclass(frozen=True)
 class ServerEntry:
-    """A model server for an agent's config: its id, name and base URL, the variable that
-    carries its key to the agent ("" for a server with no key), the key, its models as
-    (model, saved name), and the limits it reported, by model, read at this start."""
+    """A model server for an agent's config: its id, name, base URL and root (the address a
+    CLI that adds /v1 itself is told), the variable that carries its key to the agent ("" for
+    a server with no key), the key, its models as (model, saved name), and the limits it
+    reported, by model, read at this start."""
 
     id: str
     name: str
     base_url: str
+    root: str
     key_variable: str
     key: str | None = field(repr=False)
     models: tuple[tuple[str, str], ...]
@@ -173,8 +190,9 @@ class AgentSpec:
     # with the source `model_source`.
     model: str | None = None
     model_source: str = state.SESSION
-    # The model servers of its config, for a CLI whose models on a server sit beside its own
-    # (Provider.runs_on_server); each key reaches the agent in its environment only.
+    # The model servers of its config (Provider.runs_on_server): for a CLI whose models on a
+    # server sit beside its own all of them, for a CLI of one model per process the one it
+    # starts on; each key reaches the agent in its environment only.
     servers: tuple[ServerEntry, ...] = ()
 
 
@@ -192,6 +210,9 @@ class Launch:
     # nothing set up: the CLI chooses (lado.runtime records them: state.set_model).
     model: state.Choice | None = None
     effort: state.Choice | None = None
+    # The names the CLI itself gives the processes it starts, from the config the launch wrote:
+    # a worker spawned through its `lado mcp` must not take them over (lado.runtime._launch_env).
+    cli_env: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -382,6 +403,9 @@ class Provider(ABC):
     runs_on_server: bool = False
     # The context in tokens an agent of this CLI needs to take a turn, 0 for no number known.
     min_context: int = 0
+    # Seconds from an agent's launch to its first hook before LADO shows it as held by a
+    # question it does not know (lado.runtime.check_starts).
+    start_silence: float = 30.0
 
     def check_permission_mode(self, mode: str | None) -> None:
         """Raise ValueError for a permission mode this provider cannot honour."""
@@ -488,9 +512,20 @@ class Provider(ABC):
         """The model `model` of the server of id `server`, as the CLI is told it."""
         raise NotImplementedError(f"{self.title} runs on no model server")
 
+    def reserved_model(self, model: str) -> bool:
+        """Whether the CLI reads the name `model` as one of its own, so that a server's model
+        of that name would never reach the server. By default none is."""
+        return False
+
     def on_server(self, reported: str) -> tuple[str, str] | None:
         """The id of the server and the model of `reported`, a model as the CLI names it, when
         it is one of a server LADO put into the agent; None for any other."""
+        return None
+
+    def launched_on(self, agent: state.Agent) -> str | None:
+        """The id of the server `agent`'s launch runs on, for a CLI whose names of a model say
+        no server (on_server), read from what the launch wrote; None for any other, and for an
+        agent that does not run any more."""
         return None
 
     def same_model(self, chosen: str, reported: str) -> bool:
@@ -518,6 +553,7 @@ def lado_command(*args: str) -> list[str]:
 # tests/test_project_variables_core.py fails until it does.
 CLI_VARIABLES = frozenset(
     {
+        "ANTHROPIC_UNIX_SOCKET",
         "CLAUDE_CONFIG_DIR",
         "CODEX_HOME",
         "OPENCODE_CONFIG",

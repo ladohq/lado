@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import agent_helpers
+import fake_endpoint as endpoints
 import fake_model_server
 import pytest
 from real_clis import CLASSES, SANDBOX_ERROR, agent_processes, answer_dialogs, check_gone, status
@@ -164,6 +165,194 @@ def test_the_session_s_model_reaches_the_cli(
         runtime.write_as_human(SESSION, HUMAN_SAYS)
     wait_for(lambda: asked in fake_endpoint.models, f"a request for {asked}", 120)
     print(f"{provider}: models asked {fake_endpoint.models}")
+    runtime.stop_session(SESSION)
+
+
+SERVER_KEY = "smoke-claude-server-key"
+SERVER_MODEL = "smoke-qwen"
+CANARY = "smoke-canary-of-the-human"  # in each secret of the human's a test sets
+
+
+@pytest.fixture
+def claude_server(smoke_repo, tmp_path, monkeypatch):
+    """A saved model server of Anthropic's API with the model `Шлюз Qwen` and a key, and every
+    other way out of the machine refused: no request of the real CLI can reach a real host."""
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        monkeypatch.setenv(name, "http://127.0.0.1:9")
+        monkeypatch.setenv(name.lower(), "http://127.0.0.1:9")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+    server = endpoints.Anthropic(SERVER_MODEL, tmp_path / "shell-ran", SERVER_KEY)
+    model_settings.add_server("Шлюз", server.url, SERVER_KEY, warn=print, note=print)
+    state.add_model("Шлюз Qwen", "claude", SERVER_MODEL, state.model_server("Шлюз").id)
+    yield server
+    server.close()
+
+
+def turn_with_tools(server: endpoints.Anthropic) -> None:
+    """The supervisor idle, then a turn in which the server has it run a shell and an MCP tool."""
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    runtime.write_as_human(SESSION, endpoints.RUN_TOOLS)
+    wait_for(server.marker.exists, "the shell tool to run", 120)
+    called = lambda: endpoints.MCP_CALL in server.tool_results()  # noqa: E731
+    wait_for(called, "the MCP tool to run", 120)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the turn's end", 120)
+
+
+def claude_output() -> int:
+    """What a Claude agent on the fake's model may ask for: the context is known."""
+    return providers.base.Limit(endpoints.CONTEXT).output_room()
+
+
+def only_the_server_s_key_and_model(server: endpoints.Anthropic) -> None:
+    turns = [r for r in server.requests if r[0] == "/v1/messages" and b'"model"' in r[2]]
+    assert turns, "no turn reached the server"  # LADO's probe sends an empty object
+    for path, headers, body in server.requests:
+        print(f"claude: {path} {sorted(headers)}")
+        assert CANARY not in json.dumps(headers) and CANARY.encode() not in body
+        assert headers.get("x-api-key", SERVER_KEY) == SERVER_KEY
+        assert headers.get("authorization", f"Bearer {SERVER_KEY}") == f"Bearer {SERVER_KEY}"
+    assert {json.loads(body)["model"] for _, _, body in turns} == {SERVER_MODEL}
+    assert [h for _, h, _ in turns if "x-api-key" not in h and "authorization" not in h] == []
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_claude_code_runs_on_a_server_with_no_login_and_no_first_run(
+    smoke_repo, smoke_provider, claude_server, fake_endpoint, monkeypatch
+):
+    """Not logged in, and its first run not recorded: nothing holds the agent, and a turn with
+    a shell and an MCP tool runs on the server alone."""
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN")
+    config = Path(os.environ["CLAUDE_CONFIG_DIR"], ".claude.json")
+    config.write_text("{}")
+    started = runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    print(f"claude: started, warnings {started.warnings}")
+    turn_with_tools(claude_server)
+    agent = state.get_agent(SESSION, "supervisor")
+    assert agent.model == SERVER_MODEL
+    assert runtime.status_reasons(SESSION) == {}
+    asked = {json.loads(b)["max_tokens"] for p, _, b in claude_server.requests if b'"model"' in b}
+    assert asked == {claude_output()}
+    assert delivered(state.HUMAN, "supervisor", endpoints.RUN_TOOLS)()
+    only_the_server_s_key_and_model(claude_server)
+    assert fake_endpoint.requests == []
+    settings = (providers.base.config_path(agent) / "settings.json").read_text()
+    assert SERVER_KEY not in settings
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_nothing_of_the_human_s_claude_reaches_a_server(
+    smoke_repo, smoke_provider, claude_server, fake_endpoint, tmp_path, monkeypatch
+):
+    """A login file, a key in the environment, and user settings with a key's helper, a token
+    and another address: the server gets its own key alone, and the other address nothing."""
+    other = endpoints.Anthropic(SERVER_MODEL, tmp_path / "other-ran")
+    home = Path(os.environ["CLAUDE_CONFIG_DIR"])
+    login = {"accessToken": f"sk-ant-oat01-{CANARY}", "refreshToken": f"r-{CANARY}"}
+    login |= {"expiresAt": 4102444800000, "scopes": ["user:inference"]}
+    (home / ".credentials.json").write_text(json.dumps({"claudeAiOauth": login}))
+    env = {"ANTHROPIC_AUTH_TOKEN": f"token-{CANARY}", "ANTHROPIC_BASE_URL": other.url}
+    settings = {"apiKeyHelper": f"echo helper-{CANARY}", "env": env}
+    (home / "settings.json").write_text(json.dumps(settings))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", f"sk-ant-api03-{CANARY}")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", f"shell-{CANARY}")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", f"oauth-{CANARY}")
+    try:
+        started = runtime.start_session(
+            str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+        )
+        print(f"claude: started, warnings {started.warnings}")
+        turn_with_tools(claude_server)
+        only_the_server_s_key_and_model(claude_server)
+        assert other.requests == [] and fake_endpoint.requests == []
+    finally:
+        other.close()
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [
+        ("CLAUDE_CODE_USE_BEDROCK", "1"),
+        ("CLAUDE_CODE_USE_MANTLE", "1"),
+        ("ANTHROPIC_UNIX_SOCKET", "/nonexistent/smoke.sock"),
+    ],
+)
+def test_another_way_out_in_the_environment_does_not_take_a_claude_agent_off_its_server(
+    smoke_repo, smoke_provider, claude_server, monkeypatch, variable, value
+):
+    monkeypatch.setenv(variable, value)
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    turn_with_tools(claude_server)
+    only_the_server_s_key_and_model(claude_server)
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_auto_mode_of_the_human_leaves_a_claude_agent_on_a_server_lado_s_tools(
+    smoke_repo, smoke_provider, claude_server
+):
+    """Inherited from the user's settings. Its classifier asks the server's model, which gives it
+    no usable answer here: LADO's tools do not go there, or the agent could not answer anyone."""
+    settings = {"permissions": {"defaultMode": "auto"}}
+    Path(os.environ["CLAUDE_CONFIG_DIR"], "settings.json").write_text(json.dumps(settings))
+    runtime.start_session(str(smoke_repo), SESSION, None, "claude", model="Шлюз Qwen")
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    assert "auto mode on" in tmux.capture(SESSION, "supervisor")
+    runtime.write_as_human(SESSION, endpoints.RUN_MCP)
+    called = lambda: endpoints.MCP_CALL in claude_server.tool_results()  # noqa: E731
+    wait_for(called, "the MCP tool's result", 120)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the turn's end", 120)
+    assert "by auto mode" not in tmux.capture(SESSION, "supervisor")
+    last = [r for r in claude_server.requests if b"tool_result" in r[2]][-1]
+    assert b"auto mode" not in last[2].split(b"tool_result", 1)[1]
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_a_turn_of_a_large_prompt_ends_on_a_context_that_fits_it(
+    smoke_repo, smoke_provider, claude_server
+):
+    """A human's own CLAUDE.md and rules brought a prompt to 45K tokens: with the 32000 tokens of
+    output Claude Code asks for by itself that is over 64K, and the server ends the stream."""
+    size = 22000 * endpoints.TOKEN_BYTES
+    Path(os.environ["CLAUDE_CONFIG_DIR"], "CLAUDE.md").write_text("Be brief. " * (size // 10))
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    turn_with_tools(claude_server)
+    turns = [r for r in claude_server.requests if r[0] == "/v1/messages" and b'"tools"' in r[2]]
+    largest = max(len(body) for _, _, body in turns) // endpoints.TOKEN_BYTES
+    print(f"claude: the largest prompt is about {largest} tokens")
+    assert largest + 32000 > endpoints.CONTEXT
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_model_of_a_claude_agent_on_a_server_shows_its_model_alone(
+    smoke_repo, smoke_provider, claude_server
+):
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    tmux.send_text(SESSION, "supervisor", "/model")
+    shown = lambda: "Default" in tmux.capture(SESSION, "supervisor")  # noqa: E731
+    wait_for(shown, "/model's list", 30)
+    screen = tmux.capture(SESSION, "supervisor")
+    print(f"claude: /model shows\n{screen}")
+    assert SERVER_MODEL in screen
+    for name in ("Opus", "Sonnet", "Haiku", "Fable"):
+        assert name not in screen
     runtime.stop_session(SESSION)
 
 

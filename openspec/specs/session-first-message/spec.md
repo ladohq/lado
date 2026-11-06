@@ -186,9 +186,9 @@ before it, but for a silent TUI (see "An agent whose TUI stays silent is ready")
 
 #### Scenario: A CLI that shows no sign
 
-- **WHEN** the TUI has not reported 30 s after the launch and no other hook of the CLI has run
+- **WHEN** the TUI has not reported 45 s after the launch and no other hook of the CLI has run
 - **THEN** the message stays `pending` and never `failed`, and the agent is `waiting` with the reason
-  `Waiting for an answer in its terminal: no sign from it 30 s after its start. Open its terminal.`;
+  `Waiting for an answer in its terminal: no sign from it 45 s after its start. Open its terminal.`;
   when the prompt has focus the agent is idle and the message goes in
 
 #### Scenario: Lines given on the command line

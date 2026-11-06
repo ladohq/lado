@@ -121,6 +121,21 @@ def test_sideways_the_bar_stays_one_row(touch_screen, server, repo, shot):
     shot(page)
 
 
+def test_sideways_an_empty_feeds_toggle_is_in_reach(touch_screen, server, repo, shot):
+    page = touch_screen(SIDEWAYS)
+    log_in(page, server, f"/sessions/{stopped_session(repo)}")
+    feed = page.get_by_role("log", name="Chat with the session")
+    expect(feed).to_contain_text("No messages with you. Messages between agents are hidden.")
+    row = page.get_by_role("navigation", name="Session sections")
+    toggle = row.get_by_role("button", name="Messages between agents")
+    expect(toggle).to_have_text("")  # the plain icon: the words are upright only
+    shot(page, "hidden", full_page=False)
+    toggle.tap()
+    expect(toggle).to_have_attribute("aria-pressed", "true")
+    expect(feed).to_contain_text("Nothing was said in this session.")
+    shot(page, "shown", full_page=False)
+
+
 def test_no_team_shows_and_a_phones_toggle_has_its_words(page: Page, server, repo, shot):
     page.set_viewport_size({"width": 1440, "height": 800})
     session = stopped_session(repo)

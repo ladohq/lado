@@ -16,6 +16,7 @@
 
 - [ ] 3.1 The mark in `Shell.tsx`, `NoNetworkIcon`, CSS, the phone (D9). Move
   `test_live_updates.py` and the vitest cases to the 2 s. Check: AC-1, AC-3.
+- [ ] 3.2 The status region of `LinkState` (D13). Check: `App.test.tsx`, AC-17.
 
 ## 4. Attempts
 
@@ -34,5 +35,5 @@
 ## 6. Documents and the look
 
 - [ ] 6.1 `docs/design/ui.md` by the design doc's list; CHANGELOG.md.
-- [ ] 6.2 A screenshot of each state in the light and dark theme, as run artifacts. Check: AC-17.
+- [ ] 6.2 A screenshot of each state in the light and dark theme, as run artifacts. Check: AC-18.
 - [ ] 6.3 The plan's regression run.

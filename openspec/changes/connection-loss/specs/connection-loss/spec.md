@@ -29,16 +29,34 @@ be plain live again, with no state of its own for the return. No strip SHALL sho
 - **WHEN** the stream is refused with a 401
 - **THEN** the connection counts as refused, not lost: the page says how to get in
 
+### Requirement: A screen reader hears the loss and the return
+
+The top bar SHALL hold one `role="status"` region for as long as the shell stands, also while the
+stream is refused, read out and not shown. Its text SHALL follow the mark: "reconnecting…" while
+lost, "live" when back. The mark itself SHALL carry no status role, so nothing is read twice.
+
+#### Scenario: The loss
+- **WHEN** the connection has been lost for 2 s
+- **THEN** the region that stood there already changes its text to "reconnecting…", and it is read out
+
+#### Scenario: The return
+- **WHEN** the feed opens after a loss
+- **THEN** the same region changes its text to "live"
+
+#### Scenario: A short drop
+- **WHEN** the feed is lost and back within 1 s
+- **THEN** the region's text does not change
+
 ### Requirement: While the connection is lost the buttons that write wait
 
 While the mark says the connection is lost, a gate's buttons wherever the gate shows, Send
 answer, Send, Stop, Stop and forget and Resume SHALL be disabled, and Enter in the composer SHALL
-send nothing. Fields SHALL stay active and keep what is in them. "Waiting for the connection"
+send nothing. Fields SHALL stay active and keep what is in them. "Waiting for connection"
 SHALL stand beside a gate's buttons, and the others SHALL say it in a tooltip.
 
 #### Scenario: A gate
 - **WHEN** the connection is lost with a gate open in the chat, on Needs you or on its run's page
-- **THEN** its buttons are disabled with "Waiting for the connection" beside them, and its comment
+- **THEN** its buttons are disabled with "Waiting for connection" beside them, and its comment
   takes text
 
 #### Scenario: The composer
@@ -47,49 +65,41 @@ SHALL stand beside a gate's buttons, and the others SHALL say it in a tooltip.
 
 #### Scenario: A tooltip on a disabled button
 - **WHEN** the pointer rests on the disabled Send
-- **THEN** the tooltip reads "Waiting for the connection"
+- **THEN** the tooltip reads "Waiting for connection"
 
 ### Requirement: An action without an answer says LADO could not confirm it
 
 A request of a gate's answer, an answer to questions, Send, Stop or Resume that ends with no
-answer from the server SHALL show under its buttons "Couldn't confirm your <what> was sent. LADO
-will check when the connection is back." with a Retry button, which SHALL be disabled until LADO
+answer from the server SHALL show under its buttons "<What> not confirmed" with a Retry button, which SHALL be disabled until LADO
 has looked at the outcome. The raw exception SHALL go to the browser's console only.
 
 #### Scenario: Approve as the server goes away
 - **WHEN** the request of Approve fails with no answer
-- **THEN** the card reads "Couldn't confirm your approval was sent. LADO will check when the
-  connection is back." and Retry is disabled
+- **THEN** the card reads "Approval not confirmed" and Retry is disabled
 
 #### Scenario: A file not uploaded
 - **WHEN** a file's upload fails with no answer before the answer was sent
-- **THEN** nothing was sent, its chip is red and the line reads "<file> was not uploaded: LADO
-  cannot be reached." as for any failed upload
+- **THEN** nothing was sent, its chip is red and the line reads "<file> was not uploaded: no connection." as for any failed upload
 
 ### Requirement: An error names the action in the human's words
 
-`<what>` SHALL be "approval" for Approve, "rejection" for Reject, "answer" for a gate's other
-buttons and for questions, "message" for Send, "stop request" for Stop and Stop and forget, and
-"resume request" for Resume.
+`<What>` SHALL be "Approval" for Approve, "Rejection" for Reject, "Answer" for a gate's other
+buttons and for Send answer, "Message" for Send, "Stop" for Stop and Stop and forget, and "Resume"
+for Resume. No other sentence SHALL stand with it.
 
 #### Scenario: Cancel run
 - **WHEN** the request of Cancel run fails with no answer
-- **THEN** the card reads "Couldn't confirm your answer was sent. LADO will check when the
-  connection is back."
+- **THEN** the card reads "Answer not confirmed"
 
 #### Scenario: Stop
 - **WHEN** the request of Stop fails with no answer
-- **THEN** the popover reads "Couldn't confirm your stop request was sent. LADO will check when
-  the connection is back."
+- **THEN** the popover reads "Stop not confirmed"
 
 ### Requirement: LADO settles an action without an answer by the state it reads
 
 Once the server answers, LADO SHALL read the state of what the action acted on, also when the
-feed never dropped, and again until it can. Reached: the error SHALL go. Not reached: "LADO did
-not receive your <what>." with its ending SHALL show, with Retry and the action's buttons active.
-
-The endings SHALL be "The gate is still open.", "The question is still open.", "It is still in
-the field.", "The session is still running." and "The session is still stopped."
+feed never dropped, and again until it can. Reached: the error SHALL go. Not reached: "<What> not delivered" SHALL show,
+with Retry and the action's buttons active.
 
 #### Scenario: The gate is closed
 - **WHEN** the connection is back and the gate has an answer, whoever gave it
@@ -97,7 +107,7 @@ the field.", "The session is still running." and "The session is still stopped."
 
 #### Scenario: The gate is open
 - **WHEN** the connection is back and the gate is still open
-- **THEN** the card reads "LADO did not receive your approval. The gate is still open." and Retry,
+- **THEN** the card reads "Approval not delivered" and Retry,
   Approve and Reject are active
 
 #### Scenario: The questions
@@ -106,7 +116,7 @@ the field.", "The session is still running." and "The session is still stopped."
 
 #### Scenario: One question still open
 - **WHEN** the connection is back and one of the questions sent is still open
-- **THEN** the card reads "LADO did not receive your answer. The question is still open."
+- **THEN** the card reads "Answer not delivered"
 
 #### Scenario: Stop
 - **WHEN** the connection is back and the session is stopped or gone
@@ -131,7 +141,7 @@ show the same wherever the item shows and survive a change of page.
 - **THEN** the error stays and Retry stays disabled
 
 #### Scenario: Another decision
-- **WHEN** the card reads "LADO did not receive your approval." and the human presses Reject
+- **WHEN** the card reads "Approval not delivered" and the human presses Reject
 - **THEN** the error goes and the rejection is sent
 
 #### Scenario: Another page
@@ -195,13 +205,13 @@ SHALL run only when the human asks for it again.
 
 ### Requirement: No raw exception text shows in the UI
 
-A request with no answer SHALL read "LADO cannot be reached" wherever the UI prints its reason, and
+A request with no answer SHALL read "No connection" wherever the UI prints its reason, and
 SHALL write the exception to the browser's console. A request the UI itself aborted SHALL stay
 silent as before. A refusal the server answered SHALL show its text as before.
 
 #### Scenario: A page that cannot load
 - **WHEN** the human opens a tab while the server is away
-- **THEN** it reads "LADO cannot be reached", and no `TypeError`
+- **THEN** it reads "No connection", and no `TypeError`
 
 #### Scenario: The mark's tooltip
 - **WHEN** the server cannot be reached

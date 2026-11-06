@@ -1,7 +1,7 @@
 # A lost connection and actions without an answer (LAD-195)
 
-Change: `openspec/changes/connection-loss/` (proposal with AC-1..AC-17, the new capability
-`connection-loss`, a delta of `phone-layout`, `design.md` with D1-D12). This document is the
+Change: `openspec/changes/connection-loss/` (proposal with AC-1..AC-18, the new capability
+`connection-loss`, a delta of `phone-layout`, `design.md` with D1-D14). This document is the
 human's view. Source of the look: `mockup-connection.html` of run task/lad-195, which replaces
 LAD-189's frames g4-* where they differ.
 
@@ -9,8 +9,8 @@ LAD-189's frames g4-* where they differ.
 
 One question gets a straight answer: did my decision go through? While the connection is away
 the buttons wait instead of failing. If it goes at the moment of a click, LADO says it cannot
-confirm the action, looks by itself once it can, and either the card goes or the error says the
-action did not arrive, with Retry. Nothing else asks for attention: no strip, no green state.
+confirm the action, looks by itself once it can, and either the card goes or the error says it was
+not delivered, with Retry. Nothing else asks for attention: no strip, no green state.
 
 ## States
 
@@ -18,26 +18,25 @@ action did not arrive, with Retry. Nothing else asks for attention: no strip, no
 |---|---|---|---|
 | Live, or lost for less than 2 s | live | active | nothing |
 | Lost | amber `reconnecting…` (phone: icon) | disabled, the reason beside a gate's, a tooltip on the rest | nothing |
-| Lost, a click got no answer | the same | disabled | "Couldn't confirm your approval was sent. …", Retry disabled |
+| Lost, a click got no answer | the same | disabled | "Approval not confirmed", Retry disabled |
 | Back, LADO is looking | live | that item's disabled | the same, for a moment |
 | Back, it reached the server | live | the card goes | nothing |
-| Back, it did not | live | active | "LADO did not receive your approval. The gate is still open.", Retry active |
+| Back, it did not | live | active | "Approval not delivered", Retry active |
 
 ## Words
 
-| Action | `<what>` | Ending when it did not arrive |
+| Action | Outcome unknown | Not delivered |
 |---|---|---|
-| Approve | your approval | The gate is still open. |
-| Reject | your rejection | The gate is still open. |
-| Continue, Cancel run, a choice | your answer | The gate is still open. |
-| Send answer | your answer | The question is still open. |
-| Send | your message | It is still in the field. |
-| Stop, Stop and forget | your stop request | The session is still running. |
-| Resume | your resume request | The session is still stopped. |
+| Approve | Approval not confirmed | Approval not delivered |
+| Reject | Rejection not confirmed | Rejection not delivered |
+| Continue, Cancel run, a choice, Send answer | Answer not confirmed | Answer not delivered |
+| Send | Message not confirmed | Message not delivered |
+| Stop, Stop and forget | Stop not confirmed | Stop not delivered |
+| Resume | Resume not confirmed | Resume not delivered |
 
-Both messages start the same way: "Couldn't confirm <what> was sent. LADO will check when the
-connection is back." and "LADO did not receive <what>." A request with no answer anywhere else
-reads "LADO cannot be reached".
+Nothing else stands beside them, and there is no "Checking…". A locked button says "Waiting for
+connection". A request with no answer anywhere else reads "No connection"; a file, "<file> was not
+uploaded: no connection." The mark keeps `reconnecting…`.
 
 ## How the outcome is found
 
@@ -53,7 +52,12 @@ reads "LADO cannot be reached".
 
 No strip anywhere, F44 withdrawn. No "Connection restored." and no green mark. Tooltips, not a line,
 at Send. The mark changes after 2 s together with the buttons. The raw exception goes to the
-console only. An edited field is not cleared. Stop and forget never forgets on its own.
+console only. Short error texts with nothing beside them. An edited field is not cleared. Stop and forget never forgets on its own.
+
+## For the ear
+
+One status region always stands in the top bar, read out and not shown. Its words are the mark's, so
+the loss and the return are heard even though the mark's element is swapped.
 
 ## docs/design/ui.md
 

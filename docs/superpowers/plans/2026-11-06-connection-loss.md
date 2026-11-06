@@ -9,7 +9,7 @@ it; the panels only show it. The web UI alone: no API, schema, MCP or CLI change
 
 **Tech Stack:** React, TypeScript, CSS, vitest, pytest with Playwright.
 
-**Spec:** `openspec/changes/connection-loss/` (AC-1..AC-17, D1-D12),
+**Spec:** `openspec/changes/connection-loss/` (AC-1..AC-18, D1-D14),
 `docs/superpowers/specs/2026-11-06-connection-loss-design.md`, run artifact
 `mockup-connection.html`, the task comment of 2026-11-06. LAD-189 spec §4 only where these are silent.
 
@@ -29,10 +29,11 @@ it; the panels only show it. The web UI alone: no API, schema, MCP or CLI change
 |---|---|---|
 | the mark says it | `App.test.tsx`, `live.test.ts`: 2 s with fake timers, short drop, 401 | stop the server: 2 s, word at 1440, icon at 390; start it: Live |
 | phone-layout: the mark | `Layout.test.tsx`: icon, named | in the row above |
+| a screen reader hears it | `App.test.tsx`: the same element before and after the loss, its text, also on 401 | the status region's text across a stop and start |
 | the buttons wait | `GateCard` in `WaitingCard.test.tsx`, `Flows.test.tsx`, `NeedsYou.test.tsx`, `Composer.test.tsx` (Enter), `Layout.test.tsx` (Stop, Resume) | chat, Needs you and a run's page; comment and draft intact; Send's tooltip |
 | could not confirm | `attempts.test.ts`, each kind's words; `attachFiles` upload line | a failed request per kind, by `page.route` abort |
 | settled by the state | `attempts.test.ts`: each look, an `Unreached` look, every 3 s | gate closed and gate open across a real stop and start |
-| goes only when known | `attempts.test.ts`, `Flows.test.tsx`: same error on another page | Reject after "did not receive"; going to the run's page |
+| goes only when known | `attempts.test.ts`, `Flows.test.tsx`: same error on another page | Reject after "Approval not delivered"; going to the run's page |
 | Send by the feed | `attempts.test.ts`: found, not found, same words earlier, files alone, field changed | answer lost by `page.route` after the server took it: one message in the feed |
 | Retry, closed | `attempts.test.ts` on `closedRefusals.cases.json`; `tests/test_closed_refusals.py` makes each refusal for real | Retry on a gate closed meanwhile |
 | Stop and forget | `Layout.test.tsx` or a new `SessionControl.test.tsx` | not needed |
@@ -51,7 +52,8 @@ tests/ui/test_needs_you.py tests/ui/test_phone.py tests/ui/test_session_head.py`
 2. `api.ts`: `Unreached` (D1). `test_live_updates.py` and `App.test.tsx`, `Layout.test.tsx` move to
    the 2 s.
 3. `live.ts`: `lost`, reads that keep and recover (D2, D10); `Shell.tsx`, `icons.tsx`, `styles.css`:
-   the mark (D9).
+   the mark and its status region
+   (D9, D13).
 4. `attempts.ts`, `closedRefusals.cases.json`, `tests/test_closed_refusals.py` (D3, D4, D6).
 5. `ActionProblem`, `Waits` (D7, D8).
 6. `GatePanel`, then `WaitingCard`'s Send answer, each key and look.

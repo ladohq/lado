@@ -130,13 +130,15 @@ compacts at the same input whatever the output, and that request goes with its `
 |---|---|---|---|
 | 32000 | 131275, over by 203 | 135611, over by 4539 | refused: `400 Invalid request` |
 | 20000 | 119275 | 123611 | 129813 |
-| 16384 | 115659 | not measured | 126197 |
+| 16384 | 115659 | not measured | 126197; 130429 on 2.1.319 |
 
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` change nothing on 2.1.295,
 though they do on 2.1.319, so the output is the way on both: `claude.SERVER_OUTPUT = 16384`, for
-Claude Code alone. OpenCode and Kilo compact earlier. A tool result of about 27000 tokens at the
-threshold still passes (143178 at 20000 on reads of 80 KB, `claude -p`): that turn ends with
-`refused the request (400)`, at once and in words.
+Claude Code alone. OpenCode and Kilo compact earlier. 643 tokens of room on the human's 2.1.319 is
+too little, so where the output is cut the window is set too, the context less the output: the TUI's
+peak is then 113397 on 2.1.319 and stays 126197 on 2.1.295. A tool result of about 27000 tokens at
+the threshold still passes on 2.1.295 (143178 at 20000 on reads of 80 KB, `claude -p`): that turn
+ends with `refused the request (400)`, at once and in words.
 
 ### D14. No effort on a server
 

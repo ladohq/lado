@@ -26,7 +26,7 @@ The settings of a Claude agent on a server SHALL hold `CLAUDE_CODE_EFFORT_LEVEL`
 
 ### Requirement: A Claude agent on a large context compacts within it
 
-A Claude agent on a server SHALL ask for at most 16384 tokens of output, so that the request at Claude Code's compaction fits the context on a server that counts input and `max_tokens` together.
+A Claude agent on a server SHALL ask for at most 16384 tokens of output, and where that cuts its output SHALL have `CLAUDE_CODE_AUTO_COMPACT_WINDOW` the context less the output, so that the request at Claude Code's compaction fits the context on a server that counts input and `max_tokens` together.
 
 #### Scenario: Reads up to a compaction
 - **WHEN** real Claude Code reads files of 50 KB up to its compactions on a fake server of a context of 131072 that refuses a request over it

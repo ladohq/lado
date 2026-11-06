@@ -2376,6 +2376,21 @@ def test_a_claude_agent_s_output_leaves_room_in_a_known_context(repo, limit, out
     assert settings["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == output
 
 
+@pytest.mark.parametrize(
+    ("limit", "window"),
+    [
+        (base.Limit(131072), "114688"),
+        (base.Limit(262144), "245760"),
+        (base.Limit(131071), None),
+        (base.Limit(65536, 32000), None),
+    ],
+)
+def test_a_large_context_compacts_where_the_output_still_fits(repo, limit, window):
+    server = dataclasses.replace(CLAUDE_SERVER, limits={CLAUDE_MODEL: limit})
+    _, settings = _claude_launch(repo, (server,), CLAUDE_MODEL)
+    assert settings["env"].get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == window
+
+
 def test_a_claude_agent_on_a_server_may_use_lado_s_tools(repo):
     _, settings = _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
     assert settings["permissions"]["allow"] == ["mcp__lado__*"]

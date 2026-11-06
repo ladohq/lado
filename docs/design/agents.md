@@ -367,8 +367,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   does nothing, goes empty in the launch's environment); `SERVER_SWITCHES`; for a known context `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and
   `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (`Limit.output_room`, at most `claude.SERVER_OUTPUT`, 16384: it asks
   for 32000 by itself, over a 64K context with a prompt of 45K, and retries for hours what the server
-  ends, and on a context of 131072 its request at a compaction passed the context with 32000; of the
-  settings of its threshold 2.1.295 reads neither); `CLAUDE_CODE_EFFORT_LEVEL` `auto` of
+  ends, and on a context of 131072 its request at a compaction passed the context with 32000) and,
+  where that cuts the output, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, the context less the output, read by
+  2.1.319 and not by 2.1.295; `CLAUDE_CODE_EFFORT_LEVEL` `auto` of
   `SERVER_SWITCHES` names no effort, where `effortLevel` in `--settings` loses to the user's; `permissions.allow` with
   `mcp__lado__*`, as auto mode's classifier, in a `defaultMode` of the user's settings too, asks the
   same model, and one of no usable answer has LADO's tools blocked at every try; `apiKeyHelper: printenv LADO_MODEL_KEY_<ID>`, whose output goes out in both `x-api-key`

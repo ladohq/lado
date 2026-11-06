@@ -171,8 +171,8 @@ SERVER_SWITCHES = {
 # context of 131072 the 32000 it asks for by itself passed it, in `claude -p` by 203 tokens
 # (2.1.295) and 4539 (2.1.319), and a server that counts both refused it (the human's check of
 # LAD-220). The TUI's requests are larger: the smoke test holds this value there. A larger tool
-# result at the wrong moment can still pass. Its settings of the threshold are no way out:
-# CLAUDE_CODE_AUTO_COMPACT_WINDOW and CLAUDE_AUTOCOMPACT_PCT_OVERRIDE do nothing on 2.1.295.
+# result at the wrong moment can still pass. CLAUDE_CODE_AUTO_COMPACT_WINDOW, the context less this
+# output, compacts earlier on 2.1.319 and does nothing on 2.1.295, so it cannot stand alone.
 SERVER_OUTPUT = 16384
 # LADO's tools, which auto mode's classifier would judge. It asks the agent's own model, also in a
 # defaultMode inherited from the user's settings: a model that gives it no usable answer has them
@@ -216,6 +216,8 @@ def _server_settings(server: base.ServerEntry) -> dict:
         # By itself it asks for 32000: over a 64K context with a prompt of 45K, where a server
         # ends the stream and Claude Code retries for hours (2.1.319 on LM Studio).
         env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(min(limit.output_room(), SERVER_OUTPUT))
+        if limit.output_room() > SERVER_OUTPUT:
+            env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(limit.context - SERVER_OUTPUT)
     helper = f"printenv {server.key_variable}" if server.key_variable else f"echo {NO_KEY}"
     return {"env": env, "apiKeyHelper": helper, "availableModels": [model]}
 

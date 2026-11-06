@@ -1243,6 +1243,7 @@ test("a key over plain http warns and leaves Start on", async () => {
   await kiloWindow();
   await screen.findByText(`✓ ${HOME} lists qwen3-8b among its models.`);
   expect(screen.getByText(`⚠ ${warning}`).className).toContain("field-note warn");
+  expect(screen.getByText(`⚠ ${warning}`).querySelector("a")).toBeNull();
   expect(startButton().disabled).toBe(false);
   fireEvent.click(advancedRow().querySelector("summary")!);
   await waitFor(() => expect(summary()).toBe(`Advanced: model ${QWEN} on ${HOME} ⚠ key over http`));
@@ -1266,6 +1267,32 @@ test("folded, Advanced says what the warning is about, not always the key", asyn
   await screen.findByText(`✓ ${HOME} lists qwen3-8b among its models.`);
   fireEvent.click(advancedRow().querySelector("summary")!);
   await waitFor(() => expect(summary()).toBe(`Advanced: model ${QWEN} on ${HOME} ⚠ context too small`));
+});
+
+test("the warning's docs/install.md links to its section on GitHub, in a new tab", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  sessionCheck = () => ({
+    kind: "ok",
+    text: `${HOME} lists qwen3-8b among its models.`,
+    field: "",
+    name: "",
+    retry: false,
+    short: "",
+    peek: "context too small",
+    warnings: [`${QWEN} is small; see "What to expect of a small model" in docs/install.md`],
+    server: HOME,
+  });
+  await kiloWindow();
+  const link = await screen.findByRole("link", { name: "docs/install.md ↗" });
+  expect(link.getAttribute("href")).toBe(
+    "https://github.com/ladohq/lado/blob/main/docs/install.md#what-to-expect-of-a-small-model",
+  );
+  expect(link.getAttribute("target")).toBe("_blank");
+  expect(link.getAttribute("rel")).toBe("noreferrer");
+  expect(link.closest(".field-note")?.textContent).toBe(
+    `⚠ ${QWEN} is small; see "What to expect of a small model" in docs/install.md ↗`,
+  );
 });
 
 test("folded, Advanced names the model and its server, or a built-in model alone", async () => {

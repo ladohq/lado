@@ -143,6 +143,13 @@ def test_a_context_too_small_warns_in_the_field_and_start_stays_on(
         f"{QWEN} on {HOME} has a context of 16,000 tokens; {TITLE} needs about 32,768 for its "
         "instructions and tools: load the model with a larger context"
     )
+    link = dialog.get_by_role("link", name="docs/install.md ↗")
+    expect(link).to_have_attribute(
+        "href",
+        "https://github.com/ladohq/lado/blob/main/docs/install.md"
+        "#what-to-expect-of-a-small-model",
+    )
+    expect(link).to_have_attribute("target", "_blank")
     start = dialog.get_by_role("button", name="Start session")
     expect(start).to_be_enabled()
     shot(page, "warning")

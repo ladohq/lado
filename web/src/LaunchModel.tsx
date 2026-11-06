@@ -35,6 +35,25 @@ const builtin = (cli: string, model: string): CliDefault => ({
 
 const nameOf = (value: CliDefault) => (value.external !== null ? value.name : value.model);
 
+const INSTALL_FILE = "docs/install.md";
+const INSTALL_DOCS = `https://github.com/ladohq/lado/blob/main/${INSTALL_FILE}#what-to-expect-of-a-small-model`;
+
+// A warning's text, one string for `lado start` and this window: here its file is a link, as a
+// wheel holds no such file.
+function warningText(warning: string): ReactNode {
+  const at = warning.indexOf(INSTALL_FILE);
+  if (at < 0) return `⚠ ${warning}`;
+  return (
+    <>
+      {`⚠ ${warning.slice(0, at)}`}
+      <a href={INSTALL_DOCS} target="_blank" rel="noreferrer">
+        {`${INSTALL_FILE} ↗`}
+      </a>
+      {warning.slice(at + INSTALL_FILE.length)}
+    </>
+  );
+}
+
 // How a window opens: on the model a resumed session has, else its CLI's default.
 function cameWith(resuming: SessionInfo | null): Choice {
   if (resuming?.model === "") return { kind: "settings", chosen: false };
@@ -297,7 +316,7 @@ export function useLaunchModel({
     for (const warning of checked?.warnings ?? []) {
       notes.push(
         <span key={warning} className="field-note warn" role="status">
-          {`⚠ ${warning}`}
+          {warningText(warning)}
         </span>,
       );
     }

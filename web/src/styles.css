@@ -1325,7 +1325,7 @@ h3 {
 }
 
 /* One line that never wraps: what lacks room is cut by flex-shrink, the title down to 8ch,
-   then the project, then the run time, then the words; the actions and the link never. Shrinking
+   then the project, then the run time, then the team's box, then the words; the actions and the link never. Shrinking
    is shared in proportion, and a share of a pixel already shows the "…": the weights stand a
    million apart, so each item's share is nothing until the one before it is at its least.
    The box-sizing keeps the bar's border inside --head-h. */
@@ -2917,6 +2917,7 @@ h3 {
   right: -2px;
   bottom: -2px;
   box-sizing: border-box;
+  outline: 1.5px solid var(--panel); /* any status reads on any avatar's colour; the pulse has the box-shadow */
 }
 
 /* A ring on an avatar's colour needs its own ground. */
@@ -3440,6 +3441,59 @@ h3 {
   height: 18px;
 }
 
+/* Yours | All at the tab bar's right end, where a tab's tools stand (Find on Flows). Its word
+   goes first, before the tabs give up anything (data-short). */
+.between-wrap {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+  margin: -5px 0 0 12px;
+}
+
+.between-label {
+  color: var(--muted);
+  font: 12px var(--mono);
+}
+
+.session-tabs[data-short] .between-label {
+  display: none;
+}
+
+.between {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.between button {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: 12px/1 var(--mono);
+}
+
+.between button:hover {
+  color: var(--ink);
+}
+
+.between button[aria-checked="true"] {
+  border-color: var(--action);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--action);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The feed starts at the band: on Activity, above a phone, no gap under the tabs. */
+:root:not([data-phone]) .session:has(> .activity) > .session-tabs {
+  margin-bottom: 0;
+}
+
 .team {
   display: flex;
   flex: 1;
@@ -3541,6 +3595,251 @@ h3 {
 .team-run-link:hover,
 .team-run-link:focus-visible {
   background: color-mix(in srgb, currentColor 18%, transparent);
+}
+
+/* The team in the head: after the facts, at the right before Stop. It gives way after the
+   title, the project and the run time (their weights above), before the status words; its box
+   narrows and the trial (Team.tsx) chooses the level by it. */
+.topbar .team.head-team {
+  flex: 0 1000 auto;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.head-team + .session-head-actions {
+  margin-left: 6px; /* 16 px from the team to Stop, with the bar's 10 */
+}
+
+/* The agents' marks stand still in the head: it stays on every tab, and the session's dot
+   keeps the pulse. */
+.head-team .dot,
+.team-popover .dot {
+  animation: none;
+}
+
+.head-team .team-run {
+  flex: none;
+  flex-wrap: nowrap;
+}
+
+.head-team .team-chip {
+  flex: none;
+}
+
+/* Level 1 on: closer together, so names stay longer. */
+.head-team:not([data-fit="0"]) {
+  gap: 6px;
+}
+
+.head-team[data-fit="1"] .team-chip {
+  gap: 5px;
+  padding: 0 7px;
+}
+
+.head-team[data-fit="1"] .team-run {
+  gap: 4px;
+}
+
+.head-team:is([data-fit="2"], [data-fit="3"]) .team-run {
+  gap: 4px;
+  padding-right: 5px;
+}
+
+/* Level 1 on: the room of the branch and the run time goes to the names. A run time cut to a
+   digit says nothing, and Details has both. */
+.topbar:has(.head-team:not([data-fit="0"])) :is(.session-branch, .session-ran) {
+  display: none;
+}
+
+/* An avatar in the head: the strip's button; the terminal shown has the pressed chip's frame. */
+.head-team .strip-agent {
+  flex: none;
+  font-size: 10.5px;
+  letter-spacing: -0.02em;
+}
+
+.head-team .strip-agent[aria-pressed="true"] {
+  box-shadow:
+    0 0 0 1.5px var(--panel),
+    0 0 0 3px var(--action);
+}
+
+/* Focus stands clear of the pressed frame, with a gap of the ground between them; it may cross
+   a neighbour's edge, never its status. */
+.head-team .strip-agent:focus-visible {
+  z-index: 1;
+  outline-offset: 5px;
+}
+
+.head-team .strip-agent .dot {
+  z-index: 2;
+}
+
+/* The team's list: +N when agents do not fit, a chevron when all show. Its box holds the
+   button and the popover, which lies out of the row. */
+.team-list {
+  display: inline-flex;
+  flex: none;
+}
+
+.team-more {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 600 12px var(--mono);
+}
+
+.team-more:hover,
+.team-more[aria-expanded="true"] {
+  background: var(--raised);
+}
+
+.team-more.chevron {
+  padding: 0;
+  color: var(--muted);
+}
+
+.team-more .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.team-more[data-shown] {
+  border-color: var(--action);
+  box-shadow: inset 0 0 0 1px var(--action);
+}
+
+/* The popover of the team: Details' frame, 320 px, every agent by its whole name. */
+.team-popover {
+  position: fixed;
+  z-index: 5;
+  box-sizing: border-box;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - var(--head-h) - 16px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px var(--shadow);
+  white-space: normal;
+}
+
+.team-popover h2 {
+  margin: 4px 6px 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.team-popover ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.team-popover-run {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 2px;
+  padding: 2px 6px;
+  border-top: 1.5px dashed var(--run, var(--line));
+  color: var(--run, var(--muted));
+  font: 12px var(--mono);
+}
+
+.team-popover-run[data-colour="1"] {
+  --run: var(--run-1);
+}
+
+.team-popover-run[data-colour="2"] {
+  --run: var(--run-2);
+}
+
+.team-popover-run[data-colour="3"] {
+  --run: var(--run-3);
+}
+
+.team-popover-run[data-colour="4"] {
+  --run: var(--run-4);
+}
+
+.team-popover-run .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.team-popover-run a {
+  display: flex;
+  min-width: 0;
+  color: inherit;
+}
+
+.team-popover-run span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-popover-agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+}
+
+.team-popover-agent:hover,
+.team-popover-agent[aria-current="true"] {
+  background: var(--raised);
+}
+
+.team-popover-name {
+  overflow-wrap: anywhere;
+  font: 600 13px var(--mono);
+}
+
+.team-popover-about {
+  flex: none;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.team-popover-about.waits {
+  color: var(--human);
+}
+
+/* The agent's popup: the tooltip, its first line the whole name. */
+.tooltip .tip-agent {
+  color: var(--ink);
+  font: 600 12.5px var(--mono);
+}
+
+.tooltip .tip-status.waits {
+  color: var(--human);
 }
 
 /* An agent's status: colour and shape, so it reads without colour too. busy: a full green
@@ -5886,6 +6185,61 @@ button.rec-bar-line {
   font-weight: 500;
 }
 
+/* The composer's line lies in the page's bottom padding, out of the flow, so nothing moves
+   when it comes or goes. On a phone it stays in the flow, and it has no keys there. */
+.composer-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+:root:not([data-phone]) .composer-meta {
+  position: absolute;
+  top: calc(100% + 1px);
+  right: 0;
+  left: 0;
+  flex-wrap: nowrap;
+  height: 14px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+/* An agent's page scrolls, with no fixed padding to lie in: the line stays in the flow, and
+   the keys only turn visible, so nothing moves there either. */
+:root:not([data-phone]) .agent-composer .composer-meta {
+  position: static;
+  height: auto;
+  line-height: normal;
+}
+
+.composer-to {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root:not([data-phone]) .chat > .composer > .field-problem {
+  margin-top: 10px; /* clear of the line under the frame */
+}
+
+.composer-meta:not(:has(.composer-to)) {
+  justify-content: flex-end;
+}
+
+.composer-keys {
+  visibility: hidden;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer:has(textarea:focus:placeholder-shown) .composer-keys {
+  visibility: visible;
+}
+
 .primary:disabled,
 .quiet:disabled {
   cursor: default;
@@ -7162,7 +7516,7 @@ button.rec-bar-line {
     margin-top: 8px;
   }
 
-  .agent-composer .composer-keys {
+  .composer-keys {
     display: none;
   }
 }
@@ -10275,6 +10629,11 @@ button.quiet.danger-text {
 }
 
 :root[data-phone] .composer-keys {
+  display: none;
+}
+
+/* With nothing to say the line takes no height. */
+:root[data-phone] .composer-meta:not(:has(.composer-to)) {
   display: none;
 }
 

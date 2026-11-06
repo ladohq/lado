@@ -1,10 +1,14 @@
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import {
   ARTIFACT_PANEL_WIDTH,
   PANEL_WIDTH,
   SESSIONS_WIDTH,
+  storeAgentMessages,
+  storedAgentMessages,
   storeArtifactPanel,
+  useAgentMessages,
   storeAskControl,
   storedArtifactPanel,
   storedAskControl,
@@ -196,6 +200,23 @@ test("the minimized waiting card's tabs are kept per session, and dropped", () =
     localStorage.setItem("lado.waitingMinimized.lad-46", bad);
     expect(storedMinimized("lad-46")).toBeNull();
   }
+});
+
+test("the choice of messages reaches who shows it, wherever it is made", () => {
+  const { result } = renderHook(() => useAgentMessages());
+  expect(result.current).toBe(false);
+  act(() => storeAgentMessages(true));
+  expect(result.current).toBe(true);
+  expect(storedAgentMessages()).toBe(true);
+});
+
+test("the choice of messages holds while the page is open, though the browser refuses to store it", () => {
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new Error("denied");
+  });
+  const { result } = renderHook(() => useAgentMessages());
+  act(() => storeAgentMessages(true));
+  expect(result.current).toBe(true);
 });
 
 test("without browser storage every default holds and nothing breaks", () => {

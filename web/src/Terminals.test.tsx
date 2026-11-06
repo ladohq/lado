@@ -48,9 +48,11 @@ const AGENTS: AgentInfo[] = [
 const BASE = "ws://localhost:3000/api/sessions/lado/agents";
 
 let narrow = false;
+let served = AGENTS;
 
 beforeEach(() => {
   localStorage.clear();
+  served = AGENTS;
   FakeSocket.all = [];
   FakeXterm.all = [];
   FakeEventSource.all = [];
@@ -70,7 +72,7 @@ beforeEach(() => {
     vi.fn(async (path: string) => {
       if (path.endsWith("/about")) return new Response("{}", { status: 404 }); // the head without its about
       const body = path.endsWith("/agents")
-        ? AGENTS
+        ? served
         : path === "/api/sessions"
           ? [SESSION]
           : path.includes("/messages?")
@@ -98,7 +100,7 @@ async function open(path = "/sessions/lado") {
   await screen.findByRole("region", { name: "Session lado" });
 }
 
-const team = () => screen.findByRole("group", { name: "Team" });
+const team = () => screen.findByLabelText("Team"); // a toolbar in the head, a group on a phone
 
 // The chip of an agent in the team above the chat: it opens or selects its terminal.
 async function chip(agent: string) {
@@ -337,7 +339,7 @@ test("a terminal closed for good has Reconnect, which opens a new socket", async
 });
 
 test("a terminal closed for good opens again when its agent comes back, also with the team not shown", async () => {
-  await open("/sessions/lado/flows"); // no team on this tab: the panel follows the agents itself
+  await open("/sessions/lado/flows");
   await waitFor(() => expect(socketOf("supervisor", "view")).toHaveLength(1));
   act(() => socketOf("supervisor", "view")[0].end(4404, 'session "lado" is stopped'));
   agentChange(null, "supervisor"); // stopped: its agents are gone
@@ -558,6 +560,19 @@ test("each tab shows its agent's status as a small dot that follows the agent; a
   agentChange(null, "w1");
   expect(dotOf(tab("w1"))).toBe("dot dot-small dot-stopped");
   expect(tab("w1").getAttribute("aria-label")).toBe("w1, stopped");
+});
+
+test("the strip's button shows the agent's mark, as the head does, and its popup", async () => {
+  served = [AGENTS[0]!, { ...AGENTS[1]!, name: "developer-2" }, { ...AGENTS[1]!, name: "developer-3" }];
+  await open();
+  await team();
+  collapse();
+  const buttons = within(within(panel()).getByRole("list", { name: "Agents" })).getAllByRole("button");
+  expect(buttons.map((button) => button.firstChild?.textContent)).toEqual(["S", "D2", "D3"]);
+  fireEvent.focus(buttons[1]!);
+  const lines = [...screen.getByRole("tooltip").querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+  expect(lines[0]).toBe("developer-2");
+  expect(lines.at(-1)).toBe("Click to open the terminal");
 });
 
 test("the collapsed strip has a button per agent of the session, with its letter and status, then the caption", async () => {

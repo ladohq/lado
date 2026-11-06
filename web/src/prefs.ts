@@ -1,6 +1,7 @@
 // What the UI remembers per browser: the theme, the rail, the columns of a session page and
 // a few choices. Browser storage may be missing or refuse (private windows, blocked site data); then the defaults
 // hold and nothing breaks.
+import { useEffect, useState } from "react";
 
 export type Theme = "system" | "light" | "dark";
 
@@ -219,8 +220,25 @@ const AGENT_MESSAGES = "lado.agentMessages";
 
 export const storedAgentMessages = (): boolean => read(AGENT_MESSAGES) === "shown";
 
+const agentMessagesHeard = new Set<(shown: boolean) => void>();
+
 export function storeAgentMessages(shown: boolean): void {
   write(AGENT_MESSAGES, shown ? "shown" : "hidden");
+  for (const hear of agentMessagesHeard) hear(shown);
+}
+
+// The choice as it stands, for the switch in the tab bar and the feed under it, which an
+// agent's page changes too. Held here as well as stored: refused by the browser, the choice
+// still holds until the page is closed.
+export function useAgentMessages(): boolean {
+  const [shown, setShown] = useState(storedAgentMessages);
+  useEffect(() => {
+    agentMessagesHeard.add(setShown);
+    return () => {
+      agentMessagesHeard.delete(setShown);
+    };
+  }, []);
+  return shown;
 }
 
 // Whether the browser notifies when something new waits for the human (off by default;

@@ -1,7 +1,7 @@
 // The composer (docs/design/ui.md, Composer): the human's text to the supervisor, or to agent
 // `to` (an agent's page), with files. One frame with the paperclip, the field, which grows
-// with the text, and Send; the files' chips above the field; under it to whom and how to
-// send. Send uploads each file not uploaded yet (an artifact of the session's scope, so a
+// with the text, and Send; the files' chips above the field; under it an agent the human
+// chose, the files, and how to send while the field is empty and has the focus. Send uploads each file not uploaded yet (an artifact of the session's scope, so a
 // file uploaded before a failure is not uploaded again, whoever it goes to), then sends the
 // message with their names. Its file handling is the module the waiting card's fields share
 // (attachFiles.tsx). While a field of the waiting card answers, the chat folds it (`folded`):
@@ -27,6 +27,7 @@ import { MOST_LINES, useGrow } from "./fieldHeight";
 import { ActivityIcon } from "./icons";
 import { withQuote } from "./quote";
 import { registerComposer, takePending } from "./quotes";
+import { SUPERVISOR } from "./Team";
 import type { Fold } from "./WaitingCard";
 
 export function Composer({
@@ -47,6 +48,7 @@ export function Composer({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const limits = useLimits();
+  const named = to !== undefined && to !== SUPERVISOR; // the field's placeholder says the rest
   const own = useRef<HTMLTextAreaElement>(null);
   const field = inputRef ?? own;
   useGrow(field, text, 1, MOST_LINES);
@@ -141,36 +143,45 @@ export function Composer({
         void send();
       }}
     >
-      <div className={`composer-box${dropping ? " dropping" : ""}`}>
-        {dropping && <DropLine limits={limits} />}
-        <FileChips files={files} limits={limits} locked={busy} remove={remove} />
-        <div className="composer-row">
-          <ClipButton limits={limits} disabled={stopped || busy} attach={attach} />
-          <textarea
-            ref={field}
-            aria-label={`Write to ${to ?? "the supervisor"}…`}
-            placeholder={stopped ? "The session is stopped: resume it to write" : `Write to ${to ?? "the supervisor"}…`}
-            rows={1}
-            value={text}
-            disabled={stopped}
-            readOnly={busy}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={keyDown}
-          />
-          <button type="submit" className="send" disabled={stopped || busy || (!text.trim() && files.length === 0)}>
-            {busy ? "Sending…" : "Send"}
-          </button>
+      <div className="composer-frame">
+        <div className={`composer-box${dropping ? " dropping" : ""}`}>
+          {dropping && <DropLine limits={limits} />}
+          <FileChips files={files} limits={limits} locked={busy} remove={remove} />
+          <div className="composer-row">
+            <ClipButton limits={limits} disabled={stopped || busy} attach={attach} />
+            <textarea
+              ref={field}
+              aria-label={`Write to ${to ?? "the supervisor"}…`}
+              placeholder={stopped ? "The session is stopped: resume it to write" : `Write to ${to ?? "the supervisor"}…`}
+              rows={1}
+              value={text}
+              disabled={stopped}
+              readOnly={busy}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={keyDown}
+            />
+            <button type="submit" className="send" disabled={stopped || busy || (!text.trim() && files.length === 0)}>
+              {busy ? "Sending…" : "Send"}
+            </button>
+          </div>
         </div>
+        <p className="composer-meta">
+          {(named || files.length > 0) && (
+            <span className="composer-to">
+              {named && (
+                <>
+                  to <span className="composer-name">{to}</span>
+                </>
+              )}
+              {named && files.length > 0 && " · "}
+              {files.length > 0 && filesLine(files)}
+            </span>
+          )}
+          <span className="composer-keys">
+            Enter to send · Shift+Enter for a new line{files.length === 0 && " · paste or drop files"}
+          </span>
+        </p>
       </div>
-      <p className="composer-meta">
-        <span className="composer-to">
-          to <span className="composer-name">{to ?? "supervisor"}</span>
-          {files.length > 0 && ` · ${filesLine(files)}`}
-        </span>
-        <span className="composer-keys">
-          Enter to send · Shift+Enter for a new line{files.length === 0 && " · paste or drop files to attach"}
-        </span>
-      </p>
       {problem && (
         <p className="field-problem" role="alert">
           {problem}

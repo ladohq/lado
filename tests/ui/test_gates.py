@@ -327,9 +327,8 @@ def in_sight(page: Page, *parts) -> None:
 def test_a_window_768_wide_keeps_the_footer_in_sight(
     page: Page, server, repo, shot, height, expanded, tab
 ):
-    """A window of 900 px or less scrolls as a page, its chat with no height of its own: the
-    footer stays in the window wherever the page stands, the card under the top bar. The
-    composer past the window's edge is LAD-193's."""
+    """At 601 to 900 px a session's page stands still: the footer stays in the window, the card
+    under the top bar, whatever the wheel does."""
     session = gated_session(repo, LONG_NOTE)
     recommended(session, VIEW, choice="approve")
     if tab == "question":
@@ -462,31 +461,6 @@ def test_a_window_narrowed_keeps_the_expanded_cards_footer(
     in_sight(page, approve, card.get_by_role("button", name="Reject", exact=True))
     bar = page.get_by_role("banner").bounding_box()
     assert card.bounding_box()["y"] >= bar["y"] + bar["height"] - 1
-    shot(page, full_page=False)
-
-
-def test_a_chat_low_on_the_page_keeps_the_context_and_the_footer(page: Page, server, repo, shot):
-    """The sessions' list open over the session pushes the chat down: the card stays half the
-    window, its context seen, and the page's scroll brings the footer up."""
-    session = gated_session(repo, LONG_NOTE)
-    page.set_viewport_size({"width": 768, "height": 700})
-    log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}")
-    page.get_by_role("button", name="Sessions", exact=True).click()
-    card = waiting_card(page, session)
-    expect(page.locator(".session-list")).to_be_visible()
-    page.add_style_tag(content=".session-list { min-height: 500px; }")  # many sessions
-    page.wait_for_function(
-        "c => c.getBoundingClientRect().height >= window.innerHeight / 2",
-        arg=card.element_handle(),
-        timeout=3000,
-    )
-    context = card.get_by_role("region", name="Context of the card")
-    assert context.bounding_box()["height"] > 40
-    page.get_by_role("banner").hover()
-    page.mouse.wheel(0, 5000)
-    page.wait_for_timeout(200)
-    in_sight(page, card.get_by_role("button", name="Approve", exact=True))
     shot(page, full_page=False)
 
 

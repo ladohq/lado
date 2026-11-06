@@ -21,10 +21,12 @@ stored choice is what it returns to (rule 4г). `.sessions`' width does not depe
 so the measure cannot loop. Steps: the wanted columns; then fold the panel when the human did not
 open it or opened the list last, else the list; then narrow a panel the human opened to the room
 less 420, down to `PANEL_WIDTH.min`; then fold the other one, and a list that fits beside the
-folded panel stays open. "Opened last" is kept in the hook for the page's life: pressing Sessions
-or a chip sets it even when the stored choice is already open, and after a reload a tie goes by
-rule 4б, the list folds. Rejected: CSS container queries and
-writing the fold to prefs (proposal, options A and C).
+folded panel stays open. Terminals nobody opened never stay beside a list that folded; terminals
+the human opened do, also when the list came last. "Opened last" is kept in the hook for the
+page's life: pressing Sessions or a chip sets it even when the stored choice is already open, and
+after a reload a tie goes by rule 4б, the list folds. `listMax` of the same file bounds the list's
+edge, so that a drag never makes the rule fold the list under the pointer. Rejected: CSS container
+queries and writing the fold to prefs (proposal, options A and C).
 
 **D2. Who holds what.** A hook `useSessionColumns` in `Sessions` holds both prefs and the room, and
 gives the panel's part to `TerminalPanel` by the outlet's context; `TerminalPanel` gives back
@@ -54,16 +56,18 @@ window, written nowhere. CSS: `@media (min-width: 601px) and (max-width: 900px)`
 `html:has(.sessions)` gets the wide window's `height` and `overflow`, and `.app` its rows; the
 stacking of `.sessions` and `.session-page` is replaced by the row strip over the session and the
 strip on the right. `.session-list` and `.terminals` with `.over` are `position: absolute` in
-`.session-page`, under the z-index of the artifact panel. The rule keys on `.sessions`, so Needs you
+`.content`, under the row of the strip (`--row-h`), so that Expand still covers the page, and under
+the z-index of the artifact panel. The rule keys on `.sessions`, so Needs you
 and the other pages scroll as before. `.terminals` reuses `over`, `escapeIsOurs` and `putBack`.
 
 **D7. LAD-194's rules go, not layered.** With the page still the chat has a height at every width
-of a session's page. So `ownHeight` in `Chat.tsx` is always true, `usePageTop` and `--chat-top` go,
+of a session's page. So `ownHeight` in `Chat.tsx`, `usePageTop` and `--chat-top` go,
 `.chat > .waiting-card`'s `sticky`, `.content:has(...)`'s `clip`, `html:has(.waiting-card.expanded)`,
-and `underTheBar` in `WaitingCard.tsx`. The 40 % is of the chat, as above 900 px. To stay the same
-for the human: at 601 to 900 px the expanded card still takes the window under the top bar, by
-`:has(.waiting-card.expanded)` hiding the strip, tabs and team row as the phone does, and `NARROW`
-stays for the one thing left, no edge above the card. The terminals' strip stays beside it.
+and `underTheBar` and `NARROW` in `WaitingCard.tsx`. The 40 % is of the chat, as above 900 px. To
+stay the same for the human: at 601 to 900 px the expanded card still takes the window under the
+top bar, by `:has(.waiting-card.expanded)` hiding the strip with its grid row, the tabs and the team
+row as the phone does, and CSS alone keeps the one thing left, no edge above the card. The
+terminals' strip stays beside it. A window of 460 px or less hides the composer while a card shows.
 
 **D8. The phone query.** `PHONE_QUERY` as the human decided. Nothing else in `usePhone` changes.
 A window crossing 600 px goes through what a turned phone does: `TerminalPanel` already ends a
@@ -83,13 +87,16 @@ and the colour; `StatusDot` the mark, with its working, idle and waiting looks. 
 shows its agents the same way, and the button opens the panel with its "Agent not running". The
 column of buttons scrolls; the caption stays under it.
 
-**D11. The badge.** `badge(session)` in `Sessions.tsx`: `/^\p{L}+-(\d+)/u` on the label, else on the
-name, else `initials`. The mark is added in `SessionStrip` by the strip's order. At 5 characters
-the badge's font is 10 px, so that `154·2` stays in 32 px.
+**D11. The badge.** `badge(session)` in `Sessions.tsx`: `/^\p{L}+-(\d+)/u` on the label (the title,
+or the name without one, as the frames show: `lad-77-checkout` titled `Checkout redesign` is `CR`),
+else `initials`. The mark is added in `SessionStrip` by the strip's order. With a mark the badge's
+font is 10 px, so that `154·2` stays in 32 px.
 
-**D12. The phone's targets.** `::before` on the title's button (`inset-block` to the bar) and on the
-link, `inset: -10px -8px` over a box of 17×24, no layout change. Reading `styles.css` against
-spec §9's table is task 6.2.
+**D12. The phone's targets.** The title's button has `min-height: 44px` and no block padding. The
+link's box is 33×44 by its padding, its margins of -10 and -8 px taking the room back, so nothing
+else moves: a pseudo-element on the button took no taps in Chromium. Reading `styles.css` against
+spec §9's table is task 6.2; by the human's answer #3762 the Team chips and the session's tabs stay
+24 and 35 px.
 
 **D13. Measures.** Spec §2's 556 px at 1024 comes from the frame's `termW: 360px`; its rule gives
 366 px and 550 px. The rule stands, as in frame g2-1280 and at 1440.

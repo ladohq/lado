@@ -5141,8 +5141,13 @@ button.rec-bar-line {
 }
 
 /* At 601 to 900 px expanded it is the window's height under the top bar: what stands above it
-   goes, as on a phone; the terminals' strip stays beside it. It has no edge there. */
+   goes, as on a phone, the row of the session strip too; the terminals' strip stays beside it.
+   It has no edge there. */
 @media (max-width: 900px) {
+  .sessions:has(.waiting-card.expanded) {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
   .sessions:has(.waiting-card.expanded) > .sessions-strip,
   .session:has(.waiting-card.expanded) .session-tabs,
   .activity:has(> .chat > .waiting-card.expanded) > .team-row {

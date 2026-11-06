@@ -2,7 +2,7 @@
 // beside the rail, as it is laid out at each window's width with a folded rail (60 px).
 import { expect, test } from "vitest";
 
-import { CHAT_MIN, fitColumns, LIST_STRIP, STRIP, type ColumnsInput } from "./columns";
+import { CHAT_MIN, fitColumns, LIST_STRIP, listMax, STRIP, type ColumnsInput } from "./columns";
 
 const beside = (window: number, rail = 60) => window - rail;
 
@@ -108,8 +108,31 @@ test("both come back in order: the list first, then the terminals", () => {
   ]);
 });
 
-test("a wide list that does not fit leaves the room to the terminals that do", () => {
-  expect(fit(900, { list: { width: 480, collapsed: false } })).toMatchObject({ listFolded: true, panelFolded: false });
+test("terminals nobody opened do not stay beside a list that folded: both fold", () => {
+  expect(fit(850, { list: { width: 480, collapsed: false } })).toMatchObject({ listFolded: true, panelFolded: true });
+});
+
+test("terminals the human opened stay beside a wide list that folds, though the list came last", () => {
+  const list = { width: 480, collapsed: false };
+  expect(fit(850, { list, panel: OPENED, last: "list" })).toMatchObject({ listFolded: true, panelFolded: false });
+});
+
+test("the list is dragged no wider than leaves the chat its room beside the terminals that stay", () => {
+  expect(listMax({ room: 1380, ...NOTHING_STORED, panel: { ...OPENED, width: 640 } })).toBe(1380 - 640 - CHAT_MIN);
+  expect(listMax({ room: 1380, ...NOTHING_STORED, panel: OPENED })).toBe(1380 - 360 - CHAT_MIN);
+});
+
+test("terminals that would fold for the list leave it the room of their strip", () => {
+  expect(listMax({ room: 800, ...NOTHING_STORED })).toBe(800 - STRIP - CHAT_MIN);
+  const folded = { width: null, collapsed: true, chosen: true };
+  expect(listMax({ room: 800, ...NOTHING_STORED, panel: folded })).toBe(800 - STRIP - CHAT_MIN);
+  expect(listMax({ room: 800, ...NOTHING_STORED, panel: OPENED, last: "list" })).toBe(800 - STRIP - CHAT_MIN);
+});
+
+test("a list at its widest stays open", () => {
+  const panel = { ...OPENED, width: 640 };
+  const width = listMax({ room: 1380, ...NOTHING_STORED, panel });
+  expect(fit(1380, { list: { width, collapsed: false }, panel })).toMatchObject({ listFolded: false, panelFolded: false });
 });
 
 test("what the human folded stays folded, whatever the room", () => {

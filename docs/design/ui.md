@@ -661,7 +661,9 @@ Sessions for now. The UI's texts are in English.
   the list was opened last; then a panel the human opened narrows to its least 280 px, its width
   kept, then folds, and a terminal in control then goes back to view. The rail never folds by
   itself. A fold for room is derived, never stored: the column comes back when it and 420 px
-  fit, the list before the terminals, to what the human chose. `useSessionColumns` in
+  fit, the list before the terminals, to what the human chose. The list's edge stops where the
+  chat keeps 420 px beside terminals that stay (`listMax`), so a drag never folds the list under
+  the pointer. `useSessionColumns` in
   `Sessions.tsx` is the one writer of both keys. A drag captures the pointer, so it goes on
   over an iframe and ends on the release or a cancel. The artifact panel's edge is the
   same component (Artifacts, The panel), and so is the edge above the waiting card in a

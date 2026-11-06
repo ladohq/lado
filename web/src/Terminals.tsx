@@ -60,7 +60,7 @@ export type PanelColumn = {
   setControl: (inControl: boolean) => void;
 };
 
-type Terminals ={ open: (agent: string) => void; active: string | null; putBack: () => void };
+type Terminals = { open: (agent: string) => void; active: string | null; putBack: () => void };
 
 const TerminalsContext = createContext<Terminals | null>(null);
 

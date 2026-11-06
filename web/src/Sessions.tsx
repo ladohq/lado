@@ -32,7 +32,7 @@ import { Artifacts } from "./ArtifactsTable";
 import { getSessionAbout, setSessionTitle, type SessionAbout, type SessionInfo, type SessionStatus } from "./api";
 import { Chat, FOCUS_CHAT, focusChat } from "./Chat";
 import { duration } from "./ChatText";
-import { fitColumns, LIST_STRIP, type Column } from "./columns";
+import { fitColumns, LIST_STRIP, listMax, type Column } from "./columns";
 import { Flows, isOpen } from "./Flows";
 import { ForgetManyDialog } from "./ForgetMany";
 import { GroupHead, type Tone } from "./GroupHead";
@@ -193,7 +193,7 @@ export function Sessions() {
           label="Resize the session list"
           edge="right"
           width={list.width}
-          bounds={SESSIONS_WIDTH}
+          bounds={{ ...SESSIONS_WIDTH, max: list.max }}
           onChange={list.setWidth}
         />
       )}
@@ -265,10 +265,12 @@ type SessionsOutlet = { loaded: Loaded; panel: PanelColumn };
 // The window where a session's page stands still and its columns lie over it (styles.css).
 const NARROW = "(max-width: 900px)";
 
-// The session list's part of the columns: `over`, it lies open over the session (601 to 900 px).
+// The session list's part of the columns: `max`, the widest its edge goes now; `over`, it lies
+// open over the session (601 to 900 px).
 type ListColumn = {
   folded: boolean;
   width: number;
+  max: number;
   over: boolean;
   open: () => void;
   fold: () => void;
@@ -307,11 +309,14 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
   }, [narrow]);
   const width = list.width ?? SESSIONS_WIDTH.initial;
   // Before the first measure nothing folds: the stored choice shows, and no terminal is made.
-  const fit = fitColumns({ room: room ?? Infinity, list: { ...list, width }, panel, last, control });
+  const input = { room: room ?? Infinity, list: { ...list, width }, panel, last, control };
+  const fit = fitColumns(input);
+  const max = Math.max(SESSIONS_WIDTH.min, Math.min(SESSIONS_WIDTH.max, listMax(input)));
   const listColumn = useMemo(
     () => ({
       folded: narrow ? over !== "list" : fit.listFolded,
       width,
+      max,
       over: narrow && over === "list",
       open: () => {
         if (narrow) return setOver("list");
@@ -324,7 +329,7 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
       },
       setWidth: (next: number) => keepList({ width: next }),
     }),
-    [narrow, over, fit.listFolded, width, keepList],
+    [narrow, over, fit.listFolded, width, max, keepList],
   );
   const panelColumn = useMemo(
     () => ({
@@ -815,7 +820,8 @@ const LAST_FIT = 3;
 
 // The tab bar: the tabs, which give way by the levels above, and at its right end what stays
 // outside them (`children`, a tab's search). The level is chosen by trying each before the
-// paint, again when the bar or a tab changes its width (a count, the font coming).
+// paint, again when the tabs' row or a tab changes its width (the bar, the search coming, a
+// count, the font).
 function SessionTabs({
   name,
   tab,
@@ -855,7 +861,7 @@ function SessionTabs({
     choose();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(choose);
-    observer.observe(box);
+    observer.observe(tabs);
     for (const one of tabs.children) observer.observe(one);
     return () => observer.disconnect();
   }, [lookAtEnds]);

@@ -16,6 +16,12 @@ pytestmark = pytest.mark.ui
 
 LIST_KEY = "lado.sessionsList"
 PANEL_KEY = "lado.terminals"
+# The tabs' level has settled: they fit, or they are at the last one.
+FITS = """() => {
+  const row = document.querySelector('.session-tabs-scroll');
+  const bar = document.querySelector('.session-tabs');
+  return bar.dataset.fit === '3' || row.scrollWidth <= row.clientWidth;
+}"""
 # The Artifacts tab is whole in the bar, or an arrow says there is more.
 TAB_OR_ARROW = """() => {
   const row = document.querySelector('.session-tabs-scroll').getBoundingClientRect();
@@ -198,13 +204,7 @@ def test_the_tabs_give_way_in_levels(page: Page, server, repo, shot):
     seen = []
     for width in range(460, 180, -20):
         page.add_style_tag(content=f".session-tabs {{ width: {width}px; }}")
-        page.wait_for_function(
-            """() => {
-              const row = document.querySelector('.session-tabs-scroll');
-              const bar = document.querySelector('.session-tabs');
-              return bar.dataset.fit === '3' || row.scrollWidth <= row.clientWidth;
-            }"""
-        )
+        page.wait_for_function(FITS)
         level = bar.get_attribute("data-fit")
         if level not in seen:
             seen.append(level)
@@ -426,6 +426,58 @@ def test_at_768_px_the_expanded_card_takes_the_window_under_the_top_bar(
     )
     expect(panel(page)).to_be_visible()
     shot(page, full_page=False)
+
+
+def test_at_768_px_a_short_cards_expanded_card_fills_the_window_too(page: Page, server, repo, shot):
+    size(page, 768, 1024)
+    session = gated_session(repo)
+    open_session(page, server, session)
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Expand the card").click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    placed = card.bounding_box()
+    assert placed["y"] + placed["height"] >= 1024 - 40
+    terminals = panel(page).bounding_box()
+    assert terminals["y"] + terminals["height"] == 1024
+    shot(page, full_page=False)
+
+
+def test_the_lists_edge_stops_where_the_chat_keeps_its_room(page: Page, server, repo):
+    """A drag that would fold the list under the pointer stops: the edge stays in hand."""
+    size(page, 1440, 900)
+    session = running_session(repo)
+    open_session(page, server, session, {PANEL_KEY: json.dumps({"width": 640, "collapsed": False})})
+    edge = page.get_by_role("separator", name="Resize the session list")
+    placed = edge.bounding_box()
+    x, y = placed["x"] + placed["width"] / 2, placed["y"] + placed["height"] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + 40, y)
+    page.mouse.move(x + 120, y)
+    page.mouse.up()
+    expect(edge).to_have_attribute("aria-valuenow", str(1380 - 640 - 420))
+    expect(session_list(page)).to_be_visible()
+    assert chat_width(page) >= 420
+    page.reload()
+    expect(session_list(page)).to_be_visible()
+
+
+def test_the_tabs_choose_their_level_again_when_the_search_comes(page: Page, server, repo):
+    """Flows has Find at the bar's end, which takes room from the tabs with the window as it was."""
+    size(page, 1440)
+    session = running_session(repo)
+    runtime.spawn_worker(session, "Work", name="w1")
+    open_session(page, server, session)
+    bar = page.get_by_role("navigation", name="Session sections")
+    expect(bar.get_by_role("link", name=re.compile("^Agents · 2"))).to_be_visible()
+    for width in range(240, 460, 10):
+        bar.get_by_role("link", name=re.compile("^Activity")).click()
+        expect(page.get_by_role("button", name="Find a run")).to_have_count(0)
+        page.add_style_tag(content=f".session-tabs {{ width: {width}px; }}")
+        page.wait_for_function(FITS)
+        bar.get_by_role("link", name=re.compile("^Flows")).click()
+        expect(page.get_by_role("button", name="Find a run")).to_be_visible()
+        page.wait_for_function(TAB_OR_ARROW, timeout=2000)
 
 
 def test_expanded_at_768_px_the_terminals_cover_the_page(page: Page, server, repo):

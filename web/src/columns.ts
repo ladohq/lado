@@ -24,7 +24,20 @@ export type ColumnsInput = {
 
 export type Columns = { listFolded: boolean; panelFolded: boolean; panelWidth: number };
 
-export function fitColumns({ room, list, panel, last, control }: ColumnsInput): Columns {
+// Whether the human opened the terminals (a terminal in control counts), and whether they stay
+// when something must fold: not after the human opened a list that is still wanted.
+const opened = ({ panel, control }: ColumnsInput) => !panel.collapsed && (panel.chosen || control);
+const panelStays = (input: ColumnsInput) => opened(input) && (input.last !== "list" || input.list.collapsed);
+
+// The widest the list may be dragged: the chat keeps its room beside terminals that stay, and
+// past that the rule would fold the list under the pointer. Other terminals fold for it.
+export function listMax(input: ColumnsInput): number {
+  const beside = panelStays(input) ? (input.panel.width ?? PANEL_DEFAULT.min) : STRIP;
+  return input.room - beside - CHAT_MIN;
+}
+
+export function fitColumns(input: ColumnsInput): Columns {
+  const { room, list, panel } = input;
   const listAt = (open: boolean) => (open ? list.width : LIST_STRIP);
   const widthAt = (open: boolean) => {
     const area = room - listAt(open);
@@ -38,19 +51,18 @@ export function fitColumns({ room, list, panel, last, control }: ColumnsInput): 
   });
   const listOpen = !list.collapsed;
   const panelOpen = !panel.collapsed;
-  const opened = panelOpen && (panel.chosen || control);
-  const keepPanel = opened && (last !== "list" || list.collapsed);
   // The ways to show the columns, the best first: the first that leaves the chat its room.
-  // Only terminals the human opened narrow, and only beside the folded list.
+  // Only terminals the human opened narrow, and only beside the folded list; terminals nobody
+  // opened never stay beside a list that folded.
   const narrowed = room - LIST_STRIP - CHAT_MIN;
-  const tries = keepPanel
+  const tries = panelStays(input)
     ? [
         shown(listOpen, true),
         shown(false, true),
         ...(narrowed >= PANEL_WIDTH.min ? [shown(false, true, Math.min(narrowed, widthAt(false)))] : []),
         shown(listOpen, false),
       ]
-    : [shown(listOpen, panelOpen), shown(listOpen, false), shown(false, panelOpen)];
+    : [shown(listOpen, panelOpen), shown(listOpen, false), ...(opened(input) ? [shown(false, true)] : [])];
   const { chat: _, ...best } = tries.find(({ chat }) => chat >= CHAT_MIN) ?? shown(false, false);
   return best;
 }

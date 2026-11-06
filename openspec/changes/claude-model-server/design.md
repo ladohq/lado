@@ -128,6 +128,13 @@ worker in inherit mode would inherit `ANTHROPIC_BASE_URL` and send the human's l
 `ANTHROPIC_UNIX_SOCKET` ignores an empty value in the settings, so the launch sets it empty. The check
 of a CLI's own name is in `check_launch`, so `list_models` says it too, and in `check_model`.
 
+### D12. Added by the human's manual check
+
+Claude Code asks for `max_tokens` 32000 whatever the context, so a small model's request is over it:
+`CLAUDE_CODE_MAX_OUTPUT_TOKENS` holds `Limit.output_room`, OpenCode's rule, with Claude Code's own
+default. Auto mode's classifier asks the agent's model and denied LADO's tools as `Classifier
+unavailable`: such an agent's settings allow `mcp__lado`. Any other tool stays with the classifier.
+
 ## Risks / Trade-offs
 
 - **A new Claude Code adds a variable or a credential source.** `TESTED_VERSION` is bumped by hand;

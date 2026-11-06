@@ -120,7 +120,7 @@ def model_entry(name: str, limit: base.Limit | None) -> dict:
     1.18.35 refuses a config whose `limit` has no `output`."""
     if limit is None:
         return {"name": name}
-    output = max(1, min(limit.output or DEFAULT_OUTPUT, limit.context // 4))
+    output = limit.output_room(DEFAULT_OUTPUT)
     return {"name": name, "limit": {"context": limit.context, "output": output}}
 
 

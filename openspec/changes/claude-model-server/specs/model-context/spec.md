@@ -27,13 +27,15 @@ start on, SHALL give no such warning.
 ### Requirement: A known context goes to a Claude agent
 
 A Claude agent on a server's model with a known context SHALL have that context as
-`CLAUDE_CODE_MAX_CONTEXT_TOKENS` in the `env` of its own settings. With no known context the variable
-SHALL be absent.
+`CLAUDE_CODE_MAX_CONTEXT_TOKENS` in the `env` of its own settings, and as
+`CLAUDE_CODE_MAX_OUTPUT_TOKENS` the output the server reports or 32000, at most a quarter of the
+context. With no known context the variables SHALL be absent.
 
 #### Scenario: A known context
 - **WHEN** a Claude agent starts on a model whose context is 65536
-- **THEN** its settings' `env` has `CLAUDE_CODE_MAX_CONTEXT_TOKENS` `65536`
+- **THEN** its settings' `env` has `CLAUDE_CODE_MAX_CONTEXT_TOKENS` `65536` and
+  `CLAUDE_CODE_MAX_OUTPUT_TOKENS` `16384`, and its requests ask for no more
 
 #### Scenario: No known context
 - **WHEN** the server reports nothing of the model
-- **THEN** its settings' `env` has no such variable
+- **THEN** its settings' `env` has neither variable

@@ -153,6 +153,12 @@ SERVER_SWITCHES = {
     "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
 }
+# The max_tokens 2.1.295 asks for by itself: with a small context the request is over it, and the
+# server refuses the turn or cuts the prompt.
+DEFAULT_OUTPUT = 32000
+# LADO's tools, which auto mode's classifier would judge. It asks the agent's own model: a server
+# that gives it no answer it can read has them denied as "Classifier unavailable" (2.1.295).
+LADO_TOOLS = "mcp__lado"
 # With no credential at all Claude Code sends the human's login, so a server with no key gets
 # this word: the helper's output is sent as it is.
 NO_KEY = "no-key"
@@ -174,6 +180,7 @@ def _server_settings(server: base.ServerEntry) -> dict:
     }
     if (limit := server.limits.get(model)) is not None:
         env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(limit.context)
+        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(limit.output_room(DEFAULT_OUTPUT))
     helper = f"printenv {server.key_variable}" if server.key_variable else f"echo {NO_KEY}"
     return {"env": env, "apiKeyHelper": helper, "availableModels": [model]}
 
@@ -273,6 +280,7 @@ class ClaudeProvider(base.Provider):
         if spec.servers:  # one: its start model's (lado.model_settings.agent_servers)
             server = spec.servers[0]
             config.update(_server_settings(server))
+            config["permissions"]["allow"] = [LADO_TOOLS]
             env[base.MODEL_SERVER] = server.id
             env[UNIX_SOCKET] = ""
             if server.key is not None:

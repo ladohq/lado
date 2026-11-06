@@ -139,6 +139,11 @@ class Limit:
     context: int
     output: int | None = None
 
+    def output_room(self, default: int) -> int:
+        """The tokens a CLI may ask for as its output, `default` when the server says none: at
+        most a quarter of the context, which the prompt needs too."""
+        return max(1, min(self.output or default, self.context // 4))
+
 
 @dataclass(frozen=True)
 class ServerEntry:

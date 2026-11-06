@@ -115,6 +115,8 @@ class Endpoint:
 # What makes `Anthropic` script a turn: a message that holds this runs the shell tool, then an MCP
 # tool of LADO's, then ends the turn; any other request gets a line of text.
 RUN_TOOLS = "SMOKE-RUN-TOOLS"
+RUN_MCP = "SMOKE-RUN-MCP"  # the MCP tool alone
+CONTEXT = 65536  # the context the fake's list reports of its model
 SHELL_TOOL = "Bash"
 MCP_TOOL = "mcp__lado__list_agents"
 SHELL_CALL, MCP_CALL = "toolu_smoke_shell", "toolu_smoke_mcp"
@@ -209,6 +211,7 @@ class Anthropic:
                     self.json(401, ANTHROPIC_401)
                 elif (self.command, path) == ("GET", "/v1/models"):
                     listed = {"type": "model", "id": model, "display_name": model}
+                    listed["max_input_tokens"] = CONTEXT
                     self.json(200, {"data": [listed], "has_more": False})
                 elif (self.command, path) == ("POST", "/v1/messages/count_tokens"):
                     self.json(200, {"input_tokens": 1})
@@ -244,6 +247,8 @@ class Anthropic:
         if SHELL_CALL in results and MCP_CALL not in results:  # a turn's results stay together
             return [_tool_use(MCP_CALL, MCP_TOOL, {})], "tool_use"
         offered = {tool.get("name") for tool in request.get("tools") or []}
+        if not results and MCP_TOOL in offered and RUN_MCP in json.dumps(latest):
+            return [_tool_use(MCP_CALL, MCP_TOOL, {})], "tool_use"
         if not results and SHELL_TOOL in offered and RUN_TOOLS in json.dumps(latest):
             command = {"command": f"touch '{self.marker}'", "description": "the smoke's marker"}
             return [_tool_use(SHELL_CALL, SHELL_TOOL, command)], "tool_use"

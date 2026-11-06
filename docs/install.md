@@ -302,8 +302,13 @@ it in the launch window, or `lado start --provider claude --model "<name>"`. Wha
   or a name ending in `[1m]`) is refused when saved and at a start: it would never reach the server.
   Give it another id there.
 - The agent keeps your `~/.claude`: your `CLAUDE.md`, skills and plugins work as usual.
-- The context LADO reads from the server goes to the agent. With none known, Claude Code assumes
-  200K tokens and says so at its start, so on a smaller model it compacts too late.
+- The context LADO reads from the server goes to the agent, and its answers are limited to a quarter
+  of it (or what the server reports), so that a request fits. With none known, Claude Code assumes
+  200K tokens and says so at its start: on a smaller model it compacts too late and asks for 32K
+  tokens of answer, which such a server may refuse.
+- In auto mode Claude Code asks the agent's own model whether a tool is safe. LADO's tools are
+  allowed for such an agent and do not go through that; any other tool is refused as `Classifier
+  unavailable` when the model gives no usable answer. Use another permission mode then.
 - Telemetry and the experimental betas are off for such an agent. Claude Code still tried to reach
   `downloads.claude.ai` and `github.com`, so do not take it for an agent that makes no other request.
 

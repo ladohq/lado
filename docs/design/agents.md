@@ -337,8 +337,10 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `availableModels` and `ANTHROPIC_DEFAULT_MODEL` and `ANTHROPIC_SMALL_FAST_MODEL` with the model,
   so that `/model` shows Default and the model and a subagent's `model: haiku` falls back to it;
   `SERVER_BLANKS` as empty values (`ANTHROPIC_UNIX_SOCKET`, on which an empty value in the settings
-  does nothing, goes empty in the launch's environment); `SERVER_SWITCHES`; `CLAUDE_CODE_MAX_CONTEXT_TOKENS` for a known
-  context; `apiKeyHelper: printenv LADO_MODEL_KEY_<ID>`, whose output goes out in both `x-api-key`
+  does nothing, goes empty in the launch's environment); `SERVER_SWITCHES`; for a known context `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and
+  `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (`Limit.output_room`, as it asks for 32000 by itself); `permissions.allow`
+  with `mcp__lado`, as auto mode's classifier asks the same model and a server of no usable answer
+  would have LADO's tools denied; `apiKeyHelper: printenv LADO_MODEL_KEY_<ID>`, whose output goes out in both `x-api-key`
   and `Authorization`, or `echo no-key`, as with no credential at all the login goes out. The file
   holds no secret and is rewritten at each launch. The launch's `LADO_MODEL_SERVER` tells the
   provider it needs no login, as `claude auth status` reads no `--settings`: `needs_login`,

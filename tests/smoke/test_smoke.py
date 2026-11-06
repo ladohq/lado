@@ -229,6 +229,8 @@ def test_claude_code_runs_on_a_server_with_no_login_and_no_first_run(
     agent = state.get_agent(SESSION, "supervisor")
     assert agent.model == SERVER_MODEL
     assert runtime.status_reasons(SESSION) == {}
+    asked = {json.loads(b)["max_tokens"] for p, _, b in claude_server.requests if b'"model"' in b}
+    assert asked == {endpoints.CONTEXT // 4}, "the context known, its quarter at most"
     assert delivered(state.HUMAN, "supervisor", endpoints.RUN_TOOLS)()
     only_the_server_s_key_and_model(claude_server)
     assert fake_endpoint.requests == []
@@ -285,6 +287,24 @@ def test_another_way_out_in_the_environment_does_not_take_a_claude_agent_off_its
     )
     turn_with_tools(claude_server)
     only_the_server_s_key_and_model(claude_server)
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_auto_mode_lets_a_claude_agent_on_a_server_use_lado_s_tools(
+    smoke_repo, smoke_provider, claude_server
+):
+    """Its classifier asks the server too, whose model may say no: LADO's tools do not go there."""
+    runtime.start_session(str(smoke_repo), SESSION, "auto", "claude", model="Шлюз Qwen")
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    runtime.write_as_human(SESSION, endpoints.RUN_MCP)
+    called = lambda: endpoints.MCP_CALL in claude_server.tool_results()  # noqa: E731
+    wait_for(called, "the MCP tool's result", 120)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the turn's end", 120)
+    assert "denied by auto mode" not in tmux.capture(SESSION, "supervisor")
+    last = [r for r in claude_server.requests if b"tool_result" in r[2]][-1]
+    assert b"auto mode cannot determine" not in last[2]
     runtime.stop_session(SESSION)
 
 

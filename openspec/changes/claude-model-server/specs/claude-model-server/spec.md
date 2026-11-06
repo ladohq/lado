@@ -22,6 +22,12 @@ Claude Code's own choice, SHALL start as before, with nothing of a server.
 - **WHEN** a session that ran on `Шлюз Opus` resumes with `--model opus`
 - **THEN** the agent's settings hold nothing of the server, and its environment has no key
 
+#### Scenario: Auto mode
+- **WHEN** a Claude agent on a server runs in auto mode, and the server's model gives its classifier
+  no usable answer
+- **THEN** LADO's tools work, as its settings allow them; an agent on a built-in model allows nothing
+  of its own
+
 #### Scenario: The real CLI
 - **WHEN** real Claude Code runs on a fake Anthropic server that asks for a shell tool and an MCP tool
 - **THEN** both run, LADO's hooks report the turn, and its message reaches the agent

@@ -479,10 +479,11 @@ def check_refusal(status_code: int, key: str, requests) -> None:
 
 @pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
 @pytest.mark.parametrize("status_code", list(REFUSALS))
-def test_a_provider_s_refusal_ends_the_turn_of_the_opencode_family(
+def test_a_provider_s_refusal_ends_the_turn_within_the_cli_s_repeats(
     smoke_repo, smoke_provider, monkeypatch, status_code
 ):
-    """The key the server repeats stays out of LADO's words, and the CLI's repeats end."""
+    """The key the server repeats stays out of LADO's words, and the CLI's repeats end. No CLI's
+    name in the test's: `-k <provider>` of a CI cell would take the other's case, which skips."""
     provider = smoke_provider
     monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
     key = "smoke-refused-key-0123456789"

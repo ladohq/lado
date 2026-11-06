@@ -519,6 +519,18 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## The epic's vitest tests keep `{ timeout: 3000 }` after the suite's wait became 10 s
+
+Size: XS: delete nine options at the merge of the epic. Why here: nothing fails, a wait is only
+shorter than the suite's, but it is a flake on a loaded machine and easy to forget.
+
+`epic/lad-154-models` has 21 `{ timeout: 3000 }` under `web/src`. Main dropped the 12 of
+`Launch.test.tsx` and `ProjectRepos.test.tsx` (LAD-219), so a test sets no timeout of its own
+(`docs/testing.md`); the 9 of `ModelSources.test.tsx` (8) and `ModelCards.test.tsx` (1) exist
+only in the epic and no merge will take them out.
+Wanted: when the epic merges, `grep -rn 'timeout: 3000' web/src` finds nothing.
+Found: 2026-11-06, fix/lad-219-start-in-waits-for-providers, at the gate of LAD-219.
+
 ## Esc in the Launch window leaves the focus on the page's body
 
 Size: S. Why here: a keyboard user loses their place after every Esc in that window; an old

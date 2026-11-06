@@ -4,6 +4,10 @@
 
 ### Improved
 
+- **LADO tells you whether your decision got through.** When the connection drops, the Live
+  mark warns and Approve, Send, Stop and the like wait. If it drops mid-click, LADO checks by
+  itself once it can: the card goes, or the error says it was not delivered, with Retry.
+
 - **A session's head is one line at any width.** The folder, git, kits, CLI, Rename and Copy
   link moved to Details, which a click on the title opens; the chat gets the height back,
   and `Skip to chat` takes the keyboard straight to it.

@@ -8,9 +8,9 @@ import { useEffect, useLayoutEffect, useState } from "react";
 
 export const PHONE_QUERY = "(max-width: 600px), (pointer: coarse) and (max-height: 500px)";
 export const SHORT_QUERY = "(max-height: 500px)";
-// A tablet: a touch screen where a session's page stands still (styles.css). Its keyboard asks
-// for the visible height as a phone's does.
-const TABLET_QUERY = "(pointer: coarse) and (min-width: 601px) and (max-width: 900px)";
+// A tablet: a touch screen wider than a phone. Its keyboard and Safari's bars ask for the visible
+// height as a phone's do, in any window where the app stands still (styles.css).
+const TABLET_QUERY = "(pointer: coarse) and (min-width: 601px)";
 
 export type Phone = "tall" | "short" | null;
 

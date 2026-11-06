@@ -1,7 +1,7 @@
 // What a session's page shows beside the chat (docs/design/ui.md, Structure): one rule, from
 // the room there is and what the human chose, with no state of its own. A column folded for
 // room comes back because the room did, to the choice that stayed stored (prefs.ts).
-import { PANEL_WIDTH } from "./prefs";
+import { PANEL_WIDTH, type Column } from "./prefs";
 
 export const CHAT_MIN = 420; // the chat's least width above 900 px; --chat-min in tokens.css
 export const STRIP = 32; // the terminals folded to a strip; --strip-w in tokens.css
@@ -12,13 +12,11 @@ export const LIST_STRIP = 48; // the list folded to a strip
 const SHARE = 0.4;
 const PANEL_DEFAULT = { min: 360, max: 640 };
 
-export type Column = "list" | "panel";
-
 export type ColumnsInput = {
   room: number; // the page beside the rail
   list: { width: number; collapsed: boolean };
   panel: { width: number | null; collapsed: boolean; chosen: boolean };
-  last: Column | null; // the column the human opened last, while the page lives
+  last: Column | null; // the column the human opened last
   control: boolean; // a terminal of the panel is in control
 };
 

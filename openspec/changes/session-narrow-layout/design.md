@@ -23,9 +23,10 @@ so the measure cannot loop. Steps: the wanted columns; then fold the panel when 
 open it or opened the list last, else the list; then narrow a panel the human opened to the room
 less 420, down to `PANEL_WIDTH.min`; then fold the other one, and a list that fits beside the
 folded panel stays open. Terminals nobody opened never stay beside a list that folded; terminals
-the human opened do, also when the list came last. "Opened last" is kept in the hook for the
-page's life: pressing Sessions or a chip sets it even when the stored choice is already open, and
-after a reload a tie goes by rule 4б, the list folds. `listMax` of the same file bounds the list's
+the human opened do, also when the list came last. "Opened last" is the human's choice, so it is
+stored (`lado.lastColumn`, design QA F1): pressing Sessions or a chip sets it even when the stored
+choice is already open, and a reload shows what the human left; with none stored a tie goes by
+rule 4б, the list folds. `listMax` of the same file bounds the list's
 edge, so that a drag never makes the rule fold the list under the pointer. Rejected: CSS container
 queries and writing the fold to prefs (proposal, options A and C).
 
@@ -78,9 +79,11 @@ Purpose of `phone-layout` follow (an archive does not touch a Purpose: edit it i
 
 **D9. A tablet's keyboard.** `html { overflow: hidden }` takes away the page's scroll that brought
 the composer above Safari's keyboard. `usePhoneViewport` so also runs for `(pointer: coarse) and
-(min-width: 601px) and (max-width: 900px)`, and that query's CSS sizes `.app` on a session's page by
-`--phone-height` and `--phone-top`, as LAD-109 does for a phone. Not checkable here: the human's
-check on an iPad before the merge.
+(min-width: 601px)`, and CSS sizes `.app` by `--phone-height` and `--phone-top`, as LAD-109 does for
+a phone: on a session's page at 601 to 900 px, on every page above, where the whole app is the
+window and `100dvh` is taller than the visible part on iPadOS 26 Safari (the human's check in the
+iOS Simulator: 763 px of 688 to 734, and the card under the keyboard). Other pages at 601 to 900 px
+scroll as before. Here it is checked with a faked height: the human repeats the check.
 
 **D10. The strip's buttons.** Per agent of `agents` (the session's list), in its order, not per open
 tab: the spec says per agent, and it is what F26 asks. `avatar()` of `FeedRow.tsx` gives the letter

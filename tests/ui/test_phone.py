@@ -222,6 +222,64 @@ def test_a_tablets_page_is_as_high_as_the_part_of_the_window_it_sees(device, ser
     assert composer["y"] + composer["height"] <= 600
 
 
+@pytest.mark.parametrize("size", [(1180, 734), (1032, 1366)], ids=str)
+def test_a_wide_touch_screens_app_is_as_high_as_the_part_it_sees(device, server, repo, shot, size):
+    """iPad check of PR #224: wider than 900 px the app was 100dvh, taller than the visible part
+    on iPadOS Safari, so the card's buttons and the composer lay under its bars."""
+    width, height = size
+    session = gated_session(repo)
+    page = opened(device(size), server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    approve = card.get_by_role("button", name="Approve", exact=True)
+    expect(approve).to_be_visible()
+    variable = "getComputedStyle(document.documentElement).getPropertyValue('--phone-height')"
+    assert page.evaluate(variable) == f"{height}px"
+    seen = height - 46  # Safari's bar
+    page.evaluate(f"document.documentElement.style.setProperty('--phone-height', '{seen}px')")
+    assert box(page.locator(".app"))["height"] == seen
+    field = box(page.get_by_role("textbox", name=re.compile("^Write to")))
+    assert field["y"] + field["height"] <= seen
+    assert box(approve)["y"] + box(approve)["height"] <= seen
+    shot(page, full_page=False)
+
+
+def test_with_the_keyboard_open_on_a_wide_touch_screen_the_card_stays_in_sight(
+    device, server, repo, shot
+):
+    """iPad landscape, keyboard open: 312 px of the window are left."""
+    session = gated_session(repo)
+    page = opened(device((1180, 734)), server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    comment = card.get_by_role("textbox", name="Comment for the next step (optional)")
+    expect(comment).to_be_visible()
+    comment.tap()
+    page.evaluate("document.documentElement.style.setProperty('--phone-height', '312px')")
+    for part in (comment, card.get_by_role("button", name="Approve", exact=True)):
+        expect(part).to_be_visible()
+        assert box(part)["y"] + box(part)["height"] <= 312, part
+    shot(page, full_page=False)
+
+
+def test_a_wide_touch_screens_other_pages_scroll_inside_the_app(device, server, repo):
+    gated_session(repo, LONG_NOTE)
+    page = opened(device((1180, 734)), server, "/needs-you")
+    expect(top_bar(page).locator("h1")).to_have_text("Needs you")
+    page.evaluate("document.documentElement.style.setProperty('--phone-height', '500px')")
+    assert box(page.locator(".app"))["height"] == 500
+    content = page.locator(".content")
+    expect(content.get_by_role("region").first).to_be_visible()
+    assert content.evaluate("c => c.scrollHeight > c.clientHeight")
+    content.evaluate("c => { c.scrollTop = 100; }")
+    assert content.evaluate("c => c.scrollTop") == 100
+
+
+def test_a_computer_of_a_tablets_width_keeps_the_windows_height(device, server, repo):
+    session = running_session(repo)
+    page = opened(device((1180, 734), touch=False), server, f"/sessions/{session}")
+    expect(page.get_by_role("region", name=f"Session {session}")).to_be_visible()
+    keeps_the_computers_frame(page)
+
+
 def test_a_tablet_elsewhere_keeps_the_computers_frame(device, server):
     page = opened(device((768, 1024)), server, "/needs-you")
     expect(page.get_by_role("banner").locator("h1")).to_have_text("Needs you")

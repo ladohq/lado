@@ -521,7 +521,7 @@ test("a Running row's card and its icon in the strip say whether it works, then 
   expect(icon("calm").getAttribute("aria-label")).toBe("calm, idle");
   expect(icon("calm").querySelector(".dot")!.className).toContain("activity-idle");
   expect(icon("gated").getAttribute("aria-label")).toBe("gated, needs you");
-  expect(icon("gated").querySelector(".dot")).toBeNull();
+  expect(icon("gated").querySelector(".dot")!.className).toContain("dot-waiting");
   fireEvent.focus(icon("busy"));
   expect(nameFirst(screen.getByRole("tooltip"))).toBe("busy");
   fireEvent.blur(icon("busy"));

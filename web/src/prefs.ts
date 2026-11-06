@@ -145,6 +145,19 @@ export const storedSessionsList = (): ColumnPrefs => storedColumn(SESSIONS_LIST,
 export const storeSessionsList = (list: Pick<ColumnPrefs, "width" | "collapsed">): void =>
   storeColumn(SESSIONS_LIST, list);
 
+// The column of a session page the human opened last, which stays when both do not fit
+// (columns.ts).
+export type Column = "list" | "panel";
+
+const LAST_COLUMN = "lado.lastColumn";
+
+export function storedLastColumn(): Column | null {
+  const column = read(LAST_COLUMN);
+  return column === "list" || column === "panel" ? column : null;
+}
+
+export const storeLastColumn = (column: Column): void => write(LAST_COLUMN, column);
+
 // The artifact panel over a session's page: the width the human chose, and whether it is
 // expanded to all the room there is. One value for every session.
 const ARTIFACT_PANEL = "lado.artifactPanel";

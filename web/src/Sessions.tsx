@@ -32,7 +32,7 @@ import { Artifacts } from "./ArtifactsTable";
 import { getSessionAbout, setSessionTitle, type SessionAbout, type SessionInfo, type SessionStatus } from "./api";
 import { Chat, FOCUS_CHAT, focusChat } from "./Chat";
 import { duration } from "./ChatText";
-import { fitColumns, LIST_STRIP, listMax, type Column } from "./columns";
+import { fitColumns, LIST_STRIP, listMax } from "./columns";
 import { Flows, isOpen } from "./Flows";
 import { ForgetManyDialog } from "./ForgetMany";
 import { GroupHead, type Tone } from "./GroupHead";
@@ -62,12 +62,15 @@ import {
   SESSIONS_WIDTH,
   storeAgentMessages,
   storedAgentMessages,
+  storedLastColumn,
   storedPanel,
   storedSessionGroups,
   storedSessionsList,
+  storeLastColumn,
   storePanel,
   storeSessionGroups,
   storeSessionsList,
+  type Column,
   type ColumnPrefs,
   type SessionGroup,
 } from "./prefs";
@@ -198,7 +201,13 @@ export function Sessions() {
         />
       )}
       {strip && (
-        <SessionStrip loaded={loaded} open={!list.folded} openRef={focus.open} onToggle={() => openList(list.folded)}>
+        <SessionStrip
+          loaded={loaded}
+          current={current}
+          open={!list.folded}
+          openRef={focus.open}
+          onToggle={() => openList(list.folded)}
+        >
           {newSession}
         </SessionStrip>
       )}
@@ -300,7 +309,11 @@ function useColumnPrefs(stored: () => ColumnPrefs, store: (prefs: ColumnPrefs) =
 function useSessionColumns(room: number | null): { list: ListColumn; panel: PanelColumn } {
   const [list, keepList] = useColumnPrefs(storedSessionsList, storeSessionsList);
   const [panel, keepPanel] = useColumnPrefs(storedPanel, storePanel);
-  const [last, setLast] = useState<Column | null>(null);
+  const [last, setLast] = useState<Column | null>(storedLastColumn);
+  const openedLast = useCallback((column: Column) => {
+    setLast(column);
+    storeLastColumn(column);
+  }, []);
   const [control, setControl] = useState(false);
   const [over, setOver] = useState<"list" | "terminals" | null>(null);
   const narrow = useMedia(NARROW);
@@ -320,7 +333,7 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
       over: narrow && over === "list",
       open: () => {
         if (narrow) return setOver("list");
-        setLast("list");
+        openedLast("list");
         keepList({ collapsed: false });
       },
       fold: () => {
@@ -329,7 +342,7 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
       },
       setWidth: (next: number) => keepList({ width: next }),
     }),
-    [narrow, over, fit.listFolded, width, max, keepList],
+    [narrow, over, fit.listFolded, width, max, keepList, openedLast],
   );
   const panelColumn = useMemo(
     () => ({
@@ -339,7 +352,7 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
       ready: room !== null || typeof ResizeObserver === "undefined",
       open: () => {
         if (narrow) return setOver("terminals");
-        setLast("panel");
+        openedLast("panel");
         keepPanel({ collapsed: false });
       },
       fold: () => {
@@ -349,7 +362,7 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
       setWidth: (next: number | null) => keepPanel({ width: next }),
       setControl,
     }),
-    [narrow, over, fit.panelFolded, fit.panelWidth, room, keepPanel],
+    [narrow, over, fit.panelFolded, fit.panelWidth, room, keepPanel, openedLast],
   );
   return { list: listColumn, panel: panelColumn };
 }
@@ -357,16 +370,18 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
 // The list collapsed to a strip: Sessions opens it again (and at 601 to 900 px, where the strip
 // stays under the open list, closes it), then New session (`children`), then an icon per
 // session not stopped, in the open list's order (those that need the human first, a line after
-// them). While the list loads the icons' column is empty and busy; when it cannot load, an
-// alert says why, as the open list does.
+// them), the open session's scrolled into view. While the list loads the icons' column is empty
+// and busy; when it cannot load, an alert says why, as the open list does.
 function SessionStrip({
   loaded,
+  current,
   open,
   openRef,
   onToggle,
   children,
 }: {
   loaded: Loaded;
+  current?: string;
   open: boolean;
   openRef: RefObject<HTMLButtonElement | null>;
   onToggle: () => void;
@@ -374,6 +389,19 @@ function SessionStrip({
 }) {
   const groups = loaded && "sessions" in loaded ? grouped(loaded.sessions) : null;
   const marks = badges([...(groups?.["needs-you"] ?? []), ...(groups?.running ?? [])]);
+  // By the list's own scroll: Chromium's Tab would start from an icon scrolled to with
+  // scrollIntoView (Terminals.tsx).
+  const icons = useRef<HTMLUListElement>(null);
+  const known = groups !== null;
+  useLayoutEffect(() => {
+    const list = icons.current;
+    const on = list?.querySelector('[aria-current="page"]');
+    if (!list || !on) return;
+    const box = list.getBoundingClientRect();
+    const icon = on.getBoundingClientRect();
+    list.scrollLeft += Math.min(0, icon.left - box.left) + Math.max(0, icon.right - box.right);
+    list.scrollTop += Math.min(0, icon.top - box.top) + Math.max(0, icon.bottom - box.bottom);
+  }, [current, known]);
   const icon = (session: SessionInfo) => (
     <StripIcon key={session.name} session={session} mark={marks.get(session.name) ?? ""} />
   );
@@ -397,7 +425,7 @@ function SessionStrip({
           </span>
         </Tooltip>
       ) : (
-        <ul className="strip-icons" aria-busy={groups === null || undefined}>
+        <ul ref={icons} className="strip-icons" aria-busy={groups === null || undefined}>
           {groups?.["needs-you"].map(icon)}
           {groups && groups["needs-you"].length > 0 && groups.running.length > 0 && (
             <li className="strip-gap" aria-hidden="true" />
@@ -450,6 +478,7 @@ function StripIcon({ session, mark }: { session: SessionInfo; mark: string }) {
           aria-label={needsYou ? `${called}, needs you` : working ? `${called}, ${working}` : called}
         >
           {mark}
+          {needsYou && <span className="dot dot-small dot-waiting" aria-hidden="true" />}
           {working && <span className={`dot dot-small activity-${working}`} aria-hidden="true" />}
         </NavLink>
       </Tooltip>

@@ -62,6 +62,10 @@ the other SHALL fold.
 - **WHEN** the terminals fold for room
 - **THEN** `lado.terminals` and `lado.sessionsList` are as they were
 
+#### Scenario: The column opened last survives a reload
+- **WHEN** the human opened the terminals, then the list, in a window 1024 px wide and reloads
+- **THEN** the list is open and the terminals are in their strip
+
 #### Scenario: The human's fold
 - **WHEN** the human folds the terminals in a window 1440 px wide and reloads
 - **THEN** they stay folded, also after the window narrows and widens
@@ -119,6 +123,19 @@ after the later one (`154·2`).
 - **WHEN** the strip shows `lad-154` and `web-2154`
 - **THEN** their badges are `154` and `154·2`
 
+### Requirement: A strip's badge says what waits and stays in view
+
+A session that needs the human SHALL show the waiting diamond on the corner of its badge, not its
+colour alone. The strip SHALL scroll the open session's badge into view when a session opens.
+
+#### Scenario: A gate waits
+- **WHEN** a gate waits in a session of the strip
+- **THEN** its badge has the diamond on its corner
+
+#### Scenario: More sessions than fit
+- **WHEN** the human opens a session whose badge lies past the strip's edge
+- **THEN** the strip scrolls until the badge is whole
+
 ### Requirement: A session's tabs give way in levels
 
 When a session's tabs do not fit their bar they SHALL lose first their icons, then their counts.
@@ -157,8 +174,7 @@ terminal. With more agents than fit the strip SHALL scroll.
 In a window 601 to 900 px wide that is not the phone layout, a session's page SHALL not scroll as
 a window; it SHALL be the window's height. Top to bottom it SHALL show the top bar, the session
 strip as a row of 48 px, the tabs, the team row, the feed that scrolls inside and stays at its
-end, the waiting card and the composer. Other pages SHALL scroll as before. On a touch screen the
-page SHALL be as high as the part of the window the human sees.
+end, the waiting card and the composer. Other pages SHALL scroll as before.
 
 #### Scenario: A tablet
 - **WHEN** the window is 768 or 880 px wide with a gate open on a session's page
@@ -167,6 +183,20 @@ page SHALL be as high as the part of the window the human sees.
 #### Scenario: Needs you
 - **WHEN** the window is 768 px wide and the human opens Needs you
 - **THEN** the page scrolls as before and its card is whole
+
+### Requirement: A touch screen wider than a phone fits the part of the window it sees
+
+On a touch screen wider than 600 px that is not the phone layout, the app SHALL be as high as the
+part of the window the human sees, where it stands still: a session's page at 601 to 900 px, every
+page above 900 px. A computer with a mouse SHALL keep the window's height.
+
+#### Scenario: A tablet held sideways
+- **WHEN** a touch screen 1180 px wide shows 688 px of its 734 px, or 312 px with the keyboard open
+- **THEN** the app is that high and the card's field and buttons lie in the part seen
+
+#### Scenario: A large tablet upright
+- **WHEN** a touch screen 1032 px wide and 1366 px high shows 1320 px
+- **THEN** the app is 1320 px high and the composer lies in the part seen
 
 ### Requirement: At 601 to 900 px the columns start folded
 

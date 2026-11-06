@@ -107,9 +107,19 @@ test("leaving the phone layout takes the variables away", () => {
 
 test("a tablet's page follows the visible part of the window too; a computer of its width does not", () => {
   viewport();
-  new FakeScreen("coarse", 768, 1024);
+  for (const [width, height] of [
+    [768, 1024],
+    [1180, 734],
+    [1032, 1366],
+  ]) {
+    new FakeScreen("coarse", width, height);
+    const { unmount } = renderHook(() => usePhoneViewport(null));
+    expect(variable("--phone-height")).toBe("544px");
+    unmount();
+  }
+  new FakeScreen("fine", 1180, 734);
   const { unmount } = renderHook(() => usePhoneViewport(null));
-  expect(variable("--phone-height")).toBe("544px");
+  expect(variable("--phone-height")).toBe("");
   unmount();
   new FakeScreen("fine", 768, 1024);
   renderHook(() => usePhoneViewport(null));

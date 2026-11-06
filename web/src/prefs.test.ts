@@ -12,9 +12,11 @@ import {
   storeColumn,
   storedColumn,
   storedFlowsGroups,
+  storedLastColumn,
   storedRailCollapsed,
   storedSessionGroups,
   storeFlowsGroups,
+  storeLastColumn,
   storedMinimized,
   storedSessionsList,
   storedWaitingHeight,
@@ -48,6 +50,16 @@ test("the rail is the human's choice, or null with none stored, on any window", 
   expect(storedRailCollapsed()).toBe(false);
   storeRailCollapsed(true);
   expect(storedRailCollapsed()).toBe(true);
+});
+
+test("the column the human opened last is remembered; anything else stored is none", () => {
+  expect(storedLastColumn()).toBeNull();
+  storeLastColumn("list");
+  expect(storedLastColumn()).toBe("list");
+  storeLastColumn("panel");
+  expect(storedLastColumn()).toBe("panel");
+  localStorage.setItem("lado.lastColumn", "rail");
+  expect(storedLastColumn()).toBeNull();
 });
 
 test("the terminal panel is open with no width and no choice at first, on any window", () => {

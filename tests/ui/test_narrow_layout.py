@@ -279,7 +279,14 @@ def test_the_strips_badges_tell_task_sessions_apart(page: Page, server, repo, sh
     open_session(page, server, first)
     icons = strip(page).locator(".strip-session")
     expect(icons).to_have_text(["154", "189", "154·2"], ignore_case=False)
-    assert icons.nth(2).evaluate("e => e.scrollWidth <= e.clientWidth")
+    # The text fits; its status dot lies past the corner on purpose.
+    assert icons.nth(2).evaluate(
+        """e => {
+          const text = document.createRange();
+          text.selectNode(e.firstChild);
+          return text.getBoundingClientRect().width <= e.clientWidth;
+        }"""
+    )
     shot(page, full_page=False)
 
 
@@ -494,6 +501,89 @@ def test_the_tabs_choose_their_level_again_when_the_search_comes(page: Page, ser
         bar.get_by_role("link", name=re.compile("^Flows")).click()
         expect(page.get_by_role("button", name="Find a run")).to_be_visible()
         page.wait_for_function(TAB_OR_ARROW, timeout=2000)
+
+
+def test_the_list_opened_last_at_1024_px_survives_a_reload(page: Page, server, repo):
+    """Spec §2, 4г: the column the human opened last is theirs after a reload too."""
+    size(page, 1024, 760)
+    session = running_session(repo)
+    open_session(page, server, session)
+    panel(page).get_by_role("button", name="Show the terminals").click()
+    not_folded(panel(page))
+    strip(page).get_by_role("button", name="Sessions").click()
+    expect(session_list(page)).to_be_visible()
+    folded(panel(page))
+    page.reload()
+    expect(session_list(page)).to_be_visible()
+    folded(panel(page))
+    assert chat_width(page) == 672
+
+
+def test_at_a_chat_of_420_px_the_tabs_keep_their_counts(page: Page, server, repo, shot):
+    """Frame g2-1024-tabs: level 1, no icons, the counts in place."""
+    size(page, 1024, 760)
+    session = gated_session(repo)
+    open_session(page, server, session, {PANEL_KEY: json.dumps({"width": 640, "collapsed": False})})
+    bar = page.get_by_role("navigation", name="Session sections")
+    expect(bar.get_by_role("link", name=re.compile("^Artifacts · "))).to_be_visible()
+    expect(bar.get_by_role("link", name=re.compile("^Flows · 1"))).to_be_visible()
+    assert chat_width(page) == 420
+    page.wait_for_function(FITS)
+    expect(bar).to_have_attribute("data-fit", "1")
+    expect(bar.locator(".tab-count").first).to_be_visible()
+    shot(page, full_page=False)
+
+
+def test_a_waiting_sessions_badge_has_the_diamond_and_the_marks_sit_on_the_corner(
+    page: Page, server, repo, shot
+):
+    size(page, 768, 760)
+    calm = running_session(repo)
+    waiting = gated_session(repo)
+    open_session(page, server, calm)
+    badge = strip(page).get_by_role("link", name=f"{waiting}, needs you")
+    expect(badge.locator(".dot-waiting")).to_be_visible()
+    for link in (badge, strip(page).get_by_role("link", name=f"{calm}, idle")):
+        icon = link.bounding_box()
+        mark = link.locator(".dot").bounding_box()
+        assert mark["x"] + mark["width"] > icon["x"] + icon["width"], mark
+        assert mark["y"] < icon["y"], mark
+    shot(page, full_page=False)
+
+
+@pytest.mark.parametrize("width", [768, 1024])
+def test_up_to_1100_px_the_link_is_a_target_of_28_px(page: Page, server, repo, width):
+    size(page, width, 760)
+    session = running_session(repo)
+    open_session(page, server, session)
+    link = page.locator(".topbar .system-button").bounding_box()
+    assert link["width"] >= 24
+    assert link["height"] == 28
+
+
+def test_the_strip_brings_the_current_session_into_view(page: Page, server, repo):
+    size(page, 768, 760)
+    sessions = [running_session(repo) for _ in range(4)]
+    page.add_init_script(
+        """document.addEventListener('DOMContentLoaded', () => {
+          const style = document.createElement('style');
+          style.textContent = '.strip-icons { flex: none; width: 60px; }';
+          document.head.append(style);
+        })"""
+    )
+    open_session(page, server, sessions[0])
+    icons = strip(page).locator(".strip-session")
+    expect(icons).to_have_count(4)
+    last = icons.last.get_attribute("href")
+    page.goto(f"{server['url']}{last}")
+    current = strip(page).locator('.strip-session[aria-current="page"]')
+    expect(current).to_be_visible()
+    within_the_row = """e => {
+      const row = e.closest('.strip-icons').getBoundingClientRect();
+      const icon = e.getBoundingClientRect();
+      return icon.left >= row.left - 1 && icon.right <= row.right + 1;
+    }"""
+    page.wait_for_function(within_the_row.replace("e =>", "(e) =>"), arg=current.element_handle())
 
 
 def test_expanded_at_768_px_the_terminals_cover_the_page(page: Page, server, repo):

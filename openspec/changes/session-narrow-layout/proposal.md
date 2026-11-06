@@ -129,6 +129,7 @@ Scale: full. Version: a feature, the minor; `## 0.45.0 (unreleased)` already hol
   human's own choice.
 - The sections "What works" of both critiques.
 - An iPad with its real keyboard: not checkable here, the human's check before the merge.
+- Touch targets on an iPad: LAD-216.
 
 ## Impact
 

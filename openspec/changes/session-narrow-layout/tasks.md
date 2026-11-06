@@ -47,6 +47,15 @@
   `grep -n "900 px" docs/design/ui.md`.
 - [x] 7.2 `make web`, `make lint`, `make test`, `uv run pytest -m ui <changed files>`,
   `openspec validate session-narrow-layout --strict`.
-- [ ] 7.3 Screenshots at 1440, 1280, 1024, 901, 768 and 390, dark too, as run artifacts; ui-review as
-  design QA against frames g2-* (AC-19). The screenshots are done; ui-review is a flow of its own
-  that the supervisor starts, not a step of the build.
+- [x] 7.3 Screenshots at 1440, 1280, 1024, 901, 768 and 390, dark too, as run artifacts; ui-review as
+  design QA against frames g2-* (AC-19). Run artifact `design-qa`, its findings in section 8.
+
+## 8. After the iPad check and design QA (the human's decision #3826)
+
+- [x] 8.1 A touch screen wider than a phone fits the part it sees, above 900 px too (D9). Check:
+  `phone.test.ts`, `test_phone.py` at 1180×734 and 1032×1366.
+- [x] 8.2 The column opened last is stored (D1). Check: `prefs.test.ts`, `test_narrow_layout.py`.
+- [x] 8.3 Level 1 of the tabs fits a chat of 420 px. Check: `test_narrow_layout.py`.
+- [x] 8.4 The diamond on a waiting badge, the marks on the corner, the open badge in view, the link
+  a target of 24×28 up to 1100 px. Check: `test_narrow_layout.py`.
+- [x] 8.5 BACKLOG.md: buttons that do nothing with the rail opened by hand (review F5).

@@ -596,8 +596,9 @@ Sessions for now. The UI's texts are in English.
   number's last 3 digits, whatever follows (`lad-189 (session UI review)` 189); else two
   letters, the first of its first two words (split at `-`, `_`, `.`, `/`, space) or else its
   first two (`crm-api` CA, `lado` LA). A later badge alike in the strip gets a mark (`154·2`,
-  at 10 px so that it fits). One that needs the human is marked by colour only (`--human` on `--human-ground`, no count),
-  and its label says `<name>, needs you`. On hover or focus it shows the session's card,
+  at 10 px so that it fits). The open session's icon is scrolled into view. One that needs the
+  human is marked by colour (`--human` on `--human-ground`, no count) and the waiting diamond on
+  its corner, where the others have their dot, and its label says `<name>, needs you`. On hover or focus it shows the session's card,
   the row's (above). While the list loads the column is empty and `aria-busy`; when
   `/api/sessions` fails, an alert icon in `--danger` takes its place with the error in its
   label and tooltip, the open list's text; Sessions and "+" work either way. Collapsed is
@@ -616,10 +617,13 @@ Sessions for now. The UI's texts are in English.
   it). The terminals open over the session on the right, `min(560px, 100% − 48px)` wide; Esc
   folds them to the strip with the focus on it, in control Esc stays the terminal's. Neither
   moves the session under it. A window too low for the card and the composer (460 px or less)
-  hides the composer while a card shows. On a touch screen the page is as high as the part of
-  the window the human sees, as on a phone (`usePhoneViewport`), since no page scroll brings
-  the composer above the keyboard; checked with a faked viewport only, an iPad's own keyboard
-  is the human's check.
+  hides the composer while a card shows.
+- **A touch screen wider than a phone**: the app is as high as the part of the window the human
+  sees, as on a phone (`usePhoneViewport`, `(pointer: coarse) and (min-width: 601px)`), since no
+  page scroll brings the composer above the keyboard: a session's page at 601 to 900 px, every
+  page above, where `100dvh` is taller than the visible part on iPadOS 26 Safari. Other pages at
+  601 to 900 px scroll as before. Here it is tested with a faked height; the iOS Simulator is the
+  human's check.
 - **List and page** (task feature/flows-list, 2026-10-04, boards 14–15 of the canvas; one
   component, `ListPage.tsx`, for every tab with a list: Agents (Artifacts is a table of its
   own, Artifacts below); since task
@@ -658,7 +662,8 @@ Sessions for now. The UI's texts are in English.
   **What shows** is one pure rule, `columns.ts`'s `fitColumns` (LAD-193): above 900 px the
   chat keeps 420 px (`--chat-min`). Short of room terminals the human did not open fold first;
   opened by the human (stored open, or a terminal in control) the list folds instead, unless
-  the list was opened last; then a panel the human opened narrows to its least 280 px, its width
+  the list was opened last (`lado.lastColumn`, so a reload shows what the human left); then a
+  panel the human opened narrows to its least 280 px, its width
   kept, then folds, and a terminal in control then goes back to view with no message of its own
   (the human's decision, LAD-193). The rail never folds by
   itself. A fold for room is derived, never stored: the column comes back when it and 420 px

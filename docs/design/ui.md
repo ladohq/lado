@@ -1386,7 +1386,10 @@ Built in the layout task (2026-10-03, schema 14):
   bar's end on Activity, 26 px, after the word `Messages`, which goes before the tabs give up
   anything (so it depends on the bar's content too: LAD-197, critique F10); Tab reaches the
   chosen one and the arrows choose; the tooltips say "Only your conversation with the agents"
-  and "Also what agents write to each other". The state lives in `useAgentMessages`, as the bar
+  and "Also what agents write to each other". When the tabs without counts do not fit beside
+  it, the phone's icon stands in its place (the tabs' level 3, Look, Tabs; LAD-218): both forms
+  are in the page and CSS shows one, and the focus passes from one to the other with no
+  tooltip. The state lives in `useAgentMessages`, as the bar
   and the feed both read it and an agent's page writes it. On a phone the toggle is an icon
   button at the end of the team's row (two speech bubbles, `BetweenIcon`; 26 px, quiet and
   muted unpressed, the pressed team chip's border with the icon in the action colour when
@@ -2027,7 +2030,9 @@ layout, below).
   - The keyboard: a `role="toolbar"` named `Team`, one Tab stop, the arrows, Home and End move
     among agents, run links and the button. An agent is named `<name>, <role>, <status>` by the
     popup's words; the button `All N agents`, `<M> more agents`, or with no avatar `<M> agents`,
-    with `, <K> waits for you`.
+    with `, 1 waits for you` or `, <K> wait for you`. The UI's tooltip of the button says that
+    name, on the pointer and the keyboard's focus, but not while its list is open (a `null` tip
+    keeps `Tooltip` silent; LAD-218).
 - The title is a button in the page's `h1` (`aria-haspopup="dialog"`, `aria-expanded`), on a
   `--raised` ground on hover and while Details is open. No double click: one click opens
   Details and a second would only close it.
@@ -2672,7 +2677,9 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   core's reason). Finish and the UI's dialog go by the same preview: the UI has no rules
   of its own about runs.
 - **The list** (left): the supervisor first, then the live agents by spawn; a
-  row: status dot, name, `status · since`, and the run with its state, or the first line
+  row: status dot, name, `status · since` by the popup's words (`STATUS_WORDS`, also on its
+  page, in the update's list of what to restart and in the accessible names of a terminal's
+  tab and a phone's chip; LAD-218), and the run with its state, or the first line
   of the task; an agent in `waiting` is orange with the first line of why, an agent in
   `stopped` whose process ended by itself shows the first line of why it stopped
   (`AgentInfo.status_reason`, `runtime.status_reason`: its `ended` event). Only live
@@ -2681,8 +2688,8 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   live agents. A List and page (Structure): the search finds an agent by name, role, task
   and run. On a narrow page
   the facts' names stand above their values and Write takes the page's width.
-- **An agent's page**: the head (name, role, provider, status and for how long, when it
-  was spawned, for which run and step with the visit, from the run in the store), Open
+- **An agent's page**: the head (name, role, provider, status and for how long, as
+  `waits for you · 6 min · spawned 16:02`, when it was spawned, for which run and step with the visit, from the run in the store), Open
   terminal, **Write to <agent>** (the Activity composer with `to` fixed; the supervisor
   gets a one-line copy from LADO of what the human writes to another agent, docs/design/agents.md) and **Finish…** (not for the supervisor); why it waits, or why it
   stopped ("Stopped: <reason>", its way out is Finish…); Branch,
@@ -3198,3 +3205,10 @@ Agents, Flows, Artifacts), the terminal panel (the wrapper of each tab with its 
 `.tab-item`; the pinned supervisor's tab is opaque and draws the line itself, its divider
 a shadow) and Kits (no icons). A new tab bar takes these classes; a UI test
 (`tests/ui/test_tabs.py`) compares the three places in both themes.
+
+A session's tabs give way by `data-fit`, chosen by trial (`SessionTabs`): first a tool's word
+at the bar's end goes (`data-short`), then 1 no icons, 2 no counts, 3 a tool with a short form
+takes it (`Yours | All` the icon; on a bar with no short form the level changes nothing, so
+Find stays), 4 they scroll behind a fade of 56 px with ‹ and ›. The tab shown and a tab reached
+by the keyboard stand clear of those 56 px at each end that has more (`tabScroll`), by the
+row's own scroll; a press's focus moves nothing, or the click would be lost (LAD-218).

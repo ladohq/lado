@@ -467,3 +467,59 @@ def test_yours_all_reads_in_both_themes_and_only_on_activity(page: Page, server,
     page.goto(f"{server['url']}/sessions/{session}/flows")
     expect(page.get_by_role("radiogroup")).to_have_count(0)
     expect(page.get_by_role("button", name=re.compile("^Find"))).to_be_visible()
+
+
+def test_the_icon_chooses_as_the_radios_do(page: Page, server, repo, shot):
+    open_team(page, server, repo, team(OWN, RUNS), TWENTY, (1100, 900))
+    bar = page.get_by_role("navigation", name="Session sections")
+    icon = bar.get_by_role("button", name="Messages between agents")
+    expect(icon).to_have_attribute("aria-pressed", "false")
+    icon.click()
+    expect(icon).to_have_attribute("aria-pressed", "true")
+    shot(page, full_page=False)
+    at(page, 1440)
+    expect(bar.get_by_role("radio", name="All")).to_have_attribute("aria-checked", "true")
+    bar.get_by_role("radio", name="Yours").click()
+    at(page, 1100)
+    expect(icon).to_have_attribute("aria-pressed", "false")
+
+
+def test_the_focus_passes_between_the_radios_and_the_icon(page: Page, server, repo):
+    open_team(page, server, repo, team(OWN, RUNS), TWENTY, (1440, 900))
+    bar = page.get_by_role("navigation", name="Session sections")
+    yours = bar.get_by_role("radio", name="Yours")
+    icon = bar.get_by_role("button", name="Messages between agents")
+    yours.focus()
+    at(page, 1100)
+    expect(icon).to_be_focused()
+    expect(page.get_by_role("tooltip")).to_have_count(0)
+    at(page, 1120)  # a trial hides the icon for a moment
+    expect(icon).to_be_focused()
+    expect(page.get_by_role("tooltip")).to_have_count(0)
+    at(page, 1440)
+    expect(yours).to_be_focused()
+    expect(page.get_by_role("tooltip")).to_have_count(0)
+
+
+def test_find_on_flows_stays_when_the_tabs_scroll(page: Page, server, repo):
+    session = open_team(page, server, repo, team(["supervisor"], {}), TWENTY, (1440, 900))
+    page.goto(f"{server['url']}/sessions/{session}/flows")
+    bar = page.get_by_role("navigation", name="Session sections")
+    find = bar.get_by_role("button", name=re.compile("^Find"))
+    expect(find).to_be_visible()
+    page.add_style_tag(content=".session-tabs { width: 260px; }")
+    expect(bar).to_have_attribute("data-fit", "4")
+    expect(find).to_be_visible()
+    expect(bar.get_by_role("button", name="Messages between agents")).to_have_count(0)
+
+
+def test_the_list_buttons_tooltip_is_its_name_and_goes_with_the_list(page: Page, server, repo, shot):
+    open_team(page, server, repo, team(OWN, RUNS), LONG_TITLE, (1024, 900))
+    button = page.get_by_role("button", name=re.compile(r"^(All 12 agents|\d+ more agents)"))
+    name = button.get_attribute("aria-label")
+    button.hover()
+    expect(page.get_by_role("tooltip")).to_have_text(name)
+    shot(page, full_page=False)
+    button.click()
+    expect(page.get_by_role("dialog", name="Team")).to_be_visible()
+    expect(page.get_by_role("tooltip")).to_have_count(0)

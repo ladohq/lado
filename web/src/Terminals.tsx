@@ -43,7 +43,7 @@ import { usePhone } from "./phone";
 import { PANEL_WIDTH, storeAskControl, storedAskControl } from "./prefs";
 import { escapeIsTaken } from "./Menu";
 import { Splitter, useStripFocus } from "./Splitter";
-import { AgentPopup, AgentTip, StatusDot, SUPERVISOR, teamMarks } from "./Team";
+import { AgentPopup, AgentTip, STATUS_WORDS, StatusDot, SUPERVISOR, teamMarks } from "./Team";
 import { Tooltip } from "./Tooltip";
 import { TermLink, terminalUrl, type LinkState, type Mode } from "./terminalLink";
 
@@ -347,7 +347,7 @@ export function TerminalPanel({
                           type="button"
                           role="tab"
                           id={`term-tab-${agent}`}
-                          aria-label={`${agent}, ${statusOf(agent)}${controlled.has(agent) ? ", in control" : ""}`}
+                          aria-label={`${agent}, ${STATUS_WORDS[statusOf(agent)]}${controlled.has(agent) ? ", in control" : ""}`}
                           aria-selected={agent === active}
                           aria-controls={`term-${agent}`}
                           onClick={() => setActive(agent)}

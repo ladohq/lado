@@ -10,7 +10,7 @@ import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
 import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeScreen, FakeSocket, stream, stubDialogs } from "./fakes";
 import { LOST_AFTER_MS } from "./live";
-import { ranText, sessionMark } from "./Sessions";
+import { ranText, sessionMark, tabScroll } from "./Sessions";
 import { Shell, useTitle, useTopBar } from "./Shell";
 import { TOOLTIP_DELAY_MS } from "./Tooltip";
 
@@ -301,6 +301,33 @@ test("the team's list shows every agent; a row opens its terminal and closes the
   expect(more.hasAttribute("data-shown")).toBe(true); // the terminal shown is among the hidden
   fireEvent.click(more);
   expect(within(screen.getByRole("dialog", { name: "Team" })).getAllByRole("button")[2]!.getAttribute("aria-current")).toBe("true");
+});
+
+test("the list's button says its name as a tooltip, on the chevron and on +N", async () => {
+  const team = await headTeam(["w1", "w2", "w3"], (level, visible) => level === 3 && visible <= 2);
+  await waitFor(() => expect(team.querySelectorAll(".strip-agent")).toHaveLength(2));
+  for (const name of ["w2", "w3"]) {
+    const waits = agent(name, "developer", "waiting");
+    stream().send("change", { kind: "agents", session: "lado", key: name, op: "update", item: waits }, "11");
+  }
+  const more = await within(team).findByRole("button", { name: "2 more agents, 2 wait for you" });
+  fireEvent.mouseEnter(more);
+  expect((await screen.findByRole("tooltip")).textContent).toBe("2 more agents, 2 wait for you");
+});
+
+test("with the list open its button shows no tooltip, and the one that was up goes", async () => {
+  const team = await headTeam(["w1"], (level) => level === 2);
+  await waitFor(() => expect(team.dataset.fit).toBe("2"));
+  const button = within(team).getByRole("button", { name: "All 2 agents" });
+  fireEvent.mouseEnter(button);
+  expect((await screen.findByRole("tooltip")).textContent).toBe("All 2 agents");
+  fireEvent.click(button);
+  expect(screen.getByRole("dialog", { name: "Team" })).toBeTruthy();
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  fireEvent.mouseLeave(button);
+  fireEvent.mouseEnter(button);
+  await act(() => new Promise((done) => setTimeout(done, TOOLTIP_DELAY_MS + 20)));
+  expect(screen.queryByRole("tooltip")).toBeNull();
 });
 
 test("Esc and a second click close the list with the focus on its button; a press away leaves the focus", async () => {
@@ -1521,4 +1548,31 @@ test("an icon's letters from a title that starts with an emoji are whole charact
   open("/sessions");
   await within(strip()!).findByRole("link", { name: "🚀 Релиз, idle" });
   expect(icons().map((icon) => icon.textContent)).toEqual(["🚀Р", "𝒜𝒷"]);
+});
+
+// The tabs' bar
+
+test("a tab is kept clear of the room at each end, and a tab in the clear does not move the row", () => {
+  const view = { left: 100, width: 300 };
+  expect(tabScroll(view, { left: 200, width: 80 }, 56)).toBe(100); // stands in the clear
+  expect(tabScroll(view, { left: 350, width: 80 }, 56)).toBe(186); // under the right end
+  expect(tabScroll(view, { left: 120, width: 80 }, 56)).toBe(64); // under the left end
+  expect(tabScroll({ left: 100, width: 150 }, { left: 300, width: 80 }, 56)).toBe(244); // too wide for the room left: its start
+});
+
+test("on Activity the bar holds both forms of the choice, which say the same", async () => {
+  open();
+  const radios = await screen.findByRole("radiogroup", { name: "Messages between agents" });
+  const icon = document.querySelector<HTMLElement>(".session-tabs .between-toggle")!;
+  expect(icon.getAttribute("aria-label")).toBe("Messages between agents");
+  expect(icon.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(icon);
+  expect(icon.getAttribute("aria-pressed")).toBe("true");
+  expect(within(radios).getByRole("radio", { name: "All" }).getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(within(radios).getByRole("radio", { name: "Yours" }));
+  expect(icon.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.mouseEnter(icon);
+  expect((await screen.findByRole("tooltip")).textContent).toBe(
+    "Messages between agents: hiddenClick to also show what agents write to each other.",
+  );
 });

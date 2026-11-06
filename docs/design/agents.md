@@ -137,14 +137,14 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   to the lead as above, with `after <N> resumes`. Every turn's end that plans no resume (as
   usual, a permanent error, the resumes spent) sets the count back to 0. Claude Code's
   transient types are `overloaded`, `server_error` and `unknown` (also the machine's
-  sleep; `claude.TRANSIENT`); Kilo and OpenCode mark no error transient: the plugin gives
-  only the error's class name (BACKLOG.md). Claude Code runs `StopFailure`
+  sleep; `claude.TRANSIENT`); Kilo and OpenCode mark no error transient: which errors reach
+  `session.error` is not checked (BACKLOG.md). Claude Code runs `StopFailure`
   instead of `Stop` then (API errors: rate_limit, overloaded, authentication_failed,
   billing_error, server_error, also the machine's sleep, max_output_tokens, unknown) and
   ignores its output (`Event.output_ignored`: the queue is typed in, not printed); read in
   the binary of 2.1.291, not triggered by hand. Kilo 7.8.3 and OpenCode 1.18.34 publish
   `session.error`, then `session.idle` of the same session (read in their bundles); the
-  plugin passes the error's name (and an `APIError`'s message) with that idle, drops it at
+  plugin passes the error's name (and an `APIError`'s message and status) with that idle, drops it at
   `session.compacted` (a context overflow the CLI compacts its way out of ends no turn),
   and `MessageAbortedError` (the human's Esc) is no error. A request larger than the context
   never reaches `session.idle` on OpenCode 1.18.35: it compacts and resends without end, the
@@ -163,7 +163,22 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   and no overflow count sees: that turn ends at once), with the CLI's whole text there. Any other
   error past `base.ERROR_LIMIT` keeps its
   whole text in `Event.details`, which `turn_failed` puts in the message's body; checked in the TUI of OpenCode 1.18.35 and Kilo
-  7.8.8 on a server of a small context, 6 and 7 requests to the idle. Claude Code runs no hook when
+  7.8.8 on a server of a small context, 6 and 7 requests to the idle. A model provider's refusal,
+  a status of `base.REFUSALS` (401, 402, 403, 429), reads in LADO's words with the status and the
+  server's first line (`base.refusal_line`), its whole text in `Event.details`, and is never
+  transient: a turn of OpenCode or Kilo by the plugin's `status`, a Claude agent on a server by
+  `last_assistant_message` of `StopFailure` (`claude.REFUSED`, as 2.1.295 sends no `error_details`
+  and calls a 402 `unknown`; the hook sees `LADO_MODEL_SERVER`, checked by smoke). A Claude agent
+  on a built-in model keeps its words. `rate_limit` stays permanent: a short limit and a spent
+  quota cannot be told apart, so no resume follows a 429 and the lead or the human decides. The
+  words stand before the first colon, what `lado stats` counts as the error's kind. `base.without_keys`
+  takes each `LADO_MODEL_KEY_*` of the hook's environment out of an error before any cut, as half a
+  key would pass a later replacement. Measured on a fake server, requests of a turn (Claude Code
+  with its own default of 10 repeats by `claude -p`; OpenCode 1.18.35, Kilo 7.8.8, about 70 s on a
+  429): on a 401 OpenCode 2, Kilo 1, Claude Code 11 in 179 s; on a 429 OpenCode 9, Kilo 6, Claude
+  Code 11. A Claude agent on a server has `CLAUDE_CODE_MAX_RETRIES` 7: its TUI then sends 8
+  requests of the turn on a 429 and 10 on a 401, and as many again for the session's title, a
+  request with no tools, that goes on a few seconds past the turn's end. Claude Code runs no hook when
   the human interrupts a turn with Esc, while text streams, while a tool runs or on a
   permission dialog (checked by hand with 2.1.292): the agent stays `busy`, or `waiting`
   after a `PermissionRequest`, until the human's next prompt in its window, whose `Stop`
@@ -214,8 +229,11 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `model_servers.LIMIT_TIMEOUT` (`ServerEntry.limits`): nothing is stored, so a reloaded model is
   read anew, and a silent server only leaves its models with no limit. A known context goes in
   as `limit: {context, output}`, both always, as OpenCode refuses one without `output`; `output`
-  is at most a quarter of the context, 8192 when none is reported. Below `Provider.min_context`
-  the start warns, and goes on. An OpenCode agent on a server's model also gets npm's
+  is at most a quarter of the context, when none is reported 8192, or 32000 on a context of 131072
+  or more: the CLIs' own default, so reading a cloud provider's context cuts no long answer. Below
+  `Provider.min_context` the start warns, and goes on; so does an unknown context on a server
+  outside the human's machine and network (`model_servers.is_local`, the rule of a key over plain
+  http), where a late compaction costs money. An OpenCode agent on a server's model also gets npm's
   `fetch_retries=0` and `fetch_timeout=5000` (`OpenCodeProvider.server_env`) while
   `@opencode-ai/plugin` is not in OpenCode's config folder: any `plugin` entry makes it wait for
   that install, 72 s with outside traffic refused, 2 s with these or with the package there. LADO's

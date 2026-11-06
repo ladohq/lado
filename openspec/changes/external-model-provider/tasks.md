@@ -32,12 +32,12 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-06-external-mod
 
 ## 5. Smoke
 
-- [ ] 5.1 The fake endpoint's status mode, 401 and 429 per CLI, the key echoed. Check: `-m smoke` of
+- [x] 5.1 The fake endpoint's status mode, 401 and 429 per CLI, the key echoed. Check: `-m smoke` of
   the new tests with the real CLIs here, then CI.
 
 ## 6. Documents
 
-- [ ] 6.1 `docs/install.md`: the cloud provider's section, F1's line and context, cost.
-- [ ] 6.2 `docs/design/agents.md`, `docs/design/modules.md`, `docs/design/ui.md`, `docs/testing.md`,
+- [x] 6.1 `docs/install.md`: the cloud provider's section, F1's line and context, cost.
+- [x] 6.2 `docs/design/agents.md`, `docs/design/modules.md`, `docs/design/ui.md`, `docs/testing.md`,
   `docs/cli.md`; CHANGELOG.md under 0.45.0.
 - [ ] 6.3 `make lint`, `make test`, `openspec validate --specs --strict`, the trial archive.

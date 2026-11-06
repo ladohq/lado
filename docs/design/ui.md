@@ -1595,7 +1595,7 @@ connection, above).
   need, under `✓ <server> lists <model> among its models.` The file's name is a link to that
   section on GitHub in a new tab, as a wheel holds no such file; the core's text, which `lado
   start` prints, has neither link nor arrow, and a warning that names no file stays plain. Folded, the row names them after a `⚠`
-  in the check's `peek`: `key over http`, `context too small`, or both. A start refused after a good check is a 409 `ModelRefusal`: above the
+  in the check's `peek`: `key over http`, `context too small` or `context unknown` (a public server that lists no context), or both. A start refused after a good check is a 409 `ModelRefusal`: above the
   buttons `Not started: <short reason>. See Model above.`, the refusal under the field, the focus
   on it. Then the `--without` items, `kind:name` or `kind:name@kit`
   (placeholder `agent:reviewer@kit-b, skill:style`). Start shows "Starting…" with
@@ -2793,7 +2793,7 @@ default: none does yet.
   or Cancel. A refusal (a name taken ignoring case, no name), on Enter or on leaving, keeps
   the field with the refusal under it (`aria-invalid`); leaving it then restores the name.
   The model takes its sorted place in its card only.
-- **A request that never reached LADO** says `LADO's server does not answer: nothing was done.`
+- **A request LADO's server did not answer** says `LADO's server does not answer: your request may or may not have reached it.`
   wherever the section shows a refusal (`refusalOf`), and no model server is blamed for it.
 - **× and Undo**: × leaves in its row `Removed <name>. Undo`, of the row's height, the
   focus on Undo; Undo (off by `aria-disabled` while it runs, so a refusal leaves the focus on

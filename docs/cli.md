@@ -632,7 +632,11 @@ give no such type, and their models are not marked. `models: none` for an empty 
 `models: no list (GET /v1/models: <status> | the answer is larger than 4 MiB)` for a list
 it cannot read (not a failure); `CLIs: none` when no API
 was proven, after `APIs: cannot be told: <address> answers <status> to any POST` when the
-control was refused like an API; no `not:` line when every CLI suits. What the server
+control was refused like an API; no `not:` line when every CLI suits. A POST with no answer in
+5 s goes once more, for 15 s; an API still silent reads `Claude Code (Anthropic Messages API did
+not answer in time)` on that line, is neither proven nor missing, `model-server add` saves the
+server with a warning, and `lado model add` and a start on that API refuse with `the <API> of
+<server> did not answer in time: try again`. What the server
 says (its model ids, a redirect's location) is shown as one line of visible text
 (`text.one_line`). Each failure is one
 line on stderr and exit 1: `<address> does not answer (connection refused | unknown host |

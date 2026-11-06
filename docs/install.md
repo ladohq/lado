@@ -368,10 +368,11 @@ OpenCode and Kilo; Claude Code on cloud.ru's Anthropic API.
   (cloud.ru) or Activity (OpenRouter); Kilo's TUI shows OpenRouter's cost; Claude Code has `/cost`,
   its own count, not compared with a bill.
 - **Refusals.** Any 4xx but 408 ends the agent's turn and the chat says why with the status and the
-  server's text, once the CLI's own repeats are spent. cloud.ru answers a wrong key with 400, and
+  server's text, once the CLI's own repeats are spent; on a 404 Claude Code gives its own words
+  instead of the server's. cloud.ru answers a wrong key with 400, and
   does not check the key when you add the server: the first turn says so. Nothing repeats by itself after that: a run waits for you or the lead, also at
   night. On a 429 with no `Retry-After` the repeats take about 70 s on all three CLIs; on a 401
-  OpenCode and Kilo stop at once, Claude Code after about 150 s. A provider's `Retry-After` makes
+  or 403 OpenCode and Kilo stop at once, Claude Code after about 150 s. A provider's `Retry-After` makes
   them longer: OpenCode and Kilo wait what it names before each of about five repeats (100 s at
   20 s, so nearly an hour at 600 s), and until then the agent is busy and the chat says nothing.
   Claude Code took 160 s at 20 s, and stops at once at 600 s. Claude Code's TUI repeats its request

@@ -46,6 +46,8 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-06-external-mod
 
 - [x] 7.1 Any 4xx but 408 is a refusal on all three CLIs, a 400 about the key a refused key, the
   context's words first (D12). Check: `tests/test_providers.py`, `-m smoke` with cloud.ru's 400.
+- [x] 7.1a Claude Code's 404 and 413, which have no `API Error` form (D12). Check:
+  `tests/test_providers.py`, `-m smoke` with both.
 - [x] 7.2 A Claude agent on a server asks for at most 16384 of output, with its window (D13). Check:
   `tests/test_providers.py`, `-m smoke` on a context of 131072, seen red at 32000.
 - [x] 7.3 A Claude agent on a server names no effort (D14). Check: `tests/test_providers.py`,

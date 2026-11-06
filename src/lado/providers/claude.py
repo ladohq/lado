@@ -53,11 +53,14 @@ TESTED_VERSION = "2.1.295"
 # (Event.transient): an overloaded or failing API, and unknown, which the machine's sleep
 # is too. The others need someone to act and go to the lead at once.
 TRANSIENT = frozenset({"overloaded", "server_error", "unknown"})
-# 2.1.295 sends no `error_details` (`claude -p` on a fake server): an agent on a server has its
-# status and the server's text in `last_assistant_message`, a 402 being of kind unknown:
-# `API Error: 402 <text>`, `Failed to authenticate. API Error: 401 <text>`, `API Error: Request
-# rejected (429) · <text>`.
+# An agent on a server has its status and the server's text in `last_assistant_message`, a 402
+# being of kind unknown: `API Error: 402 <text>`, `Failed to authenticate. API Error: 401 <text>`,
+# `API Error: Request rejected (429) · <text>`. Two 4xx differ (2.1.295, each from 400 to 451 asked
+# on a fake server): a 413 alone has `error_details`, `request_too_large: 413 <body>`, and a 404
+# has the kind model_not_found with Claude Code's own words, the server's text being in no field.
 REFUSED = re.compile(r"API Error: (?:Request rejected \()?(\d{3})\)?\s*·?\s*(.*)", re.DOTALL)
+REFUSED_DETAILS = re.compile(r"\w+: (\d{3}) (.*)", re.DOTALL)
+NO_SUCH_MODEL = "model_not_found"
 EVENTS = {
     "SessionStart": base.SESSION_START,
     "UserPromptSubmit": base.PROMPT_SUBMIT,
@@ -190,11 +193,16 @@ def _refusal(failure: Mapping) -> tuple[str, str] | None:
     if not os.environ.get(base.MODEL_SERVER):
         return None
     said = failure.get("last_assistant_message")
-    found = REFUSED.search(base.without_keys(said)) if isinstance(said, str) else None
-    if found is None or not base.is_refusal(int(found[1])):
-        return None
-    text = found[2].strip()
-    return base.context_line(text) or base.refusal_line(int(found[1]), text), text
+    said = base.without_keys(said) if isinstance(said, str) else ""
+    found = REFUSED.search(said) or REFUSED_DETAILS.match(
+        base.without_keys(failure.get("error_details") or "")
+    )
+    status, text = (int(found[1]), found[2].strip()) if found else (None, said.strip())
+    if found is None and failure.get("error") == NO_SUCH_MODEL:
+        status = 404
+    if line := base.context_line(text):
+        return line, text
+    return (base.refusal_line(status, text), text) if base.is_refusal(status) else None
 
 
 def _server_settings(server: base.ServerEntry) -> dict:

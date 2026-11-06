@@ -39,13 +39,21 @@ Such a turn ending on any other 4xx but 408 SHALL read `the model provider refus
 - **WHEN** a server answers 400 with `exceed_context_size_error`
 - **THEN** the line holds LADO's words of a context too small
 
+#### Scenario: A model the server does not have
+- **WHEN** a server answers 404 to an agent of OpenCode, Kilo or Claude Code
+- **THEN** the line holds `the model provider refused the request (404)`, then the server's text, or on Claude Code its own words, as its hook gets no text of the server
+
+#### Scenario: A request too large
+- **WHEN** a server answers 413 to a Claude agent
+- **THEN** the line holds `the model provider refused the request (413)` and the server's body
+
 #### Scenario: A request that took too long
 - **WHEN** a turn ends on a 408
 - **THEN** the error is as the CLI gave it, and a Claude agent's turn stays temporary
 
 ### Requirement: A Claude agent's refusal is read from its last message
 
-For a Claude agent on a server, LADO SHALL read the status and the text of a failed turn from `last_assistant_message` of `StopFailure`, in Claude Code's forms `API Error: 402 <text>` and `API Error: Request rejected (429) · <text>`. A message in no such form SHALL leave the error as the hook's kind. A Claude agent on a built-in model SHALL keep its words as before.
+For a Claude agent on a server, LADO SHALL read a failed turn's status and text from `last_assistant_message` of `StopFailure`, in the forms `API Error: 402 <text>` and `API Error: Request rejected (429) · <text>`; else from `error_details`, `request_too_large: 413 <text>`; a kind `model_not_found` is a 404 with the message as its text. Any other failure SHALL leave the error as the hook's kind. A Claude agent on a built-in model SHALL keep its words as before.
 
 #### Scenario: Quota on a server
 - **WHEN** a Claude agent on a server ends a turn with `rate_limit` and the message `API Error: Request rejected (429) · You exceeded your current quota`

@@ -236,10 +236,10 @@ def test_a_claude_agent_on_a_server_reads_a_refusal_in_lado_s_words(
             "Invalid request",
         ),
         (
-            "server_error",
-            "API Error: 404 No such model",
-            "the model provider refused the request (404): No such model",
-            "No such model",
+            "unknown",
+            "API Error: 422 Bad field",
+            "the model provider refused the request (422): Bad field",
+            "Bad field",
         ),
         (
             "unknown",
@@ -255,6 +255,55 @@ def test_any_other_4xx_on_a_server_is_no_temporary_error_of_claude(
     monkeypatch.setenv(base.MODEL_SERVER, "aaaa1111")
     event = _stop_failure(error, message)
     assert (event.error, event.details, event.transient) == (line, details, False)
+
+
+NO_SUCH_MODEL = (
+    "There's an issue with the selected model (qwen). It may not exist or you may not have access "
+    "to it. Run --model to pick a different model."
+)
+TOO_LARGE = (
+    'request_too_large: 413 {"type":"error","error":{"type":"some_error","message":"Too much"}}'
+)
+
+
+def test_a_404_on_a_server_has_its_status_and_the_cli_s_words(monkeypatch):
+    """Claude Code 2.1.295 hands the hook no text of the server here: its own stands instead."""
+    monkeypatch.setenv(base.MODEL_SERVER, "aaaa1111")
+    event = _stop_failure("model_not_found", NO_SUCH_MODEL)
+    assert event.error.startswith(
+        "the model provider refused the request (404): There's an issue with the selected model "
+        "(qwen)."
+    )
+    assert (event.details, event.transient) == (NO_SUCH_MODEL, False)
+
+
+def test_a_413_on_a_server_is_read_from_the_error_s_details(monkeypatch):
+    monkeypatch.setenv(base.MODEL_SERVER, "aaaa1111")
+    monkeypatch.setenv(f"{base.KEY_VARIABLE}AAAA1111", "Too much")
+    payload = {
+        "error": "invalid_request",
+        "error_details": TOO_LARGE,
+        "last_assistant_message": "Request too large (max 32MB). Accumulated images.",
+    }
+    event = providers.get("claude").parse_event("StopFailure", json.dumps(payload))
+    assert event.error.startswith("the model provider refused the request (413): {")
+    assert "***" in event.details and "Too much" not in event.error + event.details
+    assert not event.transient
+
+
+def test_those_forms_on_a_built_in_model_keep_their_words(monkeypatch):
+    monkeypatch.delenv(base.MODEL_SERVER, raising=False)
+    assert _stop_failure("model_not_found", NO_SUCH_MODEL).error == "model_not_found"
+    payload = {"error": "invalid_request", "error_details": TOO_LARGE}
+    event = providers.get("claude").parse_event("StopFailure", json.dumps(payload))
+    assert event.error.startswith("invalid_request: request_too_large: 413")
+
+
+@pytest.mark.parametrize("status", [500, 408])
+def test_lado_s_words_of_a_context_too_small_come_first_whatever_the_status(monkeypatch, status):
+    monkeypatch.setenv(base.MODEL_SERVER, "aaaa1111")
+    event = _stop_failure("unknown", f"API Error: {status} exceed_context_size_error")
+    assert event.error.startswith("ContextOverflowError: the model's context is too small")
 
 
 def test_a_408_on_a_server_stays_temporary(monkeypatch):
@@ -2410,6 +2459,7 @@ def test_a_claude_agent_on_a_built_in_model_has_nothing_of_a_server(repo, lado_h
     launch, settings = _claude_launch(repo, (), "opus")
     assert launch.env == {}
     assert set(settings) == {"hooks", "permissions", "enableAllProjectMcpServers"}
+    assert "CLAUDE_CODE_EFFORT_LEVEL" not in json.dumps(settings)
     config = lado_home / "agents" / "s" / "w1"
     assert launch.argv == [
         "claude",

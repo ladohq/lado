@@ -171,8 +171,10 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   names an API key as a refused key, as cloud.ru answers a wrong key, else `refused the request`),
   its whole text in `Event.details`, and is never transient; LADO's words of a context too small
   come first (`base.context_line`, on all three CLIs): a turn of OpenCode or Kilo by the plugin's `status`, a Claude agent on a server by
-  `last_assistant_message` of `StopFailure` (`claude.REFUSED`, as 2.1.295 sends no `error_details`
-  and calls a 402 `unknown`; the hook sees `LADO_MODEL_SERVER`, checked by smoke). A Claude agent
+  `last_assistant_message` of `StopFailure` (`claude.REFUSED`, as 2.1.295 calls a 402 `unknown`; the
+  hook sees `LADO_MODEL_SERVER`, checked by smoke). Of the 4xx from 400 to 451 two differ there: a
+  413 has `error_details`, `request_too_large: 413 <body>`, and a 404 the kind `model_not_found` with
+  Claude Code's own words, no field holding the server's text, which stand in the line. A Claude agent
   on a built-in model keeps its words. `rate_limit` stays permanent: a short limit and a spent
   quota cannot be told apart, so no resume follows a 429 and the lead or the human decides. The
   words stand before the first colon, what `lado stats` counts as the error's kind. `base.without_keys`

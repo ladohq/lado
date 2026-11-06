@@ -493,6 +493,8 @@ def test_a_session_on_a_server_s_model_asks_it_with_its_key(
 REFUSALS = {
     400: ("the model provider refused the key (400)", "invalid_request_error"),
     401: ("the model provider refused the key (401)", "authentication_error"),
+    404: ("the model provider refused the request (404)", "not_found_error"),
+    413: ("the model provider refused the request (413)", "request_too_large"),
     429: ("the model provider limits requests, or the quota is spent (429)", "rate_limit_error"),
 }
 
@@ -535,7 +537,7 @@ def check_refusal(status_code: int, key: str, requests) -> None:
 
 
 @pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
-@pytest.mark.parametrize("status_code", list(REFUSALS))
+@pytest.mark.parametrize("status_code", [s for s in REFUSALS if s != 413])  # their own overflow
 def test_a_provider_s_refusal_ends_the_turn_within_the_cli_s_repeats(
     smoke_repo, smoke_provider, monkeypatch, status_code
 ):
@@ -592,7 +594,7 @@ def test_a_provider_s_refusal_ends_a_claude_agent_s_turn_within_its_repeats(
     check_refusal(status_code, SERVER_KEY, lambda: len(asked()))
     turn = [request for request in asked()[before:] if request.get("tools")]
     print(f"claude: {len(turn)} requests of the turn, {len(asked()) - before} in all")
-    least, most = {400: (1, 1), 401: (2, 10), 429: (2, 8)}[status_code]
+    least, most = {400: (1, 1), 401: (2, 10), 404: (1, 2), 413: (1, 1), 429: (2, 8)}[status_code]
     assert least <= len(turn) <= most
     assert len(asked()) - before <= 2 * most
     runtime.stop_session(SESSION)

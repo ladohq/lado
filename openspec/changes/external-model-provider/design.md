@@ -119,7 +119,12 @@ cloud.ru answers a wrong key with 400 `invalid api key secret`, and does not che
 list, so the key reaches the agent. On Claude Code that went as `unknown` through three resumes, ten
 minutes of silence. `base.is_refusal` is any 4xx but a 408; `refusal_line` keeps the table, reads a 400
 that names an API key as a refused key, and says `refused the request` for the rest. The words of a
-context too small move to `base` and come first on all three CLIs.
+context too small move to `base` and come first on all three CLIs, whatever the status.
+
+Claude Code's hook, each 4xx from 400 to 451 asked on a fake server (2.1.295): all give `API Error:
+<status> <text>` but two. A 413 gives `request_too_large: 413 <body>` in `error_details` with a
+message of its own, read there. A 404 gives the kind `model_not_found` and the CLI's sentence: no
+field holds the server's text, so the line has the status and that sentence.
 
 ### D13. The output of a Claude agent on a large context
 

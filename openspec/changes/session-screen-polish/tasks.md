@@ -48,6 +48,6 @@
   Check: read against the code.
 - [x] 7.2 CHANGELOG.md under `## 0.45.0 (unreleased)`, one item per visible change.
   Check: docs/release.md's rules.
-- [ ] 7.3 Screenshots of each changed screen at 390, 768, 1024 and 1440, light and dark, as run
+- [x] 7.3 Screenshots of each changed screen at 390, 768, 1024 and 1440, light and dark, as run
   artifacts, with sample data. Check: no horizontal scroll of the page; AC-16.
-- [ ] 7.4 The regression run of the plan. Check: all green; numbers in `build-report`.
+- [x] 7.4 The regression run of the plan. Check: all green; numbers in `build-report`.

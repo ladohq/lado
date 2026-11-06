@@ -8879,7 +8879,7 @@ del.kit-mcp-name {
 
 /* How long an opened step took, under its line and above its note's frame. */
 .feed-took {
-  margin: 2px 6px 6px 100px;
+  margin: 2px 6px 6px 110px; /* under the summary: the line's padding, time, dot and gaps */
   color: var(--muted);
   font-size: 13px;
 }

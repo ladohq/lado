@@ -242,7 +242,8 @@ test("the supervisor comes first, then the agents by spawn; a waiting one is ora
     "developer-2",
     "developer",
   ]);
-  expect(rows[2].textContent).toContain("busy");
+  expect(rows[2].textContent).toMatch(/working · \d+ (min|h|d)/);
+  expect(rows[1].textContent).toMatch(/waits for you · \d+ (min|h|d)/);
   expect(rows[2].textContent).toContain("feature/agents-tab · implement");
   expect(rows[2].getAttribute("aria-current")).toBe("page");
   expect(rows[1].className).toContain("waits");
@@ -342,7 +343,7 @@ test("an agent's page has its head with the run and step, its branch, work, work
   const head = within(region).getByRole("banner");
   expect(within(head).getByRole("heading", { name: "developer" })).toBeTruthy();
   expect(head.textContent).toContain("developer · claude");
-  expect(head.textContent).toMatch(/busy for \d+ (min|h|d)/);
+  expect(head.textContent).toMatch(/working · \d+ (min|h|d) · spawned/);
   expect(head.textContent).toContain("step implement (visit 2)");
   expect(within(head).getByRole("link", { name: "feature/agents-tab" }).getAttribute("href")).toBe(
     "/sessions/lado/flows/feature%2Fagents-tab",

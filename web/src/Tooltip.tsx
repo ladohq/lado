@@ -7,7 +7,9 @@
 // trigger points at the trigger's centre. On a touch screen (docs/design/ui.md, Phone
 // layout) a tap on a hint (a trigger that is no button or link) shows it at once, and the
 // next touch elsewhere hides it; a button's or link's tooltip, which only names it, never
-// shows on a tap, not even by the mouse the browser emulates for the tap.
+// shows on a tap, not even by the mouse the browser emulates for the tap. A `null` tip stays
+// silent: what is up or on its delay goes, and nothing shows until the pointer or the focus
+// comes anew.
 import {
   cloneElement,
   useEffect,
@@ -29,6 +31,16 @@ export const TOOLTIP_DELAY_MS = 300;
 const GAP = 11; // pixels between the trigger and the tooltip: the arrow's 5 and 6 of room
 const MARGIN = 8; // the least room to the window's edge
 const ARROW_END = 16; // the least room from the arrow's middle to the card's end, past its corner
+
+// Gives the focus back without a tooltip nobody asked for (the tab bar's trial, Sessions.tsx):
+// the focus event comes within `focus()`.
+let quiet = false;
+
+export function focusQuietly(element: HTMLElement) {
+  quiet = true;
+  element.focus({ preventScroll: true });
+  quiet = false;
+}
 
 type Place = { left: number; top: number; side: "below" | "above"; arrow: number };
 
@@ -63,6 +75,11 @@ export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElem
   };
 
   useEffect(() => () => clearTimeout(timer.current), []);
+
+  const silent = tip === null;
+  useEffect(() => {
+    if (silent) hide();
+  }, [silent]);
 
   useEffect(() => {
     if (!shown) return;
@@ -104,7 +121,7 @@ export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElem
     "aria-describedby": shown ? id : own["aria-describedby"],
     onMouseEnter: (event) => {
       own.onMouseEnter?.(event);
-      if (touched.current) return;
+      if (touched.current || silent) return;
       const target = event.currentTarget;
       clearTimeout(timer.current);
       timer.current = setTimeout(() => show(target), TOOLTIP_DELAY_MS);
@@ -133,7 +150,7 @@ export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElem
       const returned = left.current && !event.relatedTarget;
       // A focus given by code after a press elsewhere (Details' Copy path) is no keyboard's.
       const keyboard = !pressed.current && (!target.matches(":focus") || target.matches(":focus-visible"));
-      if (keyboard && !returned) show(target);
+      if (keyboard && !returned && !quiet && !silent) show(target);
       pressed.current = false;
     },
     onBlur: (event) => {

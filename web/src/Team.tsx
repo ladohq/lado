@@ -88,8 +88,8 @@ export function AgentTip({ name, info }: { name: string; info: AgentInfo | null 
   );
 }
 
-// An agent's status in words, in its popup, the team's list and its accessible name.
-const STATUS_WORDS: Record<AgentInfo["status"], string> = {
+// An agent's status in words, wherever the UI names it (not a value of the CLI or MCP).
+export const STATUS_WORDS: Record<AgentInfo["status"], string> = {
   busy: "working",
   background: "in the background",
   idle: "idle",
@@ -197,7 +197,7 @@ export function AgentChip({
   shown,
   open,
   label = agent.name,
-  named = `${agent.name}, ${agent.role}, ${agent.status}`,
+  named = `${agent.name}, ${agent.role}, ${STATUS_WORDS[agent.status]}`,
   tip = <AgentTip name={agent.name} info={agent} />,
 }: {
   agent: AgentInfo;
@@ -262,11 +262,12 @@ function AgentAvatar({
 export function moreName(hidden: AgentInfo[], visible: number): string {
   const waiting = hidden.filter((one) => one.status === "waiting").length;
   const counted = visible > 0 ? plural(hidden.length, "more agent") : plural(hidden.length, "agent");
-  return waiting > 0 ? `${counted}, ${waiting} waits for you` : counted;
+  return waiting > 0 ? `${counted}, ${waiting} ${waiting === 1 ? "waits" : "wait"} for you` : counted;
 }
 
-// The team's list, under its button (`children`, named `name`; `chevron` when it hides nothing;
-// `pressed` when the terminal shown is among what it hides), closing as Details does: Esc and
+// The team's list, under its button (`children`, named `name`, which its tooltip says while the
+// list is shut; `chevron` when it hides nothing; `pressed` when the terminal shown is among what
+// it hides), closing as Details does: Esc and
 // a second click put the focus back on the button; a press outside, or the focus going past
 // it, leave the focus where it went. `showing` is its row's, as a trial may pass through level
 // 0, which has no button; `stays` says the button stays once the list closes, or the focus
@@ -345,23 +346,25 @@ function TeamList({
   );
   return (
     <div ref={box} className="team-list" onBlur={focusLeft}>
-      <button
-        ref={button}
-        type="button"
-        className={`team-more${chevron ? " chevron" : ""}`}
-        aria-label={name}
-        aria-haspopup="dialog"
-        aria-expanded={showing}
-        data-shown={pressed || undefined}
-        data-team="list"
-        onClick={() => {
-          if (showing) return close();
-          flushSync(() => setShowing(true));
-          popover.current?.querySelector("button")?.focus();
-        }}
-      >
-        {children}
-      </button>
+      <Tooltip tip={showing ? null : name}>
+        <button
+          ref={button}
+          type="button"
+          className={`team-more${chevron ? " chevron" : ""}`}
+          aria-label={name}
+          aria-haspopup="dialog"
+          aria-expanded={showing}
+          data-shown={pressed || undefined}
+          data-team="list"
+          onClick={() => {
+            if (showing) return close();
+            flushSync(() => setShowing(true));
+            popover.current?.querySelector("button")?.focus();
+          }}
+        >
+          {children}
+        </button>
+      </Tooltip>
       {showing && (
         <div ref={popover} role="dialog" aria-label="Team" className="team-popover" style={below}>
           <h2>Team · {plural(inOrder(groups).length, "agent")}</h2>

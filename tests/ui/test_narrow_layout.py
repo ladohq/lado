@@ -9,8 +9,9 @@ import pytest
 from playwright.sync_api import Page, expect
 from test_gates import LONG_NOTE, gated_session, in_sight, waiting_card
 from test_main_screen import log_in, running_session
+from test_team_head import OWN, RUNS, TWENTY, open_team, settled, team
 
-from lado import runtime, state
+from lado import artifacts, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -20,7 +21,7 @@ PANEL_KEY = "lado.terminals"
 FITS = """() => {
   const row = document.querySelector('.session-tabs-scroll');
   const bar = document.querySelector('.session-tabs');
-  return bar.dataset.fit === '3' || row.scrollWidth <= row.clientWidth;
+  return bar.dataset.fit === '4' || row.scrollWidth <= row.clientWidth;
 }"""
 # The Artifacts tab is whole in the bar, or an arrow says there is more.
 TAB_OR_ARROW = """() => {
@@ -29,6 +30,16 @@ TAB_OR_ARROW = """() => {
   const last = tabs[tabs.length - 1].getBoundingClientRect();
   const arrow = document.querySelector('.session-tabs-more.end');
   return last.right <= row.right + 1 || arrow !== null;
+}"""
+# Each edge of the element stands clear of the fade, or the row has nothing more on that side.
+CLEAR = """tab => {
+  const row = tab.parentElement;
+  const box = row.getBoundingClientRect();
+  const at = tab.getBoundingClientRect();
+  const start = row.scrollLeft <= 0 || at.left >= box.left + 56 - 1;
+  const last = row.scrollLeft + row.clientWidth >= row.scrollWidth - 1;
+  const end = last || at.right <= box.right - 56 + 1;
+  return start && end && at.left >= box.left - 1 && at.right <= box.right + 1;
 }"""
 
 
@@ -211,13 +222,14 @@ def test_the_tabs_give_way_in_levels(page: Page, server, repo, shot):
         if level not in seen:
             seen.append(level)
             shot(page, f"level-{level}", full_page=False)
-        if level in ("1", "2", "3"):
+        if level != "0":
             assert bar.locator(".tab-item svg").first.is_hidden()
-        if level in ("2", "3"):
+        if level in ("2", "4"):
             assert bar.locator(".tab-count").first.is_hidden()
-        if level != "3":
+        if level != "4":
             assert row.evaluate("e => e.scrollWidth <= e.clientWidth"), width
-    assert seen == sorted(seen) and "3" in seen, seen
+    assert seen == sorted(seen) and "4" in seen, seen
+    assert "3" not in seen, seen  # no tool here has a short form to take
 
     more = bar.get_by_role("button", name="More tabs")
     earlier = bar.get_by_role("button", name="Earlier tabs")
@@ -522,16 +534,18 @@ def test_the_list_opened_last_at_1024_px_survives_a_reload(page: Page, server, r
 
 
 def test_at_a_chat_of_420_px_the_tabs_keep_their_counts(page: Page, server, repo, shot):
-    """Frame g2-1024-tabs: level 1, no icons, the counts in place; on Activity Yours | All
-    takes that room, and the tabs scroll."""
+    """Frame g2-1024-tabs: level 1, no icons, the counts in place; on Activity the icon stands
+    for Yours | All, and the four tabs stay whole without their counts."""
     size(page, 1024, 760)
     session = gated_session(repo)
     open_session(page, server, session, {PANEL_KEY: json.dumps({"width": 640, "collapsed": False})})
     bar = page.get_by_role("navigation", name="Session sections")
     assert chat_width(page) == 420
     page.wait_for_function(FITS)
-    expect(bar).to_have_attribute("data-fit", "3")  # the tabs scroll beside it
-    expect(bar.get_by_role("radio", name="Yours")).to_be_visible()
+    expect(bar).to_have_attribute("data-fit", "3")
+    expect(bar.get_by_role("button", name="Messages between agents")).to_be_visible()
+    expect(bar.get_by_role("radio", name="Yours")).to_have_count(0)
+    expect(bar.get_by_role("button", name="More tabs")).to_have_count(0)
     bar.get_by_role("link", name=re.compile("^Artifacts")).click()
     expect(bar.get_by_role("link", name=re.compile("^Artifacts · "))).to_be_visible()
     expect(bar.get_by_role("link", name=re.compile("^Flows · 1"))).to_be_visible()
@@ -539,6 +553,105 @@ def test_at_a_chat_of_420_px_the_tabs_keep_their_counts(page: Page, server, repo
     expect(bar).to_have_attribute("data-fit", "1")
     expect(bar.locator(".tab-count").first).to_be_visible()
     shot(page, full_page=False)
+
+
+def twelve_agents_and_fourteen_artifacts(page: Page, server, repo, width: int) -> str:
+    session = open_team(page, server, repo, team(OWN, RUNS), TWENTY, (width, 900))
+    for number in range(14):
+        artifacts.write(session, "supervisor", f"note-{number}", content="A note")
+    expect(page.locator(".session-tabs .tab-item").last).to_contain_text("14")
+    page.wait_for_function(FITS)
+    return session
+
+
+@pytest.mark.parametrize("width", [1100, 1120, 1140])
+def test_a_narrow_chat_on_activity_keeps_the_four_tabs_beside_the_icon(
+    page: Page, server, repo, shot, width
+):
+    twelve_agents_and_fourteen_artifacts(page, server, repo, width)
+    bar = page.get_by_role("navigation", name="Session sections")
+    row = page.locator(".session-tabs-scroll")
+    expect(bar).to_have_attribute("data-fit", "3")
+    assert row.evaluate("e => e.scrollWidth <= e.clientWidth")
+    expect(bar.get_by_role("button", name="More tabs")).to_have_count(0)
+    expect(bar.get_by_role("radiogroup")).to_have_count(0)
+    icon = bar.get_by_role("button", name="Messages between agents")
+    expect(icon).to_be_visible()
+    assert icon.bounding_box()["x"] >= row.bounding_box()["x"] + row.bounding_box()["width"]
+    shot(page, full_page=False)
+
+
+def test_with_room_for_the_tabs_the_radios_stay(page: Page, server, repo, shot):
+    twelve_agents_and_fourteen_artifacts(page, server, repo, 1160)
+    bar = page.get_by_role("navigation", name="Session sections")
+    expect(bar.get_by_role("radio", name="Yours")).to_be_visible()
+    expect(bar.get_by_role("button", name="Messages between agents")).to_have_count(0)
+    assert bar.get_attribute("data-fit") in ("0", "1", "2")
+    shot(page, full_page=False)
+
+
+def test_tab_brings_each_tab_clear_of_the_bars_ends(page: Page, server, repo, shot):
+    size(page, 1440)
+    session = running_session(repo)
+    open_session(page, server, session)
+    bar = page.get_by_role("navigation", name="Session sections")
+    page.add_style_tag(content=".session-tabs { width: 300px; }")
+    expect(bar).to_have_attribute("data-fit", "4")
+    tabs = bar.locator(".tab-item")
+    more = bar.get_by_role("button", name="More tabs")
+    earlier = bar.get_by_role("button", name="Earlier tabs")
+    expect(more).to_be_visible()
+    tabs.first.focus()
+    for number in (1, 2, 3):
+        page.keyboard.press("Tab")
+        expect(tabs.nth(number)).to_be_focused()
+        page.wait_for_function(
+            f"({CLEAR})(document.querySelectorAll('.session-tabs .tab-item')[{number}])"
+        )
+    expect(more).to_have_count(0)  # Artifacts ends the row
+    expect(earlier).to_be_visible()
+    shot(page, full_page=False)
+    for number in (2, 1, 0):
+        page.keyboard.press("Shift+Tab")
+        expect(tabs.nth(number)).to_be_focused()
+        page.wait_for_function(
+            f"({CLEAR})(document.querySelectorAll('.session-tabs .tab-item')[{number}])"
+        )
+    expect(earlier).to_have_count(0)
+
+
+def test_the_tab_shown_stands_clear_of_the_bars_ends(page: Page, server, repo):
+    size(page, 1440)
+    session = running_session(repo)
+    open_session(page, server, session)
+    bar = page.get_by_role("navigation", name="Session sections")
+    page.add_style_tag(content=".session-tabs { width: 300px; }")
+    expect(bar).to_have_attribute("data-fit", "4")
+    bar.get_by_role("link", name=re.compile("^Flows")).click()
+    expect(bar.get_by_role("link", name=re.compile("^Flows"))).to_have_attribute(
+        "aria-current", "page"
+    )
+    page.wait_for_function(
+        f"({CLEAR})(document.querySelector('.session-tabs [aria-current=page]'))"
+    )
+
+
+def test_a_press_on_a_tab_leaves_the_row_until_the_click(page: Page, server, repo):
+    size(page, 1440)
+    session = running_session(repo)
+    open_session(page, server, session)
+    bar = page.get_by_role("navigation", name="Session sections")
+    page.add_style_tag(content=".session-tabs { width: 300px; }")
+    expect(bar).to_have_attribute("data-fit", "4")
+    flows = bar.get_by_role("link", name=re.compile("^Flows"))
+    box = flows.bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    expect(flows).to_be_focused()
+    settled(page)
+    assert page.locator(".session-tabs-scroll").evaluate("e => e.scrollLeft") == 0
+    page.mouse.up()
+    expect(flows).to_have_attribute("aria-current", "page")
 
 
 def test_a_waiting_sessions_badge_has_the_diamond_and_the_marks_sit_on_the_corner(

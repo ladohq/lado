@@ -558,7 +558,7 @@ test("each tab shows its agent's status as a small dot that follows the agent; a
   expect(dotOf(tab("w1"))).toBe("dot dot-small dot-busy");
   agentChange({ ...AGENTS[1], status: "waiting" });
   expect(dotOf(tab("w1"))).toBe("dot dot-small dot-waiting");
-  expect(tab("w1").getAttribute("aria-label")).toBe("w1, waiting");
+  expect(tab("w1").getAttribute("aria-label")).toBe("w1, waits for you");
   agentChange(null, "w1");
   expect(dotOf(tab("w1"))).toBe("dot dot-small dot-stopped");
   expect(tab("w1").getAttribute("aria-label")).toBe("w1, stopped");

@@ -31,6 +31,7 @@ import {
   getUpdate,
   getUpdatePlan,
   startUpdate,
+  type AgentInfo,
   type Health,
   type ProviderInfo,
   type SystemInfo,
@@ -46,8 +47,13 @@ import { useLive } from "./live";
 import { useBelow, useDismiss } from "./Menu";
 import { useMedia } from "./phone";
 import { storeUpdateSeen, updateSeen } from "./prefs";
+import { STATUS_WORDS } from "./Team";
 import { Tooltip } from "./Tooltip";
 import { BUNDLE_VERSION } from "./version";
+
+// An agent's status in the update's plan, which the API types as text: one it does not know
+// shows as it is.
+const planStatus = (status: string): string => STATUS_WORDS[status as AgentInfo["status"]] ?? status;
 
 export const GITHUB = "https://github.com/ladohq/lado";
 export const POLL_MS = 2000; // between two looks at the server while it restarts
@@ -577,7 +583,7 @@ function UpdateDialog({ onClose }: { onClose: (started: boolean) => void }) {
                   <li key={sess.name}>
                     session <strong>{sess.name}</strong>:{" "}
                     {sess.agents.length > 0
-                      ? sess.agents.map((agent) => `${agent.name} ${agent.status}`).join(", ")
+                      ? sess.agents.map((agent) => `${agent.name} ${planStatus(agent.status)}`).join(", ")
                       : "no agents"}
                     {sess.open_runs > 0 ? ` · ${plural(sess.open_runs, "open run")}` : ""}
                   </li>

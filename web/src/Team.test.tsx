@@ -65,9 +65,15 @@ test("the head names an agent by the popup's words, the role left out when it is
   expect(headName({ ...agent("w1"), status: "background" })).toBe("w1, developer, in the background");
 });
 
+test("a phone's chip names its agent by the popup's words", () => {
+  render(<AgentChip agent={{ ...agent("w1"), status: "waiting" }} shown={null} open={() => {}} />);
+  expect(screen.getByRole("button").getAttribute("aria-label")).toBe("w1, developer, waits for you");
+});
+
 test("the list's button says how many it stands for and how many of them wait", () => {
   const waiting: AgentInfo = { ...agent("w2"), status: "waiting" };
   expect(moreName([agent("w1"), waiting, agent("w3"), agent("w4")], 8)).toBe("4 more agents, 1 waits for you");
+  expect(moreName([waiting, { ...waiting, name: "w3" }, agent("w1")], 9)).toBe("3 more agents, 2 wait for you");
   expect(moreName([agent("w1")], 3)).toBe("1 more agent");
   expect(moreName([agent("w1"), agent("w2"), agent("w3"), agent("w4")], 0)).toBe("4 agents");
 });

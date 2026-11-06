@@ -171,24 +171,6 @@ compare with the full READY_TIMEOUT, or measure the wait the code does, not wall
 Found: 2026-10-04, feature/flows-list (implement, make check); review of
 feature/kit-manifest-v2.
 
-### UI e2e test of the status marks reads the Team buttons before they render
-
-Size: S.
-
-`tests/ui/test_status_marks.py::test_busy_and_background_are_green_and_pulse_and_background_is_half_filled`
-failed in 3 of 3 full `make test-ui` runs (2 on feature/session-start-tool, 1 on main at
-f9d3739) with `ValueError: not enough values to unpack (expected 2, got 0)` at
-`supervisor, w1 = team.get_by_role("button").all()`, and passed alone: Playwright's `.all()`
-does not wait, so the list is empty while the Team group has not rendered its buttons.
-Wanted: wait for the two buttons first (`expect(team.get_by_role("button")).to_have_count(2)`).
-Found: 2026-10-10, implement step of feature/session-start-tool.
-Again on 2026-10-11 (verify of feature/live-cloud-matrix, c8aca85): the same `ValueError` in
-`make check`; passed on both reruns.
-Again on 2026-10-11 (verify of feature/artifact-panel-width, 211f4c8): the same `ValueError`
-in `make test-ui`; passed on its first rerun alone.
-Again on 2026-10-11 (verify of feature/team-run-frames, 5f0841e): the same `ValueError` in
-`make check`; passed on its first rerun. Third time today: worth fixing soon.
-
 ### Launch vitest tests fail now and then under the load of a full run
 
 Size: S: check whether there is a race in the product (`touched`).

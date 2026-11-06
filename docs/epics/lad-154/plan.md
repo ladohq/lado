@@ -553,6 +553,7 @@ Check:
 
 ## Later
 
+- A session's tokens or money in LADO; a limit given by hand on a saved model (a 1M model compacts late) — out of S11 by #4163 — no task yet — on the human's word.
 - The launch window offers Claude Code only with its login, though a model on a server needs none (option B of S9a's design; option A, the default on a server clears `login_missing`, is built) — no task yet — on the human's yes.
 - Declined at S9a's review: no automatic test of a subagent asking for another model (F6), `LADO_MODEL_SERVER` in the login shell (E4), `allow` assigned rather than added to (E6) — LAD-217.
 - Flaky `tests/integration/test_leftover_processes.py::test_a_dead_runs_processes_are_reaped_and_a_living_runs_are_not` (one failure at S9a's base merge beside another session's run; three clean runs alone) — no task yet.

@@ -57,7 +57,7 @@ function stoppedBy(error) {
   return { name: error.name, message: error.message ? `${words}; ${error.message}` : words }
 }
 
-export const LadoPlugin = async ({ client, directory }, options = {}) => {
+export const LadoPlugin = async ({ client }, options = {}) => {
   const hooks = options?.hooks ?? {}
   // Sessions of subagents (task tool): their turns are not the agent's turns.
   const subagents = new Set()
@@ -73,7 +73,6 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
   const stopped = new Set()
   const ended = new Set()
   const summaries = new Set()
-  await run(hooks["plugin.init"], { directory })
   return {
     "chat.message": async (input, output) => {
       try {

@@ -20,6 +20,9 @@ from lado import state
 from lado.providers import base
 
 PLUGIN = Path(__file__).with_name("opencode_plugin.js")
+TUI_PLUGIN = Path(__file__).with_name("opencode_tui_plugin.js")
+TUI_READY = "tui.ready"  # the TUI plugin's one report: the prompt has focus
+TUI_CONFIG = "tui.json"  # the agent's TUI config, beside its config
 
 # Events the plugin reports and the neutral events they stand for, by the same names in Kilo
 # 7.8.3 and OpenCode 1.18.34. A request for the human and its answer carry the request's id
@@ -27,7 +30,9 @@ PLUGIN = Path(__file__).with_name("opencode_plugin.js")
 # (neither has a "permission.rejected"). Both can have several requests open at once (listed
 # per session); LADO keeps one key, the latest request's (BACKLOG.md: a set of keys).
 EVENTS = {
-    "plugin.init": base.SESSION_START,
+    # The session start is the TUI's, not the server plugin's: that one's init comes 1.5 to 3 s
+    # before the TUI takes input (Kilo 7.8.8, OpenCode 1.18.35).
+    TUI_READY: base.SESSION_START,
     "chat.message": base.PROMPT_SUBMIT,
     "session.idle": base.TURN_END,
     "permission.asked": base.WAITING,
@@ -103,9 +108,11 @@ class OpenCodeFamily(base.Provider):
     external_whole_process = False
     runs_on_server = True
     config_file_name: str  # the agent's config in its config folder, e.g. "opencode.json"
-    # Text typed into OpenCode's TUI 0.2-0.7 s after the plugin's init is lost whole, and
-    # no event or API says when the TUI takes input (checked by hand with OpenCode 1.18.35):
-    # the first messages' lines go in as --prompt (notice_on_argv).
+    tui_config_variable: str  # the CLI's variable for a TUI config, e.g. "OPENCODE_TUI_CONFIG"
+    # Text typed into the TUI before its prompt has focus is lost whole (Kilo 7.8.8, OpenCode
+    # 1.18.35), so the session start waits for that (opencode_tui_plugin.js). The first
+    # messages' lines still go in as --prompt (notice_on_argv), taken at launch: their
+    # chat.message may come before or after tui.ready.
     capabilities = base.Capabilities(
         status_events=True,
         permission_event=True,
@@ -194,12 +201,23 @@ class OpenCodeFamily(base.Provider):
         text = json.dumps(config, indent=2)
         config_file = config_dir / self.config_file_name
         config_file.write_text(text)
+        # The CLI merges this file with the user's and the repository's tui.json, and passes the
+        # entry's options as the plugin's second argument (Kilo 7.8.8, OpenCode 1.18.35).
+        tui_config = config_dir / TUI_CONFIG
+        options = {"hook": base.hook_argv(agent, TUI_READY)}
+        tui_config.write_text(json.dumps({"plugin": [[TUI_PLUGIN.as_uri(), options]]}, indent=2))
         argv = self.argv(session.permission_mode, spec.model)
         if notice:
             argv[1:1] = ["--prompt", notice]
         keys = {s.key_variable: s.key for s in spec.servers if s.key is not None}
         state_env, warnings = self.own_state(agent, spec)
-        env = {**self.env(config_file, text), **keys, **state_env, **self.server_env(spec)}
+        env = {
+            **self.env(config_file, text),
+            self.tui_config_variable: str(tui_config),
+            **keys,
+            **state_env,
+            **self.server_env(spec),
+        }
         return base.Launch(argv, env, warnings, model=self.session_choice(spec))
 
     def own_state(
@@ -276,7 +294,7 @@ class OpenCodeFamily(base.Provider):
     def config(
         self, agent: state.Agent, mode: str | None, spec: base.AgentSpec, role: Path
     ) -> dict:
-        events = list(EVENTS)
+        events = [event for event in EVENTS if event != TUI_READY]
         if mode == "bypassPermissions":
             # --auto approves each permission at once, with no dialog: not a wait (Kilo
             # 7.8.3, which still announces them; OpenCode 1.18.34, checked by hand in a

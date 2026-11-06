@@ -806,7 +806,7 @@ def test_kilo_launch_writes_config_and_env(repo, lado_home):
     }
     [[plugin, options]] = config["plugin"]
     assert plugin == opencode_family.PLUGIN.as_uri()
-    assert set(options["hooks"]) == set(opencode_family.EVENTS)
+    assert set(options["hooks"]) == set(opencode_family.EVENTS) - {opencode_family.TUI_READY}
     idle = options["hooks"]["session.idle"]
     assert idle[-7:-6] == ["session.idle"]
     assert idle[-6:-2] == ["--session", "s", "--agent", "w1"]
@@ -915,6 +915,7 @@ def test_opencode_launch_writes_config_and_env(repo, lado_home):
     assert launch.env == {
         "OPENCODE_CONFIG_CONTENT": launch.env["OPENCODE_CONFIG_CONTENT"],
         "OPENCODE_DISABLE_AUTOUPDATE": "1",
+        "OPENCODE_TUI_CONFIG": str(lado_home / "agents" / "s" / "w1" / "tui.json"),
         "XDG_STATE_HOME": str(lado_home / "agent-state" / "s" / "w1"),
     }
     file = lado_home / "agents" / "s" / "w1" / "opencode.json"
@@ -926,7 +927,7 @@ def test_opencode_launch_writes_config_and_env(repo, lado_home):
     assert mcp["environment"]["LADO_INSTANCE"] == "i1"
     [[plugin, options]] = config["plugin"]
     assert plugin == opencode_family.PLUGIN.as_uri()
-    assert set(options["hooks"]) == set(opencode_family.EVENTS)
+    assert set(options["hooks"]) == set(opencode_family.EVENTS) - {opencode_family.TUI_READY}
     idle = options["hooks"]["session.idle"]
     assert idle[-7:-6] == ["session.idle"]
     assert idle[-6:-2] == ["--session", "s", "--agent", "w1"]
@@ -975,7 +976,8 @@ def test_opencode_declares_its_permission_modes_and_version():
 @pytest.mark.parametrize(
     ("native", "payload", "expected"),
     [
-        ("plugin.init", {"directory": "/r"}, Event(providers.SESSION_START)),
+        ("tui.ready", {}, Event(providers.SESSION_START)),
+        ("plugin.init", {"directory": "/r"}, None),  # the server's start says nothing of the TUI
         ("chat.message", {"sessionID": "x", "prompt": "hi"}, Event(providers.PROMPT_SUBMIT, "hi")),
         ("session.idle", {"sessionID": "x"}, Event(providers.TURN_END)),
         ("permission.asked", {"id": "per_1"}, Event(providers.WAITING, key="per_1")),
@@ -1068,6 +1070,46 @@ def test_a_stopped_turn_says_why_past_the_cut_of_a_long_server_message(provider,
 def test_an_error_that_fits_has_no_details(provider):
     payload = json.dumps({"error": {"name": "APIError", "message": "Overloaded"}})
     assert providers.get(provider).parse_event("session.idle", payload).details == ""
+
+
+TUI_VARIABLES = {"kilo": "KILO_TUI_CONFIG", "opencode": "OPENCODE_TUI_CONFIG"}
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_tui_plugin_is_in_a_file_of_the_agents_own(repo, lado_home, provider):
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider, instance="i1"
+    )
+    launch = providers.get(provider).launch_command(agent, sess, providers.AgentSpec("the role"))
+    file = lado_home / "agents" / "s" / "w1" / "tui.json"
+    assert launch.env[TUI_VARIABLES[provider]] == str(file)
+    [[uri, options]] = json.loads(file.read_text())["plugin"]
+    assert uri == opencode_family.TUI_PLUGIN.as_uri()
+    assert options == {"hook": base.hook_argv(agent, "tui.ready")}
+
+
+@pytest.mark.parametrize("variable", TUI_VARIABLES.values())
+def test_the_tui_config_variables_are_reserved(variable):
+    assert variable in base.CLI_VARIABLES
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_server_plugin_is_not_given_the_tuis_report(repo, lado_home, provider):
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider, instance="i1"
+    )
+    launch = providers.get(provider).launch_command(agent, sess, providers.AgentSpec("the role"))
+    [[_, options]] = json.loads(launch.env[FAMILY[provider]])["plugin"]
+    assert "tui.ready" not in options["hooks"] and "plugin.init" not in options["hooks"]
+
+
+def test_the_tui_plugin_ships_inside_the_package():
+    import lado
+
+    assert opencode_family.TUI_PLUGIN.is_file()
+    assert opencode_family.TUI_PLUGIN.parent == Path(lado.__file__).parent / "providers"
 
 
 def test_opencode_family_shares_one_plugin_inside_the_package():

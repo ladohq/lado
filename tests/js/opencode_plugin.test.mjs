@@ -50,9 +50,9 @@ async function load(hooks, client = fakeClient()) {
   return { plugin, client }
 }
 
-test("init runs the plugin.init hook", async () => {
+test("init reports nothing: the TUI plugin says when the agent is ready", async () => {
   await load({ "plugin.init": hook("plugin.init") })
-  assert.deepEqual(calls(), [{ event: "plugin.init", payload: { directory: "/repo" } }])
+  assert.deepEqual(calls(), [])
 })
 
 test("chat.message passes the prompt without synthetic parts", async () => {
@@ -361,7 +361,7 @@ test("events without a hook are skipped", async () => {
 
 test("a failing hook never throws", async () => {
   const failing = { "session.idle": ["/nonexistent/lado"] }
-  for (const event of ["plugin.init", "chat.message", "permission.asked", "dispose"]) {
+  for (const event of ["chat.message", "permission.asked", "dispose"]) {
     failing[event] = [process.execPath, "-e", "process.exit(3)"]
   }
   const { plugin, client } = await load(failing)

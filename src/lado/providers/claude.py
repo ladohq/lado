@@ -153,12 +153,10 @@ SERVER_SWITCHES = {
     "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
 }
-# The max_tokens 2.1.295 asks for by itself: with a small context the request is over it, and the
-# server refuses the turn or cuts the prompt.
-DEFAULT_OUTPUT = 32000
-# LADO's tools, which auto mode's classifier would judge. It asks the agent's own model: a server
-# that gives it no answer it can read has them denied as "Classifier unavailable" (2.1.295).
-LADO_TOOLS = "mcp__lado"
+# LADO's tools, which auto mode's classifier would judge. It asks the agent's own model, also in a
+# defaultMode inherited from the user's settings: a model that gives it no usable answer has them
+# blocked at every try, and the agent cannot answer anyone (2.1.295, 2.1.319).
+LADO_TOOLS = "mcp__lado__*"
 # With no credential at all Claude Code sends the human's login, so a server with no key gets
 # this word: the helper's output is sent as it is.
 NO_KEY = "no-key"
@@ -180,7 +178,9 @@ def _server_settings(server: base.ServerEntry) -> dict:
     }
     if (limit := server.limits.get(model)) is not None:
         env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(limit.context)
-        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(limit.output_room(DEFAULT_OUTPUT))
+        # By itself it asks for 32000: over a 64K context with a prompt of 45K, where a server
+        # ends the stream and Claude Code retries for hours (2.1.319 on LM Studio).
+        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(limit.output_room())
     helper = f"printenv {server.key_variable}" if server.key_variable else f"echo {NO_KEY}"
     return {"env": env, "apiKeyHelper": helper, "availableModels": [model]}
 
@@ -202,9 +202,9 @@ class ClaudeProvider(base.Provider):
     tested_version = TESTED_VERSION
     server_api = base.ANTHROPIC_MESSAGES
     runs_on_server = True
-    # The first request of an agent with 21 tools and an MCP server was 63 kB, about 16k tokens,
-    # before its role and work (2.1.295 on a fake server).
-    min_context = 32768
+    # The first request of an agent was 45K tokens with a human's CLAUDE.md, rules and plugins
+    # (2.1.319 on LM Studio), 16K with none, before any work; the output goes on top.
+    min_context = 65536
     capabilities = base.Capabilities(
         status_events=True,
         permission_event=True,

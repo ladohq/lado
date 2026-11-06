@@ -200,6 +200,11 @@ def turn_with_tools(server: endpoints.Anthropic) -> None:
     wait_for(lambda: status(SESSION, "supervisor") == "idle", "the turn's end", 120)
 
 
+def claude_output() -> int:
+    """What a Claude agent on the fake's model may ask for: the context is known."""
+    return providers.base.Limit(endpoints.CONTEXT).output_room()
+
+
 def only_the_server_s_key_and_model(server: endpoints.Anthropic) -> None:
     turns = [r for r in server.requests if r[0] == "/v1/messages" and b'"model"' in r[2]]
     assert turns, "no turn reached the server"  # LADO's probe sends an empty object
@@ -230,7 +235,7 @@ def test_claude_code_runs_on_a_server_with_no_login_and_no_first_run(
     assert agent.model == SERVER_MODEL
     assert runtime.status_reasons(SESSION) == {}
     asked = {json.loads(b)["max_tokens"] for p, _, b in claude_server.requests if b'"model"' in b}
-    assert asked == {endpoints.CONTEXT // 4}, "the context known, its quarter at most"
+    assert asked == {claude_output()}
     assert delivered(state.HUMAN, "supervisor", endpoints.RUN_TOOLS)()
     only_the_server_s_key_and_model(claude_server)
     assert fake_endpoint.requests == []
@@ -291,20 +296,43 @@ def test_another_way_out_in_the_environment_does_not_take_a_claude_agent_off_its
 
 
 @pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
-def test_auto_mode_lets_a_claude_agent_on_a_server_use_lado_s_tools(
+def test_auto_mode_of_the_human_leaves_a_claude_agent_on_a_server_lado_s_tools(
     smoke_repo, smoke_provider, claude_server
 ):
-    """Its classifier asks the server too, whose model may say no: LADO's tools do not go there."""
-    runtime.start_session(str(smoke_repo), SESSION, "auto", "claude", model="Шлюз Qwen")
+    """Inherited from the user's settings. Its classifier asks the server's model, which gives it
+    no usable answer here: LADO's tools do not go there, or the agent could not answer anyone."""
+    settings = {"permissions": {"defaultMode": "auto"}}
+    Path(os.environ["CLAUDE_CONFIG_DIR"], "settings.json").write_text(json.dumps(settings))
+    runtime.start_session(str(smoke_repo), SESSION, None, "claude", model="Шлюз Qwen")
     idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
     wait_for(idle, "the supervisor to be idle after its session start", 120)
+    assert "auto mode on" in tmux.capture(SESSION, "supervisor")
     runtime.write_as_human(SESSION, endpoints.RUN_MCP)
     called = lambda: endpoints.MCP_CALL in claude_server.tool_results()  # noqa: E731
     wait_for(called, "the MCP tool's result", 120)
     wait_for(lambda: status(SESSION, "supervisor") == "idle", "the turn's end", 120)
-    assert "denied by auto mode" not in tmux.capture(SESSION, "supervisor")
+    assert "by auto mode" not in tmux.capture(SESSION, "supervisor")
     last = [r for r in claude_server.requests if b"tool_result" in r[2]][-1]
-    assert b"auto mode cannot determine" not in last[2]
+    assert b"auto mode" not in last[2].split(b"tool_result", 1)[1]
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_a_turn_of_a_large_prompt_ends_on_a_context_that_fits_it(
+    smoke_repo, smoke_provider, claude_server
+):
+    """A human's own CLAUDE.md and rules brought a prompt to 45K tokens: with the 32000 tokens of
+    output Claude Code asks for by itself that is over 64K, and the server ends the stream."""
+    size = 22000 * endpoints.TOKEN_BYTES
+    Path(os.environ["CLAUDE_CONFIG_DIR"], "CLAUDE.md").write_text("Be brief. " * (size // 10))
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    turn_with_tools(claude_server)
+    turns = [r for r in claude_server.requests if r[0] == "/v1/messages" and b'"tools"' in r[2]]
+    largest = max(len(body) for _, _, body in turns) // endpoints.TOKEN_BYTES
+    print(f"claude: the largest prompt is about {largest} tokens")
+    assert largest + 32000 > endpoints.CONTEXT
     runtime.stop_session(SESSION)
 
 

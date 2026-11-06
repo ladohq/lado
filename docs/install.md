@@ -302,13 +302,13 @@ it in the launch window, or `lado start --provider claude --model "<name>"`. Wha
   or a name ending in `[1m]`) is refused when saved and at a start: it would never reach the server.
   Give it another id there.
 - The agent keeps your `~/.claude`: your `CLAUDE.md`, skills and plugins work as usual.
-- The context LADO reads from the server goes to the agent, and its answers are limited to a quarter
-  of it (or what the server reports), so that a request fits. With none known, Claude Code assumes
-  200K tokens and says so at its start: on a smaller model it compacts too late and asks for 32K
-  tokens of answer, which such a server may refuse.
-- In auto mode Claude Code asks the agent's own model whether a tool is safe. LADO's tools are
-  allowed for such an agent and do not go through that; any other tool is refused as `Classifier
-  unavailable` when the model gives no usable answer. Use another permission mode then.
+- The context LADO reads from the server goes to the agent, and its answers are limited to what the
+  server reports or 8K tokens, at most a quarter of the context, so that a request fits. With none
+  known, Claude Code assumes 200K tokens and says so at its start: on a smaller model it compacts
+  too late and asks for 32K tokens of answer, and a turn over the context may retry for hours.
+- In auto mode, also one in your `~/.claude/settings.json`, Claude Code asks the agent's own model
+  whether a tool is safe. LADO's tools are allowed for such an agent and do not go through that; any
+  other tool is blocked when the model gives no usable answer. Use another permission mode then.
 - Telemetry and the experimental betas are off for such an agent. Claude Code still tried to reach
   `downloads.claude.ai` and `github.com`, so do not take it for an agent that makes no other request.
 
@@ -318,9 +318,9 @@ can read every file of its `secrets/`.
 
 #### What to expect of a small model
 
-An agent's instructions and tools take about 16K tokens on Claude Code, 21K on
-OpenCode and 31K on Kilo before its first word, so a model needs a context of 32K on Claude Code
-and OpenCode and 48K on Kilo. At each start LADO asks the server what context the model has (LM Studio's loaded
+An agent's instructions and tools take about 21K tokens on OpenCode, 31K on Kilo
+and on Claude Code from 16K to 45K, with your `CLAUDE.md`, rules and plugins, before its first word,
+so a model needs a context of 32K on OpenCode, 48K on Kilo and 64K on Claude Code. At each start LADO asks the server what context the model has (LM Studio's loaded
 model, Ollama's running one, a gateway's `max_input_tokens`) and tells the agent, which then
 compacts in time; a model below that need is warned about in `lado start` and the launch window,
 and starts all the same. A model reloaded with another context keeps the old limit until a resume.

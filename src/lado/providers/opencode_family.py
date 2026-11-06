@@ -89,10 +89,6 @@ SERVER_PROVIDER = "lado-"
 SERVER_PACKAGE = "@ai-sdk/openai-compatible"  # ships with both; nothing to fetch at a first run
 MODEL_MEMORY = "model.json"  # the CLI's last /model picks, in its state folder
 TUI_SETTINGS = "kv.json"  # the CLI's TUI settings, beside it
-# `max_tokens` of a model with no output reported. OpenCode compacts near context - output and
-# sends output as max_tokens (1.18.35, Kilo 7.8.8 alike): their default of 32000 leaves a small
-# model nothing, so it is a quarter of the context at most.
-DEFAULT_OUTPUT = 8192
 
 
 def without_servers(found: object) -> object:
@@ -120,7 +116,7 @@ def model_entry(name: str, limit: base.Limit | None) -> dict:
     1.18.35 refuses a config whose `limit` has no `output`."""
     if limit is None:
         return {"name": name}
-    output = limit.output_room(DEFAULT_OUTPUT)
+    output = limit.output_room()
     return {"name": name, "limit": {"context": limit.context, "output": output}}
 
 

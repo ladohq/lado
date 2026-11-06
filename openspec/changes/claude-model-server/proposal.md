@@ -53,8 +53,8 @@ of several models) is said in `docs/install.md`.
   reaches the server; an agent on a built-in model is as before.
 - Such an agent needs no Claude login: no refusal, no wait, no keychain warning, and LADO records
   Claude Code's first run for it.
-- A server's known context goes to the agent as `CLAUDE_CODE_MAX_CONTEXT_TOKENS`; a context below
-  32768 is warned about as for OpenCode and Kilo.
+- A server's known context goes to the agent as `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, with its output
+  limited as for OpenCode and Kilo; a context below 65536 is warned about.
 - A server's model whose name Claude Code reads as its own alias is refused when saved and at a
   start, so `lado model add --cli claude --server …` promises only what starts.
 - Refusals that named Claude Code now name Codex, the one CLI left.

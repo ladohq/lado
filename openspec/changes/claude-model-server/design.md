@@ -86,9 +86,8 @@ skipped for a `start.server` on a provider of one model per process. Neutral: no
 
 `launch_command` sets `CLAUDE_CODE_MAX_CONTEXT_TOKENS` in the settings' `env` from
 `entry.limits[model].context` when known. Unknown: Claude Code assumes 200k and says so at its start;
-that is the limitation `docs/install.md` names. `ClaudeProvider.min_context = 32768`: the first request
-of an agent with 21 tools and an MCP server was 63 kB, about 16k tokens, before the role and the
-work; the same need as OpenCode's.
+that is the limitation `docs/install.md` names. `ClaudeProvider.min_context = 65536`: the first request
+was about 16k tokens with a clean config, and 45k with a human's `CLAUDE.md`, rules and plugins (D12).
 
 ### D7. Names Claude Code would read as its own
 
@@ -128,12 +127,14 @@ worker in inherit mode would inherit `ANTHROPIC_BASE_URL` and send the human's l
 `ANTHROPIC_UNIX_SOCKET` ignores an empty value in the settings, so the launch sets it empty. The check
 of a CLI's own name is in `check_launch`, so `list_models` says it too, and in `check_model`.
 
-### D12. Added by the human's manual check
+### D12. Added by the human's manual check (2.1.319, LM Studio and LiteLLM)
 
-Claude Code asks for `max_tokens` 32000 whatever the context, so a small model's request is over it:
-`CLAUDE_CODE_MAX_OUTPUT_TOKENS` holds `Limit.output_room`, OpenCode's rule, with Claude Code's own
-default. Auto mode's classifier asks the agent's model and denied LADO's tools as `Classifier
-unavailable`: such an agent's settings allow `mcp__lado`. Any other tool stays with the classifier.
+At a context of 65536 Claude Code asked for `max_tokens` 32000 on a prompt of 45K: LM Studio ended the
+stream with a 500, and the agent retried over two hours. `CLAUDE_CODE_MAX_OUTPUT_TOKENS` holds
+`Limit.output_room`, the rule of OpenCode and Kilo: what the server reports or 8192, at most a quarter
+of the context. `min_context` goes to 65536, as such a prompt and its output need it. A `defaultMode:
+auto` of the user's settings runs the classifier on the server's model, and LADO's tools were blocked
+at every try: such an agent's settings allow `mcp__lado__*`. Any other tool stays with the classifier.
 
 ## Risks / Trade-offs
 

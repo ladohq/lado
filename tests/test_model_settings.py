@@ -1760,7 +1760,7 @@ def test_a_cli_of_one_model_per_process_has_the_limits_of_its_model(serve):
     start = model_settings.start_model(None, CLAUDE)
     (found,), warnings = model_settings.agent_servers(CLAUDE, start)
     assert found.limits["small"] == base.Limit(16000, 2048)
-    assert len(warnings) == 1 and "needs about 32,768" in warnings[0]
+    assert len(warnings) == 1 and "needs about 65,536" in warnings[0]
 
 
 def test_a_key_that_cannot_be_read_refuses_the_one_server_of_a_start():

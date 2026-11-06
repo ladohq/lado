@@ -1781,7 +1781,7 @@ def test_claude_code_is_told_a_server_s_model_as_it_is():
     assert cli.runs_on_server and cli.external_whole_process
     assert cli.server_model("aaaa1111", "qwen/qwen3-coder") == "qwen/qwen3-coder"
     assert cli.on_server("qwen/qwen3-coder") is None
-    assert cli.min_context == 32768
+    assert cli.min_context == 65536
 
 
 @pytest.mark.parametrize(
@@ -2121,13 +2121,18 @@ def test_a_known_context_goes_to_a_claude_agent(repo):
         "https://llm.example.com",
         CLAUDE_MODEL,
         CLAUDE_CODE_MAX_CONTEXT_TOKENS="65536",
-        CLAUDE_CODE_MAX_OUTPUT_TOKENS="16384",
+        CLAUDE_CODE_MAX_OUTPUT_TOKENS="8192",
     )
 
 
 @pytest.mark.parametrize(
     ("limit", "output"),
-    [(base.Limit(32768), "8192"), (base.Limit(65536, 2048), "2048")],
+    [
+        (base.Limit(131072), "8192"),
+        (base.Limit(16000), "4000"),
+        (base.Limit(65536, 2048), "2048"),
+        (base.Limit(65536, 32000), "16384"),
+    ],
 )
 def test_a_claude_agent_s_output_leaves_room_in_a_known_context(repo, limit, output):
     server = dataclasses.replace(CLAUDE_SERVER, limits={CLAUDE_MODEL: limit})
@@ -2137,7 +2142,7 @@ def test_a_claude_agent_s_output_leaves_room_in_a_known_context(repo, limit, out
 
 def test_a_claude_agent_on_a_server_may_use_lado_s_tools(repo):
     _, settings = _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
-    assert settings["permissions"]["allow"] == ["mcp__lado"]
+    assert settings["permissions"]["allow"] == ["mcp__lado__*"]
     assert settings["permissions"]["deny"] == claude_provider.BUILT_IN_MESSAGING
 
 

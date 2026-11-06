@@ -132,6 +132,12 @@ class McpServer:
     env_vars: list[str] = field(default_factory=list)
 
 
+# `max_tokens` of a model with no output reported. OpenCode compacts near context - output and
+# sends output as max_tokens (1.18.35, Kilo 7.8.8 alike): their default of 32000 leaves a small
+# model nothing, as Claude Code's does, so it is a quarter of the context at most.
+DEFAULT_OUTPUT = 8192
+
+
 @dataclass(frozen=True)
 class Limit:
     """What a server reports of a model: its context in tokens, its output when it says."""
@@ -139,10 +145,10 @@ class Limit:
     context: int
     output: int | None = None
 
-    def output_room(self, default: int) -> int:
-        """The tokens a CLI may ask for as its output, `default` when the server says none: at
-        most a quarter of the context, which the prompt needs too."""
-        return max(1, min(self.output or default, self.context // 4))
+    def output_room(self) -> int:
+        """The tokens a CLI may ask for as its output: what the server reports or DEFAULT_OUTPUT,
+        at most a quarter of the context, which the prompt needs too."""
+        return max(1, min(self.output or DEFAULT_OUTPUT, self.context // 4))
 
 
 @dataclass(frozen=True)

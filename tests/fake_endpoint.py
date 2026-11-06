@@ -117,6 +117,7 @@ class Endpoint:
 RUN_TOOLS = "SMOKE-RUN-TOOLS"
 RUN_MCP = "SMOKE-RUN-MCP"  # the MCP tool alone
 CONTEXT = 65536  # the context the fake's list reports of its model
+TOKEN_BYTES = 4  # a request's bytes per token, as near as a fake needs
 SHELL_TOOL = "Bash"
 MCP_TOOL = "mcp__lado__list_agents"
 SHELL_CALL, MCP_CALL = "toolu_smoke_shell", "toolu_smoke_mcp"
@@ -144,9 +145,12 @@ def _results(message: dict) -> list[str]:
     return [b.get("tool_use_id", "") for b in content if b.get("type") == "tool_result"]
 
 
-def _events(model: str, content: list[dict], stop_reason: str) -> list[tuple[str, dict]]:
-    """A message's stream: the names and the bodies of its server-sent events."""
-    usage = {"input_tokens": 1, "output_tokens": 1}
+def _events(
+    model: str, content: list[dict], stop_reason: str, tokens: int
+) -> list[tuple[str, dict]]:
+    """A message's stream, for a prompt of `tokens`: the names and the bodies of its server-sent
+    events."""
+    usage = {"input_tokens": tokens, "output_tokens": 1}
     message = {
         "id": "msg_smoke",
         "type": "message",
@@ -226,8 +230,12 @@ class Anthropic:
                     error = {"type": "invalid_request_error", "message": "model: Field required"}
                     self.json(400, {"type": "error", "error": error})
                     return
+                tokens = len(body) // TOKEN_BYTES
+                if tokens + request.get("max_tokens", 0) > CONTEXT:  # as LM Studio ends it
+                    self.json(500, {"message": "Context size has been exceeded"})
+                    return
                 content, stop_reason = fake.turn(request)
-                self.stream(_events(request["model"], content, stop_reason))
+                self.stream(_events(request["model"], content, stop_reason, tokens))
 
             do_GET = do_POST = do_HEAD = answer
 

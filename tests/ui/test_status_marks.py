@@ -37,6 +37,8 @@ def test_busy_and_background_are_green_and_pulse_and_background_is_half_filled(
         page.goto(f"{server['url']}/sessions/{session}")
         page.get_by_role("button", name="Collapse terminals").click()
         team = page.get_by_role("toolbar", name="Team")
+        # .all() does not wait, and the chips come only when the agents have loaded.
+        expect(team.get_by_role("button")).to_have_count(2)
         supervisor, w1 = team.get_by_role("button").all()
         expect(supervisor).to_have_accessible_name("supervisor, working")
         expect(w1).to_have_accessible_name("w1, worker, in the background")

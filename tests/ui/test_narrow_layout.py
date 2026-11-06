@@ -293,6 +293,10 @@ def test_the_strips_badges_tell_task_sessions_apart(page: Page, server, repo, sh
     open_session(page, server, first)
     icons = strip(page).locator(".strip-session")
     expect(icons).to_have_text(["154", "189", "154·2"], ignore_case=False)
+    # The text fills the box exactly and the fallback font is wider: measure in the badge's font.
+    icons.nth(2).evaluate(
+        "e => document.fonts.load(getComputedStyle(e).font, e.textContent).then(() => true)"
+    )
     # The text fits; its status dot lies past the corner on purpose.
     assert icons.nth(2).evaluate(
         """e => {

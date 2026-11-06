@@ -205,7 +205,12 @@ def test_the_session_screens_changed_hold_at_every_width(
     fits("runs")
     page.get_by_role("link", name="ship/x").click()
     page.get_by_role("button", name="Open all").click()
-    expect(page.locator(".feed-took").first).to_contain_text("Step took")
+    took = page.locator(".feed-took").first
+    expect(took).to_contain_text("Step took")
+    line = took.locator("xpath=preceding-sibling::*[contains(@class, 'feed-line')]").bounding_box()
+    box = took.bounding_box()
+    assert line is not None and box is not None
+    assert box["y"] >= line["y"] + line["height"], (box, line)  # under its line, not beside it
     fits("event")
 
     page.goto(f"{server['url']}/sessions/{session}/artifacts")
@@ -218,7 +223,9 @@ def test_the_session_screens_changed_hold_at_every_width(
 
     page.get_by_role("button", name="Stop session…").click()
     asked = page.get_by_role("dialog", name=f'Stop session "{session}"?')
-    expect(asked.locator(".stop-forget-why")).to_be_visible()
+    why = asked.locator(".stop-forget-why")
+    expect(why).to_be_visible()
+    assert why.evaluate("line => line.scrollWidth <= line.clientWidth")  # wrapped, not cut
     expect(asked.get_by_role("button", name="Stop and forget")).to_have_count(0)
     fits("stop")
     page.keyboard.press("Escape")

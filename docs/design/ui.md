@@ -379,7 +379,8 @@ Decided in the agent terminal task (2026-10-03).
   closed for good.
 - **Modes**: every terminal opens in view, the supervisor's too (the Layout task: the human
   writes to agents in the chat, and a window is never resized without the human's own
-  step); **Take control** asks first in a modal dialog (`<dialog>`, Esc is Cancel) with
+  step); **Take control** asks first in a modal dialog (`<dialog>`, Esc is Cancel, its
+  `--scrim` backdrop over the whole page, the terminal too) with
   **Don't ask again**, remembered in the browser (`lado.askControl`) for every agent; there
   is no setting for it, and the button's tooltip always has the explanation. Without
   browser storage it asks every time. **Release** goes back. Control is the state to see
@@ -1605,9 +1606,9 @@ connection, above).
   `task/lad-120/mockup-launch-notes.html` variant A): each note under a field is one of
   three by its class. A hint (`field-note`) and a success (`field-note ok`) are quiet 12 px
   text, muted or in the action's blue, without a ground. A warning (`field-note warn`) is
-  an amber panel: `--warn-ground` with a 3 px `--warn` stripe on its left, text 13 px in
+  an amber panel on `--warn-ground`, no stripe (LAD-198), text 13 px in
   `--ink`, its icon the `⚠` its text starts with. A refusal (`field-note bad`) is the same
-  panel on `--danger-ground` with a `--danger` stripe and a round `!` drawn by CSS before
+  panel on `--danger-ground` with a round `!` drawn by CSS before
   its first line (not part of its text); its hint, command and Copy stay inside it. A
   folder inside LADO's `projects/` is such a refusal (LAD-125), before git is asked: the
   core's text naming the project, `Start a session in the project:` and `lado start
@@ -1818,10 +1819,12 @@ connection, above).
   stays on the session. **Stop and forget** (decided 2026-10-18, LAD-92; mockup
   `task/lad-92/mockup-bulk-forget.html`), in the colour of a dangerous action with the
   tooltip "Stops it, then deletes its history for good", stops the session, then forgets
-  it without force (`Stopping…`, then `Forgetting…`), then goes to `/sessions`. It is off
-  while `stop-preview` names open runs, the popover saying "It has open runs: stop it,
-  then forget it from the Stopped list."; a refused forget leaves the session stopped and
-  the popover shows the core's reason.
+  it without force (`Stopping…`, then `Forgetting…`), then goes to `/sessions`. It shows
+  only once `stop-preview` is read and names no open run (LAD-198): a dangerous button that
+  appears beats one that shows and goes, and a red button that is off reads like one that
+  works. With open runs the popover says under its buttons, 13 px `--muted`, "It has open
+  runs, so it can be forgotten only from the Stopped list after stopping."; a refused
+  forget leaves the session stopped and the popover shows the core's reason.
 - **A menu or popover below its button** (the row's menu, the selected text of a copy that
   failed, Stop's popover; `useBelow` in `Menu.tsx`) is fixed 6px under the button, so a
   scrolling box around it does not cut it: from the button's left edge, Stop's from its
@@ -2789,13 +2792,21 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
   - **Active** (green, `done`, as the session list's Running), the runs that wait for the
     human first, then the active ones ("No active runs" when there is none), each a card,
     a link to its page: the name (mono), "Waits for you" only when it waits (the card
-    orange), on the right flow · kit · `started <time>`; the line of what goes on now
+    orange), on the right flow · kit · `started <time>`; the first line of its task
+    (LAD-198: 13 px `--muted`, on an orange card its colour, cut with "…", none when
+    blank); the line of what goes on now
     (state · `→ <who acts>` or `gate #N` or its reason · how long); then its flow's states,
     the run head's chips (the same component, `States`), or "Flow cannot be read: …" for a
-    run with a `problem`. No task on the card.
+    run with a `problem`.
   - **History** (neutral), ended and cancelled runs by when they ended, the latest first,
     under their day, the first 10 and then Show N more ("No ended runs yet"): a compact
-    row, the name, its status and time; no states, no task.
+    row, the name, the task's first line as on a card, its status and time; no states.
+  A session with no run, while the search is empty, shows in their place "No flow runs yet"
+  and a line from the session's about (`SessionKitInfo.flows`, read once; `flowsLine`):
+  "Runs appear when the supervisor starts a flow of the session's kits: sdlc: task, epic;
+  builder: kit.", naming each kit with flows; "This session's kits have no flows, so no
+  runs will appear here." only when every kit loads and none has one; otherwise, or until
+  the kits are read, the first sentence without its list.
   The tab is **Flows · N**, N the open runs (none: Flows).
 - **The search** of the overview is in the session's tab bar, not above the list: a
   magnifier at its right end, shown when the tab has an entry in `FINDS` (Sessions.tsx;
@@ -2845,10 +2856,11 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
     is "you"), `<from> [outcome] → <to>` (a way back's outcome orange with the return
     icon, and the outcome's tooltip and the direction read out, by the chat's one rule: Flow
     events in Look of the feed), "flow-set" or
-    "loop limit" for an override, and the summary on one line. It opens to its facts
-    (Who, From, Outcome, To, Step took: the time since the run's previous event) and the
-    note's whole body as Markdown, as in the chat ("No comment." for the human's answer
-    without one). A note from before schema 15 has its state and summary only. The start
+    "loop limit" for an override, and the summary on one line. It opens to what its line
+    lacks (LAD-198): "Step took <time>", the time since the run's previous event, 13 px
+    `--muted`, no frame, and in a frame the note's whole body as Markdown, as in the chat
+    ("No comment." for the human's answer without one; no frame without either). A note
+    from before schema 15 has its state and summary only. The start
     ("started the run", with its detail), the end ("ended the run") and a cancel
     ("cancelled by <actor>") are one line with a blue dot, never opened; the end's or
     cancel's detail is in Now only. What is open lives in the page and starts afresh with
@@ -2880,7 +2892,7 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
 `.lado/mockups/artifacts-ui/`: `tab-b.html` the tab, `viewer-types.html` the viewer,
 `chips.html` in its mode "panel over the chat"):
 
-- **The tab** (`ArtifactsTable.tsx`): a flat table over the whole column, newest first by
+- **The tab** (`ArtifactsTable.tsx`): a table or a list over the whole column, newest first by
   the latest record (`live.ts`, `LISTS.artifacts`, kept by the feed's `artifacts` items: a
   new record moves its artifact to the top). Columns: the name (the full name, its run part
   muted, the title under it, the type's icon before it), the media type, the size, the
@@ -2888,9 +2900,24 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   (name, title, summary, author), the scope (All scopes, Session, each run that has
   artifacts) and the type (All types, Documents, Code and text, Images, HTML, Other: one
   per `artifacts.kindOf`). Filters work on the loaded list; a session without artifacts
-  says "No artifacts yet", a filter that keeps none "No match". The tab is a size
-  container: below 720 px of its own width (the terminals open, a phone) each row is a
-  card. A plain click on a row, or Enter on its name's link, opens its latest record in
+  says "No artifacts yet" and "Agents save plans, reviews, images and mockups here
+  (write_artifact).", a filter that keeps none "No match".
+  The tab measures itself (decided 2026-11-06, LAD-198, mockup artifact
+  `task/lad-198/mockup-session-tweaks.html`): below 720 px (the terminals open, a phone) it
+  is a list, not the table, a first paint before the measure too. A row is 48 px: the type's
+  tile, then "name · title" (the name mono 13 600), then "type in a word · author · time ·
+  size" in 12 px `--muted`, each cut with "…"; the word is `artifacts.KINDS`' (Document, Code
+  or text, Image, HTML, File). The row's link stretches over it, and its tooltip is the latest
+  summary (none without one; on a phone the panel says it).
+  From 100 artifacts of the session (`GROUPS_FROM`, counted before any filter) both go in
+  groups by scope while the filter is All scopes: `GroupHead`'s band, "Session" or the run's
+  exact name in mono, with the rows shown; the group of the newest record first, a row's
+  name without its run. Session's and open runs' groups start open, ended runs' folded, and
+  until the runs are read nothing is folded; the human's fold is kept per session and scope
+  (`prefs.ts`, `lado.artifactGroups`). While the search has text each group with a match
+  shows open and does not fold. In the table a group is a `tbody` under a `th` of six
+  columns.
+  A plain click on a row, or Enter on its name's link, opens its latest record in
   the panel over the list (The panel, below), which keeps its filters, search and scroll;
   closing it brings the focus back to the row's link. The link's address is the
   artifact's page, so Cmd/Ctrl-click or the middle button opens the page in a new tab.
@@ -2908,8 +2935,11 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   (`target="_blank"`, `rel="noopener noreferrer"`) for every kind but other: for Markdown,
   text and an image the artifact's tab of the record shown (`paths.viewPath`, below), never
   the latest, so the link never changes; for HTML the content address, under the server's
-  sandbox; for other none, as Download does what a tab would; the title; the author, how
-  long ago, the run's state or "session", the media type and size; the record's summary.
+  sandbox; for other none, as Download does what a tab would; the title, but for a Markdown
+  record whose first non-blank line is an H1 that says it (`artifacts.sameHeading`, without
+  regard to case; LAD-198: the viewer reads the text once, shows no title until then, and
+  the title when the read fails); the author, how
+  long ago, a pill "step <state>" or "session", the media type and size; the record's summary.
   The body by `artifacts.kindOf`: Markdown (GFM: tables, task lists, strikethrough
   with `~~`, autolinks, footnotes; no raw HTML) as the chat's `Body` (Markdown in Look of
   the feed); text and code in a table with line numbers and Wrap lines (no syntax
@@ -2962,12 +2992,16 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   closes it too (the view is a step of the history). Its top bar holds every button in one
   row, never wrapped (decided 2026-10-13, LAD-43, mockup artifact
   `task/lad-43/mockup-panel-buttons.html`, option 1): on the left "Open in Artifacts tab"
-  (the Artifacts tab's icon; the artifact's page with that record) and the viewer's
+  (the Artifacts tab's icon; the artifact's page with that record; "Full page", to the same
+  address, when the panel lies over that tab, LAD-198) and the viewer's
   actions, Open in new tab, Download and Copy link; on the right Expand and ×; the
   viewer's name line under it holds no button. A panel narrower than 560 px (its width, or
   the window's when it takes the whole screen) shows the actions as 28 px icon buttons, the
   label as their name and the UI's tooltip; wider, as icon and label with no tooltip (Copy
-  link is an icon button either way). While the record loads or fails, the bar holds Expand
+  link is an icon button either way). On a phone (`usePhone`, LAD-198) the bar is Download,
+  Copy link, "⋯" (More actions) and ×, with no Expand: "⋯" opens `Menu.tsx`'s menu with Open
+  in new tab (not for other) and the link to the page; Esc closes the menu alone, the focus
+  back on "⋯". While the record loads or fails, the bar holds Expand
   and × only. Open latest in it shows the latest record in the same
   panel. Its width is the human's (decided 2026-10-11, feature/artifact-panel-width,
   mockup artifact `feature/artifact-panel-width/mockup-panel.html`, version 4): its left
@@ -3126,6 +3160,13 @@ colours were: a light, calm ground (#F6F7F9, panels #FFFFFF, lines #E3E6EB, ink 
 muted #5B6270), blue for actions and links (#1F5FD6), and orange only for what waits for the
 human (#B4530F on #FDF1E6); IBM Plex Sans and IBM Plex Mono. Each section's mockups are made
 and approved in its own task; this file keeps what was decided from them.
+
+Notices (decided 2026-11-06, LAD-198): an error is `--danger` text and an alert icon on
+`--danger-ground`, a warning the same in `--warn` on `--warn-ground`; radius 6, padding 8 12
+(4 8 in a tight row), no stripe on the left. One rule in `styles.css` (section "Notices") draws
+them, the icon a CSS mask on the text's colour, so a `<p class="problem">` needs nothing more.
+The session list's selected row keeps its stripe; quotes, a gate's note, the recommendation and
+the waiting card's tab are not notices.
 
 Fonts (decided with the human 2026-10-07, task feature/chat-message-text, mockups
 `/Users/kao/Projects/lado/.lado/mockups/chat-message-text/fonts.html`, column B, and

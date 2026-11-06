@@ -7068,11 +7068,13 @@ button.locked:disabled,
   background: var(--raised);
 }
 
+/* Its text wraps, in a head that does not. */
 .stop-popover {
   right: 0;
   left: auto;
   z-index: 6;
   width: min(440px, calc(100vw - 32px));
+  white-space: normal;
 }
 
 /* Three buttons: each on one line, the row wrapping when they do not fit; a long name is cut. */
@@ -7965,6 +7967,11 @@ button.locked:disabled,
   left: 85px;
   width: 1px;
   background: var(--line);
+}
+
+/* Not the chat's row of avatar and text: what an opened step adds goes under its line. */
+.run-feed .feed-row {
+  display: block;
 }
 
 .feed-line {

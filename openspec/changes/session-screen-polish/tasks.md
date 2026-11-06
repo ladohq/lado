@@ -43,10 +43,10 @@
 
 ## 7. Close
 
-- [ ] 7.1 `docs/design/ui.md`: Artifacts (the tab, the viewer, the panel), Flows (cards, rows, the
+- [x] 7.1 `docs/design/ui.md`: Artifacts (the tab, the viewer, the panel), Flows (cards, rows, the
   event, the empty tab), Stop, New session's notes (no stripe), Look's notices if named.
   Check: read against the code.
-- [ ] 7.2 CHANGELOG.md under `## 0.45.0 (unreleased)`, one item per visible change.
+- [x] 7.2 CHANGELOG.md under `## 0.45.0 (unreleased)`, one item per visible change.
   Check: docs/release.md's rules.
 - [ ] 7.3 Screenshots of each changed screen at 390, 768, 1024 and 1440, light and dark, as run
   artifacts, with sample data. Check: no horizontal scroll of the page; AC-16.

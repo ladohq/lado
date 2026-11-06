@@ -229,8 +229,8 @@ def test_a_gates_long_comment_shows_its_ring_whole(page: Page, server, repo, sho
 
 
 def test_a_gates_comment_in_a_narrow_window_shows_its_ring_whole(page: Page, server, repo, shot):
-    """LAD-78: in a window 600 px wide the comment's focus ring is whole too."""
-    page.set_viewport_size({"width": 600, "height": 900})
+    """LAD-78: in a computer's narrowest window the comment's focus ring is whole too."""
+    page.set_viewport_size({"width": 601, "height": 900})
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")

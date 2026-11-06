@@ -726,7 +726,7 @@ def test_a_press_in_the_feed_is_on_an_empty_place_and_gives_the_title_the_focus(
     expect(title_button(page)).to_be_focused()
 
 
-def test_a_chip_in_a_narrow_window_scrolls_the_page_to_the_terminal(page: Page, server, repo, shot):
+def test_a_chip_in_a_narrow_window_shows_the_terminal(page: Page, server, repo, shot):
     page.set_viewport_size({"width": 800, "height": 700})
     session = running_session(repo)
     log_in(page, server)

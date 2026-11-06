@@ -127,6 +127,46 @@ LOGINS = (
 )
 
 
+# What the agent's own settings give an empty value on a model server: each would send another
+# credential or go to another provider. The agent's --settings beat the environment and the
+# user's and the repository's settings, also when they hold apiKeyHelper or `env` (2.1.295 on a
+# fake server, its way out stopped by a proxy: the human's login, ANTHROPIC_API_KEY and a base
+# URL of ~/.claude/settings.json each got out with the address alone). The empty value was seen
+# to end the effect of every one but CLAUDE_CODE_USE_VERTEX and CLAUDE_CODE_USE_FOUNDRY.
+SERVER_BLANKS = (*LOGINS, "ANTHROPIC_CUSTOM_HEADERS", "CLAUDE_CODE_USE_FOUNDRY")
+# Off on a server: telemetry, which would leave for Anthropic; the betas that add
+# context_management and safeguards to a body a gateway may refuse; the attribution header,
+# LM Studio's own advice for its cache. With these 2.1.295's TUI still tried
+# downloads.claude.ai and github.com (docs/install.md).
+SERVER_SWITCHES = {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+}
+# With no credential at all Claude Code sends the human's login, so a server with no key gets
+# this word: the helper's output is sent as it is.
+NO_KEY = "no-key"
+
+
+def _server_settings(server: base.ServerEntry) -> dict:
+    """What the agent's settings hold for its one model on `server`. Its key stays out of them:
+    the helper reads it from the agent's environment, and goes out as both x-api-key and
+    Authorization, which covers LM Studio and LiteLLM. Claude Code adds /v1/messages to the
+    root itself."""
+    model, _ = server.models[0]
+    env = {
+        "ANTHROPIC_BASE_URL": server.root,
+        "ANTHROPIC_DEFAULT_MODEL": model,
+        "ANTHROPIC_SMALL_FAST_MODEL": model,
+        **dict.fromkeys(SERVER_BLANKS, ""),
+        **SERVER_SWITCHES,
+    }
+    if (limit := server.limits.get(model)) is not None:
+        env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(limit.context)
+    helper = f"printenv {server.key_variable}" if server.key_variable else f"echo {NO_KEY}"
+    return {"env": env, "apiKeyHelper": helper, "availableModels": [model]}
+
+
 # An apiKeySource that is a variable (ANTHROPIC_API_KEY), not Claude Code's own login's key
 # ("/login managed key") or its apiKeyHelper.
 ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
@@ -218,6 +258,13 @@ class ClaudeProvider(base.Provider):
         }
         if session.permission_mode == BYPASS:
             config["skipDangerousModePermissionPrompt"] = True
+        env: dict[str, str] = {}
+        if spec.servers:  # one: its start model's (lado.model_settings.agent_servers)
+            server = spec.servers[0]
+            config.update(_server_settings(server))
+            env[base.MODEL_SERVER] = server.id
+            if server.key is not None:
+                env[server.key_variable] = server.key
         settings.write_text(json.dumps(config, indent=2))
 
         # From a file, so the role is not on the command line (checked by hand with 2.1.294
@@ -253,7 +300,7 @@ class ClaudeProvider(base.Provider):
         # for the current session"); a model's name is no secret on the command line.
         if spec.model:
             cmd += ["--model", spec.model]
-        return base.Launch(cmd, model=self.session_choice(spec))
+        return base.Launch(cmd, env, model=self.session_choice(spec))
 
     def model_list(self, env: Mapping[str, str]) -> base.ModelList:
         return base.ModelList(

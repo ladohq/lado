@@ -14,6 +14,10 @@ from pathlib import Path
 from lado import agent_env as outside_env
 from lado import interpreter, state, tmux
 
+# The launch variable of an agent on a server for a CLI of one model per process: the server's
+# id. The CLI's own login is then not what the agent runs on (Provider.needs_login).
+MODEL_SERVER = "LADO_MODEL_SERVER"
+
 # Neutral hook events. A provider maps its own hook events onto these; see lado.hooks.
 SESSION_START = "session_start"
 PROMPT_SUBMIT = "prompt_submit"  # the agent received input, e.g. a typed message

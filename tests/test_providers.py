@@ -12,6 +12,7 @@ import pytest
 
 from lado import hooks, providers, runtime, state, tmux
 from lado.providers import Event, base, opencode_family
+from lado.providers import claude as claude_provider
 
 # The OpenCode family (lado.providers.opencode_family) and the variable its config goes in.
 FAMILY = {"kilo": "KILO_CONFIG_CONTENT", "opencode": "OPENCODE_CONFIG_CONTENT"}
@@ -2017,3 +2018,102 @@ def test_gitpaths_reads_no_git_as_outside_git(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path))
     assert gitpaths.git_root(tmp_path) == Path(tmp_path.resolve().anchor)
     assert gitpaths.main_root(tmp_path) == tmp_path.resolve()
+
+
+# A Claude agent on a model server.
+
+CLAUDE_MODEL = "qwen3-8b"
+CLAUDE_SERVER = dataclasses.replace(
+    GATEWAY,
+    models=((CLAUDE_MODEL, "Шлюз Qwen"),),
+)
+CLAUDE_KEYLESS = dataclasses.replace(CLAUDE_SERVER, key_variable="", key=None)
+
+
+def _claude_launch(repo, servers=(), model=None):
+    sess = state.Session("s", str(repo), None, provider="claude")
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "claude")
+    spec = providers.AgentSpec("the role", model=model, servers=servers)
+    launch = providers.get("claude").launch_command(agent, sess, spec)
+    settings = json.loads(Path(launch.argv[launch.argv.index("--settings") + 1]).read_text())
+    return launch, settings
+
+
+def _server_env(server_root, model, **more):
+    return {
+        "ANTHROPIC_BASE_URL": server_root,
+        "ANTHROPIC_DEFAULT_MODEL": model,
+        "ANTHROPIC_SMALL_FAST_MODEL": model,
+        "ANTHROPIC_API_KEY": "",
+        "ANTHROPIC_AUTH_TOKEN": "",
+        "ANTHROPIC_CUSTOM_HEADERS": "",
+        "CLAUDE_CODE_OAUTH_TOKEN": "",
+        "CLAUDE_CODE_USE_BEDROCK": "",
+        "CLAUDE_CODE_USE_VERTEX": "",
+        "CLAUDE_CODE_USE_FOUNDRY": "",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
+        "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+        **more,
+    }
+
+
+def test_a_claude_agent_on_a_server_has_it_in_its_own_settings(repo):
+    launch, settings = _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
+    assert settings["env"] == _server_env("https://llm.example.com", CLAUDE_MODEL)
+    assert settings["apiKeyHelper"] == "printenv LADO_MODEL_KEY_BBBB2222"
+    assert settings["availableModels"] == [CLAUDE_MODEL]
+    assert launch.argv[launch.argv.index("--model") + 1] == CLAUDE_MODEL
+    assert launch.model == state.Choice(CLAUDE_MODEL, state.SESSION)
+
+
+def test_a_claude_agent_gets_its_server_s_key_in_its_environment_alone(repo, lado_home):
+    launch, _ = _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
+    assert launch.env == {
+        "LADO_MODEL_KEY_BBBB2222": "KEY-CANARY",
+        "LADO_MODEL_SERVER": "bbbb2222",
+    }
+    written = [p for p in lado_home.rglob("*") if p.is_file() and p.suffix != ".db"]
+    assert written and not [p for p in written if "KEY-CANARY" in p.read_text(errors="replace")]
+
+
+def test_a_claude_agent_on_a_server_with_no_key_sends_a_placeholder(repo):
+    launch, settings = _claude_launch(repo, (CLAUDE_KEYLESS,), CLAUDE_MODEL)
+    assert settings["apiKeyHelper"] == "echo no-key"
+    assert launch.env == {"LADO_MODEL_SERVER": "bbbb2222"}
+
+
+def test_a_known_context_goes_to_a_claude_agent(repo):
+    server = dataclasses.replace(CLAUDE_SERVER, limits={CLAUDE_MODEL: base.Limit(65536)})
+    _, settings = _claude_launch(repo, (server,), CLAUDE_MODEL)
+    assert settings["env"] == _server_env(
+        "https://llm.example.com", CLAUDE_MODEL, CLAUDE_CODE_MAX_CONTEXT_TOKENS="65536"
+    )
+
+
+def test_every_login_variable_of_claude_code_is_blanked():
+    assert set(claude_provider.LOGINS) <= set(claude_provider.SERVER_BLANKS)
+
+
+def test_a_claude_agent_on_a_built_in_model_has_nothing_of_a_server(repo, lado_home):
+    launch, settings = _claude_launch(repo, (), "opus")
+    assert launch.env == {}
+    assert set(settings) == {"hooks", "permissions", "enableAllProjectMcpServers"}
+    config = lado_home / "agents" / "s" / "w1"
+    assert launch.argv == [
+        "claude",
+        "--mcp-config",
+        str(config / "mcp.json"),
+        "--settings",
+        str(config / "settings.json"),
+        "--append-system-prompt-file",
+        str(config / "prompt.md"),
+        "--model",
+        "opus",
+    ]
+
+
+def test_a_launch_on_a_built_in_model_drops_the_server_of_the_last_one(repo):
+    _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
+    _, settings = _claude_launch(repo, (), "opus")
+    assert "env" not in settings and "apiKeyHelper" not in settings

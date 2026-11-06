@@ -1308,13 +1308,13 @@ def test_the_check_of_a_model_of_enough_or_unknown_context_does_not_warn(
 
 
 def test_the_check_of_a_cli_on_no_server_has_no_way_to_try_again(client, monkeypatch, fake_clis):
-    _models(monkeypatch, "claude", "sonnet")
+    _models(monkeypatch, "codex", "gpt-5")
     server_launch.forget_model_lists()
-    _saved("Шлюз Opus", "claude", "gw-opus")
-    found = client.post(CHECK, json={"cli": "claude", "model": "Шлюз Opus"}).json()
+    _saved("Шлюз GPT", "codex", "gw-gpt")
+    found = client.post(CHECK, json={"cli": "codex", "model": "Шлюз GPT"}).json()
     assert found["kind"] == "refused" and not found["retry"]
     assert found["text"].startswith(
-        "Шлюз Opus is on the model server LM Studio дома; Claude Code does not run"
+        "Шлюз GPT is on the model server LM Studio дома; Codex CLI does not run"
     )
 
 

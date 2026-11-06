@@ -176,7 +176,7 @@ def _start_clone(args: argparse.Namespace) -> int:
             print(f"lado: To start a session in it as it is: lado start {folder}", file=sys.stderr)
         return 1
     runtime.check_name(runtime.slug(args.name or Path(folder).name), folder)
-    runtime.check_start_login(args.provider, None)
+    runtime.check_start_login(args.provider, None, args.model)
     cancelled = _cloned(
         url, folder, args.branch, lambda shown: clone.clone(url, folder, args.branch, shown)
     )
@@ -231,7 +231,7 @@ def _start_new(args: argparse.Namespace) -> int:
     if clone.is_url(args.path) or args.folder or args.branch:
         args.start_parser.error("--new takes a folder, not a git URL or a second folder")
     folder = os.path.abspath(os.path.expanduser(args.path))
-    runtime.check_start_login(args.provider, None)
+    runtime.check_start_login(args.provider, None, args.model)
     scratch.make(folder, runtime.slug(args.name or Path(folder).name))
     print(f"Made {folder} a git repository with an empty first commit")
     args.path, args.new = folder, False

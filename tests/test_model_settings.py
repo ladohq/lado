@@ -1571,8 +1571,7 @@ def test_a_cli_on_no_server_is_refused_with_no_request(apis):
         model_settings.check_start(start, CODEX, {}, probe)
     who = "Kilo CLI and OpenCode do" if apis else "no agent CLI runs on it yet"
     assert str(refused.value) == (
-        f"Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a model server yet, "
-        f"{who}"
+        f"Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a model server yet, {who}"
     )
     assert probe.asked == [] and not refused.value.retry
 

@@ -1461,7 +1461,7 @@ def create_app(
             if where.path is not None:
                 path = runtime.full_path(where.path)
                 if where.kind == "scratch":
-                    runtime.check_start_login(given.provider, None)
+                    runtime.check_start_login(given.provider, None, given.model)
                     scratch.make(path, runtime.slug(given.name or Path(path).name))
             done = runtime.start_session(
                 path,

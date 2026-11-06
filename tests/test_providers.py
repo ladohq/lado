@@ -2117,3 +2117,33 @@ def test_a_launch_on_a_built_in_model_drops_the_server_of_the_last_one(repo):
     _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
     _, settings = _claude_launch(repo, (), "opus")
     assert "env" not in settings and "apiKeyHelper" not in settings
+
+
+def test_claude_code_needs_no_login_on_a_server():
+    claude = providers.get("claude")
+    assert claude.needs_login({})
+    assert not claude.needs_login({base.MODEL_SERVER: "bbbb2222"})
+
+
+def test_claude_code_reads_no_keychain_on_a_server(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    claude = providers.get("claude")
+    assert claude.keychain_login({}) is not None
+    assert claude.keychain_login({base.MODEL_SERVER: "bbbb2222"}) is None
+
+
+def test_the_first_run_is_recorded_for_an_agent_on_a_server(repo, claude_home, monkeypatch):
+    env, config = claude_home
+    config.trust(repo)
+
+    def read(self, env):
+        raise AssertionError("the login was read")
+
+    monkeypatch.setattr(type(providers.get("claude")), "login_status", read)
+    env = {**env, base.MODEL_SERVER: "bbbb2222", "ANTHROPIC_API_KEY": "sk-the-human-s-own-key"}
+    blocker = _blocker(repo, env)
+    assert blocker == base.Blocker(
+        notes=(f"LADO recorded Claude Code's first run in {config.path}",)
+    )
+    saved = json.loads(config.path.read_text())
+    assert saved["hasCompletedOnboarding"] is True and "customApiKeyResponses" not in saved

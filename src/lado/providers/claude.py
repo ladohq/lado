@@ -394,6 +394,9 @@ class ClaudeProvider(base.Provider):
         ),
     )
 
+    def needs_login(self, env: Mapping[str, str]) -> bool:
+        return not env.get(base.MODEL_SERVER) and super().needs_login(env)
+
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:
         # `claude auth status --json` (2.1.295, about 0.1 s): loggedIn, authMethod
         # (claude.ai, oauth_token, api_key, none), subscriptionType for claude.ai,
@@ -449,8 +452,13 @@ class ClaudeProvider(base.Provider):
     def keychain_login(self, env: dict[str, str]) -> str | None:
         # On macOS Claude Code keeps its OAuth login in the login keychain ("Claude
         # Code-credentials"). It needs none with one of LOGINS. apiKeyHelper in its settings
-        # is not read: missing it only warns, and only outside the graphical session.
-        if sys.platform != "darwin" or any(env.get(name) for name in LOGINS):
+        # is not read: missing it only warns, and only outside the graphical session. An agent
+        # on a model server has its own apiKeyHelper, and no use for the login.
+        if (
+            sys.platform != "darwin"
+            or env.get(base.MODEL_SERVER)
+            or any(env.get(name) for name in LOGINS)
+        ):
             return None
         return ", or set `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`) in your login shell"
 
@@ -482,14 +490,18 @@ class ClaudeProvider(base.Provider):
         # theme, then for a key in its environment whether to use it (default "No"). Not
         # while it is not logged in: those agents wait for a login (lado.login_wait), which
         # calls this again once there is one. A login LADO cannot read holds no agent, so
-        # its first run is recorded too, or it would stand on the theme with no reason.
-        if self.login_status(env).state == base.NO:
+        # its first run is recorded too, or it would stand on the theme with no reason. An
+        # agent on a model server waits for no login, and `claude auth status`, which sees no
+        # --settings, would say none; its settings blank ANTHROPIC_API_KEY, so it asks nothing
+        # of the human's key.
+        on_server = bool(env.get(base.MODEL_SERVER))
+        if not on_server and self.login_status(env).state == base.NO:
             return base.Blocker(notes=tuple(notes))
         try:
             if path := _record_first_run(env):
                 notes.append(f"LADO recorded {self.title}'s first run in {path}")
             key = env.get("ANTHROPIC_API_KEY")
-            if key:
+            if key and not on_server:
                 path, rejected = _approve_key(env, key)
                 if rejected:
                     return base.Blocker(

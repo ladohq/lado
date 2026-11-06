@@ -12,7 +12,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-06-claude-model
 - [x] 2.1 `SERVER_BLANKS` and the agent's settings, with and without a key or a context (D2-D4, D6).
   Check: `tests/test_providers.py`.
 - [x] 2.2 A built-in launch unchanged. Check: `tests/test_providers.py`.
-- [ ] 2.3 No login: `needs_login`, `first_hook_blocker`, `keychain_login`, `check_login` (D5). Check:
+- [x] 2.3 No login: `needs_login`, `first_hook_blocker`, `keychain_login`, `check_login` (D5). Check:
   `tests/test_runtime.py`, `tests/test_providers.py`.
 
 ## 3. Start limit

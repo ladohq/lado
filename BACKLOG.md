@@ -92,44 +92,6 @@ check` failed in vitest on Launch.test.tsx:197 "the folder is checked by the ser
 true (a synchronous check of what a later render sets); `make web` and `make check` passed
 right after.
 
-### Vitest tests time out at vitest's default 5 s under load, one entry per test
-
-Size: S: one setting in vite.config.ts; `testTimeout` and `asyncUtilTimeout` are set nowhere.
-
-`cd web && npm test` at a load average of about 60 failed 3 of 365 tests on their 5000 ms
-timeout: Agents "the supervisor comes first, then the agents by spawn" (5791 ms), Chat "the
-chat shows who wrote each message ..." (5180 ms), Flows "the runs come in two groups"
-(5441 ms); `make web` had passed minutes before. The cause is shared:
-`web/vite.config.ts` keeps vitest's default `testTimeout` (5 s), and `findBy`'s default
-1 s, while `make check` runs vitest on a machine other checks keep busy.
-Earlier single failures of the same kind, each passing alone and on the next run:
-- `src/Agents.test.tsx` > "the tab without an agent opens the supervisor, and an unknown one
-  is not found": `Unable to find role="region" and name "Agent supervisor"` (2026-10-04,
-  feature/without-at-kit; 2026-10-05, feature/kit-marketplaces-core, the file took 26 s at
-  load average 100); 2026-10-07, merge of fix/esc-docs, with the Flows one below, twice in
-  a row at load average 74-129 while another worktree ran `uv run pytest -n auto`, which
-  takes no check lock; green when that run had ended.
-- `src/Flows.test.tsx` > "the flows tab without a run opens the first waiting run, else the
-  first active one" (`… "Run feature/flows-tab"`, `… "Run fix/gate-bubble"`) and "with no
-  runs both groups are there and say they are empty; with only ended ones the latest to end
-  opens" (`… "Run fix/older"`): 2026-10-05 at load average 80–160 (feature/session-list-groups),
-  in feature/kits-page-polish (18 vitest workers beside the build) and in
-  feature/opencode-provider after merging main (with the Agents flake; 47 passed alone).
-- `src/Flows.test.tsx` > "the runs come in groups, the ended ones folded and remembered, the
-  tab counts the open ones": `Test timed out in 5000ms` twice in a row (5572 ms, 5823 ms) at
-  load average 180-220 (2026-10-05, feature/lead-skills); it takes about 5 s even when it
-  passes, so it may also need to be made shorter (fewer steps or fake timers).
-- `src/App.test.tsx` > "the Agents tab follows the agents' changes; a reset loads them
-  again": `Unable to find role="navigation" and name "Agents"` at load average 238
-  (2026-10-05, review of feature/kit-marketplaces-core).
-- `src/Launch.test.tsx` > "a refused start shows the core's whole reason and keeps the
-  window": `Unable to find role="alert"` (1257 ms) in one `make web` at load average about
-  8 (2026-10-10, fix/md-tables-wrap, a CSS-only change); 561 of 561 passed on the next run.
-Wanted: one setting for the whole suite (a `testTimeout` and an `asyncUtilTimeout` that
-hold under load), so a test fails only when what it waits for never comes.
-Found: 2026-10-04..06, the tests above; this entry 2026-10-06, investigation of why
-`make check` is slow (worker check-speed).
-
 ### Flaky: integration test "spawned worker reports back to supervisor" times out at `starting` under load
 
 Size: S/M: needs one shared wait helper with a margin.
@@ -901,20 +863,6 @@ running agent") and it has no window.
 Wanted: for a stopped agent the composer and Open terminal are off or hidden, with a hint
 that Finish… comes next.
 Found: 2026-10-06, review of feature/agent-liveness.
-
-## Flaky vitest: Launch's taken name of a running session
-
-Size: S. Why here: it fails `make check` under load.
-
-`web/src/Launch.test.tsx`, "a taken name of a running session of this folder offers to open
-it, not to resume it": under heavy load (load average 27) `findByRole("alert")` does not see
-the answer within its default timeout and `make check` fails; a rerun with no change passes.
-Wanted: the test does not depend on the machine's speed (an explicit timeout, or waiting
-for the mocked fetch).
-Found: 2026-10-06, review of feature/agent-liveness.
-Again 2026-10-07, fix/check-sequential, in `make web` of a `make check`: its sibling "a taken
-name is offered to resume when the session is of this folder" (`Unable to find
-role="alert"`); the rerun passed.
 
 ## `tmux.window_names` splits window names at spaces
 

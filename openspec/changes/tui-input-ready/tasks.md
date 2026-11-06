@@ -11,10 +11,14 @@
 - [x] 1.6 Measure: five starts of Kilo and of OpenCode under load, message at once, `attempts` 1, none lost.
   Check: the table in `build-report`. A start with `attempts` 2: stop and report `redesign`.
 - [x] 1.7 Correct the comments on the TUI's input (D5).
+- [x] 1.8 A silent TUI: the server plugin's `tui.silent`, `Event.note`, the line to the lead (D1a). Check:
+  `make test-js`, `tests/test_runtime.py`, integration, smoke with a TUI plugin that does not load.
+- [x] 1.9 A late TUI gets what failed: `Event.ready` ends a wait with no key, a dialog's stays (D1b). Check:
+  `tests/test_runtime.py`, integration.
 
 ## 2. Words of an error
 
-- [ ] 2.1 The plugin sends a stop as `stopped`; `parse_event` builds both lines, the bodies (D6). Check:
+- [x] 2.1 The plugin sends a stop as `stopped`; `parse_event` builds both lines, the bodies (D6). Check:
   `tests/test_providers.py`, `make test-js`.
 - [x] 2.2 The server's words through LADO with the key's canary. Check: integration, `-m integration`.
 
@@ -34,6 +38,6 @@
 
 - [x] 4.1 `make lint`, `make test`, `make test-js`, `openspec validate --specs --strict`, a trial archive on a
   copy. Check: the build report.
-- [ ] 4.2 The pull request into `epic/lad-154-models` holds the manual check: branch, folder, commands,
+- [x] 4.2 The pull request into `epic/lad-154-models` holds the manual check: branch, folder, commands,
   expected; `env | grep LADO_` and `unset`; own `LADO_HOME` and `LADO_TMUX_SOCKET`. A new Kilo session with a
   message at once; LM Studio's error on a small context.

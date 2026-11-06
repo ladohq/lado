@@ -135,18 +135,49 @@ def test_while_lost_the_buttons_wait_everywhere_and_the_fields_stay(
     comment.fill("Ship the login page first, then the rest.")
     expect(comment).to_have_value("Ship the login page first, then the rest.")
 
-    # Needs you, and the run's page: the page itself is in the browser already.
-    page.get_by_role("navigation", name="Sections").get_by_role("link", name="Needs you").click()
+
+def test_a_gate_on_needs_you_waits_with_its_comment_and_wakes(
+    page: Page, server, again, repo, shot
+):
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/needs-you")  # loaded before the loss: away, it cannot load
     needs = page.get_by_role("region", name=f"What waits for you in {session}")
-    expect(needs).to_be_visible()
+    expect(button(needs, "Approve")).to_be_enabled()
+    comment = needs.get_by_role("textbox")
+    comment.fill("Ship the login page first.")
+    server_run.stop()
+    expect(lost_mark(page)).to_be_visible()
     expect(button(needs, "Approve")).to_be_disabled()
-    expect(needs.get_by_text("Waiting for connection")).to_be_visible()
+    note = needs.get_by_text("Waiting for connection")
+    expect(note).to_be_visible()
+    expect(note).to_have_css("font-size", "13px")
+    expect(comment).to_have_value("Ship the login page first.")
     shot(page, "needs-you")
     page.emulate_media(color_scheme="dark")
     shot(page, "needs-you-dark")
     again()
     expect(button(needs, "Approve")).to_be_enabled(timeout=15000)
-    expect(needs.get_by_text("Waiting for connection")).to_have_count(0)
+    expect(note).to_have_count(0)
+    expect(comment).to_have_value("Ship the login page first.")
+
+
+def test_needs_you_opened_while_away_says_no_connection_and_loads_when_back(
+    page: Page, server, again, repo, shot
+):
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/activity")
+    expect(button(waiting_card(page, session), "Approve")).to_be_enabled()
+    server_run.stop()
+    expect(lost_mark(page)).to_be_visible()
+    page.get_by_role("navigation", name="Sections").get_by_role("link", name="Needs you").click()
+    expect(page.get_by_text("No connection")).to_be_visible()
+    no_raw_text(page)
+    shot(page, "no-connection")
+    again()
+    expect(button(waiting_card(page, session), "Approve")).to_be_enabled(timeout=15000)
+    expect(page.get_by_text("No connection")).to_have_count(0)
 
 
 def test_a_gate_on_its_runs_page_waits_too(page: Page, server, again, repo, shot):

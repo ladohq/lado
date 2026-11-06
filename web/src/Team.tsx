@@ -426,11 +426,13 @@ function useTeamFit(
       queueMicrotask(choose);
     };
     if (!editing) queue();
-    void document.fonts?.ready.then(queue);
+    // Not `fonts.ready`: at the first trial no font has started to load, and it holds at once.
+    document.fonts?.addEventListener("loadingdone", queue);
     const observer = typeof ResizeObserver === "undefined" || !bar ? null : new ResizeObserver(queue);
     if (bar) observer?.observe(bar);
     return () => {
       gone = true;
+      document.fonts?.removeEventListener("loadingdone", queue);
       observer?.disconnect();
     };
   }, [box, key, title, titleText, editing]);

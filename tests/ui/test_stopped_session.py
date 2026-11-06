@@ -3,6 +3,7 @@ the feed's words, the team on a phone, and terminals that fold without touching 
 stored. The fake agent's sessions."""
 
 import json
+import re
 
 import pytest
 from playwright.sync_api import Browser, Page, expect
@@ -116,6 +117,24 @@ def test_sideways_the_bar_stays_one_row(touch_screen, server, repo, shot):
     assert button["height"] == 44
     assert button["x"] >= words["x"] + words["width"]
     assert button["y"] < words["y"] + words["height"]
+    shot(page)
+
+
+def test_no_team_shows_and_a_phones_toggle_has_its_words(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1440, "height": 800})
+    session = stopped_session(repo)
+    log_in(page, server, f"/sessions/{session}")
+    expect(bar(page)).to_be_visible()
+    expect(page.get_by_role("banner").get_by_label("Team")).to_have_count(0)
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    toggle = page.get_by_role("button", name="Messages between agents")
+    expect(toggle).to_have_text("Messages between agents")
+    expect(page.locator(".team-row")).not_to_contain_text("Team")
+    assert toggle.bounding_box()["height"] == 44
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-pressed", "true")
+    expect(toggle).to_have_css("border-top-color", re.compile(r"^(?!rgba\(0, 0, 0, 0\)).*$"))
     shot(page)
 
 

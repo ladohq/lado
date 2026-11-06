@@ -10519,6 +10519,21 @@ button.quiet.danger-text {
   margin-top: 0;
 }
 
+/* A stopped session's toggle, with its words; pressed, it keeps its look. */
+:root[data-phone] .icon-button.between-toggle.with-words {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  width: auto;
+  height: 44px;
+  padding-inline: 10px;
+  font-size: 13px;
+}
+
+:root[data-phone] .icon-button.between-toggle.with-words:not([aria-pressed="true"]) {
+  border-color: var(--line);
+}
+
 :root[data-phone] .session-head .session-title {
   flex: 1 1 auto;
   min-width: 0;

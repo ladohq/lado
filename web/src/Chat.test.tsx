@@ -854,6 +854,24 @@ test("on a phone the toggle stays an icon at the team row's end, whose tooltip s
   fireEvent.mouseLeave(toggle);
   fireEvent.click(toggle);
   expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  storeAgentMessages(false);
+});
+
+test("on a phone a stopped session has no team, and the toggle shows its words and its state", async () => {
+  FakeScreen.phone();
+  serve([]);
+  open("/sessions/old/activity");
+  await chat();
+  const row = document.querySelector<HTMLElement>(".team-row")!;
+  expect(row.querySelector(".team")).toBeNull();
+  expect(row.textContent).not.toContain("Team");
+  const toggle = within(row).getByRole("button", { name: "Messages between agents" });
+  expect(toggle.textContent).toBe("Messages between agents");
+  expect(toggle.querySelector("svg")).toBeTruthy();
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  storeAgentMessages(false);
 });
 
 // Flow events (docs/design/ui.md, Flow events): a run's events in a group under its name.

@@ -1429,8 +1429,9 @@ function StartedNotice({ name }: { name: string }) {
 // The Activity tab: the feed with the composer; on a phone, above them, the team, ended by the
 // icon toggle Messages between agents (pressed, the feed also shows what agents write to each
 // other; it changes only what the feed shows, and is remembered; decided 2026-10-15, LAD-77,
-// mockup-placement.html variant Б). Above a phone the team is in the head and the choice in the
-// tab bar (MessagesChoice).
+// mockup-placement.html variant Б). A stopped session has no team, and the toggle its words in
+// the room left. Above a phone the team is in the head and the choice in the tab bar
+// (MessagesChoice).
 function Activity({ info }: { info: SessionInfo }) {
   const session = info.name;
   const stopped = info.status === "stopped";
@@ -1448,16 +1449,17 @@ function Activity({ info }: { info: SessionInfo }) {
     <div className="activity">
       {phone && (
         <div className="team-row">
-          <Team session={session} />
+          {!stopped && <Team session={session} />}
           <Tooltip tip={tip}>
             <button
               type="button"
-              className="icon-button between-toggle"
+              className={stopped ? "icon-button between-toggle with-words" : "icon-button between-toggle"}
               aria-label="Messages between agents"
               aria-pressed={agentMessages}
               onClick={() => storeAgentMessages(!agentMessages)}
             >
               <BetweenIcon />
+              {stopped && <span>Messages between agents</span>}
             </button>
           </Tooltip>
         </div>

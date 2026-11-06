@@ -68,7 +68,11 @@ export type ScopeGroup = { scope: string; artifacts: ArtifactInfo[] };
 // The artifacts by scope, in the order they came: on a list that is newest first, the group
 // with the newest record comes first and each group keeps the newest first.
 export function groupByScope(artifacts: ArtifactInfo[]): ScopeGroup[] {
-  const groups = new Map<string, ArtifactInfo[]>();
-  for (const one of artifacts) groups.set(one.scope, [...(groups.get(one.scope) ?? []), one]);
-  return [...groups].map(([scope, items]) => ({ scope, artifacts: items }));
+  const groups = new Map<string, ScopeGroup>();
+  for (const one of artifacts) {
+    const group = groups.get(one.scope) ?? { scope: one.scope, artifacts: [] };
+    group.artifacts.push(one);
+    groups.set(one.scope, group);
+  }
+  return [...groups.values()];
 }

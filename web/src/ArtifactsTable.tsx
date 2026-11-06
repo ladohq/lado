@@ -223,6 +223,12 @@ function List({ session, artifacts, groups }: ViewProps) {
   ));
 }
 
+const Updated = ({ at }: { at: string }) => (
+  <time dateTime={at} title={new Date(at).toLocaleString()}>
+    {since(at)} ago
+  </time>
+);
+
 // How a row opens: a plain click, or Enter on its name's link, opens its latest record in the
 // panel over the list, with the focus on the link, so closing the panel brings it back there.
 // The link keeps the page's address: a click with a modifier or the middle button opens the
@@ -258,11 +264,8 @@ function ArtifactItem({ session, artifact, grouped = false }: { session: string;
           {artifact.title && ` · ${artifact.title}`}
         </span>
         <span className="artifact-item-line artifact-item-meta">
-          {KINDS[kindOf(latest.media_type)].word} · {latest.author} ·{" "}
-          <time dateTime={latest.created_at} title={new Date(latest.created_at).toLocaleString()}>
-            {since(latest.created_at)} ago
-          </time>{" "}
-          · {size(latest.size)}
+          {KINDS[kindOf(latest.media_type)].word} · {latest.author} · <Updated at={latest.created_at} /> ·{" "}
+          {size(latest.size)}
         </span>
       </span>
     </li>
@@ -293,9 +296,7 @@ function Row({ session, artifact, grouped = false }: { session: string; artifact
         </span>
       </td>
       <td className="numeric">
-        <time dateTime={latest.created_at} title={new Date(latest.created_at).toLocaleString()}>
-          {since(latest.created_at)} ago
-        </time>
+        <Updated at={latest.created_at} />
       </td>
       <td className="artifact-change">{latest.summary}</td>
     </tr>

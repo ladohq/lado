@@ -421,7 +421,14 @@ def test_a_700_px_window_shows_the_panels_edge(page: Page, server, repo, tmp_pat
     [
         (
             1280,
-            ["Open in Artifacts tab", "Open in new tab", "Download", "Copy link", "Expand", "Close"],
+            [
+                "Open in Artifacts tab",
+                "Open in new tab",
+                "Download",
+                "Copy link",
+                "Expand",
+                "Close",
+            ],
         ),
         (390, ["Download", "Copy link", "More actions", "Close"]),
     ],

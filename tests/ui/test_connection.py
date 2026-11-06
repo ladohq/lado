@@ -172,7 +172,7 @@ def test_what_waits_for_the_human_looks_as_ever_with_the_connection_fine(page: P
     page.goto(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
     pill = page.locator(".pill.waits").first
     expect(pill).to_have_css("cursor", "auto")
-    expect(pill).to_have_css("display", "inline")
+    expect(pill).to_have_css("display", "block")  # in its row of flex, not a flex of its own
     expect(page.locator(".run-now.waits")).to_have_css("cursor", "auto")
 
 

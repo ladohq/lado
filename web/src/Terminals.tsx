@@ -43,7 +43,7 @@ import { usePhone } from "./phone";
 import { PANEL_WIDTH, storeAskControl, storedAskControl } from "./prefs";
 import { escapeIsTaken } from "./Menu";
 import { Splitter, useStripFocus } from "./Splitter";
-import { AgentTip, StatusDot, SUPERVISOR } from "./Team";
+import { AgentPopup, AgentTip, StatusDot, SUPERVISOR, teamMarks } from "./Team";
 import { Tooltip } from "./Tooltip";
 import { TermLink, terminalUrl, type LinkState, type Mode } from "./terminalLink";
 
@@ -108,6 +108,7 @@ export function TerminalPanel({
   // comes back.
   useEffect(() => live.watch("agents", session), [live, session]);
   const agents = loaded && "items" in loaded ? loaded.items : [];
+  const marks = teamMarks(agents);
   const infoOf = (agent: string) => agents.find((one) => one.name === agent) ?? null;
   // An agent not in the session's list (gone, or not loaded yet) shows as stopped.
   const statusOf = (agent: string) => infoOf(agent)?.status ?? "stopped";
@@ -299,6 +300,7 @@ export function TerminalPanel({
                   <li key={name}>
                     <StripAgent
                       name={name}
+                      mark={marks.get(name)!}
                       info={infoOf(name)}
                       onOpen={() => {
                         focus.toggled();
@@ -439,17 +441,16 @@ export function TerminalPanel({
 }
 
 // An agent on the strip: its avatar, as in the feed, with its status in the corner.
-function StripAgent({ name, info, onOpen }: { name: string; info: AgentInfo | null; onOpen: () => void }) {
-  const { letter, colour } = avatar(name);
+function StripAgent({ name, mark, info, onOpen }: { name: string; mark: string; info: AgentInfo | null; onOpen: () => void }) {
   return (
-    <Tooltip tip={<AgentTip name={name} info={info} />}>
+    <Tooltip tip={<AgentPopup name={name} info={info} />}>
       <button
         type="button"
-        className={`strip-agent avatar-${colour}`}
+        className={`strip-agent avatar-${avatar(name).colour}`}
         aria-label={`Open ${name}'s terminal`}
         onClick={onOpen}
       >
-        {letter}
+        {mark}
         <StatusDot status={info?.status ?? "stopped"} small />
       </button>
     </Tooltip>

@@ -303,7 +303,7 @@ def test_three_tabs_switch_a_gate_is_approved_on_its_tab_and_the_card_expands(
     expect(page.get_by_role("dialog")).to_have_count(0)
     sections = page.get_by_role("navigation", name="Session sections")
     expect(sections.get_by_role("link", name="Agents")).to_be_visible()
-    expect(page.get_by_role("group", name="Team")).to_be_visible()  # not a phone's (LAD-126)
+    expect(page.get_by_role("toolbar", name="Team")).to_be_visible()  # not a phone's (LAD-126)
     for theme in ("light", "dark"):
         page.emulate_media(color_scheme=theme)
         shot(page, f"{theme}-expanded")
@@ -700,16 +700,16 @@ def test_each_message_says_its_text_once_runs_are_groups_and_replies_are_in_the_
     expect(cards.nth(0).locator(".question-answer .chat-body")).to_have_text("closest to Slack")
     expect(cards.nth(1).locator(".chosen")).to_have_text("✓ yes")
     expect(cards.nth(1).locator(".question-answer")).not_to_contain_text("yes")
-    toggle = page.get_by_role("button", name="Messages between agents")
-    expect(toggle).to_have_attribute("aria-pressed", "false")
+    toggle = page.get_by_role("radio", name="All")
+    expect(toggle).to_have_attribute("aria-checked", "false")
     toggle.hover()
-    expect(page.get_by_role("tooltip")).to_contain_text("Messages between agents: hidden")
+    expect(page.get_by_role("tooltip")).to_have_text("Also what agents write to each other")
     for theme in ("light", "dark"):
         page.emulate_media(color_scheme=theme)
         shot(page, f"{theme}-toggle-tooltip", full_page=False)  # the pointer stays on it
     page.emulate_media(color_scheme="light")
     toggle.click()
-    expect(toggle).to_have_attribute("aria-pressed", "true")
+    expect(toggle).to_have_attribute("aria-checked", "true")
     page.mouse.move(0, 0)
     expect(page.get_by_role("tooltip")).to_have_count(0)
     for theme in ("light", "dark"):

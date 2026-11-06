@@ -7,7 +7,7 @@ import { afterEach, expect, test } from "vitest";
 import type { AgentInfo, RunInfo } from "./api";
 import { AGENT_REST } from "./fakes";
 import { ResumeIcon, StopIcon } from "./icons";
-import { AgentChip, RunFrame, runColours, StatusDot, teamGroups } from "./Team";
+import { AgentChip, headName, moreName, RunFrame, runColours, StatusDot, teamGroups, teamMarks } from "./Team";
 
 afterEach(cleanup);
 
@@ -58,6 +58,24 @@ test("each status has its own mark, background too, and the dot itself is hidden
     expect(dot.getAttribute("aria-hidden")).toBe("true");
     cleanup();
   }
+});
+
+test("the head names an agent by the popup's words, the role left out when it is the name", () => {
+  expect(headName({ ...agent("reviewer"), role: "reviewer", status: "waiting" })).toBe("reviewer, waits for you");
+  expect(headName({ ...agent("w1"), status: "background" })).toBe("w1, developer, in the background");
+});
+
+test("the list's button says how many it stands for and how many of them wait", () => {
+  const waiting: AgentInfo = { ...agent("w2"), status: "waiting" };
+  expect(moreName([agent("w1"), waiting, agent("w3"), agent("w4")], 8)).toBe("4 more agents, 1 waits for you");
+  expect(moreName([agent("w1")], 3)).toBe("1 more agent");
+  expect(moreName([agent("w1"), agent("w2"), agent("w3"), agent("w4")], 0)).toBe("4 agents");
+});
+
+test("marks follow the team's order, the supervisor first, whatever the server's", () => {
+  const marks = teamMarks([agent("ab-x", "feature/x"), agent("ab_x")]);
+  expect(marks.get("ab_x")).toBe("A");
+  expect(marks.get("ab-x")).toBe("A2");
 });
 
 test("Stop is a square filled with the text's colour, with no stroke; Resume stays an outline", () => {

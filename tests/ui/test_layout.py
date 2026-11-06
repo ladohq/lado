@@ -51,10 +51,10 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
     session = with_worker(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    team = page.get_by_role("group", name="Team")
+    team = page.get_by_role("toolbar", name="Team")
     chips = team.get_by_role("button")
     expect(chips).to_have_count(2)
-    expect(chips.first).to_have_accessible_name("supervisor, supervisor, idle")
+    expect(chips.first).to_have_accessible_name("supervisor, idle")
     expect(chips.nth(1)).not_to_have_attribute("title", re.compile(".*"))
     panel = page.get_by_role("complementary", name="Terminals")
     expect(chips.first).to_have_attribute("aria-pressed", "true")  # the supervisor's, at first
@@ -69,10 +69,6 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
     right = panel.bounding_box()
     assert right["x"] >= chat["x"] + chat["width"]  # beside the chat, not under it
     assert right["height"] > 600  # the page's height
-    # The toggle stays on the team's row: the feed keeps its height.
-    toggle = page.get_by_role("button", name="Messages between agents").bounding_box()
-    first = chips.first.bounding_box()
-    assert toggle["y"] < first["y"] + first["height"]
     shot(page, "terminal")
 
     chips.first.click()  # back to the supervisor's tab; w1's keeps its socket
@@ -84,11 +80,9 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
     expect(view.locator(".term")).to_have_attribute("data-link", "open")
 
 
-def test_three_chips_and_the_toggle_stand_on_one_line_beside_the_open_terminal(
-    page: Page, server, repo, shot
-):
-    """The chat column narrow, as the terminal panel opens beside it: the agents' three chips
-    and the toggle Messages between agents stay on the team's first line (LAD-77, AC-4)."""
+def test_yours_all_stands_on_the_tabs_line_beside_the_open_terminal(page: Page, server, repo, shot):
+    """The chat column narrow, as the terminal panel opens beside it: Yours | All stays on the
+    tabs' line, and no row stands above the feed (LAD-77, LAD-197)."""
     page.set_viewport_size({"width": 1160, "height": 900})
     session = running_session(repo)
     for name in ("analyst", "developer"):
@@ -105,20 +99,17 @@ def test_three_chips_and_the_toggle_stand_on_one_line_beside_the_open_terminal(
     expect(panel.get_by_role("tabpanel", name="supervisor").locator(".term")).to_have_attribute(
         "data-link", "open"
     )
-    chips = page.get_by_role("group", name="Team").get_by_role("button")
-    expect(chips).to_have_count(3)
-    toggle = page.get_by_role("button", name="Messages between agents")
-    expect(toggle).to_have_attribute("aria-pressed", "false")
+    expect(page.get_by_role("toolbar", name="Team").get_by_role("button")).to_have_count(3)
+    choice = page.get_by_role("radiogroup", name="Messages between agents")
+    expect(choice.get_by_role("radio", name="Yours")).to_have_attribute("aria-checked", "true")
     column = page.get_by_role("region", name="Chat").bounding_box()
     assert column["width"] <= 484  # narrow: the terminal panel takes the rest
-    first = chips.first.bounding_box()
-    line = first["y"] + first["height"]
-    last = chips.last.bounding_box()
-    box = toggle.bounding_box()
-    assert last["y"] < line  # the last chip did not wrap
-    assert box["y"] < line  # nor did the toggle
-    assert box["x"] >= last["x"] + last["width"]  # at the row's end
-    assert box["x"] + box["width"] <= column["x"] + column["width"]
+    tabs = page.get_by_role("navigation", name="Session sections").bounding_box()
+    box = choice.bounding_box()
+    assert tabs["y"] <= box["y"] and box["y"] + box["height"] <= tabs["y"] + tabs["height"]
+    feed = page.get_by_role("log", name="Chat with the session").bounding_box()
+    assert feed["y"] == tabs["y"] + tabs["height"]  # no row above it
+    assert box["x"] + box["width"] <= tabs["x"] + tabs["width"]
     shot(page)
 
 
@@ -168,9 +159,9 @@ def test_a_runs_worker_is_a_chip_like_the_others_in_the_runs_frame_which_links_t
         )
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    team = page.get_by_role("group", name="Team")
+    team = page.get_by_role("toolbar", name="Team")
     expect(team.get_by_role("button")).to_have_count(3)
-    expect(team.get_by_role("button").first).to_have_accessible_name("supervisor, supervisor, idle")
+    expect(team.get_by_role("button").first).to_have_accessible_name("supervisor, idle")
     expect(team.get_by_role("button").nth(1)).to_have_accessible_name("w1, worker, idle")
     frame = team.get_by_role("group", name="run build/x")
     chip = frame.get_by_role("button")
@@ -354,10 +345,12 @@ def test_a_chips_tooltip_says_its_name_role_and_provider(page: Page, server, rep
     session = with_worker(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    chip = page.get_by_role("group", name="Team").get_by_role("button", name="w1,")
+    chip = page.get_by_role("toolbar", name="Team").get_by_role("button", name="w1,")
     chip.hover()
     tip = page.get_by_role("tooltip")
-    expect(tip).to_have_text(re.compile(r"^w1 · \w+ · fake$"))
+    expect(tip.locator(".tooltip-line")).to_have_text(
+        ["w1", re.compile(r"^idle · "), re.compile(r"^\w+ · fake$"), "Click to open the terminal"]
+    )
     expect(chip).to_have_attribute("aria-describedby", tip.get_attribute("id"))
     shot(page)
     page.mouse.move(5, 5)

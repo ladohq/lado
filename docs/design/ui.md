@@ -423,7 +423,8 @@ Decided in the agent terminal task (2026-10-03).
   shows as stopped; the tab's accessible name has the status too. The collapsed strip, 32 px
   wide, holds **Show the terminals**, a button of 24×24 per agent of the session (not per
   open tab; decided in LAD-189's spec, F26), then the caption Terminals: a button has the
-  agent's avatar colour and letter, as in the feed, its status dot of 8 px in its corner, the
+  agent's avatar colour and its mark, as in the session's head (`D2`), its status dot of 8 px in
+  its corner on a ring of 1.5 px in `--panel`, the agent's popup, the
   name `Open <agent>'s terminal`, and opens the panel on that agent; the buttons scroll, the
   caption stays. Many tabs stay on one line: a name is cut with an ellipsis down to about
   72 px (a shorter name stays whole), then the row scrolls sideways (the wheel too) under a
@@ -614,7 +615,7 @@ Sessions for now. The UI's texts are in English.
 - **601 to 900 px** (LAD-193, spec §2, frame g2-768): a session's page stands still, as a wide
   window does (The window never scrolls, below). Top to bottom: the top bar, the session strip
   as a row of 48 px (Sessions, "+", then the icons in a row that scrolls sideways), the tabs,
-  the team row, the feed, the waiting card and the composer; the terminals' strip stays on the
+  the feed, the waiting card and the composer; the terminals' strip stays on the
   right. Both columns start folded whatever is stored, and what opens is written nowhere, so
   a wide window's choice stays. Sessions opens the list as a panel of 300 px over the session,
   on its left under the row; choosing a session, Esc, a click beside it and Sessions close it,
@@ -1151,7 +1152,7 @@ Built in the chat task (2026-10-03):
   Phone layout, The chat); Needs you has no Expand (Needs you, above).
   Its host hides the rest by CSS (`:has(.waiting-card.expanded)`), so the artifact panel
   and its scrim, fixed over the page, are over the card too. At 601 to 900 px it is the
-  window's height under the top bar: the session strip, the tabs and the team row go with the
+  window's height under the top bar: the session strip and the tabs go with the
   feed and the composer, the terminals' strip stays beside it (LAD-193). Its other icon ("Collapse the card") or Esc brings it back, the focus
   returning to the expand button, and it comes back by itself when nothing waits. While
   an artifact panel is open (`?view=`), Esc closes the panel only; the next Esc folds the
@@ -1268,9 +1269,13 @@ Built in the chat task (2026-10-03):
 - **The composer** (shared with an agent's page in Agents): one frame, the field without a
   resize handle growing with its text from 1 to 8 lines (by its `scrollHeight`), then
   scrolling; Send inside at the bottom right (`--raised` / `--muted` while off); on focus
-  an `--action` frame and an `--action-ground` ring. Under it "to <agent>" and "Enter to
-  send · Shift+Enter for a new line" (with no files, "· paste or drop files to attach").
-  Enter sends, Shift+Enter is a new line; a refusal shows at the field and the text stays;
+  an `--action` frame and an `--action-ground` ring. The line under it lies in the page's
+  bottom padding, out of the flow, so nothing moves when it fills (LAD-197; on an agent's page,
+  which scrolls, and on a phone it stays in the flow): "to <agent>" only for an agent other
+  than the supervisor, whom the placeholder names; the files' count and size; and, only while
+  the field is empty and has the focus (`textarea:focus:placeholder-shown`, no state), "Enter
+  to send · Shift+Enter for a new line" (with no files, "· paste or drop files"), cut with "…",
+  gone in a column under 560 px. On a phone an empty line takes no height. Enter sends, Shift+Enter is a new line; a refusal shows at the field and the text stays;
   a stopped session's composer is off and says so, its paperclip too.
 - **Files in the composer** (`Composer.tsx`; run feature/chat-attachments, mockup
   `mockup-composer.html` of the run): the human attaches files to a message to any agent.
@@ -1375,9 +1380,14 @@ Built in the layout task (2026-10-03, schema 14):
   gates as cards or lines (Flow gates above); their events as quiet lines grouped by run
   (Flow events in Look of the feed), the kinds shown as lines named in one list in the UI
   (`Chat.tsx`, `RUN_EVENT_LINES`; `gate_answer` is not in it, the human's move stands for
-  it, nor `gate_open`, the gate's row stands for it); and behind the toggle **Messages
-  between agents** (not pressed by default, remembered in the browser) the agents'
-  messages to each other. The toggle is an icon
+  it, nor `gate_open`, the gate's row stands for it); and behind the choice **Messages
+  between agents** (`Yours` by default, remembered in the browser) the agents' messages to
+  each other. Above a phone it is `Yours | All`, a `role="radiogroup"` of that name at the tab
+  bar's end on Activity, 26 px, after the word `Messages`, which goes before the tabs give up
+  anything (so it depends on the bar's content too: LAD-197, critique F10); Tab reaches the
+  chosen one and the arrows choose; the tooltips say "Only your conversation with the agents"
+  and "Also what agents write to each other". The state lives in `useAgentMessages`, as the bar
+  and the feed both read it and an agent's page writes it. On a phone the toggle is an icon
   button at the end of the team's row (two speech bubbles, `BetweenIcon`; 26 px, quiet and
   muted unpressed, the pressed team chip's border with the icon in the action colour when
   `aria-pressed`), its name the same in both states; the UI's tooltip says the state and
@@ -1969,14 +1979,55 @@ layout, below).
   tooltip; LAD-108; no Tab stop on a computer), the project and `/`, the title with a
   chevron, a broken session's status in words (`tmux session is gone`), the run time, on a
   window of 1600 px or more the branch (at most 24ch; the remote and the path in its
-  tooltip; no Tab stop), then at the right end the actions, a line and the link. Stop is 32
+  tooltip; no Tab stop), then at the right end the team (below), the actions, a line and the
+  link. Stop is 32
   px high, with its word above 900 px, only its icon at 900 px and less; the link has its
   word above 1100 px, only its dot and the tooltip `live · LADO server` at 1100 px and less
   (on every page: `LiveButton` does not know the page, so a narrow window's tooltip has no
   server address; the system panel has it). Resume and Forget stay icons.
 - What lacks room is cut with "…" by `flex-shrink`, largest first: the title down to 8ch of
-  its text, the project (at most 16ch), the run time, then the words; the actions and the
-  link never.
+  its text, the project (at most 16ch), the run time, the team's box, by its levels, then the
+  words; the actions and the link never.
+- **The team** (`HeadTeam`, decided with the human 2026-11-06, LAD-197; it replaces LAD-189
+  spec §6 and the team's row above a phone) stands in the head on every tab, 16 px before Stop:
+  the head's width depends on the window alone, never on the terminals, and the feed gets the
+  row's height. With no agents, or before they load, the head is as without it; a team that
+  fails to load shows `team not loaded`, the cause in its tooltip.
+  - It gives way in four levels, one for all agents, so no row mixes names and avatars: 0 the
+    word `Team` and whole names; 1 names cut to one length, from the longest stem down to 4
+    (`fitLabel`: `deve…-2`, `fron…-lead`, `anal…·2`), no word, branch or run time, and a chevron
+    `All N agents`; 2 avatars and the chevron; 3 the first avatars that fit and `+M`, or with
+    none the Agents icon and the number. The level is chosen by trial before the paint
+    (`teamFit.ts`, `useTeamFit`), again when the top bar's width, the agents, what else stands
+    in the line (the title, the project and the branch, which come late, the link's mark) or
+    the fonts change, and with the run time at level 0, where it shows; a trial keeps the
+    keyboard's focus (an item gone behind the button leaves it on the button) and an open list;
+    an agent's status never changes it, as level 3 counts the button with its diamond.
+  - A level with names stands only while the title shows its first 24 characters, or all of a
+    shorter one (the human's rule: a wide window must not leave less of the title than a
+    narrow one). They are measured by a `Range` over the text, as `24ch` is the digit's width,
+    about 31 letters. Avatars take no limit: agents behind `+N` cost more than a few letters.
+    Opening the title's field runs no trial, and with it open the limit does not count.
+  - An avatar is the terminals' strip's button, 24×24, its mark (`agentMarks`, one per team:
+    `S`, `D2`, `042`, `FL`, `AB2`; letters and digits carry the difference, not colour) at
+    10.5 px, its status on a ring of 1.5 px in `--panel`. The terminal shown has a ring of 3 px
+    in `--action`; the focus ring stands clear of it, 5 px off, and may cross a neighbour's
+    edge, never its status. Marks in the head and the list do not pulse on any tab; the
+    session's dot does.
+  - The list (`TeamList`) opens from the button: a non-modal `role="dialog"` named `Team`, 320
+    px, under the button at its right edge, `Team · N agents`, every agent by its whole name
+    with its status in words, each run under a dashed line with a link to its page. It closes
+    as Details does (Esc and a second click back on the button, a press away or the focus going
+    past it leave the focus there). Left open as the team reaches level 0, it keeps its button
+    until it closes, then the focus goes to the team's first item. On a touch screen, with no tooltips, it is the way to whole names.
+  - An agent's popup, here and on the terminals' strip (`AgentPopup`): the whole name; the
+    status in words and how long, in `--human` when it waits; `role · provider`, the role left
+    out when it is the name; `flow <run>`; `Click to open the terminal`. A terminal's tab and a
+    phone's chip keep `AgentTip`.
+  - The keyboard: a `role="toolbar"` named `Team`, one Tab stop, the arrows, Home and End move
+    among agents, run links and the button. An agent is named `<name>, <role>, <status>` by the
+    popup's words; the button `All N agents`, `<M> more agents`, or with no avatar `<M> agents`,
+    with `, <K> waits for you`.
 - The title is a button in the page's `h1` (`aria-haspopup="dialog"`, `aria-expanded`), on a
   `--raised` ground on hover and while Details is open. No double click: one click opens
   Details and a second would only close it.
@@ -2000,7 +2051,7 @@ layout, below).
   selected tab of an expanded card, which hides the feed; expanded terminals, which lie over
   the chat, go back to their place. The terminals' selected tab scrolls
   into view when it changes, not as the page opens: Chromium's Tab would start from it, past
-  this link. The head has four stops: project, title, Stop, link.
+  this link. The head has five stops: project, title, the team, Stop, link.
 - A session in a project (LAD-125, LAD-192) has the project as a breadcrumb before the
   title: its title (its id without one) in `--muted` at 14 px, at most 16ch, then a `/` in
   `--line` hidden from assistive technology; `--ink` and underlined on hover and focus. It
@@ -2595,10 +2646,12 @@ your agents use. Changes apply to agents started afterwards."
 ### Activity
 
 A session's tab: the chat with the human (The human in the session, above), flow
-transitions as they happen, agent-to-agent messages behind the toggle Messages between
-agents; the team as chips;
+transitions as they happen, agent-to-agent messages behind the choice Messages between
+agents; on a phone the team as chips (above it, in the head: Session head);
 the selected agent's terminal on the right. Built (Layout task); the notes of each step
-are in Flows.
+are in Flows. Above a phone no gap and no row stand between the tabs and the feed: at 1440×900
+it starts at y = 88 and is 742 px high, whatever the agents, the runs and the terminals
+(LAD-197; the targets 90 and 744 of LAD-189 are replaced).
 
 ### Agents
 
@@ -2640,7 +2693,7 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   from and to it, only in its lifetime (a name is used again: one request,
   `agent=<name>&since=<spawned_at>&limit=10`; the server and the feed's rule filter, the
   page does not), and
-  **All in Activity**, which presses Messages between agents.
+  **All in Activity**, which chooses `All` in Messages between agents.
 - **Finish…** asks in a dialog with what the preview says: the branch and worktree go,
   or, for a worker of a run that keeps its worktree, only its window closes. A refusal
   shows its reason and **Discard work…**, which asks again with what is lost (commits not

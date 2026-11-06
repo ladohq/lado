@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -61,7 +62,6 @@ import { FIND_PARAM, isTab, projectPath, sessionPath, TABS, VIEW_PARAM, type Tab
 import {
   SESSIONS_WIDTH,
   storeAgentMessages,
-  storedAgentMessages,
   storedLastColumn,
   storedPanel,
   storedSessionGroups,
@@ -70,6 +70,7 @@ import {
   storePanel,
   storeSessionGroups,
   storeSessionsList,
+  useAgentMessages,
   type Column,
   type ColumnPrefs,
   type SessionGroup,
@@ -78,7 +79,7 @@ import { useMedia, usePhone } from "./phone";
 import { DetailsPopover, GitTip, SessionDetails } from "./SessionDetails";
 import { useSkipSlot, useTitle, useTopBar } from "./Shell";
 import { Splitter, useStripFocus, useWidth } from "./Splitter";
-import { Team } from "./Team";
+import { HeadTeam, Team } from "./Team";
 import { TitleEdit } from "./TitleEdit";
 import { Tooltip } from "./Tooltip";
 
@@ -827,6 +828,7 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
     artifacts: artifacts && "items" in artifacts ? artifacts.items.length : 0,
   };
   const stopped = session.status === "stopped";
+  const phone = usePhone();
   const view = useSearchParams()[0].get(VIEW_PARAM); // a chip's record, in the panel over the tab
   return (
     <section className="session" aria-label={`Session ${name}`}>
@@ -834,6 +836,7 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
       <StartedNotice name={name} />
       <SessionTabs name={name} tab={tab} counts={counts}>
         {FINDS[tab] !== undefined && item === undefined && <Find key={tab} label={FINDS[tab]} />}
+        {tab === "activity" && !phone && <MessagesChoice />}
       </SessionTabs>
       {tab === "agents" ? (
         <Agents session={name} agent={item} stopped={stopped} />
@@ -850,7 +853,8 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
 }
 
 // How the tabs give way when they do not fit their bar (styles.css, `data-fit`): 0 as they are,
-// 1 no icons, 2 no counts either, 3 they scroll sideways behind a fade, with ‹ and ›.
+// 1 no icons, 2 no counts either, 3 they scroll sideways behind a fade, with ‹ and ›. Before
+// any of them a tool's word at the bar's end goes (`data-short`).
 const LAST_FIT = 3;
 
 // The tab bar: the tabs, which give way by the levels above, and at its right end what stays
@@ -885,6 +889,9 @@ function SessionTabs({
     if (!box || !tabs) return;
     const choose = () => {
       let level = 0;
+      delete box.dataset.short;
+      box.dataset.fit = "0";
+      if (tabs.scrollWidth > tabs.clientWidth) box.dataset.short = "";
       for (; level < LAST_FIT; level++) {
         box.dataset.fit = String(level);
         if (tabs.scrollWidth <= tabs.clientWidth) break;
@@ -957,6 +964,43 @@ function SessionTabs({
       </div>
       {children}
     </nav>
+  );
+}
+
+// Which messages the Activity feed shows, at the right end of the tab bar above a phone. Tab
+// reaches the chosen one, the arrows choose the other (a radio group's keys). LAD-197.
+function MessagesChoice() {
+  const all = useAgentMessages();
+  const keyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return; // Alt+← goes back
+    event.preventDefault();
+    event.currentTarget.querySelector<HTMLElement>('[aria-checked="false"]')?.focus();
+    storeAgentMessages(!all);
+  };
+  const radio = (word: string, tip: string, shows: boolean) => (
+    <Tooltip tip={tip}>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={all === shows}
+        tabIndex={all === shows ? 0 : -1}
+        onClick={() => storeAgentMessages(shows)}
+      >
+        {word}
+      </button>
+    </Tooltip>
+  );
+  return (
+    <div className="between-wrap">
+      <span className="between-label" aria-hidden="true">
+        Messages
+      </span>
+      <div className="between" role="radiogroup" aria-label="Messages between agents" onKeyDown={keyDown}>
+        {radio("Yours", "Only your conversation with the agents", false)}
+        {radio("All", "Also what agents write to each other", true)}
+      </div>
+    </div>
   );
 }
 
@@ -1078,13 +1122,15 @@ const TAKES_FOCUS = "a, button, input, textarea, select, [contenteditable]";
 // The head on a computer, one line of the top bar (docs/design/ui.md, Structure and Session
 // head): the status as a dot, the project as a breadcrumb, the title as a button that opens
 // Details, a broken session's status in words, the run time, the branch on a wide window
-// (styles.css), the actions. The rest of the facts are in Details (DetailsPopover).
+// (styles.css), the team (Team.tsx: HeadTeam), the actions. The rest of the facts are in
+// Details (DetailsPopover).
 function HeadLine({ session }: { session: SessionInfo }) {
   const { status } = session;
   const about = useAbout(session);
   const repository = about?.repos[0];
   const trouble = status === "tmux_gone" || status === "loop_down";
   const ran = useRan(session);
+  const { lost } = useLive(); // the link's mark is wider then
   const [details, setDetails] = useState(false);
   const title = useRef<HTMLButtonElement>(null);
   const box = useRef<HTMLDivElement>(null); // the title and Details: a second click is no press outside
@@ -1116,6 +1162,7 @@ function HeadLine({ session }: { session: SessionInfo }) {
   // The title edited in place (Session title), from Details; the focus goes back to the
   // title when the field closes.
   const { editing, edit, closed } = useTitleEdit(() => title.current?.focus());
+  const titleText = useRef<HTMLSpanElement>(null); // what the team leaves room for
   return (
     <div className="session-head">
       <StatusDot session={session} stop={false} />
@@ -1141,7 +1188,9 @@ function HeadLine({ session }: { session: SessionInfo }) {
               aria-expanded={details}
               onClick={() => (details ? close() : setDetails(true))}
             >
-              <span className="session-title-text">{label(session)}</span>
+              <span ref={titleText} className="session-title-text">
+                {label(session)}
+              </span>
               <span className="session-chevron">
                 <ChevronIcon />
               </span>
@@ -1173,6 +1222,13 @@ function HeadLine({ session }: { session: SessionInfo }) {
           </span>
         </Tooltip>
       )}
+      <HeadTeam
+        session={session.name}
+        line={[label(session), about?.project?.title, about?.project?.id, repository?.branch, status, lost].join("\n")}
+        ran={ran}
+        titleText={titleText}
+        editing={editing}
+      />
       <div className="session-head-actions">
         <SessionActions session={session} />
       </div>
@@ -1352,12 +1408,14 @@ function StartedNotice({ name }: { name: string }) {
   );
 }
 
-// The Activity tab: the team, ended by the icon toggle Messages between agents (pressed, the
-// feed also shows what agents write to each other; it changes only what the feed shows, and
-// is remembered; decided 2026-10-15, LAD-77, mockup-placement.html variant Б), and the feed
-// with the composer.
+// The Activity tab: the feed with the composer; on a phone, above them, the team, ended by the
+// icon toggle Messages between agents (pressed, the feed also shows what agents write to each
+// other; it changes only what the feed shows, and is remembered; decided 2026-10-15, LAD-77,
+// mockup-placement.html variant Б). Above a phone the team is in the head and the choice in the
+// tab bar (MessagesChoice).
 function Activity({ session, stopped }: { session: string; stopped: boolean }) {
-  const [agentMessages, setAgentMessages] = useState(storedAgentMessages);
+  const phone = usePhone();
+  const agentMessages = useAgentMessages();
   const tip = (
     <>
       <div className="tooltip-line">Messages between agents: {agentMessages ? "shown" : "hidden"}</div>
@@ -1368,23 +1426,22 @@ function Activity({ session, stopped }: { session: string; stopped: boolean }) {
   );
   return (
     <div className="activity">
-      <div className="team-row">
-        <Team session={session} />
-        <Tooltip tip={tip}>
-          <button
-            type="button"
-            className="icon-button between-toggle"
-            aria-label="Messages between agents"
-            aria-pressed={agentMessages}
-            onClick={() => {
-              setAgentMessages(!agentMessages);
-              storeAgentMessages(!agentMessages);
-            }}
-          >
-            <BetweenIcon />
-          </button>
-        </Tooltip>
-      </div>
+      {phone && (
+        <div className="team-row">
+          <Team session={session} />
+          <Tooltip tip={tip}>
+            <button
+              type="button"
+              className="icon-button between-toggle"
+              aria-label="Messages between agents"
+              aria-pressed={agentMessages}
+              onClick={() => storeAgentMessages(!agentMessages)}
+            >
+              <BetweenIcon />
+            </button>
+          </Tooltip>
+        </div>
+      )}
       <Chat session={session} stopped={stopped} agentMessages={agentMessages} />
     </div>
   );

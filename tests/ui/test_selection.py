@@ -128,7 +128,6 @@ def test_quote_appends_to_the_chat_composer(page: Page, server, repo, shot):
     )
     expect(field).to_be_focused()
     assert field.evaluate("f => f.selectionStart === f.value.length")
-    expect(page.locator(".composer-name")).to_have_text("supervisor")
     expect(bar(page)).to_have_count(0)
     shot(page)
 

@@ -4,6 +4,10 @@
 
 ### Improved
 
+- **Your agents stay in sight in the session's head, and the chat gets taller.** On every tab
+  the head shows the team with its statuses, as names or avatars by the room, and a list of all
+  agents; `Yours | All` moved to the tabs, and the keys hint shows only in an empty field.
+
 - **LADO tells you whether your decision got through.** When the connection drops, the Live
   mark warns and Approve, Send, Stop and the like wait. If it drops mid-click, LADO checks by
   itself once it can: the card goes, or the error says it was not delivered, with Retry.

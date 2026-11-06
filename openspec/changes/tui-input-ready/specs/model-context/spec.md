@@ -14,7 +14,8 @@ the error's whole text as the CLI gave it.
   (21556 tokens) exceeds the available context size (16384 tokens)`
 - **THEN** the chat's line reads `turn of supervisor ended on an error: ContextOverflowError: the
   model's context is too small for the agent's request; request (21556 tokens) exceeds the available
-  context size (16384 tokens); it is idle`, and the body holds the raw JSON
+  context size (16384 toke…; it is idle`, cut to the limit of a message's summary, and the body holds
+  the raw JSON
 
 #### Scenario: Another unknown error
 

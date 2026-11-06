@@ -123,11 +123,11 @@ def test_a_server_s_refusal_for_context_reaches_the_human_in_lado_s_words(
     )
 
     [told] = [m for m in state.list_messages(SESSION) if m.recipient == state.HUMAN]
-    assert told.summary.startswith(
+    assert told.summary == (
         "turn of supervisor ended on an error: ContextOverflowError: the model's context is too "
-        "small for the agent's request; request (21556 tokens) exceeds the available context size"
+        "small for the agent's request; request (21556 tokens) exceeds the available context size "
+        "(16384 toke…; it is idle"
     )
-    assert told.summary.endswith("; it is idle")
     assert told.body == f"UnknownError: {REFUSAL}"
     key_file = model_settings.key_folder(server.id) / model_settings.KEY
     its_log = lado_home / "fake-agents"  # the agent's environment, where the key belongs

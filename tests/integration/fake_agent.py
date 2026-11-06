@@ -69,7 +69,9 @@ any other input exits at once with no hook; with FAKE_AGENT_ASKS_UNKNOWN=1 it as
 but its provider does not know it (no Provider.first_hook_blocker), as a screen of a new
 CLI version LADO has not seen. With FAKE_AGENT_TRUST=1 it asks so only when
 $CLAUDE_CONFIG_DIR/.claude.json does not trust its repository's main root, read here as
-Claude Code reads it, not through LADO (trusted). With FAKE_AGENT_HANGUP_HOOK=1 in its
+Claude Code reads it, not through LADO (trusted). With FAKE_AGENT_START_HOLD in its
+environment it runs its session-start hook only once that file exists, as a TUI slow to take
+input, and takes nothing from its window before. With FAKE_AGENT_HANGUP_HOOK=1 in its
 environment, when its tmux window is killed (SIGHUP) it runs its session-end hook before it
 exits, as Claude Code does, and writes {"hung_up": <what the hook printed>} to "seen" once
 the hook is done; FAKE_AGENT_HANGUP_DELAY=<seconds> waits that long before the hook, as a
@@ -526,6 +528,9 @@ def main() -> None:
             os._exit(1)
     # Like Claude Code: the MCP server connects while the session-start hook runs.
     lado_mcp.connect()
+    hold = os.environ.get("FAKE_AGENT_START_HOLD")
+    while hold and not os.path.exists(hold):
+        time.sleep(0.05)
     hook("session_start")
     text = None
     first = True  # the next input is its first

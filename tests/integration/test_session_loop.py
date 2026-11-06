@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+import time
 import uuid
 
 import agent_helpers
@@ -131,4 +132,33 @@ def test_the_loop_shows_an_agent_its_cli_holds_with_a_question_lado_does_not_kno
     assert runtime.START_SILENCE_REASON in lado_cli("ls").stdout
     tmux.send_text(session, "w1", "yes")  # the human answers in its terminal
     wait_for(lambda: state.get_agent(session, "w1").status == state.IDLE, "w1 idle", session)
+    assert runtime.status_reason(session, "w1") is None
+
+
+def test_a_queue_waits_for_a_late_session_start_and_goes_in_once(
+    repo, session, monkeypatch, tmp_path
+):
+    """A CLI slow to take input (OpenCode's or Kilo's TUI): no attempt runs out, however long
+    it takes, and the agent is never busy before it has its message."""
+    start(repo, session)
+    ready = tmp_path / "ready"
+    monkeypatch.setenv("FAKE_AGENT_START_HOLD", str(ready))
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    waited = sum(runtime.RETRY_DELAYS) + 2 * loop.INTERVAL
+    deadline = time.monotonic() + waited
+    while time.monotonic() < deadline:
+        [task] = [m for m in state.list_messages(session) if m.recipient == "w1"]
+        assert (task.state, task.attempts) == (state.PENDING, 0)
+        assert state.get_agent(session, "w1").status == state.STARTING
+        time.sleep(0.05)
+
+    _launched_ago(session, "w1", runtime.START_SILENCE + 1)
+    held = lambda: runtime.status_reason(session, "w1") == runtime.START_SILENCE_REASON  # noqa: E731
+    wait_for(held, "the loop's reason", session)
+    assert state.get_message(session, task.id).state == state.PENDING
+
+    ready.touch()
+    delivered = lambda: state.get_message(session, task.id).state in (state.DELIVERED, state.READ)  # noqa: E731
+    wait_for(delivered, "the task delivered", session)
+    assert state.get_message(session, task.id).attempts == 1
     assert runtime.status_reason(session, "w1") is None

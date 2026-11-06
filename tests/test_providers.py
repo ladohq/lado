@@ -1088,16 +1088,20 @@ def test_a_stopped_turn_with_no_message_of_the_server_says_why(provider):
     assert event.details == ""
 
 
+# As the human saw it in LAD-211: the server's JSON inside the CLI's.
 LM_STUDIO_REFUSAL = json.dumps(
     {
-        "error": {
-            "code": 400,
-            "message": "request (21556 tokens) exceeds the available context size (16384 tokens), "
-            "try increasing it",
-            "type": "exceed_context_size_error",
-            "n_prompt_tokens": 21556,
-            "n_ctx": 16384,
-        }
+        "message": "Engine protocol predict request returned 400: "
+        + json.dumps(
+            {
+                "error": {
+                    "code": 400,
+                    "message": "request (21556 tokens) exceeds the available context size "
+                    "(16384 tokens), try increasing it",
+                    "type": "exceed_context_size_error",
+                }
+            }
+        )
     }
 )
 

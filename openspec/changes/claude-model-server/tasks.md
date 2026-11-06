@@ -2,9 +2,9 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-06-claude-model
 
 ## 1. Core
 
-- [ ] 1.1 `ServerEntry.root`, `agent_servers` for a CLI of one model per process (D1). Check:
+- [x] 1.1 `ServerEntry.root`, `agent_servers` for a CLI of one model per process (D1). Check:
   `tests/test_model_settings.py`.
-- [ ] 1.2 `reserved_model` and its refusal; `runs_on_server`, `server_model`, `min_context` of Claude
+- [x] 1.2 `reserved_model` and its refusal; `runs_on_server`, `server_model`, `min_context` of Claude
   Code; refusals moved to Codex (D1, D6, D7). Check: `tests/test_model_settings.py`.
 
 ## 2. Launch

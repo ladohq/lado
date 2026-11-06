@@ -138,13 +138,15 @@ class Limit:
 
 @dataclass(frozen=True)
 class ServerEntry:
-    """A model server for an agent's config: its id, name and base URL, the variable that
-    carries its key to the agent ("" for a server with no key), the key, its models as
-    (model, saved name), and the limits it reported, by model, read at this start."""
+    """A model server for an agent's config: its id, name, base URL and root (the address a
+    CLI that adds /v1 itself is told), the variable that carries its key to the agent ("" for
+    a server with no key), the key, its models as (model, saved name), and the limits it
+    reported, by model, read at this start."""
 
     id: str
     name: str
     base_url: str
+    root: str
     key_variable: str
     key: str | None = field(repr=False)
     models: tuple[tuple[str, str], ...]
@@ -173,8 +175,9 @@ class AgentSpec:
     # with the source `model_source`.
     model: str | None = None
     model_source: str = state.SESSION
-    # The model servers of its config, for a CLI whose models on a server sit beside its own
-    # (Provider.runs_on_server); each key reaches the agent in its environment only.
+    # The model servers of its config (Provider.runs_on_server): for a CLI whose models on a
+    # server sit beside its own all of them, for a CLI of one model per process the one it
+    # starts on; each key reaches the agent in its environment only.
     servers: tuple[ServerEntry, ...] = ()
 
 
@@ -487,6 +490,11 @@ class Provider(ABC):
     def server_model(self, server: str, model: str) -> str:
         """The model `model` of the server of id `server`, as the CLI is told it."""
         raise NotImplementedError(f"{self.title} runs on no model server")
+
+    def reserved_model(self, model: str) -> bool:
+        """Whether the CLI reads the name `model` as one of its own, so that a server's model
+        of that name would never reach the server. By default none is."""
+        return False
 
     def on_server(self, reported: str) -> tuple[str, str] | None:
         """The id of the server and the model of `reported`, a model as the CLI names it, when

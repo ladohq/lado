@@ -701,6 +701,48 @@ def test_claude_on_an_anthropic_compatible_server_is_saved(serve):
     assert (saved.cli, verdict.kind) == ("claude", model_check.OK)
 
 
+@pytest.mark.parametrize("model", ["sonnet", "opus", "best", "opusplan", "qwen3[1m]"])
+def test_a_name_claude_code_reads_as_its_own_is_not_saved_for_it(serve, model):
+    server = serve("all")
+    add("all", server.url)
+    asked = len(server.requests)
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("Своя", "claude", model, "all")
+    assert str(refused.value) == (
+        f"Claude Code reads {model} as its own model, so it would not ask all for it; give the "
+        "model another name on the server"
+    )
+    assert refused.value.field == model_settings.MODEL_FIELD
+    assert len(server.requests) == asked and state.models() == []
+
+
+def test_a_name_claude_code_reads_as_its_own_starts_on_opencode():
+    default_on(entry("Своя", model="sonnet"))
+    start = model_settings.start_model(None, OPENCODE)
+    probe = counting_probe(found_on_server("sonnet"))
+    assert model_settings.check_start(start, OPENCODE, {}, probe).kind == model_check.OK
+
+
+def test_a_saved_name_claude_code_reads_as_its_own_is_refused_at_a_start():
+    saved = entry("Своя", cli="claude", model="sonnet", server="Шлюз")
+    default_on(saved)
+    probe = counting_probe()
+    start = model_settings.start_model(None, CLAUDE)
+    with pytest.raises(model_settings.Refused, match="reads sonnet as its own model"):
+        model_settings.check_start(start, CLAUDE, {}, probe)
+    assert probe.asked == []
+
+
+def test_claude_code_on_a_server_without_its_api_is_refused(serve):
+    server = serve("openai")
+    add("oai", server.url)
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("O", "claude", "gpt-oss-20b", "oai")
+    assert str(refused.value).startswith(
+        "oai does not suit Claude Code: it has no Anthropic Messages API; it suits "
+    )
+
+
 def test_remove_a_model_keeps_its_server(serve):
     server = serve("lmstudio")
     add("LM Studio дома", server.url)
@@ -1290,7 +1332,9 @@ def test_removing_a_server_says_the_defaults_cleared(serve):
 # What an agent starts on.
 
 
-OPENCODE, KILO, CLAUDE = (providers.get(name) for name in ("opencode", "kilo", "claude"))
+OPENCODE, KILO, CLAUDE, CODEX = (
+    providers.get(name) for name in ("opencode", "kilo", "claude", "codex")
+)
 EMPTY = base.ModelList(models=("opencode/big-pickle",), command="opencode models")
 
 
@@ -1519,16 +1563,16 @@ def test_a_silent_server_is_refused_in_the_words_of_each_place():
 @pytest.mark.parametrize("apis", [(CHAT,), ()], ids=["OpenCode suits", "nothing suits"])
 def test_a_cli_on_no_server_is_refused_with_no_request(apis):
     server = state.add_model_server("gw", "Шлюз", "http://gw", "OpenAI-compatible", apis)
-    saved = state.add_model("Шлюз Opus", "claude", "gw-opus", server.id)
+    saved = state.add_model("Шлюз GPT", "codex", "gw-gpt", server.id)
     default_on(saved)
     probe = counting_probe()
-    start = model_settings.start_model(None, CLAUDE)
+    start = model_settings.start_model(None, CODEX)
     with pytest.raises(model_settings.Refused) as refused:
-        model_settings.check_start(start, CLAUDE, {}, probe)
+        model_settings.check_start(start, CODEX, {}, probe)
     who = "Kilo CLI and OpenCode do" if apis else "no agent CLI runs on it yet"
     assert str(refused.value) == (
-        f"Шлюз Opus is on the model server Шлюз; Claude Code does not run on a model server "
-        f"yet, {who}"
+        f"Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a model server yet, "
+        f"{who}"
     )
     assert probe.asked == [] and not refused.value.retry
 
@@ -1668,7 +1712,7 @@ def test_an_unknown_context_does_not_warn():
 
 def test_a_cli_with_no_need_never_warns():
     start = model_settings.StartModel(name="m", model="m", server=None)
-    assert model_settings.context_warning(start, CLAUDE, base.Limit(1)) is None
+    assert model_settings.context_warning(start, CODEX, base.Limit(1)) is None
 
 
 def test_a_small_model_the_agent_does_not_start_on_does_not_warn(serve):
@@ -1677,8 +1721,56 @@ def test_a_small_model_the_agent_does_not_start_on_does_not_warn(serve):
 
 
 def test_a_cli_on_no_server_gets_no_servers():
-    entry("Шлюз Opus", cli="claude", model="gw-opus")
+    default_on(entry("Шлюз GPT", cli="codex", model="gw-gpt"))
+    start = model_settings.start_model(None, CODEX)
+    assert model_settings.agent_servers(CODEX, start) == ((), [])
+
+
+def test_a_cli_of_one_model_per_process_gets_the_server_of_its_start_alone():
+    saved = entry("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз")
+    entry("Шлюз Sonnet", cli="claude", model="gw-sonnet", server="Шлюз")
+    entry("Другая", cli="claude", model="other", server="Другой")
+    write_key(saved, "k")
+    default_on(saved)
+    start = model_settings.start_model(None, CLAUDE)
+    (found,), warnings = model_settings.agent_servers(CLAUDE, start)
+    assert (found.id, found.name, found.models) == (
+        saved.server,
+        "Шлюз",
+        (("gw-opus", "Шлюз Opus"),),
+    )
+    assert (found.key_variable, found.key) == (f"LADO_MODEL_KEY_{saved.server.upper()}", "k")
+    assert (found.root, found.base_url) == ("http://localhost:1234", "http://localhost:1234/v1")
+    assert warnings == []
+
+
+def test_a_cli_of_one_model_per_process_on_a_built_in_model_gets_no_server():
+    entry("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз")
+    table = state.PowerTable.single("claude", "opus")
+    start = model_settings.start_model(table, CLAUDE)
+    assert model_settings.agent_servers(CLAUDE, start) == ((), [])
     assert model_settings.agent_servers(CLAUDE) == ((), [])
+
+
+def test_a_cli_of_one_model_per_process_has_the_limits_of_its_model(serve):
+    saved = on_fake(serve("gateway-limits"), model="small", cli="claude")
+    default_on(saved)
+    start = model_settings.start_model(None, CLAUDE)
+    (found,), warnings = model_settings.agent_servers(CLAUDE, start)
+    assert found.limits["small"] == base.Limit(16000, 2048)
+    assert len(warnings) == 1 and "needs about 32,768" in warnings[0]
+
+
+def test_a_key_that_cannot_be_read_refuses_the_one_server_of_a_start():
+    saved = entry("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз")
+    default_on(saved)
+    write_key(saved, "k")
+    key = model_settings.key_folder(saved.server) / model_settings.KEY
+    key.unlink()
+    key.symlink_to("/etc/hostname")
+    start = model_settings.start_model(None, CLAUDE)
+    with pytest.raises(model_settings.Refused, match="symbolic link"):
+        model_settings.agent_servers(CLAUDE, start)
 
 
 def test_a_key_that_cannot_be_read_leaves_its_server_out():
@@ -2097,14 +2189,21 @@ def test_a_provider_not_installed_is_refused(installed):
 
 
 def test_an_external_model_of_a_cli_on_no_server_says_why_it_cannot_start(installed):
+    entry("Шлюз GPT", cli="codex", server="Шлюз")
+    env = installed("codex")
+    [codex] = model_settings.cli_models(session_of("codex"), None, env, Lists())
+    [external] = codex["external"]
+    assert external["blocked"] == (
+        "Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a model server yet, "
+        "Kilo CLI and OpenCode do"
+    )
+
+
+def test_an_external_model_of_claude_code_is_not_blocked(installed):
     entry("Шлюз Opus", cli="claude", server="Шлюз")
     env = installed("claude")
     [claude] = model_settings.cli_models(session_of("claude"), None, env, Lists(claude=CLAUDE_LIST))
-    [external] = claude["external"]
-    assert external["blocked"] == (
-        "Шлюз Opus is on the model server Шлюз; Claude Code does not run on a model server yet, "
-        "Kilo CLI and OpenCode do"
-    )
+    assert [one["blocked"] for one in claude["external"]] == [None]
 
 
 def test_starts_on_is_what_a_worker_of_each_cli_starts_on_with_no_model(installed):

@@ -46,8 +46,8 @@ same way.
 #### Scenario: Codex on a gateway
 - **WHEN** Codex's default is `Шлюз GPT` on `Шлюз`, which also suits Claude Code and OpenCode, and the
   human starts a Codex session
-- **THEN** it refuses with `Шлюз GPT is on the model server Шлюз; Codex does not run on a model
-  server yet, Claude Code, Kilo CLI and OpenCode do`, adding the default's way out, and `Шлюз` is not
+- **THEN** it refuses with `Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a
+  model server yet, Claude Code, Kilo CLI and OpenCode do`, adding the default's way out, and `Шлюз` is not
   asked
 
 #### Scenario: A worker of that CLI

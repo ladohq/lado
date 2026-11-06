@@ -143,6 +143,10 @@ class ClaudeProvider(base.Provider):
     install_hint = "install it: https://docs.anthropic.com/en/docs/claude-code"
     tested_version = TESTED_VERSION
     server_api = base.ANTHROPIC_MESSAGES
+    runs_on_server = True
+    # The first request of an agent with 21 tools and an MCP server was 63 kB, about 16k tokens,
+    # before its role and work (2.1.295 on a fake server).
+    min_context = 32768
     capabilities = base.Capabilities(
         status_events=True,
         permission_event=True,
@@ -255,6 +259,13 @@ class ClaudeProvider(base.Provider):
         return base.ModelList(
             ALIASES, why=f"{self.title} gives no list of models beyond its aliases", fixed=True
         )
+
+    def server_model(self, server: str, model: str) -> str:
+        return model
+
+    def reserved_model(self, model: str) -> bool:
+        # `--model sonnet` goes out as Claude Code's own full name, not as `sonnet`.
+        return model in ALIASES or model.endswith(LONG_CONTEXT)
 
     def same_model(self, chosen: str, reported: str) -> bool:
         """An alias is the same as a full name of its family (`opus`: `claude-opus-5-5`, with

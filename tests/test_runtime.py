@@ -6729,11 +6729,11 @@ def test_a_worker_of_another_cli_takes_its_own_default(repo, fake_tmux, monkeypa
 def test_a_worker_on_a_server_its_cli_cannot_run_is_refused(repo, fake_tmux, monkeypatch):
     _answers(monkeypatch)
     runtime.start_session(str(repo), "s", None, provider="opencode")
-    _default(_on_server("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз"))
+    _default(_on_server("Шлюз GPT", cli="codex", model="gw-gpt", server="Шлюз"))
     with pytest.raises(runtime.LadoError) as error:
-        runtime.spawn_worker("s", "a task", name="w1", provider="claude")
+        runtime.spawn_worker("s", "a task", name="w1", provider="codex")
     assert str(error.value) == (
-        "Шлюз Opus is on the model server Шлюз; Claude Code does not run on a model server yet, "
+        "Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a model server yet, "
         f"Kilo CLI and OpenCode do{NOT_GIVEN_WAY_OUT}"
     )
     assert state.get_agent("s", "w1") is None
@@ -6894,12 +6894,12 @@ def test_a_model_gone_from_its_server_is_refused(repo, fake_tmux, monkeypatch):
     _nothing_of(repo, fake_tmux, "w1")
 
 
-def test_claude_code_on_an_external_model_is_refused_asking_no_server(repo, fake_tmux, monkeypatch):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    _on_server("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз")
-    asked = _answers(monkeypatch, "gw-opus")
-    with pytest.raises(runtime.ModelRefused, match="Claude Code does not run on a model server"):
-        runtime.spawn_worker("s", "a task", name="w1", model="Шлюз Opus")
+def test_codex_on_an_external_model_is_refused_asking_no_server(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="codex")
+    _on_server("Шлюз GPT", cli="codex", model="gw-gpt", server="Шлюз")
+    asked = _answers(monkeypatch, "gw-gpt")
+    with pytest.raises(runtime.ModelRefused, match="Codex CLI does not run on a model server"):
+        runtime.spawn_worker("s", "a task", name="w1", model="Шлюз GPT")
     assert asked == []
     _nothing_of(repo, fake_tmux, "w1")
 

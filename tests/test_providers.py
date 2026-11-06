@@ -1632,6 +1632,7 @@ HOME_SERVER = base.ServerEntry(
     "aaaa1111",
     "LM Studio дома",
     "http://localhost:1234/v1",
+    "http://localhost:1234",
     "",
     None,
     (("qwen3-8b", "Локальная Qwen"), ("qwen/qwen3-coder", "Рабочая Qwen")),
@@ -1640,6 +1641,7 @@ GATEWAY = base.ServerEntry(
     "bbbb2222",
     "Шлюз",
     "https://llm.example.com/v1",
+    "https://llm.example.com",
     "LADO_MODEL_KEY_BBBB2222",
     "KEY-CANARY",
     (("gw-opus", "Шлюз Opus"),),
@@ -1759,13 +1761,33 @@ def test_a_server_s_model_is_named_as_on_server_reads_it(provider):
     assert cli.on_server(named) == ("aaaa1111", "qwen/qwen3-coder")
 
 
-@pytest.mark.parametrize("provider", ["claude", "codex"])
-def test_a_cli_of_one_model_per_process_runs_on_no_server(provider):
-    cli = providers.get(provider)
+def test_codex_runs_on_no_server():
+    cli = providers.get("codex")
     assert not cli.runs_on_server
     assert cli.on_server("lado-aaaa1111/qwen3-8b") is None
     with pytest.raises(NotImplementedError):
         cli.server_model("aaaa1111", "qwen3-8b")
+
+
+def test_claude_code_is_told_a_server_s_model_as_it_is():
+    cli = providers.get("claude")
+    assert cli.runs_on_server and cli.external_whole_process
+    assert cli.server_model("aaaa1111", "qwen/qwen3-coder") == "qwen/qwen3-coder"
+    assert cli.on_server("qwen/qwen3-coder") is None
+    assert cli.min_context == 32768
+
+
+@pytest.mark.parametrize(
+    ("model", "reserved"),
+    [("sonnet", True), ("opus[1m]", True), ("x[1m]", True), ("qwen3-8b", False), ("", False)],
+)
+def test_claude_code_reserves_its_own_names(model, reserved):
+    assert providers.get("claude").reserved_model(model) is reserved
+
+
+@pytest.mark.parametrize("provider", ["codex", "kilo", "opencode"])
+def test_another_cli_reserves_no_name(provider):
+    assert providers.get(provider).reserved_model("sonnet") is False
 
 
 NOTICE = "[from lado] your task (#7, 40 lines: call read_messages)"

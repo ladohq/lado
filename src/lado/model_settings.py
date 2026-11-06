@@ -411,13 +411,20 @@ def _on_server(
     probe: Prober | None = None,
 ) -> model_check.Verdict:
     """The verdict on `model` of `provider` on `server`, asked with `probe`, else probed now
-    with its kept key: the server may have changed since it was saved."""
+    with its kept key: the server may have changed since it was saved. A name the CLI reads as
+    its own is refused with no request."""
     api = provider.server_api
     if not api:
         raise Refused(
             f"{server.name} does not suit {provider.title}: {provider.title} speaks no model "
             "server's API",
             field=SERVER_FIELD,
+        )
+    if provider.reserved_model(model):
+        raise Refused(
+            f"{provider.title} reads {model} as its own model, so it would not ask {server.name} "
+            "for it; give the model another name on the server",
+            field=MODEL_FIELD,
         )
     try:
         found = probe(server) if probe is not None else probe_saved(server)
@@ -1036,13 +1043,19 @@ def agent_servers(
 ) -> tuple[tuple[base.ServerEntry, ...], list[str]]:
     """The model servers for the config of an agent of `provider`'s CLI, with the models ticked
     for that CLI, whatever it starts on, and the warnings of a launch: a key sent over plain
-    http, what is left out, a context too small for `start`. None for a CLI that holds one model
-    per process. A key LADO does not read, or that would break the config, leaves its server out,
-    but is Refused for the server of `start`. Asks each server of the config for its limits."""
-    if not provider.runs_on_server or provider.external_whole_process:
+    http, what is left out, a context too small for `start`. For a CLI that holds one model per
+    process, the server of `start` with that model alone, none on any other start. A key LADO
+    does not read, or that would break the config, leaves its server out, but is Refused for
+    the server of `start`. Asks each server of the config for its limits."""
+    if not provider.runs_on_server:
         return (), []
-    ticked = [model for model in state.models() if model.cli == provider.name]
-    entries, roots, warnings = [], [], []
+    if not provider.external_whole_process:
+        ticked = [model for model in state.models() if model.cli == provider.name]
+    elif start is not None and start.entry is not None:
+        ticked = [start.entry]
+    else:
+        return (), []
+    entries, warnings = [], []
     for server in state.model_servers():
         models = [model for model in ticked if model.server == server.id]
         if not models:
@@ -1080,13 +1093,13 @@ def agent_servers(
                 server.id,
                 server.name,
                 model_servers.base_url(server.address),
+                server.address,
                 f"{KEY_VARIABLE}{server.id.upper()}" if key is not None else "",
                 key,
                 tuple(kept.items()),
             )
         )
-        roots.append(server.address)
-    entries = _with_limits(entries, roots)
+    entries = _with_limits(entries)
     if start is not None and start.server is not None:
         for entry in entries:
             if entry.id == start.server.id:
@@ -1096,15 +1109,13 @@ def agent_servers(
     return tuple(entries), warnings
 
 
-def _with_limits(entries: list[base.ServerEntry], roots: list[str]) -> list[base.ServerEntry]:
-    """`entries` with what their servers, at `roots`, report: all read at once, so a start
-    waits for one ceiling however many servers are silent."""
+def _with_limits(entries: list[base.ServerEntry]) -> list[base.ServerEntry]:
+    """`entries` with what their servers report: all read at once, so a start waits for one
+    ceiling however many servers are silent."""
     if not entries:
         return entries
     with ThreadPoolExecutor(len(entries)) as pool:
-        limits = pool.map(
-            lambda entry, root: model_servers.context_limits(root, entry.key), entries, roots
-        )
+        limits = pool.map(lambda e: model_servers.context_limits(e.root, e.key), entries)
         return [replace(e, limits=found) for e, found in zip(entries, limits, strict=True)]
 
 

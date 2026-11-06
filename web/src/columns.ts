@@ -20,6 +20,14 @@ export type ColumnsInput = {
   control: boolean; // a terminal of the panel is in control
 };
 
+// A stopped session's terminals: folded whatever is stored, unless the human opened them there.
+// A view of the choice, which stays stored and shows again when the session runs.
+export const stoppedPanel = (panel: ColumnsInput["panel"], opened: boolean): ColumnsInput["panel"] => ({
+  ...panel,
+  collapsed: !opened,
+  chosen: opened,
+});
+
 export type Columns = { listFolded: boolean; panelFolded: boolean; panelWidth: number };
 
 // Whether the human opened the terminals (a terminal in control counts), and whether they stay

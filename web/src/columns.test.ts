@@ -2,7 +2,7 @@
 // beside the rail, as it is laid out at each window's width with a folded rail (60 px).
 import { expect, test } from "vitest";
 
-import { CHAT_MIN, fitColumns, LIST_STRIP, listMax, STRIP, type ColumnsInput } from "./columns";
+import { CHAT_MIN, fitColumns, LIST_STRIP, listMax, STRIP, stoppedPanel, type ColumnsInput } from "./columns";
 
 const beside = (window: number, rail = 60) => window - rail;
 
@@ -144,4 +144,16 @@ test("what the human folded stays folded, whatever the room", () => {
   const folded = { width: null, collapsed: true, chosen: true };
   expect(fit(2400, { panel: folded }).panelFolded).toBe(true);
   expect(fit(2400, { list: { width: 260, collapsed: true } }).listFolded).toBe(true);
+});
+
+test("a stopped session's terminals fold whatever is stored, and the list keeps its room", () => {
+  const panel = stoppedPanel({ ...OPENED, width: 640 }, false);
+  expect(panel).toEqual({ width: 640, collapsed: true, chosen: false });
+  expect(fit(beside(1024), { panel, last: "panel" })).toMatchObject({ listFolded: false, panelFolded: true });
+});
+
+test("a stopped session's terminals opened there count as the human's, whatever is stored", () => {
+  const panel = stoppedPanel({ width: null, collapsed: true, chosen: true }, true);
+  expect(panel).toEqual({ width: null, collapsed: false, chosen: true });
+  expect(fit(beside(1024), { panel, last: "panel" })).toMatchObject({ listFolded: true, panelFolded: false });
 });

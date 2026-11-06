@@ -1522,3 +1522,58 @@ test("an icon's letters from a title that starts with an emoji are whole charact
   await within(strip()!).findByRole("link", { name: "🚀 Релиз, idle" });
   expect(icons().map((icon) => icon.textContent)).toEqual(["🚀Р", "𝒜𝒷"]);
 });
+
+// A stopped session's terminals
+
+const terminals = () => screen.getByRole("complementary", { name: "Terminals" });
+const terminalsFolded = () => within(terminals()).queryByRole("button", { name: "Show the terminals" }) !== null;
+const sessionNow = (item: SessionInfo, id: string) => {
+  act(() => stream().send("change", { kind: "sessions", session: item.name, key: "", op: "update", item }, id));
+};
+const STOPPED: Partial<SessionInfo> = { status: "stopped", agents: 0 };
+
+test("a stopped session's terminals are folded whatever is stored, and the stored choice comes back with Resume", async () => {
+  localStorage.setItem("lado.terminals", JSON.stringify({ width: 500, collapsed: false }));
+  localStorage.setItem("lado.lastColumn", "list");
+  sessions = [session("lado", STOPPED)];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  expect(terminalsFolded()).toBe(true);
+  sessionNow(session("lado"), "11");
+  expect(terminalsFolded()).toBe(false);
+  expect(localStorage.getItem("lado.terminals")).toBe(JSON.stringify({ width: 500, collapsed: false }));
+  expect(localStorage.getItem("lado.lastColumn")).toBe("list");
+});
+
+test("what the human does to a stopped session's terminals stores nothing and ends with Resume", async () => {
+  localStorage.setItem("lado.terminals", JSON.stringify({ collapsed: true }));
+  localStorage.setItem("lado.lastColumn", "list");
+  sessions = [session("lado", STOPPED)];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(terminals()).getByRole("button", { name: "Show the terminals" }));
+  expect(terminalsFolded()).toBe(false);
+  fireEvent.click(within(terminals()).getByRole("button", { name: "Collapse terminals" }));
+  expect(terminalsFolded()).toBe(true);
+  fireEvent.click(within(terminals()).getByRole("button", { name: "Show the terminals" }));
+  expect(localStorage.getItem("lado.terminals")).toBe(JSON.stringify({ collapsed: true }));
+  expect(localStorage.getItem("lado.lastColumn")).toBe("list");
+  sessionNow(session("lado"), "11");
+  expect(terminalsFolded()).toBe(true);
+  expect(localStorage.getItem("lado.terminals")).toBe(JSON.stringify({ collapsed: true }));
+});
+
+test("the terminals of a session that stops fold, and those opened in a stopped session fold again after another session", async () => {
+  sessions = [session("lado"), session("old", STOPPED)];
+  localStorage.setItem("lado.sessionGroups", JSON.stringify({ stopped: "open" }));
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  expect(terminalsFolded()).toBe(false);
+  sessionNow(session("lado", STOPPED), "11");
+  expect(terminalsFolded()).toBe(true);
+  fireEvent.click(within(terminals()).getByRole("button", { name: "Show the terminals" }));
+  expect(terminalsFolded()).toBe(false);
+  fireEvent.click(within(list()).getByRole("link", { name: /old/ }));
+  await screen.findByRole("region", { name: "Session old" });
+  expect(terminalsFolded()).toBe(true);
+});

@@ -33,7 +33,7 @@ import { Artifacts } from "./ArtifactsTable";
 import { getSessionAbout, setSessionTitle, type SessionAbout, type SessionInfo, type SessionStatus } from "./api";
 import { Chat, FOCUS_CHAT, focusChat } from "./Chat";
 import { duration } from "./ChatText";
-import { fitColumns, LIST_STRIP, listMax } from "./columns";
+import { fitColumns, LIST_STRIP, listMax, stoppedPanel } from "./columns";
 import { Flows, isOpen } from "./Flows";
 import { ForgetManyDialog } from "./ForgetMany";
 import { GroupHead, type Tone } from "./GroupHead";
@@ -139,7 +139,8 @@ export function Sessions() {
     />
   );
   const [page, room] = useWidth<HTMLDivElement>();
-  const columns = useSessionColumns(room);
+  const shownSession = loaded && "sessions" in loaded ? loaded.sessions.find((one) => one.name === current) : undefined;
+  const columns = useSessionColumns(room, shownSession?.status === "stopped" ? shownSession.name : null);
   const { list } = columns;
   // On a phone (phone.ts) Sessions is the list and a session's page the session alone: no
   // strip, no edge, nothing of the computer's list read or written.
@@ -306,8 +307,9 @@ function useColumnPrefs(stored: () => ColumnPrefs, store: (prefs: ColumnPrefs) =
 // The columns beside the chat, what `fitColumns` makes of the human's choices. Each stored key
 // has its one writer here, and only what the human does reaches it: at 601 to 900 px both
 // columns start folded whatever is stored, and what opens there lies over the session and
-// is not remembered.
-function useSessionColumns(room: number | null): { list: ListColumn; panel: PanelColumn } {
+// is not remembered. `stopped`, the stopped session shown: its terminals start folded, and what
+// the human does to them lasts while it shows, in memory, but for a width set on their edge.
+function useSessionColumns(room: number | null, stopped: string | null): { list: ListColumn; panel: PanelColumn } {
   const [list, keepList] = useColumnPrefs(storedSessionsList, storeSessionsList);
   const [panel, keepPanel] = useColumnPrefs(storedPanel, storePanel);
   const [last, setLast] = useState<Column | null>(storedLastColumn);
@@ -327,9 +329,16 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
   useEffect(() => {
     if (!narrow) setOver(null);
   }, [narrow]);
+  const [openedIn, setOpenedIn] = useState<string | null>(null); // the stopped session opened by hand
+  useEffect(() => {
+    setOpenedIn(null);
+    setLast(storedLastColumn()); // what a stopped session set in memory goes
+    if (stopped !== null) setOver((now) => (now === "terminals" ? null : now));
+  }, [stopped]);
   const width = list.width ?? SESSIONS_WIDTH.initial;
   // Before the first measure nothing folds: the stored choice shows, and no terminal is made.
-  const input = { room: room ?? Infinity, list: { ...list, width }, panel, last, control };
+  const shownPanel = stopped === null ? panel : stoppedPanel(panel, openedIn === stopped);
+  const input = { room: room ?? Infinity, list: { ...list, width }, panel: shownPanel, last, control };
   const fit = fitColumns(input);
   const max = Math.max(SESSIONS_WIDTH.min, Math.min(SESSIONS_WIDTH.max, listMax(input)));
   const listColumn = useMemo(
@@ -359,17 +368,22 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
       ready: room !== null || typeof ResizeObserver === "undefined",
       open: () => {
         if (narrow) return setOver("terminals");
+        if (stopped !== null) {
+          setLast("panel");
+          return setOpenedIn(stopped);
+        }
         openedLast("panel");
         keepPanel({ collapsed: false });
       },
       fold: () => {
         if (narrow) setOver(null);
+        else if (stopped !== null) setOpenedIn(null);
         else keepPanel({ collapsed: true });
       },
       setWidth: (next: number | null) => keepPanel({ width: next }),
       setControl: holdControl,
     }),
-    [narrow, over, fit.panelFolded, fit.panelWidth, room, keepPanel, openedLast, holdControl],
+    [narrow, over, fit.panelFolded, fit.panelWidth, room, keepPanel, openedLast, holdControl, stopped],
   );
   return { list: listColumn, panel: panelColumn };
 }
